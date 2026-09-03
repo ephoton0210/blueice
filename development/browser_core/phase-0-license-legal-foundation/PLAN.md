@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress
+**Status**: Done
 
 ## Objective
 
@@ -11,17 +11,17 @@ Put the legal/licensing groundwork in place before any code that touches Gecko o
 ## Plan
 
 - The repository-level `LICENSE` (MPL-2.0, official text) already exists at the repo root — that part of this phase is done.
-- What's still missing is the machinery for the two derivative-code cases described in plan §2:
-  - Gecko-derived files: MPL-2.0 is mandatory (file-level copyleft), but there's no convention yet for recording *which upstream file/revision* a given file was ported from.
-  - Chromium/Blink-derived files (BSD-3-Clause → relicensed to MPL-2.0): the original BSD copyright/disclaimer notice must be preserved somewhere — either inline per-file or centrally. Neither exists yet.
-- Decide inline-header vs. centralized-file (or both) before the first ported file lands, since retrofitting provenance notes across many files later is much more expensive than establishing the convention up front.
+- **Decision**: per-file header only, no centralized `NOTICE`/`THIRD_PARTY_LICENSES` file. Every file's licensing history is self-contained in its own header, so it survives being copied, moved, or extracted on its own — at the cost of the full BSD-3-Clause block being repeated in every Chromium/Blink-derived file rather than referenced once centrally. See [`CONTRIBUTING.md`](../../../CONTRIBUTING.md) for the three concrete header templates (original code, Gecko-derived, Chromium/Blink-derived).
+- Trademark usage was checked across all current project docs — every mention of Firefox/Mozilla/Chrome/Chromium is either a descriptive reference or the license's own name, never used as BlueIce's own branding.
+- **Additional obligation identified**: BSD-3-Clause's binary-distribution clause ("reproduce the above copyright notice... in the documentation and/or other materials provided with the distribution") is separate from, and not satisfied by, the per-file source headers above. It requires a Help/About/Credits screen crediting Chromium (and, for disclosure consistency, Gecko) in any distributed binary. There's no UI to put that screen in yet, so the obligation is recorded here and the actual screen is tracked as a checklist item under [Phase 4](../phase-4-human-rendering-path/PLAN.md).
 
 ## Checklist
 
 - [x] Add root `LICENSE` (MPL-2.0, official text)
-- [ ] Decide: per-file header notice, a centralized `NOTICE`/`THIRD_PARTY_LICENSES` file, or both
-- [ ] Define the per-file header convention for Gecko-derived files (upstream file path, upstream revision/commit, MPL notice)
-- [ ] Define the per-file header convention for Blink/Chromium-derived files (upstream file path, upstream revision/commit, original BSD-3-Clause copyright + disclaimer text preserved verbatim)
-- [ ] Create the `NOTICE`/`THIRD_PARTY_LICENSES` file (if the centralized approach is chosen) with a template entry ready for the first ported file
-- [ ] Document the convention somewhere contributors will actually see it before porting code (e.g. `CONTRIBUTING.md`)
-- [ ] Confirm no project branding uses "Firefox"/"Mozilla"/"Chrome"/"Google Chrome"/"Chromium" names or logos (plan §2 trademark note)
+- [x] Decide: per-file header notice, a centralized `NOTICE`/`THIRD_PARTY_LICENSES` file, or both — **per-file header only**
+- [x] Define the per-file header convention for Gecko-derived files (upstream file path, upstream revision/commit, MPL notice)
+- [x] Define the per-file header convention for Blink/Chromium-derived files (upstream file path, upstream revision/commit, original BSD-3-Clause copyright + disclaimer text preserved verbatim)
+- [x] ~~Create the `NOTICE`/`THIRD_PARTY_LICENSES` file~~ — not applicable; per-file-header-only decision means no centralized file
+- [x] Document the convention somewhere contributors will actually see it before porting code — [`CONTRIBUTING.md`](../../../CONTRIBUTING.md)
+- [x] Confirm no project branding uses "Firefox"/"Mozilla"/"Chrome"/"Google Chrome"/"Chromium" names or logos (plan §2 trademark note) — verified, no violations
+- [x] Identify and record the BSD-3-Clause binary-distribution notice obligation (Help/About/Credits screen) — recorded here; implementation tracked under [Phase 4](../phase-4-human-rendering-path/PLAN.md)

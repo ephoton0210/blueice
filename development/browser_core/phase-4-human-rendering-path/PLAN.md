@@ -17,6 +17,7 @@ This phase is deliberately scoped to *displaying and interacting with* what Phas
 - Handle the minimum input needed to browse: scroll, click, window resize (each of which needs to feed back into layout/paint, not just be swallowed at the window layer).
 - Handle basic navigation: load a URL, follow a link.
 - Manually verify against the Phase 2 demo page(s) as a smoke test — this is the first point where the pipeline can be checked by eye instead of only by automated fixture assertions.
+- Add a Help/About/Credits screen crediting Chromium and Gecko as technical references — this satisfies BSD-3-Clause's binary-distribution notice clause (reproducing Chromium's copyright notice "in the documentation and/or other materials provided with the distribution"), which the per-file source headers from Phase 0 don't cover. See [Phase 0](../phase-0-license-legal-foundation/PLAN.md) and plan §2.
 
 ## Checklist
 
@@ -27,3 +28,4 @@ This phase is deliberately scoped to *displaying and interacting with* what Phas
 - [ ] Handle window resize, feeding back into layout
 - [ ] Handle basic navigation (load URL, follow links)
 - [ ] Manually verify rendering against the Phase 2 demo page(s)
+- [ ] Add a Help/About/Credits screen reproducing the Chromium BSD-3-Clause notice and crediting Gecko (BSD-3-Clause binary-distribution requirement — see Phase 0)
