@@ -44,11 +44,18 @@ Build BlueIce's own JavaScript engine ("BlueJS") from scratch, rather than embed
 
 This directly strengthens the conformance-test question below: running a Test262 subset differentially against Node's actual behavior is a stronger correctness bar than trusting BlueJS's own Test262 runner to correctly judge pass/fail in isolation.
 
+**AI-facing parsing/introspection — the concrete mechanism for the gatekeeper hook-points question below.** BlueJS needs to expose more than execution results: a structured, machine-readable output of what a script *is* and *does* — at minimum the AST from the parser stage, and likely a derived capability summary (network-initiating calls, storage access, `eval`-like dynamic code, DOM-mutating calls) an AI can consume without having to walk a raw AST itself. This serves two consumers directly, not a hypothetical future one:
+
+- **Phase 7's gatekeeper**, which needs to judge a script's risk before/while it runs — the capability summary is what it reviews, giving the enforcement architecture question in Phase 7 an actual mechanism to call rather than an unspecified "the gatekeeper looks at the script somehow."
+- **Phase 12's MCP server**, which can expose this as an `bluejs_analyze(code)` tool (alongside `bluejs_run(code)` for straight execution) so an external AI agent can ask "what does this script do" without executing it — useful for the same safety reasoning a human reviewer would want, and for the Phase 7 assistant's summarization capability applied to scripts specifically.
+
+**`bluejs` reachable via MCP**: per Phase 12's own principle (MCP as an adapter over the internal IPC protocol, not a parallel channel), the `bluejs` shell doesn't grow a bespoke MCP-speaking mode of its own — it's invoked the same way any other capability is, through `backend/mcp-server/` translating `bluejs_run`/`bluejs_analyze` tool calls into calls against `bluejs`'s existing batch-mode/analysis interface.
+
 ## Open questions (blocking real design)
 
 - **Process placement**: in-process (with internal safeguards) vs. isolated process (with a fast DOM-access channel) — see design sketch above. Probably the single most consequential decision in this phase.
 - **MVP language-feature subset**: not yet scoped (tracked as a Phase 2 checklist item, not duplicated here) — variables/closures/control-flow are certainly in; the harder calls are `class`, `async`/`await`, generators, and how much of the standard library (`Array`/`Object`/`String`/`Map`/`Set` methods, `JSON`) ships initially.
-- **Gatekeeper hook points**: which specific script operations does Phase 7's gatekeeper need to intercept at the interpreter level (network-initiating calls, storage access, `eval`-like dynamic code execution) — needs to be designed together with Phase 7, not assumed.
+- **Gatekeeper hook points**: the AI-facing capability-summary output above is the mechanism, but exactly which operations it needs to flag (network-initiating calls, storage access, `eval`-like dynamic code execution, and how granular the summary needs to be for the gatekeeper to act on it) still needs to be designed together with Phase 7, not assumed.
 - ~~Conformance test strategy~~ — **largely resolved**: a Test262 subset (scoped to BlueJS's current MVP feature set), run differentially against Node.js rather than checked against Test262's own pass/fail metadata in isolation — see the differential-testing design above. Still open: exactly which Test262 subset, and how the corpus grows as the feature subset grows.
 - **Timeline/risk acceptance**: worth being explicit that this phase alone is plausibly larger than Phases 0-6 combined — flagging this here so it's a known, accepted tradeoff rather than discovered partway through.
 
@@ -62,8 +69,10 @@ This directly strengthens the conformance-test question below: running a Test262
 - [ ] Implement the bytecode interpreter for the MVP feature subset
 - [ ] Design the event loop and its interleaving with `core`'s render-pass/paint loop
 - [ ] Design the DOM-binding glue layer connecting BlueJS objects to `blueice-dom`
-- [ ] Design the Phase 7 gatekeeper's script-level hook points, with Phase 7
+- [ ] Design the AI-facing capability-summary output (derived from the AST) and its exact granularity, with Phase 7
+- [ ] Design the Phase 7 gatekeeper's script-level hook points against that summary, with Phase 7
 - [ ] Build the `bluejs` shell (REPL mode + batch-file mode, minimal host bindings)
+- [ ] Expose `bluejs_run`/`bluejs_analyze` as MCP tools, with Phase 12
 - [ ] Build the differential test harness (run corpus through `node` and `bluejs`, diff results with non-determinism normalization)
 - [ ] Curate the initial differential test corpus (Test262 subset scoped to the MVP feature set)
 - [ ] Wire the differential job into `.github/workflows/ci.yml`, per `testing/TEST_PLAN.md`

@@ -51,6 +51,8 @@ This is the concrete technical mitigation for the risk already flagged in plan �
 
 **Latency/model implications**: the gatekeeper needs to run on every risky action *and every incoming page* with low latency and high precision on "is this actually risky" — that profile (fast, narrow, high-precision classification) may genuinely call for a different, smaller, possibly fine-tuned/classifier-style model than the assistant's, rather than assuming both agents share one model. Running full-page review on every navigation is also a real, accepted latency cost given the project's stated priority (safety over speed here) — worth revisiting caching/allowlisting for repeat-visited trusted domains as a *later* optimization, not a default weakening of "review everything."
 
+**Script-level review**: for `<script>` content specifically, the gatekeeper doesn't need to parse JS itself — Phase 13 (BlueJS) is designing an AI-facing capability-summary output (derived from its own AST) exactly for this consumer, covering network-initiating calls, storage access, `eval`-like dynamic code, and DOM-mutating calls. The exact hook points and summary granularity are still open and need designing together with Phase 13, not assumed here.
+
 ### Agent 2: Assistant
 
 Organizing data, summarization, and **live translation** per the given scope. Can tolerate higher latency and more model variety than the gatekeeper — a good candidate for a larger local model, or even a fallback that only activates when no external AI agent is connected.

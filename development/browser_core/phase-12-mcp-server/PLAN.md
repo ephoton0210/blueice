@@ -19,6 +19,8 @@ Expose BlueIce's capabilities — browsing/rendering (Phase 1/5's AI-facing API)
 - `click(node_id)` / `type(node_id, text)` — act on the stable DOM node IDs plan §1 already requires
 - `download_file(url, dest)` / `list_transfers()` — wraps Phase 10
 - `ftp_connect(...)` / `sftp_connect(...)` — wraps Phase 11
+- `bluejs_run(code)` — wraps the Phase 13 `bluejs` shell's batch mode, so an MCP client can execute/test a JS snippet directly
+- `bluejs_analyze(code)` — wraps Phase 13's AI-facing parse/analysis output (AST plus the capability summary the Phase 7 gatekeeper also consumes), so an MCP client can ask "what does this script do" without executing it
 
 ## Open questions
 
