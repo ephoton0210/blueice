@@ -28,9 +28,10 @@ Thumbs.db
 # Runtime log output.
 *.log
 
-# External reference source checkouts (Gecko, Chromium) — large, third-party,
-# not our code. Never committed; only specific ported files (with the
-# CONTRIBUTING.md header conventions) get copied out and added to the repo.
-# See development/browser_core/reference/README.md.
+# External reference source checkouts (Gecko, Chromium, V8) — large,
+# third-party, not our code. Never committed; only specific ported files
+# (with the CONTRIBUTING.md header conventions) get copied out and added
+# to the repo. See development/browser_core/reference/README.md.
 /development/browser_core/reference/gecko/
 /development/browser_core/reference/chromium/
+/development/browser_core/reference/v8/

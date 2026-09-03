@@ -2,15 +2,18 @@
   "files.watcherExclude": {
     "**/development/browser_core/reference/gecko/**": true,
     "**/development/browser_core/reference/chromium/**": true,
+    "**/development/browser_core/reference/v8/**": true,
     "**/target/**": true
   },
   "search.exclude": {
     "**/development/browser_core/reference/gecko": true,
     "**/development/browser_core/reference/chromium": true,
+    "**/development/browser_core/reference/v8": true,
     "**/target": true
   },
   "files.exclude": {
     "**/development/browser_core/reference/gecko": true,
-    "**/development/browser_core/reference/chromium": true
+    "**/development/browser_core/reference/chromium": true,
+    "**/development/browser_core/reference/v8": true
   }
 }
