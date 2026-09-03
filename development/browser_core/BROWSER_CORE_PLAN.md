@@ -29,7 +29,7 @@ This converges with §3's open question in a useful way: since `core` already ne
 
 One open engineering question this raises, not yet resolved: `frontend` needs full-frame pixel output every frame, a very different traffic shape from `extension`/AI's occasional semantic calls — likely wants a separate high-bandwidth channel (shared memory / platform-native texture handles) alongside the same control-plane IPC protocol, rather than serializing whole frames through it. Tracked as a Phase 4 design item, not decided here.
 
-Phases 7-12 add more roles to this picture, each still mostly open design at this point (see each phase's own doc for the specific blocking questions): a local AI subsystem (Phase 7, likely isolated the same way `extension` is, for the same crash-containment reason); a supervisor role above `core` that owns spawning/health-checking/handoff between `core` versions so `frontend`/`extension` never talk to a specific instance directly (Phase 8); the `extension` protocol actually specified into something third parties can build against, rather than just the process/IPC boundary that already exists (Phase 9); an isolated download-manager subsystem (Phase 10) with pluggable FTP/SFTP backends (Phase 11); and an MCP server that should be an adapter over this same internal IPC protocol rather than a competing channel (Phase 12).
+Phases 7-12 add more roles to this picture, each still mostly open design at this point (see each phase's own doc for the specific blocking questions): two local AI agents, isolated the same way `extension` is for the same crash-containment reason — a **safety gatekeeper** that must sit as a mandatory, non-bypassable checkpoint in front of risky actions (navigation, downloads, extension capability use, external-AI-agent actions), and a lower-stakes **assistant** for tasks like summarization (Phase 7); a supervisor role above `core` that owns spawning/health-checking/handoff between `core` versions so `frontend`/`extension` never talk to a specific instance directly (Phase 8); the `extension` protocol actually specified into something third parties can build against, rather than just the process/IPC boundary that already exists (Phase 9); an isolated download-manager subsystem (Phase 10) with pluggable FTP/SFTP backends (Phase 11); and an MCP server that should be an adapter over this same internal IPC protocol rather than a competing channel (Phase 12).
 
 ## 2. Licensing and Legal Framework (settled parts)
 
@@ -69,7 +69,7 @@ The next planning pass needs to settle on one of these (or a hybrid) and define 
 
 - **Patent risk**: codec, GPU rendering, and JIT-related technology has dense patent coverage. Risk is lower but not zero at the non-commercial stage; patent due diligence is needed before moving toward commercial use.
 - **Trademark risk**: branding/naming must continue to stay clear of Mozilla/Google trademark scope.
-- **Legal exposure from the AI agent's browsing activity itself**: independent of the engine's IP status — most site ToS prohibit automated access, and there's robots.txt and anti-bot mechanisms to account for. Before the AI actually browses real third-party sites in production, it needs its own policy and inventory; "this is our own engine" alone doesn't sidestep this.
+- **Legal exposure from the AI agent's browsing activity itself**: independent of the engine's IP status — most site ToS prohibit automated access, and there's robots.txt and anti-bot mechanisms to account for. Before the AI actually browses real third-party sites in production, it needs its own policy and inventory; "this is our own engine" alone doesn't sidestep this. Phase 7's safety-gatekeeper agent is the concrete technical mitigation being designed for this — but a policy/inventory is still needed independent of it, since the gatekeeper only intercepts the risk categories its taxonomy actually covers.
 - **Engineering scale risk**: a full-featured engine rewrite is too large in scope; needs to be kept in check by the MVP convergence described in §4.
 
 ## 6. Progress Tracking
@@ -83,7 +83,7 @@ The next planning pass needs to settle on one of these (or a hybrid) and define 
 | [Phase 4](phase-4-human-rendering-path/PLAN.md) | Human-visible rendering path | Not started |
 | [Phase 5](phase-5-ai-representation-output/PLAN.md) | AI representation output path (implemented per the Phase 1 decision) | Not started |
 | [Phase 6](phase-6-ai-agent-integration-demo/PLAN.md) | AI agent integration demo (running on our own engine, not CDP) | Not started |
-| [Phase 7](phase-7-local-ai/PLAN.md) | Local AI runtime + built-in AI interface | Not started |
+| [Phase 7](phase-7-local-ai/PLAN.md) | Two local AI agents: safety gatekeeper (primary) + assistant | Not started |
 | [Phase 8](phase-8-live-core-hotswap/PLAN.md) | Live `core` hot-swap / seamless update, no browser restart | Not started |
 | [Phase 9](phase-9-extension-protocol/PLAN.md) | BlueIce extension protocol (third-party plugins on the `extension` architecture) | Not started |
 | [Phase 10](phase-10-download-manager/PLAN.md) | Built-in download manager (chunked/resumable/multi-threaded transfers) | Not started |
