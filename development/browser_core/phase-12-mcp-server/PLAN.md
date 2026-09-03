@@ -10,7 +10,7 @@ Expose BlueIce's capabilities — browsing/rendering (Phase 1/5's AI-facing API)
 
 ## Design sketch
 
-**Process design**: `backend/mcp-server/` as a thin adapter process — speaks MCP (JSON-RPC based, per the MCP spec) on one side, and BlueIce's own internal IPC protocol on the other. It translates incoming MCP `tools/call` requests into internal IPC requests against `core`/`downloads`/etc., and (where the MCP transport in use supports it) surfaces internal state changes back out as MCP notifications — it does not implement any browsing/download/transfer logic itself, only the translation.
+**Process design**: `backend/mcp-server/` as a thin adapter process — speaks MCP (JSON-RPC based, per the MCP spec) on one side, and BlueIce's own internal IPC protocol on the other. It translates incoming MCP `tools/call` requests into internal IPC requests against `core`/`downloads`/etc., and (where the MCP transport in use supports it) surfaces internal state changes back out as MCP notifications — it does not implement any browsing/download/transfer logic itself, only the translation. Being a stateless adapter, [`research/multi-process-memory.md`](../research/multi-process-memory.md) flags it as the clearest on-demand-spawn candidate in the whole process fleet — no reason for it to run at all when no MCP client is connected, unlike `core`/`ai-gatekeeper` which need to stay resident.
 
 **Tool sketch** (signatures will firm up once the wrapped APIs are real, but the shape — one MCP tool per capability, thin pass-through to internal IPC — is reasonably stable regardless of exactly how Phase 5/10/11 end up looking in detail):
 
@@ -33,5 +33,5 @@ Expose BlueIce's capabilities — browsing/rendering (Phase 1/5's AI-facing API)
 - [ ] Confirm MCP is implemented as an adapter over the existing internal IPC protocol, not a parallel channel
 - [ ] Confirm which of Phase 1/5/7/9/10/11's capabilities are in scope for MCP exposure
 - [ ] Design MCP tool definitions once the underlying APIs they wrap are real (blocked on those phases, not startable in isolation)
-- [ ] Build the MCP server against those tool definitions
+- [ ] Build the MCP server against those tool definitions, as an on-demand-spawned process (with Phase 8's launcher), per `research/multi-process-memory.md`
 - [ ] Validate against an actual MCP client (e.g. Claude Code) driving a real BlueIce instance end to end

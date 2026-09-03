@@ -20,7 +20,7 @@ A full built-in file-transfer subsystem: chunked, resumable, multi-threaded down
 
 ## Open questions
 
-- **Process placement**: I/O-heavy, network-facing, and not required for rendering to function — plausibly its own isolated process, consistent with `extension`'s isolation rationale (plan §1: don't let a non-essential subsystem destabilize `core`), rather than living inside `core`. Needs an explicit decision, not a default.
+- ~~Process placement~~ — **isolated process, confirmed**, consistent with `extension`'s isolation rationale (plan §1). [`research/multi-process-memory.md`](../research/multi-process-memory.md) additionally flags `downloads` as an idle-teardown candidate (no reason to stay resident with zero active/queued transfers) — the Phase 8 launcher is the proposed owner of that teardown authority once it exists.
 - **Resume-across-restart**: chunked/parallel resume within one browser session is a well-understood technique (HTTP range requests, as aria2/FDM/IDM already do — not really an open design question). What's not decided is whether in-progress transfer state persists to disk so a download can resume after the *browser itself* restarts, not just after a network blip, and if so, where that state lives.
 - **Relationship to Phase 11** (FTP/SFTP clients): same transfer-manager subsystem with pluggable protocol backends behind one interface, or a fully separate component? Affects how both phases are scoped.
 
