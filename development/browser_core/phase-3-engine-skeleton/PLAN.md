@@ -20,14 +20,18 @@ Structure this as a Cargo workspace with one crate per pipeline stage (rather th
 
 Prioritize getting *something* end-to-end working over completeness at any one stage — a skeleton that runs all five stages on a trivial page is more valuable at this point than a highly complete parser with no layout/paint behind it.
 
-Per plan §1, every DOM node must get an explicit, stable ID at creation — this is a property of the DOM data structure itself, not something bolted on later, so it needs to be part of the initial DOM design in stage 1, not retrofitted after Phase 1 settles the AI representation format.
+Per plan §1, every DOM node must get an explicit, stable ID at creation — this is a property of the DOM data structure itself, not something bolted on later, so it needs to be part of the initial DOM design in stage 1, not retrofitted after Phase 1 settles the AI representation format. [`../research/dom.md`](../research/dom.md) recommends the concrete shape: a monotonic-counter-issued `NodeId` newtype (not a slab/array index, to avoid ABA reuse hazards) assigned eagerly at construction, plus a document-scoped `NodeId → node` lookup table.
+
+[`../research/layout.md`](../research/layout.md) recommends the DOM/layout-tree split follow Blink's LayoutNG design (a persistent DOM-linked box type plus a freshly-built immutable fragment tree per layout pass) rather than Gecko's mutable, back-pointer-heavy frame graph, since the latter fights Rust's ownership model. It also recommends a single `match` on `display` dispatching to per-algorithm implementations (block/inline first; flex/grid as later arms), mirroring how both real engines structure this.
+
+[`../research/css-cascade.md`](../research/css-cascade.md) recommends against vendoring Gecko's Stylo (`style` crate) directly — its `TElement` trait alone has 82 methods to implement against a new DOM — in favor of porting its packed-specificity/cascade-origin design as a lightweight from-scratch implementation, and separately evaluating the standalone `cssparser` crate for tokenization.
 
 ## Checklist
 
 - [ ] Set up the Cargo workspace and crate boundaries for the pipeline
-- [ ] Implement the HTML parser → DOM (against the Phase 2 HTML subset), assigning every node an explicit, stable ID at creation (plan §1)
-- [ ] Implement the CSS parser + cascade → styled tree (against the Phase 2 CSS subset)
-- [ ] Implement a minimal layout algorithm (block/inline flow)
+- [ ] Implement the HTML parser → DOM (against the Phase 2 HTML subset), assigning every node an explicit, stable `NodeId` at creation via a monotonic counter (plan §1, `research/dom.md`)
+- [ ] Implement the CSS parser + cascade → styled tree (against the Phase 2 CSS subset), porting the packed-specificity/cascade-origin design from `research/css-cascade.md` rather than vendoring Stylo
+- [ ] Implement a minimal layout algorithm (block/inline flow) using a DOM-linked-box / immutable-fragment-tree split per `research/layout.md`
 - [ ] Implement minimal paint/raster output
 - [ ] Add an end-to-end smoke test: fixture HTML+CSS → asserted paint output
 - [ ] Set up CI (build + test) for the workspace

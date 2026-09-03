@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: Not started
+**Status**: In progress
 
 ## Objective
 
@@ -25,10 +25,12 @@ Two constraints from plan §1 apply regardless of which candidate wins: every el
 
 The accessibility-tree and DOM+CSSOM candidates should be evaluated against how Gecko and Blink actually implement them (in the reference checkouts under [`../reference/`](../reference/)), not just against the general description in the §3 table — write findings up in [`../research/accessibility-tree.md`](../research/) and [`../research/dom.md`](../research/) before making the call.
 
+**Research done, decision still open.** [`../research/accessibility-tree.md`](../research/accessibility-tree.md) tested the §3 table's "misses purely visual information" claim against both engines directly: it's true for Gecko (no hover/z-order/opacity/animation) but only partially true for Blink, which already carries live `:hover` state, real computed color, and a (currently WebXR-only) paint-order field — its verdict is that a "custom hybrid" may just be an accessibility-tree-shaped schema plus a handful of added fields (opacity, animation state, general occlusion), not a from-scratch design. [`../research/dom.md`](../research/dom.md) found that Blink already unifies AX-node identity with DOM-node identity via its `DOMNodeId` facility — the same facility Chromium's own emerging AI-agent code (`ai_page_content_agent.cc`, `form_mcp_schema.cc`) is built on — which is direct, real-world precedent for BlueIce's stable-ID requirement (plan §1) and for keying the eventual representation by that ID. This substantially de-risks the Accessibility Tree and custom-hybrid candidates but doesn't settle the choice on its own — the toy-DOM spikes below are still the next step before committing.
+
 ## Checklist
 
-- [ ] Read Gecko's and Blink's accessibility-tree implementations in `../reference/`; write up findings in `../research/accessibility-tree.md`
-- [ ] Re-evaluate the four §3 candidates against MVP goals and against each other on fidelity / structure / cost
+- [x] Read Gecko's and Blink's accessibility-tree implementations in `../reference/`; write up findings in `../research/accessibility-tree.md`
+- [ ] Re-evaluate the four §3 candidates against MVP goals and against each other on fidelity / structure / cost, incorporating the `accessibility-tree.md` and `dom.md` findings above
 - [ ] Spike the accessibility-tree candidate against a toy DOM
 - [ ] Spike the custom-hybrid candidate against a toy DOM
 - [ ] Make the final decision and record the rationale by updating plan §3
