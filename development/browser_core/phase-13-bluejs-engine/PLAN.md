@@ -36,7 +36,7 @@ Build BlueIce's own JavaScript engine ("BlueJS") from scratch, rather than embed
 
 **Differential testing against Node.js — the correctness/performance validation strategy.** Rather than trusting a from-scratch interpreter's own test suite to catch its own bugs, cross-validate against a known-correct reference implementation:
 
-1. **`bluejs` CLI shell**: a standalone binary (`bluejs script.js`, analogous to `node script.js`) that runs a script outside any DOM context. Requires only minimal host bindings (`console.log` and similar) — genuinely useful as an early milestone, since it validates BlueJS's core language correctness independently of the DOM-binding work, well before Phase 3 integration is ready.
+1. **`bluejs` shell**: one standalone binary, two modes, mirroring `node`'s own UX exactly (relevant since it's the differential-testing reference below) — invoked with no arguments it's an interactive REPL (line-by-line read-eval-print, immediate feedback per statement); invoked with a script path (`bluejs script.js`) it batch-executes the whole file and prints the result, which is also what the differential harness calls. Runs outside any DOM context with only minimal host bindings (`console.log` and similar) — genuinely useful as an early milestone independent of the differential-testing use case too, since it validates BlueJS's core language correctness (and gives a place to manually poke at the interpreter during its own development) well before Phase 3's DOM integration is ready.
 2. **Test corpus**: JS scripts scoped to whatever BlueJS's MVP language-feature subset currently covers (per the open question below) — not the full Test262 suite blindly, since most of it exercises features outside MVP scope. Grows as the feature subset grows.
 3. **Differential harness**: runs each corpus script through both `node` and `bluejs`, capturing stdout and exit code (correctness) and wall-clock time (performance), and diffs the two runs.
 4. **Two normalization traps to design around, not discover later**: (a) some outputs are inherently non-deterministic or unspecified even in a fully spec-compliant engine — `Date.now()`, `Math.random()`, object-key enumeration order in edge cases, exact error-message text (the spec mandates error *type*, not wording) — the harness has to exclude or normalize these before comparing, or it will report false failures forever; (b) performance parity with Node/V8 is not the bar and isn't expected at MVP stage (no JIT vs. V8's full tiered JIT) — the comparison's purpose is establishing a baseline and tracking the trend over successive changes, not chasing a ratio close to 1.0.
@@ -63,7 +63,7 @@ This directly strengthens the conformance-test question below: running a Test262
 - [ ] Design the event loop and its interleaving with `core`'s render-pass/paint loop
 - [ ] Design the DOM-binding glue layer connecting BlueJS objects to `blueice-dom`
 - [ ] Design the Phase 7 gatekeeper's script-level hook points, with Phase 7
-- [ ] Build the `bluejs` CLI shell (standalone script execution, minimal host bindings)
+- [ ] Build the `bluejs` shell (REPL mode + batch-file mode, minimal host bindings)
 - [ ] Build the differential test harness (run corpus through `node` and `bluejs`, diff results with non-determinism normalization)
 - [ ] Curate the initial differential test corpus (Test262 subset scoped to the MVP feature set)
 - [ ] Wire the differential job into `.github/workflows/ci.yml`, per `testing/TEST_PLAN.md`
