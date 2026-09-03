@@ -1,8 +1,8 @@
-# Phase 1 spike — accessibility-tree vs. custom-hybrid, worked example
+# Phase 1 design record — accessibility-tree vs. custom-hybrid, worked example
 
 [← Back to Phase 1](PLAN.md)
 
-This is the toy-DOM spike called for in the Phase 1 checklist, run against both remaining candidates from plan §3 at once, since [`../research/accessibility-tree.md`](../research/accessibility-tree.md) §4 already argues the custom hybrid is just an accessibility-tree-shaped schema plus a small delta — the cheapest way to test that claim is to build both from the same toy page and diff them, rather than spiking each in isolation.
+The Accessibility Tree candidate's viability was already established by prior art (`../research/accessibility-tree.md` reading how Gecko/Blink use it in production) — this worked example isn't a feasibility check, it's what actually fixed the concrete schema: exactly which fields beyond a stock accessibility tree BlueIce needs, run against both remaining candidates from plan §3 at once, since [`../research/accessibility-tree.md`](../research/accessibility-tree.md) §4 already argues the custom hybrid is just an accessibility-tree-shaped schema plus a small delta — the cheapest way to fix that delta concretely is to build both from the same toy page and diff them.
 
 ## Toy DOM and runtime state
 
@@ -78,4 +78,4 @@ Modeled directly on Blink's `AXNodeData` (per `accessibility-tree.md` §2): role
 
 Adopt Candidate B: an accessibility-tree-shaped schema (role, state, provenance-tagged name, offset-relative bounds — following `AXNodeData`'s field categories) extended with `opacity`, `animating` (carrying the live interpolated value(s), not just a bool), `occluded`/`occludedBy`/`occludedFraction`, and always-populated per-node `hovered`/`focused` booleans. Keyed by BlueIce's stable per-node `NodeId` (plan §1, `research/dom.md`) rather than a separate AX-ID scheme. `display:none` and purely-decorative non-semantic nodes stay excluded, matching human perception per plan §1 — this is deliberate parity, not an omission to fix later.
 
-This resolves the plan §3 open question. **Still needs your sign-off before I update `BROWSER_CORE_PLAN.md` §3 and the plan's top-level candidate table** — this is the single most consequential, hardest-to-reverse call in the whole design so far, and everything from here (Phase 1's remaining checklist items, all of Phase 5) builds on it.
+**Adopted.** Recorded in `BROWSER_CORE_PLAN.md` §3. This document stays as the worked example that fixed the concrete schema — which fields beyond a stock accessibility tree are actually needed — not as a feasibility check: the Accessibility Tree candidate's core viability was already established by `research/accessibility-tree.md` reading how Gecko and Blink use it in production, not by this example.

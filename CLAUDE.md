@@ -25,7 +25,7 @@ Two concrete requirements follow from the core goal (plan §1) and apply across 
 
 Plans are drafted under `development/` *before* implementation starts, and updated as the design evolves — treat these as living documents, not historical records. Each major component gets its own subdirectory with a plan doc. Currently the only component is `development/browser_core/BROWSER_CORE_PLAN.md` (the engine itself).
 
-**Open decision to check before assuming an approach**: which layer the human and AI representations are shared at is not yet settled (plan §3). Candidates under consideration: raw pixels + OCR/vision model, DOM+CSSOM, the accessibility tree, or a custom hybrid derived from one render pass. Don't assume one of these has been chosen without checking the plan doc.
+**Settled**: which layer the human and AI representations are shared at (plan §3) — an accessibility-tree-shaped schema (role, state, provenance-tagged name, bounds) extended with `opacity`, `animating`, `occluded`/`occludedBy`/`occludedFraction`, and per-node `hovered`/`focused`, keyed by BlueIce's own stable `NodeId`. Resolved directly from how Gecko/Blink already do this in production (`research/accessibility-tree.md`), not from an independent validation exercise — check plan §3 for the current schema rather than assuming one of the original four candidates in isolation.
 
 **MVP scope** (per plan §4) is deliberately narrow: a minimal HTML parse → DOM → CSS cascade → layout → paint pipeline, plus the shared human/AI representation layer. Explicitly out of scope for now: extension ecosystem, multi-tab state sync, full JS engine optimization, DevTools.
 

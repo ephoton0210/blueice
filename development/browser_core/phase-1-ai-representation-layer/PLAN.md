@@ -6,35 +6,19 @@
 
 ## Objective
 
-Resolve the open design decision from plan §3 — which layer the human and AI representations are shared at — and, once decided, define the actual shape of the API the AI side receives. This decision gates Phase 5 (the AI representation output path can't be implemented until it's known what it's outputting), so it should be settled before Phase 3/4 implementation work gets far enough that the choice becomes expensive to change.
+Plan §3's representation-layer decision is settled (an accessibility-tree-shaped schema, keyed by BlueIce's stable `NodeId`, extended with four fields — see plan §3). What's left in this phase is defining the actual shape of the API the AI side receives: data format, versioning, how elements are addressed and acted on, and how it stays synchronized with human-facing UI state. This still gates Phase 5 (the AI representation output path can't be implemented until the API shape is defined) and should be settled before Phase 3/4 implementation work gets far enough that changes become expensive.
 
-## Plan
+## How §3 was decided
 
-Evaluate the four candidates from plan §3 against the project's actual goal (an AI agent perceiving *the same state* a human does, from the same render pass) rather than against generic browser-automation needs:
+Not by an independent validation exercise — the Accessibility Tree candidate is already proven at scale in the two production browsers this project studies (Gecko and Blink both drive real screen readers off it; Blink's schema is now also the basis of Chromium's own emerging AI-agent code). Reading how each engine actually implements it (`../research/accessibility-tree.md`, `../research/dom.md`) was sufficient to settle the choice directly — see [`spike.md`](spike.md) for the worked example that fixed the concrete schema (which fields beyond a stock accessibility tree are actually needed), not to validate feasibility that was already established by prior art.
 
-| Option | Fidelity to human perception | Structure for the AI | Engineering cost |
-|---|---|---|---|
-| Raw pixels + OCR/vision model | Highest | Lowest | Low (mostly glue) |
-| DOM + CSSOM | Lower (misses visual-only state) | High | Low (mature tooling) |
-| Accessibility Tree | Medium | High, standardized | Medium |
-| Custom hybrid | Highest (by construction) | High | Highest |
-
-A short spike on the accessibility-tree and/or custom-hybrid candidates (the two least "just wire up an existing library" options) is worth doing before committing, since their real engineering cost is the least certain of the four.
-
-Two constraints from plan §1 apply regardless of which candidate wins: every element in the chosen representation must be addressed by the DOM node's stable ID (not a transient index/coordinate alone), and the AI-facing API needs a browser-chrome control surface — distinct from the page-content representation — for actions like show/hide that operate on the window rather than on a page.
-
-The accessibility-tree and DOM+CSSOM candidates should be evaluated against how Gecko and Blink actually implement them (in the reference checkouts under [`../reference/`](../reference/)), not just against the general description in the §3 table — write findings up in [`../research/accessibility-tree.md`](../research/) and [`../research/dom.md`](../research/) before making the call.
-
-**Research done, decision still open.** [`../research/accessibility-tree.md`](../research/accessibility-tree.md) tested the §3 table's "misses purely visual information" claim against both engines directly: it's true for Gecko (no hover/z-order/opacity/animation) but only partially true for Blink, which already carries live `:hover` state, real computed color, and a (currently WebXR-only) paint-order field — its verdict is that a "custom hybrid" may just be an accessibility-tree-shaped schema plus a handful of added fields (opacity, animation state, general occlusion), not a from-scratch design. [`../research/dom.md`](../research/dom.md) found that Blink already unifies AX-node identity with DOM-node identity via its `DOMNodeId` facility — the same facility Chromium's own emerging AI-agent code (`ai_page_content_agent.cc`, `form_mcp_schema.cc`) is built on — which is direct, real-world precedent for BlueIce's stable-ID requirement (plan §1) and for keying the eventual representation by that ID. This substantially de-risks the Accessibility Tree and custom-hybrid candidates but doesn't settle the choice on its own — the toy-DOM spikes below are still the next step before committing.
+**Two constraints from plan §1 apply to the API shape regardless**: every element must be addressed by the DOM node's stable ID (not a transient index/coordinate alone), and the AI-facing API needs a browser-chrome control surface — distinct from the page-content representation — for actions like show/hide that operate on the window rather than on a page.
 
 ## Checklist
 
 - [x] Read Gecko's and Blink's accessibility-tree implementations in `../reference/`; write up findings in `../research/accessibility-tree.md`
-- [ ] Re-evaluate the four §3 candidates against MVP goals and against each other on fidelity / structure / cost, incorporating the `accessibility-tree.md` and `dom.md` findings above
-- [ ] Spike the accessibility-tree candidate against a toy DOM
-- [ ] Spike the custom-hybrid candidate against a toy DOM
-- [ ] Make the final decision and record the rationale by updating plan §3
-- [ ] Define the AI-facing data format/schema for the chosen representation
+- [x] Settle the §3 representation-layer decision (accessibility-tree-shaped schema + four fields, keyed by stable `NodeId`) — recorded in `BROWSER_CORE_PLAN.md` §3, worked example in `spike.md`
+- [ ] Define the AI-facing data format/schema for the chosen representation as a concrete, implementable spec (field types, not just field names)
 - [ ] Define how the API exposes each element by its stable DOM node ID (plan §1), plus coordinates, in a way an agent can act on (click, type, scroll)
 - [ ] Define versioning/stability policy for the AI-facing API
 - [ ] Define how this representation and human-facing UI state (e.g. highlights) stay synchronized, per the sync goal in plan §1
