@@ -29,6 +29,8 @@ This converges with §3's open question in a useful way: since `core` already ne
 
 One open engineering question this raises, not yet resolved: `frontend` needs full-frame pixel output every frame, a very different traffic shape from `extension`/AI's occasional semantic calls — likely wants a separate high-bandwidth channel (shared memory / platform-native texture handles) alongside the same control-plane IPC protocol, rather than serializing whole frames through it. Tracked as a Phase 4 design item, not decided here.
 
+Phases 7-12 add more roles to this picture, each still mostly open design at this point (see each phase's own doc for the specific blocking questions): a local AI subsystem (Phase 7, likely isolated the same way `extension` is, for the same crash-containment reason); a supervisor role above `core` that owns spawning/health-checking/handoff between `core` versions so `frontend`/`extension` never talk to a specific instance directly (Phase 8); the `extension` protocol actually specified into something third parties can build against, rather than just the process/IPC boundary that already exists (Phase 9); an isolated download-manager subsystem (Phase 10) with pluggable FTP/SFTP backends (Phase 11); and an MCP server that should be an adapter over this same internal IPC protocol rather than a competing channel (Phase 12).
+
 ## 2. Licensing and Legal Framework (settled parts)
 
 - **Fully open source, project-wide MPL 2.0** — this is not a clean-room implementation; Firefox (Gecko) and Chromium (Blink/V8) source is read directly and adapted as technical reference and a porting basis, so the project is already bound by derivative-work rules. Adopting MPL uniformly across the project is the simplest, lowest-risk choice.
@@ -75,11 +77,19 @@ The next planning pass needs to settle on one of these (or a hybrid) and define 
 | Phase | Content | Status |
 |---|---|---|
 | [Phase 0](phase-0-license-legal-foundation/PLAN.md) | License/legal foundation (`LICENSE` file, per-file header conventions in `CONTRIBUTING.md`) | Done |
-| [Phase 1](phase-1-ai-representation-layer/PLAN.md) | Decide the §3 AI representation layer approach, define the AI-side API shape | Not started |
-| [Phase 2](phase-2-mvp-scope/PLAN.md) | Finalize MVP scope (supported HTML/CSS/JS subset) | Not started |
-| [Phase 3](phase-3-engine-skeleton/PLAN.md) | Rust core engine skeleton (parse → DOM → layout → paint) | Not started |
+| [Phase 1](phase-1-ai-representation-layer/PLAN.md) | Decide the §3 AI representation layer approach, define the AI-side API shape | In progress |
+| [Phase 2](phase-2-mvp-scope/PLAN.md) | Finalize MVP scope (supported HTML/CSS/JS subset) | In progress |
+| [Phase 3](phase-3-engine-skeleton/PLAN.md) | Rust core engine skeleton (parse → DOM → layout → paint) | In progress |
 | [Phase 4](phase-4-human-rendering-path/PLAN.md) | Human-visible rendering path | Not started |
 | [Phase 5](phase-5-ai-representation-output/PLAN.md) | AI representation output path (implemented per the Phase 1 decision) | Not started |
 | [Phase 6](phase-6-ai-agent-integration-demo/PLAN.md) | AI agent integration demo (running on our own engine, not CDP) | Not started |
+| [Phase 7](phase-7-local-ai/PLAN.md) | Local AI runtime + built-in AI interface | Not started |
+| [Phase 8](phase-8-live-core-hotswap/PLAN.md) | Live `core` hot-swap / seamless update, no browser restart | Not started |
+| [Phase 9](phase-9-extension-protocol/PLAN.md) | BlueIce extension protocol (third-party plugins on the `extension` architecture) | Not started |
+| [Phase 10](phase-10-download-manager/PLAN.md) | Built-in download manager (chunked/resumable/multi-threaded transfers) | Not started |
+| [Phase 11](phase-11-transfer-protocol-clients/PLAN.md) | FTP/SFTP and other transfer-protocol clients | Not started |
+| [Phase 12](phase-12-mcp-server/PLAN.md) | MCP server exposing BlueIce to Claude Code and other AI agents | Not started |
+
+Phases 7-12 extend the browser beyond the rendering-engine MVP (Phases 0-6) into a full application platform — added once that broader scope was set, not part of the original MVP path. Several (7, 8 especially) have open design questions blocking real work; see each phase's own doc.
 
 This document is the first version of the plan, meant to be refined in later iterations.
