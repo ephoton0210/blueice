@@ -1,0 +1,70 @@
+# Phase 13 — BlueJS: Custom JavaScript Engine
+
+[← Back to plan](../BROWSER_CORE_PLAN.md)
+
+**Status**: Not started
+
+## Objective
+
+Build BlueIce's own JavaScript engine ("BlueJS") from scratch, rather than embedding an existing engine (SpiderMonkey/`mozjs`, V8/`rusty_v8`, or QuickJS/`rquickjs` were the alternatives considered and explicitly declined). Resolves Phase 2's JS-strategy checklist item; this phase is where the engine itself gets built.
+
+**Why build instead of embed**, for the record: an embedded engine (`mozjs` especially, being Servo's own choice and already MPL-2.0) would have been the lower-risk, faster path — this project's own principle, established earlier, is to prefer proven prior art over reinventing it. The case for BlueJS anyway: staying all-Rust (no C++ toolchain dependency anywhere in the codebase, unlike every embedded option), and — the strongest technical argument — owning the interpreter means the Phase 7 safety gatekeeper can hook script execution at the interpreter/binding level (intercepting specific dangerous calls before they run) rather than only at the coarser DOM-mutation boundary an external engine's C++ internals wouldn't expose.
+
+**Scope discipline matters more here than anywhere else in the project.** A JS engine is one of the largest, most failure-prone categories of software to build from scratch (V8, SpiderMonkey, and JavaScriptCore each represent decades of engineering). Plan §4 already rules out full JS engine optimization for MVP — no JIT in the MVP itself.
+
+**But deferring optimization and choosing an architecture that has to be rewritten to add optimization later are two different things, and this design has to actively avoid the second one.** This isn't hypothetical: V8 itself did a full engine rewrite in 2015-2017 (full-codegen + Crankshaft → Ignition + TurboFan) specifically because its earlier architecture couldn't scale to later optimization needs; SpiderMonkey went through multiple similar generational rewrites (JägerMonkey → IonMonkey → Warp). The same principle this project already applied to layout (`research/layout.md`'s LayoutNG-style split, chosen specifically so flex/grid are later dispatch arms rather than requiring a rewrite of block/inline flow) needs to apply here too: pick foundational structure now that makes optimization *additive* later, even while building none of the optimization itself yet.
+
+**Stated as an explicit priority, so it isn't lost in a future re-read of this doc: designing for high-performance-later is the priority for this phase; actually building that performance is not.** Every architectural choice below is judged by "does this block a future optimization tier," not by "is this fast." Nothing in this phase should be read as license to start building a JIT, tiering, or inline caches now — that would contradict plan §4 as much as picking a rewrite-prone architecture would.
+
+## Design sketch
+
+**Execution model — bytecode interpreter, not AST-walking.** A JIT compiles hot *bytecode* to native code, not raw AST nodes — starting with a tree-walking interpreter (direct AST evaluation) would mean a full execution-model rewrite to add a JIT later, the exact trap described above. Instead: compile to a simple, unoptimized bytecode format (a lean stack-based VM is enough for MVP — QuickJS proves this can stay small) and interpret *that*. MVP complexity is barely higher than AST-walking, but adding a JIT later becomes "compile hot bytecode to native code," not "redesign the engine."
+
+**Object/property representation — behind an abstraction, even though the MVP implementation is naive.** A meaningful share of real engines' performance comes from shape/hidden-class-style object representation (V8's Hidden Classes, SpiderMonkey's Shapes) instead of a plain per-object property map. MVP doesn't need this — a straightforward `HashMap<PropertyKey, Value>` per object is fine to start — but every call site should go through a trait/interface for property access rather than touching the map directly, so the internal representation can be swapped later without rippling through the interpreter and DOM-binding layer.
+
+**What genuinely doesn't need to be designed now**: inline-caching sites, deoptimization bailout points, and other JIT-tier-specific machinery. Those are real extension points a future optimization phase adds *onto* the bytecode-interpreter/abstracted-object-model foundation above — their absence today isn't debt, unlike the AST-walking/unabstracted-object-model choices this section corrects.
+
+**Parser**: a JS tokenizer/parser producing an AST, structurally similar in kind to `blueice-html`'s tokenizer/tree-builder split (Phase 3) but for ECMAScript grammar instead of HTML5 — its own substantial subsystem, though smaller in surface area than the HTML parser.
+
+**Memory management**: JS requires a GC (closures and objects can form reference cycles, which Rust's ownership model doesn't handle for free). `blueice-dom` already sidesteps this class of problem for the DOM by using an arena/handle-based node table (`NodeId` → node, not `Rc<RefCell<..>>` graphs) rather than direct Rust references — the same handle-based approach is the natural fit for BlueJS's object model too, and has a second benefit: it gives a clean, uniform way for JS objects to hold references to DOM nodes (and vice versa, for event handlers) without the two systems needing separate, incompatible reference schemes.
+
+**DOM integration**: DOM bindings (`document.querySelector`, `addEventListener`, element property access, etc.) are host-provided glue between BlueJS objects and `blueice-dom`'s `NodeId`-addressed tree, not part of the JS language itself — this glue layer is its own scoping question (which DOM APIs are in the MVP subset), tracked as a Phase 2 checklist item rather than duplicated here.
+
+**Event loop / async**: real-world JS leans heavily on `Promise`/`async`/`await`, `setTimeout`, and event-driven callbacks — some form of event loop is required even for an MVP subset, and it has to interleave with `core`'s own render-pass/paint loop the way the HTML spec's processing model expects (script execution and rendering aren't independent of each other). This needs to be designed together with Phase 3's pipeline, not bolted on after.
+
+**Process placement — a genuinely hard question, not yet resolved**: every other risky/unstable subsystem in this project's architecture (`extension`, `ai-gatekeeper`, `ai-assistant`, `downloads`) is process-isolated from `core` specifically so it can't take `core` down. Script execution is historically one of the most crash/hang-prone parts of any browser engine (infinite loops, stack overflows, and — being BlueJS's first real implementation — engine bugs of its own). The counter-pressure: script needs to call DOM APIs constantly, and if that crosses a process/IPC boundary on every call, the performance cost is much larger than the comparatively coarse-grained isolation `extension` needs. Whether BlueJS runs in-process (with strong internal safeguards — execution timeouts, stack-depth limits) or out-of-process (with a fast enough DOM-access channel to stay usable) is unresolved and directly affects both `core`'s stability guarantee and real-world performance.
+
+**Differential testing against Node.js — the correctness/performance validation strategy.** Rather than trusting a from-scratch interpreter's own test suite to catch its own bugs, cross-validate against a known-correct reference implementation:
+
+1. **`bluejs` CLI shell**: a standalone binary (`bluejs script.js`, analogous to `node script.js`) that runs a script outside any DOM context. Requires only minimal host bindings (`console.log` and similar) — genuinely useful as an early milestone, since it validates BlueJS's core language correctness independently of the DOM-binding work, well before Phase 3 integration is ready.
+2. **Test corpus**: JS scripts scoped to whatever BlueJS's MVP language-feature subset currently covers (per the open question below) — not the full Test262 suite blindly, since most of it exercises features outside MVP scope. Grows as the feature subset grows.
+3. **Differential harness**: runs each corpus script through both `node` and `bluejs`, capturing stdout and exit code (correctness) and wall-clock time (performance), and diffs the two runs.
+4. **Two normalization traps to design around, not discover later**: (a) some outputs are inherently non-deterministic or unspecified even in a fully spec-compliant engine — `Date.now()`, `Math.random()`, object-key enumeration order in edge cases, exact error-message text (the spec mandates error *type*, not wording) — the harness has to exclude or normalize these before comparing, or it will report false failures forever; (b) performance parity with Node/V8 is not the bar and isn't expected at MVP stage (no JIT vs. V8's full tiered JIT) — the comparison's purpose is establishing a baseline and tracking the trend over successive changes, not chasing a ratio close to 1.0.
+5. **CI integration**: a job alongside the existing `build-test`/`coverage` jobs in `.github/workflows/ci.yml` (needs Node.js added to the CI environment, e.g. `actions/setup-node`) — correctness divergence on in-scope features should gate the build the same way a failing unit test does; the performance-ratio numbers should be reported in the job summary (same mechanism the coverage job already uses) but not gate on an arbitrary threshold.
+
+This directly strengthens the conformance-test question below: running a Test262 subset differentially against Node's actual behavior is a stronger correctness bar than trusting BlueJS's own Test262 runner to correctly judge pass/fail in isolation.
+
+## Open questions (blocking real design)
+
+- **Process placement**: in-process (with internal safeguards) vs. isolated process (with a fast DOM-access channel) — see design sketch above. Probably the single most consequential decision in this phase.
+- **MVP language-feature subset**: not yet scoped (tracked as a Phase 2 checklist item, not duplicated here) — variables/closures/control-flow are certainly in; the harder calls are `class`, `async`/`await`, generators, and how much of the standard library (`Array`/`Object`/`String`/`Map`/`Set` methods, `JSON`) ships initially.
+- **Gatekeeper hook points**: which specific script operations does Phase 7's gatekeeper need to intercept at the interpreter level (network-initiating calls, storage access, `eval`-like dynamic code execution) — needs to be designed together with Phase 7, not assumed.
+- ~~Conformance test strategy~~ — **largely resolved**: a Test262 subset (scoped to BlueJS's current MVP feature set), run differentially against Node.js rather than checked against Test262's own pass/fail metadata in isolation — see the differential-testing design above. Still open: exactly which Test262 subset, and how the corpus grows as the feature subset grows.
+- **Timeline/risk acceptance**: worth being explicit that this phase alone is plausibly larger than Phases 0-6 combined — flagging this here so it's a known, accepted tradeoff rather than discovered partway through.
+
+## Checklist
+
+- [ ] Decide process placement (in-process vs. isolated)
+- [ ] Scope the MVP language-feature subset (cross-reference: Phase 2 checklist)
+- [ ] Design the object model and GC strategy (handle-based, per the `blueice-dom` precedent above; property access behind an abstraction, per the optimization-rewrite-avoidance note above)
+- [ ] Implement the tokenizer/parser → AST
+- [ ] Design the bytecode format and AST→bytecode compilation step
+- [ ] Implement the bytecode interpreter for the MVP feature subset
+- [ ] Design the event loop and its interleaving with `core`'s render-pass/paint loop
+- [ ] Design the DOM-binding glue layer connecting BlueJS objects to `blueice-dom`
+- [ ] Design the Phase 7 gatekeeper's script-level hook points, with Phase 7
+- [ ] Build the `bluejs` CLI shell (standalone script execution, minimal host bindings)
+- [ ] Build the differential test harness (run corpus through `node` and `bluejs`, diff results with non-determinism normalization)
+- [ ] Curate the initial differential test corpus (Test262 subset scoped to the MVP feature set)
+- [ ] Wire the differential job into `.github/workflows/ci.yml`, per `testing/TEST_PLAN.md`
+- [ ] End-to-end smoke test: a real `<script>`-bearing fixture page executes correctly through the full Phase 3 pipeline

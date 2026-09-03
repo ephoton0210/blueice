@@ -89,7 +89,8 @@ Phases 7-12 add more roles to this picture, each still mostly open design at thi
 | [Phase 10](phase-10-download-manager/PLAN.md) | Built-in download manager (chunked/resumable/multi-threaded transfers) | Not started |
 | [Phase 11](phase-11-transfer-protocol-clients/PLAN.md) | FTP/SFTP and other transfer-protocol clients | Not started |
 | [Phase 12](phase-12-mcp-server/PLAN.md) | MCP server exposing BlueIce to Claude Code and other AI agents | Not started |
+| [Phase 13](phase-13-bluejs-engine/PLAN.md) | BlueJS: custom JavaScript engine (decided over embedding an existing one) | Not started |
 
-Phases 7-12 extend the browser beyond the rendering-engine MVP (Phases 0-6) into a full application platform — added once that broader scope was set, not part of the original MVP path. Several (7, 8 especially) have open design questions blocking real work; see each phase's own doc.
+Phases 7-12 extend the browser beyond the rendering-engine MVP (Phases 0-6) into a full application platform — added once that broader scope was set, not part of the original MVP path. Several (7, 8 especially) have open design questions blocking real work; see each phase's own doc. Phase 13 (BlueJS) is different from 7-12 in that respect — it resolves Phase 2's JS-strategy decision and is genuinely MVP-relevant (Phase 2's HTML/CSS scope already assumes `<script>` exists), numbered last only because inserting it earlier would have meant renumbering everything else.
 
 This document is the first version of the plan, meant to be refined in later iterations.

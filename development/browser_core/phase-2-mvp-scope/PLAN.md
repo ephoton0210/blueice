@@ -14,7 +14,7 @@ Scope each layer of the pipeline independently, favoring "smallest subset that c
 
 - **HTML**: which elements and attributes are parsed and represented in the DOM (structural elements, text, forms, media placeholders vs. actual media support).
 - **CSS**: which selectors and properties participate in the cascade and layout (box model, basic flow layout at minimum; explicitly decide whether flexbox/grid are in or out of MVP rather than leaving it implicit).
-- **JS**: whether MVP includes JS execution at all, and if so, whether via an embedded existing engine or something custom — this is a large enough decision that it may need its own spike before Phase 3 starts.
+- **JS**: **decided — a custom, from-scratch engine ("BlueJS"), not an embedded existing engine.** See [Phase 13](../phase-13-bluejs-engine/PLAN.md) for the engine itself; this phase still needs to scope which JS *language features* and DOM bindings are in the MVP subset, same as HTML/CSS below.
 - Re-confirm the explicit non-goals already listed in plan §4 (extension ecosystem, multi-tab state sync, full JS engine optimization, DevTools) still hold, and add any newly discovered ones.
 - Ground each of the above against the Gecko/Chromium reference checkouts under [`../reference/`](../reference/) rather than scoping from memory — write up what's actually found as [`../research/`](../research/) notes (`dom.md`, `css-cascade.md`, `layout.md`) so the scoping decisions here can cite specifics.
 
@@ -26,7 +26,8 @@ Scope each layer of the pipeline independently, favoring "smallest subset that c
 - [x] Read Gecko/Blink's HTML tokenizer/tree-builder code in `../reference/`; write up findings in `../research/html-parsing.md`
 - [ ] List supported HTML elements/attributes for MVP (see `html-parsing.md` §4 for a starting cut: keep the full tokenizer state machine and adoption-agency/foster-parenting; cut foreign content, `document.write` reentrancy, speculative parsing, and the full named-character-reference table)
 - [ ] List supported CSS selectors/properties for MVP; decide flexbox/grid in-or-out explicitly (see `css-cascade.md`/`layout.md` — leaning toward basic flexbox in, Grid deferred)
-- [ ] Decide the JS strategy for MVP (no JS / embed existing engine / custom) and record the rationale
+- [x] Decide the JS strategy for MVP — custom engine (BlueJS), tracked in [Phase 13](../phase-13-bluejs-engine/PLAN.md)
+- [ ] Scope the MVP JS language-feature and DOM-binding subset (separate from Phase 13's engine-architecture questions)
 - [ ] Re-confirm and extend the MVP non-goals list from plan §4
 - [ ] Define one or more concrete demo pages the MVP must render correctly as its acceptance bar
 - [ ] Cross-check the scope against the Phase 1 representation-layer decision (the chosen representation must be extractable from whatever this scope actually renders)

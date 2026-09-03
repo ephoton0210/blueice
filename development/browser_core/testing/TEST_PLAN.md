@@ -10,6 +10,7 @@ What gets tested, how, and where a human can see current status without reading 
 - **Integration/fixture tests**: cross-crate, exercising the real pipeline end to end (e.g. Phase 3's planned "fixture HTML+CSS → asserted paint output" smoke test). These belong in each crate's `tests/` directory once there's a real pipeline to assert against — not written yet, since `html`/`css`/`layout`/`paint` are still stubs.
 - **Rendering-correctness fixtures**: once `html`→`css`→`layout`→`paint` are real, the actual functional backbone of a browser engine is a corpus of small HTML/CSS pages checked against expected output (DOM shape, computed styles, layout geometry) — closer to how WPT/reftests work than to unit tests. This category doesn't exist yet either; flagging it now so it's planned for, not retrofitted once the pipeline exists.
 - **UI tests**: not yet actionable — there is no frontend (Phase 4 hasn't started). See "UI testing strategy" below for the plan; treat any claim of current UI test coverage before Phase 4 as wrong.
+- **Differential/cross-validation tests** (BlueJS-specific): correctness and performance of the custom JS engine (Phase 13) checked against Node.js as a reference oracle, rather than trusted to BlueJS's own test suite alone — run the same script corpus through `node` and through the `bluejs` CLI shell, diff stdout/exit codes (correctness, gates the build for in-scope features) and wall-clock time (performance, tracked as a trend, not a pass/fail threshold — parity with Node/V8 isn't the MVP bar). See `../phase-13-bluejs-engine/PLAN.md` for the full design, including the non-determinism-normalization traps this category has to account for.
 
 ## Coverage policy
 
@@ -35,6 +36,7 @@ cargo llvm-cov --workspace \
 
 - **`build-test`**: `cargo build --workspace --all-targets`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`.
 - **`coverage`**: the `cargo-llvm-cov` command above, with its summary written to the job's step summary so the numbers are visible directly on the run page, not buried in a log.
+- **`bluejs-differential`** (not added yet — part of Phase 13): will need Node.js in the CI environment (`actions/setup-node`) to run the differential corpus against `bluejs`, with correctness gating the build and performance numbers published to the job summary the same way coverage is.
 
 This is the interface: GitHub's own Checks UI shows pass/fail per commit and per PR with no extra dashboard to build or maintain; the coverage job's summary shows real numbers on every run; the README badge links straight to the latest run so current status is visible from the project's front page. A human can also just run the same two commands locally (`cargo test --workspace`, the `cargo llvm-cov` command above) to get the identical result CI would.
 
