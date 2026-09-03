@@ -16,6 +16,11 @@ BlueIce is a browser engine, written from scratch in Rust, built around one idea
 
 This is not a clean-room implementation — Gecko (Firefox) and Blink/V8 (Chromium) source are read directly as technical reference and porting basis. See `development/browser_core/BROWSER_CORE_PLAN.md` for full detail.
 
+Two concrete requirements follow from the core goal (plan §1) and apply across all phases:
+
+- The AI must be able to show/hide the human-facing window at runtime without restarting the engine — same instance, same render pass, same JS state, regardless of window visibility.
+- Every DOM node has an explicit, stable ID assigned at creation (not an array index or ephemeral pointer), so the AI-facing representation can reference elements reliably across mutations.
+
 ## Design-first workflow
 
 Plans are drafted under `development/` *before* implementation starts, and updated as the design evolves — treat these as living documents, not historical records. Each major component gets its own subdirectory with a plan doc. Currently the only component is `development/browser_core/BROWSER_CORE_PLAN.md` (the engine itself).

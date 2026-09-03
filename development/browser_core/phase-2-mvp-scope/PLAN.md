@@ -16,9 +16,11 @@ Scope each layer of the pipeline independently, favoring "smallest subset that c
 - **CSS**: which selectors and properties participate in the cascade and layout (box model, basic flow layout at minimum; explicitly decide whether flexbox/grid are in or out of MVP rather than leaving it implicit).
 - **JS**: whether MVP includes JS execution at all, and if so, whether via an embedded existing engine or something custom — this is a large enough decision that it may need its own spike before Phase 3 starts.
 - Re-confirm the explicit non-goals already listed in plan §4 (extension ecosystem, multi-tab state sync, full JS engine optimization, DevTools) still hold, and add any newly discovered ones.
+- Ground each of the above against the Gecko/Chromium reference checkouts under [`../reference/`](../reference/) rather than scoping from memory — write up what's actually found as [`../research/`](../research/) notes (`dom.md`, `css-cascade.md`, `layout.md`) so the scoping decisions here can cite specifics.
 
 ## Checklist
 
+- [ ] Read Gecko/Blink's HTML parsing, CSS cascade, and layout code in `../reference/`; write up findings in `../research/`
 - [ ] List supported HTML elements/attributes for MVP
 - [ ] List supported CSS selectors/properties for MVP; decide flexbox/grid in-or-out explicitly
 - [ ] Decide the JS strategy for MVP (no JS / embed existing engine / custom) and record the rationale

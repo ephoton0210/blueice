@@ -21,13 +21,19 @@ Evaluate the four candidates from plan §3 against the project's actual goal (an
 
 A short spike on the accessibility-tree and/or custom-hybrid candidates (the two least "just wire up an existing library" options) is worth doing before committing, since their real engineering cost is the least certain of the four.
 
+Two constraints from plan §1 apply regardless of which candidate wins: every element in the chosen representation must be addressed by the DOM node's stable ID (not a transient index/coordinate alone), and the AI-facing API needs a browser-chrome control surface — distinct from the page-content representation — for actions like show/hide that operate on the window rather than on a page.
+
+The accessibility-tree and DOM+CSSOM candidates should be evaluated against how Gecko and Blink actually implement them (in the reference checkouts under [`../reference/`](../reference/)), not just against the general description in the §3 table — write findings up in [`../research/accessibility-tree.md`](../research/) and [`../research/dom.md`](../research/) before making the call.
+
 ## Checklist
 
+- [ ] Read Gecko's and Blink's accessibility-tree implementations in `../reference/`; write up findings in `../research/accessibility-tree.md`
 - [ ] Re-evaluate the four §3 candidates against MVP goals and against each other on fidelity / structure / cost
 - [ ] Spike the accessibility-tree candidate against a toy DOM
 - [ ] Spike the custom-hybrid candidate against a toy DOM
 - [ ] Make the final decision and record the rationale by updating plan §3
 - [ ] Define the AI-facing data format/schema for the chosen representation
-- [ ] Define how the API exposes element identity/coordinates in a way an agent can act on (click, type, scroll)
+- [ ] Define how the API exposes each element by its stable DOM node ID (plan §1), plus coordinates, in a way an agent can act on (click, type, scroll)
 - [ ] Define versioning/stability policy for the AI-facing API
 - [ ] Define how this representation and human-facing UI state (e.g. highlights) stay synchronized, per the sync goal in plan §1
+- [ ] Define a browser-chrome control surface in the API (starting with show/hide the window) separate from the page-content representation

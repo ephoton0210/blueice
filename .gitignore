@@ -5,8 +5,11 @@
 # Debug symbol files rustc/MSVC can emit on Windows builds.
 *.pdb
 
-# Editor/IDE project settings — local to each contributor's setup.
-.vscode/
+# Editor/IDE project settings — local to each contributor's setup, except
+# settings.json: it carries watcher/search excludes for the huge reference/
+# checkouts below, which every contributor needs, not just personal prefs.
+.vscode/*
+!.vscode/settings.json
 .idea/
 # Vim swap files left behind by an unclean exit.
 *.swp
@@ -24,3 +27,10 @@ Thumbs.db
 
 # Runtime log output.
 *.log
+
+# External reference source checkouts (Gecko, Chromium) — large, third-party,
+# not our code. Never committed; only specific ported files (with the
+# CONTRIBUTING.md header conventions) get copied out and added to the repo.
+# See development/browser_core/reference/README.md.
+/development/browser_core/reference/gecko/
+/development/browser_core/reference/chromium/

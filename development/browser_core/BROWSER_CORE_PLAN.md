@@ -12,6 +12,11 @@ Problems the dual-track architecture (AI driven via CDP automation) cannot solve
 
 The goal of building our own engine is for what a human sees and what the AI receives as a representation to both be derived from **the same render pass and the same JS execution state**, guaranteeing they stay in sync.
 
+This goal implies two concrete engine requirements, not just a design philosophy:
+
+- **AI-controlled visibility, decoupled from process lifecycle**: the AI must be able to show/hide the browser's human-facing window at runtime without restarting the engine. Hiding the window for AI-only operation and showing it again later has to be the same instance, same render pass, same JS state — not a fresh process. Whether a human window is currently visible is a property of the windowing layer (Phase 4), not of whether the engine instance exists; requiring a restart to toggle visibility would reintroduce the instance-drift problem this project exists to avoid.
+- **Every DOM node has an explicit, stable ID**: nodes are addressed by an explicit identifier assigned at creation, not an implicit array index or an ephemeral pointer/address. This lets the AI-facing representation (§3) reference a specific element reliably across mutations, and lets human-facing highlight state and AI-facing semantic tags stay in sync by ID rather than by structural position.
+
 ## 2. Licensing and Legal Framework (settled parts)
 
 - **Fully open source, project-wide MPL 2.0** — this is not a clean-room implementation; Firefox (Gecko) and Chromium (Blink/V8) source is read directly and adapted as technical reference and a porting basis, so the project is already bound by derivative-work rules. Adopting MPL uniformly across the project is the simplest, lowest-risk choice.
@@ -39,6 +44,7 @@ The next planning pass needs to settle on one of these (or a hybrid) and define 
 ## 4. Technical Reference Basis and Scope
 
 - **References**: Gecko (Firefox's rendering engine), Blink + V8 (Chromium's rendering engine / JS engine) — source is read directly as technical reference and a porting basis. Mozilla's own Servo (an experimental engine written in Rust) is the closest existing precedent, and its module decomposition is worth studying.
+- **Reference checkouts and research notes**: shallow, read-only clones of Gecko and Chromium live under [`reference/`](reference/) (gitignored — third-party source, not committed). Findings from reading them are written up per-subsystem under [`research/`](research/). This research runs in parallel with, and directly feeds, Phase 1 (the §3 representation-layer decision needs real accessibility-tree/DOM notes, not just general knowledge) and Phase 2 (the MVP subset needs to be scoped against how Gecko/Blink actually structure parsing/cascade/layout) — it starts now rather than waiting for those phases to formally begin.
 - **Reality check**: rewriting a browser engine from scratch is Servo-scale (dozens of engineers, multiple years) or Ladybird-scale (a dedicated team, multiple years) engineering effort. This project's goal is "an AI browsing websites," not "a general-purpose consumer browser at feature parity with Chrome from day one." The MVP scope should converge on:
   1. A minimal usable rendering pipeline (HTML parse → DOM → CSS cascade → layout → paint)
   2. The shared human/AI representation layer (implemented per the §3 decision)

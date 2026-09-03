@@ -20,10 +20,12 @@ Structure this as a Cargo workspace with one crate per pipeline stage (rather th
 
 Prioritize getting *something* end-to-end working over completeness at any one stage — a skeleton that runs all five stages on a trivial page is more valuable at this point than a highly complete parser with no layout/paint behind it.
 
+Per plan §1, every DOM node must get an explicit, stable ID at creation — this is a property of the DOM data structure itself, not something bolted on later, so it needs to be part of the initial DOM design in stage 1, not retrofitted after Phase 1 settles the AI representation format.
+
 ## Checklist
 
 - [ ] Set up the Cargo workspace and crate boundaries for the pipeline
-- [ ] Implement the HTML parser → DOM (against the Phase 2 HTML subset)
+- [ ] Implement the HTML parser → DOM (against the Phase 2 HTML subset), assigning every node an explicit, stable ID at creation (plan §1)
 - [ ] Implement the CSS parser + cascade → styled tree (against the Phase 2 CSS subset)
 - [ ] Implement a minimal layout algorithm (block/inline flow)
 - [ ] Implement minimal paint/raster output
