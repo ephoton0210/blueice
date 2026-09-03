@@ -17,6 +17,18 @@ This goal implies two concrete engine requirements, not just a design philosophy
 - **AI-controlled visibility, decoupled from process lifecycle**: the AI must be able to show/hide the browser's human-facing window at runtime without restarting the engine. Hiding the window for AI-only operation and showing it again later has to be the same instance, same render pass, same JS state — not a fresh process. Whether a human window is currently visible is a property of the windowing layer (Phase 4), not of whether the engine instance exists; requiring a restart to toggle visibility would reintroduce the instance-drift problem this project exists to avoid.
 - **Every DOM node has an explicit, stable ID**: nodes are addressed by an explicit identifier assigned at creation, not an implicit array index or an ephemeral pointer/address. This lets the AI-facing representation (§3) reference a specific element reliably across mutations, and lets human-facing highlight state and AI-facing semantic tags stay in sync by ID rather than by structural position.
 
+### Process architecture: `core` / `extension` / `frontend`
+
+The browser splits into a **backend** and a **frontend**, and the backend splits again into **core** and **extension**:
+
+- **`core`** is the engine itself — parse, DOM, CSS cascade, layout, paint, and the shared render pass §1 is built around. It runs as a single process, kept deliberately low-memory and stable: it is the one thing in the whole system that must not crash.
+- **`extension`** instances each run in their own OS process, talking to `core` over IPC — **process isolation, not in-process sandboxing** (settled decision: an extension process crashing, hanging, or corrupting its own memory must be physically incapable of reaching `core`'s address space, the same guarantee Chromium's multi-process architecture provides). The extension *ecosystem* itself (an actual extension API, a store, etc.) stays out of MVP scope per §4 below — but the process-isolation boundary and IPC seam are architected into `core` from Phase 3 onward, for the same reason DOM node IDs are: retrofitting a trust boundary after the fact is far more expensive than designing it in from day one.
+- **`frontend`** is the human-facing UI — necessarily a separate process from `core`, since each platform gets its own native toolkit rather than one cross-platform Rust UI (WinUI 3 on Windows, SwiftUI on Apple platforms, PySide6/Qt where a Python/Qt frontend fits, etc.). `core` owns rendering; `frontend` only presents it and forwards input, per-platform, in whatever idiom that platform's users expect.
+
+This converges with §3's open question in a useful way: since `core` already needs a robust IPC surface for `extension` isolation, the human `frontend` and the AI-facing API (§3) become two more kinds of IPC client of that same `core` process, on equal footing — neither gets a privileged internal-only channel `core` doesn't also expose to the other. That's a stronger, more literal version of "human and AI share the same render pass" than same-process-different-API would have been.
+
+One open engineering question this raises, not yet resolved: `frontend` needs full-frame pixel output every frame, a very different traffic shape from `extension`/AI's occasional semantic calls — likely wants a separate high-bandwidth channel (shared memory / platform-native texture handles) alongside the same control-plane IPC protocol, rather than serializing whole frames through it. Tracked as a Phase 4 design item, not decided here.
+
 ## 2. Licensing and Legal Framework (settled parts)
 
 - **Fully open source, project-wide MPL 2.0** — this is not a clean-room implementation; Firefox (Gecko) and Chromium (Blink/V8) source is read directly and adapted as technical reference and a porting basis, so the project is already bound by derivative-work rules. Adopting MPL uniformly across the project is the simplest, lowest-risk choice.
@@ -49,6 +61,7 @@ The next planning pass needs to settle on one of these (or a hybrid) and define 
   1. A minimal usable rendering pipeline (HTML parse → DOM → CSS cascade → layout → paint)
   2. The shared human/AI representation layer (implemented per the §3 decision)
   3. Explicitly not yet: an extension ecosystem, multi-tab state sync, full JS engine optimization, DevTools
+- **Testing**: [`testing/TEST_PLAN.md`](testing/TEST_PLAN.md) is the test pyramid (unit/integration/UI), coverage policy, and CI setup — settled infrastructure, not an open decision, so it's referenced here rather than repeated per phase.
 
 ## 5. Risk Register (carried over from prior discussion, tracked long-term)
 

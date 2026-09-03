@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = [
+    "backend/core/dom",
+    "backend/core/html",
+    "backend/core/css",
+    "backend/core/layout",
+    "backend/core/paint",
+    "backend/core/engine",
+    "backend/extension",
+    "backend/ipc",
+]
+
+[workspace.package]
+edition = "2021"
+license = "MPL-2.0"

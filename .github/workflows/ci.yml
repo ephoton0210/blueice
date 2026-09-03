@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    name: Build, test, lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --workspace --all-targets
+      - name: Test
+        run: cargo test --workspace
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2
+      # See development/browser_core/testing/TEST_PLAN.md for the policy
+      # this enforces and why the stub crates are excluded.
+      - name: Generate coverage and enforce threshold
+        run: |
+          set -o pipefail
+          cargo llvm-cov --workspace \
+            --ignore-filename-regex '(core/(engine|html|css|layout|paint)/src/lib\.rs|extension/src/main\.rs)$' \
+            --fail-under-lines 90 \
+            --summary-only \
+            | tee coverage-summary.txt
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo '### Coverage summary'
+            echo '```'
+            cat coverage-summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
