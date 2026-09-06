@@ -6,3 +6,6 @@ license.workspace = true
 
 [dependencies]
 blueice-dom = { path = "../dom" }
+
+[dev-dependencies]
+blueice-testing = { path = "../../testing" }

@@ -9,6 +9,7 @@ members = [
     "backend/core/engine",
     "backend/extension",
     "backend/ipc",
+    "backend/testing",
 ]
 
 [workspace.package]

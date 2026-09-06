@@ -1,0 +1,46 @@
+Foster parenting: content that appears directly inside <table>, before
+any row, must be relocated to just before the table rather than
+becoming its child (whitespace-only content is the one exception --
+it's inserted normally).
+
+#data
+<table>stray<tr><td>cell</td></tr></table>
+#document
+| <html>
+|   <head>
+|   <body>
+|     "stray"
+|     <table>
+|       <tbody>
+|         <tr>
+|           <td>
+|             "cell"
+
+#data
+<table>
+<tr><td>cell</td></tr></table>
+#document
+| <html>
+|   <head>
+|   <body>
+|     <table>
+|       "
+"
+|       <tbody>
+|         <tr>
+|           <td>
+|             "cell"
+
+#data
+<table><b>x<div>y</b>z</div></table>
+#document
+| <html>
+|   <head>
+|   <body>
+|     <b>
+|       "x"
+|     <div>
+|       <b>
+|         "y"
+|       "z"
+|     <table>

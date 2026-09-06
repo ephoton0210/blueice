@@ -1,0 +1,93 @@
+Adoption agency algorithm (misnested formatting elements). The four
+html5lib-adoption01-* cases below are taken verbatim (#data and
+#document) from the official html5lib-tests tree-construction corpus
+(reference/chromium/third_party/blink/web_tests/html5lib/resources/adoption01.dat),
+used here as an independent, browser-vendor-verified correctness oracle
+-- not just self-authored expectations. All four match BlueIce's actual
+output byte for byte.
+
+#data
+<b><i>x</b>y</i>
+#document
+| <html>
+|   <head>
+|   <body>
+|     <b>
+|       <i>
+|         "x"
+|     <i>
+|       "y"
+
+#data
+<b><div>x</b>y</div>
+#document
+| <html>
+|   <head>
+|   <body>
+|     <b>
+|     <div>
+|       <b>
+|         "x"
+|       "y"
+
+#data
+<a href="1">one<a href="2">two</a></a>
+#document
+| <html>
+|   <head>
+|   <body>
+|     <a>
+|       href="1"
+|       "one"
+|     <a>
+|       href="2"
+|       "two"
+
+#data
+<a><p></a></p>
+#document
+| <html>
+|   <head>
+|   <body>
+|     <a>
+|     <p>
+|       <a>
+
+#data
+<a>1<p>2</a>3</p>
+#document
+| <html>
+|   <head>
+|   <body>
+|     <a>
+|       "1"
+|     <p>
+|       <a>
+|         "2"
+|       "3"
+
+#data
+<a>1<button>2</a>3</button>
+#document
+| <html>
+|   <head>
+|   <body>
+|     <a>
+|       "1"
+|     <button>
+|       <a>
+|         "2"
+|       "3"
+
+#data
+<a>1<b>2</a>3</b>
+#document
+| <html>
+|   <head>
+|   <body>
+|     <a>
+|       "1"
+|       <b>
+|         "2"
+|     <b>
+|       "3"

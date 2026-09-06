@@ -1,0 +1,17 @@
+Reconstructing the active formatting elements across an auto-closed
+block boundary -- the canonical reason this algorithm exists (an open
+<b> dropped off the stack by <p>'s auto-close must reopen inside the
+new block for subsequent content).
+
+#data
+<p><b>bold<div>next</div>
+#document
+| <html>
+|   <head>
+|   <body>
+|     <p>
+|       <b>
+|         "bold"
+|     <div>
+|       <b>
+|         "next"

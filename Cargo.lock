@@ -30,6 +30,7 @@ name = "blueice-html"
 version = "0.1.0"
 dependencies = [
  "blueice-dom",
+ "blueice-testing",
 ]
 
 [[package]]
@@ -49,4 +50,11 @@ name = "blueice-paint"
 version = "0.1.0"
 dependencies = [
  "blueice-layout",
+]
+
+[[package]]
+name = "blueice-testing"
+version = "0.1.0"
+dependencies = [
+ "blueice-dom",
 ]

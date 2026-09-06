@@ -1,0 +1,63 @@
+Table tree construction: implicit tbody/tr, caption/colgroup, and
+sibling-closing behavior (a second <tr>/<td> implicitly closes the
+previous one still open).
+
+#data
+<table><tr><td>a</td><th>b</th></tr></table>
+#document
+| <html>
+|   <head>
+|   <body>
+|     <table>
+|       <tbody>
+|         <tr>
+|           <td>
+|             "a"
+|           <th>
+|             "b"
+
+#data
+<table><caption>Cap</caption><colgroup><col><col></colgroup><tr><td>x</td></tr></table>
+#document
+| <html>
+|   <head>
+|   <body>
+|     <table>
+|       <caption>
+|         "Cap"
+|       <colgroup>
+|         <col>
+|         <col>
+|       <tbody>
+|         <tr>
+|           <td>
+|             "x"
+
+#data
+<table><tbody><tr><td>a</td><tr><td>b</td></tr></tbody></table>
+#document
+| <html>
+|   <head>
+|   <body>
+|     <table>
+|       <tbody>
+|         <tr>
+|           <td>
+|             "a"
+|         <tr>
+|           <td>
+|             "b"
+
+#data
+<table><tr><td>a<td>b</tr></table>
+#document
+| <html>
+|   <head>
+|   <body>
+|     <table>
+|       <tbody>
+|         <tr>
+|           <td>
+|             "a"
+|           <td>
+|             "b"

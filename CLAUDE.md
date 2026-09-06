@@ -8,6 +8,7 @@ Implementation has started. A Cargo workspace exists under `backend/`:
 
 - `backend/core/dom` — the DOM tree (node identity, tree structure) — real implementation.
 - `backend/core/html` — HTML tokenizer and tree builder (parses into `blueice-dom` trees) — real implementation.
+- `backend/testing` — shared cross-stage test interface (fixture format + DOM dump serializer); see "Rendering-correctness fixtures" in `TEST_PLAN.md`.
 - `backend/core/css`, `backend/core/layout`, `backend/core/paint`, `backend/core/engine`, `backend/extension`, `backend/ipc` — still stubs (`todo!()`), pending later Phase 3 work and beyond.
 
 Build/lint/test commands (see `development/browser_core/testing/TEST_PLAN.md` for the full testing policy):

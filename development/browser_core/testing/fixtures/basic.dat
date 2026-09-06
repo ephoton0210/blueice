@@ -1,0 +1,46 @@
+BlueIce fixture corpus -- see backend/testing/src/lib.rs and
+development/browser_core/testing/TEST_PLAN.md ("Rendering-correctness
+fixtures") for the format and how each pipeline stage plugs into it.
+Lines before the first "#data" (like these) are ignored by the parser.
+
+#data
+<p>hi</p>
+#document
+| <html>
+|   <head>
+|   <body>
+|     <p>
+|       "hi"
+
+#data
+<div id="x" class="y">z</div>
+#document
+| <html>
+|   <head>
+|   <body>
+|     <div>
+|       class="y"
+|       id="x"
+|       "z"
+
+#data
+<p>a<br>b</p>
+#document
+| <html>
+|   <head>
+|   <body>
+|     <p>
+|       "a"
+|       <br>
+|       "b"
+
+#data
+<!DOCTYPE html><html><head><title>T</title></head><body><p>hi</p></body></html>
+#document
+| <html>
+|   <head>
+|     <title>
+|       "T"
+|   <body>
+|     <p>
+|       "hi"
