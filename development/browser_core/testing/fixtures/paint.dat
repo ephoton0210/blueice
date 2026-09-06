@@ -1,0 +1,21 @@
+Paint fixtures, checked via blueice-paint's #paint dump
+(backend/core/paint/tests/fixtures.rs) against a fixed 320px viewport
+(see that file's VIEWPORT_WIDTH), and also by blueice-engine's
+end-to-end smoke test (backend/core/engine/tests/fixtures.rs), which
+reuses the exact same #paint expectation to check blueice_engine::
+render()'s output directly -- the fixture format doesn't distinguish
+"paint called after manually building a fragment" from "the whole
+pipeline called through the public render() entry point," which is the
+point: both must agree.
+
+#data
+<div>x</div>
+#css
+div { background-color: red; border: 2px solid black; }
+#paint
+rect 0.0,0.0 320.0x23.2 #ff0000
+border 0.0,0.0 320.0x2.0 #000000
+border 318.0,0.0 2.0x23.2 #000000
+border 0.0,21.2 320.0x2.0 #000000
+border 0.0,0.0 2.0x23.2 #000000
+text 2.0,2.0 "x" #000000 16.0

@@ -24,6 +24,7 @@ dependencies = [
  "blueice-html",
  "blueice-layout",
  "blueice-paint",
+ "blueice-testing",
 ]
 
 [[package]]
@@ -56,7 +57,11 @@ dependencies = [
 name = "blueice-paint"
 version = "0.1.0"
 dependencies = [
+ "blueice-css",
+ "blueice-dom",
+ "blueice-html",
  "blueice-layout",
+ "blueice-testing",
 ]
 
 [[package]]

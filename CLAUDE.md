@@ -4,21 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Implementation has started. A Cargo workspace exists under `backend/`:
+**Phase 3 (Rust core engine skeleton) is done.** Every pipeline crate under `backend/core/` is a real implementation, end to end — HTML in, a paint-command display list out:
 
-- `backend/core/dom` — the DOM tree (node identity, tree structure) — real implementation.
-- `backend/core/html` — HTML tokenizer and tree builder (parses into `blueice-dom` trees) — real implementation.
-- `backend/core/css` — CSS tokenizer, selector matching, and cascade (DOM + stylesheets -> per-element `ComputedStyle`, including a built-in UA stylesheet) — real implementation.
-- `backend/core/layout` — block/inline layout (DOM + `ComputedStyle` -> an immutable `Fragment` tree with real box-model/line-breaking geometry) — real implementation.
-- `backend/testing` — shared cross-stage test interface (fixture format + DOM dump serializer); see "Rendering-correctness fixtures" and "UI testing strategy" in `TEST_PLAN.md` — the latter is where automated visual/UI verification lives today (a `#layout` geometry dump per fixture), ahead of and separate from Phase 4's real-frontend/platform automation.
-- `backend/core/paint`, `backend/core/engine`, `backend/extension`, `backend/ipc` — still stubs (`todo!()`, or blocked on one — `engine`'s wiring is real but calls into `paint`), pending later Phase 3 work and beyond.
+- `backend/core/dom` — the DOM tree (node identity, tree structure).
+- `backend/core/html` — HTML tokenizer and tree builder (parses into `blueice-dom` trees).
+- `backend/core/css` — CSS tokenizer, selector matching, and cascade (DOM + stylesheets -> per-element `ComputedStyle`, including a built-in UA stylesheet).
+- `backend/core/layout` — block/inline layout (DOM + `ComputedStyle` -> an immutable `Fragment` tree with real box-model/line-breaking geometry).
+- `backend/core/paint` — a `Fragment` tree + `ComputedStyle` -> a flat, ordered paint-command display list (background/border rectangles, text runs) — not pixels yet; actual rasterization is a per-platform Phase 4 `frontend` concern.
+- `backend/core/engine` — wires the above into one `render(html, css, viewport_width) -> Frame` entry point.
+- `backend/testing` — shared cross-stage test interface (fixture format + DOM dump serializer); see "Rendering-correctness fixtures" and "UI testing strategy" in `TEST_PLAN.md` — the latter is where automated visual/UI verification lives today (`#layout` geometry + `#paint` command dumps per fixture), ahead of and separate from Phase 4's real-frontend/platform automation.
+- `backend/extension`, `backend/ipc` — still stubs/placeholders, per plan §1's process-architecture scope (not part of the Phase 3 rendering pipeline).
 
 Build/lint/test commands (see `development/browser_core/testing/TEST_PLAN.md` for the full testing policy):
 
 - Build: `cargo build --workspace --all-targets`
 - Test: `cargo test --workspace`
 - Lint: `cargo clippy --workspace --all-targets -- -D warnings`
-- Coverage gate (crates with a real implementation must hold ≥90% line coverage; stub crates are excluded and only reported for visibility): `cargo llvm-cov --workspace --ignore-filename-regex '(core/(engine|paint)/src/lib\.rs|extension/src/main\.rs)$' --fail-under-lines 90 --summary-only`
+- Coverage gate (crates with a real implementation must hold ≥90% line coverage; stub crates are excluded and only reported for visibility): `cargo llvm-cov --workspace --ignore-filename-regex 'extension/src/main\.rs$' --fail-under-lines 90 --summary-only`
 
 All of the above run in CI on every push/PR to `main` (`.github/workflows/ci.yml`). Design documentation for both implemented and not-yet-implemented parts still lives under `development/` — keep it in sync as each phase's own Definition of Done, not as an afterthought.
 

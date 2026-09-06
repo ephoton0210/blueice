@@ -18,7 +18,7 @@
 
 use crate::selector::{parse_selector_list, ComplexSelector};
 use crate::tokenizer::{tokenize, Token};
-use crate::value::{parse_value, zero_as_length, Value};
+use crate::value::{parse_value, zero_as_length, Length, Value};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Declaration {
@@ -119,23 +119,78 @@ fn expand_box_shorthand(values: Vec<Value>) -> Option<[Value; 4]> {
     }
 }
 
+/// Border-style keywords (per `phase-2-mvp-scope/PLAN.md`'s "MVP CSS
+/// scope" -- MVP treats every non-`none` style as an ordinary solid
+/// line, but still needs to *recognize* the full keyword set so the
+/// combined `border` shorthand below can tell a style component apart
+/// from a color or a width by trying each in turn).
+const BORDER_STYLE_KEYWORDS: &[&str] = &["none", "hidden", "solid", "dashed", "dotted", "double", "groove", "ridge", "inset", "outset"];
+
+/// Expands a 1-to-4-value box shorthand (`margin`, `padding`,
+/// `border-width`, `border-style`, `border-color`) into its four
+/// per-side longhands, named `{prefix}-top{suffix}` etc. `is_length`
+/// controls whether a bare `0` component normalizes to
+/// [`Length::Zero`] (true for `margin`/`padding`/`border-width`; false
+/// for `border-style`/`border-color`, which have no numeric form at
+/// all).
+fn expand_box_shorthand_property(prefix: &str, suffix: &str, value_tokens: &[Token], is_length: bool) -> Vec<(String, Value)> {
+    let probe_property = format!("{prefix}-top{suffix}");
+    let components: Option<Vec<Value>> = split_on(value_tokens, |t| *t == Token::Whitespace)
+        .into_iter()
+        .map(trim_ws)
+        .filter(|c| !c.is_empty())
+        .map(|c| if is_length { parse_component_value(&probe_property, c) } else { parse_value(c) })
+        .collect();
+    let Some(components) = components else { return vec![] };
+    let Some([top, right, bottom, left]) = expand_box_shorthand(components) else { return vec![] };
+    vec![
+        (format!("{prefix}-top{suffix}"), top),
+        (format!("{prefix}-right{suffix}"), right),
+        (format!("{prefix}-bottom{suffix}"), bottom),
+        (format!("{prefix}-left{suffix}"), left),
+    ]
+}
+
 fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(String, Value)> {
     match property {
-        "margin" | "padding" => {
-            let components: Option<Vec<Value>> = split_on(value_tokens, |t| *t == Token::Whitespace)
-                .into_iter()
-                .map(trim_ws)
-                .filter(|c| !c.is_empty())
-                .map(|c| parse_component_value(&format!("{property}-top"), c))
-                .collect();
-            let Some(components) = components else { return vec![] };
-            let Some([top, right, bottom, left]) = expand_box_shorthand(components) else { return vec![] };
-            vec![
-                (format!("{property}-top"), top),
-                (format!("{property}-right"), right),
-                (format!("{property}-bottom"), bottom),
-                (format!("{property}-left"), left),
-            ]
+        "margin" | "padding" => expand_box_shorthand_property(property, "", value_tokens, true),
+        "border-width" => expand_box_shorthand_property("border", "-width", value_tokens, true),
+        "border-style" => expand_box_shorthand_property("border", "-style", value_tokens, false),
+        "border-color" => expand_box_shorthand_property("border", "-color", value_tokens, false),
+        "border" => {
+            // Order-independent: a width (a length, or bare `0`), a
+            // style keyword, and a color, applied to all four sides at
+            // once. Any component that doesn't parse as one of the
+            // three (or is simply omitted, as in `border: solid;`) is
+            // just left unset rather than failing the whole
+            // declaration -- matching the tokenizer/parser's general
+            // "ignore, don't crash" posture.
+            let mut width = None;
+            let mut style = None;
+            let mut color = None;
+            for component in split_on(value_tokens, |t| *t == Token::Whitespace).into_iter().map(trim_ws).filter(|c| !c.is_empty()) {
+                let Some(v) = parse_value(component) else { continue };
+                match v {
+                    Value::Color(_) => color = Some(v),
+                    Value::Keyword(ref k) if BORDER_STYLE_KEYWORDS.contains(&k.as_str()) => style = Some(v),
+                    Value::Length(_) => width = Some(v),
+                    Value::Number(0.0) => width = Some(Value::Length(Length::Zero)),
+                    _ => {}
+                }
+            }
+            let mut out = Vec::new();
+            for side in ["top", "right", "bottom", "left"] {
+                if let Some(w) = &width {
+                    out.push((format!("border-{side}-width"), w.clone()));
+                }
+                if let Some(s) = &style {
+                    out.push((format!("border-{side}-style"), s.clone()));
+                }
+                if let Some(c) = &color {
+                    out.push((format!("border-{side}-color"), c.clone()));
+                }
+            }
+            out
         }
         "font-family" => {
             // MVP doesn't do font fallback matching -- take the first
@@ -383,6 +438,65 @@ mod tests {
     fn padding_shorthand_with_bare_zero_normalizes_to_length() {
         let rules = parse("p { padding: 0; }");
         assert_eq!(rules[0].declarations[0].value, Value::Length(Length::Zero));
+    }
+
+    #[test]
+    fn border_width_shorthand_expands_to_four_sides() {
+        let rules = parse("p { border-width: 2px; }");
+        let decls = &rules[0].declarations;
+        assert_eq!(decls.len(), 4);
+        for side in ["top", "right", "bottom", "left"] {
+            let d = decls.iter().find(|d| d.property == format!("border-{side}-width")).unwrap();
+            assert_eq!(d.value, Value::Length(Length::Px(2.0)));
+        }
+    }
+
+    #[test]
+    fn border_style_and_border_color_shorthands_expand_to_four_sides() {
+        let rules = parse("p { border-style: dashed; border-color: red; }");
+        let decls = &rules[0].declarations;
+        let style_top = decls.iter().find(|d| d.property == "border-top-style").unwrap();
+        assert_eq!(style_top.value, Value::Keyword("dashed".to_string()));
+        let color_left = decls.iter().find(|d| d.property == "border-left-color").unwrap();
+        assert_eq!(color_left.value, Value::Color(Color::Rgba(255, 0, 0, 255)));
+    }
+
+    #[test]
+    fn combined_border_shorthand_sets_width_style_and_color_on_all_sides() {
+        let rules = parse("p { border: 1px solid black; }");
+        let decls = &rules[0].declarations;
+        assert_eq!(decls.len(), 12, "width+style+color x 4 sides");
+        for side in ["top", "right", "bottom", "left"] {
+            assert_eq!(decls.iter().find(|d| d.property == format!("border-{side}-width")).unwrap().value, Value::Length(Length::Px(1.0)));
+            assert_eq!(decls.iter().find(|d| d.property == format!("border-{side}-style")).unwrap().value, Value::Keyword("solid".to_string()));
+            assert_eq!(decls.iter().find(|d| d.property == format!("border-{side}-color")).unwrap().value, Value::Color(Color::Rgba(0, 0, 0, 255)));
+        }
+    }
+
+    #[test]
+    fn combined_border_shorthand_components_are_order_independent() {
+        let a = parse("p { border: 1px solid black; }");
+        let b = parse("p { border: black 1px solid; }");
+        let c = parse("p { border: solid black 1px; }");
+        for rules in [&a, &b, &c] {
+            assert_eq!(rules[0].declarations.len(), 12);
+        }
+    }
+
+    #[test]
+    fn combined_border_shorthand_tolerates_missing_components() {
+        let rules = parse("p { border: solid; }");
+        let decls = &rules[0].declarations;
+        assert_eq!(decls.len(), 4, "only the style component was present");
+        assert_eq!(decls[0].value, Value::Keyword("solid".to_string()));
+    }
+
+    #[test]
+    fn combined_border_shorthand_accepts_bare_zero_width() {
+        let rules = parse("p { border: 0; }");
+        let decls = &rules[0].declarations;
+        assert_eq!(decls.len(), 4);
+        assert_eq!(decls[0].value, Value::Length(Length::Zero));
     }
 
     #[test]

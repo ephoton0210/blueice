@@ -6,3 +6,9 @@ license.workspace = true
 
 [dependencies]
 blueice-layout = { path = "../layout" }
+blueice-css = { path = "../css" }
+blueice-dom = { path = "../dom" }
+
+[dev-dependencies]
+blueice-html = { path = "../html" }
+blueice-testing = { path = "../../testing" }
