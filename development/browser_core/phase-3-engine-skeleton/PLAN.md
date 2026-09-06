@@ -34,7 +34,7 @@ Testing policy for everything in this phase (coverage gate, what belongs in unit
 
 - [x] Set up the Cargo workspace and crate boundaries for the pipeline — `backend/core/{dom,html,css,layout,paint,engine}`, stubbed `backend/extension/`, stubbed `ipc` crate (plan §1)
 - [x] Implement the DOM tree data structure — `NodeId` (monotonic, never reused), tree operations (`append_child`/`detach`/`remove_subtree`), memory actually reclaimed on removal (plan §1 low-memory requirement, `research/dom.md`); 96%+ line coverage, off the coverage gate's stub ignore-list
-- [ ] Implement the HTML parser → DOM (against the Phase 2 HTML subset), producing `blueice-dom` trees via its existing `NodeId`/tree API
+- [x] Implement the HTML parser → DOM (against the Phase 2 HTML subset), producing `blueice-dom` trees via its existing `NodeId`/tree API — tokenizer + tree builder in `backend/core/html/src/{tokenizer,tree_builder}.rs`, adoption agency and foster parenting implemented per `research/html-parsing.md`; 92%+ line coverage, off the coverage gate's stub ignore-list
 - [ ] Implement the CSS parser + cascade → styled tree (against the Phase 2 CSS subset), porting the packed-specificity/cascade-origin design from `research/css-cascade.md` rather than vendoring Stylo
 - [ ] Implement a minimal layout algorithm (block/inline flow) using a DOM-linked-box / immutable-fragment-tree split per `research/layout.md`
 - [ ] Implement minimal paint/raster output

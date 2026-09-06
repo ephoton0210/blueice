@@ -4,7 +4,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-BlueIce is pre-implementation: there is no source code, no `Cargo.toml`, and no build/lint/test tooling yet. Everything currently in the repo is design documentation under `development/`. When implementation begins, update this file with the actual build/lint/test commands (this is a Rust project).
+Implementation has started. A Cargo workspace exists under `backend/`:
+
+- `backend/core/dom` — the DOM tree (node identity, tree structure) — real implementation.
+- `backend/core/html` — HTML tokenizer and tree builder (parses into `blueice-dom` trees) — real implementation.
+- `backend/core/css`, `backend/core/layout`, `backend/core/paint`, `backend/core/engine`, `backend/extension`, `backend/ipc` — still stubs (`todo!()`), pending later Phase 3 work and beyond.
+
+Build/lint/test commands (see `development/browser_core/testing/TEST_PLAN.md` for the full testing policy):
+
+- Build: `cargo build --workspace --all-targets`
+- Test: `cargo test --workspace`
+- Lint: `cargo clippy --workspace --all-targets -- -D warnings`
+- Coverage gate (crates with a real implementation must hold ≥90% line coverage; stub crates are excluded and only reported for visibility): `cargo llvm-cov --workspace --ignore-filename-regex '(core/(engine|css|layout|paint)/src/lib\.rs|extension/src/main\.rs)$' --fail-under-lines 90 --summary-only`
+
+All of the above run in CI on every push/PR to `main` (`.github/workflows/ci.yml`). Design documentation for both implemented and not-yet-implemented parts still lives under `development/` — keep it in sync as each phase's own Definition of Done, not as an afterthought.
+
+**Definition of Done** (full policy: `development/browser_core/testing/TEST_PLAN.md`): no design or feature counts as done merely because it's settled or compiles.
+
+- **Develop test-first (TDD)**: write the failing test before the implementation that makes it pass — not tests bolted on after the feature is already written.
+- It needs passing tests; where an end-to-end path through the feature's real public interface exists, that path must pass too — not just tests of internal modules.
+- The public interface itself must be complete enough for tests to drive without reaching into `pub(crate)`/private internals.
+- Real-implementation crates must clear the ≥90% line-coverage gate.
+- **Once implementation is otherwise complete, do a dedicated test-review pass**: re-read the suite's actual content (not just pass/fail or the coverage number), fill in cases TDD's incremental cycles didn't surface, update any test whose expectation no longer matches intended behavior, and delete tests that no longer check anything meaningful.
+
+This applies to every phase's checklist, not only to crates that already meet it.
 
 ## Core goal
 

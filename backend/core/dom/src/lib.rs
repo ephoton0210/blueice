@@ -144,6 +144,44 @@ impl Document {
         self.nodes.get_mut(&parent).unwrap().last_child = Some(child);
     }
 
+    /// Inserts `child` into `parent`'s children, immediately before
+    /// `reference` -- or as the last child if `reference` is `None`.
+    /// Needed by the HTML parser's foster-parenting error recovery
+    /// (`../html/src/tree_builder.rs`), which must place misplaced
+    /// table content as a sibling *before* an already-inserted `<table>`
+    /// rather than appending it.
+    ///
+    /// # Panics
+    /// Panics if `child` is already attached, or if `reference` is not
+    /// currently a child of `parent`.
+    pub fn insert_before(&mut self, parent: NodeId, child: NodeId, reference: Option<NodeId>) {
+        let Some(reference) = reference else {
+            return self.append_child(parent, child);
+        };
+        assert!(
+            self.nodes[&child].parent.is_none(),
+            "child is already attached; detach it first"
+        );
+        assert_eq!(
+            self.nodes[&reference].parent,
+            Some(parent),
+            "reference must be a child of parent"
+        );
+
+        let prev = self.nodes[&reference].prev_sibling;
+        if let Some(prev) = prev {
+            self.nodes.get_mut(&prev).unwrap().next_sibling = Some(child);
+        } else {
+            self.nodes.get_mut(&parent).unwrap().first_child = Some(child);
+        }
+        self.nodes.get_mut(&reference).unwrap().prev_sibling = Some(child);
+
+        let child_rec = self.nodes.get_mut(&child).unwrap();
+        child_rec.parent = Some(parent);
+        child_rec.prev_sibling = prev;
+        child_rec.next_sibling = Some(reference);
+    }
+
     /// Detaches `id` from its parent/siblings, but keeps it (and its
     /// subtree) resolvable in the node table. Use
     /// [`Document::remove_subtree`] to actually reclaim memory.
@@ -260,5 +298,70 @@ mod tests {
         let a = doc.create_node(text("a"));
         doc.append_child(root, a);
         doc.append_child(root, a);
+    }
+
+    #[test]
+    fn insert_before_places_child_ahead_of_reference() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let a = doc.create_node(text("a"));
+        let b = doc.create_node(text("b"));
+        doc.append_child(root, a);
+        let c = doc.create_node(text("c"));
+        doc.insert_before(root, b, Some(a));
+        doc.insert_before(root, c, Some(a));
+        let kids: Vec<_> = doc.children(root).collect();
+        assert_eq!(kids, vec![b, c, a]);
+    }
+
+    #[test]
+    fn insert_before_none_reference_appends() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let a = doc.create_node(text("a"));
+        let b = doc.create_node(text("b"));
+        doc.append_child(root, a);
+        doc.insert_before(root, b, None);
+        let kids: Vec<_> = doc.children(root).collect();
+        assert_eq!(kids, vec![a, b]);
+    }
+
+    #[test]
+    fn insert_before_updates_prev_and_next_sibling_links() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let a = doc.create_node(text("a"));
+        let c = doc.create_node(text("c"));
+        doc.append_child(root, a);
+        doc.append_child(root, c);
+        let b = doc.create_node(text("b"));
+        doc.insert_before(root, b, Some(c));
+        assert_eq!(doc.next_sibling(a), Some(b));
+        assert_eq!(doc.next_sibling(b), Some(c));
+        let kids: Vec<_> = doc.children(root).collect();
+        assert_eq!(kids, vec![a, b, c]);
+    }
+
+    #[test]
+    #[should_panic(expected = "already attached")]
+    fn insert_before_already_attached_child_panics() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let a = doc.create_node(text("a"));
+        doc.append_child(root, a);
+        doc.insert_before(root, a, None);
+    }
+
+    #[test]
+    #[should_panic(expected = "reference must be a child of parent")]
+    fn insert_before_reference_not_a_child_panics() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let other_parent = doc.create_node(elem("div"));
+        doc.append_child(root, other_parent);
+        let reference = doc.create_node(text("r"));
+        doc.append_child(other_parent, reference);
+        let child = doc.create_node(text("x"));
+        doc.insert_before(root, child, Some(reference));
     }
 }

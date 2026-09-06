@@ -4,17 +4,19 @@
 
 //! HTML tokenizer and tree builder.
 //!
-//! Not yet implemented. See
-//! `development/browser_core/research/html-parsing.md` for the target
-//! architecture (a tokenizer state machine feeding a tree builder
-//! through a narrow callback interface, per Blink's split) and the MVP
-//! scope recommendations (keep the full tokenizer state machine and
-//! adoption-agency/foster-parenting error recovery; cut foreign content,
-//! `document.write` reentrancy, and speculative parsing).
+//! See `development/browser_core/research/html-parsing.md` for the
+//! target architecture this follows (a tokenizer state machine feeding a
+//! tree builder through a narrow callback/token interface, per Blink's
+//! split) and `development/browser_core/phase-2-mvp-scope/PLAN.md`'s
+//! "MVP HTML scope" for exactly which elements/attributes are supported
+//! and which spec algorithms are kept vs. cut.
 
-use blueice_dom::Document;
+mod tokenizer;
+mod tree_builder;
+
+pub use blueice_dom::Document;
 
 /// Parses `input` as HTML into a fresh [`Document`].
-pub fn parse(_input: &str) -> Document {
-    todo!("HTML tokenizer/tree-builder -- see research/html-parsing.md")
+pub fn parse(input: &str) -> Document {
+    tree_builder::parse(input)
 }
