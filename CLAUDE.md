@@ -8,15 +8,16 @@ Implementation has started. A Cargo workspace exists under `backend/`:
 
 - `backend/core/dom` — the DOM tree (node identity, tree structure) — real implementation.
 - `backend/core/html` — HTML tokenizer and tree builder (parses into `blueice-dom` trees) — real implementation.
+- `backend/core/css` — CSS tokenizer, selector matching, and cascade (DOM + stylesheets -> per-element `ComputedStyle`, including a built-in UA stylesheet) — real implementation.
 - `backend/testing` — shared cross-stage test interface (fixture format + DOM dump serializer); see "Rendering-correctness fixtures" in `TEST_PLAN.md`.
-- `backend/core/css`, `backend/core/layout`, `backend/core/paint`, `backend/core/engine`, `backend/extension`, `backend/ipc` — still stubs (`todo!()`), pending later Phase 3 work and beyond.
+- `backend/core/layout`, `backend/core/paint`, `backend/core/engine`, `backend/extension`, `backend/ipc` — still stubs (`todo!()`), pending later Phase 3 work and beyond.
 
 Build/lint/test commands (see `development/browser_core/testing/TEST_PLAN.md` for the full testing policy):
 
 - Build: `cargo build --workspace --all-targets`
 - Test: `cargo test --workspace`
 - Lint: `cargo clippy --workspace --all-targets -- -D warnings`
-- Coverage gate (crates with a real implementation must hold ≥90% line coverage; stub crates are excluded and only reported for visibility): `cargo llvm-cov --workspace --ignore-filename-regex '(core/(engine|css|layout|paint)/src/lib\.rs|extension/src/main\.rs)$' --fail-under-lines 90 --summary-only`
+- Coverage gate (crates with a real implementation must hold ≥90% line coverage; stub crates are excluded and only reported for visibility): `cargo llvm-cov --workspace --ignore-filename-regex '(core/(engine|layout|paint)/src/lib\.rs|extension/src/main\.rs)$' --fail-under-lines 90 --summary-only`
 
 All of the above run in CI on every push/PR to `main` (`.github/workflows/ci.yml`). Design documentation for both implemented and not-yet-implemented parts still lives under `development/` — keep it in sync as each phase's own Definition of Done, not as an afterthought.
 

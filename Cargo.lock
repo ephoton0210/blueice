@@ -5,6 +5,11 @@ version = 4
 [[package]]
 name = "blueice-css"
 version = "0.1.0"
+dependencies = [
+ "blueice-dom",
+ "blueice-html",
+ "blueice-testing",
+]
 
 [[package]]
 name = "blueice-dom"

@@ -99,6 +99,26 @@ impl Fixture {
     }
 }
 
+/// Whether `line` is a section marker (`#data`, `#document`, `#css`,
+/// ...) -- the *entire* line must be `#` followed by an identifier-ish
+/// word, nothing else. A loose `starts_with('#')` check would
+/// misfire on CSS content embedded in a `#css` section: `#x { color:
+/// blue; }` is an ID selector, not a new section, and is only
+/// distinguishable from a real marker by the trailing content after
+/// the word. The one residual ambiguity this doesn't resolve is a CSS
+/// ID selector alone on its own line with no trailing content (e.g. a
+/// declaration block's `{` on the next line) -- narrow enough in
+/// practice (nobody writes fixtures that way) to accept rather than
+/// invent a whole embedded-content-escaping scheme for.
+fn section_marker(line: &str) -> Option<&str> {
+    let name = line.strip_prefix('#')?;
+    if !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+        Some(name)
+    } else {
+        None
+    }
+}
+
 /// Parses every fixture out of one `.dat` file's contents. `source_name`
 /// (typically the file's own name) is used only to build readable
 /// fixture names for test-failure output.
@@ -134,7 +154,7 @@ pub fn parse_fixtures(source_name: &str, content: &str) -> Vec<Fixture> {
     }
 
     for line in content.lines() {
-        if let Some(section_name) = line.strip_prefix('#') {
+        if let Some(section_name) = section_marker(line) {
             if section_name == "data" {
                 flush_section(&mut current, &mut sections);
                 flush_fixture(&mut sections, &mut fixtures, source_name, &mut index);
@@ -256,6 +276,17 @@ mod tests {
             parse_fixtures("t.dat", "#data\n<p>hi</p>\n#document\n| <p>\n|   \"hi\"\n\n#data\n<p>x</p>\n#document\n| <p>\n");
         assert_eq!(alone[0].document(), followed_by_another[0].document());
         assert_eq!(followed_by_another[0].document(), Some("| <p>\n|   \"hi\""));
+    }
+
+    #[test]
+    fn hash_prefixed_content_line_is_not_mistaken_for_a_section_marker() {
+        // regression test: a #css section's content can legitimately
+        // contain a CSS ID selector (`#x { ... }`), which must not be
+        // misread as the start of a new "x { ... }" section.
+        let fixtures = parse_fixtures("t.dat", "#data\n<p>x</p>\n#css\n.a { color: red; }\n#x { color: blue; }\n#styles\n| <p>\n");
+        assert_eq!(fixtures.len(), 1);
+        assert_eq!(fixtures[0].section("css"), Some(".a { color: red; }\n#x { color: blue; }"));
+        assert_eq!(fixtures[0].section("styles"), Some("| <p>"));
     }
 
     #[test]

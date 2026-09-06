@@ -1,0 +1,81 @@
+Cascade fixtures: author stylesheet + UA stylesheet together, checked
+via blueice-css's #styles dump (backend/core/css/tests/fixtures.rs).
+The #css section holds the author stylesheet source; #styles is
+checked against UA + author cascaded together.
+
+#data
+<p class="lead">hi</p>
+#css
+.lead { color: red; }
+#styles
+| <html>
+|   display=block
+|   color=#000000
+|   <head>
+|     display=none
+|     color=#000000
+|   <body>
+|     display=block
+|     color=#000000
+|     <p>
+|       display=block
+|       color=#ff0000
+
+#data
+<div id="x" class="y"><span>inner</span></div>
+#css
+.y { color: green; }
+#x { color: blue; }
+#styles
+| <html>
+|   display=block
+|   color=#000000
+|   <head>
+|     display=none
+|     color=#000000
+|   <body>
+|     display=block
+|     color=#000000
+|     <div>
+|       display=block
+|       color=#0000ff
+|       <span>
+|         display=inline
+|         color=#0000ff
+
+#data
+<p style="color: green;">hi</p>
+#css
+p { color: red; }
+#styles
+| <html>
+|   display=block
+|   color=#000000
+|   <head>
+|     display=none
+|     color=#000000
+|   <body>
+|     display=block
+|     color=#000000
+|     <p>
+|       display=block
+|       color=#008000
+
+#data
+<p style="background-color: currentColor;">hi</p>
+#css
+p { color: purple; }
+#styles
+| <html>
+|   display=block
+|   color=#000000
+|   <head>
+|     display=none
+|     color=#000000
+|   <body>
+|     display=block
+|     color=#000000
+|     <p>
+|       display=block
+|       color=#800080
+|       background-color=#800080

@@ -11,6 +11,19 @@ Lines before the first "#data" (like these) are ignored by the parser.
 |   <body>
 |     <p>
 |       "hi"
+#styles
+| <html>
+|   display=block
+|   color=#000000
+|   <head>
+|     display=none
+|     color=#000000
+|   <body>
+|     display=block
+|     color=#000000
+|     <p>
+|       display=block
+|       color=#000000
 
 #data
 <div id="x" class="y">z</div>
