@@ -5,10 +5,14 @@ members = [
     "backend/core/html",
     "backend/core/css",
     "backend/core/layout",
+    "backend/core/font",
     "backend/core/paint",
+    "backend/core/raster",
     "backend/core/engine",
     "backend/extension",
+    "backend/frontend-reference",
     "backend/ipc",
+    "backend/net",
     "backend/testing",
 ]
 

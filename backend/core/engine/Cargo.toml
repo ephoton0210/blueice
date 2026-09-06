@@ -10,6 +10,9 @@ blueice-html = { path = "../html" }
 blueice-css = { path = "../css" }
 blueice-layout = { path = "../layout" }
 blueice-paint = { path = "../paint" }
+blueice-raster = { path = "../raster" }
+blueice-net = { path = "../../net" }
+blueice-ipc = { path = "../../ipc" }
 
 [dev-dependencies]
 blueice-testing = { path = "../../testing" }

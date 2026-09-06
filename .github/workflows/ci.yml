@@ -34,12 +34,25 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
       # See development/browser_core/testing/TEST_PLAN.md for the policy
-      # this enforces and why the stub crates are excluded.
+      # this enforces. Two files are excluded, both for the same reason:
+      # a real (non-stub) process entry point whose own logic is already
+      # unit-tested elsewhere, leaving only GUI/OS wiring that can't run
+      # headlessly in CI. `extension/src/main.rs` is the placeholder
+      # process; `blueice-frontend`'s `main.rs` is the real winit/
+      # softbuffer reference frontend -- its pure helpers (pixel format
+      # conversion, socket-path/binary-path resolution) are unit tested
+      # in that same file, but the windowed event loop itself needs a
+      # real display and was verified manually instead (see Phase 4's
+      # PLAN.md). `blueice-core`'s own binary (`engine/src/bin/blueice-
+      # core.rs`) is NOT excluded, on purpose: unlike a window, a Unix
+      # socket server has no display dependency, so
+      # `engine/tests/core_binary.rs` drives the actual compiled binary
+      # as a subprocess and gets real coverage of it in CI.
       - name: Generate coverage and enforce threshold
         run: |
           set -o pipefail
           cargo llvm-cov --workspace \
-            --ignore-filename-regex 'extension/src/main\.rs$' \
+            --ignore-filename-regex 'extension/src/main\.rs$|frontend-reference/src/main\.rs$' \
             --fail-under-lines 90 \
             --summary-only \
             | tee coverage-summary.txt

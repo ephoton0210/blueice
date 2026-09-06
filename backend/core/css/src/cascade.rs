@@ -55,6 +55,20 @@ pub struct ComputedStyle {
 }
 
 impl ComputedStyle {
+    /// `font-weight: bold` or a numeric weight of 600 or above --
+    /// centralized here (rather than duplicated in `blueice-paint` and
+    /// `blueice-layout`, both of which need it: paint to pick a bold
+    /// glyph, layout to measure text at the width that glyph will
+    /// actually render at) since it's a real-CSS rule about a
+    /// `ComputedStyle` value, not paint- or layout-specific logic.
+    pub fn is_bold(&self) -> bool {
+        matches!(self.other.get("font-weight"), Some(Value::Keyword(k)) if k == "bold") || matches!(self.other.get("font-weight"), Some(Value::Number(n)) if *n >= 600.0)
+    }
+
+    pub fn is_italic(&self) -> bool {
+        self.font_style.as_deref() == Some("italic")
+    }
+
     fn initial() -> Self {
         ComputedStyle {
             display: "inline".to_string(),
@@ -70,6 +84,13 @@ impl ComputedStyle {
 }
 
 const INHERITED_PROPERTIES: &[&str] = &["color", "font-family", "font-size", "font-style", "line-height", "text-align"];
+
+/// Properties real CSS inherits that don't have a dedicated
+/// [`ComputedStyle`] field (unlike `color`/`font-family`/etc. above) --
+/// handled generically by copying the parent's [`ComputedStyle::other`]
+/// entry when the element itself doesn't set one, rather than adding a
+/// bespoke field + fallback arm per property the way the others need.
+const OTHER_INHERITED_PROPERTIES: &[&str] = &["font-weight"];
 
 fn resolve_font_size(value: &Value, parent_font_size_px: f64) -> Option<f64> {
     match value {
@@ -219,6 +240,13 @@ fn compute_style_for(
         };
         style.other.insert(prop.to_string(), resolved);
     }
+    for prop in OTHER_INHERITED_PROPERTIES {
+        if !style.other.contains_key(*prop) {
+            if let Some(v) = parent.other.get(*prop) {
+                style.other.insert(prop.to_string(), v.clone());
+            }
+        }
+    }
 
     style
 }
@@ -359,6 +387,36 @@ mod tests {
         let author = parse("div { display: none; }");
         let styles = cascade(&doc, &[(Origin::Author, &author)]);
         assert_eq!(styles[&span].display, "inline", "span keeps the cascade's initial value, not div's display: none");
+    }
+
+    #[test]
+    fn font_weight_inherits_into_a_nested_element_with_no_font_weight_of_its_own() {
+        // real CSS inheritance, caught by a review pass while wiring
+        // bold text into rendering: <b><span>x</span></b> must make the
+        // span's own text bold too, even though nothing ever targets
+        // `span` directly with a font-weight declaration -- font-weight
+        // has no dedicated ComputedStyle field the way color/font-style
+        // do, so it needs the generic OTHER_INHERITED_PROPERTIES path.
+        let mut doc = Document::new();
+        let root = doc.root();
+        let b = elem(&mut doc, root, "b", &[]);
+        let span = elem(&mut doc, b, "span", &[]);
+        let ua = ua_stylesheet();
+        let styles = cascade(&doc, &[(Origin::Ua, &ua)]);
+        assert_eq!(styles[&b].other.get("font-weight"), Some(&Value::Keyword("bold".to_string())));
+        assert_eq!(styles[&span].other.get("font-weight"), Some(&Value::Keyword("bold".to_string())), "span must inherit bold from its <b> ancestor");
+    }
+
+    #[test]
+    fn font_weight_set_directly_overrides_inheritance() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let b = elem(&mut doc, root, "b", &[]);
+        let span = elem(&mut doc, b, "span", &[]);
+        let ua = ua_stylesheet();
+        let author = parse("span { font-weight: normal; }");
+        let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
+        assert_eq!(styles[&span].other.get("font-weight"), Some(&Value::Keyword("normal".to_string())));
     }
 
     #[test]
@@ -530,5 +588,46 @@ mod tests {
         let p = elem(&mut doc, root, "p", &[]);
         let styles = cascade(&doc, &[]);
         assert_eq!(styles[&p].color, Color::Rgba(0, 0, 0, 255));
+    }
+
+    #[test]
+    fn is_bold_recognizes_the_bold_keyword() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let b = elem(&mut doc, root, "b", &[]);
+        let ua = ua_stylesheet();
+        let styles = cascade(&doc, &[(Origin::Ua, &ua)]);
+        assert!(styles[&b].is_bold());
+    }
+
+    #[test]
+    fn is_bold_recognizes_numeric_weights_of_600_or_above_but_not_below() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let heavy = elem(&mut doc, root, "div", &[("style", "font-weight: 700;")]);
+        let light = elem(&mut doc, root, "div", &[("style", "font-weight: 400;")]);
+        let styles = cascade(&doc, &[]);
+        assert!(styles[&heavy].is_bold());
+        assert!(!styles[&light].is_bold());
+    }
+
+    #[test]
+    fn is_italic_recognizes_the_italic_keyword() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let i = elem(&mut doc, root, "i", &[]);
+        let ua = ua_stylesheet();
+        let styles = cascade(&doc, &[(Origin::Ua, &ua)]);
+        assert!(styles[&i].is_italic());
+    }
+
+    #[test]
+    fn neither_bold_nor_italic_by_default() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let p = elem(&mut doc, root, "p", &[]);
+        let styles = cascade(&doc, &[]);
+        assert!(!styles[&p].is_bold());
+        assert!(!styles[&p].is_italic());
     }
 }

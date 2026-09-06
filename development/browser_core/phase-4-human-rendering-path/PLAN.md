@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress (frame-channel shape decided; boundary implementation, reference frontend, and everything else still open)
+**Status**: In progress (control-plane IPC, frame-plane, reference frontend, navigation, and all interaction handling implemented and verified end-to-end through a real windowed frontend; only the Help/About/Credits screen remains)
 
 ## Objective
 
@@ -25,15 +25,15 @@ This phase is deliberately scoped to *displaying and interacting with* what Phas
 
 ## Checklist
 
-- [ ] Design the `core`↔`frontend` control-plane IPC (input/navigation/lifecycle), sharing the protocol design with `extension`/AI per plan §1
+- [x] Design the `core`↔`frontend` control-plane IPC (input/navigation/lifecycle) — `blueice-ipc`'s `ClientMessage`/`ServerMessage` over a length-prefixed-JSON Unix domain socket; sharing this same protocol with `extension`/AI (plan §1) is still open, tracked separately from this phase
 - [x] Decide the high-bandwidth frame-pixel channel shape — a common frame-plane interface (handle-kind union + metadata + sync token) with a per-platform-`frontend` adapter behind it, shared memory as universal fallback; see `research/frontend-ipc.md`
-- [ ] Implement the frame-plane interface and the reference frontend's adapter
-- [ ] Build one reference frontend against that boundary, chosen for fastest API validation, not as a platform-native deliverable
-- [ ] Confirm the boundary supports runtime show/hide independent of `core` process lifecycle (plan §1)
-- [ ] Wire Phase 3 paint output to the reference frontend's on-screen surface
-- [ ] Handle scroll input, feeding back into layout/paint as needed
-- [ ] Handle click input and hit-testing against the layout tree
-- [ ] Handle window resize, feeding back into layout
-- [ ] Handle basic navigation (load URL, follow links)
-- [ ] Manually verify rendering against the Phase 2 demo page(s)
-- [ ] Add a Help/About/Credits screen reproducing the Chromium BSD-3-Clause notice and crediting Gecko (BSD-3-Clause binary-distribution requirement — see Phase 0)
+- [x] Implement the frame-plane interface and the reference frontend's adapter — `blueice_ipc::shm` (real `mmap`-backed frame files, one per generation) written by `blueice-core`'s session loop, mapped read-only and blitted into a `softbuffer` surface by `blueice-frontend`
+- [x] Build one reference frontend against that boundary, chosen for fastest API validation, not as a platform-native deliverable — `backend/frontend-reference`, `winit` + `softbuffer`, CPU-side rasterization (per the chosen "Rust + winit + software rasterization" direction)
+- [x] Confirm the boundary supports runtime show/hide independent of `core` process lifecycle (plan §1) — `frontend` toggles its own window's visibility (stdin `show`/`hide` commands stand in for the not-yet-built AI-facing control channel) without touching `core` at all, which is the point: `core` and `frontend` are separate processes connected only by the socket, so hiding one's window can never restart or pause the other
+- [x] Wire Phase 3 paint output to the reference frontend's on-screen surface — verified visually (see below)
+- [x] Handle scroll input, feeding back into layout/paint as needed — `Page::scroll_by` (clamped, cropped re-raster); covered by `blueice-engine`'s `session`/`page` tests
+- [x] Handle click input and hit-testing against the layout tree — `Page::click` hit-tests the fragment tree and walks up to the nearest `<a href>`; verified live (see below)
+- [x] Handle window resize, feeding back into layout — verified live (see below)
+- [x] Handle basic navigation (load URL, follow links) — `blueice-net` fetch + `Page::navigate`; verified live against real internet hosts
+- [x] Manually verify rendering — the Phase 2 MVP HTML/CSS demo content (`blueice-raster`'s `examples/render_demo.rs`) was checked by rendering to PNG and looking at it (Phase 2 never formally defined a canonical demo page, tracked separately in its own PLAN.md checklist); the full `core`↔`frontend` pipeline was additionally verified end-to-end in a real window under WSLg against live internet pages (`https://example.com`, following its "Learn more" link to `iana.org`) — real navigate, resize, and click-driven navigation all confirmed by screenshot. This pass also caught and fixed a real bug: text measured with an approximate width (unrelated to the actual bundled font) visibly overlapped adjacent words once real glyphs were on screen -- see `blueice-font`'s crate docs
+- [ ] Add a Help/About/Credits screen reproducing the Chromium BSD-3-Clause notice and crediting Gecko (BSD-3-Clause binary-distribution requirement — see Phase 0) — still needs the DejaVu/Bitstream Vera notice added alongside Chromium/Gecko now that a font is actually bundled (`blueice-font`)

@@ -21,10 +21,19 @@
 //! invalidation/caching (every call repaints the whole tree), box-
 //! shadow, background-image, gradients.
 
-use blueice_css::{Color, ComputedStyle, Length, Value};
+use blueice_css::{ComputedStyle, Length, Value};
 use blueice_dom::NodeId;
 use blueice_layout::{Fragment, FragmentKind};
 use std::collections::HashMap;
+
+// Re-exported: `PaintCommand`'s own public fields are typed with
+// `Color`, so a crate depending only on `blueice-paint` (as
+// `blueice-raster` deliberately does, to keep its own dependency
+// surface minimal) must still be able to name it -- otherwise the
+// public interface would be incomplete per `TEST_PLAN.md`'s Definition
+// of Done, forcing every downstream consumer to also add `blueice-css`
+// as a direct dependency just to spell this crate's own return types.
+pub use blueice_css::Color;
 
 type StyleMap = HashMap<NodeId, ComputedStyle>;
 
@@ -49,7 +58,11 @@ pub enum PaintCommand {
     BorderEdge { rect: Rect, color: Color },
     /// A run of text with no internal structure -- one command per
     /// `blueice_layout` text fragment, at that fragment's own position.
-    Text { x: f64, y: f64, text: String, color: Color, font_size_px: f64 },
+    /// `bold`/`italic` are booleans, not the full CSS value space
+    /// (`font-weight: 600`, `font-style: oblique 10deg`, ...) -- all
+    /// that a from-scratch rasterizer picking between a handful of
+    /// bundled font files can actually act on for MVP.
+    Text { x: f64, y: f64, text: String, color: Color, font_size_px: f64, bold: bool, italic: bool },
 }
 
 /// The paint output for one frame: the root box's own size, plus every
@@ -93,9 +106,15 @@ pub fn dump_frame(frame: &Frame) -> String {
         match command {
             PaintCommand::Rect { rect, color } => out.push_str(&format!("rect {} {}\n", fmt_rect(*rect), fmt_color(*color))),
             PaintCommand::BorderEdge { rect, color } => out.push_str(&format!("border {} {}\n", fmt_rect(*rect), fmt_color(*color))),
-            PaintCommand::Text { x, y, text, color, font_size_px } => {
-                out.push_str(&format!("text {},{} \"{text}\" {} {}\n", fmt_num(*x), fmt_num(*y), fmt_color(*color), fmt_num(*font_size_px)))
-            }
+            PaintCommand::Text { x, y, text, color, font_size_px, bold, italic } => out.push_str(&format!(
+                "text {},{} \"{text}\" {} {} {} {}\n",
+                fmt_num(*x),
+                fmt_num(*y),
+                fmt_color(*color),
+                fmt_num(*font_size_px),
+                if *bold { "bold" } else { "normal" },
+                if *italic { "italic" } else { "normal" }
+            )),
         }
     }
     out
@@ -170,7 +189,9 @@ fn paint_fragment(fragment: &Fragment, offset_x: f64, offset_y: f64, styles: &St
         FragmentKind::Line => {}
         FragmentKind::Text(text) => {
             if let Some(style) = fragment.node.and_then(|n| styles.get(&n)) {
-                out.push(PaintCommand::Text { x, y, text: text.clone(), color: style.color, font_size_px: style.font_size_px });
+                let bold = style.is_bold();
+                let italic = style.is_italic();
+                out.push(PaintCommand::Text { x, y, text: text.clone(), color: style.color, font_size_px: style.font_size_px, bold, italic });
             }
         }
     }
@@ -237,6 +258,27 @@ mod tests {
             }
             _ => unreachable!(),
         }
+    }
+
+    #[test]
+    fn bold_and_italic_elements_produce_text_commands_flagged_accordingly() {
+        let f = paint_html("<p>a <b>b</b> <i>c</i> <em>d</em></p>", "", 320.0);
+        let flags_for = |word: &str| -> (bool, bool) {
+            f.commands
+                .iter()
+                .find_map(|c| if let PaintCommand::Text { text, bold, italic, .. } = c { (text == word).then_some((*bold, *italic)) } else { None })
+                .unwrap_or_else(|| panic!("no Text command for {word:?}"))
+        };
+        assert_eq!(flags_for("a"), (false, false));
+        assert_eq!(flags_for("b"), (true, false), "<b> is bold, not italic");
+        assert_eq!(flags_for("c"), (false, true), "<i> is italic, not bold");
+        assert_eq!(flags_for("d"), (false, true), "<em> (UA stylesheet: font-style: italic) is italic too");
+    }
+
+    #[test]
+    fn numeric_font_weight_of_600_or_above_counts_as_bold() {
+        let f = paint_html("<p>x</p>", "p { font-weight: 700; }", 320.0);
+        assert!(matches!(f.commands.iter().find(|c| matches!(c, PaintCommand::Text { .. })), Some(PaintCommand::Text { bold: true, .. })));
     }
 
     #[test]
@@ -335,12 +377,13 @@ mod tests {
             commands: vec![
                 PaintCommand::Rect { rect: Rect { x: 0.0, y: 0.0, width: 100.0, height: 20.0 }, color: Color::Rgba(255, 0, 0, 255) },
                 PaintCommand::BorderEdge { rect: Rect { x: 0.0, y: 0.0, width: 100.0, height: 4.0 }, color: Color::Rgba(0, 0, 0, 255) },
-                PaintCommand::Text { x: 1.0, y: 2.0, text: "hi".to_string(), color: Color::Rgba(0, 0, 255, 255), font_size_px: 16.0 },
+                PaintCommand::Text { x: 1.0, y: 2.0, text: "hi".to_string(), color: Color::Rgba(0, 0, 255, 255), font_size_px: 16.0, bold: false, italic: false },
+                PaintCommand::Text { x: 1.0, y: 20.0, text: "yo".to_string(), color: Color::Rgba(0, 0, 255, 255), font_size_px: 16.0, bold: true, italic: true },
             ],
         };
         assert_eq!(
             dump_frame(&frame),
-            "rect 0.0,0.0 100.0x20.0 #ff0000\nborder 0.0,0.0 100.0x4.0 #000000\ntext 1.0,2.0 \"hi\" #0000ff 16.0\n"
+            "rect 0.0,0.0 100.0x20.0 #ff0000\nborder 0.0,0.0 100.0x4.0 #000000\ntext 1.0,2.0 \"hi\" #0000ff 16.0 normal normal\ntext 1.0,20.0 \"yo\" #0000ff 16.0 bold italic\n"
         );
     }
 

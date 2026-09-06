@@ -4,16 +4,18 @@
 
 //! Text measurement and greedy line-breaking for inline content.
 //!
-//! **No font metrics or text shaping exist anywhere in BlueIce yet** --
-//! there is no font-loading or glyph-measurement subsystem to consult,
-//! so widths here are a crude average-glyph-width approximation
-//! (`font_size_px * 0.6` per character, the same order-of-magnitude
-//! ratio real fonts average out to for latin text). This is
-//! deliberately named as an approximation, not hidden behind a
-//! confident-looking API: it's enough to produce *some* real line-
-//! breaking geometry (the thing `research/layout.md` §4 asks block/
-//! inline layout to actually do), not to be pixel-accurate. Replacing
-//! it with real shaping later only touches this module.
+//! Word widths are measured with `blueice-font`'s real, bundled DejaVu
+//! Sans metrics -- the same font `blueice-raster` rasterizes with, so
+//! layout's line-breaking geometry and the eventual rendered pixels
+//! agree about how wide a word is. This used to be a flat
+//! `font_size_px * 0.6`-per-character approximation with no font data
+//! at all; that approximation visibly undershot real (especially bold)
+//! glyph widths once actual rendering existed to check it against --
+//! e.g. an `<h1>` heading's words overlapping when viewed in the
+//! reference frontend -- so it was replaced rather than re-tuned again.
+//! Real ascent/descent-aware baseline placement and shaping (kerning,
+//! ligatures, bidi/script segmentation) are still out of scope; only
+//! per-character advance-width summing is real.
 //!
 //! Line-breaking itself is word-level greedy fill-then-wrap (accumulate
 //! words onto a line until the next one would overflow, then start a
@@ -27,12 +29,16 @@ use std::collections::HashMap;
 
 pub type StyleMap = HashMap<NodeId, ComputedStyle>;
 
-pub fn char_width(font_size_px: f64) -> f64 {
-    font_size_px * 0.6
-}
-
-pub fn text_width(text: &str, font_size_px: f64) -> f64 {
-    text.chars().count() as f64 * char_width(font_size_px)
+/// The real width of a single space character in the default
+/// (non-bold, non-italic) weight -- used as one paragraph-wide gap
+/// estimate between words on the same line, regardless of the actual
+/// weight/style of the words on either side of it (mixed-weight runs,
+/// e.g. `a <b>bold</b> c`, already share one `space_width` value per
+/// paragraph rather than a per-run one; that simplification is
+/// unrelated to and unaffected by this module's move to real per-word
+/// measurement).
+pub fn space_width(font_size_px: f64) -> f64 {
+    blueice_font::measure_text_width(" ", font_size_px, false, false)
 }
 
 /// The initial `line-height: normal` value real browsers use absent an
@@ -65,9 +71,13 @@ pub struct Word {
 pub fn collect_words(doc: &Document, node: NodeId, styles: &StyleMap, style_node: NodeId, out: &mut Vec<Word>) {
     match doc.data(node) {
         NodeData::Text { data } => {
-            let font_size = styles.get(&style_node).map(|s| s.font_size_px).unwrap_or(16.0);
+            let style = styles.get(&style_node);
+            let font_size = style.map(|s| s.font_size_px).unwrap_or(16.0);
+            let bold = style.is_some_and(ComputedStyle::is_bold);
+            let italic = style.is_some_and(ComputedStyle::is_italic);
             for word in data.split_whitespace() {
-                out.push(Word { text: word.to_string(), width: text_width(word, font_size), style_node });
+                let width = blueice_font::measure_text_width(word, font_size, bold, italic);
+                out.push(Word { text: word.to_string(), width, style_node });
             }
         }
         NodeData::Element { .. } => {
@@ -112,7 +122,7 @@ mod tests {
     use blueice_dom::NodeData;
 
     fn word(text: &str, style_node: NodeId) -> Word {
-        Word { text: text.to_string(), width: text_width(text, 16.0), style_node }
+        Word { text: text.to_string(), width: blueice_font::measure_text_width(text, 16.0, false, false), style_node }
     }
 
     fn dummy_node() -> NodeId {
@@ -121,15 +131,26 @@ mod tests {
     }
 
     #[test]
-    fn text_width_scales_with_font_size_and_length() {
-        assert_eq!(text_width("abc", 16.0), 3.0 * char_width(16.0));
-        assert_eq!(text_width("abcabc", 16.0), 2.0 * text_width("abc", 16.0));
-        assert!(text_width("abc", 32.0) > text_width("abc", 16.0));
+    fn word_widths_scale_with_font_size_and_length_via_real_font_metrics() {
+        let measure = |t: &str, size: f64| blueice_font::measure_text_width(t, size, false, false);
+        assert_eq!(measure("abcabc", 16.0), 2.0 * measure("abc", 16.0), "no kerning is applied, so repeating the same text exactly doubles its width");
+        assert!(measure("abc", 32.0) > measure("abc", 16.0));
     }
 
     #[test]
     fn default_line_height_is_larger_than_font_size() {
         assert!(default_line_height(16.0) > 16.0);
+    }
+
+    #[test]
+    fn space_width_is_narrower_than_an_ordinary_lowercase_letter() {
+        assert!(space_width(16.0) < blueice_font::measure_text_width("n", 16.0, false, false));
+        assert!(space_width(16.0) > 0.0);
+    }
+
+    #[test]
+    fn space_width_scales_with_font_size() {
+        assert!(space_width(32.0) > space_width(16.0));
     }
 
     #[test]
@@ -150,11 +171,12 @@ mod tests {
     #[test]
     fn words_wrap_onto_a_new_line_when_they_would_overflow() {
         let n = dummy_node();
-        // "aaaa" (width 4*0.6*16=38.4) + space(9.6) + "bbbb"(38.4) = 86.4,
-        // just over 80 -- must wrap.
         let words = vec![word("aaaa", n), word("bbbb", n)];
-        let space = char_width(16.0);
-        let lines = break_into_lines(&words, 80.0, space);
+        let space = space_width(16.0);
+        // an available width just past the first word's width alone
+        // forces the second word onto its own line.
+        let available = words[0].width + 1.0;
+        let lines = break_into_lines(&words, available, space);
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0], &words[0..1]);
         assert_eq!(lines[1], &words[1..2]);
@@ -172,11 +194,12 @@ mod tests {
     #[test]
     fn three_words_two_fit_third_wraps() {
         let n = dummy_node();
-        let space = char_width(16.0);
-        // three words of width 20 each, space width ~9.6: two fit in 60
-        // (20+9.6+20=49.6), a third would push to 79.2 > 60.
+        let space = space_width(16.0);
+        // three words of width 20 each: an available width that fits
+        // exactly two words plus the gap between them, but not a third.
         let words: Vec<Word> = (0..3).map(|_| Word { text: "xx".to_string(), width: 20.0, style_node: n }).collect();
-        let lines = break_into_lines(&words, 60.0, space);
+        let available = 20.0 + space + 20.0 + 1.0;
+        let lines = break_into_lines(&words, available, space);
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].len(), 2);
         assert_eq!(lines[1].len(), 1);
@@ -243,6 +266,40 @@ mod tests {
         );
         let mut words = Vec::new();
         collect_words(&doc, p, &styles, p, &mut words);
-        assert_eq!(words[0].width, text_width("hi", 32.0));
+        assert_eq!(words[0].width, blueice_font::measure_text_width("hi", 32.0, false, false));
+    }
+
+    #[test]
+    fn collect_words_measures_bold_text_at_its_real_wider_bold_width() {
+        // the bug this module's docs describe: a word under a bold
+        // element must be measured at the bold font's real width, not
+        // the regular font's -- otherwise layout reserves less space
+        // than the bold glyphs raster actually draws, and adjacent
+        // words visually overlap.
+        let mut doc = Document::new();
+        let root = doc.root();
+        let b = doc.create_node(NodeData::Element { tag_name: "b".to_string(), attributes: vec![] });
+        doc.append_child(root, b);
+        let text = doc.create_node(NodeData::Text { data: "Example".to_string() });
+        doc.append_child(b, text);
+
+        let mut styles = StyleMap::new();
+        let mut style = ComputedStyle {
+            display: "inline".to_string(),
+            color: blueice_css::Color::Rgba(0, 0, 0, 255),
+            font_size_px: 32.0,
+            font_family: None,
+            font_style: None,
+            line_height: None,
+            text_align: None,
+            other: Default::default(),
+        };
+        style.other.insert("font-weight".to_string(), blueice_css::Value::Keyword("bold".to_string()));
+        styles.insert(b, style);
+
+        let mut words = Vec::new();
+        collect_words(&doc, b, &styles, b, &mut words);
+        assert_eq!(words[0].width, blueice_font::measure_text_width("Example", 32.0, true, false));
+        assert!(words[0].width > blueice_font::measure_text_width("Example", 32.0, false, false), "bold must measure wider than regular for the same text");
     }
 }

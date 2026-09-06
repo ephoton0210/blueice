@@ -11,16 +11,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `backend/core/css` — CSS tokenizer, selector matching, and cascade (DOM + stylesheets -> per-element `ComputedStyle`, including a built-in UA stylesheet).
 - `backend/core/layout` — block/inline layout (DOM + `ComputedStyle` -> an immutable `Fragment` tree with real box-model/line-breaking geometry).
 - `backend/core/paint` — a `Fragment` tree + `ComputedStyle` -> a flat, ordered paint-command display list (background/border rectangles, text runs) — not pixels yet; actual rasterization is a per-platform Phase 4 `frontend` concern.
-- `backend/core/engine` — wires the above into one `render(html, css, viewport_width) -> Frame` entry point.
-- `backend/testing` — shared cross-stage test interface (fixture format + DOM dump serializer); see "Rendering-correctness fixtures" and "UI testing strategy" in `TEST_PLAN.md` — the latter is where automated visual/UI verification lives today (`#layout` geometry + `#paint` command dumps per fixture), ahead of and separate from Phase 4's real-frontend/platform automation.
-- `backend/extension`, `backend/ipc` — still stubs/placeholders, per plan §1's process-architecture scope (not part of the Phase 3 rendering pipeline).
+- `backend/core/engine` — wires the above into one `render(html, css, viewport_width) -> Frame` entry point, plus (Phase 4) a stateful `Page` type and `session` message loop for interactive use.
+- `backend/testing` — shared cross-stage test interface (fixture format + DOM dump serializer); see "Rendering-correctness fixtures" and "UI testing strategy" in `TEST_PLAN.md`.
+- `backend/extension` — still a stub/placeholder, per plan §1's process-architecture scope.
+
+**Phase 4 (human-visible rendering path) is nearly done** — only a Help/About/Credits screen remains (see `phase-4-human-rendering-path/PLAN.md`). `core` and `frontend` are real, separate OS processes:
+
+- `backend/ipc` — the control-plane protocol (`ClientMessage`/`ServerMessage` over a length-prefixed-JSON Unix domain socket) and the frame-plane (`blueice_ipc::shm`, real `mmap`-backed frame files).
+- `backend/net` — HTTP fetching for navigation (`ureq`-based).
+- `backend/core/font` — the one place fonts are loaded and measured (bundled DejaVu Sans), shared by `blueice-layout` (real word-width measurement) and `blueice-raster` (glyph rasterization), so the two never disagree about how wide a run of text is.
+- `backend/core/raster` — `blueice-paint`'s display list -> actual RGBA8 pixels (`fontdue`-based glyph rendering).
+- `backend/core/engine/src/bin/blueice-core.rs` — the `core` process binary: a Unix-socket server owning one `Page`, driven by `blueice_engine::session`.
+- `backend/frontend-reference` — the reference `frontend` binary (`winit` + `softbuffer`), verified manually in a real window (resize, click-driven navigation, no rendering defects) since GUI event loops can't run in headless CI.
 
 Build/lint/test commands (see `development/browser_core/testing/TEST_PLAN.md` for the full testing policy):
 
 - Build: `cargo build --workspace --all-targets`
 - Test: `cargo test --workspace`
 - Lint: `cargo clippy --workspace --all-targets -- -D warnings`
-- Coverage gate (crates with a real implementation must hold ≥90% line coverage; stub crates are excluded and only reported for visibility): `cargo llvm-cov --workspace --ignore-filename-regex 'extension/src/main\.rs$' --fail-under-lines 90 --summary-only`
+- Coverage gate (crates with a real implementation must hold ≥90% line coverage; the placeholder `extension` process and the windowed reference frontend's `main.rs` -- GUI wiring with no headless-CI display to run against, its pure helpers are still unit tested -- are excluded and only reported for visibility): `cargo llvm-cov --workspace --ignore-filename-regex 'extension/src/main\.rs$|frontend-reference/src/main\.rs$' --fail-under-lines 90 --summary-only`
 
 All of the above run in CI on every push/PR to `main` (`.github/workflows/ci.yml`). Design documentation for both implemented and not-yet-implemented parts still lives under `development/` — keep it in sync as each phase's own Definition of Done, not as an afterthought.
 

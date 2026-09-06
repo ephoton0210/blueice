@@ -23,7 +23,7 @@
 //! `text.rs` already flags as a placeholder.
 
 use crate::fragment::{Fragment, FragmentKind};
-use crate::text::{break_into_lines, char_width, collect_words, default_line_height, StyleMap, Word};
+use crate::text::{break_into_lines, collect_words, default_line_height, space_width, StyleMap, Word};
 use blueice_css::{Length, Value};
 use blueice_dom::{Document, NodeData, NodeId};
 use std::collections::HashMap;
@@ -221,7 +221,7 @@ fn layout_inline_run(doc: &Document, pending: &[NodeId], styles: &StyleMap, avai
         .and_then(|s| s.line_height.as_ref())
         .and_then(|v| resolve_line_height(v, font_size))
         .unwrap_or_else(|| default_line_height(font_size));
-    let space_width = char_width(font_size);
+    let space_width = space_width(font_size);
 
     let lines = break_into_lines(&words, available_width, space_width);
     let mut fragments = Vec::new();

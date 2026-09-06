@@ -1,14 +1,16 @@
 [package]
-name = "blueice-layout"
+name = "blueice-raster"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-blueice-dom = { path = "../dom" }
-blueice-css = { path = "../css" }
+blueice-paint = { path = "../paint" }
 blueice-font = { path = "../font" }
+fontdue = "0.9"
+png = "0.17"
 
 [dev-dependencies]
 blueice-html = { path = "../html" }
-blueice-testing = { path = "../../testing" }
+blueice-css = { path = "../css" }
+blueice-layout = { path = "../layout" }
