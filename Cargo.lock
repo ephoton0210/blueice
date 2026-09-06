@@ -48,6 +48,8 @@ version = "0.1.0"
 dependencies = [
  "blueice-css",
  "blueice-dom",
+ "blueice-html",
+ "blueice-testing",
 ]
 
 [[package]]

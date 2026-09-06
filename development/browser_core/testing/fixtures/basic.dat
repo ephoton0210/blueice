@@ -24,6 +24,12 @@ Lines before the first "#data" (like these) are ignored by the parser.
 |     <p>
 |       display=block
 |       color=#000000
+#layout
+| <html> block 0.0,0.0 320.0x19.2
+|   <body> block 0.0,0.0 320.0x19.2
+|     <p> block 0.0,0.0 320.0x19.2
+|       line 0.0,0.0 19.2x19.2
+|         "hi" 0.0,0.0 19.2x19.2
 
 #data
 <div id="x" class="y">z</div>

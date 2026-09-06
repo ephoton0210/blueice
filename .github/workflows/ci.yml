@@ -39,7 +39,7 @@ jobs:
         run: |
           set -o pipefail
           cargo llvm-cov --workspace \
-            --ignore-filename-regex '(core/(engine|layout|paint)/src/lib\.rs|extension/src/main\.rs)$' \
+            --ignore-filename-regex '(core/(engine|paint)/src/lib\.rs|extension/src/main\.rs)$' \
             --fail-under-lines 90 \
             --summary-only \
             | tee coverage-summary.txt
