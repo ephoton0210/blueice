@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress (the BlueIce-side capabilities the harness needs are built and verified; the actual Puppeteer harness is not written yet)
+**Status**: In progress (the BlueIce-side capabilities and the Node.js harness that drives them are built and verified end to end; Puppeteer/Chromium and the actual diff are not wired in yet — see "Staged build-out" below)
 
 ## Objective
 
@@ -27,12 +27,28 @@ A Puppeteer harness comparing BlueIce against Chromium needs to get two things o
 - **Talks to BlueIce over MCP**, not a bespoke IPC client — `blueice-mcp-server`'s `navigate`/`screenshot`/`get_dom` tools, which doubles as an automated integration check of the MCP surface itself (beyond the manual verification Phase 12 has done so far).
 - **Node.js**, not Rust, for the harness itself — Puppeteer needs a real Node runtime; this is the same exception CI's planned `bluejs-differential` job already carves out.
 
+## Staged build-out
+
+Built in two stages, on request — the BlueIce-driving half proven working on its own before adding Chromium/Puppeteer on top of it, rather than debugging both sides of a comparison at once:
+
+**Stage 1 (done): the Node.js harness, BlueIce side only.** `differential-testing/` — a Node.js project separate from the Cargo workspace (Puppeteer needs a real Node runtime, same exception `testing/TEST_PLAN.md`'s planned `bluejs-differential`/`chromium-differential` CI jobs already carve out). Built on the official `@modelcontextprotocol/sdk` TypeScript/JS package for the MCP client side, the same "reuse proven infrastructure" reasoning as `rmcp` on the Rust side:
+
+- `src/fixtures.js` — a JS port of `blueice-testing`'s `.dat` corpus parser, kept in exact lockstep with the Rust parser's rules (section-marker regex, blank-line stripping, one fixture per `#data` marker) so this harness reads the identical corpus BlueIce's own fixture tests do, not a subtly different one.
+- `src/serve-fixture.js` — a throwaway local HTTP server per fixture, since `blueice-net` only fetches `http://`/`https://` (no `file://`/`data:`) and a real Chromium tab will need an actual URL too, for the same comparison on both sides.
+- `src/blueice-client.js` — spawns `blueice-mcp-server` and wraps its `navigate`/`get_dom`/`screenshot` tools.
+- `src/capture-blueice.js` (`npm run capture:blueice`) — runs every `#data`-bearing fixture in the shared corpus through the above and writes `differential-testing/output/blueice/<fixture>/{dom.txt,screenshot.png}`.
+
+Run and verified against all 28 current fixtures: every one captured a real DOM dump and a real, correctly-rendered PNG (spot-checked by eye) with zero failures.
+
+**Stage 2 (not started): add Puppeteer, then the actual diff.** Mirror `capture-blueice.js` with a Chromium-side capture (`page.screenshot()` + a `page.evaluate()`-serialized DOM) writing to `output/chromium/<fixture>/`, then a comparison script diffing the two output trees. Only startable now that stage 1 has proven the BlueIce-side plumbing works.
+
 ## Checklist
 
 - [x] Design the comparison strategy (what's compared, corpus source, not-exact-match philosophy) — see `TEST_PLAN.md`
 - [x] Add the DOM-tree capability the harness needs but didn't exist externally — `blueice_dom::dump`, `ClientMessage::GetDom`, `get_dom` MCP tool
 - [x] Confirm the screenshot capability the harness needs — `screenshot` MCP tool, verified against a real live-fetched page
-- [ ] Write the actual Node.js/Puppeteer harness (per-fixture: load in Chromium, load via `blueice-mcp-server`, capture both artifacts)
+- [x] Write the Node.js harness's BlueIce-driving half (stage 1) — `differential-testing/`, verified against all 28 current fixtures
+- [ ] Add the Puppeteer/Chromium-driving half (stage 2) — per-fixture screenshot + serialized DOM, mirroring `capture-blueice.js`
 - [ ] Implement the screenshot diff (pixel/perceptual, with a tolerance) and the DOM structural diff
 - [ ] Decide and implement how the diff trend is tracked across runs (a baseline file committed to the repo? a job-summary-only report with no persisted history? — not yet decided)
 - [ ] Wire the `chromium-differential` CI job (`testing/TEST_PLAN.md`'s CI section), reporting to the job summary, not gating the build

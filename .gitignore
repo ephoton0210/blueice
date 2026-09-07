@@ -35,3 +35,9 @@ Thumbs.db
 /development/browser_core/reference/gecko/
 /development/browser_core/reference/chromium/
 /development/browser_core/reference/v8/
+
+# Node.js differential-testing harness (phase-15-chromium-differential-
+# testing/PLAN.md) -- dependencies and captured screenshot/DOM output,
+# neither of which belongs in version control.
+/differential-testing/node_modules/
+/differential-testing/output/
