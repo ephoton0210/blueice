@@ -90,7 +90,7 @@ Phases 7-12 add more roles to this picture, each still mostly open design at thi
 | [Phase 9](phase-9-extension-protocol/PLAN.md) | BlueIce extension protocol (third-party plugins on the `extension` architecture) | Not started |
 | [Phase 10](phase-10-download-manager/PLAN.md) | Built-in download manager (chunked/resumable/multi-threaded transfers) | Not started |
 | [Phase 11](phase-11-transfer-protocol-clients/PLAN.md) | FTP/SFTP and other transfer-protocol clients | Not started |
-| [Phase 12](phase-12-mcp-server/PLAN.md) | MCP server exposing BlueIce to Claude Code and other AI agents | Not started |
+| [Phase 12](phase-12-mcp-server/PLAN.md) | MCP server exposing BlueIce to Claude Code and other AI agents | In progress (foundation covering Phase 5's API built early, ahead of the numbered sequence, for Chromium differential testing) |
 | [Phase 13](phase-13-bluejs-engine/PLAN.md) | BlueJS: custom JavaScript engine (decided over embedding an existing one) | Not started |
 | [Phase 14](phase-14-i18n-localization/PLAN.md) | i18n/localization: namespace/key architecture, retrofit of already-shipped UI text (credits screen, frontend window title), CJK font fallback | Done |
 

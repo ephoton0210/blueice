@@ -1,0 +1,18 @@
+[package]
+name = "blueice-mcp-server"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "blueice-mcp-server"
+path = "src/main.rs"
+
+[dependencies]
+base64 = "0.23.1"
+blueice-ipc = { version = "0.1.0", path = "../ipc" }
+blueice-raster = { version = "0.1.0", path = "../core/raster" }
+rmcp = { version = "3.2.0", features = ["server", "macros", "transport-io"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "net", "io-util"] }

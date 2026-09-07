@@ -12,6 +12,7 @@ members = [
     "backend/extension",
     "backend/frontend-reference",
     "backend/i18n",
+    "backend/mcp-server",
     "backend/ipc",
     "backend/net",
     "backend/testing",

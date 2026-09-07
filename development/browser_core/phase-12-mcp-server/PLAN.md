@@ -2,11 +2,24 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: Not started
+**Status**: In progress (a real foundation exists — `backend/mcp-server` — built ahead of this phase's original place in the sequence; see "Foundation built early" below for why and exactly what it covers)
 
 ## Objective
 
 Expose BlueIce's capabilities — browsing/rendering (Phase 1/5's AI-facing API), downloads (Phase 10), file transfer (Phase 11), and whatever else applies — through a standard MCP server, so Claude Code or any other MCP-compatible AI agent can drive BlueIce using the standard protocol instead of a bespoke one.
+
+## Foundation built early
+
+Raised while Phase 5 was fresh, not while working through the numbered sequence: differential testing BlueIce's rendering against a real Chromium (via Puppeteer) needs a stable, external way to drive BlueIce *now*, not once Phases 6-11 are also done — waiting for this phase's original place in the sequence would have blocked that testing work for no good reason, since Phase 5's API was already real. `backend/mcp-server` (`blueice-mcp-server`) is that foundation: a real, working MCP server (stdio transport, via the official `rmcp` Rust SDK — reused rather than hand-rolling JSON-RPC framing, same "solved infrastructure" reasoning as `ureq`/`winit`/`fluent-bundle` elsewhere) exposing exactly Phase 5's API as tools, and nothing beyond it:
+
+- `navigate(url)`, `get_page_representation()` — wrap `ClientMessage::Navigate`/`GetRepresentation` directly.
+- `click(node_id)`, `type_text(node_id, text)`, `focus(node_id)`, `scroll_into_view(node_id)` — wrap `ActOn` with each `NodeAction` variant.
+- `highlight(node_id)` — wraps `Highlight`.
+- `screenshot()` — the one tool with no direct `ClientMessage` equivalent: reads the most recently cached `FrameReady`'s shared-memory frame and PNG-encodes it, since there's no "resend the current frame" message (every frame is the side effect of some state change).
+
+**A real design problem solved along the way, not glossed over**: several `ClientMessage`s produce a *variable* number of replies (an `ActOn`/coordinate `Click` that doesn't land on a link produces none at all — `blueice_engine::session`'s own documented behavior). An MCP tool call needs a deterministic reply, and a read-timeout heuristic would be flaky. The fix: every state-changing tool immediately pipelines a `GetRepresentation` after its own message and reads in a loop until the `Representation` reply appears — which is always exactly one, always last, and nothing else produces one — collecting any `Error` seen along the way rather than returning on it immediately (a `Navigate` failure means `Error` arrives *before* the pipelined `Representation`, and returning early would leave that trailing `Representation` unread for the next call to misinterpret). See `backend/mcp-server/src/lib.rs`'s module docs and `CoreConnection::send_and_drain`.
+
+**Deliberately not done in this early pass** (real Phase 12 work, not skipped by oversight): Phase 10/11 tools (don't exist yet), `bluejs_run`/`bluejs_analyze` (Phase 13 doesn't exist yet), on-demand process spawning via Phase 8's launcher (`blueice-mcp-server` spawns `core` unconditionally on startup today), the `protocol_version` handshake Phase 1/5 also deferred, and validation against a real MCP client such as Claude Code (only tested against a fake `core` responder and the real `blueice-core` subprocess directly — not yet through an actual MCP client speaking the wire protocol end to end).
 
 ## Design sketch
 
@@ -30,8 +43,10 @@ Expose BlueIce's capabilities — browsing/rendering (Phase 1/5's AI-facing API)
 
 ## Checklist
 
-- [ ] Confirm MCP is implemented as an adapter over the existing internal IPC protocol, not a parallel channel
-- [ ] Confirm which of Phase 1/5/7/9/10/11's capabilities are in scope for MCP exposure
-- [ ] Design MCP tool definitions once the underlying APIs they wrap are real (blocked on those phases, not startable in isolation)
-- [ ] Build the MCP server against those tool definitions, as an on-demand-spawned process (with Phase 8's launcher), per `research/multi-process-memory.md`
+- [x] Confirm MCP is implemented as an adapter over the existing internal IPC protocol, not a parallel channel — `backend/mcp-server` wraps `blueice-ipc` exclusively, no browsing logic of its own
+- [x] Design and build MCP tool definitions for the capabilities that are real today (Phase 5's API) — see "Foundation built early" above
+- [ ] Confirm which of Phase 7/9/10/11's capabilities (once they exist) are in scope for MCP exposure, beyond the Phase 5 API already covered
+- [ ] Extend the tool set as Phase 10/11/13 land (`download_file`/`list_transfers`, `ftp_connect`/`sftp_connect`, `bluejs_run`/`bluejs_analyze`)
+- [ ] Switch from unconditional spawn to on-demand process spawning (with Phase 8's launcher), per `research/multi-process-memory.md`
+- [ ] Implement the `protocol_version` handshake Phase 1/5 deferred, once a genuinely independent client makes protocol drift a real risk
 - [ ] Validate against an actual MCP client (e.g. Claude Code) driving a real BlueIce instance end to end
