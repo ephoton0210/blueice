@@ -26,6 +26,15 @@
 //! `Window::set_visible` on this process's own window and never
 //! touches `core` at all, which is the point: visibility is purely a
 //! `frontend`-side, windowing-layer concern.
+//!
+//! A fourth stdin command, `credits`, navigates to `core`'s built-in
+//! `about:credits` page (`blueice_engine::credits`) -- BlueIce's
+//! Help/About/Credits screen (`phase-4-human-rendering-path/PLAN.md`).
+//! `frontend` doesn't depend on `blueice-engine` to know that URL --
+//! like any other URL sent over `ClientMessage::Navigate`, it's just a
+//! string this process and `core` both happen to agree on, the same
+//! way a real platform-native frontend (not necessarily even Rust)
+//! would.
 
 use blueice_ipc::{shm, ClientMessage, ServerMessage};
 use softbuffer::{Context, Surface};
@@ -78,11 +87,17 @@ fn wait_for_socket(path: &Path, timeout: Duration) -> bool {
     false
 }
 
+/// The well-known URL `core`'s built-in credits page lives at
+/// (`blueice_engine::credits::CREDITS_URL`) -- duplicated here rather
+/// than imported, per the module docs above.
+const CREDITS_URL: &str = "about:credits";
+
 #[derive(Debug)]
 enum UserEvent {
     Server(ServerMessage),
     Disconnected,
     SetVisible(bool),
+    Navigate(String),
     Quit,
 }
 
@@ -209,6 +224,7 @@ impl ApplicationHandler<UserEvent> for App {
                 }
                 self.send(&ClientMessage::SetVisible(visible));
             }
+            UserEvent::Navigate(url) => self.send(&ClientMessage::Navigate { url }),
             UserEvent::Quit => {
                 self.send(&ClientMessage::Shutdown);
                 event_loop.exit();
@@ -221,24 +237,32 @@ impl ApplicationHandler<UserEvent> for App {
     }
 }
 
-/// Reads `show`/`hide`/`quit` lines from stdin and forwards them as
-/// events -- see module docs for why stdin stands in for a real
-/// AI-facing control channel here.
+/// Maps one trimmed stdin line to the event it requests, or `None` for
+/// a blank/unrecognized line -- split out from [`spawn_stdin_commands`]
+/// so this mapping is a plain unit-testable function, not something
+/// only exercisable by actually piping into the process's stdin.
+fn stdin_line_to_event(line: &str) -> Option<UserEvent> {
+    match line.trim() {
+        "show" => Some(UserEvent::SetVisible(true)),
+        "hide" => Some(UserEvent::SetVisible(false)),
+        "credits" => Some(UserEvent::Navigate(CREDITS_URL.to_string())),
+        "quit" => Some(UserEvent::Quit),
+        other if !other.is_empty() => {
+            eprintln!("blueice-frontend: unrecognized command {other:?} (try show/hide/credits/quit)");
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Reads `show`/`hide`/`credits`/`quit` lines from stdin and forwards
+/// them as events -- see module docs for why stdin stands in for a
+/// real AI-facing control channel here.
 fn spawn_stdin_commands(proxy: EventLoopProxy<UserEvent>) {
     std::thread::spawn(move || {
         let stdin = std::io::stdin();
         for line in stdin.lock().lines().map_while(Result::ok) {
-            let event = match line.trim() {
-                "show" => Some(UserEvent::SetVisible(true)),
-                "hide" => Some(UserEvent::SetVisible(false)),
-                "quit" => Some(UserEvent::Quit),
-                other if !other.is_empty() => {
-                    eprintln!("blueice-frontend: unrecognized command {other:?} (try show/hide/quit)");
-                    None
-                }
-                _ => None,
-            };
-            if let Some(event) = event {
+            if let Some(event) = stdin_line_to_event(&line) {
                 let is_quit = matches!(event, UserEvent::Quit);
                 if proxy.send_event(event).is_err() || is_quit {
                     break;
@@ -347,5 +371,37 @@ mod tests {
         let path = std::env::temp_dir().join("blueice-never-appears.sock");
         let _ = std::fs::remove_file(&path);
         assert!(!wait_for_socket(&path, Duration::from_millis(50)));
+    }
+
+    #[test]
+    fn stdin_show_and_hide_map_to_set_visible_events() {
+        assert!(matches!(stdin_line_to_event("show"), Some(UserEvent::SetVisible(true))));
+        assert!(matches!(stdin_line_to_event("hide"), Some(UserEvent::SetVisible(false))));
+    }
+
+    #[test]
+    fn stdin_credits_command_navigates_to_the_built_in_credits_page() {
+        assert!(matches!(stdin_line_to_event("credits"), Some(UserEvent::Navigate(url)) if url == CREDITS_URL));
+    }
+
+    #[test]
+    fn stdin_quit_command_maps_to_quit() {
+        assert!(matches!(stdin_line_to_event("quit"), Some(UserEvent::Quit)));
+    }
+
+    #[test]
+    fn stdin_commands_are_trimmed_of_surrounding_whitespace() {
+        assert!(matches!(stdin_line_to_event("  credits  "), Some(UserEvent::Navigate(_))));
+    }
+
+    #[test]
+    fn blank_stdin_line_produces_no_event() {
+        assert!(stdin_line_to_event("").is_none());
+        assert!(stdin_line_to_event("   ").is_none());
+    }
+
+    #[test]
+    fn unrecognized_stdin_command_produces_no_event() {
+        assert!(stdin_line_to_event("bogus").is_none());
     }
 }

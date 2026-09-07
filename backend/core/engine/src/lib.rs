@@ -8,6 +8,7 @@
 //! plus Phase 4's page-state layer ([`Page`]) that the `core` process
 //! binary (`src/bin/blueice-core.rs`) drives from IPC messages.
 
+pub mod credits;
 mod page;
 pub mod session;
 mod stylesheet;

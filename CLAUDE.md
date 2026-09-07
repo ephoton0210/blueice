@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `backend/testing` — shared cross-stage test interface (fixture format + DOM dump serializer); see "Rendering-correctness fixtures" and "UI testing strategy" in `TEST_PLAN.md`.
 - `backend/extension` — still a stub/placeholder, per plan §1's process-architecture scope.
 
-**Phase 4 (human-visible rendering path) is nearly done** — only a Help/About/Credits screen remains (see `phase-4-human-rendering-path/PLAN.md`). `core` and `frontend` are real, separate OS processes:
+**Phase 4 (human-visible rendering path) is done** (see `phase-4-human-rendering-path/PLAN.md`). `core` and `frontend` are real, separate OS processes:
 
 - `backend/ipc` — the control-plane protocol (`ClientMessage`/`ServerMessage` over a length-prefixed-JSON Unix domain socket) and the frame-plane (`blueice_ipc::shm`, real `mmap`-backed frame files).
 - `backend/net` — HTTP fetching for navigation (`ureq`-based).

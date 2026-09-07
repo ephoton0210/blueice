@@ -1,0 +1,121 @@
+BlueIce fixture corpus -- MVP acceptance-bar demo page
+(phase-2-mvp-scope/PLAN.md's "concrete demo page" checklist item).
+Exercises headings, inline formatting (bold/italic), a link, a list, a
+styled box (background/border/padding), and a form in one page -- the
+concrete "smallest subset that can render real, simple pages" bar from
+plan §4. Checked end to end through blueice_engine::render() by
+backend/core/engine/tests/fixtures.rs (same #paint dump this fixture
+format already reuses for every other #paint-bearing fixture).
+
+#data
+<html>
+<head><title>Demo</title></head>
+<body>
+<h1>Welcome</h1>
+<p>This is <b>bold</b> and <i>italic</i> text with a <a href="https://example.com">link</a>.</p>
+<ul>
+<li>one</li>
+<li>two</li>
+</ul>
+<div style="background-color: #eeeeee; border: 1px solid #333333; padding: 4px;">
+<form action="/submit" method="post">
+<label for="name">Name</label>
+<input id="name" type="text" placeholder="Your name">
+<button type="submit">Go</button>
+</form>
+</div>
+</body>
+</html>
+#document
+| <html>
+|   <head>
+|     <title>
+|       "Demo"
+|   "
+"
+|   <body>
+|     "
+"
+|     <h1>
+|       "Welcome"
+|     "
+"
+|     <p>
+|       "This is "
+|       <b>
+|         "bold"
+|       " and "
+|       <i>
+|         "italic"
+|       " text with a "
+|       <a>
+|         href="https://example.com"
+|         "link"
+|       "."
+|     "
+"
+|     <ul>
+|       "
+"
+|       <li>
+|         "one"
+|       "
+"
+|       <li>
+|         "two"
+|       "
+"
+|     "
+"
+|     <div>
+|       style="background-color: #eeeeee; border: 1px solid #333333; padding: 4px;"
+|       "
+"
+|       <form>
+|         action="/submit"
+|         method="post"
+|         "
+"
+|         <label>
+|           for="name"
+|           "Name"
+|         "
+"
+|         <input>
+|           id="name"
+|           placeholder="Your name"
+|           type="text"
+|         "
+"
+|         <button>
+|           type="submit"
+|           "Go"
+|         "
+"
+|       "
+"
+|     "
+"
+|     "
+"
+#paint
+text 0.0,0.0 "Welcome" #000000 32.0 bold normal
+text 0.0,38.4 "This" #000000 16.0 normal normal
+text 37.8,38.4 "is" #000000 16.0 normal normal
+text 55.6,38.4 "bold" #000000 16.0 bold normal
+text 100.1,38.4 "and" #000000 16.0 normal normal
+text 135.3,38.4 "italic" #000000 16.0 normal italic
+text 178.6,38.4 "text" #000000 16.0 normal normal
+text 215.5,38.4 "with" #000000 16.0 normal normal
+text 254.6,38.4 "a" #000000 16.0 normal normal
+text 269.5,38.4 "link" #000000 16.0 normal normal
+text 302.9,38.4 "." #000000 16.0 normal normal
+text 0.0,57.6 "one" #000000 16.0 normal normal
+text 0.0,76.8 "two" #000000 16.0 normal normal
+rect 0.0,96.0 320.0x48.4 #eeeeee
+border 0.0,96.0 320.0x1.0 #333333
+border 319.0,96.0 1.0x48.4 #333333
+border 0.0,143.4 320.0x1.0 #333333
+border 0.0,96.0 1.0x48.4 #333333
+text 5.0,101.0 "Name" #000000 16.0 normal normal
+text 5.0,120.2 "Go" #000000 16.0 normal normal

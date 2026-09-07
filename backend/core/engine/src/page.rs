@@ -64,8 +64,15 @@ impl Page {
         self.scroll_y = self.scroll_y.min(max_scroll);
     }
 
-    /// Fetches `url` over the network and loads it as the current page.
+    /// Fetches `url` over the network and loads it as the current
+    /// page -- except for the handful of built-in `about:` pages
+    /// ([`built_in_page`]), which never hit the network at all.
     pub fn navigate(&mut self, url: &str) -> Result<(), blueice_net::FetchError> {
+        if let Some(html) = built_in_page(url) {
+            self.load_html(html);
+            self.url = Some(url.to_string());
+            return Ok(());
+        }
         let fetched = blueice_net::fetch(url)?;
         self.load_html(&fetched.body);
         self.url = Some(fetched.final_url);
@@ -177,6 +184,18 @@ fn nearest_link_href(doc: &Document, mut node: NodeId) -> Option<String> {
     }
 }
 
+/// The HTML for `url`, for the small set of `about:` URLs `navigate`
+/// serves locally instead of fetching over the network -- `None` for
+/// any other URL (including unrecognized `about:` ones, which aren't
+/// treated as built-in pages here).
+fn built_in_page(url: &str) -> Option<&'static str> {
+    match url {
+        crate::credits::CREDITS_URL => Some(crate::credits::CREDITS_HTML),
+        "about:blank" => Some(""),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,6 +217,37 @@ mod tests {
         page.load_html_str("<p>hi</p>", Some("about:blank".to_string()));
         assert_eq!(page.url(), Some("about:blank"));
         assert!(page.render().commands.iter().any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "hi")));
+    }
+
+    #[test]
+    fn navigate_to_about_credits_loads_the_built_in_credits_page_without_network() {
+        let mut page = Page::new(320.0, 200.0);
+        page.navigate("about:credits").unwrap();
+        assert_eq!(page.url(), Some("about:credits"));
+        let text = all_text(&page.render());
+        assert!(text.contains("Chromium"), "must reproduce the Chromium BSD-3-Clause notice: {text}");
+        assert!(text.contains("Gecko"), "must credit Gecko: {text}");
+        assert!(text.contains("DejaVu"), "must credit the bundled DejaVu font: {text}");
+    }
+
+    #[test]
+    fn navigate_to_about_blank_loads_an_empty_page_without_network() {
+        let mut page = Page::new(320.0, 200.0);
+        page.navigate("about:blank").unwrap();
+        assert_eq!(page.url(), Some("about:blank"));
+        assert!(page.render().commands.is_empty());
+    }
+
+    fn all_text(frame: &Frame) -> String {
+        frame
+            .commands
+            .iter()
+            .filter_map(|c| match c {
+                PaintCommand::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     #[test]

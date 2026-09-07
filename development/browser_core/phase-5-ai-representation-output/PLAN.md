@@ -10,6 +10,10 @@ Implement the AI-facing representation and API defined in Phase 1, sourced from 
 
 ## Plan
 
+**Two prerequisites surfaced by [Phase 2](../phase-2-mvp-scope/PLAN.md)'s cross-check against the Phase 1 schema, not yet closed**:
+- `opacity` isn't in the MVP CSS property list at all, so there's currently no source for the schema's `opacity` field — add it to `blueice-css`'s property list and thread it through `blueice-paint`/`blueice-raster` before relying on it here (small: one non-inherited numeric property, no cascade-origin complexity).
+- `hovered`/`focused` need real, persistent interaction state on `Page` — today `click` is stateless hit-testing with no stored "currently focused node" or last cursor position; this state has to be introduced as part of this phase's own implementation, not assumed to already exist.
+
 - Implement extraction of the Phase 1 representation from the same pipeline state Phase 4 renders from — not a second, independently-timed pass.
 - The API boundary question below is largely settled by plan §1's process architecture: `core` already exposes an IPC surface to `extension` and `frontend`, so the AI-facing API is a third client of that same surface rather than a separately-designed channel — implement it as such unless something concrete forces a divergence.
 - Because "same render pass" is the entire point of the project, this phase needs an explicit test proving it: assert that the AI representation and the human-visible frame correspond to the same render pass / JS execution state, not just that they're usually close.

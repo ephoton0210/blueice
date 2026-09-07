@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress (control-plane IPC, frame-plane, reference frontend, navigation, and all interaction handling implemented and verified end-to-end through a real windowed frontend; only the Help/About/Credits screen remains)
+**Status**: Done
 
 ## Objective
 
@@ -36,4 +36,6 @@ This phase is deliberately scoped to *displaying and interacting with* what Phas
 - [x] Handle window resize, feeding back into layout — verified live (see below)
 - [x] Handle basic navigation (load URL, follow links) — `blueice-net` fetch + `Page::navigate`; verified live against real internet hosts
 - [x] Manually verify rendering — the Phase 2 MVP HTML/CSS demo content (`blueice-raster`'s `examples/render_demo.rs`) was checked by rendering to PNG and looking at it (Phase 2 never formally defined a canonical demo page, tracked separately in its own PLAN.md checklist); the full `core`↔`frontend` pipeline was additionally verified end-to-end in a real window under WSLg against live internet pages (`https://example.com`, following its "Learn more" link to `iana.org`) — real navigate, resize, and click-driven navigation all confirmed by screenshot. This pass also caught and fixed a real bug: text measured with an approximate width (unrelated to the actual bundled font) visibly overlapped adjacent words once real glyphs were on screen -- see `blueice-font`'s crate docs
-- [ ] Add a Help/About/Credits screen reproducing the Chromium BSD-3-Clause notice and crediting Gecko (BSD-3-Clause binary-distribution requirement — see Phase 0) — still needs the DejaVu/Bitstream Vera notice added alongside Chromium/Gecko now that a font is actually bundled (`blueice-font`)
+- [x] Add a Help/About/Credits screen reproducing the Chromium BSD-3-Clause notice and crediting Gecko (BSD-3-Clause binary-distribution requirement — see Phase 0), plus the DejaVu/Bitstream Vera notice for the bundled font — `blueice_engine::credits` (`CREDITS_URL`/`CREDITS_HTML`), rendered through the normal HTML/CSS/layout/paint pipeline rather than a separate drawing path, so it goes through the same one render pass as any other page. `Page::navigate` serves it (and `about:blank`) locally instead of hitting the network; `blueice-frontend` gets a fourth stdin command, `credits`, alongside `show`/`hide`/`quit`. Manually verified by rendering to PNG (`backend/core/engine/examples/render_credits.rs`, mirroring `blueice-raster`'s `render_demo.rs`) and looking at it — every section (Chromium notice, Gecko credit, DejaVu/Bitstream Vera notice) renders legibly with no visual defects; the underlying `Navigate`/IPC path this reuses was already verified live in a real window for other pages.
+
+All eleven checklist items are done — Phase 4 is complete.
