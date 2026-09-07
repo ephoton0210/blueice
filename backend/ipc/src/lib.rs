@@ -85,6 +85,17 @@ pub enum ClientMessage {
     /// layout change instead of a caller having to recompute a screen
     /// rectangle itself.
     Highlight { id: Option<u64> },
+    /// Requests a full DOM tree dump (`blueice_dom::dump`'s canonical
+    /// text format -- the same one `blueice-testing`'s fixture corpus
+    /// checks `blueice-html` against), replied to with
+    /// [`ServerMessage::Dom`]. Deliberately separate from
+    /// [`ClientMessage::GetRepresentation`]: the AI-facing snapshot
+    /// intentionally excludes purely-decorative/non-semantic nodes
+    /// (`phase-1-ai-representation-layer/spike.md`), which is exactly
+    /// what a structural comparison against a real browser's DOM (the
+    /// Chromium differential-testing harness, `TEST_PLAN.md`) needs to
+    /// *not* have filtered out.
+    GetDom,
     Chrome(ChromeCommand),
     Shutdown,
 }
@@ -104,6 +115,8 @@ pub enum ServerMessage {
     Navigated { url: String },
     /// Reply to [`ClientMessage::GetRepresentation`].
     Representation(AiSnapshot),
+    /// Reply to [`ClientMessage::GetDom`].
+    Dom(String),
     Error { message: String },
 }
 
@@ -158,6 +171,7 @@ mod tests {
             ClientMessage::ActOn { id: 7, action: NodeAction::Click },
             ClientMessage::Highlight { id: Some(7) },
             ClientMessage::Highlight { id: None },
+            ClientMessage::GetDom,
             ClientMessage::Shutdown,
         ] {
             let mut buf = Vec::new();
@@ -191,6 +205,7 @@ mod tests {
                     occluded_fraction: 0.0,
                 }],
             }),
+            ServerMessage::Dom("| <html>\n".to_string()),
             ServerMessage::Error { message: "oops".to_string() },
         ] {
             let mut buf = Vec::new();

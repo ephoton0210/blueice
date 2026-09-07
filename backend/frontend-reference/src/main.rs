@@ -238,11 +238,12 @@ impl ApplicationHandler<UserEvent> for App {
                 eprintln!("blueice-frontend: core reported an error: {message}");
             }
             // This reference frontend has no AI-facing consumer of its
-            // own -- a Representation only arrives if something else
-            // sharing this connection asked for one. An AI-facing
-            // client would consume `AiSnapshot` directly rather than
-            // routing it through a human window.
-            UserEvent::Server(ServerMessage::Representation(_)) => {}
+            // own -- a Representation/Dom only arrives if something
+            // else sharing this connection asked for one. An AI-facing
+            // client (or the differential-testing harness,
+            // `TEST_PLAN.md`) would consume these directly rather than
+            // routing them through a human window.
+            UserEvent::Server(ServerMessage::Representation(_) | ServerMessage::Dom(_)) => {}
             UserEvent::Disconnected => {
                 eprintln!("blueice-frontend: core disconnected");
                 event_loop.exit();

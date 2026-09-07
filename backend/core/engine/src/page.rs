@@ -190,6 +190,16 @@ impl Page {
         crate::ai_snapshot::build(self, generation)
     }
 
+    /// The full DOM tree, in `blueice_dom::dump`'s canonical text
+    /// format -- unlike [`Page::snapshot`], nothing is filtered out
+    /// (no semantic-role requirement, no `display:none` exclusion),
+    /// since a structural comparison against a real browser's DOM
+    /// (the Chromium differential-testing harness, `TEST_PLAN.md`)
+    /// needs the whole tree, not the AI-facing subset of it.
+    pub fn dom_dump(&self) -> String {
+        blueice_dom::dump(&self.doc)
+    }
+
     pub(crate) fn doc(&self) -> &Document {
         &self.doc
     }
@@ -395,6 +405,24 @@ mod tests {
         page.navigate("about:blank").unwrap();
         assert_eq!(page.url(), Some("about:blank"));
         assert!(page.render().commands.is_empty());
+    }
+
+    #[test]
+    fn dom_dump_matches_blueice_doms_own_dump_of_the_same_document() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(r#"<div class="x"><p>hi</p></div>"#, None);
+        assert_eq!(page.dom_dump(), blueice_dom::dump(page.doc()));
+        assert!(page.dom_dump().contains("<div>"));
+    }
+
+    #[test]
+    fn dom_dump_includes_nodes_the_ai_snapshot_would_exclude() {
+        // a bare <div> has no semantic role, so Page::snapshot excludes
+        // it entirely -- dom_dump must not apply that filter.
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(r#"<div style="background-color: red;">x</div>"#, None);
+        assert!(page.dom_dump().contains("<div>"));
+        assert!(page.snapshot(0).nodes.is_empty());
     }
 
     fn all_text(frame: &Frame) -> String {

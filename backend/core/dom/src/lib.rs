@@ -269,9 +269,88 @@ impl Document {
     }
 }
 
+/// Renders `doc` as a canonical, whitespace-exact tree dump -- a
+/// `| `-prefixed, 2-space-per-depth indented listing, elements as
+/// `<tag>`, attributes as their own sorted, one-level-deeper lines,
+/// text as `"content"`. Adapted from the html5lib-tests tree-
+/// construction format rather than invented, because it's already the
+/// de facto standard this exact kind of dump takes in every browser
+/// engine this project reads as reference, and it's trivially
+/// diffable by a human. Two documents with the same effective shape
+/// always produce byte-identical dumps (attributes are sorted, so
+/// insertion order never leaks into the comparison) -- what makes this
+/// usable both as `blueice-testing`'s fixture format (`#document`
+/// sections; re-exported from there as `dump_dom` for that corpus's
+/// existing call sites) and, per
+/// `development/browser_core/testing/TEST_PLAN.md`'s Chromium
+/// differential-testing plan, as a `blueice_ipc::ClientMessage::GetDom`
+/// reply a comparison harness can diff against a serialized Chromium
+/// DOM. Comments/doctypes never appear, matching `blueice_html`'s tree
+/// builder not materializing them as nodes.
+pub fn dump(doc: &Document) -> String {
+    let mut out = String::new();
+    for child in doc.children(doc.root()) {
+        dump_node(doc, child, 0, &mut out);
+    }
+    out
+}
+
+fn dump_node(doc: &Document, id: NodeId, depth: usize, out: &mut String) {
+    let indent = "  ".repeat(depth);
+    match doc.data(id) {
+        NodeData::Document => unreachable!("the Document node is never its own child"),
+        NodeData::Element { tag_name, attributes } => {
+            out.push_str(&format!("| {indent}<{tag_name}>\n"));
+            let mut attrs: Vec<_> = attributes.iter().collect();
+            attrs.sort_by(|a, b| a.0.cmp(&b.0));
+            let attr_indent = "  ".repeat(depth + 1);
+            for (name, value) in attrs {
+                out.push_str(&format!("| {attr_indent}{name}=\"{value}\"\n"));
+            }
+            for child in doc.children(id) {
+                dump_node(doc, child, depth + 1, out);
+            }
+        }
+        NodeData::Text { data } => {
+            out.push_str(&format!("| {indent}\"{data}\"\n"));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dump_renders_nested_elements_and_text() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let p = doc.create_node(NodeData::Element { tag_name: "p".to_string(), attributes: vec![] });
+        doc.append_child(root, p);
+        let text = doc.create_node(NodeData::Text { data: "hi".to_string() });
+        doc.append_child(p, text);
+
+        assert_eq!(dump(&doc), "| <p>\n|   \"hi\"\n");
+    }
+
+    #[test]
+    fn dump_sorts_attributes_regardless_of_insertion_order() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let div = doc.create_node(NodeData::Element {
+            tag_name: "div".to_string(),
+            attributes: vec![("class".to_string(), "b".to_string()), ("id".to_string(), "a".to_string())],
+        });
+        doc.append_child(root, div);
+
+        assert_eq!(dump(&doc), "| <div>\n|   class=\"b\"\n|   id=\"a\"\n");
+    }
+
+    #[test]
+    fn dump_of_empty_document_is_empty_string() {
+        let doc = Document::new();
+        assert_eq!(dump(&doc), "");
+    }
 
     fn elem(tag: &str) -> NodeData {
         NodeData::Element {

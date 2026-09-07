@@ -29,45 +29,17 @@
 //! project reads as reference, and it's trivially diffable by a human.
 //! Comments/doctypes never appear in the dump, matching `blueice-dom`
 //! not materializing them as nodes (see `blueice_html`'s tree builder).
+//!
+//! The dump function itself lives in `blueice_dom` now (`dump_dom`
+//! here is a re-export) -- it stopped being test-only the moment
+//! `blueice-engine`'s production `ClientMessage::GetDom` needed the
+//! exact same format for the Chromium differential-testing harness
+//! (`TEST_PLAN.md`), and a production crate depending on this crate
+//! (explicitly testing-only infrastructure) would have been backwards.
 
-use blueice_dom::{Document, NodeData, NodeId};
 use std::path::{Path, PathBuf};
 
-/// Renders `doc` as a canonical, whitespace-exact tree dump in the
-/// `#document` format described in the module docs. Two documents with
-/// the same effective shape always produce byte-identical dumps
-/// (attributes are sorted, so insertion order never leaks into the
-/// comparison), which is what makes this usable as a fixture's expected
-/// output rather than an ad hoc `Debug` dump.
-pub fn dump_dom(doc: &Document) -> String {
-    let mut out = String::new();
-    for child in doc.children(doc.root()) {
-        dump_node(doc, child, 0, &mut out);
-    }
-    out
-}
-
-fn dump_node(doc: &Document, id: NodeId, depth: usize, out: &mut String) {
-    let indent = "  ".repeat(depth);
-    match doc.data(id) {
-        NodeData::Document => unreachable!("the Document node is never its own child"),
-        NodeData::Element { tag_name, attributes } => {
-            out.push_str(&format!("| {indent}<{tag_name}>\n"));
-            let mut attrs: Vec<_> = attributes.iter().collect();
-            attrs.sort_by(|a, b| a.0.cmp(&b.0));
-            let attr_indent = "  ".repeat(depth + 1);
-            for (name, value) in attrs {
-                out.push_str(&format!("| {attr_indent}{name}=\"{value}\"\n"));
-            }
-            for child in doc.children(id) {
-                dump_node(doc, child, depth + 1, out);
-            }
-        }
-        NodeData::Text { data } => {
-            out.push_str(&format!("| {indent}\"{data}\"\n"));
-        }
-    }
-}
+pub use blueice_dom::dump as dump_dom;
 
 /// One fixture parsed out of a `.dat` file: a name (for failure
 /// messages) plus every named section found in source order. Sections
@@ -204,40 +176,20 @@ pub fn fixtures_dir() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use blueice_dom::NodeData;
+    use blueice_dom::{Document, NodeData};
 
     #[test]
-    fn dump_dom_renders_nested_elements_and_text() {
+    fn dump_dom_re_exports_blueice_doms_dump_function() {
+        // the real coverage of dump's own behavior (nesting, attribute
+        // sorting, the empty case) now lives in blueice-dom itself,
+        // alongside the implementation -- this just proves the
+        // re-export this corpus's existing #document-section call
+        // sites depend on actually points at it.
         let mut doc = Document::new();
-        let root = doc.root();
-        let p = doc.create_node(NodeData::Element {
-            tag_name: "p".to_string(),
-            attributes: vec![],
-        });
-        doc.append_child(root, p);
-        let text = doc.create_node(NodeData::Text { data: "hi".to_string() });
-        doc.append_child(p, text);
-
-        assert_eq!(dump_dom(&doc), "| <p>\n|   \"hi\"\n");
-    }
-
-    #[test]
-    fn dump_dom_sorts_attributes_regardless_of_insertion_order() {
-        let mut doc = Document::new();
-        let root = doc.root();
-        let div = doc.create_node(NodeData::Element {
-            tag_name: "div".to_string(),
-            attributes: vec![("class".to_string(), "b".to_string()), ("id".to_string(), "a".to_string())],
-        });
-        doc.append_child(root, div);
-
-        assert_eq!(dump_dom(&doc), "| <div>\n|   class=\"b\"\n|   id=\"a\"\n");
-    }
-
-    #[test]
-    fn dump_dom_of_empty_document_is_empty_string() {
-        let doc = Document::new();
-        assert_eq!(dump_dom(&doc), "");
+        let p = doc.create_node(NodeData::Element { tag_name: "p".to_string(), attributes: vec![] });
+        doc.append_child(doc.root(), p);
+        assert_eq!(dump_dom(&doc), blueice_dom::dump(&doc));
+        assert_eq!(dump_dom(&doc), "| <p>\n");
     }
 
     #[test]

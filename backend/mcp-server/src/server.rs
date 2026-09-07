@@ -110,6 +110,14 @@ impl BlueIceMcpServer {
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 
+    #[tool(
+        description = "Get the full DOM tree as a canonical text dump, unfiltered by the AI representation's semantic-role/display:none exclusion -- useful for structural comparison against another browser's DOM"
+    )]
+    async fn get_dom(&self) -> Result<CallToolResult, ErrorData> {
+        let dump = blocking(self.conn(), |conn| conn.dom()).await?;
+        Ok(CallToolResult::success(vec![Content::text(dump)]))
+    }
+
     #[tool(description = "Click the element with this node ID (follows a link's href if it is or is inside one, same as a human click)")]
     async fn click(&self, Parameters(NodeIdParams { node_id }): Parameters<NodeIdParams>) -> Result<CallToolResult, ErrorData> {
         let outcome = blocking(self.conn(), move |conn| conn.act(node_id, NodeAction::Click)).await?;

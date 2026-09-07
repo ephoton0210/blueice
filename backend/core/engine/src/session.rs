@@ -69,6 +69,9 @@ pub fn run_session<S: Read + Write>(page: &mut Page, stream: &mut S, frame_dir: 
                 let snapshot = page.snapshot(*generation);
                 blueice_ipc::write_server_message(stream, &ServerMessage::Representation(snapshot))?;
             }
+            ClientMessage::GetDom => {
+                blueice_ipc::write_server_message(stream, &ServerMessage::Dom(page.dom_dump()))?;
+            }
             ClientMessage::ActOn { id, action } => {
                 let is_click = matches!(action, NodeAction::Click);
                 match page.act(NodeId::from_u64(id), action) {
@@ -287,6 +290,28 @@ mod tests {
         let ServerMessage::Representation(snapshot) = reply else { panic!("expected Representation, got {reply:?}") };
         assert_eq!(snapshot.generation, frame_generation);
         assert!(snapshot.nodes.iter().any(|n| n.name.as_deref() == Some("Go")));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn get_dom_returns_the_full_tree_unfiltered_by_the_ai_representation() {
+        let dir = temp_frame_dir("get-dom");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut page = Page::new(320.0, 200.0);
+            page.load_html_str(r#"<div style="background-color: red;">x</div>"#, None);
+            let mut generation = 0u64;
+            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            dir
+        });
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GetDom).unwrap();
+        let reply = blueice_ipc::read_server_message(&mut client).unwrap();
+        let ServerMessage::Dom(dump) = reply else { panic!("expected Dom, got {reply:?}") };
+        assert!(dump.contains("<div>"), "a bare div has no AI-representation role but must still appear in the full DOM dump: {dump}");
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();

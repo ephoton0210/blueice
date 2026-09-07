@@ -91,7 +91,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 ServerMessage::FrameReady { shm_path, width, height, generation } => {
                     self.last_frame = Some(FrameInfo { shm_path, width, height, generation });
                 }
-                ServerMessage::Navigated { .. } => {}
+                ServerMessage::Navigated { .. } | ServerMessage::Dom(_) => {}
             }
         }
     }
@@ -119,7 +119,26 @@ impl<S: Read + Write> CoreConnection<S> {
                 ServerMessage::FrameReady { shm_path, width, height, generation } => {
                     self.last_frame = Some(FrameInfo { shm_path, width, height, generation });
                 }
-                ServerMessage::Error { .. } | ServerMessage::Navigated { .. } => {}
+                ServerMessage::Error { .. } | ServerMessage::Navigated { .. } | ServerMessage::Dom(_) => {}
+            }
+        }
+    }
+
+    /// The full DOM tree (`blueice_dom::dump`'s canonical text format),
+    /// unfiltered by the AI-representation's semantic-role/`display:
+    /// none` exclusion -- what the Chromium differential-testing
+    /// harness (`TEST_PLAN.md`) diffs a serialized Chromium DOM
+    /// against. Same "nothing to pipeline it after" shape as
+    /// [`CoreConnection::representation`].
+    pub fn dom(&mut self) -> io::Result<String> {
+        blueice_ipc::write_client_message(&mut self.stream, &ClientMessage::GetDom)?;
+        loop {
+            match blueice_ipc::read_server_message(&mut self.stream)? {
+                ServerMessage::Dom(dump) => return Ok(dump),
+                ServerMessage::FrameReady { shm_path, width, height, generation } => {
+                    self.last_frame = Some(FrameInfo { shm_path, width, height, generation });
+                }
+                ServerMessage::Error { .. } | ServerMessage::Navigated { .. } | ServerMessage::Representation(_) => {}
             }
         }
     }
@@ -417,6 +436,38 @@ mod tests {
         let mut conn = CoreConnection::new(client);
         let snap = conn.representation().unwrap();
         assert_eq!(snap.generation, 0);
+    }
+
+    #[test]
+    fn dom_alone_sends_no_prior_action() {
+        let (client, server) = UnixStream::pair().unwrap();
+        fake_core(
+            server,
+            vec![Box::new(|msg, s| {
+                assert!(matches!(msg, ClientMessage::GetDom));
+                reply(s, &ServerMessage::Dom("| <html>\n".to_string()));
+            })],
+        );
+
+        let mut conn = CoreConnection::new(client);
+        assert_eq!(conn.dom().unwrap(), "| <html>\n");
+    }
+
+    #[test]
+    fn dom_still_caches_a_frame_ready_seen_along_the_way() {
+        let (client, server) = UnixStream::pair().unwrap();
+        fake_core(
+            server,
+            vec![Box::new(|msg, s| {
+                assert!(matches!(msg, ClientMessage::GetDom));
+                reply(s, &ServerMessage::FrameReady { shm_path: "/tmp/dom".to_string(), width: 1, height: 1, generation: 5 });
+                reply(s, &ServerMessage::Dom("| <html>\n".to_string()));
+            })],
+        );
+
+        let mut conn = CoreConnection::new(client);
+        conn.dom().unwrap();
+        assert_eq!(conn.last_frame().unwrap().generation, 5);
     }
 
     #[test]
