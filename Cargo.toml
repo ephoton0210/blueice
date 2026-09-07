@@ -11,6 +11,7 @@ members = [
     "backend/core/engine",
     "backend/extension",
     "backend/frontend-reference",
+    "backend/i18n",
     "backend/ipc",
     "backend/net",
     "backend/testing",

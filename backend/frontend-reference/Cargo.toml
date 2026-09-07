@@ -10,5 +10,6 @@ path = "src/main.rs"
 
 [dependencies]
 blueice-ipc = { path = "../ipc" }
+blueice-i18n = { path = "../i18n" }
 winit = "0.30"
 softbuffer = "0.4"

@@ -18,46 +18,85 @@
 //! than a separate hardcoded drawing path in `frontend`, so it goes
 //! through the same one render pass `CLAUDE.md`'s core goal requires
 //! for everything else.
+//!
+//! Localized through `blueice-i18n` (`phase-14-i18n-localization/PLAN.md`)
+//! rather than hardcoded English -- see [`credits_html`]. The two
+//! actual license texts this page exists to reproduce (Chromium's
+//! BSD-3-Clause notice, the DejaVu/Bitstream Vera notice) are always
+//! shown in English first, since that's the text BSD-3-Clause's
+//! "reproduce the above copyright notice... verbatim" requirement
+//! actually refers to -- a translation is appended underneath for
+//! locales other than English, clearly labeled non-authoritative,
+//! never in place of the original.
 
 /// The well-known URL [`Page::navigate`](crate::Page::navigate)
 /// recognizes as a request for the built-in credits page instead of a
-/// network fetch. `blueice-frontend` sends this in response to its
-/// `credits` stdin command; it doesn't share this constant directly
-/// (it's a different process, possibly not even Rust) -- like any
-/// other URL, it's just a string carried over `ClientMessage::Navigate`.
+/// network fetch. An optional `?lang=<locale>` query parameter selects
+/// a locale from `blueice_i18n::SUPPORTED_LOCALES` (see
+/// [`locale_from_url`]); `blueice-frontend` sends this in response to
+/// its `credits` stdin command. It doesn't share this constant
+/// directly (it's a different process, possibly not even Rust) --
+/// like any other URL, it's just a string carried over
+/// `ClientMessage::Navigate`.
 pub const CREDITS_URL: &str = "about:credits";
 
-/// The Chromium copyright notice, redistribution conditions, and
-/// disclaimer, copied verbatim (content and wording, not line-by-line
-/// formatting -- the MVP HTML/CSS subset has no `white-space: pre`
-/// support, so the license block is reflowed into semantic
-/// `<p>`/`<ul>` markup rather than a preformatted block) from
-/// `development/browser_core/reference/chromium/LICENSE`.
-pub const CREDITS_HTML: &str = r#"<html><head><title>About BlueIce</title></head><body>
-<h1>About BlueIce</h1>
-<p>BlueIce is a browser engine written from scratch in Rust.</p>
+/// Picks the locale a `CREDITS_URL` request asked for out of an
+/// optional `?lang=<locale>` suffix, falling back to
+/// [`blueice_i18n::DEFAULT_LOCALE`] if absent or not in
+/// [`blueice_i18n::SUPPORTED_LOCALES`] -- an unsupported locale must
+/// degrade to the default page, never fail navigation outright.
+pub fn locale_from_url(url: &str) -> &str {
+    url.split_once("?lang=")
+        .map(|(_, rest)| rest.split('&').next().unwrap_or(rest))
+        .filter(|candidate| blueice_i18n::SUPPORTED_LOCALES.contains(candidate))
+        .unwrap_or(blueice_i18n::DEFAULT_LOCALE)
+}
 
-<h2>Technical references</h2>
-<p>BlueIce is not a clean-room implementation: the Gecko (Firefox) and Chromium/Blink source trees are read directly as technical reference and a porting basis during development. This page credits both projects and reproduces the notice Chromium's license requires for binary distribution.</p>
+const CHROMIUM_CONDITION_KEYS: [&str; 3] = ["chromium-condition-1", "chromium-condition-2", "chromium-condition-3"];
 
-<h2>Chromium</h2>
-<p>Copyright 2015 The Chromium Authors</p>
-<p>Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:</p>
-<ul>
-<li>Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.</li>
-<li>Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.</li>
-<li>Neither the name of Google LLC nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.</li>
-</ul>
-<p>THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.</p>
+/// Builds the credits page HTML for `locale`, pulling every string
+/// through `blueice-i18n`'s `credits` namespace instead of embedding
+/// English literals directly.
+pub fn credits_html(locale: &str) -> String {
+    let t = |key: &str| blueice_i18n::translate(locale, "credits", key, &[]);
+    let en = |key: &str| blueice_i18n::translate(blueice_i18n::DEFAULT_LOCALE, "credits", key, &[]);
+    let is_translated = locale != blueice_i18n::DEFAULT_LOCALE;
 
-<h2>Mozilla Firefox (Gecko)</h2>
-<p>Mozilla Firefox (Gecko) is licensed under the Mozilla Public License, v. 2.0. A copy of the license is available at https://mozilla.org/MPL/2.0/.</p>
+    let mut body = String::new();
+    body.push_str(&format!("<h1>{}</h1><p>{}</p>", t("about-title"), t("about-intro")));
+    body.push_str(&format!("<h2>{}</h2><p>{}</p>", t("technical-references-heading"), t("technical-references-body")));
 
-<h2>Fonts</h2>
-<p>This application bundles the DejaVu Sans font family, derived from Bitstream Vera.</p>
-<p>Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved. Bitstream Vera is a trademark of Bitstream, Inc. DejaVu changes are in the public domain.</p>
-<p>Permission is hereby granted, free of charge, to any person obtaining a copy of the fonts accompanying this license ("Fonts") and associated documentation files (the "Font Software"), to reproduce and distribute the Font Software, including without limitation the rights to use, copy, merge, publish, distribute, and/or sell copies of the Font Software, and to permit persons to whom the Font Software is furnished to do so, subject to the following conditions: the above copyright and trademark notices and this permission notice shall be included in all copies of one or more of the Font Software typefaces.</p>
-</body></html>"#;
+    body.push_str(&format!("<h2>{}</h2>", en("chromium-heading")));
+    push_license_block(&mut body, &en);
+    if is_translated {
+        body.push_str(&format!("<p>{}</p>", t("translation-notice")));
+        push_license_block(&mut body, &t);
+    }
+
+    body.push_str(&format!("<h2>{}</h2><p>{}</p>", en("gecko-heading"), t("gecko-body")));
+
+    body.push_str(&format!("<h2>{}</h2><p>{}</p>", en("fonts-heading"), en("fonts-intro")));
+    body.push_str(&format!("<p>{}</p><p>{}</p>", en("fonts-copyright"), en("fonts-permission")));
+    if is_translated {
+        body.push_str(&format!("<p>{}</p>", t("translation-notice")));
+        body.push_str(&format!("<p>{}</p><p>{}</p>", t("fonts-copyright"), t("fonts-permission")));
+    }
+
+    format!("<html><head><title>{}</title></head><body>{}</body></html>", t("about-title"), body)
+}
+
+/// Appends the Chromium copyright/conditions/disclaimer block using
+/// whichever lookup closure (English or the active locale's
+/// translation) `credits_html` passes in -- factored out so the
+/// English-original and translated renderings can never drift apart
+/// in shape, only in which strings they pull.
+fn push_license_block(body: &mut String, lookup: &dyn Fn(&str) -> String) {
+    body.push_str(&format!("<p>{}</p><p>{}</p><ul>", lookup("chromium-copyright"), lookup("chromium-conditions-intro")));
+    for key in CHROMIUM_CONDITION_KEYS {
+        body.push_str(&format!("<li>{}</li>", lookup(key)));
+    }
+    body.push_str(&format!("</ul><p>{}</p>", lookup("chromium-disclaimer")));
+}
 
 #[cfg(test)]
 mod tests {
@@ -69,12 +108,40 @@ mod tests {
     }
 
     #[test]
-    fn credits_html_reproduces_the_required_notices() {
-        assert!(CREDITS_HTML.contains("Copyright 2015 The Chromium Authors"));
-        assert!(CREDITS_HTML.contains("Redistributions of source code must retain"));
-        assert!(CREDITS_HTML.contains("Redistributions in binary form must reproduce"));
-        assert!(CREDITS_HTML.contains("THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS"));
-        assert!(CREDITS_HTML.contains("Mozilla Public License"));
-        assert!(CREDITS_HTML.contains("Bitstream"));
+    fn locale_from_url_defaults_when_no_query_is_present() {
+        assert_eq!(locale_from_url(CREDITS_URL), blueice_i18n::DEFAULT_LOCALE);
+    }
+
+    #[test]
+    fn locale_from_url_reads_a_supported_lang_parameter() {
+        assert_eq!(locale_from_url("about:credits?lang=zh-TW"), "zh-TW");
+    }
+
+    #[test]
+    fn locale_from_url_falls_back_for_an_unsupported_locale() {
+        assert_eq!(locale_from_url("about:credits?lang=klingon"), blueice_i18n::DEFAULT_LOCALE);
+    }
+
+    #[test]
+    fn default_locale_credits_html_reproduces_the_required_notices_in_english_only() {
+        let html = credits_html(blueice_i18n::DEFAULT_LOCALE);
+        assert!(html.contains("Copyright 2015 The Chromium Authors"));
+        assert!(html.contains("Redistributions of source code must retain"));
+        assert!(html.contains("THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS"));
+        assert!(html.contains("Mozilla Public License"));
+        assert!(html.contains("Bitstream"));
+        assert!(!html.contains("非正式翻譯"), "the English-only page must not carry a translation notice");
+    }
+
+    #[test]
+    fn zh_tw_credits_html_carries_both_the_english_original_and_the_translation() {
+        let html = credits_html("zh-TW");
+        // the authoritative English legal text is still present...
+        assert!(html.contains("Copyright 2015 The Chromium Authors"));
+        assert!(html.contains("THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS"));
+        // ...alongside a labeled Traditional Chinese translation
+        assert!(html.contains("關於 BlueIce"));
+        assert!(html.contains("非正式翻譯"));
+        assert!(html.contains("版權所有 2015 The Chromium Authors"));
     }
 }

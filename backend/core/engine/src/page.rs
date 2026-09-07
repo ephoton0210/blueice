@@ -20,8 +20,9 @@
 
 use blueice_css::{cascade, ua_stylesheet, ComputedStyle, Origin, Rule};
 use blueice_dom::{Document, NodeData, NodeId};
+use blueice_ipc::{AiSnapshot, NodeAction};
 use blueice_layout::{layout, Constraints, Fragment};
-use blueice_paint::{paint, Frame};
+use blueice_paint::{paint, Color, Frame, PaintCommand, Rect};
 use blueice_raster::{rasterize, Pixmap};
 use std::collections::HashMap;
 
@@ -34,6 +35,9 @@ pub struct Page {
     viewport_height: f64,
     scroll_y: f64,
     url: Option<String>,
+    hovered: Option<NodeId>,
+    focused: Option<NodeId>,
+    highlighted: Option<NodeId>,
 }
 
 impl Page {
@@ -47,6 +51,9 @@ impl Page {
             viewport_height,
             scroll_y: 0.0,
             url: None,
+            hovered: None,
+            focused: None,
+            highlighted: None,
         }
     }
 
@@ -55,6 +62,13 @@ impl Page {
         let author = crate::stylesheet::extract_inline_stylesheets(&self.doc);
         self.styles = cascade(&self.doc, &[(Origin::Ua, &self.ua), (Origin::Author, &author)]);
         self.scroll_y = 0.0;
+        // A fresh document invalidates every NodeId a prior interaction
+        // might have recorded -- holding onto a stale ID here would let
+        // a late-arriving ActOn/Highlight silently act on a node from
+        // the *previous* page.
+        self.hovered = None;
+        self.focused = None;
+        self.highlighted = None;
         self.relayout();
     }
 
@@ -69,7 +83,7 @@ impl Page {
     /// ([`built_in_page`]), which never hit the network at all.
     pub fn navigate(&mut self, url: &str) -> Result<(), blueice_net::FetchError> {
         if let Some(html) = built_in_page(url) {
-            self.load_html(html);
+            self.load_html(&html);
             self.url = Some(url.to_string());
             return Ok(());
         }
@@ -109,6 +123,93 @@ impl Page {
         nearest_link_href(&self.doc, node)
     }
 
+    /// Hit-tests a pointer move the same way [`Page::click`] hit-tests
+    /// a click, becoming the single source of truth for "what's
+    /// hovered" -- see `phase-1-ai-representation-layer/PLAN.md` §4.
+    /// Moving off all content clears the hover state, same as a real
+    /// pointer leaving the window's content area.
+    pub fn hover_at(&mut self, x: f64, y: f64) {
+        let content_y = y + self.scroll_y;
+        self.hovered = hit_test(&self.fragment, x, content_y);
+    }
+
+    /// Sets or clears (`None`) the highlighted node -- rendered as an
+    /// outline derived fresh from that node's current bounds on every
+    /// [`Page::render`] call, per the AI-to-human sync direction
+    /// `phase-1-ai-representation-layer/PLAN.md` §4 describes.
+    pub fn set_highlight(&mut self, id: Option<NodeId>) {
+        self.highlighted = id;
+    }
+
+    /// Applies `action` to the element addressed by `id` -- see
+    /// [`NodeAction`]'s own docs for what each variant does. Returns
+    /// the URL to navigate to when `action` is [`NodeAction::Click`]
+    /// on a link, same shape as [`Page::click`]'s return value, so a
+    /// caller drives both the same way. A stale or unknown `id` (e.g.
+    /// from before the last navigation) is silently a no-op, not an
+    /// error -- the same tolerance [`Page::click`] already has for a
+    /// point that hits nothing.
+    pub fn act(&mut self, id: NodeId, action: NodeAction) -> Option<String> {
+        if !self.doc.contains(id) {
+            return None;
+        }
+        match action {
+            NodeAction::Click => nearest_link_href(&self.doc, id),
+            NodeAction::Focus => {
+                self.focused = Some(id);
+                None
+            }
+            NodeAction::SetValue(value) => {
+                if let NodeData::Element { attributes, .. } = self.doc.data_mut(id) {
+                    match attributes.iter_mut().find(|(k, _)| k == "value") {
+                        Some((_, existing)) => *existing = value,
+                        None => attributes.push(("value".to_string(), value)),
+                    }
+                }
+                None
+            }
+            NodeAction::ScrollIntoView => {
+                if let Some(bounds) = find_fragment_bounds(&self.fragment, id, 0.0, 0.0) {
+                    let max_scroll = (self.fragment.height - self.viewport_height).max(0.0);
+                    self.scroll_y = bounds.y.clamp(0.0, max_scroll);
+                }
+                None
+            }
+        }
+    }
+
+    /// A snapshot of the AI-facing representation
+    /// (`phase-1-ai-representation-layer/PLAN.md`'s schema,
+    /// implemented per `phase-5-ai-representation-output/PLAN.md`),
+    /// extracted from this exact `Page` state -- `generation` is
+    /// supplied by the caller (`session.rs`'s own frame-generation
+    /// counter) so a snapshot and the `FrameReady` sent alongside it
+    /// can share the same number, which is what makes "same render
+    /// pass" a checkable property rather than an assertion.
+    pub fn snapshot(&self, generation: u64) -> AiSnapshot {
+        crate::ai_snapshot::build(self, generation)
+    }
+
+    pub(crate) fn doc(&self) -> &Document {
+        &self.doc
+    }
+
+    pub(crate) fn fragment(&self) -> &Fragment {
+        &self.fragment
+    }
+
+    pub(crate) fn styles(&self) -> &HashMap<NodeId, ComputedStyle> {
+        &self.styles
+    }
+
+    pub(crate) fn hovered(&self) -> Option<NodeId> {
+        self.hovered
+    }
+
+    pub(crate) fn focused(&self) -> Option<NodeId> {
+        self.focused
+    }
+
     pub fn url(&self) -> Option<&str> {
         self.url.as_deref()
     }
@@ -122,7 +223,13 @@ impl Page {
     }
 
     pub fn render(&self) -> Frame {
-        paint(&self.fragment, &self.styles)
+        let mut frame = paint(&self.fragment, &self.styles);
+        if let Some(id) = self.highlighted {
+            if let Some(bounds) = find_fragment_bounds(&self.fragment, id, 0.0, 0.0) {
+                frame.commands.extend(highlight_border_commands(bounds));
+            }
+        }
+        frame
     }
 
     /// Rasterizes the full page, then crops to the current viewport at
@@ -151,6 +258,44 @@ fn crop(pixmap: &Pixmap, top: f64, width: f64, height: f64) -> Pixmap {
         }
     }
     Pixmap { width: w, height: h, pixels }
+}
+
+/// Finds `id`'s own fragment and resolves its bounds to document-
+/// content coordinates (accumulating each ancestor's offset the same
+/// way `blueice-paint`'s own tree walk does -- a `Fragment`'s `x`/`y`
+/// are relative to its parent, not absolute) -- `None` if `id` has no
+/// fragment at all, which is exactly right for a `display:none`
+/// subtree (dropped entirely by layout, per `research/layout.md`) or a
+/// stale ID from before the last navigation. Shared by
+/// [`Page::render`]'s highlight overlay, [`Page::act`]'s
+/// `ScrollIntoView`, and `ai_snapshot`'s bounds extraction, so the
+/// three never disagree about where a node actually is.
+pub(crate) fn find_fragment_bounds(fragment: &Fragment, id: NodeId, offset_x: f64, offset_y: f64) -> Option<blueice_ipc::Bounds> {
+    let x = offset_x + fragment.x;
+    let y = offset_y + fragment.y;
+    if fragment.node == Some(id) {
+        return Some(blueice_ipc::Bounds { x, y, width: fragment.width, height: fragment.height });
+    }
+    fragment.children.iter().find_map(|child| find_fragment_bounds(child, id, x, y))
+}
+
+const HIGHLIGHT_COLOR: Color = Color::Rgba(255, 149, 0, 255);
+const HIGHLIGHT_THICKNESS: f64 = 2.0;
+
+/// A four-edge outline around `bounds`, built from ordinary
+/// `PaintCommand::BorderEdge`s rather than a new paint-command variant
+/// -- an AI-requested highlight is an interaction-layer concept
+/// `Page` owns, not a CSS box-model feature `blueice-paint` needs to
+/// know about.
+fn highlight_border_commands(bounds: blueice_ipc::Bounds) -> Vec<PaintCommand> {
+    let blueice_ipc::Bounds { x, y, width, height } = bounds;
+    let t = HIGHLIGHT_THICKNESS;
+    vec![
+        PaintCommand::BorderEdge { rect: Rect { x, y, width, height: t }, color: HIGHLIGHT_COLOR },
+        PaintCommand::BorderEdge { rect: Rect { x: x + width - t, y, width: t, height }, color: HIGHLIGHT_COLOR },
+        PaintCommand::BorderEdge { rect: Rect { x, y: y + height - t, width, height: t }, color: HIGHLIGHT_COLOR },
+        PaintCommand::BorderEdge { rect: Rect { x, y, width: t, height }, color: HIGHLIGHT_COLOR },
+    ]
 }
 
 fn hit_test(fragment: &Fragment, x: f64, y: f64) -> Option<NodeId> {
@@ -187,13 +332,18 @@ fn nearest_link_href(doc: &Document, mut node: NodeId) -> Option<String> {
 /// The HTML for `url`, for the small set of `about:` URLs `navigate`
 /// serves locally instead of fetching over the network -- `None` for
 /// any other URL (including unrecognized `about:` ones, which aren't
-/// treated as built-in pages here).
-fn built_in_page(url: &str) -> Option<&'static str> {
-    match url {
-        crate::credits::CREDITS_URL => Some(crate::credits::CREDITS_HTML),
-        "about:blank" => Some(""),
-        _ => None,
+/// treated as built-in pages here). Owned `String`, not `&'static
+/// str`: the credits page is generated per request from `blueice-i18n`
+/// at whatever locale the URL's `?lang=` parameter asks for
+/// (`credits::locale_from_url`), not a single fixed literal.
+fn built_in_page(url: &str) -> Option<String> {
+    if url == "about:blank" {
+        return Some(String::new());
     }
+    if url == crate::credits::CREDITS_URL || url.starts_with(&format!("{}?", crate::credits::CREDITS_URL)) {
+        return Some(crate::credits::credits_html(crate::credits::locale_from_url(url)));
+    }
+    None
 }
 
 #[cfg(test)]
@@ -228,6 +378,15 @@ mod tests {
         assert!(text.contains("Chromium"), "must reproduce the Chromium BSD-3-Clause notice: {text}");
         assert!(text.contains("Gecko"), "must credit Gecko: {text}");
         assert!(text.contains("DejaVu"), "must credit the bundled DejaVu font: {text}");
+    }
+
+    #[test]
+    fn navigate_to_about_credits_with_a_lang_parameter_loads_the_localized_credits_page() {
+        let mut page = Page::new(320.0, 200.0);
+        page.navigate("about:credits?lang=zh-TW").unwrap();
+        assert_eq!(page.url(), Some("about:credits?lang=zh-TW"));
+        let text = all_text(&page.render());
+        assert!(text.contains("關於"), "must render the localized page: {text}");
     }
 
     #[test]

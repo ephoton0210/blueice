@@ -29,7 +29,27 @@
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
+pub mod ai;
 pub mod shm;
+
+pub use ai::{AiNode, AiSnapshot, Bounds, NameFrom, NodeAction, NodeState, Role};
+
+/// Browser-chrome control actions -- distinct from page-content
+/// messages (`Navigate`, `ActOn`, ...) per
+/// `phase-1-ai-representation-layer/PLAN.md`'s API-shape decision:
+/// these operate on the window/`core` instance itself, not on the
+/// current page's content, so they get their own nested group rather
+/// than sitting as a same-level `ClientMessage` variant indistinguishable
+/// from page actions.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum ChromeCommand {
+    /// Per plan §1: the human-facing window's visibility is a property
+    /// of the windowing layer, not of whether `core` exists -- this
+    /// message exists so that requirement is something the *protocol*
+    /// carries (and an AI-facing client can drive too), not just an
+    /// implementation detail private to one frontend's window object.
+    SetVisible(bool),
+}
 
 /// Sent by a client (`frontend` today; `extension`/AI later) to `core`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -41,14 +61,31 @@ pub enum ClientMessage {
     /// A click at a point in viewport coordinates (post-scroll, i.e.
     /// `(0,0)` is always the top-left of what's currently visible).
     Click { x: f64, y: f64 },
+    /// The pointer moved to this viewport point (same coordinate space
+    /// as `Click`) -- `core` resolves it to a node the same way `Click`
+    /// already does, becoming the single source of truth for "what's
+    /// hovered" so both a future `:hover` visual effect and the AI-
+    /// facing `NodeState::hovered` field read from the same state
+    /// rather than two independently-tracked copies
+    /// (`phase-1-ai-representation-layer/PLAN.md` §4).
+    Hover { x: f64, y: f64 },
     /// Scroll the viewport by this many CSS pixels (positive = down).
     Scroll { delta_y: f64 },
-    /// Per plan §1: the human-facing window's visibility is a property
-    /// of the windowing layer, not of whether `core` exists -- this
-    /// message exists so that requirement is something the *protocol*
-    /// carries (and an AI-facing client could drive later), not just an
-    /// implementation detail private to one frontend's window object.
-    SetVisible(bool),
+    /// Requests a fresh [`AiSnapshot`] of the current page, replied to
+    /// with [`ServerMessage::Representation`].
+    GetRepresentation,
+    /// Act on a specific, stably-addressed element -- see
+    /// [`NodeAction`]'s own docs for why this is ID-addressed rather
+    /// than coordinate-based.
+    ActOn { id: u64, action: NodeAction },
+    /// Highlights `id` (drawn as an outline derived fresh from that
+    /// node's current bounds on every paint) or clears the highlight
+    /// (`None`) -- the AI-to-human sync direction plan §1 asks for:
+    /// keyed by ID, so it automatically tracks the node through any
+    /// layout change instead of a caller having to recompute a screen
+    /// rectangle itself.
+    Highlight { id: Option<u64> },
+    Chrome(ChromeCommand),
     Shutdown,
 }
 
@@ -65,6 +102,8 @@ pub enum ServerMessage {
     /// Navigation finished (or failed) -- `url` is the final URL after
     /// following any redirects.
     Navigated { url: String },
+    /// Reply to [`ClientMessage::GetRepresentation`].
+    Representation(AiSnapshot),
     Error { message: String },
 }
 
@@ -113,7 +152,12 @@ mod tests {
             ClientMessage::Resize { width: 800, height: 600 },
             ClientMessage::Click { x: 12.5, y: 30.0 },
             ClientMessage::Scroll { delta_y: -40.0 },
-            ClientMessage::SetVisible(false),
+            ClientMessage::Chrome(ChromeCommand::SetVisible(false)),
+            ClientMessage::Hover { x: 5.0, y: 6.0 },
+            ClientMessage::GetRepresentation,
+            ClientMessage::ActOn { id: 7, action: NodeAction::Click },
+            ClientMessage::Highlight { id: Some(7) },
+            ClientMessage::Highlight { id: None },
             ClientMessage::Shutdown,
         ] {
             let mut buf = Vec::new();
@@ -128,6 +172,25 @@ mod tests {
         for msg in [
             ServerMessage::FrameReady { shm_path: "/dev/shm/blueice-1".to_string(), width: 800, height: 600, generation: 42 },
             ServerMessage::Navigated { url: "https://example.com/".to_string() },
+            ServerMessage::Representation(AiSnapshot {
+                generation: 42,
+                url: Some("https://example.com/".to_string()),
+                scroll_y: 10.0,
+                nodes: vec![AiNode {
+                    id: 3,
+                    parent: None,
+                    children: vec![],
+                    role: Role::Link,
+                    name: Some("Example".to_string()),
+                    name_from: Some(NameFrom::Contents),
+                    state: NodeState { hovered: true, ..Default::default() },
+                    bounds: Bounds { x: 0.0, y: 0.0, width: 10.0, height: 5.0 },
+                    opacity: 1.0,
+                    occluded: false,
+                    occluded_by: None,
+                    occluded_fraction: 0.0,
+                }],
+            }),
             ServerMessage::Error { message: "oops".to_string() },
         ] {
             let mut buf = Vec::new();

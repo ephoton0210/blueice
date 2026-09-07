@@ -69,6 +69,22 @@ fn sibling_core_binary(this_exe: &Path) -> PathBuf {
     this_exe.parent().map(|dir| dir.join(name)).unwrap_or_else(|| PathBuf::from(name))
 }
 
+/// Picks a supported locale from a `LANG`-shaped environment value
+/// (e.g. `zh_TW.UTF-8`, `en_US.UTF-8`) -- normalizes the `_`-separated,
+/// encoding-suffixed POSIX locale form to the `-`-separated BCP-47-ish
+/// tag `blueice-i18n`'s resources are keyed by, and falls back to
+/// [`blueice_i18n::DEFAULT_LOCALE`] for anything unset or not in
+/// [`blueice_i18n::SUPPORTED_LOCALES`]. A real platform-native frontend
+/// (Windows/macOS) would read its OS's own locale API instead of
+/// `$LANG` -- this is the reference frontend's stand-in for that,
+/// same relationship stdin's `show`/`hide`/`credits` commands have to
+/// a real AI-facing control channel.
+fn detect_locale(lang_env: Option<&str>) -> &'static str {
+    let Some(lang_env) = lang_env else { return blueice_i18n::DEFAULT_LOCALE };
+    let tag = lang_env.split('.').next().unwrap_or(lang_env).replace('_', "-");
+    blueice_i18n::SUPPORTED_LOCALES.iter().find(|candidate| candidate.eq_ignore_ascii_case(&tag)).copied().unwrap_or(blueice_i18n::DEFAULT_LOCALE)
+}
+
 fn unique_socket_path() -> PathBuf {
     // AF_UNIX paths are capped at ~108 bytes (`SUN_LEN`); a plain
     // system temp dir keeps this short regardless of how deep the
@@ -115,6 +131,7 @@ struct App {
     surface: Option<Surface<Rc<Window>, Rc<Window>>>,
     frame: Option<CurrentFrame>,
     cursor: (f64, f64),
+    locale: &'static str,
 }
 
 impl App {
@@ -164,7 +181,8 @@ impl ApplicationHandler<UserEvent> for App {
         if self.window.is_some() {
             return;
         }
-        let attrs = Window::default_attributes().with_title("BlueIce (reference frontend)");
+        let title = blueice_i18n::translate(self.locale, "frontend", "window-title-default", &[]);
+        let attrs = Window::default_attributes().with_title(&title);
         let window = Rc::new(event_loop.create_window(attrs).expect("failed to create window"));
         let context = Context::new(window.clone()).expect("failed to create softbuffer context");
         let surface = Surface::new(&context, window.clone()).expect("failed to create softbuffer surface");
@@ -185,6 +203,11 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::RedrawRequested => self.redraw(),
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = (position.x, position.y);
+                // Forwarded so `core` becomes the single source of
+                // truth for "what's hovered" -- see
+                // `phase-1-ai-representation-layer/PLAN.md` §4 and
+                // `blueice_ipc::ClientMessage::Hover`'s own docs.
+                self.send(&ClientMessage::Hover { x: position.x, y: position.y });
             }
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
                 let (x, y) = self.cursor;
@@ -208,12 +231,18 @@ impl ApplicationHandler<UserEvent> for App {
             }
             UserEvent::Server(ServerMessage::Navigated { url }) => {
                 if let Some(window) = &self.window {
-                    window.set_title(&format!("BlueIce -- {url}"));
+                    window.set_title(&blueice_i18n::translate(self.locale, "frontend", "window-title-navigated", &[("url", &url)]));
                 }
             }
             UserEvent::Server(ServerMessage::Error { message }) => {
                 eprintln!("blueice-frontend: core reported an error: {message}");
             }
+            // This reference frontend has no AI-facing consumer of its
+            // own -- a Representation only arrives if something else
+            // sharing this connection asked for one. An AI-facing
+            // client would consume `AiSnapshot` directly rather than
+            // routing it through a human window.
+            UserEvent::Server(ServerMessage::Representation(_)) => {}
             UserEvent::Disconnected => {
                 eprintln!("blueice-frontend: core disconnected");
                 event_loop.exit();
@@ -222,7 +251,7 @@ impl ApplicationHandler<UserEvent> for App {
                 if let Some(window) = &self.window {
                     window.set_visible(visible);
                 }
-                self.send(&ClientMessage::SetVisible(visible));
+                self.send(&ClientMessage::Chrome(blueice_ipc::ChromeCommand::SetVisible(visible)));
             }
             UserEvent::Navigate(url) => self.send(&ClientMessage::Navigate { url }),
             UserEvent::Quit => {
@@ -318,7 +347,8 @@ fn main() {
     spawn_server_reader(reader, proxy.clone());
     spawn_stdin_commands(proxy);
 
-    let mut app = App { core, writer, window: None, surface: None, frame: None, cursor: (0.0, 0.0) };
+    let locale = detect_locale(std::env::var("LANG").ok().as_deref());
+    let mut app = App { core, writer, window: None, surface: None, frame: None, cursor: (0.0, 0.0), locale };
     app.send(&ClientMessage::Navigate { url });
 
     event_loop.run_app(&mut app).expect("event loop exited with an error");
@@ -403,5 +433,25 @@ mod tests {
     #[test]
     fn unrecognized_stdin_command_produces_no_event() {
         assert!(stdin_line_to_event("bogus").is_none());
+    }
+
+    #[test]
+    fn detect_locale_normalizes_a_posix_style_lang_value() {
+        assert_eq!(detect_locale(Some("zh_TW.UTF-8")), "zh-TW");
+    }
+
+    #[test]
+    fn detect_locale_falls_back_to_default_when_lang_is_unset() {
+        assert_eq!(detect_locale(None), blueice_i18n::DEFAULT_LOCALE);
+    }
+
+    #[test]
+    fn detect_locale_falls_back_to_default_for_an_unsupported_lang() {
+        assert_eq!(detect_locale(Some("fr_FR.UTF-8")), blueice_i18n::DEFAULT_LOCALE);
+    }
+
+    #[test]
+    fn detect_locale_is_case_insensitive() {
+        assert_eq!(detect_locale(Some("ZH_tw.UTF-8")), "zh-TW");
     }
 }

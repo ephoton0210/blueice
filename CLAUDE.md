@@ -19,10 +19,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `backend/ipc` — the control-plane protocol (`ClientMessage`/`ServerMessage` over a length-prefixed-JSON Unix domain socket) and the frame-plane (`blueice_ipc::shm`, real `mmap`-backed frame files).
 - `backend/net` — HTTP fetching for navigation (`ureq`-based).
-- `backend/core/font` — the one place fonts are loaded and measured (bundled DejaVu Sans), shared by `blueice-layout` (real word-width measurement) and `blueice-raster` (glyph rasterization), so the two never disagree about how wide a run of text is.
+- `backend/core/font` — the one place fonts are loaded and measured (bundled DejaVu Sans, plus a Noto Sans TC fallback face for CJK glyphs DejaVu lacks — `font_for_char`), shared by `blueice-layout` (real word-width measurement) and `blueice-raster` (glyph rasterization), so the two never disagree about how wide a run of text is.
+- `backend/i18n` — `blueice-i18n`'s namespace/key UI-text lookup (Fluent-backed, `en` default + `zh-TW` today), per `phase-14-i18n-localization/PLAN.md`. Every UI-facing string (the credits screen, `frontend`'s window title) goes through this rather than being a hardcoded literal.
 - `backend/core/raster` — `blueice-paint`'s display list -> actual RGBA8 pixels (`fontdue`-based glyph rendering).
 - `backend/core/engine/src/bin/blueice-core.rs` — the `core` process binary: a Unix-socket server owning one `Page`, driven by `blueice_engine::session`.
 - `backend/frontend-reference` — the reference `frontend` binary (`winit` + `softbuffer`), verified manually in a real window (resize, click-driven navigation, no rendering defects) since GUI event loops can't run in headless CI.
+
+**Phase 5 (AI representation output path) is done** (see `phase-5-ai-representation-output/PLAN.md`; the `protocol_version` handshake `phase-1-ai-representation-layer/PLAN.md` also decided is a recorded, deferred follow-up, not yet needed with only one `core`/`frontend` pair). `blueice_engine::ai_snapshot` extracts the Phase 1 accessibility-tree-shaped schema (`blueice_ipc::{AiSnapshot, AiNode, Role, ...}`) from the exact same `Page` state Phase 4's `render()` paints from, reachable over the same `blueice-ipc` control-plane protocol `frontend` already uses (`ClientMessage::GetRepresentation`/`ActOn`/`Highlight`/`Hover`, `ServerMessage::Representation`) rather than a separate channel. Elements are addressed by their stable `blueice_dom::NodeId` (`ActOn` resolves an ID to current bounds internally, never raw coordinates); a `Representation` and the `FrameReady` from the state change immediately before it always share the same `generation` number, the checkable version of "human and AI perceive the same render pass."
 
 Build/lint/test commands (see `development/browser_core/testing/TEST_PLAN.md` for the full testing policy):
 

@@ -17,9 +17,16 @@
 //! border edges (solid, single-color, single-width per side), and text
 //! runs (position + content + color + font size, no glyph shaping).
 //! Explicitly out of scope, same as the reference engines' own later
-//! stages: clipping, transforms/opacity, layer compositing, paint
+//! stages: clipping, transforms, layer/group compositing, paint
 //! invalidation/caching (every call repaints the whole tree), box-
-//! shadow, background-image, gradients.
+//! shadow, background-image, gradients. `opacity` (added for
+//! `phase-1-ai-representation-layer/PLAN.md`'s `AiNode::opacity`
+//! field) is a narrow exception: applied as a flat per-element alpha
+//! multiply on that element's own background/border/text colors
+//! ([`apply_opacity`]), not real group compositing -- a `div` with
+//! `opacity: 0.5` containing two overlapping children still shows each
+//! child's edges through the other, unlike a real browser's isolated
+//! compositing layer for that box.
 
 use blueice_css::{ComputedStyle, Length, Value};
 use blueice_dom::NodeId;
@@ -163,6 +170,20 @@ fn border_side_rect(side: &str, box_rect: Rect, other: &HashMap<String, Value>) 
     Some((rect, width))
 }
 
+/// Multiplies `color`'s alpha channel by `opacity` (already clamped to
+/// `[0.0, 1.0]` by `ComputedStyle::opacity`) -- `CurrentColor` is
+/// passed through unchanged since it's always resolved to a concrete
+/// `Rgba` by the cascade before paint ever sees it (see
+/// `blueice-css`'s cascade docs); this arm only exists so the match
+/// stays exhaustive against `Color` without paint depending on that
+/// resolution having already happened.
+fn apply_opacity(color: Color, opacity: f32) -> Color {
+    match color {
+        Color::Rgba(r, g, b, a) => Color::Rgba(r, g, b, ((a as f32) * opacity).round() as u8),
+        Color::CurrentColor => Color::CurrentColor,
+    }
+}
+
 fn paint_fragment(fragment: &Fragment, offset_x: f64, offset_y: f64, styles: &StyleMap, out: &mut Vec<PaintCommand>) {
     let x = offset_x + fragment.x;
     let y = offset_y + fragment.y;
@@ -170,9 +191,10 @@ fn paint_fragment(fragment: &Fragment, offset_x: f64, offset_y: f64, styles: &St
     match &fragment.kind {
         FragmentKind::Block => {
             if let Some(style) = fragment.node.and_then(|n| styles.get(&n)) {
+                let opacity = style.opacity();
                 let rect = Rect { x, y, width: fragment.width, height: fragment.height };
                 if let Some(bg) = style.other.get("background-color").and_then(|v| as_color(v, style.color)) {
-                    out.push(PaintCommand::Rect { rect, color: bg });
+                    out.push(PaintCommand::Rect { rect, color: apply_opacity(bg, opacity) });
                 }
                 for side in BORDER_SIDES {
                     if let Some((edge_rect, _)) = border_side_rect(side, rect, &style.other) {
@@ -181,7 +203,7 @@ fn paint_fragment(fragment: &Fragment, offset_x: f64, offset_y: f64, styles: &St
                             .get(&format!("border-{side}-color"))
                             .and_then(|v| as_color(v, style.color))
                             .unwrap_or(style.color);
-                        out.push(PaintCommand::BorderEdge { rect: edge_rect, color });
+                        out.push(PaintCommand::BorderEdge { rect: edge_rect, color: apply_opacity(color, opacity) });
                     }
                 }
             }
@@ -191,7 +213,8 @@ fn paint_fragment(fragment: &Fragment, offset_x: f64, offset_y: f64, styles: &St
             if let Some(style) = fragment.node.and_then(|n| styles.get(&n)) {
                 let bold = style.is_bold();
                 let italic = style.is_italic();
-                out.push(PaintCommand::Text { x, y, text: text.clone(), color: style.color, font_size_px: style.font_size_px, bold, italic });
+                let color = apply_opacity(style.color, style.opacity());
+                out.push(PaintCommand::Text { x, y, text: text.clone(), color, font_size_px: style.font_size_px, bold, italic });
             }
         }
     }
@@ -238,6 +261,29 @@ mod tests {
         let f = paint_html("<div></div>", "div { background-color: red; }", 320.0);
         let rect = f.commands.iter().find(|c| matches!(c, PaintCommand::Rect { .. })).expect("a Rect command");
         assert_eq!(*rect, PaintCommand::Rect { rect: Rect { x: 0.0, y: 0.0, width: 320.0, height: 0.0 }, color: Color::Rgba(255, 0, 0, 255) });
+    }
+
+    #[test]
+    fn opacity_multiplies_the_backgrounds_alpha_channel() {
+        let f = paint_html("<div></div>", "div { background-color: red; opacity: 0.5; }", 320.0);
+        let PaintCommand::Rect { color, .. } = f.commands.iter().find(|c| matches!(c, PaintCommand::Rect { .. })).unwrap() else { unreachable!() };
+        assert_eq!(*color, Color::Rgba(255, 0, 0, 128));
+    }
+
+    #[test]
+    fn opacity_multiplies_text_and_border_alpha_too() {
+        let f = paint_html("<div style=\"border: 1px solid black; opacity: 0.5;\">x</div>", "", 320.0);
+        let PaintCommand::BorderEdge { color, .. } = f.commands.iter().find(|c| matches!(c, PaintCommand::BorderEdge { .. })).unwrap() else { unreachable!() };
+        assert_eq!(*color, Color::Rgba(0, 0, 0, 128));
+        let PaintCommand::Text { color, .. } = f.commands.iter().find(|c| matches!(c, PaintCommand::Text { .. })).unwrap() else { unreachable!() };
+        assert_eq!(*color, Color::Rgba(0, 0, 0, 128));
+    }
+
+    #[test]
+    fn default_opacity_leaves_alpha_unchanged() {
+        let f = paint_html("<div></div>", "div { background-color: red; }", 320.0);
+        let PaintCommand::Rect { color, .. } = f.commands.iter().find(|c| matches!(c, PaintCommand::Rect { .. })).unwrap() else { unreachable!() };
+        assert_eq!(*color, Color::Rgba(255, 0, 0, 255));
     }
 
     #[test]

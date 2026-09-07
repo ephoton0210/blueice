@@ -69,6 +69,23 @@ impl ComputedStyle {
         self.font_style.as_deref() == Some("italic")
     }
 
+    /// `opacity`, clamped to CSS's own `[0.0, 1.0]` range -- added for
+    /// `phase-1-ai-representation-layer/PLAN.md`'s `AiNode::opacity`
+    /// field (a real gap `phase-2-mvp-scope/PLAN.md`'s cross-check
+    /// found: nothing sourced this field before). Not inherited, per
+    /// spec -- unset on an element defaults to fully opaque regardless
+    /// of an ancestor's own `opacity`, matching the `other` map's
+    /// general "specified value only" contract (see the struct docs);
+    /// `blueice-paint` applies it as a flat per-element alpha multiply,
+    /// not real group/layer compositing (out of MVP scope, see
+    /// `blueice-paint`'s own module docs).
+    pub fn opacity(&self) -> f32 {
+        match self.other.get("opacity") {
+            Some(Value::Number(n)) => (*n as f32).clamp(0.0, 1.0),
+            _ => 1.0,
+        }
+    }
+
     fn initial() -> Self {
         ComputedStyle {
             display: "inline".to_string(),
@@ -629,5 +646,45 @@ mod tests {
         let styles = cascade(&doc, &[]);
         assert!(!styles[&p].is_bold());
         assert!(!styles[&p].is_italic());
+    }
+
+    #[test]
+    fn opacity_defaults_to_fully_opaque() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let div = elem(&mut doc, root, "div", &[]);
+        let styles = cascade(&doc, &[]);
+        assert_eq!(styles[&div].opacity(), 1.0);
+    }
+
+    #[test]
+    fn opacity_reads_a_declared_value() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let div = elem(&mut doc, root, "div", &[("style", "opacity: 0.5;")]);
+        let styles = cascade(&doc, &[]);
+        assert_eq!(styles[&div].opacity(), 0.5);
+    }
+
+    #[test]
+    fn opacity_clamps_to_the_valid_zero_to_one_range() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let over = elem(&mut doc, root, "div", &[("style", "opacity: 2;")]);
+        let under = elem(&mut doc, root, "div", &[("style", "opacity: -1;")]);
+        let styles = cascade(&doc, &[]);
+        assert_eq!(styles[&over].opacity(), 1.0);
+        assert_eq!(styles[&under].opacity(), 0.0);
+    }
+
+    #[test]
+    fn opacity_is_not_inherited() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let parent = elem(&mut doc, root, "div", &[("style", "opacity: 0.3;")]);
+        let child = doc.create_node(NodeData::Element { tag_name: "span".to_string(), attributes: vec![] });
+        doc.append_child(parent, child);
+        let styles = cascade(&doc, &[]);
+        assert_eq!(styles[&child].opacity(), 1.0, "opacity must not inherit from an ancestor");
     }
 }

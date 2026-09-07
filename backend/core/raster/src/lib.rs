@@ -24,7 +24,7 @@
 //! `rgba()`/`hsla()` functions are in the MVP CSS value scope), so this
 //! is forward-looking correctness, not yet exercised by real content.
 
-use blueice_font::font_for;
+use blueice_font::font_for_char;
 use blueice_paint::{Color, Frame, PaintCommand};
 
 const ASSUMED_ASCENT_RATIO: f64 = 0.8;
@@ -96,10 +96,14 @@ impl Pixmap {
 
     fn draw_text(&mut self, run: TextRun<'_>) {
         let Color::Rgba(r, g, b, a) = run.color else { return };
-        let f = font_for(run.bold, run.italic);
         let baseline_y = run.y + run.font_size_px * ASSUMED_ASCENT_RATIO;
         let mut pen_x = run.x;
         for ch in run.text.chars() {
+            // Per-character, not once for the whole run: a run can mix
+            // scripts (e.g. a CJK sentence with an English word in it),
+            // and `blueice-font`'s CJK fallback only kicks in for the
+            // specific characters the primary face can't cover.
+            let f = font_for_char(ch, run.bold, run.italic);
             let (metrics, bitmap) = f.rasterize(ch, run.font_size_px as f32);
             let bitmap_top = baseline_y - (metrics.ymin as f64 + metrics.height as f64);
             let bitmap_left = pen_x + metrics.xmin as f64;

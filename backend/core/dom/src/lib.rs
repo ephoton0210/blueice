@@ -20,6 +20,29 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct NodeId(u64);
 
+impl NodeId {
+    /// The raw counter value -- needed wherever a `NodeId` has to
+    /// cross a boundary that can't carry the type itself, e.g.
+    /// `phase-5-ai-representation-output/PLAN.md`'s `AiNode::id`,
+    /// serialized over `blueice-ipc`'s wire protocol as a plain `u64`.
+    pub fn as_u64(&self) -> u64 {
+        self.0
+    }
+
+    /// Reconstructs a `NodeId` from a raw value previously obtained
+    /// from [`NodeId::as_u64`] -- for turning a client-supplied
+    /// integer (e.g. `phase-5-ai-representation-output/PLAN.md`'s
+    /// `ClientMessage::ActOn`) back into something [`Document`]'s
+    /// lookups accept. Round-tripping a value this crate itself
+    /// allocated is always well-formed; a value that was never
+    /// allocated (or belongs to a different `Document`) simply won't
+    /// match anything -- callers should check [`Document::contains`]
+    /// rather than assume every `NodeId` resolves to a live node.
+    pub fn from_u64(id: u64) -> NodeId {
+        NodeId(id)
+    }
+}
+
 #[derive(Debug, Default)]
 struct NodeIdAllocator {
     next: u64,
@@ -101,6 +124,25 @@ impl Document {
 
     pub fn data(&self, id: NodeId) -> &NodeData {
         &self.nodes[&id].data
+    }
+
+    /// Whether `id` resolves to a live node in this `Document` -- for
+    /// callers that receive a `NodeId` from outside the type system's
+    /// own guarantees (e.g. reconstructed via [`NodeId::from_u64`] from
+    /// a client-supplied integer) and need to check before calling a
+    /// panicking accessor like [`Document::data`].
+    pub fn contains(&self, id: NodeId) -> bool {
+        self.nodes.contains_key(&id)
+    }
+
+    /// Mutable access to `id`'s own data -- e.g. for
+    /// `phase-5-ai-representation-output/PLAN.md`'s `NodeAction::SetValue`,
+    /// which needs to update an `<input>`'s `value` attribute in place
+    /// without detaching and recreating the node (that would mint a new
+    /// `NodeId`, breaking plan §1's "stable ID across mutations"
+    /// guarantee for the very node being mutated).
+    pub fn data_mut(&mut self, id: NodeId) -> &mut NodeData {
+        &mut self.nodes.get_mut(&id).expect("NodeId must belong to this Document").data
     }
 
     pub fn parent(&self, id: NodeId) -> Option<NodeId> {
@@ -242,6 +284,50 @@ mod tests {
         NodeData::Text {
             data: data.to_string(),
         }
+    }
+
+    #[test]
+    fn data_mut_allows_updating_an_elements_attributes_in_place() {
+        let mut doc = Document::new();
+        let input = doc.create_node(NodeData::Element { tag_name: "input".to_string(), attributes: vec![("type".to_string(), "text".to_string())] });
+        doc.append_child(doc.root(), input);
+
+        if let NodeData::Element { attributes, .. } = doc.data_mut(input) {
+            attributes.push(("value".to_string(), "hello".to_string()));
+        }
+
+        assert_eq!(doc.data(input), &NodeData::Element { tag_name: "input".to_string(), attributes: vec![("type".to_string(), "text".to_string()), ("value".to_string(), "hello".to_string())] });
+    }
+
+    #[test]
+    fn data_mut_does_not_change_the_nodes_id_or_tree_position() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let node = doc.create_node(elem("div"));
+        doc.append_child(root, node);
+
+        if let NodeData::Element { tag_name, .. } = doc.data_mut(node) {
+            *tag_name = "span".to_string();
+        }
+
+        assert_eq!(doc.parent(node), Some(root), "mutating data must not detach the node");
+        assert_eq!(doc.data(node), &elem("span"));
+    }
+
+    #[test]
+    fn node_id_round_trips_through_as_u64_and_from_u64() {
+        let mut doc = Document::new();
+        let node = doc.create_node(elem("div"));
+        let raw = node.as_u64();
+        assert_eq!(NodeId::from_u64(raw), node);
+    }
+
+    #[test]
+    fn contains_is_true_for_a_real_node_and_false_for_an_unallocated_id() {
+        let mut doc = Document::new();
+        let node = doc.create_node(elem("div"));
+        assert!(doc.contains(node));
+        assert!(!doc.contains(NodeId::from_u64(999_999)));
     }
 
     #[test]

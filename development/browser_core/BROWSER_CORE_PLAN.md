@@ -83,7 +83,7 @@ Phases 7-12 add more roles to this picture, each still mostly open design at thi
 | [Phase 2](phase-2-mvp-scope/PLAN.md) | Finalize MVP scope (supported HTML/CSS/JS subset) | Done |
 | [Phase 3](phase-3-engine-skeleton/PLAN.md) | Rust core engine skeleton (parse → DOM → layout → paint) | Done |
 | [Phase 4](phase-4-human-rendering-path/PLAN.md) | Human-visible rendering path | Done |
-| [Phase 5](phase-5-ai-representation-output/PLAN.md) | AI representation output path (implemented per the Phase 1 decision) | Not started |
+| [Phase 5](phase-5-ai-representation-output/PLAN.md) | AI representation output path (implemented per the Phase 1 decision) | Done (the `protocol_version` handshake is a recorded, deferred follow-up) |
 | [Phase 6](phase-6-ai-agent-integration-demo/PLAN.md) | AI agent integration demo (running on our own engine, not CDP) | Not started |
 | [Phase 7](phase-7-local-ai/PLAN.md) | Two local AI agents: safety gatekeeper (primary) + assistant | Not started |
 | [Phase 8](phase-8-live-core-hotswap/PLAN.md) | Live `core` hot-swap / seamless update, no browser restart | Not started |
@@ -92,7 +92,8 @@ Phases 7-12 add more roles to this picture, each still mostly open design at thi
 | [Phase 11](phase-11-transfer-protocol-clients/PLAN.md) | FTP/SFTP and other transfer-protocol clients | Not started |
 | [Phase 12](phase-12-mcp-server/PLAN.md) | MCP server exposing BlueIce to Claude Code and other AI agents | Not started |
 | [Phase 13](phase-13-bluejs-engine/PLAN.md) | BlueJS: custom JavaScript engine (decided over embedding an existing one) | Not started |
+| [Phase 14](phase-14-i18n-localization/PLAN.md) | i18n/localization: namespace/key architecture, retrofit of already-shipped UI text (credits screen, frontend window title), CJK font fallback | Done |
 
-Phases 7-12 extend the browser beyond the rendering-engine MVP (Phases 0-6) into a full application platform — added once that broader scope was set, not part of the original MVP path. Several (7, 8 especially) have open design questions blocking real work; see each phase's own doc. Phase 13 (BlueJS) is different from 7-12 in that respect — it resolves Phase 2's JS-strategy decision and is genuinely MVP-relevant (Phase 2's HTML/CSS scope already assumes `<script>` exists), numbered last only because inserting it earlier would have meant renumbering everything else.
+Phases 7-12 extend the browser beyond the rendering-engine MVP (Phases 0-6) into a full application platform — added once that broader scope was set, not part of the original MVP path. Several (7, 8 especially) have open design questions blocking real work; see each phase's own doc. Phase 13 (BlueJS) is different from 7-12 in that respect — it resolves Phase 2's JS-strategy decision and is genuinely MVP-relevant (Phase 2's HTML/CSS scope already assumes `<script>` exists), numbered last only because inserting it earlier would have meant renumbering everything else. Phase 14 (i18n) is similar in kind to Phase 13: raised mid-stream rather than planned from the start, numbered last for the same renumbering-avoidance reason, but its own retrofit work is already done — see its own plan for the going-forward policy later phases' new UI text follows.
 
 This document is the first version of the plan, meant to be refined in later iterations.
