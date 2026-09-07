@@ -5,9 +5,16 @@
   "type": "module",
   "description": "Chromium differential-testing harness for BlueIce (phase-15-chromium-differential-testing/PLAN.md). Node.js/Puppeteer, not Rust, since Puppeteer needs a real Node runtime -- the one part of the project that isn't part of the Cargo workspace.",
   "scripts": {
-    "capture:blueice": "node src/capture-blueice.js"
+    "capture:blueice": "node src/capture-blueice.js",
+    "capture:chromium": "node src/capture-chromium.js",
+    "compare": "node src/compare.js",
+    "differential": "npm run capture:blueice && npm run capture:chromium && npm run compare"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0"
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "diff": "^9.0.0",
+    "pixelmatch": "^7.2.0",
+    "pngjs": "^7.0.0",
+    "puppeteer": "^25.10.0"
   }
 }
