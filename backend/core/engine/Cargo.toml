@@ -17,3 +17,4 @@ blueice-i18n = { path = "../../i18n" }
 
 [dev-dependencies]
 blueice-testing = { path = "../../testing" }
+blueice-ai-gatekeeper = { path = "../../ai-gatekeeper" }

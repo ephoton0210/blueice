@@ -10,6 +10,7 @@
 
 mod ai_snapshot;
 pub mod credits;
+mod gatekeeper_client;
 mod page;
 pub mod session;
 mod stylesheet;

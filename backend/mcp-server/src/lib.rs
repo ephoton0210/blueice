@@ -163,6 +163,15 @@ impl<S: Read + Write> CoreConnection<S> {
             match message {
                 ServerMessage::Representation(snapshot) => return Ok(ToolOutcome { error, snapshot }),
                 ServerMessage::Error { message } => error = Some(message),
+                // `phase-7-local-ai/PLAN.md`'s gatekeeper blocked this
+                // action's navigation -- surfaced through the same
+                // `ToolOutcome::error` field a plain `Error` already
+                // uses, since from this MCP-facing call's perspective
+                // both are "the requested action didn't happen, here's
+                // why." Building a dedicated gatekeeper-aware MCP tool
+                // result is Phase 12's own future adapter work, not
+                // this slice's.
+                ServerMessage::GatekeeperBlocked { reason, category, url } => error = Some(format!("blocked by the gatekeeper ({category}) for {url}: {reason}")),
                 ServerMessage::FrameReady { shm_path, width, height, generation } => {
                     self.record_frame(frame_tab_id, FrameInfo { shm_path, width, height, generation });
                 }
@@ -211,6 +220,7 @@ impl<S: Read + Write> CoreConnection<S> {
                     self.record_frame(frame_tab_id, FrameInfo { shm_path, width, height, generation });
                 }
                 ServerMessage::Error { .. }
+                | ServerMessage::GatekeeperBlocked { .. }
                 | ServerMessage::Navigated { .. }
                 | ServerMessage::Dom(_)
                 | ServerMessage::Hello { .. }
@@ -242,6 +252,7 @@ impl<S: Read + Write> CoreConnection<S> {
                     self.record_frame(frame_tab_id, FrameInfo { shm_path, width, height, generation });
                 }
                 ServerMessage::Error { .. }
+                | ServerMessage::GatekeeperBlocked { .. }
                 | ServerMessage::Navigated { .. }
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
@@ -294,6 +305,13 @@ impl<S: Read + Write> CoreConnection<S> {
                 // (see `ServerMessage::TabOpened`'s own docs); a caller
                 // that needs it can fall back to `list_tabs`.
                 ServerMessage::Error { message } => return Ok(OpenTabOutcome::Error(message)),
+                // Same shape as the plain-`Error` case above, but for a
+                // navigation `phase-7-local-ai/PLAN.md`'s gatekeeper
+                // blocked rather than one that merely failed to fetch --
+                // `OpenTabOutcome` has no dedicated variant for this
+                // distinction yet, so it's reported through the same
+                // `Error(String)` case for now.
+                ServerMessage::GatekeeperBlocked { reason, category, url } => return Ok(OpenTabOutcome::Error(format!("blocked by the gatekeeper ({category}) for {url}: {reason}"))),
                 ServerMessage::FrameReady { shm_path, width, height, generation } => {
                     self.record_frame(frame_tab_id, FrameInfo { shm_path, width, height, generation });
                     if let Some(outcome) = outcome {
@@ -332,7 +350,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 ServerMessage::FrameReady { shm_path, width, height, generation } => {
                     self.record_frame(frame_tab_id, FrameInfo { shm_path, width, height, generation });
                 }
-                ServerMessage::Navigated { .. }
+                ServerMessage::GatekeeperBlocked { .. }
+                | ServerMessage::Navigated { .. }
                 | ServerMessage::Dom(_)
                 | ServerMessage::Representation(_)
                 | ServerMessage::Hello { .. }
@@ -360,6 +379,7 @@ impl<S: Read + Write> CoreConnection<S> {
                     self.record_frame(frame_tab_id, FrameInfo { shm_path, width, height, generation });
                 }
                 ServerMessage::Error { .. }
+                | ServerMessage::GatekeeperBlocked { .. }
                 | ServerMessage::Navigated { .. }
                 | ServerMessage::Dom(_)
                 | ServerMessage::Representation(_)

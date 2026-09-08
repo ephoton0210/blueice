@@ -85,7 +85,7 @@ Phases 7-12 add more roles to this picture, each still mostly open design at thi
 | [Phase 4](phase-4-human-rendering-path/PLAN.md) | Human-visible rendering path | Done |
 | [Phase 5](phase-5-ai-representation-output/PLAN.md) | AI representation output path (implemented per the Phase 1 decision) | Done, including the `protocol_version` handshake (implemented as part of Phase 8's minimal slice) |
 | [Phase 6](phase-6-ai-agent-integration-demo/PLAN.md) | AI agent integration demo (running on our own engine, not CDP) | Not started |
-| [Phase 7](phase-7-local-ai/PLAN.md) | Two local AI agents: safety gatekeeper (primary) + assistant | Not started |
+| [Phase 7](phase-7-local-ai/PLAN.md) | Two local AI agents: safety gatekeeper (primary) + assistant | In progress — gatekeeper minimal slice (mechanism, protocol, concurrency, fail-closed) done; real review content and the assistant agent not started |
 | [Phase 8](phase-8-live-core-hotswap/PLAN.md) | Live `core` hot-swap / seamless update, no browser restart | Not started for hot-swap itself; two minimal first slices done — the rendezvous broker (multi-client sharing) and the fleet memory supervisor (`ProcessRegistry`/`ProcessPolicy` in `blueice-launcher`) |
 | [Phase 9](phase-9-extension-protocol/PLAN.md) | BlueIce extension protocol (third-party plugins on the `extension` architecture) | Not started |
 | [Phase 10](phase-10-download-manager/PLAN.md) | Built-in download manager (chunked/resumable/multi-threaded transfers) | Not started |

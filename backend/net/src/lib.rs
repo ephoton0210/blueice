@@ -51,15 +51,27 @@ pub struct FetchedPage {
     pub body: String,
 }
 
+/// Rejects a non-`http(s)` scheme before any network I/O -- split out
+/// of [`fetch`] so a caller that needs this specific cheap, synchronous
+/// check without actually fetching (`blueice-engine`'s `session.rs`
+/// validates a navigation target's scheme synchronously, before
+/// spawning a background gatekeeper-check/fetch thread, so a malformed
+/// URL still gets an immediate error reply -- see that module's own
+/// docs) doesn't have to duplicate the check or its message format.
+pub fn validate_url_scheme(url: &str) -> Result<(), FetchError> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(FetchError::InvalidUrl(format!("unsupported scheme in {url:?} (only http/https are supported)")));
+    }
+    Ok(())
+}
+
 /// Fetches `url` with a plain GET, following redirects, and returns the
 /// response body as text. `http://`/`https://` only -- `file://` and
 /// anything else is rejected as an unsupported scheme for this
 /// reference pass (a local-file loader is a separate, simpler code path
 /// that doesn't belong in an HTTP client).
 pub fn fetch(url: &str) -> Result<FetchedPage, FetchError> {
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err(FetchError::InvalidUrl(format!("unsupported scheme in {url:?} (only http/https are supported)")));
-    }
+    validate_url_scheme(url)?;
 
     let mut response = ureq::get(url).call().map_err(|e| FetchError::Request(e.to_string()))?;
     // MVP simplification: report the requested URL, not the post-
@@ -104,6 +116,14 @@ mod tests {
     fn non_http_scheme_is_rejected_before_any_network_call() {
         let result = fetch("file:///etc/passwd");
         assert!(matches!(result, Err(FetchError::InvalidUrl(_))));
+    }
+
+    #[test]
+    fn validate_url_scheme_accepts_http_and_https_and_rejects_everything_else() {
+        assert!(validate_url_scheme("http://example.com").is_ok());
+        assert!(validate_url_scheme("https://example.com").is_ok());
+        assert!(matches!(validate_url_scheme("file:///etc/passwd"), Err(FetchError::InvalidUrl(_))));
+        assert!(matches!(validate_url_scheme("not-a-valid-url"), Err(FetchError::InvalidUrl(_))));
     }
 
     #[test]

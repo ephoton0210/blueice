@@ -108,6 +108,24 @@ impl Page {
         self.url = url;
     }
 
+    /// The gated counterpart to [`Page::navigate`]'s network-fetching
+    /// half, per `phase-7-local-ai/PLAN.md`'s "Wiring design": `session.
+    /// rs`'s background thread does the actual gatekeeper round trips
+    /// and the fetch itself (never touching `Page` state, since it
+    /// doesn't run on the main thread); once that's all cleared, this
+    /// applies the already-fetched `html` -- parse/cascade/layout only,
+    /// no network -- exactly like [`Page::load_html_str`] does, plus
+    /// recording `url`. Takes `_clearance` purely for its compile-time
+    /// effect (see [`crate::gatekeeper_client::GatekeeperClearance`]'s
+    /// own docs): there is no public, non-gated way to reach this
+    /// method from outside the crate, so skipping the gate for a real
+    /// (non-built-in, non-test) navigation is a compile error, not a
+    /// runtime convention a differently-written caller could omit.
+    pub(crate) fn apply_fetched(&mut self, _clearance: crate::gatekeeper_client::GatekeeperClearance, url: &str, html: &str) {
+        self.load_html(html);
+        self.url = Some(url.to_string());
+    }
+
     pub fn resize(&mut self, width: f64, height: f64) {
         self.viewport_width = width;
         self.viewport_height = height;
@@ -363,7 +381,7 @@ fn nearest_link_href(doc: &Document, mut node: NodeId) -> Option<String> {
 /// str`: the credits page is generated per request from `blueice-i18n`
 /// at whatever locale the URL's `?lang=` parameter asks for
 /// (`credits::locale_from_url`), not a single fixed literal.
-fn built_in_page(url: &str) -> Option<String> {
+pub(crate) fn built_in_page(url: &str) -> Option<String> {
     if url == "about:blank" {
         return Some(String::new());
     }

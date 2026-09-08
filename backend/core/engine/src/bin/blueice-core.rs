@@ -28,6 +28,14 @@ struct Args {
     width: f64,
     height: f64,
     frame_dir: Option<PathBuf>,
+    /// Where a gated navigation's background thread connects to review
+    /// a URL/fetched page (`phase-7-local-ai/PLAN.md`'s "Wiring
+    /// design") -- `None` (the common case) resolves to
+    /// `blueice_ipc::gatekeeper::default_gatekeeper_socket_path()`;
+    /// overridable so `tests/core_binary.rs` can point a real spawned
+    /// subprocess at its own fake/stub gatekeeper instead of the
+    /// system-wide default path.
+    gatekeeper_socket: Option<PathBuf>,
 }
 
 /// Takes an injectable argument iterator (rather than reading
@@ -42,6 +50,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut width = 800.0;
     let mut height = 600.0;
     let mut frame_dir = None;
+    let mut gatekeeper_socket = None;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -51,12 +60,13 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--width" => width = value()?.parse().map_err(|_| "--width must be a number".to_string())?,
             "--height" => height = value()?.parse().map_err(|_| "--height must be a number".to_string())?,
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
+            "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
 
     let socket = socket.ok_or_else(|| "--socket <path> is required".to_string())?;
-    Ok(Args { socket, width, height, frame_dir })
+    Ok(Args { socket, width, height, frame_dir, gatekeeper_socket })
 }
 
 fn main() -> ExitCode {
@@ -69,6 +79,7 @@ fn main() -> ExitCode {
     };
 
     let frame_dir = args.frame_dir.unwrap_or_else(|| std::env::temp_dir().join(format!("blueice-core-frames-{}", std::process::id())));
+    let gatekeeper_socket = args.gatekeeper_socket.unwrap_or_else(blueice_ipc::gatekeeper::default_gatekeeper_socket_path);
 
     // A stale socket file from a previous run (e.g. one that crashed
     // instead of exiting cleanly) makes bind() fail with AddrInUse
@@ -87,7 +98,7 @@ fn main() -> ExitCode {
         let (mut stream, _) = listener.accept()?;
         let mut tabs = TabManager::new(args.width, args.height);
         let mut generation = 0u64;
-        session::run_session(&mut tabs, &mut stream, &frame_dir, &mut generation)
+        session::run_session(&mut tabs, &mut stream, &frame_dir, &mut generation, &gatekeeper_socket)
     })();
 
     let _ = std::fs::remove_file(&args.socket);
@@ -122,12 +133,22 @@ mod tests {
         assert_eq!(parsed.width, 800.0);
         assert_eq!(parsed.height, 600.0);
         assert_eq!(parsed.frame_dir, None);
+        assert_eq!(parsed.gatekeeper_socket, None);
     }
 
     #[test]
     fn every_flag_is_parsed() {
-        let parsed = args(&["--socket", "/tmp/x.sock", "--width", "100", "--height", "50", "--frame-dir", "/tmp/frames"]).unwrap();
-        assert_eq!(parsed, Args { socket: PathBuf::from("/tmp/x.sock"), width: 100.0, height: 50.0, frame_dir: Some(PathBuf::from("/tmp/frames")) });
+        let parsed = args(&["--socket", "/tmp/x.sock", "--width", "100", "--height", "50", "--frame-dir", "/tmp/frames", "--gatekeeper-socket", "/tmp/gk.sock"]).unwrap();
+        assert_eq!(
+            parsed,
+            Args {
+                socket: PathBuf::from("/tmp/x.sock"),
+                width: 100.0,
+                height: 50.0,
+                frame_dir: Some(PathBuf::from("/tmp/frames")),
+                gatekeeper_socket: Some(PathBuf::from("/tmp/gk.sock")),
+            }
+        );
     }
 
     #[test]

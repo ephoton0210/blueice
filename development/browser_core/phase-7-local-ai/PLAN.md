@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: Not started
+**Status**: In progress — the safety-gatekeeper's minimal slice (mechanism, protocol, concurrency, fail-closed behavior; see "Wiring design (resolved 2026-09-08)" below) is built and tested, per `CLAUDE.md`'s Phase 7 status paragraph. The gatekeeper's real rule-base/AI review content, the assistant agent, and per-component wiring beyond `core` navigation are still not started.
 
 ## Objective
 
@@ -59,6 +59,32 @@ This is the concrete technical mitigation for the risk already flagged in plan �
 
 **Script-level review**: for `<script>` content specifically, the gatekeeper doesn't need to parse JS itself — Phase 13 (BlueJS) is designing an AI-facing capability-summary output (derived from its own AST) exactly for this consumer, covering network-initiating calls, storage access, `eval`-like dynamic code, and DOM-mutating calls. The exact hook points and summary granularity are still open and need designing together with Phase 13, not assumed here.
 
+### Wiring design (resolved 2026-09-08)
+
+Resolved via a research pass plus explicit user direction on the two open tradeoffs: **both URL-level and content-level review land in the same first slice, and the round-trip must not block other clients/tabs sharing `core`'s one launcher connection** — the harder option on both axes, deliberately chosen over the cheaper URL-only/blocking-is-fine alternative.
+
+**Process & connection shape**: `ai-gatekeeper` is a new always-resident process (`backend/ai-gatekeeper`), speaking a small new request/reply protocol over `blueice_ipc`'s existing length-prefixed-JSON framing primitives. Unlike `core`'s own launcher connection (held for the life of the session), a gatekeeper check opens a **short-lived, per-check connection** (connect → request → reply → disconnect) rather than multiplexing over one shared connection — this sidesteps needing any request-correlation/multiplexing protocol on the gatekeeper side, and lets concurrent checks from different tabs run as fully independent connections with zero shared mutable state between them. Registers `AlwaysResident` in `blueice-launcher`'s `ProcessRegistry`, per `research/multi-process-memory.md`.
+
+**Two-stage review, both in this slice**:
+1. **URL stage** — before any network fetch, `core` sends `GatekeeperRequest::CheckUrl { url }`. Catches known-bad domains cheaply, before spending a fetch on them.
+2. **Content stage** — after fetch, before parse/cascade/layout, `core` sends `GatekeeperRequest::CheckContent { url, html }`. This is the stage that actually addresses the phase's named primary threat (hidden/adversarial content aimed at an AI reader) — URL blocklisting alone cannot catch it.
+
+Either stage returning `Rejected` ends the navigation; both must clear for it to proceed. A connection/IO failure talking to the gatekeeper is treated the same as `Rejected` (fail-closed, per the already-settled failure-mode decision above).
+
+**Concurrency**: `run_session`'s dispatch stops assuming one read+dispatch+write step per loop iteration. Every navigate-capable action (`Navigate`, a link-`Click`/`ActOn`'s resulting href, `OpenTab{url}`) becomes a two-phase operation:
+- **Phase 1 (synchronous, in the main loop)**: resolve the target href/URL (identical to today), record a `PendingNav { tab_id, seq, request_id }`, bump that tab's `pending_nav_seq`, and hand the URL to a background `std::thread::spawn` that does: connect+`CheckUrl` → (if cleared) fetch via `blueice-net` → connect+`CheckContent` → report an outcome back over an `mpsc::Sender` the main loop owns. The main loop does **not** block on this thread; it returns to the top of the loop immediately.
+- **Phase 2 (asynchronous, polled by the main loop)**: `run_session`'s stream gains a read timeout (a new small `ReadTimeout` trait, implemented for `UnixStream` — every real caller, production and test, already uses `UnixStream` via `UnixStream::pair()`, so this isn't a breaking bound in practice) so the loop can periodically drain the completion channel between reads. On a completion whose `seq` still matches the tab's current `pending_nav_seq` (not superseded by a newer navigation issued to the same tab in the meantime — stale completions are silently discarded, matching ordinary browser "a new navigation cancels the in-flight one" behavior), the main thread applies the result against the real `Page`/`TabManager` (never touched by the background thread itself) and writes the reply tagged with the *original* `request_id`/`tab_id` — `Navigated`+`FrameReady` on a cleared outcome, a new `ServerMessage::GatekeeperBlocked { reason, category, url }` on a blocked one.
+
+This deliberately reuses the same "poll loop + pending-work channel" shape `phase-13-bluejs-engine/PLAN.md`'s own event-loop integration will need for timers/macrotasks — not a coincidence: both problems are "let something finish in the background without blocking the one shared connection," and building the mechanism once now means Phase 13 extends it rather than inventing a second one.
+
+**`Page::navigate` split**: the fetch step (currently inline inside `navigate`) separates from the parse+layout step, since fetch now happens on the background thread and parse+layout must happen back on the main thread against real `Page` state. `Page` gains `Page::apply_fetched(clearance: GatekeeperClearance, url: &str, html: &str)` (parse/cascade/layout only, no network); `navigate` stays as a synchronous `fetch`-then-apply convenience for callers that don't need gating (tests, and BlueIce's own trusted `about:` pages, which are never fetched and skip the gatekeeper entirely).
+
+**Same-tab collision policy**: a second `Navigate` (or link click) arriving for a tab that already has a pending gated navigation bumps that tab's `pending_nav_seq`, superseding the old one — the old background thread runs to completion but its result is discarded on arrival (not actively cancelled; a known minimal-slice limitation — rapid repeated navigation could transiently accumulate a few harmless background threads/connections, worth revisiting if it proves to matter in practice). Other messages to the *same* tab that don't navigate (`Resize`/`Scroll`/`Hover`) apply immediately against the tab's current (pre-navigation) `Page` state, the same way a real browser reflows/scrolls the still-displayed old page while a new one loads. Messages to *other* tabs are entirely unaffected, as today.
+
+**`GatekeeperClearance`**: even though this slice's checks are a trivial stub, the enforcement-mechanism's Rust type discipline still applies in full — a cleared outcome carries a `GatekeeperClearance` value (non-`Clone`, no public constructor outside the gatekeeper-client call site, fields: `tab_id`, `url`) that `Page::apply_fetched` requires as a parameter, so skipping the gate is a compile error even in this minimal slice, not just a runtime convention.
+
+**Minimal first slice's actual scope, given the above**: `ai-gatekeeper` itself is a trivial stub that always clears both stages (no model, no rule-base yet) — the mechanism (process, protocol, concurrency, two-stage hook points, fail-closed-on-down, the `GatekeeperClearance` typestate) is what's real and tested in this slice, not the risk taxonomy or rule-base content.
+
 ### Agent 2: Assistant
 
 Organizing data, summarization, and **live translation** per the given scope. Can tolerate higher latency and more model variety than the gatekeeper — a good candidate for a larger local model, or even a fallback that only activates when no external AI agent is connected.
@@ -81,9 +107,9 @@ Organizing data, summarization, and **live translation** per the given scope. Ca
 
 ## Open questions (blocking real design)
 
-- ~~Enforcement architecture~~ — **resolved in shape, not in per-component detail**: a `GatekeeperClearance` capability-token pattern (see the enforcement-mechanism design above) makes bypass a compile error within `core`'s own process. Still open: the actual per-component wiring into `core` navigation, `backend/downloads`, the `extension` host, and the Phase 12 MCP adapter, plus the IPC-wire-protocol-level enforcement the design above flags as a separate, still-necessary layer (ties into Phase 9's wire-protocol work).
+- ~~Enforcement architecture~~ — **resolved for `core` navigation** by "Wiring design (resolved 2026-09-08)" above (per-component detail for `backend/downloads`, the `extension` host, and the Phase 12 MCP adapter still follows once those exist). Still open: the IPC-wire-protocol-level enforcement the design above flags as a separate, still-necessary layer (ties into Phase 9's wire-protocol work, which now has a concrete `GatekeeperClearance` shape to build against).
 - ~~Failure mode~~ — **resolved, and now independently corroborated**: fail-closed, including when the gatekeeper process itself is down/unresponsive (a timeout is not "safe"). `research/safe-browsing-enforcement.md` found both Chromium's Safe Browsing and Firefox's url-classifier fail *open* on exactly this case — confirms BlueIce's policy is a deliberate improvement, not something to reconsider toward matching prior art.
-- **Synchronous blocking vs. async review**: does every risky action/page wait on a verdict from both layers (adds latency everywhere, but matches "review everything"), or only certain categories block synchronously? Given the fail-closed decision above, leaning toward "everything blocks until cleared" as the consistent reading — worth confirming this is really intended for *every* page load, not just the risk taxonomy's specific action list.
+- ~~Synchronous blocking vs. async review~~ — **resolved**: every page load and every risky action goes through both review stages (URL and content), and the round-trip is *non-blocking* with respect to other clients/tabs sharing `core`'s one connection — see "Wiring design" above for the concurrency mechanism. The requesting client's own request still waits for its own result (that's inherent to "review everything before it happens"), but other traffic on the shared connection is never stalled by someone else's pending review.
 - **Rule-base content/format**: the candidate signature categories above need to become an actual maintained ruleset — sourced from a threat-intel feed (e.g. Google Safe Browsing-style lists) plus BlueIce-specific heuristics (the hidden-AI-targeted-content patterns), versioned and updatable independently of the AI model.
 - **Risk taxonomy completeness**: the AI-layer candidate list above is a starting draft — needs review for gaps and for false-positive risk (a gatekeeper that blocks too aggressively makes the browser unusable, the same practical failure mode as fail-closed-when-down).
 - **Live translation and the Phase 1/5 AI-facing representation**: when translation is active, should an *external* AI agent (via Phase 5/12) see the original text or the translated text? Plan §1's whole premise is human and AI perceiving the same rendered state — since translated text is what's actually on screen once substituted pre-layout, the representation reflecting translated text seems like the consistent answer, but this is a real consequence worth confirming rather than assuming.
@@ -96,7 +122,8 @@ Organizing data, summarization, and **live translation** per the given scope. Ca
 - [x] Scope what the local AI is for — two agents: safety gatekeeper (primary, two-layer AI+rule-base pipeline) and assistant (secondary)
 - [x] Decide fail-open vs. fail-closed — fail-closed
 - [x] Decide the enforcement mechanism — `GatekeeperClearance` capability-token pattern, see `research/safe-browsing-enforcement.md`
-- [ ] Wire the capability-token requirement into `core` navigation, `backend/downloads`, the `extension` host, and the Phase 12 MCP adapter
+- [x] Wire the capability-token requirement into `core` navigation (minimal slice, per "Wiring design" above) — `backend/downloads`, the `extension` host, and the Phase 12 MCP adapter remain, since none of those exist/are gated yet
+- [x] Build the minimal-slice `ai-gatekeeper` process (always-clears stub), the `CheckUrl`/`CheckContent` protocol, and `core`'s non-blocking two-phase dispatch integration — see "Wiring design (resolved 2026-09-08)"
 - [ ] Add IPC-wire-protocol-level enforcement (server-side, not just the client-side compile-time guarantee), with Phase 9
 - [ ] Confirm synchronous-blocking applies to every page load, not just the action-level risk taxonomy
 - [ ] Build the initial rule-base ruleset (signatures above) and decide its update/versioning mechanism

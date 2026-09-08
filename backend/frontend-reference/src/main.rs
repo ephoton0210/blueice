@@ -237,6 +237,14 @@ impl ApplicationHandler<UserEvent> for App {
             UserEvent::Server(ServerMessage::Error { message }) => {
                 eprintln!("blueice-frontend: core reported an error: {message}");
             }
+            // `phase-7-local-ai/PLAN.md`'s gatekeeper: a navigation
+            // `core` didn't let through. This reference frontend has no
+            // UI for the "detailed risk explanation" the plan calls
+            // for yet -- surfaced the same minimal way `Error` is,
+            // pending that real UI work.
+            UserEvent::Server(ServerMessage::GatekeeperBlocked { reason, category, url }) => {
+                eprintln!("blueice-frontend: core's gatekeeper blocked {url} ({category}): {reason}");
+            }
             // This reference frontend has no AI-facing consumer of its
             // own -- a Representation/Dom only arrives if something
             // else sharing this connection asked for one. An AI-facing

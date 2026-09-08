@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 pub mod ai;
+pub mod gatekeeper;
 pub mod shm;
 
 pub use ai::{AiNode, AiSnapshot, Bounds, NameFrom, NodeAction, NodeState, Role};
@@ -181,6 +182,16 @@ pub enum ServerMessage {
     /// Reply to [`ClientMessage::ListTabs`].
     Tabs(Vec<TabSummary>),
     Error { message: String },
+    /// A navigation was blocked by `ai-gatekeeper`'s review (either the
+    /// URL stage or the content stage, see [`crate::gatekeeper`]) --
+    /// `phase-7-local-ai/PLAN.md`'s "Wiring design": `core` never
+    /// applies a fetched page to its engine state without a cleared
+    /// verdict from *both* stages (fail-closed, including when the
+    /// gatekeeper process itself is unreachable), so a client sees this
+    /// instead of [`ServerMessage::Navigated`]/[`ServerMessage::
+    /// TabOpened`] whenever that review didn't clear. `url` is the
+    /// (possibly post-redirect) URL the blocked review was about.
+    GatekeeperBlocked { reason: String, category: String, url: String },
     /// See [`ClientMessage::Unknown`] -- the same forward-compatibility
     /// fallback, in the other direction.
     #[serde(other)]
@@ -204,11 +215,42 @@ fn write_framed<W: Write, T: Serialize>(w: &mut W, msg: &T) -> io::Result<()> {
 
 fn read_frame_bytes<R: Read>(r: &mut R) -> io::Result<Vec<u8>> {
     let mut len_bytes = [0u8; 4];
-    r.read_exact(&mut len_bytes)?;
+    read_exact_no_progress_loss(r, &mut len_bytes)?;
     let len = u32::from_le_bytes(len_bytes) as usize;
     let mut buf = vec![0u8; len];
-    r.read_exact(&mut buf)?;
+    read_exact_no_progress_loss(r, &mut buf)?;
     Ok(buf)
+}
+
+/// Like [`Read::read_exact`], but a read *timeout* that occurs after
+/// some bytes have already been consumed into `buf` is retried rather
+/// than propagated as an error. Plain `read_exact` would propagate it
+/// immediately -- silently discarding those already-read bytes forever
+/// (the stream's position has already advanced past them), which
+/// desynchronizes every frame read afterward on that connection. This
+/// matters now that `blueice_engine::session`'s poll loop puts its
+/// stream into a short-read-timeout mode ([`core`]'s Phase 7 gated-
+/// navigation design) so it can periodically check for other work
+/// between client messages -- a length-prefixed frame must never be
+/// abandoned mid-read just because the timeout window closed while
+/// only *part* of it had arrived.
+///
+/// A timeout with *zero* bytes read so far for this call is still
+/// propagated immediately (nothing has been consumed, so there's
+/// nothing to lose) -- this is what lets a caller polling for other
+/// work between whole messages actually get control back promptly.
+fn read_exact_no_progress_loss<R: Read>(r: &mut R, buf: &mut [u8]) -> io::Result<()> {
+    let mut filled = 0;
+    while filled < buf.len() {
+        match r.read(&mut buf[filled..]) {
+            Ok(0) => return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "failed to fill whole buffer")),
+            Ok(n) => filled += n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) if filled > 0 && matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 /// Reads one frame and interprets it as a [`ClientEnvelope`], falling
@@ -440,6 +482,11 @@ mod tests {
             ServerMessage::TabClosed { tab_id: 2 },
             ServerMessage::Tabs(vec![TabSummary { id: 1, url: None }, TabSummary { id: 2, url: Some("https://example.com/".to_string()) }]),
             ServerMessage::Error { message: "oops".to_string() },
+            ServerMessage::GatekeeperBlocked {
+                reason: "hidden instruction-shaped text".to_string(),
+                category: "prompt-injection".to_string(),
+                url: "https://example.com/".to_string(),
+            },
             ServerMessage::Unknown,
         ] {
             let mut buf = Vec::new();

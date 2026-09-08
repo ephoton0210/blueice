@@ -19,7 +19,7 @@
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::os::unix::net::UnixStream;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -27,6 +27,29 @@ use std::time::{Duration, Instant};
 
 fn unique_socket_path(label: &str) -> PathBuf {
     std::env::temp_dir().join(format!("blueice-core-binary-test-{label}-{}.sock", std::process::id()))
+}
+
+/// A gated `Navigate`/`OpenTab{url}` sent to the real subprocess needs
+/// *some* `ai-gatekeeper` behind the `--gatekeeper-socket` path it's
+/// given -- a genuinely unreachable one fails closed
+/// (`phase-7-local-ai/PLAN.md`'s "Wiring design"), which would turn
+/// this file's pre-existing "navigation always succeeds" assertions
+/// false. Spins up a real listener running the actual minimal-slice
+/// stub logic (`blueice_ai_gatekeeper::handle_one_check`, always
+/// clears) bound to a fresh path unique to this call, mirroring
+/// `blueice_engine::session`'s own test-module helper of the same
+/// name/purpose.
+fn clearing_gatekeeper(label: &str) -> PathBuf {
+    let path = unique_socket_path(label);
+    let _ = std::fs::remove_file(&path);
+    let listener = UnixListener::bind(&path).unwrap();
+    thread::spawn(move || {
+        for incoming in listener.incoming() {
+            let Ok(mut stream) = incoming else { break };
+            let _ = blueice_ai_gatekeeper::handle_one_check(&mut stream);
+        }
+    });
+    path
 }
 
 fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
@@ -53,6 +76,7 @@ fn real_subprocess_serves_navigate_resize_and_shutdown_over_a_real_socket() {
     let frame_dir = std::env::temp_dir().join(format!("blueice-core-binary-test-frames-{}", std::process::id()));
     let _ = std::fs::remove_file(&socket_path);
     let _ = std::fs::remove_dir_all(&frame_dir);
+    let gatekeeper_path = clearing_gatekeeper("fs-gk"); // short: Unix socket paths are capped at ~100 bytes total
 
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
@@ -65,7 +89,18 @@ fn real_subprocess_serves_navigate_resize_and_shutdown_over_a_real_socket() {
     });
 
     let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
-        .args(["--socket", socket_path.to_str().unwrap(), "--width", "300", "--height", "150", "--frame-dir", frame_dir.to_str().unwrap()])
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--width",
+            "300",
+            "--height",
+            "150",
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_path.to_str().unwrap(),
+        ])
         .stderr(Stdio::piped())
         .spawn()
         .expect("failed to spawn blueice-core");
@@ -111,6 +146,7 @@ fn real_subprocess_serves_two_independently_addressed_tabs_without_cross_contami
     let frame_dir = std::env::temp_dir().join(format!("blueice-core-binary-test-frames-multi-tab-{}", std::process::id()));
     let _ = std::fs::remove_file(&socket_path);
     let _ = std::fs::remove_dir_all(&frame_dir);
+    let gatekeeper_path = clearing_gatekeeper("mt-gk"); // short: Unix socket paths are capped at ~100 bytes total
 
     let listener_one = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr_one = listener_one.local_addr().unwrap();
@@ -132,7 +168,18 @@ fn real_subprocess_serves_two_independently_addressed_tabs_without_cross_contami
     });
 
     let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
-        .args(["--socket", socket_path.to_str().unwrap(), "--width", "300", "--height", "150", "--frame-dir", frame_dir.to_str().unwrap()])
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--width",
+            "300",
+            "--height",
+            "150",
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_path.to_str().unwrap(),
+        ])
         .spawn()
         .expect("failed to spawn blueice-core");
 

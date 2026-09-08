@@ -135,6 +135,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "blueice-ai-gatekeeper"
+version = "0.1.0"
+dependencies = [
+ "blueice-ipc",
+]
+
+[[package]]
 name = "blueice-css"
 version = "0.1.0"
 dependencies = [
@@ -151,6 +158,7 @@ version = "0.1.0"
 name = "blueice-engine"
 version = "0.1.0"
 dependencies = [
+ "blueice-ai-gatekeeper",
  "blueice-css",
  "blueice-dom",
  "blueice-html",
