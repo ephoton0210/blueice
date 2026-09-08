@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 pub mod ai;
+pub mod extension;
 pub mod gatekeeper;
 pub mod shm;
 
