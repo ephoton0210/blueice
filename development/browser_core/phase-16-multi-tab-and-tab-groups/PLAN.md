@@ -34,6 +34,17 @@ New lifecycle messages: `ClientMessage::{OpenTab { url: Option<String> }, CloseT
 
 **`run_session`** (`backend/core/engine/src/session.rs`): `page: &mut Page` becomes `tabs: &mut TabManager`. `generation` and `frame_dir` **stay single/session-wide, not per-tab** — every tab's `FrameReady` still gets the next global monotonic number, so `backend/ipc/src/shm.rs` needed zero changes (filenames stay collision-free by construction) and the AI-facing "same generation = same render pass" property still holds across tabs. The loop resolves `tab_id.unwrap_or(tabs.default_tab())` and dispatches to that `Page` exactly as before, or replies `Error` if the tab doesn't exist.
 
+## MCP exposure: `blueice-mcp-server` (added after the initial engine/protocol slice)
+
+The engine/protocol slice above landed first with `blueice-mcp-server` unchanged (every existing tool implicitly addressed the default tab, `tab_id: None`) -- a real gap once an MCP client actually needs more than one tab, closed as a direct follow-up (raised by the user asking "has MCP already got tab switching and full control? it should list tabs too"):
+
+- `CoreConnection::{navigate, act, highlight, representation, dom}` all gained a `tab_id: Option<u64>` parameter (breaking signature change, contained entirely to this one crate -- no external consumers) alongside the corresponding wire-level `tab_id` on their `write_client_message_with_ids`/`read_server_message_with_ids` calls.
+- New `CoreConnection::{open_tab, close_tab, list_tabs}`, each its own `#[tool]` in `server.rs` (`open_tab`/`close_tab`/`list_tabs`). `open_tab` had a real bug caught by its own test: it returned as soon as `TabOpened` arrived, without draining the guaranteed follow-up `FrameReady` `session.rs` sends whenever `TabOpened.url.is_some()` (a successful URL navigation) -- fixed to keep reading until that guaranteed pair is fully drained, the same "pipeline, then read until definitively done" discipline `send_and_drain` already established, this time derived from `TabOpened.url` rather than a second message this call sent itself.
+- **Deliberately no MCP-server-tracked "current tab"** either, consistent with `core` itself never tracking one (see below): every tool takes `tab_id` explicitly (`None` = the default tab), since the calling LLM already has full context across tool calls and can remember which tab_id it's working with -- adding a second, redundant "current tab" concept in `mcp-server` would just be another place for it to drift from what the LLM actually intends.
+- `CoreConnection`'s frame cache (`last_frame`) was single-valued (whichever tab rendered *last*, globally) -- also a real gap for per-tab `screenshot`. Changed to `HashMap<u64, FrameInfo>` keyed by tab_id, with `last_frame(None)` falling back to the most-recently-seen tab (preserving the original single-tab "screenshot what you just navigated" default).
+- `open_tab`/`list_tabs` results go through the same `wrap_untrusted_page_content` every other page-content tool result does (tab URLs are page-influenced too) -- see `phase-12-mcp-server/PLAN.md`'s own checklist item on this.
+- Also found and fixed while adding a second real-subprocess test in `core_process.rs`: `unique_socket_path()` was keyed only by process ID, not actually unique across multiple `CoreProcess::spawn` calls within one process (e.g. two `#[test]`s in the same binary, which Rust runs concurrently by default) -- added a monotonic counter alongside the PID.
+
 ## What this slice deliberately does not do
 
 - **`frontend-reference`'s tab-strip UI** — a `HashMap<tab_id, CurrentFrame>` plus a `selected_tab`, stdin tab commands (`tab-new`/`tab-close`/`tab N`) as a next step before a real graphical tab strip, following the same "stdin stands in for a real AI-facing/UI control channel" precedent the reference frontend's existing `show`/`hide`/`credits` commands already set. Deferred as its own follow-up slice — the engine/protocol side needed to prove out first.
@@ -52,6 +63,15 @@ New lifecycle messages: `ClientMessage::{OpenTab { url: Option<String> }, CloseT
 - [x] Rewrite `run_session` to dispatch through `TabManager` instead of a single `Page`, echoing the *resolved* tab on every reply (see "Every reply echoes the resolved tab" above) — `backend/core/engine/src/session.rs`, 8 new multi-tab tests (`open_tab_creates_a_second_tab_visible_in_list_tabs`, `open_tab_with_a_url_navigates_it_and_sends_a_frame`, `open_tab_with_a_failing_url_replies_error_not_tab_opened`, `an_action_addressed_to_one_tab_never_affects_another_tabs_state`, `a_message_addressed_to_an_unknown_tab_replies_error_not_a_silent_no_op`, `close_tab_removes_it_and_a_later_message_to_it_becomes_an_error`, `a_reply_to_an_untagged_request_still_echoes_the_resolved_default_tab_id`), all 21 pre-existing single-tab-shaped tests kept passing completely unmodified beyond the mechanical `Page::new` → `TabManager::new` rename
 - [x] Update `blueice-core.rs` to construct/drive a `TabManager`
 - [x] Real-subprocess test: two tabs opened (one via `Navigate`, one via `OpenTab { url: Some(..) }`), navigated to different URLs, `FrameReady`/`Representation` addressed independently and never cross-contaminate — `backend/core/engine/tests/core_binary.rs`'s `real_subprocess_serves_two_independently_addressed_tabs_without_cross_contamination`
+
+**MCP exposure (`blueice-mcp-server`) — built:**
+
+- [x] Add `tab_id: Option<u64>` to `CoreConnection::{navigate, act, highlight, representation, dom}`
+- [x] Add `CoreConnection::{open_tab, close_tab, list_tabs}` and matching `#[tool]`s in `server.rs`
+- [x] Make the frame cache (`CoreConnection::last_frame`) per-tab (`HashMap<u64, FrameInfo>`), so `screenshot` can target a specific tab instead of "whichever tab rendered most recently"
+- [x] Fix a real bug caught by testing: `open_tab` didn't drain the guaranteed follow-up `FrameReady` after a successful URL navigation, leaving it unread on the wire for the next call to misinterpret
+- [x] Fix a real, exposed-by-a-new-test bug: `unique_socket_path()` collided across concurrent `#[test]`s in the same process (keyed only by PID)
+- [x] 12 new unit tests (`lib.rs`) + 1 real-subprocess test (`tests/core_process.rs`'s `open_tab_list_tabs_and_close_tab_round_trip_over_a_real_core`)
 
 **Deferred (recorded, not forgotten):**
 

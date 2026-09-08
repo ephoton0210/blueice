@@ -31,7 +31,7 @@
 //! with no timers and no risk of leaving an unread reply for the next
 //! call to misinterpret.
 
-use blueice_ipc::{AiSnapshot, ChromeCommand, ClientMessage, NodeAction, ServerMessage};
+use blueice_ipc::{AiSnapshot, ChromeCommand, ClientMessage, NodeAction, ServerMessage, TabSummary};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
@@ -62,6 +62,23 @@ pub struct ToolOutcome {
     pub snapshot: AiSnapshot,
 }
 
+/// [`CoreConnection::open_tab`]'s result: either the new tab, or an
+/// error message if a requested navigation into it failed (`core`
+/// doesn't report the new tab's id in that case -- see
+/// `blueice_ipc::ServerMessage::TabOpened`'s own docs).
+#[derive(Debug, Clone, PartialEq)]
+pub enum OpenTabOutcome {
+    Opened { tab_id: u64, url: Option<String> },
+    Error(String),
+}
+
+/// [`CoreConnection::close_tab`]'s result.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CloseTabOutcome {
+    Closed,
+    Error(String),
+}
+
 /// Wraps one `core` connection, generic over the stream so the actual
 /// message-sequencing logic (the part worth testing) doesn't need a
 /// real subprocess and Unix socket -- `UnixStream::pair()` plus a fake
@@ -69,13 +86,36 @@ pub struct ToolOutcome {
 /// `blueice_engine::session`'s own tests already use.
 pub struct CoreConnection<S> {
     stream: S,
-    last_frame: Option<FrameInfo>,
+    /// Keyed by tab_id -- `phase-16-multi-tab-and-tab-groups/PLAN.md`
+    /// means two tabs can each have their own most-recent frame, so a
+    /// single cached value would silently return whichever tab was
+    /// rendered *last*, regardless of which one a caller actually
+    /// wants a screenshot of.
+    last_frames: std::collections::HashMap<u64, FrameInfo>,
+    /// The tab_id of the most recent `FrameReady` seen, regardless of
+    /// which tab -- the fallback [`CoreConnection::last_frame`] uses
+    /// when a caller doesn't name a specific tab, preserving this
+    /// crate's original single-tab-shaped behavior (screenshot the page
+    /// you just navigated) as the common-case default.
+    last_seen_tab: Option<u64>,
     next_request_id: u64,
 }
 
 impl<S: Read + Write> CoreConnection<S> {
     pub fn new(stream: S) -> Self {
-        CoreConnection { stream, last_frame: None, next_request_id: 0 }
+        CoreConnection { stream, last_frames: std::collections::HashMap::new(), last_seen_tab: None, next_request_id: 0 }
+    }
+
+    /// Records a `FrameReady` reply for `tab_id` (a no-op if the reply
+    /// didn't carry one -- always populated when talking to an
+    /// up-to-date `core`, per `session.rs`'s own "every reply echoes
+    /// the resolved tab" guarantee, but a stale/incompatible peer isn't
+    /// worth panicking over).
+    fn record_frame(&mut self, tab_id: Option<u64>, frame: FrameInfo) {
+        if let Some(tab_id) = tab_id {
+            self.last_frames.insert(tab_id, frame);
+            self.last_seen_tab = Some(tab_id);
+        }
     }
 
     /// Performs the `protocol_version` handshake (`phase-1-ai-
@@ -97,23 +137,26 @@ impl<S: Read + Write> CoreConnection<S> {
         self.next_request_id
     }
 
-    /// Sends `msg`, then pipelines a `GetRepresentation` and drains
-    /// until it arrives -- see the module docs for why this avoids
-    /// needing to know in advance how many replies `msg` produces.
-    /// Each of the two outgoing messages gets its own request_id, and
-    /// any incoming reply carrying a *different* one is skipped rather
-    /// than consumed -- closes `phase-8-live-core-hotswap/PLAN.md`'s
-    /// flagged gap: sharing a `core` connection via `blueice-launcher`'s
-    /// broker means a reply glimpsed here could belong to another
-    /// client's concurrent action instead of this call's own request.
-    fn send_and_drain(&mut self, msg: &ClientMessage) -> io::Result<ToolOutcome> {
+    /// Sends `msg` addressed to `tab_id` (`None` for the default tab,
+    /// same as omitting `tab_id` on the wire -- `phase-16-multi-tab-
+    /// and-tab-groups/PLAN.md`), then pipelines a `GetRepresentation`
+    /// addressed to the *same* tab and drains until it arrives -- see
+    /// the module docs for why this avoids needing to know in advance
+    /// how many replies `msg` produces. Each of the two outgoing
+    /// messages gets its own request_id, and any incoming reply
+    /// carrying a *different* one is skipped rather than consumed --
+    /// closes `phase-8-live-core-hotswap/PLAN.md`'s flagged gap: sharing
+    /// a `core` connection via `blueice-launcher`'s broker means a reply
+    /// glimpsed here could belong to another client's concurrent action
+    /// instead of this call's own request.
+    fn send_and_drain(&mut self, tab_id: Option<u64>, msg: &ClientMessage) -> io::Result<ToolOutcome> {
         let action_id = self.next_request_id();
         let representation_id = self.next_request_id();
-        blueice_ipc::write_client_message_with_id(&mut self.stream, Some(action_id), msg)?;
-        blueice_ipc::write_client_message_with_id(&mut self.stream, Some(representation_id), &ClientMessage::GetRepresentation)?;
+        blueice_ipc::write_client_message_with_ids(&mut self.stream, tab_id, Some(action_id), msg)?;
+        blueice_ipc::write_client_message_with_ids(&mut self.stream, tab_id, Some(representation_id), &ClientMessage::GetRepresentation)?;
         let mut error = None;
         loop {
-            let (request_id, message) = blueice_ipc::read_server_message_with_id(&mut self.stream)?;
+            let (frame_tab_id, request_id, message) = blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
             if matches!(request_id, Some(id) if id != action_id && id != representation_id) {
                 continue;
             }
@@ -121,7 +164,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 ServerMessage::Representation(snapshot) => return Ok(ToolOutcome { error, snapshot }),
                 ServerMessage::Error { message } => error = Some(message),
                 ServerMessage::FrameReady { shm_path, width, height, generation } => {
-                    self.last_frame = Some(FrameInfo { shm_path, width, height, generation });
+                    self.record_frame(frame_tab_id, FrameInfo { shm_path, width, height, generation });
                 }
                 ServerMessage::Navigated { .. }
                 | ServerMessage::Dom(_)
@@ -139,33 +182,33 @@ impl<S: Read + Write> CoreConnection<S> {
         }
     }
 
-    pub fn navigate(&mut self, url: &str) -> io::Result<ToolOutcome> {
-        self.send_and_drain(&ClientMessage::Navigate { url: url.to_string() })
+    pub fn navigate(&mut self, url: &str, tab_id: Option<u64>) -> io::Result<ToolOutcome> {
+        self.send_and_drain(tab_id, &ClientMessage::Navigate { url: url.to_string() })
     }
 
-    pub fn act(&mut self, id: u64, action: NodeAction) -> io::Result<ToolOutcome> {
-        self.send_and_drain(&ClientMessage::ActOn { id, action })
+    pub fn act(&mut self, id: u64, action: NodeAction, tab_id: Option<u64>) -> io::Result<ToolOutcome> {
+        self.send_and_drain(tab_id, &ClientMessage::ActOn { id, action })
     }
 
-    pub fn highlight(&mut self, id: Option<u64>) -> io::Result<ToolOutcome> {
-        self.send_and_drain(&ClientMessage::Highlight { id })
+    pub fn highlight(&mut self, id: Option<u64>, tab_id: Option<u64>) -> io::Result<ToolOutcome> {
+        self.send_and_drain(tab_id, &ClientMessage::Highlight { id })
     }
 
     /// Unlike the action-shaped methods above, this sends nothing but
     /// `GetRepresentation` itself -- there's no prior state change to
     /// pipeline it after.
-    pub fn representation(&mut self) -> io::Result<AiSnapshot> {
+    pub fn representation(&mut self, tab_id: Option<u64>) -> io::Result<AiSnapshot> {
         let request_id = self.next_request_id();
-        blueice_ipc::write_client_message_with_id(&mut self.stream, Some(request_id), &ClientMessage::GetRepresentation)?;
+        blueice_ipc::write_client_message_with_ids(&mut self.stream, tab_id, Some(request_id), &ClientMessage::GetRepresentation)?;
         loop {
-            let (reply_id, message) = blueice_ipc::read_server_message_with_id(&mut self.stream)?;
+            let (frame_tab_id, reply_id, message) = blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
             if matches!(reply_id, Some(id) if id != request_id) {
                 continue;
             }
             match message {
                 ServerMessage::Representation(snapshot) => return Ok(snapshot),
                 ServerMessage::FrameReady { shm_path, width, height, generation } => {
-                    self.last_frame = Some(FrameInfo { shm_path, width, height, generation });
+                    self.record_frame(frame_tab_id, FrameInfo { shm_path, width, height, generation });
                 }
                 ServerMessage::Error { .. }
                 | ServerMessage::Navigated { .. }
@@ -185,18 +228,18 @@ impl<S: Read + Write> CoreConnection<S> {
     /// harness (`TEST_PLAN.md`) diffs a serialized Chromium DOM
     /// against. Same "nothing to pipeline it after" shape as
     /// [`CoreConnection::representation`].
-    pub fn dom(&mut self) -> io::Result<String> {
+    pub fn dom(&mut self, tab_id: Option<u64>) -> io::Result<String> {
         let request_id = self.next_request_id();
-        blueice_ipc::write_client_message_with_id(&mut self.stream, Some(request_id), &ClientMessage::GetDom)?;
+        blueice_ipc::write_client_message_with_ids(&mut self.stream, tab_id, Some(request_id), &ClientMessage::GetDom)?;
         loop {
-            let (reply_id, message) = blueice_ipc::read_server_message_with_id(&mut self.stream)?;
+            let (frame_tab_id, reply_id, message) = blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
             if matches!(reply_id, Some(id) if id != request_id) {
                 continue;
             }
             match message {
                 ServerMessage::Dom(dump) => return Ok(dump),
                 ServerMessage::FrameReady { shm_path, width, height, generation } => {
-                    self.last_frame = Some(FrameInfo { shm_path, width, height, generation });
+                    self.record_frame(frame_tab_id, FrameInfo { shm_path, width, height, generation });
                 }
                 ServerMessage::Error { .. }
                 | ServerMessage::Navigated { .. }
@@ -210,10 +253,136 @@ impl<S: Read + Write> CoreConnection<S> {
         }
     }
 
-    /// The most recent frame, if any tool call has caused one yet --
-    /// `None` before the first `navigate`.
-    pub fn last_frame(&self) -> Option<&FrameInfo> {
-        self.last_frame.as_ref()
+    /// Opens a new tab (blank, or navigated to `url` if given) --
+    /// `phase-16-multi-tab-and-tab-groups/PLAN.md`'s `OpenTab`. No
+    /// "current tab" is tracked here or in `core` itself (see that
+    /// phase's own docs for why -- a human's `frontend` and an AI's
+    /// `mcp-server` may legitimately be working with different tabs at
+    /// once); the caller is expected to hold onto the returned
+    /// `tab_id` and pass it explicitly to address that tab afterward.
+    pub fn open_tab(&mut self, url: Option<&str>) -> io::Result<OpenTabOutcome> {
+        let request_id = self.next_request_id();
+        blueice_ipc::write_client_message_with_id(&mut self.stream, Some(request_id), &ClientMessage::OpenTab { url: url.map(str::to_string) })?;
+        // `session.rs`'s `handle_open_tab` sends exactly one more
+        // message (a `FrameReady`) after `TabOpened` when -- and only
+        // when -- `TabOpened.url` came back `Some(_)` (a URL was given
+        // and navigation succeeded): a blank tab or a failed navigation
+        // never gets one. `outcome` is only returned once that
+        // guaranteed follow-up (if any) has actually been drained, so
+        // this call never leaves an unread `FrameReady` on the wire for
+        // the next call to misinterpret -- the same "pipeline, then
+        // read until definitively done" discipline `send_and_drain`
+        // already uses, just derived from `TabOpened.url` instead of a
+        // second message this call sent itself.
+        let mut outcome = None;
+        loop {
+            let (frame_tab_id, reply_id, message) = blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
+            if matches!(reply_id, Some(id) if id != request_id) {
+                continue;
+            }
+            match message {
+                ServerMessage::TabOpened { tab_id, url } => {
+                    let expects_frame = url.is_some();
+                    outcome = Some(OpenTabOutcome::Opened { tab_id, url });
+                    if !expects_frame {
+                        return Ok(outcome.expect("just set"));
+                    }
+                }
+                // A failed `Navigate` inside `OpenTab` replies bare
+                // `Error` -- the new (blank) tab's id isn't reported
+                // here, a documented limitation of this minimal slice
+                // (see `ServerMessage::TabOpened`'s own docs); a caller
+                // that needs it can fall back to `list_tabs`.
+                ServerMessage::Error { message } => return Ok(OpenTabOutcome::Error(message)),
+                ServerMessage::FrameReady { shm_path, width, height, generation } => {
+                    self.record_frame(frame_tab_id, FrameInfo { shm_path, width, height, generation });
+                    if let Some(outcome) = outcome {
+                        return Ok(outcome);
+                    }
+                    // A `FrameReady` arriving before its `TabOpened` would
+                    // be unexpected given `session.rs`'s send order, but
+                    // there's nothing unsafe about just continuing to
+                    // wait for it rather than assuming protocol violation.
+                }
+                ServerMessage::Navigated { .. }
+                | ServerMessage::Dom(_)
+                | ServerMessage::Representation(_)
+                | ServerMessage::Hello { .. }
+                | ServerMessage::Unknown
+                | ServerMessage::TabClosed { .. }
+                | ServerMessage::Tabs(_) => {}
+            }
+        }
+    }
+
+    /// Closes `tab_id` -- `phase-16-multi-tab-and-tab-groups/PLAN.md`'s
+    /// `CloseTab`, addressed via the envelope the same way every other
+    /// per-tab message is.
+    pub fn close_tab(&mut self, tab_id: u64) -> io::Result<CloseTabOutcome> {
+        let request_id = self.next_request_id();
+        blueice_ipc::write_client_message_with_ids(&mut self.stream, Some(tab_id), Some(request_id), &ClientMessage::CloseTab)?;
+        loop {
+            let (frame_tab_id, reply_id, message) = blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
+            if matches!(reply_id, Some(id) if id != request_id) {
+                continue;
+            }
+            match message {
+                ServerMessage::TabClosed { .. } => return Ok(CloseTabOutcome::Closed),
+                ServerMessage::Error { message } => return Ok(CloseTabOutcome::Error(message)),
+                ServerMessage::FrameReady { shm_path, width, height, generation } => {
+                    self.record_frame(frame_tab_id, FrameInfo { shm_path, width, height, generation });
+                }
+                ServerMessage::Navigated { .. }
+                | ServerMessage::Dom(_)
+                | ServerMessage::Representation(_)
+                | ServerMessage::Hello { .. }
+                | ServerMessage::Unknown
+                | ServerMessage::TabOpened { .. }
+                | ServerMessage::Tabs(_) => {}
+            }
+        }
+    }
+
+    /// Lists every currently-open tab -- `phase-16-multi-tab-and-tab-
+    /// groups/PLAN.md`'s `ListTabs`. Always succeeds (an empty list is
+    /// valid -- `core` doesn't force a tab to always exist).
+    pub fn list_tabs(&mut self) -> io::Result<Vec<TabSummary>> {
+        let request_id = self.next_request_id();
+        blueice_ipc::write_client_message_with_id(&mut self.stream, Some(request_id), &ClientMessage::ListTabs)?;
+        loop {
+            let (frame_tab_id, reply_id, message) = blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
+            if matches!(reply_id, Some(id) if id != request_id) {
+                continue;
+            }
+            match message {
+                ServerMessage::Tabs(tabs) => return Ok(tabs),
+                ServerMessage::FrameReady { shm_path, width, height, generation } => {
+                    self.record_frame(frame_tab_id, FrameInfo { shm_path, width, height, generation });
+                }
+                ServerMessage::Error { .. }
+                | ServerMessage::Navigated { .. }
+                | ServerMessage::Dom(_)
+                | ServerMessage::Representation(_)
+                | ServerMessage::Hello { .. }
+                | ServerMessage::Unknown
+                | ServerMessage::TabOpened { .. }
+                | ServerMessage::TabClosed { .. } => {}
+            }
+        }
+    }
+
+    /// The most recent frame for `tab_id`, or (if `None`) the most
+    /// recent frame seen for *any* tab -- `None` before the first
+    /// state-changing call has produced a frame at all. Named tab_id
+    /// lookup lets a caller screenshot a specific tab even when other
+    /// tabs have rendered more recently; the `None` fallback preserves
+    /// this crate's original single-tab behavior (screenshot whatever
+    /// you just navigated) as the common-case default.
+    pub fn last_frame(&self, tab_id: Option<u64>) -> Option<&FrameInfo> {
+        match tab_id {
+            Some(tab_id) => self.last_frames.get(&tab_id),
+            None => self.last_seen_tab.and_then(|id| self.last_frames.get(&id)),
+        }
     }
 
     pub fn shutdown(&mut self) -> io::Result<()> {
@@ -307,8 +476,18 @@ fn sibling_core_binary(this_exe: &Path) -> PathBuf {
     dir.join(name)
 }
 
+/// Process ID alone isn't actually unique enough: `CoreProcess::spawn`
+/// (and so this) can be called more than once within one process --
+/// e.g. two `#[test]`s in the same test binary, which Rust runs
+/// concurrently on separate threads of the *same* process by default --
+/// and two concurrent calls sharing a path would race to bind the same
+/// socket. A monotonic counter alongside the PID makes every call
+/// unique regardless of how many happen in this process's lifetime.
 fn unique_socket_path() -> PathBuf {
-    std::env::temp_dir().join(format!("blueice-mcp-{}.sock", std::process::id()))
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!("blueice-mcp-{}-{n}.sock", std::process::id()))
 }
 
 fn wait_for_socket(path: &Path, timeout: Duration) -> bool {
@@ -467,6 +646,16 @@ mod tests {
         blueice_ipc::write_server_message(stream, msg).unwrap();
     }
 
+    /// Like [`reply`], but tags the reply with a concrete tab_id --
+    /// what a real, up-to-date `core` always does (`session.rs`'s own
+    /// "every reply echoes the resolved tab" guarantee), needed
+    /// specifically for `FrameReady` replies a test then checks via
+    /// `CoreConnection::last_frame`, since `record_frame` only caches a
+    /// frame whose reply actually carried a tab_id.
+    fn reply_tab(stream: &mut UnixStream, tab_id: u64, msg: &ServerMessage) {
+        blueice_ipc::write_server_message_with_ids(stream, Some(tab_id), None, msg).unwrap();
+    }
+
     #[test]
     fn navigate_pipelines_get_representation_and_returns_the_resulting_snapshot() {
         let (client, server) = UnixStream::pair().unwrap();
@@ -476,7 +665,7 @@ mod tests {
                 Box::new(|msg, s| {
                     assert!(matches!(msg, ClientMessage::Navigate { .. }));
                     reply(s, &ServerMessage::Navigated { url: "https://example.com".to_string() });
-                    reply(s, &ServerMessage::FrameReady { shm_path: "/tmp/x".to_string(), width: 10, height: 10, generation: 1 });
+                    reply_tab(s, 1, &ServerMessage::FrameReady { shm_path: "/tmp/x".to_string(), width: 10, height: 10, generation: 1 });
                 }),
                 Box::new(|msg, s| {
                     assert!(matches!(msg, ClientMessage::GetRepresentation));
@@ -486,10 +675,10 @@ mod tests {
         );
 
         let mut conn = CoreConnection::new(client);
-        let outcome = conn.navigate("https://example.com").unwrap();
+        let outcome = conn.navigate("https://example.com", None).unwrap();
         assert_eq!(outcome.error, None);
         assert_eq!(outcome.snapshot.generation, 1);
-        assert_eq!(conn.last_frame().unwrap().generation, 1);
+        assert_eq!(conn.last_frame(None).unwrap().generation, 1);
     }
 
     #[test]
@@ -510,7 +699,7 @@ mod tests {
         );
 
         let mut conn = CoreConnection::new(client);
-        let outcome = conn.navigate("http://bad").unwrap();
+        let outcome = conn.navigate("http://bad", None).unwrap();
         assert_eq!(outcome.error.as_deref(), Some("unreachable host"));
         assert_eq!(outcome.snapshot.generation, 0);
     }
@@ -538,7 +727,7 @@ mod tests {
         );
 
         let mut conn = CoreConnection::new(client);
-        let outcome = conn.act(1, NodeAction::Click).unwrap();
+        let outcome = conn.act(1, NodeAction::Click, None).unwrap();
         assert_eq!(outcome.error, None);
         assert_eq!(outcome.snapshot.nodes[0].id, 1);
     }
@@ -551,7 +740,7 @@ mod tests {
             vec![
                 Box::new(|msg, s| {
                     assert!(matches!(msg, ClientMessage::ActOn { action: NodeAction::Focus, .. }));
-                    reply(s, &ServerMessage::FrameReady { shm_path: "/tmp/y".to_string(), width: 5, height: 5, generation: 2 });
+                    reply_tab(s, 1, &ServerMessage::FrameReady { shm_path: "/tmp/y".to_string(), width: 5, height: 5, generation: 2 });
                 }),
                 Box::new(|msg, s| {
                     assert!(matches!(msg, ClientMessage::GetRepresentation));
@@ -561,9 +750,9 @@ mod tests {
         );
 
         let mut conn = CoreConnection::new(client);
-        let outcome = conn.act(1, NodeAction::Focus).unwrap();
+        let outcome = conn.act(1, NodeAction::Focus, None).unwrap();
         assert_eq!(outcome.snapshot.generation, 2);
-        assert_eq!(conn.last_frame().unwrap().shm_path, "/tmp/y");
+        assert_eq!(conn.last_frame(None).unwrap().shm_path, "/tmp/y");
     }
 
     #[test]
@@ -584,7 +773,7 @@ mod tests {
         );
 
         let mut conn = CoreConnection::new(client);
-        let outcome = conn.highlight(Some(1)).unwrap();
+        let outcome = conn.highlight(Some(1), None).unwrap();
         assert_eq!(outcome.snapshot.generation, 3);
     }
 
@@ -600,7 +789,7 @@ mod tests {
         );
 
         let mut conn = CoreConnection::new(client);
-        let snap = conn.representation().unwrap();
+        let snap = conn.representation(None).unwrap();
         assert_eq!(snap.generation, 0);
     }
 
@@ -616,7 +805,7 @@ mod tests {
         );
 
         let mut conn = CoreConnection::new(client);
-        assert_eq!(conn.dom().unwrap(), "| <html>\n");
+        assert_eq!(conn.dom(None).unwrap(), "| <html>\n");
     }
 
     #[test]
@@ -626,14 +815,14 @@ mod tests {
             server,
             vec![Box::new(|msg, s| {
                 assert!(matches!(msg, ClientMessage::GetDom));
-                reply(s, &ServerMessage::FrameReady { shm_path: "/tmp/dom".to_string(), width: 1, height: 1, generation: 5 });
+                reply_tab(s, 1, &ServerMessage::FrameReady { shm_path: "/tmp/dom".to_string(), width: 1, height: 1, generation: 5 });
                 reply(s, &ServerMessage::Dom("| <html>\n".to_string()));
             })],
         );
 
         let mut conn = CoreConnection::new(client);
-        conn.dom().unwrap();
-        assert_eq!(conn.last_frame().unwrap().generation, 5);
+        conn.dom(None).unwrap();
+        assert_eq!(conn.last_frame(None).unwrap().generation, 5);
     }
 
     #[test]
@@ -643,14 +832,14 @@ mod tests {
             server,
             vec![Box::new(|msg, s| {
                 assert!(matches!(msg, ClientMessage::GetRepresentation));
-                reply(s, &ServerMessage::FrameReady { shm_path: "/tmp/w".to_string(), width: 1, height: 1, generation: 9 });
+                reply_tab(s, 1, &ServerMessage::FrameReady { shm_path: "/tmp/w".to_string(), width: 1, height: 1, generation: 9 });
                 reply(s, &ServerMessage::Representation(sample_snapshot(9)));
             })],
         );
 
         let mut conn = CoreConnection::new(client);
-        conn.representation().unwrap();
-        assert_eq!(conn.last_frame().unwrap().generation, 9);
+        conn.representation(None).unwrap();
+        assert_eq!(conn.last_frame(None).unwrap().generation, 9);
     }
 
     #[test]
@@ -685,7 +874,7 @@ mod tests {
     fn last_frame_is_none_before_any_action_produces_one() {
         let (client, _server) = UnixStream::pair().unwrap();
         let conn = CoreConnection::new(client);
-        assert!(conn.last_frame().is_none());
+        assert!(conn.last_frame(None).is_none());
     }
 
     #[test]
@@ -832,7 +1021,7 @@ mod tests {
         );
 
         let mut conn = CoreConnection::new(client);
-        let outcome = conn.navigate("https://example.com").unwrap();
+        let outcome = conn.navigate("https://example.com", None).unwrap();
         assert_eq!(outcome.error, None, "the stray, differently-tagged Error must not be attributed to this call");
         assert_eq!(outcome.snapshot.generation, 1);
     }
@@ -874,5 +1063,158 @@ mod tests {
     fn wrap_untrusted_page_content_handles_empty_content() {
         let wrapped = wrap_untrusted_page_content("");
         assert!(wrapped.ends_with(UNTRUSTED_CONTENT_MARKER) || wrapped.trim_end().ends_with(UNTRUSTED_CONTENT_MARKER));
+    }
+
+    #[test]
+    fn list_tabs_returns_what_core_reports() {
+        let (client, server) = UnixStream::pair().unwrap();
+        fake_core(
+            server,
+            vec![Box::new(|msg, s| {
+                assert!(matches!(msg, ClientMessage::ListTabs));
+                reply(s, &ServerMessage::Tabs(vec![TabSummary { id: 1, url: None }, TabSummary { id: 2, url: Some("https://example.com".to_string()) }]));
+            })],
+        );
+
+        let mut conn = CoreConnection::new(client);
+        let tabs = conn.list_tabs().unwrap();
+        assert_eq!(tabs, vec![TabSummary { id: 1, url: None }, TabSummary { id: 2, url: Some("https://example.com".to_string()) }]);
+    }
+
+    #[test]
+    fn open_tab_without_a_url_returns_the_new_blank_tab() {
+        let (client, server) = UnixStream::pair().unwrap();
+        fake_core(
+            server,
+            vec![Box::new(|msg, s| {
+                assert!(matches!(msg, ClientMessage::OpenTab { url: None }));
+                reply(s, &ServerMessage::TabOpened { tab_id: 2, url: None });
+            })],
+        );
+
+        let mut conn = CoreConnection::new(client);
+        assert_eq!(conn.open_tab(None).unwrap(), OpenTabOutcome::Opened { tab_id: 2, url: None });
+    }
+
+    #[test]
+    fn open_tab_with_a_url_returns_the_navigated_tab_and_caches_its_frame() {
+        let (client, server) = UnixStream::pair().unwrap();
+        fake_core(
+            server,
+            vec![Box::new(|msg, s| {
+                assert_eq!(msg, ClientMessage::OpenTab { url: Some("https://example.com".to_string()) });
+                reply_tab(s, 2, &ServerMessage::TabOpened { tab_id: 2, url: Some("https://example.com".to_string()) });
+                reply_tab(s, 2, &ServerMessage::FrameReady { shm_path: "/tmp/newtab".to_string(), width: 8, height: 8, generation: 3 });
+            })],
+        );
+
+        let mut conn = CoreConnection::new(client);
+        let outcome = conn.open_tab(Some("https://example.com")).unwrap();
+        assert_eq!(outcome, OpenTabOutcome::Opened { tab_id: 2, url: Some("https://example.com".to_string()) });
+        assert_eq!(conn.last_frame(Some(2)).unwrap().generation, 3);
+    }
+
+    #[test]
+    fn open_tab_surfaces_a_navigation_failure_as_an_error_outcome() {
+        let (client, server) = UnixStream::pair().unwrap();
+        fake_core(
+            server,
+            vec![Box::new(|msg, s| {
+                assert!(matches!(msg, ClientMessage::OpenTab { .. }));
+                reply(s, &ServerMessage::Error { message: "unreachable host".to_string() });
+            })],
+        );
+
+        let mut conn = CoreConnection::new(client);
+        assert_eq!(conn.open_tab(Some("http://bad")).unwrap(), OpenTabOutcome::Error("unreachable host".to_string()));
+    }
+
+    #[test]
+    fn close_tab_returns_closed_on_success() {
+        let (client, server) = UnixStream::pair().unwrap();
+        fake_core(
+            server,
+            vec![Box::new(|msg, s| {
+                assert!(matches!(msg, ClientMessage::CloseTab));
+                reply(s, &ServerMessage::TabClosed { tab_id: 2 });
+            })],
+        );
+
+        let mut conn = CoreConnection::new(client);
+        assert_eq!(conn.close_tab(2).unwrap(), CloseTabOutcome::Closed);
+    }
+
+    #[test]
+    fn close_tab_returns_error_for_an_unknown_tab() {
+        let (client, server) = UnixStream::pair().unwrap();
+        fake_core(
+            server,
+            vec![Box::new(|msg, s| {
+                assert!(matches!(msg, ClientMessage::CloseTab));
+                reply(s, &ServerMessage::Error { message: "unknown tab 999".to_string() });
+            })],
+        );
+
+        let mut conn = CoreConnection::new(client);
+        assert_eq!(conn.close_tab(999).unwrap(), CloseTabOutcome::Error("unknown tab 999".to_string()));
+    }
+
+    #[test]
+    fn navigate_addresses_the_given_tab_id_on_the_wire() {
+        // Direct wire-level check (bypassing `fake_core`'s helper,
+        // which discards ids via the plain `read_client_message`) that
+        // `tab_id` actually reaches the envelope, not just the
+        // in-process struct field.
+        let (client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            let (tab_id, _, msg) = blueice_ipc::read_client_message_with_ids(&mut server).unwrap();
+            assert_eq!(tab_id, Some(7));
+            assert!(matches!(msg, ClientMessage::Navigate { .. }));
+            reply_tab(&mut server, 7, &ServerMessage::Navigated { url: "https://example.com".to_string() });
+            let (tab_id, _, msg) = blueice_ipc::read_client_message_with_ids(&mut server).unwrap();
+            assert_eq!(tab_id, Some(7), "the pipelined GetRepresentation must be addressed to the same tab");
+            assert!(matches!(msg, ClientMessage::GetRepresentation));
+            reply_tab(&mut server, 7, &ServerMessage::Representation(sample_snapshot(1)));
+        });
+
+        let mut conn = CoreConnection::new(client);
+        conn.navigate("https://example.com", Some(7)).unwrap();
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn last_frame_is_tracked_independently_per_tab() {
+        let (client, server) = UnixStream::pair().unwrap();
+        fake_core(
+            server,
+            vec![
+                Box::new(|msg, s| {
+                    assert!(matches!(msg, ClientMessage::Navigate { .. }));
+                    reply_tab(s, 1, &ServerMessage::Navigated { url: "https://a.example".to_string() });
+                    reply_tab(s, 1, &ServerMessage::FrameReady { shm_path: "/tmp/a".to_string(), width: 1, height: 1, generation: 1 });
+                }),
+                Box::new(|msg, s| {
+                    assert!(matches!(msg, ClientMessage::GetRepresentation));
+                    reply_tab(s, 1, &ServerMessage::Representation(sample_snapshot(1)));
+                }),
+                Box::new(|msg, s| {
+                    assert!(matches!(msg, ClientMessage::Navigate { .. }));
+                    reply_tab(s, 2, &ServerMessage::Navigated { url: "https://b.example".to_string() });
+                    reply_tab(s, 2, &ServerMessage::FrameReady { shm_path: "/tmp/b".to_string(), width: 1, height: 1, generation: 2 });
+                }),
+                Box::new(|msg, s| {
+                    assert!(matches!(msg, ClientMessage::GetRepresentation));
+                    reply_tab(s, 2, &ServerMessage::Representation(sample_snapshot(2)));
+                }),
+            ],
+        );
+
+        let mut conn = CoreConnection::new(client);
+        conn.navigate("https://a.example", Some(1)).unwrap();
+        conn.navigate("https://b.example", Some(2)).unwrap();
+
+        assert_eq!(conn.last_frame(Some(1)).unwrap().shm_path, "/tmp/a", "tab 1's own frame must still be retrievable after tab 2 renders");
+        assert_eq!(conn.last_frame(Some(2)).unwrap().shm_path, "/tmp/b");
+        assert_eq!(conn.last_frame(None).unwrap().shm_path, "/tmp/b", "the untagged lookup falls back to whichever tab rendered most recently");
     }
 }
