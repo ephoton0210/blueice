@@ -78,16 +78,19 @@ fn outcome_to_result(outcome: crate::ToolOutcome) -> CallToolResult {
     }
 }
 
-/// The MCP server itself -- owns the spawned `core` process for its
-/// whole lifetime (dropped, and `core` torn down with it, when the MCP
-/// client disconnects).
+/// The MCP server itself -- owns its `core` connection for its whole
+/// lifetime. If a `blueice-launcher` rendezvous socket is reachable
+/// (see [`CoreProcess::connect`]), that shared `core`/`Page` is left
+/// running when the MCP client disconnects; otherwise (no launcher
+/// running) this privately spawned its own `core`, which *is* torn
+/// down with it.
 pub struct BlueIceMcpServer {
     core: CoreProcess,
 }
 
 impl BlueIceMcpServer {
     pub fn spawn(width: u32, height: u32) -> io::Result<Self> {
-        Ok(BlueIceMcpServer { core: CoreProcess::spawn(width, height)? })
+        Ok(BlueIceMcpServer { core: CoreProcess::connect(width, height)? })
     }
 
     fn conn(&self) -> Arc<Mutex<CoreConnection<UnixStream>>> {

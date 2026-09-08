@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: Not started for this phase's own objective (hot-swap); a minimal first slice solving a related, more urgent problem (a human's `frontend` and an AI's `mcp-server` sharing one `core` instance at all) is designed below and ready to build — see "Minimal first slice"
+**Status**: Not started for this phase's own objective (hot-swap); a minimal first slice solving a related, more urgent problem (a human's `frontend` and an AI's `mcp-server` sharing one `core` instance at all) is done — see "Minimal first slice"
 
 ## Objective
 
@@ -50,14 +50,14 @@ If reload-based state transfer turns out to be insufficient (see open questions)
 
 ## Checklist
 
-**Minimal first slice (rendezvous broker — designed above, ready to build; resolves the multi-client/"same instance" gap without waiting on the hot-swap decisions below):**
+**Minimal first slice (rendezvous broker) — built:**
 
-- [ ] Build `blueice-launcher`: spawns one `core` on a private internal socket at launcher startup, never idle-torn-down
-- [ ] Implement the external rendezvous listener (well-known socket path, overridable) accepting multiple simultaneous client connections
-- [ ] Implement fan-in (multiple external `ClientMessage` streams -> one internal `core` connection) and fan-out (every internal `ServerMessage` broadcast to every connected external client) — no changes needed to `blueice-core`/`session.rs` itself
-- [ ] Update `mcp-server`'s `CoreConnection` construction to try the rendezvous socket first, falling back to today's private `CoreProcess::spawn` only if nothing is listening there (resolves `phase-12-mcp-server/PLAN.md`'s blocked "on-demand spawning" checklist item for the *shared-instance* half of that item — see that phase's own checklist for the on-demand-*spawn-timing* half, which is a separate, `mcp-server`-side concern)
-- [ ] Add an end-to-end test: two client connections (standing in for `frontend` and `mcp-server`) through the same launcher observe the same `generation` sequence and the same `FrameReady`/`Representation` state after either one's action — the concrete, checkable version of "same render pass, now across two real client connections" this slice exists to prove
-- [ ] Add a client-generated request ID to `ClientMessage`, echoed back on the corresponding reply, bundled with the already-deferred `protocol_version` handshake (`phase-1-ai-representation-layer/PLAN.md` §3) — closes this slice's known broadcast-misattribution gap (see "Known limitation" above); not blocking for the slice's initial build
+- [x] Build `blueice-launcher`: spawns one `core` on a private internal socket at launcher startup, never idle-torn-down — `backend/launcher`, `SpawnedCore` (analogous to `mcp-server`'s own `CoreProcess`, but owned by the launcher instead)
+- [x] Implement the external rendezvous listener (well-known socket path, overridable) accepting multiple simultaneous client connections — `blueice_launcher::default_rendezvous_socket_path` (`$XDG_RUNTIME_DIR/blueice/core.sock`, falling back to a per-uid `/tmp` path), `--socket` override in `blueice-launcher.rs`
+- [x] Implement fan-in (multiple external `ClientMessage` streams -> one internal `core` connection) and fan-out (every internal `ServerMessage` broadcast to every connected external client) — `forward_client_to_core`/`broadcast_core_to_clients`/`register_client`/`run_broker`; confirmed no changes were needed to `blueice-core`/`session.rs` itself
+- [x] Update `mcp-server`'s `CoreConnection` construction to try the rendezvous socket first, falling back to today's private `CoreProcess::spawn` only if nothing is listening there (resolves `phase-12-mcp-server/PLAN.md`'s blocked "on-demand spawning" checklist item for the *shared-instance* half of that item — see that phase's own checklist for the on-demand-*spawn-timing* half, which is a separate, `mcp-server`-side concern) — `CoreProcess::connect`/`connect_to`, dispatching to a new `CoreOwnership` enum (`Shared` vs `PrivatelySpawned`). Found and fixed a real correctness bug while wiring this up: `CoreProcess`'s `Drop` always sent `ClientMessage::Shutdown`, which would have ended a *shared* `core` (and every other client's session, e.g. a human's `frontend`) just because one MCP client disconnected — `CoreOwnership::Shared`'s `Drop` arm now just lets the connection close instead, never sending `Shutdown` for a `core` this process doesn't own alone.
+- [x] Add an end-to-end test: two client connections (standing in for `frontend` and `mcp-server`) through the same launcher observe the same `generation` sequence and the same `FrameReady`/`Representation` state after either one's action — `backend/launcher/tests/broker_end_to_end.rs`'s `two_clients_through_the_same_launcher_observe_the_same_render_pass`, driving the real compiled `blueice-launcher` binary (and, transitively, the real `blueice-core` it spawns) over real Unix sockets; also proves `Shutdown` sent by either client cascades through the shared `core` to end the launcher itself cleanly.
+- [ ] Add a client-generated request ID to `ClientMessage`, echoed back on the corresponding reply, bundled with the already-deferred `protocol_version` handshake (`phase-1-ai-representation-layer/PLAN.md` §3) — closes this slice's known broadcast-misattribution gap (see "Known limitation" above); still not blocking, not yet done
 
 **Fuller hot-swap work (blocked on the decisions below, not started):**
 

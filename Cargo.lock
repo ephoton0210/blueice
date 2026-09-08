@@ -210,6 +210,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "blueice-launcher"
+version = "0.1.0"
+dependencies = [
+ "blueice-ipc",
+]
+
+[[package]]
 name = "blueice-layout"
 version = "0.1.0"
 dependencies = [
@@ -226,6 +233,7 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "blueice-ipc",
+ "blueice-launcher",
  "blueice-raster",
  "rmcp",
  "serde",

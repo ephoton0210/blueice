@@ -212,17 +212,55 @@ fn wait_for_socket(path: &Path, timeout: Duration) -> bool {
     false
 }
 
-/// Spawns `blueice-core` and connects to it -- the process-management
+/// Whether this [`CoreProcess`] owns a private `core` it spawned itself
+/// (and must tear down), or is merely attached to one shared via
+/// `blueice-launcher`'s rendezvous socket (and must *not* tear it down
+/// -- other clients, e.g. a human's `frontend`, may depend on it
+/// staying up). See [`CoreProcess::connect`].
+enum CoreOwnership {
+    PrivatelySpawned { child: Child, socket_path: PathBuf },
+    Shared,
+}
+
+/// Connects to (or spawns) `blueice-core` -- the process-management
 /// half `main.rs` drives; kept separate from [`CoreConnection`]'s pure
 /// message-sequencing logic so that logic stays testable without a
 /// real subprocess.
 pub struct CoreProcess {
-    child: Child,
-    socket_path: PathBuf,
+    ownership: CoreOwnership,
     pub conn: Arc<Mutex<CoreConnection<std::os::unix::net::UnixStream>>>,
 }
 
 impl CoreProcess {
+    /// Tries `blueice-launcher`'s well-known rendezvous socket first --
+    /// sharing whatever `core` instance (and `Page`) is already running
+    /// there, the same one a human's `frontend` may be watching, per
+    /// `phase-8-live-core-hotswap/PLAN.md`'s "Minimal first slice" --
+    /// falling back to [`CoreProcess::spawn`]'s private, unshared
+    /// `core` only if nothing is listening there (no launcher running,
+    /// e.g. a standalone dev/test workflow). This is the constructor
+    /// `main.rs`/`BlueIceMcpServer::spawn` should use; `spawn` itself
+    /// stays available directly for callers (and tests) that
+    /// specifically want a private instance regardless.
+    pub fn connect(width: u32, height: u32) -> io::Result<Self> {
+        Self::connect_to(&blueice_launcher::default_rendezvous_socket_path(), width, height)
+    }
+
+    /// The testable half of [`CoreProcess::connect`], taking the
+    /// rendezvous path as a parameter instead of always resolving
+    /// [`blueice_launcher::default_rendezvous_socket_path`] -- lets a
+    /// test point it at a real (temp-path) listener standing in for
+    /// `blueice-launcher`, without mutating the process-wide
+    /// `XDG_RUNTIME_DIR` environment variable (unsafe to do under
+    /// parallel test execution, since env vars are global process
+    /// state).
+    fn connect_to(rendezvous_socket: &Path, width: u32, height: u32) -> io::Result<Self> {
+        if let Ok(stream) = std::os::unix::net::UnixStream::connect(rendezvous_socket) {
+            return Ok(CoreProcess { ownership: CoreOwnership::Shared, conn: Arc::new(Mutex::new(CoreConnection::new(stream))) });
+        }
+        Self::spawn(width, height)
+    }
+
     pub fn spawn(width: u32, height: u32) -> io::Result<Self> {
         let this_exe = std::env::current_exe()?;
         let core_bin = sibling_core_binary(&this_exe);
@@ -235,17 +273,30 @@ impl CoreProcess {
             return Err(io::Error::other(format!("blueice-core never created its socket at {}", socket_path.display())));
         }
         let stream = std::os::unix::net::UnixStream::connect(&socket_path)?;
-        Ok(CoreProcess { child, socket_path, conn: Arc::new(Mutex::new(CoreConnection::new(stream))) })
+        Ok(CoreProcess { ownership: CoreOwnership::PrivatelySpawned { child, socket_path }, conn: Arc::new(Mutex::new(CoreConnection::new(stream))) })
     }
 }
 
 impl Drop for CoreProcess {
     fn drop(&mut self) {
-        if let Ok(mut conn) = self.conn.lock() {
-            let _ = conn.shutdown();
+        match &mut self.ownership {
+            // A privately-spawned `core` is ours alone: tell it to
+            // shut down, then reap it and clean up its socket, exactly
+            // as before this constructor grew a second mode.
+            CoreOwnership::PrivatelySpawned { child, socket_path } => {
+                if let Ok(mut conn) = self.conn.lock() {
+                    let _ = conn.shutdown();
+                }
+                let _ = child.wait();
+                let _ = std::fs::remove_file(socket_path);
+            }
+            // A shared `core` belongs to the launcher and whatever
+            // other clients are attached to it (e.g. a human's
+            // `frontend`) -- sending it `Shutdown` here would end the
+            // render pass for all of them, not just disconnect this
+            // one client. Just let the connection close naturally.
+            CoreOwnership::Shared => {}
         }
-        let _ = self.child.wait();
-        let _ = std::fs::remove_file(&self.socket_path);
     }
 }
 
@@ -520,6 +571,50 @@ mod tests {
         let (client, _server) = UnixStream::pair().unwrap();
         let conn = CoreConnection::new(client);
         assert!(conn.last_frame().is_none());
+    }
+
+    #[test]
+    fn connect_to_attaches_to_a_reachable_rendezvous_socket_instead_of_spawning() {
+        let rendezvous_path = std::env::temp_dir().join(format!("blueice-mcp-test-rendezvous-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&rendezvous_path);
+        let listener = std::os::unix::net::UnixListener::bind(&rendezvous_path).unwrap();
+        let accepted = thread::spawn(move || listener.accept().unwrap());
+
+        let core = CoreProcess::connect_to(&rendezvous_path, 320, 200).expect("must attach to the reachable rendezvous socket");
+        assert!(matches!(core.ownership, CoreOwnership::Shared), "a reachable rendezvous socket must produce Shared ownership, not a private spawn");
+
+        accepted.join().unwrap();
+        let _ = std::fs::remove_file(&rendezvous_path);
+    }
+
+    #[test]
+    fn dropping_a_shared_core_process_does_not_send_shutdown() {
+        let rendezvous_path = std::env::temp_dir().join(format!("blueice-mcp-test-rendezvous-noshutdown-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&rendezvous_path);
+        let listener = std::os::unix::net::UnixListener::bind(&rendezvous_path).unwrap();
+        let accepted = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            // If Drop ever sends Shutdown, this read succeeds with that
+            // message; a plain disconnect makes it error instead (EOF)
+            // -- assert the latter, proving no Shutdown was sent.
+            blueice_ipc::read_client_message(&mut stream)
+        });
+
+        let core = CoreProcess::connect_to(&rendezvous_path, 320, 200).unwrap();
+        drop(core);
+
+        assert!(accepted.join().unwrap().is_err(), "a shared core's connection must just close, never receive an explicit Shutdown");
+        let _ = std::fs::remove_file(&rendezvous_path);
+    }
+
+    #[test]
+    fn connect_to_falls_back_to_spawning_when_nothing_is_listening() {
+        let rendezvous_path = std::env::temp_dir().join(format!("blueice-mcp-test-rendezvous-missing-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&rendezvous_path);
+
+        let core = CoreProcess::connect_to(&rendezvous_path, 320, 200).expect("blueice-core must spawn and accept a connection");
+        assert!(matches!(core.ownership, CoreOwnership::PrivatelySpawned { .. }), "an unreachable rendezvous socket must fall back to a private spawn");
+        drop(core); // tears down the real spawned subprocess
     }
 
     #[test]
