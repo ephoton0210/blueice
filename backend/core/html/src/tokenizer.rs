@@ -87,6 +87,53 @@ fn is_html_space(c: char) -> bool {
     matches!(c, ' ' | '\t' | '\n' | '\x0C' | '\r')
 }
 
+/// The WHATWG "numeric character reference end state" code-point
+/// resolution: null, surrogates, and out-of-range values become
+/// U+FFFD; the legacy Windows-1252 C1-control range (0x80-0x9F)
+/// remaps to the specific Unicode punctuation/symbol characters real
+/// browsers still emit there for historical compatibility (a fixed,
+/// spec-mandated table, not a guess) rather than the raw control
+/// character `char::from_u32` alone would produce. Found incomplete by
+/// `tests/wpt_corpus.rs` against the WPT corpus (`entities01.dat`):
+/// `&#x80;` must resolve to U+20AC "€", and `&#x0000;` must resolve to
+/// U+FFFD, neither of which a plain `char::from_u32(code)` gives.
+fn resolve_numeric_character_reference(code: u32) -> char {
+    if code == 0 || code > 0x10FFFF || (0xD800..=0xDFFF).contains(&code) {
+        return '\u{FFFD}';
+    }
+    let remapped = match code {
+        0x80 => Some(0x20AC),
+        0x82 => Some(0x201A),
+        0x83 => Some(0x0192),
+        0x84 => Some(0x201E),
+        0x85 => Some(0x2026),
+        0x86 => Some(0x2020),
+        0x87 => Some(0x2021),
+        0x88 => Some(0x02C6),
+        0x89 => Some(0x2030),
+        0x8A => Some(0x0160),
+        0x8B => Some(0x2039),
+        0x8C => Some(0x0152),
+        0x8E => Some(0x017D),
+        0x91 => Some(0x2018),
+        0x92 => Some(0x2019),
+        0x93 => Some(0x201C),
+        0x94 => Some(0x201D),
+        0x95 => Some(0x2022),
+        0x96 => Some(0x2013),
+        0x97 => Some(0x2014),
+        0x98 => Some(0x02DC),
+        0x99 => Some(0x2122),
+        0x9A => Some(0x0161),
+        0x9B => Some(0x203A),
+        0x9C => Some(0x0153),
+        0x9E => Some(0x017E),
+        0x9F => Some(0x0178),
+        _ => None,
+    };
+    char::from_u32(remapped.unwrap_or(code)).unwrap_or('\u{FFFD}')
+}
+
 pub struct Tokenizer {
     input: Vec<char>,
     pos: usize,
@@ -511,28 +558,42 @@ impl Tokenizer {
     /// unmatched reference is just treated as plain text either way.
     fn consume_character_reference(&mut self) -> String {
         if self.peek() == Some('#') {
-            self.advance();
-            let hex = matches!(self.peek(), Some('x') | Some('X'));
-            if hex {
-                self.advance();
-            }
-            let mut digits = String::new();
-            while let Some(c) = self.peek() {
+            // Looked ahead first, without consuming anything yet: per
+            // spec, "absence of digits in numeric character reference"
+            // (`&#` or `&#x` with no digits following at all) means
+            // this was never a character reference in the first place
+            // -- the whole `#`/`x`/whatever comes next must flow back
+            // into ordinary tokenization as literal text, the same
+            // "no match, leave position alone" contract the named-
+            // reference fallback below already follows. Previously
+            // this branch consumed `#`/`x` unconditionally and then
+            // substituted U+FFFD even when zero digits were found,
+            // conflating that case with a numeric reference that *has*
+            // digits but resolves to an invalid code point (where
+            // U+FFFD is correct) -- found by `tests/wpt_corpus.rs`
+            // against the WPT corpus (`&#BAR`, `&#xZOO` were being
+            // eaten and replaced with U+FFFD instead of staying
+            // literal).
+            let hex = matches!(self.input.get(self.pos + 1), Some('x') | Some('X'));
+            let digits_start = self.pos + 1 + usize::from(hex);
+            let mut end = digits_start;
+            while let Some(&c) = self.input.get(end) {
                 let ok = if hex { c.is_ascii_hexdigit() } else { c.is_ascii_digit() };
                 if !ok {
                     break;
                 }
-                digits.push(c);
-                self.advance();
+                end += 1;
             }
+            if end == digits_start {
+                return "&".to_string();
+            }
+            let digits: String = self.input[digits_start..end].iter().collect();
+            self.pos = end;
             if self.peek() == Some(';') {
                 self.advance();
             }
-            if digits.is_empty() {
-                return "\u{FFFD}".to_string();
-            }
             let code = u32::from_str_radix(&digits, if hex { 16 } else { 10 }).unwrap_or(0xFFFD);
-            return char::from_u32(code).unwrap_or('\u{FFFD}').to_string();
+            return resolve_numeric_character_reference(code).to_string();
         }
 
         for (name, value) in NAMED_REFERENCES {
@@ -596,10 +657,16 @@ impl Tokenizer {
         {
             return false;
         }
-        matches!(
-            self.input.get(start + name_len),
-            None | Some(' ') | Some('\t') | Some('\n') | Some('\x0C') | Some('\r') | Some('/') | Some('>')
-        )
+        // Deliberately excludes `None` (EOF immediately after the
+        // matched name, with no `>`/whitespace/`/` at all): per spec,
+        // that's an *incomplete* end tag, not an appropriate one --
+        // the characters consumed so far belong back in the RAWTEXT/
+        // RCDATA content as literal text, not treated as a closing
+        // tag. Found by `tests/wpt_corpus.rs` against the WPT corpus:
+        // an unclosed `<script></SCRIPT` (no trailing `>`) was
+        // silently swallowing the `</SCRIPT` text instead of keeping
+        // it as the script's own content.
+        matches!(self.input.get(start + name_len), Some(' ') | Some('\t') | Some('\n') | Some('\x0C') | Some('\r') | Some('/') | Some('>'))
     }
 
     fn consume_end_tag_simple(&mut self) -> Token {
@@ -862,6 +929,19 @@ mod tests {
     }
 
     #[test]
+    fn an_end_tag_like_sequence_truncated_by_eof_is_kept_as_literal_text() {
+        // Regression test for a real bug the WPT tree-construction
+        // corpus run found: `</script` with no trailing `>` (input
+        // ends right there) was wrongly accepted as a complete,
+        // "appropriate" end tag -- per spec, hitting EOF immediately
+        // after the matched name (no `>`/whitespace/`/`) means the
+        // characters consumed so far belong back in the script's own
+        // text content, not treated as a closing tag.
+        let tokens = tokenize_with_content_switch("<script></SCRIPT", "script", ContentModel::Rawtext);
+        assert_eq!(tokens, vec![start("script", &[]), text("</SCRIPT"), Token::Eof]);
+    }
+
+    #[test]
     fn eof_mid_tag_still_emits_it_leniently() {
         let tokens = tokenize_all("<div class=\"x\"");
         assert_eq!(tokens, vec![start("div", &[("class", "x")]), Token::Eof]);
@@ -987,9 +1067,63 @@ mod tests {
     }
 
     #[test]
-    fn numeric_character_reference_with_no_digits_is_replacement_char() {
+    fn numeric_character_reference_with_no_digits_is_kept_as_literal_text() {
+        // Was previously (incorrectly) replaced with U+FFFD -- per
+        // spec, "absence of digits in numeric character reference"
+        // means this was never a character reference at all, so
+        // `&#;` must survive completely unchanged as literal text,
+        // not have `&#` silently swallowed and replaced. Confirmed
+        // against the WPT tree-construction corpus (`entities01.dat`):
+        // `&#BAR`, `&#xZOO`, `&#XZOO` are all expected to stay
+        // literal for the same reason.
         let tokens = tokenize_all("a&#;b");
-        assert_eq!(tokens, vec![text("a\u{FFFD}b"), Token::Eof]);
+        assert_eq!(tokens, vec![text("a&#;b"), Token::Eof]);
+    }
+
+    #[test]
+    fn numeric_character_reference_with_a_hex_prefix_but_no_digits_is_kept_as_literal_text() {
+        let tokens = tokenize_all("FOO&#xZOO");
+        assert_eq!(tokens, vec![text("FOO&#xZOO"), Token::Eof]);
+    }
+
+    #[test]
+    fn a_real_numeric_character_reference_still_resolves_normally() {
+        // Guards against the fix above over-correcting: a numeric
+        // reference that *does* have digits must still resolve.
+        let tokens = tokenize_all("&#65;&#x41;");
+        assert_eq!(tokens, vec![text("AA"), Token::Eof]);
+    }
+
+    #[test]
+    fn null_numeric_character_reference_becomes_replacement_character() {
+        let tokens = tokenize_all("FOO&#x0000;ZOO");
+        assert_eq!(tokens, vec![text("FOO\u{FFFD}ZOO"), Token::Eof]);
+    }
+
+    #[test]
+    fn c1_control_numeric_references_use_the_windows_1252_compatibility_table() {
+        // A handful of spot checks across the legacy remapping table,
+        // not the full 32-entry range -- `entities01.dat` in the WPT
+        // corpus covers the rest.
+        assert_eq!(resolve_numeric_character_reference(0x80), '\u{20AC}'); // €
+        assert_eq!(resolve_numeric_character_reference(0x9A), '\u{0161}'); // š
+        assert_eq!(resolve_numeric_character_reference(0x9F), '\u{0178}'); // Ÿ
+    }
+
+    #[test]
+    fn c1_control_slots_absent_from_the_table_keep_their_raw_code_point() {
+        // 0x81, 0x8D, 0x8F, 0x90, 0x9D are deliberately not remapped
+        // by the spec's own table -- must resolve to the raw C1
+        // control character, not U+FFFD or a wrong substitution.
+        for code in [0x81, 0x8D, 0x8F, 0x90, 0x9D] {
+            assert_eq!(resolve_numeric_character_reference(code), char::from_u32(code).unwrap());
+        }
+    }
+
+    #[test]
+    fn surrogate_and_out_of_range_numeric_references_become_replacement_character() {
+        assert_eq!(resolve_numeric_character_reference(0xD800), '\u{FFFD}');
+        assert_eq!(resolve_numeric_character_reference(0x110000), '\u{FFFD}');
     }
 
     #[test]

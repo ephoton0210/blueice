@@ -95,8 +95,7 @@ format already reuses for every other #paint-bearing fixture).
 |       "
 "
 |     "
-"
-|     "
+
 "
 #paint
 text 0.0,0.0 "Welcome" #000000 32.0 bold normal

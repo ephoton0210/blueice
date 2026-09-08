@@ -3,17 +3,20 @@
     "**/development/browser_core/reference/gecko/**": true,
     "**/development/browser_core/reference/chromium/**": true,
     "**/development/browser_core/reference/v8/**": true,
+    "**/development/browser_core/reference/wpt/**": true,
     "**/target/**": true
   },
   "search.exclude": {
     "**/development/browser_core/reference/gecko": true,
     "**/development/browser_core/reference/chromium": true,
     "**/development/browser_core/reference/v8": true,
+    "**/development/browser_core/reference/wpt": true,
     "**/target": true
   },
   "files.exclude": {
     "**/development/browser_core/reference/gecko": true,
     "**/development/browser_core/reference/chromium": true,
-    "**/development/browser_core/reference/v8": true
+    "**/development/browser_core/reference/v8": true,
+    "**/development/browser_core/reference/wpt": true
   }
 }

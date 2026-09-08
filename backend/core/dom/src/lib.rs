@@ -153,8 +153,25 @@ impl Document {
         self.nodes[&id].first_child
     }
 
+    /// The natural counterpart to [`Document::first_child`] -- added
+    /// alongside [`Document::prev_sibling`] specifically so
+    /// `blueice-html`'s tree builder can check "is the node I'm about
+    /// to insert text next to already a Text node" in O(1) without
+    /// walking the whole sibling list, per HTML5's "insert a
+    /// character" algorithm (an adjacent Text node must be appended
+    /// to, not duplicated as a new sibling).
+    pub fn last_child(&self, id: NodeId) -> Option<NodeId> {
+        self.nodes[&id].last_child
+    }
+
     pub fn next_sibling(&self, id: NodeId) -> Option<NodeId> {
         self.nodes[&id].next_sibling
+    }
+
+    /// The natural counterpart to [`Document::next_sibling`] -- see
+    /// [`Document::last_child`]'s docs for why this pair exists.
+    pub fn prev_sibling(&self, id: NodeId) -> Option<NodeId> {
+        self.nodes[&id].prev_sibling
     }
 
     pub fn children(&self, id: NodeId) -> impl Iterator<Item = NodeId> + '_ {
@@ -429,6 +446,26 @@ mod tests {
         doc.append_child(root, b);
         let kids: Vec<_> = doc.children(root).collect();
         assert_eq!(kids, vec![a, b]);
+    }
+
+    #[test]
+    fn last_child_and_prev_sibling_are_the_natural_counterparts_of_first_child_and_next_sibling() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let a = doc.create_node(text("a"));
+        let b = doc.create_node(text("b"));
+        doc.append_child(root, a);
+        doc.append_child(root, b);
+
+        assert_eq!(doc.last_child(root), Some(b));
+        assert_eq!(doc.prev_sibling(b), Some(a));
+        assert_eq!(doc.prev_sibling(a), None);
+    }
+
+    #[test]
+    fn last_child_is_none_for_a_childless_node() {
+        let doc = Document::new();
+        assert_eq!(doc.last_child(doc.root()), None);
     }
 
     #[test]

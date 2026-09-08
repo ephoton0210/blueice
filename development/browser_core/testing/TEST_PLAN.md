@@ -43,6 +43,21 @@ Every phase's checklist in `../phase-*/PLAN.md` carries the following as part of
 
 **Not yet built**: this section is the design; `backend/mcp-server`'s `screenshot`/`get_dom` tools exist and are verified manually and by unit test, but the actual Node.js/Puppeteer harness, its comparison/tolerance logic, and CI wiring are Phase 15's own checklist, tracked there rather than here.
 
+## WPT tree-construction corpus
+
+A second, independent correctness check for `blueice-html` specifically, distinct from the Chromium *rendering* comparison above: the official [WPT](https://github.com/web-platform-tests/wpt) `html/syntax/parsing/resources/*.dat` tree-construction corpus (formerly the standalone `html5lib-tests` repo, which now just points here) run through `blueice_html::parse` and compared against the corpus's own expected `#document` dumps. See `reference/README.md` for how to fetch it (a sparse partial clone, not the whole WPT monorepo) and `backend/core/html/tests/wpt_corpus.rs` (module docs + `--nocapture` output) for the runner itself -- a reporting scratch tool today, not a CI gate.
+
+**Byte-exact comparison against the raw corpus is the wrong bar**: it starts at ~19% pass, almost entirely because of already-decided MVP scope cuts (no Comment/Doctype nodes at all, no SVG/MathML foreign content, no `<template>`, a minimal named-character-reference table, no quirks mode, no scripting) rather than bugs. The runner normalizes away the Comment/Doctype-node difference and classifies the rest by likely cause (element outside the Phase 2 MVP list, foreign content, entity-table gap, ...), leaving only genuinely unexplained failures worth a human reading. That normalized number moved from 39.0% to **46.8%** over five real bugs this pass found and fixed, all now regression-tested:
+
+1. **Whitespace either side of `</body>` didn't merge into one Text node** (`blueice-html`'s `insert_text`) -- actually found by the *Chromium* differential test above, not this corpus, but fixed alongside these; listed here since the next two bugs are corrections to the same code path.
+2. **An unclosed `<script>`/`<title>`/`<style>`/`<textarea>` at EOF suppressed the implicit `<body>` element entirely** -- the "Text" insertion mode's EOF handling must *reprocess* the EOF in the restored original mode (triggering the normal implicit-`<body>` cascade), not just consume it.
+3. **An end-tag-like sequence truncated by EOF (`</script` with no `>`) was wrongly accepted as a real end tag**, silently eating the text instead of keeping it literal -- the "appropriate end tag" check must not treat "hit EOF right after the tag name" as a valid terminator.
+4. **A numeric character reference with no digits (`&#BAR`, `&#xZOO`) was replaced with U+FFFD instead of staying literal text** -- "zero digits after `&#`" (not a reference at all) was being conflated with "digits present but resolve to an invalid code point" (where U+FFFD *is* correct).
+5. **Text separated only by a comment wrongly merged into one Text node** -- a regression from fix #1's own generalization: since `blueice_dom` never materializes Comment/Doctype nodes, `insert_text` had no way to tell a comment had been dropped between two character runs and merged across it, but a *real* browser's actual Comment node physically blocks that merge. Fixed by tracking "did the immediately-preceding token get dropped as a Comment/Doctype" and refusing to merge across it.
+6. **`&#x80;`-`&#x9F;` (the legacy Windows-1252 C1-control compatibility range) resolved to raw control characters or nothing at all**, instead of the specific WHATWG-mandated replacement table (`€`, `"`, `"`, etc.) real browsers still use for historical compatibility.
+
+Bug #5 is worth calling out on its own: it was introduced *by this same testing effort*, on the very same day, by a fix that looked complete when checked against the fixture corpus and unit tests but generalized past what real browsers actually do -- exactly the kind of thing a second, independent, real-browser-derived oracle is for.
+
 ## Coverage policy
 
 Tool: [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov) (LLVM source-based coverage — more accurate than instrumentation-based tools like tarpaulin, no nightly toolchain required).

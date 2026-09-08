@@ -111,6 +111,20 @@ struct TreeBuilder {
     /// suffix on insertion primitives, centralized in Blink behind a
     /// flag+guard -- BlueIce follows Blink's shape here).
     foster_parenting: bool,
+    /// True immediately after processing a `Comment`/`Doctype` token,
+    /// false after anything else -- `insert_text` consults this to
+    /// decide whether it's safe to merge into an adjacent Text node.
+    /// blueice_dom never materializes Comment/Doctype as real nodes
+    /// (module docs), so without this flag two character-token runs
+    /// separated only by a comment would look adjacent from
+    /// `insert_text`'s point of view and wrongly merge -- a real
+    /// browser can't merge them, because its real (materialized)
+    /// Comment node physically sits between them. Found by
+    /// `tests/wpt_corpus.rs` against the WPT corpus (`comments01.dat`:
+    /// `FOO<!-- BAR -->BAZ` must keep "FOO" and "BAZ" as two separate
+    /// Text nodes) as a real regression from the *other* direction of
+    /// the same merge logic (`insert_text`'s own docs) fixed earlier.
+    just_saw_dropped_comment_or_doctype: bool,
 }
 
 /// Parses `input` as HTML into a fresh [`Document`], per the tree
@@ -133,6 +147,7 @@ impl TreeBuilder {
             head_element: None,
             form_element: None,
             foster_parenting: false,
+            just_saw_dropped_comment_or_doctype: false,
         }
     }
 
@@ -157,6 +172,13 @@ impl TreeBuilder {
     }
 
     fn step(&mut self, token: Token) -> StepResult {
+        let is_comment_or_doctype = matches!(token, Token::Comment | Token::Doctype);
+        let result = self.dispatch(token);
+        self.just_saw_dropped_comment_or_doctype = is_comment_or_doctype;
+        result
+    }
+
+    fn dispatch(&mut self, token: Token) -> StepResult {
         match self.mode {
             Mode::Initial => self.step_initial(token),
             Mode::BeforeHtml => self.step_before_html(token),
@@ -247,12 +269,55 @@ impl TreeBuilder {
         id
     }
 
+    /// Per HTML5's "insert a character" algorithm: if the node
+    /// immediately before the insertion point is already a Text node,
+    /// append `data` to it rather than creating a new sibling. This
+    /// matters whenever two character-token runs that should logically
+    /// be one text node arrive as separate tokens with something else
+    /// processed in between at the parser-state level but not at the
+    /// insertion-point level -- the concrete case that surfaced this
+    /// (found by `phase-15-chromium-differential-testing/PLAN.md`'s
+    /// DOM diff against real Chromium, not by anything visual, since
+    /// both shapes render identically for whitespace-only text):
+    /// whitespace between `</div>` and `</body>`, and whitespace
+    /// between `</body>` and `</html>` (reprocessed under "in body"
+    /// rules per the "after body" insertion mode, per spec), both
+    /// insert into `<body>` and must end up as one Text node, not two.
+    ///
+    /// **Except immediately after a dropped `Comment`/`Doctype` token**
+    /// (`just_saw_dropped_comment_or_doctype`): a real browser's actual
+    /// Comment/Doctype node physically sits between the two character
+    /// runs, blocking the merge, even though blueice_dom never
+    /// materializes either as a node itself. An earlier version of
+    /// this function merged across a dropped comment too, on the
+    /// (wrong) reasoning that "nothing is there to block it" -- the
+    /// WPT corpus's `comments01.dat` (`FOO<!-- BAR -->BAZ` must stay
+    /// two Text nodes, not merge into one) is what caught that.
     fn insert_text(&mut self, data: &str) {
         if data.is_empty() {
             return;
         }
+        let (parent, reference) = if self.foster_parenting && self.current_node_needs_foster() {
+            self.foster_parent_target()
+        } else {
+            (self.current_node(), None)
+        };
+        let preceding = if self.just_saw_dropped_comment_or_doctype {
+            None
+        } else {
+            match reference {
+                Some(r) => self.document.prev_sibling(r),
+                None => self.document.last_child(parent),
+            }
+        };
+        if let Some(id) = preceding {
+            if let NodeData::Text { data: existing } = self.document.data_mut(id) {
+                existing.push_str(data);
+                return;
+            }
+        }
         let id = self.document.create_node(NodeData::Text { data: data.to_string() });
-        self.insert_node(id);
+        self.document.insert_before(parent, id, reference);
     }
 
     fn push_formatting(&mut self, id: NodeId, tag: &str, attrs: Vec<(String, String)>) {
@@ -686,11 +751,28 @@ impl TreeBuilder {
                 self.insert_text(&s);
                 StepResult::Done
             }
-            Token::EndTag { .. } | Token::Eof => {
+            Token::EndTag { .. } => {
                 self.open_elements.pop();
                 self.tokenizer.set_content_model(ContentModel::Data);
                 self.mode = self.original_mode;
                 StepResult::Done
+            }
+            // Per spec: an end-of-file token here is a parse error that
+            // pops the current node and restores the original insertion
+            // mode the *same* way an end tag does, but -- unlike an end
+            // tag, which is fully consumed -- EOF must then be
+            // *reprocessed* in that restored mode, so an unclosed
+            // <script>/<title>/<style>/<textarea> at EOF still triggers
+            // the normal implicit-</head>/<body>-insertion cascade a
+            // real EOF at top level would (found by
+            // `tests/wpt_corpus.rs` against the WPT tree-construction
+            // corpus: `<!doctype html><script>` with no closing tag was
+            // silently missing its `<body>` element entirely).
+            Token::Eof => {
+                self.open_elements.pop();
+                self.tokenizer.set_content_model(ContentModel::Data);
+                self.mode = self.original_mode;
+                StepResult::Reprocess(Token::Eof)
             }
             _ => StepResult::Done,
         }
@@ -1172,6 +1254,32 @@ mod tests {
     }
 
     #[test]
+    fn an_unclosed_script_at_eof_still_gets_an_implicit_body() {
+        // Regression test for a real bug the WPT tree-construction
+        // corpus run found (`tests/wpt_corpus.rs`, alone responsible
+        // for over half of one file's 153 failures): EOF inside the
+        // "Text" insertion mode (an unclosed <script>/<title>/<style>/
+        // <textarea>) must be *reprocessed* in the restored original
+        // insertion mode per spec, not just consumed -- otherwise the
+        // implicit-<body>-insertion cascade a real top-level EOF
+        // triggers never runs, and every element that document would
+        // otherwise get (starting with <body> itself) silently goes
+        // missing.
+        let doc = parse("<!doctype html><script>");
+        assert!(find_by_tag(&doc, doc.root(), "body").is_some(), "an unclosed <script> at EOF must not suppress the implicit <body>");
+    }
+
+    #[test]
+    fn an_unclosed_textarea_at_eof_also_gets_an_implicit_body() {
+        // Same bug, different RCDATA element -- proves the fix isn't
+        // specific to <script>'s own content model.
+        let doc = parse("<textarea>abc");
+        assert!(find_by_tag(&doc, doc.root(), "body").is_some());
+        let textarea = find_by_tag(&doc, doc.root(), "textarea").unwrap();
+        assert_eq!(text_content(&doc, textarea), "abc");
+    }
+
+    #[test]
     fn p_auto_closes_on_new_p() {
         let doc = parse("<p>one<p>two");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
@@ -1364,6 +1472,66 @@ mod tests {
         let doc = parse("<table><colgroup>\n<col></colgroup></table>");
         let colgroup = find_by_tag(&doc, doc.root(), "colgroup").unwrap();
         assert!(doc.children(colgroup).any(|c| matches!(doc.data(c), NodeData::Text { .. })));
+    }
+
+    #[test]
+    fn whitespace_before_and_after_the_body_end_tag_merges_into_one_text_node() {
+        // Regression test for a real gap `phase-15-chromium-
+        // differential-testing/PLAN.md`'s DOM diff against real
+        // Chromium found (invisible in any rendered output, since
+        // both shapes are pure whitespace, which is exactly why no
+        // fixture's #paint/#layout section had caught it): whitespace
+        // between </div> and </body>, and whitespace between </body>
+        // and </html> (reprocessed under "in body" rules per the
+        // "after body" insertion mode), both insert into <body> and
+        // must land in the *same* Text node, not two adjacent ones,
+        // per HTML5's "insert a character" algorithm.
+        let doc = parse("<html><body><div></div>\n</body>\n</html>");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        let text_children: Vec<_> = doc.children(body).filter(|&c| matches!(doc.data(c), NodeData::Text { .. })).collect();
+        assert_eq!(text_children.len(), 1, "the two whitespace runs must merge into a single Text node, not stay as two siblings");
+        assert_eq!(text_content(&doc, body).matches('\n').count(), 2, "both newlines must still be present in the merged node's data");
+    }
+
+    #[test]
+    fn character_tokens_separated_by_a_comment_do_not_merge() {
+        // Corrected by the WPT tree-construction corpus run
+        // (`tests/wpt_corpus.rs`, `comments01.dat`): an earlier version
+        // of this fix over-generalized and merged text across a
+        // dropped comment too, reasoning that since blueice_dom never
+        // materializes Comment nodes, nothing sits between the two
+        // runs. That reasoning was wrong -- a *real* browser's actual
+        // Comment node physically blocks the merge, so "FOO<!--
+        // BAR -->BAZ" must produce two separate Text nodes ("FOO",
+        // "BAZ"), not one ("FOOBAZ"), even though BlueIce itself never
+        // keeps the comment around afterward.
+        let doc = parse("<p>a<!--x-->b</p>");
+        let p = find_by_tag(&doc, doc.root(), "p").unwrap();
+        let text_children: Vec<_> = doc.children(p).filter(|&c| matches!(doc.data(c), NodeData::Text { .. })).collect();
+        assert_eq!(text_children.len(), 2, "a real comment node would block the merge, even though blueice_dom doesn't keep it around");
+        assert_eq!(text_content(&doc, p), "ab");
+    }
+
+    #[test]
+    fn foster_parented_character_tokens_separated_by_a_comment_do_not_merge() {
+        // Same correction, exercised on the foster-parenting insertion
+        // path (text placed directly inside <table> is foster-parented
+        // to just before the table, not inside it).
+        let doc = parse("<div><table>a<!--x-->b</table></div>");
+        let div = find_by_tag(&doc, doc.root(), "div").unwrap();
+        let text_children: Vec<_> = doc.children(div).filter(|&c| matches!(doc.data(c), NodeData::Text { .. })).collect();
+        assert_eq!(text_children.len(), 2, "a real comment node would block the merge on the foster-parenting path too");
+    }
+
+    #[test]
+    fn character_tokens_separated_by_a_real_element_do_not_merge() {
+        // The merge rule must not over-fire: "a" and "c" here are
+        // genuinely not adjacent siblings (a real <b> element sits
+        // between them in the final tree), so they must stay as
+        // three distinct children, not get merged across the element.
+        let doc = parse("<p>a<b></b>c</p>");
+        let p = find_by_tag(&doc, doc.root(), "p").unwrap();
+        assert_eq!(doc.children(p).count(), 3);
     }
 
     #[test]
