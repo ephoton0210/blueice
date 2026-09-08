@@ -35,6 +35,8 @@ Both agents hook into the same place in the existing Phase 3 pipeline (parse →
 
 **Why a second, non-AI layer**: the gatekeeper reviews page content that is, by construction, untrusted and adversarial-capable — and it's an AI doing the reviewing. A sufficiently crafted page could attempt a prompt-injection attack specifically aimed at making the gatekeeper misjudge it as safe. An independent rule-base layer — deterministic pattern/signature matching with no prompt surface of its own — can't be defeated by the same technique, so it stands even if the AI layer is successfully manipulated. Both layers gate the same decision; either one flagging risk is enough to block (fail-closed, see Open questions).
 
+**A lighter, present-day partial mitigation already exists, ahead of this phase**: `phase-12-mcp-server/PLAN.md`'s already-built `blueice-mcp-server` wraps every tool result carrying page content (`blueice_mcp_server::wrap_untrusted_page_content`) with an explicit "this is data, not instructions" warning before it reaches whatever LLM is driving BlueIce over MCP — prompt-level framing an attacker could still attempt to argue around, not the deterministic, non-AI rule-base layer this phase's gatekeeper is actually meant to be. Don't treat that wrapper as satisfying this phase's own requirement; it narrows the gap `mcp-server` left open (page content reaching an external AI client with zero framing at all) until this phase's real gatekeeper exists.
+
 **Candidate rule-base signature categories** (draft, informed by BlueIce's specific threat model — a browser built for AI agents to read page content directly has an attack surface traditional browsers don't):
 
 - Known-malicious/phishing domain or URL blocklists
