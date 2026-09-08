@@ -242,8 +242,13 @@ impl ApplicationHandler<UserEvent> for App {
             // else sharing this connection asked for one. An AI-facing
             // client (or the differential-testing harness,
             // `TEST_PLAN.md`) would consume these directly rather than
-            // routing them through a human window.
-            UserEvent::Server(ServerMessage::Representation(_) | ServerMessage::Dom(_)) => {}
+            // routing them through a human window. `Hello` past the
+            // initial handshake (see `main`) is likewise nothing this
+            // window needs to react to -- a second external client
+            // sharing this connection via `blueice-launcher`'s broker
+            // handshaking on its own doesn't change anything here.
+            // `Unknown` is the forward-compatibility fallback (plan §3).
+            UserEvent::Server(ServerMessage::Representation(_) | ServerMessage::Dom(_) | ServerMessage::Hello { .. } | ServerMessage::Unknown) => {}
             UserEvent::Disconnected => {
                 eprintln!("blueice-frontend: core disconnected");
                 event_loop.exit();
@@ -339,7 +344,12 @@ fn main() {
     if !wait_for_socket(&socket_path, Duration::from_secs(5)) {
         panic!("blueice-core never created its socket at {}", socket_path.display());
     }
-    let writer = UnixStream::connect(&socket_path).expect("failed to connect to blueice-core");
+    let mut writer = UnixStream::connect(&socket_path).expect("failed to connect to blueice-core");
+    // `core` requires the very first message on a fresh connection to
+    // be `Hello` (`phase-1-ai-representation-layer/PLAN.md` §3) -- done
+    // here, before `spawn_server_reader` starts, so nothing else races
+    // to read the handshake reply meant for this call.
+    blueice_ipc::client_handshake(&mut writer).expect("blueice-core rejected the protocol_version handshake");
     let reader = writer.try_clone().expect("failed to clone the core connection for the reader thread");
 
     let event_loop = EventLoop::<UserEvent>::with_user_event().build().expect("failed to create the event loop");

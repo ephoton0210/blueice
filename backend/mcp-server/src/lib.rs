@@ -70,28 +70,60 @@ pub struct ToolOutcome {
 pub struct CoreConnection<S> {
     stream: S,
     last_frame: Option<FrameInfo>,
+    next_request_id: u64,
 }
 
 impl<S: Read + Write> CoreConnection<S> {
     pub fn new(stream: S) -> Self {
-        CoreConnection { stream, last_frame: None }
+        CoreConnection { stream, last_frame: None, next_request_id: 0 }
+    }
+
+    /// Performs the `protocol_version` handshake (`phase-1-ai-
+    /// representation-layer/PLAN.md` §3) `core` requires as the very
+    /// first message on a fresh connection -- callers that construct a
+    /// `CoreConnection` directly over a real `core`/`blueice-launcher`
+    /// connection (`CoreProcess::spawn`/`connect_to`) must call this
+    /// immediately, before any tool method. Split out from `new`
+    /// itself (which stays infallible, doing no I/O) so the many
+    /// existing tests exercising the message-sequencing methods below
+    /// against a fake responder don't all need a scripted `Hello` reply
+    /// they have no reason to care about.
+    pub fn handshake(&mut self) -> io::Result<()> {
+        blueice_ipc::client_handshake(&mut self.stream)
+    }
+
+    fn next_request_id(&mut self) -> u64 {
+        self.next_request_id += 1;
+        self.next_request_id
     }
 
     /// Sends `msg`, then pipelines a `GetRepresentation` and drains
     /// until it arrives -- see the module docs for why this avoids
     /// needing to know in advance how many replies `msg` produces.
+    /// Each of the two outgoing messages gets its own request_id, and
+    /// any incoming reply carrying a *different* one is skipped rather
+    /// than consumed -- closes `phase-8-live-core-hotswap/PLAN.md`'s
+    /// flagged gap: sharing a `core` connection via `blueice-launcher`'s
+    /// broker means a reply glimpsed here could belong to another
+    /// client's concurrent action instead of this call's own request.
     fn send_and_drain(&mut self, msg: &ClientMessage) -> io::Result<ToolOutcome> {
-        blueice_ipc::write_client_message(&mut self.stream, msg)?;
-        blueice_ipc::write_client_message(&mut self.stream, &ClientMessage::GetRepresentation)?;
+        let action_id = self.next_request_id();
+        let representation_id = self.next_request_id();
+        blueice_ipc::write_client_message_with_id(&mut self.stream, Some(action_id), msg)?;
+        blueice_ipc::write_client_message_with_id(&mut self.stream, Some(representation_id), &ClientMessage::GetRepresentation)?;
         let mut error = None;
         loop {
-            match blueice_ipc::read_server_message(&mut self.stream)? {
+            let (request_id, message) = blueice_ipc::read_server_message_with_id(&mut self.stream)?;
+            if matches!(request_id, Some(id) if id != action_id && id != representation_id) {
+                continue;
+            }
+            match message {
                 ServerMessage::Representation(snapshot) => return Ok(ToolOutcome { error, snapshot }),
                 ServerMessage::Error { message } => error = Some(message),
                 ServerMessage::FrameReady { shm_path, width, height, generation } => {
                     self.last_frame = Some(FrameInfo { shm_path, width, height, generation });
                 }
-                ServerMessage::Navigated { .. } | ServerMessage::Dom(_) => {}
+                ServerMessage::Navigated { .. } | ServerMessage::Dom(_) | ServerMessage::Hello { .. } | ServerMessage::Unknown => {}
             }
         }
     }
@@ -112,14 +144,19 @@ impl<S: Read + Write> CoreConnection<S> {
     /// `GetRepresentation` itself -- there's no prior state change to
     /// pipeline it after.
     pub fn representation(&mut self) -> io::Result<AiSnapshot> {
-        blueice_ipc::write_client_message(&mut self.stream, &ClientMessage::GetRepresentation)?;
+        let request_id = self.next_request_id();
+        blueice_ipc::write_client_message_with_id(&mut self.stream, Some(request_id), &ClientMessage::GetRepresentation)?;
         loop {
-            match blueice_ipc::read_server_message(&mut self.stream)? {
+            let (reply_id, message) = blueice_ipc::read_server_message_with_id(&mut self.stream)?;
+            if matches!(reply_id, Some(id) if id != request_id) {
+                continue;
+            }
+            match message {
                 ServerMessage::Representation(snapshot) => return Ok(snapshot),
                 ServerMessage::FrameReady { shm_path, width, height, generation } => {
                     self.last_frame = Some(FrameInfo { shm_path, width, height, generation });
                 }
-                ServerMessage::Error { .. } | ServerMessage::Navigated { .. } | ServerMessage::Dom(_) => {}
+                ServerMessage::Error { .. } | ServerMessage::Navigated { .. } | ServerMessage::Dom(_) | ServerMessage::Hello { .. } | ServerMessage::Unknown => {}
             }
         }
     }
@@ -131,14 +168,19 @@ impl<S: Read + Write> CoreConnection<S> {
     /// against. Same "nothing to pipeline it after" shape as
     /// [`CoreConnection::representation`].
     pub fn dom(&mut self) -> io::Result<String> {
-        blueice_ipc::write_client_message(&mut self.stream, &ClientMessage::GetDom)?;
+        let request_id = self.next_request_id();
+        blueice_ipc::write_client_message_with_id(&mut self.stream, Some(request_id), &ClientMessage::GetDom)?;
         loop {
-            match blueice_ipc::read_server_message(&mut self.stream)? {
+            let (reply_id, message) = blueice_ipc::read_server_message_with_id(&mut self.stream)?;
+            if matches!(reply_id, Some(id) if id != request_id) {
+                continue;
+            }
+            match message {
                 ServerMessage::Dom(dump) => return Ok(dump),
                 ServerMessage::FrameReady { shm_path, width, height, generation } => {
                     self.last_frame = Some(FrameInfo { shm_path, width, height, generation });
                 }
-                ServerMessage::Error { .. } | ServerMessage::Navigated { .. } | ServerMessage::Representation(_) => {}
+                ServerMessage::Error { .. } | ServerMessage::Navigated { .. } | ServerMessage::Representation(_) | ServerMessage::Hello { .. } | ServerMessage::Unknown => {}
             }
         }
     }
@@ -256,7 +298,9 @@ impl CoreProcess {
     /// state).
     fn connect_to(rendezvous_socket: &Path, width: u32, height: u32) -> io::Result<Self> {
         if let Ok(stream) = std::os::unix::net::UnixStream::connect(rendezvous_socket) {
-            return Ok(CoreProcess { ownership: CoreOwnership::Shared, conn: Arc::new(Mutex::new(CoreConnection::new(stream))) });
+            let mut conn = CoreConnection::new(stream);
+            conn.handshake()?;
+            return Ok(CoreProcess { ownership: CoreOwnership::Shared, conn: Arc::new(Mutex::new(conn)) });
         }
         Self::spawn(width, height)
     }
@@ -273,7 +317,9 @@ impl CoreProcess {
             return Err(io::Error::other(format!("blueice-core never created its socket at {}", socket_path.display())));
         }
         let stream = std::os::unix::net::UnixStream::connect(&socket_path)?;
-        Ok(CoreProcess { ownership: CoreOwnership::PrivatelySpawned { child, socket_path }, conn: Arc::new(Mutex::new(CoreConnection::new(stream))) })
+        let mut conn = CoreConnection::new(stream);
+        conn.handshake()?;
+        Ok(CoreProcess { ownership: CoreOwnership::PrivatelySpawned { child, socket_path }, conn: Arc::new(Mutex::new(conn)) })
     }
 }
 
@@ -578,7 +624,11 @@ mod tests {
         let rendezvous_path = std::env::temp_dir().join(format!("blueice-mcp-test-rendezvous-{}.sock", std::process::id()));
         let _ = std::fs::remove_file(&rendezvous_path);
         let listener = std::os::unix::net::UnixListener::bind(&rendezvous_path).unwrap();
-        let accepted = thread::spawn(move || listener.accept().unwrap());
+        let accepted = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            assert!(matches!(blueice_ipc::read_client_message(&mut stream).unwrap(), ClientMessage::Hello { .. }));
+            blueice_ipc::write_server_message(&mut stream, &ServerMessage::Hello { protocol_version: blueice_ipc::PROTOCOL_VERSION }).unwrap();
+        });
 
         let core = CoreProcess::connect_to(&rendezvous_path, 320, 200).expect("must attach to the reachable rendezvous socket");
         assert!(matches!(core.ownership, CoreOwnership::Shared), "a reachable rendezvous socket must produce Shared ownership, not a private spawn");
@@ -594,6 +644,8 @@ mod tests {
         let listener = std::os::unix::net::UnixListener::bind(&rendezvous_path).unwrap();
         let accepted = thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
+            assert!(matches!(blueice_ipc::read_client_message(&mut stream).unwrap(), ClientMessage::Hello { .. }));
+            blueice_ipc::write_server_message(&mut stream, &ServerMessage::Hello { protocol_version: blueice_ipc::PROTOCOL_VERSION }).unwrap();
             // If Drop ever sends Shutdown, this read succeeds with that
             // message; a plain disconnect makes it error instead (EOF)
             // -- assert the latter, proving no Shutdown was sent.
@@ -655,5 +707,64 @@ mod tests {
         let pixels = vec![255u8, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255];
         let png = frame_to_png_bytes(&pixels, 2, 2).unwrap();
         assert_eq!(&png[0..8], &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+    }
+
+    #[test]
+    fn handshake_succeeds_against_a_matching_hello_reply() {
+        let (client, mut server) = UnixStream::pair().unwrap();
+        thread::spawn(move || {
+            assert!(matches!(blueice_ipc::read_client_message(&mut server).unwrap(), ClientMessage::Hello { .. }));
+            reply(&mut server, &ServerMessage::Hello { protocol_version: blueice_ipc::PROTOCOL_VERSION });
+        });
+
+        let mut conn = CoreConnection::new(client);
+        conn.handshake().unwrap();
+    }
+
+    #[test]
+    fn handshake_surfaces_an_unsupported_version_error() {
+        let (client, mut server) = UnixStream::pair().unwrap();
+        thread::spawn(move || {
+            let _ = blueice_ipc::read_client_message(&mut server).unwrap();
+            reply(&mut server, &ServerMessage::Error { message: "unsupported protocol_version".to_string() });
+        });
+
+        let mut conn = CoreConnection::new(client);
+        assert!(conn.handshake().is_err());
+    }
+
+    #[test]
+    fn send_and_drain_ignores_a_reply_carrying_a_different_requests_id() {
+        // The exact regression this correlation exists to fix
+        // (`phase-8-live-core-hotswap/PLAN.md`'s flagged broadcast-
+        // misattribution gap): sharing a `core` connection through
+        // `blueice-launcher`'s broker means an `Error` from another
+        // client's concurrent, unrelated action can arrive interleaved
+        // with this call's own replies. It must be skipped, not
+        // mistaken for this call's own error.
+        let (client, server) = UnixStream::pair().unwrap();
+        fake_core(
+            server,
+            vec![
+                Box::new(|msg, s| {
+                    assert!(matches!(msg, ClientMessage::Navigate { .. }));
+                    // A stray reply tagged with a request_id that
+                    // belongs to neither of this call's own two
+                    // outgoing messages -- stands in for another
+                    // client's concurrently-broadcast traffic.
+                    blueice_ipc::write_server_message_with_id(s, Some(9_999), &ServerMessage::Error { message: "unrelated client's failure".to_string() }).unwrap();
+                    reply(s, &ServerMessage::Navigated { url: "https://example.com".to_string() });
+                }),
+                Box::new(|msg, s| {
+                    assert!(matches!(msg, ClientMessage::GetRepresentation));
+                    reply(s, &ServerMessage::Representation(sample_snapshot(1)));
+                }),
+            ],
+        );
+
+        let mut conn = CoreConnection::new(client);
+        let outcome = conn.navigate("https://example.com").unwrap();
+        assert_eq!(outcome.error, None, "the stray, differently-tagged Error must not be attributed to this call");
+        assert_eq!(outcome.snapshot.generation, 1);
     }
 }

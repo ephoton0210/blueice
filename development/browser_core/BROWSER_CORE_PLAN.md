@@ -83,7 +83,7 @@ Phases 7-12 add more roles to this picture, each still mostly open design at thi
 | [Phase 2](phase-2-mvp-scope/PLAN.md) | Finalize MVP scope (supported HTML/CSS/JS subset) | Done |
 | [Phase 3](phase-3-engine-skeleton/PLAN.md) | Rust core engine skeleton (parse → DOM → layout → paint) | Done |
 | [Phase 4](phase-4-human-rendering-path/PLAN.md) | Human-visible rendering path | Done |
-| [Phase 5](phase-5-ai-representation-output/PLAN.md) | AI representation output path (implemented per the Phase 1 decision) | Done (the `protocol_version` handshake is a recorded, deferred follow-up) |
+| [Phase 5](phase-5-ai-representation-output/PLAN.md) | AI representation output path (implemented per the Phase 1 decision) | Done, including the `protocol_version` handshake (implemented as part of Phase 8's minimal slice) |
 | [Phase 6](phase-6-ai-agent-integration-demo/PLAN.md) | AI agent integration demo (running on our own engine, not CDP) | Not started |
 | [Phase 7](phase-7-local-ai/PLAN.md) | Two local AI agents: safety gatekeeper (primary) + assistant | Not started |
 | [Phase 8](phase-8-live-core-hotswap/PLAN.md) | Live `core` hot-swap / seamless update, no browser restart | Not started |

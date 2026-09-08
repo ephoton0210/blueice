@@ -160,6 +160,18 @@ fn two_clients_through_the_same_launcher_observe_the_same_render_pass() {
     let ServerMessage::Representation(snapshot) = reply else { panic!("expected Representation, got {reply:?}") };
     assert_eq!(snapshot.generation, scroll_generation, "GetRepresentation must reflect the state the *other* connection's action just produced");
 
+    // This broadcasts to *human* too, same as every other reply in this
+    // test -- drain it the same way a real always-reading client
+    // (`frontend`'s own background reader thread) would, rather than
+    // leaving it unread: `about:credits`'s `Representation` is large
+    // enough that leaving it sitting in the kernel socket buffer can
+    // exhaust it, and `register_client`'s bounded write timeout would
+    // then have to kick in as `broadcast_core_to_clients` blocks
+    // delivering it -- correct, but a needless multi-second stall this
+    // test doesn't need to exercise.
+    let human_reply = read_server_message(&mut human).unwrap();
+    assert!(matches!(human_reply, ServerMessage::Representation(_)));
+
     // `Shutdown` from *either* client is forwarded into the one shared
     // `core` connection like any other message, ending `core`'s own
     // session loop; that in turn closes the launcher's internal

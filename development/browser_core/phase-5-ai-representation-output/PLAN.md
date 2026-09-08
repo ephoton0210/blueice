@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: Done (for the schema/actions/sync mechanism Phase 1 spec'd; the `protocol_version` handshake Phase 1 §3 also decided is deliberately deferred — see "Deferred" below)
+**Status**: Done, including the `protocol_version` handshake Phase 1 §3 also decided — originally deferred here (see "Deferred" below), it was implemented as part of `phase-8-live-core-hotswap/PLAN.md`'s minimal-slice follow-up once `blueice-launcher`/`blueice-mcp-server` made "a genuinely independent client" real rather than hypothetical.
 
 ## Objective
 
@@ -24,7 +24,7 @@ Implement the AI-facing representation and API defined in Phase 1, sourced from 
 
 ## Deferred (recorded, not forgotten)
 
-Phase 1 §3's `protocol_version` handshake (`Hello` messages, additive-only-without-a-bump policy) was **not** implemented in this pass — it's a cross-cutting change touching every existing test harness and client (`session.rs`, `frontend-reference`, `core_binary.rs`) for a versioning concern that has no real second implementation to version against yet (there is exactly one `core` and one `frontend`, both built together in this workspace). Tracked as a small, well-specified follow-up for whenever a genuinely independent client (Phase 9's extension protocol, Phase 12's MCP server) makes protocol drift an actual risk rather than a hypothetical one.
+~~Phase 1 §3's `protocol_version` handshake...~~ **Implemented** — see `phase-8-live-core-hotswap/PLAN.md`'s minimal-slice checklist. Originally not done in this pass: it was a cross-cutting change touching every existing test harness and client (`session.rs`, `frontend-reference`, `core_binary.rs`) for a versioning concern that had no real second implementation to version against yet at the time (there was exactly one `core` and one `frontend`, both built together in this workspace). It stopped being hypothetical once `blueice-launcher`/`blueice-mcp-server` gave `core` genuinely independent clients, which is when it was actually built.
 
 ## Checklist
 
@@ -36,7 +36,7 @@ Phase 1 §3's `protocol_version` handshake (`Hello` messages, additive-only-with
 - [x] Add a test asserting represented elements are addressed by their stable DOM node ID, not a transient index — throughout `ai_snapshot`'s own tests plus `act_on_an_unknown_id_is_a_harmless_no_op`
 - [x] Document the AI-facing API for consumers (this feeds Phase 6) — this document plus the type-level docs on `blueice_ipc::ai` and `blueice_engine::ai_snapshot`
 
-All checklist items are done for the scope described above; the deferred `protocol_version` handshake is recorded, not silently dropped.
+All checklist items are done for the scope described above; the originally-deferred `protocol_version` handshake is now also implemented (`phase-8-live-core-hotswap/PLAN.md`).
 
 **Post-Done addendum** (architecture-wide risk survey specifically re-examining the "same render pass"/stable-ID invariants this phase's Definition of Done rests on, not just re-running the existing tests): found and fixed real gaps in exactly the guarantees this phase claims to have verified.
 

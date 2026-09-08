@@ -31,85 +31,139 @@ use std::path::Path;
 /// `Shutdown` or disconnects. `frame_dir` is where this session's
 /// frames are written (see [`blueice_ipc::shm`]); `generation` is
 /// shared frame-sequence counter, incremented on every frame sent.
+///
+/// The very first message must be [`ClientMessage::Hello`] (`phase-1-
+/// ai-representation-layer/PLAN.md` §3's `protocol_version` handshake)
+/// -- a fresh connection whose first message either isn't `Hello` or
+/// declares an unsupported version is rejected with a
+/// [`ServerMessage::Error`] before anything else is processed, and the
+/// session ends without entering the main loop. A `Hello` seen again
+/// *after* the handshake (e.g. a second external client's own
+/// handshake, forwarded by `blueice-launcher`'s broker into the one
+/// shared connection it holds with `core`) is just answered again,
+/// rather than re-gating the whole session -- tearing down a shared
+/// connection over one client's handshake would end every other
+/// client's session too.
 pub fn run_session<S: Read + Write>(page: &mut Page, stream: &mut S, frame_dir: &Path, generation: &mut u64) -> io::Result<()> {
+    if !perform_handshake(stream)? {
+        return Ok(());
+    }
     loop {
-        let msg = match blueice_ipc::read_client_message(stream) {
-            Ok(msg) => msg,
+        let (request_id, msg) = match blueice_ipc::read_client_message_with_id(stream) {
+            Ok(v) => v,
             Err(_) => return Ok(()), // client disconnected without an explicit Shutdown
         };
         match msg {
+            ClientMessage::Hello { protocol_version } => reply_hello(stream, request_id, protocol_version)?,
             ClientMessage::Navigate { url } => match page.navigate(&url) {
                 Ok(()) => {
-                    reply_navigated(page, stream)?;
-                    send_frame(page, stream, frame_dir, generation)?;
+                    reply_navigated(page, stream, request_id)?;
+                    send_frame(page, stream, frame_dir, generation, request_id)?;
                 }
-                Err(e) => blueice_ipc::write_server_message(stream, &ServerMessage::Error { message: e.to_string() })?,
+                Err(e) => blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Error { message: e.to_string() })?,
             },
             ClientMessage::Resize { width, height } => {
                 page.resize(width as f64, height as f64);
-                send_frame(page, stream, frame_dir, generation)?;
+                send_frame(page, stream, frame_dir, generation, request_id)?;
             }
             ClientMessage::Click { x, y } => {
                 if let Some(href) = page.click(x, y) {
                     match page.navigate(&href) {
                         Ok(()) => {
-                            reply_navigated(page, stream)?;
-                            send_frame(page, stream, frame_dir, generation)?;
+                            reply_navigated(page, stream, request_id)?;
+                            send_frame(page, stream, frame_dir, generation, request_id)?;
                         }
-                        Err(e) => blueice_ipc::write_server_message(stream, &ServerMessage::Error { message: e.to_string() })?,
+                        Err(e) => blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Error { message: e.to_string() })?,
                     }
                 }
             }
             ClientMessage::Scroll { delta_y } => {
                 page.scroll_by(delta_y);
-                send_frame(page, stream, frame_dir, generation)?;
+                send_frame(page, stream, frame_dir, generation, request_id)?;
             }
             ClientMessage::Hover { x, y } => page.hover_at(x, y),
             ClientMessage::GetRepresentation => {
                 let snapshot = page.snapshot(*generation);
-                blueice_ipc::write_server_message(stream, &ServerMessage::Representation(snapshot))?;
+                blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Representation(snapshot))?;
             }
             ClientMessage::GetDom => {
-                blueice_ipc::write_server_message(stream, &ServerMessage::Dom(page.dom_dump()))?;
+                blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Dom(page.dom_dump()))?;
             }
             ClientMessage::ActOn { id, action } => {
                 let is_click = matches!(action, NodeAction::Click);
                 match page.act(NodeId::from_u64(id), action) {
                     Some(href) => match page.navigate(&href) {
                         Ok(()) => {
-                            reply_navigated(page, stream)?;
-                            send_frame(page, stream, frame_dir, generation)?;
+                            reply_navigated(page, stream, request_id)?;
+                            send_frame(page, stream, frame_dir, generation, request_id)?;
                         }
-                        Err(e) => blueice_ipc::write_server_message(stream, &ServerMessage::Error { message: e.to_string() })?,
+                        Err(e) => blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Error { message: e.to_string() })?,
                     },
                     // A Click that didn't land on a link is a no-op,
                     // same as a coordinate Click elsewhere -- no reply.
                     None if is_click => {}
-                    None => send_frame(page, stream, frame_dir, generation)?,
+                    None => send_frame(page, stream, frame_dir, generation, request_id)?,
                 }
             }
             ClientMessage::Highlight { id } => {
                 page.set_highlight(id.map(NodeId::from_u64));
-                send_frame(page, stream, frame_dir, generation)?;
+                send_frame(page, stream, frame_dir, generation, request_id)?;
             }
             // Chrome commands (window show/hide) operate on `frontend`'s
             // own window, not on anything `core` owns -- see module docs.
             ClientMessage::Chrome(_) => {}
             ClientMessage::Shutdown => return Ok(()),
+            // Forward-compatibility fallback (plan §3): a variant this
+            // build doesn't recognize is ignored rather than treated as
+            // a protocol violation.
+            ClientMessage::Unknown => {}
         }
     }
 }
 
-fn reply_navigated<S: Write>(page: &Page, stream: &mut S) -> io::Result<()> {
-    blueice_ipc::write_server_message(stream, &ServerMessage::Navigated { url: page.url().unwrap_or_default().to_string() })
+/// Gates entry to the main loop on a valid `Hello` as the connection's
+/// very first message, per `run_session`'s own docs. Returns `Ok(true)`
+/// once the handshake has succeeded and the main loop should start,
+/// `Ok(false)` if the session should end without ever entering it (a
+/// non-`Hello` first message, an unsupported `protocol_version`, or
+/// the client disconnecting before sending anything at all).
+fn perform_handshake<S: Read + Write>(stream: &mut S) -> io::Result<bool> {
+    let (request_id, msg) = match blueice_ipc::read_client_message_with_id(stream) {
+        Ok(v) => v,
+        Err(_) => return Ok(false),
+    };
+    match msg {
+        ClientMessage::Hello { protocol_version } => reply_hello(stream, request_id, protocol_version).map(|()| protocol_version == blueice_ipc::PROTOCOL_VERSION),
+        _ => {
+            blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Error { message: "the first message on a connection must be Hello".to_string() })?;
+            Ok(false)
+        }
+    }
 }
 
-fn send_frame<S: Write>(page: &Page, stream: &mut S, frame_dir: &Path, generation: &mut u64) -> io::Result<()> {
+fn reply_hello<S: Write>(stream: &mut S, request_id: Option<u64>, protocol_version: u32) -> io::Result<()> {
+    if protocol_version == blueice_ipc::PROTOCOL_VERSION {
+        blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Hello { protocol_version: blueice_ipc::PROTOCOL_VERSION })
+    } else {
+        blueice_ipc::write_server_message_with_id(
+            stream,
+            request_id,
+            &ServerMessage::Error { message: format!("unsupported protocol_version {protocol_version}, this core speaks {}", blueice_ipc::PROTOCOL_VERSION) },
+        )
+    }
+}
+
+fn reply_navigated<S: Write>(page: &Page, stream: &mut S, request_id: Option<u64>) -> io::Result<()> {
+    blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Navigated { url: page.url().unwrap_or_default().to_string() })
+}
+
+fn send_frame<S: Write>(page: &Page, stream: &mut S, frame_dir: &Path, generation: &mut u64, request_id: Option<u64>) -> io::Result<()> {
     let pixmap = page.render_visible();
     *generation += 1;
     let path = shm::write_frame(frame_dir, *generation, &pixmap.pixels)?;
-    blueice_ipc::write_server_message(
+    blueice_ipc::write_server_message_with_id(
         stream,
+        request_id,
         &ServerMessage::FrameReady { shm_path: path.to_string_lossy().into_owned(), width: pixmap.width, height: pixmap.height, generation: *generation },
     )
 }
@@ -129,6 +183,16 @@ mod tests {
         UnixStream::pair().unwrap()
     }
 
+    /// Performs the `protocol_version` handshake `run_session` now
+    /// requires as the very first message on a fresh connection --
+    /// every test below drives `run_session` over a brand-new
+    /// connection, so every one of them needs this before its own
+    /// message(s), the same way a real client (`frontend`, `blueice-
+    /// mcp-server`) would via `blueice_ipc::client_handshake`.
+    fn handshake(client: &mut UnixStream) {
+        blueice_ipc::client_handshake(client).unwrap();
+    }
+
     #[test]
     fn resize_then_shutdown_produces_one_frame_and_then_ends_the_session() {
         let dir = temp_frame_dir("resize");
@@ -140,6 +204,7 @@ mod tests {
             run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
             dir
         });
+        handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Resize { width: 100, height: 50 }).unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
@@ -170,6 +235,7 @@ mod tests {
             run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
             dir
         });
+        handshake(&mut client);
 
         let url = format!("http://{addr}");
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Navigate { url: url.clone() }).unwrap();
@@ -197,6 +263,7 @@ mod tests {
             run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
             dir
         });
+        handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Navigate { url: "not-a-valid-url".to_string() }).unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
@@ -229,6 +296,7 @@ mod tests {
             let mut generation = 0u64;
             run_session(&mut page, &mut server, &dir_for_thread, &mut generation).unwrap();
         });
+        handshake(&mut client);
 
         // clicking the link navigates: expect Navigated then FrameReady
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Click { x: 2.0, y: 2.0 }).unwrap();
@@ -252,6 +320,7 @@ mod tests {
             run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
             dir
         });
+        handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Chrome(blueice_ipc::ChromeCommand::SetVisible(false))).unwrap();
         // proven by the fact that a subsequent message still gets a
@@ -288,6 +357,7 @@ mod tests {
             run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
             dir
         });
+        handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
         let ServerMessage::Representation(snap) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
@@ -328,6 +398,7 @@ mod tests {
             run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
             dir
         });
+        handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Resize { width: 100, height: 50 }).unwrap();
         let frame = blueice_ipc::read_server_message(&mut client).unwrap();
@@ -355,6 +426,7 @@ mod tests {
             run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
             dir
         });
+        handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetDom).unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
@@ -388,6 +460,7 @@ mod tests {
             run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
             dir
         });
+        handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
         let ServerMessage::Representation(snapshot) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
@@ -415,6 +488,7 @@ mod tests {
             run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
             dir
         });
+        handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
         let ServerMessage::Representation(before) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
@@ -445,6 +519,7 @@ mod tests {
             run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
             dir
         });
+        handshake(&mut client);
 
         // an unknown id with Click: same "no reply at all" contract as
         // a coordinate click that lands on nothing.
@@ -479,6 +554,7 @@ mod tests {
             run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
             dir
         });
+        handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
         let ServerMessage::Representation(snap) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
@@ -513,6 +589,7 @@ mod tests {
             run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
             dir
         });
+        handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
         let ServerMessage::Representation(snap) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
@@ -538,6 +615,7 @@ mod tests {
             run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
             dir
         });
+        handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Hover { x: 2.0, y: 2.0 }).unwrap();
         // proven the same way SetVisible/Chrome is: the next message
@@ -569,6 +647,7 @@ mod tests {
             run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
             dir
         });
+        handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
         let ServerMessage::Representation(before) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
@@ -598,5 +677,114 @@ mod tests {
         });
         drop(client);
         assert!(handle.join().unwrap().is_ok());
+    }
+
+    #[test]
+    fn a_first_message_that_is_not_hello_is_rejected_and_ends_the_session() {
+        let dir = temp_frame_dir("handshake-not-hello-first");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut page = Page::new(320.0, 200.0);
+            let mut generation = 0u64;
+            run_session(&mut page, &mut server, &dir, &mut generation)
+        });
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
+        let reply = blueice_ipc::read_server_message(&mut client).unwrap();
+        assert!(matches!(reply, ServerMessage::Error { .. }), "expected an Error reply, got {reply:?}");
+
+        assert!(handle.join().unwrap().is_ok(), "the session must end cleanly, not hang, after rejecting the handshake");
+    }
+
+    #[test]
+    fn an_unsupported_protocol_version_is_rejected_and_ends_the_session() {
+        let dir = temp_frame_dir("handshake-bad-version");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut page = Page::new(320.0, 200.0);
+            let mut generation = 0u64;
+            run_session(&mut page, &mut server, &dir, &mut generation)
+        });
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Hello { protocol_version: blueice_ipc::PROTOCOL_VERSION + 1 }).unwrap();
+        let reply = blueice_ipc::read_server_message(&mut client).unwrap();
+        assert!(matches!(reply, ServerMessage::Error { .. }), "expected an Error reply, got {reply:?}");
+
+        assert!(handle.join().unwrap().is_ok(), "the session must end cleanly, not hang, after rejecting an unsupported version");
+    }
+
+    #[test]
+    fn a_hello_seen_again_after_the_handshake_is_answered_without_ending_the_session() {
+        // The broker-multiplexing scenario `run_session`'s own docs
+        // describe: a second external client's handshake, forwarded
+        // into the one already-past-its-own-handshake shared
+        // connection, must not be treated as a protocol violation.
+        let dir = temp_frame_dir("late-hello");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut page = Page::new(320.0, 200.0);
+            let mut generation = 0u64;
+            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            dir
+        });
+        handshake(&mut client);
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Hello { protocol_version: blueice_ipc::PROTOCOL_VERSION }).unwrap();
+        let reply = blueice_ipc::read_server_message(&mut client).unwrap();
+        assert_eq!(reply, ServerMessage::Hello { protocol_version: blueice_ipc::PROTOCOL_VERSION });
+
+        // proven the same way other no-special-effect messages are:
+        // the session is still alive and answers normally afterward.
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn every_reply_to_a_message_echoes_back_its_request_id() {
+        let dir = temp_frame_dir("request-id-echo");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut page = Page::new(320.0, 200.0);
+            page.load_html_str("<p>hi</p>", None);
+            let mut generation = 0u64;
+            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            dir
+        });
+        handshake(&mut client);
+
+        blueice_ipc::write_client_message_with_id(&mut client, Some(99), &ClientMessage::GetRepresentation).unwrap();
+        let (request_id, reply) = blueice_ipc::read_server_message_with_id(&mut client).unwrap();
+        assert_eq!(request_id, Some(99));
+        assert!(matches!(reply, ServerMessage::Representation(_)));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn an_unknown_client_variant_is_ignored_and_the_session_keeps_running() {
+        let dir = temp_frame_dir("unknown-variant");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut page = Page::new(320.0, 200.0);
+            let mut generation = 0u64;
+            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            dir
+        });
+        handshake(&mut client);
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Unknown).unwrap();
+        // proven the same way other no-reply messages are: the next
+        // message still gets a normal reply, so Unknown didn't wedge
+        // or end the session.
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Resize { width: 10, height: 10 }).unwrap();
+        let reply = blueice_ipc::read_server_message(&mut client).unwrap();
+        assert!(matches!(reply, ServerMessage::FrameReady { .. }));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

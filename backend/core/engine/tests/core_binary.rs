@@ -72,6 +72,7 @@ fn real_subprocess_serves_navigate_resize_and_shutdown_over_a_real_socket() {
 
     assert!(wait_for(&socket_path, Duration::from_secs(5)), "blueice-core never created its socket");
     let mut stream = UnixStream::connect(&socket_path).expect("failed to connect to the real subprocess");
+    blueice_ipc::client_handshake(&mut stream).expect("the real subprocess must complete the protocol_version handshake");
 
     let url = format!("http://{addr}");
     blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Navigate { url: url.clone() }).unwrap();

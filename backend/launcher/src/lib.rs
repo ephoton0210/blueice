@@ -29,11 +29,12 @@
 //! ([`broadcast_core_to_clients`]) -- not just whichever one's action
 //! triggered it, which is what actually delivers "same render pass."
 
-use blueice_ipc::{read_client_message, read_server_message, write_client_message, write_server_message};
+use blueice_ipc::{read_client_message, read_server_message, write_client_message, write_server_message, ServerMessage};
 use std::io;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -85,33 +86,85 @@ pub fn forward_client_to_core(mut client: UnixStream, core: Arc<Mutex<UnixStream
     }
 }
 
+/// How long a single write to one client's socket may block before
+/// that client is treated as unresponsive -- see [`register_client`]'s
+/// docs for why this exists at all.
+const CLIENT_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Reads every [`blueice_ipc::ServerMessage`] `core` sends, until it
-/// disconnects or errors (`core` crashed or exited), broadcasting each
-/// one to every stream currently in `clients` -- not just whichever
-/// client's action triggered it. A client whose write fails (it
-/// disconnected) is dropped from the list rather than treated as fatal
-/// to the broadcast itself.
-pub fn broadcast_core_to_clients(mut core: UnixStream, clients: Arc<Mutex<Vec<UnixStream>>>) {
+/// disconnects or errors (`core` crashed or exited), fanning each one
+/// out to every client currently in `clients` -- not just whichever
+/// client's action triggered it. Fan-out is a non-blocking channel
+/// `send` per client (see [`register_client`]'s docs for why this
+/// isn't a direct socket write here); a client whose *channel* is gone
+/// -- its own writer thread already exited, per [`register_client`] --
+/// is dropped from the list rather than treated as fatal to the
+/// broadcast itself.
+pub fn broadcast_core_to_clients(mut core: UnixStream, clients: Arc<Mutex<Vec<Sender<ServerMessage>>>>) {
     loop {
         let msg = match read_server_message(&mut core) {
             Ok(msg) => msg,
             Err(_) => return,
         };
         let mut clients = clients.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        clients.retain_mut(|client| write_server_message(client, &msg).is_ok());
+        clients.retain(|client| client.send(msg.clone()).is_ok());
     }
 }
 
-/// Accepts one already-connected external client: registers its
-/// write-half for broadcast and spawns a thread forwarding its incoming
-/// messages into `core_writer`. Split out from the accept loop so it's
+/// Accepts one already-connected external client: registers a channel
+/// for [`broadcast_core_to_clients`] to fan messages out to, spawns
+/// this client's own writer thread draining that channel onto its
+/// socket, and spawns a second thread forwarding its incoming messages
+/// into `core_writer`. Split out from the accept loop so it's
 /// unit-testable with a [`UnixStream::pair`] fake client, without
 /// needing a real [`std::os::unix::net::UnixListener`].
-pub fn register_client(client: UnixStream, core_writer: Arc<Mutex<UnixStream>>, clients: Arc<Mutex<Vec<UnixStream>>>) -> io::Result<()> {
-    let write_half = client.try_clone()?;
-    clients.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(write_half);
+///
+/// **Why a channel + a dedicated writer thread per client, not a
+/// direct socket write from the shared broadcast loop**: a single
+/// shared loop writing to every client's socket in turn, one after
+/// another, means one client that stops reading (its kernel socket
+/// buffer fills -- a large `Representation` nobody's draining is
+/// enough) blocks that *one* write until it times out -- and while
+/// blocked, the loop hasn't even reached any of the *other* clients
+/// yet, so it stalls delivery to every one of them too, for the whole
+/// timeout, even though they're reading just fine. Giving each client
+/// its own channel and its own thread makes the shared loop's `send`
+/// a cheap, non-blocking queue push (an unbounded `mpsc` channel never
+/// blocks the sender), so a slow client only ever delays *its own*
+/// delivery, never anyone else's -- restoring "one client, no matter
+/// how slow, can't starve the others," which a bare write timeout on a
+/// single shared thread cannot: it only bounds *how long* the stall
+/// lasts, not whether it happens at all.
+///
+/// The write-half still gets a [`CLIENT_WRITE_TIMEOUT`], now purely to
+/// eventually detect and prune a client that's truly gone (or stuck
+/// forever) rather than merely behind -- once that write-half's own
+/// thread gives up and exits, its `Sender`'s paired `Receiver` drops,
+/// so the next broadcast's `send` to it fails and
+/// [`broadcast_core_to_clients`] prunes it, the same way a plain
+/// disconnect already does.
+pub fn register_client(client: UnixStream, core_writer: Arc<Mutex<UnixStream>>, clients: Arc<Mutex<Vec<Sender<ServerMessage>>>>) -> io::Result<()> {
+    let mut write_half = client_write_half(&client)?;
+    let (sender, receiver) = mpsc::channel::<ServerMessage>();
+    clients.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(sender);
+    thread::spawn(move || {
+        for msg in receiver {
+            if write_server_message(&mut write_half, &msg).is_err() {
+                return; // dropping `receiver` here is what prunes this client above
+            }
+        }
+    });
     thread::spawn(move || forward_client_to_core(client, core_writer));
     Ok(())
+}
+
+/// Clones `client`'s write-half and gives it [`CLIENT_WRITE_TIMEOUT`] --
+/// split out from [`register_client`] so the timeout is a plain, fast
+/// unit test rather than one needing a real stalled write to observe.
+fn client_write_half(client: &UnixStream) -> io::Result<UnixStream> {
+    let write_half = client.try_clone()?;
+    write_half.set_write_timeout(Some(CLIENT_WRITE_TIMEOUT))?;
+    Ok(write_half)
 }
 
 /// Runs the broker for as long as `core` stays connected: a background
@@ -129,7 +182,7 @@ pub fn register_client(client: UnixStream, core_writer: Arc<Mutex<UnixStream>>, 
 /// hot-swap work's job, not this minimal slice's).
 pub fn run_broker(listener: std::os::unix::net::UnixListener, core: UnixStream) -> io::Result<()> {
     let core_writer = Arc::new(Mutex::new(core.try_clone()?));
-    let clients: Arc<Mutex<Vec<UnixStream>>> = Arc::new(Mutex::new(Vec::new()));
+    let clients: Arc<Mutex<Vec<Sender<ServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
 
     let accept_clients = Arc::clone(&clients);
     let accept_core_writer = Arc::clone(&core_writer);
@@ -209,7 +262,17 @@ impl SpawnedCore {
         if !wait_for_socket(&internal_socket_path, Duration::from_secs(5)) {
             return Err(io::Error::other(format!("blueice-core never created its socket at {}", internal_socket_path.display())));
         }
-        let stream = UnixStream::connect(&internal_socket_path)?;
+        let mut stream = UnixStream::connect(&internal_socket_path)?;
+        // `core` requires the very first message on a fresh connection
+        // to be `Hello` (`phase-1-ai-representation-layer/PLAN.md` §3);
+        // this launcher is the connection's one and only direct client,
+        // so it satisfies that gate itself, once, here -- external
+        // clients connecting through the rendezvous socket send their
+        // own `Hello` too, but by the time the broker forwards it into
+        // this already-past-its-handshake connection, `core` just
+        // answers it again rather than re-gating (see `blueice_engine::
+        // session::run_session`'s own docs).
+        blueice_ipc::client_handshake(&mut stream)?;
         Ok(SpawnedCore { child, internal_socket_path, stream })
     }
 }
@@ -257,9 +320,9 @@ mod tests {
     #[test]
     fn broadcast_core_to_clients_relays_one_message_to_every_registered_client() {
         let (core_side, mut core_observed) = UnixStream::pair().unwrap();
-        let (client1_side, mut client1_observed) = UnixStream::pair().unwrap();
-        let (client2_side, mut client2_observed) = UnixStream::pair().unwrap();
-        let clients = Arc::new(Mutex::new(vec![client1_side, client2_side]));
+        let (sender1, receiver1) = mpsc::channel();
+        let (sender2, receiver2) = mpsc::channel();
+        let clients = Arc::new(Mutex::new(vec![sender1, sender2]));
 
         write_server_message(&mut core_observed, &ServerMessage::Navigated { url: "about:blank".to_string() }).unwrap();
         drop(core_observed); // ends the broadcaster loop after the one message
@@ -267,25 +330,25 @@ mod tests {
         broadcast_core_to_clients(core_side, clients);
 
         let expected = ServerMessage::Navigated { url: "about:blank".to_string() };
-        assert_eq!(read_server_message(&mut client1_observed).unwrap(), expected);
-        assert_eq!(read_server_message(&mut client2_observed).unwrap(), expected);
+        assert_eq!(receiver1.recv().unwrap(), expected);
+        assert_eq!(receiver2.recv().unwrap(), expected);
     }
 
     #[test]
-    fn broadcast_core_to_clients_drops_a_client_whose_write_fails_without_affecting_the_others() {
+    fn broadcast_core_to_clients_drops_a_client_whose_channel_is_gone_without_affecting_the_others() {
         let (core_side, mut core_observed) = UnixStream::pair().unwrap();
-        let (dead_client_side, dead_client_observed) = UnixStream::pair().unwrap();
-        drop(dead_client_observed); // the "other end" is gone, so writes to dead_client_side fail
-        let (live_client_side, mut live_client_observed) = UnixStream::pair().unwrap();
-        let clients = Arc::new(Mutex::new(vec![dead_client_side, live_client_side]));
+        let (dead_sender, dead_receiver) = mpsc::channel();
+        drop(dead_receiver); // stands in for that client's writer thread having already exited
+        let (live_sender, live_receiver) = mpsc::channel();
+        let clients = Arc::new(Mutex::new(vec![dead_sender, live_sender]));
 
         write_server_message(&mut core_observed, &ServerMessage::Navigated { url: "about:blank".to_string() }).unwrap();
         drop(core_observed);
 
         broadcast_core_to_clients(core_side, Arc::clone(&clients));
 
-        assert_eq!(read_server_message(&mut live_client_observed).unwrap(), ServerMessage::Navigated { url: "about:blank".to_string() });
-        // the dead client's stream must have been pruned from the list.
+        assert_eq!(live_receiver.recv().unwrap(), ServerMessage::Navigated { url: "about:blank".to_string() });
+        // the dead client's sender must have been pruned from the list.
         assert_eq!(clients.lock().unwrap().len(), 1);
     }
 
@@ -294,7 +357,7 @@ mod tests {
         let (client_side, mut client_observed) = UnixStream::pair().unwrap();
         let (core_side, mut core_observed) = UnixStream::pair().unwrap();
         let core_writer = Arc::new(Mutex::new(core_side));
-        let clients: Arc<Mutex<Vec<UnixStream>>> = Arc::new(Mutex::new(Vec::new()));
+        let clients: Arc<Mutex<Vec<Sender<ServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
 
         register_client(client_side, Arc::clone(&core_writer), Arc::clone(&clients)).unwrap();
 
@@ -302,11 +365,72 @@ mod tests {
         write_client_message(&mut client_observed, &ClientMessage::GetRepresentation).unwrap();
         assert_eq!(read_client_message(&mut core_observed).unwrap(), ClientMessage::GetRepresentation);
 
-        // fan-out: a message written directly to the registered write-half
-        // (standing in for the broadcaster) must reach the client.
-        let mut registered = clients.lock().unwrap().pop().unwrap();
-        write_server_message(&mut registered, &ServerMessage::Navigated { url: "x".to_string() }).unwrap();
+        // fan-out: a message sent into the registered channel (standing
+        // in for the broadcaster) must reach the client's real socket,
+        // relayed by this client's own writer thread.
+        let registered = clients.lock().unwrap().pop().unwrap();
+        registered.send(ServerMessage::Navigated { url: "x".to_string() }).unwrap();
         assert_eq!(read_server_message(&mut client_observed).unwrap(), ServerMessage::Navigated { url: "x".to_string() });
+    }
+
+    #[test]
+    fn client_write_half_gets_a_bounded_write_timeout() {
+        // Regression coverage for a real deadlock this fixes: without a
+        // write timeout, a client whose writer thread stalls (its
+        // kernel socket buffer fills and nobody drains it) would never
+        // notice the client is gone -- its channel would just queue up
+        // forever instead of eventually being pruned. See
+        // `a_slow_client_does_not_block_delivery_to_another_client` for
+        // the actual "doesn't block other clients" property this and
+        // the channel/writer-thread split together provide.
+        let (client_side, _client_observed) = UnixStream::pair().unwrap();
+        let write_half = client_write_half(&client_side).unwrap();
+        assert_eq!(write_half.write_timeout().unwrap(), Some(CLIENT_WRITE_TIMEOUT));
+    }
+
+    #[test]
+    fn a_slow_client_does_not_block_delivery_to_another_client() {
+        // The actual bug this channel/writer-thread design fixes: a
+        // single shared thread writing to every registered client's
+        // socket directly, one after another, meant one client that
+        // stalls (its kernel socket buffer fills, e.g. a large message
+        // nobody drains) blocked delivery to every *other* client too,
+        // for as long as that stalled write took to time out --
+        // confirmed against a real launcher/core pair before this fix
+        // existed. Proven here with a real filled socket buffer, not a
+        // mock: `slow_client`'s peer end is never read; `live_client`'s
+        // is read immediately after this call returns, and must have
+        // its message waiting regardless of the slow client's state.
+        let (core_side, mut core_observed) = UnixStream::pair().unwrap();
+        let (slow_client_side, _never_read) = UnixStream::pair().unwrap();
+        let (live_client_side, mut live_client_observed) = UnixStream::pair().unwrap();
+        let (core_writer_side, _unused) = UnixStream::pair().unwrap();
+        let core_writer = Arc::new(Mutex::new(core_writer_side));
+        let clients: Arc<Mutex<Vec<Sender<ServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
+
+        register_client(slow_client_side, Arc::clone(&core_writer), Arc::clone(&clients)).unwrap();
+        register_client(live_client_side, Arc::clone(&core_writer), Arc::clone(&clients)).unwrap();
+
+        // Comfortably larger than any realistic default kernel socket
+        // buffer, so the write to `slow_client`'s writer thread genuinely
+        // blocks rather than merely being slow to observe. Written on
+        // its own thread since *this* write can itself block until
+        // `broadcast_core_to_clients` below is actively reading
+        // `core_side` -- `core_observed`'s own send buffer is no bigger
+        // than any other socket's here.
+        let big_message = ServerMessage::Dom("x".repeat(4 * 1024 * 1024));
+        let sent = big_message.clone();
+        thread::spawn(move || {
+            write_server_message(&mut core_observed, &sent).unwrap();
+            drop(core_observed); // ends the broadcaster loop after the one message
+        });
+
+        let start = Instant::now();
+        broadcast_core_to_clients(core_side, clients);
+        assert!(start.elapsed() < Duration::from_secs(1), "fanning out must be a cheap non-blocking queue push regardless of any client's own writer-thread state");
+
+        let received = read_server_message(&mut live_client_observed).unwrap();
+        assert_eq!(received, big_message, "the live client must receive its own copy promptly, not stalled behind the slow one");
     }
 
     #[test]
