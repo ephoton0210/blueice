@@ -108,8 +108,19 @@ pub fn parse_fixtures(source_name: &str, content: &str) -> Vec<Fixture> {
             // fixture's #document doesn't gain a phantom trailing blank
             // depending on whether another fixture happens to follow it
             // in the same file.
-            while lines.last() == Some(&"") {
-                lines.pop();
+            //
+            // `#data` is exempt: it's never the last section before a
+            // blank-line separator in any real fixture (something like
+            // `#errors`/`#document` always follows it immediately), so a
+            // trailing blank line collected into it is never separator
+            // padding -- it's a *literal* trailing newline the test
+            // input intends (WPT's `tests16.dat#194`: `<table>\n` with a
+            // real trailing LF must parse identically to that literal
+            // input, not have it silently eaten here).
+            if name != "data" {
+                while lines.last() == Some(&"") {
+                    lines.pop();
+                }
             }
             sections.push((name, lines.join("\n")));
         }
@@ -228,6 +239,17 @@ mod tests {
             parse_fixtures("t.dat", "#data\n<p>hi</p>\n#document\n| <p>\n|   \"hi\"\n\n#data\n<p>x</p>\n#document\n| <p>\n");
         assert_eq!(alone[0].document(), followed_by_another[0].document());
         assert_eq!(followed_by_another[0].document(), Some("| <p>\n|   \"hi\""));
+    }
+
+    #[test]
+    fn a_literal_trailing_newline_in_the_data_section_is_preserved() {
+        // Regression: unlike other sections, #data's own trailing blank
+        // line is never separator padding (something always follows it
+        // immediately) -- it's literal input content, e.g. WPT's
+        // `<table>\n` fixture, which must round-trip with the newline
+        // intact rather than having it silently stripped.
+        let fixtures = parse_fixtures("t.dat", "#data\n<table>\n\n#errors\nsomething\n#document\n| <table>\n");
+        assert_eq!(fixtures[0].data(), "<table>\n");
     }
 
     #[test]

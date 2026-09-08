@@ -15,16 +15,24 @@
 //!   before any row) -- see [`TreeBuilder::foster_parent_target`].
 //!
 //! Deliberately not implemented, per the MVP scope: `<template>`/applet
-//! /object/marquee (the only elements that need "marker" entries in the
-//! active-formatting-elements list -- since none are supported, the list
-//! never needs markers, simplifying reconstruction and adoption agency);
-//! frameset-related modes; foreign content (svg/math); quirks-mode
-//! detection from DOCTYPE content (doctypes are tokenized but their
-//! content is discarded, and comments are never turned into DOM nodes --
-//! neither affects rendering, which is all the MVP pipeline needs from
-//! the DOM). The Noah's Ark clause (capping identical adjacent formatting
-//! entries at 3) is also skipped as a minor optimization, not a
-//! correctness requirement.
+//! /object/marquee; frameset-related modes; foreign content (svg/math);
+//! quirks-mode detection from DOCTYPE content (doctypes are tokenized but
+//! their content is discarded, and comments are never turned into DOM
+//! nodes -- neither affects rendering, which is all the MVP pipeline
+//! needs from the DOM).
+//!
+//! **Active-formatting-elements markers and the Noah's Ark clause are
+//! implemented** ([`AfeEntry::Marker`], [`TreeBuilder::push_formatting`]):
+//! an earlier version of these docs assumed `<template>`/applet/object/
+//! marquee were the *only* elements needing a marker, and since none of
+//! them are supported, reasoned the active-formatting-elements list
+//! never needed one at all. That reasoning was wrong -- `<caption>` and
+//! `<td>`/`<th>` also insert a marker per spec, specifically so
+//! reconstruction inside a table cell/caption can't reach back out to
+//! formatting elements opened before it (`<table><a>x<td>y` must not
+//! reconstruct a clone of `<a>` inside the cell), and both are very much
+//! in MVP scope. Found the same way as the WPT-corpus bugs below: a real
+//! (if uncommon) page shape the algorithm silently got wrong.
 
 use crate::tokenizer::{ContentModel, Token, Tokenizer};
 use blueice_dom::{Document, NodeData, NodeId};
@@ -105,11 +113,28 @@ enum StepResult {
 /// adoption-agency cloning needs a fresh copy.
 type FormattingEntry = (NodeId, String, Vec<(String, String)>);
 
+/// An entry in the active-formatting-elements list. Almost always a
+/// formatting element; a `Marker` is inserted by `<caption>`/`<td>`/
+/// `<th>` specifically to stop reconstruction and the adoption agency
+/// algorithm from reaching *past* the table cell/caption boundary back
+/// out to formatting elements opened before it -- e.g. `<table><a>x
+/// <td>y` must not reconstruct a clone of `<a>` inside the cell. Markers
+/// are BlueIce's one exception to the module docs' "no `<template>`/
+/// applet/object/marquee means no markers are ever needed" reasoning:
+/// that reasoning covers the elements that need a marker in the *full*
+/// spec, but table cells/captions need one too and are very much in
+/// MVP scope.
+#[derive(Clone)]
+enum AfeEntry {
+    Marker,
+    Formatting(FormattingEntry),
+}
+
 struct TreeBuilder {
     tokenizer: Tokenizer,
     document: Document,
     open_elements: Vec<NodeId>,
-    active_formatting: Vec<FormattingEntry>,
+    active_formatting: Vec<AfeEntry>,
     mode: Mode,
     original_mode: Mode,
     head_element: Option<NodeId>,
@@ -347,8 +372,51 @@ impl TreeBuilder {
         self.document.insert_before(parent, id, reference);
     }
 
+    /// The position right after the last `Marker` entry in the active-
+    /// formatting-elements list, or `0` if there is none -- reconstruction,
+    /// the adoption agency's formatting-element search, and the Noah's
+    /// Ark clause below all only ever look at the slice from this point
+    /// to the end of the list.
+    fn afe_scan_start(&self) -> usize {
+        self.active_formatting.iter().rposition(|e| matches!(e, AfeEntry::Marker)).map(|p| p + 1).unwrap_or(0)
+    }
+
+    /// Inserts a `Marker` at the end of the active-formatting-elements
+    /// list -- WHATWG's own term for this exact step, done by `<caption>`
+    /// and `<td>`/`<th>` specifically so that later reconstruction (and
+    /// the adoption agency algorithm) can't reach back out past the
+    /// table cell/caption boundary to formatting elements opened before
+    /// it. See [`AfeEntry::Marker`]'s docs for why table cells need this
+    /// despite the module docs' blanket "no markers needed" reasoning.
+    fn insert_afe_marker(&mut self) {
+        self.active_formatting.push(AfeEntry::Marker);
+    }
+
+    /// The "Noah's Ark clause" (WHATWG's own name for this step): if
+    /// three elements with the same tag name and attributes as this one
+    /// are already in the active-formatting-elements list (since the
+    /// last marker, or the start of the list if there is none), remove
+    /// the earliest of them before adding the new one. Without this,
+    /// `<p><b><b><b><b><p>x` would reconstruct all four `<b>`s under the
+    /// second `<p>` instead of the spec-mandated three.
     fn push_formatting(&mut self, id: NodeId, tag: &str, attrs: Vec<(String, String)>) {
-        self.active_formatting.push((id, tag.to_string(), attrs));
+        let scan_start = self.afe_scan_start();
+        let matching: Vec<usize> = self.active_formatting[scan_start..]
+            .iter()
+            .enumerate()
+            .filter_map(|(i, e)| match e {
+                AfeEntry::Formatting((_, t, a)) if t == tag && Self::attrs_equal(a, &attrs) => Some(scan_start + i),
+                _ => None,
+            })
+            .collect();
+        if matching.len() >= 3 {
+            self.active_formatting.remove(matching[0]);
+        }
+        self.active_formatting.push(AfeEntry::Formatting((id, tag.to_string(), attrs)));
+    }
+
+    fn attrs_equal(a: &[(String, String)], b: &[(String, String)]) -> bool {
+        a.len() == b.len() && a.iter().all(|pair| b.contains(pair))
     }
 
     /// Consumes [`Self::strip_leading_newline`] against one incoming
@@ -487,7 +555,22 @@ impl TreeBuilder {
                 break;
             }
         }
+        self.clear_afe_up_to_last_marker();
         self.mode = Mode::InRow;
+    }
+
+    /// WHATWG's "clear the list of active formatting elements up to the
+    /// last marker": pop entries off the end of the list, including the
+    /// marker itself, until a marker has been popped (or the list is
+    /// empty). Run when a table cell or caption closes, so a *later*,
+    /// unrelated cell/caption doesn't reconstruct formatting elements
+    /// left dangling from a previous one.
+    fn clear_afe_up_to_last_marker(&mut self) {
+        while let Some(entry) = self.active_formatting.pop() {
+            if matches!(entry, AfeEntry::Marker) {
+                break;
+            }
+        }
     }
 
     fn close_table_section(&mut self) {
@@ -580,32 +663,78 @@ impl TreeBuilder {
         if self.active_formatting.is_empty() {
             return;
         }
+        // A `Marker` counts as "already satisfied" here, exactly like an
+        // already-open formatting element does -- it's the boundary
+        // `<caption>`/`<td>`/`<th>` insert specifically to stop
+        // reconstruction from reaching back out to formatting elements
+        // opened before the cell/caption.
+        let is_open_or_marker = |tb: &Self, i: usize| match &tb.active_formatting[i] {
+            AfeEntry::Marker => true,
+            AfeEntry::Formatting((id, _, _)) => tb.open_elements.contains(id),
+        };
         let last = self.active_formatting.len() - 1;
-        if self.open_elements.contains(&self.active_formatting[last].0) {
+        if is_open_or_marker(self, last) {
             return;
         }
         let mut first = last;
-        while first > 0 && !self.open_elements.contains(&self.active_formatting[first - 1].0) {
+        while first > 0 && !is_open_or_marker(self, first - 1) {
             first -= 1;
         }
         for i in first..=last {
-            let (_, tag, attrs) = self.active_formatting[i].clone();
-            let new_id = self.insert_element(&tag, attrs);
-            self.active_formatting[i].0 = new_id;
+            let AfeEntry::Formatting((_, tag, attrs)) = self.active_formatting[i].clone() else {
+                continue;
+            };
+            let new_id = self.insert_element(&tag, attrs.clone());
+            self.active_formatting[i] = AfeEntry::Formatting((new_id, tag, attrs));
         }
+    }
+
+    /// Looks up a `Formatting` entry's `(id, tag, attrs)` by stack
+    /// position, panicking if that position holds a `Marker` --
+    /// callers only ever index positions they've already confirmed are
+    /// `Formatting` entries (e.g. results of [`Self::afe_formatting_rposition`]).
+    fn afe_formatting_at(&self, pos: usize) -> &FormattingEntry {
+        match &self.active_formatting[pos] {
+            AfeEntry::Formatting(e) => e,
+            AfeEntry::Marker => unreachable!("expected a formatting entry, found a marker"),
+        }
+    }
+
+    /// The last position at or after [`Self::afe_scan_start`] (i.e. not
+    /// stepping past a marker) holding a `Formatting` entry matching
+    /// `tag` -- the adoption agency algorithm's "last element in the
+    /// list of active formatting elements ... that has the tag name
+    /// subject" search, spec-bounded to never reach past the most
+    /// recent `<caption>`/`<td>`/`<th>` marker.
+    fn afe_formatting_rposition(&self, tag: &str) -> Option<usize> {
+        let scan_start = self.afe_scan_start();
+        self.active_formatting[scan_start..].iter().rposition(|e| matches!(e, AfeEntry::Formatting((_, t, _)) if t == tag)).map(|p| scan_start + p)
     }
 
     /// The adoption agency algorithm (WHATWG HTML5 §13.2.5.2), for an end
     /// tag naming a formatting element. See module docs for what's
-    /// intentionally simplified relative to the full spec (no markers,
-    /// no Noah's Ark clause).
+    /// intentionally simplified relative to the full spec (no Noah's
+    /// Ark clause beyond [`Self::push_formatting`]'s handling).
     fn adoption_agency(&mut self, tag: &str) {
+        // Step 2 (a fast path spec calls out explicitly): if the current
+        // node already matches `tag` but was never tracked as an active
+        // formatting element (e.g. a plain, unformatted element that
+        // just happens to share the tag name), just pop it and return --
+        // skip the whole algorithm below.
+        if let Some(&current) = self.open_elements.last() {
+            let tracked = self.active_formatting.iter().any(|e| matches!(e, AfeEntry::Formatting((id, _, _)) if *id == current));
+            if self.tag_of(current).as_deref() == Some(tag) && !tracked {
+                self.open_elements.pop();
+                return;
+            }
+        }
+
         for _ in 0..8 {
-            let Some(fe_pos) = self.active_formatting.iter().rposition(|(_, t, _)| t == tag) else {
+            let Some(fe_pos) = self.afe_formatting_rposition(tag) else {
                 self.any_other_end_tag(tag);
                 return;
             };
-            let fe_id = self.active_formatting[fe_pos].0;
+            let fe_id = self.afe_formatting_at(fe_pos).0;
 
             let Some(fe_stack_pos) = self.open_elements.iter().position(|&id| id == fe_id) else {
                 self.active_formatting.remove(fe_pos);
@@ -630,35 +759,68 @@ impl TreeBuilder {
             let common_ancestor = self.open_elements[fe_stack_pos - 1];
 
             let between: Vec<NodeId> = self.open_elements[fe_stack_pos + 1..furthest_block_pos].to_vec();
-            let mut dropped: Vec<NodeId> = Vec::new();
-            let mut bookmark_id: Option<NodeId> = None;
+            // `Bookmark` mirrors Blink's `HTMLFormattingElementList::Bookmark`
+            // (`html_formatting_element_list.h`): a position tracked
+            // *relative to a specific entry*, resolved to a concrete
+            // index only once, right before the final insert -- not a
+            // raw `usize` snapshotted up front. Indices into
+            // `active_formatting` shift every time an earlier entry is
+            // removed or inserted during the inner loop below, so a
+            // stale raw index silently drifts; re-resolving by node
+            // identity at the point of use can't drift.
+            enum Bookmark {
+                AtFormattingElement,
+                AfterNode(NodeId),
+            }
+            let mut bookmark = Bookmark::AtFormattingElement;
             let mut last_node = furthest_block_id;
             let mut iterations = 0;
 
             for &node_id in between.iter().rev() {
                 iterations += 1;
-                let af_pos = self.active_formatting.iter().position(|(id, _, _)| *id == node_id);
+                let af_pos = self.active_formatting.iter().position(|e| matches!(e, AfeEntry::Formatting((id, _, _)) if *id == node_id));
+                let stack_pos_of = |tb: &Self, id: NodeId| tb.open_elements.iter().position(|&x| x == id);
 
                 let Some(af_pos) = af_pos else {
-                    dropped.push(node_id);
+                    // Not (or no longer) an active formatting element:
+                    // remove it from the stack only, and move on --
+                    // never cloned, never reparented.
+                    if let Some(p) = stack_pos_of(self, node_id) {
+                        self.open_elements.remove(p);
+                    }
                     continue;
                 };
                 if iterations > 3 {
+                    // Spec's inner-loop iteration cap: once we're deep
+                    // enough in a long misnested chain, age this entry
+                    // out of the active-formatting list *and* the stack
+                    // rather than cloning it -- same as the "not in AFE"
+                    // branch above, just reached by aging out instead.
                     self.active_formatting.remove(af_pos);
-                    dropped.push(node_id);
+                    if let Some(p) = stack_pos_of(self, node_id) {
+                        self.open_elements.remove(p);
+                    }
                     continue;
                 }
 
-                let (_, node_tag, node_attrs) = self.active_formatting[af_pos].clone();
+                // Clone `node_id`'s element and replace *both* its
+                // active-formatting entry and its stack-of-open-elements
+                // entry with the clone, in place -- the stack entry must
+                // be replaced, not just dropped, since later iterations
+                // (and, for the outermost node, the final reparent step)
+                // still need a valid current stack position for it.
+                let (_, node_tag, node_attrs) = self.afe_formatting_at(af_pos).clone();
                 let new_node = self.document.create_node(NodeData::Element {
                     tag_name: node_tag.clone(),
                     attributes: node_attrs.clone(),
                 });
-                self.active_formatting[af_pos] = (new_node, node_tag, node_attrs);
-                dropped.push(node_id);
+                self.active_formatting[af_pos] = AfeEntry::Formatting((new_node, node_tag, node_attrs));
+                if let Some(p) = stack_pos_of(self, node_id) {
+                    self.open_elements[p] = new_node;
+                }
 
                 if last_node == furthest_block_id {
-                    bookmark_id = Some(new_node);
+                    bookmark = Bookmark::AfterNode(new_node);
                 }
 
                 if self.document.parent(last_node).is_some() {
@@ -667,7 +829,6 @@ impl TreeBuilder {
                 self.document.append_child(new_node, last_node);
                 last_node = new_node;
             }
-            self.open_elements.retain(|id| !dropped.contains(id));
 
             if self.document.parent(last_node).is_some() {
                 self.document.detach(last_node);
@@ -682,7 +843,7 @@ impl TreeBuilder {
                 self.document.append_child(common_ancestor, last_node);
             }
 
-            let (_, fe_tag, fe_attrs) = self.active_formatting[fe_pos].clone();
+            let (_, fe_tag, fe_attrs) = self.afe_formatting_at(fe_pos).clone();
             let new_fe = self.document.create_node(NodeData::Element {
                 tag_name: fe_tag.clone(),
                 attributes: fe_attrs.clone(),
@@ -694,13 +855,30 @@ impl TreeBuilder {
             }
             self.document.append_child(furthest_block_id, new_fe);
 
-            let insert_at = bookmark_id
-                .and_then(|id| self.active_formatting.iter().position(|(x, _, _)| *x == id))
-                .map(|p| p + 1)
-                .unwrap_or(fe_pos);
-            self.active_formatting.retain(|(id, _, _)| *id != fe_id);
+            // Resolve the bookmark by identity, right before mutating
+            // the list, so it reflects every removal the inner loop just
+            // did -- then account for `fe`'s own removal (a single
+            // earlier entry disappearing shifts everything after it down
+            // by one) explicitly, rather than clamping to length and
+            // hoping that coincidentally lands right.
+            let raw_insert_at = match bookmark {
+                Bookmark::AtFormattingElement => fe_pos,
+                Bookmark::AfterNode(id) => self
+                    .active_formatting
+                    .iter()
+                    .position(|e| matches!(e, AfeEntry::Formatting((x, _, _)) if *x == id))
+                    .map(|p| p + 1)
+                    .unwrap_or(fe_pos),
+            };
+            let fe_pos_now = self
+                .active_formatting
+                .iter()
+                .position(|e| matches!(e, AfeEntry::Formatting((id, _, _)) if *id == fe_id))
+                .unwrap();
+            self.active_formatting.remove(fe_pos_now);
+            let insert_at = if raw_insert_at > fe_pos_now { raw_insert_at - 1 } else { raw_insert_at };
             let insert_at = insert_at.min(self.active_formatting.len());
-            self.active_formatting.insert(insert_at, (new_fe, fe_tag, fe_attrs));
+            self.active_formatting.insert(insert_at, AfeEntry::Formatting((new_fe, fe_tag, fe_attrs)));
 
             // Insert new_fe *above* furthest_block in the stack (closer to
             // the top / current node), not below it -- verified against
@@ -963,8 +1141,46 @@ impl TreeBuilder {
                 }
                 StepResult::Done
             }
+            "body" => {
+                // Spec: a second, stray `<body>` start tag doesn't open
+                // a new element either -- same merge-onto-the-existing-
+                // element treatment as a second `<html>` tag above,
+                // targeting the second element on the stack (the one
+                // right above `<html>`, which is body in every case MVP
+                // scope can reach -- no `<frameset>` support).
+                if let Some(&body_id) = self.open_elements.get(1) {
+                    if let NodeData::Element { tag_name, attributes } = self.document.data_mut(body_id) {
+                        if tag_name == "body" {
+                            for (k, v) in attrs {
+                                if !attributes.iter().any(|(ek, _)| *ek == k) {
+                                    attributes.push((k, v));
+                                }
+                            }
+                        }
+                    }
+                }
+                StepResult::Done
+            }
             "head" => StepResult::Done,
+            // Spec: these table-structure-only tags have no valid
+            // meaning directly in "in body" content (only inside an
+            // actual table, handled by the table-family insertion
+            // modes) -- ignored outright here, not inserted as
+            // ordinary elements. E.g. a stray `<col>` after `</table>`
+            // has already closed the table must vanish, not become a
+            // body-level child.
+            "caption" | "col" | "colgroup" | "tbody" | "td" | "tfoot" | "th" | "thead" | "tr" => StepResult::Done,
             "table" => {
+                // Spec: closing an open `<p>` here is conditional on the
+                // document *not* being in quirks mode -- BlueIce has no
+                // quirks-mode concept at all (a documented MVP scope
+                // cut), so this always takes the standards-mode branch,
+                // matching every real page (which declares a doctype).
+                // Confirmed against the WPT corpus: `<!doctype html>
+                // <p><table>` closes p (table becomes p's sibling), but
+                // the no-doctype `<p><table>` (quirks mode) nests table
+                // inside p instead -- the latter is the scope cut, not a
+                // bug to "fix" by removing this close.
                 if self.has_p_in_button_scope() {
                     self.close_p_element();
                 }
@@ -1009,7 +1225,7 @@ impl TreeBuilder {
                 StepResult::Done
             }
             "a" => {
-                if self.active_formatting.iter().any(|(_, t, _)| t == "a") {
+                if self.afe_formatting_rposition("a").is_some() {
                     self.adoption_agency("a");
                 }
                 self.reconstruct_active_formatting_elements();
@@ -1017,7 +1233,13 @@ impl TreeBuilder {
                 self.push_formatting(id, "a", attrs);
                 StepResult::Done
             }
-            "textarea" | "script" | "style" => {
+            // Spec: `<title>` (like `<script>`/`<style>`) is processed
+            // via "in head" rules even when it turns up directly in body
+            // content -- most importantly, it still gets RCDATA content-
+            // model treatment, so a stray `</body>`/`</html>`/etc. inside
+            // it stays literal text up to the real `</title>`, instead
+            // of being tokenized as a real (and disruptive) end tag.
+            "textarea" | "script" | "style" | "title" => {
                 self.switch_to_text_mode(name, attrs);
                 if name == "textarea" {
                     self.strip_leading_newline = true;
@@ -1099,6 +1321,18 @@ impl TreeBuilder {
                     StepResult::Done
                 }
             }
+            "br" => {
+                // Spec: a stray `</br>` end tag doesn't behave like a
+                // normal end tag at all -- it's converted into inserting
+                // a `<br>` element, exactly as if a `<br>` start tag had
+                // been seen (dropping any attributes the bogus end tag
+                // carried, which the tokenizer already discards for end
+                // tags anyway). Real pages that typo `</br>` still get
+                // the line break they meant to insert.
+                self.reconstruct_active_formatting_elements();
+                self.insert_element("br", vec![]);
+                StepResult::Done
+            }
             "p" => {
                 if !self.has_p_in_button_scope() {
                     // Spec: a stray `</p>` with no matching open `<p>` is a
@@ -1161,9 +1395,29 @@ impl TreeBuilder {
         }
     }
 
+    /// WHATWG's "clear the stack back to a table [body/row] context":
+    /// pop elements off the stack of open elements (never touching the
+    /// DOM they already belong to) until the current node matches one of
+    /// `stop_tags` or is `html`. Several "in table"/"in table body"/
+    /// "in row" rules call this before inserting a table-structure
+    /// element, specifically so that non-table content parsed in
+    /// between (most commonly a formatting element like `<a>` foster-
+    /// parented in front of the table -- `<table><a>x<td>y`) doesn't
+    /// stay the "current node" and swallow the new element as its own
+    /// child instead of the table structure's.
+    fn clear_stack_back_to(&mut self, stop_tags: &[&str]) {
+        while let Some(&top) = self.open_elements.last() {
+            if self.tag_of(top).as_deref().is_some_and(|t| t == "html" || stop_tags.contains(&t)) {
+                break;
+            }
+            self.open_elements.pop();
+        }
+    }
+
     fn step_in_table(&mut self, token: Token) -> StepResult {
         match token {
             Token::Character(s) => {
+                let s = Self::strip_null_characters(&s);
                 if s.trim().is_empty() {
                     self.insert_text(&s);
                 } else {
@@ -1176,26 +1430,32 @@ impl TreeBuilder {
             }
             Token::Doctype | Token::Comment => StepResult::Done,
             Token::StartTag { name, attrs, .. } if name == "caption" => {
+                self.clear_stack_back_to(&["table"]);
+                self.insert_afe_marker();
                 self.insert_element("caption", attrs);
                 self.mode = Mode::InCaption;
                 StepResult::Done
             }
             Token::StartTag { name, attrs, .. } if name == "colgroup" => {
+                self.clear_stack_back_to(&["table"]);
                 self.insert_element("colgroup", attrs);
                 self.mode = Mode::InColumnGroup;
                 StepResult::Done
             }
             Token::StartTag { name, attrs, self_closing } if name == "col" => {
+                self.clear_stack_back_to(&["table"]);
                 self.insert_element("colgroup", vec![]);
                 self.mode = Mode::InColumnGroup;
                 StepResult::Reprocess(Token::StartTag { name, attrs, self_closing })
             }
             Token::StartTag { name, attrs, .. } if matches!(name.as_str(), "tbody" | "thead" | "tfoot") => {
+                self.clear_stack_back_to(&["table"]);
                 self.insert_element(&name, attrs);
                 self.mode = Mode::InTableBody;
                 StepResult::Done
             }
             Token::StartTag { name, attrs, self_closing } if matches!(name.as_str(), "tr" | "td" | "th") => {
+                self.clear_stack_back_to(&["table"]);
                 self.insert_element("tbody", vec![]);
                 self.mode = Mode::InTableBody;
                 StepResult::Reprocess(Token::StartTag { name, attrs, self_closing })
@@ -1254,6 +1514,7 @@ impl TreeBuilder {
                 if self.has_tag_in_scope("caption", &[]) {
                     self.generate_implied_end_tags(None);
                     self.pop_until_and_including("caption");
+                    self.clear_afe_up_to_last_marker();
                 }
                 self.mode = Mode::InTable;
                 StepResult::Done
@@ -1264,6 +1525,7 @@ impl TreeBuilder {
                 if self.has_tag_in_scope("caption", &[]) {
                     self.generate_implied_end_tags(None);
                     self.pop_until_and_including("caption");
+                    self.clear_afe_up_to_last_marker();
                     self.mode = Mode::InTable;
                 }
                 StepResult::Reprocess(Token::StartTag { name, attrs, self_closing })
@@ -1281,11 +1543,17 @@ impl TreeBuilder {
     }
 
     fn step_in_column_group(&mut self, token: Token) -> StepResult {
-        match token {
-            Token::Character(s) if s.trim().is_empty() => {
-                self.insert_text(&s);
-                StepResult::Done
+        if let Token::Character(s) = &token {
+            if s.trim().is_empty() {
+                self.insert_text(s);
+                return StepResult::Done;
             }
+            if let Some((ws, rest)) = Self::split_leading_whitespace(s) {
+                self.insert_text(ws);
+                return StepResult::Reprocess(Token::Character(rest.to_string()));
+            }
+        }
+        match token {
             Token::Comment | Token::Doctype => StepResult::Done,
             Token::StartTag { name, attrs, .. } if name == "col" => {
                 self.insert_element("col", attrs);
@@ -1311,11 +1579,13 @@ impl TreeBuilder {
     fn step_in_table_body(&mut self, token: Token) -> StepResult {
         match token {
             Token::StartTag { name, attrs, .. } if name == "tr" => {
+                self.clear_stack_back_to(&["tbody", "thead", "tfoot"]);
                 self.insert_element("tr", attrs);
                 self.mode = Mode::InRow;
                 StepResult::Done
             }
             Token::StartTag { name, attrs, self_closing } if matches!(name.as_str(), "td" | "th") => {
+                self.clear_stack_back_to(&["tbody", "thead", "tfoot"]);
                 self.insert_element("tr", vec![]);
                 self.mode = Mode::InRow;
                 StepResult::Reprocess(Token::StartTag { name, attrs, self_closing })
@@ -1349,8 +1619,10 @@ impl TreeBuilder {
     fn step_in_row(&mut self, token: Token) -> StepResult {
         match token {
             Token::StartTag { name, attrs, .. } if matches!(name.as_str(), "td" | "th") => {
+                self.clear_stack_back_to(&["tr"]);
                 self.insert_element(&name, attrs);
                 self.mode = Mode::InCell;
+                self.insert_afe_marker();
                 StepResult::Done
             }
             Token::EndTag { name } if name == "tr" => {
@@ -1386,6 +1658,7 @@ impl TreeBuilder {
                 if self.has_tag_in_scope(&name, &[]) {
                     self.generate_implied_end_tags(None);
                     self.pop_until_and_including(&name);
+                    self.clear_afe_up_to_last_marker();
                 }
                 self.mode = Mode::InRow;
                 StepResult::Done
@@ -1821,6 +2094,158 @@ mod tests {
         let doc = parse("<b><i><em><strong><u><div>x</b>y</div>");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
         assert_eq!(text_content(&doc, body), "xy");
+    }
+
+    #[test]
+    fn adoption_agency_replaces_an_intervening_formatting_element_in_place_on_the_stack() {
+        // `<i>` sits *between* `<b>` (the formatting element being
+        // adopted) and `<p>` (the furthest block) -- the inner loop must
+        // clone it and keep the clone at `<i>`'s own stack position
+        // (not just drop it), since that clone is what ends up wrapping
+        // the reparented furthest block. Regression for a bug where the
+        // inner loop only ever removed stack entries, never replaced
+        // them, silently discarding every intervening formatting clone.
+        let doc = parse("<b>1<i>2<p>3</b>4");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        let b = find_by_tag(&doc, body, "b").unwrap();
+        let inner_i = find_by_tag(&doc, b, "i").unwrap();
+        assert_eq!(text_content(&doc, inner_i), "2");
+        // A second, cloned <i> is body's own child, wrapping <p>.
+        let outer_i = doc.children(body).find(|&c| c != b && matches!(doc.data(c), NodeData::Element{tag_name,..} if tag_name=="i")).unwrap();
+        let p = find_by_tag(&doc, outer_i, "p").unwrap();
+        assert_eq!(children_tags(&doc, p), vec!["b".to_string()]);
+        assert_eq!(text_content(&doc, p), "34");
+    }
+
+    #[test]
+    fn noahs_ark_clause_caps_identical_nested_formatting_elements_at_three() {
+        let doc = parse("<p><b><b><b><b><p>x");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        let paragraphs: Vec<_> = doc.children(body).filter(|&c| matches!(doc.data(c), NodeData::Element{tag_name,..} if tag_name=="p")).collect();
+        assert_eq!(paragraphs.len(), 2);
+        let second_p = paragraphs[1];
+        // Reconstruction under the second <p> must only recreate three
+        // nested <b>s (the fourth was aged out of the active-formatting
+        // list when the fourth <b> was originally opened), not four.
+        let mut depth = 0;
+        let mut node = second_p;
+        loop {
+            let Some(child) = doc.children(node).next() else { break };
+            if !matches!(doc.data(child), NodeData::Element{tag_name,..} if tag_name=="b") {
+                break;
+            }
+            depth += 1;
+            node = child;
+        }
+        assert_eq!(depth, 3);
+        assert_eq!(text_content(&doc, second_p), "x");
+    }
+
+    #[test]
+    fn a_formatting_element_from_before_a_table_cell_is_not_reconstructed_inside_it() {
+        // `<a>` opened directly inside `<table>` (before any row) gets
+        // foster-parented into the DOM but stays on the stack of open
+        // elements; entering `<td>` must insert an active-formatting-
+        // elements marker so that later content inside the cell doesn't
+        // reconstruct a clone of that `<a>` -- "2" must be plain text,
+        // not wrapped in a spurious `<a>`.
+        let doc = parse("<table><a>1<td>2</td>3</table>");
+        let table = find_by_tag(&doc, doc.root(), "table").unwrap();
+        let td = find_by_tag(&doc, table, "td").unwrap();
+        assert_eq!(children_tags(&doc, td), Vec::<String>::new(), "td must have no element children -- \"2\" must be plain text, not wrapped in a reconstructed <a>");
+        assert_eq!(text_content(&doc, td), "2");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        let as_: Vec<_> = doc.children(body).filter(|&c| matches!(doc.data(c), NodeData::Element{tag_name,..} if tag_name=="a")).collect();
+        assert_eq!(as_.len(), 2, "the <a> is reconstructed once table content resumes after the cell closes (\"3\"), landing back in front of the table");
+    }
+
+    #[test]
+    fn clearing_the_afe_marker_on_cell_close_does_not_remove_an_earlier_formatting_element() {
+        // Clearing "up to the last marker" must stop *at* the marker --
+        // an active formatting element pushed before the marker (here,
+        // <a>, opened before the cell) must survive the clear and still
+        // be available for reconstruction afterward.
+        let doc = parse("<table><tr><td><b>x</td><td>y");
+        let table = find_by_tag(&doc, doc.root(), "table").unwrap();
+        let tds: Vec<_> = {
+            let mut out = Vec::new();
+            for tr in doc.children(table).flat_map(|tb| doc.children(tb)) {
+                if matches!(doc.data(tr), NodeData::Element{tag_name,..} if tag_name=="tr") {
+                    out.extend(doc.children(tr).filter(|&c| matches!(doc.data(c), NodeData::Element{tag_name,..} if tag_name=="td")));
+                }
+            }
+            out
+        };
+        assert_eq!(tds.len(), 2);
+        assert_eq!(text_content(&doc, tds[0]), "x");
+        assert_eq!(text_content(&doc, tds[1]), "y", "the second cell must not reconstruct <b> from the first cell");
+    }
+
+    #[test]
+    fn table_structure_only_tags_are_ignored_outright_in_plain_body_content() {
+        // These tags have no valid meaning directly in "in body" content
+        // -- only inside a real table, where the table-family insertion
+        // modes handle them. A stray `<col>` after `</table>` has
+        // already closed the table must simply vanish, not become an
+        // ordinary body-level element.
+        let doc = parse("<table></table><col><tbody><td>");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(children_tags(&doc, body), vec!["table".to_string()]);
+    }
+
+    #[test]
+    fn a_table_closes_an_open_p() {
+        // Spec only skips this in quirks mode, which BlueIce doesn't
+        // model at all (a documented MVP scope cut) -- so this always
+        // takes the standards-mode branch, matching every real page
+        // (which declares a doctype).
+        let doc = parse("<p><table></table>");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(children_tags(&doc, body), vec!["p".to_string(), "table".to_string()]);
+    }
+
+    #[test]
+    fn a_second_body_start_tag_merges_attributes_without_nesting() {
+        let doc = parse("<body foo='bar'><body foo='baz' yo='mama'>");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert!(doc.children(body).next().is_none(), "a second <body> must not nest a new body element");
+        let NodeData::Element { attributes, .. } = doc.data(body) else { panic!("expected an element") };
+        assert!(attributes.contains(&("foo".to_string(), "bar".to_string())), "the original attribute value must survive (not be overwritten)");
+        assert!(attributes.contains(&("yo".to_string(), "mama".to_string())), "the new attribute must be merged in");
+    }
+
+    #[test]
+    fn a_stray_end_br_tag_inserts_a_br_element_instead_of_closing_anything() {
+        let doc = parse("<body></br foo=\"bar\">");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(children_tags(&doc, body), vec!["br".to_string()]);
+    }
+
+    #[test]
+    fn a_title_appearing_directly_in_body_still_gets_rcdata_treatment() {
+        // Without this, a stray `</body>` inside <title>'s text would be
+        // tokenized as a real (and disruptive) end tag instead of
+        // staying literal RCDATA content up to the actual </title>.
+        let doc = parse("<!DOCTYPE html><body><title>test</body></title>");
+        let title = find_by_tag(&doc, doc.root(), "title").unwrap();
+        assert_eq!(text_content(&doc, title), "test</body>");
+    }
+
+    #[test]
+    fn whitespace_leading_a_mixed_character_run_in_column_group_mode_stays_in_the_colgroup() {
+        let doc = parse("<table><colgroup> foo</colgroup></table>");
+        let table = find_by_tag(&doc, doc.root(), "table").unwrap();
+        let colgroup = find_by_tag(&doc, table, "colgroup").unwrap();
+        assert_eq!(text_content(&doc, colgroup), " ");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert!(text_content(&doc, body).starts_with("foo"), "the non-whitespace remainder must be foster-parented in front of the table, not lost");
+    }
+
+    #[test]
+    fn a_raw_null_character_directly_inside_a_table_is_dropped_not_shown() {
+        let doc = parse("<body><table>\u{0}filler\u{0}text\u{0}");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(text_content(&doc, body), "fillertext");
     }
 
     #[test]

@@ -20,12 +20,12 @@
 //! reference table, ...) rather than bugs -- [`strip_unsupported_lines`]
 //! and [`likely_out_of_scope_reason`] exist to separate that expected
 //! noise from genuine failures worth a human reading, not to make the
-//! number look better. Over twenty real bugs were found and fixed this
-//! way across two triage passes (see `testing/TEST_PLAN.md`'s "WPT
+//! number look better. Over thirty real bugs were found and fixed this
+//! way across three triage passes (see `testing/TEST_PLAN.md`'s "WPT
 //! tree-construction corpus" section for the full list); the pass rate
-//! after normalizing away known scope cuts moved 39.0% -> 54.5% as a
+//! after normalizing away known scope cuts moved 39.0% -> 56.4% as a
 //! direct result, with unclassified failures (the ones actually worth
-//! reading) dropping from 669 to 52. Converting this into an actual CI
+//! reading) dropping from 669 to 21. Converting this into an actual CI
 //! gate (with a maintained skip-list) is future work, not done here.
 
 use blueice_testing::load_fixtures;
