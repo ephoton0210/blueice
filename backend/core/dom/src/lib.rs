@@ -93,10 +93,33 @@ pub struct Document {
 
 impl Document {
     pub fn new() -> Self {
-        let mut doc = Document::default();
+        Self::new_continuing_from(0)
+    }
+
+    /// Like [`Document::new`], but starts node-ID allocation at `next_id`
+    /// instead of restarting at 0 -- for constructing a *replacement*
+    /// document (e.g. after a navigation) whose `NodeId`s must never
+    /// collide with, or be numerically confused with, IDs from the
+    /// document it's replacing. Plan §1 requires stable `NodeId`s across
+    /// mutations specifically so the AI-facing representation can
+    /// reference elements reliably; a document that always restarted
+    /// its own counter at 0 would let a client-cached ID from *before*
+    /// a navigation silently resolve to an unrelated node afterward,
+    /// rather than safely failing to resolve at all. Callers replacing
+    /// a document should pass the old document's [`Document::next_node_id`].
+    pub fn new_continuing_from(next_id: u64) -> Self {
+        let mut doc = Document { allocator: NodeIdAllocator { next: next_id }, ..Document::default() };
         let root = doc.create_node(NodeData::Document);
         doc.root = Some(root);
         doc
+    }
+
+    /// The `NodeId` value this document would allocate next -- for a
+    /// caller (e.g. `Page::load_html`) about to replace this document
+    /// with a new one via [`Document::new_continuing_from`], so the
+    /// replacement's IDs never overlap with this document's.
+    pub fn next_node_id(&self) -> u64 {
+        self.allocator.next
     }
 
     pub fn root(&self) -> NodeId {

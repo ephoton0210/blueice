@@ -58,7 +58,15 @@ impl Page {
     }
 
     fn load_html(&mut self, html: &str) {
-        self.doc = blueice_html::parse(html);
+        // `parse_continuing_from` (not `parse`) so this replacement
+        // document's NodeIds never collide with -- or get numerically
+        // confused with -- the document it's replacing. A client that
+        // caches a NodeId from before this navigation and acts on it
+        // afterward must get a safe "doesn't exist" (`Page::act` already
+        // checks `doc.contains`), never a silently-misdirected action on
+        // an unrelated node that happens to have been assigned the same
+        // recycled ID (plan §1's stable-ID-across-mutations requirement).
+        self.doc = blueice_html::parse_continuing_from(html, self.doc.next_node_id());
         let author = crate::stylesheet::extract_inline_stylesheets(&self.doc);
         self.styles = cascade(&self.doc, &[(Origin::Ua, &self.ua), (Origin::Author, &author)]);
         self.scroll_y = 0.0;
@@ -166,6 +174,15 @@ impl Page {
                         None => attributes.push(("value".to_string(), value)),
                     }
                 }
+                // `load_html` (the only other path that mutates `doc`)
+                // always relayouts afterward; this in-place mutation was
+                // missed. Inert today since nothing in blueice-layout/
+                // blueice-paint reads an element's `value` attribute
+                // yet, but the render pass and AI snapshot would
+                // otherwise silently go stale relative to `dom_dump()`
+                // (which reads `doc` live) the moment layout starts
+                // rendering input values.
+                self.relayout();
                 None
             }
             NodeAction::ScrollIntoView => {
@@ -397,6 +414,54 @@ mod tests {
         assert_eq!(page.url(), Some("about:credits?lang=zh-TW"));
         let text = all_text(&page.render());
         assert!(text.contains("關於"), "must render the localized page: {text}");
+    }
+
+    #[test]
+    fn navigating_never_reuses_a_nodeid_from_the_previous_document() {
+        // Regression: `NodeIdAllocator` used to live on `Document`
+        // itself, restarting at 0 every time `load_html` built a fresh
+        // `Document` -- so a client that cached a NodeId before this
+        // navigation and acted on it afterward could get silently
+        // redirected to whatever unrelated node the recycled ID now
+        // happened to belong to, instead of a safe "doesn't exist"
+        // (plan §1's stable-ID-across-mutations requirement).
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str("<p>first</p>", None);
+        let stale_id = page.doc().root();
+        let first_next_id = page.doc().next_node_id();
+
+        page.load_html_str("<p>second</p>", None);
+
+        assert!(!page.doc().contains(stale_id), "a NodeId real in the previous document must not resolve to anything in the new one");
+        assert!(page.doc().next_node_id() >= first_next_id, "the new document's allocator must continue from where the old one left off, not restart at 0");
+    }
+
+    fn find_by_tag(doc: &Document, root: NodeId, tag: &str) -> Option<NodeId> {
+        if let NodeData::Element { tag_name, .. } = doc.data(root) {
+            if tag_name == tag {
+                return Some(root);
+            }
+        }
+        doc.children(root).find_map(|c| find_by_tag(doc, c, tag))
+    }
+
+    #[test]
+    fn act_set_value_updates_the_value_attribute() {
+        // No existing test exercised `NodeAction::SetValue` at all. Its
+        // handler was also found to skip the `relayout()` call every
+        // other `doc`-mutating path makes (harmless today since nothing
+        // in blueice-layout/blueice-paint reads an input's value yet, so
+        // there's no *observable* effect to assert on here beyond "it
+        // doesn't panic" -- but the call is now in place for whenever
+        // layout does start reading it).
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(r#"<input type="text">"#, None);
+        let input_id = find_by_tag(page.doc(), page.doc().root(), "input").unwrap();
+
+        page.act(input_id, NodeAction::SetValue("hello".to_string()));
+
+        let NodeData::Element { attributes, .. } = page.doc().data(input_id) else { panic!("expected an element") };
+        assert!(attributes.contains(&("value".to_string(), "hello".to_string())));
     }
 
     #[test]

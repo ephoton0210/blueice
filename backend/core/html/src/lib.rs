@@ -20,3 +20,12 @@ pub use blueice_dom::Document;
 pub fn parse(input: &str) -> Document {
     tree_builder::parse(input)
 }
+
+/// Like [`parse`], but the resulting document's `NodeId`s start at
+/// `next_id` instead of 0 -- for replacing an existing document with a
+/// freshly-parsed one (e.g. on navigation) without reusing its
+/// predecessor's `NodeId` numbering. See
+/// [`blueice_dom::Document::new_continuing_from`].
+pub fn parse_continuing_from(input: &str, next_id: u64) -> Document {
+    tree_builder::parse_continuing_from(input, next_id)
+}

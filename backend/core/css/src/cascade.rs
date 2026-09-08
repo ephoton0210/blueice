@@ -203,7 +203,19 @@ fn compute_style_for(
         matched.push(Matched { origin: Origin::Author, specificity: (u32::MAX, 0, 0), source_order: usize::MAX, declaration: decl });
     }
 
-    matched.sort_by_key(|m| (m.declaration.important, m.origin, m.specificity, m.source_order));
+    // `!important` fully reverses origin precedence (module docs above):
+    // within the `important` bucket, UA must outrank Author, the exact
+    // opposite of the normal (non-important) bucket. `Origin`'s own
+    // `Ord` only ever encodes the normal direction (`Ua < Author`), so
+    // it can't be used directly here -- flip it specifically when
+    // `important` is true, rather than relying on `m.origin` sorting
+    // consistently across both buckets (it can't, by definition of what
+    // "reverses" means).
+    matched.sort_by_key(|m| {
+        let origin_rank = m.origin as u8;
+        let effective_origin_rank = if m.declaration.important { 1 - origin_rank } else { origin_rank };
+        (m.declaration.important, effective_origin_rank, m.specificity, m.source_order)
+    });
 
     let mut winners: HashMap<&str, &Value> = HashMap::new();
     for m in &matched {
@@ -367,6 +379,21 @@ mod tests {
         let p = elem(&mut doc, root, "p", &[]);
         let ua = parse("p { color: red !important; }");
         let author = parse("p { color: blue; }");
+        let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
+        assert_eq!(styles[&p].color, Color::Rgba(255, 0, 0, 255));
+    }
+
+    #[test]
+    fn ua_important_beats_author_important() {
+        // Regression: `!important` must fully reverse origin precedence,
+        // not just beat non-important rules -- when *both* sides are
+        // `!important`, UA must still win over Author.
+        let mut doc = Document::new();
+        let root = doc.root();
+
+        let p = elem(&mut doc, root, "p", &[]);
+        let ua = parse("p { color: red !important; }");
+        let author = parse("p { color: blue !important; }");
         let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
         assert_eq!(styles[&p].color, Color::Rgba(255, 0, 0, 255));
     }

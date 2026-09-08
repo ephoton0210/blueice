@@ -206,32 +206,40 @@ pub fn matches(doc: &Document, node: NodeId, selector: &ComplexSelector) -> bool
     if !compound_matches(doc, node, &selector.compounds[n - 1]) {
         return false;
     }
+    matches_from(doc, selector, n - 1, node)
+}
 
-    let mut current = node;
-    for i in (0..n - 1).rev() {
-        match selector.combinators[i] {
-            Combinator::Child => {
-                let Some(parent) = doc.parent(current) else { return false };
-                if !compound_matches(doc, parent, &selector.compounds[i]) {
-                    return false;
+/// Checks that `selector.compounds[0..=i]` all match walking up from
+/// `node` (which the caller has already confirmed matches `compounds[i]`),
+/// backtracking through alternate ancestors for `Descendant` combinators
+/// instead of committing to the first (nearest) one that happens to
+/// match the immediate compound. A greedy nearest-match can satisfy one
+/// `Descendant` step yet fail a later (further left, stricter) step even
+/// when a farther ancestor would have satisfied the whole chain --
+/// e.g. `x > y z` against `<x><y class=outer><div><y class=inner><z/>
+/// </y></div></y></x>`: the nearest "y" ancestor of `z` (`y.inner`) isn't
+/// a child of `x` (its parent is `div`), but the farther one (`y.outer`)
+/// is, so the selector should still match.
+fn matches_from(doc: &Document, selector: &ComplexSelector, i: usize, node: NodeId) -> bool {
+    if i == 0 {
+        return true;
+    }
+    match selector.combinators[i - 1] {
+        Combinator::Child => {
+            let Some(parent) = doc.parent(node) else { return false };
+            compound_matches(doc, parent, &selector.compounds[i - 1]) && matches_from(doc, selector, i - 1, parent)
+        }
+        Combinator::Descendant => {
+            let mut ancestor = doc.parent(node);
+            while let Some(a) = ancestor {
+                if compound_matches(doc, a, &selector.compounds[i - 1]) && matches_from(doc, selector, i - 1, a) {
+                    return true;
                 }
-                current = parent;
+                ancestor = doc.parent(a);
             }
-            Combinator::Descendant => {
-                let mut ancestor = doc.parent(current);
-                let found = loop {
-                    match ancestor {
-                        None => break None,
-                        Some(a) if compound_matches(doc, a, &selector.compounds[i]) => break Some(a),
-                        Some(a) => ancestor = doc.parent(a),
-                    }
-                };
-                let Some(a) = found else { return false };
-                current = a;
-            }
+            false
         }
     }
-    true
 }
 
 #[cfg(test)]
@@ -414,6 +422,29 @@ mod tests {
 
         assert!(matches(&doc, p, &one("div > p")));
         assert!(matches(&doc, p, &one("div p")));
+    }
+
+    #[test]
+    fn descendant_then_child_backtracks_past_a_nearer_non_matching_ancestor() {
+        // `x > y z`: the *nearest* "y" ancestor of z (y.inner) isn't a
+        // child of x (its parent is div), but a farther "y" ancestor
+        // (y.outer) is -- the matcher must not give up after the first
+        // (nearest) ancestor satisfying the descendant step fails the
+        // stricter child step that follows it.
+        let mut doc = Document::new();
+        let root = doc.root();
+        let x = elem(&mut doc, "x", &[]);
+        let y_outer = elem(&mut doc, "y", &[("class", "outer")]);
+        let div = elem(&mut doc, "div", &[]);
+        let y_inner = elem(&mut doc, "y", &[("class", "inner")]);
+        let z = elem(&mut doc, "z", &[]);
+        doc.append_child(root, x);
+        doc.append_child(x, y_outer);
+        doc.append_child(y_outer, div);
+        doc.append_child(div, y_inner);
+        doc.append_child(y_inner, z);
+
+        assert!(matches(&doc, z, &one("x > y z")), "must backtrack to y.outer, whose parent is x");
     }
 
     #[test]

@@ -171,16 +171,25 @@ struct TreeBuilder {
 /// Parses `input` as HTML into a fresh [`Document`], per the tree
 /// builder's supported subset (module docs).
 pub fn parse(input: &str) -> Document {
-    let mut tb = TreeBuilder::new(input);
+    parse_continuing_from(input, 0)
+}
+
+/// Like [`parse`], but the resulting document's `NodeId`s start at
+/// `next_id` instead of 0 -- for a caller (e.g. `Page::load_html`)
+/// replacing an existing document with a freshly-parsed one, so the new
+/// document's IDs never collide with the one it's replacing. See
+/// [`blueice_dom::Document::new_continuing_from`] for why this matters.
+pub fn parse_continuing_from(input: &str, next_id: u64) -> Document {
+    let mut tb = TreeBuilder::new(input, next_id);
     tb.run();
     tb.document
 }
 
 impl TreeBuilder {
-    fn new(input: &str) -> Self {
+    fn new(input: &str, next_id: u64) -> Self {
         TreeBuilder {
             tokenizer: Tokenizer::new(input),
-            document: Document::new(),
+            document: Document::new_continuing_from(next_id),
             open_elements: Vec::new(),
             active_formatting: Vec::new(),
             mode: Mode::Initial,

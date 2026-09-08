@@ -266,6 +266,54 @@ mod tests {
     }
 
     #[test]
+    fn get_representation_shares_the_current_generation_across_every_send_frame_call_site() {
+        // `get_representation_shares_the_current_generation_with_the_last_frame`
+        // below proves the "same render pass" invariant for `Resize`
+        // alone; this extends the same proof to `Scroll`, `Highlight`,
+        // and a non-navigating `ActOn` (`Focus`) -- the other distinct
+        // `send_frame` call sites in `run_session` (`Click`/`ActOn`'s
+        // Click variant only ever reach `send_frame` via the same
+        // navigate path `Navigate` itself already exercises, so they add
+        // no new coverage here). `send_frame` is a single choke point
+        // every one of these routes through, so this is expected to
+        // hold structurally -- but the invariant is central enough to
+        // this project's premise to prove per call site, not infer from
+        // one example.
+        let dir = temp_frame_dir("representation-generation-all-sites");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut page = Page::new(320.0, 200.0);
+            page.load_html_str(r#"<input type="text">"#, None);
+            let mut generation = 0u64;
+            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            dir
+        });
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
+        let ServerMessage::Representation(snap) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
+        let input_id = snap.nodes[0].id;
+
+        let assert_matching_generation = |client: &mut UnixStream, send: ClientMessage| {
+            blueice_ipc::write_client_message(client, &send).unwrap();
+            let frame = blueice_ipc::read_server_message(client).unwrap();
+            let ServerMessage::FrameReady { generation: frame_generation, .. } = frame else { panic!("expected FrameReady, got {frame:?}") };
+
+            blueice_ipc::write_client_message(client, &ClientMessage::GetRepresentation).unwrap();
+            let reply = blueice_ipc::read_server_message(client).unwrap();
+            let ServerMessage::Representation(snapshot) = reply else { panic!("expected Representation, got {reply:?}") };
+            assert_eq!(snapshot.generation, frame_generation);
+        };
+
+        assert_matching_generation(&mut client, ClientMessage::Scroll { delta_y: 10.0 });
+        assert_matching_generation(&mut client, ClientMessage::Highlight { id: Some(input_id) });
+        assert_matching_generation(&mut client, ClientMessage::ActOn { id: input_id, action: NodeAction::Focus });
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn get_representation_shares_the_current_generation_with_the_last_frame() {
         // the concrete, checkable "same render pass" proof
         // `phase-5-ai-representation-output/PLAN.md` asks for: a
@@ -403,6 +451,48 @@ mod tests {
         blueice_ipc::write_client_message(&mut client, &ClientMessage::ActOn { id: 999_999, action: NodeAction::Click }).unwrap();
         // proven by the fact that the next message still gets a normal
         // reply -- the unknown id didn't wedge or end the session.
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Resize { width: 10, height: 10 }).unwrap();
+        let reply = blueice_ipc::read_server_message(&mut client).unwrap();
+        assert!(matches!(reply, ServerMessage::FrameReady { .. }));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_stale_id_from_before_a_navigation_is_a_harmless_no_op_after_it() {
+        // Unlike `act_on_an_unknown_id_is_a_harmless_no_op` (a
+        // never-allocated id), this id is real -- it existed in the
+        // document *before* the navigation below. Regression: NodeId
+        // allocation used to restart at 0 for every freshly-parsed
+        // document, so this same numeric id could be reused by an
+        // unrelated node in the post-navigation document, and ActOn
+        // would silently act on that unrelated node instead of safely
+        // no-op'ing.
+        let dir = temp_frame_dir("stale-id-across-navigation");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut page = Page::new(320.0, 200.0);
+            page.load_html_str(r#"<a href="/x">go</a>"#, None);
+            let mut generation = 0u64;
+            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            dir
+        });
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
+        let ServerMessage::Representation(snap) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
+        let stale_id = snap.nodes[0].id;
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Navigate { url: "about:blank".to_string() }).unwrap();
+        let navigated = blueice_ipc::read_server_message(&mut client).unwrap();
+        assert_eq!(navigated, ServerMessage::Navigated { url: "about:blank".to_string() });
+        let _frame = blueice_ipc::read_server_message(&mut client).unwrap();
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::ActOn { id: stale_id, action: NodeAction::Click }).unwrap();
+        // proven the same way as the never-allocated-id case: the next
+        // message still gets a normal reply, so the stale id neither
+        // wedged the session nor triggered a misdirected action.
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Resize { width: 10, height: 10 }).unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
         assert!(matches!(reply, ServerMessage::FrameReady { .. }));
