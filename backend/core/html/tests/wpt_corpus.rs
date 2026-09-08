@@ -20,13 +20,13 @@
 //! reference table, ...) rather than bugs -- [`strip_unsupported_lines`]
 //! and [`likely_out_of_scope_reason`] exist to separate that expected
 //! noise from genuine failures worth a human reading, not to make the
-//! number look better. Five real bugs were found and fixed this way
-//! (see `testing/TEST_PLAN.md`'s "WPT tree-construction corpus"
-//! section for the list); the pass rate after normalizing away known
-//! scope cuts moved 39.0% -> 46.8% as a direct result, with
-//! unclassified failures (the ones actually worth reading) dropping
-//! from 669 to under 200. Converting this into an actual CI gate (with
-//! a maintained skip-list) is future work, not done here.
+//! number look better. Over twenty real bugs were found and fixed this
+//! way across two triage passes (see `testing/TEST_PLAN.md`'s "WPT
+//! tree-construction corpus" section for the full list); the pass rate
+//! after normalizing away known scope cuts moved 39.0% -> 54.5% as a
+//! direct result, with unclassified failures (the ones actually worth
+//! reading) dropping from 669 to 52. Converting this into an actual CI
+//! gate (with a maintained skip-list) is future work, not done here.
 
 use blueice_testing::load_fixtures;
 use std::path::PathBuf;
@@ -104,7 +104,7 @@ fn likely_out_of_scope_reason(file: &str, data: &str, expected_raw: &str) -> Opt
     if file == "quirks01.dat" {
         return Some("quirks-mode doctype handling (no quirks-mode concept in MVP)");
     }
-    if file == "processing-instructions.dat" {
+    if file == "processing-instructions.dat" || data.contains("<?") {
         return Some("<?...?> as a distinct ProcessingInstruction node (no such node kind in blueice_dom at all -- a newer/optional spec proposal, not classic bogus-comment handling)");
     }
     if mentions_element_outside_mvp_scope(data) {

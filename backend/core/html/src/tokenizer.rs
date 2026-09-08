@@ -33,6 +33,13 @@ pub enum ContentModel {
     Data,
     Rcdata,
     Rawtext,
+    /// `<script>` content specifically -- unlike plain [`ContentModel::Rawtext`]
+    /// (used by `<style>`), script content has its own "script data
+    /// escaped"/"script data double escaped" sub-states triggered by a
+    /// literal `<!--` inside the content (real pages rely on this to
+    /// hide inline script from pre-`<script>`-aware browsers); see
+    /// [`Tokenizer::consume_script_data`].
+    ScriptData,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -155,8 +162,15 @@ pub struct Tokenizer {
 
 impl Tokenizer {
     pub fn new(input: &str) -> Self {
+        // Spec's input-stream preprocessing step, done once up front:
+        // every CRLF pair, and any remaining lone CR, is normalized to a
+        // single LF before tokenization ever sees it -- otherwise a `\r`
+        // wouldn't match the "leading LF right after `<pre>`" stripping
+        // rule (`TreeBuilder::consume_leading_newline_strip`), and a
+        // `\r\n` would show up as two line breaks instead of one.
+        let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
         Tokenizer {
-            input: input.chars().collect(),
+            input: normalized.chars().collect(),
             pos: 0,
             state: State::Data,
             content_model: ContentModel::Data,
@@ -212,6 +226,7 @@ impl Tokenizer {
                 State::Data => match self.content_model {
                     ContentModel::Rcdata => return self.consume_rawtext_or_rcdata(true),
                     ContentModel::Rawtext => return self.consume_rawtext_or_rcdata(false),
+                    ContentModel::ScriptData => return self.consume_script_data(),
                     ContentModel::Data => match self.peek() {
                         None => return self.flush_text_or_eof(),
                         Some('<') => {
@@ -228,6 +243,13 @@ impl Tokenizer {
                         }
                         Some(c) => {
                             self.advance();
+                            // Unlike RAWTEXT/RCDATA/script-data below, the
+                            // ordinary "data state" emits a literal
+                            // U+0000 character token as-is (no U+FFFD
+                            // substitution here) -- tree construction is
+                            // what's responsible for ignoring it in the
+                            // insertion modes that care (see
+                            // `TreeBuilder::strip_null_characters`).
                             self.text_buffer.push(c);
                         }
                     },
@@ -607,14 +629,47 @@ impl Tokenizer {
     }
 
     fn consume_comment(&mut self) -> Token {
-        while !self.matches_ahead("-->") && self.peek().is_some() {
+        // WHATWG "comment start"/"comment start dash" states: `<!-->`
+        // (immediate `>`) and `<!--->` (one extra dash then `>`) abruptly
+        // close an empty/near-empty comment right there -- an
+        // "abrupt-closing-of-empty-comment" parse error, not a signal to
+        // keep scanning forward for a *later* "-->". Without this check
+        // the general scan below would treat everything up to the next
+        // "-->" occurrence as comment content, silently swallowing real
+        // markup in between (e.g. `<!--><div>--<!-->`).
+        if self.matches_ahead(">") {
+            self.pos += 1;
+            self.state = State::Data;
+            return Token::Comment;
+        }
+        if self.matches_ahead("->") {
+            self.pos += 2;
+            self.state = State::Data;
+            return Token::Comment;
+        }
+        loop {
+            if self.matches_ahead("-->") {
+                self.pos += 3;
+                self.state = State::Data;
+                return Token::Comment;
+            }
+            // WHATWG "comment end bang state": `--!>` (two dashes, a
+            // bang, then `>`) is *also* a valid ("incorrectly closed
+            // comment" parse error) closing sequence -- e.g.
+            // `<!-- BAR --!>BAZ`. Checked before the single-char advance
+            // below so it's never mistaken for ordinary content and
+            // scanned past.
+            if self.matches_ahead("--!>") {
+                self.pos += 4;
+                self.state = State::Data;
+                return Token::Comment;
+            }
+            if self.peek().is_none() {
+                self.state = State::Data;
+                return Token::Comment;
+            }
             self.advance();
         }
-        if self.peek().is_some() {
-            self.pos += 3;
-        }
-        self.state = State::Data;
-        Token::Comment
     }
 
     fn consume_bogus_comment(&mut self) -> Token {
@@ -698,8 +753,124 @@ impl Tokenizer {
                 }
                 Some(c) => {
                     self.advance();
-                    self.text_buffer.push(c);
+                    // Spec: a U+0000 NULL anywhere in RAWTEXT/RCDATA
+                    // content is an "unexpected-null-character" parse
+                    // error that emits a U+FFFD REPLACEMENT CHARACTER
+                    // token instead of the literal NUL (WPT's
+                    // `domjs-unsafe.dat`: a raw NUL byte inside
+                    // `<script>` content must surface as `�`, not a
+                    // silently-passed-through control character).
+                    self.text_buffer.push(if c == '\0' { '\u{FFFD}' } else { c });
                 }
+            }
+        }
+    }
+
+    /// `<script>`-start-tag-shaped lookahead: `<` + `name` (case
+    /// insensitive) + a terminator (whitespace/`/`/`>`) -- the mirror
+    /// image of [`Self::matches_appropriate_end_tag_ahead`]'s `</name`
+    /// check, used by [`Self::consume_script_data`] to recognize the
+    /// literal `<script` marker that starts "script data double escaped"
+    /// mode.
+    fn matches_start_tag_like_ahead(&self, name: &str) -> bool {
+        if self.input.get(self.pos) != Some(&'<') {
+            return false;
+        }
+        let start = self.pos + 1;
+        let name_len = name.chars().count();
+        if !name
+            .chars()
+            .enumerate()
+            .all(|(i, c)| self.input.get(start + i).is_some_and(|&ic| ic.eq_ignore_ascii_case(&c)))
+        {
+            return false;
+        }
+        matches!(self.input.get(start + name_len), Some(' ') | Some('\t') | Some('\n') | Some('\x0C') | Some('\r') | Some('/') | Some('>'))
+    }
+
+    /// WHATWG's "script data state" and its escaped/double-escaped
+    /// sub-states (`research/html-parsing.md`): unlike plain RAWTEXT
+    /// (`<style>`), `<script>` content recognizes a literal `<!--` as
+    /// entering "escaped" mode (used by pages predating `<script>`
+    /// support to hide inline script from being rendered as text), and
+    /// a further nested `<script`/`</script` pair inside that toggles
+    /// "double escaped" mode -- in which even a literal `</script>` is
+    /// just text, not a closing tag. Collapsed here into three states
+    /// (`Plain`/`Escaped`/`DoubleEscaped`) since blueice only needs the
+    /// final text-content/closing-tag-boundary result, not each
+    /// intermediate per-character state transition the spec enumerates.
+    fn consume_script_data(&mut self) -> Token {
+        #[derive(PartialEq, Eq)]
+        enum St {
+            Plain,
+            Escaped,
+            DoubleEscaped,
+        }
+        let mut state = St::Plain;
+        loop {
+            match state {
+                St::Plain => match self.peek() {
+                    None => return self.flush_text_or_eof(),
+                    Some('<') if self.matches_appropriate_end_tag_ahead() => {
+                        if !self.text_buffer.is_empty() {
+                            return self.flush_text_or_eof();
+                        }
+                        return self.consume_end_tag_simple();
+                    }
+                    Some('<') if self.matches_ahead("<!--") => {
+                        self.text_buffer.push_str("<!--");
+                        self.pos += 4;
+                        state = St::Escaped;
+                    }
+                    Some(c) => {
+                        self.advance();
+                        self.text_buffer.push(if c == '\0' { '\u{FFFD}' } else { c });
+                    }
+                },
+                St::Escaped => match self.peek() {
+                    None => return self.flush_text_or_eof(),
+                    Some('<') if self.matches_appropriate_end_tag_ahead() => {
+                        if !self.text_buffer.is_empty() {
+                            return self.flush_text_or_eof();
+                        }
+                        return self.consume_end_tag_simple();
+                    }
+                    Some('<') if self.matches_start_tag_like_ahead("script") => {
+                        for _ in 0.."<script".chars().count() {
+                            let c = self.advance().unwrap();
+                            self.text_buffer.push(c);
+                        }
+                        state = St::DoubleEscaped;
+                    }
+                    Some('-') if self.matches_ahead("-->") => {
+                        self.text_buffer.push_str("-->");
+                        self.pos += 3;
+                        state = St::Plain;
+                    }
+                    Some(c) => {
+                        self.advance();
+                        self.text_buffer.push(if c == '\0' { '\u{FFFD}' } else { c });
+                    }
+                },
+                St::DoubleEscaped => match self.peek() {
+                    None => return self.flush_text_or_eof(),
+                    Some('<') if self.matches_appropriate_end_tag_ahead() => {
+                        for _ in 0.."</script".chars().count() {
+                            let c = self.advance().unwrap();
+                            self.text_buffer.push(c);
+                        }
+                        state = St::Escaped;
+                    }
+                    Some('-') if self.matches_ahead("-->") => {
+                        self.text_buffer.push_str("-->");
+                        self.pos += 3;
+                        state = St::Plain;
+                    }
+                    Some(c) => {
+                        self.advance();
+                        self.text_buffer.push(if c == '\0' { '\u{FFFD}' } else { c });
+                    }
+                },
             }
         }
     }
@@ -1098,6 +1269,36 @@ mod tests {
     fn null_numeric_character_reference_becomes_replacement_character() {
         let tokens = tokenize_all("FOO&#x0000;ZOO");
         assert_eq!(tokens, vec![text("FOO\u{FFFD}ZOO"), Token::Eof]);
+    }
+
+    #[test]
+    fn a_raw_null_byte_in_data_state_is_emitted_literally() {
+        // Unlike RAWTEXT/RCDATA/script-data, plain "data state" does not
+        // substitute U+FFFD for U+0000 at the tokenizer level -- it's
+        // tree construction's job to ignore the literal NULL character
+        // token in the insertion modes that care (`tree_builder.rs`).
+        let tokens = tokenize_all("FOO\u{0}ZOO");
+        assert_eq!(tokens, vec![text("FOO\u{0}ZOO"), Token::Eof]);
+    }
+
+    #[test]
+    fn a_raw_null_byte_in_rawtext_content_becomes_a_replacement_character() {
+        let mut t = Tokenizer::new("a='\u{0}'</script>");
+        t.set_content_model(ContentModel::Rawtext);
+        t.last_start_tag_name = Some("script".to_string());
+        assert_eq!(t.next_token(), text("a='\u{FFFD}'"));
+    }
+
+    #[test]
+    fn a_crlf_pair_is_normalized_to_a_single_line_feed() {
+        let tokens = tokenize_all("a\r\nb");
+        assert_eq!(tokens, vec![text("a\nb"), Token::Eof]);
+    }
+
+    #[test]
+    fn a_lone_carriage_return_is_normalized_to_a_line_feed() {
+        let tokens = tokenize_all("a\rb");
+        assert_eq!(tokens, vec![text("a\nb"), Token::Eof]);
     }
 
     #[test]

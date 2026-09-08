@@ -59,6 +59,7 @@ const P_CLOSING_ELEMENTS: &[&str] = &[
     "form",
     "table",
     "fieldset",
+    "hr",
 ];
 /// Elements that stop an "in scope" walk up the stack of open elements
 /// (WHATWG's default scope list, restricted to the MVP element set).
@@ -81,6 +82,14 @@ enum Mode {
     InTableBody,
     InRow,
     InCell,
+    InSelect,
+    /// Spec's "in select in table" -- entered instead of plain
+    /// `InSelect` when a `<select>` start tag arrives while the
+    /// insertion mode is table-related ([`TreeBuilder::start_tag_in_body`]'s
+    /// "select" arm). Identical to `InSelect` except a handful of
+    /// table-structure tags close the `<select>` outright instead of
+    /// being ignored -- see [`TreeBuilder::step_in_select_in_table`].
+    InSelectInTable,
     AfterBody,
     AfterAfterBody,
 }
@@ -125,6 +134,13 @@ struct TreeBuilder {
     /// Text nodes) as a real regression from the *other* direction of
     /// the same merge logic (`insert_text`'s own docs) fixed earlier.
     just_saw_dropped_comment_or_doctype: bool,
+    /// Set right after inserting a `<pre>` or `<textarea>` element; the
+    /// next character token (if any) has a single leading U+000A LINE
+    /// FEED stripped from it before insertion -- "Newlines at the start
+    /// of pre blocks are ignored as an authoring convenience" (and the
+    /// same rule applies to `<textarea>`). Cleared after the next
+    /// character token is processed, whether or not it started with one.
+    strip_leading_newline: bool,
 }
 
 /// Parses `input` as HTML into a fresh [`Document`], per the tree
@@ -148,6 +164,7 @@ impl TreeBuilder {
             form_element: None,
             foster_parenting: false,
             just_saw_dropped_comment_or_doctype: false,
+            strip_leading_newline: false,
         }
     }
 
@@ -173,6 +190,14 @@ impl TreeBuilder {
 
     fn step(&mut self, token: Token) -> StepResult {
         let is_comment_or_doctype = matches!(token, Token::Comment | Token::Doctype);
+        // The pre/textarea leading-newline exception only ever applies to
+        // the token immediately following the start tag; anything other
+        // than a character token arriving first (a comment, another tag,
+        // ...) means the exception no longer applies once we do get to a
+        // character token later.
+        if !matches!(token, Token::Character(_)) {
+            self.strip_leading_newline = false;
+        }
         let result = self.dispatch(token);
         self.just_saw_dropped_comment_or_doctype = is_comment_or_doctype;
         result
@@ -193,6 +218,8 @@ impl TreeBuilder {
             Mode::InTableBody => self.step_in_table_body(token),
             Mode::InRow => self.step_in_row(token),
             Mode::InCell => self.step_in_cell(token),
+            Mode::InSelect => self.step_in_select(token),
+            Mode::InSelectInTable => self.step_in_select_in_table(token),
             Mode::AfterBody => self.step_after_body(token),
             Mode::AfterAfterBody => self.step_after_after_body(token),
         }
@@ -324,10 +351,25 @@ impl TreeBuilder {
         self.active_formatting.push((id, tag.to_string(), attrs));
     }
 
+    /// Consumes [`Self::strip_leading_newline`] against one incoming
+    /// character-token string: if set, strips a single leading `\n` (if
+    /// present) and always clears the flag, since the exception only
+    /// ever applies to the token immediately following `<pre>`/
+    /// `<textarea>`'s start tag.
+    fn consume_leading_newline_strip(&mut self, s: String) -> String {
+        if !self.strip_leading_newline {
+            return s;
+        }
+        self.strip_leading_newline = false;
+        s.strip_prefix('\n').map(str::to_string).unwrap_or(s)
+    }
+
     fn switch_to_text_mode(&mut self, name: &str, attrs: Vec<(String, String)>) {
         self.insert_element(name, attrs);
         let model = if RCDATA_ELEMENTS.contains(&name) {
             ContentModel::Rcdata
+        } else if name == "script" {
+            ContentModel::ScriptData
         } else {
             ContentModel::Rawtext
         };
@@ -345,6 +387,27 @@ impl TreeBuilder {
                 return true;
             }
             if DEFAULT_SCOPE_BLOCKERS.contains(&t.as_str()) || extra_blockers.contains(&t.as_str()) {
+                return false;
+            }
+        }
+        false
+    }
+
+    /// WHATWG's narrower "in table scope" (used only for the
+    /// table/tbody/tfoot/thead/tr end-tag rules) -- unlike the general
+    /// "in scope" algorithm ([`Self::has_tag_in_scope`]), `td`/`th`/
+    /// `caption` do *not* stop the walk here, since a `<tbody>` is always
+    /// an ancestor of any cell inside it and must still be found by,
+    /// e.g., a stray `</tbody>` reached while inside one of its own
+    /// cells (`has_tag_in_scope` would wrongly stop at the enclosing
+    /// `<td>` and report nothing in scope).
+    fn has_tag_in_table_scope(&self, tag: &str) -> bool {
+        for &id in self.open_elements.iter().rev() {
+            let Some(t) = self.tag_of(id) else { continue };
+            if t == tag {
+                return true;
+            }
+            if matches!(t.as_str(), "html" | "table") {
                 return false;
             }
         }
@@ -458,20 +521,45 @@ impl TreeBuilder {
     }
 
     /// Recomputes the insertion mode from the current stack of open
-    /// elements. Both call sites run this *immediately after*
-    /// `pop_until_and_including("table")`, which means every table-
-    /// internal frame (`tr`/`td`/`th`/`tbody`/`thead`/`tfoot`/`caption`/
-    /// `colgroup`) that could otherwise justify a dedicated branch here
-    /// has, by construction, already been popped along with `table`
-    /// itself -- the real spec's fuller version of this algorithm
-    /// exists to serve other callers (e.g. fragment parsing) BlueIce's
-    /// MVP scope doesn't implement. Handling only what can actually
-    /// remain on the stack at that point (`body`/`html`, else fall back
-    /// to `InBody`) keeps this honest rather than carrying branches no
-    /// test could ever legitimately reach.
+    /// elements -- WHATWG's "reset the insertion mode appropriately",
+    /// restricted to the table/select frames BlueIce's MVP scope can
+    /// actually have on the stack (no `template`/`frameset`, no
+    /// fragment-parsing "context element"). Two different call shapes
+    /// reach this: `pop_until_and_including("table")` callers, which by
+    /// construction have already popped every table-internal frame along
+    /// with `table` itself (so this walk only ever finds `body`/`html`
+    /// for them); and `pop_until_and_including("select")` callers
+    /// (`step_in_select`/`step_in_select_in_table`), which can leave a
+    /// `table`/`tbody`/`tr`/... frame exposed as the new current node --
+    /// e.g. `<table><tbody><select><tr>` closing the `<select>` must
+    /// land back in `InTableBody`, not `InBody`.
     fn reset_insertion_mode(&mut self) {
         for &id in self.open_elements.iter().rev() {
             match self.tag_of(id).as_deref() {
+                Some("td") | Some("th") => {
+                    self.mode = Mode::InCell;
+                    return;
+                }
+                Some("tr") => {
+                    self.mode = Mode::InRow;
+                    return;
+                }
+                Some("tbody") | Some("thead") | Some("tfoot") => {
+                    self.mode = Mode::InTableBody;
+                    return;
+                }
+                Some("caption") => {
+                    self.mode = Mode::InCaption;
+                    return;
+                }
+                Some("colgroup") => {
+                    self.mode = Mode::InColumnGroup;
+                    return;
+                }
+                Some("table") => {
+                    self.mode = Mode::InTable;
+                    return;
+                }
                 Some("body") => {
                     self.mode = Mode::InBody;
                     return;
@@ -686,14 +774,55 @@ impl TreeBuilder {
         }
     }
 
+    /// Splits a mixed character-token string at the boundary between its
+    /// leading run of whitespace and the first non-whitespace character.
+    /// A real (per-character) tokenizer lets earlier whitespace insert
+    /// under whatever whitespace-specific rule the current insertion
+    /// mode has (e.g. "in head"/"after head"/"after body" all keep
+    /// whitespace where it is) while only the first non-whitespace
+    /// character -- and everything from there on -- triggers that
+    /// mode's "anything else" fallback (popping `<head>`, opening an
+    /// implicit `<body>`, ...). blueice's tokenizer instead batches a
+    /// whole run of characters into one token, so those two behaviors
+    /// need to be reconstructed by splitting the batched string at the
+    /// same boundary before reprocessing. Returns `None` when `s` has no
+    /// leading whitespace to split off (the whitespace-only case is
+    /// already handled by each mode's own dedicated arm).
+    fn split_leading_whitespace(s: &str) -> Option<(&str, &str)> {
+        let rest = s.trim_start();
+        if rest.len() == s.len() {
+            None
+        } else {
+            Some((&s[..s.len() - rest.len()], rest))
+        }
+    }
+
+    /// Per spec, "in body" and "in select" (unlike the ordinary "data
+    /// state" tokenizer rule, which emits a literal NUL character token
+    /// -- see `tokenizer.rs`) drop any U+0000 NULL character token
+    /// outright as a parse error, rather than inserting it (as a literal
+    /// control character) or replacing it with U+FFFD.
+    fn strip_null_characters(s: &str) -> String {
+        if s.contains('\0') {
+            s.replace('\0', "")
+        } else {
+            s.to_string()
+        }
+    }
+
     fn step_in_head(&mut self, token: Token) -> StepResult {
+        if let Token::Character(s) = &token {
+            if s.trim().is_empty() {
+                self.insert_text(s);
+                return StepResult::Done;
+            }
+            if let Some((ws, rest)) = Self::split_leading_whitespace(s) {
+                self.insert_text(ws);
+                return StepResult::Reprocess(Token::Character(rest.to_string()));
+            }
+        }
         match &token {
             Token::Doctype | Token::Comment => StepResult::Done,
-            Token::Character(s) if s.trim().is_empty() => {
-                let s = s.clone();
-                self.insert_text(&s);
-                StepResult::Done
-            }
             Token::StartTag { name, .. } if name == "html" => self.step_in_body(token),
             Token::StartTag { name, attrs, .. } if matches!(name.as_str(), "meta" | "link") => {
                 self.insert_element(name, attrs.clone());
@@ -721,13 +850,18 @@ impl TreeBuilder {
     }
 
     fn step_after_head(&mut self, token: Token) -> StepResult {
+        if let Token::Character(s) = &token {
+            if s.trim().is_empty() {
+                self.insert_text(s);
+                return StepResult::Done;
+            }
+            if let Some((ws, rest)) = Self::split_leading_whitespace(s) {
+                self.insert_text(ws);
+                return StepResult::Reprocess(Token::Character(rest.to_string()));
+            }
+        }
         match &token {
             Token::Doctype | Token::Comment => StepResult::Done,
-            Token::Character(s) if s.trim().is_empty() => {
-                let s = s.clone();
-                self.insert_text(&s);
-                StepResult::Done
-            }
             Token::StartTag { name, .. } if name == "html" => self.step_in_body(token),
             Token::StartTag { name, attrs, .. } if name == "body" => {
                 self.insert_element("body", attrs.clone());
@@ -735,6 +869,24 @@ impl TreeBuilder {
                 StepResult::Done
             }
             Token::StartTag { name, .. } if name == "head" => StepResult::Done,
+            Token::StartTag { name, .. } if matches!(name.as_str(), "meta" | "link" | "title" | "style" | "script") => {
+                // Spec: these still belong in `<head>` even after `</head>`
+                // has already closed it -- temporarily re-push the head
+                // element, delegate to "in head" rules, then remove it from
+                // the stack again (it may not be the current node anymore,
+                // e.g. once `title`/`style`/`script` pushed a Text-mode
+                // element above it). Without this, `<head></head><title>X`
+                // wrongly opened an implicit `<body>` and put `title` there.
+                let Some(head_id) = self.head_element else {
+                    self.insert_element("body", vec![]);
+                    self.mode = Mode::InBody;
+                    return StepResult::Reprocess(token.clone());
+                };
+                self.open_elements.push(head_id);
+                let result = self.step_in_head(token.clone());
+                self.open_elements.retain(|&id| id != head_id);
+                result
+            }
             Token::EndTag { name } if !matches!(name.as_str(), "body" | "html" | "br") => StepResult::Done,
             _ => {
                 self.insert_element("body", vec![]);
@@ -747,7 +899,7 @@ impl TreeBuilder {
     fn step_text(&mut self, token: Token) -> StepResult {
         match &token {
             Token::Character(s) => {
-                let s = s.clone();
+                let s = self.consume_leading_newline_strip(s.clone());
                 self.insert_text(&s);
                 StepResult::Done
             }
@@ -782,7 +934,9 @@ impl TreeBuilder {
         match token {
             Token::Doctype | Token::Comment | Token::Eof => StepResult::Done,
             Token::Character(s) => {
+                let s = Self::strip_null_characters(&s);
                 self.reconstruct_active_formatting_elements();
+                let s = self.consume_leading_newline_strip(s);
                 self.insert_text(&s);
                 StepResult::Done
             }
@@ -793,7 +947,23 @@ impl TreeBuilder {
 
     fn start_tag_in_body(&mut self, name: &str, attrs: Vec<(String, String)>) -> StepResult {
         match name {
-            "html" | "head" => StepResult::Done,
+            "html" => {
+                // Spec: a second, stray `<html>` start tag doesn't open
+                // a new element -- it merges any attribute not already
+                // present onto the *existing* (first) html element,
+                // leaving already-set attributes untouched.
+                if let Some(&html_id) = self.open_elements.first() {
+                    if let NodeData::Element { attributes, .. } = self.document.data_mut(html_id) {
+                        for (k, v) in attrs {
+                            if !attributes.iter().any(|(ek, _)| *ek == k) {
+                                attributes.push((k, v));
+                            }
+                        }
+                    }
+                }
+                StepResult::Done
+            }
+            "head" => StepResult::Done,
             "table" => {
                 if self.has_p_in_button_scope() {
                     self.close_p_element();
@@ -821,6 +991,15 @@ impl TreeBuilder {
                 self.insert_element("li", attrs);
                 StepResult::Done
             }
+            "button" => {
+                if self.has_tag_in_scope("button", &[]) {
+                    self.generate_implied_end_tags(None);
+                    self.pop_until_and_including("button");
+                }
+                self.reconstruct_active_formatting_elements();
+                self.insert_element("button", attrs);
+                StepResult::Done
+            }
             "option" | "optgroup" => {
                 if self.is_current("option") {
                     self.open_elements.pop();
@@ -840,6 +1019,35 @@ impl TreeBuilder {
             }
             "textarea" | "script" | "style" => {
                 self.switch_to_text_mode(name, attrs);
+                if name == "textarea" {
+                    self.strip_leading_newline = true;
+                }
+                StepResult::Done
+            }
+            "pre" => {
+                if self.has_p_in_button_scope() {
+                    self.close_p_element();
+                }
+                self.insert_element("pre", attrs);
+                self.strip_leading_newline = true;
+                StepResult::Done
+            }
+            "select" => {
+                self.reconstruct_active_formatting_elements();
+                self.insert_element("select", attrs);
+                // At this point `self.mode` is still whatever mode
+                // delegated here -- table-related modes reach
+                // `start_tag_in_body` via `step_in_table`'s
+                // foster-parenting catch-all without changing
+                // `self.mode` first, so this check sees the *original*
+                // mode, exactly what spec's "if the insertion mode is
+                // one of 'in table'/'in caption'/'in table body'/
+                // 'in row'/'in cell'" condition needs.
+                self.mode = if matches!(self.mode, Mode::InTable | Mode::InCaption | Mode::InTableBody | Mode::InRow | Mode::InCell) {
+                    Mode::InSelectInTable
+                } else {
+                    Mode::InSelect
+                };
                 StepResult::Done
             }
             _ if FORMATTING_ELEMENTS.contains(&name) => {
@@ -892,15 +1100,26 @@ impl TreeBuilder {
                 }
             }
             "p" => {
-                if self.has_p_in_button_scope() {
-                    self.close_p_element();
+                if !self.has_p_in_button_scope() {
+                    // Spec: a stray `</p>` with no matching open `<p>` is a
+                    // parse error, but still inserts an (empty) `<p>` before
+                    // immediately closing it -- not simply ignored.
+                    self.insert_element("p", vec![]);
                 }
+                self.close_p_element();
                 StepResult::Done
             }
             "li" => {
                 if self.has_li_in_list_item_scope() {
                     self.generate_implied_end_tags(Some("li"));
                     self.pop_until_and_including("li");
+                }
+                StepResult::Done
+            }
+            "button" => {
+                if self.has_tag_in_scope("button", &[]) {
+                    self.generate_implied_end_tags(None);
+                    self.pop_until_and_including("button");
                 }
                 StepResult::Done
             }
@@ -966,10 +1185,10 @@ impl TreeBuilder {
                 self.mode = Mode::InColumnGroup;
                 StepResult::Done
             }
-            Token::StartTag { name, .. } if name == "col" => {
+            Token::StartTag { name, attrs, self_closing } if name == "col" => {
                 self.insert_element("colgroup", vec![]);
                 self.mode = Mode::InColumnGroup;
-                StepResult::Reprocess(Token::StartTag { name, attrs: vec![], self_closing: false })
+                StepResult::Reprocess(Token::StartTag { name, attrs, self_closing })
             }
             Token::StartTag { name, attrs, .. } if matches!(name.as_str(), "tbody" | "thead" | "tfoot") => {
                 self.insert_element(&name, attrs);
@@ -1001,6 +1220,23 @@ impl TreeBuilder {
                     "body" | "caption" | "col" | "colgroup" | "html" | "tbody" | "td" | "tfoot" | "th" | "thead" | "tr"
                 ) =>
             {
+                StepResult::Done
+            }
+            // Spec: `<style>`/`<script>` directly inside `<table>` (not a
+            // cell/caption) are processed via "in head" rules -- inserted
+            // as a child of the table element itself -- not treated like
+            // ordinary body content needing foster-parenting out in front
+            // of the table.
+            Token::StartTag { name, attrs, self_closing } if matches!(name.as_str(), "style" | "script") => {
+                self.step_in_head(Token::StartTag { name, attrs, self_closing })
+            }
+            // Spec carve-out: `<input type="hidden">` directly inside
+            // `<table>` is inserted normally (as the table's own child)
+            // rather than foster-parented like other stray content --
+            // real pages rely on this for CSRF-token-style hidden inputs
+            // placed right inside a `<table>`, before any row.
+            Token::StartTag { name, attrs, .. } if name == "input" && attrs.iter().any(|(k, v)| k == "type" && v.eq_ignore_ascii_case("hidden")) => {
+                self.insert_element("input", attrs);
                 StepResult::Done
             }
             other => {
@@ -1163,6 +1399,13 @@ impl TreeBuilder {
                 StepResult::Reprocess(Token::StartTag { name, attrs, self_closing })
             }
             Token::EndTag { name } if matches!(name.as_str(), "table" | "tbody" | "tfoot" | "thead" | "tr") => {
+                // Spec: ignore this end tag entirely unless an element
+                // with that exact name is actually in table scope -- e.g.
+                // a stray `</thead>` while only an implicit `<tbody>` is
+                // open must not close the current cell at all.
+                if !self.has_tag_in_table_scope(&name) {
+                    return StepResult::Done;
+                }
                 if self.has_tag_in_scope("td", &[]) || self.has_tag_in_scope("th", &[]) {
                     self.close_current_cell();
                 }
@@ -1172,9 +1415,135 @@ impl TreeBuilder {
         }
     }
 
-    fn step_after_body(&mut self, token: Token) -> StepResult {
+    fn step_in_select(&mut self, token: Token) -> StepResult {
+        match token {
+            Token::Character(s) => {
+                self.insert_text(&Self::strip_null_characters(&s));
+                StepResult::Done
+            }
+            Token::Doctype | Token::Comment => StepResult::Done,
+            Token::StartTag { name, attrs, .. } if name == "hr" => {
+                // Spec: unlike other content, `<hr>` inside `<select>`
+                // doesn't close the whole select -- it closes an open
+                // `<option>` and/or `<optgroup>` (both checks apply
+                // independently, one after the other, not just the
+                // innermost) and is then inserted as a child of whatever
+                // is left open (`<select>` itself, or a still-open
+                // `<optgroup>`), immediately popped since `<hr>` is void.
+                if self.is_current("option") {
+                    self.open_elements.pop();
+                }
+                if self.is_current("optgroup") {
+                    self.open_elements.pop();
+                }
+                self.insert_element("hr", attrs);
+                StepResult::Done
+            }
+            Token::StartTag { name, attrs, .. } if name == "option" => {
+                if self.is_current("option") {
+                    self.open_elements.pop();
+                }
+                self.insert_element("option", attrs);
+                StepResult::Done
+            }
+            Token::StartTag { name, attrs, .. } if name == "optgroup" => {
+                if self.is_current("option") {
+                    self.open_elements.pop();
+                }
+                if self.is_current("optgroup") {
+                    self.open_elements.pop();
+                }
+                self.insert_element("optgroup", attrs);
+                StepResult::Done
+            }
+            Token::EndTag { name } if name == "optgroup" => {
+                if self.is_current("option") && self.open_elements.len() >= 2 {
+                    let under_top = self.open_elements[self.open_elements.len() - 2];
+                    if self.tag_of(under_top).as_deref() == Some("optgroup") {
+                        self.open_elements.pop();
+                    }
+                }
+                if self.is_current("optgroup") {
+                    self.open_elements.pop();
+                }
+                StepResult::Done
+            }
+            Token::EndTag { name } if name == "option" => {
+                if self.is_current("option") {
+                    self.open_elements.pop();
+                }
+                StepResult::Done
+            }
+            Token::EndTag { name } if name == "select" => {
+                if self.has_tag_in_scope("select", &[]) {
+                    self.pop_until_and_including("select");
+                    self.reset_insertion_mode();
+                }
+                StepResult::Done
+            }
+            Token::StartTag { name, .. } if name == "select" => {
+                if self.has_tag_in_scope("select", &[]) {
+                    self.pop_until_and_including("select");
+                    self.reset_insertion_mode();
+                }
+                StepResult::Done
+            }
+            Token::StartTag { name, attrs, self_closing } if matches!(name.as_str(), "input" | "textarea") => {
+                if self.has_tag_in_scope("select", &[]) {
+                    self.pop_until_and_including("select");
+                    self.reset_insertion_mode();
+                    StepResult::Reprocess(Token::StartTag { name, attrs, self_closing })
+                } else {
+                    StepResult::Done
+                }
+            }
+            Token::StartTag { name, attrs, self_closing } if matches!(name.as_str(), "script" | "style") => self.step_in_head(Token::StartTag { name, attrs, self_closing }),
+            Token::Eof => self.step_in_body(Token::Eof),
+            _ => StepResult::Done,
+        }
+    }
+
+    /// Identical to [`Self::step_in_select`] except that a handful of
+    /// table-structure tags close the `<select>` outright (spec's "in
+    /// select in table" mode) instead of being ignored like they would
+    /// be in plain "in select" -- e.g. `<table><tbody><select><tr>`
+    /// must close the (now-empty) `<select>` and let `<tr>` land back
+    /// inside `<tbody>`, not be silently dropped.
+    fn step_in_select_in_table(&mut self, token: Token) -> StepResult {
+        const TABLE_STRUCTURE_TAGS: &[&str] = &["caption", "table", "tbody", "tfoot", "thead", "tr", "td", "th"];
         match &token {
-            Token::Character(s) if s.trim().is_empty() => self.step_in_body(token),
+            // Unconditional -- unlike the end-tag case below, spec has
+            // no "is it actually in table scope" check for these.
+            Token::StartTag { name, .. } if TABLE_STRUCTURE_TAGS.contains(&name.as_str()) => {
+                self.pop_until_and_including("select");
+                self.reset_insertion_mode();
+                StepResult::Reprocess(token)
+            }
+            Token::EndTag { name } if TABLE_STRUCTURE_TAGS.contains(&name.as_str()) => {
+                if !self.has_tag_in_table_scope(name) {
+                    return StepResult::Done;
+                }
+                self.pop_until_and_including("select");
+                self.reset_insertion_mode();
+                StepResult::Reprocess(token)
+            }
+            _ => self.step_in_select(token),
+        }
+    }
+
+    fn step_after_body(&mut self, token: Token) -> StepResult {
+        if let Token::Character(s) = &token {
+            if s.trim().is_empty() {
+                return self.step_in_body(token);
+            }
+            if let Some((ws, rest)) = Self::split_leading_whitespace(s) {
+                let rest = rest.to_string();
+                self.step_in_body(Token::Character(ws.to_string()));
+                self.mode = Mode::InBody;
+                return StepResult::Reprocess(Token::Character(rest));
+            }
+        }
+        match &token {
             Token::Comment | Token::Doctype | Token::Eof => StepResult::Done,
             Token::EndTag { name } if name == "html" => {
                 self.mode = Mode::AfterAfterBody;
@@ -1188,9 +1557,19 @@ impl TreeBuilder {
     }
 
     fn step_after_after_body(&mut self, token: Token) -> StepResult {
+        if let Token::Character(s) = &token {
+            if s.trim().is_empty() {
+                return self.step_in_body(token);
+            }
+            if let Some((ws, rest)) = Self::split_leading_whitespace(s) {
+                let rest = rest.to_string();
+                self.step_in_body(Token::Character(ws.to_string()));
+                self.mode = Mode::InBody;
+                return StepResult::Reprocess(Token::Character(rest));
+            }
+        }
         match &token {
             Token::Comment | Token::Doctype | Token::Eof => StepResult::Done,
-            Token::Character(s) if s.trim().is_empty() => self.step_in_body(token),
             _ => {
                 self.mode = Mode::InBody;
                 StepResult::Reprocess(token)
@@ -1608,6 +1987,312 @@ mod tests {
         let table = find_by_tag(&doc, doc.root(), "table").unwrap();
         let tbody = doc.children(table).next().unwrap();
         assert_eq!(children_tags(&doc, tbody), vec!["tr".to_string(), "tr".to_string()]);
+    }
+
+    #[test]
+    fn hr_closes_an_open_p_and_becomes_its_sibling() {
+        let doc = parse("<p><hr></p>");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        // <hr> closes the first (now-empty) <p>; the stray </p> that
+        // follows has no matching open <p> in scope, so per spec it
+        // inserts (then immediately closes) a second, empty <p>.
+        assert_eq!(children_tags(&doc, body), vec!["p".to_string(), "hr".to_string(), "p".to_string()]);
+    }
+
+    #[test]
+    fn a_stray_end_p_tag_with_nothing_open_inserts_an_empty_p() {
+        // A bare `</p>` before any real content is ignored outright by
+        // the "before html"/"before head" modes (per spec, matching
+        // real browsers) -- the empty-<p>-insertion rule only fires once
+        // a stray `</p>` is actually processed under "in body" rules, so
+        // this needs other content first to get there.
+        let doc = parse("<div></p>");
+        let div = find_by_tag(&doc, doc.root(), "div").unwrap();
+        assert_eq!(children_tags(&doc, div), vec!["p".to_string()]);
+    }
+
+    #[test]
+    fn an_immediately_closed_empty_comment_does_not_swallow_following_markup() {
+        let doc = parse("<!--><div>--<!-->");
+        let div = find_by_tag(&doc, doc.root(), "div");
+        assert!(div.is_some(), "the <div> after an abruptly-closed `<!-->` comment must still be parsed as an element");
+        assert_eq!(text_content(&doc, div.unwrap()), "--");
+    }
+
+    #[test]
+    fn a_comment_with_one_extra_dash_before_close_also_closes_abruptly() {
+        // `<!--->` is "comment start dash" seeing `>` immediately --
+        // an empty-ish ("-") comment, not a signal to scan further.
+        let doc = parse("<!---><div>x</div>");
+        let div = find_by_tag(&doc, doc.root(), "div");
+        assert!(div.is_some());
+        assert_eq!(text_content(&doc, div.unwrap()), "x");
+    }
+
+    #[test]
+    fn a_comment_closed_via_the_bang_variant_does_not_swallow_following_text() {
+        // `--!>` ("comment end bang" state, an "incorrectly closed
+        // comment" parse error) is *also* a valid comment terminator,
+        // alongside plain `-->`.
+        let doc = parse("FOO<!-- BAR --!>BAZ");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        let text_children: Vec<_> = doc.children(body).filter(|&c| matches!(doc.data(c), NodeData::Text { .. })).collect();
+        assert_eq!(text_children.len(), 2, "the dropped comment must still block FOO/BAZ from merging into one text node");
+        assert_eq!(text_content(&doc, body), "FOOBAZ");
+    }
+
+    #[test]
+    fn col_start_tag_attributes_survive_the_implicit_colgroup_reprocess() {
+        let doc = parse("<table><col foo='bar'>");
+        let col = find_by_tag(&doc, doc.root(), "col").unwrap();
+        assert_eq!(doc.data(col), &NodeData::Element { tag_name: "col".to_string(), attributes: vec![("foo".to_string(), "bar".to_string())] });
+    }
+
+    #[test]
+    fn a_second_html_start_tag_merges_new_attributes_without_overwriting_existing_ones() {
+        let doc = parse("<html c=d><body></body><html a=b>");
+        let html = find_by_tag(&doc, doc.root(), "html").unwrap();
+        let NodeData::Element { attributes, .. } = doc.data(html) else { panic!("expected an element") };
+        assert!(attributes.contains(&("c".to_string(), "d".to_string())), "the original attribute must survive");
+        assert!(attributes.contains(&("a".to_string(), "b".to_string())), "the new attribute from the second <html> tag must be merged in");
+    }
+
+    #[test]
+    fn a_style_tag_after_an_explicit_head_close_still_lands_in_head() {
+        let doc = parse("<head></head><style>x</style>");
+        let head = find_by_tag(&doc, doc.root(), "head").unwrap();
+        let style = find_by_tag(&doc, doc.root(), "style");
+        assert!(style.is_some(), "style after </head> must still parse as an element");
+        assert!(doc.children(head).any(|c| Some(c) == style), "style must be a child of <head>, not implicitly moved into <body>");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert!(find_by_tag(&doc, body, "style").is_none());
+    }
+
+    #[test]
+    fn a_style_tag_directly_inside_a_table_is_a_child_of_the_table_not_foster_parented() {
+        let doc = parse("<table><style>x</style></table>");
+        let table = find_by_tag(&doc, doc.root(), "table").unwrap();
+        let style = find_by_tag(&doc, doc.root(), "style");
+        assert!(style.is_some());
+        assert!(doc.children(table).any(|c| Some(c) == style), "<style> directly inside <table> must be inserted as the table's own child, not foster-parented in front of it");
+    }
+
+    #[test]
+    fn a_second_select_start_tag_closes_the_first_instead_of_nesting() {
+        let doc = parse("<select><select>X");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        let selects: Vec<_> = doc.children(body).filter(|&c| matches!(doc.data(c), NodeData::Element{tag_name, ..} if tag_name=="select")).collect();
+        assert_eq!(selects.len(), 1, "the second <select> must close the first, not nest inside it");
+        assert!(doc.children(selects[0]).next().is_none(), "the (closed) <select> must have no children of its own");
+        assert_eq!(text_content(&doc, body), "X");
+    }
+
+    #[test]
+    fn an_input_start_tag_inside_a_select_closes_it_and_becomes_a_sibling() {
+        let doc = parse("<select><input>X");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(children_tags(&doc, body), vec!["select".to_string(), "input".to_string()]);
+        let select = find_by_tag(&doc, body, "select").unwrap();
+        assert!(doc.children(select).next().is_none(), "the <select> must be empty -- <input> must not nest inside it");
+    }
+
+    #[test]
+    fn a_stray_end_thead_tag_inside_an_implicit_tbody_cell_is_ignored() {
+        let doc = parse("<table><td></thead>A");
+        let table = find_by_tag(&doc, doc.root(), "table").unwrap();
+        let td = find_by_tag(&doc, table, "td").unwrap();
+        assert_eq!(text_content(&doc, td), "A", "a </thead> with no matching open <thead> must be ignored, leaving \"A\" inside the cell");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(children_tags(&doc, body), vec!["table".to_string()], "\"A\" must not be foster-parented in front of the table");
+    }
+
+    #[test]
+    fn a_leading_newline_right_after_pre_open_is_stripped() {
+        let doc = parse("<pre>\nfoo</pre>");
+        let pre = find_by_tag(&doc, doc.root(), "pre").unwrap();
+        assert_eq!(text_content(&doc, pre), "foo");
+    }
+
+    #[test]
+    fn only_the_first_of_two_leading_newlines_in_pre_is_stripped() {
+        let doc = parse("<pre>\n\nfoo</pre>");
+        let pre = find_by_tag(&doc, doc.root(), "pre").unwrap();
+        assert_eq!(text_content(&doc, pre), "\nfoo");
+    }
+
+    #[test]
+    fn a_leading_newline_right_after_textarea_open_is_stripped() {
+        let doc = parse("<textarea>\nfoo</textarea>");
+        let ta = find_by_tag(&doc, doc.root(), "textarea").unwrap();
+        assert_eq!(text_content(&doc, ta), "foo");
+    }
+
+    #[test]
+    fn whitespace_leading_a_mixed_character_run_in_after_head_mode_inserts_under_html() {
+        // Once `</head>` has already been explicitly closed and popped,
+        // "after head" mode's insertion point is the <html> element
+        // itself (not head, which is no longer on the stack) -- a real
+        // per-character tokenizer inserts leading whitespace there and
+        // only the first non-whitespace character triggers the implicit
+        // <body>; blueice's tokenizer batches the whole run into one
+        // token, so this exercises the split that recovers the same
+        // split point.
+        let doc = parse("<head></head> x");
+        let html = find_by_tag(&doc, doc.root(), "html").unwrap();
+        let text_children: Vec<_> = doc.children(html).filter(|&c| matches!(doc.data(c), NodeData::Text { .. })).collect();
+        assert_eq!(text_children.len(), 1);
+        assert_eq!(text_content(&doc, text_children[0]), " ");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(text_content(&doc, body), "x");
+    }
+
+    #[test]
+    fn whitespace_leading_a_mixed_character_run_still_in_head_mode_stays_in_head() {
+        // Contrast with the previous test: here <head> is never
+        // explicitly closed, so the implicit "in head" -> "after head"
+        // transition only happens once a non-whitespace character
+        // arrives -- the leading whitespace is processed while head is
+        // still open and current, landing inside it.
+        let doc = parse("<!doctype html><script> <!-- </script> --> </script> EOF");
+        let head = find_by_tag(&doc, doc.root(), "head").unwrap();
+        let text_children: Vec<_> = doc.children(head).filter(|&c| matches!(doc.data(c), NodeData::Text { .. })).collect();
+        assert_eq!(text_children.len(), 1);
+        assert_eq!(text_content(&doc, text_children[0]), " ");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(text_content(&doc, body), "-->  EOF");
+    }
+
+    #[test]
+    fn whitespace_leading_a_mixed_character_run_after_body_close_stays_in_body() {
+        let doc = parse("<html><body>a</body> x");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(text_content(&doc, body), "a x");
+    }
+
+    #[test]
+    fn a_raw_null_character_in_body_content_is_dropped_not_shown() {
+        let doc = parse("<body>\u{0}");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert!(doc.children(body).next().is_none(), "a lone NUL character token in body must be ignored outright, not inserted as text");
+    }
+
+    #[test]
+    fn a_raw_null_character_inside_a_select_is_dropped_not_shown() {
+        let doc = parse("<html><select>\u{0}");
+        let select = find_by_tag(&doc, doc.root(), "select").unwrap();
+        assert!(doc.children(select).next().is_none());
+    }
+
+    #[test]
+    fn a_literal_dashdash_gt_inside_script_escaped_mode_still_closes_the_element_normally() {
+        // `<!--` inside <script> enters "escaped" mode, but a genuine
+        // `</script>` end tag still closes the element from there --
+        // the escaped-mode machinery only matters for what counts as
+        // literal text vs. a real closing tag, not for hiding the real
+        // end tag itself.
+        let doc = parse("<!doctype html><script> <!-- </script> --> </script> EOF");
+        let script = find_by_tag(&doc, doc.root(), "script").unwrap();
+        assert_eq!(text_content(&doc, script), " <!-- ");
+    }
+
+    #[test]
+    fn a_nested_script_open_tag_inside_escaped_mode_enters_double_escaped_mode() {
+        // Once double-escaped, even a literal `</script>` is just text
+        // -- only the closing `</script>` *outside* any nested
+        // `<script>...</script>` pair actually ends the element.
+        let doc = parse("<script>FOO<!--<script></script>-->BAR</script>QUX");
+        let script = find_by_tag(&doc, doc.root(), "script").unwrap();
+        assert_eq!(text_content(&doc, script), "FOO<!--<script></script>-->BAR");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(text_content(&doc, body), "QUX");
+    }
+
+    #[test]
+    fn double_escaped_mode_only_toggles_back_on_a_real_closing_script_marker() {
+        let doc = parse("<script>a<!--<script>b</script>c</script>d");
+        let script = find_by_tag(&doc, doc.root(), "script").unwrap();
+        // After `</script>` (the nested one) toggles back to escaped
+        // mode, `c` is escaped-mode text and the *next* `</script>`
+        // genuinely closes the element.
+        assert_eq!(text_content(&doc, script), "a<!--<script>b</script>c");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(text_content(&doc, body), "d");
+    }
+
+    #[test]
+    fn hr_inside_a_select_closes_an_open_option_and_optgroup_but_not_the_select() {
+        let doc = parse("<select><optgroup><option>x<hr>");
+        let select = find_by_tag(&doc, doc.root(), "select").unwrap();
+        assert_eq!(children_tags(&doc, select), vec!["optgroup".to_string(), "hr".to_string()]);
+        let optgroup = find_by_tag(&doc, select, "optgroup").unwrap();
+        assert_eq!(children_tags(&doc, optgroup), vec!["option".to_string()]);
+    }
+
+    #[test]
+    fn a_table_structure_tag_closes_a_select_opened_inside_a_table() {
+        // Unlike plain "in select" (where such tags are simply
+        // ignored), a <select> opened while already inside table
+        // structure enters "in select in table" mode, where these tags
+        // close the select instead -- reprocessing <tr> back under
+        // "in table body" rules once <select> is closed, landing it
+        // inside <tbody> (the select itself was foster-parented out in
+        // front of the table when it was opened, same as any other
+        // non-table content directly inside <tbody>).
+        let doc = parse("<table><tbody><select><tr>");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        let select = find_by_tag(&doc, body, "select").unwrap();
+        assert!(doc.children(body).any(|c| Some(c) == Some(select)), "the (empty, closed) <select> must be foster-parented in front of the table");
+        assert!(doc.children(select).next().is_none());
+        let tbody = find_by_tag(&doc, doc.root(), "tbody").unwrap();
+        assert_eq!(children_tags(&doc, tbody), vec!["tr".to_string()], "<tr> must land inside <tbody>, not be dropped");
+    }
+
+    #[test]
+    fn a_table_structure_tag_is_ignored_by_a_select_opened_outside_a_table() {
+        let doc = parse("<select><tr>x");
+        assert!(find_by_tag(&doc, doc.root(), "tr").is_none(), "a plain (non-table) <select> must ignore a stray <tr> outright, not close on it");
+        let select = find_by_tag(&doc, doc.root(), "select").unwrap();
+        assert_eq!(text_content(&doc, select), "x", "content after the ignored <tr> still lands inside the (still-open) <select>");
+    }
+
+    #[test]
+    fn a_hidden_input_directly_inside_a_table_is_inserted_normally_not_foster_parented() {
+        let doc = parse("<table><input type=hidDEN></table>");
+        let table = find_by_tag(&doc, doc.root(), "table").unwrap();
+        let input = find_by_tag(&doc, doc.root(), "input");
+        assert!(input.is_some());
+        assert!(doc.children(table).any(|c| Some(c) == input));
+    }
+
+    #[test]
+    fn a_non_hidden_input_directly_inside_a_table_is_still_foster_parented() {
+        let doc = parse("<table><input type=text></table>");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        let table = find_by_tag(&doc, doc.root(), "table").unwrap();
+        let input = find_by_tag(&doc, doc.root(), "input");
+        assert!(input.is_some());
+        assert!(doc.children(body).any(|c| Some(c) == input), "a non-hidden <input> keeps the normal foster-parenting behavior");
+        assert!(!doc.children(table).any(|c| Some(c) == input));
+    }
+
+    #[test]
+    fn a_second_button_start_tag_closes_the_first_instead_of_nesting() {
+        let doc = parse("<p><button><button>");
+        let p = find_by_tag(&doc, doc.root(), "p").unwrap();
+        let buttons: Vec<_> = doc.children(p).filter(|&c| matches!(doc.data(c), NodeData::Element{tag_name, ..} if tag_name=="button")).collect();
+        assert_eq!(buttons.len(), 2, "the second <button> must close the first, becoming its sibling, not nesting inside it");
+    }
+
+    #[test]
+    fn an_end_button_tag_closes_a_still_open_p_inside_it() {
+        let doc = parse("<button><p></button>x");
+        let button = find_by_tag(&doc, doc.root(), "button").unwrap();
+        assert_eq!(children_tags(&doc, button), vec!["p".to_string()]);
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        // "x" lands after the (now-closed) <button>, not inside it.
+        let text_after = doc.children(body).find(|&c| matches!(doc.data(c), NodeData::Text{..}));
+        assert!(text_after.is_some());
+        assert_eq!(text_content(&doc, body), "x");
     }
 
     #[test]
