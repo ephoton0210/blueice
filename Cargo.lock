@@ -225,6 +225,8 @@ name = "blueice-launcher"
 version = "0.1.0"
 dependencies = [
  "blueice-ipc",
+ "serde",
+ "serde_json",
  "sysinfo",
 ]
 

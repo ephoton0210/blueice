@@ -15,7 +15,7 @@
 
 use blueice_launcher::memory_pressure::{self, SystemMemorySource};
 use blueice_launcher::supervisor::{ProcessPolicy, ProcessRegistry};
-use blueice_launcher::{default_rendezvous_socket_path, run_broker, SpawnedCore};
+use blueice_launcher::{default_control_socket_path, default_rendezvous_socket_path, run_broker, SpawnedCore};
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -25,6 +25,12 @@ use std::time::{Duration, Instant};
 #[derive(Debug, PartialEq)]
 struct Args {
     rendezvous_socket: PathBuf,
+    /// The launcher-internal control socket (`ControlRequest::Cutover`
+    /// et al., `phase-8-live-core-hotswap/PLAN.md`'s minimal-slice
+    /// trigger mechanism) -- distinct from `rendezvous_socket`, and
+    /// separately overridable so tests can run more than one launcher
+    /// side by side without either socket colliding.
+    control_socket: PathBuf,
     width: f64,
     height: f64,
     frame_dir: Option<PathBuf>,
@@ -46,6 +52,7 @@ struct Args {
 /// the binary.
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut rendezvous_socket = None;
+    let mut control_socket = None;
     let mut width = 800.0;
     let mut height = 600.0;
     let mut frame_dir = None;
@@ -57,6 +64,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         let mut value = || it.next().ok_or_else(|| format!("{flag} requires a value"));
         match flag.as_str() {
             "--socket" => rendezvous_socket = Some(PathBuf::from(value()?)),
+            "--control-socket" => control_socket = Some(PathBuf::from(value()?)),
             "--width" => width = value()?.parse().map_err(|_| "--width must be a number".to_string())?,
             "--height" => height = value()?.parse().map_err(|_| "--height must be a number".to_string())?,
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
@@ -70,7 +78,8 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     }
 
     let rendezvous_socket = rendezvous_socket.unwrap_or_else(default_rendezvous_socket_path);
-    Ok(Args { rendezvous_socket, width, height, frame_dir, simulate_low_memory, memory_poll_interval })
+    let control_socket = control_socket.unwrap_or_else(default_control_socket_path);
+    Ok(Args { rendezvous_socket, control_socket, width, height, frame_dir, simulate_low_memory, memory_poll_interval })
 }
 
 fn main() -> ExitCode {
@@ -116,11 +125,15 @@ fn main() -> ExitCode {
     if let Some(parent) = args.rendezvous_socket.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
+    if let Some(parent) = args.control_socket.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
     // A stale socket file from a previous run (e.g. one that crashed
     // instead of exiting cleanly) makes bind() fail with AddrInUse even
     // though nothing is actually listening -- remove it first, same as
     // `blueice-core.rs` does for its own socket.
     let _ = std::fs::remove_file(&args.rendezvous_socket);
+    let _ = std::fs::remove_file(&args.control_socket);
 
     let listener = match UnixListener::bind(&args.rendezvous_socket) {
         Ok(listener) => listener,
@@ -129,11 +142,22 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let control_listener = match UnixListener::bind(&args.control_socket) {
+        Ok(listener) => listener,
+        Err(e) => {
+            eprintln!("blueice-launcher: failed to bind {}: {e}", args.control_socket.display());
+            return ExitCode::FAILURE;
+        }
+    };
 
-    let result = run_broker(listener, core.stream.try_clone().expect("try_clone on a fresh stream should not fail"));
+    // `run_broker` takes full ownership of `core` from here on --
+    // including spawning/health-checking/swapping in a fresh v2 on a
+    // `Cutover` control request, and tearing down whichever `core` is
+    // currently active before it returns.
+    let result = run_broker(listener, control_listener, core, args.width, args.height);
 
     let _ = std::fs::remove_file(&args.rendezvous_socket);
-    drop(core); // kills the spawned blueice-core and cleans up its internal socket
+    let _ = std::fs::remove_file(&args.control_socket);
 
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -156,6 +180,7 @@ mod tests {
     fn no_flags_uses_the_default_rendezvous_socket_and_default_size() {
         let parsed = args(&[]).unwrap();
         assert_eq!(parsed.rendezvous_socket, default_rendezvous_socket_path());
+        assert_eq!(parsed.control_socket, default_control_socket_path());
         assert_eq!(parsed.width, 800.0);
         assert_eq!(parsed.height, 600.0);
         assert_eq!(parsed.frame_dir, None);
@@ -168,6 +193,8 @@ mod tests {
         let parsed = args(&[
             "--socket",
             "/tmp/x.sock",
+            "--control-socket",
+            "/tmp/x-control.sock",
             "--width",
             "100",
             "--height",
@@ -183,6 +210,7 @@ mod tests {
             parsed,
             Args {
                 rendezvous_socket: PathBuf::from("/tmp/x.sock"),
+                control_socket: PathBuf::from("/tmp/x-control.sock"),
                 width: 100.0,
                 height: 50.0,
                 frame_dir: Some(PathBuf::from("/tmp/frames")),
@@ -190,6 +218,11 @@ mod tests {
                 memory_poll_interval: Duration::from_millis(50),
             }
         );
+    }
+
+    #[test]
+    fn a_control_socket_flag_missing_its_value_is_an_error() {
+        assert_eq!(args(&["--control-socket"]), Err("--control-socket requires a value".to_string()));
     }
 
     #[test]
