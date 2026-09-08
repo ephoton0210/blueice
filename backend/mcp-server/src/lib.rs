@@ -123,7 +123,18 @@ impl<S: Read + Write> CoreConnection<S> {
                 ServerMessage::FrameReady { shm_path, width, height, generation } => {
                     self.last_frame = Some(FrameInfo { shm_path, width, height, generation });
                 }
-                ServerMessage::Navigated { .. } | ServerMessage::Dom(_) | ServerMessage::Hello { .. } | ServerMessage::Unknown => {}
+                ServerMessage::Navigated { .. }
+                | ServerMessage::Dom(_)
+                | ServerMessage::Hello { .. }
+                | ServerMessage::Unknown
+                // `mcp-server` doesn't call `OpenTab`/`CloseTab`/`ListTabs`
+                // itself in this slice, so these can only arrive here
+                // as another client's broadcasted traffic (the same
+                // reasoning as `Navigated`/`Dom` above) -- ignored for
+                // the same reason.
+                | ServerMessage::TabOpened { .. }
+                | ServerMessage::TabClosed { .. }
+                | ServerMessage::Tabs(_) => {}
             }
         }
     }
@@ -156,7 +167,14 @@ impl<S: Read + Write> CoreConnection<S> {
                 ServerMessage::FrameReady { shm_path, width, height, generation } => {
                     self.last_frame = Some(FrameInfo { shm_path, width, height, generation });
                 }
-                ServerMessage::Error { .. } | ServerMessage::Navigated { .. } | ServerMessage::Dom(_) | ServerMessage::Hello { .. } | ServerMessage::Unknown => {}
+                ServerMessage::Error { .. }
+                | ServerMessage::Navigated { .. }
+                | ServerMessage::Dom(_)
+                | ServerMessage::Hello { .. }
+                | ServerMessage::Unknown
+                | ServerMessage::TabOpened { .. }
+                | ServerMessage::TabClosed { .. }
+                | ServerMessage::Tabs(_) => {}
             }
         }
     }
@@ -180,7 +198,14 @@ impl<S: Read + Write> CoreConnection<S> {
                 ServerMessage::FrameReady { shm_path, width, height, generation } => {
                     self.last_frame = Some(FrameInfo { shm_path, width, height, generation });
                 }
-                ServerMessage::Error { .. } | ServerMessage::Navigated { .. } | ServerMessage::Representation(_) | ServerMessage::Hello { .. } | ServerMessage::Unknown => {}
+                ServerMessage::Error { .. }
+                | ServerMessage::Navigated { .. }
+                | ServerMessage::Representation(_)
+                | ServerMessage::Hello { .. }
+                | ServerMessage::Unknown
+                | ServerMessage::TabOpened { .. }
+                | ServerMessage::TabClosed { .. }
+                | ServerMessage::Tabs(_) => {}
             }
         }
     }
@@ -359,6 +384,7 @@ mod tests {
     fn sample_snapshot(generation: u64) -> AiSnapshot {
         AiSnapshot {
             generation,
+            tab_id: 1,
             url: Some("https://example.com".to_string()),
             scroll_y: 0.0,
             nodes: vec![AiNode {

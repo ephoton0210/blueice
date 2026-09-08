@@ -116,6 +116,22 @@ pub enum ClientMessage {
     /// Chromium differential-testing harness, `TEST_PLAN.md`) needs to
     /// *not* have filtered out.
     GetDom,
+    /// Opens a new, blank tab, replied to with [`ServerMessage::TabOpened`]
+    /// -- `phase-16-multi-tab-and-tab-groups/PLAN.md`'s minimal first
+    /// slice. `url` is optional purely for convenience (equivalent to
+    /// opening a blank tab, then a `Navigate` addressed to it); `None`
+    /// opens a blank tab.
+    OpenTab { url: Option<String> },
+    /// Closes the addressed tab (the envelope's `tab_id`, same as
+    /// every other per-tab message -- not a redundant inline field),
+    /// replied to with [`ServerMessage::TabClosed`]. Closing the last
+    /// remaining tab (or the tab a bare, untagged envelope would
+    /// otherwise resolve to) is allowed -- `core` doesn't force a tab
+    /// to always exist.
+    CloseTab,
+    /// Requests the current tab list, replied to with
+    /// [`ServerMessage::Tabs`].
+    ListTabs,
     Chrome(ChromeCommand),
     Shutdown,
     /// Catch-all for a variant this build doesn't recognize (e.g. sent
@@ -151,11 +167,31 @@ pub enum ServerMessage {
     Representation(AiSnapshot),
     /// Reply to [`ClientMessage::GetDom`].
     Dom(String),
+    /// Reply to [`ClientMessage::OpenTab`]. `url` reflects whatever
+    /// actually ended up loaded -- `None` for a blank tab (`OpenTab`
+    /// was given no `url`), `Some(final_url)` once a requested
+    /// navigation succeeds. A navigation failure inside `OpenTab`
+    /// replies [`ServerMessage::Error`] instead of this (the new tab
+    /// still exists, just blank -- a real, narrow limitation of this
+    /// minimal first slice: the client isn't told that orphaned tab's
+    /// id directly, though `ListTabs` will show it).
+    TabOpened { tab_id: u64, url: Option<String> },
+    /// Reply to [`ClientMessage::CloseTab`].
+    TabClosed { tab_id: u64 },
+    /// Reply to [`ClientMessage::ListTabs`].
+    Tabs(Vec<TabSummary>),
     Error { message: String },
     /// See [`ClientMessage::Unknown`] -- the same forward-compatibility
     /// fallback, in the other direction.
     #[serde(other)]
     Unknown,
+}
+
+/// One tab's summary, as reported by [`ServerMessage::Tabs`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TabSummary {
+    pub id: u64,
+    pub url: Option<String>,
 }
 
 fn write_framed<W: Write, T: Serialize>(w: &mut W, msg: &T) -> io::Result<()> {
@@ -196,7 +232,8 @@ fn read_client_envelope<R: Read>(r: &mut R) -> io::Result<ClientEnvelope> {
         return Ok(envelope);
     }
     let request_id = value.get("request_id").and_then(serde_json::Value::as_u64);
-    Ok(ClientEnvelope { request_id, message: ClientMessage::Unknown })
+    let tab_id = value.get("tab_id").and_then(serde_json::Value::as_u64);
+    Ok(ClientEnvelope { request_id, tab_id, message: ClientMessage::Unknown })
 }
 
 /// The [`ServerMessage`] counterpart to [`read_client_envelope`].
@@ -207,7 +244,8 @@ fn read_server_envelope<R: Read>(r: &mut R) -> io::Result<ServerEnvelope> {
         return Ok(envelope);
     }
     let request_id = value.get("request_id").and_then(serde_json::Value::as_u64);
-    Ok(ServerEnvelope { request_id, message: ServerMessage::Unknown })
+    let tab_id = value.get("tab_id").and_then(serde_json::Value::as_u64);
+    Ok(ServerEnvelope { request_id, tab_id, message: ServerMessage::Unknown })
 }
 
 /// A client-generated correlation id, echoed back verbatim on the
@@ -230,6 +268,18 @@ fn read_server_envelope<R: Read>(r: &mut R) -> io::Result<ServerEnvelope> {
 struct ClientEnvelope {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     request_id: Option<u64>,
+    /// Which tab a per-tab message (`Navigate`/`Resize`/`Click`/...)
+    /// applies to -- `phase-16-multi-tab-and-tab-groups/PLAN.md`'s
+    /// wire-protocol addressing, the same optional-sibling-field shape
+    /// `request_id` already established. `None` means "the default
+    /// tab," reproducing pre-Phase-16 single-`Page` behavior
+    /// byte-for-byte for a client that never sends `OpenTab`.
+    /// Meaningless for connection/window-level messages (`Hello`,
+    /// `Shutdown`, `Chrome`) and for tab-lifecycle messages that aren't
+    /// scoped to an *existing* tab (`OpenTab`, `ListTabs`) -- callers
+    /// just leave it `None` for those.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tab_id: Option<u64>,
     message: ClientMessage,
 }
 
@@ -237,6 +287,12 @@ struct ClientEnvelope {
 struct ServerEnvelope {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     request_id: Option<u64>,
+    /// Echoes back which tab the reply is about -- without this, a
+    /// client watching a shared, multi-tab, broadcast connection
+    /// (`blueice-launcher`'s broker) has no way to tell which tab a
+    /// `FrameReady`/`Navigated`/... broadcast belongs to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tab_id: Option<u64>,
     message: ServerMessage,
 }
 
@@ -245,7 +301,14 @@ pub fn write_client_message<W: Write>(w: &mut W, msg: &ClientMessage) -> io::Res
 }
 
 pub fn write_client_message_with_id<W: Write>(w: &mut W, request_id: Option<u64>, msg: &ClientMessage) -> io::Result<()> {
-    write_framed(w, &ClientEnvelope { request_id, message: msg.clone() })
+    write_framed(w, &ClientEnvelope { request_id, tab_id: None, message: msg.clone() })
+}
+
+/// Like [`write_client_message_with_id`], additionally addressing the
+/// message to `tab_id` (`None` for the default tab, or for a message
+/// that isn't per-tab-scoped at all).
+pub fn write_client_message_with_ids<W: Write>(w: &mut W, tab_id: Option<u64>, request_id: Option<u64>, msg: &ClientMessage) -> io::Result<()> {
+    write_framed(w, &ClientEnvelope { request_id, tab_id, message: msg.clone() })
 }
 
 pub fn read_client_message<R: Read>(r: &mut R) -> io::Result<ClientMessage> {
@@ -257,12 +320,25 @@ pub fn read_client_message_with_id<R: Read>(r: &mut R) -> io::Result<(Option<u64
     Ok((envelope.request_id, envelope.message))
 }
 
+/// Like [`read_client_message_with_id`], additionally returning the
+/// envelope's `tab_id` as `(tab_id, request_id, message)`.
+pub fn read_client_message_with_ids<R: Read>(r: &mut R) -> io::Result<(Option<u64>, Option<u64>, ClientMessage)> {
+    let envelope = read_client_envelope(r)?;
+    Ok((envelope.tab_id, envelope.request_id, envelope.message))
+}
+
 pub fn write_server_message<W: Write>(w: &mut W, msg: &ServerMessage) -> io::Result<()> {
     write_server_message_with_id(w, None, msg)
 }
 
 pub fn write_server_message_with_id<W: Write>(w: &mut W, request_id: Option<u64>, msg: &ServerMessage) -> io::Result<()> {
-    write_framed(w, &ServerEnvelope { request_id, message: msg.clone() })
+    write_framed(w, &ServerEnvelope { request_id, tab_id: None, message: msg.clone() })
+}
+
+/// Like [`write_server_message_with_id`], additionally echoing back
+/// which tab this reply is about.
+pub fn write_server_message_with_ids<W: Write>(w: &mut W, tab_id: Option<u64>, request_id: Option<u64>, msg: &ServerMessage) -> io::Result<()> {
+    write_framed(w, &ServerEnvelope { request_id, tab_id, message: msg.clone() })
 }
 
 pub fn read_server_message<R: Read>(r: &mut R) -> io::Result<ServerMessage> {
@@ -272,6 +348,13 @@ pub fn read_server_message<R: Read>(r: &mut R) -> io::Result<ServerMessage> {
 pub fn read_server_message_with_id<R: Read>(r: &mut R) -> io::Result<(Option<u64>, ServerMessage)> {
     let envelope = read_server_envelope(r)?;
     Ok((envelope.request_id, envelope.message))
+}
+
+/// Like [`read_server_message_with_id`], additionally returning the
+/// envelope's `tab_id` as `(tab_id, request_id, message)`.
+pub fn read_server_message_with_ids<R: Read>(r: &mut R) -> io::Result<(Option<u64>, Option<u64>, ServerMessage)> {
+    let envelope = read_server_envelope(r)?;
+    Ok((envelope.tab_id, envelope.request_id, envelope.message))
 }
 
 /// The client side of the `protocol_version` handshake (`phase-1-ai-
@@ -311,6 +394,10 @@ mod tests {
             ClientMessage::Highlight { id: Some(7) },
             ClientMessage::Highlight { id: None },
             ClientMessage::GetDom,
+            ClientMessage::OpenTab { url: Some("https://example.com".to_string()) },
+            ClientMessage::OpenTab { url: None },
+            ClientMessage::CloseTab,
+            ClientMessage::ListTabs,
             ClientMessage::Shutdown,
             ClientMessage::Unknown,
         ] {
@@ -329,6 +416,7 @@ mod tests {
             ServerMessage::Navigated { url: "https://example.com/".to_string() },
             ServerMessage::Representation(AiSnapshot {
                 generation: 42,
+                tab_id: 1,
                 url: Some("https://example.com/".to_string()),
                 scroll_y: 10.0,
                 nodes: vec![AiNode {
@@ -347,6 +435,10 @@ mod tests {
                 }],
             }),
             ServerMessage::Dom("| <html>\n".to_string()),
+            ServerMessage::TabOpened { tab_id: 2, url: Some("https://example.com/".to_string()) },
+            ServerMessage::TabOpened { tab_id: 2, url: None },
+            ServerMessage::TabClosed { tab_id: 2 },
+            ServerMessage::Tabs(vec![TabSummary { id: 1, url: None }, TabSummary { id: 2, url: Some("https://example.com/".to_string()) }]),
             ServerMessage::Error { message: "oops".to_string() },
             ServerMessage::Unknown,
         ] {
@@ -437,10 +529,49 @@ mod tests {
         }
 
         let mut buf = Vec::new();
-        let reply = ServerMessage::Representation(AiSnapshot { generation: 1, url: None, scroll_y: 0.0, nodes: vec![] });
+        let reply = ServerMessage::Representation(AiSnapshot { generation: 1, tab_id: 1, url: None, scroll_y: 0.0, nodes: vec![] });
         write_server_message_with_id(&mut buf, Some(7), &reply).unwrap();
         let mut cursor = Cursor::new(buf);
         assert_eq!(read_server_message_with_id(&mut cursor).unwrap(), (Some(7), reply));
+    }
+
+    #[test]
+    fn a_tab_id_round_trips_alongside_a_request_id() {
+        let msg = ClientMessage::Navigate { url: "https://example.com".to_string() };
+        let mut buf = Vec::new();
+        write_client_message_with_ids(&mut buf, Some(3), Some(42), &msg).unwrap();
+        let mut cursor = Cursor::new(buf);
+        assert_eq!(read_client_message_with_ids(&mut cursor).unwrap(), (Some(3), Some(42), msg));
+
+        let reply = ServerMessage::Navigated { url: "https://example.com".to_string() };
+        let mut buf = Vec::new();
+        write_server_message_with_ids(&mut buf, Some(3), Some(42), &reply).unwrap();
+        let mut cursor = Cursor::new(buf);
+        assert_eq!(read_server_message_with_ids(&mut cursor).unwrap(), (Some(3), Some(42), reply));
+    }
+
+    #[test]
+    fn a_message_written_without_a_tab_id_reads_back_as_none() {
+        // The load-bearing backward-compatibility property Milestone C
+        // depends on: a client that never addresses a specific tab (or
+        // sent before Phase 16 existed) must resolve to the default tab
+        // transparently -- proven at the wire level here, and at the
+        // `session.rs` dispatch level in `blueice_engine`'s own tests.
+        let mut buf = Vec::new();
+        write_client_message(&mut buf, &ClientMessage::GetRepresentation).unwrap();
+        let mut cursor = Cursor::new(buf);
+        assert_eq!(read_client_message_with_ids(&mut cursor).unwrap(), (None, None, ClientMessage::GetRepresentation));
+    }
+
+    #[test]
+    fn tab_id_and_request_id_are_independent_of_each_other() {
+        // A message can carry either, neither, or both -- proven with
+        // tab_id present but request_id absent, the case the two other
+        // round-trip tests above don't cover on its own.
+        let mut buf = Vec::new();
+        write_client_message_with_ids(&mut buf, Some(5), None, &ClientMessage::ListTabs).unwrap();
+        let mut cursor = Cursor::new(buf);
+        assert_eq!(read_client_message_with_ids(&mut cursor).unwrap(), (Some(5), None, ClientMessage::ListTabs));
     }
 
     #[test]

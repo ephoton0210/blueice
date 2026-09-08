@@ -29,6 +29,9 @@
 //! ([`broadcast_core_to_clients`]) -- not just whichever one's action
 //! triggered it, which is what actually delivers "same render pass."
 
+pub mod memory_pressure;
+pub mod supervisor;
+
 use blueice_ipc::{read_client_message, read_server_message, write_client_message, write_server_message, ServerMessage};
 use std::io;
 use std::os::unix::net::UnixStream;

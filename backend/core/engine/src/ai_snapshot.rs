@@ -42,13 +42,13 @@ use blueice_dom::{Document, NodeData, NodeId};
 use blueice_ipc::{AiNode, AiSnapshot, NameFrom, NodeState, Role};
 use std::collections::HashMap;
 
-pub(crate) fn build(page: &Page, generation: u64) -> AiSnapshot {
+pub(crate) fn build(page: &Page, generation: u64, tab_id: u64) -> AiSnapshot {
     let doc = page.doc();
     let mut nodes = Vec::new();
     collect(page, doc, doc.root(), None, &mut nodes);
     link_children(&mut nodes);
     compute_occlusion(&mut nodes);
-    AiSnapshot { generation, url: page.url().map(str::to_string), scroll_y: page.scroll_y(), nodes }
+    AiSnapshot { generation, tab_id, url: page.url().map(str::to_string), scroll_y: page.scroll_y(), nodes }
 }
 
 fn collect(page: &Page, doc: &Document, node: NodeId, nearest_represented_ancestor: Option<u64>, out: &mut Vec<AiNode>) {
@@ -272,7 +272,7 @@ mod tests {
     #[test]
     fn snapshot_carries_the_generation_url_and_scroll_offset() {
         let page = page_with("<p>hi</p>");
-        let snap = build(&page, 7);
+        let snap = build(&page, 7, 1);
         assert_eq!(snap.generation, 7);
         assert_eq!(snap.url.as_deref(), Some("https://example.com"));
         assert_eq!(snap.scroll_y, 0.0);
@@ -281,21 +281,21 @@ mod tests {
     #[test]
     fn a_bare_div_with_no_role_is_excluded() {
         let page = page_with(r#"<div style="background-color: red;">x</div>"#);
-        let snap = build(&page, 0);
+        let snap = build(&page, 0, 1);
         assert!(snap.nodes.is_empty(), "a decorative div must not appear: {:#?}", snap.nodes);
     }
 
     #[test]
     fn a_display_none_subtree_is_excluded_even_with_a_semantic_role() {
         let page = page_with(r#"<h1 style="display: none;">Hidden</h1>"#);
-        let snap = build(&page, 0);
+        let snap = build(&page, 0, 1);
         assert!(snap.nodes.is_empty(), "display:none content must not appear: {:#?}", snap.nodes);
     }
 
     #[test]
     fn headings_get_their_level_and_subtree_text_as_name() {
         let page = page_with("<h2>Section</h2>");
-        let snap = build(&page, 0);
+        let snap = build(&page, 0, 1);
         let node = find(&snap.nodes, "Section");
         assert_eq!(node.role, Role::Heading { level: 2 });
         assert_eq!(node.name_from, Some(NameFrom::Contents));
@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn a_link_is_named_from_its_text_and_carries_the_link_role() {
         let page = page_with(r#"<a href="/x">Go</a>"#);
-        let snap = build(&page, 0);
+        let snap = build(&page, 0, 1);
         let node = find(&snap.nodes, "Go");
         assert_eq!(node.role, Role::Link);
     }
@@ -319,7 +319,7 @@ mod tests {
         // this test exercise the real pipeline rather than only the
         // naming logic in isolation.
         let page = page_with(r#"<img src="a.png" alt="A cat" style="display: inline-block; width: 16px; height: 16px;">"#);
-        let snap = build(&page, 0);
+        let snap = build(&page, 0, 1);
         let node = find(&snap.nodes, "A cat");
         assert_eq!(node.role, Role::Image);
         assert_eq!(node.name_from, Some(NameFrom::Attribute("alt".to_string())));
@@ -328,7 +328,7 @@ mod tests {
     #[test]
     fn an_input_is_named_from_its_associated_label() {
         let page = page_with(r#"<label for="name">Name</label><input id="name" type="text">"#);
-        let snap = build(&page, 0);
+        let snap = build(&page, 0, 1);
         let node = find(&snap.nodes, "Name");
         assert_eq!(node.role, Role::TextBox);
     }
@@ -336,7 +336,7 @@ mod tests {
     #[test]
     fn an_input_without_a_label_falls_back_to_its_placeholder() {
         let page = page_with(r#"<input type="text" placeholder="Search">"#);
-        let snap = build(&page, 0);
+        let snap = build(&page, 0, 1);
         let node = find(&snap.nodes, "Search");
         assert_eq!(node.name_from, Some(NameFrom::Placeholder));
     }
@@ -344,7 +344,7 @@ mod tests {
     #[test]
     fn a_checkbox_reports_its_checked_state() {
         let page = page_with(r#"<label for="c">Agree</label><input id="c" type="checkbox" checked>"#);
-        let snap = build(&page, 0);
+        let snap = build(&page, 0, 1);
         let node = find(&snap.nodes, "Agree");
         assert_eq!(node.role, Role::CheckBox);
         assert_eq!(node.state.checked, Some(true));
@@ -353,7 +353,7 @@ mod tests {
     #[test]
     fn aria_label_takes_priority_over_every_other_naming_source() {
         let page = page_with(r#"<button aria-label="Close dialog">X</button>"#);
-        let snap = build(&page, 0);
+        let snap = build(&page, 0, 1);
         let node = find(&snap.nodes, "Close dialog");
         assert_eq!(node.role, Role::Button);
         assert_eq!(node.name_from, Some(NameFrom::Attribute("aria-label".to_string())));
@@ -362,7 +362,7 @@ mod tests {
     #[test]
     fn an_explicit_role_attribute_on_an_otherwise_generic_element_is_represented() {
         let page = page_with(r#"<div role="note">Heads up</div>"#);
-        let snap = build(&page, 0);
+        let snap = build(&page, 0, 1);
         let node = find(&snap.nodes, "Heads up");
         assert_eq!(node.role, Role::Generic);
     }
@@ -370,7 +370,7 @@ mod tests {
     #[test]
     fn list_and_list_items_get_their_own_roles_and_a_parent_child_link() {
         let page = page_with("<ul><li>one</li><li>two</li></ul>");
-        let snap = build(&page, 0);
+        let snap = build(&page, 0, 1);
         let list = snap.nodes.iter().find(|n| n.role == Role::List).unwrap();
         let one = find(&snap.nodes, "one");
         let two = find(&snap.nodes, "two");
@@ -386,7 +386,7 @@ mod tests {
         // up as its nearest *represented* ancestor once the div is
         // skipped, not end up parentless.
         let page = page_with("<ul><li><div><p>nested</p></div></li></ul>");
-        let snap = build(&page, 0);
+        let snap = build(&page, 0, 1);
         let li = snap.nodes.iter().find(|n| n.role == Role::ListItem).unwrap();
         let p = find(&snap.nodes, "nested");
         assert_eq!(p.parent, Some(li.id));
@@ -395,7 +395,7 @@ mod tests {
     #[test]
     fn every_node_carries_its_stable_dom_node_id_not_a_recomputed_index() {
         let page = page_with("<p>hi</p>");
-        let snap = build(&page, 0);
+        let snap = build(&page, 0, 1);
         let node = &snap.nodes[0];
         let real_id = page.doc().root(); // just to confirm `id` is a real, resolvable NodeId
         assert!(real_id.as_u64() != node.id || true); // root itself isn't represented; sanity that as_u64 exists
@@ -405,18 +405,18 @@ mod tests {
     #[test]
     fn hovered_and_focused_state_reflect_the_pages_own_interaction_state() {
         let mut page = page_with(r#"<a href="/x">Go</a>"#);
-        let before = build(&page, 0);
+        let before = build(&page, 0, 1);
         assert!(!find(&before.nodes, "Go").state.hovered);
 
         page.hover_at(2.0, 2.0);
-        let after = build(&page, 0);
+        let after = build(&page, 0, 1);
         assert!(find(&after.nodes, "Go").state.hovered);
     }
 
     #[test]
     fn opacity_is_read_from_the_elements_own_computed_style() {
         let page = page_with(r#"<p style="opacity: 0.4;">faded</p>"#);
-        let snap = build(&page, 0);
+        let snap = build(&page, 0, 1);
         assert_eq!(find(&snap.nodes, "faded").opacity, 0.4);
     }
 
@@ -431,7 +431,7 @@ mod tests {
         // yet) -- what matters here is compute_occlusion's own
         // overlap math, not how a real page would produce it.
         let page = page_with("<h1>Front</h1>");
-        let mut snap = build(&page, 0);
+        let mut snap = build(&page, 0, 1);
         // synthesize a second, later, fully-overlapping node the way a
         // real absolutely-positioned overlay would end up geometrically,
         // to isolate compute_occlusion's own logic from layout's.
@@ -449,7 +449,7 @@ mod tests {
     #[test]
     fn non_overlapping_nodes_are_never_marked_occluded() {
         let page = page_with("<h1>One</h1><p>Two</p>");
-        let snap = build(&page, 0);
+        let snap = build(&page, 0, 1);
         assert!(snap.nodes.iter().all(|n| !n.occluded));
     }
 }

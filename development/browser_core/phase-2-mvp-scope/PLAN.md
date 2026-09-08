@@ -92,13 +92,13 @@ After a script mutates the DOM, a fresh cascade/layout/paint pass is required be
 
 ## Non-goals (re-confirmed and extended)
 
-Plan §4's original four (extension ecosystem, multi-tab state sync, full JS engine optimization, DevTools) all still hold — extension stays a process-isolated stub (Phase 3), there is no multi-tab concept anywhere in `Page`'s design (one `Page` is one navigable context), Phase 13 explicitly designs for optimization *later* without building any now, and no inspector/DevTools protocol exists. Extending the list with what's been decided since, so it's collected in one place rather than scattered per-section:
+Plan §4's original four (extension ecosystem, multi-tab state sync, full JS engine optimization, DevTools) mostly still hold — extension stays a process-isolated stub (Phase 3), Phase 13 explicitly designs for optimization *later* without building any now, and no inspector/DevTools protocol exists. **Multi-tab state sync is no longer excluded** — reversed per `phase-16-multi-tab-and-tab-groups/PLAN.md`'s "minimal first slice" (`TabManager` inside `core`, wire-protocol `tab_id` addressing); `Page` itself is unchanged (still one navigable context per instance), but `core` now manages a collection of them rather than exactly one. Extending the list with what's been decided since, so it's collected in one place rather than scattered per-section:
 
 - No Grid layout, no real `display: table*` layout (both deferred alongside flexbox specifics — see "MVP CSS scope" above), no foreign content (SVG/MathML).
 - No `:has()`/`:is()`/`:where()`/`:not()`, `:nth-child()`-family pseudo-classes, sibling combinators, shadow-DOM selectors, or `@scope`.
 - No cookies, HTTP cache, auth, or form POST/multipart submission (`blueice-net` is GET-only); no redirect-chain visibility beyond the final response.
 - No JS modules, `class`, `async`/`await`, `Promise`, generators, regex, `Map`/`Set`, or `JSON` (see "MVP JS scope" above); no script-initiated network access, storage, workers, canvas/WebGL, or media playback.
-- No multi-window/multi-tab; no incremental or viewport-clipped layout (`Page::render_visible` rasterizes the full page and crops, per its own module docs); no compositing layers or stacking contexts beyond plain DOM/paint order.
+- No incremental or viewport-clipped layout (`Page::render_visible` rasterizes the full page and crops, per its own module docs); no compositing layers or stacking contexts beyond plain DOM/paint order. (Multi-tab is no longer excluded — see above.) No multi-*window* either way (one `frontend` window per `core`/`launcher`, unchanged).
 - No accessibility-tree *output* yet — that's Phase 5's implementation of the Phase 1 decision; Phase 2's job is only to keep the rendering scope compatible with it (see the cross-check below).
 
 ## Concrete demo page(s) (decided)

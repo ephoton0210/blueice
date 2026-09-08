@@ -21,16 +21,21 @@
 //! `Page`'s own hover state for a future `GetRepresentation` or
 //! `:hover` style to read).
 
-use crate::Page;
+use crate::{Page, TabId, TabManager};
 use blueice_dom::NodeId;
-use blueice_ipc::{shm, ClientMessage, NodeAction, ServerMessage};
+use blueice_ipc::{shm, ClientMessage, NodeAction, ServerMessage, TabSummary};
 use std::io::{self, Read, Write};
 use std::path::Path;
 
 /// Runs the message loop for one client connection until it sends
 /// `Shutdown` or disconnects. `frame_dir` is where this session's
-/// frames are written (see [`blueice_ipc::shm`]); `generation` is
-/// shared frame-sequence counter, incremented on every frame sent.
+/// frames are written (see [`blueice_ipc::shm`]); `generation` is a
+/// single, session-wide frame-sequence counter shared across every tab
+/// (not one per tab) -- every tab's `FrameReady` still gets the next
+/// global monotonic number, so `blueice_ipc::shm` needs no per-tab
+/// awareness at all (filenames stay collision-free by construction),
+/// and the AI-facing "same generation = same render pass" property
+/// still holds across tabs.
 ///
 /// The very first message must be [`ClientMessage::Hello`] (`phase-1-
 /// ai-representation-layer/PLAN.md` §3's `protocol_version` handshake)
@@ -44,70 +49,139 @@ use std::path::Path;
 /// rather than re-gating the whole session -- tearing down a shared
 /// connection over one client's handshake would end every other
 /// client's session too.
-pub fn run_session<S: Read + Write>(page: &mut Page, stream: &mut S, frame_dir: &Path, generation: &mut u64) -> io::Result<()> {
+///
+/// **Multi-tab addressing** (`phase-16-multi-tab-and-tab-groups/
+/// PLAN.md`'s minimal first slice): every per-tab-scoped message
+/// (`Navigate`, `Resize`, `Click`, `Hover`, `Scroll`,
+/// `GetRepresentation`, `ActOn`, `Highlight`, `GetDom`, `CloseTab`) is
+/// addressed by the envelope's `tab_id` -- `None` resolves to
+/// [`TabManager::default_tab`], reproducing pre-Phase-16 single-`Page`
+/// behavior byte-for-byte for a client that never sends `OpenTab`. A
+/// `tab_id` (explicit or defaulted) that doesn't resolve to a live tab
+/// replies [`ServerMessage::Error`] -- a protocol-addressing error, not
+/// the harmless no-op a stale `NodeId` already gets in [`Page::act`].
+/// `OpenTab`/`ListTabs` aren't scoped to an existing tab at all (there's
+/// no "current tab" concept `core` tracks -- see [`TabManager`]'s own
+/// docs for why) and ignore any `tab_id` on the envelope.
+pub fn run_session<S: Read + Write>(tabs: &mut TabManager, stream: &mut S, frame_dir: &Path, generation: &mut u64) -> io::Result<()> {
     if !perform_handshake(stream)? {
         return Ok(());
     }
     loop {
-        let (request_id, msg) = match blueice_ipc::read_client_message_with_id(stream) {
+        let (tab_id, request_id, msg) = match blueice_ipc::read_client_message_with_ids(stream) {
             Ok(v) => v,
             Err(_) => return Ok(()), // client disconnected without an explicit Shutdown
         };
+        let target = tab_id.map(TabId::from_u64).unwrap_or_else(|| tabs.default_tab());
+        // Every per-tab reply below echoes `Some(target.as_u64())`, the
+        // *resolved* tab -- not the raw (possibly `None`, if the
+        // request left it defaulted) `tab_id` the request carried.
+        // Echoing the ambiguous original back would defeat the whole
+        // point of this field: a client watching a shared, multi-tab,
+        // broadcast connection (`blueice-launcher`'s broker) needs
+        // every reply to self-disclose which concrete tab it's about,
+        // including one produced by a request that left it implicit.
+        let reply_tab = Some(target.as_u64());
         match msg {
             ClientMessage::Hello { protocol_version } => reply_hello(stream, request_id, protocol_version)?,
-            ClientMessage::Navigate { url } => match page.navigate(&url) {
-                Ok(()) => {
-                    reply_navigated(page, stream, request_id)?;
-                    send_frame(page, stream, frame_dir, generation, request_id)?;
-                }
-                Err(e) => blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Error { message: e.to_string() })?,
+            ClientMessage::Navigate { url } => match tabs.get_mut(target) {
+                Some(page) => match page.navigate(&url) {
+                    Ok(()) => {
+                        reply_navigated(page, stream, reply_tab, request_id)?;
+                        send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
+                    }
+                    Err(e) => write_error(stream, reply_tab, request_id, e.to_string())?,
+                },
+                None => write_unknown_tab_error(stream, request_id, target)?,
             },
             ClientMessage::Resize { width, height } => {
-                page.resize(width as f64, height as f64);
-                send_frame(page, stream, frame_dir, generation, request_id)?;
+                tabs.set_window_size(width as f64, height as f64);
+                match tabs.get_mut(target) {
+                    Some(page) => {
+                        page.resize(width as f64, height as f64);
+                        send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
+                    }
+                    None => write_unknown_tab_error(stream, request_id, target)?,
+                }
             }
-            ClientMessage::Click { x, y } => {
-                if let Some(href) = page.click(x, y) {
-                    match page.navigate(&href) {
-                        Ok(()) => {
-                            reply_navigated(page, stream, request_id)?;
-                            send_frame(page, stream, frame_dir, generation, request_id)?;
+            ClientMessage::Click { x, y } => match tabs.get_mut(target) {
+                Some(page) => {
+                    if let Some(href) = page.click(x, y) {
+                        match page.navigate(&href) {
+                            Ok(()) => {
+                                reply_navigated(page, stream, reply_tab, request_id)?;
+                                send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
+                            }
+                            Err(e) => write_error(stream, reply_tab, request_id, e.to_string())?,
                         }
-                        Err(e) => blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Error { message: e.to_string() })?,
                     }
                 }
-            }
-            ClientMessage::Scroll { delta_y } => {
-                page.scroll_by(delta_y);
-                send_frame(page, stream, frame_dir, generation, request_id)?;
-            }
-            ClientMessage::Hover { x, y } => page.hover_at(x, y),
-            ClientMessage::GetRepresentation => {
-                let snapshot = page.snapshot(*generation);
-                blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Representation(snapshot))?;
-            }
-            ClientMessage::GetDom => {
-                blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Dom(page.dom_dump()))?;
-            }
-            ClientMessage::ActOn { id, action } => {
-                let is_click = matches!(action, NodeAction::Click);
-                match page.act(NodeId::from_u64(id), action) {
-                    Some(href) => match page.navigate(&href) {
-                        Ok(()) => {
-                            reply_navigated(page, stream, request_id)?;
-                            send_frame(page, stream, frame_dir, generation, request_id)?;
-                        }
-                        Err(e) => blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Error { message: e.to_string() })?,
-                    },
-                    // A Click that didn't land on a link is a no-op,
-                    // same as a coordinate Click elsewhere -- no reply.
-                    None if is_click => {}
-                    None => send_frame(page, stream, frame_dir, generation, request_id)?,
+                None => write_unknown_tab_error(stream, request_id, target)?,
+            },
+            ClientMessage::Scroll { delta_y } => match tabs.get_mut(target) {
+                Some(page) => {
+                    page.scroll_by(delta_y);
+                    send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
+                }
+                None => write_unknown_tab_error(stream, request_id, target)?,
+            },
+            ClientMessage::Hover { x, y } => {
+                if let Some(page) = tabs.get_mut(target) {
+                    page.hover_at(x, y);
+                } else {
+                    write_unknown_tab_error(stream, request_id, target)?;
                 }
             }
-            ClientMessage::Highlight { id } => {
-                page.set_highlight(id.map(NodeId::from_u64));
-                send_frame(page, stream, frame_dir, generation, request_id)?;
+            ClientMessage::GetRepresentation => match tabs.get_mut(target) {
+                Some(page) => {
+                    let snapshot = page.snapshot(*generation, target.as_u64());
+                    blueice_ipc::write_server_message_with_ids(stream, reply_tab, request_id, &ServerMessage::Representation(snapshot))?;
+                }
+                None => write_unknown_tab_error(stream, request_id, target)?,
+            },
+            ClientMessage::GetDom => match tabs.get_mut(target) {
+                Some(page) => blueice_ipc::write_server_message_with_ids(stream, reply_tab, request_id, &ServerMessage::Dom(page.dom_dump()))?,
+                None => write_unknown_tab_error(stream, request_id, target)?,
+            },
+            ClientMessage::ActOn { id, action } => match tabs.get_mut(target) {
+                Some(page) => {
+                    let is_click = matches!(action, NodeAction::Click);
+                    match page.act(NodeId::from_u64(id), action) {
+                        Some(href) => match page.navigate(&href) {
+                            Ok(()) => {
+                                reply_navigated(page, stream, reply_tab, request_id)?;
+                                send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
+                            }
+                            Err(e) => write_error(stream, reply_tab, request_id, e.to_string())?,
+                        },
+                        // A Click that didn't land on a link is a
+                        // no-op, same as a coordinate Click elsewhere
+                        // -- no reply.
+                        None if is_click => {}
+                        None => send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?,
+                    }
+                }
+                None => write_unknown_tab_error(stream, request_id, target)?,
+            },
+            ClientMessage::Highlight { id } => match tabs.get_mut(target) {
+                Some(page) => {
+                    page.set_highlight(id.map(NodeId::from_u64));
+                    send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
+                }
+                None => write_unknown_tab_error(stream, request_id, target)?,
+            },
+            ClientMessage::OpenTab { url } => handle_open_tab(tabs, stream, frame_dir, generation, request_id, url)?,
+            ClientMessage::CloseTab => {
+                if tabs.close_tab(target) {
+                    blueice_ipc::write_server_message_with_ids(stream, reply_tab, request_id, &ServerMessage::TabClosed { tab_id: target.as_u64() })?;
+                } else {
+                    write_unknown_tab_error(stream, request_id, target)?;
+                }
+            }
+            ClientMessage::ListTabs => {
+                let summaries: Vec<TabSummary> =
+                    tabs.ids().map(|id| TabSummary { id: id.as_u64(), url: tabs.get(id).and_then(Page::url).map(str::to_string) }).collect();
+                blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Tabs(summaries))?;
             }
             // Chrome commands (window show/hide) operate on `frontend`'s
             // own window, not on anything `core` owns -- see module docs.
@@ -118,6 +192,27 @@ pub fn run_session<S: Read + Write>(page: &mut Page, stream: &mut S, frame_dir: 
             // a protocol violation.
             ClientMessage::Unknown => {}
         }
+    }
+}
+
+/// `OpenTab`'s handler: always creates the tab (there's no failure mode
+/// for that itself), then optionally navigates it. See
+/// [`ServerMessage::TabOpened`]'s own docs for the one real limitation
+/// this has (a navigation failure here doesn't separately report the
+/// orphaned blank tab's id).
+fn handle_open_tab<S: Write>(tabs: &mut TabManager, stream: &mut S, frame_dir: &Path, generation: &mut u64, request_id: Option<u64>, url: Option<String>) -> io::Result<()> {
+    let new_id = tabs.open_tab();
+    let Some(url) = url else {
+        return blueice_ipc::write_server_message_with_ids(stream, Some(new_id.as_u64()), request_id, &ServerMessage::TabOpened { tab_id: new_id.as_u64(), url: None });
+    };
+    let page = tabs.get_mut(new_id).expect("a tab this function just created must exist");
+    match page.navigate(&url) {
+        Ok(()) => {
+            let final_url = page.url().map(str::to_string);
+            blueice_ipc::write_server_message_with_ids(stream, Some(new_id.as_u64()), request_id, &ServerMessage::TabOpened { tab_id: new_id.as_u64(), url: final_url })?;
+            send_frame(page, stream, frame_dir, generation, Some(new_id.as_u64()), request_id)
+        }
+        Err(e) => write_error(stream, Some(new_id.as_u64()), request_id, e.to_string()),
     }
 }
 
@@ -153,19 +248,33 @@ fn reply_hello<S: Write>(stream: &mut S, request_id: Option<u64>, protocol_versi
     }
 }
 
-fn reply_navigated<S: Write>(page: &Page, stream: &mut S, request_id: Option<u64>) -> io::Result<()> {
-    blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Navigated { url: page.url().unwrap_or_default().to_string() })
+fn reply_navigated<S: Write>(page: &Page, stream: &mut S, tab_id: Option<u64>, request_id: Option<u64>) -> io::Result<()> {
+    blueice_ipc::write_server_message_with_ids(stream, tab_id, request_id, &ServerMessage::Navigated { url: page.url().unwrap_or_default().to_string() })
 }
 
-fn send_frame<S: Write>(page: &Page, stream: &mut S, frame_dir: &Path, generation: &mut u64, request_id: Option<u64>) -> io::Result<()> {
+fn send_frame<S: Write>(page: &Page, stream: &mut S, frame_dir: &Path, generation: &mut u64, tab_id: Option<u64>, request_id: Option<u64>) -> io::Result<()> {
     let pixmap = page.render_visible();
     *generation += 1;
     let path = shm::write_frame(frame_dir, *generation, &pixmap.pixels)?;
-    blueice_ipc::write_server_message_with_id(
+    blueice_ipc::write_server_message_with_ids(
         stream,
+        tab_id,
         request_id,
         &ServerMessage::FrameReady { shm_path: path.to_string_lossy().into_owned(), width: pixmap.width, height: pixmap.height, generation: *generation },
     )
+}
+
+fn write_error<S: Write>(stream: &mut S, tab_id: Option<u64>, request_id: Option<u64>, message: String) -> io::Result<()> {
+    blueice_ipc::write_server_message_with_ids(stream, tab_id, request_id, &ServerMessage::Error { message })
+}
+
+/// A `tab_id` (explicit or defaulted) that doesn't resolve to a live
+/// tab -- see `run_session`'s own docs for why this is always a real
+/// `Error` reply, never a silent no-op. Echoes `target` itself as the
+/// reply's `tab_id`, so the client at least learns which (nonexistent)
+/// tab it addressed.
+fn write_unknown_tab_error<S: Write>(stream: &mut S, request_id: Option<u64>, target: TabId) -> io::Result<()> {
+    write_error(stream, Some(target.as_u64()), request_id, format!("unknown tab {}", target.as_u64()))
 }
 
 #[cfg(test)]
@@ -193,15 +302,25 @@ mod tests {
         blueice_ipc::client_handshake(client).unwrap();
     }
 
+    /// Every test below that predates multi-tab (Phase 16) sets up its
+    /// fixture content on "the" page, the same single-tab shape it
+    /// always had -- this is just `tabs.default_tab()` resolved to its
+    /// `Page`, so those tests don't need to change beyond `Page::new`
+    /// becoming `TabManager::new`.
+    fn default_page(tabs: &mut TabManager) -> &mut Page {
+        let default = tabs.default_tab();
+        tabs.get_mut(default).unwrap()
+    }
+
     #[test]
     fn resize_then_shutdown_produces_one_frame_and_then_ends_the_session() {
         let dir = temp_frame_dir("resize");
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
-            page.load_html_str("<p>hi</p>", None);
+            let mut tabs = TabManager::new(320.0, 200.0);
+            default_page(&mut tabs).load_html_str("<p>hi</p>", None);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
             dir
         });
         handshake(&mut client);
@@ -230,9 +349,9 @@ mod tests {
 
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
+            let mut tabs = TabManager::new(320.0, 200.0);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
             dir
         });
         handshake(&mut client);
@@ -258,9 +377,9 @@ mod tests {
         let dir = temp_frame_dir("navigate-error");
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
+            let mut tabs = TabManager::new(320.0, 200.0);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
             dir
         });
         handshake(&mut client);
@@ -291,10 +410,10 @@ mod tests {
         let (mut client, mut server) = client_pair();
         let dir_for_thread = dir.clone();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
-            page.load_html_str(&format!(r#"<a href="{url}">go</a>"#), None);
+            let mut tabs = TabManager::new(320.0, 200.0);
+            default_page(&mut tabs).load_html_str(&format!(r#"<a href="{url}">go</a>"#), None);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir_for_thread, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir_for_thread, &mut generation).unwrap();
         });
         handshake(&mut client);
 
@@ -315,9 +434,9 @@ mod tests {
         let dir = temp_frame_dir("visible");
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
+            let mut tabs = TabManager::new(320.0, 200.0);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
             dir
         });
         handshake(&mut client);
@@ -351,10 +470,10 @@ mod tests {
         let dir = temp_frame_dir("representation-generation-all-sites");
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
-            page.load_html_str(r#"<input type="text">"#, None);
+            let mut tabs = TabManager::new(320.0, 200.0);
+            default_page(&mut tabs).load_html_str(r#"<input type="text">"#, None);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
             dir
         });
         handshake(&mut client);
@@ -392,10 +511,10 @@ mod tests {
         let dir = temp_frame_dir("representation-generation");
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
-            page.load_html_str(r#"<a href="/x">Go</a>"#, None);
+            let mut tabs = TabManager::new(320.0, 200.0);
+            default_page(&mut tabs).load_html_str(r#"<a href="/x">Go</a>"#, None);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
             dir
         });
         handshake(&mut client);
@@ -420,10 +539,10 @@ mod tests {
         let dir = temp_frame_dir("get-dom");
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
-            page.load_html_str(r#"<div style="background-color: red;">x</div>"#, None);
+            let mut tabs = TabManager::new(320.0, 200.0);
+            default_page(&mut tabs).load_html_str(r#"<div style="background-color: red;">x</div>"#, None);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
             dir
         });
         handshake(&mut client);
@@ -454,10 +573,10 @@ mod tests {
 
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
-            page.load_html_str(&format!(r#"<a href="{url}">go</a>"#), None);
+            let mut tabs = TabManager::new(320.0, 200.0);
+            default_page(&mut tabs).load_html_str(&format!(r#"<a href="{url}">go</a>"#), None);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
             dir
         });
         handshake(&mut client);
@@ -482,10 +601,10 @@ mod tests {
         let dir = temp_frame_dir("act-on-focus");
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
-            page.load_html_str(r#"<input id="name" type="text" placeholder="Name">"#, None);
+            let mut tabs = TabManager::new(320.0, 200.0);
+            default_page(&mut tabs).load_html_str(r#"<input id="name" type="text" placeholder="Name">"#, None);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
             dir
         });
         handshake(&mut client);
@@ -513,10 +632,10 @@ mod tests {
         let dir = temp_frame_dir("act-on-unknown");
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
-            page.load_html_str(r#"<a href="/x">go</a>"#, None);
+            let mut tabs = TabManager::new(320.0, 200.0);
+            default_page(&mut tabs).load_html_str(r#"<a href="/x">go</a>"#, None);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
             dir
         });
         handshake(&mut client);
@@ -548,10 +667,10 @@ mod tests {
         let dir = temp_frame_dir("stale-id-across-navigation");
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
-            page.load_html_str(r#"<a href="/x">go</a>"#, None);
+            let mut tabs = TabManager::new(320.0, 200.0);
+            default_page(&mut tabs).load_html_str(r#"<a href="/x">go</a>"#, None);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
             dir
         });
         handshake(&mut client);
@@ -583,10 +702,10 @@ mod tests {
         let dir = temp_frame_dir("highlight");
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
-            page.load_html_str(r#"<a href="/x">go</a>"#, None);
+            let mut tabs = TabManager::new(320.0, 200.0);
+            default_page(&mut tabs).load_html_str(r#"<a href="/x">go</a>"#, None);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
             dir
         });
         handshake(&mut client);
@@ -609,10 +728,10 @@ mod tests {
         let dir = temp_frame_dir("hover");
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
-            page.load_html_str(r#"<a href="/x">go</a>"#, None);
+            let mut tabs = TabManager::new(320.0, 200.0);
+            default_page(&mut tabs).load_html_str(r#"<a href="/x">go</a>"#, None);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
             dir
         });
         handshake(&mut client);
@@ -641,10 +760,10 @@ mod tests {
         let dir = temp_frame_dir("chrome-no-restart");
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
-            page.load_html_str("<p>hi</p>", None);
+            let mut tabs = TabManager::new(320.0, 200.0);
+            default_page(&mut tabs).load_html_str("<p>hi</p>", None);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
             dir
         });
         handshake(&mut client);
@@ -671,9 +790,9 @@ mod tests {
         let dir = temp_frame_dir("disconnect");
         let (client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
+            let mut tabs = TabManager::new(320.0, 200.0);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation)
+            run_session(&mut tabs, &mut server, &dir, &mut generation)
         });
         drop(client);
         assert!(handle.join().unwrap().is_ok());
@@ -684,9 +803,9 @@ mod tests {
         let dir = temp_frame_dir("handshake-not-hello-first");
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
+            let mut tabs = TabManager::new(320.0, 200.0);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation)
+            run_session(&mut tabs, &mut server, &dir, &mut generation)
         });
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
@@ -701,9 +820,9 @@ mod tests {
         let dir = temp_frame_dir("handshake-bad-version");
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
+            let mut tabs = TabManager::new(320.0, 200.0);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation)
+            run_session(&mut tabs, &mut server, &dir, &mut generation)
         });
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Hello { protocol_version: blueice_ipc::PROTOCOL_VERSION + 1 }).unwrap();
@@ -722,9 +841,9 @@ mod tests {
         let dir = temp_frame_dir("late-hello");
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
+            let mut tabs = TabManager::new(320.0, 200.0);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
             dir
         });
         handshake(&mut client);
@@ -745,10 +864,10 @@ mod tests {
         let dir = temp_frame_dir("request-id-echo");
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
-            page.load_html_str("<p>hi</p>", None);
+            let mut tabs = TabManager::new(320.0, 200.0);
+            default_page(&mut tabs).load_html_str("<p>hi</p>", None);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
             dir
         });
         handshake(&mut client);
@@ -768,9 +887,9 @@ mod tests {
         let dir = temp_frame_dir("unknown-variant");
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
-            let mut page = Page::new(320.0, 200.0);
+            let mut tabs = TabManager::new(320.0, 200.0);
             let mut generation = 0u64;
-            run_session(&mut page, &mut server, &dir, &mut generation).unwrap();
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
             dir
         });
         handshake(&mut client);
@@ -782,6 +901,240 @@ mod tests {
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Resize { width: 10, height: 10 }).unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
         assert!(matches!(reply, ServerMessage::FrameReady { .. }));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn open_tab_creates_a_second_tab_visible_in_list_tabs() {
+        let dir = temp_frame_dir("open-tab-list");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let mut generation = 0u64;
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
+            dir
+        });
+        handshake(&mut client);
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
+        let ServerMessage::Tabs(before) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Tabs") };
+        assert_eq!(before.len(), 1, "a fresh core starts with exactly one tab, same as before Phase 16");
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: None }).unwrap();
+        let ServerMessage::TabOpened { tab_id: new_id, url } = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected TabOpened") };
+        assert_eq!(url, None);
+        assert_ne!(new_id, before[0].id);
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
+        let ServerMessage::Tabs(after) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Tabs") };
+        assert_eq!(after.iter().map(|t| t.id).collect::<Vec<_>>(), vec![before[0].id, new_id]);
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn open_tab_with_a_url_navigates_it_and_sends_a_frame() {
+        let dir = temp_frame_dir("open-tab-with-url");
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = std::io::Read::read(&mut stream, &mut buf);
+            let body = "<p>opened via url</p>";
+            std::io::Write::write_all(&mut stream, format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).unwrap();
+        });
+
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let mut generation = 0u64;
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
+            dir
+        });
+        handshake(&mut client);
+
+        let url = format!("http://{addr}");
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: Some(url.clone()) }).unwrap();
+        let ServerMessage::TabOpened { tab_id: new_id, url: opened_url } = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected TabOpened") };
+        assert_eq!(opened_url, Some(url));
+        let frame = blueice_ipc::read_server_message(&mut client).unwrap();
+        assert!(matches!(frame, ServerMessage::FrameReady { .. }), "expected FrameReady, got {frame:?}");
+
+        // The new tab's content must actually be addressable afterward.
+        blueice_ipc::write_client_message_with_ids(&mut client, Some(new_id), None, &ClientMessage::GetRepresentation).unwrap();
+        let (reply_tab, _, reply) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+        assert_eq!(reply_tab, Some(new_id));
+        let ServerMessage::Representation(snapshot) = reply else { panic!("expected Representation, got {reply:?}") };
+        assert_eq!(snapshot.tab_id, new_id);
+        assert!(snapshot.nodes.iter().any(|n| n.name.as_deref() == Some("opened via url")));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn open_tab_with_a_failing_url_replies_error_not_tab_opened() {
+        let dir = temp_frame_dir("open-tab-failing-url");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let mut generation = 0u64;
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
+            dir
+        });
+        handshake(&mut client);
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: Some("not-a-valid-url".to_string()) }).unwrap();
+        let reply = blueice_ipc::read_server_message(&mut client).unwrap();
+        assert!(matches!(reply, ServerMessage::Error { .. }), "expected Error, got {reply:?}");
+
+        // The session must still be alive and taking new commands
+        // afterward -- proven the same way every other no-crash case
+        // in this file is.
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
+        assert!(matches!(blueice_ipc::read_server_message(&mut client).unwrap(), ServerMessage::Tabs(_)));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn an_action_addressed_to_one_tab_never_affects_another_tabs_state() {
+        let dir = temp_frame_dir("tab-isolation");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            default_page(&mut tabs).load_html_str("<p>tab one</p>", None);
+            let mut generation = 0u64;
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
+            dir
+        });
+        handshake(&mut client);
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
+        let ServerMessage::Tabs(initial) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Tabs") };
+        let tab_one = initial[0].id;
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: None }).unwrap();
+        let ServerMessage::TabOpened { tab_id: tab_two, .. } = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected TabOpened") };
+
+        // Scroll only tab_two.
+        blueice_ipc::write_client_message_with_ids(&mut client, Some(tab_two), None, &ClientMessage::Scroll { delta_y: 500.0 }).unwrap();
+        let frame = blueice_ipc::read_server_message(&mut client).unwrap();
+        assert!(matches!(frame, ServerMessage::FrameReady { .. }));
+
+        // tab_one's representation must be completely unaffected --
+        // still showing its own content, scroll untouched.
+        blueice_ipc::write_client_message_with_ids(&mut client, Some(tab_one), None, &ClientMessage::GetRepresentation).unwrap();
+        let (_, _, reply) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+        let ServerMessage::Representation(snap) = reply else { panic!("expected Representation, got {reply:?}") };
+        assert_eq!(snap.tab_id, tab_one);
+        assert_eq!(snap.scroll_y, 0.0, "scrolling tab_two must not move tab_one's scroll position");
+        assert!(snap.nodes.iter().any(|n| n.name.as_deref() == Some("tab one")));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_message_addressed_to_an_unknown_tab_replies_error_not_a_silent_no_op() {
+        let dir = temp_frame_dir("unknown-tab-error");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let mut generation = 0u64;
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
+            dir
+        });
+        handshake(&mut client);
+
+        blueice_ipc::write_client_message_with_ids(&mut client, Some(999_999), None, &ClientMessage::GetRepresentation).unwrap();
+        let (reply_tab, _, reply) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+        assert_eq!(reply_tab, Some(999_999), "the reply should still echo back which (nonexistent) tab was addressed");
+        assert!(matches!(reply, ServerMessage::Error { .. }), "expected Error, got {reply:?}");
+
+        // The session must survive an unknown-tab error, same as every
+        // other error case in this file.
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
+        assert!(matches!(blueice_ipc::read_server_message(&mut client).unwrap(), ServerMessage::Tabs(_)));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn close_tab_removes_it_and_a_later_message_to_it_becomes_an_error() {
+        let dir = temp_frame_dir("close-tab");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let mut generation = 0u64;
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
+            dir
+        });
+        handshake(&mut client);
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: None }).unwrap();
+        let ServerMessage::TabOpened { tab_id: new_id, .. } = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected TabOpened") };
+
+        blueice_ipc::write_client_message_with_ids(&mut client, Some(new_id), None, &ClientMessage::CloseTab).unwrap();
+        let (reply_tab, _, reply) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+        assert_eq!(reply_tab, Some(new_id));
+        assert_eq!(reply, ServerMessage::TabClosed { tab_id: new_id });
+
+        blueice_ipc::write_client_message_with_ids(&mut client, Some(new_id), None, &ClientMessage::GetRepresentation).unwrap();
+        let (_, _, reply) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+        assert!(matches!(reply, ServerMessage::Error { .. }), "a closed tab's id must no longer resolve, expected Error, got {reply:?}");
+
+        // Closing again is a harmless-but-reported "unknown tab" error,
+        // not a panic or a second TabClosed.
+        blueice_ipc::write_client_message_with_ids(&mut client, Some(new_id), None, &ClientMessage::CloseTab).unwrap();
+        let (_, _, reply) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+        assert!(matches!(reply, ServerMessage::Error { .. }));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_reply_to_an_untagged_request_still_echoes_the_resolved_default_tab_id() {
+        // The load-bearing property that makes broadcast-shared,
+        // multi-tab connections work at all: a request that left
+        // `tab_id` implicit still gets a reply that self-discloses the
+        // *concrete* tab it resolved to, not `None` -- otherwise a
+        // second client sharing the connection via `blueice-launcher`'s
+        // broker could never tell which tab an untagged client's
+        // broadcasted reply was actually about.
+        let dir = temp_frame_dir("echo-resolved-default-tab");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let mut generation = 0u64;
+            run_session(&mut tabs, &mut server, &dir, &mut generation).unwrap();
+            dir
+        });
+        handshake(&mut client);
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
+        let ServerMessage::Tabs(tabs) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Tabs") };
+        let default_tab_id = tabs[0].id;
+
+        // Sent with no tab_id at all -- the envelope-level default.
+        blueice_ipc::write_client_message_with_id(&mut client, None, &ClientMessage::GetRepresentation).unwrap();
+        let (reply_tab, _, reply) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+        assert_eq!(reply_tab, Some(default_tab_id), "the reply must echo the resolved tab, not None");
+        assert!(matches!(reply, ServerMessage::Representation(_)));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();

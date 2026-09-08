@@ -6,3 +6,4 @@ license.workspace = true
 
 [dependencies]
 blueice-ipc = { path = "../ipc" }
+sysinfo = "0.39.6"

@@ -26,6 +26,15 @@ pub struct AiSnapshot {
     /// (`phase-5-ai-representation-output/PLAN.md`'s "same render
     /// pass" requirement).
     pub generation: u64,
+    /// Which tab this snapshot is of -- `phase-16-multi-tab-and-tab-
+    /// groups/PLAN.md`'s wire-protocol addressing. Carried here (not
+    /// just on the envelope's `tab_id`) because a consumer like
+    /// `blueice-mcp-server` unwraps `ServerMessage::Representation`
+    /// before handing it on to its own MCP tool result, at which point
+    /// the envelope is gone -- without this field an AI agent would
+    /// have no self-contained way to know which tab a snapshot came
+    /// from.
+    pub tab_id: u64,
     pub url: Option<String>,
     pub scroll_y: f64,
     pub nodes: Vec<AiNode>,

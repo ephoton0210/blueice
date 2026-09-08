@@ -203,8 +203,8 @@ impl Page {
     /// counter) so a snapshot and the `FrameReady` sent alongside it
     /// can share the same number, which is what makes "same render
     /// pass" a checkable property rather than an assertion.
-    pub fn snapshot(&self, generation: u64) -> AiSnapshot {
-        crate::ai_snapshot::build(self, generation)
+    pub fn snapshot(&self, generation: u64, tab_id: u64) -> AiSnapshot {
+        crate::ai_snapshot::build(self, generation, tab_id)
     }
 
     /// The full DOM tree, in `blueice_dom::dump`'s canonical text
@@ -487,7 +487,7 @@ mod tests {
         let mut page = Page::new(320.0, 200.0);
         page.load_html_str(r#"<div style="background-color: red;">x</div>"#, None);
         assert!(page.dom_dump().contains("<div>"));
-        assert!(page.snapshot(0).nodes.is_empty());
+        assert!(page.snapshot(0, 1).nodes.is_empty());
     }
 
     fn all_text(frame: &Frame) -> String {

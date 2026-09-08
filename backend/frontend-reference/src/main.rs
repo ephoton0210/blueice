@@ -248,7 +248,21 @@ impl ApplicationHandler<UserEvent> for App {
             // sharing this connection via `blueice-launcher`'s broker
             // handshaking on its own doesn't change anything here.
             // `Unknown` is the forward-compatibility fallback (plan §3).
-            UserEvent::Server(ServerMessage::Representation(_) | ServerMessage::Dom(_) | ServerMessage::Hello { .. } | ServerMessage::Unknown) => {}
+            // `TabOpened`/`TabClosed`/`Tabs`
+            // (`phase-16-multi-tab-and-tab-groups/PLAN.md`) are likewise
+            // ignored here -- this reference frontend has no tab-strip
+            // UI yet (Milestone C2, deliberately deferred), so it only
+            // ever shows the one implicit default tab's frames, the
+            // same way it always has.
+            UserEvent::Server(
+                ServerMessage::Representation(_)
+                | ServerMessage::Dom(_)
+                | ServerMessage::Hello { .. }
+                | ServerMessage::Unknown
+                | ServerMessage::TabOpened { .. }
+                | ServerMessage::TabClosed { .. }
+                | ServerMessage::Tabs(_),
+            ) => {}
             UserEvent::Disconnected => {
                 eprintln!("blueice-frontend: core disconnected");
                 event_loop.exit();

@@ -6,8 +6,8 @@
 //! (per `CLAUDE.md`'s core requirement, one instance/one render pass
 //! shared by whatever's watching -- a human's `frontend` window today,
 //! an AI client later). This binary is deliberately thin: all the
-//! logic it runs lives in `blueice_engine::{Page, session}`, already
-//! covered by their own unit tests against an in-process `UnixStream`
+//! logic it runs lives in `blueice_engine::{TabManager, session}`,
+//! already covered by their own unit tests against an in-process `UnixStream`
 //! pair -- this file is just argument parsing and wiring a real
 //! `UnixListener` to that already-tested loop, matching how `dev` mode
 //! is meant to be verified per `TEST_PLAN.md`: automated tests own the
@@ -17,7 +17,7 @@
 //! disconnects or sends `Shutdown` -- there is no multi-frontend
 //! support in this reference implementation.
 
-use blueice_engine::{session, Page};
+use blueice_engine::{session, TabManager};
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -85,9 +85,9 @@ fn main() -> ExitCode {
 
     let result = (|| -> std::io::Result<()> {
         let (mut stream, _) = listener.accept()?;
-        let mut page = Page::new(args.width, args.height);
+        let mut tabs = TabManager::new(args.width, args.height);
         let mut generation = 0u64;
-        session::run_session(&mut page, &mut stream, &frame_dir, &mut generation)
+        session::run_session(&mut tabs, &mut stream, &frame_dir, &mut generation)
     })();
 
     let _ = std::fs::remove_file(&args.socket);
