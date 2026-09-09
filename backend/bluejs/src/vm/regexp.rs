@@ -23,6 +23,7 @@ impl Vm {
             self.define_data(constructor, "name", Value::String("RegExp".into()), false, false, true)?;
             self.define_data(constructor, "length", Value::Number(2.0), false, false, true)?;
             self.define_data(prototype, "constructor", Value::Object(constructor), true, false, true)?;
+            self.install_native(constructor, function_prototype, "escape", 1, NativeFunction::RegExpEscape)?;
             for (name, method) in [("exec", RegExpMethod::Exec), ("test", RegExpMethod::Test), ("toString", RegExpMethod::ToString)] {
                 self.install_native(prototype, function_prototype, name, if method == RegExpMethod::ToString { 0 } else { 1 }, NativeFunction::RegExpMethod(method))?;
             }
@@ -47,6 +48,18 @@ impl Vm {
             self.globals.insert("RegExp".into(), constructor);
         }
         result
+    }
+
+    pub(super) fn regexp_escape(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        let Value::String(string) = value else { return Err(RuntimeError::TypeError("RegExp.escape requires a String".into())) };
+        let mut result = JsString::default();
+        for (index, scalar) in char::decode_utf16(string.as_code_units().iter().copied()).enumerate() {
+            self.charge_step()?;
+            let point = scalar.map_or_else(|e| u32::from(e.unpaired_surrogate()), |c| c as u32);
+            let part = crate::regexp::escape_code_point(point, index == 0);
+            native::append(&mut result, &part, self.config.max_string_bytes)?;
+        }
+        Ok(Value::String(result))
     }
 
     pub(super) fn install_getter(&mut self, owner: ObjectId, prototype: ObjectId, key: PropertyName, name: &str, native: NativeFunction) -> Result<(), RuntimeError> {

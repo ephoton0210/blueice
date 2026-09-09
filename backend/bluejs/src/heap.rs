@@ -111,12 +111,21 @@ pub struct HeapStats {
 pub(crate) type RegExpIteratorState = (ObjectId, JsString, bool, bool, bool);
 pub(crate) type ClosureState = (Rc<Bytecode>, Vec<ObjectId>, Value);
 
+#[derive(Clone)]
+pub(crate) struct BoundFunction {
+    pub target: ObjectId,
+    pub this: Value,
+    pub args: Vec<Value>,
+    pub constructible: bool,
+}
+
 enum ObjectKind {
     Ordinary,
     Array { length: u32 },
     String(JsString),
     NativeFunction { function: NativeFunction, initial_name: JsString },
     Closure { code: Rc<Bytecode>, captures: Vec<ObjectId>, this: Value },
+    BoundFunction(BoundFunction),
     StringIterator { string: JsString, position: usize },
     RegExp(Rc<crate::regexp::RegExp>),
     BoxedPrimitive(Value),
@@ -157,6 +166,7 @@ impl Object {
             .chain(self.attributes.values().flat_map(|d| d.get.iter().chain(d.set.iter()).filter_map(Value::object_id)))
             .chain(match &self.kind {
                 ObjectKind::Closure { captures, this, .. } => captures.iter().copied().chain(this.object_id()).collect::<Vec<_>>(),
+                ObjectKind::BoundFunction(bound) => std::iter::once(bound.target).chain(bound.this.object_id()).chain(bound.args.iter().filter_map(Value::object_id)).collect(),
                 ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
                 ObjectKind::ArrayIterator { object, .. } => vec![*object],
                 _ => Vec::new(),
@@ -268,6 +278,17 @@ impl Heap {
 
     pub(crate) fn alloc_closure(&mut self, code: Rc<Bytecode>, captures: Vec<ObjectId>, this: Value, prototype: ObjectId) -> Result<ObjectId, HeapError> {
         self.alloc(ObjectKind::Closure { code, captures, this }, Some(prototype))
+    }
+
+    pub(crate) fn alloc_bound_function(&mut self, bound: BoundFunction, prototype: Option<ObjectId>) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::BoundFunction(bound), prototype)
+    }
+
+    pub(crate) fn bound_function(&self, object: ObjectId) -> Result<Option<&BoundFunction>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::BoundFunction(bound) => Some(bound),
+            _ => None,
+        })
     }
 
     pub(crate) fn alloc_regexp(&mut self, regexp: Rc<crate::regexp::RegExp>, prototype: ObjectId) -> Result<ObjectId, HeapError> {
@@ -473,6 +494,7 @@ impl Heap {
             .into_iter()
             .chain(match &kind {
                 ObjectKind::Closure { captures, this, .. } => captures.iter().copied().chain(this.object_id()).collect::<Vec<_>>(),
+                ObjectKind::BoundFunction(bound) => std::iter::once(bound.target).chain(bound.this.object_id()).chain(bound.args.iter().filter_map(Value::object_id)).collect(),
                 ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
                 ObjectKind::ArrayIterator { object, .. } => vec![*object],
                 _ => Vec::new(),
@@ -490,6 +512,7 @@ impl Heap {
                 ObjectKind::BoxedPrimitive(value) => value.payload_bytes(),
                 ObjectKind::NativeFunction { initial_name, .. } => initial_name.byte_len(),
                 ObjectKind::Closure { captures, this, .. } => captures.len() * size_of::<ObjectId>() + this.payload_bytes(),
+                ObjectKind::BoundFunction(bound) => bound.this.payload_bytes() + bound.args.len() * size_of::<Value>() + bound.args.iter().map(Value::payload_bytes).sum::<usize>(),
                 _ => 0,
             };
         self.ensure_room(bytes, &protected)?;

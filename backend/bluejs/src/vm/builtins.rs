@@ -73,6 +73,9 @@ impl Vm {
 
     pub(super) fn is_constructor(&self, value: &Value) -> Result<bool, RuntimeError> {
         let Value::Object(id) = value else { return Ok(false) };
+        if let Some(bound) = self.heap.bound_function(*id)? {
+            return Ok(bound.constructible);
+        }
         if let Some((code, _, _)) = self.heap.closure(*id)? {
             return Ok(code.constructible);
         }
@@ -257,7 +260,11 @@ impl Vm {
     }
 
     pub(super) fn is_callable(&self, value: &Value) -> Result<bool, RuntimeError> {
-        Ok(if let Value::Object(id) = value { self.heap.native_function(*id)?.is_some() || self.heap.closure(*id)?.is_some() } else { false })
+        Ok(if let Value::Object(id) = value {
+            self.heap.native_function(*id)?.is_some() || self.heap.closure(*id)?.is_some() || self.heap.bound_function(*id)?.is_some()
+        } else {
+            false
+        })
     }
 
     pub(super) fn coerce_primitive(&mut self, value: &Value, hint: &str) -> Result<Value, RuntimeError> {
@@ -523,6 +530,9 @@ impl Vm {
     pub(super) fn native_call(&mut self, function: NativeFunction, receiver: Value, args: Vec<Value>, construct: bool) -> Result<Value, RuntimeError> {
         let first = native::argument(&args, 0);
         match function {
+            NativeFunction::Bind => self.bind_function(receiver, &args),
+            NativeFunction::HasInstance => self.has_instance(first.clone(), receiver, true).map(Value::Bool),
+            NativeFunction::RegExpEscape => self.regexp_escape(first),
             NativeFunction::ArrayIterator => {
                 let object = self.coerce_object(&receiver)?;
                 let prototype = self.array_iterator_prototype()?;
@@ -925,7 +935,9 @@ impl Vm {
         self.stack.push(Value::Object(id));
         self.define_data(id, "name", Value::String(format!("[Symbol.{symbol}]").into()), false, false, true)?;
         self.define_data(id, "length", Value::Number(length as f64), false, false, true)?;
-        self.define_data(owner, JsSymbol::well_known(symbol), Value::Object(id), true, false, true)?;
+        // Function.prototype @@hasInstance is the immutable Symbol method.
+        let mutable = native != NativeFunction::HasInstance;
+        self.define_data(owner, JsSymbol::well_known(symbol), Value::Object(id), mutable, false, mutable)?;
         self.stack.pop();
         Ok(())
     }

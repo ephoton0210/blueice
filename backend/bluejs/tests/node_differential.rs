@@ -13,6 +13,26 @@ use std::process::{Command, Stdio};
 fn primitive_completions_and_error_classes_match_node() {
     let mut corpus: Vec<String> = include_str!("fixtures/execution.txt").lines().filter(|line| !line.trim().is_empty() && !line.starts_with('#')).map(str::to_owned).collect();
     corpus.extend(include_str!("fixtures/string_protocols.txt").lines().filter(|line| !line.trim().is_empty() && !line.starts_with('#')).map(str::to_owned));
+    corpus.extend(include_str!("fixtures/bound_functions.txt").lines().filter(|line| !line.trim().is_empty() && !line.starts_with('#')).map(str::to_owned));
+    // Every UTF-16 code unit in initial and non-initial position. Batching
+    // amortizes realm bootstrap while retaining exact independent results.
+    for start in (0..=0xffff).step_by(256) {
+        let mut parts = Vec::new();
+        for unit in start..start + 256 {
+            parts.push(format!("RegExp.escape('\\u{unit:04x}')"));
+            parts.push(format!("RegExp.escape('_\\u{unit:04x}')"));
+        }
+        corpus.push(format!("[{}].join('|')", parts.join(",")));
+    }
+    for input in [r"\ud800\udc00", r"\udbff\udfff", r"\ud800\ud800\udc00", r"\ud800\udc00\udc00", r"\udc00\ud800", r"\udc00\ud800\udc00\ud800"] {
+        corpus.push(format!("RegExp.escape('{input}')"));
+    }
+    for length in ["Infinity", "-Infinity", "NaN", "-0", "-3.9", "3.9", "'3'", "Symbol()", "{valueOf(){throw 1;}}"] {
+        corpus.push(format!("function f(){{}} Object.defineProperty(f,'length',{{value:{length}}}); f.bind(null,1).length"));
+    }
+    for input in ["", "undefined", "null", "1", "true", "Symbol()", "new String('x')", "{toString(){throw 1;}}", "{[Symbol.toPrimitive](){throw 1;}}"] {
+        corpus.push(format!("RegExp.escape({input})"));
+    }
     // Cross-product exercises the independent regexp matcher, UTF-16 offsets,
     // replacement expansion and split capture insertion through String APIs.
     for pattern in ["", "a", "(a)(b)?", "(?<x>a)", "a|b", "^a", "b$", ".", "[ab]+", "[^a]", "a*?", "(?=a)", "(?<=a)b", "(a)\\1", "\\d+", "\\p{ASCII}", "[a&&b]", "\\u{1F600}"] {

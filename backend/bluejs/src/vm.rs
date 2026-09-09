@@ -11,6 +11,7 @@ use crate::primitive;
 use crate::{Bytecode, Heap, HeapConfig, HeapError, JsString, JsSymbol, ObjectId, Opcode, PropertyDescriptor, PropertyName, RootId, Value};
 use std::collections::HashMap;
 mod builtins;
+mod functions;
 mod regexp;
 use std::cmp::Ordering;
 use std::fmt;
@@ -410,6 +411,7 @@ impl Vm {
                 Opcode::Remainder => self.numeric(|a, b| a % b)?,
                 Opcode::StrictEqual => self.binary(|_, a, b| Ok(Value::Bool(a == b)))?,
                 Opcode::StrictNotEqual => self.binary(|_, a, b| Ok(Value::Bool(a != b)))?,
+                Opcode::Instanceof => self.binary(|vm, value, target| vm.has_instance(value, target, false).map(Value::Bool))?,
                 Opcode::Less => self.relational(|order| order == Ordering::Less)?,
                 Opcode::Greater => self.relational(|order| order == Ordering::Greater)?,
                 Opcode::LessEqual => self.relational(|order| order != Ordering::Greater)?,
@@ -623,6 +625,8 @@ impl Vm {
             self.define_data(function_prototype, "name", Value::String(JsString::default()), false, false, true)?;
             self.install_native(function_prototype, function_prototype, "call", 1, NativeFunction::Call)?;
             self.install_native(function_prototype, function_prototype, "apply", 2, NativeFunction::Apply)?;
+            self.install_native(function_prototype, function_prototype, "bind", 1, NativeFunction::Bind)?;
+            self.install_symbol_native(function_prototype, function_prototype, "hasInstance", 1, NativeFunction::HasInstance)?;
             self.install_native(function_prototype, function_prototype, "toString", 0, NativeFunction::FunctionToString)?;
             self.install_native(constructor, function_prototype, "fromCharCode", 1, NativeFunction::FromCharCode)?;
             self.install_native(constructor, function_prototype, "fromCodePoint", 1, NativeFunction::FromCodePoint)?;
@@ -710,7 +714,28 @@ impl Vm {
         result
     }
 
-    fn dispatch_call(&mut self, callee: Value, receiver: Value, args: Vec<Value>, construct: bool) -> Result<Value, RuntimeError> {
+    fn dispatch_call(&mut self, mut callee: Value, mut receiver: Value, mut args: Vec<Value>, construct: bool) -> Result<Value, RuntimeError> {
+        // Bound wrappers have no execution contexts of their own. Walk them
+        // with fuel rather than consuming Rust stack or the JS frame limit.
+        let mut prefixes = Vec::new();
+        while let Value::Object(id) = callee {
+            let Some(bound) = self.heap.bound_function(id)?.cloned() else { break };
+            self.charge_step()?;
+            if construct && !bound.constructible {
+                return Err(RuntimeError::TypeError("bound target is not a constructor".into()));
+            }
+            if construct && self.new_target == callee {
+                self.new_target = Value::Object(bound.target);
+            }
+            callee = Value::Object(bound.target);
+            receiver = bound.this;
+            prefixes.push(bound.args);
+        }
+        if !prefixes.is_empty() {
+            // Concatenate once, starting at the innermost wrapper, to avoid
+            // repeatedly copying the accumulated arguments of long chains.
+            args = prefixes.into_iter().rev().flatten().chain(args).collect();
+        }
         if let Value::Object(id) = callee {
             if let Some((code, captures, lexical_this)) = self.heap.closure(id)? {
                 let receiver = if code.arrow { lexical_this } else { receiver };

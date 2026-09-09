@@ -101,3 +101,32 @@ pub(crate) fn advance(string: &JsString, position: usize, unicode: bool) -> usiz
         if unicode && units.get(position).is_some_and(|c| (0xd800..=0xdbff).contains(c)) && units.get(position + 1).is_some_and(|c| (0xdc00..=0xdfff).contains(c)) { 2 } else { 1 },
     )
 }
+
+// ECMA-262 §22.2.5.1 and EncodeForRegExpEscape. Classification is on
+// code points; astral pairs stay literal, while lone surrogates are escaped.
+pub(crate) fn escape_code_point(point: u32, first: bool) -> JsString {
+    let scalar = char::from_u32(point);
+    if first && scalar.is_some_and(|c| c.is_ascii_alphanumeric()) {
+        return format!("\\x{point:02x}").into();
+    }
+    if scalar.is_some_and(|c| "^$\\.*+?()[]{}|/".contains(c)) {
+        return format!("\\{}", scalar.unwrap()).into();
+    }
+    let control = match point {
+        0x09 => Some('t'),
+        0x0a => Some('n'),
+        0x0b => Some('v'),
+        0x0c => Some('f'),
+        0x0d => Some('r'),
+        _ => None,
+    };
+    if let Some(control) = control {
+        return format!("\\{control}").into();
+    }
+    if scalar.is_none_or(|c| ",-=<>#&!%:;@~'`\"".contains(c) || crate::primitive::whitespace(c)) {
+        return if point <= 0xff { format!("\\x{point:02x}") } else { format!("\\u{point:04x}") }.into();
+    }
+    let mut result = JsString::default();
+    result.push_code_point(point);
+    result
+}

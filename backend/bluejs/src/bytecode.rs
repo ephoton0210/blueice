@@ -92,6 +92,7 @@ opcodes! {
     DefineData: 1, 0;
     DefineAccessor: 5, 0;
     DeleteProperty: 1, 0;
+    Instanceof: 1, 0;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

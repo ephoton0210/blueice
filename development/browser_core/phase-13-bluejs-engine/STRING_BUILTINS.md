@@ -8,6 +8,7 @@ BlueIce owns its browser pipeline in Rust. `backend/bluejs` is its independent J
 
 | Commit | Foundation used by this change |
 | --- | --- |
+| `f97158f` | Complete String method surface and supporting object, callback, Symbol, iterator and RegExp protocols |
 | `76e001e` | UTF-16 strings, boxed String exotic properties, native calls and 28/35 core String methods |
 | `ed814bc` | TDZ, ECMAScript 2026 lexical corrections, source newline and numeric rules |
 | `fcc3126` | Conformance regressions, Node oracle and mandatory 100% BlueJS line coverage |
@@ -28,10 +29,11 @@ The missing String methods required runtime capabilities, not just new names in 
 | Unicode/value | `isWellFormed`, `toWellFormed`, four normalization forms, default case conversion, `toString`, `valueOf`; lone surrogate preservation and brand checks |
 | Locale | `localeCompare`, `toLocaleLowerCase`, `toLocaleUpperCase`, using the non-ECMA-402 contract below |
 | Patterns | `match`, `matchAll`, `search`, `replace`, `replaceAll`, `split`; five Symbol hooks, callable replacements, generic/custom exec results and global-pattern checks |
+| Literal patterns | `RegExp.escape`; strict String input, leading ASCII alphanumeric escaping, syntax/control/punctuation/whitespace categories, paired/lone surrogate handling |
 | Iteration | String, Array and RegExp String iterators; code-point advancement, spread, `for…of`, iterator identity and abrupt loop closing |
 | Templates | Tagged-template syntax, cooked/raw values, invalid tagged escapes, frozen cached template arrays, parser-selected RegExp lexical goals inside placeholders |
 | Legacy/browser | `substr`, all 13 HTML wrappers, quotation-mark escaping, `trimLeft`/`trimRight` identity aliases |
-| Dependencies | Compiled functions/arrows, captured binding cells, `this`, default/rest parameters, calls/apply, throw propagation, Symbol keys, descriptors/accessors, strict/sloppy writes/deletes, primitive boxing and observable ToPrimitive |
+| Dependencies | Compiled functions/arrows, captured binding cells, `this`, default/rest parameters, call/apply/bind, bound construction, `instanceof`/`Symbol.hasInstance`, throw propagation, Symbol keys, descriptors/accessors, strict/sloppy writes/deletes, primitive boxing and observable ToPrimitive |
 
 `property.rs` defines public `JsSymbol`, `PropertyName` and partial `PropertyDescriptor`. Existing string-only `Heap::own_keys` remains available; `own_property_keys` includes Symbols. The heap stores/traces descriptors without calling JavaScript; the VM handles getters, setters and coercions. Primitive String setters receive the original primitive receiver. Array conversion observes `join`; cyclic array joins terminate. Native function stringification uses immutable initial names. Compiled functions use the permitted `HostHasSourceTextAvailable = false` policy and produce NativeFunction syntax rather than retained source text.
 
@@ -47,23 +49,33 @@ Edition 17 RegExp `@@match` and `@@replace` read `flags`; Node 24 still reads th
 
 ## Resources and remaining conformance scope
 
-Intrinsics initialize lazily per VM, remain rooted after successful setup and roll back failed bootstrap edges. Closures, captures, iterators, descriptor values/accessors and thrown objects participate in GC rooting. A thrown or returned object survives until the next `execute`; execution bindings are fresh each time. Nested functions share the compiled instruction-byte budget. Dispatch, native loops and callbacks consume fuel; runtime calls have a 32-frame depth limit returning RangeError.
+Intrinsics initialize lazily per VM, remain rooted after successful setup and roll back failed bootstrap edges. Closures, captures, bound targets/receivers/arguments, iterators, descriptor values/accessors and thrown objects participate in GC rooting. A thrown or returned object survives until the next `execute`; execution bindings are fresh each time. Nested functions share the compiled instruction-byte budget. Dispatch, native loops and callbacks consume fuel; runtime calls have a 32-frame depth limit returning RangeError. Bound wrappers add no execution frames: calls and intrinsic instanceof delegation traverse them iteratively with fuel, and calls concatenate their argument prefixes once in target-first order.
 
 The heap budget accounts for managed records, UTF-16 payloads, keys/descriptors and internal capture/name data, not allocator capacity, compiled regex code, bytecode/AST storage or total RSS. The string limit bounds each runtime string. **Regress does not expose a matcher step budget or hard timeout: a single backtracking match or compilation is not bounded by VM instruction fuel.** Template placeholder extraction validates successive closing-brace candidates with the expression parser; source parsing is not covered by VM execution fuel. These are explicit resource limits, not language conformance exceptions.
 
-Supporting language features remain incomplete: BigInt, classes/super, bound/proxy functions, full argument/environment semantics, try/catch/finally, modules/eval, complete Object/Function/RegExp/Array builtins, multiple realms and persistent global bindings are separate work. Arbitrary programs using those dependencies cannot yet be used to claim complete String/Test262 conformance. RegExp.escape and the complete RegExp Test262 inventory are not part of the String protocol surface implemented here.
+Supporting language features remain incomplete: BigInt, classes/super, proxy functions, full argument/environment semantics, try/catch/finally, modules/eval, complete Object/Function/RegExp/Array builtins, multiple realms and persistent global bindings are separate work. Arbitrary programs using those dependencies cannot yet be used to claim complete String/Test262 conformance. RegExp.escape is implemented; the complete RegExp Test262 inventory remains open.
 
 ## Test review and validation
 
+### Continuation design (2026-09-09)
+
+The preceding slice is commit `f97158f`. This continuation implements [Function.prototype.bind](https://tc39.es/ecma262/2026/multipage/fundamental-objects.html#sec-function.prototype.bind), [bound exotic call/construct](https://tc39.es/ecma262/2026/multipage/ordinary-and-exotic-objects-behaviours.html#sec-bound-function-exotic-objects), [OrdinaryHasInstance](https://tc39.es/ecma262/2026/multipage/abstract-operations.html#sec-ordinaryhasinstance), [InstanceofOperator](https://tc39.es/ecma262/2026/multipage/ecmascript-language-expressions.html#sec-instanceofoperator), and [RegExp.escape/EncodeForRegExpEscape](https://tc39.es/ecma262/2026/multipage/text-processing.html#sec-regexp.escape), read before implementation against published edition 17.
+
+Use an immutable heap bound-function record with target, bound receiver/arguments and the target's constructor capability. Trace all internal object edges and charge retained argument/string/Symbol payloads. Create the bound object with the target's actual prototype before reading its own length and observable name; define only configurable, non-writable/non-enumerable length/name properties. Dispatch bound chains iteratively with fuel, prepend arguments and substitute newTarget only on identity with the current bound wrapper. Add the instanceof opcode and the non-writable/non-configurable Function.prototype Symbol.hasInstance method; respect custom methods and bound-target delegation, including primitive operands and throwing accessors. Iterative internal traversal avoids unbounded Rust recursion.
+
+RegExp.escape rejects non-String arguments without coercion, decodes UTF-16 code points without replacing lone surrogates, implements leading ASCII alphanumeric hex escaping plus the specified syntax/control/punctuation/whitespace rules, and enforces string growth and per-code-point instruction limits. The first nine public-pipeline tests failed before implementation. The completed continuation has eight bound-function/instanceof tests and five escape tests. Intl and matcher timeouts remain separate work.
+
+Dedicated review checked exact thrown values, signed-zero length, non-coercing metadata, getter order/prototype snapshots, overridden toString names, native/bound species, nonconstructible targets, direct/custom hasInstance, long argument-prefix order, every lone surrogate and surrogate-pair boundaries. GC tests retain only bound internal edges across executions, then check reclamation and return to the warmed heap baseline; failed oversized bindings are retried. A 1,100-wrapper test isolates traversal fuel from setup and confirms VM recovery. The Node corpus includes error classes but excludes primitive throws, whose exact values are asserted in the default tests.
+
 Public-pipeline tests cover observable conversion/getter order, Symbol identity and protocol lookup on objects and primitives, native metadata, boxed String descriptors, strict/sloppy operations, replacement callbacks/captures, named index identity, UTF-16 and zero-width matching, custom exec/species, templates, iterator closing, recursion, GC pressure and bootstrap retries across allocation ceilings. Heap tests cover descriptor transitions, non-extensibility, accessor tracing and partial array truncation. The dedicated test review found and fixed missing roots, bootstrap leaks, primitive protocol lookup, array join overrides, template/RegExp brace parsing, iterator unwinding and array length descriptor conversion.
 
-The Node oracle uses fresh VMs/realms, hex UTF-8 source transport and exact UTF-16 result transport, with **21,261 isolated scripts** on **Node v24.19.0**: the previous 16,498-script corpus, 227 fixed protocol regressions and 4,536 generated regex/flag/string combinations. Edition-17-only getter tests remain separate.
+The Node oracle uses fresh VMs/realms, hex UTF-8 source transport and exact UTF-16 result transport, with **21,604 isolated scripts** on **Node v24.19.0**: the previous 21,261-script corpus, 63 fixed bind/instanceof/escape regressions, 24 generated metadata/invalid-input/surrogate-pair cases and 256 batches containing **131,072 escape comparisons** (all 65,536 code units in initial and non-initial positions). Edition-17-only getter tests remain separate.
 
 Final validation on 2026-09-09:
 
-- **204 default unit/integration tests and two doc examples pass.**
-- `cargo llvm-cov -p blueice-bluejs --fail-under-lines 100 --summary-only -- --quiet`: **6,072/6,072 lines (100%)**, 636/636 functions, 94.61% regions. No engine files are excluded; line coverage is not full branch or specification coverage.
+- **217 default unit/integration tests and two doc examples pass.**
+- `cargo llvm-cov -p blueice-bluejs --fail-under-lines 100 --summary-only -- --quiet`: **6,220/6,220 lines (100%)**, 650/650 functions, 94.65% regions. No engine files are excluded; line coverage is not full branch or specification coverage.
 - Workspace all-target build, workspace Clippy (`-D warnings`), full workspace tests, crate rustdoc and the array-summing example (`Number(15.0)`) pass. Socket-based workspace tests ran with local socket permissions after sandbox runs reported `Operation not permitted`.
-- The final review extended array-length conversion and nested-function byte budgets; final BlueJS gate/oracle, workspace tests and lint cover those changes. Full workspace coverage was not rerun.
+- The continuation reran the BlueJS gate/oracle, workspace build/tests/lint and crate rustdoc. Full workspace coverage was not rerun.
 
 The complete String method surface and tested protocols are implemented. Complete arbitrary-program String/ECMAScript conformance still requires the supporting language work and edition-pinned Test262 audit described above.

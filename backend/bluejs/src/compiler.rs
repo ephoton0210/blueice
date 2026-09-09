@@ -760,7 +760,8 @@ fn binary_opcode(op: BinaryOp) -> Result<Opcode, CompileError> {
         BinaryOp::Gt => Opcode::Greater,
         BinaryOp::LtEq => Opcode::LessEqual,
         BinaryOp::GtEq => Opcode::GreaterEqual,
-        _ => return Err(CompileError::Unsupported("loose equality, in or instanceof")),
+        BinaryOp::Instanceof => Opcode::Instanceof,
+        _ => return Err(CompileError::Unsupported("loose equality or in")),
     })
 }
 

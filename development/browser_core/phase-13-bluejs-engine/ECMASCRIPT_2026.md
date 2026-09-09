@@ -12,15 +12,15 @@ Full completion requires an audited clause/feature inventory, a pinned Test262 r
 
 | Workstream | Current state / remaining work |
 | --- | --- |
-| Source grammar (§§11–16) | TDZ-related grammar, Number/source corrections, parser-selected regex literals, tagged templates and object methods/accessors exist. Unicode identifiers/escapes, all operators/strict early errors, labels, classes/private names, generators, async and modules remain. |
+| Source grammar (§§11–16) | TDZ-related grammar, Number/source corrections, parser-selected regex literals, tagged templates and object methods/accessors and instanceof exist. Unicode identifiers/escapes, remaining operators/strict early errors, labels, classes/private names, generators, async and modules remain. |
 | Values/conversions (§§6–7) | UTF-16 strings, Symbol identities/keys, String/Number/Boolean/Symbol boxing and observable ToPrimitive/ToString/ToNumber exist. BigInt and remaining abstract operations remain. |
 | Environments/execution (§§8–10, 14–16) | TDZ slots, compiled functions/arrows/captured cells, this/default/rest parameters, throw propagation, iteration/spread and for-of iterator closing exist. Full parameter/arguments/environments, persistent globals, eval, classes, try/catch/finally and modules remain. |
-| Object semantics (§§6, 10) | Ordinary descriptors/accessors, extensibility storage, String exotics, sparse arrays, user/native callables and GC exist. Bound/proxy objects, complete exotic algorithms and remaining internal methods need conformance work. |
-| Fundamental and numeric builtins (§§18–21) | Object descriptor/key/prototype helpers, partial Function/Number/Boolean/Symbol support and Reflect.construct exist as String dependencies. Complete builtin libraries, Error, BigInt, Math and Date remain. |
-| Text/indexed/collections (§§22–24) | All String method entry points and conversion/callback/RegExp/Symbol/locale/iterator paths are implemented; see the [String inventory](STRING_BUILTINS.md). Full RegExp/Array libraries, typed arrays, collections and iterator helpers remain. |
+| Object semantics (§§6, 10) | Ordinary descriptors/accessors, extensibility storage, String exotics, sparse arrays, user/native/bound callables and GC exist. Proxy objects, complete exotic algorithms and remaining internal methods need conformance work. |
+| Fundamental and numeric builtins (§§18–21) | Object descriptor/key/prototype helpers, Function call/apply/bind/toString/Symbol.hasInstance, partial Number/Boolean/Symbol support and Reflect.construct exist as String dependencies. Complete builtin libraries, Error, BigInt, Math and Date remain. |
+| Text/indexed/collections (§§22–24) | All String method entry points and conversion/callback/RegExp/Symbol/locale/iterator paths are implemented; RegExp.escape is also implemented; see the [String inventory](STRING_BUILTINS.md). Full RegExp/Array libraries, typed arrays, collections and iterator helpers remain. |
 | Structured/control/reflection (§§25–28) | Reflect.ownKeys/construct exist. ArrayBuffer/DataView/Atomics/JSON, promises/jobs/generators/async, resource-management objects, WeakRef/finalization, full Reflect/Proxy and module namespaces remain. |
 | Memory model and annexes (§29, A–F) | Annex B String extensions are included. Shared-memory semantics, host-agent applicability and remaining normative-optional/legacy requirements need implementation/audit. |
-| Conformance infrastructure | Public regressions, a 100% line gate and a 21,261-script Node oracle exist. Full CLI/host harness, edition-pinned Test262 inventory and per-feature reporting remain. |
+| Conformance infrastructure | Public regressions, a 100% line gate and a 21,604-script Node oracle exist. Full CLI/host harness, edition-pinned Test262 inventory and per-feature reporting remain. |
 
 This is a workstream inventory, not a complete clause-by-clause audit. The [String implementation and dependency record](STRING_BUILTINS.md) distinguishes the implemented surface and observed protocols from edition-wide conformance and documents native matcher resource limits.
 
