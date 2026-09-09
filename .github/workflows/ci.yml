@@ -16,6 +16,15 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+      # `backend/core/html/tests/wpt_corpus.rs`'s WPT tree-construction
+      # gate (see `testing/TEST_PLAN.md`) needs this checked out or it
+      # just skips itself -- a sparse partial clone of the one
+      # subdirectory that matters, not the whole web-platform-tests
+      # monorepo, per `reference/README.md`'s own fetch commands.
+      - name: Fetch WPT tree-construction corpus
+        run: |
+          git clone --filter=blob:none --sparse --depth 1 https://github.com/web-platform-tests/wpt.git development/browser_core/reference/wpt
+          git -C development/browser_core/reference/wpt sparse-checkout set html/syntax/parsing
       - name: Build
         run: cargo build --workspace --all-targets
       - name: Test

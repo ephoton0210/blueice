@@ -2,20 +2,23 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Scratch runner (reports, doesn't gate the build) against the full
-//! WPT/html5lib-tests tree-construction corpus
-//! (`development/browser_core/reference/wpt/`, see that directory's
-//! `README.md` to fetch it) -- covers real HTML5 compatibility, not
-//! just the handful of hand-picked cases already in
-//! `../../../development/browser_core/testing/fixtures/`. Reuses
-//! `blueice_testing`'s fixture parser unmodified -- the corpus's own
-//! `#data`/`#errors`/`#document`/`#document-fragment` format is
-//! exactly what that parser already reads.
+//! CI gate (see `wpt_tree_construction_corpus`'s trailing `assert!`s)
+//! against the full WPT/html5lib-tests tree-construction corpus
+//! (`development/browser_core/reference/wpt/`, fetched by `.github/
+//! workflows/ci.yml` before this test runs -- see that directory's own
+//! `README.md` for the fetch commands, needed for a local run too) --
+//! covers real HTML5 compatibility, not just the handful of hand-picked
+//! cases already in `../../../development/browser_core/testing/fixtures/`.
+//! Skips itself (doesn't fail) when the corpus isn't checked out
+//! locally, so a plain `cargo test --workspace` without that optional
+//! fetch still passes for local development. Reuses `blueice_testing`'s
+//! fixture parser unmodified -- the corpus's own `#data`/`#errors`/
+//! `#document`/`#document-fragment` format is exactly what that parser
+//! already reads.
 //!
-//! **Deliberately not a hard pass/fail gate.** A byte-exact dump
-//! comparison against the raw corpus starts at ~19% pass, almost
-//! entirely because of already-known, deliberate MVP scope cuts
-//! (`blueice_dom` never materializes Comment/Doctype nodes at all,
+//! A byte-exact dump comparison against the raw corpus starts at ~19%
+//! pass, almost entirely because of already-known, deliberate MVP scope
+//! cuts (`blueice_dom` never materializes Comment/Doctype nodes at all,
 //! SVG/MathML foreign content, `<template>`, the full named-character-
 //! reference table, ...) rather than bugs -- [`strip_unsupported_lines`]
 //! and [`likely_out_of_scope_reason`] exist to separate that expected
@@ -31,8 +34,12 @@
 //! and/or its own merged test-suite updates, not just a reference
 //! implementation's source, which can itself be stale -- see
 //! `likely_out_of_scope_reason`'s own doc comment for the one case that
-//! taught this the hard way). Converting this into an actual CI gate is
-//! future work, not done here.
+//! taught this the hard way). With genuine failures at zero, this
+//! became worth gating on for real: `wpt_tree_construction_corpus` now
+//! asserts `unclassified` is empty *and* that the total pass count
+//! hasn't dropped below [`BASELINE_PASSED`] (a second, coarser check
+//! against a real regression getting silently absorbed into an
+//! already-known classification bucket).
 
 use blueice_testing::load_fixtures;
 use std::path::PathBuf;
@@ -255,7 +262,28 @@ fn wpt_tree_construction_corpus() {
     for (name, expected, actual) in &unclassified {
         println!("--- {name} ---\nexpected:\n{expected}\nactual:\n{actual}\n");
     }
+
+    // The actual gate. Two separate checks, since `likely_out_of_scope_reason`'s
+    // classification is a heuristic (see its own doc comment) that could in
+    // principle bucket a genuine new regression into an existing "known
+    // scope cut" reason without anyone noticing -- `total_passed` catches
+    // that class of miss even when `unclassified` stays empty.
+    assert!(unclassified.is_empty(), "{} unclassified WPT tree-construction failure(s) -- see the printed diffs above; either fix the bug or extend `likely_out_of_scope_reason` with a specific, justified reason", unclassified.len());
+    assert!(
+        total_passed >= BASELINE_PASSED,
+        "WPT tree-construction pass count regressed: {total_passed} passed vs. a baseline of {BASELINE_PASSED} -- a real regression that `likely_out_of_scope_reason` happened to bucket away rather than leave unclassified (check the per-file breakdown above for which file's pass count dropped). If this is instead a deliberate, reviewed change (e.g. the corpus itself was re-fetched and legitimately shifted), update `BASELINE_PASSED` to the new value in the same change."
+    );
 }
+
+/// The known-good WPT tree-construction pass count as of the last
+/// deliberate review of this gate (`development/browser_core/testing/TEST_PLAN.md`'s
+/// "WPT tree-construction corpus" section has the full history) --
+/// `wpt_tree_construction_corpus`'s own second assertion treats a drop
+/// below this as a build-breaking regression. Bump this only alongside
+/// a change that's actually supposed to move the number (a real bug fix
+/// that raises it, or a deliberate corpus re-fetch) -- never just to
+/// silence a failing assertion.
+const BASELINE_PASSED: usize = 1022;
 
 #[cfg(test)]
 mod tests {
