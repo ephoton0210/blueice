@@ -134,3 +134,55 @@ undefined.x
 null.x=missing
 null[missing]=1
 missing
+
+# Sparse-array slice: primitive completions only, like the earlier corpus.
+[].length
+[,,].length
+[1,].length
+[1,,].length
+[,,][0]
+typeof []
+let a=[2,4,6]; let s=0; for(let i=0;i<a.length;i++){s+=a[i];} s
+let a=[]; a[4]=7; a.length*10+a[4]
+let a=[1,2,3]; a.length=1; a[2]
+let a=[1]; let result=(a.length='3'); result==='3' && a.length===3
+let a=[1,2]; a.length=null; a.length
+let a=[1,2]; a.length=true; a.length
+let a=[1,2]; a.length=false; a.length
+let a=[1,2]; a.length=''; a.length
+let a=[]; a.length='0x10'; a.length
+let a=[]; a.length=-0; 1/a.length
+let a=[1,2,3]; let n=a.length--; n*10+a.length
+let a=[]; a.length+='2'; a.length
+let a=[]; let n=(a.length+='2'); n==='02' && a.length===2
+let a=[0]; let n=++a.length; n*10+a.length
+let i=0; let a=[i++,i++,i++]; a[0]*100+a[1]*10+a[2]
+let i=0; let a=[3]; let old=a[i++]++; old*100+a[0]*10+i
+let a=[]; a.length=-1
+let a=[]; a.length=1.5
+let a=[]; a.length=NaN
+let a=[]; a.length=Infinity
+let a=[]; a.length=-Infinity
+let a=[]; a.length=4294967296
+let a=[]; a.length=undefined
+let a=[]; a.length='invalid'
+let a=[]; a.length--
+let a=[1]; a.length/=2
+let a=[]; a.length=4294967295; a.length++
+let a=[]; a[4294967294]=8; a.length
+let a=[]; a[4294967295]=8; a.length
+let a=[]; a[4294967295]=8; a.length=0; a[4294967295]
+let a=[]; a['01']=3; a['-0']=4; a.length
+let a=[]; a[-0]=3; a.length*10+a[0]
+let a=[1]; a.length=4294967295; a[4294967294]
+let a=[1]; a.length=4294967295; a.length=1; a[0]
+let a=[1]; a.length=0; a.length=1; a[0]
+let a=[]; a.length=4294967295; a.length=0; a.length
+let a=[]; a[0]=a; a===a[0]
+let a=[1]; a!==[1] && a!=={}
+let a=[1]; a[0]=[a.length=0]; a.length*10+a[0].length
+let a=[1]; let alias=a; a[0]=(a=[2]); alias[0]===a
+let a=[1]; let o={__proto__:a}; o[0]*10+o.length
+let a=[1]; let o={__proto__:a}; o.length=4; a.length*10+o.length
+let a=[1]; let o={__proto__:a}; o[2]=4; a.length*10+o[2]
+let a=[]; a.length-= -2; a.length*=2; a.length/=2; a.length%=2; a.length

@@ -69,6 +69,7 @@ opcodes! {
     SetCompletion: 1, 0;
     ClearCompletion: 1, 0;
     Halt: 1, 0;
+    NewArray: 5, 0;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

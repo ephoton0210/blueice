@@ -328,6 +328,19 @@ impl Compiler {
                 self.expression(alternate)?;
                 self.patch(end, self.offset()?);
             }
+            Expr::Array(elements) => {
+                let length = u32::try_from(elements.len()).map_err(|_| CompileError::ProgramTooLarge)?;
+                self.emit(Opcode::NewArray, length)?;
+                for (index, element) in elements.iter().enumerate() {
+                    let Some(element) = element else { continue };
+                    let ArrayElement::Normal(value) = element else { return Err(CompileError::Unsupported("array spread")) };
+                    self.emit(Opcode::Dup, 0)?;
+                    self.constant(Value::String(index.to_string()))?;
+                    self.expression(value)?;
+                    self.emit(Opcode::SetProperty, 0)?;
+                    self.emit(Opcode::Pop, 0)?;
+                }
+            }
             Expr::Object(properties) => {
                 self.emit(Opcode::NewObject, 0)?;
                 let mut has_proto = false;
@@ -386,7 +399,7 @@ impl Compiler {
                     self.emit(Opcode::Add, 0)?;
                 }
             }
-            _ => return Err(CompileError::Unsupported("arrays, functions/calls, constructors or this")),
+            _ => return Err(CompileError::Unsupported("functions/calls, constructors or this")),
         }
         Ok(())
     }

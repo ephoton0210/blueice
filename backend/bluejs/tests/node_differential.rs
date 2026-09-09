@@ -66,6 +66,7 @@ fn canonical(result: Result<Value, RuntimeError>) -> String {
         Ok(Value::String(s)) => format!("string:{}", s.bytes().map(|b| format!("{b:02x}")).collect::<String>()),
         Err(RuntimeError::ReferenceError(_)) => "error:ReferenceError".into(),
         Err(RuntimeError::TypeError(_)) => "error:TypeError".into(),
+        Err(RuntimeError::RangeError(_)) => "error:RangeError".into(),
         other => panic!("unexpected fixture result: {other:?}"),
     }
 }

@@ -297,7 +297,7 @@ fn object_operations_preserve_identity_and_evaluation_order() {
 fn unsupported_syntax_and_invalid_bindings_fail_before_execution() {
     for source in [
         "if(false) { function f() {} }",
-        "[1,2]",
+        "[...x]",
         "({ ...x })",
         "let [x]=y",
         "f()",

@@ -30,6 +30,7 @@ impl Default for VmConfig {
 pub enum RuntimeError {
     ReferenceError(String),
     TypeError(String),
+    RangeError(String),
     Unsupported(&'static str),
     Heap(HeapError),
     InstructionLimit,
@@ -41,6 +42,7 @@ impl fmt::Display for RuntimeError {
         match self {
             Self::ReferenceError(name) => write!(f, "ReferenceError: {name} is not defined"),
             Self::TypeError(message) => write!(f, "TypeError: {message}"),
+            Self::RangeError(message) => write!(f, "RangeError: {message}"),
             Self::Unsupported(feature) => write!(f, "BlueJS execution does not yet support {feature}"),
             Self::Heap(error) => error.fmt(f),
             Self::InstructionLimit => f.write_str("BlueJS instruction budget exhausted"),
@@ -58,7 +60,10 @@ impl std::error::Error for RuntimeError {
 }
 impl From<HeapError> for RuntimeError {
     fn from(error: HeapError) -> Self {
-        Self::Heap(error)
+        match error {
+            HeapError::InvalidArrayLength => Self::RangeError("invalid array length".into()),
+            _ => Self::Heap(error),
+        }
     }
 }
 
@@ -68,6 +73,7 @@ pub struct Vm {
     config: VmConfig,
     heap: Heap,
     object_prototype: ObjectId,
+    array_prototype: ObjectId,
     result_root: Option<RootId>,
     stack: Vec<Value>,
     bindings: Vec<Value>,
@@ -81,13 +87,17 @@ impl Default for Vm {
 }
 
 impl Vm {
+    /// Creates an isolated VM and its rooted object/array prototypes.
+    /// The heap budget must accommodate both prototype records.
     pub fn new(config: VmConfig) -> Result<Self, HeapError> {
         let mut heap = Heap::new(config.heap)?;
         let object_prototype = heap.alloc_object(None)?;
         // Permanent root, released with the heap. Builtin properties and
         // callable Object.prototype methods are a later slice.
         heap.root(object_prototype)?;
-        Ok(Self { config, heap, object_prototype, result_root: None, stack: Vec::new(), bindings: Vec::new(), completion: Value::Undefined })
+        let array_prototype = heap.alloc_array(0, Some(object_prototype))?;
+        heap.root(array_prototype)?;
+        Ok(Self { config, heap, object_prototype, array_prototype, result_root: None, stack: Vec::new(), bindings: Vec::new(), completion: Value::Undefined })
     }
 
     pub fn heap(&self) -> &Heap {
@@ -146,7 +156,7 @@ impl Vm {
         for root in roots {
             self.heap.unroot(root).expect("temporary root belongs to this safepoint");
         }
-        result.map_err(RuntimeError::Heap)
+        result.map_err(RuntimeError::from)
     }
 
     fn run(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
@@ -236,6 +246,11 @@ impl Vm {
                     let id = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
                     self.stack.push(Value::Object(id));
                 }
+                Opcode::NewArray => {
+                    let prototype = self.array_prototype;
+                    let id = self.with_roots(|heap| heap.alloc_array(operand as u32, Some(prototype)))?;
+                    self.stack.push(Value::Object(id));
+                }
                 Opcode::GetProperty => {
                     let (object, key) = self.property_reference()?;
                     self.stack.push(self.heap.get(object, &key)?);
@@ -243,14 +258,14 @@ impl Vm {
                 Opcode::SetProperty => {
                     let value = self.pop();
                     let (object, key) = self.property_reference()?;
-                    self.with_roots(|heap| heap.set(object, &key, value.clone()))?;
+                    self.set_property(object, &key, &value)?;
                     self.stack.push(value);
                 }
                 Opcode::UpdateProperty => {
                     let (object, key) = self.property_reference()?;
                     let old = primitive::number(&self.heap.get(object, &key)?)?;
                     let new = if operand & 1 == 0 { old + 1.0 } else { old - 1.0 };
-                    self.with_roots(|heap| heap.set(object, &key, Value::Number(new)))?;
+                    self.set_property(object, &key, &Value::Number(new))?;
                     self.stack.push(Value::Number(if operand & 2 == 0 { old } else { new }));
                 }
                 Opcode::SetLiteralPrototype => {
@@ -267,6 +282,11 @@ impl Vm {
                 Opcode::Halt => return Ok(self.completion.clone()),
             }
         }
+    }
+
+    fn set_property(&mut self, object: ObjectId, key: &str, value: &Value) -> Result<(), RuntimeError> {
+        let stored = if key == "length" && self.heap.is_array(object)? { Value::Number(primitive::number(value)?) } else { value.clone() };
+        self.with_roots(|heap| heap.set(object, key, stored))
     }
 
     fn property_reference(&mut self) -> Result<(ObjectId, String), RuntimeError> {

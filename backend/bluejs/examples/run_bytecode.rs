@@ -9,7 +9,7 @@ use blueice_bluejs::{compile, parse, Vm};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source = match std::env::args().nth(1) {
         Some(path) => std::fs::read_to_string(path)?,
-        None => "let o={sum:0}; for(let i=1;i<=5;i++){o.sum+=i;} o.sum".into(),
+        None => "let a=[1,2,3,4,5]; let sum=0; for(let i=0;i<a.length;i++){sum+=a[i];} sum".into(),
     };
     let bytecode = compile(&parse(&source).map_err(|error| format!("{error:?}"))?)?;
     let mut vm = Vm::default();

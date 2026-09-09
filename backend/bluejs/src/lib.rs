@@ -6,17 +6,18 @@
 //! (`development/browser_core/phase-13-bluejs-engine/PLAN.md`).
 //!
 //! The front end tokenizes/parses the Phase 2 language subset into an
-//! AST. The runtime-storage slice adds [`Value`] and [`Heap`]: ordinary
-//! data-property objects with stable handles, explicit roots, prototype
+//! AST. The runtime-storage slices add [`Value`] and [`Heap`]: ordinary
+//! objects and sparse arrays with stable handles, explicit roots, prototype
 //! lookup, and a two-generation collector. [`compile`] and [`Vm`] execute
 //! the first subset via operand-stack bytecode: primitive expressions,
-//! bindings, control flow and ordinary objects. Arrays/functions, native
-//! builtins, the event loop and browser integration remain future work.
+//! bindings, control flow, ordinary objects and array literals/indexing.
+//! Arrays preserve holes and enforce length growth/truncation. Functions,
+//! native methods, the event loop and browser integration remain future work.
 //!
 //! ```
 //! use blueice_bluejs::{compile, parse, Value, Vm};
 //!
-//! let program = parse("let o={sum:0}; for(let i=1;i<=5;i++){o.sum+=i;} o.sum").unwrap();
+//! let program = parse("let a=[1,2,3,4,5]; let sum=0; for(let i=0;i<a.length;i++){sum+=a[i];} sum").unwrap();
 //! let code = compile(&program)?;
 //! assert_eq!(Vm::default().execute(&code)?, Value::Number(15.0));
 //! # Ok::<(), Box<dyn std::error::Error>>(())
