@@ -23,9 +23,9 @@
 //! number look better. Over thirty real bugs were found and fixed this
 //! way across three triage passes (see `testing/TEST_PLAN.md`'s "WPT
 //! tree-construction corpus" section for the full list); the pass rate
-//! after normalizing away known scope cuts moved 39.0% -> 56.4% as a
+//! after normalizing away known scope cuts moved 39.0% -> 56.5% as a
 //! direct result, with unclassified failures (the ones actually worth
-//! reading) dropping from 669 to 21. Converting this into an actual CI
+//! reading) dropping from 669 to 20. Converting this into an actual CI
 //! gate (with a maintained skip-list) is future work, not done here.
 
 use blueice_testing::load_fixtures;
@@ -38,14 +38,41 @@ use std::path::PathBuf;
 /// this comparison should count as a failure). Applied to both sides
 /// so the comparison is fair to what BlueIce actually claims to
 /// support, rather than penalizing it for a documented non-goal.
+///
+/// A comment's own content can itself contain a literal newline (e.g.
+/// `comments01.dat`'s `<!-- BAR --!\n>BAZ -->` case), which the
+/// html5lib-tests dump format renders as a *second* raw line with no
+/// `<!--`/`| ` marker of its own -- just the comment's leftover
+/// content, ending in `-->`. A naive per-line filter drops the first
+/// line (it starts with `<!--`) but leaves that continuation line
+/// behind, producing a spurious mismatch against BlueIce's side (which
+/// has no such line at all, comments never being materialized). Fixed
+/// by tracking "still inside an unterminated comment's continuation"
+/// across lines and dropping those too, until the line that actually
+/// closes the comment (`-->`) is reached.
 fn strip_unsupported_lines(dump: &str) -> String {
-    dump.lines()
-        .filter(|line| {
-            let content = line.strip_prefix("| ").unwrap_or(line).trim_start();
-            !(content.starts_with("<!--") || content.starts_with("<!DOCTYPE"))
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+    let mut out = Vec::new();
+    let mut in_comment_continuation = false;
+    for line in dump.lines() {
+        let content = line.strip_prefix("| ").unwrap_or(line).trim_start();
+        if in_comment_continuation {
+            if content.ends_with("-->") {
+                in_comment_continuation = false;
+            }
+            continue;
+        }
+        if content.starts_with("<!--") {
+            if !content.ends_with("-->") {
+                in_comment_continuation = true;
+            }
+            continue;
+        }
+        if content.starts_with("<!DOCTYPE") {
+            continue;
+        }
+        out.push(line);
+    }
+    out.join("\n")
 }
 
 /// The Phase 2 MVP HTML element list (`phase-2-mvp-scope/PLAN.md`'s
@@ -198,5 +225,32 @@ fn wpt_tree_construction_corpus() {
     println!("=== {} UNCLASSIFIED failures (not an obvious scope cut -- worth reading) ===", unclassified.len());
     for (name, expected, actual) in &unclassified {
         println!("--- {name} ---\nexpected:\n{expected}\nactual:\n{actual}\n");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_unsupported_lines;
+
+    #[test]
+    fn drops_a_single_line_comment() {
+        let dump = "| <html>\n|   <body>\n|     \"FOO\"\n|     <!--  BAR  -->\n|     \"BAZ\"";
+        assert_eq!(strip_unsupported_lines(dump), "| <html>\n|   <body>\n|     \"FOO\"\n|     \"BAZ\"");
+    }
+
+    #[test]
+    fn drops_every_line_of_a_comment_whose_own_content_spans_a_literal_newline() {
+        // `comments01.dat`'s `<!-- BAR --!\n>BAZ -->` case: the
+        // comment's content contains a real newline, so its dump spans
+        // two raw lines with no per-line marker on the second one --
+        // both must be dropped, not just the first.
+        let dump = "| <html>\n|   <body>\n|     \"FOO\"\n|     <!--  BAR --!\n>BAZ -->";
+        assert_eq!(strip_unsupported_lines(dump), "| <html>\n|   <body>\n|     \"FOO\"");
+    }
+
+    #[test]
+    fn drops_a_doctype_line() {
+        let dump = "| <!DOCTYPE html>\n| <html>\n|   <body>";
+        assert_eq!(strip_unsupported_lines(dump), "| <html>\n|   <body>");
     }
 }
