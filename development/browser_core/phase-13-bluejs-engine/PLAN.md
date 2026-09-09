@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress (execution model, GC, and event-loop shape decided; process placement, language scope, and implementation itself still open)
+**Status**: In progress (execution model, GC, event-loop shape, process placement, and MVP language scope all decided; implementation itself not yet started)
 
 ## Objective
 
@@ -32,7 +32,7 @@ Build BlueIce's own JavaScript engine ("BlueJS") from scratch, rather than embed
 
 **Event loop / async — resolved to a concrete two-entry-point shape by [`research/js-bytecode-eventloop.md`](../research/js-bytecode-eventloop.md).** Real-world JS leans heavily on `Promise`/`async`/`await`, `setTimeout`, and event-driven callbacks — some form of event loop is required even for an MVP subset, and it has to interleave with `core`'s own render-pass/paint loop the way the HTML spec's processing model expects (script execution and rendering aren't independent of each other). The research found Blink's task scheduler and Gecko's event loop — two structurally unrelated codebases — independently converge on the same shape: microtasks drain unconditionally after every single macrotask, and frame production is a *separate, non-queued* entry point that runs scheduled script synchronously (in HTML-spec step order — both engines' source comments cite the actual spec step numbers) before layout/paint, checkpointing microtasks again afterward. **Decision: mirror this exactly — a generic macrotask loop that drains microtasks after each task, plus a distinct render-pass entry point (called from Phase 3's pipeline, not queued through the macrotask loop) that runs pending scheduled script before layout/paint and drains microtasks again on exit.**
 
-**Process placement — a genuinely hard question, not yet resolved**: every other risky/unstable subsystem in this project's architecture (`extension`, `ai-gatekeeper`, `ai-assistant`, `downloads`) is process-isolated from `core` specifically so it can't take `core` down. Script execution is historically one of the most crash/hang-prone parts of any browser engine (infinite loops, stack overflows, and — being BlueJS's first real implementation — engine bugs of its own). The counter-pressure: script needs to call DOM APIs constantly, and if that crosses a process/IPC boundary on every call, the performance cost is much larger than the comparatively coarse-grained isolation `extension` needs. Whether BlueJS runs in-process (with strong internal safeguards — execution timeouts, stack-depth limits) or out-of-process (with a fast enough DOM-access channel to stay usable) is unresolved and directly affects both `core`'s stability guarantee and real-world performance.
+**Process placement — resolved: out-of-process, isolated the same way `extension`/`ai-gatekeeper` are.** Every other risky/unstable subsystem in this project's architecture is process-isolated from `core` specifically so it can't take `core` down, and script execution is historically one of the most crash/hang-prone parts of any browser engine (infinite loops, stack overflows, and — being BlueJS's first real implementation — engine bugs of its own, with no track record yet to justify trusting it in-process the way a mature embedded engine might earn). The counter-pressure was DOM-call latency: script calls DOM APIs constantly, and crossing a process/IPC boundary on every single one is a real cost `extension`'s coarser-grained capability calls don't pay. Decided anyway, in favor of the stability guarantee, for the reasons below — see "Wiring design (resolved 2026-09-08)" for the concrete mechanism this implies.
 
 **Differential testing against Node.js — the correctness/performance validation strategy.** Rather than trusting a from-scratch interpreter's own test suite to catch its own bugs, cross-validate against a known-correct reference implementation:
 
@@ -51,18 +51,28 @@ This directly strengthens the conformance-test question below: running a Test262
 
 **`bluejs` reachable via MCP**: per Phase 12's own principle (MCP as an adapter over the internal IPC protocol, not a parallel channel), the `bluejs` shell doesn't grow a bespoke MCP-speaking mode of its own — it's invoked the same way any other capability is, through `backend/mcp-server/` translating `bluejs_run`/`bluejs_analyze` tool calls into calls against `bluejs`'s existing batch-mode/analysis interface.
 
+## Wiring design (resolved 2026-09-08)
+
+**Process shape**: `bluejs` runs as its own always-resident OS process (`ProcessRegistry`'s `AlwaysResident` policy, the same tier `core` and `ai-gatekeeper` already use — a script host that idle-tore-down mid-page would be observably wrong, unlike `mcp-server`'s stateless-adapter case) rather than a member of `core`'s own address space. One `bluejs` process per `core` instance, not per-tab: tabs are cheap `Page`s inside one `TabManager` already (Phase 16), and per-tab process spawn would multiply the exact IPC-fleet-memory cost `research/multi-process-memory.md` already flagged as needing explicit design rather than unbounded growth.
+
+**DOM-access channel — a new, separate `blueice_ipc::script` module, following the `blueice_ipc::extension` precedent (Phase 9) rather than `gatekeeper`'s.** `bluejs` is long-lived and stateful like `extension`, not one-shot like `gatekeeper`'s per-check connections, so it gets the same `Hello`-handshake-then-long-lived-connection shape `extension` uses — but a *distinct* module and enum vocabulary (`ScriptRequest`/`ScriptReply`), since folding script's DOM-call traffic into `blueice_ipc::extension`'s enums would force every extension-side match arm to also cover BlueJS's much higher-frequency, language-runtime-shaped requests (property get/set, method call, node creation) that have nothing to do with capability grants.
+
+**Latency mitigation for the "DOM calls constantly" cost that made this decision non-obvious**: two changes, additive on top of the plain per-call round trip so neither is required before the other ships. (1) *Batching*: a single `ScriptRequest::Batch(Vec<DomOp>)` for the common case of several DOM mutations in one script turn (e.g. the Phase 2 acceptance bar's `for` loop calling `createElement`/`appendChild` N times) — one round trip instead of N. (2) *Shared-memory read fast path*: reuse `blueice_ipc::shm`'s existing `mmap`-backed mechanism (already built for `frontend`'s frame-plane traffic, Phase 4) for a read-only snapshot of frequently-read DOM state (attribute/text-content values), so hot read-only script loops (`for...of` over a NodeList reading `.textContent`) don't round-trip per read; writes still go over the request/reply channel so `core` remains the single point of truth for mutation + re-cascade/layout scheduling. Neither is required for the first working slice — see the checklist's "plain request/reply" step below — but the module boundary is designed so adding them later is additive, not a wire-format break, per this phase's own "additive later, not a rewrite" priority.
+
+**Crash containment**: a `bluejs` connection drop (crash, hang past a script execution timeout `core` enforces from its side, matching the "internal safeguards" the in-process option would have needed anyway but now as a defense-in-depth measure rather than the sole guarantee) is treated by `core` the same way an `extension` disconnect already is — the affected `Page`'s pending script work is abandoned and the tab keeps rendering its last-good state, not a `core`-wide failure. Restart policy (respawn `bluejs` automatically vs. surface the tab as "script crashed") is left to firm up during implementation, not blocking on it now.
+
 ## Open questions (blocking real design)
 
-- **Process placement**: in-process (with internal safeguards) vs. isolated process (with a fast DOM-access channel) — see design sketch above. Probably the single most consequential decision in this phase.
-- **MVP language-feature subset**: not yet scoped (tracked as a Phase 2 checklist item, not duplicated here) — variables/closures/control-flow are certainly in; the harder calls are `class`, `async`/`await`, generators, and how much of the standard library (`Array`/`Object`/`String`/`Map`/`Set` methods, `JSON`) ships initially.
+- ~~Process placement~~ — **resolved**: out-of-process, isolated like `extension`/`ai-gatekeeper`, via a new `blueice_ipc::script` module — see "Wiring design" above.
+- ~~MVP language-feature subset~~ — **resolved in `phase-2-mvp-scope/PLAN.md`'s "MVP JS scope (decided)" section**, not duplicated here: primitives, `var`/`let`/`const`, standard control flow, functions/closures/arrow functions, destructuring, template literals in scope; `class`, `async`/`await`/`Promise`, generators, `Proxy`/`Reflect`, regex, modules, `Map`/`Set`, `JSON` deferred. That section also scopes the DOM-binding surface (`document.querySelector`, tree mutation, `addEventListener`, `element.style`, etc.) this phase's DOM-integration/gatekeeper-hook-point work builds against.
 - **Gatekeeper hook points**: the AI-facing capability-summary output above is the mechanism, but exactly which operations it needs to flag (network-initiating calls, storage access, `eval`-like dynamic code execution, and how granular the summary needs to be for the gatekeeper to act on it) still needs to be designed together with Phase 7, not assumed.
 - ~~Conformance test strategy~~ — **largely resolved**: a Test262 subset (scoped to BlueJS's current MVP feature set), run differentially against Node.js rather than checked against Test262's own pass/fail metadata in isolation — see the differential-testing design above. Still open: exactly which Test262 subset, and how the corpus grows as the feature subset grows.
 - **Timeline/risk acceptance**: worth being explicit that this phase alone is plausibly larger than Phases 0-6 combined — flagging this here so it's a known, accepted tradeoff rather than discovered partway through.
 
 ## Checklist
 
-- [ ] Decide process placement (in-process vs. isolated)
-- [ ] Scope the MVP language-feature subset (cross-reference: Phase 2 checklist)
+- [x] Decide process placement — out-of-process, isolated like `extension`/`ai-gatekeeper`, via a new `blueice_ipc::script` module, see "Wiring design" above
+- [x] Scope the MVP language-feature subset — resolved in `phase-2-mvp-scope/PLAN.md`'s "MVP JS scope (decided)" section
 - [x] Decide the GC algorithm — two-generation (nursery + non-incremental mark-sweep tenured), see `research/js-engine-gc.md`
 - [ ] Implement the object model (handle-based, per the `blueice-dom` precedent) and the two-generation GC
 - [ ] Implement the tokenizer/parser → AST
@@ -71,7 +81,8 @@ This directly strengthens the conformance-test question below: running a Test262
 - [ ] Implement the bytecode interpreter for the MVP feature subset
 - [x] Decide the event loop shape — macrotask loop draining microtasks per-task, plus a separate render-pass entry point, see `research/js-bytecode-eventloop.md`
 - [ ] Implement the event loop and its interleaving with `core`'s render-pass/paint loop per that shape
-- [ ] Design the DOM-binding glue layer connecting BlueJS objects to `blueice-dom`
+- [ ] Implement the `blueice_ipc::script` module (`ScriptRequest`/`ScriptReply`, `Hello`-handshake, plain request/reply first — batching and the shared-memory read fast path are additive follow-ups, not required for the first working slice)
+- [ ] Design the DOM-binding glue layer connecting BlueJS objects to `blueice-dom` (host bindings scoped in Phase 2's "MVP JS scope" section), carried over `blueice_ipc::script`
 - [ ] Design the AI-facing capability-summary output (derived from the AST) and its exact granularity, with Phase 7
 - [ ] Design the Phase 7 gatekeeper's script-level hook points against that summary, with Phase 7
 - [ ] Build the `bluejs` shell (REPL mode + batch-file mode, minimal host bindings)

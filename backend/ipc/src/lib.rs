@@ -32,6 +32,7 @@ use std::io::{self, Read, Write};
 pub mod ai;
 pub mod extension;
 pub mod gatekeeper;
+pub mod script;
 pub mod shm;
 
 pub use ai::{AiNode, AiSnapshot, Bounds, NameFrom, NodeAction, NodeState, Role};
