@@ -1,5 +1,5 @@
 # One isolated script per line; primitive completion or error class only.
-# Intentional subset exclusions (TDZ, builtins, functions, etc.) do not belong here.
+# Currently unimplemented builtins/functions do not belong here; TDZ is implemented.
 
 1 + 2 * 3
 8/2 + 7%4
@@ -206,3 +206,96 @@ let a=[]; a.length-= -2; a.length*=2; a.length/=2; a.length%=2; a.length
 1e-400
 let o={length:'text'}; o.length
 let o={if:1,return:2,true:3}; o.if+o.return+o.true
+
+# ECMA-262 edition 17 corrective slice: TDZ, grammar and Number literals.
+x; let x
+typeof x; let x
+x=1; let x
+x+=1; let x
+x++; let x
+++x; let x
+x=1; const x=2
+let x=x
+const x=x
+let x=1; {x; let x=2;}
+let x=1; {typeof x; const x=2;}
+let x=y, y=2
+for(let i=i;i<1;i++){}
+let i=0; while(i++<2){if(i===2)x; let x=7;}
+let x; typeof x
+let x=false&&x; x
+let x=true?7:x; x
+1??2||3
+1||2??3
+1??2&&3
+1&&2??3
+1??2??3||4
+false&&(1??2||3)
+true?1:2??3||4
+(0||2)??3
+null??(0||3)
+(null??0)||3
+null??(2&&3)
+(null??2)&&3
+null??undefined??7
+null??(true?0||4:5)
+null??[0||4][0]
+0xFF
+0Xff
+0b101
+0B101
+0o77
+0O77
+0xAB_CD
+0b1_0_1
+0o7_7
+1_234.5_6e1_0
+.1_25
+0.1_25
+1_0.
+1_0.e+2
+1e-4_00
+0x20000000000001
+0x20000000000003
+077
+000
+08
+009
+08.5
+08e1
+({0x10:7})[16]
+1_0+0xF
+0x
+0b2
+0o8
+0xG
+0b12
+0o78
+1e
+1e+
+1.e-
+0_1
+00_1
+08_9
+1__0
+1_
+1_.0
+1._0
+1_e2
+1e_2
+1e+_2
+1e2_
+0x_FF
+0b_1
+0o_7
+0xF_
+0o7__1
+123abc
+3in
+1$
+1\u0061
+077e1
+077.5
++'1_000'
+`${1/* } { ` ' */+2}`
+`${`nested ${1/* } */+2}`}`

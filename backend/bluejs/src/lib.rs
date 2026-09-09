@@ -13,6 +13,9 @@
 //! bindings, control flow, ordinary objects and array literals/indexing.
 //! Arrays preserve holes and enforce length growth/truncation. Functions,
 //! native methods, the event loop and browser integration remain future work.
+//! The ECMAScript 2026 track adds lexical TDZ, radix/separator Number
+//! literals and short-circuit/newline grammar corrections. It is not yet
+//! a complete edition 17 implementation (notably strings still use UTF-8).
 //!
 //! ```
 //! use blueice_bluejs::{compile, parse, Value, Vm};

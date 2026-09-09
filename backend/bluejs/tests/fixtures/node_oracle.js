@@ -7,8 +7,10 @@
 // decimal formatting or approximate equality that could hide signed zero.
 const fs = require('node:fs');
 const vm = require('node:vm');
-for (const source of fs.readFileSync(0, 'utf8').split('\n')) {
-    if (!source.trim() || source.startsWith('#')) continue;
+// One hex-encoded UTF-8 script per line, including multiline scripts.
+for (const encoded of fs.readFileSync(0, 'utf8').split('\n')) {
+    if (!encoded) continue;
+    const source = Buffer.from(encoded, 'hex').toString('utf8');
     let result;
     try {
         const value = vm.runInNewContext(source, {}, {timeout: 1000});

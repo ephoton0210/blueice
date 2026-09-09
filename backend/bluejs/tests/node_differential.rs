@@ -11,7 +11,27 @@ use std::process::{Command, Stdio};
 #[test]
 #[ignore = "requires Node.js on PATH; run explicitly with --ignored"]
 fn primitive_completions_and_error_classes_match_node() {
-    let mut corpus = include_str!("fixtures/execution.txt").to_string();
+    let mut corpus: Vec<String> = include_str!("fixtures/execution.txt").lines().filter(|line| !line.trim().is_empty() && !line.starts_with('#')).map(str::to_owned).collect();
+    // Transport each source as hex UTF-8 so real line terminators cannot
+    // accidentally turn a multiline script into several separate fixtures.
+    for newline in ["\n", "\r", "\r\n", "\u{2028}", "\u{2029}"] {
+        corpus.extend([
+            format!("let x=1{newline}x+2"),
+            format!("let x=1// ignored{newline}x+2"),
+            format!("let x=1/*{newline}*/x+2"),
+            format!("let x=1; let y=2; x{newline}++y; y"),
+            format!("throw{newline}1"),
+            format!("'a\\{newline}b'"),
+            format!("'a{newline}b'"),
+            format!("`a{newline}b`"),
+            format!("`a\\{newline}b`"),
+            format!("`${{1 // }} ` ' ignored{newline}+2}}`"),
+            format!("`${{'a\\{newline}b'}}`"),
+        ]);
+    }
+    for space in ['\u{feff}', '\u{00a0}', '\u{0085}', '\u{180e}', '\u{200b}'] {
+        corpus.push(format!("1{space}+2"));
+    }
     // Deterministic broad float coverage, including shortest-decimal
     // formatting. Every expected value still comes from Node, not Rust.
     let mut state = 0x83da_172c_d093_1b57u64;
@@ -21,7 +41,7 @@ fn primitive_completions_and_error_classes_match_node() {
         state ^= state << 17;
         let n = f64::from_bits(state);
         if n.is_finite() {
-            corpus.push_str(&format!("\n'' + ({n:e})"));
+            corpus.push(format!("'' + ({n:e})"));
         }
     }
     // Every finite binary exponent, both sides of the binade boundary,
@@ -30,7 +50,7 @@ fn primitive_completions_and_error_classes_match_node() {
         for fraction in [1, (1u64 << 52) - 1] {
             for sign in [0, 1u64 << 63] {
                 let n = f64::from_bits(sign | (exponent << 52) | fraction);
-                corpus.push_str(&format!("\n'' + ({n:e})"));
+                corpus.push(format!("'' + ({n:e})"));
             }
         }
     }
@@ -39,7 +59,7 @@ fn primitive_completions_and_error_classes_match_node() {
     for bits in midpoint - 64..=midpoint + 64 {
         for sign in [0, 1u64 << 63] {
             let n = f64::from_bits(bits | sign);
-            corpus.push_str(&format!("\n'' + ({n:e})"));
+            corpus.push(format!("'' + ({n:e})"));
         }
     }
     let mut node = Command::new("node")
@@ -50,18 +70,17 @@ fn primitive_completions_and_error_classes_match_node() {
         .spawn()
         .expect("install Node.js to run the opt-in differential test");
     let mut stdin = node.stdin.take().unwrap();
-    let input = corpus.clone();
+    let input: String = corpus.iter().map(|source| source.bytes().map(|b| format!("{b:02x}")).collect::<String>() + "\n").collect();
     let writer = std::thread::spawn(move || stdin.write_all(input.as_bytes()));
     let output = node.wait_with_output().unwrap();
     writer.join().unwrap().unwrap();
     assert!(output.status.success(), "Node oracle failed: {}", String::from_utf8_lossy(&output.stderr));
     let expected = String::from_utf8(output.stdout).unwrap();
-    let sources: Vec<_> = corpus.lines().filter(|line| !line.trim().is_empty() && !line.starts_with('#')).collect();
     let expected: Vec<_> = expected.lines().collect();
-    assert_eq!(sources.len(), expected.len(), "oracle must return exactly one result per script");
-    println!("Comparing {} isolated scripts against Node.js", sources.len());
+    assert_eq!(corpus.len(), expected.len(), "oracle must return exactly one result per script");
+    println!("Comparing {} isolated scripts against Node.js", corpus.len());
     let mut vm = Vm::default();
-    for (source, expected) in sources.into_iter().zip(expected) {
+    for (source, expected) in corpus.iter().zip(expected) {
         let result = match parse(source) {
             Err(_) => "error:SyntaxError".into(),
             Ok(ast) => match compile(&ast) {

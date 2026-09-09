@@ -15,16 +15,10 @@
 //! grammar slot) -> conditional (`?:`) -> nullish (`??`) -> logical OR
 //! -> logical AND -> equality -> relational -> additive ->
 //! multiplicative -> unary -> postfix update (`++`/`--`) -> left-hand-
-//! side (`new`/member/call chains) -> primary. One deliberate,
-//! documented spec deviation: real ECMAScript forbids mixing `??`
-//! directly with `&&`/`||` without parentheses (a grammar-level
-//! restriction, `CoalesceExpression` vs. `LogicalORExpression` never
-//! nesting into each other); this parser accepts the mix leniently
-//! instead of adding that restriction as its own cover-grammar pass --
-//! a real gap for spec conformance, acceptable for an MVP subset where
-//! this combination is rare and, when it does appear, still parses to
-//! a sensible (if not spec-mandated-illegal) AST rather than silently
-//! computing the wrong thing.
+//! side (`new`/member/call chains) -> primary. ECMAScript §13.13 keeps
+//! unparenthesized coalescing and logical AND/OR in separate productions;
+//! grammar-level flags enforce that distinction before parentheses are
+//! discarded from the AST.
 //!
 //! **`for`-loop head disambiguation** follows the standard technique
 //! real engines use: parse the head with the `in` operator temporarily
@@ -780,30 +774,39 @@ impl Parser {
     }
 
     fn parse_nullish(&mut self) -> Result<Expr, ParseError> {
-        let mut left = self.parse_logical_or()?;
+        let (mut left, logical) = self.parse_logical_or()?;
         while self.eat_punct(Punct::QuestionQuestion) {
-            let right = self.parse_logical_or()?;
+            if logical {
+                return Err(self.error("parentheses required when mixing ?? with && or ||"));
+            }
+            let (right, logical_right) = self.parse_logical_or()?;
+            if logical_right {
+                return Err(self.error("parentheses required when mixing ?? with && or ||"));
+            }
             left = Expr::Logical { op: LogicalOp::Nullish, left: Box::new(left), right: Box::new(right) };
         }
         Ok(left)
     }
 
-    fn parse_logical_or(&mut self) -> Result<Expr, ParseError> {
-        let mut left = self.parse_logical_and()?;
+    fn parse_logical_or(&mut self) -> Result<(Expr, bool), ParseError> {
+        let (mut left, mut logical) = self.parse_logical_and()?;
         while self.eat_punct(Punct::OrOr) {
-            let right = self.parse_logical_and()?;
+            let (right, _) = self.parse_logical_and()?;
             left = Expr::Logical { op: LogicalOp::Or, left: Box::new(left), right: Box::new(right) };
+            logical = true;
         }
-        Ok(left)
+        Ok((left, logical))
     }
 
-    fn parse_logical_and(&mut self) -> Result<Expr, ParseError> {
+    fn parse_logical_and(&mut self) -> Result<(Expr, bool), ParseError> {
         let mut left = self.parse_equality()?;
+        let mut logical = false;
         while self.eat_punct(Punct::AndAnd) {
             let right = self.parse_equality()?;
             left = Expr::Logical { op: LogicalOp::And, left: Box::new(left), right: Box::new(right) };
+            logical = true;
         }
-        Ok(left)
+        Ok((left, logical))
     }
 
     fn parse_equality(&mut self) -> Result<Expr, ParseError> {

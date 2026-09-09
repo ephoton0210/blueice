@@ -4,25 +4,19 @@
 
 //! BlueJS tokenizer: a `&str` -> [`Token`] stream, scoped to exactly
 //! `phase-2-mvp-scope/PLAN.md`'s "MVP JS scope (decided)" -- not the
-//! full ECMAScript lexical grammar. Notably absent on purpose (not
-//! oversights): regex literals (the MVP JS scope defers regular
-//! expressions entirely), bitwise/shift operators and `**`
-//! (`&`, `|`, `^`, `~`, `<<`, `>>`, `>>>`, `**` -- the scoped "standard
-//! operator set" names arithmetic/comparison/logical/ternary/
-//! `typeof`/`instanceof` only, and a hand-written DOM script
-//! essentially never needs bitwise math), non-decimal numeric literals
-//! (`0x..`/`0o..`/`0b..`), tagged templates, and legacy octal escapes.
+//! full ECMAScript lexical grammar. The edition 17 implementation track
+//! now extends that original subset: Number radix literals/separators,
+//! ECMAScript whitespace/line terminators and string continuations are
+//! implemented. Regex literals, bitwise/shift operators, `**`, BigInt,
+//! tagged templates and legacy octal escapes remain to be implemented.
 //! [`Keyword`] mirrors this: `undefined` is deliberately NOT a keyword
 //! here (unlike `null`/`true`/`false`) because it isn't one in real
 //! ECMAScript either -- it's an ordinary identifier bound to a global
 //! property, so it tokenizes as [`Token::Identifier`] and the parser/
 //! interpreter, not the lexer, is where it becomes meaningful.
 //!
-//! Every character is scanned as a `char` (a Unicode scalar value), not
-//! a UTF-16 code unit -- unlike a spec-faithful engine, this project has
-//! no reason to reproduce ECMAScript's UTF-16-surrogate-pair string
-//! indexing for an MVP subset that never inspects `.length` against
-//! astral-plane input.
+//! Source characters use Rust `char`. Runtime strings still use UTF-8;
+//! full UTF-16 code-unit strings are an outstanding conformance gap.
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
@@ -201,6 +195,10 @@ fn is_ident_continue(c: char) -> bool {
     c.is_alphanumeric() || c == '_' || c == '$'
 }
 
+fn is_line_terminator(c: char) -> bool {
+    matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}')
+}
+
 impl Tokenizer {
     pub fn new(input: &str) -> Tokenizer {
         Tokenizer { input: input.chars().collect(), pos: 0 }
@@ -229,16 +227,16 @@ impl Tokenizer {
         let mut saw_newline = false;
         loop {
             match self.peek() {
-                Some('\n') => {
+                Some(c) if is_line_terminator(c) => {
                     saw_newline = true;
                     self.advance();
                 }
-                Some(c) if c.is_whitespace() => {
+                Some(c) if crate::primitive::whitespace(c) => {
                     self.advance();
                 }
                 Some('/') if self.peek_at(1) == Some('/') => {
                     while let Some(c) = self.peek() {
-                        if c == '\n' {
+                        if is_line_terminator(c) {
                             break;
                         }
                         self.advance();
@@ -250,7 +248,7 @@ impl Tokenizer {
                     loop {
                         match self.peek() {
                             None => return Err(LexError::new("unterminated block comment")),
-                            Some('\n') => {
+                            Some(c) if is_line_terminator(c) => {
                                 saw_newline = true;
                                 self.advance();
                             }
@@ -299,38 +297,73 @@ impl Tokenizer {
     }
 
     fn scan_number(&mut self) -> Result<Token, LexError> {
-        let start = self.pos;
-        while self.peek().is_some_and(|c| c.is_ascii_digit()) {
-            self.advance();
+        let leading_zero = self.peek() == Some('0');
+        if leading_zero {
+            let bits = match self.peek_at(1) {
+                Some('b' | 'B') => Some(1),
+                Some('o' | 'O') => Some(3),
+                Some('x' | 'X') => Some(4),
+                _ => None,
+            };
+            if let Some(bits) = bits {
+                self.advance();
+                self.advance();
+                let digits = self.scan_digits(1 << bits, true)?;
+                if digits.is_empty() {
+                    return Err(LexError::new("non-decimal literal requires digits"));
+                }
+                return self.finish_number(crate::primitive::radix_number(&digits, bits));
+            }
+        }
+        let mut text = self.scan_digits(10, !leading_zero)?;
+        // Legacy leading-zero octal literals exist in sloppy scripts.
+        // Unlike leading-zero decimals containing 8/9, they have no
+        // decimal fraction/exponent production (§12.9.3).
+        if leading_zero && text.len() > 1 && text.bytes().all(|b| b <= b'7') {
+            return self.finish_number(crate::primitive::radix_number(&text, 3));
         }
         if self.peek() == Some('.') {
             self.advance();
-            while self.peek().is_some_and(|c| c.is_ascii_digit()) {
-                self.advance();
-            }
+            text.push('.');
+            text.push_str(&self.scan_digits(10, true)?);
         }
         if matches!(self.peek(), Some('e') | Some('E')) {
-            let save = self.pos;
             self.advance();
+            text.push('e');
             if matches!(self.peek(), Some('+') | Some('-')) {
-                self.advance();
+                text.push(self.advance().unwrap());
             }
-            if self.peek().is_some_and(|c| c.is_ascii_digit()) {
-                while self.peek().is_some_and(|c| c.is_ascii_digit()) {
+            let digits = self.scan_digits(10, true)?;
+            if digits.is_empty() {
+                return Err(LexError::new("exponent requires digits"));
+            }
+            text.push_str(&digits);
+        }
+        // Validated decimal syntax; overflow/underflow become infinity/zero.
+        self.finish_number(text.parse().expect("scanner emits valid decimal syntax"))
+    }
+
+    fn scan_digits(&mut self, radix: u32, separators: bool) -> Result<String, LexError> {
+        let mut digits = String::new();
+        loop {
+            match self.peek() {
+                Some(c) if c.is_digit(radix) => { digits.push(c); self.advance(); }
+                Some('_') => {
+                    if !separators || digits.is_empty() || !self.peek_at(1).is_some_and(|c| c.is_digit(radix)) {
+                        return Err(LexError::new("numeric separator must occur between digits"));
+                    }
                     self.advance();
                 }
-            } else {
-                // Not actually an exponent (e.g. `1.e`, a trailing
-                // stray identifier char) -- back out rather than
-                // consuming a malformed exponent.
-                self.pos = save;
+                _ => return Ok(digits),
             }
         }
-        let text: String = self.input[start..self.pos].iter().collect();
-        // The scanner emits digits with an optional dot and a complete
-        // exponent; malformed exponent suffixes were rolled back above.
-        // Decimal overflow/underflow parse as infinity/zero, not an error.
-        Ok(Token::Number(text.parse().expect("scanner emits valid decimal syntax")))
+    }
+
+    fn finish_number(&self, number: f64) -> Result<Token, LexError> {
+        if self.peek().is_some_and(|c| is_ident_start(c) || c.is_ascii_digit() || c == '\\') {
+            return Err(LexError::new("identifier or digit immediately after numeric literal"));
+        }
+        Ok(Token::Number(number))
     }
 
     fn scan_escape(&mut self) -> Result<Option<char>, LexError> {
@@ -344,7 +377,10 @@ impl Tokenizer {
             'f' => '\u{c}',
             'v' => '\u{b}',
             '0' => '\0',
-            '\n' => return Ok(None), // line continuation: escaped newline contributes nothing
+            c if is_line_terminator(c) => {
+                if c == '\r' && self.peek() == Some('\n') { self.advance(); }
+                return Ok(None); // A whole LineTerminatorSequence contributes nothing.
+            }
             '\'' | '"' | '`' | '\\' | '$' => c,
             'x' => {
                 let hex: String = (0..2).map(|_| self.advance().ok_or_else(|| LexError::new("unterminated \\x escape"))).collect::<Result<_, _>>()?;
@@ -391,7 +427,7 @@ impl Tokenizer {
                     self.advance();
                     return Ok(Token::String(out));
                 }
-                Some('\n') => return Err(LexError::new("unterminated string literal (line terminator)")),
+                Some('\n' | '\r') => return Err(LexError::new("unterminated string literal (line terminator)")),
                 Some('\\') => {
                     self.advance();
                     if let Some(c) = self.scan_escape()? {
@@ -442,6 +478,11 @@ impl Tokenizer {
                         current.push(c);
                     }
                 }
+                Some('\r') => {
+                    self.advance();
+                    if self.peek() == Some('\n') { self.advance(); }
+                    current.push('\n');
+                }
                 Some(c) => {
                     self.advance();
                     current.push(c);
@@ -482,6 +523,13 @@ impl Tokenizer {
                     out.push('`');
                     self.advance();
                     self.copy_raw_template_body(&mut out)?;
+                }
+                Some('/') if matches!(self.peek_at(1), Some('/' | '*')) => {
+                    // Reuse trivia's comment/line-terminator rules, but
+                    // preserve raw source for the placeholder's parser.
+                    let start = self.pos;
+                    self.skip_trivia()?;
+                    out.extend(&self.input[start..self.pos]);
                 }
                 Some(c) => {
                     out.push(c);
@@ -732,14 +780,34 @@ mod tests {
         assert_eq!(tokens("1e3"), vec![Token::Number(1000.0), Token::Eof]);
         assert_eq!(tokens("1.5e-2"), vec![Token::Number(0.015), Token::Eof]);
         assert_eq!(tokens("0"), vec![Token::Number(0.0), Token::Eof]);
+        // Assert token boundaries independently of the full parser/VM.
+        assert_eq!(tokens("0xA_B 0b1_0 0o7_0 07 08 1_0 0.5"), vec![
+            Token::Number(171.0), Token::Number(2.0), Token::Number(56.0),
+            Token::Number(7.0), Token::Number(8.0), Token::Number(10.0), Token::Number(0.5), Token::Eof,
+        ]);
     }
 
     #[test]
-    fn a_trailing_e_with_no_exponent_digits_is_not_consumed_as_an_exponent() {
-        // `1.e` isn't a valid exponent (no digits after 'e'), so the
-        // tokenizer backs out and leaves `e` to be scanned as its own
-        // token, matching real engines' behavior for this edge case.
-        assert_eq!(tokens("1.e"), vec![Token::Number(1.0), Token::Identifier("e".to_string()), Token::Eof]);
+    fn an_exponent_without_digits_is_a_lexical_error() {
+        assert!(Tokenizer::new("1.e").next_spanned().is_err());
+        for source in ["0x", "1_", "123abc"] {
+            assert!(Tokenizer::new(source).next_spanned().is_err(), "{source}");
+        }
+    }
+
+    #[test]
+    fn template_cooking_normalizes_newlines_but_preserves_placeholder_comments() {
+        assert_eq!(tokens("`a\r\nb${1/* } */+2}c\rd`"), vec![
+            Token::Template { quasis: vec!["a\nb".into(), "c\nd".into()], raw_expressions: vec!["1/* } */+2".into()] }, Token::Eof,
+        ]);
+        for newline in ["\n", "\r", "\r\n", "\u{2028}", "\u{2029}"] {
+            assert_eq!(tokens(&format!("'a\\{newline}b'")), vec![Token::String("ab".into()), Token::Eof]);
+            let mut tokenizer = Tokenizer::new(&format!("/*{newline}*/x"));
+            let spanned = tokenizer.next_spanned().unwrap();
+            assert!(spanned.newline_before);
+            assert_eq!(spanned.token, Token::Identifier("x".into()));
+        }
+        assert!(Tokenizer::new("`${1/* unterminated }`").next_spanned().is_err());
     }
 
     #[test]

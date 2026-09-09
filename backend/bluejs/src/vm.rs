@@ -76,7 +76,8 @@ pub struct Vm {
     array_prototype: ObjectId,
     result_root: Option<RootId>,
     stack: Vec<Value>,
-    bindings: Vec<Value>,
+    // None is a lexical binding's uninitialized state, never JS undefined.
+    bindings: Vec<Option<Value>>,
     completion: Value,
 }
 
@@ -113,7 +114,7 @@ impl Vm {
             self.heap.unroot(root)?;
         }
         self.heap.collect_major();
-        self.bindings.resize(code.bindings.len(), Value::Undefined);
+        self.bindings.resize(code.bindings.len(), None);
         let result = self.run(code).and_then(|value| {
             if let Value::Object(id) = value {
                 self.result_root = Some(self.heap.root(id)?);
@@ -142,7 +143,7 @@ impl Vm {
     fn with_roots<T>(&mut self, operation: impl FnOnce(&mut Heap) -> Result<T, HeapError>) -> Result<T, RuntimeError> {
         let mut roots = Vec::new();
         let registration = (|| {
-            for value in self.stack.iter().chain(&self.bindings).chain(std::iter::once(&self.completion)) {
+            for value in self.stack.iter().chain(self.bindings.iter().flatten()).chain(std::iter::once(&self.completion)) {
                 if let Value::Object(id) = value {
                     // Rooting cannot GC, but can exhaust the root-ID
                     // counter. Partial registrations must be released too.
@@ -174,13 +175,21 @@ impl Vm {
                     self.check_string(&code.constants[operand])?;
                     self.stack.push(code.constants[operand].clone());
                 }
-                Opcode::GetBinding => self.stack.push(self.bindings[operand].clone()),
-                Opcode::InitializeBinding => self.bindings[operand] = self.pop(),
+                Opcode::GetBinding => {
+                    let value = self.bindings[operand].as_ref().ok_or_else(|| RuntimeError::ReferenceError(code.bindings[operand].name.clone()))?;
+                    self.stack.push(value.clone());
+                }
+                Opcode::InitializeBinding => self.bindings[operand] = Some(self.pop()),
                 Opcode::StoreBinding => {
+                    // ECMA-262 §9.1.1.1.5: TDZ takes precedence over the
+                    // immutable-binding assignment error, including const.
+                    if self.bindings[operand].is_none() {
+                        return Err(RuntimeError::ReferenceError(code.bindings[operand].name.clone()));
+                    }
                     if !code.bindings[operand].mutable {
                         return Err(RuntimeError::TypeError(format!("assignment to constant {}", code.bindings[operand].name)));
                     }
-                    self.bindings[operand] = self.stack.last().expect("store has a value").clone();
+                    self.bindings[operand] = Some(self.stack.last().expect("store has a value").clone());
                 }
                 Opcode::UnboundName => {
                     let Value::String(name) = &code.constants[operand] else { unreachable!("compiler emits a name") };
@@ -188,7 +197,7 @@ impl Vm {
                 }
                 Opcode::EnterScope | Opcode::LeaveScope => {
                     for slot in &code.scopes[operand] {
-                        self.bindings[*slot as usize] = Value::Undefined;
+                        self.bindings[*slot as usize] = if instruction.opcode == Opcode::EnterScope && !code.bindings[*slot as usize].lexical { Some(Value::Undefined) } else { None };
                     }
                 }
                 Opcode::Pop => {

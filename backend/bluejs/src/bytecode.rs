@@ -82,6 +82,7 @@ pub struct Instruction {
 pub(crate) struct Binding {
     pub name: String,
     pub mutable: bool,
+    pub lexical: bool,
 }
 
 /// Read-only compiled code plus its constant pool and binding/scope

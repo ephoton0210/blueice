@@ -116,7 +116,7 @@ pub(crate) fn compare(left: &Value, right: &Value) -> Result<Option<Ordering>, R
     }
 }
 
-fn whitespace(c: char) -> bool {
+pub(crate) fn whitespace(c: char) -> bool {
     matches!(c, '\u{0009}'..='\u{000d}' | ' ' | '\u{00a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
 }
 
@@ -173,7 +173,7 @@ fn string_number(s: &str) -> f64 {
     s.parse().unwrap_or(f64::NAN)
 }
 
-fn radix_number(s: &str, digit_bits: u32) -> f64 {
+pub(crate) fn radix_number(s: &str, digit_bits: u32) -> f64 {
     if s.is_empty() {
         return f64::NAN;
     }

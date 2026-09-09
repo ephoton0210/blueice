@@ -235,13 +235,13 @@ fn variables_are_hoisted_or_block_scoped_and_const_writes_fail() {
         ("var x=1; var x; x", Value::Number(1.0)),
         ("let x=1; { let x=2; x+=5; } x", Value::Number(1.0)),
         ("let x=1; { var y=2; x+=y; } x+y", Value::Number(5.0)),
-        ("let x=1; { x; let x=2; }", Value::Undefined),
         ("let x; x=3; x", Value::Number(3.0)),
         ("const o={}; o.x=4; o.x", Value::Number(4.0)),
     ] {
         assert_eq!(evaluate(source).unwrap(), value, "{source}");
     }
     assert!(matches!(evaluate("const x=1; x=2"), Err(RuntimeError::TypeError(_))));
+    assert!(matches!(evaluate("let x=1; { x; let x=2; }"), Err(RuntimeError::ReferenceError(_))));
     assert!(matches!(evaluate("{let x=1;} x"), Err(RuntimeError::ReferenceError(_))));
 }
 

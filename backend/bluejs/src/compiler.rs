@@ -105,7 +105,7 @@ impl Compiler {
                 return Err(CompileError::DuplicateBinding(name));
             }
             let slot = u32::try_from(self.bytecode.bindings.len()).map_err(|_| CompileError::ProgramTooLarge)?;
-            self.bytecode.bindings.push(Binding { name: name.clone(), mutable: kind != DeclKind::Const });
+            self.bytecode.bindings.push(Binding { name: name.clone(), mutable: kind != DeclKind::Const, lexical: kind != DeclKind::Var });
             names.insert(name, slot);
             slots.push(slot);
         }
