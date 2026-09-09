@@ -226,26 +226,109 @@ impl Compiler {
 
     fn declarations(&mut self, kind: DeclKind, declarations: &[VarDeclarator]) -> Result<(), CompileError> {
         for declaration in declarations {
-            let name = binding_name(&declaration.pattern)?;
             if kind == DeclKind::Const && declaration.init.is_none() {
                 return Err(CompileError::InvalidSyntax("const requires an initializer"));
             }
-            if kind == DeclKind::Var && declaration.init.is_none() {
+            if matches!(declaration.pattern, Pattern::Identifier(_)) && kind == DeclKind::Var && declaration.init.is_none() {
                 continue;
             }
             if let Some(value) = &declaration.init {
                 self.expression(value)?
             } else {
+                if !matches!(declaration.pattern, Pattern::Identifier(_)) {
+                    return Err(CompileError::InvalidSyntax("a destructuring declaration requires an initializer"));
+                }
                 self.constant(Value::Undefined)?
             }
-            let slot = if kind == DeclKind::Var { self.names[self.local_scope][name] } else { self.names.last().unwrap()[name] };
-            if kind == DeclKind::Var {
-                self.emit(Opcode::StoreBinding, slot)?;
+            self.bind_pattern(&declaration.pattern, kind)?;
+        }
+        Ok(())
+    }
+
+    /// Consumes the value at the top of the operand stack and performs a
+    /// BindingInitialization for every identifier in `pattern`.  The bytecode
+    /// keeps iterator records on the stack while descending into an array
+    /// pattern so abrupt completions can close every active iterator.
+    fn bind_pattern(&mut self, pattern: &Pattern, kind: DeclKind) -> Result<(), CompileError> {
+        match pattern {
+            Pattern::Identifier(name) => {
+                let slot = if kind == DeclKind::Var { self.names[self.local_scope][name] } else { self.names.last().unwrap()[name] };
+                if kind == DeclKind::Var {
+                    self.emit(Opcode::StoreBinding, slot)?;
+                    self.emit(Opcode::Pop, 0)?;
+                } else {
+                    self.emit(Opcode::InitializeBinding, slot)?;
+                }
+            }
+            Pattern::Array(elements) => {
+                self.emit(Opcode::GetIterator, 0)?;
+                for element in elements {
+                    let Some(element) = element else {
+                        self.array_pattern_value()?;
+                        self.emit(Opcode::Pop, 0)?;
+                        continue;
+                    };
+                    if element.rest {
+                        self.emit(Opcode::IteratorRest, 0)?;
+                        self.bind_pattern(&element.pattern, kind)?;
+                        return Ok(());
+                    }
+                    self.array_pattern_value()?;
+                    self.pattern_default(element.default.as_ref())?;
+                    self.bind_pattern(&element.pattern, kind)?;
+                }
+                self.emit(Opcode::IteratorFinish, 0)?;
+            }
+            Pattern::Object(properties) => {
+                // Even an empty object pattern performs RequireObjectCoercible.
+                self.emit(Opcode::RequireObject, 0)?;
+                self.emit(Opcode::NewArray, 0)?;
+                for property in properties {
+                    match property {
+                        ObjectPatternProp::KeyValue { key, value, default } => {
+                            self.property_key(key)?;
+                            self.emit(Opcode::DestructureProperty, 0)?;
+                            self.pattern_default(default.as_ref())?;
+                            self.bind_pattern(value, kind)?;
+                        }
+                        ObjectPatternProp::Rest(pattern) => {
+                            self.emit(Opcode::ObjectRest, 0)?;
+                            self.bind_pattern(pattern, kind)?;
+                            return Ok(());
+                        }
+                    }
+                }
                 self.emit(Opcode::Pop, 0)?;
-            } else {
-                self.emit(Opcode::InitializeBinding, slot)?;
+                self.emit(Opcode::Pop, 0)?;
             }
         }
+        Ok(())
+    }
+
+    /// Leaves the array-pattern iterator record below one element value.  A
+    /// record remembers exhaustion in the VM, so later elisions do not call
+    /// `next` again after the first completed result.
+    fn array_pattern_value(&mut self) -> Result<(), CompileError> {
+        self.emit(Opcode::Dup, 0)?;
+        let exhausted = self.emit(Opcode::IteratorStep, 0)?;
+        let joined = self.emit(Opcode::Jump, 0)?;
+        self.patch(exhausted, self.offset()?);
+        self.constant(Value::Undefined)?;
+        self.patch(joined, self.offset()?);
+        Ok(())
+    }
+
+    /// Replaces an `undefined` binding value with a pattern/parameter
+    /// initializer.  `null` remains a value, as required by ECMA-262.
+    fn pattern_default(&mut self, default: Option<&Expr>) -> Result<(), CompileError> {
+        let Some(default) = default else { return Ok(()) };
+        self.emit(Opcode::Dup, 0)?;
+        self.constant(Value::Undefined)?;
+        self.emit(Opcode::StrictEqual, 0)?;
+        let skip = self.emit(Opcode::JumpIfFalse, 0)?;
+        self.emit(Opcode::Pop, 0)?;
+        self.expression(default)?;
+        self.patch(skip, self.offset()?);
         Ok(())
     }
 
@@ -348,7 +431,7 @@ impl Compiler {
                             self.emit(Opcode::GlobalString, 0)?;
                         }
                         "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Function" | "globalThis" | "Intl" | "Error" | "TypeError"
-                        | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" => {
+                        | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "JSON" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" => {
                             let index = self.bytecode.constants.len() as u32;
                             self.bytecode.constants.push(Value::String(name.as_str().into()));
                             self.emit(Opcode::Global, index)?;
@@ -386,7 +469,7 @@ impl Compiler {
                     return Ok(());
                 }
                 if *op == UnaryOp::Typeof
-                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Function" | "globalThis" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError"))
+                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Function" | "globalThis" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "JSON"))
                 {
                     let Expr::Identifier(name) = &**arg else { unreachable!() };
                     let index = u32::try_from(self.bytecode.constants.len()).map_err(|_| CompileError::ProgramTooLarge)?;
@@ -465,6 +548,11 @@ impl Compiler {
                 self.emit(Opcode::NewObject, 0)?;
                 let mut has_proto = false;
                 for property in properties {
+                    if let ObjectProp::Spread(value) = property {
+                        self.expression(value)?;
+                        self.emit(Opcode::CopyDataProperties, 0)?;
+                        continue;
+                    }
                     if let ObjectProp::Method { key, function } | ObjectProp::Accessor { key, function, .. } = property {
                         self.emit(Opcode::Dup, 0)?;
                         self.property_key(key)?;
@@ -478,7 +566,7 @@ impl Compiler {
                         self.emit(Opcode::Pop, 0)?;
                         continue;
                     }
-                    let ObjectProp::KeyValue { key, value, shorthand } = property else { return Err(CompileError::Unsupported("object spread")) };
+                    let ObjectProp::KeyValue { key, value, shorthand } = property else { unreachable!("spread is handled above") };
                     self.emit(Opcode::Dup, 0)?;
                     let prototype_key = match key {
                         PropertyKey::Identifier(name) => name == "__proto__",
@@ -586,11 +674,10 @@ impl Compiler {
             ForHead::Decl(kind, pattern) => (pattern, Some(*kind)),
             ForHead::Pattern(pattern) => (pattern, None),
         };
-        let name = binding_name(pattern)?.to_owned();
         let lexical = kind.is_some_and(|kind| kind != DeclKind::Var);
         let mut declarations = vec![("*iterator*".to_owned(), DeclKind::Let)];
         if lexical {
-            declarations.push((name.clone(), kind.unwrap()));
+            declarations.extend(pattern_names(pattern).into_iter().map(|name| (name, kind.unwrap())));
         }
         self.enter_scope(declarations, &BTreeSet::new(), false)?;
         let iterator = self.resolve("*iterator*").unwrap();
@@ -602,12 +689,16 @@ impl Compiler {
         let exit = self.emit(Opcode::IteratorStep, 0)?;
         self.loops.push(Loop { scope_depth: self.scopes.len(), breaks: Vec::new(), continues: Vec::new(), iterator: Some(iterator) });
         if lexical {
-            self.enter_scope(vec![(name.clone(), kind.unwrap())], &BTreeSet::new(), false)?;
+            self.enter_scope(pattern_names(pattern).into_iter().map(|name| (name, kind.unwrap())).collect(), &BTreeSet::new(), false)?;
         }
-        let slot = self.resolve(&name).ok_or(CompileError::Unsupported("implicit global assignment"))?;
-        self.emit(if lexical { Opcode::InitializeBinding } else { Opcode::StoreBinding }, slot)?;
-        if !lexical {
-            self.emit(Opcode::Pop, 0)?;
+        match kind {
+            Some(kind) => self.bind_pattern(pattern, kind)?,
+            None => {
+                let Pattern::Identifier(name) = pattern else { return Err(CompileError::Unsupported("a destructuring for-of assignment target")) };
+                let slot = self.resolve(name).ok_or(CompileError::Unsupported("implicit global assignment"))?;
+                self.emit(Opcode::StoreBinding, slot)?;
+                self.emit(Opcode::Pop, 0)?;
+            }
         }
         self.statement(body, false)?;
         if lexical {
@@ -714,22 +805,13 @@ impl Compiler {
         }
         let mut vars = var_names(&function.body)?;
         for param in &function.params {
-            vars.insert(binding_name(&param.pattern)?.to_owned());
+            vars.extend(pattern_names(&param.pattern));
         }
         child.enter_scope(lexical_names(&function.body)?, &vars, true)?;
         for (index, param) in function.params.iter().enumerate() {
-            let slot = child.resolve(binding_name(&param.pattern)?).unwrap();
             child.emit(if param.rest { Opcode::RestArguments } else { Opcode::Argument }, index as u32)?;
-            if let Some(default) = &param.default {
-                child.emit(Opcode::Dup, 0)?;
-                child.constant(Value::Undefined)?;
-                child.emit(Opcode::StrictEqual, 0)?;
-                let skip = child.emit(Opcode::JumpIfFalse, 0)?;
-                child.emit(Opcode::Pop, 0)?;
-                child.expression(default)?;
-                child.patch(skip, child.offset()?);
-            }
-            child.emit(Opcode::InitializeBinding, slot)?;
+            child.pattern_default(param.default.as_ref())?;
+            child.bind_pattern(&param.pattern, DeclKind::Let)?;
         }
         child.statements(&function.body)?;
         child.constant(Value::Undefined)?;
@@ -767,15 +849,21 @@ fn binary_opcode(op: BinaryOp) -> Result<Opcode, CompileError> {
     })
 }
 
-fn binding_name(pattern: &Pattern) -> Result<&str, CompileError> {
+fn pattern_names(pattern: &Pattern) -> Vec<String> {
     match pattern {
-        Pattern::Identifier(name) => Ok(name),
-        _ => Err(CompileError::Unsupported("destructuring bindings")),
+        Pattern::Identifier(name) => vec![name.clone()],
+        Pattern::Array(elements) => elements.iter().flatten().flat_map(|element| pattern_names(&element.pattern)).collect(),
+        Pattern::Object(properties) => properties
+            .iter()
+            .flat_map(|property| match property {
+                ObjectPatternProp::KeyValue { value, .. } | ObjectPatternProp::Rest(value) => pattern_names(value),
+            })
+            .collect(),
     }
 }
 
 fn declarations_names(kind: DeclKind, declarations: &[VarDeclarator]) -> Result<Vec<(String, DeclKind)>, CompileError> {
-    declarations.iter().map(|decl| Ok((binding_name(&decl.pattern)?.to_string(), kind))).collect()
+    Ok(declarations.iter().flat_map(|decl| pattern_names(&decl.pattern).into_iter().map(move |name| (name, kind))).collect())
 }
 
 fn lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, CompileError> {
@@ -800,7 +888,7 @@ fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
             }
             Stmt::VarDecl(DeclKind::Var, declarations) => {
                 for declaration in declarations {
-                    names.insert(binding_name(&declaration.pattern)?.to_string());
+                    names.extend(pattern_names(&declaration.pattern));
                 }
             }
             Stmt::Block(body) => pending.extend(body),
@@ -814,14 +902,14 @@ fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
             Stmt::For { init, body, .. } => {
                 if let Some(ForInit::VarDecl(DeclKind::Var, declarations)) = init {
                     for declaration in declarations {
-                        names.insert(binding_name(&declaration.pattern)?.to_string());
+                        names.extend(pattern_names(&declaration.pattern));
                     }
                 }
                 pending.push(body);
             }
             Stmt::ForOf { left, body, .. } => {
                 if let ForHead::Decl(DeclKind::Var, pattern) = left {
-                    names.insert(binding_name(pattern)?.to_string());
+                    names.extend(pattern_names(pattern));
                 }
                 pending.push(body);
             }

@@ -271,14 +271,14 @@ fn sparse_mutations_match_an_independent_optional_slot_model() {
 
 #[test]
 fn new_array_encoding_and_runtime_error_boundaries_are_observable() {
-    use blueice_bluejs::{CompileError, Opcode};
+    use blueice_bluejs::Opcode;
     let code = compile(&parse("[,,3,]").unwrap()).unwrap();
     let instruction = code.instructions().find(|instruction| instruction.opcode == Opcode::NewArray).unwrap();
     assert_eq!(instruction.opcode.width(), 5);
     assert_eq!(instruction.operand, Some(3));
     assert_eq!(&code.bytes()[instruction.offset + 1..instruction.offset + 5], &3u32.to_le_bytes());
     assert_eq!(code.instructions().filter(|instruction| instruction.opcode == Opcode::DefineData).count(), 1);
-    assert!(matches!(compile(&parse("let [a]=[1]").unwrap()), Err(CompileError::Unsupported(_))));
+    assert_eq!(evaluate("let [a]=[1];a"), Ok(Value::Number(1.0)));
     assert!(matches!(evaluate("[].push(1)"), Err(RuntimeError::TypeError(_))));
     assert_eq!(evaluate("new Array(2).length"), Ok(Value::Number(2.0)));
     let error = evaluate("let a=[];a.length=-1").unwrap_err();

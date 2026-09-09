@@ -14,6 +14,7 @@ mod builtins;
 mod errors;
 mod functions;
 mod intl;
+mod json;
 mod regexp;
 mod test262;
 use std::cmp::Ordering;
@@ -187,6 +188,10 @@ impl Vm {
         self.bindings.resize(code.bindings.len(), None);
         self.remaining_instructions = self.config.instruction_budget;
         self.strict = code.strict;
+        // `this` lazily materializes the realm global only when script code
+        // actually observes it. This keeps data-only executions within small
+        // heap configurations while preserving script and arrow semantics.
+        self.this = Value::Undefined;
         let result = self.run(code).and_then(|value| {
             if publish_globals {
                 self.publish_global_bindings(code)?;
@@ -355,6 +360,63 @@ impl Vm {
                     self.iterator_close(&record)?;
                     self.pop();
                 }
+                Opcode::IteratorFinish => {
+                    let record = self.stack.last().unwrap().clone();
+                    let Value::Object(id) = record else { unreachable!("compiler only emits iterator records") };
+                    let done = matches!(self.heap.get_own(id, "done")?, Some(Value::Bool(true)));
+                    iterators.retain(|candidate| candidate != &record);
+                    if !done {
+                        self.iterator_close(&record)?;
+                    }
+                    self.pop();
+                }
+                Opcode::IteratorRest => {
+                    let record = self.stack.last().unwrap().clone();
+                    // A rest element owns the iterator until it reaches done.
+                    // Register it even when it is the first element, so an
+                    // abrupt completion during internal draining still closes
+                    // the iterator through `run`'s ordinary cleanup path.
+                    iterators.retain(|candidate| candidate != &record);
+                    iterators.push(record.clone());
+                    let mut values = Vec::new();
+                    while let Some(value) = self.iterator_step(&record)? {
+                        self.charge_step()?;
+                        values.push(value);
+                    }
+                    let array = self.array_from(values)?;
+                    iterators.retain(|candidate| candidate != &record);
+                    self.pop();
+                    self.stack.push(array);
+                }
+                Opcode::RequireObject => {
+                    let value = self.stack.last().unwrap().clone();
+                    self.coerce_object(&value)?;
+                }
+                Opcode::DestructureProperty => {
+                    let base = self.stack.len() - 3;
+                    let source = self.stack[base].clone();
+                    let excluded = self.stack[base + 1].clone();
+                    let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
+                    let value = self.get_property(&source, &key)?;
+                    self.array_push(&excluded, &key.value(), 0)?;
+                    self.stack.truncate(base);
+                    self.stack.extend([source, excluded, value]);
+                }
+                Opcode::ObjectRest => {
+                    let base = self.stack.len() - 2;
+                    let source = self.stack[base].clone();
+                    let excluded = self.stack[base + 1].clone();
+                    let rest = self.destructure_object_rest(&source, &excluded)?;
+                    self.stack.truncate(base);
+                    self.stack.push(rest);
+                }
+                Opcode::CopyDataProperties => {
+                    let base = self.stack.len() - 2;
+                    let Value::Object(target) = self.stack[base].clone() else { unreachable!("compiler creates an object literal target") };
+                    let source = self.stack[base + 1].clone();
+                    self.copy_data_properties(target, &source, &[])?;
+                    self.pop();
+                }
                 Opcode::Closure => {
                     let child = code.functions[operand].clone();
                     let (_, prototype) = self.string_intrinsics()?;
@@ -364,7 +426,11 @@ impl Vm {
                     for &slot in &child.captures {
                         captures.push(self.capture(slot as usize)?);
                     }
-                    let this = if child.arrow { self.this.clone() } else { Value::Undefined };
+                    let this = if child.arrow {
+                        if self.this == Value::Undefined && self.call_depth == 0 { self.global("globalThis")? } else { self.this.clone() }
+                    } else {
+                        Value::Undefined
+                    };
                     let id = self.with_roots(|heap| heap.alloc_closure(child.clone(), captures, this, function_prototype))?;
                     self.stack.push(Value::Object(id));
                     self.define_data(id, "name", Value::String(child.function_name.clone().into()), false, false, true)?;
@@ -376,7 +442,12 @@ impl Vm {
                         self.define_data(prototype, "constructor", Value::Object(id), true, false, true)?;
                     }
                 }
-                Opcode::This => self.stack.push(self.this.clone()),
+                Opcode::This => {
+                    if self.this == Value::Undefined && self.call_depth == 0 {
+                        self.this = self.global("globalThis")?;
+                    }
+                    self.stack.push(self.this.clone());
+                }
                 Opcode::Argument => self.stack.push(native::argument(&self.arguments, operand).clone()),
                 Opcode::RestArguments => {
                     let array = self.array_from(self.arguments.iter().skip(operand).cloned().collect())?;
@@ -659,6 +730,61 @@ impl Vm {
             Value::Null | Value::Undefined => Err(RuntimeError::TypeError("cannot access a property of null or undefined".into())),
             receiver => Ok((receiver, key)),
         }
+    }
+
+    /// Implements CopyDataProperties for an object-rest binding.  The
+    /// compiler supplies an internal array of already-coerced excluded keys;
+    /// getters are read from the original source object and copied as normal
+    /// enumerable data properties onto a fresh ordinary object.
+    fn destructure_object_rest(&mut self, source: &Value, excluded: &Value) -> Result<Value, RuntimeError> {
+        let base = self.stack.len();
+        let result = (|| {
+            let length_value = self.get_property(excluded, &"length".into())?;
+            let length = self.coerce_length(&length_value)? as u64;
+            let mut excluded_keys = Vec::new();
+            for index in 0..length {
+                self.charge_step()?;
+                let key = self.get_property(excluded, &index.to_string().into())?;
+                excluded_keys.push(self.coerce_property_key(&key)?);
+            }
+            let prototype = self.object_prototype;
+            let target = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+            self.stack.push(Value::Object(target));
+            self.copy_data_properties(target, source, &excluded_keys)?;
+            self.stack.pop();
+            Ok(Value::Object(target))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// The enumerable-property portion of CopyDataProperties.  Object spread
+    /// skips nullish sources, while object-rest has already performed
+    /// RequireObjectCoercible before arriving here.
+    fn copy_data_properties(&mut self, target: ObjectId, source: &Value, excluded: &[PropertyName]) -> Result<(), RuntimeError> {
+        if matches!(source, Value::Null | Value::Undefined) {
+            return Ok(());
+        }
+        let source_object = self.coerce_object(source)?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(source_object));
+        let result = (|| {
+            for key in self.heap.own_property_keys(source_object)? {
+                self.charge_step()?;
+                if excluded.iter().any(|excluded| excluded == &key) {
+                    continue;
+                }
+                let descriptor = self.heap.get_own_property_descriptor(source_object, &key)?.expect("own key has an own descriptor");
+                if descriptor.enumerable != Some(true) {
+                    continue;
+                }
+                let value = self.get_property(&Value::Object(source_object), &key)?;
+                self.with_roots(|heap| heap.define_own_property(target, key, PropertyDescriptor::data(value, true, true, true)))?;
+            }
+            Ok(())
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     fn string_intrinsics(&mut self) -> Result<(ObjectId, ObjectId), RuntimeError> {

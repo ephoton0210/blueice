@@ -434,5 +434,27 @@ true==1
 'own' in {own:1}
 'missing' in {}
 'x' in 1
+let [a,,b=3,...rest]=[1,2,undefined,4];a===1&&b===3&&rest.length===1&&rest[0]===4
+let [a,{b:c},[d=4]]=[1,{b:2},[]];a===1&&c===2&&d===4
+let {a,b:c=2,['d']:e,...rest}={a:1,d:3,z:4};a===1&&c===2&&e===3&&rest.z===4&&rest.a===undefined
+let count=0;let o={get a(){count++;return 1},b:2};let {a,...rest}=o;a===1&&rest.b===2&&rest.a===undefined&&count===1
+function f([a=1,{b}],{c=3,...rest}){return a+b+c+rest.d;}f([undefined,{b:2}],{d:4})
+let total=0;for(let [a,b] of [[1,2],[3,4]]){total+=a*b;}total
+let closed=0;let o={[Symbol.iterator](){return {next(){return {value:7,done:false};},return(){closed++;return {};}};}};let [x]=o;[x,closed].join(',')
+let next=0;let closed=0;let o={[Symbol.iterator](){return {next(){next++;return next===1?{value:1,done:false}:{done:true};},return(){closed++;return {};}};}};let [a,b,c]=o;[a,b,c,next,closed].join(',')
+let proto={inherited:1};let source={a:1,get b(){return 2},__proto__:proto};let object={x:0,...source,a:3};[object.x,object.a,object.b,object.inherited].join(',')
+let object={...null,...undefined,a:1};object.a
+let key=Symbol('key');let source={[key]:1};let object={...source};object[key]
+let object={...'ab'};[object[0],object[1],object.length].join(',')
+isNaN('not a number')&&isNaN(undefined)&&!isNaN('')&&!isNaN(null)&&!isNaN('Infinity')
+isFinite('1')&&!isFinite(Infinity)&&!isFinite('NaN')&&isFinite(null)
+parseInt('  -0x10')===-16&&parseInt('11',2)===3&&parseInt('z',36)===35&&parseInt('12z',10)===12
+parseFloat('  -1.25e2x')===-125&&parseFloat('Infinitylater')===Infinity&&parseFloat('0x10')===0
+''+(1/parseInt('-0'))
+isNaN===globalThis.isNaN&&isFinite===globalThis.isFinite&&parseInt===globalThis.parseInt&&parseFloat===globalThis.parseFloat
+let value=JSON.parse('{"a":[true,null,3],"b":"x"}');value.a[0]&&value.a[1]===null&&value.a[2]===3&&value.b==='x'
+JSON.stringify({b:2,a:'x',skip:undefined,list:[undefined,NaN,Infinity]})
+JSON.stringify('\ud800\n')
+JSON===globalThis.JSON&&JSON.parse.length===2&&JSON.stringify.length===3
 String.prototype.oracleIsolationProbe = 7
 ''.oracleIsolationProbe

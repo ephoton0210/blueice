@@ -86,6 +86,12 @@ opcodes! {
     GetIterator: 1, 0;
     IteratorStep: 5, 0;
     IteratorClose: 1, 0;
+    IteratorFinish: 1, 0;
+    IteratorRest: 1, 0;
+    RequireObject: 1, 0;
+    DestructureProperty: 1, 0;
+    ObjectRest: 1, 0;
+    CopyDataProperties: 1, 0;
     RegExpLiteral: 1, 0;
     TemplateObject: 5, 0;
     ArrayPush: 5, 0;

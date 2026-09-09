@@ -154,7 +154,7 @@ fn configuration_boundaries_and_error_messages_are_observable() {
     }
     assert!(RuntimeError::InstructionLimit.to_string().contains("budget"));
     assert!(RuntimeError::StringLimit { limit: 3 }.to_string().contains('3'));
-    for source in ["let x;let x", "break", "let [x]=y"] {
+    for source in ["let x;let x", "break", "let [x]"] {
         assert!(!compile(&parse(source).unwrap()).err().unwrap().to_string().is_empty());
     }
 }
@@ -299,7 +299,7 @@ fn object_operations_preserve_identity_and_evaluation_order() {
 
 #[test]
 fn unsupported_syntax_and_invalid_bindings_fail_before_execution() {
-    for source in ["({ ...x })", "let [x]=y", "for(x of y){}", "for(x in y){}", "switch(x){}", "try {} finally {}", "x=1", "let undefined=1"] {
+    for source in ["for(x of y){}", "for(x in y){}", "switch(x){}", "try {} finally {}", "x=1", "let undefined=1"] {
         assert!(matches!(compile(&parse(source).unwrap()), Err(CompileError::Unsupported(_))), "{source}");
     }
     for source in ["x == 1", "x != 1", "x in y"] {

@@ -183,15 +183,24 @@ impl Vm {
     }
 
     pub(super) fn iterator_step(&mut self, record: &Value) -> Result<Option<Value>, RuntimeError> {
-        let iterator = self.get_property(record, &"iterator".into())?;
-        let next = self.get_property(record, &"next".into())?;
+        let Value::Object(record) = record else { unreachable!("compiler only emits iterator records") };
+        if matches!(self.heap.get_own(*record, "done")?, Some(Value::Bool(true))) {
+            return Ok(None);
+        }
+        let iterator = self.get_property(&Value::Object(*record), &"iterator".into())?;
+        let next = self.get_property(&Value::Object(*record), &"next".into())?;
         let result = self.call_native(next, iterator, Vec::new(), false)?;
         if !matches!(result, Value::Object(_)) {
             return Err(RuntimeError::TypeError("iterator result must be an object".into()));
         }
         self.stack.push(result.clone());
         let done = self.get_property(&result, &"done".into())?;
-        let value = if primitive::truthy(&done) { None } else { Some(self.get_property(&result, &"value".into())?) };
+        let value = if primitive::truthy(&done) {
+            self.with_roots(|heap| heap.set(*record, "done", Value::Bool(true)))?;
+            None
+        } else {
+            Some(self.get_property(&result, &"value".into())?)
+        };
         self.stack.pop();
         Ok(value)
     }
@@ -310,6 +319,99 @@ impl Vm {
 
     pub(super) fn coerce_length(&mut self, value: &Value) -> Result<f64, RuntimeError> {
         native::length(&Value::Number(self.coerce_number(value)?))
+    }
+
+    /// ECMA-262 §19.2.5 parseInt.  The scan is deliberately prefix based:
+    /// unlike Number(), trailing non-digits are ignored and an incomplete
+    /// exponent is irrelevant because exponent syntax is not part of
+    /// StringIntegerLiteral.
+    fn parse_int(&mut self, value: &Value, radix: &Value) -> Result<Value, RuntimeError> {
+        let string = self.coerce_string(value)?;
+        let Ok(string) = string.to_utf8() else { return Ok(Value::Number(f64::NAN)) };
+        let mut input = string.trim_start_matches(primitive::whitespace);
+        let negative = input.starts_with('-');
+        if matches!(input.as_bytes().first(), Some(b'+' | b'-')) {
+            input = &input[1..];
+        }
+        let requested = if matches!(radix, Value::Undefined) {
+            0
+        } else {
+            let number = self.coerce_number(radix)?;
+            if number.is_finite() { number.trunc().rem_euclid(4_294_967_296.0) as u32 as i32 } else { 0 }
+        };
+        if requested != 0 && !(2..=36).contains(&requested) {
+            return Ok(Value::Number(f64::NAN));
+        }
+        let mut radix = requested;
+        if (radix == 0 || radix == 16) && (input.starts_with("0x") || input.starts_with("0X")) {
+            input = &input[2..];
+            radix = 16;
+        }
+        if radix == 0 {
+            radix = 10;
+        }
+        let mut digits = 0usize;
+        let mut number = 0.0;
+        for byte in input.bytes() {
+            let digit = match byte {
+                b'0'..=b'9' => u32::from(byte - b'0'),
+                b'a'..=b'z' => u32::from(byte - b'a') + 10,
+                b'A'..=b'Z' => u32::from(byte - b'A') + 10,
+                _ => break,
+            };
+            if digit >= radix as u32 {
+                break;
+            }
+            digits += 1;
+            number = number * f64::from(radix) + f64::from(digit);
+        }
+        if digits == 0 { Ok(Value::Number(f64::NAN)) } else { Ok(Value::Number(if negative { -number } else { number })) }
+    }
+
+    /// ECMA-262 §19.2.4 parseFloat.  It recognizes only the longest valid
+    /// decimal/Infinity prefix after StringTrim; hexadecimal and binary text
+    /// therefore stop after their leading decimal zero.
+    fn parse_float(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        let string = self.coerce_string(value)?;
+        let Ok(input) = string.to_utf8() else { return Ok(Value::Number(f64::NAN)) };
+        let input = input.trim_start_matches(primitive::whitespace);
+        let sign_end = usize::from(matches!(input.as_bytes().first(), Some(b'+' | b'-')));
+        let negative = input.starts_with('-');
+        if input[sign_end..].starts_with("Infinity") {
+            return Ok(Value::Number(if negative { f64::NEG_INFINITY } else { f64::INFINITY }));
+        }
+        let bytes = input.as_bytes();
+        let mut index = sign_end;
+        let mut digits = 0usize;
+        while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+            index += 1;
+            digits += 1;
+        }
+        if bytes.get(index) == Some(&b'.') {
+            index += 1;
+            while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+                index += 1;
+                digits += 1;
+            }
+        }
+        if digits == 0 {
+            return Ok(Value::Number(f64::NAN));
+        }
+        if matches!(bytes.get(index), Some(b'e' | b'E')) {
+            let exponent = index;
+            index += 1;
+            if matches!(bytes.get(index), Some(b'+' | b'-')) {
+                index += 1;
+            }
+            let exponent_digits = index;
+            while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+                index += 1;
+            }
+            if index == exponent_digits {
+                index = exponent;
+            }
+        }
+        Ok(Value::Number(input[..index].parse().unwrap_or(f64::NAN)))
     }
 
     pub(super) fn array_length_value(&mut self, value: &Value) -> Result<Value, RuntimeError> {
@@ -467,6 +569,9 @@ impl Vm {
         if name == "Math" {
             return self.math_global();
         }
+        if name == "JSON" {
+            return self.json_global();
+        }
         if let Some(&id) = self.globals.get(name) {
             return Ok(Value::Object(id));
         }
@@ -478,6 +583,10 @@ impl Vm {
             "Object" => NativeFunction::Object,
             "Number" => NativeFunction::PrimitiveConstructor(false),
             "Boolean" => NativeFunction::PrimitiveConstructor(true),
+            "isNaN" => NativeFunction::IsNaN,
+            "isFinite" => NativeFunction::IsFinite,
+            "parseInt" => NativeFunction::ParseInt,
+            "parseFloat" => NativeFunction::ParseFloat,
             // The remaining compiler-recognized globals are namespace objects.
             _ => NativeFunction::Empty,
         };
@@ -547,6 +656,18 @@ impl Vm {
             self.heap.unroot(root)?;
         } else {
             self.globals.insert(name.into(), id);
+            if name == "globalThis" {
+                let globals = self.globals.clone();
+                for (global_name, value) in globals {
+                    if global_name != "globalThis" {
+                        self.define_data(id, global_name, Value::Object(value), true, false, true)?;
+                    }
+                }
+            } else {
+                if let Some(&global) = self.globals.get("globalThis") {
+                    self.define_data(global, name, Value::Object(id), true, false, true)?;
+                }
+            }
         }
         result
     }
@@ -602,6 +723,12 @@ impl Vm {
             NativeFunction::ArrayIsArray => Ok(Value::Bool(first.object_id().is_some_and(|id| self.heap.is_array(id).unwrap_or(false)))),
             NativeFunction::ArrayForEach => self.array_for_each(&receiver, first, native::argument(&args, 1)),
             NativeFunction::ArrayIncludes => self.array_includes(&receiver, first, native::argument(&args, 1)),
+            NativeFunction::IsNaN => Ok(Value::Bool(self.coerce_number(first)?.is_nan())),
+            NativeFunction::IsFinite => Ok(Value::Bool(self.coerce_number(first)?.is_finite())),
+            NativeFunction::ParseInt => self.parse_int(first, native::argument(&args, 1)),
+            NativeFunction::ParseFloat => self.parse_float(first),
+            NativeFunction::JsonParse => self.json_parse(first),
+            NativeFunction::JsonStringify => self.json_stringify(first),
             NativeFunction::Math(method) => self.math_method(method, &args),
             NativeFunction::Bind => self.bind_function(receiver, &args),
             NativeFunction::HasInstance => self.has_instance(first.clone(), receiver, true).map(Value::Bool),

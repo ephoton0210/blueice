@@ -19,6 +19,9 @@ impl Vm {
 
     fn install_test262_functions(&mut self) -> Result<(), RuntimeError> {
         let global = self.global("globalThis")?.object_id().unwrap();
+        for name in ["isNaN", "isFinite", "parseInt", "parseFloat"] {
+            self.global(name)?;
+        }
         let string = self.string_intrinsics()?.0;
         let prototype = self.heap.prototype(string)?.unwrap();
         self.install_native(global, prototype, "assert", 1, NativeFunction::Test262("assert"))?;
