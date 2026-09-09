@@ -6,11 +6,9 @@
 //! `phase-2-mvp-scope/PLAN.md`'s "MVP JS scope (decided)" section. Two
 //! omissions worth calling out because they're easy to expect and
 //! aren't oversights: there is no `ClassDecl`/`ClassExpr` (that section
-//! defers `class` entirely) and no destructuring-assignment expression
-//! target (destructuring is only in scope for declarations/parameters,
-//! not for a plain `[a, b] = arr` assignment expression) -- so
-//! [`Expr::Assign`]'s target is a plain [`Expr`] (an identifier or
-//! member expression), not a [`Pattern`].
+//! defers `class` entirely). Assignment patterns are deliberately a
+//! separate AST from binding patterns because their leaves may be
+//! existing member references as well as identifiers.
 
 use crate::JsString;
 
@@ -48,6 +46,29 @@ pub enum Pattern {
     Identifier(String),
     Array(Vec<Option<ArrayPatternElement>>),
     Object(Vec<ObjectPatternProp>),
+}
+
+/// A target used by a plain destructuring assignment such as
+/// `([name, target.value] = source)`. Unlike [`Pattern`], it never
+/// declares names and may write an existing member reference.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AssignmentPattern {
+    Target(Box<Expr>),
+    Array(Vec<Option<AssignmentPatternElement>>),
+    Object(Vec<AssignmentPatternProp>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AssignmentPatternElement {
+    pub pattern: AssignmentPattern,
+    pub default: Option<Expr>,
+    pub rest: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AssignmentPatternProp {
+    KeyValue { key: PropertyKey, value: AssignmentPattern, default: Option<Expr> },
+    Rest(AssignmentPattern),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -230,6 +251,7 @@ pub enum Expr {
     Binary { op: BinaryOp, left: Box<Expr>, right: Box<Expr> },
     Logical { op: LogicalOp, left: Box<Expr>, right: Box<Expr> },
     Assign { op: AssignOp, target: Box<Expr>, value: Box<Expr> },
+    DestructureAssign { pattern: AssignmentPattern, value: Box<Expr> },
     Conditional { test: Box<Expr>, consequent: Box<Expr>, alternate: Box<Expr> },
     Call { callee: Box<Expr>, args: Vec<Argument> },
     New { callee: Box<Expr>, args: Vec<Argument> },

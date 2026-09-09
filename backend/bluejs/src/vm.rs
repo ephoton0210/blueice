@@ -597,6 +597,18 @@ impl Vm {
                     self.set_property(&object, &key, &value)?;
                     self.stack.push(value);
                 }
+                Opcode::SetDestructureProperty => {
+                    // A destructuring leaf has already produced its value;
+                    // evaluating a member target appends its object/key after
+                    // that value. Preserve the value for the caller to pop.
+                    let base = self.stack.len() - 3;
+                    let value = self.stack[base].clone();
+                    let object = self.stack[base + 1].clone();
+                    let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
+                    self.set_property(&object, &key, &value)?;
+                    self.stack.truncate(base);
+                    self.stack.push(value);
+                }
                 Opcode::UpdateProperty => {
                     let (object, key) = self.property_reference()?;
                     self.stack.push(object.clone());

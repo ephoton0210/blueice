@@ -593,6 +593,7 @@ impl Compiler {
                 self.emit(Opcode::GetProperty, 0)?;
             }
             Expr::Assign { op, target, value } => self.assignment(*op, target, value)?,
+            Expr::DestructureAssign { pattern, value } => self.destructuring_assignment(pattern, value)?,
             Expr::Update { op, arg, prefix } => {
                 if let Expr::Identifier(name) = &**arg {
                     let slot = self.resolve(name).ok_or(CompileError::Unsupported("implicit global assignment"))?;
@@ -749,6 +750,75 @@ impl Compiler {
         } else {
             self.emit(Opcode::SetProperty, 0)?;
         }
+        Ok(())
+    }
+
+    /// AssignmentPatternEvaluation. The first copy of the RHS is the
+    /// expression's result; the second is consumed by the recursive pattern.
+    fn destructuring_assignment(&mut self, pattern: &AssignmentPattern, value: &Expr) -> Result<(), CompileError> {
+        self.expression(value)?;
+        self.emit(Opcode::Dup, 0)?;
+        self.assign_pattern(pattern)
+    }
+
+    fn assign_pattern(&mut self, pattern: &AssignmentPattern) -> Result<(), CompileError> {
+        match pattern {
+            AssignmentPattern::Target(target) => self.assign_pattern_target(target)?,
+            AssignmentPattern::Array(elements) => {
+                self.emit(Opcode::GetIterator, 0)?;
+                for element in elements {
+                    let Some(element) = element else {
+                        self.array_pattern_value()?;
+                        self.emit(Opcode::Pop, 0)?;
+                        continue;
+                    };
+                    if element.rest {
+                        self.emit(Opcode::IteratorRest, 0)?;
+                        self.assign_pattern(&element.pattern)?;
+                        return Ok(());
+                    }
+                    self.array_pattern_value()?;
+                    self.pattern_default(element.default.as_ref())?;
+                    self.assign_pattern(&element.pattern)?;
+                }
+                self.emit(Opcode::IteratorFinish, 0)?;
+            }
+            AssignmentPattern::Object(properties) => {
+                self.emit(Opcode::RequireObject, 0)?;
+                self.emit(Opcode::NewArray, 0)?;
+                for property in properties {
+                    match property {
+                        AssignmentPatternProp::KeyValue { key, value, default } => {
+                            self.property_key(key)?;
+                            self.emit(Opcode::DestructureProperty, 0)?;
+                            self.pattern_default(default.as_ref())?;
+                            self.assign_pattern(value)?;
+                        }
+                        AssignmentPatternProp::Rest(pattern) => {
+                            self.emit(Opcode::ObjectRest, 0)?;
+                            self.assign_pattern(pattern)?;
+                            return Ok(());
+                        }
+                    }
+                }
+                self.emit(Opcode::Pop, 0)?;
+                self.emit(Opcode::Pop, 0)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Consumes a leaf value while assigning an existing binding or member;
+    /// the outer assignment pattern keeps its duplicate RHS beneath it.
+    fn assign_pattern_target(&mut self, target: &Expr) -> Result<(), CompileError> {
+        if let Expr::Identifier(name) = target {
+            let slot = self.resolve(name).ok_or(CompileError::Unsupported("implicit global assignment"))?;
+            self.emit(Opcode::StoreBinding, slot)?;
+        } else {
+            self.member_reference(target)?;
+            self.emit(Opcode::SetDestructureProperty, 0)?;
+        }
+        self.emit(Opcode::Pop, 0)?;
         Ok(())
     }
 

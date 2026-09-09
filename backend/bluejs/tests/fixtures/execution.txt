@@ -446,6 +446,10 @@ let proto={inherited:1};let source={a:1,get b(){return 2},__proto__:proto};let o
 let object={...null,...undefined,a:1};object.a
 let key=Symbol('key');let source={[key]:1};let object={...source};object[key]
 let object={...'ab'};[object[0],object[1],object.length].join(',')
+let a,b,rest;let source=[1,2,undefined,4];let result=([a,,b=3,...rest]=source);result===source&&a===1&&b===3&&rest.length===1&&rest[0]===4
+let alpha,renamed,rest;let source={alpha:1,gamma:undefined,extra:4};let result=({alpha,gamma:renamed=3,...rest}=source);result===source&&alpha===1&&renamed===3&&rest.extra===4&&rest.alpha===undefined
+let target={};([target.first,target['second']]=[1,2]);target.first===1&&target.second===2
+let left;let target={};([{value:left=1},{value:target.right}]=[{}, {value:2}]);left===1&&target.right===2
 isNaN('not a number')&&isNaN(undefined)&&!isNaN('')&&!isNaN(null)&&!isNaN('Infinity')
 isFinite('1')&&!isFinite(Infinity)&&!isFinite('NaN')&&isFinite(null)
 parseInt('  -0x10')===-16&&parseInt('11',2)===3&&parseInt('z',36)===35&&parseInt('12z',10)===12

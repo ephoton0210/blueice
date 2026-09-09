@@ -66,6 +66,7 @@ opcodes! {
     NewObject: 1, 0;
     GetProperty: 1, MAY_USE_INLINE_CACHE;
     SetProperty: 1, MAY_USE_INLINE_CACHE;
+    SetDestructureProperty: 1, MAY_USE_INLINE_CACHE;
     UpdateProperty: 5, MAY_USE_INLINE_CACHE;
     SetLiteralPrototype: 1, 0;
     SetCompletion: 1, 0;

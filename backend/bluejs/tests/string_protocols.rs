@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
+use blueice_bluejs::{RuntimeError, Value, Vm, compile, parse};
 
 fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap())
@@ -195,6 +195,7 @@ fn accessor_literals_and_delete_follow_string_exotic_rules() {
     check(&[
         "let s={get toString(){return ()=> 'abc';}}; String(s) === 'abc'",
         "let s={toString(){return 'abc';}}; s.toString() === 'abc' && String(s) === 'abc'",
+        "let o={get 'quoted'(){return 1},set 3(value){this.value=value}}; o.quoted === 1 && o[3] === undefined",
         "let s={[Symbol.match](value){return value+'!';}}; 'x'.match(s) === 'x!'",
         "let s=new String('abc'); !delete s[0] && !delete s.length && delete s.missing",
         "let s=new String('a'); s.x=1; delete s.x && s.x === undefined",
@@ -243,7 +244,7 @@ fn capture_identity_and_primitive_protocol_lookup() {
         "String.prototype[Symbol.search]=()=>42; 'a'.search('b') === 42",
         "Boolean.prototype[Symbol.matchAll]=()=>42; 'a'.matchAll(true) === 42",
     ]);
-    let source="let o={}; Object.defineProperty(o,'x',{get value(){return {x:'alive'};},get writable(){let a={};return true;},get configurable(){let a={};return true;}}); o.x.x === 'alive'";
+    let source = "let o={}; Object.defineProperty(o,'x',{get value(){return {x:'alive'};},get writable(){let a={};return true;},get configurable(){let a={};return true;}}); o.x.x === 'alive'";
     let mut vm =
         Vm::new(blueice_bluejs::VmConfig { heap: blueice_bluejs::HeapConfig { nursery_capacity: 1, major_threshold_bytes: 1, max_heap_bytes: 256 * 1024 }, ..Default::default() })
             .unwrap();
@@ -505,7 +506,7 @@ fn complete_string_surface_has_specified_property_attributes() {
 
 #[test]
 fn nested_functions_share_the_total_compiled_byte_budget() {
-    use blueice_bluejs::{compile_with_limit, CompileError};
+    use blueice_bluejs::{CompileError, compile_with_limit};
     let body = "1;".repeat(100);
     let single = parse(&format!("function a(){{function b(){{{body}}}}}")).unwrap();
     let required = (1..2000).find(|&limit| compile_with_limit(&single, limit).is_ok()).unwrap();

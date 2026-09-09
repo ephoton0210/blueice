@@ -81,11 +81,15 @@ fn destructuring_binds_nested_patterns_defaults_rest_and_iterator_protocols() {
         "let total=0;for(let [a,b] of [[1,2],[3,4]]){total+=a*b;}total===14",
         "let closed=0;let o={[Symbol.iterator](){return {next(){return {value:7,done:false};},return(){closed++;return {};}};}};let [x]=o;x===7&&closed===1",
         "let next=0;let closed=0;let o={[Symbol.iterator](){return {next(){next++;return next===1?{value:1,done:false}:{done:true};},return(){closed++;return {};}};}};let [a,b,c]=o;a===1&&b===undefined&&c===undefined&&next===2&&closed===0",
+        "let a,b,rest;let source=[1,2,undefined,4];let result=([a,,b=3,...rest]=source);result===source&&a===1&&b===3&&rest.length===1&&rest[0]===4",
+        "let alpha,renamed,rest;let source={alpha:1,gamma:undefined,extra:4};let result=({alpha,gamma:renamed=3,...rest}=source);result===source&&alpha===1&&renamed===3&&rest.extra===4&&rest.alpha===undefined",
+        "let target={};([target.first,target['second']]=[1,2]);target.first===1&&target.second===2",
+        "let left;let target={};([{value:left=1},{value:target.right}]=[{}, {value:2}]);left===1&&target.right===2",
     ] {
         assert_eq!(evaluate(source), Value::Bool(true), "{source}");
     }
 
-    for source in ["let {}=null", "let [x]=null"] {
+    for source in ["let {}=null", "let [x]=null", "let x;({x}=null)", "let x;([x]=null)"] {
         let code = compile(&parse(source).unwrap()).unwrap();
         assert!(matches!(Vm::default().execute(&code), Err(RuntimeError::TypeError(_))), "{source}");
     }

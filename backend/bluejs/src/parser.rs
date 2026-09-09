@@ -235,19 +235,11 @@ impl Parser {
     }
 
     fn expect_punct(&mut self, p: Punct) -> Result<(), ParseError> {
-        if self.eat_punct(p) {
-            Ok(())
-        } else {
-            Err(self.error(format!("expected {p:?}")))
-        }
+        if self.eat_punct(p) { Ok(()) } else { Err(self.error(format!("expected {p:?}"))) }
     }
 
     fn expect_keyword(&mut self, k: Keyword) -> Result<(), ParseError> {
-        if self.eat_keyword(k) {
-            Ok(())
-        } else {
-            Err(self.error(format!("expected keyword {k:?}")))
-        }
+        if self.eat_keyword(k) { Ok(()) } else { Err(self.error(format!("expected keyword {k:?}"))) }
     }
 
     fn error(&self, message: impl Into<String>) -> ParseError {
@@ -690,11 +682,7 @@ impl Parser {
     }
 
     fn parse_arrow_body(&mut self) -> Result<ArrowBody, ParseError> {
-        if self.check_punct(Punct::LBrace) {
-            Ok(ArrowBody::Block(self.parse_block()?))
-        } else {
-            Ok(ArrowBody::Expr(Box::new(self.parse_assignment()?)))
-        }
+        if self.check_punct(Punct::LBrace) { Ok(ArrowBody::Block(self.parse_block()?)) } else { Ok(ArrowBody::Expr(Box::new(self.parse_assignment()?))) }
     }
 
     /// Finds the index of the `)` matching the `(` at `open_idx`, or
@@ -764,6 +752,12 @@ impl Parser {
         if let Some(arrow) = self.try_parse_arrow_function()? {
             return Ok(arrow);
         }
+        if self.destructuring_assignment_ahead() {
+            let pattern = self.parse_assignment_pattern()?;
+            self.expect_punct(Punct::Assign)?;
+            let value = self.parse_assignment()?;
+            return Ok(Expr::DestructureAssign { pattern, value: Box::new(value) });
+        }
         let left = self.parse_conditional()?;
         let op = match self.peek() {
             Token::Punct(Punct::Assign) => Some(AssignOp::Assign),
@@ -783,6 +777,107 @@ impl Parser {
         self.advance();
         let value = self.parse_assignment()?;
         Ok(Expr::Assign { op, target: Box::new(left), value: Box::new(value) })
+    }
+
+    /// A leading array/object cover grammar is a destructuring target only
+    /// when its matching delimiter is immediately followed by `=`. This
+    /// keeps ordinary literals on the regular expression path and lets
+    /// parenthesized object assignment (`({x} = source)`) parse correctly.
+    fn destructuring_assignment_ahead(&self) -> bool {
+        if !matches!(self.peek(), Token::Punct(Punct::LBracket | Punct::LBrace)) {
+            return false;
+        }
+        let mut delimiters = Vec::new();
+        let mut index = self.pos;
+        loop {
+            match self.tokens[index].token {
+                Token::Punct(Punct::LParen) => delimiters.push(Punct::RParen),
+                Token::Punct(Punct::LBracket) => delimiters.push(Punct::RBracket),
+                Token::Punct(Punct::LBrace) => delimiters.push(Punct::RBrace),
+                Token::Punct(punct) if delimiters.last() == Some(&punct) => {
+                    delimiters.pop();
+                    if delimiters.is_empty() {
+                        return matches!(self.tokens.get(index + 1).map(|token| &token.token), Some(Token::Punct(Punct::Assign)));
+                    }
+                }
+                Token::Eof => return false,
+                _ => {}
+            }
+            index += 1;
+        }
+    }
+
+    fn parse_assignment_pattern(&mut self) -> Result<AssignmentPattern, ParseError> {
+        match self.peek() {
+            Token::Punct(Punct::LBracket) => self.parse_array_assignment_pattern(),
+            Token::Punct(Punct::LBrace) => self.parse_object_assignment_pattern(),
+            _ => {
+                let target = self.parse_lhs_expression()?;
+                if !is_valid_ref_target(&target) {
+                    return Err(self.error("invalid destructuring assignment target"));
+                }
+                Ok(AssignmentPattern::Target(Box::new(target)))
+            }
+        }
+    }
+
+    fn parse_array_assignment_pattern(&mut self) -> Result<AssignmentPattern, ParseError> {
+        self.expect_punct(Punct::LBracket)?;
+        let mut elements = Vec::new();
+        while !self.check_punct(Punct::RBracket) {
+            if self.eat_punct(Punct::Comma) {
+                elements.push(None);
+                continue;
+            }
+            let rest = self.eat_punct(Punct::Ellipsis);
+            let pattern = self.parse_assignment_pattern()?;
+            let default = if rest {
+                None
+            } else if self.eat_punct(Punct::Assign) {
+                Some(self.parse_assignment()?)
+            } else {
+                None
+            };
+            elements.push(Some(AssignmentPatternElement { pattern, default, rest }));
+            if rest && !self.check_punct(Punct::RBracket) {
+                return Err(self.error("a rest element must be last in a destructuring assignment pattern"));
+            }
+            if !self.check_punct(Punct::RBracket) {
+                self.expect_punct(Punct::Comma)?;
+            }
+        }
+        self.expect_punct(Punct::RBracket)?;
+        Ok(AssignmentPattern::Array(elements))
+    }
+
+    fn parse_object_assignment_pattern(&mut self) -> Result<AssignmentPattern, ParseError> {
+        self.expect_punct(Punct::LBrace)?;
+        let mut properties = Vec::new();
+        while !self.check_punct(Punct::RBrace) {
+            if self.eat_punct(Punct::Ellipsis) {
+                properties.push(AssignmentPatternProp::Rest(self.parse_assignment_pattern()?));
+                if !self.check_punct(Punct::RBrace) {
+                    return Err(self.error("a rest property must be last in a destructuring assignment pattern"));
+                }
+            } else {
+                let key = self.parse_property_key()?;
+                let (value, default) = if self.eat_punct(Punct::Colon) {
+                    let value = self.parse_assignment_pattern()?;
+                    let default = if self.eat_punct(Punct::Assign) { Some(self.parse_assignment()?) } else { None };
+                    (value, default)
+                } else {
+                    let PropertyKey::Identifier(name) = &key else { return Err(self.error("expected ':' in destructuring assignment pattern")) };
+                    let default = if self.eat_punct(Punct::Assign) { Some(self.parse_assignment()?) } else { None };
+                    (AssignmentPattern::Target(Box::new(Expr::Identifier(name.clone()))), default)
+                };
+                properties.push(AssignmentPatternProp::KeyValue { key, value, default });
+            }
+            if !self.check_punct(Punct::RBrace) {
+                self.expect_punct(Punct::Comma)?;
+            }
+        }
+        self.expect_punct(Punct::RBrace)?;
+        Ok(AssignmentPattern::Object(properties))
     }
 
     fn parse_conditional(&mut self) -> Result<Expr, ParseError> {
@@ -1143,7 +1238,12 @@ impl Parser {
                 } else if self.check_punct(Punct::LParen) {
                     let params = self.parse_params()?;
                     let body = self.parse_block()?;
-                    let name = property_function_name(&key);
+                    let name = match &key {
+                        PropertyKey::Identifier(name) => name.clone(),
+                        PropertyKey::String(name) => name.to_utf8().unwrap_or_default(),
+                        PropertyKey::Number(number) => number.to_string(),
+                        PropertyKey::Computed(_) => String::new(),
+                    };
                     props.push(ObjectProp::Method { key, function: Function { name: Some(name), params, body } });
                 } else if matches!(&key, PropertyKey::Identifier(name) if name == "get" || name == "set") && !self.check_punct(Punct::Comma) && !self.check_punct(Punct::RBrace) {
                     let getter = matches!(&key, PropertyKey::Identifier(name) if name == "get");
@@ -1153,7 +1253,13 @@ impl Parser {
                         return Err(self.error("invalid accessor parameter list"));
                     }
                     let body = self.parse_block()?;
-                    let name = format!("{} {}", if getter { "get" } else { "set" }, property_function_name(&key));
+                    let name = match &key {
+                        PropertyKey::Identifier(name) => name.clone(),
+                        PropertyKey::String(name) => name.to_utf8().unwrap_or_default(),
+                        PropertyKey::Number(number) => number.to_string(),
+                        PropertyKey::Computed(_) => String::new(),
+                    };
+                    let name = format!("{} {}", if getter { "get" } else { "set" }, name);
                     props.push(ObjectProp::Accessor { key, function: Function { name: Some(name), params, body }, getter });
                 } else {
                     let name = match &key {
@@ -1172,15 +1278,6 @@ impl Parser {
     }
 }
 
-fn property_function_name(key: &PropertyKey) -> String {
-    match key {
-        PropertyKey::Identifier(name) => name.clone(),
-        PropertyKey::String(name) => name.to_utf8().unwrap_or_default(),
-        PropertyKey::Number(n) => n.to_string(),
-        PropertyKey::Computed(_) => String::new(),
-    }
-}
-
 fn parse_template(quasis: Vec<crate::JsString>, raw_expressions: Vec<String>) -> Result<Expr, ParseError> {
     let expressions = raw_expressions.iter().map(|src| parse_expression_from_source(src)).collect::<Result<Vec<_>, _>>()?;
     Ok(Expr::Template { quasis, expressions })
@@ -1190,7 +1287,7 @@ fn parse_template(quasis: Vec<crate::JsString>, raw_expressions: Vec<String>) ->
 mod tests {
     #[test]
     fn regexp_lexical_goals_are_visible_in_the_public_ast() {
-        use crate::{parse, Expr, Stmt};
+        use crate::{Expr, Stmt, parse};
         let program = parse("/a/g").unwrap();
         assert!(matches!(&program.body[0],Stmt::Expr(Expr::RegExp {pattern,flags}) if pattern == "a" && flags == "g"));
         assert!(parse("delete object.x").is_ok());
@@ -1235,6 +1332,7 @@ mod tests {
                 expressions: vec![Expr::Binary { op: BinaryOp::Add, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) }]
             }
         );
+        assert!(matches!(expr(r"tag`value: ${1}`"), Expr::TaggedTemplate { expressions, .. } if expressions == vec![Expr::Number(1.0)]));
     }
 
     #[test]
@@ -1322,6 +1420,10 @@ mod tests {
     fn invalid_assignment_target_is_an_error() {
         assert!(parse_expression_from_source("1 = 2").is_err());
         assert!(parse_expression_from_source("(a + b) = 2").is_err());
+        assert!(parse_expression_from_source("([1] = source)").is_err());
+        assert!(parse_expression_from_source("[").is_err());
+        assert!(parse_expression_from_source("([a, ...b, c] = source)").is_err());
+        assert!(parse_expression_from_source("({a, ...rest, b} = source)").is_err());
     }
 
     #[test]
@@ -1427,6 +1529,26 @@ mod tests {
                 ObjectProp::Spread(Expr::Identifier("rest".to_string())),
             ])
         );
+        assert!(matches!(
+            expr("{get 'quoted'(){return 1},set 3(value){}}"),
+            Expr::Object(properties)
+                if matches!(
+                    &properties[..],
+                    [
+                        ObjectProp::Accessor { function, getter: true, .. },
+                        ObjectProp::Accessor { function: setter, getter: false, .. },
+                    ] if function.name.as_deref() == Some("get quoted") && setter.name.as_deref() == Some("set 3")
+                )
+        ));
+        assert!(matches!(
+            only_stmt("({get 'quoted'(){return 1}})"),
+            Stmt::Expr(Expr::Object(properties))
+                if matches!(
+                    &properties[..],
+                    [ObjectProp::Accessor { function, getter: true, .. }]
+                        if function.name.as_deref() == Some("get quoted")
+                )
+        ));
     }
 
     #[test]
@@ -1597,6 +1719,8 @@ mod tests {
                 body: vec![],
             })
         );
+        assert!(matches!(expr("([a,,b=3,...rest]=source)"), Expr::DestructureAssign { pattern: AssignmentPattern::Array(_), .. }));
+        assert!(matches!(expr("({a,b:c=2,...rest}=source)"), Expr::DestructureAssign { pattern: AssignmentPattern::Object(_), .. }));
     }
 
     #[test]
