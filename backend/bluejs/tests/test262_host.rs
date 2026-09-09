@@ -106,6 +106,7 @@ fn native_property_helpers_validate_descriptors_and_constructibility() {
         "let o={};Object.defineProperty(o,'x',{get:function getter(){return 1},set:undefined,enumerable:false,configurable:true});verifyAccessorProperty(o,'x',{get:Object.getOwnPropertyDescriptor(o,'x').get,set:undefined});verifyPrimordialAccessorProperty(o,'x',{get:Object.getOwnPropertyDescriptor(o,'x').get,set:undefined});true",
         "isConstructor(function(){}) && !isConstructor(()=>{})",
         "assert.throws(Test262Error,()=>isConstructor(1));assert.throws(Test262Error,()=>verifyProperty(Math,'PI',undefined));true",
+        "assert.throws(TypeError,()=>verifyProperty(1,'x',{}));true",
         "verifyCallableProperty(Math,'abs','abs',1,{writable:true,enumerable:false,configurable:true});true",
         "verifyCallableProperty(Math,'abs',undefined,1);verifyCallableProperty(Math,'abs','abs',1,{writable:true,enumerable:false});true",
         "assert.throws(Test262Error,()=>verifyCallableProperty(Math,'abs','wrong',1));true",

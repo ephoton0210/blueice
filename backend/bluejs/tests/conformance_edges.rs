@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Public-interface regressions from the coverage/conformance review.
-use blueice_bluejs::{CompileError, RuntimeError, Value, Vm, compile, compile_with_limit, parse};
+use blueice_bluejs::{CompileError, RuntimeError, Value, Vm, VmConfig, compile, compile_with_limit, parse};
 
 fn evaluate(source: &str) -> Value {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap()).unwrap()
@@ -111,6 +111,8 @@ fn global_numeric_conversion_functions_scan_ecmascript_prefixes() {
         "parseInt('  -0x10')===-16&&parseInt('11',2)===3&&parseInt('z',36)===35&&parseInt('12z',10)===12",
         "parseFloat('  -1.25e2x')===-125&&parseFloat('Infinitylater')===Infinity&&parseFloat('0x10')===0",
         "''+(1/parseInt('-0'))==='-Infinity'&&isNaN(parseInt('x'))&&isNaN(parseFloat('.'))",
+        "isNaN(parseInt('1',1))&&parseInt('F',16)===15&&parseInt('1?',10)===1",
+        "parseFloat('1e+2')===100&&parseFloat('1e+')===1",
         "isNaN===globalThis.isNaN&&isFinite===globalThis.isFinite&&parseInt===globalThis.parseInt&&parseFloat===globalThis.parseFloat",
         "this===globalThis",
     ] {
@@ -124,10 +126,26 @@ fn json_parse_and_stringify_preserve_data_properties_and_json_escapes() {
         "let value=JSON.parse('{\"a\":[true,null,3],\"b\":\"x\"}');value.a[0]&&value.a[1]===null&&value.a[2]===3&&value.b==='x'",
         r#"JSON.stringify({b:2,a:'x',skip:undefined,list:[undefined,NaN,Infinity]})==='{"b":2,"a":"x","list":[null,null,null]}'"#,
         r#"JSON.stringify('\ud800\n')==='"\\ud800\\n"'"#,
+        "JSON.stringify(undefined)===undefined&&JSON.stringify(null)==='null'&&JSON.stringify(true)==='true'&&JSON.stringify(false)==='false'",
+        "JSON.stringify(function(){})===undefined",
+        r#"let object={shown:1};Object.defineProperty(object,'hidden',{value:2,enumerable:false});JSON.stringify(object)==='{"shown":1}'"#,
+        r#"JSON.stringify('\b\t\f\r"\\\uD83D\uDE00') === '"\\b\\t\\f\\r\\"\\\\\uD83D\uDE00"'"#,
         "JSON===globalThis.JSON&&JSON.parse.length===2&&JSON.stringify.length===3",
     ] {
         assert_eq!(evaluate(source), Value::Bool(true), "{source}");
     }
+
+    let cyclic = compile(&parse("let object={};object.self=object;JSON.stringify(object)").unwrap()).unwrap();
+    assert!(matches!(Vm::default().execute(&cyclic), Err(RuntimeError::TypeError(_))));
+
+    for source in [r"JSON.parse('\uD800')", "JSON.parse('not JSON')"] {
+        let code = compile(&parse(source).unwrap()).unwrap();
+        assert!(matches!(Vm::default().execute(&code), Err(RuntimeError::SyntaxError(_))), "{source}");
+    }
+
+    let oversized = compile(&parse("JSON.stringify('four')").unwrap()).unwrap();
+    let mut vm = Vm::new(VmConfig { max_string_bytes: 4, ..VmConfig::default() }).unwrap();
+    assert_eq!(vm.execute(&oversized), Err(RuntimeError::StringLimit { limit: 4 }));
 }
 
 #[test]

@@ -49,7 +49,11 @@ impl Vm {
             serde_json::Value::Null => Value::Null,
             serde_json::Value::Bool(value) => Value::Bool(value),
             serde_json::Value::Number(value) => Value::Number(value.as_f64().unwrap_or(f64::NAN)),
-            serde_json::Value::String(value) => Value::String(value.into()),
+            serde_json::Value::String(value) => {
+                let value = Value::String(value.into());
+                self.check_string(&value)?;
+                value
+            }
             serde_json::Value::Array(values) => {
                 let prototype = self.array_prototype;
                 let array = self.with_roots(|heap| heap.alloc_array(values.len() as u32, Some(prototype)))?;

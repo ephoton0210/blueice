@@ -22,6 +22,7 @@ impl Vm {
         for name in ["isNaN", "isFinite", "parseInt", "parseFloat"] {
             self.global(name)?;
         }
+        self.json_global()?;
         let string = self.string_intrinsics()?.0;
         let prototype = self.heap.prototype(string)?.unwrap();
         self.install_native(global, prototype, "assert", 1, NativeFunction::Test262("assert"))?;
@@ -29,15 +30,11 @@ impl Vm {
         for (name, length) in [("sameValue", 2), ("notSameValue", 2), ("_isSameValue", 2), ("throws", 2), ("compareArray", 2)] {
             self.install_native(assert, prototype, name, length, NativeFunction::Test262(name))?;
         }
-        for name in ["isPrimitive", "isNegativeZero", "formatIdentityFreeValue", "formatSimpleValue", "compareArray"] {
-            self.install_native(
-                global,
-                prototype,
-                name,
-                if name == "compareArray" { 2 } else { 1 },
-                NativeFunction::Test262(if name == "compareArray" { "arrayEqual" } else { name }),
-            )?;
-        }
+        self.install_native(global, prototype, "isPrimitive", 1, NativeFunction::Test262("isPrimitive"))?;
+        self.install_native(global, prototype, "isNegativeZero", 1, NativeFunction::Test262("isNegativeZero"))?;
+        self.install_native(global, prototype, "formatIdentityFreeValue", 1, NativeFunction::Test262("formatIdentityFreeValue"))?;
+        self.install_native(global, prototype, "formatSimpleValue", 1, NativeFunction::Test262("formatSimpleValue"))?;
+        self.install_native(global, prototype, "compareArray", 2, NativeFunction::Test262("arrayEqual"))?;
         for (property, global_name) in [("_formatIdentityFreeValue", "formatIdentityFreeValue"), ("_toString", "formatSimpleValue")] {
             let value = self.heap.get(global, global_name)?;
             self.define_data(assert, property, value, true, true, true)?;
