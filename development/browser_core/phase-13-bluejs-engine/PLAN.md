@@ -175,3 +175,7 @@ The next hardening pass targets `cargo llvm-cov -p blueice-bluejs --fail-under-l
 - [ ] Curate the initial differential test corpus (Test262 subset scoped to the MVP feature set)
 - [ ] Wire the differential job into `.github/workflows/ci.yml`, per `testing/TEST_PLAN.md`
 - [ ] End-to-end smoke test: a real `<script>`-bearing fixture page executes correctly through the full Phase 3 pipeline
+
+## Intl, regex deadlines and Test262 inventory (2026-09-09)
+
+[Design, test-content review and validation](INTL_CONFORMANCE.md) continue commit `2519fc1`. String-required Intl, process-isolated compilation/matching and a pinned whole-inventory Test262 supervisor are implemented. The ordinary suite passes the 100% line gate (7,064 lines); 22,216 Node scripts match. Test262 reports every mode, with 8,466 pass / 57,546 fail / 36,566 unsupported across 53,404 files. This completes the inventory measurement, not full ECMAScript or ECMA-402 conformance. Persistent script globals, complete harness/async/module hosts, the remaining language/builtin features and additional Intl constructors remain necessary.

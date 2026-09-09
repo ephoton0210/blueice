@@ -11,8 +11,11 @@ use crate::primitive;
 use crate::{Bytecode, Heap, HeapConfig, HeapError, JsString, JsSymbol, ObjectId, Opcode, PropertyDescriptor, PropertyName, RootId, Value};
 use std::collections::HashMap;
 mod builtins;
+mod errors;
 mod functions;
+mod intl;
 mod regexp;
+mod test262;
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -25,11 +28,13 @@ pub struct VmConfig {
     /// Maximum UTF-16 payload bytes in any one runtime string (not total
     /// RSS): two bytes per code unit, including lone surrogates.
     pub max_string_bytes: usize,
+    /// Wall-clock limit for each isolated regex compilation or match.
+    pub regex_timeout: std::time::Duration,
 }
 
 impl Default for VmConfig {
     fn default() -> Self {
-        Self { heap: HeapConfig::default(), instruction_budget: 1_000_000, max_string_bytes: 1024 * 1024 }
+        Self { heap: HeapConfig::default(), instruction_budget: 1_000_000, max_string_bytes: 1024 * 1024, regex_timeout: crate::regex_worker::DEFAULT_TIMEOUT }
     }
 }
 
@@ -43,6 +48,9 @@ pub enum RuntimeError {
     Heap(HeapError),
     InstructionLimit,
     StringLimit { limit: usize },
+    RegexTimeout,
+    Test262(String),
+    RegexWorker(String),
 }
 
 impl fmt::Display for RuntimeError {
@@ -56,6 +64,9 @@ impl fmt::Display for RuntimeError {
             Self::Heap(error) => error.fmt(f),
             Self::InstructionLimit => f.write_str("BlueJS instruction budget exhausted"),
             Self::StringLimit { limit } => write!(f, "BlueJS string exceeds {limit} bytes"),
+            Self::Test262(message) => write!(f, "Test262Error: {message}"),
+            Self::RegexTimeout => f.write_str("BlueJS regex deadline exceeded"),
+            Self::RegexWorker(message) => write!(f, "BlueJS regex worker failed: {message}"),
         }
     }
 }
@@ -384,9 +395,16 @@ impl Vm {
                     }
                     self.store_binding(operand, self.stack.last().expect("store has a value").clone())?;
                 }
-                Opcode::UnboundName => {
+                Opcode::UnboundName | Opcode::TypeofName => {
                     let Value::String(name) = &code.constants[operand] else { unreachable!("compiler emits a name") };
-                    return Err(RuntimeError::ReferenceError(name.to_utf8().expect("compiler emits a UTF-8 identifier")));
+                    let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                    let value = self.lookup_global_name(&name)?;
+                    if instruction.opcode == Opcode::TypeofName {
+                        let value = value.unwrap_or(Value::Undefined);
+                        self.stack.push(Value::String(self.typeof_value(&value)?.into()));
+                    } else {
+                        self.stack.push(value.ok_or(RuntimeError::ReferenceError(name))?);
+                    }
                 }
                 Opcode::EnterScope | Opcode::LeaveScope => {
                     for slot in &code.scopes[operand] {
@@ -637,6 +655,13 @@ impl Vm {
             for &(name, length, method) in native::STRING_METHODS {
                 self.install_native(prototype, function_prototype, name, length, NativeFunction::StringMethod(method))?;
             }
+            for (name, length, method) in [
+                ("toLocaleLowerCase", 0, NativeFunction::ToLocaleLowerCase),
+                ("toLocaleUpperCase", 0, NativeFunction::ToLocaleUpperCase),
+                ("localeCompare", 1, NativeFunction::LocaleCompare),
+            ] {
+                self.install_native(prototype, function_prototype, name, length, method)?;
+            }
             for (alias, original) in [("trimLeft", "trimStart"), ("trimRight", "trimEnd")] {
                 let function = self.heap.get(prototype, original)?;
                 self.define_data(prototype, alias, function, true, false, true)?;
@@ -744,7 +769,17 @@ impl Vm {
         }
         let function = if let Value::Object(id) = callee { self.heap.native_function(id)? } else { None };
         let Some(function) = function else { return Err(RuntimeError::TypeError("value is not callable".into())) };
-        if construct && !matches!(function, NativeFunction::String | NativeFunction::Object | NativeFunction::RegExp | NativeFunction::PrimitiveConstructor(_)) {
+        if construct
+            && !matches!(
+                function,
+                NativeFunction::String
+                    | NativeFunction::Object
+                    | NativeFunction::RegExp
+                    | NativeFunction::Collator
+                    | NativeFunction::Error(_)
+                    | NativeFunction::PrimitiveConstructor(_)
+            )
+        {
             return Err(RuntimeError::TypeError("value is not a constructor".into()));
         }
         self.native_call(function, receiver, args, construct)

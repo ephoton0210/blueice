@@ -174,3 +174,9 @@ None of this needs Phase 4. It's the concrete, already-integrated answer to want
 ## Cross-reference
 
 See "Definition of Done" at the top of this document — it, not a separate end-of-phase pass, is what every phase checklist item in `../phase-*/PLAN.md` is actually held to.
+
+## Intl/deadline/Test262 verification (2026-09-09)
+
+The [continuation report](../phase-13-bluejs-engine/INTL_CONFORMANCE.md) records test-first locale/Collator/deadline work and dedicated test-content review. The BlueJS default suite now passes 238 unit/integration tests, plus two doc examples; line coverage is 7,064/7,064 with both subprocess adapters included. The opt-in Node oracle passes 22,216 scripts. Three Python metadata/supervisor tests validate the full-inventory runner; subprocess deadline and protocol faults are also exercised by default Rust tests. POSIX fault tests require Python 3, while Node remains opt-in.
+
+The full pinned Test262 run schedules 102,578 modes: 8,466 pass, 57,546 fail, 36,566 unsupported, no harness errors/timeouts. Exit status 1 is required for this result. This is a measurement artifact, not a new passing CI gate or a substitute for complete language/Intl/host work. Corpus archive and per-file hashes, mode accounting, full JSONL results and a feature/group summary make the measurement reproducible.

@@ -52,7 +52,8 @@ Implementation is test-first. Add public regression fixtures before the changes,
 - [x] Default tests and 100% BlueJS line gate; opt-in Node oracle; workspace regression checks.
 - [ ] Full source grammar and strict/module processing.
 - [ ] Full runtime environments, user callables and the other inventory workstreams above; UTF-16 storage/native calls are now implemented by the second slice.
-- [ ] Edition-pinned full Test262 harness and conformance audit.
+- [x] Pinned whole-inventory Test262 measurement with explicit unsupported/failure outcomes; see [report](INTL_CONFORMANCE.md).
+- [ ] Complete Test262 harness hosts and full passing conformance, including remaining Intl constructors.
 
 **Evidence**: the initial nine integration tests had eight failing cases before implementation; the later template-comment regression was also observed failing before its fix. Dedicated review added TDZ RHS error ordering, loop re-entry/root cleanup, token-boundary and raw/cooked template assertions, plus multiline independent-oracle inputs. The previous test asserting undefined before a lexical declaration and the lexer test accepting an incomplete exponent were corrected to edition 17 behavior.
 

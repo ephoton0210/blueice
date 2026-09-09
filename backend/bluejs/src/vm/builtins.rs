@@ -79,7 +79,17 @@ impl Vm {
         if let Some((code, _, _)) = self.heap.closure(*id)? {
             return Ok(code.constructible);
         }
-        Ok(matches!(self.heap.native_function(*id)?, Some(NativeFunction::String | NativeFunction::Object | NativeFunction::RegExp | NativeFunction::PrimitiveConstructor(_))))
+        Ok(matches!(
+            self.heap.native_function(*id)?,
+            Some(
+                NativeFunction::String
+                    | NativeFunction::Object
+                    | NativeFunction::RegExp
+                    | NativeFunction::Collator
+                    | NativeFunction::Error(_)
+                    | NativeFunction::PrimitiveConstructor(_)
+            )
+        ))
     }
 
     pub(super) fn array_like_values(&mut self, value: &Value) -> Result<Vec<Value>, RuntimeError> {
@@ -390,12 +400,7 @@ impl Vm {
                     converted.push(Value::String(self.coerce_string(first)?));
                 }
             }
-            Html { attribute, .. } => {
-                if !attribute.is_empty() {
-                    converted.push(Value::String(self.coerce_string(first)?));
-                }
-            }
-            LocaleCompare => {
+            Html { attribute, .. } if !attribute.is_empty() => {
                 converted.push(Value::String(self.coerce_string(first)?));
             }
             _ => {}
@@ -448,6 +453,12 @@ impl Vm {
 
     pub(super) fn global(&mut self, name: &str) -> Result<Value, RuntimeError> {
         self.string_intrinsics()?;
+        if matches!(name, "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError") {
+            return self.error_global(name);
+        }
+        if name == "Intl" {
+            return self.intl_global();
+        }
         if name == "RegExp" {
             return self.regexp_global();
         }
@@ -530,6 +541,35 @@ impl Vm {
     pub(super) fn native_call(&mut self, function: NativeFunction, receiver: Value, args: Vec<Value>, construct: bool) -> Result<Value, RuntimeError> {
         let first = native::argument(&args, 0);
         match function {
+            NativeFunction::Error(name) => self.error_constructor(name, &args, construct),
+            NativeFunction::ErrorToString => self.error_to_string(&receiver),
+            NativeFunction::Test262(name) => self.test262_call(name, &args),
+            NativeFunction::ToLocaleLowerCase | NativeFunction::ToLocaleUpperCase | NativeFunction::LocaleCompare => {
+                let string = self.string_receiver(&receiver)?;
+                if function == NativeFunction::LocaleCompare {
+                    let other = self.coerce_string(first)?;
+                    let collator = self.resolve_collator(native::argument(&args, 1), native::argument(&args, 2))?;
+                    Ok(collator.compare(&string, &other))
+                } else {
+                    let locales = self.canonical_locales(first)?;
+                    let locale = locales.first().cloned().unwrap_or(icu_locale_core::locale!("en-US"));
+                    crate::intl::case_map(&string, &locale, function == NativeFunction::ToLocaleUpperCase, self.config.max_string_bytes).map(Value::String)
+                }
+            }
+            NativeFunction::Collator => self.create_collator(&args, construct),
+            NativeFunction::CanonicalLocales => {
+                let locales = self.canonical_locales(first)?;
+                self.array_from(locales.into_iter().map(|l| Value::String(l.to_string().into())).collect())
+            }
+            NativeFunction::SupportedLocales => self.supported_locales(&args),
+            NativeFunction::CollatorCompareGetter => self.collator_compare_getter(&receiver),
+            NativeFunction::CollatorCompare => {
+                let collator = self.collator_data(&receiver)?;
+                let left = self.coerce_string(first)?;
+                let right = self.coerce_string(native::argument(&args, 1))?;
+                Ok(collator.compare(&left, &right))
+            }
+            NativeFunction::CollatorResolvedOptions => self.collator_resolved_options(&receiver),
             NativeFunction::Bind => self.bind_function(receiver, &args),
             NativeFunction::HasInstance => self.has_instance(first.clone(), receiver, true).map(Value::Bool),
             NativeFunction::RegExpEscape => self.regexp_escape(first),

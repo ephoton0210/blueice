@@ -43,11 +43,13 @@ use crate::token::{Keyword, LexError, Punct, SpannedToken, Token, Tokenizer};
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseError {
     pub message: String,
+    /// Resource failures during literal validation are not SyntaxErrors.
+    pub resource: Option<crate::RuntimeError>,
 }
 
 impl From<LexError> for ParseError {
     fn from(e: LexError) -> ParseError {
-        ParseError { message: e.message }
+        ParseError { message: e.message, resource: None }
     }
 }
 
@@ -151,7 +153,7 @@ fn is_valid_ref_target(expr: &Expr) -> bool {
 fn expr_to_for_head_pattern(expr: Expr) -> Result<Pattern, ParseError> {
     match expr {
         Expr::Identifier(name) => Ok(Pattern::Identifier(name)),
-        _ => Err(ParseError { message: "only a plain identifier is supported as a for-in/for-of target when no declaration keyword precedes it".to_string() }),
+        _ => Err(ParseError { message: "only a plain identifier is supported as a for-in/for-of target when no declaration keyword precedes it".to_string(), resource: None }),
     }
 }
 
@@ -249,7 +251,7 @@ impl Parser {
     }
 
     fn error(&self, message: impl Into<String>) -> ParseError {
-        ParseError { message: format!("{} (found {:?})", message.into(), self.peek()) }
+        ParseError { message: format!("{} (found {:?})", message.into(), self.peek()), resource: None }
     }
 
     fn expect_identifier_name(&mut self) -> Result<String, ParseError> {
@@ -1049,7 +1051,10 @@ impl Parser {
         match self.peek().clone() {
             Token::Punct(Punct::Slash | Punct::SlashAssign) => {
                 let (pattern, flags) = self.tokenizer.regexp_at(self.positions[self.pos])?;
-                crate::regexp::RegExp::compile(pattern.clone(), &flags).map_err(|error| self.error(error.to_string()))?;
+                crate::regexp::RegExp::compile(pattern.clone(), &flags).map_err(|error| {
+                    let resource = if matches!(error, crate::RuntimeError::SyntaxError(_)) { None } else { Some(error.clone()) };
+                    ParseError { message: error.to_string(), resource }
+                })?;
                 self.rescan_suffix();
                 Ok(Expr::RegExp { pattern, flags })
             }

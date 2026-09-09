@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/tc39/test262",
+  "revision": "6eec1ac9ee144dafd8f344d73a21f36bfc9f6755",
+  "committed_at": "2026-06-29T14:09:27Z",
+  "archive_sha256": "c34e69891b908add2dff3d683c878be50c8d26c947041ab7967f7a89d0975d88",
+  "selection": "Latest commit before 2026-06-30; proposals and staging are included, not filtered to an ECMA edition.",
+  "manifest_sha256": "5b85250963fe74ce1f903040d589f4c6ccecf9c08e7606533620ffb106a31d25"
+}

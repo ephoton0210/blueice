@@ -14,6 +14,49 @@ fn primitive_completions_and_error_classes_match_node() {
     let mut corpus: Vec<String> = include_str!("fixtures/execution.txt").lines().filter(|line| !line.trim().is_empty() && !line.starts_with('#')).map(str::to_owned).collect();
     corpus.extend(include_str!("fixtures/string_protocols.txt").lines().filter(|line| !line.trim().is_empty() && !line.starts_with('#')).map(str::to_owned));
     corpus.extend(include_str!("fixtures/bound_functions.txt").lines().filter(|line| !line.trim().is_empty() && !line.starts_with('#')).map(str::to_owned));
+    for locale in ["en", "tr", "az", "lt", "el", "sv", "de", "da", "ja", "th", "zz"] {
+        for string in ["Iİiı", "I\\u0301", "ΟΣ", "άι", "Straße", "I\\ud800İ", ""] {
+            for method in ["toLocaleLowerCase", "toLocaleUpperCase"] {
+                corpus.push(format!("'{string}'.{method}('{locale}')"));
+            }
+        }
+        for options in [
+            "{}",
+            "{numeric:true}",
+            "{sensitivity:'base'}",
+            "{sensitivity:'accent'}",
+            "{sensitivity:'case'}",
+            "{caseFirst:'upper'}",
+            "{caseFirst:'lower'}",
+            "{ignorePunctuation:true}",
+        ] {
+            for (left, right) in [("ä", "z"), ("é", "e"), ("2", "10"), ("A", "a"), ("a-b", "ab")] {
+                corpus.push(format!("'{left}'.localeCompare('{right}','{locale}',{options})"));
+            }
+        }
+    }
+    for tag in [
+        "en-US",
+        "iw",
+        "sh",
+        "mo",
+        "en-u-kn-true",
+        "de-u-co-phonebk",
+        "en-t-en-us",
+        "en-u-ca-gregory-ca-buddhist",
+        "en-a-foo-a-bar",
+        "en-1901-1901",
+        "en_US",
+        "abcd",
+        "en-abc",
+        "en-x-private",
+        "x-private",
+        "en-u",
+        "zh-cmn",
+        "i-klingon",
+    ] {
+        corpus.push(format!("Intl.getCanonicalLocales('{tag}').join(',')"));
+    }
     // Every UTF-16 code unit in initial and non-initial position. Batching
     // amortizes realm bootstrap while retaining exact independent results.
     for start in (0..=0xffff).step_by(256) {

@@ -7,12 +7,15 @@ use crate::{JsString, RuntimeError};
 pub(crate) struct RegExp {
     pub source: JsString,
     pub flags: String,
-    pub matcher: regress::Regex,
     pub capture_names: Vec<(String, usize)>,
 }
 
 impl RegExp {
     pub fn compile(source: JsString, flags: &JsString) -> Result<Self, RuntimeError> {
+        Self::compile_with_timeout(source, flags, crate::regex_worker::DEFAULT_TIMEOUT)
+    }
+
+    pub fn compile_with_timeout(source: JsString, flags: &JsString, timeout: std::time::Duration) -> Result<Self, RuntimeError> {
         let mut seen = Vec::new();
         for &flag in flags.as_code_units() {
             if !b"dgimsuvy".iter().any(|&f| u16::from(f) == flag) || seen.contains(&flag) {
@@ -25,26 +28,21 @@ impl RegExp {
         }
         seen.sort_unstable();
         let flags: String = seen.iter().map(|&c| char::from_u32(c as u32).unwrap()).collect();
-        let unicode = flags.contains(['u', 'v']);
-        let points: Vec<u32> = if unicode {
-            char::decode_utf16(source.as_code_units().iter().copied()).map(|c| c.map_or_else(|e| e.unpaired_surrogate() as u32, |c| c as u32)).collect()
-        } else {
-            source.as_code_units().iter().map(|&c| c as u32).collect()
-        };
-        let matcher = regress::Regex::from_unicode(points.into_iter(), regress::Flags::from(flags.as_str())).map_err(|e| RuntimeError::SyntaxError(e.to_string()))?;
+        let request = crate::regex_worker::Request { source: source.as_code_units().to_vec(), flags: flags.clone(), input: None, start: 0 };
+        match crate::regex_worker::request(request, timeout)? {
+            crate::regex_worker::Reply::Compiled => {}
+            crate::regex_worker::Reply::SyntaxError(message) => return Err(RuntimeError::SyntaxError(message)),
+            _ => return Err(RuntimeError::RegexWorker("unexpected compile reply".into())),
+        }
         let capture_names = capture_names(&source, flags.contains('v'));
-        Ok(Self { source, flags, matcher, capture_names })
+        Ok(Self { source, flags, capture_names })
     }
 
-    pub fn unicode(&self) -> bool {
-        self.flags.contains(['u', 'v'])
-    }
-
-    pub fn find(&self, string: &JsString, start: usize) -> Option<regress::Match> {
-        if self.unicode() {
-            self.matcher.find_from_utf16(string.as_code_units(), start).next()
-        } else {
-            self.matcher.find_from_ucs2(string.as_code_units(), start).next()
+    pub fn find(&self, string: &JsString, start: usize, timeout: std::time::Duration) -> Result<Option<crate::regex_worker::Match>, RuntimeError> {
+        let request = crate::regex_worker::Request { source: self.source.as_code_units().to_vec(), flags: self.flags.clone(), input: Some(string.as_code_units().to_vec()), start };
+        match crate::regex_worker::request(request, timeout)? {
+            crate::regex_worker::Reply::Found(matched) => Ok(matched),
+            _ => Err(RuntimeError::RegexWorker("unexpected match reply".into())),
         }
     }
 }

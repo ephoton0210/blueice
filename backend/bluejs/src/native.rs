@@ -12,6 +12,18 @@ use unicode_normalization::UnicodeNormalization;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NativeFunction {
     String,
+    Error(&'static str),
+    ErrorToString,
+    Test262(&'static str),
+    ToLocaleLowerCase,
+    ToLocaleUpperCase,
+    LocaleCompare,
+    Collator,
+    CanonicalLocales,
+    SupportedLocales,
+    CollatorCompareGetter,
+    CollatorCompare,
+    CollatorResolvedOptions,
     FromCharCode,
     FromCodePoint,
     Raw,
@@ -109,9 +121,6 @@ pub(crate) enum StringMethod {
     Normalize,
     ToLowerCase,
     ToUpperCase,
-    ToLocaleLowerCase,
-    ToLocaleUpperCase,
-    LocaleCompare,
     Substr,
     Html { tag: &'static str, attribute: &'static str },
 }
@@ -142,9 +151,6 @@ pub(crate) const STRING_METHODS: &[(&str, u32, StringMethod)] = &[
     ("normalize", 0, StringMethod::Normalize),
     ("toLowerCase", 0, StringMethod::ToLowerCase),
     ("toUpperCase", 0, StringMethod::ToUpperCase),
-    ("toLocaleLowerCase", 0, StringMethod::ToLocaleLowerCase),
-    ("toLocaleUpperCase", 0, StringMethod::ToLocaleUpperCase),
-    ("localeCompare", 1, StringMethod::LocaleCompare),
     ("substr", 2, StringMethod::Substr),
     ("anchor", 1, StringMethod::Html { tag: "a", attribute: "name" }),
     ("big", 0, StringMethod::Html { tag: "big", attribute: "" }),
@@ -373,10 +379,10 @@ pub(crate) fn string_method(method: StringMethod, receiver: &Value, args: &[Valu
             let end = if method == TrimStart { len } else { len - units[start..].iter().rev().take_while(|unit| space(unit)).count() };
             Value::String(JsString::from_code_units(units[start..end].to_vec()))
         }
-        Normalize | ToLowerCase | ToUpperCase | ToLocaleLowerCase | ToLocaleUpperCase => {
+        Normalize | ToLowerCase | ToUpperCase => {
             let form = match method {
-                ToLowerCase | ToLocaleLowerCase => "lower".into(),
-                ToUpperCase | ToLocaleUpperCase => "upper".into(),
+                ToLowerCase => "lower".into(),
+                ToUpperCase => "upper".into(),
                 _ => {
                     let form = if matches!(first, Value::Undefined) { JsString::from("NFC") } else { primitive::string(first)? };
                     if !["NFC", "NFD", "NFKC", "NFKD"].iter().any(|name| form == *name) {
@@ -393,15 +399,6 @@ pub(crate) fn string_method(method: StringMethod, receiver: &Value, args: &[Valu
             let count = if matches!(second, Value::Undefined) { len as f64 } else { integer(second)? };
             let count = count.clamp(0.0, (len - start) as f64) as usize;
             Value::String(JsString::from_code_units(units[start..start + count].to_vec()))
-        }
-        LocaleCompare => {
-            let other = primitive::string(first)?;
-            let collator = icu_collator::Collator::try_new(Default::default(), Default::default()).expect("compiled root collation data");
-            Value::Number(match collator.compare_utf16(units, other.as_code_units()) {
-                std::cmp::Ordering::Less => -1.0,
-                std::cmp::Ordering::Equal => 0.0,
-                std::cmp::Ordering::Greater => 1.0,
-            })
         }
         Html { tag, attribute } => {
             let mut result: JsString = format!("<{tag}").into();

@@ -79,3 +79,7 @@ Final validation on 2026-09-09:
 - The continuation reran the BlueJS gate/oracle, workspace build/tests/lint and crate rustdoc. Full workspace coverage was not rerun.
 
 The complete String method surface and tested protocols are implemented. Complete arbitrary-program String/ECMAScript conformance still requires the supporting language work and edition-pinned Test262 audit described above.
+
+## Intl, hard deadlines and full inventory continuation
+
+The [2026-09-09 continuation report](INTL_CONFORMANCE.md) supersedes the fixed-default locale behavior and absent regex timeout described in earlier slices above. String locale methods now use ICU locale/case/collation data and Intl.Collator/getCanonicalLocales; regex compilation and matching run in a terminable subprocess. Current validation is 238 default tests plus two docs, 7,064/7,064 covered lines and 22,216 Node oracle scripts. The full pinned Test262 inventory has 8,466 passes, 57,546 failures and 36,566 unsupported modes; remaining Intl constructors and supporting language/global/host semantics prevent a complete conformance claim.

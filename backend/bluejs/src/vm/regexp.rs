@@ -94,7 +94,7 @@ impl Vm {
             )
         };
         self.check_string(&Value::String(source.clone()))?;
-        let regexp = Rc::new(RegExp::compile(source, &flags)?);
+        let regexp = Rc::new(RegExp::compile_with_timeout(source, &flags, self.config.regex_timeout)?);
         let constructor = self.regexp_global()?;
         let prototype = self.get_property(&constructor, &"prototype".into())?.object_id().unwrap();
         let prototype = if self.new_target != Value::Undefined { self.constructor_prototype(prototype)? } else { prototype };
@@ -196,7 +196,8 @@ impl Vm {
         let stateful = regexp.flags.contains(['g', 'y']);
         let start = if stateful { last_index as usize } else { 0 };
         self.charge_step()?;
-        let matched = if start > string.len() { None } else { regexp.find(string, start).filter(|m| !regexp.flags.contains('y') || m.start() == start) };
+        let matched =
+            if start > string.len() { None } else { regexp.find(string, start, self.config.regex_timeout)?.filter(|m| !regexp.flags.contains('y') || m.start() == start) };
         let Some(matched) = matched else {
             if stateful {
                 self.set_required(receiver, "lastIndex", Value::Number(0.0))?;

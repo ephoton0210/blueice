@@ -53,10 +53,13 @@ mod ast;
 mod bytecode;
 mod compiler;
 mod heap;
+mod intl;
 mod native;
 mod parser;
 mod primitive;
 mod property;
+#[doc(hidden)]
+pub mod regex_worker;
 mod regexp;
 mod string;
 mod token;

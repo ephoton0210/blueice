@@ -121,6 +121,7 @@ pub(crate) struct BoundFunction {
 
 enum ObjectKind {
     Ordinary,
+    Collator { data: Rc<crate::intl::Collator>, compare: Option<ObjectId> },
     Array { length: u32 },
     String(JsString),
     NativeFunction { function: NativeFunction, initial_name: JsString },
@@ -167,6 +168,7 @@ impl Object {
             .chain(match &self.kind {
                 ObjectKind::Closure { captures, this, .. } => captures.iter().copied().chain(this.object_id()).collect::<Vec<_>>(),
                 ObjectKind::BoundFunction(bound) => std::iter::once(bound.target).chain(bound.this.object_id()).chain(bound.args.iter().filter_map(Value::object_id)).collect(),
+                ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
                 ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
                 ObjectKind::ArrayIterator { object, .. } => vec![*object],
                 _ => Vec::new(),
@@ -289,6 +291,26 @@ impl Heap {
             ObjectKind::BoundFunction(bound) => Some(bound),
             _ => None,
         })
+    }
+
+    pub(crate) fn alloc_collator(&mut self, data: Rc<crate::intl::Collator>, prototype: ObjectId) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::Collator { data, compare: None }, Some(prototype))
+    }
+    pub(crate) fn collator(&self, object: ObjectId) -> Result<Option<Rc<crate::intl::Collator>>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::Collator { data, .. } => Some(data.clone()),
+            _ => None,
+        })
+    }
+    pub(crate) fn collator_compare(&self, object: ObjectId) -> Option<ObjectId> {
+        let ObjectKind::Collator { compare, .. } = &self.objects.get(&object).unwrap().kind else { unreachable!("VM checks the Collator brand") };
+        *compare
+    }
+    pub(crate) fn set_collator_compare(&mut self, object: ObjectId, function: ObjectId) {
+        if let ObjectKind::Collator { compare, .. } = &mut self.objects.get_mut(&object).unwrap().kind {
+            *compare = Some(function);
+        }
+        self.write_barrier(object, Some(function));
     }
 
     pub(crate) fn alloc_regexp(&mut self, regexp: Rc<crate::regexp::RegExp>, prototype: ObjectId) -> Result<ObjectId, HeapError> {
@@ -495,6 +517,7 @@ impl Heap {
             .chain(match &kind {
                 ObjectKind::Closure { captures, this, .. } => captures.iter().copied().chain(this.object_id()).collect::<Vec<_>>(),
                 ObjectKind::BoundFunction(bound) => std::iter::once(bound.target).chain(bound.this.object_id()).chain(bound.args.iter().filter_map(Value::object_id)).collect(),
+                ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
                 ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
                 ObjectKind::ArrayIterator { object, .. } => vec![*object],
                 _ => Vec::new(),
@@ -509,6 +532,7 @@ impl Heap {
                 ObjectKind::RegExp(regexp) => {
                     regexp.source.byte_len() + regexp.flags.len() + regexp.capture_names.iter().map(|(name, _)| name.len() + size_of::<(String, usize)>()).sum::<usize>()
                 }
+                ObjectKind::Collator { data, .. } => data.bytes(),
                 ObjectKind::BoxedPrimitive(value) => value.payload_bytes(),
                 ObjectKind::NativeFunction { initial_name, .. } => initial_name.byte_len(),
                 ObjectKind::Closure { captures, this, .. } => captures.len() * size_of::<ObjectId>() + this.payload_bytes(),
