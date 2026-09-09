@@ -4,7 +4,7 @@
 
 //! Explicit opt-in: cargo test -p blueice-bluejs --test node_differential -- --ignored
 //! Node is an independent oracle, not a runtime or default-test dependency.
-use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
+use blueice_bluejs::{RuntimeError, Value, Vm, compile, parse};
 use std::io::Write;
 use std::process::{Command, Stdio};
 
@@ -68,6 +68,20 @@ fn primitive_completions_and_error_classes_match_node() {
         "new Intl.Locale('zh-Hans-CN').minimize().toString()",
         "Intl.getCanonicalLocales(new Intl.Locale('iw-IL')).join(',')",
         "Intl.Locale('en')",
+    ] {
+        corpus.push(source.into());
+    }
+    for source in [
+        "Math.E + Math.LN10 + Math.LN2 + Math.LOG10E + Math.LOG2E + Math.PI + Math.SQRT1_2 + Math.SQRT2",
+        "Math.abs(-3) + Math.acos(1) + Math.acosh(1) + Math.asin(0) + Math.asinh(0) + Math.atan(0) + Math.atanh(0)",
+        "Math.ceil(0.1) + Math.cbrt(27) + Math.cos(0) + Math.cosh(0) + Math.exp(0) + Math.expm1(0)",
+        "Math.floor(0.9) + Math.fround(1.1) + Math.log(1) + Math.log1p(0) + Math.log2(8) + Math.log10(100)",
+        "Math.sin(0) + Math.sinh(0) + Math.sqrt(9) + Math.tan(0) + Math.tanh(0) + Math.trunc(-1.9)",
+        "Math.atan2(1,0) + Math.pow(2,8) + Math.hypot(3,4)",
+        "Math.imul(0xffffffff,5) + Math.clz32(1)",
+        "1 / Math.max(-0,0)",
+        "1 / Math.round(-0.1)",
+        "1 / Math.sign(-0)",
     ] {
         corpus.push(source.into());
     }

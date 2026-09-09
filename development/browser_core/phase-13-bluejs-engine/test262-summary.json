@@ -1,8 +1,8 @@
 {
-  "adapter_sha256": "4c540565ecd53f5b14a196f4880d7cafdbf329abf0a86c63efc5b3b2060d007f",
+  "adapter_sha256": "ddb1ab946863d419e2d8edbeb311a4d4906bffc0b2198c88a825b88253afee20",
   "complete_inventory": true,
   "discovered_js": 53683,
-  "elapsed_seconds": 25.575,
+  "elapsed_seconds": 26.251,
   "features": {
     "AggregateError": {
       "fail": 28,
@@ -352,8 +352,8 @@
       "unsupported": 2
     },
     "Symbol.replace": {
-      "fail": 39,
-      "pass": 135,
+      "fail": 37,
+      "pass": 137,
       "unsupported": 20
     },
     "Symbol.search": {
@@ -823,8 +823,8 @@
       "unsupported": 460
     },
     "built-ins": {
-      "fail": 22552,
-      "pass": 5940,
+      "fail": 22186,
+      "pass": 6306,
       "unsupported": 18539
     },
     "harness": {
@@ -838,13 +838,13 @@
       "unsupported": 4132
     },
     "language": {
-      "fail": 28951,
-      "pass": 3142,
+      "fail": 28920,
+      "pass": 3173,
       "unsupported": 12382
     },
     "staging": {
-      "fail": 1632,
-      "pass": 262,
+      "fail": 1612,
+      "pass": 282,
       "unsupported": 887
     }
   },
@@ -855,10 +855,10 @@
     "unclassified parser rejections cannot pass negative tests",
     "native overrides for sta.js and assert.js; raw tests receive no harness"
   ],
-  "regex_worker_sha256": "3a4e5ed58c6d5ea7f55546384065f908bea2d86611da39c2c1bbfc57c44f50d7",
+  "regex_worker_sha256": "2554fa20c38992c43eaabdd609fe102ae1f24b2c616a052531c3d34f82251747",
   "results": {
-    "fail": 56234,
-    "pass": 9776,
+    "fail": 55817,
+    "pass": 10193,
     "unsupported": 36568
   },
   "runner_sha256": "f61fcf89925d4e02eb3c9c633f550e61639646e43f540276f8b4d6c5ba4ffa17",
