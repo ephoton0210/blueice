@@ -1,0 +1,230 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! The AST `parser.rs` builds -- scoped to exactly
+//! `phase-2-mvp-scope/PLAN.md`'s "MVP JS scope (decided)" section. Two
+//! omissions worth calling out because they're easy to expect and
+//! aren't oversights: there is no `ClassDecl`/`ClassExpr` (that section
+//! defers `class` entirely) and no destructuring-assignment expression
+//! target (destructuring is only in scope for declarations/parameters,
+//! not for a plain `[a, b] = arr` assignment expression) -- so
+//! [`Expr::Assign`]'s target is a plain [`Expr`] (an identifier or
+//! member expression), not a [`Pattern`].
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Program {
+    pub body: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeclKind {
+    Var,
+    Let,
+    Const,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Function {
+    pub name: Option<String>,
+    pub params: Vec<Param>,
+    pub body: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Param {
+    pub pattern: Pattern,
+    pub default: Option<Expr>,
+    pub rest: bool,
+}
+
+/// A binding target -- for `var`/`let`/`const` declarators, function
+/// parameters, and `for`/`for-in`/`for-of` loop heads. Not used for
+/// plain assignment-expression targets; see this module's doc comment.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pattern {
+    Identifier(String),
+    Array(Vec<Option<ArrayPatternElement>>),
+    Object(Vec<ObjectPatternProp>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArrayPatternElement {
+    pub pattern: Pattern,
+    pub default: Option<Expr>,
+    pub rest: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ObjectPatternProp {
+    KeyValue { key: PropertyKey, value: Pattern, default: Option<Expr> },
+    Rest(Pattern),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PropertyKey {
+    Identifier(String),
+    String(String),
+    Number(f64),
+    Computed(Box<Expr>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VarDeclarator {
+    pub pattern: Pattern,
+    pub init: Option<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SwitchCase {
+    /// `None` for a `default:` case.
+    pub test: Option<Expr>,
+    pub consequent: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CatchClause {
+    pub param: Option<Pattern>,
+    pub body: Vec<Stmt>,
+}
+
+/// A `for`-loop head that isn't a fresh declaration -- e.g. `for (x of
+/// arr)` where `x` was already declared elsewhere. Restricted to a
+/// [`Pattern`] shape (identifier or destructuring) rather than a full
+/// [`Expr`]: real ECMAScript actually allows an arbitrary
+/// `LeftHandSideExpression` here (e.g. `for (obj.prop of arr)`), but a
+/// hand-written DOM script's `for-in`/`for-of` targets are essentially
+/// always a bare identifier -- assigning into a member expression from
+/// a loop head is the "honest cut" this crate makes rather than
+/// building out full left-hand-side-expression support for a case this
+/// MVP's scope doesn't call for.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ForHead {
+    Decl(DeclKind, Pattern),
+    Pattern(Pattern),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ForInit {
+    VarDecl(DeclKind, Vec<VarDeclarator>),
+    Expr(Expr),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Stmt {
+    Empty,
+    Expr(Expr),
+    Block(Vec<Stmt>),
+    VarDecl(DeclKind, Vec<VarDeclarator>),
+    If { test: Expr, consequent: Box<Stmt>, alternate: Option<Box<Stmt>> },
+    For { init: Option<ForInit>, test: Option<Expr>, update: Option<Expr>, body: Box<Stmt> },
+    ForIn { left: ForHead, right: Expr, body: Box<Stmt> },
+    ForOf { left: ForHead, right: Expr, body: Box<Stmt> },
+    While { test: Expr, body: Box<Stmt> },
+    DoWhile { body: Box<Stmt>, test: Expr },
+    Switch { discriminant: Expr, cases: Vec<SwitchCase> },
+    Break,
+    Continue,
+    Return(Option<Expr>),
+    Throw(Expr),
+    Try { block: Vec<Stmt>, handler: Option<CatchClause>, finalizer: Option<Vec<Stmt>> },
+    FunctionDecl(Function),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnaryOp {
+    Neg,
+    Plus,
+    Not,
+    Typeof,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateOp {
+    Inc,
+    Dec,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Eq,
+    NotEq,
+    StrictEq,
+    StrictNotEq,
+    Lt,
+    Gt,
+    LtEq,
+    GtEq,
+    Instanceof,
+    In,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogicalOp {
+    And,
+    Or,
+    Nullish,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssignOp {
+    Assign,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
+    ModAssign,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArrayElement {
+    Normal(Expr),
+    Spread(Expr),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ObjectProp {
+    KeyValue { key: PropertyKey, value: Expr, shorthand: bool },
+    Spread(Expr),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Argument {
+    Normal(Expr),
+    Spread(Expr),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArrowBody {
+    Expr(Box<Expr>),
+    Block(Vec<Stmt>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Expr {
+    Number(f64),
+    String(String),
+    Bool(bool),
+    Null,
+    This,
+    Identifier(String),
+    Template { quasis: Vec<String>, expressions: Vec<Expr> },
+    Array(Vec<Option<ArrayElement>>),
+    Object(Vec<ObjectProp>),
+    Function(Function),
+    Arrow { params: Vec<Param>, body: ArrowBody },
+    Unary { op: UnaryOp, arg: Box<Expr> },
+    Update { op: UpdateOp, arg: Box<Expr>, prefix: bool },
+    Binary { op: BinaryOp, left: Box<Expr>, right: Box<Expr> },
+    Logical { op: LogicalOp, left: Box<Expr>, right: Box<Expr> },
+    Assign { op: AssignOp, target: Box<Expr>, value: Box<Expr> },
+    Conditional { test: Box<Expr>, consequent: Box<Expr>, alternate: Box<Expr> },
+    Call { callee: Box<Expr>, args: Vec<Argument> },
+    New { callee: Box<Expr>, args: Vec<Argument> },
+    Member { object: Box<Expr>, property: Box<Expr>, computed: bool },
+}

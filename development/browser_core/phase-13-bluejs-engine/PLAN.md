@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress (execution model, GC, event-loop shape, process placement, and MVP language scope all decided; implementation itself not yet started)
+**Status**: In progress (execution model, GC, event-loop shape, process placement, and MVP language scope all decided; the tokenizer/parser is implemented — see `backend/bluejs` — object model, bytecode compiler/interpreter, GC, event loop, and the `blueice_ipc::script` wiring's `core`-side implementation are not yet started)
 
 ## Objective
 
@@ -75,7 +75,7 @@ This directly strengthens the conformance-test question below: running a Test262
 - [x] Scope the MVP language-feature subset — resolved in `phase-2-mvp-scope/PLAN.md`'s "MVP JS scope (decided)" section
 - [x] Decide the GC algorithm — two-generation (nursery + non-incremental mark-sweep tenured), see `research/js-engine-gc.md`
 - [ ] Implement the object model (handle-based, per the `blueice-dom` precedent) and the two-generation GC
-- [ ] Implement the tokenizer/parser → AST
+- [x] Implement the tokenizer/parser → AST — `backend/bluejs` (crate `blueice-bluejs`): a hand-written tokenizer (`token.rs`) and recursive-descent parser (`parser.rs`) covering exactly `phase-2-mvp-scope/PLAN.md`'s "MVP JS scope" grammar subset, 83 tests, ≥97% line coverage
 - [x] Decide the bytecode format — SpiderMonkey-style stack machine, fixed-width-per-opcode, with a reserved tiering flag bit (`JOF_IC`-equivalent), see `research/js-bytecode-eventloop.md`
 - [ ] Implement the AST→bytecode compilation step
 - [ ] Implement the bytecode interpreter for the MVP feature subset

@@ -142,6 +142,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "blueice-bluejs"
+version = "0.1.0"
+
+[[package]]
 name = "blueice-css"
 version = "0.1.0"
 dependencies = [
