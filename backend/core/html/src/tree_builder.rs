@@ -1508,6 +1508,27 @@ impl TreeBuilder {
                 self.insert_element("input", attrs);
                 StepResult::Done
             }
+            // Spec carve-out, parallel to the `<input type="hidden">` one
+            // above but with its own extra wrinkle: `<form>` directly
+            // inside `<table>` is also inserted normally rather than
+            // foster-parented, but -- unlike every other "in table"
+            // carve-out -- it's popped straight back off the stack of
+            // open elements immediately after, so it never becomes an
+            // open ancestor of whatever the table's *rows* contain. The
+            // `form_element` pointer is still respected (ignore outright
+            // if a `<form>` is already open elsewhere in the document,
+            // the same "in body" rule `step_in_body`'s own `"form"` arm
+            // enforces) since real pages nesting a stray second `<form>`
+            // inside a `<table>` shouldn't silently get two live forms.
+            Token::StartTag { name, attrs, .. } if name == "form" => {
+                if self.form_element.is_some() {
+                    return StepResult::Done;
+                }
+                let id = self.insert_element("form", attrs);
+                self.form_element = Some(id);
+                self.open_elements.pop();
+                StepResult::Done
+            }
             other => {
                 self.foster_parenting = true;
                 let result = self.step_in_body(other);
@@ -2008,6 +2029,53 @@ mod tests {
         let form = doc.children(body).next().unwrap();
         // both inputs land inside the single form; the nested <form> start tag is ignored
         assert_eq!(children_tags(&doc, form), vec!["input".to_string(), "input".to_string()]);
+    }
+
+    #[test]
+    fn form_directly_inside_table_inserts_as_the_tables_own_child_not_foster_parented() {
+        // WPT tests20.dat#46: `<!doctype html><table><form><form>`.
+        let doc = parse("<table><form><form>");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(children_tags(&doc, body), vec!["table".to_string()]);
+        let table = doc.children(body).next().unwrap();
+        // Exactly one <form>, empty: the second start tag is ignored
+        // outright since the form element pointer is already set.
+        assert_eq!(children_tags(&doc, table), vec!["form".to_string()]);
+        let form = doc.children(table).next().unwrap();
+        assert_eq!(doc.children(form).count(), 0);
+    }
+
+    #[test]
+    fn form_in_table_pointer_stays_set_after_the_table_closes_ignoring_a_later_form() {
+        // WPT tests20.dat#47: `<!doctype html><table><form></table><form>`.
+        // The form element pointer set by the first <form> is never
+        // cleared (no </form> end tag appears anywhere in this input),
+        // so the second, post-</table> <form> is ignored outright too.
+        let doc = parse("<table><form></table><form>");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(children_tags(&doc, body), vec!["table".to_string()]);
+        let table = doc.children(body).next().unwrap();
+        assert_eq!(children_tags(&doc, table), vec!["form".to_string()]);
+    }
+
+    #[test]
+    fn form_directly_inside_table_nested_in_an_outer_form_still_gets_the_in_table_carve_out() {
+        // WPT tests16.dat#196: `<!doctype html><form><table></form><form></table></form>`.
+        // The `</form>` right after `<table>` can't close the outer
+        // <form> (the ordinary "has an element in scope" algorithm's
+        // <table> boundary blocks it), so it only clears the form
+        // element pointer -- letting the second <form>, now inside "in
+        // table" mode, get inserted as the table's own child via this
+        // carve-out (rather than being ignored like the previous test).
+        let doc = parse("<form><table></form><form></table></form>");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(children_tags(&doc, body), vec!["form".to_string()]);
+        let outer_form = doc.children(body).next().unwrap();
+        assert_eq!(children_tags(&doc, outer_form), vec!["table".to_string()]);
+        let table = doc.children(outer_form).next().unwrap();
+        assert_eq!(children_tags(&doc, table), vec!["form".to_string()]);
+        let inner_form = doc.children(table).next().unwrap();
+        assert_eq!(doc.children(inner_form).count(), 0);
     }
 
     #[test]
