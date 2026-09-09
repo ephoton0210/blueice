@@ -26,7 +26,7 @@ impl fmt::Display for CompileError {
             Self::Unsupported(feature) => write!(f, "BlueJS execution does not yet support {feature}"),
             Self::DuplicateBinding(name) => write!(f, "duplicate or conflicting binding: {name}"),
             Self::InvalidSyntax(message) => f.write_str(message),
-            Self::ProgramTooLarge => f.write_str("BlueJS program exceeds the u32 bytecode address space"),
+            Self::ProgramTooLarge => f.write_str("BlueJS program exceeds the bytecode size limit"),
         }
     }
 }
@@ -36,7 +36,14 @@ impl std::error::Error for CompileError {}
 /// accepts more than the VM can run; unsupported syntax is rejected even
 /// in unreachable branches, before any execution or heap mutation.
 pub fn compile(program: &Program) -> Result<Bytecode, CompileError> {
-    let mut compiler = Compiler { bytecode: Bytecode::empty(), names: Vec::new(), scopes: Vec::new(), loops: Vec::new() };
+    compile_with_limit(program, u32::MAX)
+}
+
+/// Compiles with an inclusive limit on emitted instruction bytes.
+/// A limit failure returns [`CompileError::ProgramTooLarge`], never partial
+/// bytecode. This does not bound AST depth, constant payloads or total memory.
+pub fn compile_with_limit(program: &Program, max_bytecode_bytes: u32) -> Result<Bytecode, CompileError> {
+    let mut compiler = Compiler { bytecode: Bytecode::empty(), names: Vec::new(), scopes: Vec::new(), loops: Vec::new(), max_bytecode_bytes };
     let vars = var_names(&program.body)?;
     compiler.enter_scope(lexical_names(&program.body)?, &vars, true)?;
     compiler.statements(&program.body)?;
@@ -55,6 +62,7 @@ struct Compiler {
     names: Vec<HashMap<String, u32>>,
     scopes: Vec<u32>,
     loops: Vec<Loop>,
+    max_bytecode_bytes: u32,
 }
 
 impl Compiler {
@@ -64,7 +72,7 @@ impl Compiler {
 
     fn emit(&mut self, opcode: Opcode, operand: u32) -> Result<usize, CompileError> {
         let offset = self.offset()? as usize;
-        if offset.checked_add(opcode.width()).is_none_or(|end| end > u32::MAX as usize) {
+        if offset.checked_add(opcode.width()).is_none_or(|end| end > self.max_bytecode_bytes as usize) {
             return Err(CompileError::ProgramTooLarge);
         }
         self.bytecode.code.push(opcode as u8);

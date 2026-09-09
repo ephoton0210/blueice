@@ -15,12 +15,30 @@ fn primitive_completions_and_error_classes_match_node() {
     // Deterministic broad float coverage, including shortest-decimal
     // formatting. Every expected value still comes from Node, not Rust.
     let mut state = 0x83da_172c_d093_1b57u64;
-    for _ in 0..512 {
+    for _ in 0..2048 {
         state ^= state << 13;
         state ^= state >> 7;
         state ^= state << 17;
         let n = f64::from_bits(state);
         if n.is_finite() {
+            corpus.push_str(&format!("\n'' + ({n:e})"));
+        }
+    }
+    // Every finite binary exponent, both sides of the binade boundary,
+    // both signs; include the smallest/largest subnormals explicitly.
+    for exponent in 0u64..2047 {
+        for fraction in [1, (1u64 << 52) - 1] {
+            for sign in [0, 1u64 << 63] {
+                let n = f64::from_bits(sign | (exponent << 52) | fraction);
+                corpus.push_str(&format!("\n'' + ({n:e})"));
+            }
+        }
+    }
+    // Dense neighbors of a known decimal midpoint, not only broad samples.
+    let midpoint = (1_114_289_515_931_746.0f64 + 0.25).to_bits();
+    for bits in midpoint - 64..=midpoint + 64 {
+        for sign in [0, 1u64 << 63] {
+            let n = f64::from_bits(bits | sign);
             corpus.push_str(&format!("\n'' + ({n:e})"));
         }
     }

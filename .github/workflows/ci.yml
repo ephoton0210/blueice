@@ -65,6 +65,11 @@ jobs:
             --fail-under-lines 90 \
             --summary-only \
             | tee coverage-summary.txt
+      - name: Enforce BlueJS 100 percent line coverage
+        run: |
+          # Measure BlueJS independently of workspace instrumentation.
+          cargo llvm-cov clean --workspace
+          cargo llvm-cov -p blueice-bluejs --fail-under-lines 100 --summary-only
       - name: Publish summary
         if: always()
         run: |

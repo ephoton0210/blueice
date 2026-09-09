@@ -327,7 +327,10 @@ impl Tokenizer {
             }
         }
         let text: String = self.input[start..self.pos].iter().collect();
-        text.parse::<f64>().map(Token::Number).map_err(|_| LexError::new(format!("invalid number literal '{text}'")))
+        // The scanner emits digits with an optional dot and a complete
+        // exponent; malformed exponent suffixes were rolled back above.
+        // Decimal overflow/underflow parse as infinity/zero, not an error.
+        Ok(Token::Number(text.parse().expect("scanner emits valid decimal syntax")))
     }
 
     fn scan_escape(&mut self) -> Result<Option<char>, LexError> {
@@ -345,8 +348,9 @@ impl Tokenizer {
             '\'' | '"' | '`' | '\\' | '$' => c,
             'x' => {
                 let hex: String = (0..2).map(|_| self.advance().ok_or_else(|| LexError::new("unterminated \\x escape"))).collect::<Result<_, _>>()?;
-                let code = u32::from_str_radix(&hex, 16).map_err(|_| LexError::new(format!("invalid \\x escape '{hex}'")))?;
-                char::from_u32(code).ok_or_else(|| LexError::new("invalid \\x escape codepoint"))?
+                let code = Self::hex_escape(&hex, "\\x")?;
+                // Exactly two validated hex digits fit u8; every u8 is a scalar.
+                char::from(code as u8)
             }
             'u' => {
                 if self.peek() == Some('{') {
@@ -356,16 +360,25 @@ impl Tokenizer {
                         hex.push(self.advance().unwrap());
                     }
                     self.advance().ok_or_else(|| LexError::new("unterminated \\u{...} escape"))?;
-                    let code = u32::from_str_radix(&hex, 16).map_err(|_| LexError::new(format!("invalid \\u{{...}} escape '{hex}'")))?;
+                    let code = Self::hex_escape(&hex, "\\u{...}")?;
                     char::from_u32(code).ok_or_else(|| LexError::new("invalid \\u{...} escape codepoint"))?
                 } else {
                     let hex: String = (0..4).map(|_| self.advance().ok_or_else(|| LexError::new("unterminated \\u escape"))).collect::<Result<_, _>>()?;
-                    let code = u32::from_str_radix(&hex, 16).map_err(|_| LexError::new(format!("invalid \\u escape '{hex}'")))?;
+                    let code = Self::hex_escape(&hex, "\\u")?;
                     char::from_u32(code).ok_or_else(|| LexError::new("invalid \\u escape codepoint"))?
                 }
             }
             other => other, // an unrecognized escape just yields the escaped character itself, matching ECMAScript's `NonEscapeCharacter` fallback
         }))
+    }
+
+    fn hex_escape(hex: &str, kind: &str) -> Result<u32, LexError> {
+        // ECMA-262 (2026) §12.9.4 requires HexDigits, not the optional
+        // leading '+' accepted by Rust's from_str_radix.
+        if hex.is_empty() || !hex.bytes().all(|c| c.is_ascii_hexdigit()) {
+            return Err(LexError::new(format!("invalid {kind} escape '{hex}'")));
+        }
+        u32::from_str_radix(hex, 16).map_err(|_| LexError::new(format!("invalid {kind} escape '{hex}'")))
     }
 
     fn scan_string(&mut self, quote: char) -> Result<Token, LexError> {

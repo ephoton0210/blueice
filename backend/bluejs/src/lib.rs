@@ -56,7 +56,7 @@ mod vm;
 
 pub use ast::*;
 pub use bytecode::{Bytecode, Instruction, Opcode, MAY_USE_INLINE_CACHE};
-pub use compiler::{compile, CompileError};
+pub use compiler::{compile, compile_with_limit, CompileError};
 pub use heap::{Heap, HeapConfig, HeapError, HeapStats, RootId};
 pub use parser::{parse, ParseError};
 pub use value::{ObjectId, Value};

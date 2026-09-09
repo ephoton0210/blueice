@@ -80,40 +80,30 @@ fn number_string(n: f64) -> String {
 
 fn lower_even_tie(n: f64, significand: u64, decimal_exponent: i32) -> bool {
     // Rust's shortest formatter resolves decimal midpoints upward;
-    // ECMAScript Number::toString selects the even significand instead:
-    // https://tc39.es/ecma262/#sec-numeric-types-number-tostring
+    // Number::toString recommends the even significand in ES2026 Note 2,
+    // and requires it in the current ES2027 draft step 5:
+    // https://tc39.es/ecma262/multipage/ecmascript-data-types-and-values.html#sec-numeric-types-number-tostring
     // Never compare re-parsed floats: both adjacent decimals round to n.
     // Compare exact rationals n = m*2^e and (2*s-1)*10^k/2 instead.
-    if significand & 1 == 0 {
+    // An integral decimal midpoint cannot round-trip from either neighbor;
+    // for k <= -25, 5^(-k) exceeds (2*s-1) < 2*10^17.
+    // Proof and versioned references: research/js-conformance-baseline.md.
+    if significand & 1 == 0 || !(-24..0).contains(&decimal_exponent) {
         return false;
     }
     let bits = n.to_bits();
     let exponent_bits = ((bits >> 52) & 0x7ff) as i32;
-    let mut binary_significand = bits & ((1u64 << 52) - 1);
-    if exponent_bits != 0 {
-        binary_significand |= 1u64 << 52;
-    }
+    // The decimal-exponent bound above also rules out subnormals.
+    let mut binary_significand = (bits & ((1u64 << 52) - 1)) | (1u64 << 52);
     let zeros = binary_significand.trailing_zeros();
     binary_significand >>= zeros;
-    let binary_exponent = if exponent_bits == 0 { -1074 } else { exponent_bits - 1075 } + zeros as i32;
+    let binary_exponent = exponent_bits - 1075 + zeros as i32;
     if binary_exponent != decimal_exponent - 1 {
         return false;
     }
-    let mut midpoint = 2 * significand - 1;
-    if decimal_exponent < 0 {
-        for _ in decimal_exponent..0 {
-            if !midpoint.is_multiple_of(5) {
-                return false;
-            }
-            midpoint /= 5;
-        }
-    } else {
-        for _ in 0..decimal_exponent {
-            let Some(product) = midpoint.checked_mul(5) else { return false };
-            midpoint = product;
-        }
-    }
-    midpoint == binary_significand
+    let midpoint = 2 * significand - 1;
+    let factor = 5u64.pow((-decimal_exponent) as u32); // At most 5^24; fits u64.
+    midpoint.is_multiple_of(factor) && midpoint / factor == binary_significand
 }
 
 pub(crate) fn compare(left: &Value, right: &Value) -> Result<Option<Ordering>, RuntimeError> {

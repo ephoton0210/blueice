@@ -186,3 +186,23 @@ let a=[1]; let o={__proto__:a}; o[0]*10+o.length
 let a=[1]; let o={__proto__:a}; o.length=4; a.length*10+o.length
 let a=[1]; let o={__proto__:a}; o[2]=4; a.length*10+o[2]
 let a=[]; a.length-= -2; a.length*=2; a.length/=2; a.length%=2; a.length
+
+# ECMA-262 2026 §12.9.4: hex digits do not accept an integer sign.
+'\x+1'
+'\x-0'
+'\u+001'
+'\u-000'
+'\u{+1}'
+'\u{-0}'
+'\u{}'
+'\u{FFFFFFFFF}'
+'\u{110000}'
+'\u{00000000000000000000000000000041}'
+'\x00\x7F\xFF\u0041\u{1F600}'
+`\x+1`
+"\u{+1}"
+1.e3
+1e+309
+1e-400
+let o={length:'text'}; o.length
+let o={if:1,return:2,true:3}; o.if+o.return+o.true

@@ -114,13 +114,12 @@ impl Vm {
         }
         self.heap.collect_major();
         self.bindings.resize(code.bindings.len(), Value::Undefined);
-        let mut result = self.run(code);
-        if let Ok(Value::Object(id)) = &result {
-            match self.heap.root(*id) {
-                Ok(root) => self.result_root = Some(root),
-                Err(error) => result = Err(error.into()),
+        let result = self.run(code).and_then(|value| {
+            if let Value::Object(id) = value {
+                self.result_root = Some(self.heap.root(id)?);
             }
-        }
+            Ok(value)
+        });
         self.stack.clear();
         self.bindings.clear();
         self.completion = Value::Undefined;
@@ -201,22 +200,17 @@ impl Vm {
                     self.stack.push(self.stack[index].clone());
                     self.stack.push(self.stack[index + 1].clone());
                 }
-                Opcode::Add
-                | Opcode::Subtract
-                | Opcode::Multiply
-                | Opcode::Divide
-                | Opcode::Remainder
-                | Opcode::StrictEqual
-                | Opcode::StrictNotEqual
-                | Opcode::Less
-                | Opcode::Greater
-                | Opcode::LessEqual
-                | Opcode::GreaterEqual => {
-                    let right = self.pop();
-                    let left = self.pop();
-                    let value = self.binary(instruction.opcode, left, right)?;
-                    self.stack.push(value);
-                }
+                Opcode::Add => self.binary(Self::add)?,
+                Opcode::Subtract => self.numeric(|a, b| a - b)?,
+                Opcode::Multiply => self.numeric(|a, b| a * b)?,
+                Opcode::Divide => self.numeric(|a, b| a / b)?,
+                Opcode::Remainder => self.numeric(|a, b| a % b)?,
+                Opcode::StrictEqual => self.binary(|_, a, b| Ok(Value::Bool(a == b)))?,
+                Opcode::StrictNotEqual => self.binary(|_, a, b| Ok(Value::Bool(a != b)))?,
+                Opcode::Less => self.relational(|order| order == Ordering::Less)?,
+                Opcode::Greater => self.relational(|order| order == Ordering::Greater)?,
+                Opcode::LessEqual => self.relational(|order| order != Ordering::Greater)?,
+                Opcode::GreaterEqual => self.relational(|order| order != Ordering::Less)?,
                 Opcode::Negate | Opcode::ToNumber | Opcode::ToString | Opcode::Not | Opcode::Typeof => {
                     let arg = self.pop();
                     let value = match instruction.opcode {
@@ -298,40 +292,33 @@ impl Vm {
         }
     }
 
-    fn binary(&self, opcode: Opcode, left: Value, right: Value) -> Result<Value, RuntimeError> {
-        Ok(match opcode {
-            Opcode::StrictEqual => Value::Bool(left == right),
-            Opcode::StrictNotEqual => Value::Bool(left != right),
-            Opcode::Less | Opcode::Greater | Opcode::LessEqual | Opcode::GreaterEqual => {
-                let order = primitive::compare(&left, &right)?;
-                Value::Bool(match opcode {
-                    Opcode::Less => order == Some(Ordering::Less),
-                    Opcode::Greater => order == Some(Ordering::Greater),
-                    Opcode::LessEqual => matches!(order, Some(Ordering::Less | Ordering::Equal)),
-                    _ => matches!(order, Some(Ordering::Greater | Ordering::Equal)),
-                })
+    fn binary(&mut self, operation: impl FnOnce(&Self, Value, Value) -> Result<Value, RuntimeError>) -> Result<(), RuntimeError> {
+        let right = self.pop();
+        let left = self.pop();
+        let value = operation(self, left, right)?;
+        self.stack.push(value);
+        Ok(())
+    }
+
+    fn numeric(&mut self, operation: fn(f64, f64) -> f64) -> Result<(), RuntimeError> {
+        self.binary(|_, a, b| Ok(Value::Number(operation(primitive::number(&a)?, primitive::number(&b)?))))
+    }
+
+    fn relational(&mut self, accept: fn(Ordering) -> bool) -> Result<(), RuntimeError> {
+        self.binary(|_, a, b| Ok(Value::Bool(primitive::compare(&a, &b)?.is_some_and(accept))))
+    }
+
+    fn add(&self, left: Value, right: Value) -> Result<Value, RuntimeError> {
+        if matches!(left, Value::String(_)) || matches!(right, Value::String(_)) {
+            let mut a = primitive::string(&left)?;
+            let b = primitive::string(&right)?;
+            if a.len().checked_add(b.len()).is_none_or(|len| len > self.config.max_string_bytes) {
+                return Err(RuntimeError::StringLimit { limit: self.config.max_string_bytes });
             }
-            Opcode::Add if matches!(left, Value::String(_)) || matches!(right, Value::String(_)) => {
-                let mut a = primitive::string(&left)?;
-                let b = primitive::string(&right)?;
-                if a.len().checked_add(b.len()).is_none_or(|len| len > self.config.max_string_bytes) {
-                    return Err(RuntimeError::StringLimit { limit: self.config.max_string_bytes });
-                }
-                a.push_str(&b);
-                Value::String(a)
-            }
-            _ => {
-                let a = primitive::number(&left)?;
-                let b = primitive::number(&right)?;
-                Value::Number(match opcode {
-                    Opcode::Add => a + b,
-                    Opcode::Subtract => a - b,
-                    Opcode::Multiply => a * b,
-                    Opcode::Divide => a / b,
-                    Opcode::Remainder => a % b,
-                    _ => unreachable!("dispatch restricts numeric binary opcodes"),
-                })
-            }
-        })
+            a.push_str(&b);
+            Ok(Value::String(a))
+        } else {
+            Ok(Value::Number(primitive::number(&left)? + primitive::number(&right)?))
+        }
     }
 }

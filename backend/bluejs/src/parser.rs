@@ -384,13 +384,13 @@ impl Parser {
             return self.parse_for_rest(None);
         }
 
-        if let Token::Keyword(kw @ (Keyword::Var | Keyword::Let | Keyword::Const)) = self.peek().clone() {
-            let decl_kind = match kw {
-                Keyword::Var => DeclKind::Var,
-                Keyword::Let => DeclKind::Let,
-                Keyword::Const => DeclKind::Const,
-                _ => unreachable!(),
-            };
+        let decl_kind = match self.peek() {
+            Token::Keyword(Keyword::Var) => Some(DeclKind::Var),
+            Token::Keyword(Keyword::Let) => Some(DeclKind::Let),
+            Token::Keyword(Keyword::Const) => Some(DeclKind::Const),
+            _ => None,
+        };
+        if let Some(decl_kind) = decl_kind {
             self.advance();
             let pattern = self.parse_binding_pattern()?;
 
@@ -1119,11 +1119,11 @@ mod tests {
     use super::*;
 
     fn program(src: &str) -> Program {
-        parse(src).unwrap_or_else(|e| panic!("parse error for {src:?}: {}", e.message))
+        parse(src).expect(src)
     }
 
     fn expr(src: &str) -> Expr {
-        parse_expression_from_source(src).unwrap_or_else(|e| panic!("parse error for {src:?}: {}", e.message))
+        parse_expression_from_source(src).expect(src)
     }
 
     fn only_stmt(src: &str) -> Stmt {
@@ -1397,6 +1397,27 @@ mod tests {
                 body: ArrowBody::Block(vec![Stmt::Return(Some(Expr::Binary { op: BinaryOp::Add, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) }))]),
             }
         );
+    }
+
+    #[test]
+    fn nested_parentheses_in_arrow_defaults_preserve_the_parameter_boundary() {
+        // Drive the public parser; an inner ')' must not terminate arrow
+        // lookahead before the actual parameter list's ')' and '=>'.
+        assert_eq!(parse("(x=((1+2)*3))=>x").unwrap(), Program {
+            body: vec![Stmt::Expr(Expr::Arrow {
+                params: vec![Param {
+                    pattern: Pattern::Identifier("x".into()),
+                    default: Some(Expr::Binary {
+                        op: BinaryOp::Mul,
+                        left: Box::new(Expr::Binary { op: BinaryOp::Add, left: Box::new(Expr::Number(1.0)), right: Box::new(Expr::Number(2.0)) }),
+                        right: Box::new(Expr::Number(3.0)),
+                    }),
+                    rest: false,
+                }],
+                body: ArrowBody::Expr(Box::new(Expr::Identifier("x".into()))),
+            })],
+        });
+        assert!(parse("(x=((1+2)*3)=>x").is_err());
     }
 
     #[test]
