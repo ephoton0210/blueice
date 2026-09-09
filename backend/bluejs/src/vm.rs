@@ -164,11 +164,22 @@ impl Vm {
         &self.heap
     }
 
-    /// Executes only bytecode produced by [`crate::compile`]. A returned
-    /// object and its reachable graph stay alive until the next execute
-    /// (including a failing execute), or until this VM is dropped.
-    /// Both success and error paths release all temporary runtime roots.
+    /// Executes only bytecode produced by [`crate::compile`] with fresh
+    /// bindings. A returned object and its reachable graph stay alive until
+    /// the next execute (including a failing execute), or until this VM is
+    /// dropped. Both success and error paths release temporary runtime roots.
     pub fn execute(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
+        self.execute_with_global_bindings(code, false)
+    }
+
+    /// Executes a classic script in this realm and publishes successful
+    /// top-level `var` and function declarations on `globalThis` for a later
+    /// classic script. Lexical bindings retain their script-local boundary.
+    pub fn execute_script(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
+        self.execute_with_global_bindings(code, true)
+    }
+
+    fn execute_with_global_bindings(&mut self, code: &Bytecode, publish_globals: bool) -> Result<Value, RuntimeError> {
         if let Some(root) = self.result_root.take() {
             self.heap.unroot(root)?;
         }
@@ -177,6 +188,9 @@ impl Vm {
         self.remaining_instructions = self.config.instruction_budget;
         self.strict = code.strict;
         let result = self.run(code).and_then(|value| {
+            if publish_globals {
+                self.publish_global_bindings(code)?;
+            }
             if let Value::Object(id) = value {
                 self.result_root = Some(self.heap.root(id)?);
             }
@@ -191,6 +205,18 @@ impl Vm {
         self.completion = Value::Undefined;
         self.heap.collect_major();
         result
+    }
+
+    fn publish_global_bindings(&mut self, code: &Bytecode) -> Result<(), RuntimeError> {
+        let global = self.global("globalThis")?.object_id().expect("globalThis is an object");
+        for (slot, binding) in code.bindings.iter().enumerate() {
+            if binding.lexical {
+                continue;
+            }
+            let Some(value) = self.binding_value(slot)? else { continue };
+            self.define_data(global, binding.name.as_str(), value, true, true, false)?;
+        }
+        Ok(())
     }
 
     fn pop(&mut self) -> Value {
@@ -429,7 +455,10 @@ impl Vm {
                 Opcode::Remainder => self.numeric(|a, b| a % b)?,
                 Opcode::StrictEqual => self.binary(|_, a, b| Ok(Value::Bool(a == b)))?,
                 Opcode::StrictNotEqual => self.binary(|_, a, b| Ok(Value::Bool(a != b)))?,
+                Opcode::Equal => self.binary(|vm, a, b| vm.loose_equal(a, b).map(Value::Bool))?,
+                Opcode::NotEqual => self.binary(|vm, a, b| vm.loose_equal(a, b).map(|equal| Value::Bool(!equal)))?,
                 Opcode::Instanceof => self.binary(|vm, value, target| vm.has_instance(value, target, false).map(Value::Bool))?,
+                Opcode::In => self.binary(|vm, key, object| vm.property_in(&key, &object).map(Value::Bool))?,
                 Opcode::Less => self.relational(|order| order == Ordering::Less)?,
                 Opcode::Greater => self.relational(|order| order == Ordering::Greater)?,
                 Opcode::LessEqual => self.relational(|order| order != Ordering::Greater)?,
@@ -952,6 +981,42 @@ impl Vm {
             let b = vm.coerce_primitive(&b, "number")?;
             Ok(Value::Bool(primitive::compare(&a, &b)?.is_some_and(accept)))
         })
+    }
+
+    fn loose_equal(&mut self, left: Value, right: Value) -> Result<bool, RuntimeError> {
+        if std::mem::discriminant(&left) == std::mem::discriminant(&right) {
+            return Ok(left == right);
+        }
+        if matches!((&left, &right), (Value::Null, Value::Undefined) | (Value::Undefined, Value::Null)) {
+            return Ok(true);
+        }
+        match (left, right) {
+            (Value::Number(left), Value::String(right)) => Ok(left == primitive::number(&Value::String(right))?),
+            (Value::String(left), Value::Number(right)) => Ok(primitive::number(&Value::String(left))? == right),
+            (Value::Bool(left), right) => self.loose_equal(Value::Number(if left { 1.0 } else { 0.0 }), right),
+            (left, Value::Bool(right)) => self.loose_equal(left, Value::Number(if right { 1.0 } else { 0.0 })),
+            (Value::Object(left), right @ (Value::Number(_) | Value::String(_) | Value::Symbol(_))) => {
+                let left = self.coerce_primitive(&Value::Object(left), "default")?;
+                self.loose_equal(left, right)
+            }
+            (left @ (Value::Number(_) | Value::String(_) | Value::Symbol(_)), Value::Object(right)) => {
+                let right = self.coerce_primitive(&Value::Object(right), "default")?;
+                self.loose_equal(left, right)
+            }
+            _ => Ok(false),
+        }
+    }
+
+    fn property_in(&mut self, key: &Value, object: &Value) -> Result<bool, RuntimeError> {
+        let Value::Object(mut object) = object else { return Err(RuntimeError::TypeError("right operand of in must be an object".into())) };
+        let key = self.coerce_property_key(key)?;
+        loop {
+            if self.heap.get_own_property_descriptor(object, &key)?.is_some() {
+                return Ok(true);
+            }
+            let Some(prototype) = self.heap.prototype(object)? else { return Ok(false) };
+            object = prototype;
+        }
     }
 
     fn add(&mut self, left: Value, right: Value) -> Result<Value, RuntimeError> {

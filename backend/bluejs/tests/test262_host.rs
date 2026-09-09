@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
+use blueice_bluejs::{RuntimeError, Value, Vm, compile, parse};
 
 #[test]
 fn harness_assertions_fail_closed() {
@@ -92,6 +92,49 @@ fn complete_core_harness_helpers_are_available() {
 }
 
 #[test]
+fn native_property_helpers_validate_descriptors_and_constructibility() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    for source in [
+        "verifyProperty(Math,'PI',{value:Math.PI,writable:false,enumerable:false,configurable:false});true",
+        "verifyCallableProperty(Math,'abs','abs',1);true",
+        "verifyPrimordialCallableProperty(Math,'abs','abs',1);true",
+        "verifyEqualTo(Math,'PI',Math.PI);true",
+        "verifyNotWritable(Math,'PI');verifyNotEnumerable(Math,'PI');verifyNotConfigurable(Math,'PI');true",
+        "verifyWritable(Math,'abs');verifyEnumerable({x:1},'x');verifyConfigurable({x:1},'x');true",
+        "verifyPrimordialProperty(Math,'PI',{value:Math.PI,writable:false,enumerable:false,configurable:false});true",
+        "let o={};Object.defineProperty(o,'x',{get:function getter(){return 1},set:undefined,enumerable:false,configurable:true});verifyAccessorProperty(o,'x',{get:Object.getOwnPropertyDescriptor(o,'x').get,set:undefined});verifyPrimordialAccessorProperty(o,'x',{get:Object.getOwnPropertyDescriptor(o,'x').get,set:undefined});true",
+        "isConstructor(function(){}) && !isConstructor(()=>{})",
+        "assert.throws(Test262Error,()=>isConstructor(1));assert.throws(Test262Error,()=>verifyProperty(Math,'PI',undefined));true",
+        "verifyCallableProperty(Math,'abs','abs',1,{writable:true,enumerable:false,configurable:true});true",
+        "verifyCallableProperty(Math,'abs',undefined,1);verifyCallableProperty(Math,'abs','abs',1,{writable:true,enumerable:false});true",
+        "assert.throws(Test262Error,()=>verifyCallableProperty(Math,'abs','wrong',1));true",
+        "let o={};Object.defineProperty(o,Symbol.iterator,{value:function(){},writable:true,enumerable:false,configurable:true});assert.throws(Test262Error,()=>verifyCallableProperty(o,Symbol.iterator,undefined,0));true",
+        "let f=function f(){};Object.defineProperty(f,'name',{configurable:false});let o={};Object.defineProperty(o,'f',{value:f,writable:true,enumerable:false,configurable:true});assert.throws(Test262Error,()=>verifyCallableProperty(o,'f','f',0,{writable:true,enumerable:false,configurable:true}));assert.throws(Test262Error,()=>verifyCallableProperty(o,'f','f',0));true",
+        "let o={};Object.defineProperty(o,'x',{get:function(){return 1},enumerable:false,configurable:true});assert.throws(Test262Error,()=>verifyAccessorProperty(o,'x',{get:undefined}));assert.throws(Test262Error,()=>verifyAccessorProperty(o,'x',{get:Object.getOwnPropertyDescriptor(o,'x').get,enumerable:true}));assert.throws(Test262Error,()=>verifyAccessorProperty(Math,'PI',{}));true",
+        "assert.throws(Test262Error,()=>verifyProperty(Math,'PI',{unknown:1}));true",
+    ] {
+        assert_eq!(vm.execute(&compile(&parse(source).unwrap()).unwrap()).unwrap(), Value::Bool(true), "{source}");
+    }
+    let failure = compile(&parse("verifyProperty(Math,'PI',{writable:true})").unwrap()).unwrap();
+    assert!(matches!(vm.execute(&failure), Err(RuntimeError::Test262(_))));
+    for source in [
+        "verifyCallableProperty(Math,'PI','PI',0)",
+        "let o={};Object.defineProperty(o,'f',{value:function f(){},writable:false,enumerable:false,configurable:true});verifyCallableProperty(o,'f','f',0)",
+        "let o={};Object.defineProperty(o,Symbol.iterator,{value:function(){},writable:true,enumerable:false,configurable:true});verifyCallableProperty(o,Symbol.iterator,undefined,0)",
+        "let f=function f(){};Object.defineProperty(f,'name',{configurable:false});let o={};Object.defineProperty(o,'f',{value:f,writable:true,enumerable:false,configurable:true});verifyCallableProperty(o,'f','f',0,{writable:true,enumerable:false,configurable:true})",
+    ] {
+        let mut vm = Vm::default();
+        vm.install_test262_harness().unwrap();
+        assert!(matches!(vm.execute(&compile(&parse(source).unwrap()).unwrap()), Err(RuntimeError::Test262(_))), "{source}");
+    }
+    let source = "let o={};Object.defineProperty(o,'x',{get:function(){return 1},set:undefined,enumerable:false,configurable:true});verifyProperty(o,'x',{get:Object.getOwnPropertyDescriptor(o,'x').get,set:undefined})";
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    assert_eq!(vm.execute(&compile(&parse(source).unwrap()).unwrap()).unwrap(), Value::Bool(true));
+}
+
+#[test]
 fn harness_allocation_failures_leave_the_vm_usable() {
     use blueice_bluejs::{HeapConfig, HeapError, VmConfig};
     let alive = compile(&parse("1+1").unwrap()).unwrap();
@@ -104,4 +147,18 @@ fn harness_allocation_failures_leave_the_vm_usable() {
         }
         assert_eq!(vm.execute(&alive).unwrap(), Value::Number(2.0));
     }
+}
+
+#[test]
+fn classic_scripts_publish_var_and_function_bindings_without_leaking_lexicals() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let harness = compile(&parse("var offset=4; function addOffset(value){return value+offset}").unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&harness).unwrap(), Value::Undefined);
+    let test = compile(&parse("addOffset(3) === 7 && typeof offset === 'number'").unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&test).unwrap(), Value::Bool(true));
+    let lexical = compile(&parse("let secret=1; const hidden=2").unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&lexical).unwrap(), Value::Undefined);
+    let lookup = compile(&parse("typeof secret === 'undefined' && typeof hidden === 'undefined'").unwrap()).unwrap();
+    assert_eq!(vm.execute(&lookup).unwrap(), Value::Bool(true));
 }

@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Compiler/VM acceptance tests through the three real public stages.
-use blueice_bluejs::{compile, parse, CompileError, HeapConfig, Opcode, RuntimeError, Value, Vm, VmConfig};
+use blueice_bluejs::{CompileError, HeapConfig, Opcode, RuntimeError, Value, Vm, VmConfig, compile, parse};
 
 fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     let code = compile(&parse(source).unwrap()).unwrap();
@@ -299,8 +299,11 @@ fn object_operations_preserve_identity_and_evaluation_order() {
 
 #[test]
 fn unsupported_syntax_and_invalid_bindings_fail_before_execution() {
-    for source in ["({ ...x })", "let [x]=y", "x == 1", "x in y", "for(x of y){}", "for(x in y){}", "switch(x){}", "try {} finally {}", "x=1", "let undefined=1"] {
+    for source in ["({ ...x })", "let [x]=y", "for(x of y){}", "for(x in y){}", "switch(x){}", "try {} finally {}", "x=1", "let undefined=1"] {
         assert!(matches!(compile(&parse(source).unwrap()), Err(CompileError::Unsupported(_))), "{source}");
+    }
+    for source in ["x == 1", "x != 1", "x in y"] {
+        assert!(compile(&parse(source).unwrap()).is_ok(), "{source}");
     }
     for source in ["return 1", "break", "continue", "let x; let x;", "let x; var x;", "{let x; {var x;}}", "const x;", "if(true) let x=1;", "({__proto__:null,__proto__:null})"] {
         assert!(compile(&parse(source).unwrap()).is_err(), "{source}");

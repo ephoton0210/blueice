@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Public-interface regressions from the coverage/conformance review.
-use blueice_bluejs::{compile, compile_with_limit, parse, CompileError, Value, Vm};
+use blueice_bluejs::{CompileError, RuntimeError, Value, Vm, compile, compile_with_limit, parse};
 
 fn evaluate(source: &str) -> Value {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap()).unwrap()
@@ -55,6 +55,22 @@ fn nested_parentheses_and_ordinary_length_do_not_take_special_paths() {
 }
 
 #[test]
+fn abstract_equality_and_in_follow_coercion_and_prototype_rules() {
+    for source in [
+        "null==undefined && undefined==null && null!=0",
+        "'1'==1 && 1=='1' && true==1 && 1==true && false==0",
+        "({valueOf(){return 7}})==7 && 7==({valueOf(){return 7}})",
+        "Symbol()!=Symbol() && Symbol()!=1",
+        "let p={inherited:1};let o={__proto__:p,own:1};'own' in o && 'inherited' in o && !('missing' in o)",
+        "let key=Symbol('key');let o={};o[key]=1;key in o",
+    ] {
+        assert_eq!(evaluate(source), Value::Bool(true), "{source}");
+    }
+    let error = Vm::default().execute(&compile(&parse("'x' in 1").unwrap()).unwrap());
+    assert!(matches!(error, Err(RuntimeError::TypeError(_))));
+}
+
+#[test]
 fn malformed_hexadecimal_escapes_are_rejected_instead_of_accepting_signs() {
     for escape in [r"\x+1", r"\x-0", r"\u+001", r"\u-000", r"\u{+1}", r"\u{-0}", r"\u{}", r"\u{FFFFFFFFF}"] {
         for quote in ['\'', '"', '`'] {
@@ -94,7 +110,18 @@ fn strings_preserve_surrogate_code_units_through_the_public_pipeline() {
 
 #[test]
 fn bytecode_budget_is_inclusive_and_preserves_default_output() {
-    for source in ["", "1", "-1", "true||false", "false&&true", "null??1", "let a=[1,2]; for(let i=0;i<a.length;i++){a[i]++;} a[1]", "String(42)", "'abc'.slice(1)", "new String('x').valueOf()"] {
+    for source in [
+        "",
+        "1",
+        "-1",
+        "true||false",
+        "false&&true",
+        "null??1",
+        "let a=[1,2]; for(let i=0;i<a.length;i++){a[i]++;} a[1]",
+        "String(42)",
+        "'abc'.slice(1)",
+        "new String('x').valueOf()",
+    ] {
         let ast = parse(source).unwrap();
         let normal = compile(&ast).unwrap();
         let limit = u32::try_from(normal.bytes().len()).unwrap();

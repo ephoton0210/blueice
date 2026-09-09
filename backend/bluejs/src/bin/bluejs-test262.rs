@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! JSON-lines adapter. The external supervisor owns whole-case wall deadlines.
-use blueice_bluejs::{compile_with_limit, parse, CompileError, RuntimeError, Vm, VmConfig};
+use blueice_bluejs::{CompileError, RuntimeError, Vm, VmConfig, compile_with_limit, parse};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::{self, BufRead, Write};
 
 #[derive(Deserialize)]
@@ -15,10 +15,13 @@ struct Request {
     #[serde(default)]
     includes: Vec<String>,
     #[serde(default)]
+    harness_sources: Vec<String>,
+    #[serde(default)]
     asynchronous: bool,
     #[serde(default)]
     parse_only: bool,
     bytecode_limit: Option<u32>,
+    instruction_budget: Option<u64>,
     heap_limit: Option<usize>,
     regex_timeout_ms: Option<u64>,
     string_limit: Option<usize>,
@@ -69,7 +72,7 @@ fn evaluate(request: Request) -> Value {
                 CompileError::Unsupported(reason) => json!({"kind":"unsupported", "reason":reason}),
                 CompileError::ProgramTooLarge => json!({"kind":"resource_error", "message":error.to_string()}),
                 _ => json!({"phase":"parse", "kind":"SyntaxError", "message":error.to_string()}),
-            }
+            };
         }
     };
     if request.parse_only {
@@ -78,14 +81,15 @@ fn evaluate(request: Request) -> Value {
     if request.asynchronous {
         return json!({"kind":"unsupported", "reason":"async jobs and $DONE host"});
     }
-    // Includes must execute as separate scripts sharing the global environment.
-    // Concatenating them changes strictness and lexical scoping. Until the
-    // multi-script global environment is implemented, report this explicitly.
-    let unknown: Vec<_> = request.includes.iter().filter(|name| !matches!(name.as_str(), "sta.js" | "assert.js")).collect();
-    if request.mode != "raw" && !unknown.is_empty() {
+    // The native host replaces these core helpers. Other includes execute as
+    // separate classic scripts in the same VM realm.
+    let unknown: Vec<_> = request.includes.iter().filter(|name| !matches!(name.as_str(), "sta.js" | "assert.js" | "propertyHelper.js" | "isConstructor.js")).collect();
+    if request.mode != "raw" && !unknown.is_empty() && request.harness_sources.is_empty() {
         return json!({"kind":"unsupported", "reason":"harness includes require persistent script globals", "includes":unknown});
     }
-    let mut config = VmConfig::default();
+    // Conformance inputs run under an explicit, bounded interpreter budget.
+    // Keep the library VM default independent from the runner's resource policy.
+    let mut config = VmConfig { instruction_budget: request.instruction_budget.unwrap_or(100_000), ..VmConfig::default() };
     if let Some(limit) = request.heap_limit {
         config.heap.max_heap_bytes = limit;
         config.heap.major_threshold_bytes = config.heap.major_threshold_bytes.min(limit);
@@ -105,7 +109,21 @@ fn evaluate(request: Request) -> Value {
             return json!({"kind":"harness_error", "message":error.to_string()});
         }
     }
-    match vm.execute(&code) {
+    for source in request.harness_sources {
+        let source = if request.mode == "strict" { format!("\"use strict\";\n{source}") } else { source };
+        let program = match parse(&source) {
+            Ok(program) => program,
+            Err(error) => return json!({"kind":"unsupported", "reason":"harness source parse unsupported", "message":error.message}),
+        };
+        let code = match compile_with_limit(&program, request.bytecode_limit.unwrap_or(u32::MAX)) {
+            Ok(code) => code,
+            Err(error) => return json!({"kind":"unsupported", "reason":"harness source compile unsupported", "message":error.to_string()}),
+        };
+        if let Err(error) = vm.execute_script(&code) {
+            return runtime(error);
+        }
+    }
+    match vm.execute_script(&code) {
         Ok(_) => json!({"kind":"ok", "phase":"runtime"}),
         Err(error) => runtime(error),
     }

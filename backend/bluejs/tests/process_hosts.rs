@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
@@ -39,6 +39,17 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
         (json!({"source":"try{}catch(e){}", "mode":"sloppy"}), "unsupported"),
         (json!({"source":"1", "mode":"sloppy", "bytecode_limit":0}), "resource_error"),
         (json!({"source":"1", "mode":"sloppy", "includes":["assert.js","other.js"]}), "unsupported"),
+        (
+            json!({"source":"verifyProperty(Math,'PI',{value:Math.PI,writable:false,enumerable:false,configurable:false});isConstructor(function(){})", "mode":"sloppy", "includes":["propertyHelper.js","isConstructor.js"]}),
+            "ok",
+        ),
+        (
+            json!({"source":"addOffset(2) === 5", "mode":"sloppy", "includes":["helpers.js"], "harness_sources":["var offset=3; function addOffset(value){return value+offset}"]}),
+            "ok",
+        ),
+        (json!({"source":"1", "mode":"strict", "includes":["helpers.js"], "harness_sources":["let ="]}), "unsupported"),
+        (json!({"source":"1", "mode":"sloppy", "includes":["helpers.js"], "harness_sources":["try{}catch(e){}"]}), "unsupported"),
+        (json!({"source":"1", "mode":"sloppy", "includes":["helpers.js"], "harness_sources":["throw 1"]}), "ThrownValue"),
         (json!({"source":"1", "mode":"sloppy", "heap_limit":1000}), "harness_error"),
         (json!({"source":"1", "mode":"sloppy", "heap_limit":0}), "harness_error"),
         (json!({"source":"null.x", "mode":"sloppy"}), "TypeError"),
@@ -46,6 +57,7 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
         (json!({"source":"new RegExp('[')", "mode":"sloppy"}), "SyntaxError"),
         (json!({"source":"assert(false)", "mode":"sloppy"}), "Test262Error"),
         (json!({"source":"throw 1", "mode":"sloppy"}), "ThrownValue"),
+        (json!({"source":"1", "mode":"sloppy", "instruction_budget":0}), "timeout"),
         (json!({"source":"for(;;){}", "mode":"sloppy"}), "timeout"),
         (json!({"source":"'abc'.repeat(20)", "mode":"sloppy", "string_limit":100}), "resource_error"),
         (json!({"source":"new RegExp('(a+)+$').test('a'.repeat(40)+'!')", "mode":"sloppy", "regex_timeout_ms":40}), "timeout"),

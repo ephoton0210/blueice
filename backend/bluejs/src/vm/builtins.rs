@@ -208,11 +208,7 @@ impl Vm {
         Ok(())
     }
     pub(super) fn binding_value(&self, slot: usize) -> Result<Option<Value>, RuntimeError> {
-        if let Some(cell) = self.cells.get(&slot) {
-            Ok(self.heap.get_own(*cell, "value")?)
-        } else {
-            Ok(self.bindings[slot].clone())
-        }
+        if let Some(cell) = self.cells.get(&slot) { Ok(self.heap.get_own(*cell, "value")?) } else { Ok(self.bindings[slot].clone()) }
     }
 
     pub(super) fn store_binding(&mut self, slot: usize, value: Value) -> Result<(), RuntimeError> {
@@ -669,20 +665,12 @@ impl Vm {
                 if !matches!((&value, boolean), (Value::Bool(_), true) | (Value::Number(_), false)) {
                     return Err(RuntimeError::TypeError("incompatible boxed primitive receiver".into()));
                 }
-                if string {
-                    Ok(Value::String(primitive::string(&value)?))
-                } else {
-                    Ok(value)
-                }
+                if string { Ok(Value::String(primitive::string(&value)?)) } else { Ok(value) }
             }
             NativeFunction::SymbolToString | NativeFunction::SymbolValueOf => {
                 let value = if let Value::Object(id) = receiver { self.heap.boxed_primitive(id)?.unwrap_or(Value::Undefined) } else { receiver };
                 let Value::Symbol(symbol) = value else { return Err(RuntimeError::TypeError("Symbol method requires a Symbol".into())) };
-                if function == NativeFunction::SymbolToString {
-                    Ok(Value::String(symbol.descriptive_string()))
-                } else {
-                    Ok(Value::Symbol(symbol))
-                }
+                if function == NativeFunction::SymbolToString { Ok(Value::String(symbol.descriptive_string())) } else { Ok(Value::Symbol(symbol)) }
             }
             NativeFunction::RegExp => {
                 if !construct && *native::argument(&args, 1) == Value::Undefined && self.is_regexp(first)? {
@@ -737,11 +725,7 @@ impl Vm {
                 let object = Value::Object(self.coerce_object(&receiver)?);
                 self.stack.push(object.clone());
                 let join = self.get_property(&object, &"join".into())?;
-                if self.is_callable(&join)? {
-                    self.call_native(join, object, vec![], false)
-                } else {
-                    self.native_call(NativeFunction::ObjectToString, object, vec![], false)
-                }
+                if self.is_callable(&join)? { self.call_native(join, object, vec![], false) } else { self.native_call(NativeFunction::ObjectToString, object, vec![], false) }
             }
             NativeFunction::ArrayJoin => self.array_join(&receiver, first),
             NativeFunction::Symbol => Ok(Value::Symbol(JsSymbol::new(if matches!(first, Value::Undefined) { None } else { Some(self.coerce_string(first)?) }))),

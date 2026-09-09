@@ -48,6 +48,8 @@ opcodes! {
     Remainder: 1, 0;
     StrictEqual: 1, 0;
     StrictNotEqual: 1, 0;
+    Equal: 1, 0;
+    NotEqual: 1, 0;
     Less: 1, 0;
     Greater: 1, 0;
     LessEqual: 1, 0;
@@ -93,6 +95,7 @@ opcodes! {
     DefineAccessor: 5, 0;
     DeleteProperty: 1, 0;
     Instanceof: 1, 0;
+    In: 1, 0;
     TypeofName: 5, 0;
 }
 

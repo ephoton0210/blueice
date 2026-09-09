@@ -427,5 +427,12 @@ String.raw({raw:null})
 ''.trimLeft === ''.trimStart
 ''.trimRight === ''.trimEnd
 ''.trimLeft.name
+null==undefined
+'1'==1
+true==1
+({valueOf(){return 7}})==7
+'own' in {own:1}
+'missing' in {}
+'x' in 1
 String.prototype.oracleIsolationProbe = 7
 ''.oracleIsolationProbe
