@@ -4,9 +4,10 @@
 
 //! Runtime values, separate from the parser's expression/property-key
 //! types. Objects carry handles into [`crate::Heap`], never Rust
-//! references or reference-counted cycles. Strings retain the parser's
-//! UTF-8 representation for now; JS UTF-16 indexing/lone surrogates are
-//! a language-runtime follow-up, not implemented by this storage slice.
+//! references or reference-counted cycles. Strings preserve UTF-16 code
+//! units throughout parsing, execution and property storage.
+
+use crate::JsString;
 
 /// An opaque object identity. The heap identity prevents a handle from
 /// another (even already-dropped) heap aliasing one of this heap's
@@ -19,16 +20,16 @@ pub struct ObjectId {
     pub(crate) serial: u64,
 }
 
-/// The Phase 2 primitive subset and an object handle. `PartialEq` is
-/// Rust value comparison, not a JS coercion operation; the interpreter
-/// still needs to implement JS abstract equality and conversions.
+/// Implemented primitives and an object handle (including native functions
+/// and boxed Strings). `PartialEq` is non-coercing value comparison; JS
+/// abstract equality and the remaining conversions are separate operations.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Undefined,
     Null,
     Bool(bool),
     Number(f64),
-    String(String),
+    String(JsString),
     Object(ObjectId),
 }
 
@@ -42,7 +43,7 @@ impl Value {
 
     pub(crate) fn payload_bytes(&self) -> usize {
         match self {
-            Value::String(s) => s.len(),
+            Value::String(s) => s.byte_len(),
             _ => 0,
         }
     }

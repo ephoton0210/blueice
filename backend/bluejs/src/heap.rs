@@ -9,8 +9,9 @@
 //!
 //! Map-backed properties are writable/enumerable/configurable data
 //! properties. Array length is virtual, writable, non-enumerable and
-//! non-configurable. Functions, accessors and general descriptors are
-//! separate runtime work. Keys arrive converted to strings; array length
+//! non-configurable. Boxed String indices/length are virtual and read-only;
+//! native call identities are heap-owned. User functions, accessors and
+//! general descriptors remain. Keys arrive converted to strings; array length
 //! writes arrive converted to numbers. The heap never runs JS coercion.
 //!
 //! A fixed object-count nursery promotes all survivors on minor GC.
@@ -26,7 +27,8 @@
 //! The managed-byte budget is described on [`HeapConfig`]; it is not
 //! an allocator guarantee or a whole-process memory limit.
 
-use crate::{ObjectId, Value};
+use crate::native::NativeFunction;
+use crate::{JsString, ObjectId, Value};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::mem::size_of;
@@ -43,7 +45,8 @@ pub struct RootId {
 
 /// Collector tuning for the managed object store. Byte accounting
 /// charges object records, property records, both stored copies of
-/// each key, and string value payloads. Hash-table/vector spare capacity,
+/// each key, and string value payloads (two bytes per UTF-16 code unit).
+/// Hash-table/vector spare capacity,
 /// allocator overhead, GC/root bookkeeping, and Rust-caller-owned
 /// values are outside this budget; it is explicitly not an RSS limit.
 #[derive(Debug, Clone, Copy)]
@@ -72,6 +75,7 @@ pub enum HeapError {
     InvalidRoot(RootId),
     PrototypeCycle,
     InvalidArrayLength,
+    ReadOnlyProperty,
     HeapLimitExceeded { limit: usize },
     IdExhausted,
 }
@@ -84,6 +88,7 @@ impl fmt::Display for HeapError {
             Self::InvalidRoot(id) => write!(f, "unknown or released BlueJS root: {id:?}"),
             Self::PrototypeCycle => write!(f, "a BlueJS prototype chain cannot contain a cycle"),
             Self::InvalidArrayLength => write!(f, "invalid BlueJS array length: expected an integer from 0 to 4294967295"),
+            Self::ReadOnlyProperty => write!(f, "cannot assign to a read-only BlueJS property"),
             Self::HeapLimitExceeded { limit } => write!(f, "BlueJS managed heap limit exceeded ({limit} bytes)"),
             Self::IdExhausted => write!(f, "BlueJS heap identity counter exhausted"),
         }
@@ -107,19 +112,26 @@ pub struct HeapStats {
 enum ObjectKind {
     Ordinary,
     Array { length: u32 },
+    String(JsString),
+    NativeFunction(NativeFunction),
 }
 
 struct Object {
     kind: ObjectKind,
-    properties: HashMap<String, Value>,
-    order: Vec<String>,
+    properties: HashMap<JsString, Value>,
+    order: Vec<JsString>,
     prototype: Option<ObjectId>,
     young: bool,
     bytes: usize,
 }
 
 impl Object {
-    fn own_property(&self, key: &str) -> Option<Value> {
+    fn own_property(&self, key: &JsString) -> Option<Value> {
+        if let ObjectKind::String(string) = &self.kind {
+            if let Some(value) = string.own_property(key) {
+                return Some(value);
+            }
+        }
         if key == "length" {
             if let ObjectKind::Array { length } = self.kind {
                 return Some(Value::Number(f64::from(length)));
@@ -135,9 +147,9 @@ impl Object {
 
 const OBJECT_BYTES: usize = size_of::<Object>();
 
-fn property_bytes(key: &str, value: &Value) -> usize {
+fn property_bytes(key: &JsString, value: &Value) -> usize {
     // Key storage is duplicated in `properties` and insertion `order`.
-    (size_of::<(String, Value)>() + size_of::<String>()).saturating_add(key.len().saturating_mul(2)).saturating_add(value.payload_bytes())
+    (size_of::<(JsString, Value)>() + size_of::<JsString>()).saturating_add(key.byte_len().saturating_mul(2)).saturating_add(value.payload_bytes())
 }
 
 /// An ordinary-object and sparse-array heap. It owns storage, property writes
@@ -202,6 +214,30 @@ impl Heap {
         self.alloc(ObjectKind::Array { length }, prototype)
     }
 
+    /// A boxed String with read-only, non-configurable virtual indices
+    /// and length. The string payload is charged to the managed budget.
+    pub fn alloc_string(&mut self, string: JsString, prototype: Option<ObjectId>) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::String(string), prototype)
+    }
+
+    pub(crate) fn alloc_native_function(&mut self, function: NativeFunction, prototype: ObjectId) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::NativeFunction(function), Some(prototype))
+    }
+
+    pub(crate) fn native_function(&self, object: ObjectId) -> Result<Option<NativeFunction>, HeapError> {
+        Ok(match self.object(object)?.kind {
+            ObjectKind::NativeFunction(function) => Some(function),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn boxed_string(&self, object: ObjectId) -> Result<Option<&JsString>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::String(string) => Some(string),
+            _ => None,
+        })
+    }
+
     pub fn is_array(&self, object: ObjectId) -> Result<bool, HeapError> {
         Ok(matches!(self.object(object)?.kind, ObjectKind::Array { .. }))
     }
@@ -215,12 +251,17 @@ impl Heap {
         if self.nursery.len() >= self.config.nursery_capacity {
             self.minor_gc(&protected);
         }
-        self.ensure_room(OBJECT_BYTES, &protected)?;
+        let bytes = OBJECT_BYTES
+            + match &kind {
+                ObjectKind::String(string) => string.byte_len(),
+                _ => 0,
+            };
+        self.ensure_room(bytes, &protected)?;
         let id = ObjectId { heap: self.identity, serial: self.next_object };
         self.next_object = next;
-        self.objects.insert(id, Object { kind, properties: HashMap::new(), order: Vec::new(), prototype, young: true, bytes: OBJECT_BYTES });
+        self.objects.insert(id, Object { kind, properties: HashMap::new(), order: Vec::new(), prototype, young: true, bytes });
         self.nursery.push(id);
-        self.managed_bytes += OBJECT_BYTES;
+        self.managed_bytes += bytes;
         Ok(id)
     }
 
@@ -246,16 +287,17 @@ impl Heap {
     }
 
     /// `None` means absent, distinct from a present `Value::Undefined`.
-    pub fn get_own(&self, object: ObjectId, key: &str) -> Result<Option<Value>, HeapError> {
-        Ok(self.object(object)?.own_property(key))
+    pub fn get_own(&self, object: ObjectId, key: impl Into<JsString>) -> Result<Option<Value>, HeapError> {
+        Ok(self.object(object)?.own_property(&key.into()))
     }
 
     /// Ordinary data-property lookup through the prototype chain.
-    pub fn get(&self, object: ObjectId, key: &str) -> Result<Value, HeapError> {
+    pub fn get(&self, object: ObjectId, key: impl Into<JsString>) -> Result<Value, HeapError> {
+        let key = key.into();
         let mut current = Some(object);
         while let Some(id) = current {
             let obj = self.object(id)?;
-            if let Some(value) = obj.own_property(key) {
+            if let Some(value) = obj.own_property(&key) {
                 return Ok(value);
             }
             current = obj.prototype;
@@ -269,9 +311,13 @@ impl Heap {
     /// Array length writes require a pre-coerced Number, validated as an
     /// integer in 0..=u32::MAX. Truncation visits present properties only;
     /// holes cost no storage, and successful index stores grow length.
-    pub fn set(&mut self, object: ObjectId, key: &str, value: Value) -> Result<(), HeapError> {
+    pub fn set(&mut self, object: ObjectId, key: impl Into<JsString>, value: Value) -> Result<(), HeapError> {
+        let key = key.into();
         let obj = self.object(object)?;
-        let old_bytes = obj.properties.get(key).map_or(0, |old| property_bytes(key, old));
+        if matches!(&obj.kind, ObjectKind::String(string) if string.own_property(&key).is_some()) {
+            return Err(HeapError::ReadOnlyProperty);
+        }
+        let old_bytes = obj.properties.get(&key).map_or(0, |old| property_bytes(&key, old));
         let value_id = value.object_id();
         if let Some(id) = value_id {
             self.object(id)?;
@@ -279,36 +325,40 @@ impl Heap {
         if key == "length" && matches!(obj.kind, ObjectKind::Array { .. }) {
             return self.set_array_length(object, value);
         }
-        let new_bytes = property_bytes(key, &value);
+        let new_bytes = property_bytes(&key, &value);
         let protected: Vec<_> = std::iter::once(object).chain(value_id).collect();
         self.ensure_room(new_bytes.saturating_sub(old_bytes), &protected)?;
         self.write_barrier(object, value_id);
         let obj = self.objects.get_mut(&object).expect("the receiver is protected across collection");
-        if !obj.properties.contains_key(key) {
-            obj.order.push(key.to_string());
+        if !obj.properties.contains_key(&key) {
+            obj.order.push(key.clone());
         }
-        obj.properties.insert(key.to_string(), value);
         if let ObjectKind::Array { length } = &mut obj.kind {
-            if let Some(index) = array_index(key) {
+            if let Some(index) = array_index(&key) {
                 *length = (*length).max(index + 1);
             }
         }
+        obj.properties.insert(key, value);
         obj.bytes = obj.bytes - old_bytes + new_bytes;
         self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
         Ok(())
     }
 
     /// Deleting a missing property succeeds, as it does for JS ordinary
-    /// objects. Array length is the sole non-configurable property here;
-    /// deleting an array index does not change length.
-    pub fn delete(&mut self, object: ObjectId, key: &str) -> Result<bool, HeapError> {
+    /// objects. Array length and boxed String indices/length cannot be
+    /// deleted; deleting an array index does not change length.
+    pub fn delete(&mut self, object: ObjectId, key: impl Into<JsString>) -> Result<bool, HeapError> {
+        let key = key.into();
         let obj = self.objects.get_mut(&object).ok_or(HeapError::InvalidObject(object))?;
+        if matches!(&obj.kind, ObjectKind::String(string) if string.own_property(&key).is_some()) {
+            return Ok(false);
+        }
         if key == "length" && matches!(obj.kind, ObjectKind::Array { .. }) {
             return Ok(false);
         }
-        if let Some(value) = obj.properties.remove(key) {
-            let bytes = property_bytes(key, &value);
-            obj.order.retain(|name| name != key);
+        if let Some(value) = obj.properties.remove(&key) {
+            let bytes = property_bytes(&key, &value);
+            obj.order.retain(|name| name != &key);
             obj.bytes -= bytes;
             self.managed_bytes -= bytes;
         }
@@ -319,16 +369,19 @@ impl Heap {
     /// data properties: array indices first, then other keys in creation
     /// order (including non-enumerable array length, created first).
     /// 2^32-1 and noncanonical spellings are not indices.
-    pub fn own_keys(&self, object: ObjectId) -> Result<Vec<String>, HeapError> {
+    pub fn own_keys(&self, object: ObjectId) -> Result<Vec<JsString>, HeapError> {
         let obj = self.object(object)?;
         let mut indices = Vec::new();
         let mut strings = Vec::new();
-        if matches!(obj.kind, ObjectKind::Array { .. }) {
+        if let ObjectKind::String(string) = &obj.kind {
+            indices.extend((0..string.len()).map(|index| (index, index.to_string().into())));
+        }
+        if matches!(obj.kind, ObjectKind::Array { .. } | ObjectKind::String(_)) {
             strings.push("length".into());
         }
         for key in &obj.order {
             match array_index(key) {
-                Some(index) => indices.push((index, key.clone())),
+                Some(index) => indices.push((index as usize, key.clone())),
                 None => strings.push(key.clone()),
             }
         }
@@ -338,9 +391,9 @@ impl Heap {
 
     /// The enumerable subset of own_keys, excluding virtual array length.
     /// Inherited properties are not returned by either key enumeration API.
-    pub fn enumerable_own_keys(&self, object: ObjectId) -> Result<Vec<String>, HeapError> {
-        let array = self.is_array(object)?;
-        Ok(self.own_keys(object)?.into_iter().filter(|key| !array || key != "length").collect())
+    pub fn enumerable_own_keys(&self, object: ObjectId) -> Result<Vec<JsString>, HeapError> {
+        let virtual_length = matches!(self.object(object)?.kind, ObjectKind::Array { .. } | ObjectKind::String(_));
+        Ok(self.own_keys(object)?.into_iter().filter(|key| !virtual_length || key != "length").collect())
     }
 
     fn set_array_length(&mut self, object: ObjectId, value: Value) -> Result<(), HeapError> {
@@ -493,7 +546,7 @@ impl Heap {
     }
 }
 
-fn array_index(key: &str) -> Option<u32> {
-    let index = key.parse::<u32>().ok()?;
-    (index != u32::MAX && index.to_string() == key).then_some(index)
+fn array_index(key: &JsString) -> Option<u32> {
+    let index = u32::try_from(key.index()?).ok()?;
+    (index != u32::MAX).then_some(index)
 }

@@ -15,15 +15,17 @@
 //! property, so it tokenizes as [`Token::Identifier`] and the parser/
 //! interpreter, not the lexer, is where it becomes meaningful.
 //!
-//! Source characters use Rust `char`. Runtime strings still use UTF-8;
-//! full UTF-16 code-unit strings are an outstanding conformance gap.
+//! Source characters use Rust `char`; cooked literals use UTF-16 code
+//! units so Unicode escapes can preserve lone surrogates losslessly.
+
+use crate::JsString;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     Number(f64),
     /// A plain (non-template) string literal, already "cooked" --
     /// escape sequences resolved to the characters they represent.
-    String(String),
+    String(JsString),
     /// A template literal (`` `...` ``). `quasis.len() ==
     /// raw_expressions.len() + 1` always holds, the same invariant
     /// real engines' `TemplateStringsArray` relies on: quasis are the
@@ -34,7 +36,7 @@ pub enum Token {
     /// text later, rather than recursively tokenizing it inline here,
     /// is this crate's chosen way to handle template nesting without a
     /// stateful lexer-mode stack.
-    Template { quasis: Vec<String>, raw_expressions: Vec<String> },
+    Template { quasis: Vec<JsString>, raw_expressions: Vec<String> },
     Identifier(String),
     Keyword(Keyword),
     Punct(Punct),
@@ -366,27 +368,25 @@ impl Tokenizer {
         Ok(Token::Number(number))
     }
 
-    fn scan_escape(&mut self) -> Result<Option<char>, LexError> {
+    fn scan_escape(&mut self) -> Result<Option<u32>, LexError> {
         // Caller has already consumed the leading '\\'.
         let c = self.advance().ok_or_else(|| LexError::new("unterminated escape sequence"))?;
         Ok(Some(match c {
-            'n' => '\n',
-            't' => '\t',
-            'r' => '\r',
-            'b' => '\u{8}',
-            'f' => '\u{c}',
-            'v' => '\u{b}',
-            '0' => '\0',
+            'n' => 0x0a,
+            't' => 0x09,
+            'r' => 0x0d,
+            'b' => 0x08,
+            'f' => 0x0c,
+            'v' => 0x0b,
+            '0' => 0,
             c if is_line_terminator(c) => {
                 if c == '\r' && self.peek() == Some('\n') { self.advance(); }
                 return Ok(None); // A whole LineTerminatorSequence contributes nothing.
             }
-            '\'' | '"' | '`' | '\\' | '$' => c,
+            '\'' | '"' | '`' | '\\' | '$' => c as u32,
             'x' => {
                 let hex: String = (0..2).map(|_| self.advance().ok_or_else(|| LexError::new("unterminated \\x escape"))).collect::<Result<_, _>>()?;
-                let code = Self::hex_escape(&hex, "\\x")?;
-                // Exactly two validated hex digits fit u8; every u8 is a scalar.
-                char::from(code as u8)
+                Self::hex_escape(&hex, "\\x")?
             }
             'u' => {
                 if self.peek() == Some('{') {
@@ -397,14 +397,14 @@ impl Tokenizer {
                     }
                     self.advance().ok_or_else(|| LexError::new("unterminated \\u{...} escape"))?;
                     let code = Self::hex_escape(&hex, "\\u{...}")?;
-                    char::from_u32(code).ok_or_else(|| LexError::new("invalid \\u{...} escape codepoint"))?
+                    if code > 0x10ffff { return Err(LexError::new("invalid \\u{...} escape codepoint")); }
+                    code
                 } else {
                     let hex: String = (0..4).map(|_| self.advance().ok_or_else(|| LexError::new("unterminated \\u escape"))).collect::<Result<_, _>>()?;
-                    let code = Self::hex_escape(&hex, "\\u")?;
-                    char::from_u32(code).ok_or_else(|| LexError::new("invalid \\u escape codepoint"))?
+                    Self::hex_escape(&hex, "\\u")?
                 }
             }
-            other => other, // an unrecognized escape just yields the escaped character itself, matching ECMAScript's `NonEscapeCharacter` fallback
+            other => other as u32, // NonEscapeCharacter, including astral source characters.
         }))
     }
 
@@ -419,7 +419,7 @@ impl Tokenizer {
 
     fn scan_string(&mut self, quote: char) -> Result<Token, LexError> {
         self.advance(); // opening quote
-        let mut out = String::new();
+        let mut out = JsString::default();
         loop {
             match self.peek() {
                 None => return Err(LexError::new("unterminated string literal")),
@@ -431,12 +431,12 @@ impl Tokenizer {
                 Some('\\') => {
                     self.advance();
                     if let Some(c) = self.scan_escape()? {
-                        out.push(c);
+                        out.push_code_point(c);
                     }
                 }
                 Some(c) => {
                     self.advance();
-                    out.push(c);
+                    out.push_code_point(c as u32);
                 }
             }
         }
@@ -457,7 +457,7 @@ impl Tokenizer {
     fn scan_template(&mut self) -> Result<Token, LexError> {
         let mut quasis = Vec::new();
         let mut raw_expressions = Vec::new();
-        let mut current = String::new();
+        let mut current = JsString::default();
         loop {
             match self.peek() {
                 None => return Err(LexError::new("unterminated template literal")),
@@ -475,17 +475,17 @@ impl Tokenizer {
                 Some('\\') => {
                     self.advance();
                     if let Some(c) = self.scan_escape()? {
-                        current.push(c);
+                        current.push_code_point(c);
                     }
                 }
                 Some('\r') => {
                     self.advance();
                     if self.peek() == Some('\n') { self.advance(); }
-                    current.push('\n');
+                    current.push_code_point('\n' as u32);
                 }
                 Some(c) => {
                     self.advance();
-                    current.push(c);
+                    current.push_code_point(c as u32);
                 }
             }
         }
@@ -812,29 +812,29 @@ mod tests {
 
     #[test]
     fn scans_every_simple_escape_sequence() {
-        assert_eq!(tokens(r"'\t\r\b\f\v\0'"), vec![Token::String("\t\r\u{8}\u{c}\u{b}\0".to_string()), Token::Eof]);
-        assert_eq!(tokens(r"'\q'"), vec![Token::String("q".to_string()), Token::Eof]); // unrecognized escape: falls back to the escaped character itself
+        assert_eq!(tokens(r"'\t\r\b\f\v\0'"), vec![Token::String("\t\r\u{8}\u{c}\u{b}\0".into()), Token::Eof]);
+        assert_eq!(tokens(r"'\q'"), vec![Token::String("q".into()), Token::Eof]); // unrecognized escape: falls back to the escaped character itself
     }
 
     #[test]
     fn a_backslash_newline_is_a_line_continuation_contributing_no_character() {
-        assert_eq!(tokens("'a\\\nb'"), vec![Token::String("ab".to_string()), Token::Eof]);
+        assert_eq!(tokens("'a\\\nb'"), vec![Token::String("ab".into()), Token::Eof]);
     }
 
     #[test]
     fn scans_a_bare_four_hex_digit_unicode_escape_without_braces() {
-        assert_eq!(tokens("'\\u0041'"), vec![Token::String("A".to_string()), Token::Eof]);
+        assert_eq!(tokens("'\\u0041'"), vec![Token::String("A".into()), Token::Eof]);
     }
 
     #[test]
     fn scans_string_literals_with_escapes() {
-        assert_eq!(tokens(r#""hello""#), vec![Token::String("hello".to_string()), Token::Eof]);
-        assert_eq!(tokens("'hello'"), vec![Token::String("hello".to_string()), Token::Eof]);
-        assert_eq!(tokens(r#""a\nb""#), vec![Token::String("a\nb".to_string()), Token::Eof]);
-        assert_eq!(tokens(r#""a\"b""#), vec![Token::String("a\"b".to_string()), Token::Eof]);
-        assert_eq!(tokens(r"'\u{1F600}'"), vec![Token::String("\u{1F600}".to_string()), Token::Eof]);
-        assert_eq!(tokens(r"'A'"), vec![Token::String("A".to_string()), Token::Eof]);
-        assert_eq!(tokens(r"'\x41'"), vec![Token::String("A".to_string()), Token::Eof]);
+        assert_eq!(tokens(r#""hello""#), vec![Token::String("hello".into()), Token::Eof]);
+        assert_eq!(tokens("'hello'"), vec![Token::String("hello".into()), Token::Eof]);
+        assert_eq!(tokens(r#""a\nb""#), vec![Token::String("a\nb".into()), Token::Eof]);
+        assert_eq!(tokens(r#""a\"b""#), vec![Token::String("a\"b".into()), Token::Eof]);
+        assert_eq!(tokens(r"'\u{1F600}'"), vec![Token::String("\u{1F600}".into()), Token::Eof]);
+        assert_eq!(tokens(r"'A'"), vec![Token::String("A".into()), Token::Eof]);
+        assert_eq!(tokens(r"'\x41'"), vec![Token::String("A".into()), Token::Eof]);
     }
 
     #[test]
@@ -852,7 +852,7 @@ mod tests {
 
     #[test]
     fn scans_a_simple_template_literal_with_no_placeholders() {
-        assert_eq!(tokens("`hello`"), vec![Token::Template { quasis: vec!["hello".to_string()], raw_expressions: vec![] }, Token::Eof]);
+        assert_eq!(tokens("`hello`"), vec![Token::Template { quasis: vec!["hello".into()], raw_expressions: vec![] }, Token::Eof]);
     }
 
     #[test]
@@ -860,7 +860,7 @@ mod tests {
         assert_eq!(
             tokens("`a${x}b${y + 1}c`"),
             vec![
-                Token::Template { quasis: vec!["a".to_string(), "b".to_string(), "c".to_string()], raw_expressions: vec!["x".to_string(), "y + 1".to_string()] },
+                Token::Template { quasis: vec!["a".into(), "b".into(), "c".into()], raw_expressions: vec!["x".to_string(), "y + 1".to_string()] },
                 Token::Eof
             ]
         );
@@ -868,7 +868,7 @@ mod tests {
 
     #[test]
     fn template_literal_body_text_resolves_escapes() {
-        assert_eq!(tokens("`a\\nb`"), vec![Token::Template { quasis: vec!["a\nb".to_string()], raw_expressions: vec![] }, Token::Eof]);
+        assert_eq!(tokens("`a\\nb`"), vec![Token::Template { quasis: vec!["a\nb".into()], raw_expressions: vec![] }, Token::Eof]);
     }
 
     #[test]
@@ -889,17 +889,17 @@ mod tests {
         // Exercises `copy_raw_string_body`'s and `copy_raw_template_body`'s
         // own backslash-escape handling (distinct from `scan_escape`,
         // since this is *raw* copying for brace-balancing, not cooking).
-        assert_eq!(tokens(r#"`${ "a\"}" }`"#), vec![Token::Template { quasis: vec![String::new(), String::new()], raw_expressions: vec![" \"a\\\"}\" ".to_string()] }, Token::Eof]);
+        assert_eq!(tokens(r#"`${ "a\"}" }`"#), vec![Token::Template { quasis: vec![Default::default(), Default::default()], raw_expressions: vec![" \"a\\\"}\" ".to_string()] }, Token::Eof]);
         let toks = tokens("`${ `a\\`b${1}` }`");
-        assert_eq!(toks, vec![Token::Template { quasis: vec![String::new(), String::new()], raw_expressions: vec![" `a\\`b${1}` ".to_string()] }, Token::Eof]);
+        assert_eq!(toks, vec![Token::Template { quasis: vec![Default::default(), Default::default()], raw_expressions: vec![" `a\\`b${1}` ".to_string()] }, Token::Eof]);
     }
 
     #[test]
     fn template_placeholder_can_contain_braces_strings_and_nested_templates() {
-        assert_eq!(tokens("`${ {} }`"), vec![Token::Template { quasis: vec![String::new(), String::new()], raw_expressions: vec![" {} ".to_string()] }, Token::Eof]);
-        assert_eq!(tokens(r#"`${ "}" }`"#), vec![Token::Template { quasis: vec![String::new(), String::new()], raw_expressions: vec![r#" "}" "#.to_string()] }, Token::Eof]);
+        assert_eq!(tokens("`${ {} }`"), vec![Token::Template { quasis: vec![Default::default(), Default::default()], raw_expressions: vec![" {} ".to_string()] }, Token::Eof]);
+        assert_eq!(tokens(r#"`${ "}" }`"#), vec![Token::Template { quasis: vec![Default::default(), Default::default()], raw_expressions: vec![r#" "}" "#.to_string()] }, Token::Eof]);
         let toks = tokens("`${ `${a}` }`");
-        assert_eq!(toks, vec![Token::Template { quasis: vec![String::new(), String::new()], raw_expressions: vec![" `${a}` ".to_string()] }, Token::Eof]);
+        assert_eq!(toks, vec![Token::Template { quasis: vec![Default::default(), Default::default()], raw_expressions: vec![" `${a}` ".to_string()] }, Token::Eof]);
     }
 
     #[test]

@@ -85,17 +85,16 @@ fn escape_errors_retain_actionable_diagnostics_through_the_public_parser() {
 }
 
 #[test]
-fn utf8_storage_still_explicitly_rejects_surrogate_code_units() {
-    // These are valid ECMAScript strings, but Rust String cannot represent
-    // them. Track the existing representation gap, not a spec SyntaxError.
-    for source in [r"'\uD800'", r"'\u{DFFF}'", r"'\uD83D\uDE00'"] {
-        assert!(parse(source).unwrap_err().message.contains("codepoint"), "{source}");
+fn strings_preserve_surrogate_code_units_through_the_public_pipeline() {
+    for (source, units) in [(r"'\uD800'", vec![0xd800]), (r"'\u{DFFF}'", vec![0xdfff]), (r"'\uD83D\uDE00'", vec![0xd83d, 0xde00])] {
+        let Value::String(value) = evaluate(source) else { panic!("string literal must return a string") };
+        assert_eq!(value.as_code_units(), units, "{source}");
     }
 }
 
 #[test]
 fn bytecode_budget_is_inclusive_and_preserves_default_output() {
-    for source in ["", "1", "-1", "true||false", "false&&true", "null??1", "let a=[1,2]; for(let i=0;i<a.length;i++){a[i]++;} a[1]"] {
+    for source in ["", "1", "-1", "true||false", "false&&true", "null??1", "let a=[1,2]; for(let i=0;i<a.length;i++){a[i]++;} a[1]", "String(42)", "'abc'.slice(1)", "new String('x').valueOf()"] {
         let ast = parse(source).unwrap();
         let normal = compile(&ast).unwrap();
         let limit = u32::try_from(normal.bytes().len()).unwrap();
@@ -145,7 +144,7 @@ fn shortest_decimal_midpoints_neighbors_and_presentation_boundaries() {
         ("1.7976931348623157e308", "1.7976931348623157e+308"),
     ] {
         for sign in ["", "-"] {
-            assert_eq!(evaluate(&format!("''+({sign}{literal})")), Value::String(format!("{sign}{expected}")), "{sign}{literal}");
+            assert_eq!(evaluate(&format!("''+({sign}{literal})")), Value::String(format!("{sign}{expected}").into()), "{sign}{literal}");
         }
     }
 }
@@ -170,7 +169,7 @@ fn number_strings_round_trip_at_every_binary_exponent_boundary() {
                 let n = f64::from_bits(bits);
                 let code = compile(&parse(&format!("''+({n:e})")).unwrap()).unwrap();
                 let Value::String(text) = vm.execute(&code).unwrap() else { panic!("string concatenation must return a string") };
-                assert_eq!(text.parse::<f64>().unwrap().to_bits(), bits, "{bits:016x}: {text}");
+                assert_eq!(text.to_utf8().unwrap().parse::<f64>().unwrap().to_bits(), bits, "{bits:016x}: {text:?}");
             }
         }
     }

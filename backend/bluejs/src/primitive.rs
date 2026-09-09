@@ -5,7 +5,7 @@
 //! Primitive coercions used by bytecode dispatch. Object-to-primitive
 //! conversion needs callable builtins, which this slice explicitly lacks.
 
-use crate::{RuntimeError, Value};
+use crate::{JsString, RuntimeError, Value};
 use std::cmp::Ordering;
 
 pub(crate) fn truthy(value: &Value) -> bool {
@@ -34,21 +34,22 @@ pub(crate) fn number(value: &Value) -> Result<f64, RuntimeError> {
         Value::Null => 0.0,
         Value::Bool(b) => f64::from(u8::from(*b)),
         Value::Number(n) => *n,
-        Value::String(s) => string_number(s),
+        // A StringNumericLiteral cannot contain surrogate code points.
+        Value::String(s) => s.to_utf8().map_or(f64::NAN, |s| string_number(&s)),
         Value::Object(_) => return Err(RuntimeError::Unsupported("object-to-primitive coercion")),
     })
 }
 
-pub(crate) fn string(value: &Value) -> Result<String, RuntimeError> {
+pub(crate) fn string(value: &Value) -> Result<JsString, RuntimeError> {
     Ok(match value {
         Value::Undefined => "undefined".into(),
         Value::Null => "null".into(),
-        Value::Bool(b) => b.to_string(),
+        Value::Bool(b) => b.to_string().into(),
         Value::String(s) => s.clone(),
         Value::Number(n) if n.is_nan() => "NaN".into(),
         Value::Number(n) if n.is_infinite() => if n.is_sign_negative() { "-Infinity" } else { "Infinity" }.into(),
         Value::Number(n) if *n == 0.0 => "0".into(),
-        Value::Number(n) => number_string(*n),
+        Value::Number(n) => number_string(*n).into(),
         Value::Object(_) => return Err(RuntimeError::Unsupported("object-to-primitive coercion")),
     })
 }
@@ -110,7 +111,7 @@ pub(crate) fn compare(left: &Value, right: &Value) -> Result<Option<Ordering>, R
     if let (Value::String(a), Value::String(b)) = (left, right) {
         // ECMAScript ordering is by UTF-16 code units, not UTF-8 bytes
         // or Unicode scalar values (notably astral vs. BMP characters).
-        Ok(Some(a.encode_utf16().cmp(b.encode_utf16())))
+        Ok(Some(a.cmp(b)))
     } else {
         Ok(number(left)?.partial_cmp(&number(right)?))
     }

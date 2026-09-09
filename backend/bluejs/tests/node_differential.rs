@@ -32,6 +32,24 @@ fn primitive_completions_and_error_classes_match_node() {
     for space in ['\u{feff}', '\u{00a0}', '\u{0085}', '\u{180e}', '\u{200b}'] {
         corpus.push(format!("1{space}+2"));
     }
+    // Exercise every lone surrogate through both the lexer and a native
+    // constructor. Result framing must not silently replace any of them.
+    for unit in 0xd800..=0xdfff {
+        corpus.push(format!("'\\u{unit:04x}'"));
+        corpus.push(format!("String.fromCharCode({unit})"));
+    }
+    for string in ["", "abc", r"\ud800", r"A\ud83d\ude00B", r"e\u0301"] {
+        for position in ["undefined", "NaN", "-Infinity", "Infinity", "-4", "-1", "-0", "0", "1", "2", "4", "0.9", "-0.9"] {
+            for method in ["at", "charAt", "charCodeAt", "codePointAt", "slice", "substring", "substr"] {
+                corpus.push(format!("'{string}'.{method}({position})"));
+            }
+            for method in ["indexOf", "lastIndexOf", "startsWith", "endsWith", "includes"] {
+                for search in ["", "a", r"\ude00"] {
+                    corpus.push(format!("'{string}'.{method}('{search}',{position})"));
+                }
+            }
+        }
+    }
     // Deterministic broad float coverage, including shortest-decimal
     // formatting. Every expected value still comes from Node, not Rust.
     let mut state = 0x83da_172c_d093_1b57u64;
@@ -79,14 +97,15 @@ fn primitive_completions_and_error_classes_match_node() {
     let expected: Vec<_> = expected.lines().collect();
     assert_eq!(corpus.len(), expected.len(), "oracle must return exactly one result per script");
     println!("Comparing {} isolated scripts against Node.js", corpus.len());
-    let mut vm = Vm::default();
     for (source, expected) in corpus.iter().zip(expected) {
         let result = match parse(source) {
             Err(_) => "error:SyntaxError".into(),
             Ok(ast) => match compile(&ast) {
                 Err(blueice_bluejs::CompileError::DuplicateBinding(_) | blueice_bluejs::CompileError::InvalidSyntax(_)) => "error:SyntaxError".into(),
                 Err(error) => panic!("fixture {source} cannot execute: {error}"),
-                Ok(code) => canonical(vm.execute(&code)),
+                // Intrinsics are mutable and VM-owned. Fresh bindings alone
+                // do not isolate prototype writes between oracle fixtures.
+                Ok(code) => canonical(Vm::default().execute(&code)),
             },
         };
         assert_eq!(result, expected, "{source}");
@@ -100,7 +119,7 @@ fn canonical(result: Result<Value, RuntimeError>) -> String {
         Ok(Value::Bool(b)) => format!("bool:{b}"),
         Ok(Value::Number(n)) if n.is_nan() => "number:NaN".into(),
         Ok(Value::Number(n)) => format!("number:{:016x}", n.to_bits()),
-        Ok(Value::String(s)) => format!("string:{}", s.bytes().map(|b| format!("{b:02x}")).collect::<String>()),
+        Ok(Value::String(s)) => format!("string:{}", s.as_code_units().iter().map(|unit| format!("{unit:04x}")).collect::<String>()),
         Err(RuntimeError::ReferenceError(_)) => "error:ReferenceError".into(),
         Err(RuntimeError::TypeError(_)) => "error:TypeError".into(),
         Err(RuntimeError::RangeError(_)) => "error:RangeError".into(),

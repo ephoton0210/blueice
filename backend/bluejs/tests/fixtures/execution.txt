@@ -299,3 +299,133 @@ null??[0||4][0]
 +'1_000'
 `${1/* } { ` ' */+2}`
 `${`nested ${1/* } */+2}`}`
+
+# UTF-16 storage and String builtins (edition 17; no RegExp/locale assumptions)
+'\ud83d\ude00'
+'\u{D800}'
+'\udc00\ud800'
+'\ud800'+'\udc00'
+`\ud800${'\udfff'}\u{D801}`
+'\ud800' < '\ud801'
+'\udfff' < '\ue000'
++'1\ud800'
+let o={'\ud800':1,'\ud801':2,'\ufffd':4}; o['\ud800']+o['\ud801']+o['\ufffd']
+let a=[]; a['\ud800']=7; a.length
+String()
+String(undefined)
+String(null)
+String(42)
+String(true)
+typeof String
+typeof ''.slice
+String.prototype.constructor === String
+String.prototype.valueOf()
+String.fromCodePoint(0x1f600,0xd800,0x10ffff)
+String.fromCharCode(-1,65536,NaN,Infinity)
+String.fromCharCode()
+String.fromCodePoint()
+String.fromCodePoint(-1)
+String.fromCodePoint(0.5)
+String.fromCodePoint(NaN)
+String.fromCodePoint(Infinity)
+String.fromCodePoint(0x110000)
+String.fromCodePoint(-0)
+let f=String; {let String=3; f(42)}
+let s='abcd'; s.slice(s=1)
+String.prototype.charAt.call(123,1)
+String.prototype.slice.call(null)
+String.prototype.valueOf.call(3)
+let f='abc'.slice; f(1)
+'abc'.missing()
+1()
+new String('😀').length
+new String().toString()
+let s=new String('abc'); s[0]='z'; s.length=7; s[0]+s.length
+new String.fromCharCode(65)
+'😀'.length
+'😀'[0]
+'😀'[1]
+'😀'['01']
+'😀'['-0']
+'😀'[2]
+'a'.concat('\ud800',2,null)
+'\ud800'.isWellFormed()
+'😀'.isWellFormed()
+'\udc00\ud800A😀\udfff'.toWellFormed()
+'a'.padStart(4,'bc')
+'a'.padEnd(4,'bc')
+'a'.padEnd(2,'😀')
+'a'.padStart(3)
+'a'.padStart(Infinity,'')
+'abc'.padEnd(2,{})
+'\ud800'.repeat(2.9)
+'a'.repeat(NaN)
+'a'.repeat(-0.5)
+''.repeat(1e300)
+''.repeat(-1)
+''.repeat(Infinity)
+'\uFEFF\u2028 \ud800 \u3000'.trim()
+' a '.trimStart()
+' a '.trimEnd()
+'\u0085x\u0085'.trim()
+String.raw({raw:['a','b','c']},1,2)
+String.raw({raw:{length:2,0:'a',1:'b'}})
+String.raw({raw:'ab'},3)
+String.raw({raw:[]},{})
+String.raw({raw:{length:1.9}})
+String.raw()
+String.raw({})
+String.raw({raw:null})
+'a,b,'.split(',')[2]
+'a,b,c'.split(',',2).length
+'a'.split(undefined,0).length
+'abc'.split()[0]
+''.split('').length
+''.split(',').length
+'😀'.split('')[1]
+'abc'.split('',-1).length
+'abc'.split('',1.9).length
+'abcabc'.replace('b','X')
+'abcabc'.replaceAll('b','X')
+'abc'.replace('b',"$$:$&:$`:$':$1:$<x>:$")
+'abc'.replaceAll('x','Y')
+'ab'.replaceAll('','-')
+''.replace('','x')
+'ab'.replace('b')
+'ab'.replaceAll('b',String)
+'😀'.replaceAll('', '_')
+'aaa'.replaceAll('aa','b')
+'a'.replace('a',String.fromCodePoint)
+'Straße ﬃ'.toUpperCase()
+'ΟΣ ΟΣΑ İ'.toLowerCase()
+'A\ud800Σ'.toLowerCase()
+'a\udfffz'.toUpperCase()
+'e\u0301'.normalize()
+'é'.normalize('NFD')
+'ﬃ'.normalize('NFKC')
+'①é'.normalize('NFKD')
+'\ud800e\u0301\udfff'.normalize()
+'\u1100\u1161'.normalize('NFC')
+'a'.normalize('bad')
+'a'.normalize(null)
+'a'.normalize('\ud800')
+'abcd'.substr(-2,1)
+'abc'.substr(-Infinity,Infinity)
+'x'.anchor('"&<>')
+'x'.link('"&<>')
+'x'.fontcolor('"&<>')
+'x'.fontsize('"&<>')
+'<x>'.big()
+'<x>'.blink()
+'<x>'.bold()
+'<x>'.fixed()
+'<x>'.italics()
+'<x>'.small()
+'<x>'.strike()
+'<x>'.sub()
+'<x>'.sup()
+''.trimLeft === ''.trimStart
+''.trimRight === ''.trimEnd
+''.trimLeft.name
+String.prototype.oracleIsolationProbe = 7
+''.oracleIsolationProbe

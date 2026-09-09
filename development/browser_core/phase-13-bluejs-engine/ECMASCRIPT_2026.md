@@ -13,16 +13,24 @@ Full completion requires an audited clause/feature inventory, a pinned Test262 r
 | Workstream | Current state / remaining work |
 | --- | --- |
 | Source grammar (§§11–16) | Existing subset parser; close numeric/whitespace/short-circuit gaps first. Unicode identifiers and escapes, all operators, labels, strict-mode early errors, regex lexical goals, classes/private names, generators, async and modules remain. |
-| Values/conversions (§§6–7) | Basic primitives and Number conversions exist. UTF-16 code-unit strings (including lone surrogates), BigInt, Symbol/property keys, boxing, callable ToPrimitive and all remaining abstract operations remain. |
-| Environments/execution (§§8–10, 14–16) | Slot-based scripts/blocks/loops exist. Add lexical uninitialized state now; persistent realms/globals, call frames, closures, `this`, arguments, eval, constructors, abrupt completions, per-iteration captured environments and module records remain. |
-| Object semantics (§§6, 10) | Ordinary data properties, prototypes, sparse arrays and GC exist. Descriptors/accessors/extensibility, callable/bound/proxy objects, complete array exotic algorithms and remaining internal methods remain. |
+| Values/conversions (§§6–7) | Basic primitives, Number conversions and lossless UTF-16 strings/property names exist. String boxing is implemented; BigInt, Symbol keys, remaining boxing, callable ToPrimitive and other abstract operations remain. |
+| Environments/execution (§§8–10, 14–16) | Slot-based scripts/blocks/loops with TDZ and native calls/receivers exist. Persistent globals, user call frames/closures/`this`, arguments, eval, general constructors, abrupt completions, per-iteration captured environments and module records remain. |
+| Object semantics (§§6, 10) | Ordinary data properties, prototypes, sparse arrays, native callable objects, boxed String virtual properties and GC exist. General descriptors/accessors/extensibility, user/bound/proxy functions, complete exotic algorithms and remaining internal methods remain. |
 | Fundamental and numeric builtins (§§18–21) | Ambient undefined/NaN/Infinity only. Global functions, Object/Function/Boolean/Symbol/Error, Number/BigInt/Math/Date and all prototypes remain. |
-| Text/indexed/collections (§§22–24) | String/array literals only. String and RegExp engines, Array methods, typed arrays, keyed/weak collections and iterator helpers remain. |
+| Text/indexed/collections (§§22–24) | UTF-16 literals and many String builtins now run; see the [complete String work inventory](STRING_BUILTINS.md). RegExp/Symbol/locale-dependent String methods, Array methods, typed arrays, keyed/weak collections and iterator helpers remain. |
 | Structured/control/reflection (§§25–28) | ArrayBuffer/DataView/Atomics/JSON, promises/jobs/generators/async, resource-management objects, WeakRef/finalization, Reflect/Proxy and module namespaces remain. |
 | Memory model and annexes (§29, A–F) | Shared-memory semantics, host-agent applicability, normative-optional/legacy browser requirements and edition-specific amendments need implementation/audit. |
 | Conformance infrastructure | Fixed public regressions and opt-in Node oracle exist. Full CLI/host harness, edition-pinned Test262 inventory and per-feature reporting remain. |
 
-This is a workstream inventory, not yet a complete clause-by-clause audit. The next foundational slices are UTF-16/property-key representation and callable objects/closure environments; they unblock most remaining language and library work.
+This is a workstream inventory, not yet a complete clause-by-clause audit. UTF-16 storage and native call dispatch are now available; the complete String request still needs user callables/coercion, Symbol/RegExp/iteration, locale policy and descriptor work.
+
+## Second slice: lossless UTF-16 storage
+
+Official edition 17 clauses fetched and read on 2026-09-09: [§6.1.4 String type](https://262.ecma-international.org/17.0/#sec-ecmascript-language-types-string-type), [§11.1.1 UTF16EncodeCodePoint](https://262.ecma-international.org/17.0/#sec-utf16encodecodepoint), [§12.9.4 string literals](https://262.ecma-international.org/17.0/#sec-literals-string-literals), and [§12.9.6.1 template values](https://262.ecma-international.org/17.0/#sec-static-semantics-tv). Strings are sequences of 16-bit values, without implicit normalization or replacement of lone surrogates. Both four-digit escapes and braced code-point escapes can represent surrogate code units.
+
+Design before implementation: introduce a public `JsString` owning UTF-16 code units, with explicit lossless host UTF-8 conversion. Use it for literal/cooked AST and token values, runtime strings, and heap property keys. Source text, raw template placeholder source and identifier names remain Rust UTF-8 strings. Equality, ordering, concatenation and key identity must never go through lossy conversion. Keep ergonomic UTF-8 host inputs via `Into<JsString>` on heap property APIs; enumeration returns `JsString` keys. `VmConfig::max_string_bytes` and managed-heap string/key payload accounting now count two bytes per code unit, not UTF-8 bytes; both stored key copies remain charged. The Node oracle's **result** strings must use exact four-hex-digit code units, while source transport stays hex UTF-8.
+
+Test first through parse → compile → execute and public heap APIs; include lone/pair/reversed surrogates, astral/BMP boundaries, embedded NUL, distinct surrogate keys, numeric coercion, GC edges and atomic budget failures. The user expanded this slice to the [complete String builtin request](STRING_BUILTINS.md): indexed reads, String boxing and native methods are now underway, not deferred wholesale. [§10.4.3.4 StringCreate](https://262.ecma-international.org/17.0/#sec-stringcreate) and [§10.4.3.5 StringGetOwnProperty](https://262.ecma-international.org/17.0/#sec-stringgetownproperty) were read before those implementations. The four initial storage tests all failed before implementation; later method groups likewise failed before their respective dispatch/algorithms were added.
 
 ## First corrective slice: lexical declarations and source grammar
 
@@ -43,7 +51,7 @@ Implementation is test-first. Add public regression fixtures before the changes,
 - [x] ECMAScript whitespace/line terminators, ASI/comment boundaries, quoted-string continuation and template CR/CRLF normalization. Review additionally fixed comment contents being mistaken for closing braces/quotes/backticks inside template placeholders.
 - [x] Default tests and 100% BlueJS line gate; opt-in Node oracle; workspace regression checks.
 - [ ] Full source grammar and strict/module processing.
-- [ ] UTF-16 strings, full runtime environments, callables and the other inventory workstreams above.
+- [ ] Full runtime environments, user callables and the other inventory workstreams above; UTF-16 storage/native calls are now implemented by the second slice.
 - [ ] Edition-pinned full Test262 harness and conformance audit.
 
 **Evidence**: the initial nine integration tests had eight failing cases before implementation; the later template-comment regression was also observed failing before its fix. Dedicated review added TDZ RHS error ordering, loop re-entry/root cleanup, token-boundary and raw/cooked template assertions, plus multiline independent-oracle inputs. The previous test asserting undefined before a lexical declaration and the lexer test accepting an incomplete exponent were corrected to edition 17 behavior.

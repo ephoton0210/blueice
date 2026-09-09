@@ -70,6 +70,10 @@ opcodes! {
     ClearCompletion: 1, 0;
     Halt: 1, 0;
     NewArray: 5, 0;
+    GlobalString: 1, 0;
+    GetMethod: 1, MAY_USE_INLINE_CACHE;
+    Call: 5, 0;
+    Construct: 5, 0;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

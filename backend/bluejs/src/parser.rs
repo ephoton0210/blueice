@@ -1112,7 +1112,7 @@ impl Parser {
     }
 }
 
-fn parse_template(quasis: Vec<String>, raw_expressions: Vec<String>) -> Result<Expr, ParseError> {
+fn parse_template(quasis: Vec<crate::JsString>, raw_expressions: Vec<String>) -> Result<Expr, ParseError> {
     let expressions = raw_expressions.iter().map(|src| parse_expression_from_source(src)).collect::<Result<Vec<_>, _>>()?;
     Ok(Expr::Template { quasis, expressions })
 }
@@ -1138,7 +1138,7 @@ mod tests {
     #[test]
     fn parses_literals() {
         assert_eq!(expr("42"), Expr::Number(42.0));
-        assert_eq!(expr("\"hi\""), Expr::String("hi".to_string()));
+        assert_eq!(expr("\"hi\""), Expr::String("hi".into()));
         assert_eq!(expr("true"), Expr::Bool(true));
         assert_eq!(expr("false"), Expr::Bool(false));
         assert_eq!(expr("null"), Expr::Null);
@@ -1152,7 +1152,7 @@ mod tests {
         assert_eq!(
             expr("`sum: ${a + b}!`"),
             Expr::Template {
-                quasis: vec!["sum: ".to_string(), "!".to_string()],
+                quasis: vec!["sum: ".into(), "!".into()],
                 expressions: vec![Expr::Binary { op: BinaryOp::Add, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) }]
             }
         );
@@ -1199,7 +1199,7 @@ mod tests {
         assert_eq!(expr("a ?? b"), Expr::Logical { op: LogicalOp::Nullish, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) });
         assert_eq!(expr("typeof x"), Expr::Unary { op: UnaryOp::Typeof, arg: Box::new(Expr::Identifier("x".to_string())) });
         assert_eq!(expr("x instanceof Foo"), Expr::Binary { op: BinaryOp::Instanceof, left: Box::new(Expr::Identifier("x".to_string())), right: Box::new(Expr::Identifier("Foo".to_string())) });
-        assert_eq!(expr("'k' in obj"), Expr::Binary { op: BinaryOp::In, left: Box::new(Expr::String("k".to_string())), right: Box::new(Expr::Identifier("obj".to_string())) });
+        assert_eq!(expr("'k' in obj"), Expr::Binary { op: BinaryOp::In, left: Box::new(Expr::String("k".into())), right: Box::new(Expr::Identifier("obj".to_string())) });
     }
 
     #[test]
@@ -1288,7 +1288,7 @@ mod tests {
 
     #[test]
     fn parses_new_expressions() {
-        assert_eq!(expr("new Error(\"boom\")"), Expr::New { callee: Box::new(Expr::Identifier("Error".to_string())), args: vec![Argument::Normal(Expr::String("boom".to_string()))] });
+        assert_eq!(expr("new Error(\"boom\")"), Expr::New { callee: Box::new(Expr::Identifier("Error".to_string())), args: vec![Argument::Normal(Expr::String("boom".into()))] });
         assert_eq!(expr("new Foo"), Expr::New { callee: Box::new(Expr::Identifier("Foo".to_string())), args: vec![] });
         assert_eq!(
             expr("new a.b.C()"),
@@ -1591,7 +1591,7 @@ mod tests {
 
     #[test]
     fn parses_throw_and_forbids_newline_before_its_expression() {
-        assert_eq!(only_stmt("throw new Error(\"x\");"), Stmt::Throw(Expr::New { callee: Box::new(Expr::Identifier("Error".to_string())), args: vec![Argument::Normal(Expr::String("x".to_string()))] }));
+        assert_eq!(only_stmt("throw new Error(\"x\");"), Stmt::Throw(Expr::New { callee: Box::new(Expr::Identifier("Error".to_string())), args: vec![Argument::Normal(Expr::String("x".into()))] }));
         assert!(parse("throw\nnew Error(\"x\");").is_err());
     }
 
@@ -1695,7 +1695,7 @@ mod tests {
 
     #[test]
     fn object_literal_accepts_a_string_key() {
-        assert_eq!(expr(r#"{"a-b": 1}"#), Expr::Object(vec![ObjectProp::KeyValue { key: PropertyKey::String("a-b".to_string()), value: Expr::Number(1.0), shorthand: false }]));
+        assert_eq!(expr(r#"{"a-b": 1}"#), Expr::Object(vec![ObjectProp::KeyValue { key: PropertyKey::String("a-b".into()), value: Expr::Number(1.0), shorthand: false }]));
     }
 
     #[test]

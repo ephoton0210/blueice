@@ -11,11 +11,13 @@
 //! lookup, and a two-generation collector. [`compile`] and [`Vm`] execute
 //! the first subset via operand-stack bytecode: primitive expressions,
 //! bindings, control flow, ordinary objects and array literals/indexing.
-//! Arrays preserve holes and enforce length growth/truncation. Functions,
-//! native methods, the event loop and browser integration remain future work.
+//! Arrays preserve holes and enforce length growth/truncation. Native calls,
+//! boxed Strings and a growing String library execute via bytecode; user
+//! functions/closures, remaining builtins and browser integration remain.
 //! The ECMAScript 2026 track adds lexical TDZ, radix/separator Number
 //! literals and short-circuit/newline grammar corrections. It is not yet
-//! a complete edition 17 implementation (notably strings still use UTF-8).
+//! a complete edition 17 implementation. [`JsString`] preserves UTF-16
+//! code units, including lone surrogates, in values and property keys.
 //!
 //! ```
 //! use blueice_bluejs::{compile, parse, Value, Vm};
@@ -51,8 +53,10 @@ mod ast;
 mod bytecode;
 mod compiler;
 mod heap;
+mod native;
 mod parser;
 mod primitive;
+mod string;
 mod token;
 mod value;
 mod vm;
@@ -62,5 +66,6 @@ pub use bytecode::{Bytecode, Instruction, Opcode, MAY_USE_INLINE_CACHE};
 pub use compiler::{compile, compile_with_limit, CompileError};
 pub use heap::{Heap, HeapConfig, HeapError, HeapStats, RootId};
 pub use parser::{parse, ParseError};
+pub use string::JsString;
 pub use value::{ObjectId, Value};
 pub use vm::{RuntimeError, Vm, VmConfig};

@@ -12,6 +12,8 @@
 //! [`Expr::Assign`]'s target is a plain [`Expr`] (an identifier or
 //! member expression), not a [`Pattern`].
 
+use crate::JsString;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
     pub body: Vec<Stmt>,
@@ -64,7 +66,7 @@ pub enum ObjectPatternProp {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PropertyKey {
     Identifier(String),
-    String(String),
+    String(JsString),
     Number(f64),
     Computed(Box<Expr>),
 }
@@ -208,12 +210,12 @@ pub enum ArrowBody {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Number(f64),
-    String(String),
+    String(JsString),
     Bool(bool),
     Null,
     This,
     Identifier(String),
-    Template { quasis: Vec<String>, expressions: Vec<Expr> },
+    Template { quasis: Vec<JsString>, expressions: Vec<Expr> },
     Array(Vec<Option<ArrayElement>>),
     Object(Vec<ObjectProp>),
     Function(Function),

@@ -103,7 +103,8 @@ fn every_compound_store_and_prototype_literal_form_executes() {
     }
     assert_eq!(evaluate("({__proto__:3}).missing").unwrap(), Value::Undefined);
     assert_eq!(evaluate("let o={x:4}; let old=o; o.x=(o={x:8}); old.x===o").unwrap(), Value::Bool(true));
-    for source in ["'x'.length", "({}) < 1", "''+{}", "`${{}}`", "({})[{}]"] {
+    assert_eq!(evaluate("'x'.length").unwrap(), Value::Number(1.0));
+    for source in ["({}) < 1", "''+{}", "`${{}}`", "({})[{}]"] {
         assert!(matches!(evaluate(source), Err(RuntimeError::Unsupported(_))), "{source}");
     }
 }
@@ -150,7 +151,7 @@ fn configuration_boundaries_and_error_messages_are_observable() {
     }
     assert!(RuntimeError::InstructionLimit.to_string().contains("budget"));
     assert!(RuntimeError::StringLimit { limit: 3 }.to_string().contains('3'));
-    for source in ["let x;let x", "break", "f()"] {
+    for source in ["let x;let x", "break", "f(...args)"] {
         assert!(!compile(&parse(source).unwrap()).err().unwrap().to_string().is_empty());
     }
 }
@@ -300,8 +301,7 @@ fn unsupported_syntax_and_invalid_bindings_fail_before_execution() {
         "[...x]",
         "({ ...x })",
         "let [x]=y",
-        "f()",
-        "new F()",
+        "f(...args)",
         "this",
         "x == 1",
         "x in y",

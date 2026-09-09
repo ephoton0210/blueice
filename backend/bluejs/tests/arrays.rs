@@ -68,7 +68,7 @@ fn invalid_length_and_failed_index_stores_are_atomic() {
         assert_eq!(heap.get(array, "1").unwrap(), Value::Number(9.0));
         assert_eq!(heap.stats().managed_bytes, baseline);
     }
-    assert_eq!(heap.set(array, "10", Value::String("x".repeat(2048))), Err(HeapError::HeapLimitExceeded { limit: 2048 }));
+    assert_eq!(heap.set(array, "10", Value::String("x".repeat(2048).into())), Err(HeapError::HeapLimitExceeded { limit: 2048 }));
     assert_eq!(heap.get(array, "length").unwrap(), Value::Number(2.0));
     assert_eq!(heap.own_keys(array).unwrap(), ["1", "length"]);
     assert_eq!(heap.stats().managed_bytes, baseline);
@@ -233,14 +233,14 @@ fn sparse_mutations_match_an_independent_optional_slot_model() {
                 slots.resize(index, None);
             }
             1 => {
-                assert!(heap.delete(array, &index.to_string()).unwrap());
+                assert!(heap.delete(array, index.to_string()).unwrap());
                 if let Some(slot) = slots.get_mut(index) {
                     *slot = None;
                 }
             }
             _ => {
-                let value = if step % 3 == 0 { Value::Undefined } else { Value::String(format!("value:{step}")) };
-                heap.set(array, &index.to_string(), value.clone()).unwrap();
+                let value = if step % 3 == 0 { Value::Undefined } else { Value::String(format!("value:{step}").into()) };
+                heap.set(array, index.to_string(), value.clone()).unwrap();
                 if slots.len() <= index {
                     slots.resize(index + 1, None);
                 }
@@ -255,12 +255,12 @@ fn sparse_mutations_match_an_independent_optional_slot_model() {
             heap.collect_major();
         }
         assert_eq!(heap.get(array, "length").unwrap(), Value::Number(slots.len() as f64), "step {step}");
-        let mut keys: Vec<_> = slots.iter().enumerate().filter_map(|(i, value)| value.as_ref().map(|_| i.to_string())).collect();
+        let mut keys: Vec<blueice_bluejs::JsString> = slots.iter().enumerate().filter_map(|(i, value)| value.as_ref().map(|_| i.to_string().into())).collect();
         keys.push("length".into());
         keys.push("tag".into());
         assert_eq!(heap.own_keys(array).unwrap(), keys, "step {step}");
         for index in 0..24 {
-            assert_eq!(heap.get_own(array, &index.to_string()).unwrap(), slots.get(index).cloned().flatten(), "step {step}, index {index}");
+            assert_eq!(heap.get_own(array, index.to_string()).unwrap(), slots.get(index).cloned().flatten(), "step {step}, index {index}");
         }
     }
     heap.set(array, "length", Value::Number(0.0)).unwrap();
@@ -278,9 +278,11 @@ fn new_array_encoding_and_runtime_error_boundaries_are_observable() {
     assert_eq!(instruction.operand, Some(3));
     assert_eq!(&code.bytes()[instruction.offset + 1..instruction.offset + 5], &3u32.to_le_bytes());
     assert_eq!(code.instructions().filter(|instruction| instruction.opcode == Opcode::SetProperty).count(), 1);
-    for source in ["[...[]]", "if(false){[...[]]}", "let [a]=[1]", "[].push(1)", "for(let x of []){}", "new Array(2)"] {
+    for source in ["[...[]]", "if(false){[...[]]}", "let [a]=[1]", "for(let x of []){}"] {
         assert!(matches!(compile(&parse(source).unwrap()), Err(CompileError::Unsupported(_))), "{source}");
     }
+    assert!(matches!(evaluate("[].push(1)"), Err(RuntimeError::TypeError(_))));
+    assert!(matches!(evaluate("new Array(2)"), Err(RuntimeError::ReferenceError(_))));
     let error = evaluate("let a=[];a.length=-1").unwrap_err();
     assert!(error.to_string().starts_with("RangeError:"));
     assert!(std::error::Error::source(&error).is_none());

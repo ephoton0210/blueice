@@ -199,10 +199,10 @@ fn managed_byte_pressure_collects_before_growing_a_property_and_preserves_its_re
     let garbage = heap.alloc_object(None).unwrap();
     let receiver = heap.alloc_object(None).unwrap();
     // No persistent root: the receiver is protected for this store itself.
-    heap.set(receiver, "text", Value::String("x".repeat(1500))).unwrap();
+    heap.set(receiver, "text", Value::String("x".repeat(1500).into())).unwrap();
     assert!(heap.stats().major_collections > 0);
     assert!(!heap.contains(garbage));
-    assert_eq!(heap.get(receiver, "text").unwrap(), Value::String("x".repeat(1500)));
+    assert_eq!(heap.get(receiver, "text").unwrap(), Value::String("x".repeat(1500).into()));
     let before = heap.stats().managed_bytes;
     heap.set(receiver, "text", Value::Null).unwrap();
     assert!(heap.stats().managed_bytes < before);
@@ -218,8 +218,8 @@ fn exceeding_the_managed_byte_limit_returns_an_error_without_applying_the_store(
     heap.set(object, "keep", Value::Number(7.0)).unwrap();
     let before = heap.stats().managed_bytes;
     let error = Err(HeapError::HeapLimitExceeded { limit: 2048 });
-    assert_eq!(heap.set(object, "keep", Value::String("x".repeat(4096))), error);
-    assert_eq!(heap.set(object, "new", Value::String("x".repeat(4096))), error);
+    assert_eq!(heap.set(object, "keep", Value::String("x".repeat(4096).into())), error);
+    assert_eq!(heap.set(object, "new", Value::String("x".repeat(4096).into())), error);
     assert_eq!(heap.stats().managed_bytes, before);
     assert_eq!(heap.get(object, "keep").unwrap(), Value::Number(7.0));
     assert_eq!(heap.own_keys(object).unwrap(), ["keep"]);
@@ -343,14 +343,14 @@ fn major_gc_traces_a_prototype_only_chain_and_resets_the_growth_threshold() {
     let mut heap = Heap::new(HeapConfig { major_threshold_bytes: 1024, max_heap_bytes: 8192, ..HeapConfig::default() }).unwrap();
     let prototype = heap.alloc_object(None).unwrap();
     let root = heap.root(prototype).unwrap();
-    heap.set(prototype, "payload", Value::String("x".repeat(1500))).unwrap();
+    heap.set(prototype, "payload", Value::String("x".repeat(1500).into())).unwrap();
     let child = heap.alloc_object(Some(prototype)).unwrap();
     let child_root = heap.root(child).unwrap();
     heap.unroot(root).unwrap();
     heap.collect_major();
     assert!(heap.contains(prototype));
     assert_eq!(heap.stats().next_major_bytes, 2 * heap.stats().managed_bytes);
-    assert_eq!(heap.get(child, "payload").unwrap(), Value::String("x".repeat(1500)));
+    assert_eq!(heap.get(child, "payload").unwrap(), Value::String("x".repeat(1500).into()));
     heap.unroot(child_root).unwrap();
     heap.collect_major();
     assert_eq!(heap.stats().next_major_bytes, 1024);
@@ -420,7 +420,7 @@ fn gc_reachability_matches_an_independent_graph_model() {
             // to each object; only the first two components will stay rooted.
             let component = i / 10 * 10;
             for target in [component + (i + 1) % 10, component + (i * 3 + 2) % 10] {
-                heap.set(ids[i], &target.to_string(), Value::Object(ids[target])).unwrap();
+                heap.set(ids[i], target.to_string(), Value::Object(ids[target])).unwrap();
                 edges[i].push(target);
             }
         }

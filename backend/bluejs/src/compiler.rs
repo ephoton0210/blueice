@@ -282,16 +282,19 @@ impl Compiler {
                         "undefined" => self.constant(Value::Undefined)?,
                         "NaN" => self.constant(Value::Number(f64::NAN))?,
                         "Infinity" => self.constant(Value::Number(f64::INFINITY))?,
+                        "String" => {
+                            self.emit(Opcode::GlobalString, 0)?;
+                        }
                         _ => {
                             let index = u32::try_from(self.bytecode.constants.len()).map_err(|_| CompileError::ProgramTooLarge)?;
-                            self.bytecode.constants.push(Value::String(name.clone()));
+                            self.bytecode.constants.push(Value::String(name.clone().into()));
                             self.emit(Opcode::UnboundName, index)?;
                         }
                     }
                 }
             }
             Expr::Unary { op, arg } => {
-                if *op == UnaryOp::Typeof && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity")) {
+                if *op == UnaryOp::Typeof && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String")) {
                     self.constant(Value::String("undefined".into()))?;
                 } else {
                     self.expression(arg)?;
@@ -343,7 +346,7 @@ impl Compiler {
                     let Some(element) = element else { continue };
                     let ArrayElement::Normal(value) = element else { return Err(CompileError::Unsupported("array spread")) };
                     self.emit(Opcode::Dup, 0)?;
-                    self.constant(Value::String(index.to_string()))?;
+                    self.constant(Value::String(index.to_string().into()))?;
                     self.expression(value)?;
                     self.emit(Opcode::SetProperty, 0)?;
                     self.emit(Opcode::Pop, 0)?;
@@ -355,7 +358,12 @@ impl Compiler {
                 for property in properties {
                     let ObjectProp::KeyValue { key, value, shorthand } = property else { return Err(CompileError::Unsupported("object spread")) };
                     self.emit(Opcode::Dup, 0)?;
-                    if !shorthand && matches!(key, PropertyKey::Identifier(name) | PropertyKey::String(name) if name == "__proto__") {
+                    let prototype_key = match key {
+                        PropertyKey::Identifier(name) => name == "__proto__",
+                        PropertyKey::String(name) => name == "__proto__",
+                        _ => false,
+                    };
+                    if !shorthand && prototype_key {
                         if has_proto {
                             return Err(CompileError::InvalidSyntax("duplicate literal __proto__ setter"));
                         }
@@ -407,7 +415,22 @@ impl Compiler {
                     self.emit(Opcode::Add, 0)?;
                 }
             }
-            _ => return Err(CompileError::Unsupported("functions/calls, constructors or this")),
+            Expr::Call { callee, args } | Expr::New { callee, args } => {
+                let construct = matches!(expr, Expr::New { .. });
+                if !construct && matches!(&**callee, Expr::Member { .. }) {
+                    self.member_reference(callee)?;
+                    self.emit(Opcode::GetMethod, 0)?;
+                } else {
+                    self.expression(callee)?;
+                    self.constant(Value::Undefined)?;
+                }
+                for arg in args {
+                    let Argument::Normal(expr) = arg else { return Err(CompileError::Unsupported("spread call arguments")) };
+                    self.expression(expr)?;
+                }
+                self.emit(if construct { Opcode::Construct } else { Opcode::Call }, u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?)?;
+            }
+            _ => return Err(CompileError::Unsupported("user-defined functions or this")),
         }
         Ok(())
     }
@@ -452,7 +475,7 @@ impl Compiler {
         if *computed {
             self.expression(property)?;
         } else if let Expr::Identifier(name) = &**property {
-            self.constant(Value::String(name.clone()))?;
+            self.constant(Value::String(name.clone().into()))?;
         } else {
             return Err(CompileError::InvalidSyntax("invalid non-computed member AST"));
         }
@@ -462,7 +485,8 @@ impl Compiler {
 
     fn property_key(&mut self, key: &PropertyKey) -> Result<(), CompileError> {
         match key {
-            PropertyKey::Identifier(name) | PropertyKey::String(name) => self.constant(Value::String(name.clone()))?,
+            PropertyKey::Identifier(name) => self.constant(Value::String(name.clone().into()))?,
+            PropertyKey::String(name) => self.constant(Value::String(name.clone()))?,
             PropertyKey::Number(n) => self.constant(Value::Number(*n))?,
             PropertyKey::Computed(expr) => self.expression(expr)?,
         }

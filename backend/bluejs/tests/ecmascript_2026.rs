@@ -155,8 +155,8 @@ fn quoted_strings_and_templates_apply_their_different_newline_rules() {
         assert_eq!(evaluate(&format!("`a\\{newline}b`")).unwrap(), Value::String("ab".into()));
     }
     for newline in ["\u{2028}", "\u{2029}"] {
-        assert_eq!(evaluate(&format!("'a{newline}b'")).unwrap(), Value::String(format!("a{newline}b")));
-        assert_eq!(evaluate(&format!("`a{newline}b`")).unwrap(), Value::String(format!("a{newline}b")));
+        assert_eq!(evaluate(&format!("'a{newline}b'")).unwrap(), Value::String(format!("a{newline}b").into()));
+        assert_eq!(evaluate(&format!("`a{newline}b`")).unwrap(), Value::String(format!("a{newline}b").into()));
     }
 }
 
