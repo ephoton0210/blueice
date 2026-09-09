@@ -322,7 +322,25 @@ impl Tokenizer {
                         self.advance();
                         return self.emit_tag();
                     }
-                    None => return self.emit_tag(),
+                    // Spec: EOF while tokenizing a tag (any of these
+                    // states) is an "eof-in-tag" parse error whose
+                    // action is to *discard* the in-progress tag and
+                    // reconsume the EOF in the data state -- not emit
+                    // whatever partial tag had been accumulated so far.
+                    // Confirmed against the reference `Tokenizer.java`
+                    // (its `eofloop`'s `TAG_NAME`/attribute-state cases
+                    // call an err-reporting fn and `break eofloop`,
+                    // never an `emitStartTag`/`emitEndTag` matching
+                    // function, unlike e.g. its `BOGUS_COMMENT` case).
+                    // Found by the WPT corpus's `webkit02.dat#4`: `<img
+                    // src="" border="0" alt="` truncated by EOF inside
+                    // the still-open `alt` attribute value must produce
+                    // an empty `<body>`, not an `<img>` with the rest of
+                    // the document swallowed into `alt`'s value.
+                    None => {
+                        self.state = State::Data;
+                        return Token::Eof;
+                    }
                     Some(c) => {
                         self.advance();
                         self.tag_name.push(c.to_ascii_lowercase());
@@ -341,7 +359,25 @@ impl Tokenizer {
                         self.advance();
                         return self.emit_tag();
                     }
-                    None => return self.emit_tag(),
+                    // Spec: EOF while tokenizing a tag (any of these
+                    // states) is an "eof-in-tag" parse error whose
+                    // action is to *discard* the in-progress tag and
+                    // reconsume the EOF in the data state -- not emit
+                    // whatever partial tag had been accumulated so far.
+                    // Confirmed against the reference `Tokenizer.java`
+                    // (its `eofloop`'s `TAG_NAME`/attribute-state cases
+                    // call an err-reporting fn and `break eofloop`,
+                    // never an `emitStartTag`/`emitEndTag` matching
+                    // function, unlike e.g. its `BOGUS_COMMENT` case).
+                    // Found by the WPT corpus's `webkit02.dat#4`: `<img
+                    // src="" border="0" alt="` truncated by EOF inside
+                    // the still-open `alt` attribute value must produce
+                    // an empty `<body>`, not an `<img>` with the rest of
+                    // the document swallowed into `alt`'s value.
+                    None => {
+                        self.state = State::Data;
+                        return Token::Eof;
+                    }
                     _ => {
                         self.attr_name.clear();
                         self.attr_value.clear();
@@ -368,9 +404,14 @@ impl Tokenizer {
                         self.advance();
                         return self.emit_tag();
                     }
+                    // See the sibling `TagName`/`SelfClosingStartTag`
+                    // EOF arms' shared doc comment above for why this
+                    // discards the tag (including this attribute) and
+                    // reconsumes EOF in the data state, rather than
+                    // emitting the tag via `self.emit_tag()`.
                     None => {
-                        self.commit_pending_attr();
-                        return self.emit_tag();
+                        self.state = State::Data;
+                        return Token::Eof;
                     }
                     Some(c) => {
                         self.advance();
@@ -396,9 +437,14 @@ impl Tokenizer {
                         self.advance();
                         return self.emit_tag();
                     }
+                    // See the sibling `TagName`/`SelfClosingStartTag`
+                    // EOF arms' shared doc comment above for why this
+                    // discards the tag (including this attribute) and
+                    // reconsumes EOF in the data state, rather than
+                    // emitting the tag via `self.emit_tag()`.
                     None => {
-                        self.commit_pending_attr();
-                        return self.emit_tag();
+                        self.state = State::Data;
+                        return Token::Eof;
                     }
                     _ => {
                         self.commit_pending_attr();
@@ -424,9 +470,14 @@ impl Tokenizer {
                         self.advance();
                         return self.emit_tag();
                     }
+                    // See the sibling `TagName`/`SelfClosingStartTag`
+                    // EOF arms' shared doc comment above for why this
+                    // discards the tag (including this attribute) and
+                    // reconsumes EOF in the data state, rather than
+                    // emitting the tag via `self.emit_tag()`.
                     None => {
-                        self.commit_pending_attr();
-                        return self.emit_tag();
+                        self.state = State::Data;
+                        return Token::Eof;
                     }
                     _ => {
                         self.state = State::AttributeValueUnquoted;
@@ -448,9 +499,14 @@ impl Tokenizer {
                         self.advance();
                         self.attr_value.push(c);
                     }
+                    // See the sibling `TagName`/`SelfClosingStartTag`
+                    // EOF arms' shared doc comment above for why this
+                    // discards the tag (including this attribute) and
+                    // reconsumes EOF in the data state, rather than
+                    // emitting the tag via `self.emit_tag()`.
                     None => {
-                        self.commit_pending_attr();
-                        return self.emit_tag();
+                        self.state = State::Data;
+                        return Token::Eof;
                     }
                 },
 
@@ -469,9 +525,14 @@ impl Tokenizer {
                         self.advance();
                         self.attr_value.push(c);
                     }
+                    // See the sibling `TagName`/`SelfClosingStartTag`
+                    // EOF arms' shared doc comment above for why this
+                    // discards the tag (including this attribute) and
+                    // reconsumes EOF in the data state, rather than
+                    // emitting the tag via `self.emit_tag()`.
                     None => {
-                        self.commit_pending_attr();
-                        return self.emit_tag();
+                        self.state = State::Data;
+                        return Token::Eof;
                     }
                 },
 
@@ -495,9 +556,14 @@ impl Tokenizer {
                         self.advance();
                         self.attr_value.push(c);
                     }
+                    // See the sibling `TagName`/`SelfClosingStartTag`
+                    // EOF arms' shared doc comment above for why this
+                    // discards the tag (including this attribute) and
+                    // reconsumes EOF in the data state, rather than
+                    // emitting the tag via `self.emit_tag()`.
                     None => {
-                        self.commit_pending_attr();
-                        return self.emit_tag();
+                        self.state = State::Data;
+                        return Token::Eof;
                     }
                 },
 
@@ -514,7 +580,25 @@ impl Tokenizer {
                         self.advance();
                         return self.emit_tag();
                     }
-                    None => return self.emit_tag(),
+                    // Spec: EOF while tokenizing a tag (any of these
+                    // states) is an "eof-in-tag" parse error whose
+                    // action is to *discard* the in-progress tag and
+                    // reconsume the EOF in the data state -- not emit
+                    // whatever partial tag had been accumulated so far.
+                    // Confirmed against the reference `Tokenizer.java`
+                    // (its `eofloop`'s `TAG_NAME`/attribute-state cases
+                    // call an err-reporting fn and `break eofloop`,
+                    // never an `emitStartTag`/`emitEndTag` matching
+                    // function, unlike e.g. its `BOGUS_COMMENT` case).
+                    // Found by the WPT corpus's `webkit02.dat#4`: `<img
+                    // src="" border="0" alt="` truncated by EOF inside
+                    // the still-open `alt` attribute value must produce
+                    // an empty `<body>`, not an `<img>` with the rest of
+                    // the document swallowed into `alt`'s value.
+                    None => {
+                        self.state = State::Data;
+                        return Token::Eof;
+                    }
                     _ => {
                         self.state = State::BeforeAttributeName;
                     }
@@ -526,7 +610,25 @@ impl Tokenizer {
                         self.advance();
                         return self.emit_tag();
                     }
-                    None => return self.emit_tag(),
+                    // Spec: EOF while tokenizing a tag (any of these
+                    // states) is an "eof-in-tag" parse error whose
+                    // action is to *discard* the in-progress tag and
+                    // reconsume the EOF in the data state -- not emit
+                    // whatever partial tag had been accumulated so far.
+                    // Confirmed against the reference `Tokenizer.java`
+                    // (its `eofloop`'s `TAG_NAME`/attribute-state cases
+                    // call an err-reporting fn and `break eofloop`,
+                    // never an `emitStartTag`/`emitEndTag` matching
+                    // function, unlike e.g. its `BOGUS_COMMENT` case).
+                    // Found by the WPT corpus's `webkit02.dat#4`: `<img
+                    // src="" border="0" alt="` truncated by EOF inside
+                    // the still-open `alt` attribute value must produce
+                    // an empty `<body>`, not an `<img>` with the rest of
+                    // the document swallowed into `alt`'s value.
+                    None => {
+                        self.state = State::Data;
+                        return Token::Eof;
+                    }
                     _ => {
                         self.state = State::BeforeAttributeName;
                     }
@@ -724,12 +826,28 @@ impl Tokenizer {
         matches!(self.input.get(start + name_len), Some(' ') | Some('\t') | Some('\n') | Some('\x0C') | Some('\r') | Some('/') | Some('>'))
     }
 
+    /// Scans past an appropriate end tag's name to its terminating `>`,
+    /// per the spec's "attribute value" states: any `>` inside a
+    /// single- or double-quoted (bogus, in this position -- an end tag
+    /// can't have real attributes) attribute value doesn't terminate
+    /// the tag. This is real garbage-in-an-end-tag content (a parse
+    /// error, `attributes-in-end-tag`), not attributes actually parsed
+    /// into the emitted [`Token::EndTag`] -- only skipped over, matching
+    /// what real browsers do with them. Found by the WPT corpus's
+    /// `scriptdata01.dat#6` (`</script foo=">" dd>`): a naive "scan to
+    /// the first `>`" stopped inside the quoted `">"` value, corrupting
+    /// everything after it.
     fn consume_end_tag_simple(&mut self) -> Token {
         let name = self.last_start_tag_name.clone().unwrap_or_default();
         self.pos += 2 + name.chars().count();
+        let mut quote: Option<char> = None;
         while let Some(c) = self.advance() {
-            if c == '>' {
-                break;
+            match quote {
+                Some(q) if c == q => quote = None,
+                Some(_) => {}
+                None if c == '"' || c == '\'' => quote = Some(c),
+                None if c == '>' => break,
+                None => {}
             }
         }
         self.state = State::Data;
@@ -1113,9 +1231,40 @@ mod tests {
     }
 
     #[test]
-    fn eof_mid_tag_still_emits_it_leniently() {
+    fn an_end_tag_with_a_quoted_value_containing_a_literal_gt_is_not_truncated_early() {
+        // WPT `scriptdata01.dat#6`: `</script foo=">" dd>BAR` -- a
+        // literal `>` inside the (bogus, ignored) quoted attribute value
+        // must not be mistaken for the end tag's own terminator; only
+        // the real, unquoted `>` after ` dd` closes it, leaving "BAR" as
+        // separate text content afterward.
+        let tokens = tokenize_with_content_switch(r#"<script></script foo=">" dd>BAR"#, "script", ContentModel::Rawtext);
+        assert_eq!(tokens, vec![start("script", &[]), end("script"), text("BAR"), Token::Eof]);
+    }
+
+    #[test]
+    fn eof_mid_tag_discards_it_rather_than_emitting_a_truncated_tag() {
+        // Corrected per spec's "eof-in-tag" parse error (see
+        // `consume_tag`'s EOF arms' own doc comment): every tag-parsing
+        // sub-state discards the in-progress tag on EOF rather than
+        // emitting whatever had been accumulated so far -- this
+        // previously (incorrectly) asserted the opposite, before
+        // `webkit02.dat#4` surfaced the real-world consequence (an
+        // unterminated quoted attribute value swallowing the rest of
+        // the document into that attribute instead of abandoning the
+        // tag).
         let tokens = tokenize_all("<div class=\"x\"");
-        assert_eq!(tokens, vec![start("div", &[("class", "x")]), Token::Eof]);
+        assert_eq!(tokens, vec![Token::Eof]);
+    }
+
+    #[test]
+    fn eof_inside_a_quoted_attribute_value_discards_the_whole_tag() {
+        // WPT `webkit02.dat#4`: the rest of the document (everything
+        // after the unterminated `alt="`) is consumed as part of the
+        // still-open double-quoted attribute value, which never closes
+        // before EOF -- the entire `<img>` tag is discarded, not
+        // emitted with a garbage `alt` value containing markup text.
+        let tokens = tokenize_all(r#"<img src="" border="0" alt=""#);
+        assert_eq!(tokens, vec![Token::Eof]);
     }
 
     #[test]
@@ -1146,25 +1295,17 @@ mod tests {
     }
 
     #[test]
-    fn eof_mid_tag_name_emits_leniently() {
+    fn eof_mid_tag_name_discards_the_tag() {
+        // Corrected per the "eof-in-tag" spec error -- see
+        // `consume_tag`'s EOF arms' doc comment.
         let tokens = tokenize_all("<di");
-        assert_eq!(
-            tokens,
-            vec![
-                Token::StartTag {
-                    name: "di".to_string(),
-                    attrs: vec![],
-                    self_closing: false,
-                },
-                Token::Eof
-            ]
-        );
+        assert_eq!(tokens, vec![Token::Eof]);
     }
 
     #[test]
-    fn eof_before_attribute_name_emits_leniently() {
+    fn eof_before_attribute_name_discards_the_tag() {
         let tokens = tokenize_all("<div ");
-        assert_eq!(tokens, vec![start("div", &[]), Token::Eof]);
+        assert_eq!(tokens, vec![Token::Eof]);
     }
 
     #[test]
@@ -1176,21 +1317,21 @@ mod tests {
     }
 
     #[test]
-    fn eof_after_equals_with_no_value_emits_leniently() {
+    fn eof_after_equals_with_no_value_discards_the_tag() {
         let tokens = tokenize_all("<div a=");
-        assert_eq!(tokens, vec![start("div", &[("a", "")]), Token::Eof]);
+        assert_eq!(tokens, vec![Token::Eof]);
     }
 
     #[test]
-    fn eof_mid_double_quoted_value_emits_leniently() {
+    fn eof_mid_double_quoted_value_discards_the_tag() {
         let tokens = tokenize_all(r#"<div a="unterminated"#);
-        assert_eq!(tokens, vec![start("div", &[("a", "unterminated")]), Token::Eof]);
+        assert_eq!(tokens, vec![Token::Eof]);
     }
 
     #[test]
-    fn eof_mid_single_quoted_value_emits_leniently() {
+    fn eof_mid_single_quoted_value_discards_the_tag() {
         let tokens = tokenize_all("<div a='unterminated");
-        assert_eq!(tokens, vec![start("div", &[("a", "unterminated")]), Token::Eof]);
+        assert_eq!(tokens, vec![Token::Eof]);
     }
 
     #[test]

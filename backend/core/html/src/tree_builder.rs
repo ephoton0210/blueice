@@ -166,6 +166,23 @@ struct TreeBuilder {
     /// same rule applies to `<textarea>`). Cleared after the next
     /// character token is processed, whether or not it started with one.
     strip_leading_newline: bool,
+    /// Whether this document is in quirks mode -- per the reference
+    /// `TreeBuilder.java`'s own comment on its one tree-construction
+    /// consumer of this flag ("The only quirk. Blame Hixie and Acid2."),
+    /// quirks mode affects exactly one tree-construction decision (see
+    /// `step_in_body`'s `"table"` arm), unlike its much larger effect on
+    /// CSS. Scoped to just the overwhelmingly common real-world trigger
+    /// -- no `<!DOCTYPE>` token at all before other content starts (set
+    /// in `step_initial`) -- not the full ~60-entry legacy
+    /// name/public-ID/system-ID quirks/limited-quirks classification
+    /// table `isQuirky`/`isAlmostStandards` implement (a `<!DOCTYPE
+    /// html>` or any other doctype token at all is treated as
+    /// no-quirks): an "honest cut" matching this project's established
+    /// precedent elsewhere (the minimal named-character-reference set,
+    /// the MVP HTML element list) of building only what an observed
+    /// failing case actually needs, not a full legacy table nothing in
+    /// the WPT corpus currently exercises.
+    quirks_mode: bool,
 }
 
 /// Parses `input` as HTML into a fresh [`Document`], per the tree
@@ -199,6 +216,7 @@ impl TreeBuilder {
             foster_parenting: false,
             just_saw_dropped_comment_or_doctype: false,
             strip_leading_newline: false,
+            quirks_mode: false,
         }
     }
 
@@ -911,11 +929,56 @@ impl TreeBuilder {
 
     // ---- insertion modes ----
 
+    /// Shared by [`Self::step_before_html`] and [`Self::step_before_head`]:
+    /// unlike the later head/body-area modes (`step_in_head`/
+    /// `step_after_head`/...), whitespace here is never inserted as text
+    /// -- there's no element for it to belong to yet -- it's simply
+    /// dropped. Still needs the same mixed-run splitting those modes use
+    /// (see [`Self::split_leading_whitespace`]'s own docs): a batched
+    /// character token like `"\n]>"` must drop only the leading `"\n"`
+    /// and let `"]>"` alone trigger the mode's "anything else" fallback,
+    /// not treat the whole run as non-whitespace content. Found by the
+    /// WPT corpus's `doctype01.dat#30` (a bogus DOCTYPE followed by a
+    /// lone newline then stray text): without this, that leading
+    /// newline rode along with the non-whitespace content through every
+    /// later mode transition and wrongly ended up materialized as a
+    /// text node inside the implicit `<head>`, instead of being dropped
+    /// per spec before `<html>`/`<head>` even exist.
+    fn split_off_dropped_whitespace(token: Token) -> Result<StepResult, Token> {
+        if let Token::Character(s) = &token {
+            if s.trim().is_empty() {
+                return Ok(StepResult::Done);
+            }
+            if let Some((_ws, rest)) = Self::split_leading_whitespace(s) {
+                return Ok(StepResult::Reprocess(Token::Character(rest.to_string())));
+            }
+        }
+        Err(token)
+    }
+
     fn step_initial(&mut self, token: Token) -> StepResult {
         match &token {
-            Token::Doctype | Token::Comment => StepResult::Done,
+            // Spec: a DOCTYPE token *also* switches the insertion mode
+            // to "before html" (not just a `Done`-and-stay-put no-op) --
+            // this distinction only matters for `quirks_mode` below: if
+            // this didn't transition the mode itself, the next
+            // real-content token would fall through the catch-all arm
+            // regardless of whether a doctype had just been seen,
+            // wrongly setting quirks mode even for a perfectly ordinary
+            // `<!doctype html>` document.
+            Token::Doctype => {
+                self.mode = Mode::BeforeHtml;
+                StepResult::Done
+            }
+            Token::Comment => StepResult::Done,
             Token::Character(s) if s.trim().is_empty() => StepResult::Done,
             _ => {
+                // Spec: reaching any other token in "initial" mode means
+                // no `<!DOCTYPE>` token ever appeared -- the
+                // overwhelmingly common real-world quirks-mode trigger
+                // (see `quirks_mode`'s own docs for the narrower legacy
+                // doctype-name/public-ID table this doesn't implement).
+                self.quirks_mode = true;
                 self.mode = Mode::BeforeHtml;
                 StepResult::Reprocess(token)
             }
@@ -923,9 +986,12 @@ impl TreeBuilder {
     }
 
     fn step_before_html(&mut self, token: Token) -> StepResult {
+        let token = match Self::split_off_dropped_whitespace(token) {
+            Ok(result) => return result,
+            Err(token) => token,
+        };
         match &token {
             Token::Doctype | Token::Comment => StepResult::Done,
-            Token::Character(s) if s.trim().is_empty() => StepResult::Done,
             Token::StartTag { name, attrs, .. } if name == "html" => {
                 self.insert_element("html", attrs.clone());
                 self.mode = Mode::BeforeHead;
@@ -941,9 +1007,12 @@ impl TreeBuilder {
     }
 
     fn step_before_head(&mut self, token: Token) -> StepResult {
+        let token = match Self::split_off_dropped_whitespace(token) {
+            Ok(result) => return result,
+            Err(token) => token,
+        };
         match &token {
             Token::Doctype | Token::Comment => StepResult::Done,
-            Token::Character(s) if s.trim().is_empty() => StepResult::Done,
             Token::StartTag { name, .. } if name == "html" => self.step_in_body(token),
             Token::StartTag { name, attrs, .. } if name == "head" => {
                 let id = self.insert_element("head", attrs.clone());
@@ -1181,16 +1250,13 @@ impl TreeBuilder {
             "caption" | "col" | "colgroup" | "tbody" | "td" | "tfoot" | "th" | "thead" | "tr" => StepResult::Done,
             "table" => {
                 // Spec: closing an open `<p>` here is conditional on the
-                // document *not* being in quirks mode -- BlueIce has no
-                // quirks-mode concept at all (a documented MVP scope
-                // cut), so this always takes the standards-mode branch,
-                // matching every real page (which declares a doctype).
-                // Confirmed against the WPT corpus: `<!doctype html>
-                // <p><table>` closes p (table becomes p's sibling), but
-                // the no-doctype `<p><table>` (quirks mode) nests table
-                // inside p instead -- the latter is the scope cut, not a
-                // bug to "fix" by removing this close.
-                if self.has_p_in_button_scope() {
+                // document *not* being in quirks mode -- confirmed
+                // against both the WPT corpus (`<!doctype html><p><table>`
+                // closes p, table becomes p's sibling; the no-doctype
+                // case nests table inside p instead) and the reference
+                // `TreeBuilder.java`'s own comment on this exact check
+                // ("The only quirk. Blame Hixie and Acid2.").
+                if !self.quirks_mode && self.has_p_in_button_scope() {
                     self.close_p_element();
                 }
                 self.insert_element("table", attrs);
@@ -1234,8 +1300,30 @@ impl TreeBuilder {
                 StepResult::Done
             }
             "a" => {
-                if self.afe_formatting_rposition("a").is_some() {
+                if let Some(fe_pos) = self.afe_formatting_rposition("a") {
+                    let existing_a = self.afe_formatting_at(fe_pos).0;
                     self.adoption_agency("a");
+                    // Spec's `<a>`-specific start-tag rule, distinct from
+                    // the generic formatting-element handling other tags
+                    // (`<b>`, `<i>`, ...) share: after running the
+                    // adoption agency algorithm, unconditionally remove
+                    // the *original* `<a>` from both the stack of open
+                    // elements and the active-formatting list if the
+                    // algorithm didn't already do so itself. This matters
+                    // because the algorithm can return as a no-op --
+                    // e.g. its "not in scope" branch (`adoption-agency-4.4`
+                    // in html5lib's own step numbering), reached when an
+                    // intervening `<table>` sits between the open `<a>`
+                    // and the top of the stack -- leaving that stale `<a>`
+                    // behind for this second `<a>` to still clean up.
+                    // Found by tracing the real html5lib reference
+                    // implementation's `startTagA` against WPT's
+                    // `tests1.dat#90` (`<a><table><a></table><p><a>...`),
+                    // whose expected tree only makes sense once this step
+                    // runs even though the adoption agency call itself
+                    // did nothing that time.
+                    self.open_elements.retain(|&id| id != existing_a);
+                    self.active_formatting.retain(|e| !matches!(e, AfeEntry::Formatting((id, _, _)) if *id == existing_a));
                 }
                 self.reconstruct_active_formatting_elements();
                 let id = self.insert_element("a", attrs.clone());
@@ -2032,6 +2120,42 @@ mod tests {
     }
 
     #[test]
+    fn table_inside_p_closes_the_p_in_standards_mode_but_not_in_quirks_mode() {
+        // WPT tests3.dat#22 (with doctype -> standards mode): <p> is
+        // closed, <table> becomes its sibling.
+        let doc = parse("<!doctype html><p><table></table>");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(children_tags(&doc, body), vec!["p".to_string(), "table".to_string()]);
+
+        // WPT tests3.dat#23 (no doctype -> quirks mode): <table> nests
+        // inside the still-open <p> instead.
+        let doc = parse("<p><table></table>");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(children_tags(&doc, body), vec!["p".to_string()]);
+        let p = doc.children(body).next().unwrap();
+        assert_eq!(children_tags(&doc, p), vec!["table".to_string()]);
+    }
+
+    #[test]
+    fn a_stray_end_tag_p_while_in_table_mode_in_quirks_mode_synthesizes_an_empty_p_before_the_table() {
+        // WPT tests20.dat#41 (no doctype -> quirks mode):
+        // `<p><table></p>`. The </p> reaches "in table" mode (table
+        // nested inside p per the quirks-mode carve-out above), falls
+        // through to "in body" rules with foster-parenting active, finds
+        // no <p> in button scope (the open <table> is itself a scope
+        // boundary), and per spec's "missing open p" convention inserts
+        // a fresh, empty <p> -- foster-parented to land right before the
+        // table -- then immediately closes it.
+        let doc = parse("<p><table></p>");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(children_tags(&doc, body), vec!["p".to_string()]);
+        let outer_p = doc.children(body).next().unwrap();
+        assert_eq!(children_tags(&doc, outer_p), vec!["p".to_string(), "table".to_string()]);
+        let synthesized_p = doc.children(outer_p).next().unwrap();
+        assert_eq!(doc.children(synthesized_p).count(), 0);
+    }
+
+    #[test]
     fn form_directly_inside_table_inserts_as_the_tables_own_child_not_foster_parented() {
         // WPT tests20.dat#46: `<!doctype html><table><form><form>`.
         let doc = parse("<table><form><form>");
@@ -2160,6 +2284,56 @@ mod tests {
     }
 
     #[test]
+    fn a_start_tag_removes_a_stale_open_a_the_adoption_agency_left_behind() {
+        // WPT `tests1.dat#90`: `<a><table><a></table><p><a><div><a>`.
+        // When the second `<a>` arrives, the first is blocked "not in
+        // scope" by the intervening `<table>` (the previous test's same
+        // out-of-scope path), so `adoption_agency("a")` itself is a
+        // no-op. `<a>`'s own start-tag rule (distinct from the generic
+        // formatting-element handling `<b>`/etc. share) then
+        // unconditionally removes that stale, blocked `<a>` from the
+        // stack and active-formatting list anyway -- without this, the
+        // first `<a>` stays open forever and wrongly keeps swallowing
+        // every later sibling as its own descendant.
+        let doc = parse("<a><table><a></table><p><a><div><a>");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(children_tags(&doc, body), vec!["a".to_string(), "p".to_string(), "div".to_string()]);
+        let outer_a = doc.children(body).next().unwrap();
+        assert_eq!(children_tags(&doc, outer_a), vec!["a".to_string(), "table".to_string()]);
+        let p = doc.children(body).nth(1).unwrap();
+        assert_eq!(children_tags(&doc, p), vec!["a".to_string()]);
+        let div = doc.children(body).nth(2).unwrap();
+        assert_eq!(children_tags(&doc, div), vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn a_start_tag_blocked_out_of_scope_by_a_table_cell_still_clones_correctly_afterward() {
+        // WPT `tests1.dat#77`: a variant of the previous test where the
+        // blocked `<a>` sits across a `<table>`/`<td>` boundary with real
+        // attributes and foster-parented text -- confirms the fix
+        // generalizes beyond the minimal repro (attribute preservation on
+        // the clone, and a *second* independent adoption-agency run for
+        // the third `<a>` after the table closes).
+        let doc = parse(r#"<a href="blah">aba<table><a href="foo">br<tr><td></td></tr>x</table>aoe"#);
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(children_tags(&doc, body), vec!["a".to_string(), "a".to_string()]);
+        let outer_a = doc.children(body).next().unwrap();
+        assert_eq!(children_tags(&doc, outer_a), vec!["a".to_string(), "a".to_string(), "table".to_string()]);
+        let trailing_a = doc.children(body).nth(1).unwrap();
+        assert_eq!(text_content(&doc, trailing_a), "aoe");
+        // Both clones inside `outer_a` (after its leading "aba" text
+        // node), and the independent trailing `<a>`, all preserve the
+        // `href="foo"` attribute from the `<a>` that triggered this
+        // fix's cleanup path.
+        let inner_clones = doc.children(outer_a).filter(|&c| matches!(doc.data(c), NodeData::Element { tag_name, .. } if tag_name == "a"));
+        for a in inner_clones.chain(std::iter::once(trailing_a)) {
+            let NodeData::Element { tag_name, attributes } = doc.data(a) else { panic!("expected an element") };
+            assert_eq!(tag_name, "a");
+            assert_eq!(attributes, &[("href".to_string(), "foo".to_string())]);
+        }
+    }
+
+    #[test]
     fn adoption_agency_ages_out_formatting_elements_deep_in_the_chain() {
         // Five levels of formatting elements between `<b>` and the block
         // that becomes the furthest block: the innermost ones clone
@@ -2268,17 +2442,6 @@ mod tests {
         let doc = parse("<table></table><col><tbody><td>");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
         assert_eq!(children_tags(&doc, body), vec!["table".to_string()]);
-    }
-
-    #[test]
-    fn a_table_closes_an_open_p() {
-        // Spec only skips this in quirks mode, which BlueIce doesn't
-        // model at all (a documented MVP scope cut) -- so this always
-        // takes the standards-mode branch, matching every real page
-        // (which declares a doctype).
-        let doc = parse("<p><table></table>");
-        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        assert_eq!(children_tags(&doc, body), vec!["p".to_string(), "table".to_string()]);
     }
 
     #[test]
@@ -2672,6 +2835,34 @@ mod tests {
     }
 
     #[test]
+    fn whitespace_leading_a_mixed_character_run_before_html_or_head_exist_is_dropped_not_inserted() {
+        // WPT `doctype01.dat#30`: a bogus DOCTYPE (tokenized per the
+        // "bogus DOCTYPE" state -- everything up to the *first* raw `>`
+        // is discarded, including a nested `<!-- ... -->`-shaped run,
+        // since that state doesn't know about comments at all) is
+        // immediately followed by a lone newline, then stray text. Since
+        // `<html>`/`<head>` don't exist yet, the leading whitespace in
+        // that mixed run must be dropped outright -- not inserted as
+        // text once an implicit `<head>` gets created for the
+        // non-whitespace remainder.
+        let doc = parse("<!DOCTYPE root-element [SYSTEM OR PUBLIC FPI] \"uri\" [ \n<!-- internal declarations -->\n]>");
+        let head = find_by_tag(&doc, doc.root(), "head").unwrap();
+        assert_eq!(doc.children(head).count(), 0);
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(text_content(&doc, body), "]>");
+    }
+
+    #[test]
+    fn an_unterminated_quoted_attribute_value_at_eof_discards_the_whole_start_tag() {
+        // WPT `webkit02.dat#4`: the tokenizer never emits `<img ...>` at
+        // all (see `tokenizer.rs`'s EOF-in-tag fix), so it never reaches
+        // the tree builder in the first place -- body stays empty.
+        let doc = parse("<html><body><img src=\"\" border=\"0\" alt=\"><div>A</div></body></html>");
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(doc.children(body).count(), 0);
+    }
+
+    #[test]
     fn a_raw_null_character_in_body_content_is_dropped_not_shown() {
         let doc = parse("<body>\u{0}");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
@@ -2728,6 +2919,89 @@ mod tests {
         assert_eq!(children_tags(&doc, select), vec!["optgroup".to_string(), "hr".to_string()]);
         let optgroup = find_by_tag(&doc, select, "optgroup").unwrap();
         assert_eq!(children_tags(&doc, optgroup), vec!["option".to_string()]);
+    }
+
+    #[test]
+    fn an_unrecognized_start_tag_inside_select_is_ignored_outright_not_nested() {
+        // Per the current WHATWG spec's "in select" insertion mode
+        // (confirmed against html5lib's own `InSelectPhase.startTagOther`:
+        // parse error, no insertion at all -- `step_in_select`'s `_ =>
+        // StepResult::Done` catch-all already matches this exactly), a
+        // `<div>`/`<button>`/`<img>` start tag is dropped, not nested as
+        // real `<select>` content. The WPT `webkit02.dat` file (ported
+        // from WebKit's own historical test suite) still expects the
+        // opposite for these exact cases -- individually verified stale
+        // relative to the current spec (see `wpt_corpus.rs`'s
+        // `KNOWN_STALE_WEBKIT02_SELECT_CASES` for the full accounting),
+        // not something to "fix" BlueIce to match.
+        //
+        // webkit02.dat#35: <div>/<i> vanish outright; <option> becomes
+        // select's real child once select (not div, which never opened)
+        // is the current node.
+        let doc = parse("<select><div><i></div><option>option");
+        let select = find_by_tag(&doc, doc.root(), "select").unwrap();
+        assert_eq!(children_tags(&doc, select), vec!["option".to_string()]);
+        assert!(find_by_tag(&doc, select, "div").is_none());
+
+        // webkit02.dat#38: <button> is ignored; its text content lands
+        // directly in <select> instead (current node stays select).
+        let doc = parse("<select><button>button</select>");
+        let select = find_by_tag(&doc, doc.root(), "select").unwrap();
+        assert!(find_by_tag(&doc, select, "button").is_none());
+        assert_eq!(text_content(&doc, select), "button");
+
+        // webkit02.dat#42: <div> vanishes; <option> (select's real
+        // child) then also ignores the nested <img> start tag the same
+        // way, leaving only its text content.
+        let doc = parse("<select><div><option><img>option</option></div></select>");
+        let select = find_by_tag(&doc, doc.root(), "select").unwrap();
+        assert_eq!(children_tags(&doc, select), vec!["option".to_string()]);
+        let option = doc.children(select).next().unwrap();
+        assert!(find_by_tag(&doc, option, "img").is_none());
+        assert_eq!(text_content(&doc, option), "option");
+    }
+
+    #[test]
+    fn a_nested_select_start_tag_closes_the_outer_one_even_through_an_ignored_intervening_start_tag() {
+        // webkit02.dat#40/#41: the intervening `<button>`/`<div>` start
+        // tags are dropped per the previous test's rule, so the current
+        // node is still the (only) open `<select>` when the nested
+        // `<select>` start tag arrives and closes it -- leaving it
+        // permanently empty, since nothing after that point re-enters
+        // "in select" mode (no new select ever actually opens: a
+        // startTagSelect's own handling only ever *closes* the nearest
+        // one, it never inserts a new element for the token itself).
+        let doc = parse("<select><button><select></select></button></select>");
+        let select = find_by_tag(&doc, doc.root(), "select").unwrap();
+        assert_eq!(doc.children(select).count(), 0);
+
+        let doc = parse("<select><button><div><select></select>");
+        let select = find_by_tag(&doc, doc.root(), "select").unwrap();
+        assert_eq!(doc.children(select).count(), 0);
+    }
+
+    #[test]
+    fn a_formatting_element_inside_select_is_ignored_outright_not_given_adoption_agency_treatment() {
+        // tests1.dat#29/#99: `<b>` (a formatting element) started while
+        // "in select" has no entry in html5lib's own `InSelectPhase`
+        // dispatch table either -- confirmed stale against the current
+        // spec the same way as the previous test's webkit02.dat cases,
+        // not something BlueIce should reproduce. Since `<b>` never
+        // opens, it's never added to the active-formatting-elements list
+        // either, so the later `</b>` end tag finds nothing to run the
+        // adoption agency algorithm against.
+        let doc = parse("<select><b><option><select><option></b></select>X");
+        let select = find_by_tag(&doc, doc.root(), "select").unwrap();
+        assert!(find_by_tag(&doc, select, "b").is_none());
+        assert_eq!(children_tags(&doc, select), vec!["option".to_string()]);
+        // The second `<select>` closes the first (and its `<option>`);
+        // the third `<option>` then lands back in "in body" mode as an
+        // ordinary body-level element (options aren't special there),
+        // still open to receive "X" as its own text content afterward.
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        assert_eq!(children_tags(&doc, body), vec!["select".to_string(), "option".to_string()]);
+        let second_option = doc.children(body).nth(1).unwrap();
+        assert_eq!(text_content(&doc, second_option), "X");
     }
 
     #[test]
