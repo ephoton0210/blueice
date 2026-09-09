@@ -16,10 +16,13 @@
 //!
 //! Deliberately not implemented, per the MVP scope: `<template>`/applet
 //! /object/marquee; frameset-related modes; foreign content (svg/math);
-//! quirks-mode detection from DOCTYPE content (doctypes are tokenized but
-//! their content is discarded, and comments are never turned into DOM
-//! nodes -- neither affects rendering, which is all the MVP pipeline
-//! needs from the DOM).
+//! comments are never turned into DOM nodes (doesn't affect rendering,
+//! which is all the MVP pipeline needs from the DOM). Quirks-mode
+//! detection (`quirks_mode`) *is* implemented, but only its narrow
+//! tree-construction effect -- whether any `<!DOCTYPE>` token preceded
+//! real content, gating `<table>`'s p-closing behavior in "in body" --
+//! not the full legacy doctype-name/public-ID/system-ID classification
+//! table real engines also consult (see `quirks_mode`'s own docs).
 //!
 //! **Active-formatting-elements markers and the Noah's Ark clause are
 //! implemented** ([`AfeEntry::Marker`], [`TreeBuilder::push_formatting`]):
@@ -67,13 +70,33 @@ const P_CLOSING_ELEMENTS: &[&str] = &[
     "form",
     "table",
     "fieldset",
-    "hr",
 ];
 /// Elements that stop an "in scope" walk up the stack of open elements
 /// (WHATWG's default scope list, restricted to the MVP element set).
 const DEFAULT_SCOPE_BLOCKERS: &[&str] = &["html", "table", "td", "th", "caption"];
 /// Elements popped automatically by "generate implied end tags".
 const IMPLIED_END_TAGS: &[&str] = &["li", "option", "optgroup", "p"];
+/// WHATWG's "special" category (https://html.spec.whatwg.org/#formatting),
+/// restricted to the MVP element set -- used by both the adoption
+/// agency algorithm's furthest-block search and the generic "any other
+/// end tag" algorithm's early-abort check. Notably does *not* include
+/// `option`/`optgroup` (nor the formatting elements themselves, tracked
+/// separately in `FORMATTING_ELEMENTS`) -- an earlier version of
+/// `is_special` approximated this as "not a formatting element" instead
+/// of this real, enumerated list, which happened to work for the
+/// adoption agency's own furthest-block search (misnested formatting
+/// rarely interacts with `<option>`/`<optgroup>` at all) but broke once
+/// the generic end-tag algorithm started being relied on for `</option>`/
+/// `</optgroup>`/`</select>` too (Phase 13's select-content-model
+/// rewrite, see `phase-2-mvp-scope/PLAN.md`'s cross-reference): `</optgroup>`
+/// scanning past a still-open `<option>` to find the `<optgroup>` below
+/// it was wrongly treated as blocked, since the approximation counted
+/// `option` as special. Found by the WPT corpus's `tests2.dat#37`.
+const SPECIAL_ELEMENTS: &[&str] = &[
+    "article", "aside", "blockquote", "body", "br", "button", "caption", "col", "colgroup", "div", "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6",
+    "head", "header", "hr", "html", "img", "input", "li", "link", "main", "meta", "nav", "ol", "p", "pre", "script", "section", "select", "style", "table", "tbody", "td", "textarea", "tfoot",
+    "th", "thead", "title", "tr", "ul",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
@@ -90,14 +113,6 @@ enum Mode {
     InTableBody,
     InRow,
     InCell,
-    InSelect,
-    /// Spec's "in select in table" -- entered instead of plain
-    /// `InSelect` when a `<select>` start tag arrives while the
-    /// insertion mode is table-related ([`TreeBuilder::start_tag_in_body`]'s
-    /// "select" arm). Identical to `InSelect` except a handful of
-    /// table-structure tags close the `<select>` outright instead of
-    /// being ignored -- see [`TreeBuilder::step_in_select_in_table`].
-    InSelectInTable,
     AfterBody,
     AfterAfterBody,
 }
@@ -270,8 +285,6 @@ impl TreeBuilder {
             Mode::InTableBody => self.step_in_table_body(token),
             Mode::InRow => self.step_in_row(token),
             Mode::InCell => self.step_in_cell(token),
-            Mode::InSelect => self.step_in_select(token),
-            Mode::InSelectInTable => self.step_in_select_in_table(token),
             Mode::AfterBody => self.step_after_body(token),
             Mode::AfterAfterBody => self.step_after_after_body(token),
         }
@@ -299,7 +312,7 @@ impl TreeBuilder {
 
     fn is_special(&self, id: NodeId) -> bool {
         match self.tag_of(id) {
-            Some(t) => !FORMATTING_ELEMENTS.contains(&t.as_str()),
+            Some(t) => SPECIAL_ELEMENTS.contains(&t.as_str()),
             None => true,
         }
     }
@@ -1291,14 +1304,6 @@ impl TreeBuilder {
                 self.insert_element("button", attrs);
                 StepResult::Done
             }
-            "option" | "optgroup" => {
-                if self.is_current("option") {
-                    self.open_elements.pop();
-                }
-                self.reconstruct_active_formatting_elements();
-                self.insert_element(name, attrs);
-                StepResult::Done
-            }
             "a" => {
                 if let Some(fe_pos) = self.afe_formatting_rposition("a") {
                     let existing_a = self.afe_formatting_at(fe_pos).0;
@@ -1351,22 +1356,72 @@ impl TreeBuilder {
                 self.strip_leading_newline = true;
                 StepResult::Done
             }
+            // `<select>`/`<option>`/`<optgroup>`/`<hr>`'s "has a select
+            // in scope" checks below, and `<select>` no longer switching
+            // `self.mode` at all, reflect the *current* spec: the old
+            // dedicated "in select"/"in select in table" insertion modes
+            // (which this project's earlier implementation, and the
+            // html5lib reference implementation this whole file's design
+            // was originally cross-checked against, both still modeled)
+            // were removed from the living standard as part of the
+            // "Customizable Select" feature -- confirmed directly against
+            // the current spec source (`whatwg/html`'s `source` file:
+            // `reset the insertion mode appropriately` and the insertion-
+            // mode heading list both have no "select" case at all
+            // anymore). `<select>`'s content model is no longer enforced
+            // by the parser refusing to build non-`<option>` nodes -- a
+            // `<div>`/`<b>`/`<img>` reached while a `<select>` is open now
+            // falls through to plain "in body" processing like any other
+            // element, exactly the ordinary "any other start tag" rule
+            // with no select-awareness at all. `<option>`/`<optgroup>`/
+            // `<hr>` are the only elements that still branch on "is a
+            // select in scope", and that branch now lives directly in
+            // this match rather than a separate mode's own dispatch.
             "select" => {
-                self.reconstruct_active_formatting_elements();
-                self.insert_element("select", attrs);
-                // At this point `self.mode` is still whatever mode
-                // delegated here -- table-related modes reach
-                // `start_tag_in_body` via `step_in_table`'s
-                // foster-parenting catch-all without changing
-                // `self.mode` first, so this check sees the *original*
-                // mode, exactly what spec's "if the insertion mode is
-                // one of 'in table'/'in caption'/'in table body'/
-                // 'in row'/'in cell'" condition needs.
-                self.mode = if matches!(self.mode, Mode::InTable | Mode::InCaption | Mode::InTableBody | Mode::InRow | Mode::InCell) {
-                    Mode::InSelectInTable
+                if self.has_tag_in_scope("select", &[]) {
+                    self.pop_until_and_including("select");
                 } else {
-                    Mode::InSelect
-                };
+                    self.reconstruct_active_formatting_elements();
+                    self.insert_element("select", attrs);
+                }
+                StepResult::Done
+            }
+            "option" => {
+                if self.has_tag_in_scope("select", &[]) {
+                    self.generate_implied_end_tags(Some("optgroup"));
+                } else if self.is_current("option") {
+                    self.open_elements.pop();
+                }
+                self.reconstruct_active_formatting_elements();
+                self.insert_element("option", attrs);
+                StepResult::Done
+            }
+            "optgroup" => {
+                if self.has_tag_in_scope("select", &[]) {
+                    self.generate_implied_end_tags(None);
+                } else if self.is_current("option") {
+                    self.open_elements.pop();
+                }
+                self.reconstruct_active_formatting_elements();
+                self.insert_element("optgroup", attrs);
+                StepResult::Done
+            }
+            "hr" => {
+                if self.has_p_in_button_scope() {
+                    self.close_p_element();
+                }
+                if self.has_tag_in_scope("select", &[]) {
+                    self.generate_implied_end_tags(None);
+                }
+                self.insert_element("hr", attrs);
+                StepResult::Done
+            }
+            "input" => {
+                if self.has_tag_in_scope("select", &[]) {
+                    self.pop_until_and_including("select");
+                }
+                self.reconstruct_active_formatting_elements();
+                self.insert_element("input", attrs);
                 StepResult::Done
             }
             _ if FORMATTING_ELEMENTS.contains(&name) => {
@@ -1806,121 +1861,6 @@ impl TreeBuilder {
         }
     }
 
-    fn step_in_select(&mut self, token: Token) -> StepResult {
-        match token {
-            Token::Character(s) => {
-                self.insert_text(&Self::strip_null_characters(&s));
-                StepResult::Done
-            }
-            Token::Doctype | Token::Comment => StepResult::Done,
-            Token::StartTag { name, attrs, .. } if name == "hr" => {
-                // Spec: unlike other content, `<hr>` inside `<select>`
-                // doesn't close the whole select -- it closes an open
-                // `<option>` and/or `<optgroup>` (both checks apply
-                // independently, one after the other, not just the
-                // innermost) and is then inserted as a child of whatever
-                // is left open (`<select>` itself, or a still-open
-                // `<optgroup>`), immediately popped since `<hr>` is void.
-                if self.is_current("option") {
-                    self.open_elements.pop();
-                }
-                if self.is_current("optgroup") {
-                    self.open_elements.pop();
-                }
-                self.insert_element("hr", attrs);
-                StepResult::Done
-            }
-            Token::StartTag { name, attrs, .. } if name == "option" => {
-                if self.is_current("option") {
-                    self.open_elements.pop();
-                }
-                self.insert_element("option", attrs);
-                StepResult::Done
-            }
-            Token::StartTag { name, attrs, .. } if name == "optgroup" => {
-                if self.is_current("option") {
-                    self.open_elements.pop();
-                }
-                if self.is_current("optgroup") {
-                    self.open_elements.pop();
-                }
-                self.insert_element("optgroup", attrs);
-                StepResult::Done
-            }
-            Token::EndTag { name } if name == "optgroup" => {
-                if self.is_current("option") && self.open_elements.len() >= 2 {
-                    let under_top = self.open_elements[self.open_elements.len() - 2];
-                    if self.tag_of(under_top).as_deref() == Some("optgroup") {
-                        self.open_elements.pop();
-                    }
-                }
-                if self.is_current("optgroup") {
-                    self.open_elements.pop();
-                }
-                StepResult::Done
-            }
-            Token::EndTag { name } if name == "option" => {
-                if self.is_current("option") {
-                    self.open_elements.pop();
-                }
-                StepResult::Done
-            }
-            Token::EndTag { name } if name == "select" => {
-                if self.has_tag_in_scope("select", &[]) {
-                    self.pop_until_and_including("select");
-                    self.reset_insertion_mode();
-                }
-                StepResult::Done
-            }
-            Token::StartTag { name, .. } if name == "select" => {
-                if self.has_tag_in_scope("select", &[]) {
-                    self.pop_until_and_including("select");
-                    self.reset_insertion_mode();
-                }
-                StepResult::Done
-            }
-            Token::StartTag { name, attrs, self_closing } if matches!(name.as_str(), "input" | "textarea") => {
-                if self.has_tag_in_scope("select", &[]) {
-                    self.pop_until_and_including("select");
-                    self.reset_insertion_mode();
-                    StepResult::Reprocess(Token::StartTag { name, attrs, self_closing })
-                } else {
-                    StepResult::Done
-                }
-            }
-            Token::StartTag { name, attrs, self_closing } if matches!(name.as_str(), "script" | "style") => self.step_in_head(Token::StartTag { name, attrs, self_closing }),
-            Token::Eof => self.step_in_body(Token::Eof),
-            _ => StepResult::Done,
-        }
-    }
-
-    /// Identical to [`Self::step_in_select`] except that a handful of
-    /// table-structure tags close the `<select>` outright (spec's "in
-    /// select in table" mode) instead of being ignored like they would
-    /// be in plain "in select" -- e.g. `<table><tbody><select><tr>`
-    /// must close the (now-empty) `<select>` and let `<tr>` land back
-    /// inside `<tbody>`, not be silently dropped.
-    fn step_in_select_in_table(&mut self, token: Token) -> StepResult {
-        const TABLE_STRUCTURE_TAGS: &[&str] = &["caption", "table", "tbody", "tfoot", "thead", "tr", "td", "th"];
-        match &token {
-            // Unconditional -- unlike the end-tag case below, spec has
-            // no "is it actually in table scope" check for these.
-            Token::StartTag { name, .. } if TABLE_STRUCTURE_TAGS.contains(&name.as_str()) => {
-                self.pop_until_and_including("select");
-                self.reset_insertion_mode();
-                StepResult::Reprocess(token)
-            }
-            Token::EndTag { name } if TABLE_STRUCTURE_TAGS.contains(&name.as_str()) => {
-                if !self.has_tag_in_table_scope(name) {
-                    return StepResult::Done;
-                }
-                self.pop_until_and_including("select");
-                self.reset_insertion_mode();
-                StepResult::Reprocess(token)
-            }
-            _ => self.step_in_select(token),
-        }
-    }
 
     fn step_after_body(&mut self, token: Token) -> StepResult {
         if let Token::Character(s) = &token {
@@ -2922,86 +2862,95 @@ mod tests {
     }
 
     #[test]
-    fn an_unrecognized_start_tag_inside_select_is_ignored_outright_not_nested() {
-        // Per the current WHATWG spec's "in select" insertion mode
-        // (confirmed against html5lib's own `InSelectPhase.startTagOther`:
-        // parse error, no insertion at all -- `step_in_select`'s `_ =>
-        // StepResult::Done` catch-all already matches this exactly), a
-        // `<div>`/`<button>`/`<img>` start tag is dropped, not nested as
-        // real `<select>` content. The WPT `webkit02.dat` file (ported
-        // from WebKit's own historical test suite) still expects the
-        // opposite for these exact cases -- individually verified stale
-        // relative to the current spec (see `wpt_corpus.rs`'s
-        // `KNOWN_STALE_WEBKIT02_SELECT_CASES` for the full accounting),
-        // not something to "fix" BlueIce to match.
+    fn an_unrecognized_start_tag_inside_select_is_inserted_normally_per_customizable_select() {
+        // Per the *current* WHATWG spec (the "Customizable Select"
+        // feature, already shipped in Chromium and Gecko -- see
+        // `phase-2-mvp-scope/PLAN.md`'s cross-reference for the full
+        // history of getting this right): the dedicated "in select"/
+        // "in select in table" insertion modes were removed entirely.
+        // `<select>`'s content is now ordinary "in body" content -- a
+        // `<div>`/`<button>`/`<img>` reached while a `<select>` is open
+        // is inserted completely normally, exactly like anywhere else.
+        // Confirmed directly against the merged spec PR
+        // (whatwg/html#10548) and its own test-suite update
+        // (html5lib/html5lib-tests#178), not just re-derived from
+        // memory. `<option>`/`<optgroup>`/`<hr>`/`<input>`/`<select>`
+        // remain the only elements with any select-awareness at all.
         //
-        // webkit02.dat#35: <div>/<i> vanish outright; <option> becomes
-        // select's real child once select (not div, which never opened)
-        // is the current node.
+        // webkit02.dat#35: <div>/<i> are real nested content now.
         let doc = parse("<select><div><i></div><option>option");
         let select = find_by_tag(&doc, doc.root(), "select").unwrap();
-        assert_eq!(children_tags(&doc, select), vec!["option".to_string()]);
-        assert!(find_by_tag(&doc, select, "div").is_none());
+        assert_eq!(children_tags(&doc, select), vec!["div".to_string(), "i".to_string()]);
+        let div = doc.children(select).next().unwrap();
+        assert_eq!(children_tags(&doc, div), vec!["i".to_string()]);
+        let outer_i = doc.children(select).nth(1).unwrap();
+        assert_eq!(children_tags(&doc, outer_i), vec!["option".to_string()]);
 
-        // webkit02.dat#38: <button> is ignored; its text content lands
-        // directly in <select> instead (current node stays select).
+        // webkit02.dat#38: <button> is real content, containing "button" as its own text.
         let doc = parse("<select><button>button</select>");
         let select = find_by_tag(&doc, doc.root(), "select").unwrap();
-        assert!(find_by_tag(&doc, select, "button").is_none());
-        assert_eq!(text_content(&doc, select), "button");
+        let button = find_by_tag(&doc, select, "button").unwrap();
+        assert_eq!(text_content(&doc, button), "button");
 
-        // webkit02.dat#42: <div> vanishes; <option> (select's real
-        // child) then also ignores the nested <img> start tag the same
-        // way, leaving only its text content.
+        // webkit02.dat#42: <div>/<img> are real nested content too.
         let doc = parse("<select><div><option><img>option</option></div></select>");
         let select = find_by_tag(&doc, doc.root(), "select").unwrap();
-        assert_eq!(children_tags(&doc, select), vec!["option".to_string()]);
-        let option = doc.children(select).next().unwrap();
-        assert!(find_by_tag(&doc, option, "img").is_none());
+        let div = find_by_tag(&doc, select, "div").unwrap();
+        let option = find_by_tag(&doc, div, "option").unwrap();
+        assert_eq!(children_tags(&doc, option), vec!["img".to_string()]);
         assert_eq!(text_content(&doc, option), "option");
     }
 
     #[test]
-    fn a_nested_select_start_tag_closes_the_outer_one_even_through_an_ignored_intervening_start_tag() {
-        // webkit02.dat#40/#41: the intervening `<button>`/`<div>` start
-        // tags are dropped per the previous test's rule, so the current
-        // node is still the (only) open `<select>` when the nested
-        // `<select>` start tag arrives and closes it -- leaving it
-        // permanently empty, since nothing after that point re-enters
-        // "in select" mode (no new select ever actually opens: a
-        // startTagSelect's own handling only ever *closes* the nearest
-        // one, it never inserts a new element for the token itself).
+    fn a_nested_select_start_tag_closes_the_outer_one_leaving_intervening_content_in_place() {
+        // webkit02.dat#40/#41: since `<button>`/`<div>` are now real
+        // content (previous test), the nested `<select>` start tag finds
+        // the *outer* `<select>` in scope regardless of how deep the
+        // current node is nested inside it, and closes it (per the
+        // current spec's `<select>` start-tag rule: "if a select is in
+        // scope, pop until select popped" -- it never opens a second
+        // select for the token itself). Everything already inserted
+        // before that point stays exactly where it was in the DOM.
         let doc = parse("<select><button><select></select></button></select>");
         let select = find_by_tag(&doc, doc.root(), "select").unwrap();
-        assert_eq!(doc.children(select).count(), 0);
+        assert_eq!(children_tags(&doc, select), vec!["button".to_string()]);
+        assert_eq!(doc.children(find_by_tag(&doc, select, "button").unwrap()).count(), 0);
 
         let doc = parse("<select><button><div><select></select>");
         let select = find_by_tag(&doc, doc.root(), "select").unwrap();
-        assert_eq!(doc.children(select).count(), 0);
+        let button = find_by_tag(&doc, select, "button").unwrap();
+        assert_eq!(children_tags(&doc, button), vec!["div".to_string()]);
     }
 
     #[test]
-    fn a_formatting_element_inside_select_is_ignored_outright_not_given_adoption_agency_treatment() {
-        // tests1.dat#29/#99: `<b>` (a formatting element) started while
-        // "in select" has no entry in html5lib's own `InSelectPhase`
-        // dispatch table either -- confirmed stale against the current
-        // spec the same way as the previous test's webkit02.dat cases,
-        // not something BlueIce should reproduce. Since `<b>` never
-        // opens, it's never added to the active-formatting-elements list
-        // either, so the later `</b>` end tag finds nothing to run the
-        // adoption agency algorithm against.
+    fn a_formatting_element_inside_select_gets_real_adoption_agency_treatment() {
+        // tests1.dat#29/#99, confirmed against the merged spec PR's own
+        // updated test expectations (html5lib/html5lib-tests#178): `<b>`
+        // is a real formatting element even inside a `<select>` now.
+        // The nested `<select>` start tag pops the outer select *and*
+        // `<b>` off the stack of open elements (but not out of the
+        // active-formatting-elements list, which only tracks stack
+        // membership separately) -- so the next `<option>` triggers
+        // `reconstruct_active_formatting_elements` to rebuild a *second*,
+        // sibling `<b>` clone at the body level (select is no longer
+        // open to receive it), and the final `</b>` end tag's adoption
+        // agency run (finding no "special" element below `<b>` in the
+        // stack, since `<option>` no longer wrongly counts as one --
+        // see `SPECIAL_ELEMENTS`'s own docs) just pops both `<b>` and
+        // `<option>` off the stack without touching the DOM they already
+        // built, leaving "X" to land as body's own trailing text.
         let doc = parse("<select><b><option><select><option></b></select>X");
-        let select = find_by_tag(&doc, doc.root(), "select").unwrap();
-        assert!(find_by_tag(&doc, select, "b").is_none());
-        assert_eq!(children_tags(&doc, select), vec!["option".to_string()]);
-        // The second `<select>` closes the first (and its `<option>`);
-        // the third `<option>` then lands back in "in body" mode as an
-        // ordinary body-level element (options aren't special there),
-        // still open to receive "X" as its own text content afterward.
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        assert_eq!(children_tags(&doc, body), vec!["select".to_string(), "option".to_string()]);
-        let second_option = doc.children(body).nth(1).unwrap();
-        assert_eq!(text_content(&doc, second_option), "X");
+        assert_eq!(children_tags(&doc, body), vec!["select".to_string(), "b".to_string()]);
+        assert_eq!(text_content(&doc, body), "X");
+
+        let select = doc.children(body).next().unwrap();
+        assert_eq!(children_tags(&doc, select), vec!["b".to_string()]);
+        let first_b = doc.children(select).next().unwrap();
+        assert_eq!(children_tags(&doc, first_b), vec!["option".to_string()]);
+
+        let second_b = doc.children(body).nth(1).unwrap();
+        assert_eq!(children_tags(&doc, second_b), vec!["option".to_string()]);
     }
 
     #[test]

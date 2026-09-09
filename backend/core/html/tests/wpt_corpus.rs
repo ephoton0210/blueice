@@ -21,17 +21,18 @@
 //! and [`likely_out_of_scope_reason`] exist to separate that expected
 //! noise from genuine failures worth a human reading, not to make the
 //! number look better. Over thirty real bugs were found and fixed this
-//! way across four triage passes (see `testing/TEST_PLAN.md`'s "WPT
+//! way across five triage passes (see `testing/TEST_PLAN.md`'s "WPT
 //! tree-construction corpus" section for the full list); the pass rate
-//! after normalizing away known scope cuts moved 39.0% -> 57.3% as a
+//! after normalizing away known scope cuts moved 39.0% -> 58.3% as a
 //! direct result, with unclassified failures (the ones actually worth
 //! reading) dropping from 669 to **0** -- every remaining case from the
-//! third pass turned out to be either a real, fixable bug or a
-//! confirmed-stale corpus expectation (see [`KNOWN_STALE_WEBKIT02_SELECT_CASES`]/
-//! [`KNOWN_STALE_TESTS1_SELECT_FORMATTING_CASES`]), not something
-//! genuinely unresolvable. Converting this into an actual CI gate (with
-//! a maintained skip-list for the confirmed-stale cases) is future
-//! work, not done here.
+//! third pass turned out to be a real, fixable bug once traced against
+//! an authoritative-enough source (the actual current WHATWG spec text
+//! and/or its own merged test-suite updates, not just a reference
+//! implementation's source, which can itself be stale -- see
+//! `likely_out_of_scope_reason`'s own doc comment for the one case that
+//! taught this the hard way). Converting this into an actual CI gate is
+//! future work, not done here.
 
 use blueice_testing::load_fixtures;
 use std::path::PathBuf;
@@ -123,37 +124,30 @@ fn mentions_element_outside_mvp_scope(data: &str) -> bool {
 /// right, just enough to separate "almost certainly an already-known,
 /// documented MVP scope cut" from "worth a human actually reading the
 /// diff" so a 1000+-case corpus is triageable at all.
-/// Exact (not pattern-matched) cases individually verified against
-/// html5lib's own `InSelectPhase.startTagOther`/`endTagOther` (parse
-/// error, ignore -- no insertion) to confirm the *current* WHATWG
-/// spec's "in select" insertion mode really does drop a `<div>`/
-/// `<button>`/`<img>` start tag outright, matching BlueIce's own
-/// already-correct `step_in_select`'s `_ => StepResult::Done` catch-all.
-/// `webkit02.dat` (ported from WebKit's own historical test suite) still
-/// expects these elements to nest as real `<select>` content -- stale
-/// relative to the current spec, not a BlueIce bug -- so an exact
-/// per-case allowlist here (rather than a broad `file == "webkit02.dat"`
-/// or content-sniffing rule) avoids ever silently swallowing a real,
-/// different future regression elsewhere in the same file.
-const KNOWN_STALE_WEBKIT02_SELECT_CASES: &[&str] = &["webkit02.dat#35", "webkit02.dat#38", "webkit02.dat#40", "webkit02.dat#41", "webkit02.dat#42"];
-
-/// Same idea as the webkit02 list above, for `tests1.dat` (one of the
-/// original, oldest html5lib-tests files): `<b>` (or any other
-/// formatting element) started while "in select" has no entry in
-/// html5lib's `InSelectPhase.startTagHandler` dispatch table either --
-/// confirmed the same way, by direct inspection -- so it's dropped
-/// outright by the current spec's algorithm exactly like `<div>` is,
-/// not given special formatting-element treatment. These two cases
-/// predate that simplification.
-const KNOWN_STALE_TESTS1_SELECT_FORMATTING_CASES: &[&str] = &["tests1.dat#29", "tests1.dat#99"];
-
+///
+/// `full_name` (the fixture's own `file#index`) is accepted but
+/// currently unused by any rule below -- kept as a parameter (not
+/// removed) because exact per-fixture-name allowlisting is the right
+/// tool the moment a *specific*, individually-confirmed case needs
+/// classifying (as opposed to a broad file- or content-based rule),
+/// which has already happened once here and is likely to again: an
+/// earlier version of this function allowlisted several `webkit02.dat`/
+/// `tests1.dat` cases as "confirmed stale against the current spec"
+/// (their `<select>` content model looked like a pre-2015 relic). That
+/// conclusion was wrong -- checked against html5lib's Python reference
+/// implementation, which is itself now stale: the WHATWG spec's
+/// "Customizable Select" feature (whatwg/html#10548, already shipped in
+/// Chromium and Gecko) removed the dedicated "in select"/"in select in
+/// table" insertion modes entirely in mid-2025, folding `<select>`'s
+/// content model into ordinary "in body" processing. Those fixtures'
+/// original expectations were right all along; BlueIce's tree builder
+/// (`step_in_body`'s `"select"`/`"option"`/`"optgroup"`/`"hr"`/`"input"`
+/// arms) now implements the current algorithm directly instead of a
+/// separate mode, confirmed against the merged spec PR's actual text
+/// and its own test-suite update (html5lib/html5lib-tests#178) rather
+/// than the outdated reference implementation.
 fn likely_out_of_scope_reason(full_name: &str, file: &str, data: &str, expected_raw: &str) -> Option<&'static str> {
-    if KNOWN_STALE_WEBKIT02_SELECT_CASES.contains(&full_name) {
-        return Some("webkit02.dat select-content-model case confirmed stale against the current spec (see this fn's own doc comment), not a BlueIce bug");
-    }
-    if KNOWN_STALE_TESTS1_SELECT_FORMATTING_CASES.contains(&full_name) {
-        return Some("tests1.dat select+formatting-element case confirmed stale against the current spec (see this fn's own doc comment), not a BlueIce bug");
-    }
+    let _ = full_name;
     if file.starts_with("scripted_") || file == "noscript01.dat" {
         return Some("scripting (needs real JS execution or a scripting-disabled parsing mode)");
     }
