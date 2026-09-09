@@ -8,7 +8,10 @@
 
 use crate::native::{self, NativeFunction};
 use crate::primitive;
-use crate::{Bytecode, Heap, HeapConfig, HeapError, JsString, ObjectId, Opcode, RootId, Value};
+use crate::{Bytecode, Heap, HeapConfig, HeapError, JsString, JsSymbol, ObjectId, Opcode, PropertyDescriptor, PropertyName, RootId, Value};
+use std::collections::HashMap;
+mod builtins;
+mod regexp;
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -29,12 +32,13 @@ impl Default for VmConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum RuntimeError {
     ReferenceError(String),
     TypeError(String),
     RangeError(String),
-    Unsupported(&'static str),
+    SyntaxError(String),
+    Thrown(Value),
     Heap(HeapError),
     InstructionLimit,
     StringLimit { limit: usize },
@@ -46,7 +50,8 @@ impl fmt::Display for RuntimeError {
             Self::ReferenceError(name) => write!(f, "ReferenceError: {name} is not defined"),
             Self::TypeError(message) => write!(f, "TypeError: {message}"),
             Self::RangeError(message) => write!(f, "RangeError: {message}"),
-            Self::Unsupported(feature) => write!(f, "BlueJS execution does not yet support {feature}"),
+            Self::SyntaxError(message) => write!(f, "SyntaxError: {message}"),
+            Self::Thrown(value) => write!(f, "uncaught JavaScript value: {value:?}"),
             Self::Heap(error) => error.fmt(f),
             Self::InstructionLimit => f.write_str("BlueJS instruction budget exhausted"),
             Self::StringLimit { limit } => write!(f, "BlueJS string exceeds {limit} bytes"),
@@ -84,6 +89,19 @@ pub struct Vm {
     bindings: Vec<Option<Value>>,
     completion: Value,
     remaining_instructions: u64,
+    cells: HashMap<usize, ObjectId>,
+    this: Value,
+    arguments: Vec<Value>,
+    strict: bool,
+    call_depth: usize,
+    globals: HashMap<String, ObjectId>,
+    iterator_prototype: Option<ObjectId>,
+    regexp_iterator_prototype: Option<ObjectId>,
+    templates: HashMap<u64, ObjectId>,
+    new_target: Value,
+    iterator_base: Option<ObjectId>,
+    array_iterator_prototype: Option<ObjectId>,
+    joining: Vec<ObjectId>,
 }
 
 impl Default for Vm {
@@ -99,7 +117,7 @@ impl Vm {
         let mut heap = Heap::new(config.heap)?;
         let object_prototype = heap.alloc_object(None)?;
         // Permanent root, released with the heap. Builtin properties and
-        // callable Object.prototype methods are a later slice.
+        // callable methods are installed lazily by string_intrinsics.
         heap.root(object_prototype)?;
         let array_prototype = heap.alloc_array(0, Some(object_prototype))?;
         heap.root(array_prototype)?;
@@ -114,6 +132,19 @@ impl Vm {
             bindings: Vec::new(),
             completion: Value::Undefined,
             remaining_instructions: 0,
+            cells: HashMap::new(),
+            this: Value::Undefined,
+            arguments: Vec::new(),
+            strict: false,
+            call_depth: 0,
+            globals: HashMap::new(),
+            iterator_prototype: None,
+            regexp_iterator_prototype: None,
+            templates: HashMap::new(),
+            new_target: Value::Undefined,
+            iterator_base: None,
+            array_iterator_prototype: None,
+            joining: Vec::new(),
         })
     }
 
@@ -131,14 +162,20 @@ impl Vm {
         }
         self.heap.collect_major();
         self.bindings.resize(code.bindings.len(), None);
+        self.remaining_instructions = self.config.instruction_budget;
+        self.strict = code.strict;
         let result = self.run(code).and_then(|value| {
             if let Value::Object(id) = value {
                 self.result_root = Some(self.heap.root(id)?);
             }
             Ok(value)
         });
+        if let Err(RuntimeError::Thrown(Value::Object(id))) = &result {
+            self.result_root = Some(self.heap.root(*id)?);
+        }
         self.stack.clear();
         self.bindings.clear();
+        self.cells.clear();
         self.completion = Value::Undefined;
         self.heap.collect_major();
         result
@@ -166,6 +203,9 @@ impl Vm {
                     roots.push(self.heap.root(*id)?);
                 }
             }
+            for id in self.cells.values() {
+                roots.push(self.heap.root(*id)?);
+            }
             Ok(())
         })();
         let result = registration.and_then(|()| operation(&mut self.heap));
@@ -176,14 +216,146 @@ impl Vm {
     }
 
     fn run(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
+        let mut iterators = Vec::new();
+        let result = self.interpret(code, &mut iterators);
+        if result.is_err() {
+            if let Err(RuntimeError::Thrown(value)) = &result {
+                self.stack.push(value.clone());
+            }
+            self.stack.extend(iterators.iter().cloned());
+            for record in iterators.into_iter().rev() {
+                // IteratorClose preserves an existing throw even when return
+                // throws too. Resource exhaustion retains the original limit.
+                let _ = self.iterator_close(&record);
+            }
+        }
+        result
+    }
+
+    fn interpret(&mut self, code: &Bytecode, iterators: &mut Vec<Value>) -> Result<Value, RuntimeError> {
         let mut pc = 0;
-        self.remaining_instructions = self.config.instruction_budget;
         loop {
             self.charge_step()?;
             let instruction = code.instruction(pc).expect("compiler emits valid instruction boundaries");
             let operand = instruction.operand.unwrap_or(0) as usize;
             pc += instruction.opcode.width();
             match instruction.opcode {
+                Opcode::DefineData | Opcode::DefineAccessor => {
+                    let value = self.pop();
+                    let (receiver, key) = self.property_reference()?;
+                    let object = receiver.object_id().unwrap();
+                    if instruction.opcode == Opcode::DefineData {
+                        self.define_data(object, key, value.clone(), true, true, true)?;
+                    } else {
+                        let descriptor = PropertyDescriptor {
+                            get: (operand == 0).then(|| value.clone()),
+                            set: (operand != 0).then(|| value.clone()),
+                            enumerable: Some(true),
+                            configurable: Some(true),
+                            ..Default::default()
+                        };
+                        self.with_roots(|heap| heap.define_own_property(object, key, descriptor))?;
+                    }
+                    self.stack.push(value);
+                }
+                Opcode::DeleteProperty => {
+                    let (receiver, key) = self.property_reference()?;
+                    let deleted = match receiver {
+                        Value::Object(id) => self.heap.delete(id, key)?,
+                        Value::String(s) => !matches!(&key, PropertyName::String(key) if s.own_property(key).is_some()),
+                        _ => true,
+                    };
+                    if !deleted && self.strict {
+                        return Err(RuntimeError::TypeError("cannot delete non-configurable property".into()));
+                    }
+                    self.stack.push(Value::Bool(deleted));
+                }
+                Opcode::Throw => return Err(RuntimeError::Thrown(self.pop())),
+                Opcode::ArrayPush => {
+                    let base = self.stack.len() - 2;
+                    self.array_push(&self.stack[base].clone(), &self.stack[base + 1].clone(), operand)?;
+                    self.stack.truncate(base + 1);
+                }
+                Opcode::CallSpread => {
+                    let base = self.stack.len() - 3;
+                    let args = self.array_like_values(&self.stack[base + 2].clone())?;
+                    let result = self.call_native(self.stack[base].clone(), self.stack[base + 1].clone(), args, operand != 0)?;
+                    self.stack.truncate(base);
+                    self.stack.push(result);
+                }
+                Opcode::RegExpLiteral => {
+                    let base = self.stack.len() - 2;
+                    let regexp = self.regexp_create(&self.stack[base].clone(), &self.stack[base + 1].clone())?;
+                    self.stack.truncate(base);
+                    self.stack.push(regexp);
+                }
+                Opcode::TemplateObject => {
+                    let object = self.template_object(&code.templates[operand])?;
+                    self.stack.push(object);
+                }
+                Opcode::GetIterator => {
+                    let value = self.stack.last().unwrap().clone();
+                    let iterator = self.get_iterator(&value)?;
+                    self.pop();
+                    self.stack.push(iterator);
+                }
+                Opcode::IteratorStep => {
+                    let record = self.stack.last().unwrap().clone();
+                    iterators.retain(|active| active != &record);
+                    let result = self.iterator_step(&record)?;
+                    self.pop();
+                    if let Some(value) = result {
+                        iterators.push(record);
+                        self.stack.push(value);
+                    } else {
+                        pc = operand;
+                    }
+                }
+                Opcode::IteratorClose => {
+                    let record = self.stack.last().unwrap().clone();
+                    iterators.retain(|active| active != &record);
+                    self.iterator_close(&record)?;
+                    self.pop();
+                }
+                Opcode::Closure => {
+                    let child = code.functions[operand].clone();
+                    let (_, prototype) = self.string_intrinsics()?;
+                    let constructor = self.heap.get(prototype, "constructor")?.object_id().unwrap();
+                    let function_prototype = self.heap.prototype(constructor)?.unwrap();
+                    let mut captures = Vec::new();
+                    for &slot in &child.captures {
+                        captures.push(self.capture(slot as usize)?);
+                    }
+                    let this = if child.arrow { self.this.clone() } else { Value::Undefined };
+                    let id = self.with_roots(|heap| heap.alloc_closure(child.clone(), captures, this, function_prototype))?;
+                    self.stack.push(Value::Object(id));
+                    self.define_data(id, "name", Value::String(child.function_name.clone().into()), false, false, true)?;
+                    self.define_data(id, "length", Value::Number(child.function_length as f64), false, false, true)?;
+                    if child.constructible {
+                        let object_prototype = self.object_prototype;
+                        let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+                        self.define_data(id, "prototype", Value::Object(prototype), true, false, false)?;
+                        self.define_data(prototype, "constructor", Value::Object(id), true, false, true)?;
+                    }
+                }
+                Opcode::This => self.stack.push(self.this.clone()),
+                Opcode::Argument => self.stack.push(native::argument(&self.arguments, operand).clone()),
+                Opcode::RestArguments => {
+                    let array = self.array_from(self.arguments.iter().skip(operand).cloned().collect())?;
+                    self.stack.push(array);
+                }
+                Opcode::Return => return Ok(self.pop()),
+                Opcode::Global => {
+                    let Value::String(name) = &code.constants[operand] else { unreachable!() };
+                    let value = self.global(&name.to_utf8().unwrap())?;
+                    self.stack.push(value);
+                }
+                Opcode::ToPropertyKey => {
+                    let value = self.stack.last().unwrap().clone();
+                    let key = self.coerce_property_key(&value)?;
+                    self.pop();
+                    self.stack.push(key.value());
+                }
                 Opcode::Constant => {
                     self.check_string(&code.constants[operand])?;
                     self.stack.push(code.constants[operand].clone());
@@ -193,20 +365,23 @@ impl Vm {
                     self.stack.push(Value::Object(constructor));
                 }
                 Opcode::GetBinding => {
-                    let value = self.bindings[operand].as_ref().ok_or_else(|| RuntimeError::ReferenceError(code.bindings[operand].name.clone()))?;
-                    self.stack.push(value.clone());
+                    let value = self.binding_value(operand)?.ok_or_else(|| RuntimeError::ReferenceError(code.bindings[operand].name.clone()))?;
+                    self.stack.push(value);
                 }
-                Opcode::InitializeBinding => self.bindings[operand] = Some(self.pop()),
+                Opcode::InitializeBinding => {
+                    let value = self.pop();
+                    self.store_binding(operand, value)?;
+                }
                 Opcode::StoreBinding => {
                     // ECMA-262 §9.1.1.1.5: TDZ takes precedence over the
                     // immutable-binding assignment error, including const.
-                    if self.bindings[operand].is_none() {
+                    if self.binding_value(operand)?.is_none() {
                         return Err(RuntimeError::ReferenceError(code.bindings[operand].name.clone()));
                     }
                     if !code.bindings[operand].mutable {
                         return Err(RuntimeError::TypeError(format!("assignment to constant {}", code.bindings[operand].name)));
                     }
-                    self.bindings[operand] = Some(self.stack.last().expect("store has a value").clone());
+                    self.store_binding(operand, self.stack.last().expect("store has a value").clone())?;
                 }
                 Opcode::UnboundName => {
                     let Value::String(name) = &code.constants[operand] else { unreachable!("compiler emits a name") };
@@ -214,7 +389,9 @@ impl Vm {
                 }
                 Opcode::EnterScope | Opcode::LeaveScope => {
                     for slot in &code.scopes[operand] {
-                        self.bindings[*slot as usize] = if instruction.opcode == Opcode::EnterScope && !code.bindings[*slot as usize].lexical { Some(Value::Undefined) } else { None };
+                        self.cells.remove(&(*slot as usize));
+                        self.bindings[*slot as usize] =
+                            if instruction.opcode == Opcode::EnterScope && !code.bindings[*slot as usize].lexical { Some(Value::Undefined) } else { None };
                     }
                 }
                 Opcode::Pop => {
@@ -238,18 +415,19 @@ impl Vm {
                 Opcode::LessEqual => self.relational(|order| order != Ordering::Greater)?,
                 Opcode::GreaterEqual => self.relational(|order| order != Ordering::Less)?,
                 Opcode::Negate | Opcode::ToNumber | Opcode::ToString | Opcode::Not | Opcode::Typeof => {
-                    let arg = self.pop();
+                    let arg = self.stack.last().unwrap().clone();
                     let value = match instruction.opcode {
-                        Opcode::Negate => Value::Number(-primitive::number(&arg)?),
-                        Opcode::ToNumber => Value::Number(primitive::number(&arg)?),
-                        Opcode::ToString => Value::String(primitive::string(&arg)?),
+                        Opcode::Negate => Value::Number(-self.coerce_number(&arg)?),
+                        Opcode::ToNumber => Value::Number(self.coerce_number(&arg)?),
+                        Opcode::ToString => Value::String(self.coerce_string(&arg)?),
                         Opcode::Not => Value::Bool(!primitive::truthy(&arg)),
                         _ => {
-                            let callable = if let Value::Object(id) = arg { self.heap.native_function(id)?.is_some() } else { false };
+                            let callable = self.is_callable(&arg)?;
                             Value::String(if callable { "function" } else { primitive::type_name(&arg) }.into())
                         }
                     };
                     self.check_string(&value)?;
+                    self.pop();
                     self.stack.push(value);
                 }
                 Opcode::Jump => pc = operand,
@@ -287,7 +465,8 @@ impl Vm {
                     // Leave every call input on the stack until dispatch
                     // completes, so native allocations see all GC roots.
                     let base = self.stack.len() - operand - 2;
-                    let result = self.call_native(self.stack[base].clone(), self.stack[base + 1].clone(), self.stack[base + 2..].to_vec(), instruction.opcode == Opcode::Construct)?;
+                    let result =
+                        self.call_native(self.stack[base].clone(), self.stack[base + 1].clone(), self.stack[base + 2..].to_vec(), instruction.opcode == Opcode::Construct)?;
                     self.check_string(&result)?;
                     self.stack.truncate(base);
                     self.stack.push(result);
@@ -300,9 +479,12 @@ impl Vm {
                 }
                 Opcode::UpdateProperty => {
                     let (object, key) = self.property_reference()?;
-                    let old = primitive::number(&self.get_property(&object, &key)?)?;
+                    self.stack.push(object.clone());
+                    let old = self.get_property(&object, &key)?;
+                    let old = self.coerce_number(&old)?;
                     let new = if operand & 1 == 0 { old + 1.0 } else { old - 1.0 };
                     self.set_property(&object, &key, &Value::Number(new))?;
+                    self.stack.pop();
                     self.stack.push(Value::Number(if operand & 2 == 0 { old } else { new }));
                 }
                 Opcode::SetLiteralPrototype => {
@@ -329,34 +511,94 @@ impl Vm {
         Ok(())
     }
 
-    fn get_property(&mut self, receiver: &Value, key: &JsString) -> Result<Value, RuntimeError> {
+    fn get_property(&mut self, receiver: &Value, key: &PropertyName) -> Result<Value, RuntimeError> {
+        let base = self.stack.len();
+        self.stack.push(receiver.clone());
+        let result = self.get_property_value(receiver, key);
+        self.stack.truncate(base);
+        result
+    }
+
+    fn get_property_value(&mut self, receiver: &Value, key: &PropertyName) -> Result<Value, RuntimeError> {
         match receiver {
-            Value::Object(id) => Ok(self.heap.get(*id, key)?),
+            Value::Object(id) => {
+                if self.string_intrinsics.is_none() && (key == "toString" || key == "valueOf" || key == "join" || *key == PropertyName::from(JsSymbol::well_known("iterator"))) {
+                    self.string_intrinsics()?;
+                }
+                self.get_from_prototype(*id, receiver, key)
+            }
             Value::String(string) => {
-                if let Some(value) = string.own_property(key) {
-                    return Ok(value);
+                if let PropertyName::String(key) = key {
+                    if let Some(value) = string.own_property(key) {
+                        return Ok(value);
+                    }
                 }
                 let (_, prototype) = self.string_intrinsics()?;
-                Ok(self.heap.get(prototype, key)?)
+                self.get_from_prototype(prototype, receiver, key)
             }
             Value::Null | Value::Undefined => Err(RuntimeError::TypeError("cannot access a property of null or undefined".into())),
-            _ => Err(RuntimeError::Unsupported("non-String primitive property access/boxing")),
+            _ => {
+                let constructor = self.global(match receiver {
+                    Value::Symbol(_) => "Symbol",
+                    Value::Bool(_) => "Boolean",
+                    _ => "Number",
+                })?;
+                let prototype = self.get_property(&constructor, &"prototype".into())?.object_id().unwrap();
+                self.get_from_prototype(prototype, receiver, key)
+            }
         }
     }
 
-    fn set_property(&mut self, receiver: &Value, key: &JsString, value: &Value) -> Result<(), RuntimeError> {
-        // Current scripts are non-strict: primitive and read-only String
-        // writes return the assignment value without changing storage.
-        let Value::Object(object) = *receiver else { return Ok(()) };
-        let stored = if key == "length" && self.heap.is_array(object)? { Value::Number(primitive::number(value)?) } else { value.clone() };
-        self.with_roots(|heap| match heap.set(object, key, stored) {
-            Err(HeapError::ReadOnlyProperty) => Ok(()),
-            result => result,
-        })
+    fn set_property(&mut self, receiver: &Value, key: &PropertyName, value: &Value) -> Result<(), RuntimeError> {
+        let base = self.stack.len();
+        self.stack.extend([receiver.clone(), value.clone()]);
+        let result = self.set_property_value(receiver, key, value);
+        self.stack.truncate(base);
+        result
     }
 
-    fn property_reference(&mut self) -> Result<(Value, JsString), RuntimeError> {
-        let Value::String(key) = self.pop() else { unreachable!("compiler converts property keys to strings") };
+    fn set_property_value(&mut self, receiver: &Value, key: &PropertyName, value: &Value) -> Result<(), RuntimeError> {
+        // ToObject provides the lookup chain; accessor calls retain the
+        // original primitive receiver. Creating a data property still fails.
+        let object = self.coerce_object(receiver)?;
+        self.stack.push(Value::Object(object));
+        let mut current = Some(object);
+        while let Some(id) = current {
+            if let Some(desc) = self.heap.get_own_property_descriptor(id, key)? {
+                if desc.accessor() {
+                    let setter = desc.set.unwrap_or(Value::Undefined);
+                    if self.is_callable(&setter)? {
+                        self.call_native(setter, receiver.clone(), vec![value.clone()], false)?;
+                        return Ok(());
+                    }
+                    return if self.strict { Err(RuntimeError::TypeError("property has no setter".into())) } else { Ok(()) };
+                }
+                if desc.writable == Some(false) {
+                    return if self.strict { Err(RuntimeError::TypeError("property is read-only".into())) } else { Ok(()) };
+                }
+                break;
+            }
+            current = self.heap.prototype(id)?;
+        }
+        if !matches!(receiver, Value::Object(_)) {
+            return if self.strict { Err(RuntimeError::TypeError("cannot assign to primitive property".into())) } else { Ok(()) };
+        }
+        let stored = if key == "length" && self.heap.is_array(object)? { self.array_length_value(value)? } else { value.clone() };
+        match self.with_roots(|heap| heap.set(object, key, stored)) {
+            Err(RuntimeError::Heap(HeapError::ReadOnlyProperty)) => {
+                if self.strict {
+                    Err(RuntimeError::TypeError("property cannot be assigned".into()))
+                } else {
+                    Ok(())
+                }
+            }
+            result => result,
+        }
+    }
+
+    fn property_reference(&mut self) -> Result<(Value, PropertyName), RuntimeError> {
+        let key = self.pop();
+        let key = self.coerce_property_key(&key)?;
         match self.pop() {
             Value::Null | Value::Undefined => Err(RuntimeError::TypeError("cannot access a property of null or undefined".into())),
             receiver => Ok((receiver, key)),
@@ -368,16 +610,20 @@ impl Vm {
             return Ok(intrinsics);
         }
         let object_prototype = self.object_prototype;
-        let function_prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let constructor = self.with_roots(|heap| heap.alloc_native_function(NativeFunction::String, function_prototype))?;
+        let function_prototype = self.with_roots(|heap| heap.alloc_native_function(NativeFunction::Empty, "", object_prototype))?;
+        let constructor = self.with_roots(|heap| heap.alloc_native_function(NativeFunction::String, "String", function_prototype))?;
         let root = self.heap.root(constructor)?;
         let result = (|| {
             let prototype = self.with_roots(|heap| heap.alloc_string(JsString::default(), Some(object_prototype)))?;
-            self.with_roots(|heap| heap.set(constructor, "prototype", Value::Object(prototype)))?;
-            self.with_roots(|heap| heap.set(prototype, "constructor", Value::Object(constructor)))?;
-            self.with_roots(|heap| heap.set(constructor, "name", Value::String("String".into())))?;
-            self.with_roots(|heap| heap.set(constructor, "length", Value::Number(1.0)))?;
+            self.define_data(constructor, "prototype", Value::Object(prototype), false, false, false)?;
+            self.define_data(prototype, "constructor", Value::Object(constructor), true, false, true)?;
+            self.define_data(constructor, "name", Value::String("String".into()), false, false, true)?;
+            self.define_data(constructor, "length", Value::Number(1.0), false, false, true)?;
+            self.define_data(function_prototype, "length", Value::Number(0.0), false, false, true)?;
+            self.define_data(function_prototype, "name", Value::String(JsString::default()), false, false, true)?;
             self.install_native(function_prototype, function_prototype, "call", 1, NativeFunction::Call)?;
+            self.install_native(function_prototype, function_prototype, "apply", 2, NativeFunction::Apply)?;
+            self.install_native(function_prototype, function_prototype, "toString", 0, NativeFunction::FunctionToString)?;
             self.install_native(constructor, function_prototype, "fromCharCode", 1, NativeFunction::FromCharCode)?;
             self.install_native(constructor, function_prototype, "fromCodePoint", 1, NativeFunction::FromCodePoint)?;
             self.install_native(constructor, function_prototype, "raw", 1, NativeFunction::Raw)?;
@@ -389,8 +635,17 @@ impl Vm {
             }
             for (alias, original) in [("trimLeft", "trimStart"), ("trimRight", "trimEnd")] {
                 let function = self.heap.get(prototype, original)?;
-                self.with_roots(|heap| heap.set(prototype, alias, function))?;
+                self.define_data(prototype, alias, function, true, false, true)?;
             }
+            self.install_symbol_native(prototype, function_prototype, "iterator", 0, NativeFunction::StringIterator)?;
+            for (name, method) in [("match", native::PatternMethod::Match), ("matchAll", native::PatternMethod::MatchAll), ("search", native::PatternMethod::Search)] {
+                self.install_native(prototype, function_prototype, name, 1, NativeFunction::Pattern(method))?;
+            }
+            self.install_native(object_prototype, function_prototype, "toString", 0, NativeFunction::ObjectToString)?;
+            self.install_native(object_prototype, function_prototype, "valueOf", 0, NativeFunction::ObjectValueOf)?;
+            self.install_native(self.array_prototype, function_prototype, "toString", 0, NativeFunction::ArrayToString)?;
+            self.install_native(self.array_prototype, function_prototype, "join", 1, NativeFunction::ArrayJoin)?;
+            self.install_symbol_native(self.array_prototype, function_prototype, "iterator", 0, NativeFunction::ArrayIterator)?;
             Ok((constructor, prototype))
         })();
         match result {
@@ -399,6 +654,17 @@ impl Vm {
                 Ok(intrinsics)
             }
             Err(error) => {
+                // The only pre-existing owners modified by bootstrap are
+                // these two empty prototypes. Roll back published edges too.
+                for (owner, key) in [
+                    (object_prototype, PropertyName::from("toString")),
+                    (object_prototype, "valueOf".into()),
+                    (self.array_prototype, "toString".into()),
+                    (self.array_prototype, "join".into()),
+                    (self.array_prototype, JsSymbol::well_known("iterator").into()),
+                ] {
+                    self.heap.delete(owner, key)?;
+                }
                 self.heap.unroot(root)?;
                 Err(error)
             }
@@ -406,44 +672,57 @@ impl Vm {
     }
 
     fn install_native(&mut self, owner: ObjectId, prototype: ObjectId, name: &str, length: u32, function: NativeFunction) -> Result<(), RuntimeError> {
-        let id = self.with_roots(|heap| heap.alloc_native_function(function, prototype))?;
-        self.with_roots(|heap| heap.set(id, "name", Value::String(name.into())))?;
-        self.with_roots(|heap| heap.set(id, "length", Value::Number(f64::from(length))))?;
-        self.with_roots(|heap| heap.set(owner, name, Value::Object(id)))?;
+        let id = self.with_roots(|heap| heap.alloc_native_function(function, name, prototype))?;
+        self.stack.push(Value::Object(id));
+        let result = (|| {
+            self.define_data(id, "name", Value::String(name.into()), false, false, true)?;
+            self.define_data(id, "length", Value::Number(f64::from(length)), false, false, true)?;
+            self.define_data(owner, name, Value::Object(id), true, false, true)
+        })();
+        self.stack.pop();
+        result?;
         Ok(())
     }
 
-    fn call_native(&mut self, mut callee: Value, mut receiver: Value, mut args: Vec<Value>, construct: bool) -> Result<Value, RuntimeError> {
-        loop {
-            let function = if let Value::Object(id) = callee { self.heap.native_function(id)? } else { None };
-            let Some(function) = function else { return Err(RuntimeError::TypeError("value is not callable".into())) };
-            if construct && function != NativeFunction::String {
-                return Err(RuntimeError::TypeError("value is not a constructor".into()));
-            }
-            return match function {
-                NativeFunction::Call => {
-                    callee = receiver;
-                    receiver = native::argument(&args, 0).clone();
-                    args = args.into_iter().skip(1).collect();
-                    continue;
-                }
-                NativeFunction::String => {
-                    let string = if args.is_empty() { JsString::default() } else { primitive::string(&self.unbox_string(native::argument(&args, 0))?)? };
-                    self.check_string(&Value::String(string.clone()))?;
-                    if construct {
-                        let (_, prototype) = self.string_intrinsics()?;
-                        Ok(Value::Object(self.with_roots(|heap| heap.alloc_string(string, Some(prototype)))?))
-                    } else {
-                        Ok(Value::String(string))
-                    }
-                }
-                NativeFunction::FromCharCode | NativeFunction::FromCodePoint => native::from_codes(&args, function == NativeFunction::FromCodePoint, self.config.max_string_bytes),
-                NativeFunction::Raw => self.string_raw(&args),
-                NativeFunction::Split => self.string_split(&receiver, &args),
-                NativeFunction::Replace | NativeFunction::ReplaceAll => self.string_replace(&receiver, &args, function == NativeFunction::ReplaceAll),
-                NativeFunction::StringMethod(method) => native::string_method(method, &self.unbox_string(&receiver)?, &args, self.config.max_string_bytes),
-            };
+    fn call_native(&mut self, callee: Value, receiver: Value, args: Vec<Value>, construct: bool) -> Result<Value, RuntimeError> {
+        let target = if construct { callee.clone() } else { Value::Undefined };
+        self.call_with_target(callee, receiver, args, construct, target)
+    }
+
+    fn call_with_target(&mut self, callee: Value, receiver: Value, args: Vec<Value>, construct: bool, target: Value) -> Result<Value, RuntimeError> {
+        if self.call_depth >= 32 {
+            return Err(RuntimeError::RangeError("maximum call depth exceeded".into()));
         }
+        self.charge_step()?;
+        let base = self.stack.len();
+        self.stack.extend([callee.clone(), receiver.clone()]);
+        self.stack.extend(args.iter().cloned());
+        self.stack.push(target.clone());
+        let previous_target = std::mem::replace(&mut self.new_target, target);
+        self.call_depth += 1;
+        let result = self.dispatch_call(callee, receiver, args, construct).and_then(|value| {
+            self.check_string(&value)?;
+            Ok(value)
+        });
+        self.new_target = previous_target;
+        self.call_depth -= 1;
+        self.stack.truncate(base);
+        result
+    }
+
+    fn dispatch_call(&mut self, callee: Value, receiver: Value, args: Vec<Value>, construct: bool) -> Result<Value, RuntimeError> {
+        if let Value::Object(id) = callee {
+            if let Some((code, captures, lexical_this)) = self.heap.closure(id)? {
+                let receiver = if code.arrow { lexical_this } else { receiver };
+                return self.call_closure(code, captures, receiver, args, construct);
+            }
+        }
+        let function = if let Value::Object(id) = callee { self.heap.native_function(id)? } else { None };
+        let Some(function) = function else { return Err(RuntimeError::TypeError("value is not callable".into())) };
+        if construct && !matches!(function, NativeFunction::String | NativeFunction::Object | NativeFunction::RegExp | NativeFunction::PrimitiveConstructor(_)) {
+            return Err(RuntimeError::TypeError("value is not a constructor".into()));
+        }
+        self.native_call(function, receiver, args, construct)
     }
 
     fn unbox_string(&self, value: &Value) -> Result<Value, RuntimeError> {
@@ -455,24 +734,30 @@ impl Vm {
         Ok(value.clone())
     }
 
-    fn string_receiver(&self, value: &Value) -> Result<JsString, RuntimeError> {
+    fn string_receiver(&mut self, value: &Value) -> Result<JsString, RuntimeError> {
         if matches!(value, Value::Null | Value::Undefined) {
             return Err(RuntimeError::TypeError("String method requires a non-null receiver".into()));
         }
-        primitive::string(&self.unbox_string(value)?)
+        self.coerce_string(value)
     }
 
     fn string_raw(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let raw = self.get_property(native::argument(args, 0), &"raw".into())?;
-        let count = native::length(&self.get_property(&raw, &"length".into())?)? as u64;
+        let template = Value::Object(self.coerce_object(native::argument(args, 0))?);
+        self.stack.push(template.clone());
+        let raw = self.get_property(&template, &"raw".into())?;
+        self.stack.push(raw.clone());
+        let raw = Value::Object(self.coerce_object(&raw)?);
+        self.stack.push(raw.clone());
+        let length = self.get_property(&raw, &"length".into())?;
+        let count = self.coerce_length(&length)? as u64;
         let mut result = JsString::default();
         for index in 0..count {
             self.charge_step()?; // A huge array-like length with empty entries must still terminate.
             let literal = self.get_property(&raw, &index.to_string().into())?;
-            native::append(&mut result, &primitive::string(&literal)?, self.config.max_string_bytes)?;
+            native::append(&mut result, &self.coerce_string(&literal)?, self.config.max_string_bytes)?;
             if index + 1 < count {
                 if let Some(substitution) = args.get(index as usize + 1) {
-                    native::append(&mut result, &primitive::string(substitution)?, self.config.max_string_bytes)?;
+                    native::append(&mut result, &self.coerce_string(substitution)?, self.config.max_string_bytes)?;
                 }
             }
         }
@@ -480,12 +765,22 @@ impl Vm {
     }
 
     fn string_split(&mut self, receiver: &Value, args: &[Value]) -> Result<Value, RuntimeError> {
+        if matches!(receiver, Value::Null | Value::Undefined) {
+            return Err(RuntimeError::TypeError("String method requires a non-null receiver".into()));
+        }
+        let separator = native::argument(args, 0);
+        if !matches!(separator, Value::Null | Value::Undefined) {
+            let method = self.get_method(separator, &JsSymbol::well_known("split").into())?;
+            if method != Value::Undefined {
+                return self.call_native(method, separator.clone(), vec![receiver.clone(), native::argument(args, 1).clone()], false);
+            }
+        }
         let string = self.string_receiver(receiver)?;
         let separator = native::argument(args, 0);
         let limit = native::argument(args, 1);
-        let limit = if matches!(limit, Value::Undefined) { u32::MAX } else { native::uint32(limit)? };
+        let limit = if matches!(limit, Value::Undefined) { u32::MAX } else { native::uint32(&Value::Number(self.coerce_number(limit)?))? };
         // Even a zero limit converts the separator first (§22.1.3.23).
-        let search = primitive::string(separator)?;
+        let search = self.coerce_string(separator)?;
         let prototype = self.array_prototype;
         let array = self.with_roots(|heap| heap.alloc_array(0, Some(prototype)))?;
         self.stack.push(Value::Object(array)); // Root the growing result through every store.
@@ -518,11 +813,24 @@ impl Vm {
     }
 
     fn string_replace(&mut self, receiver: &Value, args: &[Value], all: bool) -> Result<Value, RuntimeError> {
+        if matches!(receiver, Value::Null | Value::Undefined) {
+            return Err(RuntimeError::TypeError("String method requires a non-null receiver".into()));
+        }
+        let search = native::argument(args, 0);
+        if !matches!(search, Value::Null | Value::Undefined) {
+            if all {
+                self.require_global_pattern(search)?;
+            }
+            let method = self.get_method(search, &JsSymbol::well_known("replace").into())?;
+            if method != Value::Undefined {
+                return self.call_native(method, search.clone(), vec![receiver.clone(), native::argument(args, 1).clone()], false);
+            }
+        }
         let string = self.string_receiver(receiver)?;
-        let search = primitive::string(native::argument(args, 0))?;
+        let search = self.coerce_string(native::argument(args, 0))?;
         let replace = native::argument(args, 1);
-        let callable = if let Value::Object(id) = replace { self.heap.native_function(*id)?.is_some() } else { false };
-        let template = if callable { JsString::default() } else { primitive::string(replace)? };
+        let callable = self.is_callable(replace)?;
+        let template = if callable { JsString::default() } else { self.coerce_string(replace)? };
         let mut result = JsString::default();
         let mut end = 0;
         let mut next = 0;
@@ -530,8 +838,13 @@ impl Vm {
             while let Some(position) = (next..=string.len() - search.len()).find(|&index| string.as_code_units()[index..].starts_with(search.as_code_units())) {
                 self.charge_step()?;
                 let replacement = if callable {
-                    let value = self.call_native(replace.clone(), Value::Undefined, vec![Value::String(search.clone()), Value::Number(position as f64), Value::String(string.clone())], false)?;
-                    primitive::string(&value)?
+                    let value = self.call_native(
+                        replace.clone(),
+                        Value::Undefined,
+                        vec![Value::String(search.clone()), Value::Number(position as f64), Value::String(string.clone())],
+                        false,
+                    )?;
+                    self.coerce_string(&value)?
                 } else {
                     native::substitution(&string, &search, position, &template, self.config.max_string_bytes)?
                 };
@@ -548,23 +861,29 @@ impl Vm {
         Ok(Value::String(result))
     }
 
-    fn binary(&mut self, operation: impl FnOnce(&Self, Value, Value) -> Result<Value, RuntimeError>) -> Result<(), RuntimeError> {
-        let right = self.pop();
-        let left = self.pop();
-        let value = operation(self, left, right)?;
+    fn binary(&mut self, operation: impl FnOnce(&mut Self, Value, Value) -> Result<Value, RuntimeError>) -> Result<(), RuntimeError> {
+        let base = self.stack.len() - 2;
+        let value = operation(self, self.stack[base].clone(), self.stack[base + 1].clone())?;
+        self.stack.truncate(base);
         self.stack.push(value);
         Ok(())
     }
 
     fn numeric(&mut self, operation: fn(f64, f64) -> f64) -> Result<(), RuntimeError> {
-        self.binary(|_, a, b| Ok(Value::Number(operation(primitive::number(&a)?, primitive::number(&b)?))))
+        self.binary(|vm, a, b| Ok(Value::Number(operation(vm.coerce_number(&a)?, vm.coerce_number(&b)?))))
     }
 
     fn relational(&mut self, accept: fn(Ordering) -> bool) -> Result<(), RuntimeError> {
-        self.binary(|_, a, b| Ok(Value::Bool(primitive::compare(&a, &b)?.is_some_and(accept))))
+        self.binary(|vm, a, b| {
+            let a = vm.coerce_primitive(&a, "number")?;
+            let b = vm.coerce_primitive(&b, "number")?;
+            Ok(Value::Bool(primitive::compare(&a, &b)?.is_some_and(accept)))
+        })
     }
 
-    fn add(&self, left: Value, right: Value) -> Result<Value, RuntimeError> {
+    fn add(&mut self, left: Value, right: Value) -> Result<Value, RuntimeError> {
+        let left = self.coerce_primitive(&left, "default")?;
+        let right = self.coerce_primitive(&right, "default")?;
         if matches!(left, Value::String(_)) || matches!(right, Value::String(_)) {
             let mut a = primitive::string(&left)?;
             let b = primitive::string(&right)?;

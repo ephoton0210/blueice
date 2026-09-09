@@ -12,6 +12,21 @@ use std::process::{Command, Stdio};
 #[ignore = "requires Node.js on PATH; run explicitly with --ignored"]
 fn primitive_completions_and_error_classes_match_node() {
     let mut corpus: Vec<String> = include_str!("fixtures/execution.txt").lines().filter(|line| !line.trim().is_empty() && !line.starts_with('#')).map(str::to_owned).collect();
+    corpus.extend(include_str!("fixtures/string_protocols.txt").lines().filter(|line| !line.trim().is_empty() && !line.starts_with('#')).map(str::to_owned));
+    // Cross-product exercises the independent regexp matcher, UTF-16 offsets,
+    // replacement expansion and split capture insertion through String APIs.
+    for pattern in ["", "a", "(a)(b)?", "(?<x>a)", "a|b", "^a", "b$", ".", "[ab]+", "[^a]", "a*?", "(?=a)", "(?<=a)b", "(a)\\1", "\\d+", "\\p{ASCII}", "[a&&b]", "\\u{1F600}"] {
+        for flags in ["", "g", "y", "u", "gu", "gy", "v", "dgi"] {
+            for string in ["", "ab", "aba", "aa", "a1b22", "A😀B", "\\ud800a"] {
+                for operation in ["s.search(r)", "String(s.match(r))", "s.replace(r,'[$&][$1][$<x>]')", "String(s.split(r))"] {
+                    corpus.push(format!("let s='{string}'; let r=new RegExp({pattern:?},'{flags}'); {operation}"));
+                }
+                if flags.contains('g') {
+                    corpus.push(format!("let r=new RegExp({pattern:?},'{flags}'); let out=''; for(let m of '{string}'.matchAll(r)){{out+=m.index+':'+m[0]+';';}} out"));
+                }
+            }
+        }
+    }
     // Transport each source as hex UTF-8 so real line terminators cannot
     // accidentally turn a multiline script into several separate fixtures.
     for newline in ["\n", "\r", "\r\n", "\u{2028}", "\u{2029}"] {
@@ -123,6 +138,7 @@ fn canonical(result: Result<Value, RuntimeError>) -> String {
         Err(RuntimeError::ReferenceError(_)) => "error:ReferenceError".into(),
         Err(RuntimeError::TypeError(_)) => "error:TypeError".into(),
         Err(RuntimeError::RangeError(_)) => "error:RangeError".into(),
+        Err(RuntimeError::SyntaxError(_)) => "error:SyntaxError".into(),
         other => panic!("unexpected fixture result: {other:?}"),
     }
 }

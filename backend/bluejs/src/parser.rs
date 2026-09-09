@@ -52,8 +52,7 @@ impl From<LexError> for ParseError {
 }
 
 pub fn parse(source: &str) -> Result<Program, ParseError> {
-    let tokens = tokenize_all(source)?;
-    let mut parser = Parser::new(tokens);
+    let mut parser = Parser::new(source);
     let mut body = Vec::new();
     while !parser.at_eof() {
         body.push(parser.parse_statement()?);
@@ -61,15 +60,28 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
     Ok(Program { body })
 }
 
-fn tokenize_all(source: &str) -> Result<Vec<SpannedToken>, LexError> {
-    let mut tokenizer = Tokenizer::new(source);
+// Preserve source positions so the parser can select the RegExp lexical goal
+// at PrimaryExpression and rescan the suffix. A speculative division scan may
+// encounter regex-only characters; defer that lexical error until consumed.
+fn tokenize_all(tokenizer: &mut Tokenizer) -> (Vec<SpannedToken>, Vec<usize>) {
     let mut tokens = Vec::new();
+    let mut positions = Vec::new();
     loop {
-        let spanned = tokenizer.next_spanned()?;
-        let is_eof = spanned.token == Token::Eof;
-        tokens.push(spanned);
-        if is_eof {
-            return Ok(tokens);
+        positions.push(tokenizer.position());
+        match tokenizer.next_spanned() {
+            Ok(spanned) => {
+                let done = spanned.token == Token::Eof;
+                tokens.push(spanned);
+                if done {
+                    return (tokens, positions);
+                }
+            }
+            Err(error) => {
+                tokens.push(SpannedToken { token: Token::Invalid(error.message), newline_before: false });
+                positions.push(tokenizer.position());
+                tokens.push(SpannedToken { token: Token::Eof, newline_before: false });
+                return (tokens, positions);
+            }
         }
     }
 }
@@ -78,13 +90,17 @@ fn tokenize_all(source: &str) -> Result<Vec<SpannedToken>, LexError> {
 /// [`parse_template`] for placeholder text and, in tests, to exercise
 /// expression parsing without wrapping every fixture in a statement.
 fn parse_expression_from_source(source: &str) -> Result<Expr, ParseError> {
-    let tokens = tokenize_all(source)?;
-    let mut parser = Parser::new(tokens);
+    let mut parser = Parser::new(source);
     let expr = parser.parse_expression()?;
     if !parser.at_eof() {
         return Err(parser.error("unexpected trailing tokens after expression"));
     }
     Ok(expr)
+}
+
+pub(crate) fn closes_template_placeholder(source: &str) -> bool {
+    let mut parser = Parser::new(source);
+    parser.parse_expression().is_ok() && parser.eat_punct(Punct::RBrace) && parser.at_eof()
 }
 
 fn keyword_as_str(k: Keyword) -> &'static str {
@@ -110,6 +126,7 @@ fn keyword_as_str(k: Keyword) -> &'static str {
         Keyword::Finally => "finally",
         Keyword::New => "new",
         Keyword::Typeof => "typeof",
+        Keyword::Delete => "delete",
         Keyword::Instanceof => "instanceof",
         Keyword::In => "in",
         Keyword::True => "true",
@@ -140,6 +157,8 @@ fn expr_to_for_head_pattern(expr: Expr) -> Result<Pattern, ParseError> {
 
 struct Parser {
     tokens: Vec<SpannedToken>,
+    positions: Vec<usize>,
+    tokenizer: Tokenizer,
     pos: usize,
     /// Set while parsing a `for`-loop head's init clause, so the
     /// relational-expression tier refuses to consume a bare `in` as a
@@ -148,8 +167,18 @@ struct Parser {
 }
 
 impl Parser {
-    fn new(tokens: Vec<SpannedToken>) -> Parser {
-        Parser { tokens, pos: 0, no_in: false }
+    fn new(source: &str) -> Parser {
+        let mut tokenizer = Tokenizer::new(source);
+        let (tokens, positions) = tokenize_all(&mut tokenizer);
+        Parser { tokens, positions, tokenizer, pos: 0, no_in: false }
+    }
+
+    fn rescan_suffix(&mut self) {
+        let (tokens, positions) = tokenize_all(&mut self.tokenizer);
+        self.tokens.truncate(self.pos);
+        self.positions.truncate(self.pos);
+        self.tokens.extend(tokens);
+        self.positions.extend(positions);
     }
 
     fn peek(&self) -> &Token {
@@ -904,6 +933,9 @@ impl Parser {
         if self.eat_keyword(Keyword::Typeof) {
             return Ok(Expr::Unary { op: UnaryOp::Typeof, arg: Box::new(self.parse_unary()?) });
         }
+        if self.eat_keyword(Keyword::Delete) {
+            return Ok(Expr::Unary { op: UnaryOp::Delete, arg: Box::new(self.parse_unary()?) });
+        }
         if self.eat_punct(Punct::PlusPlus) {
             let arg = self.parse_unary()?;
             if !is_valid_ref_target(&arg) {
@@ -945,11 +977,7 @@ impl Parser {
     }
 
     fn parse_lhs_expression(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = if self.eat_keyword(Keyword::New) {
-            self.parse_new_expression()?
-        } else {
-            self.parse_primary()?
-        };
+        let mut expr = if self.eat_keyword(Keyword::New) { self.parse_new_expression()? } else { self.parse_primary()? };
         loop {
             if self.eat_punct(Punct::Dot) {
                 let name = self.expect_identifier_name()?;
@@ -961,6 +989,11 @@ impl Parser {
             } else if self.check_punct(Punct::LParen) {
                 let args = self.parse_arguments()?;
                 expr = Expr::Call { callee: Box::new(expr), args };
+            } else if self.tokenizer.at_template(self.positions[self.pos]) {
+                let (raw, cooked, sources) = self.tokenizer.tagged_template_at(self.positions[self.pos])?;
+                self.rescan_suffix();
+                let expressions = sources.iter().map(|source| parse_expression_from_source(source)).collect::<Result<Vec<_>, _>>()?;
+                expr = Expr::TaggedTemplate { tag: Box::new(expr), raw, cooked, expressions };
             } else {
                 break;
             }
@@ -1014,6 +1047,13 @@ impl Parser {
 
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
         match self.peek().clone() {
+            Token::Punct(Punct::Slash | Punct::SlashAssign) => {
+                let (pattern, flags) = self.tokenizer.regexp_at(self.positions[self.pos])?;
+                crate::regexp::RegExp::compile(pattern.clone(), &flags).map_err(|error| self.error(error.to_string()))?;
+                self.rescan_suffix();
+                Ok(Expr::RegExp { pattern, flags })
+            }
+            Token::Invalid(message) => Err(self.error(&message)),
             Token::Number(n) => {
                 self.advance();
                 Ok(Expr::Number(n))
@@ -1095,6 +1135,21 @@ impl Parser {
                 if self.eat_punct(Punct::Colon) {
                     let value = self.parse_assignment()?;
                     props.push(ObjectProp::KeyValue { key, value, shorthand: false });
+                } else if self.check_punct(Punct::LParen) {
+                    let params = self.parse_params()?;
+                    let body = self.parse_block()?;
+                    let name = property_function_name(&key);
+                    props.push(ObjectProp::Method { key, function: Function { name: Some(name), params, body } });
+                } else if matches!(&key, PropertyKey::Identifier(name) if name == "get" || name == "set") && !self.check_punct(Punct::Comma) && !self.check_punct(Punct::RBrace) {
+                    let getter = matches!(&key, PropertyKey::Identifier(name) if name == "get");
+                    let key = self.parse_property_key()?;
+                    let params = self.parse_params()?;
+                    if (getter && !params.is_empty()) || (!getter && (params.len() != 1 || params[0].rest)) {
+                        return Err(self.error("invalid accessor parameter list"));
+                    }
+                    let body = self.parse_block()?;
+                    let name = format!("{} {}", if getter { "get" } else { "set" }, property_function_name(&key));
+                    props.push(ObjectProp::Accessor { key, function: Function { name: Some(name), params, body }, getter });
                 } else {
                     let name = match &key {
                         PropertyKey::Identifier(n) => n.clone(),
@@ -1112,6 +1167,15 @@ impl Parser {
     }
 }
 
+fn property_function_name(key: &PropertyKey) -> String {
+    match key {
+        PropertyKey::Identifier(name) => name.clone(),
+        PropertyKey::String(name) => name.to_utf8().unwrap_or_default(),
+        PropertyKey::Number(n) => n.to_string(),
+        PropertyKey::Computed(_) => String::new(),
+    }
+}
+
 fn parse_template(quasis: Vec<crate::JsString>, raw_expressions: Vec<String>) -> Result<Expr, ParseError> {
     let expressions = raw_expressions.iter().map(|src| parse_expression_from_source(src)).collect::<Result<Vec<_>, _>>()?;
     Ok(Expr::Template { quasis, expressions })
@@ -1119,6 +1183,16 @@ fn parse_template(quasis: Vec<crate::JsString>, raw_expressions: Vec<String>) ->
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn regexp_lexical_goals_are_visible_in_the_public_ast() {
+        use crate::{parse, Expr, Stmt};
+        let program = parse("/a/g").unwrap();
+        assert!(matches!(&program.body[0],Stmt::Expr(Expr::RegExp {pattern,flags}) if pattern == "a" && flags == "g"));
+        assert!(parse("delete object.x").is_ok());
+        for source in ["/(/", "/a\n/", "String.raw`unterminated", "'\\u{110000}'"] {
+            assert!(parse(source).is_err(), "{source}");
+        }
+    }
     use super::*;
 
     fn program(src: &str) -> Program {
@@ -1198,7 +1272,10 @@ mod tests {
     fn parses_nullish_coalescing_typeof_instanceof_in() {
         assert_eq!(expr("a ?? b"), Expr::Logical { op: LogicalOp::Nullish, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) });
         assert_eq!(expr("typeof x"), Expr::Unary { op: UnaryOp::Typeof, arg: Box::new(Expr::Identifier("x".to_string())) });
-        assert_eq!(expr("x instanceof Foo"), Expr::Binary { op: BinaryOp::Instanceof, left: Box::new(Expr::Identifier("x".to_string())), right: Box::new(Expr::Identifier("Foo".to_string())) });
+        assert_eq!(
+            expr("x instanceof Foo"),
+            Expr::Binary { op: BinaryOp::Instanceof, left: Box::new(Expr::Identifier("x".to_string())), right: Box::new(Expr::Identifier("Foo".to_string())) }
+        );
         assert_eq!(expr("'k' in obj"), Expr::Binary { op: BinaryOp::In, left: Box::new(Expr::String("k".into())), right: Box::new(Expr::Identifier("obj".to_string())) });
     }
 
@@ -1254,7 +1331,10 @@ mod tests {
     fn postfix_update_is_suppressed_across_a_newline_asi() {
         // `x\n++y` is `x; ++y`, not `x++; y` -- ASI's restricted-token rule.
         let p = program("x\n++y");
-        assert_eq!(p.body, vec![Stmt::Expr(Expr::Identifier("x".to_string())), Stmt::Expr(Expr::Update { op: UpdateOp::Inc, arg: Box::new(Expr::Identifier("y".to_string())), prefix: true })]);
+        assert_eq!(
+            p.body,
+            vec![Stmt::Expr(Expr::Identifier("x".to_string())), Stmt::Expr(Expr::Update { op: UpdateOp::Inc, arg: Box::new(Expr::Identifier("y".to_string())), prefix: true })]
+        );
     }
 
     #[test]
@@ -1282,7 +1362,10 @@ mod tests {
     fn parses_new_expression_with_a_computed_member_callee() {
         assert_eq!(
             expr("new a[b]()"),
-            Expr::New { callee: Box::new(Expr::Member { object: Box::new(Expr::Identifier("a".to_string())), property: Box::new(Expr::Identifier("b".to_string())), computed: true }), args: vec![] }
+            Expr::New {
+                callee: Box::new(Expr::Member { object: Box::new(Expr::Identifier("a".to_string())), property: Box::new(Expr::Identifier("b".to_string())), computed: true }),
+                args: vec![]
+            }
         );
     }
 
@@ -1303,10 +1386,7 @@ mod tests {
         );
         // A call immediately after `new Foo()` attaches to the `New`
         // node via the outer left-hand-side loop, not `parse_new_expression` itself.
-        assert_eq!(
-            expr("new Foo()()"),
-            Expr::Call { callee: Box::new(Expr::New { callee: Box::new(Expr::Identifier("Foo".to_string())), args: vec![] }), args: vec![] }
-        );
+        assert_eq!(expr("new Foo()()"), Expr::Call { callee: Box::new(Expr::New { callee: Box::new(Expr::Identifier("Foo".to_string())), args: vec![] }), args: vec![] });
     }
 
     #[test]
@@ -1322,7 +1402,10 @@ mod tests {
 
     #[test]
     fn parses_array_literal_with_holes_and_spread_and_trailing_comma() {
-        assert_eq!(expr("[1, 2, 3]"), Expr::Array(vec![Some(ArrayElement::Normal(Expr::Number(1.0))), Some(ArrayElement::Normal(Expr::Number(2.0))), Some(ArrayElement::Normal(Expr::Number(3.0)))]));
+        assert_eq!(
+            expr("[1, 2, 3]"),
+            Expr::Array(vec![Some(ArrayElement::Normal(Expr::Number(1.0))), Some(ArrayElement::Normal(Expr::Number(2.0))), Some(ArrayElement::Normal(Expr::Number(3.0)))])
+        );
         assert_eq!(expr("[1,,3]"), Expr::Array(vec![Some(ArrayElement::Normal(Expr::Number(1.0))), None, Some(ArrayElement::Normal(Expr::Number(3.0)))]));
         assert_eq!(expr("[1, 2,]"), Expr::Array(vec![Some(ArrayElement::Normal(Expr::Number(1.0))), Some(ArrayElement::Normal(Expr::Number(2.0)))]));
         assert_eq!(expr("[...xs]"), Expr::Array(vec![Some(ArrayElement::Spread(Expr::Identifier("xs".to_string())))]));
@@ -1359,8 +1442,15 @@ mod tests {
             only_stmt("function add(a, b) { return a + b; }"),
             Stmt::FunctionDecl(Function {
                 name: Some("add".to_string()),
-                params: vec![Param { pattern: Pattern::Identifier("a".to_string()), default: None, rest: false }, Param { pattern: Pattern::Identifier("b".to_string()), default: None, rest: false }],
-                body: vec![Stmt::Return(Some(Expr::Binary { op: BinaryOp::Add, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) }))],
+                params: vec![
+                    Param { pattern: Pattern::Identifier("a".to_string()), default: None, rest: false },
+                    Param { pattern: Pattern::Identifier("b".to_string()), default: None, rest: false }
+                ],
+                body: vec![Stmt::Return(Some(Expr::Binary {
+                    op: BinaryOp::Add,
+                    left: Box::new(Expr::Identifier("a".to_string())),
+                    right: Box::new(Expr::Identifier("b".to_string()))
+                }))],
             })
         );
     }
@@ -1388,16 +1478,26 @@ mod tests {
 
     #[test]
     fn parses_arrow_functions_all_shapes() {
-        assert_eq!(expr("x => x + 1"), Expr::Arrow {
-            params: vec![Param { pattern: Pattern::Identifier("x".to_string()), default: None, rest: false }],
-            body: ArrowBody::Expr(Box::new(Expr::Binary { op: BinaryOp::Add, left: Box::new(Expr::Identifier("x".to_string())), right: Box::new(Expr::Number(1.0)) })),
-        });
+        assert_eq!(
+            expr("x => x + 1"),
+            Expr::Arrow {
+                params: vec![Param { pattern: Pattern::Identifier("x".to_string()), default: None, rest: false }],
+                body: ArrowBody::Expr(Box::new(Expr::Binary { op: BinaryOp::Add, left: Box::new(Expr::Identifier("x".to_string())), right: Box::new(Expr::Number(1.0)) })),
+            }
+        );
         assert_eq!(expr("() => {}"), Expr::Arrow { params: vec![], body: ArrowBody::Block(vec![]) });
         assert_eq!(
             expr("(a, b) => { return a + b; }"),
             Expr::Arrow {
-                params: vec![Param { pattern: Pattern::Identifier("a".to_string()), default: None, rest: false }, Param { pattern: Pattern::Identifier("b".to_string()), default: None, rest: false }],
-                body: ArrowBody::Block(vec![Stmt::Return(Some(Expr::Binary { op: BinaryOp::Add, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) }))]),
+                params: vec![
+                    Param { pattern: Pattern::Identifier("a".to_string()), default: None, rest: false },
+                    Param { pattern: Pattern::Identifier("b".to_string()), default: None, rest: false }
+                ],
+                body: ArrowBody::Block(vec![Stmt::Return(Some(Expr::Binary {
+                    op: BinaryOp::Add,
+                    left: Box::new(Expr::Identifier("a".to_string())),
+                    right: Box::new(Expr::Identifier("b".to_string()))
+                }))]),
             }
         );
     }
@@ -1406,20 +1506,23 @@ mod tests {
     fn nested_parentheses_in_arrow_defaults_preserve_the_parameter_boundary() {
         // Drive the public parser; an inner ')' must not terminate arrow
         // lookahead before the actual parameter list's ')' and '=>'.
-        assert_eq!(parse("(x=((1+2)*3))=>x").unwrap(), Program {
-            body: vec![Stmt::Expr(Expr::Arrow {
-                params: vec![Param {
-                    pattern: Pattern::Identifier("x".into()),
-                    default: Some(Expr::Binary {
-                        op: BinaryOp::Mul,
-                        left: Box::new(Expr::Binary { op: BinaryOp::Add, left: Box::new(Expr::Number(1.0)), right: Box::new(Expr::Number(2.0)) }),
-                        right: Box::new(Expr::Number(3.0)),
-                    }),
-                    rest: false,
-                }],
-                body: ArrowBody::Expr(Box::new(Expr::Identifier("x".into()))),
-            })],
-        });
+        assert_eq!(
+            parse("(x=((1+2)*3))=>x").unwrap(),
+            Program {
+                body: vec![Stmt::Expr(Expr::Arrow {
+                    params: vec![Param {
+                        pattern: Pattern::Identifier("x".into()),
+                        default: Some(Expr::Binary {
+                            op: BinaryOp::Mul,
+                            left: Box::new(Expr::Binary { op: BinaryOp::Add, left: Box::new(Expr::Number(1.0)), right: Box::new(Expr::Number(2.0)) }),
+                            right: Box::new(Expr::Number(3.0)),
+                        }),
+                        rest: false,
+                    }],
+                    body: ArrowBody::Expr(Box::new(Expr::Identifier("x".into()))),
+                })],
+            }
+        );
         assert!(parse("(x=((1+2)*3)=>x").is_err());
     }
 
@@ -1463,7 +1566,11 @@ mod tests {
                 vec![VarDeclarator {
                     pattern: Pattern::Object(vec![
                         ObjectPatternProp::KeyValue { key: PropertyKey::Identifier("a".to_string()), value: Pattern::Identifier("a".to_string()), default: None },
-                        ObjectPatternProp::KeyValue { key: PropertyKey::Identifier("b".to_string()), value: Pattern::Identifier("renamed".to_string()), default: Some(Expr::Number(1.0)) },
+                        ObjectPatternProp::KeyValue {
+                            key: PropertyKey::Identifier("b".to_string()),
+                            value: Pattern::Identifier("renamed".to_string()),
+                            default: Some(Expr::Number(1.0))
+                        },
                         ObjectPatternProp::Rest(Pattern::Identifier("rest".to_string())),
                     ]),
                     init: Some(Expr::Identifier("obj".to_string())),
@@ -1491,7 +1598,13 @@ mod tests {
     fn parses_var_let_const_with_multiple_declarators() {
         assert_eq!(
             only_stmt("var a = 1, b = 2;"),
-            Stmt::VarDecl(DeclKind::Var, vec![VarDeclarator { pattern: Pattern::Identifier("a".to_string()), init: Some(Expr::Number(1.0)) }, VarDeclarator { pattern: Pattern::Identifier("b".to_string()), init: Some(Expr::Number(2.0)) }])
+            Stmt::VarDecl(
+                DeclKind::Var,
+                vec![
+                    VarDeclarator { pattern: Pattern::Identifier("a".to_string()), init: Some(Expr::Number(1.0)) },
+                    VarDeclarator { pattern: Pattern::Identifier("b".to_string()), init: Some(Expr::Number(2.0)) }
+                ]
+            )
         );
         assert_eq!(only_stmt("let x;"), Stmt::VarDecl(DeclKind::Let, vec![VarDeclarator { pattern: Pattern::Identifier("x".to_string()), init: None }]));
     }
@@ -1546,11 +1659,19 @@ mod tests {
     fn parses_for_in_and_for_of() {
         assert_eq!(
             only_stmt("for (let k in obj) {}"),
-            Stmt::ForIn { left: ForHead::Decl(DeclKind::Let, Pattern::Identifier("k".to_string())), right: Expr::Identifier("obj".to_string()), body: Box::new(Stmt::Block(vec![])) }
+            Stmt::ForIn {
+                left: ForHead::Decl(DeclKind::Let, Pattern::Identifier("k".to_string())),
+                right: Expr::Identifier("obj".to_string()),
+                body: Box::new(Stmt::Block(vec![]))
+            }
         );
         assert_eq!(
             only_stmt("for (const item of items) {}"),
-            Stmt::ForOf { left: ForHead::Decl(DeclKind::Const, Pattern::Identifier("item".to_string())), right: Expr::Identifier("items".to_string()), body: Box::new(Stmt::Block(vec![])) }
+            Stmt::ForOf {
+                left: ForHead::Decl(DeclKind::Const, Pattern::Identifier("item".to_string())),
+                right: Expr::Identifier("items".to_string()),
+                body: Box::new(Stmt::Block(vec![]))
+            }
         );
         assert_eq!(
             only_stmt("for (x of items) {}"),
@@ -1584,14 +1705,21 @@ mod tests {
         );
         assert_eq!(
             only_stmt("try { a; } catch { b; }"),
-            Stmt::Try { block: vec![Stmt::Expr(Expr::Identifier("a".to_string()))], handler: Some(CatchClause { param: None, body: vec![Stmt::Expr(Expr::Identifier("b".to_string()))] }), finalizer: None }
+            Stmt::Try {
+                block: vec![Stmt::Expr(Expr::Identifier("a".to_string()))],
+                handler: Some(CatchClause { param: None, body: vec![Stmt::Expr(Expr::Identifier("b".to_string()))] }),
+                finalizer: None
+            }
         );
         assert!(parse("try { a; }").is_err());
     }
 
     #[test]
     fn parses_throw_and_forbids_newline_before_its_expression() {
-        assert_eq!(only_stmt("throw new Error(\"x\");"), Stmt::Throw(Expr::New { callee: Box::new(Expr::Identifier("Error".to_string())), args: vec![Argument::Normal(Expr::String("x".into()))] }));
+        assert_eq!(
+            only_stmt("throw new Error(\"x\");"),
+            Stmt::Throw(Expr::New { callee: Box::new(Expr::Identifier("Error".to_string())), args: vec![Argument::Normal(Expr::String("x".into()))] })
+        );
         assert!(parse("throw\nnew Error(\"x\");").is_err());
     }
 
@@ -1601,7 +1729,10 @@ mod tests {
         assert_eq!(p.body.len(), 2);
         // return with a newline before the value returns nothing, and
         // the value becomes its own separate expression statement.
-        assert_eq!(only_stmt("function f() { return\n1; }"), Stmt::FunctionDecl(Function { name: Some("f".to_string()), params: vec![], body: vec![Stmt::Return(None), Stmt::Expr(Expr::Number(1.0))] }));
+        assert_eq!(
+            only_stmt("function f() { return\n1; }"),
+            Stmt::FunctionDecl(Function { name: Some("f".to_string()), params: vec![], body: vec![Stmt::Return(None), Stmt::Expr(Expr::Number(1.0))] })
+        );
     }
 
     #[test]
@@ -1653,9 +1784,15 @@ mod tests {
         // `.default`/`.in`/etc. are ordinary property accesses in real
         // ECMAScript (keywords are only reserved as *identifiers*, not
         // as property names) -- exercises `keyword_as_str` broadly.
-        assert_eq!(expr("obj.default"), Expr::Member { object: Box::new(Expr::Identifier("obj".to_string())), property: Box::new(Expr::Identifier("default".to_string())), computed: false });
+        assert_eq!(
+            expr("obj.default"),
+            Expr::Member { object: Box::new(Expr::Identifier("obj".to_string())), property: Box::new(Expr::Identifier("default".to_string())), computed: false }
+        );
         assert_eq!(expr("obj.in"), Expr::Member { object: Box::new(Expr::Identifier("obj".to_string())), property: Box::new(Expr::Identifier("in".to_string())), computed: false });
-        assert_eq!(expr("obj.function"), Expr::Member { object: Box::new(Expr::Identifier("obj".to_string())), property: Box::new(Expr::Identifier("function".to_string())), computed: false });
+        assert_eq!(
+            expr("obj.function"),
+            Expr::Member { object: Box::new(Expr::Identifier("obj".to_string())), property: Box::new(Expr::Identifier("function".to_string())), computed: false }
+        );
         assert_eq!(
             expr("{default: 1, case: 2, new: 3}"),
             Expr::Object(vec![
@@ -1706,7 +1843,10 @@ mod tests {
     #[test]
     fn parses_every_equality_relational_additive_and_multiplicative_operator() {
         assert_eq!(expr("a != b"), Expr::Binary { op: BinaryOp::NotEq, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) });
-        assert_eq!(expr("a !== b"), Expr::Binary { op: BinaryOp::StrictNotEq, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) });
+        assert_eq!(
+            expr("a !== b"),
+            Expr::Binary { op: BinaryOp::StrictNotEq, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) }
+        );
         assert_eq!(expr("a > b"), Expr::Binary { op: BinaryOp::Gt, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) });
         assert_eq!(expr("a <= b"), Expr::Binary { op: BinaryOp::LtEq, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) });
         assert_eq!(expr("a >= b"), Expr::Binary { op: BinaryOp::GtEq, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) });
@@ -1791,7 +1931,10 @@ mod tests {
 
     #[test]
     fn for_in_without_a_declaration_keyword_uses_the_existing_variable() {
-        assert_eq!(only_stmt("for (k in obj) {}"), Stmt::ForIn { left: ForHead::Pattern(Pattern::Identifier("k".to_string())), right: Expr::Identifier("obj".to_string()), body: Box::new(Stmt::Block(vec![])) });
+        assert_eq!(
+            only_stmt("for (k in obj) {}"),
+            Stmt::ForIn { left: ForHead::Pattern(Pattern::Identifier("k".to_string())), right: Expr::Identifier("obj".to_string()), body: Box::new(Stmt::Block(vec![])) }
+        );
     }
 
     #[test]
@@ -1807,6 +1950,13 @@ mod tests {
         // Exercises `matching_close_paren` finding a real match with no
         // trailing `=>`, so the parenthesized form falls through to an
         // ordinary grouped expression instead.
-        assert_eq!(expr("(1 + 2) * 3"), Expr::Binary { op: BinaryOp::Mul, left: Box::new(Expr::Binary { op: BinaryOp::Add, left: Box::new(Expr::Number(1.0)), right: Box::new(Expr::Number(2.0)) }), right: Box::new(Expr::Number(3.0)) });
+        assert_eq!(
+            expr("(1 + 2) * 3"),
+            Expr::Binary {
+                op: BinaryOp::Mul,
+                left: Box::new(Expr::Binary { op: BinaryOp::Add, left: Box::new(Expr::Number(1.0)), right: Box::new(Expr::Number(2.0)) }),
+                right: Box::new(Expr::Number(3.0))
+            }
+        );
     }
 }

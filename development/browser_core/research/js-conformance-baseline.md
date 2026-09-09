@@ -15,3 +15,10 @@ The float midpoint implementation compares exact integer ratios, never equality 
 ## Verification boundaries
 
 Use public `parse -> compile -> Vm::execute` regressions, including malformed escapes and fixed expected decimal boundaries. The opt-in Node.js oracle provides an independent compatibility check with broader deterministic float samples; it is neither the specification nor a runtime dependency. Record its installed version with validation results. A 100% line-coverage report does not establish full ECMAScript conformance, branch coverage, Test262 completion or support for currently deferred language features.
+
+
+## String protocol completion review — 2026-09-09
+
+The [String implementation record](../phase-13-bluejs-engine/STRING_BUILTINS.md) documents the implementation, dependency decisions and tests. Review used the published edition-17 [text-processing algorithms](https://tc39.es/ecma262/2026/multipage/text-processing.html), ordinary/String property semantics and abstract conversion operations. RegExp `@@match`/`@@replace` use the `flags` getter in this edition. Node 24's older custom-receiver behavior is checked separately, so a Node difference never silently changes the edition target. Species construction precedes flag access for `@@matchAll`/`@@split`.
+
+Locale methods implement the ECMA-262 non-402 contract: fixed root collation with canonical equivalence and default Unicode casing, ignoring reserved locale/options parameters. Intl/ECMA-402 remains separate. Function stringification retains builtin initial names and chooses the permitted [HostHasSourceTextAvailable](https://tc39.es/ecma262/2026/multipage/fundamental-objects.html#sec-hosthassourcetextavailable) false policy for compiled functions; exact source text is not retained. RegExp matching uses a standalone Rust algorithm dependency, with no claimed hard timeout or full Test262 result.

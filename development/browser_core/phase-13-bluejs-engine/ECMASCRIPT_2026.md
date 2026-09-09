@@ -12,17 +12,17 @@ Full completion requires an audited clause/feature inventory, a pinned Test262 r
 
 | Workstream | Current state / remaining work |
 | --- | --- |
-| Source grammar (§§11–16) | Existing subset parser; close numeric/whitespace/short-circuit gaps first. Unicode identifiers and escapes, all operators, labels, strict-mode early errors, regex lexical goals, classes/private names, generators, async and modules remain. |
-| Values/conversions (§§6–7) | Basic primitives, Number conversions and lossless UTF-16 strings/property names exist. String boxing is implemented; BigInt, Symbol keys, remaining boxing, callable ToPrimitive and other abstract operations remain. |
-| Environments/execution (§§8–10, 14–16) | Slot-based scripts/blocks/loops with TDZ and native calls/receivers exist. Persistent globals, user call frames/closures/`this`, arguments, eval, general constructors, abrupt completions, per-iteration captured environments and module records remain. |
-| Object semantics (§§6, 10) | Ordinary data properties, prototypes, sparse arrays, native callable objects, boxed String virtual properties and GC exist. General descriptors/accessors/extensibility, user/bound/proxy functions, complete exotic algorithms and remaining internal methods remain. |
-| Fundamental and numeric builtins (§§18–21) | Ambient undefined/NaN/Infinity only. Global functions, Object/Function/Boolean/Symbol/Error, Number/BigInt/Math/Date and all prototypes remain. |
-| Text/indexed/collections (§§22–24) | UTF-16 literals and many String builtins now run; see the [complete String work inventory](STRING_BUILTINS.md). RegExp/Symbol/locale-dependent String methods, Array methods, typed arrays, keyed/weak collections and iterator helpers remain. |
-| Structured/control/reflection (§§25–28) | ArrayBuffer/DataView/Atomics/JSON, promises/jobs/generators/async, resource-management objects, WeakRef/finalization, Reflect/Proxy and module namespaces remain. |
-| Memory model and annexes (§29, A–F) | Shared-memory semantics, host-agent applicability, normative-optional/legacy browser requirements and edition-specific amendments need implementation/audit. |
-| Conformance infrastructure | Fixed public regressions and opt-in Node oracle exist. Full CLI/host harness, edition-pinned Test262 inventory and per-feature reporting remain. |
+| Source grammar (§§11–16) | TDZ-related grammar, Number/source corrections, parser-selected regex literals, tagged templates and object methods/accessors exist. Unicode identifiers/escapes, all operators/strict early errors, labels, classes/private names, generators, async and modules remain. |
+| Values/conversions (§§6–7) | UTF-16 strings, Symbol identities/keys, String/Number/Boolean/Symbol boxing and observable ToPrimitive/ToString/ToNumber exist. BigInt and remaining abstract operations remain. |
+| Environments/execution (§§8–10, 14–16) | TDZ slots, compiled functions/arrows/captured cells, this/default/rest parameters, throw propagation, iteration/spread and for-of iterator closing exist. Full parameter/arguments/environments, persistent globals, eval, classes, try/catch/finally and modules remain. |
+| Object semantics (§§6, 10) | Ordinary descriptors/accessors, extensibility storage, String exotics, sparse arrays, user/native callables and GC exist. Bound/proxy objects, complete exotic algorithms and remaining internal methods need conformance work. |
+| Fundamental and numeric builtins (§§18–21) | Object descriptor/key/prototype helpers, partial Function/Number/Boolean/Symbol support and Reflect.construct exist as String dependencies. Complete builtin libraries, Error, BigInt, Math and Date remain. |
+| Text/indexed/collections (§§22–24) | All String method entry points and conversion/callback/RegExp/Symbol/locale/iterator paths are implemented; see the [String inventory](STRING_BUILTINS.md). Full RegExp/Array libraries, typed arrays, collections and iterator helpers remain. |
+| Structured/control/reflection (§§25–28) | Reflect.ownKeys/construct exist. ArrayBuffer/DataView/Atomics/JSON, promises/jobs/generators/async, resource-management objects, WeakRef/finalization, full Reflect/Proxy and module namespaces remain. |
+| Memory model and annexes (§29, A–F) | Annex B String extensions are included. Shared-memory semantics, host-agent applicability and remaining normative-optional/legacy requirements need implementation/audit. |
+| Conformance infrastructure | Public regressions, a 100% line gate and a 21,261-script Node oracle exist. Full CLI/host harness, edition-pinned Test262 inventory and per-feature reporting remain. |
 
-This is a workstream inventory, not yet a complete clause-by-clause audit. UTF-16 storage and native call dispatch are now available; the complete String request still needs user callables/coercion, Symbol/RegExp/iteration, locale policy and descriptor work.
+This is a workstream inventory, not a complete clause-by-clause audit. The [String implementation and dependency record](STRING_BUILTINS.md) distinguishes the implemented surface and observed protocols from edition-wide conformance and documents native matcher resource limits.
 
 ## Second slice: lossless UTF-16 storage
 

@@ -142,7 +142,7 @@ fn invalid_runtime_lengths_report_range_errors_and_vm_remains_reusable() {
         assert!(matches!(vm.execute(&compile(&parse(source).unwrap()).unwrap()), Err(RuntimeError::RangeError(_))), "{source}");
         assert_eq!(vm.execute(&compile(&parse("[3][0]").unwrap()).unwrap()).unwrap(), Value::Number(3.0));
     }
-    assert!(matches!(evaluate("let a=[]; a.length={}"), Err(RuntimeError::Unsupported(_))));
+    assert!(matches!(evaluate("let a=[]; a.length={}"), Err(RuntimeError::RangeError(_))));
 }
 
 #[test]
@@ -277,10 +277,8 @@ fn new_array_encoding_and_runtime_error_boundaries_are_observable() {
     assert_eq!(instruction.opcode.width(), 5);
     assert_eq!(instruction.operand, Some(3));
     assert_eq!(&code.bytes()[instruction.offset + 1..instruction.offset + 5], &3u32.to_le_bytes());
-    assert_eq!(code.instructions().filter(|instruction| instruction.opcode == Opcode::SetProperty).count(), 1);
-    for source in ["[...[]]", "if(false){[...[]]}", "let [a]=[1]", "for(let x of []){}"] {
-        assert!(matches!(compile(&parse(source).unwrap()), Err(CompileError::Unsupported(_))), "{source}");
-    }
+    assert_eq!(code.instructions().filter(|instruction| instruction.opcode == Opcode::DefineData).count(), 1);
+    assert!(matches!(compile(&parse("let [a]=[1]").unwrap()), Err(CompileError::Unsupported(_))));
     assert!(matches!(evaluate("[].push(1)"), Err(RuntimeError::TypeError(_))));
     assert!(matches!(evaluate("new Array(2)"), Err(RuntimeError::ReferenceError(_))));
     let error = evaluate("let a=[];a.length=-1").unwrap_err();

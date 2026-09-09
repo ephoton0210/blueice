@@ -1,58 +1,69 @@
 # String builtins — ECMAScript 2026
 
-Requested 2026-09-09: implement the **complete** String builtin surface, not just storage. Status: **in progress**. The UTF-16 migration is a prerequisite, not the completion criterion. Follow the [edition 17 track](ECMASCRIPT_2026.md), public-pipeline TDD and 100% BlueJS line gate.
+Requested 2026-09-09: implement the complete String builtin surface. The constructor, three statics, all **35 core prototype methods** and **16 Annex B properties** (14 methods and two identity aliases) now have implementations, including their conversion, callback, Symbol, RegExp and iterator paths. This is a String implementation within BlueJS's supported runtime, not a completed edition-wide or Test262 conformance claim. Follow the [edition 17 track](ECMASCRIPT_2026.md).
 
-## Authoritative inventory
+## Project and recent commit analysis
 
-The published [§22.1 String Objects](https://262.ecma-international.org/17.0/#sec-string-objects) inventory was fetched on 2026-09-09. Read each algorithm before implementing it. The constructor, static methods, indexing, concatenation, searching, slicing and well-formedness clauses were also read that day. Other rows require their own algorithm review before implementation.
+BlueIce owns its browser pipeline in Rust. `backend/bluejs` is its independent JavaScript library: source → tokenizer/parser → AST → fixed-width bytecode → VM, with a heap of stable handles and nursery/tenured garbage collection. Browser process/DOM integration remains a separate Phase 13 task.
 
-| Area | Required surface / dependencies |
+| Commit | Foundation used by this change |
 | --- | --- |
-| Constructor/statics | `String`, `new String`, `fromCharCode`, `fromCodePoint`, `raw`, constructor/prototype links |
-| Indexed access | `length`, indexed properties, `at`, `charAt`, `charCodeAt`, `codePointAt` |
-| Search/slice | `endsWith`, `includes`, `indexOf`, `lastIndexOf`, `startsWith`, `slice`, `substring` |
-| Build/trim | `concat`, `padEnd`, `padStart`, `repeat`, `trim`, `trimEnd`, `trimStart` |
-| Unicode/value | `isWellFormed`, `toWellFormed`, `normalize`, `toLowerCase`, `toUpperCase`, `toString`, `valueOf` |
-| Locale | `localeCompare`, `toLocaleLowerCase`, `toLocaleUpperCase`; distinguish ECMA-262's non-402 behavior from the separate ECMA-402 project |
-| Replacement/splitting | `replace`, `replaceAll`, `split`, substitution patterns, callable replacement and symbol dispatch |
-| RegExp | `match`, `matchAll`, `search`, RegExp integration for replacement/split, IsRegExp and symbol hooks |
-| Iteration | `[Symbol.iterator]`, String iterator objects/prototype and code-point iteration |
-| Legacy/browser | Audit edition 17 Annex B String extensions, HTML wrappers, `substr`, `trimLeft`/`trimRight` aliases and applicability |
-| Cross-cutting | Generic receivers, object coercion/error ordering, native function metadata/descriptors, boxed String exotic properties, strict/sloppy writes, constructors/subclassing, realms, GC and bounded allocation |
+| `76e001e` | UTF-16 strings, boxed String exotic properties, native calls and 28/35 core String methods |
+| `ed814bc` | TDZ, ECMAScript 2026 lexical corrections, source newline and numeric rules |
+| `fcc3126` | Conformance regressions, Node oracle and mandatory 100% BlueJS line coverage |
+| `6f88756` | Sparse arrays, virtual length, holes and truncation |
+| `1321d26` | Compiler and bounded bytecode VM |
+| `fb48e83` | Ordinary objects, prototypes, roots and generational GC |
 
-## Execution design
+The missing String methods required runtime capabilities, not just new names in a builtin table. The implementation extends this compiler/VM/heap path without embedding another JavaScript engine.
 
-Add native function identities to heap-owned objects, not ad-hoc AST recognizers for named String calls. Extend fixed-width bytecode with calls that evaluate the receiver/callee before arguments, retain `this` for member calls and keep all call inputs rooted through allocation. Locals may shadow the global `String`; detached methods and borrowed methods must use their actual receiver. Initialize String intrinsics lazily per VM so scripts not using them retain their existing small-heap footprint. Temporarily root the graph while building it and keep that root permanently only after successful bootstrap; failed setup must not leak registrations. All growing bootstrap stores must additionally root VM-held values. Intrinsics live for the VM lifetime, while execution bindings are currently reset per `execute`; this is not a complete realm/global-environment implementation.
+## Implemented inventory
 
-Keep UTF-16 in all algorithms. Check resulting sizes before repeating/padding/concatenating allocations. User-defined functions, RegExp, Symbol dispatch, Unicode data and full descriptors are genuine dependencies in the inventory, not blanket exclusions from the request. Record completed methods and remaining semantic gaps separately: mere presence of a callable property or passing selected primitive cases does not count as full method conformance.
+| Area | Surface and semantics |
+| --- | --- |
+| Constructor/statics | `String`, `new String`, `fromCharCode`, `fromCodePoint`, `raw`; constructor/prototype links; primitive Symbol special case; `Reflect.construct` custom target prototypes |
+| Indexed access | UTF-16 `length`, indexed properties, `at`, `charAt`, `charCodeAt`, `codePointAt`; read-only/non-configurable String indices and length |
+| Search/slice | `endsWith`, `includes`, `indexOf`, `lastIndexOf`, `startsWith`, `slice`, `substring`; IsRegExp and observable conversion order |
+| Build/trim | `concat`, `padEnd`, `padStart`, `repeat`, `trim`, `trimEnd`, `trimStart`; growth checks and empty-result boundaries |
+| Unicode/value | `isWellFormed`, `toWellFormed`, four normalization forms, default case conversion, `toString`, `valueOf`; lone surrogate preservation and brand checks |
+| Locale | `localeCompare`, `toLocaleLowerCase`, `toLocaleUpperCase`, using the non-ECMA-402 contract below |
+| Patterns | `match`, `matchAll`, `search`, `replace`, `replaceAll`, `split`; five Symbol hooks, callable replacements, generic/custom exec results and global-pattern checks |
+| Iteration | String, Array and RegExp String iterators; code-point advancement, spread, `for…of`, iterator identity and abrupt loop closing |
+| Templates | Tagged-template syntax, cooked/raw values, invalid tagged escapes, frozen cached template arrays, parser-selected RegExp lexical goals inside placeholders |
+| Legacy/browser | `substr`, all 13 HTML wrappers, quotation-mark escaping, `trimLeft`/`trimRight` identity aliases |
+| Dependencies | Compiled functions/arrows, captured binding cells, `this`, default/rest parameters, calls/apply, throw propagation, Symbol keys, descriptors/accessors, strict/sloppy writes/deletes, primitive boxing and observable ToPrimitive |
 
-### Unicode implementation decision
+`property.rs` defines public `JsSymbol`, `PropertyName` and partial `PropertyDescriptor`. Existing string-only `Heap::own_keys` remains available; `own_property_keys` includes Symbols. The heap stores/traces descriptors without calling JavaScript; the VM handles getters, setters and coercions. Primitive String setters receive the original primitive receiver. Array conversion observes `join`; cyclic array joins terminate. Native function stringification uses immutable initial names. Compiled functions use the permitted `HostHasSourceTextAvailable = false` policy and produce NativeFunction syntax rather than retained source text.
 
-On 2026-09-09, Unicode's [latest published version](https://www.unicode.org/versions/latest/) resolves to **17.0.0**. Edition 17 §22.1.3.15 requires normalization according to the latest Unicode standard. Use `unicode-normalization` **0.1.25**, whose [upstream release](https://github.com/unicode-rs/unicode-normalization/commits) updates its tables to Unicode 17; this is a text algorithm/data dependency, not an embedded JS runtime. Rust's default case conversion supplies Unicode casing, with its Unicode version asserted by tests. Process well-formed runs independently and preserve lone surrogate code units as boundaries; neither casing nor normalization repairs them. Output growth is checked as transformed code points are appended. Locale-specific behavior and ECMA-402 are not inferred from these locale-insensitive operations.
+## RegExp and locale decisions
 
-Also read on 2026-09-09: §20.2.3.3 `Function.prototype.call`; §22.1.3 padding/repeat/trim, `String.raw`, string-search `split`/`replace`/`replaceAll` and GetSubstitution, casing/normalization/locale method requirements; Annex B `substr`, CreateHTML/all 13 HTML wrappers, and [trimLeft](https://262.ecma-international.org/17.0/#String.prototype.trimleft)/[trimRight](https://262.ecma-international.org/17.0/#String.prototype.trimright) identity aliases.
+`regress` **0.12.0**, with its `utf16` feature, supplies standalone ECMAScript pattern compilation/matching, including `d g i m s u v y` flags, captures, named groups, backreferences, lookarounds and Unicode sets/properties. BlueJS owns the constructor/prototype, `lastIndex`, sticky/global execution, UTF-16 indices, capture result objects, species construction, replacement and split algorithms. Named indices reference the same pair arrays as numbered indices, including nested captures with identical ranges and duplicate names in alternatives.
 
-## Implemented foundation and remaining completion requirements
+`unicode-normalization` **0.1.25** and Rust casing use Unicode **17.0.0**, asserted by tests. Well-formed runs are transformed independently; lone surrogates remain boundaries. `icu_collator` **2.2.0** supplies fixed root collation with canonical equivalence. Under ECMA-262's non-402 contract, locale methods use this fixed default and ignore reserved locale/options arguments; locale casing uses default Unicode mappings. `Intl`, locale negotiation and locale-specific ECMA-402 behavior are not implemented by this change.
 
-The runtime now has `String(...)`, `new String(...)`, all three static method entry points and **28 of the 35 core prototype method entry points**, plus the **16 Annex B properties** (14 methods and two identity aliases). Counts describe the callable surface, not full conformance of each method.
+Reviewed primary algorithms on 2026-09-09: [edition 17 String/RegExp objects, GetSubstitution and iterator algorithms](https://tc39.es/ecma262/2026/multipage/text-processing.html), [String exotic and ordinary property algorithms](https://tc39.es/ecma262/2026/multipage/ordinary-and-exotic-objects-behaviours.html), [conversion/property operations](https://tc39.es/ecma262/2026/multipage/abstract-operations.html), [Function stringification and HostHasSourceTextAvailable](https://tc39.es/ecma262/2026/multipage/fundamental-objects.html#sec-function.prototype.tostring), and [Annex B String extensions](https://262.ecma-international.org/17.0/#sec-additional-properties-of-the-string.prototype-object).
 
-- UTF-16 `length`/index reads, `at`, `charAt`, `charCodeAt`, `codePointAt`; boxed String storage with virtual read-only/non-configurable indices and length.
-- `concat`, `endsWith`, `includes`, `indexOf`, `lastIndexOf`, `startsWith`, `slice`, `substring`, padding/repetition and all three trim methods.
-- `isWellFormed`, `toWellFormed`, all four normalization forms, default Unicode case conversion, `toString`/`valueOf` brand checks.
-- `String.raw` for supported array-like inputs, String-search splitting/replacement, `$$`/`$&`/prefix/suffix substitutions, native-function replacement callbacks. Unknown capture patterns remain literal for String searches, as required.
-- Annex B `substr` and HTML wrappers, escaping only quotation marks in attribute values; trim aliases share the original function object/name.
-- Heap-owned native function identities, compiler `GlobalString`/`GetMethod`/`Call`/`Construct` instructions, `this`-preserving member calls, generic primitive receivers through `.call`, string-size checks, GC rooting and native raw/split/replace loop fuel. Existing compiled-byte limits cover new call/construct instructions too.
+Edition 17 RegExp `@@match` and `@@replace` read `flags`; Node 24 still reads the older `global`/`unicode` properties on custom receivers. `edition_17_regexp_flags_and_species_order_are_observable` asserts the published algorithm separately and is intentionally absent from the Node corpus. SpeciesConstructor resolution precedes the flags getter for `@@matchAll` and `@@split`.
 
-**Not complete:** seven core method entry points are still absent: `localeCompare`, `toLocaleLowerCase`, `toLocaleUpperCase`, `match`, `matchAll`, `search`, and `[Symbol.iterator]`. They require locale policy/collation, RegExp and Symbol/iterator support. Unicode normalization and default case conversion do not substitute for locale semantics.
+## Resources and remaining conformance scope
 
-Cross-cutting gaps also remain for methods already present: full callable `ToPrimitive`/object argument coercion; observable overrides on boxed Strings (the current path directly unboxes); user-defined replacement functions; `IsRegExp` and symbol protocol hooks; native function/property descriptors (current stored metadata/method properties still have ordinary data-property attributes); strict-mode write behavior, complete Function intrinsics and general constructor/subclass/realm semantics. `String.raw` does not yet have tagged-template syntax. Resource ceilings are implementation limits, not a substitute for spec error categories; byte/heap budgets are not RSS limits, and dispatch fuel is not a hard native-work/wall-clock bound. These gaps remain part of the user's complete-String request.
+Intrinsics initialize lazily per VM, remain rooted after successful setup and roll back failed bootstrap edges. Closures, captures, iterators, descriptor values/accessors and thrown objects participate in GC rooting. A thrown or returned object survives until the next `execute`; execution bindings are fresh each time. Nested functions share the compiled instruction-byte budget. Dispatch, native loops and callbacks consume fuel; runtime calls have a 32-frame depth limit returning RangeError.
 
-### Test-content review
+The heap budget accounts for managed records, UTF-16 payloads, keys/descriptors and internal capture/name data, not allocator capacity, compiled regex code, bytecode/AST storage or total RSS. The string limit bounds each runtime string. **Regress does not expose a matcher step budget or hard timeout: a single backtracking match or compilation is not bounded by VM instruction fuel.** Template placeholder extraction validates successive closing-brace candidates with the expression parser; source parsing is not covered by VM execution fuel. These are explicit resource limits, not language conformance exceptions.
 
-Seven storage tests and twelve builtin integration tests drive public APIs. Review added exact UTF-16 payload accounting, distinct surrogate keys and old-to-young edges, boxed-vs-array virtual-property behavior, surrogate-splitting indices/padding, contextual casing, canonical/compatibility normalization, assignment/call evaluation order, prefix/suffix replacement patterns, empty searches/separators, signed/infinite/fractional positions, primitive borrowing, bootstrap retries at six heap ceilings, native-loop limits and repeated execution. The GC pressure test found a real missing-root bug in bootstrap property stores; it failed before all such stores were routed through VM safepoints. Host tests comparing separate VMs compare observable primitive results, never heap-local object IDs.
+Supporting language features remain incomplete: BigInt, classes/super, bound/proxy functions, full argument/environment semantics, try/catch/finally, modules/eval, complete Object/Function/RegExp/Array builtins, multiple realms and persistent global bindings are separate work. Arbitrary programs using those dependencies cannot yet be used to claim complete String/Test262 conformance. RegExp.escape and the complete RegExp Test262 inventory are not part of the String protocol surface implemented here.
 
-The independent oracle now transmits result strings as exact UTF-16 code units. It tests all 2,048 lone surrogates via both escapes and `fromCharCode`, plus 1,430 generated position/search cases and 128 additional fixed scripts. Review also caught cross-fixture prototype contamination after intrinsics became mutable: a two-script probe failed before the harness changed from reusing one VM to creating a fresh VM per script, matching Node's fresh realm.
+## Test review and validation
 
-### Validation (2026-09-09)
+Public-pipeline tests cover observable conversion/getter order, Symbol identity and protocol lookup on objects and primitives, native metadata, boxed String descriptors, strict/sloppy operations, replacement callbacks/captures, named index identity, UTF-16 and zero-width matching, custom exec/species, templates, iterator closing, recursion, GC pressure and bootstrap retries across allocation ceilings. Heap tests cover descriptor transitions, non-extensibility, accessor tracing and partial array truncation. The dedicated test review found and fixed missing roots, bootstrap leaks, primitive protocol lookup, array join overrides, template/RegExp brace parsing, iterator unwinding and array length descriptor conversion.
 
-`cargo llvm-cov -p blueice-bluejs --fail-under-lines 100 --summary-only -- --quiet` passes: **3,562/3,562 lines (100%)**, 394/394 functions, 95.69% regions, with no engine-file exclusions. **174 default unit/integration tests** and two doc examples pass. Node.js **v24.18.0** (Unicode 17.0, ICU 78.3) passes **16,498 isolated scripts**. Workspace all-target build/Clippy (`-D warnings`), full workspace tests, crate rustdoc and the array-summing example pass. Workspace real-socket tests ran outside the socket-restricted sandbox; the final byte-budget test extension, oracle-isolation fix and widened String key-sort indices were validated by the subsequent BlueJS gate/oracle and workspace Clippy (the key-sort-only change followed the oracle run). Full workspace coverage was not rerun. **Neither complete String support nor complete ECMAScript conformance is claimed.**
+The Node oracle uses fresh VMs/realms, hex UTF-8 source transport and exact UTF-16 result transport, with **21,261 isolated scripts** on **Node v24.19.0**: the previous 16,498-script corpus, 227 fixed protocol regressions and 4,536 generated regex/flag/string combinations. Edition-17-only getter tests remain separate.
+
+Final validation on 2026-09-09:
+
+- **204 default unit/integration tests and two doc examples pass.**
+- `cargo llvm-cov -p blueice-bluejs --fail-under-lines 100 --summary-only -- --quiet`: **6,072/6,072 lines (100%)**, 636/636 functions, 94.61% regions. No engine files are excluded; line coverage is not full branch or specification coverage.
+- Workspace all-target build, workspace Clippy (`-D warnings`), full workspace tests, crate rustdoc and the array-summing example (`Number(15.0)`) pass. Socket-based workspace tests ran with local socket permissions after sandbox runs reported `Operation not permitted`.
+- The final review extended array-length conversion and nested-function byte budgets; final BlueJS gate/oracle, workspace tests and lint cover those changes. Full workspace coverage was not rerun.
+
+The complete String method surface and tested protocols are implemented. Complete arbitrary-program String/ECMAScript conformance still requires the supporting language work and edition-pinned Test262 audit described above.

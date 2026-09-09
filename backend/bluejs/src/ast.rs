@@ -139,6 +139,7 @@ pub enum UnaryOp {
     Plus,
     Not,
     Typeof,
+    Delete,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -193,6 +194,8 @@ pub enum ArrayElement {
 pub enum ObjectProp {
     KeyValue { key: PropertyKey, value: Expr, shorthand: bool },
     Spread(Expr),
+    Method { key: PropertyKey, function: Function },
+    Accessor { key: PropertyKey, function: Function, getter: bool },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -216,6 +219,8 @@ pub enum Expr {
     This,
     Identifier(String),
     Template { quasis: Vec<JsString>, expressions: Vec<Expr> },
+    TaggedTemplate { tag: Box<Expr>, raw: Vec<JsString>, cooked: Vec<Option<JsString>>, expressions: Vec<Expr> },
+    RegExp { pattern: JsString, flags: JsString },
     Array(Vec<Option<ArrayElement>>),
     Object(Vec<ObjectProp>),
     Function(Function),

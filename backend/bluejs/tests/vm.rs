@@ -104,8 +104,8 @@ fn every_compound_store_and_prototype_literal_form_executes() {
     assert_eq!(evaluate("({__proto__:3}).missing").unwrap(), Value::Undefined);
     assert_eq!(evaluate("let o={x:4}; let old=o; o.x=(o={x:8}); old.x===o").unwrap(), Value::Bool(true));
     assert_eq!(evaluate("'x'.length").unwrap(), Value::Number(1.0));
-    for source in ["({}) < 1", "''+{}", "`${{}}`", "({})[{}]"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::Unsupported(_))), "{source}");
+    for source in ["!(({}) < 1)", "''+{} === '[object Object]'", "`${{}}` === '[object Object]'", "({})[{}] === undefined"] {
+        assert_eq!(evaluate(source).unwrap(), Value::Bool(true), "{source}");
     }
 }
 
@@ -132,7 +132,10 @@ fn heap_errors_release_temporary_roots_and_previous_results_even_on_failure() {
 
 #[test]
 fn configuration_boundaries_and_error_messages_are_observable() {
-    assert!(matches!(Vm::new(VmConfig { heap: HeapConfig { nursery_capacity: 0, ..HeapConfig::default() }, ..VmConfig::default() }), Err(blueice_bluejs::HeapError::InvalidConfig)));
+    assert!(matches!(
+        Vm::new(VmConfig { heap: HeapConfig { nursery_capacity: 0, ..HeapConfig::default() }, ..VmConfig::default() }),
+        Err(blueice_bluejs::HeapError::InvalidConfig)
+    ));
     assert!(matches!(
         Vm::new(VmConfig { heap: HeapConfig { major_threshold_bytes: 1, max_heap_bytes: 1, ..HeapConfig::default() }, ..VmConfig::default() }),
         Err(blueice_bluejs::HeapError::InvalidConfig)
@@ -144,14 +147,14 @@ fn configuration_boundaries_and_error_messages_are_observable() {
         assert_eq!(vm.execute(&compile(&parse(source).unwrap()).unwrap()), Err(RuntimeError::StringLimit { limit: 3 }), "{source}");
     }
     assert_eq!(vm.execute(&compile(&parse("'冰'").unwrap()).unwrap()).unwrap(), Value::String("冰".into()));
-    for source in ["missing", "null.x", "''+{}"] {
+    for source in ["missing", "null.x", "String(Symbol())+Symbol()"] {
         let error = evaluate(source).unwrap_err();
         assert!(!error.to_string().is_empty());
         assert!(std::error::Error::source(&error).is_none());
     }
     assert!(RuntimeError::InstructionLimit.to_string().contains("budget"));
     assert!(RuntimeError::StringLimit { limit: 3 }.to_string().contains('3'));
-    for source in ["let x;let x", "break", "f(...args)"] {
+    for source in ["let x;let x", "break", "let [x]=y"] {
         assert!(!compile(&parse(source).unwrap()).err().unwrap().to_string().is_empty());
     }
 }
@@ -296,28 +299,11 @@ fn object_operations_preserve_identity_and_evaluation_order() {
 
 #[test]
 fn unsupported_syntax_and_invalid_bindings_fail_before_execution() {
-    for source in [
-        "if(false) { function f() {} }",
-        "[...x]",
-        "({ ...x })",
-        "let [x]=y",
-        "f(...args)",
-        "this",
-        "x == 1",
-        "x in y",
-        "x instanceof Y",
-        "for(x of y){}",
-        "for(x in y){}",
-        "switch(x){}",
-        "throw 1",
-        "try {} finally {}",
-        "return 1",
-        "x=1",
-        "let undefined=1",
-    ] {
+    for source in ["({ ...x })", "let [x]=y", "x == 1", "x in y", "x instanceof Y", "for(x of y){}", "for(x in y){}", "switch(x){}", "try {} finally {}", "x=1", "let undefined=1"]
+    {
         assert!(matches!(compile(&parse(source).unwrap()), Err(CompileError::Unsupported(_))), "{source}");
     }
-    for source in ["break", "continue", "let x; let x;", "let x; var x;", "{let x; {var x;}}", "const x;", "if(true) let x=1;", "({__proto__:null,__proto__:null})"] {
+    for source in ["return 1", "break", "continue", "let x; let x;", "let x; var x;", "{let x; {var x;}}", "const x;", "if(true) let x=1;", "({__proto__:null,__proto__:null})"] {
         assert!(compile(&parse(source).unwrap()).is_err(), "{source}");
     }
 }
@@ -325,7 +311,7 @@ fn unsupported_syntax_and_invalid_bindings_fail_before_execution() {
 #[test]
 fn runtime_errors_and_limits_leave_the_vm_reusable() {
     let mut vm = Vm::new(VmConfig { instruction_budget: 1000, max_string_bytes: 128, ..VmConfig::default() }).unwrap();
-    for source in ["missing", "const x=1; x++", "null.x", "({}) + 1", "while(true) {}", "let s='x'; while(true){s+=s;}"] {
+    for source in ["missing", "const x=1; x++", "null.x", "String({toString:1,valueOf:2})", "while(true) {}", "let s='x'; while(true){s+=s;}"] {
         assert!(vm.execute(&compile(&parse(source).unwrap()).unwrap()).is_err(), "{source}");
         assert_eq!(vm.execute(&compile(&parse("40+2").unwrap()).unwrap()).unwrap(), Value::Number(42.0));
     }

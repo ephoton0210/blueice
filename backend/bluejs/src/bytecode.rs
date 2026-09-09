@@ -74,6 +74,24 @@ opcodes! {
     GetMethod: 1, MAY_USE_INLINE_CACHE;
     Call: 5, 0;
     Construct: 5, 0;
+    Closure: 5, 0;
+    This: 1, 0;
+    Argument: 5, 0;
+    RestArguments: 5, 0;
+    Return: 1, 0;
+    Global: 5, 0;
+    ToPropertyKey: 1, 0;
+    GetIterator: 1, 0;
+    IteratorStep: 5, 0;
+    IteratorClose: 1, 0;
+    RegExpLiteral: 1, 0;
+    TemplateObject: 5, 0;
+    ArrayPush: 5, 0;
+    CallSpread: 5, 0;
+    Throw: 1, 0;
+    DefineData: 1, 0;
+    DefineAccessor: 5, 0;
+    DeleteProperty: 1, 0;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,25 +101,55 @@ pub struct Instruction {
     pub operand: Option<u32>,
 }
 
+#[derive(Clone)]
 pub(crate) struct Binding {
     pub name: String,
     pub mutable: bool,
     pub lexical: bool,
 }
 
+#[derive(Clone)]
+pub(crate) struct TemplateSite {
+    pub id: u64,
+    pub raw: Vec<crate::JsString>,
+    pub cooked: Vec<Option<crate::JsString>>,
+}
+
 /// Read-only compiled code plus its constant pool and binding/scope
 /// metadata. Can execute repeatedly in the same or independent VMs;
 /// runtime object handles are never stored in its constant pool.
+#[derive(Clone)]
 pub struct Bytecode {
     pub(crate) code: Vec<u8>,
     pub(crate) constants: Vec<Value>,
     pub(crate) bindings: Vec<Binding>,
     pub(crate) scopes: Vec<Vec<u32>>,
+    pub(crate) functions: Vec<std::rc::Rc<Bytecode>>,
+    pub(crate) captures: Vec<u32>,
+    pub(crate) function_name: String,
+    pub(crate) function_length: u32,
+    pub(crate) arrow: bool,
+    pub(crate) constructible: bool,
+    pub(crate) strict: bool,
+    pub(crate) templates: Vec<TemplateSite>,
 }
 
 impl Bytecode {
     pub(crate) fn empty() -> Self {
-        Self { code: Vec::new(), constants: Vec::new(), bindings: Vec::new(), scopes: Vec::new() }
+        Self {
+            code: Vec::new(),
+            constants: Vec::new(),
+            bindings: Vec::new(),
+            scopes: Vec::new(),
+            functions: Vec::new(),
+            captures: Vec::new(),
+            function_name: String::new(),
+            function_length: 0,
+            arrow: false,
+            constructible: false,
+            strict: false,
+            templates: Vec::new(),
+        }
     }
 
     pub fn bytes(&self) -> &[u8] {

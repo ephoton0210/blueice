@@ -7,7 +7,7 @@
 //! references or reference-counted cycles. Strings preserve UTF-16 code
 //! units throughout parsing, execution and property storage.
 
-use crate::JsString;
+use crate::{JsString, JsSymbol};
 
 /// An opaque object identity. The heap identity prevents a handle from
 /// another (even already-dropped) heap aliasing one of this heap's
@@ -30,6 +30,7 @@ pub enum Value {
     Bool(bool),
     Number(f64),
     String(JsString),
+    Symbol(JsSymbol),
     Object(ObjectId),
 }
 
@@ -44,6 +45,7 @@ impl Value {
     pub(crate) fn payload_bytes(&self) -> usize {
         match self {
             Value::String(s) => s.byte_len(),
+            Value::Symbol(s) => s.description.as_ref().map_or(0, JsString::byte_len),
             _ => 0,
         }
     }

@@ -78,9 +78,12 @@ fn searching_and_well_formedness_preserve_surrogate_boundaries() {
 
 #[test]
 fn calls_preserve_receivers_shadowing_and_evaluation_order() {
-    for source in
-        ["let o={s:'abc'.slice}; o.s.call('abcd',1,3) === 'bc'", "String.prototype.charAt.call(123,1) === '2'", "let f=String; {let String=3; f(42) === '42'}", "let s='abcd'; s.slice(s=1) === 'bcd'"]
-    {
+    for source in [
+        "let o={s:'abc'.slice}; o.s.call('abcd',1,3) === 'bc'",
+        "String.prototype.charAt.call(123,1) === '2'",
+        "let f=String; {let String=3; f(42) === '42'}",
+        "let s='abcd'; s.slice(s=1) === 'bcd'",
+    ] {
         assert_eq!(evaluate(source).unwrap(), Value::Bool(true), "{source}");
     }
     for source in ["let f='abc'.slice; f(1)", "String.prototype.slice.call(null)", "String.prototype.valueOf.call(3)", "'abc'.missing()", "1()"] {
@@ -173,7 +176,9 @@ fn unicode_case_mapping_and_all_normalization_forms_preserve_lone_surrogates() {
 
 #[test]
 fn legacy_browser_string_wrappers_and_substr_are_real_methods() {
-    for (method, tag) in [("big", "big"), ("blink", "blink"), ("bold", "b"), ("fixed", "tt"), ("italics", "i"), ("small", "small"), ("strike", "strike"), ("sub", "sub"), ("sup", "sup")] {
+    for (method, tag) in
+        [("big", "big"), ("blink", "blink"), ("bold", "b"), ("fixed", "tt"), ("italics", "i"), ("small", "small"), ("strike", "strike"), ("sub", "sub"), ("sup", "sup")]
+    {
         assert_eq!(evaluate(&format!("'<x>'.{method}()")).unwrap(), Value::String(format!("<{tag}><x></{tag}>").into()));
     }
     for (method, tag, attribute) in [("anchor", "a", "name"), ("link", "a", "href"), ("fontcolor", "font", "color"), ("fontsize", "font", "size")] {
@@ -237,9 +242,9 @@ fn native_call_inputs_and_split_results_survive_gc_and_errors() {
     for source in ["String.prototype.split.call(null)", "String.prototype.replace.call(undefined)", "String.prototype.toString.call({})"] {
         assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}");
     }
-    for source in ["String({})", "String.prototype.slice.call({})", "(1).missing"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::Unsupported(_))), "{source}");
-    }
+    assert_eq!(evaluate("String({})").unwrap(), Value::String("[object Object]".into()));
+    assert_eq!(evaluate("String.prototype.slice.call({})").unwrap(), Value::String("[object Object]".into()));
+    assert_eq!(evaluate("(1).missing").unwrap(), Value::Undefined);
     let mut limited = Vm::new(VmConfig { instruction_budget: 50, ..VmConfig::default() }).unwrap();
     let raw = "let r={length:1000}; String.raw({raw:r})";
     assert_eq!(limited.execute(&compile(&parse(raw).unwrap()).unwrap()), Err(RuntimeError::InstructionLimit));

@@ -2,8 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Primitive coercions used by bytecode dispatch. Object-to-primitive
-//! conversion needs callable builtins, which this slice explicitly lacks.
+//! Primitive coercions, after observable ToPrimitive has run in the VM.
 
 use crate::{JsString, RuntimeError, Value};
 use std::cmp::Ordering;
@@ -14,7 +13,7 @@ pub(crate) fn truthy(value: &Value) -> bool {
         Value::Bool(b) => *b,
         Value::Number(n) => *n != 0.0 && !n.is_nan(),
         Value::String(s) => !s.is_empty(),
-        Value::Object(_) => true,
+        Value::Object(_) | Value::Symbol(_) => true,
     }
 }
 
@@ -25,6 +24,7 @@ pub(crate) fn type_name(value: &Value) -> &'static str {
         Value::Bool(_) => "boolean",
         Value::Number(_) => "number",
         Value::String(_) => "string",
+        Value::Symbol(_) => "symbol",
     }
 }
 
@@ -36,7 +36,7 @@ pub(crate) fn number(value: &Value) -> Result<f64, RuntimeError> {
         Value::Number(n) => *n,
         // A StringNumericLiteral cannot contain surrogate code points.
         Value::String(s) => s.to_utf8().map_or(f64::NAN, |s| string_number(&s)),
-        Value::Object(_) => return Err(RuntimeError::Unsupported("object-to-primitive coercion")),
+        Value::Symbol(_) | Value::Object(_) => return Err(RuntimeError::TypeError("Number conversion requires a non-Symbol primitive".into())),
     })
 }
 
@@ -50,7 +50,7 @@ pub(crate) fn string(value: &Value) -> Result<JsString, RuntimeError> {
         Value::Number(n) if n.is_infinite() => if n.is_sign_negative() { "-Infinity" } else { "Infinity" }.into(),
         Value::Number(n) if *n == 0.0 => "0".into(),
         Value::Number(n) => number_string(*n).into(),
-        Value::Object(_) => return Err(RuntimeError::Unsupported("object-to-primitive coercion")),
+        Value::Symbol(_) | Value::Object(_) => return Err(RuntimeError::TypeError("String conversion requires a non-Symbol primitive".into())),
     })
 }
 

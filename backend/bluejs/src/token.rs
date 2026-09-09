@@ -36,10 +36,14 @@ pub enum Token {
     /// text later, rather than recursively tokenizing it inline here,
     /// is this crate's chosen way to handle template nesting without a
     /// stateful lexer-mode stack.
-    Template { quasis: Vec<JsString>, raw_expressions: Vec<String> },
+    Template {
+        quasis: Vec<JsString>,
+        raw_expressions: Vec<String>,
+    },
     Identifier(String),
     Keyword(Keyword),
     Punct(Punct),
+    Invalid(String),
     Eof,
 }
 
@@ -66,6 +70,7 @@ pub enum Keyword {
     Finally,
     New,
     Typeof,
+    Delete,
     Instanceof,
     In,
     True,
@@ -98,6 +103,7 @@ impl Keyword {
             "finally" => Keyword::Finally,
             "new" => Keyword::New,
             "typeof" => Keyword::Typeof,
+            "delete" => Keyword::Delete,
             "instanceof" => Keyword::Instanceof,
             "in" => Keyword::In,
             "true" => Keyword::True,
@@ -184,6 +190,8 @@ pub struct SpannedToken {
     pub newline_before: bool,
 }
 
+pub(crate) type TaggedTemplateData = (Vec<JsString>, Vec<Option<JsString>>, Vec<String>);
+
 pub struct Tokenizer {
     input: Vec<char>,
     pos: usize,
@@ -202,6 +210,108 @@ fn is_line_terminator(c: char) -> bool {
 }
 
 impl Tokenizer {
+    pub(crate) fn position(&self) -> usize {
+        self.pos
+    }
+
+    pub(crate) fn at_template(&mut self, position: usize) -> bool {
+        self.pos = position;
+        self.skip_trivia().is_ok() && self.peek() == Some('`')
+    }
+
+    pub(crate) fn regexp_at(&mut self, position: usize) -> Result<(JsString, JsString), LexError> {
+        self.pos = position;
+        self.skip_trivia()?;
+        self.advance();
+        let mut pattern = JsString::default();
+        let mut class = false;
+        loop {
+            let c = self.advance().ok_or_else(|| LexError::new("unterminated RegExp literal"))?;
+            if is_line_terminator(c) {
+                return Err(LexError::new("line terminator in RegExp literal"));
+            }
+            if c == '/' && !class {
+                break;
+            }
+            pattern.push_code_point(c as u32);
+            if c == '\\' {
+                let escaped = self.advance().ok_or_else(|| LexError::new("unterminated RegExp escape"))?;
+                if is_line_terminator(escaped) {
+                    return Err(LexError::new("line terminator in RegExp escape"));
+                }
+                pattern.push_code_point(escaped as u32);
+            } else if c == '[' {
+                class = true;
+            } else if c == ']' {
+                class = false;
+            }
+        }
+        let mut flags = JsString::default();
+        while self.peek().is_some_and(is_ident_continue) {
+            flags.push_code_point(self.advance().unwrap() as u32);
+        }
+        Ok((pattern, flags))
+    }
+
+    pub(crate) fn tagged_template_at(&mut self, position: usize) -> Result<TaggedTemplateData, LexError> {
+        self.pos = position;
+        self.skip_trivia()?;
+        self.advance();
+        let mut raw = Vec::new();
+        let mut current = String::new();
+        let mut expressions = Vec::new();
+        loop {
+            let c = self.advance().ok_or_else(|| LexError::new("unterminated tagged template"))?;
+            if c == '`' {
+                raw.push(current);
+                break;
+            }
+            if c == '$' && self.peek() == Some('{') {
+                self.advance();
+                raw.push(std::mem::take(&mut current));
+                expressions.push(self.scan_raw_until_matching_brace()?);
+            } else if c == '\\' {
+                current.push(c);
+                let c = self.advance().ok_or_else(|| LexError::new("unterminated tagged template escape"))?;
+                if c == '\r' {
+                    if self.peek() == Some('\n') {
+                        self.advance();
+                    }
+                    current.push('\n');
+                } else {
+                    current.push(c);
+                }
+            } else if c == '\r' {
+                if self.peek() == Some('\n') {
+                    self.advance();
+                }
+                current.push('\n');
+            } else {
+                current.push(c);
+            }
+        }
+        let cooked = raw
+            .iter()
+            .map(|raw| {
+                let mut lexer = Tokenizer::new(raw);
+                let mut result = JsString::default();
+                while let Some(c) = lexer.advance() {
+                    if c == '\\' {
+                        match lexer.scan_escape() {
+                            Ok(Some(c)) => result.push_code_point(c),
+                            Ok(None) => {}
+                            Err(_) => return None,
+                        }
+                    } else {
+                        result.push_code_point(c as u32);
+                    }
+                }
+                Some(result)
+            })
+            .collect();
+        Ok((raw.into_iter().map(Into::into).collect(), cooked, expressions))
+    }
+
     pub fn new(input: &str) -> Tokenizer {
         Tokenizer { input: input.chars().collect(), pos: 0 }
     }
@@ -349,7 +459,10 @@ impl Tokenizer {
         let mut digits = String::new();
         loop {
             match self.peek() {
-                Some(c) if c.is_digit(radix) => { digits.push(c); self.advance(); }
+                Some(c) if c.is_digit(radix) => {
+                    digits.push(c);
+                    self.advance();
+                }
                 Some('_') => {
                     if !separators || digits.is_empty() || !self.peek_at(1).is_some_and(|c| c.is_digit(radix)) {
                         return Err(LexError::new("numeric separator must occur between digits"));
@@ -380,7 +493,9 @@ impl Tokenizer {
             'v' => 0x0b,
             '0' => 0,
             c if is_line_terminator(c) => {
-                if c == '\r' && self.peek() == Some('\n') { self.advance(); }
+                if c == '\r' && self.peek() == Some('\n') {
+                    self.advance();
+                }
                 return Ok(None); // A whole LineTerminatorSequence contributes nothing.
             }
             '\'' | '"' | '`' | '\\' | '$' => c as u32,
@@ -397,7 +512,9 @@ impl Tokenizer {
                     }
                     self.advance().ok_or_else(|| LexError::new("unterminated \\u{...} escape"))?;
                     let code = Self::hex_escape(&hex, "\\u{...}")?;
-                    if code > 0x10ffff { return Err(LexError::new("invalid \\u{...} escape codepoint")); }
+                    if code > 0x10ffff {
+                        return Err(LexError::new("invalid \\u{...} escape codepoint"));
+                    }
                     code
                 } else {
                     let hex: String = (0..4).map(|_| self.advance().ok_or_else(|| LexError::new("unterminated \\u escape"))).collect::<Result<_, _>>()?;
@@ -480,7 +597,9 @@ impl Tokenizer {
                 }
                 Some('\r') => {
                     self.advance();
-                    if self.peek() == Some('\n') { self.advance(); }
+                    if self.peek() == Some('\n') {
+                        self.advance();
+                    }
                     current.push_code_point('\n' as u32);
                 }
                 Some(c) => {
@@ -491,117 +610,20 @@ impl Tokenizer {
         }
     }
 
-    /// Consumes raw source text up to (and including, but not returning)
-    /// the `}` that closes a template placeholder's `${` -- tracking
-    /// brace depth and skipping over nested string/template literals so
-    /// a `}` or a `{`/`}` pair *inside* a nested string or template
-    /// (e.g. `` `${ `${a}` }` `` or `${ "}" }`) doesn't miscount.
+    /// Ask the expression parser which closing brace ends this placeholder.
+    /// Brace counting cannot distinguish a RegExp body, division, comments,
+    /// object literals, or nested templates. Each candidate is a finite prefix
+    /// ending in `}`, so recursive template parsing always consumes less source.
     fn scan_raw_until_matching_brace(&mut self) -> Result<String, LexError> {
-        let mut depth = 1u32;
         let mut out = String::new();
-        loop {
-            match self.peek() {
-                None => return Err(LexError::new("unterminated template placeholder")),
-                Some('{') => {
-                    depth += 1;
-                    out.push(self.advance().unwrap());
-                }
-                Some('}') => {
-                    depth -= 1;
-                    if depth == 0 {
-                        self.advance();
-                        return Ok(out);
-                    }
-                    out.push(self.advance().unwrap());
-                }
-                Some(q @ ('"' | '\'')) => {
-                    out.push(q);
-                    self.advance();
-                    self.copy_raw_string_body(q, &mut out)?;
-                }
-                Some('`') => {
-                    out.push('`');
-                    self.advance();
-                    self.copy_raw_template_body(&mut out)?;
-                }
-                Some('/') if matches!(self.peek_at(1), Some('/' | '*')) => {
-                    // Reuse trivia's comment/line-terminator rules, but
-                    // preserve raw source for the placeholder's parser.
-                    let start = self.pos;
-                    self.skip_trivia()?;
-                    out.extend(&self.input[start..self.pos]);
-                }
-                Some(c) => {
-                    out.push(c);
-                    self.advance();
-                }
+        while let Some(c) = self.advance() {
+            out.push(c);
+            if c == '}' && crate::parser::closes_template_placeholder(&out) {
+                out.pop();
+                return Ok(out);
             }
         }
-    }
-
-    /// Copies a plain string literal's raw source (delimiter already
-    /// consumed by the caller and pushed to `out`) verbatim into `out`,
-    /// including its closing delimiter -- for
-    /// [`Tokenizer::scan_raw_until_matching_brace`]'s brace-counting to
-    /// skip over quoted braces without needing to interpret escapes.
-    fn copy_raw_string_body(&mut self, quote: char, out: &mut String) -> Result<(), LexError> {
-        loop {
-            match self.peek() {
-                None => return Err(LexError::new("unterminated string literal inside template placeholder")),
-                Some(c) if c == quote => {
-                    out.push(c);
-                    self.advance();
-                    return Ok(());
-                }
-                Some('\\') => {
-                    out.push('\\');
-                    self.advance();
-                    if let Some(c) = self.advance() {
-                        out.push(c);
-                    }
-                }
-                Some(c) => {
-                    out.push(c);
-                    self.advance();
-                }
-            }
-        }
-    }
-
-    /// Same idea as [`Tokenizer::copy_raw_string_body`], but for a
-    /// nested template literal, recursing into its own `${...}`
-    /// placeholders (via [`Tokenizer::scan_raw_until_matching_brace`])
-    /// so a `{`/`}` nested arbitrarily deep still balances correctly.
-    fn copy_raw_template_body(&mut self, out: &mut String) -> Result<(), LexError> {
-        loop {
-            match self.peek() {
-                None => return Err(LexError::new("unterminated template literal inside template placeholder")),
-                Some('`') => {
-                    out.push('`');
-                    self.advance();
-                    return Ok(());
-                }
-                Some('\\') => {
-                    out.push('\\');
-                    self.advance();
-                    if let Some(c) = self.advance() {
-                        out.push(c);
-                    }
-                }
-                Some('$') if self.peek_at(1) == Some('{') => {
-                    out.push_str("${");
-                    self.advance();
-                    self.advance();
-                    let inner = self.scan_raw_until_matching_brace()?;
-                    out.push_str(&inner);
-                    out.push('}');
-                }
-                Some(c) => {
-                    out.push(c);
-                    self.advance();
-                }
-            }
-        }
+        Err(LexError::new("unterminated or invalid template placeholder"))
     }
 
     fn scan_identifier_or_keyword(&mut self) -> Token {
@@ -781,10 +803,10 @@ mod tests {
         assert_eq!(tokens("1.5e-2"), vec![Token::Number(0.015), Token::Eof]);
         assert_eq!(tokens("0"), vec![Token::Number(0.0), Token::Eof]);
         // Assert token boundaries independently of the full parser/VM.
-        assert_eq!(tokens("0xA_B 0b1_0 0o7_0 07 08 1_0 0.5"), vec![
-            Token::Number(171.0), Token::Number(2.0), Token::Number(56.0),
-            Token::Number(7.0), Token::Number(8.0), Token::Number(10.0), Token::Number(0.5), Token::Eof,
-        ]);
+        assert_eq!(
+            tokens("0xA_B 0b1_0 0o7_0 07 08 1_0 0.5"),
+            vec![Token::Number(171.0), Token::Number(2.0), Token::Number(56.0), Token::Number(7.0), Token::Number(8.0), Token::Number(10.0), Token::Number(0.5), Token::Eof,]
+        );
     }
 
     #[test]
@@ -797,9 +819,10 @@ mod tests {
 
     #[test]
     fn template_cooking_normalizes_newlines_but_preserves_placeholder_comments() {
-        assert_eq!(tokens("`a\r\nb${1/* } */+2}c\rd`"), vec![
-            Token::Template { quasis: vec!["a\nb".into(), "c\nd".into()], raw_expressions: vec!["1/* } */+2".into()] }, Token::Eof,
-        ]);
+        assert_eq!(
+            tokens("`a\r\nb${1/* } */+2}c\rd`"),
+            vec![Token::Template { quasis: vec!["a\nb".into(), "c\nd".into()], raw_expressions: vec!["1/* } */+2".into()] }, Token::Eof,]
+        );
         for newline in ["\n", "\r", "\r\n", "\u{2028}", "\u{2029}"] {
             assert_eq!(tokens(&format!("'a\\{newline}b'")), vec![Token::String("ab".into()), Token::Eof]);
             let mut tokenizer = Tokenizer::new(&format!("/*{newline}*/x"));
@@ -813,7 +836,8 @@ mod tests {
     #[test]
     fn scans_every_simple_escape_sequence() {
         assert_eq!(tokens(r"'\t\r\b\f\v\0'"), vec![Token::String("\t\r\u{8}\u{c}\u{b}\0".into()), Token::Eof]);
-        assert_eq!(tokens(r"'\q'"), vec![Token::String("q".into()), Token::Eof]); // unrecognized escape: falls back to the escaped character itself
+        assert_eq!(tokens(r"'\q'"), vec![Token::String("q".into()), Token::Eof]);
+        // unrecognized escape: falls back to the escaped character itself
     }
 
     #[test]
@@ -847,7 +871,10 @@ mod tests {
     fn scans_identifiers_and_keywords() {
         assert_eq!(tokens("foo _bar $baz"), vec![Token::Identifier("foo".to_string()), Token::Identifier("_bar".to_string()), Token::Identifier("$baz".to_string()), Token::Eof]);
         assert_eq!(tokens("undefined"), vec![Token::Identifier("undefined".to_string()), Token::Eof]);
-        assert_eq!(tokens("let x = true"), vec![Token::Keyword(Keyword::Let), Token::Identifier("x".to_string()), Token::Punct(Punct::Assign), Token::Keyword(Keyword::True), Token::Eof]);
+        assert_eq!(
+            tokens("let x = true"),
+            vec![Token::Keyword(Keyword::Let), Token::Identifier("x".to_string()), Token::Punct(Punct::Assign), Token::Keyword(Keyword::True), Token::Eof]
+        );
     }
 
     #[test]
@@ -859,10 +886,7 @@ mod tests {
     fn scans_a_template_literal_with_placeholders() {
         assert_eq!(
             tokens("`a${x}b${y + 1}c`"),
-            vec![
-                Token::Template { quasis: vec!["a".into(), "b".into(), "c".into()], raw_expressions: vec!["x".to_string(), "y + 1".to_string()] },
-                Token::Eof
-            ]
+            vec![Token::Template { quasis: vec!["a".into(), "b".into(), "c".into()], raw_expressions: vec!["x".to_string(), "y + 1".to_string()] }, Token::Eof]
         );
     }
 
@@ -886,10 +910,13 @@ mod tests {
 
     #[test]
     fn template_placeholder_nested_string_and_template_bodies_handle_escapes() {
-        // Exercises `copy_raw_string_body`'s and `copy_raw_template_body`'s
+        // Exercises nested strings and templates with
         // own backslash-escape handling (distinct from `scan_escape`,
         // since this is *raw* copying for brace-balancing, not cooking).
-        assert_eq!(tokens(r#"`${ "a\"}" }`"#), vec![Token::Template { quasis: vec![Default::default(), Default::default()], raw_expressions: vec![" \"a\\\"}\" ".to_string()] }, Token::Eof]);
+        assert_eq!(
+            tokens(r#"`${ "a\"}" }`"#),
+            vec![Token::Template { quasis: vec![Default::default(), Default::default()], raw_expressions: vec![" \"a\\\"}\" ".to_string()] }, Token::Eof]
+        );
         let toks = tokens("`${ `a\\`b${1}` }`");
         assert_eq!(toks, vec![Token::Template { quasis: vec![Default::default(), Default::default()], raw_expressions: vec![" `a\\`b${1}` ".to_string()] }, Token::Eof]);
     }
@@ -897,7 +924,10 @@ mod tests {
     #[test]
     fn template_placeholder_can_contain_braces_strings_and_nested_templates() {
         assert_eq!(tokens("`${ {} }`"), vec![Token::Template { quasis: vec![Default::default(), Default::default()], raw_expressions: vec![" {} ".to_string()] }, Token::Eof]);
-        assert_eq!(tokens(r#"`${ "}" }`"#), vec![Token::Template { quasis: vec![Default::default(), Default::default()], raw_expressions: vec![r#" "}" "#.to_string()] }, Token::Eof]);
+        assert_eq!(
+            tokens(r#"`${ "}" }`"#),
+            vec![Token::Template { quasis: vec![Default::default(), Default::default()], raw_expressions: vec![r#" "}" "#.to_string()] }, Token::Eof]
+        );
         let toks = tokens("`${ `${a}` }`");
         assert_eq!(toks, vec![Token::Template { quasis: vec![Default::default(), Default::default()], raw_expressions: vec![" `${a}` ".to_string()] }, Token::Eof]);
     }
@@ -928,9 +958,26 @@ mod tests {
         assert_eq!(tokens("<= >= < >"), vec![Token::Punct(Punct::LtEq), Token::Punct(Punct::GtEq), Token::Punct(Punct::Lt), Token::Punct(Punct::Gt), Token::Eof]);
         assert_eq!(
             tokens("+= -= *= /= %="),
-            vec![Token::Punct(Punct::PlusAssign), Token::Punct(Punct::MinusAssign), Token::Punct(Punct::StarAssign), Token::Punct(Punct::SlashAssign), Token::Punct(Punct::PercentAssign), Token::Eof]
+            vec![
+                Token::Punct(Punct::PlusAssign),
+                Token::Punct(Punct::MinusAssign),
+                Token::Punct(Punct::StarAssign),
+                Token::Punct(Punct::SlashAssign),
+                Token::Punct(Punct::PercentAssign),
+                Token::Eof
+            ]
         );
-        assert_eq!(tokens("a / b % c"), vec![Token::Identifier("a".to_string()), Token::Punct(Punct::Slash), Token::Identifier("b".to_string()), Token::Punct(Punct::Percent), Token::Identifier("c".to_string()), Token::Eof]);
+        assert_eq!(
+            tokens("a / b % c"),
+            vec![
+                Token::Identifier("a".to_string()),
+                Token::Punct(Punct::Slash),
+                Token::Identifier("b".to_string()),
+                Token::Punct(Punct::Percent),
+                Token::Identifier("c".to_string()),
+                Token::Eof
+            ]
+        );
     }
 
     #[test]
