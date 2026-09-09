@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Sparse-array storage and execution through the real public interfaces.
-use blueice_bluejs::{compile, parse, Heap, HeapConfig, HeapError, RuntimeError, Value, Vm, VmConfig};
+use blueice_bluejs::{Heap, HeapConfig, HeapError, RuntimeError, Value, Vm, VmConfig, compile, parse};
 
 fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap())
@@ -280,7 +280,7 @@ fn new_array_encoding_and_runtime_error_boundaries_are_observable() {
     assert_eq!(code.instructions().filter(|instruction| instruction.opcode == Opcode::DefineData).count(), 1);
     assert!(matches!(compile(&parse("let [a]=[1]").unwrap()), Err(CompileError::Unsupported(_))));
     assert!(matches!(evaluate("[].push(1)"), Err(RuntimeError::TypeError(_))));
-    assert!(matches!(evaluate("new Array(2)"), Err(RuntimeError::ReferenceError(_))));
+    assert_eq!(evaluate("new Array(2).length"), Ok(Value::Number(2.0)));
     let error = evaluate("let a=[];a.length=-1").unwrap_err();
     assert!(error.to_string().starts_with("RangeError:"));
     assert!(std::error::Error::source(&error).is_none());

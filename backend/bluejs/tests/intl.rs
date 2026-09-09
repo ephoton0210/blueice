@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
+use blueice_bluejs::{RuntimeError, Value, Vm, compile, parse};
 
 fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap())
@@ -33,6 +33,83 @@ fn locale_casing_and_canonicalization() {
     for source in ["Intl.getCanonicalLocales(null)", "Intl.getCanonicalLocales([4])", "Intl.getCanonicalLocales([undefined])", "''.toLocaleUpperCase([Symbol()])"] {
         assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}");
     }
+}
+
+#[test]
+fn locale_objects_preserve_canonical_locale_state() {
+    for (source, expected) in [
+        ("new Intl.Locale('EN-latn-us-1901-u-ca-islamicc-kn-true').toString()", "en-Latn-US-1901-u-ca-islamic-civil-kn"),
+        ("new Intl.Locale('EN-latn-us-1901-u-ca-islamicc-kn-true').baseName", "en-Latn-US-1901"),
+        ("new Intl.Locale('EN-latn-us-1901-u-ca-islamicc-kn-true').calendar", "islamic-civil"),
+        ("Intl.getCanonicalLocales('en-u-ca-ethiopic-amete-alem')[0]", "en-u-ca-ethioaa"),
+    ] {
+        assert_eq!(evaluate(source), Ok(Value::String(expected.into())), "{source}");
+    }
+    for source in [
+        "let l=new Intl.Locale('EN-latn-us-1901-u-ca-islamicc-kn-true'); l.toString() === 'en-Latn-US-1901-u-ca-islamic-civil-kn' && l.baseName === 'en-Latn-US-1901' && l.language === 'en' && l.script === 'Latn' && l.region === 'US' && l.variants === '1901' && l.calendar === 'islamic-civil' && l.numeric",
+        "let l=new Intl.Locale('de',{language:'fr',script:'Latn',region:'CA',variants:'fonipa-1901',calendar:'gregory',collation:'phonebk',hourCycle:'h23',caseFirst:'upper',numeric:true,numberingSystem:'latn'}); l.toString() === 'fr-Latn-CA-1901-fonipa-u-ca-gregory-co-phonebk-hc-h23-kf-upper-kn-nu-latn' && l.caseFirst === 'upper' && l.hourCycle === 'h23' && l.collation === 'phonebk' && l.numberingSystem === 'latn'",
+        "new Intl.Locale('zh').maximize().toString() === 'zh-Hans-CN' && new Intl.Locale('zh-Hans-CN').minimize().toString() === 'zh'",
+        "Intl.getCanonicalLocales(new Intl.Locale('iw-IL'))[0] === 'he-IL'",
+        "new Intl.Locale(new Intl.Locale('fr')).toString() === 'fr'",
+        "new Intl.Locale({toString(){return 'de-DE';}}).toString() === 'de-DE' && Intl.getCanonicalLocales([new Intl.Locale('fr'), 'de'])[0] === 'fr'",
+        "Intl.Locale.prototype.toString.call(new Intl.Locale('de')) === 'de' && Object.prototype.toString.call(new Intl.Locale('de')) === '[object Intl.Locale]'",
+        "new Intl.Locale('en',{numeric:false,firstDayOfWeek:1}).numeric === false && new Intl.Locale('en',{firstDayOfWeek:1}).firstDayOfWeek === 'mon' && new Intl.Locale('en').script === undefined && new Intl.Locale('en').variants === undefined",
+        "new Intl.Locale('en-u-ca-buddhist').getCalendars().join() === 'buddhist' && new Intl.Locale('en-u-co-phonebk').getCollations().join() === 'phonebk' && new Intl.Locale('fr').getHourCycles().join() === 'h23' && new Intl.Locale('ar').getNumberingSystems().join() === 'arab'",
+        "new Intl.Locale('ar').getTextInfo().direction === 'rtl' && new Intl.Locale('en').getTextInfo().direction === 'ltr' && new Intl.Locale('en').getTimeZones() === undefined && new Intl.Locale('en-US').getTimeZones()[0] === 'America/Adak'",
+        "new Intl.Locale('en',{firstDayOfWeek:'wed'}).getWeekInfo().firstDay === 3 && new Intl.Locale('en-US').getWeekInfo().firstDay === 7 && new Intl.Locale('en').getWeekInfo().weekend.join() === '6,7'",
+        "Array.isArray(new Intl.Locale('en').getCalendars()) && new Intl.Locale('en').getCollations().includes('emoji') && new Intl.Locale('en').getHourCycles().forEach(() => {}) === undefined",
+        "Array(2).length === 2 && Array('a').join() === 'a' && new Array('a','b').join() === 'a,b'",
+        "[,,3].forEach(value => value) === undefined && ![1].includes(2) && [1,2].includes(1,-1) === false && [NaN].includes(NaN)",
+        "let a=[]; a.length=65536; let p={65535:'inherited'}; Object.setPrototypeOf(p,Array.prototype); Object.setPrototypeOf(a,p); let seen=''; a.forEach(value => {seen=value}); seen === 'inherited'",
+        "let a=[0,,]; a.forEach((value,index) => {if(index === 0) a[1]=1}); a[1] === 1",
+        "Array.prototype.forEach.call({0:'x',length:1}, value => value) === undefined",
+        "let a=[]; a.length=65536; a[65535]=1; a[Symbol('x')]=2; a.forEach(value => value) === undefined",
+        "new Intl.Locale('en-GB').getTimeZones().join() === 'Europe/London' && new Intl.Locale('ja-JP').getTimeZones().join() === 'Asia/Tokyo' && new Intl.Locale('zh-TW').getTimeZones().join() === 'Asia/Taipei' && new Intl.Locale('de-DE').getTimeZones().join() === 'Etc/UTC' && new Intl.Locale('en-Arab').getTextInfo().direction === 'rtl'",
+        "new Intl.Locale('en',{firstDayOfWeek:'thu'}).getWeekInfo().firstDay === 4 && new Intl.Locale('en',{firstDayOfWeek:'fri'}).getWeekInfo().firstDay === 5 && new Intl.Locale('en',{firstDayOfWeek:'sat'}).getWeekInfo().firstDay === 6 && new Intl.Locale('en',{firstDayOfWeek:'sun'}).getWeekInfo().firstDay === 7",
+        "Object.getPrototypeOf(Intl.Locale) === Function.prototype && Object.isExtensible(new Intl.Locale('en')) && Object.isExtensible(1) === false",
+        "let log=''; let o={get language(){log+='l';return 'de';},get script(){log+='s';return 'Latn';},get region(){log+='r';return 'DE';},get variants(){log+='v';return '1901';},get calendar(){log+='c';return 'gregory';},get collation(){log+='o';return 'phonebk';},get hourCycle(){log+='h';return 'h23';},get caseFirst(){log+='f';return 'upper';},get numeric(){log+='n';return true;},get numberingSystem(){log+='u';return 'latn';}}; new Intl.Locale('en',o); log === 'lsrvcohfnu'",
+    ] {
+        match evaluate(source) {
+            Ok(value) => assert_eq!(value, Value::Bool(true), "{source}"),
+            Err(error) => panic!("{source}: {error}"),
+        }
+    }
+    for source in [
+        "Intl.Locale('en')",
+        "new Intl.Locale()",
+        "new Intl.Locale(1)",
+        "new Intl.Locale('en',null)",
+        "new Intl.Locale('en',{language:'abcd'})",
+        "new Intl.Locale('en',{script:'lat'})",
+        "new Intl.Locale('en',{region:'USA'})",
+        "new Intl.Locale('en',{variants:'bad'})",
+        "new Intl.Locale('en',{variants:''})",
+        "new Intl.Locale('en',{variants:'fonipa-fonipa'})",
+        "new Intl.Locale('en',{calendar:'no'})",
+        "new Intl.Locale('en',{firstDayOfWeek:'mo'})",
+        "new Intl.Locale('en',{caseFirst:'invalid'})",
+        "Intl.Locale.prototype.toString.call({})",
+        "Intl.Locale.prototype.maximize.call({})",
+        "Intl.Locale.prototype.getCalendars.call({})",
+        "Intl.Locale.prototype.getCollations.call({})",
+        "Intl.Locale.prototype.getHourCycles.call({})",
+        "Intl.Locale.prototype.getNumberingSystems.call({})",
+        "Intl.Locale.prototype.getTextInfo.call({})",
+        "Intl.Locale.prototype.getTimeZones.call({})",
+        "Intl.Locale.prototype.getWeekInfo.call({})",
+        "[1].forEach(1)",
+    ] {
+        assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_) | RuntimeError::RangeError(_))), "{source}");
+    }
+    assert_eq!(evaluate("Intl.Locale.prototype.toString.call({})"), Err(RuntimeError::TypeError("receiver is not an Intl.Locale".into())));
+    assert_eq!(
+        evaluate("let g=Object.getOwnPropertyDescriptor(Intl.Locale.prototype,'language').get; g.call({})"),
+        Err(RuntimeError::TypeError("receiver is not an Intl.Locale".into()))
+    );
+    assert_eq!(
+        evaluate("let g=Object.getOwnPropertyDescriptor(Intl.Locale.prototype,'language').get; g.call(1)"),
+        Err(RuntimeError::TypeError("receiver is not an Intl.Locale".into()))
+    );
 }
 
 #[test]

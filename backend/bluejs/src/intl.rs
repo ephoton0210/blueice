@@ -5,7 +5,20 @@
 //! ICU data and algorithms; observable ECMAScript conversions live in vm/intl.
 use crate::{native, JsString, RuntimeError, Value};
 use icu_collator::{CollatorBorrowed, CollatorPreferences};
-use icu_locale_core::Locale;
+use icu_locale_core::Locale as IcuLocale;
+
+/// The [[Locale]] internal slot of an Intl.Locale instance. Keeping the
+/// canonical ICU locale outside script-visible properties makes locale lists
+/// immune to a user replacement of `toString`.
+pub(crate) struct Locale {
+    pub locale: IcuLocale,
+}
+
+impl Locale {
+    pub fn bytes(&self) -> usize {
+        std::mem::size_of::<Self>() + self.locale.to_string().len()
+    }
+}
 
 pub(crate) struct Collator {
     pub algorithm: CollatorBorrowed<'static>,
@@ -29,7 +42,7 @@ impl Collator {
     }
 }
 
-pub(crate) fn canonicalize(string: &JsString) -> Result<Locale, RuntimeError> {
+pub(crate) fn canonicalize(string: &JsString) -> Result<IcuLocale, RuntimeError> {
     let invalid = || RuntimeError::RangeError("invalid Unicode locale identifier".into());
     let tag = string.to_utf8().map_err(|_| invalid())?;
     // ICU accepts underscores as separators and sorts/deduplicates variants.
@@ -49,28 +62,38 @@ pub(crate) fn canonicalize(string: &JsString) -> Result<Locale, RuntimeError> {
             return Err(invalid());
         }
     }
-    let mut locale = Locale::try_from_str(&tag).map_err(|_| invalid())?;
+    let mut locale = IcuLocale::try_from_str(&tag).map_err(|_| invalid())?;
     icu_locale::LocaleCanonicalizer::new_extended().canonicalize(&mut locale);
+    // ICU canonicalizes language identifiers but deliberately leaves several
+    // Unicode keyword aliases to the consumer. ECMA-402 exposes their UTS 35
+    // canonical spelling through Locale and getCanonicalLocales.
+    let calendar: icu_locale_core::extensions::unicode::Key = "ca".parse().unwrap();
+    if locale.extensions.unicode.keywords.get(&calendar).is_some_and(|value| value.to_string() == "islamicc") {
+        locale.extensions.unicode.keywords.set(calendar, "islamic-civil".parse().unwrap());
+    }
+    if locale.extensions.unicode.keywords.get(&calendar).is_some_and(|value| value.to_string() == "ethiopic-amete-alem") {
+        locale.extensions.unicode.keywords.set(calendar, "ethioaa".parse().unwrap());
+    }
     Ok(locale)
 }
 
 // The implementation's supported collation languages. Region/script subtags
 // select ICU's CLDR fallback data. Unknown languages negotiate to en-US.
-pub(crate) fn supported(locale: &Locale) -> bool {
+pub(crate) fn supported(locale: &IcuLocale) -> bool {
     const LANGUAGES: &str = "af am ar as az be bg bn bo br bs ca ceb chr cs cy da de dsb dz ee el en eo es et fa ff fi fil fo fr fy ga gl gu ha haw he hi hr hsb hu hy id ig is it ja ka kk kl km kn ko kok ku ky la lb lkt ln lo lt lv mk ml mn mr ms mt my nb ne nl nn no om or pa pl ps pt ro ru sa se si sk sl so sq sr sv sw ta te th tk to tr ug uk ur uz vi wae wo xh yi yo zh zu";
     LANGUAGES.split(' ').any(|language| locale.id.language.as_str() == language)
 }
 
-pub(crate) fn keyword(locale: &Locale, name: &str) -> Option<String> {
+pub(crate) fn keyword(locale: &IcuLocale, name: &str) -> Option<String> {
     let key: icu_locale_core::extensions::unicode::Key = name.parse().unwrap();
     locale.extensions.unicode.keywords.get(&key).map(|value| value.to_string())
 }
 
-pub(crate) fn preferences(locale: &Locale) -> CollatorPreferences {
+pub(crate) fn preferences(locale: &IcuLocale) -> CollatorPreferences {
     locale.into()
 }
 
-pub(crate) fn supports_collation(locale: &Locale, collation: &str) -> bool {
+pub(crate) fn supports_collation(locale: &IcuLocale, collation: &str) -> bool {
     let language = locale.id.language.to_string();
     matches!(collation, "emoji" | "eor")
         || matches!(
@@ -85,7 +108,7 @@ pub(crate) fn supports_collation(locale: &Locale, collation: &str) -> bool {
         )
 }
 
-pub(crate) fn case_map(string: &JsString, locale: &Locale, upper: bool, limit: usize) -> Result<JsString, RuntimeError> {
+pub(crate) fn case_map(string: &JsString, locale: &IcuLocale, upper: bool, limit: usize) -> Result<JsString, RuntimeError> {
     let mapper = icu_casemap::CaseMapper::new();
     let mut result = JsString::default();
     let mut run = String::new();

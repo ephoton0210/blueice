@@ -122,6 +122,7 @@ pub(crate) struct BoundFunction {
 enum ObjectKind {
     Ordinary,
     Collator { data: Rc<crate::intl::Collator>, compare: Option<ObjectId> },
+    IntlLocale(Rc<crate::intl::Locale>),
     Array { length: u32 },
     String(JsString),
     NativeFunction { function: NativeFunction, initial_name: JsString },
@@ -311,6 +312,17 @@ impl Heap {
             *compare = Some(function);
         }
         self.write_barrier(object, Some(function));
+    }
+
+    pub(crate) fn alloc_intl_locale(&mut self, data: Rc<crate::intl::Locale>, prototype: ObjectId) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::IntlLocale(data), Some(prototype))
+    }
+
+    pub(crate) fn intl_locale(&self, object: ObjectId) -> Result<Option<Rc<crate::intl::Locale>>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::IntlLocale(data) => Some(data.clone()),
+            _ => None,
+        })
     }
 
     pub(crate) fn alloc_regexp(&mut self, regexp: Rc<crate::regexp::RegExp>, prototype: ObjectId) -> Result<ObjectId, HeapError> {
@@ -533,6 +545,7 @@ impl Heap {
                     regexp.source.byte_len() + regexp.flags.len() + regexp.capture_names.iter().map(|(name, _)| name.len() + size_of::<(String, usize)>()).sum::<usize>()
                 }
                 ObjectKind::Collator { data, .. } => data.bytes(),
+                ObjectKind::IntlLocale(data) => data.bytes(),
                 ObjectKind::BoxedPrimitive(value) => value.payload_bytes(),
                 ObjectKind::NativeFunction { initial_name, .. } => initial_name.byte_len(),
                 ObjectKind::Closure { captures, this, .. } => captures.len() * size_of::<ObjectId>() + this.payload_bytes(),

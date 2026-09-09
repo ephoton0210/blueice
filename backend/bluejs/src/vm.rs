@@ -542,7 +542,14 @@ impl Vm {
     fn get_property_value(&mut self, receiver: &Value, key: &PropertyName) -> Result<Value, RuntimeError> {
         match receiver {
             Value::Object(id) => {
-                if self.string_intrinsics.is_none() && (key == "toString" || key == "valueOf" || key == "join" || *key == PropertyName::from(JsSymbol::well_known("iterator"))) {
+                if self.string_intrinsics.is_none()
+                    && (key == "toString"
+                        || key == "valueOf"
+                        || key == "join"
+                        || key == "forEach"
+                        || key == "includes"
+                        || *key == PropertyName::from(JsSymbol::well_known("iterator")))
+                {
                     self.string_intrinsics()?;
                 }
                 self.get_from_prototype(*id, receiver, key)
@@ -674,6 +681,8 @@ impl Vm {
             self.install_native(object_prototype, function_prototype, "valueOf", 0, NativeFunction::ObjectValueOf)?;
             self.install_native(self.array_prototype, function_prototype, "toString", 0, NativeFunction::ArrayToString)?;
             self.install_native(self.array_prototype, function_prototype, "join", 1, NativeFunction::ArrayJoin)?;
+            self.install_native(self.array_prototype, function_prototype, "forEach", 1, NativeFunction::ArrayForEach)?;
+            self.install_native(self.array_prototype, function_prototype, "includes", 1, NativeFunction::ArrayIncludes)?;
             self.install_symbol_native(self.array_prototype, function_prototype, "iterator", 0, NativeFunction::ArrayIterator)?;
             Ok((constructor, prototype))
         })();
@@ -690,6 +699,8 @@ impl Vm {
                     (object_prototype, "valueOf".into()),
                     (self.array_prototype, "toString".into()),
                     (self.array_prototype, "join".into()),
+                    (self.array_prototype, "forEach".into()),
+                    (self.array_prototype, "includes".into()),
                     (self.array_prototype, JsSymbol::well_known("iterator").into()),
                 ] {
                     self.heap.delete(owner, key)?;
@@ -773,9 +784,11 @@ impl Vm {
             && !matches!(
                 function,
                 NativeFunction::String
+                    | NativeFunction::Array
                     | NativeFunction::Object
                     | NativeFunction::RegExp
                     | NativeFunction::Collator
+                    | NativeFunction::Locale
                     | NativeFunction::Error(_)
                     | NativeFunction::PrimitiveConstructor(_)
             )

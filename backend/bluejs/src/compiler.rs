@@ -217,11 +217,7 @@ impl Compiler {
                 }
                 let jump = self.emit(Opcode::Jump, 0)?;
                 let context = self.loops.last_mut().unwrap();
-                if matches!(statement, Stmt::Break) {
-                    context.breaks.push(jump)
-                } else {
-                    context.continues.push(jump)
-                }
+                if matches!(statement, Stmt::Break) { context.breaks.push(jump) } else { context.continues.push(jump) }
             }
             _ => return Err(CompileError::Unsupported("this statement kind (functions, for-in/of, switch, return or exceptions)")),
         }
@@ -351,8 +347,8 @@ impl Compiler {
                         "String" => {
                             self.emit(Opcode::GlobalString, 0)?;
                         }
-                        "Symbol" | "RegExp" | "Object" | "Reflect" | "Number" | "Boolean" | "globalThis" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError"
-                        | "ReferenceError" | "EvalError" | "URIError" => {
+                        "Symbol" | "RegExp" | "Object" | "Reflect" | "Number" | "Boolean" | "Array" | "Function" | "globalThis" | "Intl" | "Error" | "TypeError" | "RangeError"
+                        | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" => {
                             let index = self.bytecode.constants.len() as u32;
                             self.bytecode.constants.push(Value::String(name.as_str().into()));
                             self.emit(Opcode::Global, index)?;
@@ -390,7 +386,7 @@ impl Compiler {
                     return Ok(());
                 }
                 if *op == UnaryOp::Typeof
-                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Number" | "Boolean" | "globalThis" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError"))
+                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Number" | "Boolean" | "Array" | "Function" | "globalThis" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError"))
                 {
                     let Expr::Identifier(name) = &**arg else { unreachable!() };
                     let index = u32::try_from(self.bytecode.constants.len()).map_err(|_| CompileError::ProgramTooLarge)?;

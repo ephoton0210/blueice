@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::native::RegExpMethod;
-use crate::regexp::{advance, RegExp};
+use crate::regexp::{RegExp, advance};
 use std::rc::Rc;
 
 impl Vm {
@@ -279,11 +279,7 @@ impl Vm {
                 if !crate::heap::same_value(&previous, &current) {
                     self.set_required(receiver, "lastIndex", previous)?;
                 }
-                if result == Value::Null {
-                    Ok(Value::Number(-1.0))
-                } else {
-                    self.get_property(&result, &"index".into())
-                }
+                if result == Value::Null { Ok(Value::Number(-1.0)) } else { self.get_property(&result, &"index".into()) }
             }
             Match => {
                 let flags = self.get_property(receiver, &"flags".into())?;
@@ -308,11 +304,7 @@ impl Vm {
                     }
                     results.push(Value::String(matched));
                 }
-                if results.is_empty() {
-                    Ok(Value::Null)
-                } else {
-                    self.array_from(results)
-                }
+                if results.is_empty() { Ok(Value::Null) } else { self.array_from(results) }
             }
             MatchAll => {
                 let constructor = self.regexp_species_constructor(receiver)?;

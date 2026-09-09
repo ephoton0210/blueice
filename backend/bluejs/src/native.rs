@@ -6,12 +6,16 @@
 //! Heap/receiver dispatch stays in the VM; these operations preserve code
 //! units and bound string growth before allocating the result.
 
-use crate::{primitive, JsString, RuntimeError, Value};
+use crate::{JsString, RuntimeError, Value, primitive};
 use unicode_normalization::UnicodeNormalization;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NativeFunction {
     String,
+    Array,
+    ArrayIsArray,
+    ArrayForEach,
+    ArrayIncludes,
     Error(&'static str),
     ErrorToString,
     Test262(&'static str),
@@ -19,11 +23,17 @@ pub(crate) enum NativeFunction {
     ToLocaleUpperCase,
     LocaleCompare,
     Collator,
+    Locale,
     CanonicalLocales,
     SupportedLocales,
     CollatorCompareGetter,
     CollatorCompare,
     CollatorResolvedOptions,
+    LocaleToString,
+    LocaleMaximize,
+    LocaleMinimize,
+    LocaleGetter(LocaleGetter),
+    LocaleInfo(LocaleInfo),
     FromCharCode,
     FromCodePoint,
     Raw,
@@ -73,6 +83,34 @@ pub(crate) enum ObjectMethod {
     SetPrototypeOf,
     Create,
     OwnKeys,
+    IsExtensible,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LocaleGetter {
+    BaseName,
+    Language,
+    Script,
+    Region,
+    Variants,
+    Calendar,
+    Collation,
+    HourCycle,
+    CaseFirst,
+    Numeric,
+    NumberingSystem,
+    FirstDayOfWeek,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LocaleInfo {
+    Calendars,
+    Collations,
+    HourCycles,
+    NumberingSystems,
+    TextInfo,
+    TimeZones,
+    WeekInfo,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -294,11 +332,7 @@ pub(crate) fn string_method(method: StringMethod, receiver: &Value, args: &[Valu
             let needle = search.as_code_units();
             let position = if method == LastIndexOf {
                 let number = primitive::number(second)?;
-                if number.is_nan() {
-                    f64::INFINITY
-                } else {
-                    number.trunc()
-                }
+                if number.is_nan() { f64::INFINITY } else { number.trunc() }
             } else if method == EndsWith && matches!(second, Value::Undefined) {
                 len as f64
             } else {
@@ -316,11 +350,7 @@ pub(crate) fn string_method(method: StringMethod, receiver: &Value, args: &[Valu
                     } else {
                         (position..=len - needle.len()).find(|&index| units[index..].starts_with(needle))
                     };
-                    if method == Includes {
-                        Value::Bool(index.is_some())
-                    } else {
-                        Value::Number(index.map_or(-1.0, |index| index as f64))
-                    }
+                    if method == Includes { Value::Bool(index.is_some()) } else { Value::Number(index.map_or(-1.0, |index| index as f64)) }
                 }
             }
         }

@@ -142,10 +142,6 @@ impl Vm {
             }
             _ => false,
         };
-        if passed {
-            Ok(Value::Undefined)
-        } else {
-            Err(fail())
-        }
+        if passed { Ok(Value::Undefined) } else { Err(fail()) }
     }
 }

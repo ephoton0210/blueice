@@ -83,9 +83,11 @@ impl Vm {
             self.heap.native_function(*id)?,
             Some(
                 NativeFunction::String
+                    | NativeFunction::Array
                     | NativeFunction::Object
                     | NativeFunction::RegExp
                     | NativeFunction::Collator
+                    | NativeFunction::Locale
                     | NativeFunction::Error(_)
                     | NativeFunction::PrimitiveConstructor(_)
             )
@@ -469,6 +471,7 @@ impl Vm {
         let prototype = self.heap.prototype(constructor)?.unwrap();
         let native = match name {
             "Symbol" => NativeFunction::Symbol,
+            "Array" => NativeFunction::Array,
             "Object" => NativeFunction::Object,
             "Number" => NativeFunction::PrimitiveConstructor(false),
             "Boolean" => NativeFunction::PrimitiveConstructor(true),
@@ -498,6 +501,12 @@ impl Vm {
                 for &name in crate::property::WELL_KNOWN {
                     self.define_data(id, name, Value::Symbol(JsSymbol::well_known(name)), false, false, false)?;
                 }
+            } else if name == "Array" {
+                self.define_data(id, "prototype", Value::Object(self.array_prototype), false, false, false)?;
+                self.define_data(self.array_prototype, "constructor", Value::Object(id), true, false, true)?;
+                self.install_native(id, prototype, "isArray", 1, NativeFunction::ArrayIsArray)?;
+            } else if name == "Function" {
+                self.define_data(id, "prototype", Value::Object(prototype), false, false, false)?;
             } else if matches!(name, "Number" | "Boolean") {
                 let boolean = name == "Boolean";
                 let value = if boolean { Value::Bool(false) } else { Value::Number(0.0) };
@@ -524,6 +533,7 @@ impl Vm {
                     ("getPrototypeOf", 1, GetPrototypeOf),
                     ("setPrototypeOf", 2, SetPrototypeOf),
                     ("create", 2, Create),
+                    ("isExtensible", 1, IsExtensible),
                 ] {
                     self.install_native(id, prototype, name, length, NativeFunction::ObjectMethod(method))?;
                 }
@@ -557,6 +567,7 @@ impl Vm {
                 }
             }
             NativeFunction::Collator => self.create_collator(&args, construct),
+            NativeFunction::Locale => self.create_locale(&args, construct),
             NativeFunction::CanonicalLocales => {
                 let locales = self.canonical_locales(first)?;
                 self.array_from(locales.into_iter().map(|l| Value::String(l.to_string().into())).collect())
@@ -570,6 +581,24 @@ impl Vm {
                 Ok(collator.compare(&left, &right))
             }
             NativeFunction::CollatorResolvedOptions => self.collator_resolved_options(&receiver),
+            NativeFunction::LocaleToString => self.locale_to_string(&receiver),
+            NativeFunction::LocaleMaximize => self.locale_transform(&receiver, true),
+            NativeFunction::LocaleMinimize => self.locale_transform(&receiver, false),
+            NativeFunction::LocaleGetter(name) => self.locale_getter(&receiver, name),
+            NativeFunction::LocaleInfo(name) => self.locale_info(&receiver, name),
+            NativeFunction::Array => {
+                if args.len() == 1 {
+                    if let Value::Number(length) = first {
+                        let Value::Number(length) = self.array_length_value(&Value::Number(*length))? else { unreachable!() };
+                        let prototype = self.array_prototype;
+                        return Ok(Value::Object(self.with_roots(|heap| heap.alloc_array(length as u32, Some(prototype)))?));
+                    }
+                }
+                self.array_from(args)
+            }
+            NativeFunction::ArrayIsArray => Ok(Value::Bool(first.object_id().is_some_and(|id| self.heap.is_array(id).unwrap_or(false)))),
+            NativeFunction::ArrayForEach => self.array_for_each(&receiver, first, native::argument(&args, 1)),
+            NativeFunction::ArrayIncludes => self.array_includes(&receiver, first, native::argument(&args, 1)),
             NativeFunction::Bind => self.bind_function(receiver, &args),
             NativeFunction::HasInstance => self.has_instance(first.clone(), receiver, true).map(Value::Bool),
             NativeFunction::RegExpEscape => self.regexp_escape(first),
@@ -786,6 +815,92 @@ impl Vm {
         result
     }
 
+    fn array_for_each(&mut self, receiver: &Value, callback: &Value, this_arg: &Value) -> Result<Value, RuntimeError> {
+        if !self.is_callable(callback)? {
+            return Err(RuntimeError::TypeError("Array.prototype.forEach callback must be callable".into()));
+        }
+        let object = self.coerce_object(receiver)?;
+        self.stack.push(Value::Object(object));
+        let length = self.get_property(&Value::Object(object), &"length".into())?;
+        let length = self.coerce_length(&length)? as u64;
+        if let Some(indices) = self.array_own_indices(object, length)? {
+            for index in indices {
+                self.charge_step()?;
+                let value = self.get_property(&Value::Object(object), &index.to_string().into())?;
+                self.call_native(callback.clone(), this_arg.clone(), vec![value, Value::Number(index as f64), Value::Object(object)], false)?;
+            }
+        } else {
+            for index in 0..length {
+                self.charge_step()?;
+                let key: PropertyName = index.to_string().into();
+                let mut current = Some(object);
+                let mut present = false;
+                while let Some(id) = current {
+                    if self.heap.get_own_property_descriptor(id, &key)?.is_some() {
+                        present = true;
+                        break;
+                    }
+                    current = self.heap.prototype(id)?;
+                }
+                if present {
+                    let value = self.get_property(&Value::Object(object), &key)?;
+                    self.call_native(callback.clone(), this_arg.clone(), vec![value, Value::Number(index as f64), Value::Object(object)], false)?;
+                }
+            }
+        }
+        self.stack.pop();
+        Ok(Value::Undefined)
+    }
+
+    fn array_own_indices(&self, object: ObjectId, length: u64) -> Result<Option<Vec<u32>>, RuntimeError> {
+        // Scanning ordinary arrays preserves properties added by callbacks.  This
+        // shortcut is only for the large sparse arrays that would otherwise turn
+        // a bounded operation into millions of empty property lookups.
+        if length < 65_536 || !self.heap.is_array(object)? {
+            return Ok(None);
+        }
+        let mut prototype = self.heap.prototype(object)?;
+        while let Some(id) = prototype {
+            if self.heap.own_property_keys(id)?.iter().any(
+                |key| matches!(key, PropertyName::String(name) if name.to_utf8().ok().and_then(|name| name.parse::<u32>().ok()).is_some_and(|index| u64::from(index) < length)),
+            ) {
+                return Ok(None);
+            }
+            prototype = self.heap.prototype(id)?;
+        }
+        let mut indices: Vec<_> = self
+            .heap
+            .own_property_keys(object)?
+            .into_iter()
+            .filter_map(|key| match key {
+                PropertyName::String(name) => name.to_utf8().ok().and_then(|name| name.parse::<u32>().ok()).filter(|index| u64::from(*index) < length),
+                PropertyName::Symbol(_) => None,
+            })
+            .collect();
+        indices.sort_unstable();
+        Ok(Some(indices))
+    }
+
+    fn array_includes(&mut self, receiver: &Value, search: &Value, from_index: &Value) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        self.stack.push(Value::Object(object));
+        let length = self.get_property(&Value::Object(object), &"length".into())?;
+        let length = self.coerce_length(&length)? as i64;
+        let from_index = if *from_index == Value::Undefined { 0 } else { self.coerce_number(from_index)? as i64 };
+        let mut index = if from_index < 0 { (length + from_index).max(0) } else { from_index.min(length) };
+        while index < length {
+            self.charge_step()?;
+            let value = self.get_property(&Value::Object(object), &(index as u64).to_string().into())?;
+            if value == *search || matches!((&value, search), (Value::Number(left), Value::Number(right)) if left.is_nan() && right.is_nan()) {
+                self.stack.pop();
+                return Ok(Value::Bool(true));
+            }
+            index += 1;
+        }
+        self.stack.pop();
+        Ok(Value::Bool(false))
+    }
+
     pub(super) fn coerce_object(&mut self, value: &Value) -> Result<ObjectId, RuntimeError> {
         match value {
             Value::Object(id) => Ok(*id),
@@ -809,6 +924,9 @@ impl Vm {
     fn object_method(&mut self, method: ObjectMethod, args: &[Value]) -> Result<Value, RuntimeError> {
         use ObjectMethod::*;
         let first = native::argument(args, 0);
+        if method == IsExtensible && !matches!(first, Value::Object(_)) {
+            return Ok(Value::Bool(false));
+        }
         if matches!(method, DefineProperty | OwnKeys) && !matches!(first, Value::Object(_)) {
             return Err(RuntimeError::TypeError("operation requires an object".into()));
         }
@@ -902,6 +1020,7 @@ impl Vm {
                 }
                 Ok(Value::Object(object))
             }
+            IsExtensible => Ok(Value::Bool(self.heap.is_extensible(object)?)),
         }
     }
 

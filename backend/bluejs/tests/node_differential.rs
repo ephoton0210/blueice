@@ -57,6 +57,20 @@ fn primitive_completions_and_error_classes_match_node() {
     ] {
         corpus.push(format!("Intl.getCanonicalLocales('{tag}').join(',')"));
     }
+    for source in [
+        "new Intl.Locale('EN-latn-us-1901-u-ca-islamicc-kn-true').toString()",
+        "new Intl.Locale('EN-latn-us-1901-u-ca-islamicc-kn-true').baseName",
+        "new Intl.Locale('EN-latn-us-1901-u-ca-islamicc-kn-true').calendar",
+        "new Intl.Locale('en',{language:'fr',script:'Latn',region:'CA',calendar:'gregory',collation:'phonebk',hourCycle:'h23',caseFirst:'upper',numeric:true,numberingSystem:'latn'}).toString()",
+        "new Intl.Locale('en',{numeric:false,firstDayOfWeek:1}).numeric",
+        "new Intl.Locale('en',{firstDayOfWeek:1}).firstDayOfWeek",
+        "new Intl.Locale('zh').maximize().toString()",
+        "new Intl.Locale('zh-Hans-CN').minimize().toString()",
+        "Intl.getCanonicalLocales(new Intl.Locale('iw-IL')).join(',')",
+        "Intl.Locale('en')",
+    ] {
+        corpus.push(source.into());
+    }
     // Every UTF-16 code unit in initial and non-initial position. Batching
     // amortizes realm bootstrap while retaining exact independent results.
     for start in (0..=0xffff).step_by(256) {
