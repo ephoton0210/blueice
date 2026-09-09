@@ -1,0 +1,136 @@
+# One isolated script per line; primitive completion or error class only.
+# Intentional subset exclusions (TDZ, builtins, functions, etc.) do not belong here.
+
+1 + 2 * 3
+8/2 + 7%4
+true + null
+false - undefined
+'' + undefined + null + true + false
+'' + -0
+'' + NaN + Infinity + -Infinity
+'' + 1e-7
+'' + 1e-6
+'' + 1e20
+'' + 1e21
+'' + 1000000000000000128
+'' + 1.0000000000000002
+'' + 1.1142895159317463e15
+'' + -1.1142895159317463e15
+'' + 5e-324
+'' + 1.7976931348623157e308
+1 / -0
+-'0'
+NaN === NaN
+NaN !== NaN
+NaN <= 1 || NaN > 1
+'12' < '2'
+'12' < 2
+'😀' < '￿'
+'😀' > 'a'
+3 >= 3 && 2 <= 2 && 4 > 3 && 2 < 3
++' 2.5e1 ' + -'3'
++'0X10' + +'0B11' + +'0O7'
++'0x20000000000001'
++'0x20000000000003'
++'0x40000000000003'
++'0xFFFFFFFFFFFFFFFFF'
++'0b100000000000000000000000000000000000000000000000000011'
++'0o777777777777777777777'
++'0x00000000'
++'0x'
++'0b2'
++'-0x10'
++'+0o2'
++'inf'
++'Infinity'
++'+Infinity'
++'-Infinity'
++'1e999'
++'1e-999'
++'.5'
++'1.'
++'.'
++'+'
++'1e'
++'1e+'
++'1.2x'
++'１'
++'\uFEFF\u00A0 7 \u2028'
++'\u0085'
+typeof missing
+typeof undefined
+typeof NaN
+typeof true
+typeof 'x'
+typeof null
+typeof {}
+!0 && !'' && !null && !undefined && !NaN && !!{}
+false && missing
+7 || missing
+0 ?? missing
+null ?? 8
+undefined ?? 9
+true ? 1 : missing
+false ? missing : 2
+let x=0; false && x++; true || x++; 1 ?? x++; x
+`a${1+2}:${false}:${null}`
+x; var x
+if(false){var x=4;} x
+var x=1; var x; x
+var x=2; {var x=3;} x
+let x=1; {let x=2; x+=5;} x
+let x=1; {var y=2; x+=y;} x+y
+let x; x=3; x
+const o={}; o.x=4; o.x
+const x=1; x=2
+const x=1; x++
+{let x=1;} x
+let x; let x
+let x; var x
+{let x; {var x;}}
+for(let x=0;x<1;x++){var x;}
+break
+continue
+const x
+if(true) let x=1
+({__proto__:null,__proto__:null})
+let s=0; for(let i=0;i<6;i++){if(i===2)continue; if(i===5)break; {let x=i; s+=x;}} s
+let i=0; let s=0; while(i<5){i++; {let v=i; if(i===2)continue; s+=v;}} s
+let i=0; do {i++; if(i<3)continue; break;} while(true); i
+let n=0; for(let i=0;i<3;i++){for(let j=0;j<4;j++){if(j===2)break; n++;}} n
+let i=0; for(;;){i++; if(i===3)break;} i
+for(var i=0;i<2;i++){} i
+for(let i=0;i<1;i++){} i
+1; ; {} var x
+1; if(false) 2
+1; if(true) {}
+1; while(false) 2
+let i=0; while(i<3){i++; i*2;}
+let i=0; do {i++;} while(false)
+1; while(true){2;break;}
+1; while(true){2;if(true)break;}
+let i=0; while(i++<3){if(i<3)7;else break;}
+let a={x:2}; let b=a; b.x+=3; a.x
+let a={}; a===a && a!=={}
+let k='x'; let o={[k]:3,k}; o.x+o.k
+let i=0; let o={0:3}; let a=o[i++]++; a*100+o[0]*10+i
+let i=0; let o={0:3}; o[i++]+=(i=5); o[0]*10+i
+let o={x:'2'}; let a=++o.x; let b=o.x--; a*100+b*10+o.x
+let x='2'; let a=x++; let b=--x; a*100+b*10+x
+let o={x:8}; o.x-=2; o.x*=3; o.x/=2; o.x%=4; o.x
+let x=8; x-=2; x*=3; x/=2; x%=4; x
+let p={x:3}; let o={__proto__:p}; o.x
+let o={['__proto__']:7}; o.__proto__
+let __proto__=3; ({__proto__}).__proto__
+({__proto__:null}).missing
+({__proto__:3}).missing
+let o={x:4}; let old=o; o.x=(o={x:8}); old.x===o
+let o={[-0]:2,[true]:3,[null]:4,[undefined]:5}; o[0]+o.true+o.null+o.undefined
+let p={x:3}; let o={__proto__:p}; o.x++; o.x*10+p.x
+let o={}; o.x++
+let o={x:1,x:2}; o.x
+null.x
+undefined.x
+null.x=missing
+null[missing]=1
+missing

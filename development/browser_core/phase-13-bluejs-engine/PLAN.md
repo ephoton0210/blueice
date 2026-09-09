@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress (execution model, GC, event-loop shape, process placement, and MVP language scope all decided; the tokenizer/parser and first ordinary-object heap/two-generation GC slice are implemented — see `backend/bluejs`. Arrays/functions and the remaining runtime object semantics, bytecode compiler/interpreter, event loop, and the `blueice_ipc::script` wiring's `core`-side implementation remain.)
+**Status**: In progress (execution model, GC, event-loop shape, process placement, and MVP language scope all decided; the tokenizer/parser, ordinary-object heap/two-generation GC, and first AST→bytecode→VM execution slice are implemented — see `backend/bluejs`. The VM executes primitive expressions, bindings, control flow and ordinary objects, with instruction/string limits and an opt-in Node.js differential test. Arrays/functions and the rest of the MVP execution semantics, event loop, and the `blueice_ipc::script` wiring's `core`-side implementation remain.)
 
 ## Objective
 
@@ -76,6 +76,33 @@ This slice supplies the runtime storage the bytecode compiler/interpreter will n
 
 **Validation**: `cargo build --workspace --all-targets`, `cargo test --workspace`, and `cargo clippy --workspace --all-targets -- -D warnings` all pass; `cargo doc -p blueice-bluejs --no-deps` builds the public API docs without warnings. The workspace's real-socket tests require execution outside this environment's socket-restricted sandbox; they passed there. The targeted coverage command above clears the BlueJS gate; a full workspace coverage run was not repeated for this isolated crate addition.
 
+## First execution slice: AST to bytecode to a bounded VM (built)
+
+`compile(&Program) -> Result<Bytecode, CompileError>` and `Vm::execute(&Bytecode) -> Result<Value, RuntimeError>` now run on top of the real parser and heap. This is a library execution slice, with a small runnable example and an opt-in Node.js differential test, before the full shell or browser-host process exists.
+
+- **Encoding**: a byte-oriented operand-stack machine. One opcode table defines the enum, decoding, fixed instruction width (one opcode byte, optionally a little-endian `u32` operand), and reserved inline-cache metadata. Constants, binding slots and scope descriptors live beside the byte stream; jumps name byte offsets patched at emission time. Bytecode is compiler-created and read-only publicly, not an untrusted deserialization format. Expose decoded instructions for inspection and tests.
+- **Executable subset**: primitive literals; simple `var`/`let`/`const` bindings; blocks; `if`, `while`, `do` and classic `for`; unlabeled `break`/`continue`; arithmetic, strict equality and ordering; short-circuit `&&`/`||`/`??`, conditional expressions, unary operators, template interpolation; ordinary object literals and property reads/writes, compound assignment and prefix/postfix updates. `var` is hoisted to the script scope, lexical slots reset on block entry, and jumps unwind scopes they leave. Const writes and duplicate/conflicting declarations are errors. Phase 2's explicit omission of full TDZ enforcement remains (a pre-initialization lexical read yields undefined).
+- **Explicit boundaries**: arrays, functions/calls, closures, destructuring, spread, `for-in`/`for-of`, `switch`, exception handling, `this`, loose equality, `in`/`instanceof`, and implicit global assignment return compile errors in this slice, including in unreachable code. `undefined`/`NaN`/`Infinity` are read-only ambient names; declarations shadowing them are rejected for now. Native prototype methods, primitive boxing and object-to-primitive coercion remain unsupported and must report a runtime error where required, not fabricate a result. Object literals use a shared initially-empty Object prototype; literal `__proto__` setters follow their special semantics, while computed/shorthand keys are ordinary data properties. The parser accepts a larger subset than this VM executes.
+- **Roots and execution lifetime**: the VM owns its heap. At heap safepoints it roots the operand stack, active binding values and statement completion, releasing temporary registrations on success or error. Heap operations protect their own receiver/value inputs as designed in the previous slice. A returned object remains rooted and inspectable through `Vm::heap()` until the next execution; each execution has fresh bindings, and the previous result is released at that boundary. No executable AST is retained or walked by the VM.
+- **Bounds and completion**: configurable instruction and string-size limits produce typed errors. Scripts return their statement completion value, with control statements resetting empty completion appropriately. Every error path clears VM temporaries and roots so the VM can execute another program. These execution limits are not a sandbox for untrusted bytecode, a whole-process memory limit, or the future core-side script timeout.
+- **Acceptance**: test actual `parse -> compile -> execute` calls; inspect encoded arithmetic and jump boundaries; stress GC with a one-object nursery and objects on the operand stack/in bindings; check loop scope unwinding, evaluation order, errors and VM reuse. Compare a deterministic supported script corpus against Node's `vm.runInNewContext` (matching scalar values, signed zero/NaN and error categories, without error-message matching). Run crate/workspace checks, coverage and a dedicated test review before reporting the slice built.
+
+**Implementation and test review**: `backend/bluejs/src/{bytecode,compiler,primitive,vm}.rs`, exported from the crate root, with 16 public-pipeline tests in `tests/vm.rs` and a runnable crate-doc example. The first 10 acceptance tests were observed failing before implementation. The dedicated review added invalid public ASTs, opcode metadata/jump boundaries, repeated execution in independent VMs, all compound stores, primitive conversion/UTF-16 ordering boundaries, tiny-heap error cleanup, completion-value rooting, zero instruction budget, and UTF-8 string-budget boundaries. The opt-in `tests/node_differential.rs` drives the same pipeline against `tests/fixtures/node_oracle.js`: a hand-curated corpus plus 512 deterministic floating-point samples (non-finite samples skipped), exact IEEE bits with canonical NaN, UTF-8 string bytes, and error categories. This surfaced a real shortest-decimal midpoint discrepancy in Rust's float formatting; the primitive layer now applies ECMAScript's even-significand tie rule using exact integer arithmetic, with positive/negative regression cases. No extra crate dependency was added.
+
+Local commands:
+
+```sh
+cargo run -p blueice-bluejs --example run_bytecode
+# Number(15.0); optionally append -- path/to/script.js (completion printed via Debug)
+cargo test -p blueice-bluejs
+cargo test -p blueice-bluejs --test node_differential -- --ignored --nocapture
+cargo llvm-cov -p blueice-bluejs --fail-under-lines 90 --summary-only
+```
+
+Node.js is intentionally an opt-in test dependency, not an engine/runtime dependency or a silently skipped required check. This is not yet the planned `bluejs` shell/REPL, a Test262 runner, a performance comparison, or CI differential job. Existing tokenizer/parser deviations (including permissive `??` mixing and lack of lone-surrogate strings) remain; numeric coercion/ordering operates on the values those APIs supply. The execution budget bounds dispatched instructions, not compile/parse time or the cost of a single instruction, and the string budget is per string, not total runtime allocation.
+
+**Verification (2026-09-09)**: all 83 tokenizer/parser tests, 23 heap tests, 16 VM tests and two doc examples pass; the explicitly enabled Node.js v24.18.0 oracle also passes all 644 scripts. Default-suite BlueJS line coverage is 98.15% (`bytecode.rs` 100%, `compiler.rs` 98.98%, `primitive.rs` 96.59%, `vm.rs` 97.40%, storage files still 100%), without counting the opt-in oracle run. Workspace build/all-target Clippy (`-D warnings`), the workspace regression suite, crate rustdoc and the runnable example pass. Coverage was rerun for BlueJS only, not claimed as a fresh workspace-wide coverage measurement.
+
 ## Open questions (blocking real design)
 
 - ~~Process placement~~ — **resolved**: out-of-process, isolated like `extension`/`ai-gatekeeper`, via a new `blueice_ipc::script` module — see "Wiring design" above.
@@ -93,8 +120,8 @@ This slice supplies the runtime storage the bytecode compiler/interpreter will n
 - [ ] Extend the object model with arrays, callable objects/closure environments, built-ins, and the remaining language-runtime semantics as the bytecode interpreter gains their consumers
 - [x] Implement the tokenizer/parser → AST — `backend/bluejs` (crate `blueice-bluejs`): a hand-written tokenizer (`token.rs`) and recursive-descent parser (`parser.rs`) covering exactly `phase-2-mvp-scope/PLAN.md`'s "MVP JS scope" grammar subset, 83 tests, ≥97% line coverage
 - [x] Decide the bytecode format — SpiderMonkey-style stack machine, fixed-width-per-opcode, with a reserved tiering flag bit (`JOF_IC`-equivalent), see `research/js-bytecode-eventloop.md`
-- [ ] Implement the AST→bytecode compilation step
-- [ ] Implement the bytecode interpreter for the MVP feature subset
+- [x] Implement the first AST→bytecode→VM library slice — primitives, bindings, control flow, ordinary objects, safe heap rooting and execution limits, per the built slice above
+- [ ] Extend AST→bytecode compilation and VM execution to the full MVP feature subset (arrays, functions/closures, destructuring, remaining statements/operators and builtins)
 - [x] Decide the event loop shape — macrotask loop draining microtasks per-task, plus a separate render-pass entry point, see `research/js-bytecode-eventloop.md`
 - [ ] Implement the event loop and its interleaving with `core`'s render-pass/paint loop per that shape
 - [x] Define the `blueice_ipc::script` wire types and framed read/write helpers — already implemented in `backend/ipc/src/script.rs` before the runtime-storage slice, including `ScriptRequest`/`ScriptReply`, `Hello`/`HelloAck`, and real-socket round-trip tests
@@ -104,7 +131,8 @@ This slice supplies the runtime storage the bytecode compiler/interpreter will n
 - [ ] Design the Phase 7 gatekeeper's script-level hook points against that summary, with Phase 7
 - [ ] Build the `bluejs` shell (REPL mode + batch-file mode, minimal host bindings)
 - [ ] Expose `bluejs_run`/`bluejs_analyze` as MCP tools, with Phase 12
-- [ ] Build the differential test harness (run corpus through `node` and `bluejs`, diff results with non-determinism normalization)
+- [x] Build an opt-in library-level differential test against Node.js for the first executable subset, including exact primitive completion and error-category comparison
+- [ ] Build the full shell differential test harness (run corpus through `node` and `bluejs`, diff stdout/exit codes with non-determinism normalization; library-level foundation above is built)
 - [ ] Curate the initial differential test corpus (Test262 subset scoped to the MVP feature set)
 - [ ] Wire the differential job into `.github/workflows/ci.yml`, per `testing/TEST_PLAN.md`
 - [ ] End-to-end smoke test: a real `<script>`-bearing fixture page executes correctly through the full Phase 3 pipeline
