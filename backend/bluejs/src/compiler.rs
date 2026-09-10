@@ -1485,14 +1485,40 @@ impl Compiler {
             child.bytecode.self_slot = Some(slot);
         }
         let mut vars = var_names(&function.body)?;
-        for param in &function.params {
-            vars.extend(pattern_names(&param.pattern));
+        let parameters: BTreeSet<_> = function.params.iter().flat_map(|param| pattern_names(&param.pattern)).collect();
+        let lexical = lexical_names(&function.body)?;
+        if let Some((name, _)) = lexical.iter().find(|(name, _)| parameters.contains(name)) {
+            return Err(CompileError::DuplicateBinding(name.clone()));
         }
-        child.enter_scope(lexical_names(&function.body)?, &vars, true)?;
+        let parameter_expressions = function.params.iter().any(|param| param.default.is_some() || pattern_contains_expression(&param.pattern));
+        if parameter_expressions {
+            // Parameter expressions must not resolve into body declarations.
+            // All parameter cells exist, uninitialized, before the first
+            // initializer; closures keep those cells when the body later
+            // creates a separate variable environment.
+            child.enter_scope(parameters.iter().map(|name| (name.clone(), DeclKind::Let)).collect(), &BTreeSet::new(), true)?;
+        } else {
+            vars.extend(parameters.iter().cloned());
+            child.enter_scope(lexical.clone(), &vars, true)?;
+        }
         for (index, param) in function.params.iter().enumerate() {
             child.emit(if param.rest { Opcode::RestArguments } else { Opcode::Argument }, index as u32)?;
             child.binding_pattern_default(param.default.as_ref(), &param.pattern)?;
             child.bind_pattern(&param.pattern, DeclKind::Let)?;
+        }
+        if parameter_expressions {
+            let parameter_slots = child.names.last().unwrap().clone();
+            child.local_scope = child.names.len();
+            child.enter_scope(lexical, &vars, true)?;
+            // A redeclared var starts with the parameter's value. A function
+            // declaration instead supplies its own value during hoisting.
+            for name in vars.intersection(&parameters) {
+                if function.body.iter().any(|statement| matches!(statement, Stmt::FunctionDecl(function) if function.name.as_ref() == Some(name))) {
+                    continue;
+                }
+                child.emit(Opcode::GetBinding, parameter_slots[name])?;
+                child.emit(Opcode::InitializeBinding, child.names[child.local_scope][name])?;
+            }
         }
         if options.default_derived_constructor {
             child.emit(Opcode::SuperCallForward, 0)?;
@@ -1625,6 +1651,19 @@ fn pattern_names(pattern: &Pattern) -> Vec<String> {
     }
 }
 
+/// The binding-pattern part of FormalParameters ContainsExpression. Computed
+/// property keys count even when the pattern has no default initializer.
+fn pattern_contains_expression(pattern: &Pattern) -> bool {
+    match pattern {
+        Pattern::Identifier(_) => false,
+        Pattern::Array(elements) => elements.iter().flatten().any(|element| element.default.is_some() || pattern_contains_expression(&element.pattern)),
+        Pattern::Object(properties) => properties.iter().any(|property| match property {
+            ObjectPatternProp::KeyValue { key, value, default } => matches!(key, PropertyKey::Computed(_)) || default.is_some() || pattern_contains_expression(value),
+            ObjectPatternProp::Rest(pattern) => pattern_contains_expression(pattern),
+        }),
+    }
+}
+
 fn declarations_names(kind: DeclKind, declarations: &[VarDeclarator]) -> Result<Vec<(String, DeclKind)>, CompileError> {
     Ok(declarations.iter().flat_map(|decl| pattern_names(&decl.pattern).into_iter().map(move |name| (name, kind))).collect())
 }
@@ -1682,7 +1721,7 @@ fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
                     pending.push(alternate);
                 }
             }
-            Stmt::While { body, .. } | Stmt::DoWhile { body, .. } => pending.push(body),
+            Stmt::While { body, .. } | Stmt::DoWhile { body, .. } | Stmt::With { body, .. } => pending.push(body),
             Stmt::For { init, body, .. } => {
                 if let Some(ForInit::VarDecl(DeclKind::Var, declarations)) = init {
                     for declaration in declarations {

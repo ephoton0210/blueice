@@ -259,12 +259,12 @@ reject both `super()` and `super.property`; class methods retain their own home
 object. Identifier escapes are decoded before keyword classification, allowing
 valid escaped `IdentifierName` class members while rejecting malformed escapes.
 
-The current `language/statements/class` slice has **2,314 pass, 4,350 fail and
+The preceding grammar slice measured `language/statements/class` at **2,314 pass, 4,350 fail and
 2,002 unsupported** of 8,666 scheduled modes. The paired `function` statement
 and expression slices have, respectively, **632 pass, 114 fail, 39 unsupported**
 of 785 modes and **450 pass, 26 fail, 8 unsupported** of 484 modes. These runs
 use the pinned Test262 snapshot, eight workers, a two-second case deadline and
-a 1,000,000-instruction budget. Comparing path/mode pairs with the prior class
+a 100,000-instruction budget (verified from the stored summaries). Comparing path/mode pairs with the prior class
 measurement found 142 fail→pass and 46 unsupported→pass transitions, with no
 pass→nonpass transition. This is a focused regression measurement rather than
 a conformance claim; raw output is local at
@@ -277,6 +277,65 @@ With `--instruction-budget 5000000` (required because the TCO helpers perform
 pass, 0 fail and 0 unsupported** of 398 scheduled modes, with no harness errors
 or timeouts. Raw output is local at `/tmp/bluejs-test262-try-complete` and the
 reconciled analysis is at `/tmp/bluejs-test262-try-complete-analysis`.
+
+## Function parameter environments and compiler crash regression
+
+The edition-17 [FunctionDeclarationInstantiation](https://262.ecma-international.org/17.0/#sec-functiondeclarationinstantiation)
+algorithm was read on 2026-09-10 before this continuation. Parameter defaults
+and computed binding keys now compile in a parameter environment established
+before body declarations. Every parameter starts uninitialized and is bound in
+source order, so references to a later parameter, including `typeof`, throw
+`ReferenceError`. A separate body environment copies same-name `var` values
+from initialized parameters; hoisted function declarations supply their own
+values. Default-created closures retain parameter cells after body writes,
+collection, function return and tail-frame reuse. Parameter lists without expressions
+keep the existing shared parameter/var scope, including sloppy duplicate names.
+Mapped/unmapped `arguments`, full direct-eval declaration instantiation, and
+generator parameter execution at call entry remain open P0.2/P1.3 work.
+
+The `var` declaration inventory now traverses `with` bodies. Previously, a
+valid declaration such as `with ({}) { var f = function () {}; }` reached a
+compiler binding assertion and terminated the adapter. Nested control flow,
+function declarations, destructuring and lexical conflicts have regressions
+through the public parse/compile/execute boundary. The broader `with` closure
+environment behavior remains incomplete.
+
+All four [public regression tests](../../../backend/bluejs/tests/function_environments.rs)
+failed before implementation. They cover parameter TDZ and binding order,
+parameter/body closure visibility, same-name declarations, GC, tail-frame reuse
+and `with` hoisting. Forty-four contained JavaScript scripts were also checked
+with Node in isolated contexts. The JSON-lines adapter tests exercise the
+former crash and parameter errors followed by a successful request.
+
+Using the same snapshot, 8 workers, two-second deadline and 100,000-instruction
+budget as the preceding measurement, the current results are:
+
+| Filter | Modes | Pass | Fail | Unsupported |
+| --- | ---: | ---: | ---: | ---: |
+| `language/statements/function` | 785 | 638 | 105 | 42 |
+| `language/expressions/function` | 484 | 456 | 20 | 8 |
+| `language/statements/class` | 8,666 | 2,334 | 4,330 | 2,002 |
+
+Source hashes, unique path/mode pairs and execution budgets were reconciled:
+32 fail-to-pass transitions, no pass-to-nonpass transitions, and zero adapter
+crashes, harness errors or timeouts. Six former adapter crashes now produce
+ordinary recorded results; three still expose the unsupported implicit-global
+assignment operation. The other three still fail due to incomplete `with`
+semantics. Raw runs are at `/tmp/bluejs-crate-functions-statements-final`,
+`/tmp/bluejs-crate-functions-expressions-final` and `/tmp/bluejs-crate-class-final`;
+the comparison is `/tmp/bluejs-crate-comparison.json`.
+
+Validation: BlueJS all-target tests, workspace tests (outside the socket-restricted
+sandbox), workspace all-target Clippy with `-D warnings`, and all 10 Python
+runner/analyzer tests pass. The coverage gate was measured both before and after
+this change: **10,182/10,369 lines (98.20%)** before, **10,221/10,402 (98.26%)**
+after. It still exits 1 against the required 100% threshold: 181 lines remain
+uncovered in existing grammar, class/generator and VM paths. No exclusions or
+threshold changes were made. Reports are `/tmp/bluejs-crate-coverage-before.log`,
+`/tmp/bluejs-crate-coverage-after.log` and `/tmp/bluejs-crate-missing-after.txt`.
+This continuation does not claim that every crate gate passes. The earlier
+crate-wide rustfmt differences also remain; the new regression file is
+rustfmt-clean.
 
 ## Reproduction and continuation
 
