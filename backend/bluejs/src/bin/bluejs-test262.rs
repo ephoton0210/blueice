@@ -9,6 +9,7 @@ use blueice_bluejs::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 
 #[derive(Deserialize)]
@@ -19,6 +20,10 @@ struct Request {
     includes: Vec<String>,
     #[serde(default)]
     harness_sources: Vec<String>,
+    #[serde(default)]
+    module_path: Option<String>,
+    #[serde(default)]
+    module_sources: HashMap<String, String>,
     #[serde(default)]
     asynchronous: bool,
     #[serde(default)]
@@ -49,9 +54,15 @@ fn runtime(error: RuntimeError) -> Value {
         RuntimeError::Thrown(_) => "ThrownValue",
         RuntimeError::RegexTimeout | RuntimeError::InstructionLimit => "timeout",
         RuntimeError::RegexWorker(_) => "worker_error",
+        RuntimeError::ModuleResolution(_) => "SyntaxError",
         _ => "resource_error",
     };
-    json!({"phase":"runtime", "kind":kind, "message":error.to_string()})
+    let phase = if matches!(error, RuntimeError::ModuleResolution(_)) {
+        "resolution"
+    } else {
+        "runtime"
+    };
+    json!({"phase":phase, "kind":kind, "message":error.to_string()})
 }
 
 fn evaluate(request: Request) -> Value {
@@ -60,44 +71,70 @@ fn evaluate(request: Request) -> Value {
     } else {
         request.source
     };
-    let program = match if request.mode == "module" {
-        parse_module(&source)
-    } else {
-        parse(&source)
-    } {
-        Ok(program) => program,
-        Err(error) => {
-            return match error.resource {
-                Some(resource) => {
-                    let mut reply = runtime(resource);
-                    reply["phase"] = json!("parse");
-                    reply
-                }
-                // The subset parser has no complete unsupported-grammar taxonomy.
-                // Never let its arbitrary rejection satisfy a negative test.
-                None if error.known_syntax => {
-                    json!({"phase":"parse", "kind":"SyntaxError", "message":error.message})
-                }
-                None => {
-                    json!({"phase":"parse", "kind":"unclassified_parse_error", "message":error.message})
-                }
-            };
+    let parse_error = |error: blueice_bluejs::ParseError| match error.resource {
+        Some(resource) => {
+            let mut reply = runtime(resource);
+            reply["phase"] = json!("parse");
+            reply
+        }
+        // The subset parser has no complete unsupported-grammar taxonomy.
+        // Never let its arbitrary rejection satisfy a negative test.
+        None if error.known_syntax => {
+            json!({"phase":"parse", "kind":"SyntaxError", "message":error.message})
+        }
+        None => {
+            json!({"phase":"parse", "kind":"unclassified_parse_error", "message":error.message})
         }
     };
-    let code = match if request.mode == "module" {
-        compile_module_with_limit(&program, request.bytecode_limit.unwrap_or(u32::MAX))
-    } else {
-        compile_with_limit(&program, request.bytecode_limit.unwrap_or(u32::MAX))
-    } {
-        Ok(code) => code,
-        Err(error) => {
-            return match error {
-                CompileError::Unsupported(reason) => json!({"kind":"unsupported", "reason":reason}),
-                CompileError::ProgramTooLarge => {
-                    json!({"kind":"resource_error", "message":error.to_string()})
-                }
-                _ => json!({"phase":"parse", "kind":"SyntaxError", "message":error.to_string()}),
+    let compile_error = |error: CompileError| match error {
+        CompileError::Unsupported(reason) => json!({"kind":"unsupported", "reason":reason}),
+        CompileError::ProgramTooLarge => {
+            json!({"kind":"resource_error", "message":error.to_string()})
+        }
+        _ => json!({"phase":"parse", "kind":"SyntaxError", "message":error.to_string()}),
+    };
+    let mut module_codes = HashMap::new();
+    let code = if request.mode == "module" {
+        let entry = request
+            .module_path
+            .clone()
+            .unwrap_or_else(|| "<entry>".to_string());
+        let program = match parse_module(&source) {
+            Ok(program) => program,
+            Err(error) => return parse_error(error),
+        };
+        let code =
+            match compile_module_with_limit(&program, request.bytecode_limit.unwrap_or(u32::MAX)) {
+                Ok(code) => code,
+                Err(error) => return compile_error(error),
             };
+        module_codes.insert(entry, code);
+        for (path, module_source) in &request.module_sources {
+            if module_codes.contains_key(path) {
+                continue;
+            }
+            let program = match parse_module(module_source) {
+                Ok(program) => program,
+                Err(error) => return parse_error(error),
+            };
+            let code = match compile_module_with_limit(
+                &program,
+                request.bytecode_limit.unwrap_or(u32::MAX),
+            ) {
+                Ok(code) => code,
+                Err(error) => return compile_error(error),
+            };
+            module_codes.insert(path.clone(), code);
+        }
+        None
+    } else {
+        let program = match parse(&source) {
+            Ok(program) => program,
+            Err(error) => return parse_error(error),
+        };
+        match compile_with_limit(&program, request.bytecode_limit.unwrap_or(u32::MAX)) {
+            Ok(code) => Some(code),
+            Err(error) => return compile_error(error),
         }
     };
     if request.parse_only {
@@ -176,9 +213,10 @@ fn evaluate(request: Request) -> Value {
         }
     }
     let execution = if request.mode == "module" {
-        vm.execute_module(&code)
+        let entry = request.module_path.as_deref().unwrap_or("<entry>");
+        vm.execute_module_graph(entry, &module_codes)
     } else {
-        vm.execute_script(&code)
+        vm.execute_script(code.as_ref().expect("script compilation produced bytecode"))
     };
     match execution {
         Ok(_) if request.asynchronous => {

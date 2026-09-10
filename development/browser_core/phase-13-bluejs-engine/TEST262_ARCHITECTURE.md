@@ -677,3 +677,38 @@ unsupported** of 602 modes; before this baseline every selected module mode was
 reported as a module-host unsupported result. The representative local-binding
 and top-level-`this` cases pass, and a public regression locks strictness and
 non-publication behavior.
+
+## P1.4 continuation: static import/export graph linking
+
+The current [ECMAScript 2026 module-record algorithms](https://tc39.es/ecma262/2026/multipage/ecmascript-language-scripts-and-modules.html)
+were checked on 2026-09-11. `ParseModule` retains ImportEntry and ExportEntry
+information independently of executable ModuleItems; linking creates module
+environments for a connected graph before evaluation, and import bindings are
+immutable indirect references to the resolved exporter binding. Cyclic module
+records use graph traversal for both linking and evaluation, so function
+declarations are instantiated before an evaluator in the strongly connected
+component can call them.
+
+`parse_module` now returns a `Module` with local, indirect, star and namespace
+export entries, plus named/default/namespace import entries. `compile_module`
+records the entry metadata and a top-level declaration-instantiation boundary.
+`Vm::execute_module_graph` accepts host-resolved source keys and resolves
+relative requests against those keys. It first visits the complete reachable
+graph, allocates one cell per module binding, aliases named import slots to
+the exporter cell, runs every declaration prefix, then evaluates dependencies
+depth-first. Local assignments therefore update imports after evaluation; the
+same cell subscription updates the implemented namespace object's string-named
+properties. Default function declarations have a dedicated hoisted binding,
+rather than being incorrectly lowered to a later `const` initializer.
+
+The Test262 runner now recursively supplies relative `_FIXTURE` sources to
+the adapter. The fresh `language/module-code` run at
+`target/test262-module-final` records **109 pass, 348 fail and 145
+unsupported** of 602 modes, versus the dependency-free baseline's 26 passes.
+Representative named import, indirect re-export, default-function cycle and
+namespace binding cases pass. This is intentionally not a complete Module
+Namespace Exotic Object: descriptor attributes, symbols, integrity operations,
+full TDZ getter behavior, dynamic import and top-level await remain separate
+object-model and async-linking work. Public regressions cover named live cells,
+function-cycle instantiation, default export hoisting, indirect exports/import
+immutability, and namespace property updates.

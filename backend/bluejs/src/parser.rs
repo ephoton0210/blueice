@@ -76,24 +76,68 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
     Ok(program)
 }
 
-/// Parses a single ECMAScript module before linking. Import/export grammar and
-/// dependency resolution remain a later module-record slice, but keeping a
-/// distinct public entry point lets the executable module baseline enforce
-/// module strictness and top-level execution semantics without treating it as
-/// a classic script.
-pub fn parse_module(source: &str) -> Result<Program, ParseError> {
+/// Parses one ECMAScript module and retains its declarative import/export
+/// entries separately from executable statements. Linking remains host-driven
+/// through [`crate::Vm::execute_module_graph`], but this distinct goal keeps
+/// module strictness and top-level syntax separate from classic scripts.
+pub fn parse_module(source: &str) -> Result<Module, ParseError> {
     let mut parser = Parser::new(source);
     let mut body = Vec::new();
+    let mut imports = Vec::new();
+    let mut exports = Vec::new();
     while !parser.at_eof() {
-        body.push(parser.parse_statement()?);
+        if parser.check_identifier("import") {
+            imports.extend(parser.parse_import_declaration()?);
+        } else if parser.check_identifier("export") {
+            parser.parse_export_declaration(&mut body, &mut exports)?;
+        } else {
+            body.push(parser.parse_statement()?);
+        }
     }
-    let program = Program { body };
+    let program = Program { body: body.clone() };
     if contains_super_call_outside_class(&program)
         || contains_super_property_outside_class(&program)
     {
         return Err(parser.syntax_error("super is not valid in module code"));
     }
-    Ok(program)
+    let mut exported_names = std::collections::HashSet::new();
+    for export in &exports {
+        let name = match export {
+            ExportEntry::Local { export_name, .. }
+            | ExportEntry::Indirect { export_name, .. }
+            | ExportEntry::Namespace { export_name, .. } => Some(export_name),
+            ExportEntry::Star { .. } => None,
+        };
+        if let Some(name) = name {
+            if !exported_names.insert(name.clone()) {
+                return Err(parser.syntax_error("duplicate exported name"));
+            }
+        }
+    }
+    Ok(Module {
+        body,
+        imports,
+        exports,
+    })
+}
+
+fn pattern_bound_names(pattern: &Pattern) -> Vec<String> {
+    match pattern {
+        Pattern::Identifier(name) => vec![name.clone()],
+        Pattern::Array(elements) => elements
+            .iter()
+            .flatten()
+            .flat_map(|element| pattern_bound_names(&element.pattern))
+            .collect(),
+        Pattern::Object(properties) => properties
+            .iter()
+            .flat_map(|property| match property {
+                ObjectPatternProp::KeyValue { value, .. } | ObjectPatternProp::Rest(value) => {
+                    pattern_bound_names(value)
+                }
+            })
+            .collect(),
+    }
 }
 
 /// Parses direct-eval source before its caller applies context-sensitive
@@ -298,6 +342,19 @@ impl Parser {
         matches!(self.peek(), Token::Keyword(kk) if *kk == k)
     }
 
+    fn check_identifier(&self, expected: &str) -> bool {
+        matches!(self.peek(), Token::Identifier(name) if name == expected)
+    }
+
+    fn eat_identifier(&mut self, expected: &str) -> bool {
+        if self.check_identifier(expected) {
+            self.advance();
+            true
+        } else {
+            false
+        }
+    }
+
     fn eat_punct(&mut self, p: Punct) -> bool {
         if self.check_punct(p) {
             self.advance();
@@ -363,6 +420,37 @@ impl Parser {
         }
     }
 
+    fn expect_binding_identifier(&mut self) -> Result<String, ParseError> {
+        match self.peek().clone() {
+            Token::Identifier(name) => {
+                self.advance();
+                Ok(name)
+            }
+            _ => Err(self.syntax_error("expected a binding identifier")),
+        }
+    }
+
+    fn expect_module_name(&mut self) -> Result<String, ParseError> {
+        match self.advance() {
+            Token::String(name) => name
+                .to_utf8()
+                .map_err(|_| self.syntax_error("module specifier must be well-formed Unicode")),
+            _ => Err(self.syntax_error("expected a module specifier string")),
+        }
+    }
+
+    fn expect_module_export_name(&mut self) -> Result<String, ParseError> {
+        match self.peek().clone() {
+            Token::String(name) => {
+                self.advance();
+                name.to_utf8().map_err(|_| {
+                    self.syntax_error("module export name must be well-formed Unicode")
+                })
+            }
+            _ => self.expect_identifier_name(),
+        }
+    }
+
     fn is_contextual_of(&self) -> bool {
         matches!(self.peek(), Token::Identifier(name) if name == "of")
     }
@@ -385,6 +473,220 @@ impl Parser {
     }
 
     // ---- Statements ----
+
+    fn parse_import_declaration(&mut self) -> Result<Vec<ImportEntry>, ParseError> {
+        debug_assert!(self.check_identifier("import"));
+        self.advance();
+        if matches!(self.peek(), Token::String(_)) {
+            let module_request = self.expect_module_name()?;
+            self.consume_semicolon()?;
+            // A side-effect-only import still creates a requested module.
+            return Ok(vec![ImportEntry {
+                module_request,
+                import_name: ImportName::Named(String::new()),
+                local_name: None,
+            }]);
+        }
+
+        let mut entries = Vec::new();
+        let mut has_following_clause = true;
+        if !self.check_punct(Punct::LBrace) && !self.check_punct(Punct::Star) {
+            let local_name = self.expect_binding_identifier()?;
+            entries.push((ImportName::Named("default".to_string()), local_name));
+            has_following_clause = self.eat_punct(Punct::Comma);
+            if !has_following_clause && !self.check_identifier("from") {
+                return Err(self.syntax_error("default import requires 'from' or ','"));
+            }
+        }
+        if has_following_clause && self.eat_punct(Punct::Star) {
+            if !self.eat_identifier("as") {
+                return Err(self.syntax_error("namespace import requires 'as'"));
+            }
+            entries.push((ImportName::Namespace, self.expect_binding_identifier()?));
+        } else if has_following_clause {
+            self.expect_punct(Punct::LBrace)?;
+            while !self.check_punct(Punct::RBrace) {
+                let import_name = self.expect_module_export_name()?;
+                let local_name = if self.eat_identifier("as") {
+                    self.expect_binding_identifier()?
+                } else {
+                    import_name.clone()
+                };
+                entries.push((ImportName::Named(import_name), local_name));
+                if !self.check_punct(Punct::RBrace) {
+                    self.expect_punct(Punct::Comma)?;
+                }
+            }
+            self.expect_punct(Punct::RBrace)?;
+        }
+        if !self.eat_identifier("from") {
+            return Err(self.syntax_error("import declaration requires 'from'"));
+        }
+        let module_request = self.expect_module_name()?;
+        self.consume_semicolon()?;
+        if entries.is_empty() {
+            return Ok(vec![ImportEntry {
+                module_request,
+                import_name: ImportName::Named(String::new()),
+                local_name: None,
+            }]);
+        }
+        Ok(entries
+            .into_iter()
+            .map(|(import_name, local_name)| ImportEntry {
+                module_request: module_request.clone(),
+                import_name,
+                local_name: Some(local_name),
+            })
+            .collect())
+    }
+
+    fn parse_export_declaration(
+        &mut self,
+        body: &mut Vec<Stmt>,
+        exports: &mut Vec<ExportEntry>,
+    ) -> Result<(), ParseError> {
+        debug_assert!(self.check_identifier("export"));
+        self.advance();
+        if self.eat_punct(Punct::Star) {
+            let export_name = if self.eat_identifier("as") {
+                Some(self.expect_module_export_name()?)
+            } else {
+                None
+            };
+            if !self.eat_identifier("from") {
+                return Err(self.syntax_error("star export requires 'from'"));
+            }
+            let module_request = self.expect_module_name()?;
+            self.consume_semicolon()?;
+            exports.push(match export_name {
+                Some(export_name) => ExportEntry::Namespace {
+                    export_name,
+                    module_request,
+                },
+                None => ExportEntry::Star { module_request },
+            });
+            return Ok(());
+        }
+        if self.eat_identifier("default") || self.eat_keyword(Keyword::Default) {
+            let hidden = "\0bluejs_module_default".to_string();
+            match self.peek().clone() {
+                Token::Keyword(Keyword::Function) => {
+                    self.advance();
+                    body.push(Stmt::ModuleDefaultFunction {
+                        function: self.parse_function()?,
+                        binding: hidden.clone(),
+                    });
+                }
+                Token::Identifier(name) if name == "async" && self.async_function_follows() => {
+                    self.advance();
+                    self.expect_keyword(Keyword::Function)?;
+                    body.push(Stmt::ModuleDefaultFunction {
+                        function: self.parse_function_with_async(true)?,
+                        binding: hidden.clone(),
+                    });
+                }
+                Token::Identifier(name) if name == "class" => {
+                    self.advance();
+                    body.push(Stmt::VarDecl(
+                        DeclKind::Const,
+                        vec![VarDeclarator {
+                            pattern: Pattern::Identifier(hidden.clone()),
+                            init: Some(Expr::Class(self.parse_class()?)),
+                        }],
+                    ));
+                }
+                _ => body.push(Stmt::VarDecl(
+                    DeclKind::Const,
+                    vec![VarDeclarator {
+                        pattern: Pattern::Identifier(hidden.clone()),
+                        init: Some(self.parse_assignment()?),
+                    }],
+                )),
+            }
+            self.consume_semicolon()?;
+            exports.push(ExportEntry::Local {
+                export_name: "default".to_string(),
+                local_name: hidden,
+            });
+            return Ok(());
+        }
+        if self.eat_punct(Punct::LBrace) {
+            let mut specifiers = Vec::new();
+            while !self.check_punct(Punct::RBrace) {
+                let local_name = self.expect_module_export_name()?;
+                let export_name = if self.eat_identifier("as") {
+                    self.expect_module_export_name()?
+                } else {
+                    local_name.clone()
+                };
+                specifiers.push((local_name, export_name));
+                if !self.check_punct(Punct::RBrace) {
+                    self.expect_punct(Punct::Comma)?;
+                }
+            }
+            self.expect_punct(Punct::RBrace)?;
+            if self.eat_identifier("from") {
+                let module_request = self.expect_module_name()?;
+                for (import_name, export_name) in specifiers {
+                    exports.push(ExportEntry::Indirect {
+                        export_name,
+                        module_request: module_request.clone(),
+                        import_name,
+                    });
+                }
+            } else {
+                for (local_name, export_name) in specifiers {
+                    exports.push(ExportEntry::Local {
+                        export_name,
+                        local_name,
+                    });
+                }
+            }
+            self.consume_semicolon()?;
+            return Ok(());
+        }
+
+        let statement = match self.peek().clone() {
+            Token::Keyword(Keyword::Var) => self.parse_var_decl_stmt(DeclKind::Var)?,
+            Token::Keyword(Keyword::Let) => self.parse_var_decl_stmt(DeclKind::Let)?,
+            Token::Keyword(Keyword::Const) => self.parse_var_decl_stmt(DeclKind::Const)?,
+            Token::Keyword(Keyword::Function) => {
+                self.advance();
+                let function = self.parse_function()?;
+                if function.name.is_none() {
+                    return Err(self.syntax_error("function declarations require a name"));
+                }
+                Stmt::FunctionDecl(function)
+            }
+            Token::Identifier(name) if name == "class" => {
+                self.advance();
+                let class = self.parse_class()?;
+                if class.name.is_none() {
+                    return Err(self.syntax_error("class declarations require a name"));
+                }
+                Stmt::ClassDecl(class)
+            }
+            _ => return Err(self.syntax_error("expected an export declaration")),
+        };
+        let names = match &statement {
+            Stmt::VarDecl(_, declarations) => declarations
+                .iter()
+                .flat_map(|declaration| pattern_bound_names(&declaration.pattern))
+                .collect(),
+            Stmt::FunctionDecl(function) => vec![function.name.clone().unwrap()],
+            Stmt::ClassDecl(class) => vec![class.name.clone().unwrap()],
+            _ => unreachable!("module export parser only produces declarations"),
+        };
+        for name in names {
+            exports.push(ExportEntry::Local {
+                export_name: name.clone(),
+                local_name: name,
+            });
+        }
+        body.push(statement);
+        Ok(())
+    }
 
     fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
         match self.peek().clone() {

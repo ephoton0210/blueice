@@ -6,7 +6,15 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from run import Worker, classify, instruction_budget, metadata, modes, selected_files
+from run import (
+    Worker,
+    classify,
+    instruction_budget,
+    metadata,
+    modes,
+    module_sources,
+    selected_files,
+)
 
 
 class RunnerTests(unittest.TestCase):
@@ -47,6 +55,23 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(selected_files(all_files, corpus, "language/match"), [matching])
             with self.assertRaisesRegex(ValueError, "selected no test files"):
                 selected_files(all_files, corpus, "language/missing")
+
+    def test_module_sources_collects_only_reachable_relative_fixtures(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "entry.js"
+            dependency = test / "modules" / "nested" / "dependency.js"
+            unrelated = test / "modules" / "unrelated.js"
+            dependency.parent.mkdir(parents=True)
+            entry.write_text("import { value } from './nested/dependency.js'; value;")
+            dependency.write_text("export { value } from '../entry.js';")
+            unrelated.write_text("export const ignored = true;")
+
+            sources = module_sources(entry, test)
+            self.assertEqual(
+                set(sources),
+                {"modules/entry.js", "modules/nested/dependency.js"},
+            )
 
     def test_supervisor_terminates_and_restarts_a_stalled_process(self):
         with tempfile.TemporaryDirectory() as temporary:

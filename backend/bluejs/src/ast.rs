@@ -18,6 +18,54 @@ pub struct Program {
     pub body: Vec<Stmt>,
 }
 
+/// The syntactic information a Source Text Module Record retains after its
+/// executable statements have been parsed.  Import and export declarations
+/// are deliberately not ordinary statements: they participate in linking
+/// before any statement in the graph is evaluated.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Module {
+    pub body: Vec<Stmt>,
+    pub imports: Vec<ImportEntry>,
+    pub exports: Vec<ExportEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportName {
+    Named(String),
+    Namespace,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportEntry {
+    pub module_request: String,
+    pub import_name: ImportName,
+    /// `None` represents `import "specifier";`, which participates in
+    /// dependency evaluation but creates no local binding.
+    pub local_name: Option<String>,
+}
+
+/// One declarative export.  Local entries point at a binding in this module;
+/// indirect and star entries are followed during graph resolution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExportEntry {
+    Local {
+        export_name: String,
+        local_name: String,
+    },
+    Indirect {
+        export_name: String,
+        module_request: String,
+        import_name: String,
+    },
+    Star {
+        module_request: String,
+    },
+    Namespace {
+        export_name: String,
+        module_request: String,
+    },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeclKind {
     Var,
@@ -233,6 +281,13 @@ pub enum Stmt {
         body: Box<Stmt>,
     },
     FunctionDecl(Function),
+    /// `export default function …` has no ordinary module-local binding for
+    /// its source-level name, but its default export is initialized during
+    /// ModuleDeclarationInstantiation just like a function declaration.
+    ModuleDefaultFunction {
+        function: Function,
+        binding: String,
+    },
     ClassDecl(Class),
     /// Compiler-internal wrapper for an instance field lowered into its
     /// constructor body. The VM uses it to retain field-initializer lexical
@@ -573,7 +628,9 @@ fn stmt_contains_super(statement: &Stmt, search: SuperSearch) -> bool {
             expr_contains_super(object, search) || stmt_contains_super(body, search)
         }
         Stmt::Labelled { item, .. } => stmt_contains_super(item, search),
-        Stmt::FunctionDecl(function) => function_contains_super(function, search),
+        Stmt::FunctionDecl(function) | Stmt::ModuleDefaultFunction { function, .. } => {
+            function_contains_super(function, search)
+        }
         Stmt::ClassField(statement) => stmt_contains_super(statement, search),
     }
 }

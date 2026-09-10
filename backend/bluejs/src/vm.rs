@@ -6,7 +6,7 @@
 //! Allocating instructions root all VM-held objects around heap
 //! safepoints. The collector itself additionally protects store inputs.
 
-use crate::bytecode::Binding;
+use crate::bytecode::{Binding, ModuleExport, ModuleImportName};
 use crate::native::{self, NativeFunction};
 use crate::primitive;
 use crate::{
@@ -15,7 +15,7 @@ use crate::{
 };
 use num_bigint::{BigInt, Sign};
 use num_traits::ToPrimitive;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 mod builtins;
 mod errors;
 mod functions;
@@ -59,10 +59,14 @@ pub enum RuntimeError {
     Thrown(Value),
     Heap(HeapError),
     InstructionLimit,
-    StringLimit { limit: usize },
+    StringLimit {
+        limit: usize,
+    },
     RegexTimeout,
     Test262(String),
     RegexWorker(String),
+    /// Static module linking failed before any module body was evaluated.
+    ModuleResolution(String),
     Unsupported(&'static str),
 }
 
@@ -80,6 +84,7 @@ impl fmt::Display for RuntimeError {
             Self::Test262(message) => write!(f, "Test262Error: {message}"),
             Self::RegexTimeout => f.write_str("BlueJS regex deadline exceeded"),
             Self::RegexWorker(message) => write!(f, "BlueJS regex worker failed: {message}"),
+            Self::ModuleResolution(message) => write!(f, "module resolution error: {message}"),
             Self::Unsupported(reason) => write!(f, "BlueJS unsupported: {reason}"),
         }
     }
@@ -184,6 +189,24 @@ struct DynamicEvalBinding {
     cell: ObjectId,
 }
 
+/// Runtime data that belongs to one member of a transient static module
+/// graph.  The bytecode stays immutable; every top-level module slot gets a
+/// rooted cell while the graph is linked and evaluated.
+struct LinkedModule {
+    cells: HashMap<usize, ObjectId>,
+    namespace: Option<ObjectId>,
+    evaluated: bool,
+    evaluating: bool,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+enum ExportResolution {
+    Binding { module: String, slot: usize },
+    Missing,
+    Ambiguous,
+    Namespace { module: String },
+}
+
 enum PromiseStatus {
     Pending,
     Fulfilled(Value),
@@ -242,6 +265,10 @@ pub struct Vm {
     completion_saves: Vec<(Value, bool)>,
     remaining_instructions: u64,
     cells: HashMap<usize, ObjectId>,
+    // Namespace properties subscribe to their exporter cells.  The current
+    // object representation has data properties rather than exotic module
+    // namespace accessors, so writes fan out here to retain live values.
+    module_namespace_properties: HashMap<ObjectId, Vec<(ObjectId, String)>>,
     // Bindings created by sloppy direct eval in the active ordinary-function
     // VariableEnvironment. They move into a generator's suspended state when
     // it yields and are rooted at interpreter safepoints.
@@ -342,6 +369,7 @@ impl Vm {
             completion_saves: Vec::new(),
             remaining_instructions: 0,
             cells: HashMap::new(),
+            module_namespace_properties: HashMap::new(),
             dynamic_eval_bindings: HashMap::new(),
             eval_dynamic_slots: HashMap::new(),
             dynamic_eval_outer_bindings: Vec::new(),
@@ -396,12 +424,573 @@ impl Vm {
         self.execute_with_global_bindings(code, true, false)
     }
 
-    /// Evaluates one already-instantiated module. Its declarations are scoped
-    /// to this evaluation and are never exposed as classic global properties;
-    /// dependency linking and namespace exports intentionally live in the
-    /// subsequent module-graph layer.
+    /// Evaluates one dependency-free module. Its declarations are scoped to
+    /// this evaluation and are never exposed as classic global properties.
+    /// Use [`Vm::execute_module_graph`] when the code has import/export
+    /// entries that need static linking.
     pub fn execute_module(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
         self.execute_with_global_bindings(code, false, true)
+    }
+
+    /// Links and synchronously evaluates one static module graph.
+    ///
+    /// Keys in `modules` are host-resolved module names. Relative requests
+    /// are resolved against their referrer's slash-separated key, so callers
+    /// normally use canonical paths such as `directory/entry.js`.  This is a
+    /// deliberately synchronous subset: dynamic import and top-level await
+    /// remain outside this API, but normal static cycles and live bindings
+    /// use the same instantiate-before-evaluate shape as Source Text Module
+    /// Records.
+    pub fn execute_module_graph(
+        &mut self,
+        entry: &str,
+        modules: &HashMap<String, Bytecode>,
+    ) -> Result<Value, RuntimeError> {
+        let mut roots = Vec::new();
+        let result = (|| {
+            let mut visiting = HashSet::new();
+            let mut visited = HashSet::new();
+            let mut order = Vec::new();
+            Self::collect_module_graph(modules, entry, &mut visiting, &mut visited, &mut order)?;
+
+            if let Some(root) = self.result_root.take() {
+                self.heap.unroot(root)?;
+            }
+            self.with_roots(|heap| {
+                heap.collect_major();
+                Ok(())
+            })?;
+            self.stack.clear();
+            self.bindings.clear();
+            self.binding_metadata.clear();
+            self.cells.clear();
+            self.module_namespace_properties.clear();
+            self.active_scopes.clear();
+            self.active_scope_slots.clear();
+            self.with_objects.clear();
+            self.script_global_slots.clear();
+            self.dynamic_eval_bindings.clear();
+            self.eval_dynamic_slots.clear();
+            self.dynamic_eval_outer_bindings.clear();
+            self.completion = Value::Undefined;
+            self.completion_empty = true;
+            self.remaining_instructions = self.config.instruction_budget;
+            self.this = Value::Undefined;
+            self.top_level_module = true;
+
+            let mut linked: HashMap<String, LinkedModule> = order
+                .iter()
+                .cloned()
+                .map(|name| {
+                    (
+                        name,
+                        LinkedModule {
+                            cells: HashMap::new(),
+                            namespace: None,
+                            evaluated: false,
+                            evaluating: false,
+                        },
+                    )
+                })
+                .collect();
+
+            // ModuleDeclarationInstantiation creates all own bindings before
+            // wiring imports.  A `var` binding is initialized immediately;
+            // lexical bindings deliberately have no `value` property yet.
+            for name in &order {
+                let code = modules
+                    .get(name)
+                    .expect("reachable module was checked during collection");
+                if !code.module {
+                    return Err(RuntimeError::ModuleResolution(format!(
+                        "{name} was not compiled using the module goal"
+                    )));
+                }
+                let imported_slots: HashSet<_> = code
+                    .module_imports
+                    .iter()
+                    .filter_map(|import| import.local_slot.map(|slot| slot as usize))
+                    .collect();
+                let slots = code.scopes.first().cloned().unwrap_or_default();
+                let record = linked
+                    .get_mut(name)
+                    .expect("linked record was allocated for every module");
+                for slot in slots {
+                    let slot = slot as usize;
+                    if imported_slots.contains(&slot) {
+                        continue;
+                    }
+                    let cell = self.with_roots(|heap| heap.alloc_object(None))?;
+                    roots.push(self.heap.root(cell)?);
+                    if !code.bindings[slot].lexical {
+                        self.with_roots(|heap| heap.set(cell, "value", Value::Undefined))?;
+                    }
+                    record.cells.insert(slot, cell);
+                }
+            }
+
+            // Import bindings are immutable aliases.  The importer stores the
+            // exporter's *cell*, so later stores in the exporting module are
+            // visible without any copy or notification mechanism.
+            for name in &order {
+                let code = modules
+                    .get(name)
+                    .expect("reachable module was checked during collection");
+                let mut aliases = Vec::new();
+                for import in &code.module_imports {
+                    let Some(local_slot) = import.local_slot else {
+                        continue;
+                    };
+                    let target = Self::resolve_module_request(name, &import.module_request)?;
+                    let resolution = match &import.import_name {
+                        ModuleImportName::Named(import_name) => {
+                            Self::resolve_export(modules, &target, import_name, &mut Vec::new())?
+                        }
+                        ModuleImportName::Namespace => ExportResolution::Namespace {
+                            module: target.clone(),
+                        },
+                    };
+                    let cell = match resolution {
+                        ExportResolution::Binding {
+                            module: exporter,
+                            slot,
+                        } => linked
+                            .get(&exporter)
+                            .and_then(|record| record.cells.get(&slot))
+                            .copied()
+                            .ok_or_else(|| {
+                                RuntimeError::ModuleResolution(format!(
+                                    "export binding from {exporter} has no cell"
+                                ))
+                            })?,
+                        ExportResolution::Namespace { module } => {
+                            let namespace =
+                                self.module_namespace(&module, modules, &mut linked, &mut roots)?;
+                            let cell = self.with_roots(|heap| heap.alloc_object(None))?;
+                            roots.push(self.heap.root(cell)?);
+                            self.with_roots(|heap| {
+                                heap.set(cell, "value", Value::Object(namespace))
+                            })?;
+                            cell
+                        }
+                        ExportResolution::Missing | ExportResolution::Ambiguous => {
+                            let import_name = match &import.import_name {
+                                ModuleImportName::Named(name) => name.as_str(),
+                                ModuleImportName::Namespace => "*",
+                            };
+                            return Err(RuntimeError::ModuleResolution(format!(
+                                "{} does not export {import_name}",
+                                import.module_request
+                            )));
+                        }
+                    };
+                    aliases.push((local_slot as usize, cell));
+                }
+                let record = linked
+                    .get_mut(name)
+                    .expect("linked record was allocated for every module");
+                for (slot, cell) in aliases {
+                    record.cells.insert(slot, cell);
+                }
+            }
+
+            // Run declaration instantiation for every reachable module before
+            // evaluating any body.  This makes function exports callable
+            // across a cycle, while lexical exports remain in their TDZ.
+            for name in &order {
+                let code = modules
+                    .get(name)
+                    .expect("reachable module was checked during collection");
+                let record = linked
+                    .get_mut(name)
+                    .expect("linked record was allocated for every module");
+                self.initialize_module_record(code, &mut record.cells)?;
+            }
+
+            let value = self.evaluate_module_record(entry, modules, &mut linked)?;
+            if let Value::Object(id) = value {
+                self.result_root = Some(self.heap.root(id)?);
+            }
+            Ok(value)
+        })();
+
+        for root in roots {
+            self.heap.unroot(root)?;
+        }
+        self.stack.clear();
+        self.bindings.clear();
+        self.binding_metadata.clear();
+        self.cells.clear();
+        self.module_namespace_properties.clear();
+        self.active_scopes.clear();
+        self.active_scope_slots.clear();
+        self.with_objects.clear();
+        self.script_global_slots.clear();
+        self.dynamic_eval_bindings.clear();
+        self.eval_dynamic_slots.clear();
+        self.dynamic_eval_outer_bindings.clear();
+        self.completion = Value::Undefined;
+        self.completion_empty = true;
+        self.top_level_module = false;
+        self.pending_completions.clear();
+        self.completion_saves.clear();
+        self.with_roots(|heap| {
+            heap.collect_major();
+            Ok(())
+        })?;
+        result
+    }
+
+    fn collect_module_graph(
+        modules: &HashMap<String, Bytecode>,
+        name: &str,
+        visiting: &mut HashSet<String>,
+        visited: &mut HashSet<String>,
+        order: &mut Vec<String>,
+    ) -> Result<(), RuntimeError> {
+        if visited.contains(name) || visiting.contains(name) {
+            return Ok(());
+        }
+        let code = modules.get(name).ok_or_else(|| {
+            RuntimeError::ModuleResolution(format!("module {name} was not supplied by the host"))
+        })?;
+        if !code.module {
+            return Err(RuntimeError::ModuleResolution(format!(
+                "{name} was not compiled using the module goal"
+            )));
+        }
+        visiting.insert(name.to_string());
+        let mut requests: Vec<&str> = code
+            .module_imports
+            .iter()
+            .map(|import| import.module_request.as_str())
+            .collect();
+        requests.extend(
+            code.module_exports
+                .iter()
+                .filter_map(|export| match export {
+                    ModuleExport::Indirect { module_request, .. }
+                    | ModuleExport::Star { module_request }
+                    | ModuleExport::Namespace { module_request, .. } => {
+                        Some(module_request.as_str())
+                    }
+                    ModuleExport::Local { .. } => None,
+                }),
+        );
+        for request in requests {
+            let target = Self::resolve_module_request(name, request)?;
+            Self::collect_module_graph(modules, &target, visiting, visited, order)?;
+        }
+        visiting.remove(name);
+        visited.insert(name.to_string());
+        order.push(name.to_string());
+        Ok(())
+    }
+
+    fn resolve_module_request(referrer: &str, request: &str) -> Result<String, RuntimeError> {
+        if request.starts_with("./") || request.starts_with("../") {
+            let mut parts: Vec<&str> = referrer.split('/').collect();
+            if parts.len() > 1 {
+                parts.pop();
+            } else {
+                parts.clear();
+            }
+            for part in request.split('/') {
+                match part {
+                    "" | "." => {}
+                    ".." => {
+                        if parts.pop().is_none() {
+                            return Err(RuntimeError::ModuleResolution(format!(
+                                "relative module request {request} escapes its host root"
+                            )));
+                        }
+                    }
+                    part => parts.push(part),
+                }
+            }
+            return Ok(parts.join("/"));
+        }
+        Ok(request.to_string())
+    }
+
+    fn resolve_export(
+        modules: &HashMap<String, Bytecode>,
+        module: &str,
+        export_name: &str,
+        resolve_set: &mut Vec<(String, String)>,
+    ) -> Result<ExportResolution, RuntimeError> {
+        let pair = (module.to_string(), export_name.to_string());
+        if resolve_set.contains(&pair) {
+            return Ok(ExportResolution::Missing);
+        }
+        resolve_set.push(pair);
+        let result = (|| {
+            let code = modules.get(module).ok_or_else(|| {
+                RuntimeError::ModuleResolution(format!(
+                    "module {module} was not supplied by the host"
+                ))
+            })?;
+            for export in &code.module_exports {
+                match export {
+                    ModuleExport::Local {
+                        export_name: name,
+                        local_slot,
+                    } if name == export_name => {
+                        return Ok(ExportResolution::Binding {
+                            module: module.to_string(),
+                            slot: *local_slot as usize,
+                        });
+                    }
+                    ModuleExport::Indirect {
+                        export_name: name,
+                        module_request,
+                        import_name,
+                    } if name == export_name => {
+                        let target = Self::resolve_module_request(module, module_request)?;
+                        return Self::resolve_export(modules, &target, import_name, resolve_set);
+                    }
+                    ModuleExport::Namespace {
+                        export_name: name,
+                        module_request,
+                    } if name == export_name => {
+                        return Ok(ExportResolution::Namespace {
+                            module: Self::resolve_module_request(module, module_request)?,
+                        });
+                    }
+                    _ => {}
+                }
+            }
+            if export_name == "default" {
+                return Ok(ExportResolution::Missing);
+            }
+            let mut candidate = ExportResolution::Missing;
+            for export in &code.module_exports {
+                let ModuleExport::Star { module_request } = export else {
+                    continue;
+                };
+                let target = Self::resolve_module_request(module, module_request)?;
+                match Self::resolve_export(modules, &target, export_name, resolve_set)? {
+                    ExportResolution::Missing => {}
+                    ExportResolution::Ambiguous => return Ok(ExportResolution::Ambiguous),
+                    ExportResolution::Namespace { .. } => return Ok(ExportResolution::Ambiguous),
+                    found @ ExportResolution::Binding { .. } => {
+                        if candidate == ExportResolution::Missing {
+                            candidate = found;
+                        } else if candidate != found {
+                            return Ok(ExportResolution::Ambiguous);
+                        }
+                    }
+                }
+            }
+            Ok(candidate)
+        })();
+        resolve_set.pop();
+        result
+    }
+
+    fn exported_names(
+        modules: &HashMap<String, Bytecode>,
+        module: &str,
+        star_set: &mut HashSet<String>,
+    ) -> Result<BTreeSet<String>, RuntimeError> {
+        if !star_set.insert(module.to_string()) {
+            return Ok(BTreeSet::new());
+        }
+        let result = (|| {
+            let code = modules.get(module).ok_or_else(|| {
+                RuntimeError::ModuleResolution(format!(
+                    "module {module} was not supplied by the host"
+                ))
+            })?;
+            let mut names = BTreeSet::new();
+            for export in &code.module_exports {
+                match export {
+                    ModuleExport::Local { export_name, .. }
+                    | ModuleExport::Indirect { export_name, .. }
+                    | ModuleExport::Namespace { export_name, .. } => {
+                        names.insert(export_name.clone());
+                    }
+                    ModuleExport::Star { module_request } => {
+                        let target = Self::resolve_module_request(module, module_request)?;
+                        names.extend(
+                            Self::exported_names(modules, &target, star_set)?
+                                .into_iter()
+                                .filter(|name| name != "default"),
+                        );
+                    }
+                }
+            }
+            Ok(names)
+        })();
+        star_set.remove(module);
+        result
+    }
+
+    fn module_namespace(
+        &mut self,
+        module: &str,
+        modules: &HashMap<String, Bytecode>,
+        linked: &mut HashMap<String, LinkedModule>,
+        roots: &mut Vec<RootId>,
+    ) -> Result<ObjectId, RuntimeError> {
+        if let Some(namespace) = linked
+            .get(module)
+            .ok_or_else(|| {
+                RuntimeError::ModuleResolution(format!("module {module} was not linked"))
+            })?
+            .namespace
+        {
+            return Ok(namespace);
+        }
+        let prototype = self.object_prototype;
+        let namespace = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        roots.push(self.heap.root(namespace)?);
+        linked
+            .get_mut(module)
+            .expect("linked module record exists")
+            .namespace = Some(namespace);
+
+        let names = Self::exported_names(modules, module, &mut HashSet::new())?;
+        for name in names {
+            let resolution = Self::resolve_export(modules, module, &name, &mut Vec::new())?;
+            let value = match resolution {
+                ExportResolution::Binding {
+                    module: exporter,
+                    slot,
+                } => {
+                    let cell = linked
+                        .get(&exporter)
+                        .and_then(|record| record.cells.get(&slot))
+                        .copied()
+                        .ok_or_else(|| {
+                            RuntimeError::ModuleResolution(format!(
+                                "export {name} from {exporter} has no binding"
+                            ))
+                        })?;
+                    self.module_namespace_properties
+                        .entry(cell)
+                        .or_default()
+                        .push((namespace, name.clone()));
+                    self.heap
+                        .get_own(cell, "value")?
+                        .unwrap_or(Value::Undefined)
+                }
+                ExportResolution::Namespace { module } => {
+                    Value::Object(self.module_namespace(&module, modules, linked, roots)?)
+                }
+                ExportResolution::Missing | ExportResolution::Ambiguous => continue,
+            };
+            // Updating cells uses `Heap::set`, so these are writable internal
+            // data properties.  The binding that holds the namespace remains
+            // immutable; full namespace exotic property attributes are a
+            // later object-model slice.
+            self.define_data(namespace, name, value, true, true, false)?;
+        }
+        Ok(namespace)
+    }
+
+    fn enter_module_record(&mut self, code: &Bytecode, cells: HashMap<usize, ObjectId>) {
+        self.stack.clear();
+        self.bindings = vec![None; code.bindings.len()];
+        self.binding_metadata = code.bindings.clone();
+        self.cells = cells;
+        self.completion = Value::Undefined;
+        self.completion_empty = true;
+        self.active_scopes.clear();
+        self.active_scope_slots.clear();
+        self.with_objects.clear();
+        self.script_global_slots.clear();
+        self.strict = true;
+        self.this = Value::Undefined;
+        self.top_level_module = true;
+    }
+
+    fn initialize_module_record(
+        &mut self,
+        code: &Bytecode,
+        cells: &mut HashMap<usize, ObjectId>,
+    ) -> Result<(), RuntimeError> {
+        let entry = code.module_evaluate_entry.ok_or(RuntimeError::Unsupported(
+            "module declaration instantiation",
+        ))? as usize;
+        self.enter_module_record(code, std::mem::take(cells));
+        let mut iterators = Vec::new();
+        let result = self.interpret(code, &mut iterators, 0, None, Some(entry));
+        *cells = std::mem::take(&mut self.cells);
+        self.stack.clear();
+        self.active_scopes.clear();
+        self.active_scope_slots.clear();
+        match result? {
+            InterpreterExit::Suspend { pc } if pc == entry => Ok(()),
+            _ => unreachable!("module declaration prefix always suspends at its evaluation entry"),
+        }
+    }
+
+    fn evaluate_module_record(
+        &mut self,
+        name: &str,
+        modules: &HashMap<String, Bytecode>,
+        linked: &mut HashMap<String, LinkedModule>,
+    ) -> Result<Value, RuntimeError> {
+        let Some(record) = linked.get(name) else {
+            return Err(RuntimeError::ModuleResolution(format!(
+                "module {name} was not linked"
+            )));
+        };
+        if record.evaluated || record.evaluating {
+            return Ok(Value::Undefined);
+        }
+        linked
+            .get_mut(name)
+            .expect("checked module record exists")
+            .evaluating = true;
+        let result = (|| {
+            let code = modules.get(name).expect("linked module has bytecode");
+            let requests: Vec<_> = code
+                .module_imports
+                .iter()
+                .map(|import| import.module_request.clone())
+                .collect();
+            for request in requests {
+                let target = Self::resolve_module_request(name, &request)?;
+                self.evaluate_module_record(&target, modules, linked)?;
+            }
+            let entry = code.module_evaluate_entry.ok_or(RuntimeError::Unsupported(
+                "module declaration instantiation",
+            ))? as usize;
+            let cells = std::mem::take(
+                &mut linked
+                    .get_mut(name)
+                    .expect("checked module record exists")
+                    .cells,
+            );
+            self.enter_module_record(code, cells);
+            self.active_scopes.push(0);
+            self.active_scope_slots
+                .push(code.scopes.first().cloned().unwrap_or_default());
+            let mut iterators = Vec::new();
+            let value = self
+                .interpret(code, &mut iterators, entry, None, None)
+                .and_then(|exit| match exit {
+                    InterpreterExit::Return(value) => Ok(value),
+                    InterpreterExit::Yield { .. } => Err(RuntimeError::TypeError(
+                        "yield requires a generator function".into(),
+                    )),
+                    InterpreterExit::Suspend { .. } => {
+                        unreachable!("module evaluation does not suspend")
+                    }
+                });
+            let cells = std::mem::take(&mut self.cells);
+            let record = linked.get_mut(name).expect("checked module record exists");
+            record.cells = cells;
+            value
+        })();
+        let record = linked.get_mut(name).expect("checked module record exists");
+        record.evaluating = false;
+        if result.is_ok() {
+            record.evaluated = true;
+        }
+        result
     }
 
     fn execute_with_global_bindings(
@@ -760,6 +1349,11 @@ impl Vm {
 
     fn store_global_cell(&mut self, cell: ObjectId, value: Value) -> Result<(), RuntimeError> {
         self.with_roots(|heap| heap.set(cell, "value", value.clone()))?;
+        if let Some(properties) = self.module_namespace_properties.get(&cell).cloned() {
+            for (namespace, name) in properties {
+                self.with_roots(|heap| heap.set(namespace, name, value.clone()))?;
+            }
+        }
         let property = self.global_bindings.iter().find_map(|(name, binding)| {
             (binding.cell == cell && binding.property).then(|| name.clone())
         });
@@ -795,6 +1389,13 @@ impl Vm {
 
     fn reset_scope(&mut self, code: &Bytecode, scope: u32) {
         for slot in &code.scopes[scope as usize] {
+            // The graph linker owns module outer-scope cells until every
+            // dependent body has finished.  Do not discard them merely
+            // because a suspended/resumed module leaves its lexical scope.
+            if code.module && scope == 0 {
+                self.bindings[*slot as usize] = None;
+                continue;
+            }
             self.cells.remove(&(*slot as usize));
             self.bindings[*slot as usize] = None;
         }
@@ -2115,6 +2716,14 @@ impl Vm {
                                     .expect("prepared global binding survives script execution")
                                     .cell;
                                 self.cells.insert(*slot as usize, cell);
+                                continue;
+                            }
+                            if code.module
+                                && operand == 0
+                                && self.cells.contains_key(&(*slot as usize))
+                            {
+                                // ModuleDeclarationInstantiation seeded this
+                                // slot (or linked it to an exporter cell).
                                 continue;
                             }
                             self.cells.remove(&(*slot as usize));

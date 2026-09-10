@@ -7,7 +7,10 @@
 //! Every lexical scope has its own slots, reset on entry/exit. Abrupt
 //! loop exits emit the same scope cleanup as ordinary block exits.
 
-use crate::bytecode::{AbruptJump, Binding, Handler};
+use crate::bytecode::{
+    AbruptJump, Binding, Handler, ModuleExport as CompiledModuleExport,
+    ModuleImport as CompiledModuleImport, ModuleImportName as CompiledModuleImportName,
+};
 use crate::*;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
@@ -41,11 +44,11 @@ pub fn compile(program: &Program) -> Result<Bytecode, CompileError> {
     compile_with_limit(program, u32::MAX)
 }
 
-/// Compiles one already-parsed module before dependency linking. Module
-/// declarations use the ordinary lexical bytecode scope, but force strict
-/// semantics and are intentionally not published as classic global bindings.
-pub fn compile_module(program: &Program) -> Result<Bytecode, CompileError> {
-    compile_module_with_limit(program, u32::MAX)
+/// Compiles one parsed module before graph linking. Its declarative entries
+/// retain resolved local slots in bytecode, while top-level function
+/// declarations get a declaration-instantiation prefix for cyclic graphs.
+pub fn compile_module(module: &Module) -> Result<Bytecode, CompileError> {
+    compile_module_with_limit(module, u32::MAX)
 }
 
 /// Compiles with an inclusive limit on emitted instruction bytes.
@@ -55,23 +58,33 @@ pub fn compile_with_limit(
     program: &Program,
     max_bytecode_bytes: u32,
 ) -> Result<Bytecode, CompileError> {
-    compile_with_limit_and_mode(program, max_bytecode_bytes, false)
+    compile_with_limit_and_mode(program, max_bytecode_bytes, false, &[], &[])
 }
 
 /// Like [`compile_module`], with the Test262 adapter's bytecode resource
 /// limit. This is public so an embedder can apply the same bound before
 /// module linking has expanded to a graph.
 pub fn compile_module_with_limit(
-    program: &Program,
+    module: &Module,
     max_bytecode_bytes: u32,
 ) -> Result<Bytecode, CompileError> {
-    compile_with_limit_and_mode(program, max_bytecode_bytes, true)
+    compile_with_limit_and_mode(
+        &Program {
+            body: module.body.clone(),
+        },
+        max_bytecode_bytes,
+        true,
+        &module.imports,
+        &module.exports,
+    )
 }
 
 fn compile_with_limit_and_mode(
     program: &Program,
     max_bytecode_bytes: u32,
     module: bool,
+    module_imports: &[ImportEntry],
+    module_exports: &[ExportEntry],
 ) -> Result<Bytecode, CompileError> {
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
@@ -85,6 +98,7 @@ fn compile_with_limit_and_mode(
         with_depth: 0,
     };
     compiler.bytecode.strict = module || strict_body(&program.body);
+    compiler.bytecode.module = module;
     if compiler.bytecode.strict && strict_assignment_to_restricted_name(&program.body) {
         return Err(CompileError::InvalidSyntax(
             "strict code cannot assign to eval or arguments",
@@ -98,8 +112,31 @@ fn compile_with_limit_and_mode(
             _ => None,
         })
         .collect();
-    let lexical = lexical_names(&program.body)?;
+    let mut lexical = lexical_names(&program.body)?;
     let mut vars = top_level_var_names(&program.body)?;
+    if module {
+        for import in module_imports {
+            if let Some(local_name) = &import.local_name {
+                lexical.push((local_name.clone(), DeclKind::Const));
+            }
+        }
+        // Module function declarations are lexical bindings, rather than the
+        // classic-script global var bindings used by the existing compiler.
+        let function_names: BTreeSet<_> = program
+            .body
+            .iter()
+            .filter_map(|statement| match statement {
+                Stmt::FunctionDecl(function) => function.name.clone(),
+                _ => None,
+            })
+            .collect();
+        vars.retain(|name| !function_names.contains(name));
+        lexical.extend(function_names.into_iter().map(|name| (name, DeclKind::Let)));
+        lexical.extend(program.body.iter().filter_map(|statement| match statement {
+            Stmt::ModuleDefaultFunction { binding, .. } => Some((binding.clone(), DeclKind::Let)),
+            _ => None,
+        }));
+    }
     if !compiler.bytecode.strict {
         vars.extend(
             annex_b_function_names(&program.body, &lexical)
@@ -108,8 +145,69 @@ fn compile_with_limit_and_mode(
         );
     }
     compiler.enter_scope(lexical, &vars, true)?;
-    compiler.statements(&program.body)?;
+    if module {
+        compiler.function_declarations(&program.body)?;
+        compiler.bytecode.module_evaluate_entry = Some(compiler.offset()?);
+        compiler.statements_after_function_declarations(&program.body)?;
+    } else {
+        compiler.statements(&program.body)?;
+    }
     compiler.emit(Opcode::Halt, 0)?;
+    if module {
+        compiler.bytecode.module_imports = module_imports
+            .iter()
+            .map(|import| {
+                let local_slot = import.local_name.as_ref().map(|local_name| {
+                    compiler
+                        .resolve(local_name)
+                        .expect("module import binding was declared in the outer scope")
+                });
+                CompiledModuleImport {
+                    module_request: import.module_request.clone(),
+                    import_name: match &import.import_name {
+                        ImportName::Named(name) => CompiledModuleImportName::Named(name.clone()),
+                        ImportName::Namespace => CompiledModuleImportName::Namespace,
+                    },
+                    local_slot,
+                }
+            })
+            .collect();
+        compiler.bytecode.module_exports = module_exports
+            .iter()
+            .map(|export| match export {
+                ExportEntry::Local {
+                    export_name,
+                    local_name,
+                } => Ok(CompiledModuleExport::Local {
+                    export_name: export_name.clone(),
+                    local_slot: compiler
+                        .resolve(local_name)
+                        .ok_or(CompileError::InvalidSyntax(
+                            "export references an undeclared local binding",
+                        ))?,
+                }),
+                ExportEntry::Indirect {
+                    export_name,
+                    module_request,
+                    import_name,
+                } => Ok(CompiledModuleExport::Indirect {
+                    export_name: export_name.clone(),
+                    module_request: module_request.clone(),
+                    import_name: import_name.clone(),
+                }),
+                ExportEntry::Star { module_request } => Ok(CompiledModuleExport::Star {
+                    module_request: module_request.clone(),
+                }),
+                ExportEntry::Namespace {
+                    export_name,
+                    module_request,
+                } => Ok(CompiledModuleExport::Namespace {
+                    export_name: export_name.clone(),
+                    module_request: module_request.clone(),
+                }),
+            })
+            .collect::<Result<Vec<_>, CompileError>>()?;
+    }
     Ok(compiler.bytecode)
 }
 
@@ -388,30 +486,49 @@ impl Compiler {
     }
 
     fn statements(&mut self, statements: &[Stmt]) -> Result<(), CompileError> {
+        self.function_declarations(statements)?;
+        self.statements_after_function_declarations(statements)
+    }
+
+    /// Module linking separates declaration instantiation from evaluation.
+    /// Keeping the declaration prefix explicit lets the VM run it for every
+    /// member of a cyclic graph before it starts evaluating any body.
+    fn function_declarations(&mut self, statements: &[Stmt]) -> Result<(), CompileError> {
         for statement in statements {
-            if let Stmt::FunctionDecl(function) = statement {
-                self.function(function, false)?;
-                let slot = self
-                    .resolve(function.name.as_ref().expect("declaration has a name"))
-                    .unwrap();
-                if self.bytecode.bindings[slot as usize].lexical {
-                    self.emit(Opcode::InitializeBinding, slot)?;
-                } else {
-                    self.emit(Opcode::StoreBinding, slot)?;
+            let (function, binding_name) = match statement {
+                Stmt::FunctionDecl(function) => (
+                    function,
+                    function.name.as_ref().expect("declaration has a name"),
+                ),
+                Stmt::ModuleDefaultFunction { function, binding } => (function, binding),
+                _ => continue,
+            };
+            self.function(function, false)?;
+            let slot = self.resolve(binding_name).unwrap();
+            if self.bytecode.bindings[slot as usize].lexical {
+                self.emit(Opcode::InitializeBinding, slot)?;
+            } else {
+                self.emit(Opcode::StoreBinding, slot)?;
+                self.emit(Opcode::Pop, 0)?;
+            }
+            // Annex B.3.2/B.3.3 only supplies the legacy outer var for
+            // ordinary functions. Generator and async declarations stay
+            // exclusively lexical even in sloppy code.
+            if matches!(statement, Stmt::FunctionDecl(_)) && is_annex_b_function(function) {
+                if let Some(outer) = self.annex_b_outer_var_slot(slot) {
+                    self.emit(Opcode::GetBinding, slot)?;
+                    self.emit(Opcode::StoreBinding, outer)?;
                     self.emit(Opcode::Pop, 0)?;
-                }
-                // Annex B.3.2/B.3.3 only supplies the legacy outer var for
-                // ordinary functions. Generator and async declarations stay
-                // exclusively lexical even in sloppy code.
-                if is_annex_b_function(function) {
-                    if let Some(outer) = self.annex_b_outer_var_slot(slot) {
-                        self.emit(Opcode::GetBinding, slot)?;
-                        self.emit(Opcode::StoreBinding, outer)?;
-                        self.emit(Opcode::Pop, 0)?;
-                    }
                 }
             }
         }
+        Ok(())
+    }
+
+    fn statements_after_function_declarations(
+        &mut self,
+        statements: &[Stmt],
+    ) -> Result<(), CompileError> {
         for statement in statements {
             self.statement(statement, true)?;
         }
@@ -447,7 +564,7 @@ impl Compiler {
                 result?;
                 self.emit(Opcode::LeaveWith, 0)?;
             }
-            Stmt::FunctionDecl(_) => {}
+            Stmt::FunctionDecl(_) | Stmt::ModuleDefaultFunction { .. } => {}
             Stmt::ClassDecl(class) => {
                 let slot = self
                     .resolve(class.name.as_deref().expect("class declaration has a name"))
@@ -2612,6 +2729,7 @@ fn strict_assignment_in_statement(statement: &Stmt) -> bool {
         | Stmt::Break(_)
         | Stmt::Continue(_)
         | Stmt::FunctionDecl(_)
+        | Stmt::ModuleDefaultFunction { .. }
         | Stmt::ClassDecl(_) => false,
         Stmt::Expr(expr) | Stmt::Throw(expr) => strict_assignment_in_expression(expr),
         Stmt::Block(statements) => strict_assignment_to_restricted_name(statements),

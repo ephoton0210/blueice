@@ -169,6 +169,42 @@ pub(crate) struct Binding {
     pub catch_parameter: bool,
 }
 
+/// A linked import's local slot.  The VM replaces that slot's cell with the
+/// resolved exporter cell before module initialization, preserving the live
+/// binding rather than copying a value.
+#[derive(Clone)]
+pub(crate) enum ModuleImportName {
+    Named(String),
+    Namespace,
+}
+
+#[derive(Clone)]
+pub(crate) struct ModuleImport {
+    pub module_request: String,
+    pub import_name: ModuleImportName,
+    pub local_slot: Option<u32>,
+}
+
+#[derive(Clone)]
+pub(crate) enum ModuleExport {
+    Local {
+        export_name: String,
+        local_slot: u32,
+    },
+    Indirect {
+        export_name: String,
+        module_request: String,
+        import_name: String,
+    },
+    Star {
+        module_request: String,
+    },
+    Namespace {
+        export_name: String,
+        module_request: String,
+    },
+}
+
 #[derive(Clone)]
 pub(crate) struct TemplateSite {
     pub id: u64,
@@ -256,6 +292,14 @@ pub struct Bytecode {
     pub(crate) templates: Vec<TemplateSite>,
     pub(crate) handlers: Vec<Handler>,
     pub(crate) abrupt_jumps: Vec<AbruptJump>,
+    /// This code was compiled with the Module goal.  Its outer scope may be
+    /// suspended after declaration instantiation and resumed for evaluation.
+    pub(crate) module: bool,
+    /// Byte offset immediately after top-level function instantiation.
+    /// `None` for scripts and nested function bytecode.
+    pub(crate) module_evaluate_entry: Option<u32>,
+    pub(crate) module_imports: Vec<ModuleImport>,
+    pub(crate) module_exports: Vec<ModuleExport>,
 }
 
 impl Bytecode {
@@ -289,6 +333,10 @@ impl Bytecode {
             templates: Vec::new(),
             handlers: Vec::new(),
             abrupt_jumps: Vec::new(),
+            module: false,
+            module_evaluate_entry: None,
+            module_imports: Vec::new(),
+            module_exports: Vec::new(),
         }
     }
 

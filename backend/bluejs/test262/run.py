@@ -31,6 +31,10 @@ import yaml
 ROOT = Path(__file__).resolve().parents[3]
 SNAPSHOT = json.loads(Path(__file__).with_name("snapshot.json").read_text())
 FRONTMATTER = re.compile(r"/\*---(.*?)---\*/", re.DOTALL)
+MODULE_REQUEST = re.compile(
+    r'''\bimport\s+(?:(?:[\w$*{},\s]+?)\s+from\s+)?["']([^"']+)["']|\bexport\s+(?:\*\s*(?:as\s+[\w$]+\s*)?|\{[^}]*\}\s+)from\s*["']([^"']+)["']''',
+    re.DOTALL,
+)
 NATIVE_INCLUDES = frozenset({"sta.js", "assert.js", "propertyHelper.js", "isConstructor.js"})
 TAIL_CALL_INSTRUCTION_BUDGET = 3_000_000
 
@@ -95,6 +99,32 @@ def modes(data):
         if flag in flags:
             return [mode]
     return ["sloppy", "strict"]
+
+
+def module_sources(entry, test_root):
+    """Collect the static, relative module closure without trusting paths."""
+    test_root = test_root.resolve()
+    pending = [entry.resolve()]
+    sources = {}
+    while pending:
+        path = pending.pop()
+        relative = path.relative_to(test_root).as_posix()
+        if relative in sources:
+            continue
+        source = path.read_text(encoding="utf-8")
+        sources[relative] = source
+        for match in MODULE_REQUEST.finditer(source):
+            request = match.group(1) or match.group(2)
+            if not request or not request.startswith("."):
+                continue
+            candidate = (path.parent / request).resolve()
+            try:
+                candidate.relative_to(test_root)
+            except ValueError:
+                continue
+            if candidate.is_file():
+                pending.append(candidate)
+    return sources
 
 
 def selected_files(all_files, corpus, pattern):
@@ -268,7 +298,12 @@ def main():
         ]
         for mode in modes(data):
             negative = data.get("negative")
-            reply = local.worker.run({"source": source, "mode": mode, "includes": data.get("includes", []), "harness_sources": harness_sources, "asynchronous": "async" in data.get("flags", []), "parse_only": bool(negative and negative["phase"] == "parse"), "is_html_dda": "IsHTMLDDA" in data.get("features", []), "instruction_budget": instruction_budget(data, args.instruction_budget)})
+            request = {"source": source, "mode": mode, "includes": data.get("includes", []), "harness_sources": harness_sources, "asynchronous": "async" in data.get("flags", []), "parse_only": bool(negative and negative["phase"] == "parse"), "is_html_dda": "IsHTMLDDA" in data.get("features", []), "instruction_budget": instruction_budget(data, args.instruction_budget)}
+            if mode == "module":
+                sources = module_sources(path, args.corpus / "test")
+                request["module_path"] = relative
+                request["module_sources"] = sources
+            reply = local.worker.run(request)
             results.append({"path": relative, "mode": mode, "status": classify(reply, negative), "expected": negative, "actual": reply, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
         return results
 
@@ -287,7 +322,7 @@ def main():
     finally:
         for worker in workers:
             worker.close()
-    report = {"snapshot": SNAPSHOT, "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(), "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "regex_worker_sha256": hashlib.sha256(args.adapter.with_name("bluejs-regexp-worker").read_bytes()).hexdigest(), "complete_inventory": not args.filter, "filter": args.filter, "discovered_js": len(all_files), "fixture_resources": len(fixtures), "test_files": len(files), "scheduled_modes": sum(counters.values()), "results": counters, "groups": groups, "features": features, "elapsed_seconds": round(time.monotonic() - start, 3), "timeout_seconds": args.timeout, "instruction_budget": args.instruction_budget, "tail_call_instruction_budget": TAIL_CALL_INSTRUCTION_BUDGET, "jobs": args.jobs, "limitations": ["single dependency-free modules execute; module import/export linking, dynamic import and top-level await remain unavailable", "unclassified parser rejections cannot pass negative tests", "harness sources still require supported grammar and APIs", "native overrides for sta.js, assert.js, propertyHelper.js, and isConstructor.js; raw tests receive no harness", "each mode has a bounded interpreter instruction budget; tail-call fixtures receive at least the recorded tail-call budget"]}
+    report = {"snapshot": SNAPSHOT, "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(), "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "regex_worker_sha256": hashlib.sha256(args.adapter.with_name("bluejs-regexp-worker").read_bytes()).hexdigest(), "complete_inventory": not args.filter, "filter": args.filter, "discovered_js": len(all_files), "fixture_resources": len(fixtures), "test_files": len(files), "scheduled_modes": sum(counters.values()), "results": counters, "groups": groups, "features": features, "elapsed_seconds": round(time.monotonic() - start, 3), "timeout_seconds": args.timeout, "instruction_budget": args.instruction_budget, "tail_call_instruction_budget": TAIL_CALL_INSTRUCTION_BUDGET, "jobs": args.jobs, "limitations": ["static named imports, local/indirect/star exports, live bindings and cyclic linking are implemented; module namespaces, dynamic import and top-level await remain unavailable", "unclassified parser rejections cannot pass negative tests", "harness sources still require supported grammar and APIs", "native overrides for sta.js, assert.js, propertyHelper.js, and isConstructor.js; raw tests receive no harness", "each mode has a bounded interpreter instruction budget; tail-call fixtures receive at least the recorded tail-call budget"]}
     (args.output / "summary.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps({key: report[key] for key in ("test_files", "scheduled_modes", "results", "elapsed_seconds")}, indent=2))
     return 0 if counters["pass"] == sum(counters.values()) else 1

@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use blueice_bluejs::{compile, compile_module, parse, parse_module, RuntimeError, Value, Vm};
+use std::collections::HashMap;
 
 #[test]
 fn harness_assertions_fail_closed() {
@@ -64,6 +65,131 @@ fn single_modules_are_strict_and_do_not_publish_classic_globals() {
 
     let strict_with = parse_module("with({}){}").unwrap();
     assert!(compile_module(&strict_with).is_err());
+}
+
+#[test]
+fn module_graph_links_named_imports_as_live_bindings_before_evaluation() {
+    let sources = [
+        (
+            "module/main.js",
+            "import { value, bump } from './dependency.js'; bump(); value === 2",
+        ),
+        (
+            "module/dependency.js",
+            "export let value = 1; export function bump(){ value = 2; }",
+        ),
+    ];
+    let modules: HashMap<_, _> = sources
+        .into_iter()
+        .map(|(name, source)| {
+            (
+                name.to_string(),
+                compile_module(&parse_module(source).unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        Vm::default().execute_module_graph("module/main.js", &modules),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn module_graph_links_default_function_exports() {
+    let source = "let before=f; import f from './main.js'; export default function fName(){return 23;}; before()===23&&f.name==='fName'";
+    let modules = HashMap::from([(
+        "default/main.js".to_string(),
+        compile_module(&parse_module(source).unwrap()).unwrap(),
+    )]);
+    assert_eq!(
+        Vm::default().execute_module_graph("default/main.js", &modules),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn module_namespace_properties_follow_export_cells() {
+    let sources = [
+        (
+            "namespace/main.js",
+            "import * as ns from './dependency.js'; ns.bump(); ns.value === 2",
+        ),
+        (
+            "namespace/dependency.js",
+            "export let value=1; export function bump(){value=2}",
+        ),
+    ];
+    let modules: HashMap<_, _> = sources
+        .into_iter()
+        .map(|(name, source)| {
+            (
+                name.to_string(),
+                compile_module(&parse_module(source).unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        Vm::default().execute_module_graph("namespace/main.js", &modules),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn module_graph_initializes_function_exports_before_cyclic_evaluation() {
+    let sources = [
+        (
+            "cycle/a.js",
+            "import { readB } from './b.js'; export function readA(){return 'a';} export let seen = readB();",
+        ),
+        (
+            "cycle/b.js",
+            "import { readA } from './a.js'; export function readB(){return readA();}",
+        ),
+    ];
+    let modules: HashMap<_, _> = sources
+        .into_iter()
+        .map(|(name, source)| {
+            (
+                name.to_string(),
+                compile_module(&parse_module(source).unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    let mut vm = Vm::default();
+    assert_eq!(
+        vm.execute_module_graph("cycle/a.js", &modules),
+        Ok(Value::Undefined)
+    );
+    let observer = compile(&parse("typeof seen === 'undefined'").unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&observer), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn module_graph_keeps_indirect_exports_and_import_immutability() {
+    let sources = [
+        (
+            "indirect/main.js",
+            "import { B, results } from './bridge.js'; let initial=B===undefined; export var A=99; let immutable=false; try{B=null}catch(error){immutable=error instanceof TypeError;} initial&&B===99&&immutable&&results.length===0",
+        ),
+        (
+            "indirect/bridge.js",
+            "export { A as B } from './main.js'; export const results=[]; try{A}catch(error){}try{B}catch(error){}",
+        ),
+        ("indirect/unused.js", "export var unused=0"),
+    ];
+    let modules: HashMap<_, _> = sources
+        .into_iter()
+        .map(|(name, source)| {
+            (
+                name.to_string(),
+                compile_module(&parse_module(source).unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        Vm::default().execute_module_graph("indirect/main.js", &modules),
+        Ok(Value::Bool(true))
+    );
 }
 
 #[test]
