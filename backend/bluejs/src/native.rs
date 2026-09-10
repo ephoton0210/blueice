@@ -6,7 +6,7 @@
 //! Heap/receiver dispatch stays in the VM; these operations preserve code
 //! units and bound string growth before allocating the result.
 
-use crate::{primitive, JsString, RuntimeError, Value};
+use crate::{primitive, JsString, ObjectId, RuntimeError, Value};
 use unicode_normalization::UnicodeNormalization;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +28,7 @@ pub(crate) enum NativeFunction {
     Error(&'static str),
     ErrorToString,
     Test262(&'static str),
+    Test262RealmEval(ObjectId),
     ToLocaleLowerCase,
     ToLocaleUpperCase,
     LocaleCompare,

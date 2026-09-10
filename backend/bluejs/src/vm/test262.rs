@@ -85,6 +85,13 @@ impl Vm {
             NativeFunction::Test262("evalScript"),
         )?;
         self.install_native(
+            host,
+            prototype,
+            "createRealm",
+            0,
+            NativeFunction::Test262("createRealm"),
+        )?;
+        self.install_native(
             global,
             prototype,
             "assert",
@@ -214,6 +221,9 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let first = native::argument(args, 0);
         let second = native::argument(args, 1);
+        if name == "createRealm" {
+            return self.test262_create_realm();
+        }
         if name == "evalScript" {
             return self.test262_eval_script(first);
         }
@@ -386,6 +396,102 @@ impl Vm {
         let code = crate::compile(&program)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         self.execute_nested_script(&code)
+    }
+
+    /// Test262's realm hook needs the callee's realm even when `eval` is
+    /// detached from the foreign global. Each facade therefore owns a native
+    /// function tagged with its realm identity rather than borrowing the
+    /// caller's current global environment.
+    fn test262_create_realm(&mut self) -> Result<Value, RuntimeError> {
+        let realm = Box::new(Vm::new(self.config)?);
+        let prototype = self.object_prototype;
+        let function_prototype = self.string_intrinsics()?.1;
+        let base = self.stack.len();
+        let result = (|| {
+            let global = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+            self.stack.push(Value::Object(global));
+            self.define_data(
+                global,
+                "globalThis",
+                Value::Object(global),
+                true,
+                false,
+                true,
+            )?;
+            self.install_native(
+                global,
+                function_prototype,
+                "eval",
+                1,
+                NativeFunction::Test262RealmEval(global),
+            )?;
+
+            let record = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+            self.stack.push(Value::Object(record));
+            self.define_data(record, "global", Value::Object(global), true, true, true)?;
+            self.test262_realms
+                .insert(global, Test262Realm { vm: realm });
+            Ok(Value::Object(record))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// Evaluates an indirect `eval` against the foreign realm's script
+    /// environment. Primitive completion values and global data properties
+    /// can cross the heap boundary directly; object identity cannot, so that
+    /// wider cross-realm host surface remains explicitly unsupported.
+    pub(super) fn test262_realm_eval(
+        &mut self,
+        global: ObjectId,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let source = native::argument(args, 0);
+        let Value::String(source) = source else {
+            return Ok(source.clone());
+        };
+        let source = source.to_utf8().map_err(|_| {
+            RuntimeError::SyntaxError("script source contains an unpaired surrogate".into())
+        })?;
+        let program =
+            crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let code = crate::compile(&program)
+            .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+
+        let (completion, exports) = {
+            let realm = self.test262_realms.get_mut(&global).ok_or_else(|| {
+                RuntimeError::TypeError("foreign Test262 realm is no longer available".into())
+            })?;
+            let completion = realm.vm.execute_script(&code)?;
+            let global = realm.vm.global("globalThis")?.object_id().unwrap();
+            let mut exports = Vec::new();
+            for key in realm.vm.heap.own_property_keys(global)? {
+                let PropertyName::String(name) = key else {
+                    continue;
+                };
+                let Some(value) = realm
+                    .vm
+                    .heap
+                    .get_own_property_descriptor(global, &name)?
+                    .and_then(|descriptor| descriptor.value)
+                else {
+                    continue;
+                };
+                if !matches!(value, Value::Object(_)) {
+                    exports.push((name, value));
+                }
+            }
+            (completion, exports)
+        };
+        for (name, value) in exports {
+            self.define_data(global, name, value, true, true, true)?;
+        }
+        if matches!(completion, Value::Object(_)) {
+            return Err(RuntimeError::Unsupported(
+                "cross-realm object completion values",
+            ));
+        }
+        Ok(completion)
     }
 
     fn test262_property_helper(

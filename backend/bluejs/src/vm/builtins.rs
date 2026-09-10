@@ -2005,6 +2005,7 @@ impl Vm {
             NativeFunction::Error(name) => self.error_constructor(name, &args, construct),
             NativeFunction::ErrorToString => self.error_to_string(&receiver),
             NativeFunction::Test262(name) => self.test262_call(name, &args),
+            NativeFunction::Test262RealmEval(realm) => self.test262_realm_eval(realm, &args),
             NativeFunction::Test262Done => {
                 self.test262_done = Some(if matches!(first, Value::Undefined) {
                     Ok(())

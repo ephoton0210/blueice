@@ -90,6 +90,18 @@ fn frozen_test262_global_keeps_error_constructors_available() {
 }
 
 #[test]
+fn create_realm_detached_eval_uses_an_isolated_global() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = "var other=$262.createRealm().global;var otherEval=other.eval;otherEval('var x=23;');typeof x==='undefined'&&other.x===23";
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn sloppy_global_eval_annex_b_function_does_not_block_a_later_lexical() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();

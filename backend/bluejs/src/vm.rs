@@ -202,6 +202,14 @@ struct PromiseJob {
     value: Value,
 }
 
+/// A Test262 realm owns a complete VM, while its public global is a facade
+/// in the requesting VM. The facade keeps the host boundary explicit: values
+/// that can cross heaps are copied after evaluation rather than leaking an
+/// object identity from the nested heap.
+struct Test262Realm {
+    vm: Box<Vm>,
+}
+
 /// An isolated execution context with one realm global environment. Ordinary
 /// [`Vm::execute`] calls use fresh local bindings; classic scripts additionally
 /// retain their global declarations for later [`Vm::execute_script`] calls.
@@ -285,6 +293,7 @@ pub struct Vm {
     promises: HashMap<ObjectId, PromiseRecord>,
     promise_jobs: VecDeque<PromiseJob>,
     test262_done: Option<Result<(), Value>>,
+    test262_realms: HashMap<ObjectId, Test262Realm>,
     throw_type_error: Option<ObjectId>,
     joining: Vec<ObjectId>,
 }
@@ -353,6 +362,7 @@ impl Vm {
             promises: HashMap::new(),
             promise_jobs: VecDeque::new(),
             test262_done: None,
+            test262_realms: HashMap::new(),
             throw_type_error: None,
             joining: Vec::new(),
         })
