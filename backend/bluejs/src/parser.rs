@@ -584,14 +584,19 @@ impl Parser {
         self.expect_punct(Punct::RParen)?;
         self.expect_punct(Punct::LBrace)?;
         let mut cases = Vec::new();
+        let mut saw_default = false;
         while !self.check_punct(Punct::RBrace) {
             let test = if self.eat_keyword(Keyword::Case) {
                 let e = self.parse_expression()?;
                 self.expect_punct(Punct::Colon)?;
                 Some(e)
             } else {
+                if saw_default {
+                    return Err(self.syntax_error("a switch statement can contain only one default clause"));
+                }
                 self.expect_keyword(Keyword::Default)?;
                 self.expect_punct(Punct::Colon)?;
+                saw_default = true;
                 None
             };
             let mut consequent = Vec::new();
@@ -2235,6 +2240,13 @@ mod tests {
                 ],
             }
         );
+    }
+
+    #[test]
+    fn duplicate_switch_default_is_a_known_syntax_error() {
+        let error = parse("switch (value) { default: first; default: second; }").unwrap_err();
+        assert!(error.known_syntax);
+        assert!(error.message.starts_with("a switch statement can contain only one default clause"));
     }
 
     #[test]

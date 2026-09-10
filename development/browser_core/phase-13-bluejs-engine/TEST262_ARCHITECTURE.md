@@ -407,3 +407,30 @@ labelled items, strict `yield`, and sloppy `let` ASI. BlueJS all-target tests
 and all ten Python Test262 runner/analyzer tests pass. The remaining P0.1 work
 is labels' broader grammar interactions and control-flow cases outside this
 slice; module support remains P1.4 and persistent global environments P0.2.
+
+## P0.1 continuation: switch scope ordering and duplicate defaults
+
+The [Switch Statement](https://262.ecma-international.org/17.0/#sec-switch-statement)
+and its [CaseBlock static semantics](https://262.ecma-international.org/17.0/#sec-static-semantics-early-errors)
+were read on 2026-09-10. A CaseBlock has at most one `DefaultClause`; the
+parser now reports a classified SyntaxError when it sees a second `default`.
+
+Switch execution evaluates its discriminant in the surrounding lexical
+environment, then creates the case-block lexical environment before evaluating
+case selectors and consequents. The compiler previously entered that scope too
+early, so closures created by the discriminant captured a case-local `let`
+binding. It now emits the discriminant first and enters the lexical scope
+afterward. A public regression verifies that a discriminant closure captures
+the outer binding while selector and consequent closures capture the inner
+binding; the parser regression separately verifies the duplicate-default early
+error.
+
+The pre-change `language/statements/switch` run reconciled **144 pass, 23
+fail, 48 unsupported, 3 timeout** across 218 modes. The post-change run at
+`target/test262-switch-after-scope/analysis` reconciles **150 pass, 17 fail,
+48 unsupported, 3 timeout**. The six newly passing modes are the duplicate
+default negative plus the `scope-lex-open-case` and `scope-lex-open-dflt`
+closure-scope cases, each in sloppy and strict mode. The remaining switch
+failures are principally broader declaration-redeclaration early errors; async
+function syntax and host hooks remain separately classified. This is a scoped
+P0.1 improvement, not a claim of complete switch conformance.

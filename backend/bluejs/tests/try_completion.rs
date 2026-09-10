@@ -280,6 +280,7 @@ fn switch_breaks_are_completion_aware_and_case_matching_is_strict() {
         "let trace='';switch(1){case 1:trace+='a';case 2:trace+='b';break;default:trace+='c';}trace==='ab'",
         "let trace='';try{switch(1){case 1:trace+='switch';break;}trace+='try';}finally{trace+='finally';}trace==='switchtryfinally'",
         "let get;switch(0){case 0:let value=42;get=()=>value;break;}get()===42",
+        "let x='outside';let probeExpr;let probeSelector;let probeStmt;switch(probeExpr=function(){return x;},null){case probeSelector=function(){return x;},null:probeStmt=function(){return x;};let x='inside';}probeExpr()==='outside'&&probeSelector()==='inside'&&probeStmt()==='inside'",
     ] {
         assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)), "{source}");
     }

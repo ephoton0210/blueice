@@ -407,8 +407,13 @@ impl Compiler {
             lexical.extend(lexical_names(&case.consequent)?);
             vars.extend(var_names(&case.consequent)?);
         }
-        self.enter_scope(lexical, &vars, false)?;
+        // Switch evaluation creates its case-block lexical environment only
+        // after evaluating the discriminant.  A closure created by the
+        // discriminant must therefore capture the surrounding binding, while
+        // closures created by case selectors or consequents capture the
+        // switch-local binding.
         self.expression(discriminant)?;
+        self.enter_scope(lexical, &vars, false)?;
 
         let mut case_entries = vec![None; cases.len()];
         for (index, case) in cases.iter().enumerate() {
