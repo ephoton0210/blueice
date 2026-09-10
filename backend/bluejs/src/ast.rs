@@ -412,12 +412,20 @@ fn pattern_contains_super(pattern: &Pattern, search: SuperSearch) -> bool {
             .iter()
             .flatten()
             .any(|element| pattern_contains_super(&element.pattern, search) || element.default.as_ref().is_some_and(|expr| expr_contains_super(expr, search))),
-        Pattern::Object(properties) => properties.iter().any(|property| match property {
-            ObjectPatternProp::KeyValue { key, value, default } => {
-                property_key_contains_super(key, search) || pattern_contains_super(value, search) || default.as_ref().is_some_and(|expr| expr_contains_super(expr, search))
+        Pattern::Object(properties) => {
+            for property in properties {
+                let contains_super = match property {
+                    ObjectPatternProp::KeyValue { key, value, default } => {
+                        property_key_contains_super(key, search) || pattern_contains_super(value, search) || default.as_ref().is_some_and(|expr| expr_contains_super(expr, search))
+                    }
+                    ObjectPatternProp::Rest(pattern) => pattern_contains_super(pattern, search),
+                };
+                if contains_super {
+                    return true;
+                }
             }
-            ObjectPatternProp::Rest(pattern) => pattern_contains_super(pattern, search),
-        }),
+            false
+        }
     }
 }
 
@@ -503,6 +511,10 @@ mod tests {
         Expr::Member { object: Box::new(Expr::Super), property: Box::new(Expr::Identifier("value".into())), computed: false }
     }
 
+    fn super_call() -> Expr {
+        Expr::Call { callee: Box::new(Expr::Super), args: Vec::new() }
+    }
+
     fn function(body: Vec<Stmt>) -> Function {
         Function { name: None, params: Vec::new(), body, generator: false, is_async: false }
     }
@@ -534,5 +546,112 @@ mod tests {
         assert!(function_contains_super_property_outside_class(&Function { name: None, params: vec![Param { pattern: Pattern::Identifier("parameter".into()), default: Some(super_member()), rest: false }], body: Vec::new(), generator: false, is_async: false }));
         assert!(contains_super_call_outside_class(&Program { body: vec![Stmt::Expr(Expr::Call { callee: Box::new(Expr::Super), args: Vec::new() })] }));
         assert!(expr_contains_super_call_outside_class(&Expr::New { callee: Box::new(Expr::Identifier("C".into())), args: vec![Argument::Normal(Expr::Call { callee: Box::new(Expr::Super), args: Vec::new() })] }));
+    }
+
+    #[test]
+    fn super_call_scanner_visits_nested_control_and_pattern_shapes() {
+        assert!(statements_contain_super_call_outside_class(&[Stmt::Expr(super_call())]));
+        let binding = Pattern::Array(vec![Some(ArrayPatternElement {
+            pattern: Pattern::Identifier("value".into()), default: Some(super_call()), rest: false,
+        })]);
+        assert!(for_head_contains_super(&ForHead::Pattern(binding.clone()), SuperSearch::Call));
+        assert!(pattern_option_contains_super(Some(&binding), SuperSearch::Call));
+        let object_binding = Pattern::Object(vec![ObjectPatternProp::KeyValue {
+            key: PropertyKey::Identifier("value".into()),
+            value: Pattern::Identifier("target".into()),
+            default: Some(super_call()),
+        }]);
+        assert!(pattern_contains_super(&object_binding, SuperSearch::Call));
+        let computed_object_binding = Pattern::Object(vec![ObjectPatternProp::KeyValue {
+            key: PropertyKey::Computed(Box::new(super_member())),
+            value: Pattern::Identifier("target".into()),
+            default: None,
+        }]);
+        assert!(pattern_contains_super(&computed_object_binding, SuperSearch::Property));
+        assert!(pattern_contains_super(
+            &Pattern::Object(vec![ObjectPatternProp::Rest(Pattern::Array(vec![Some(ArrayPatternElement {
+                pattern: Pattern::Identifier("target".into()),
+                default: Some(super_call()),
+                rest: false,
+            })]))]),
+            SuperSearch::Call,
+        ));
+        assert!(!pattern_contains_super(
+            &Pattern::Object(vec![ObjectPatternProp::KeyValue {
+                key: PropertyKey::Identifier("value".into()),
+                value: Pattern::Identifier("target".into()),
+                default: None,
+            }]),
+            SuperSearch::Call,
+        ));
+        assert!(assignment_pattern_contains_super(
+            &AssignmentPattern::Array(vec![Some(AssignmentPatternElement {
+                pattern: AssignmentPattern::Target(Box::new(Expr::Identifier("value".into()))), default: Some(super_call()), rest: false,
+            })]),
+            SuperSearch::Call,
+        ));
+        assert!(assignment_pattern_contains_super(
+            &AssignmentPattern::Object(vec![AssignmentPatternProp::KeyValue {
+                key: PropertyKey::Identifier("value".into()),
+                value: AssignmentPattern::Target(Box::new(Expr::Identifier("target".into()))),
+                default: Some(super_call()),
+            }]),
+            SuperSearch::Call,
+        ));
+        assert!(assignment_pattern_contains_super(
+            &AssignmentPattern::Object(vec![AssignmentPatternProp::Rest(AssignmentPattern::Target(Box::new(super_call())))]),
+            SuperSearch::Call,
+        ));
+
+        for statement in [
+            Stmt::VarDecl(DeclKind::Let, vec![VarDeclarator { pattern: Pattern::Identifier("value".into()), init: Some(super_call()) }]),
+            Stmt::If { test: Expr::Bool(false), consequent: Box::new(Stmt::Empty), alternate: Some(Box::new(Stmt::Expr(super_call()))) },
+            Stmt::For { init: Some(ForInit::VarDecl(DeclKind::Let, vec![VarDeclarator { pattern: Pattern::Identifier("value".into()), init: Some(super_call()) }])), test: None, update: None, body: Box::new(Stmt::Empty) },
+            Stmt::For { init: None, test: Some(super_call()), update: None, body: Box::new(Stmt::Empty) },
+            Stmt::For { init: None, test: Some(Expr::Bool(false)), update: Some(super_call()), body: Box::new(Stmt::Empty) },
+            Stmt::ForIn { left: ForHead::Pattern(Pattern::Identifier("value".into())), right: super_call(), body: Box::new(Stmt::Empty) },
+            Stmt::ForOf { left: ForHead::Pattern(Pattern::Identifier("value".into())), right: Expr::Array(Vec::new()), body: Box::new(Stmt::Expr(super_call())) },
+            Stmt::Switch { discriminant: Expr::Number(0.0), cases: vec![SwitchCase { test: Some(super_call()), consequent: Vec::new() }] },
+            Stmt::Switch { discriminant: Expr::Number(0.0), cases: vec![SwitchCase { test: Some(Expr::Number(1.0)), consequent: vec![Stmt::Expr(super_call())] }] },
+            Stmt::Try { block: Vec::new(), handler: Some(CatchClause { param: Some(binding), body: Vec::new() }), finalizer: None },
+            Stmt::Try { block: Vec::new(), handler: Some(CatchClause { param: None, body: vec![Stmt::Expr(super_call())] }), finalizer: None },
+            Stmt::Try { block: Vec::new(), handler: None, finalizer: Some(vec![Stmt::Expr(super_call())]) },
+            Stmt::Block(vec![Stmt::Expr(super_call())]),
+            Stmt::ClassField(Box::new(Stmt::Expr(super_call()))),
+            Stmt::For { init: Some(ForInit::Expr(super_call())), test: None, update: None, body: Box::new(Stmt::Empty) },
+            Stmt::For { init: None, test: None, update: None, body: Box::new(Stmt::Expr(super_call())) },
+            Stmt::While { test: Expr::Bool(false), body: Box::new(Stmt::Expr(super_call())) },
+            Stmt::DoWhile { body: Box::new(Stmt::Expr(super_call())), test: Expr::Bool(false) },
+            Stmt::With { object: Expr::Bool(true), body: Box::new(Stmt::Expr(super_call())) },
+            Stmt::With { object: super_call(), body: Box::new(Stmt::Empty) },
+            Stmt::FunctionDecl(function(vec![Stmt::Expr(super_call())])),
+        ] {
+            assert!(stmt_contains_super(&statement, SuperSearch::Call), "{statement:?}");
+        }
+
+        for expression in [
+            Expr::Template { quasis: vec!["".into()], expressions: vec![super_call()] },
+            Expr::TaggedTemplate { tag: Box::new(Expr::Identifier("tag".into())), raw: vec!["".into()], cooked: vec![Some("".into())], expressions: vec![super_call()] },
+            Expr::Yield { value: Some(Box::new(super_call())), delegate: false },
+            Expr::Arrow { params: vec![Param { pattern: Pattern::Identifier("value".into()), default: Some(super_call()), rest: false }], body: ArrowBody::Expr(Box::new(Expr::Number(0.0))), is_async: false },
+            Expr::Sequence(vec![super_call()]),
+            Expr::Call { callee: Box::new(Expr::Identifier("call".into())), args: vec![Argument::Normal(super_call()), Argument::Spread(super_call())] },
+            Expr::New { callee: Box::new(Expr::Identifier("Constructor".into())), args: vec![Argument::Normal(super_call()), Argument::Spread(super_call())] },
+            Expr::Object(vec![ObjectProp::KeyValue { key: PropertyKey::Identifier("value".into()), value: super_call(), shorthand: false }]),
+            Expr::Object(vec![ObjectProp::Spread(super_call())]),
+            Expr::Object(vec![ObjectProp::Method { key: PropertyKey::Identifier("method".into()), function: function(vec![Stmt::Expr(super_call())]) }]),
+            Expr::Object(vec![ObjectProp::Accessor { key: PropertyKey::Identifier("value".into()), function: function(vec![Stmt::Expr(super_call())]), getter: true }]),
+            Expr::Function(function(vec![Stmt::Expr(super_call())])),
+            Expr::Await(Box::new(super_call())),
+            Expr::Unary { op: UnaryOp::Void, arg: Box::new(super_call()) },
+            Expr::Update { op: UpdateOp::Inc, arg: Box::new(super_call()), prefix: true },
+            Expr::Arrow { params: Vec::new(), body: ArrowBody::Expr(Box::new(super_call())), is_async: false },
+            Expr::Arrow { params: Vec::new(), body: ArrowBody::Block(vec![Stmt::Expr(super_call())]), is_async: false },
+        ] {
+            assert!(expr_contains_super_call_outside_class(&expression), "{expression:?}");
+        }
+        assert!(!expr_contains_super_call_outside_class(&Expr::Class(Class { name: None, extends: None, elements: Vec::new() })));
+        let property = Expr::Member { object: Box::new(Expr::Identifier("object".into())), property: Box::new(super_member()), computed: true };
+        assert!(expr_contains_super(&property, SuperSearch::Property));
     }
 }

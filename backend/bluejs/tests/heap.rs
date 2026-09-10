@@ -6,7 +6,7 @@
 //! Copying an ObjectId is not a root; tests retain live objects through
 //! Heap::root or through properties on an already-rooted object.
 
-use blueice_bluejs::{Heap, HeapConfig, HeapError, Value};
+use blueice_bluejs::{Heap, HeapConfig, HeapError, PropertyDescriptor, Value};
 
 #[test]
 fn ordinary_properties_distinguish_missing_from_undefined_and_preserve_values() {
@@ -31,6 +31,27 @@ fn ordinary_properties_distinguish_missing_from_undefined_and_preserve_values() 
     assert!(heap.delete(object, "number").unwrap());
     assert!(heap.delete(object, "missing").unwrap());
     assert_eq!(heap.get_own(object, "number").unwrap(), None);
+}
+
+#[test]
+fn array_length_shrinks_and_restores_the_first_non_configurable_index() {
+    let mut heap = Heap::default();
+    let array = heap.alloc_array(0, None).unwrap();
+    heap.set(array, "0", Value::Number(1.0)).unwrap();
+    heap.set(array, "1", Value::Number(2.0)).unwrap();
+    heap.set(array, "length", Value::Number(1.0)).unwrap();
+    assert_eq!(heap.get(array, "length"), Ok(Value::Number(1.0)));
+
+    heap.define_own_property(array, "1", PropertyDescriptor::data(Value::Number(2.0), true, true, false)).unwrap();
+    assert_eq!(heap.set(array, "length", Value::Number(0.0)), Err(HeapError::ReadOnlyProperty));
+    assert_eq!(heap.get(array, "length"), Ok(Value::Number(2.0)));
+}
+
+#[test]
+fn boxed_string_own_keys_enumerate_utf16_indices_before_length() {
+    let mut heap = Heap::default();
+    let string = heap.alloc_string("A😀".into(), None).unwrap();
+    assert_eq!(heap.own_keys(string).unwrap(), ["0", "1", "2", "length"]);
 }
 
 #[test]

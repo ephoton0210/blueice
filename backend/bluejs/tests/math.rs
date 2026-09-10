@@ -29,7 +29,7 @@ fn variadic_binary_and_integer_math_preserve_special_values() {
     for source in [
         "Math.atan2(1,0) > 1 && Math.pow(2,8) === 256 && Math.hypot(3,4) === 5",
         "Math.imul(0xffffffff,5) === -5 && Math.clz32(1) === 31 && Math.clz32() === 32",
-        "Math.max() === -Infinity && Math.min() === Infinity && Math.max(-0,0) === 0 && 1/Math.max(-0,0) === Infinity && 1/Math.min(-0,0) === -Infinity",
+        "Math.max() === -Infinity && Math.min() === Infinity && Math.max(2,1) === 2 && Math.min(1,2) === 1 && Math.max(-0,0) === 0 && 1/Math.max(-0,0) === Infinity && 1/Math.min(-0,0) === -Infinity",
         "Math.max(1,NaN) !== Math.max(1,NaN) && Math.hypot(NaN,Infinity) === Infinity && Math.hypot(NaN,1) !== Math.hypot(NaN,1)",
         "Math.round(1.5) === 2 && Math.round(-1.5) === -1 && 1/Math.round(-0.1) === -Infinity && 1/Math.round(-0) === -Infinity && Math.round(Infinity) === Infinity && Math.round(NaN) !== Math.round(NaN) && 1/Math.sign(-0) === -Infinity",
         "Math.random() >= 0 && Math.random() < 1",

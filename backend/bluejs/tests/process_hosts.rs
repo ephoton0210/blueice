@@ -72,6 +72,9 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
         (json!({"source":"with({}){var f=function(){return 3;};}assert.sameValue(f(),3)", "mode":"sloppy"}), "ok"),
         (json!({"source":"function f(a=b,b=2){}f()", "mode":"sloppy"}), "ReferenceError"),
         (json!({"source":"function f(a=1,get=()=>a){var a=2;return get();}assert.sameValue(f(),1)", "mode":"sloppy"}), "ok"),
+        (json!({"source":"class Base{constructor(value){this.value=value}method(){return this.value}}class C extends Base{constructor(){super(3)}method(){return super.method()}static field=1;static{this.block=2}}let value=new C;assert.sameValue(value.method(),3);assert.sameValue(C.field,1);assert.sameValue(C.block,2)", "mode":"sloppy"}), "ok"),
+        (json!({"source":"class Base{set value(value){this.saved=value}}class C extends Base{constructor(){super()}store(){super.value=2;return this.saved}}assert.sameValue(new C().store(),2)", "mode":"sloppy"}), "ok"),
+        (json!({"source":"class C extends null{constructor(){super()}}new C", "mode":"sloppy"}), "TypeError"),
         (json!({"source":"async function work(){}", "mode":"sloppy"}), "unsupported"),
         (json!({"source":"1", "mode":"sloppy", "includes":["helpers.js"], "harness_sources":["async function work(){}"]}), "unsupported"),
     ];

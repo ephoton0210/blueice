@@ -612,15 +612,7 @@ impl Heap {
             self.object(id)?;
         }
         self.ensure_room((new_property + new_attributes).saturating_sub(old_property + old_attributes), &protected)?;
-        let length_failed = if virtual_length {
-            match self.set_array_length(object, value.clone()) {
-                Ok(()) => false,
-                Err(HeapError::ReadOnlyProperty) => true,
-                Err(error) => return Err(error),
-            }
-        } else {
-            false
-        };
+        let length_failed = if virtual_length { match self.set_array_length(object, value.clone()) { Ok(()) => false, Err(HeapError::ReadOnlyProperty) => true, Err(error) => return Err(error) } } else { false };
         for &target in protected.iter().skip(1) {
             self.write_barrier(object, Some(target));
         }
@@ -823,7 +815,9 @@ impl Heap {
         let mut strings = Vec::new();
         let mut symbols = Vec::new();
         if let ObjectKind::String(string) = &obj.kind {
-            indices.extend((0..string.len()).map(|index| (index, index.to_string().into())));
+            for index in 0..string.len() {
+                indices.push((index, index.to_string().into()));
+            }
         }
         if matches!(obj.kind, ObjectKind::Array { .. } | ObjectKind::String(_)) {
             strings.push("length".into());
@@ -839,7 +833,13 @@ impl Heap {
             }
         }
         indices.sort_unstable_by_key(|(index, _)| *index);
-        Ok(indices.into_iter().map(|(_, key)| key).chain(strings).chain(symbols).collect())
+        let mut keys = Vec::with_capacity(indices.len() + strings.len() + symbols.len());
+        for (_, key) in indices {
+            keys.push(key);
+        }
+        keys.extend(strings);
+        keys.extend(symbols);
+        Ok(keys)
     }
 
     pub fn own_keys(&self, object: ObjectId) -> Result<Vec<JsString>, HeapError> {
@@ -874,7 +874,14 @@ impl Heap {
         let ObjectKind::Array { length } = &mut obj.kind else { unreachable!("length dispatch checks object kind") };
         let old_length = *length;
         if new_length < old_length {
-            let mut indices: Vec<_> = obj.order.iter().filter_map(|key| array_index(key).filter(|&index| index >= new_length).map(|index| (index, key.clone()))).collect();
+            let mut indices = Vec::new();
+            for key in &obj.order {
+                if let Some(index) = array_index(key) {
+                    if index >= new_length {
+                        indices.push((index, key.clone()));
+                    }
+                }
+            }
             indices.sort_unstable_by_key(|entry| std::cmp::Reverse(entry.0));
             for (index, key) in indices {
                 if !self.delete(object, &key)? {
@@ -1098,4 +1105,42 @@ mod tests {
         }
         assert!(heap.contains(prototype));
     }
+
+    #[test]
+    fn start_and_completed_generator_states_expose_their_gc_edges() {
+        let mut heap = Heap::default();
+        let capture = heap.alloc_object(None).unwrap();
+        let callee = heap.alloc_object(None).unwrap();
+        let receiver = heap.alloc_object(None).unwrap();
+        let argument = heap.alloc_object(None).unwrap();
+        let home = heap.alloc_object(None).unwrap();
+        let state = GeneratorState::Start {
+            code: Rc::new(Bytecode::empty()),
+            captures: vec![capture],
+            callee: Value::Object(callee),
+            receiver: Value::Object(receiver),
+            args: vec![Value::Object(argument)],
+            home: Some(home),
+        };
+        let references = state.references();
+        for object in [capture, callee, receiver, argument, home] {
+            assert!(references.contains(&object));
+        }
+        assert!(GeneratorState::Done.references().is_empty());
+    }
+
+    #[test]
+    fn array_length_updates_and_failed_truncation_leave_specified_lengths() {
+        let mut heap = Heap::default();
+        let array = heap.alloc_array(0, None).unwrap();
+        heap.set(array, "0", Value::Number(1.0)).unwrap();
+        heap.set(array, "1", Value::Number(2.0)).unwrap();
+        heap.set(array, "length", Value::Number(1.0)).unwrap();
+        assert_eq!(heap.get(array, "length"), Ok(Value::Number(1.0)));
+
+        heap.define_own_property(array, "1", PropertyDescriptor::data(Value::Number(2.0), true, true, false)).unwrap();
+        assert_eq!(heap.set(array, "length", Value::Number(0.0)), Err(HeapError::ReadOnlyProperty));
+        assert_eq!(heap.get(array, "length"), Ok(Value::Number(2.0)));
+    }
+
 }

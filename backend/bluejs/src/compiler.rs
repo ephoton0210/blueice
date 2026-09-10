@@ -938,8 +938,7 @@ impl Compiler {
                         self.emit(Opcode::UpdateProperty, u32::from(*op == UpdateOp::Dec) | (u32::from(*prefix) << 1))?;
                     }
                 } else {
-                    self.member_reference(arg)?;
-                    self.emit(Opcode::UpdateProperty, u32::from(*op == UpdateOp::Dec) | (u32::from(*prefix) << 1))?;
+                    return Err(CompileError::InvalidSyntax("invalid assignment/member AST"));
                 }
             }
             Expr::Template { quasis, expressions } => {
@@ -1301,7 +1300,7 @@ impl Compiler {
     fn class_expression_with_binding(&mut self, class: &Class, inferred_name: Option<&str>, binding: Option<u32>) -> Result<(), CompileError> {
         let constructor = class.elements.iter().find_map(|element| match element {
             ClassElement::Method { key, function, is_static: false }
-                if !matches!(key, PropertyKey::Computed(_)) && class_property_name(key) == "constructor" => Some(function.clone()),
+                if class_property_name(key).is_some_and(|name| name == "constructor") => Some(function.clone()),
             _ => None,
         });
         let default_constructor = constructor.is_none();
@@ -1350,7 +1349,7 @@ impl Compiler {
         for element in &class.elements {
             match element {
                 ClassElement::Method { key, function, is_static } => {
-                    if !is_static && !matches!(key, PropertyKey::Computed(_)) && class_property_name(key) == "constructor" {
+                    if !is_static && class_property_name(key).is_some_and(|name| name == "constructor") {
                         continue;
                     }
                     self.class_property_target(*is_static)?;
@@ -1575,12 +1574,12 @@ fn validate_function_early_errors(function: &Function, strict: bool, name_is_bin
     Ok(())
 }
 
-fn class_property_name(key: &PropertyKey) -> String {
+fn class_property_name(key: &PropertyKey) -> Option<String> {
     match key {
-        PropertyKey::Identifier(name) => name.clone(),
-        PropertyKey::String(name) => name.to_utf8().unwrap_or_default(),
-        PropertyKey::Number(number) => number.to_string(),
-        PropertyKey::Computed(_) => String::new(),
+        PropertyKey::Identifier(name) => Some(name.clone()),
+        PropertyKey::String(name) => Some(name.to_utf8().unwrap_or_default()),
+        PropertyKey::Number(number) => Some(number.to_string()),
+        PropertyKey::Computed(_) => None,
     }
 }
 
@@ -1665,7 +1664,13 @@ fn pattern_contains_expression(pattern: &Pattern) -> bool {
 }
 
 fn declarations_names(kind: DeclKind, declarations: &[VarDeclarator]) -> Result<Vec<(String, DeclKind)>, CompileError> {
-    Ok(declarations.iter().flat_map(|decl| pattern_names(&decl.pattern).into_iter().map(move |name| (name, kind))).collect())
+    let mut names = Vec::new();
+    for declaration in declarations {
+        for name in pattern_names(&declaration.pattern) {
+            names.push((name, kind));
+        }
+    }
+    Ok(names)
 }
 
 fn lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, CompileError> {
@@ -1762,6 +1767,6 @@ mod tests {
 
     #[test]
     fn computed_class_keys_do_not_have_constructor_names() {
-        assert_eq!(class_property_name(&PropertyKey::Computed(Box::new(Expr::Identifier("key".into())))), "");
+        assert_eq!(class_property_name(&PropertyKey::Computed(Box::new(Expr::Identifier("key".into())))), None);
     }
 }

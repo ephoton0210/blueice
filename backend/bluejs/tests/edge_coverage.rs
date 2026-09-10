@@ -43,14 +43,44 @@ fn parser_classifies_function_class_and_async_edge_grammar() {
         "class C{get value(argument){}}",
         "async 1",
         "let \\u{110000}=1;",
+        "let \\u{=1;",
+        "let \\uD800=1;",
+        "let \\u{D800}=1;",
+        "let \\u",
     ] {
         assert!(parse(source).is_err(), "{source}");
     }
     assert!(parse("class C{;}").is_ok());
     assert!(parse("class C{async [key](){}}").is_ok());
     assert!(parse("async (value)").is_ok());
+    assert!(parse("async value=>value").is_ok());
+    assert!(parse("async (value)=>value").is_ok());
+    assert!(parse("async").is_ok());
+    assert!(parse("value").is_ok());
+    assert!(parse("async value").is_err());
+    assert!(parse("async (value").is_err());
     assert!(parse("let value=async function named(){};").is_ok());
+    assert!(parse("let \\u0061=1;").is_ok());
     assert!(parse("class C{'method'(){return 1}2(){return 2}}").is_ok());
+}
+
+#[test]
+fn parser_scans_super_calls_inside_class_control_and_expression_containers() {
+    for source in [
+        "class C{static{if(false){}else super()}}",
+        "class C{static{switch(0){case super():}}}",
+        "class C{static{switch(0){default:super()}}}",
+        "class C{field=([value=super()]=[])}",
+        "class C{field=({value:target=super()}={})}",
+        "class C{field=`${super()}`}",
+        "class C{field=tag`${super()}`}",
+        "class C{field=(value=super())=>0}",
+        "class C{field={method(){super()}}}",
+    ] {
+        assert!(parse(source).is_err(), "{source}");
+    }
+    assert!(parse("function outside({value=super.value}){}").is_err());
+    assert!(parse("class Base{}class Derived extends Base{constructor({value=super()}){}}").is_ok());
 }
 
 #[test]
@@ -148,6 +178,27 @@ fn compiler_reports_public_ast_boundaries_without_panicking() {
         prefix: true,
     };
     assert!(compile(&expression_program(member_update)).is_ok());
+    let rejected_member_update = Expr::Update {
+        op: UpdateOp::Inc,
+        arg: Box::new(Expr::Member {
+            object: Box::new(Expr::Await(Box::new(Expr::Number(1.0)))),
+            property: Box::new(identifier("value")),
+            computed: false,
+        }),
+        prefix: true,
+    };
+    assert!(matches!(
+        compile(&expression_program(rejected_member_update)),
+        Err(CompileError::Unsupported("await expressions"))
+    ));
+    assert!(matches!(
+        compile(&expression_program(Expr::Update {
+            op: UpdateOp::Inc,
+            arg: Box::new(Expr::Number(1.0)),
+            prefix: true,
+        })),
+        Err(CompileError::InvalidSyntax("invalid assignment/member AST"))
+    ));
     assert!(compile(&Program {
         body: vec![Stmt::Expr(Expr::Class(blueice_bluejs::Class {
             name: None,
@@ -203,6 +254,7 @@ fn class_compiler_propagates_element_errors_and_class_keys() {
 fn runtime_class_and_with_error_paths_are_catchable() {
     for source in [
         "let C=class extends null{};typeof C==='function'",
+        "function Base(){}Base.prototype=null;class Derived extends Base{};Object.getPrototypeOf(Derived.prototype)===null",
         "function Base(){}Base.prototype=1;let caught=false;try{class C extends Base{}}catch(error){caught=error instanceof TypeError;}caught",
         "let caught=false;try{class C extends 1{}}catch(error){caught=error instanceof TypeError;}caught",
         "class Base{get value(){return 1;}}class Derived extends Base{write(){super.value=2;}}let caught=false;try{(new Derived).write()}catch(error){caught=error instanceof TypeError;}caught",
@@ -217,6 +269,10 @@ fn runtime_class_and_with_error_paths_are_catchable() {
         "try{with({}){missing}}catch(error){error instanceof ReferenceError}",
         "try{missing}catch(error){error instanceof ReferenceError}",
         "try{'a'.repeat(-1)}catch(error){error instanceof RangeError}",
+        "let array=[1,,...[2]];array.length===3&&array[0]===1&&array[2]===2",
+        "let caught=false;try{eval('\\uD800')}catch(error){caught=error instanceof SyntaxError;}caught",
+        "let caught=false;try{eval('if')}catch(error){caught=error instanceof SyntaxError;}caught",
+        "let caught=false;try{eval('with({}){value+=1}')}catch(error){caught=error instanceof SyntaxError;}caught",
     ] {
         assert_eq!(evaluate(source), Ok(Value::Bool(true)), "{source}");
     }
@@ -241,6 +297,10 @@ fn suspended_generator_roots_and_done_state_survive_collection() {
         evaluate("(function*(){throw 1})().next()"),
         Err(RuntimeError::Thrown(Value::Number(1.0)))
     ));
+    assert_eq!(
+        evaluate("let generator=function* self(){yield self;};generator().next().value===generator"),
+        Ok(Value::Bool(true))
+    );
 }
 
 #[test]

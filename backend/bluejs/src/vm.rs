@@ -416,8 +416,7 @@ impl Vm {
                     Completion::Throw(error) => CompletionAction::Throw(error),
                     Completion::Return(value) => CompletionAction::Return(value),
                     Completion::TailRecur(args) => CompletionAction::TailRecur(args),
-                    Completion::Jump { cleanup, .. } => CompletionAction::Jump(cleanup),
-                    Completion::Resume(_) | Completion::Halt(_) | Completion::Yield(_) => unreachable!("handled above"),
+                    Completion::Jump { cleanup, .. } => CompletionAction::Jump(cleanup), Completion::Resume(_) | Completion::Halt(_) | Completion::Yield(_) => unreachable!("handled above"),
                 });
             };
             let metadata = frame.metadata;
@@ -614,9 +613,7 @@ impl Vm {
                     let (receiver, key) = self.property_reference()?;
                     let object = receiver.object_id().unwrap();
                     if matches!(instruction.opcode, Opcode::DefineMethod | Opcode::DefineClassAccessor) {
-                        if let Value::Object(function) = value {
-                            self.with_roots(|heap| heap.set_closure_home(function, object))?;
-                        }
+                        if let Value::Object(function) = value { self.with_roots(|heap| heap.set_closure_home(function, object))?; }
                     }
                     if instruction.opcode == Opcode::DefineData {
                         self.define_data(object, key, value.clone(), true, true, true)?;
@@ -666,9 +663,7 @@ impl Vm {
                 Opcode::CallClassStaticBlock => {
                     let base = self.stack.len() - 2;
                     let Value::Object(target) = self.stack[base].clone() else { unreachable!("class constructors are objects") };
-                    if let Value::Object(function) = self.stack[base + 1] {
-                        self.with_roots(|heap| heap.set_closure_home(function, target))?;
-                    }
+                    if let Value::Object(function) = self.stack[base + 1] { self.with_roots(|heap| heap.set_closure_home(function, target))?; }
                     self.call_native(self.stack[base + 1].clone(), self.stack[base].clone(), Vec::new(), false)?;
                     self.stack.truncate(base + 1);
                 }
@@ -677,9 +672,7 @@ impl Vm {
                     let target = self.stack[base + 1].clone();
                     let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
                     let initializer = self.stack[base + 3].clone();
-                    if let (Value::Object(target), Value::Object(function)) = (&target, &initializer) {
-                        self.with_roots(|heap| heap.set_closure_home(*function, *target))?;
-                    }
+                    if let (Value::Object(target), Value::Object(function)) = (&target, &initializer) { self.with_roots(|heap| heap.set_closure_home(*function, *target))?; }
                     let value = self.call_native(initializer, target.clone(), Vec::new(), false)?;
                     let Value::Object(target) = target else { unreachable!("class fields target the constructor") };
                     if !self.with_roots(|heap| heap.define_own_property(target, key, PropertyDescriptor::data(value, true, true, true)))? {
@@ -1276,10 +1269,7 @@ impl Vm {
 
     fn set_class_heritage(&mut self) -> Result<(), RuntimeError> {
         let base = self.pop();
-        let Value::Object(class) = self.stack.last().expect("class closure remains on the stack") else {
-            unreachable!("compiler emits a class closure before heritage")
-        };
-        let class = *class;
+        let class = self.stack.last().expect("class closure remains on the stack").object_id().expect("compiler emits a class closure before heritage");
         let prototype = self.heap.get(class, "prototype")?.object_id().expect("class constructors have a prototype object");
         let (constructor_parent, instance_parent) = match &base {
             Value::Null => (None, None),
@@ -1301,10 +1291,7 @@ impl Vm {
     }
 
     fn set_class_home(&mut self) -> Result<(), RuntimeError> {
-        let class = match self.stack.last().expect("class closure remains on the stack") {
-            Value::Object(class) => *class,
-            _ => unreachable!("compiler emits a class closure before setting its home object"),
-        };
+        let class = self.stack.last().expect("class closure remains on the stack").object_id().expect("compiler emits a class closure before setting its home object");
         let prototype = self.heap.get(class, "prototype")?.object_id().expect("class constructors have a prototype object");
         self.with_roots(|heap| heap.set_closure_home(class, prototype))?;
         Ok(())
@@ -1343,10 +1330,7 @@ impl Vm {
         let Value::Object(receiver) = self.this else {
             return Err(RuntimeError::ReferenceError("this is uninitialized before super()".into()));
         };
-        self.with_roots(|heap| heap.set(receiver, key, value.clone())).map_err(|error| match error {
-            RuntimeError::Heap(HeapError::ReadOnlyProperty) => RuntimeError::TypeError("super property cannot be assigned".into()),
-            error => error,
-        })
+        self.with_roots(|heap| heap.set(receiver, key, value.clone())).map_err(|error| match error { RuntimeError::Heap(HeapError::ReadOnlyProperty) => RuntimeError::TypeError("super property cannot be assigned".into()), error => error })
     }
 
     fn super_call(&mut self, args: Vec<Value>) -> Result<Value, RuntimeError> {
@@ -1359,7 +1343,6 @@ impl Vm {
         self.this = value.clone();
         Ok(value)
     }
-
     /// Implements CopyDataProperties for an object-rest binding.  The
     /// compiler supplies an internal array of already-coerced excluded keys;
     /// getters are read from the original source object and copied as normal
@@ -1883,4 +1866,91 @@ mod tests {
         assert_eq!(vm.with_get("value"), Ok(Value::Number(7.0)));
         assert_eq!(vm.with_get("missing"), Err(RuntimeError::ReferenceError("missing".into())));
     }
+
+    #[test]
+    fn class_definition_opcodes_assign_home_objects_to_closures() {
+        let mut vm = Vm::default();
+        let target = vm.heap.alloc_object(None).unwrap();
+        let mut function_code = Bytecode::empty();
+        function_code.code.push(Opcode::Halt as u8);
+        let function = vm.heap.alloc_closure(std::rc::Rc::new(function_code), Vec::new(), Value::Undefined, vm.object_prototype).unwrap();
+        let mut code = Bytecode::empty();
+        code.code.extend([Opcode::DefineMethod as u8, Opcode::Halt as u8]);
+
+        vm.stack = vec![Value::Object(target), Value::String("method".into()), Value::Object(function)];
+        vm.remaining_instructions = vm.config.instruction_budget;
+        assert!(matches!(vm.interpret(&code, &mut Vec::new(), 0, None), Ok(InterpreterExit::Return(Value::Undefined))));
+        vm.stack = vec![Value::Object(target), Value::String("empty".into()), Value::Undefined];
+        vm.remaining_instructions = vm.config.instruction_budget;
+        assert!(matches!(vm.interpret(&code, &mut Vec::new(), 0, None), Ok(InterpreterExit::Return(Value::Undefined))));
+
+        code.code[0] = Opcode::CallClassStaticBlock as u8;
+        vm.stack = vec![Value::Object(target), Value::Object(function)];
+        vm.remaining_instructions = vm.config.instruction_budget;
+        assert!(matches!(vm.interpret(&code, &mut Vec::new(), 0, None), Ok(InterpreterExit::Return(Value::Undefined))));
+        vm.stack = vec![Value::Object(target), Value::Undefined];
+        vm.remaining_instructions = vm.config.instruction_budget;
+        assert!(matches!(vm.interpret(&code, &mut Vec::new(), 0, None), Err(RuntimeError::TypeError(_))));
+
+        code.code[0] = Opcode::DefineClassStaticField as u8;
+        vm.stack = vec![Value::Undefined, Value::Object(target), Value::String("field".into()), Value::Object(function)];
+        vm.remaining_instructions = vm.config.instruction_budget;
+        assert!(matches!(vm.interpret(&code, &mut Vec::new(), 0, None), Ok(InterpreterExit::Return(Value::Undefined))));
+        vm.stack = vec![Value::Undefined, Value::Object(target), Value::String("emptyField".into()), Value::Undefined];
+        vm.remaining_instructions = vm.config.instruction_budget;
+        assert!(matches!(vm.interpret(&code, &mut Vec::new(), 0, None), Err(RuntimeError::TypeError(_))));
+    }
+
+    #[test]
+    fn super_assignment_reports_a_non_extensible_receiver() {
+        let mut vm = Vm::default();
+        let base = vm.heap.alloc_object(None).unwrap();
+        let home = vm.heap.alloc_object(Some(base)).unwrap();
+        let receiver = vm.heap.alloc_object(None).unwrap();
+        vm.heap.prevent_extensions(receiver).unwrap();
+        vm.home_object = Some(home);
+        vm.this = Value::Object(receiver);
+        assert_eq!(vm.super_set(&"value".into(), &Value::Number(1.0)), Err(RuntimeError::TypeError("super property cannot be assigned".into())));
+
+        let base = vm.heap.alloc_object(None).unwrap();
+        let home = vm.heap.alloc_object(Some(base)).unwrap();
+        vm.heap.root(home).unwrap();
+        let stale_receiver = vm.heap.alloc_object(None).unwrap();
+        vm.heap.collect_major();
+        vm.home_object = Some(home);
+        vm.this = Value::Object(stale_receiver);
+        assert_eq!(vm.super_set(&"value".into(), &Value::Number(1.0)), Err(RuntimeError::Heap(HeapError::InvalidObject(stale_receiver))));
+    }
+
+    #[test]
+    fn super_and_eval_context_errors_describe_missing_internal_context() {
+        let mut vm = Vm::default();
+        assert_eq!(vm.super_base(), Err(RuntimeError::TypeError("super is not available in this function".into())));
+        let home = vm.heap.alloc_object(None).unwrap();
+        vm.home_object = Some(home);
+        assert_eq!(vm.super_base(), Err(RuntimeError::TypeError("superclass is null".into())));
+        assert_eq!(vm.super_call(Vec::new()), Err(RuntimeError::TypeError("super() is not available in this function".into())));
+        let closure = vm.heap.alloc_closure(std::rc::Rc::new(Bytecode::empty()), Vec::new(), Value::Undefined, vm.object_prototype).unwrap();
+        vm.class_constructor = Some(closure);
+        assert_eq!(vm.super_call(Vec::new()), Err(RuntimeError::TypeError("super() requires a derived constructor".into())));
+        vm.heap.set_class_base(closure, Value::Null).unwrap();
+        assert_eq!(vm.super_call(Vec::new()), Err(RuntimeError::TypeError("super constructor is null".into())));
+        vm.binding_metadata.push(Binding { name: "captured".into(), mutable: true, lexical: true });
+        vm.cells.insert(0, home);
+        assert_eq!(vm.eval_visible_bindings().into_iter().map(|(name, _, slot)| (name, slot)).collect::<Vec<_>>(), vec![("captured".into(), 0)]);
+    }
+
+    #[test]
+    fn compiler_owned_bytecode_invariants_fail_loudly() {
+        let no_handler = Bytecode::empty();
+        let mut vm = Vm::default();
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| vm.resolve_completion(&no_handler, &mut Vec::new(), &mut Vec::new(), Completion::Yield(Value::Undefined)))).is_err());
+        let mut vm = Vm::default();
+        vm.stack.push(Value::Number(0.0));
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| vm.set_class_heritage())).is_err());
+        let mut vm = Vm::default();
+        vm.stack.push(Value::Number(0.0));
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| vm.set_class_home())).is_err());
+    }
+
 }

@@ -330,13 +330,22 @@ sandbox), workspace all-target Clippy with `-D warnings`, and all 10 Python
 runner/analyzer tests pass. A further public-pipeline and internal-boundary
 regression pass covers `super` scanning, class element failures, adapter
 unsupported results, suspended-generator GC roots, `with` lookup, and malformed
-bytecode invariants. It raises line coverage from **10,221/10,402 (98.26%)** to
-**10,434/10,487 (99.49%)**. The gate still exits 1 against the required 100%
-threshold: 53 lines remain, primarily defensive `unreachable!` invariants and
-failure-cleanup branches. No exclusions or threshold changes were made. The
-final report is `/tmp/bluejs-crate-missing-final.txt`. This continuation does
-not claim that every crate gate passes. The earlier crate-wide rustfmt
-differences also remain; the new standalone regression file is rustfmt-clean.
+bytecode invariants. The Test262 adapter contract is exercised at its public
+JSON-lines boundary: ordinary derived construction, `super` reads/writes,
+static fields/blocks and the `extends null` error path return their specified
+outcomes; async source stays an explicit `unsupported` outcome until promise
+jobs and `$DONE` exist. The parser, compiler and heap regressions use their
+public crate APIs where possible; private VM/heap invariants retain focused
+unit tests.
+
+The no-exclusion line gate now reports **10,758/10,767 (99.92%)**, with all
+1,103 functions covered. It still exits 1 against the required 100% threshold:
+the remaining nine line-map entries are in `heap.rs` (2), `parser.rs` (3),
+`vm.rs` (3) and `vm/builtins.rs` (1), despite their behavior being exercised
+by the all-target suite. No exclusions or threshold changes were made, so this
+continuation does not claim that every crate gate passes. The earlier crate-wide
+rustfmt differences also remain; the new standalone regression file is
+rustfmt-clean.
 
 ## Reproduction and continuation
 

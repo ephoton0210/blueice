@@ -932,9 +932,10 @@ impl Parser {
         }
         match self.peek_at(1) {
             Token::Identifier(_) => matches!(self.peek_at(2), Token::Punct(Punct::Arrow)),
-            Token::Punct(Punct::LParen) => self
-                .matching_close_paren(self.pos + 1)
-                .is_some_and(|close| matches!(self.tokens.get(close + 1).map(|token| &token.token), Some(Token::Punct(Punct::Arrow)))),
+            Token::Punct(Punct::LParen) => match self.matching_close_paren(self.pos + 1) {
+                Some(close) => matches!(self.tokens[close + 1].token, Token::Punct(Punct::Arrow)),
+                None => false,
+            },
             _ => false,
         }
     }
@@ -1619,6 +1620,38 @@ mod tests {
             assert!(parse(source).is_err(), "{source}");
         }
     }
+
+    #[test]
+    fn advance_stops_at_the_terminal_token() {
+        let mut parser = Parser::new("value");
+        assert_eq!(parser.advance(), Token::Identifier("value".into()));
+        assert!(parser.at_eof());
+        assert_eq!(parser.advance(), Token::Eof);
+        assert!(parser.at_eof());
+    }
+
+    #[test]
+    fn contextual_async_and_class_lookahead_accept_the_supported_forms() {
+        let mut with_statement = Parser::new("with({value:1})value");
+        assert!(with_statement.parse_with_stmt().is_ok());
+
+        let mut class = Parser::new("class C{async method(){} static async *items(){}}");
+        class.advance();
+        assert!(class.parse_class().is_ok());
+
+        assert!(Parser::new("async function named(){}").async_function_follows());
+        assert!(!Parser::new("async\nfunction named(){}").async_function_follows());
+        assert!(Parser::new("async value=>value").async_arrow_follows());
+        assert!(Parser::new("async (value)=>value").async_arrow_follows());
+        assert!(!Parser::new("async value").async_arrow_follows());
+        assert!(!Parser::new("async (value)").async_arrow_follows());
+        assert!(!Parser::new("async (value").async_arrow_follows());
+        assert!(!Parser::new("async").async_arrow_follows());
+        assert!(!Parser::new("value").async_arrow_follows());
+        assert!(!Parser::new("async\n(value)=>value").async_arrow_follows());
+        assert_eq!(class_element_name(&PropertyKey::Computed(Box::new(Expr::Identifier("key".into())))), "");
+    }
+
     use super::*;
 
     fn program(src: &str) -> Program {
