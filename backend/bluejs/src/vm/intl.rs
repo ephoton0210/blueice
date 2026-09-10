@@ -327,7 +327,7 @@ impl Vm {
         let numeric = if numeric == Value::Undefined {
             None
         } else {
-            Some(primitive::truthy(&numeric))
+            Some(self.to_boolean(&numeric)?)
         };
         let case_first = self.string_option(&options, "caseFirst", &["upper", "lower", "false"])?;
         let selected = locales
@@ -390,7 +390,7 @@ impl Vm {
         let ignore_punctuation = if punctuation == Value::Undefined {
             selected.id.language.as_str() == "th"
         } else {
-            primitive::truthy(&punctuation)
+            self.to_boolean(&punctuation)?
         };
         let mut options = CollatorOptions::default();
         options.strength = Some(match sensitivity.as_str() {
@@ -693,7 +693,7 @@ impl Vm {
         }
         let numeric = self.get_property(&options, &"numeric".into())?;
         if numeric != Value::Undefined {
-            let value = if primitive::truthy(&numeric) {
+            let value = if self.to_boolean(&numeric)? {
                 UnicodeValue::default()
             } else {
                 UnicodeValue::try_from_str("false").unwrap()

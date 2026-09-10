@@ -478,3 +478,49 @@ The only remaining switch modes are four async-function execution gaps, two
 `$262`/IsHTMLDDA host-hook cases, and three tail-call instruction-limit
 outcomes. This is still a P0.1 subset result rather than full switch
 conformance.
+
+## P0.1 continuation: Tail-call fixture resource policy
+
+The three remaining switch tail-call fixtures declare
+`tail-call-optimization` and include Test262's `tcoHelper.js`, which requires
+100,000 consecutive calls. BlueJS already emits `TailRecur` for an unshadowed,
+strict named function-expression self call, including one returned from a case
+or default clause. Their former outcomes were therefore the runner's generic
+100,000-dispatch limit, not a retained-frame or switch tail-position failure.
+
+The Test262 runner now gives only modes declaring `tail-call-optimization` a
+minimum 3,000,000-dispatch budget, while retaining the 100,000 baseline and
+per-case wall deadline for every other mode. A runner regression locks that
+policy and the summary records both thresholds. The final run at
+`target/test262-switch-tail-budget/analysis` reconciles **212 pass, 0 fail, 6
+unsupported, 0 timeout**. The remaining four async execution modes and two
+IsHTMLDDA host-hook modes require their P1.3 and P1.6 implementations; they
+are deliberately still reported unsupported rather than being reclassified.
+
+## P0.1 continuation: current Annex B host exotic and async declarations
+
+The latest published [ECMAScript 2026 Annex B
+text](https://tc39.es/ecma262/2026/multipage/additional-ecmascript-features-for-web-browsers.html)
+was checked before closing the remaining switch modes. Its `[[IsHTMLDDA]]`
+compatibility slot changes only `ToBoolean`, `IsLooselyEqual`, and `typeof`;
+it deliberately does not alter Strict Equality Comparison. The Test262 adapter
+therefore installs a fresh, feature-gated `$262.IsHTMLDDA` host exotic. Its
+false boolean coercion, loose equality with `null` and `undefined`, and
+`typeof` result are special, while switch case selection still uses ordinary
+object identity and reaches `case IsHTMLDDA`.
+
+The current [async function algorithms](https://tc39.es/ecma262/2026/multipage/control-abstraction-objects.html)
+require Promise capabilities, async completion propagation, and (for async
+generators) request queues. BlueJS does not yet have that Promise/job-queue
+architecture, so it does not claim execution support. It now does compile an
+empty async or async-generator declaration into a non-constructible closure,
+which lets CaseBlock declaration instantiation create the required lexical
+binding. Calling that closure reports the explicit runtime `unsupported` gap;
+non-empty async bodies remain compiler-unsupported.
+
+The resulting fresh run at `target/test262-switch-is-html-async/` reconciles
+**218 pass, 0 fail, 0 unsupported, 0 timeout** across all 218 current
+`language/statements/switch` modes. Public regressions cover all three Annex B
+observable operations, strict switch matching, feature-gated adapter setup,
+async CaseBlock scope exit, and the explicit async-call boundary. This closes
+the filtered corpus, not P1.3 async execution or general Test262 conformance.

@@ -266,7 +266,8 @@ impl Vm {
                 ("unicodeSets", 'v'),
                 ("sticky", 'y'),
             ] {
-                if primitive::truthy(&self.get_property(receiver, &property.into())?) {
+                let enabled = self.get_property(receiver, &property.into())?;
+                if self.to_boolean(&enabled)? {
                     flags.push(flag);
                 }
             }

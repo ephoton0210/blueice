@@ -20,6 +20,8 @@ struct Request {
     asynchronous: bool,
     #[serde(default)]
     parse_only: bool,
+    #[serde(default)]
+    is_html_dda: bool,
     bytecode_limit: Option<u32>,
     instruction_budget: Option<u64>,
     heap_limit: Option<usize>,
@@ -33,6 +35,9 @@ fn runtime(error: RuntimeError) -> Value {
         return json!({"kind":"unsupported", "reason":"missing Test262 host hook", "message":error.to_string()});
     }
     let kind = match &error {
+        RuntimeError::Unsupported(reason) => {
+            return json!({"kind":"unsupported", "reason":reason, "message":error.to_string()});
+        }
         RuntimeError::TypeError(_) => "TypeError",
         RuntimeError::RangeError(_) => "RangeError",
         RuntimeError::SyntaxError(_) => "SyntaxError",
@@ -130,6 +135,11 @@ fn evaluate(request: Request) -> Value {
     };
     if request.mode != "raw" {
         if let Err(error) = vm.install_test262_harness() {
+            return json!({"kind":"harness_error", "message":error.to_string()});
+        }
+    }
+    if request.is_html_dda {
+        if let Err(error) = vm.install_test262_is_html_dda() {
             return json!({"kind":"harness_error", "message":error.to_string()});
         }
     }

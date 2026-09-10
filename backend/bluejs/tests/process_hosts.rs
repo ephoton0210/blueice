@@ -192,11 +192,15 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
             "TypeError",
         ),
         (
-            json!({"source":"async function work(){}", "mode":"sloppy"}),
+            json!({"source":"let value=$262.IsHTMLDDA;assert.sameValue(!value,true);assert.sameValue(value==null,true);assert.sameValue(typeof value,'undefined');switch(value){case undefined:throw 1;case null:throw 2;case value:break}", "mode":"sloppy", "is_html_dda":true}),
+            "ok",
+        ),
+        (
+            json!({"source":"async function work(){}work()", "mode":"sloppy"}),
             "unsupported",
         ),
         (
-            json!({"source":"1", "mode":"sloppy", "includes":["helpers.js"], "harness_sources":["async function work(){}"]}),
+            json!({"source":"1", "mode":"sloppy", "includes":["helpers.js"], "harness_sources":["async function work(){}work()"]}),
             "unsupported",
         ),
     ];

@@ -61,6 +61,7 @@ pub enum RuntimeError {
     RegexTimeout,
     Test262(String),
     RegexWorker(String),
+    Unsupported(&'static str),
 }
 
 impl fmt::Display for RuntimeError {
@@ -77,6 +78,7 @@ impl fmt::Display for RuntimeError {
             Self::Test262(message) => write!(f, "Test262Error: {message}"),
             Self::RegexTimeout => f.write_str("BlueJS regex deadline exceeded"),
             Self::RegexWorker(message) => write!(f, "BlueJS regex worker failed: {message}"),
+            Self::Unsupported(reason) => write!(f, "BlueJS unsupported: {reason}"),
         }
     }
 }
@@ -1265,18 +1267,8 @@ impl Vm {
                             Opcode::Negate => Value::Number(-self.coerce_number(&arg)?),
                             Opcode::ToNumber => Value::Number(self.coerce_number(&arg)?),
                             Opcode::ToString => Value::String(self.coerce_string(&arg)?),
-                            Opcode::Not => Value::Bool(!primitive::truthy(&arg)),
-                            _ => {
-                                let callable = self.is_callable(&arg)?;
-                                Value::String(
-                                    if callable {
-                                        "function"
-                                    } else {
-                                        primitive::type_name(&arg)
-                                    }
-                                    .into(),
-                                )
-                            }
+                            Opcode::Not => Value::Bool(!self.to_boolean(&arg)?),
+                            _ => Value::String(self.typeof_value(&arg)?.into()),
                         };
                         self.check_string(&value)?;
                         self.pop();
@@ -1286,8 +1278,8 @@ impl Vm {
                     Opcode::JumpIfFalse | Opcode::JumpIfTrue | Opcode::JumpIfNotNullish => {
                         let arg = self.pop();
                         let take = match instruction.opcode {
-                            Opcode::JumpIfFalse => !primitive::truthy(&arg),
-                            Opcode::JumpIfTrue => primitive::truthy(&arg),
+                            Opcode::JumpIfFalse => !self.to_boolean(&arg)?,
+                            Opcode::JumpIfTrue => self.to_boolean(&arg)?,
                             _ => !matches!(arg, Value::Null | Value::Undefined),
                         };
                         if take {
@@ -2485,6 +2477,16 @@ impl Vm {
     fn loose_equal(&mut self, left: Value, right: Value) -> Result<bool, RuntimeError> {
         if std::mem::discriminant(&left) == std::mem::discriminant(&right) {
             return Ok(left == right);
+        }
+        if matches!(right, Value::Null | Value::Undefined)
+            && matches!(&left, Value::Object(object) if self.heap.is_html_dda(*object)?)
+        {
+            return Ok(true);
+        }
+        if matches!(left, Value::Null | Value::Undefined)
+            && matches!(&right, Value::Object(object) if self.heap.is_html_dda(*object)?)
+        {
+            return Ok(true);
         }
         if matches!(
             (&left, &right),

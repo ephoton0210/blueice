@@ -32,6 +32,7 @@ ROOT = Path(__file__).resolve().parents[3]
 SNAPSHOT = json.loads(Path(__file__).with_name("snapshot.json").read_text())
 FRONTMATTER = re.compile(r"/\*---(.*?)---\*/", re.DOTALL)
 NATIVE_INCLUDES = frozenset({"sta.js", "assert.js", "propertyHelper.js", "isConstructor.js"})
+TAIL_CALL_INSTRUCTION_BUDGET = 3_000_000
 
 
 def fetch(destination):
@@ -123,6 +124,13 @@ def classify(reply, negative):
     if negative:
         return "pass" if reply.get("phase") == negative["phase"] and kind == negative["type"] else "fail"
     return "pass" if kind == "ok" else "fail"
+
+
+def instruction_budget(data, default):
+    """Keep standard tail-call conformance probes within a bounded budget."""
+    if "tail-call-optimization" in data.get("features", []):
+        return max(default, TAIL_CALL_INSTRUCTION_BUDGET)
+    return default
 
 
 class Worker:
@@ -260,7 +268,7 @@ def main():
         ]
         for mode in modes(data):
             negative = data.get("negative")
-            reply = local.worker.run({"source": source, "mode": mode, "includes": data.get("includes", []), "harness_sources": harness_sources, "asynchronous": "async" in data.get("flags", []), "parse_only": bool(negative and negative["phase"] == "parse"), "instruction_budget": args.instruction_budget})
+            reply = local.worker.run({"source": source, "mode": mode, "includes": data.get("includes", []), "harness_sources": harness_sources, "asynchronous": "async" in data.get("flags", []), "parse_only": bool(negative and negative["phase"] == "parse"), "is_html_dda": "IsHTMLDDA" in data.get("features", []), "instruction_budget": instruction_budget(data, args.instruction_budget)})
             results.append({"path": relative, "mode": mode, "status": classify(reply, negative), "expected": negative, "actual": reply, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
         return results
 
@@ -279,7 +287,7 @@ def main():
     finally:
         for worker in workers:
             worker.close()
-    report = {"snapshot": SNAPSHOT, "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(), "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "regex_worker_sha256": hashlib.sha256(args.adapter.with_name("bluejs-regexp-worker").read_bytes()).hexdigest(), "complete_inventory": not args.filter, "filter": args.filter, "discovered_js": len(all_files), "fixture_resources": len(fixtures), "test_files": len(files), "scheduled_modes": sum(counters.values()), "results": counters, "groups": groups, "features": features, "elapsed_seconds": round(time.monotonic() - start, 3), "timeout_seconds": args.timeout, "instruction_budget": args.instruction_budget, "jobs": args.jobs, "limitations": ["module and async execution unavailable", "unclassified parser rejections cannot pass negative tests", "harness sources still require supported grammar and APIs", "native overrides for sta.js, assert.js, propertyHelper.js, and isConstructor.js; raw tests receive no harness", "each mode has a fixed interpreter instruction budget"]}
+    report = {"snapshot": SNAPSHOT, "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(), "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "regex_worker_sha256": hashlib.sha256(args.adapter.with_name("bluejs-regexp-worker").read_bytes()).hexdigest(), "complete_inventory": not args.filter, "filter": args.filter, "discovered_js": len(all_files), "fixture_resources": len(fixtures), "test_files": len(files), "scheduled_modes": sum(counters.values()), "results": counters, "groups": groups, "features": features, "elapsed_seconds": round(time.monotonic() - start, 3), "timeout_seconds": args.timeout, "instruction_budget": args.instruction_budget, "tail_call_instruction_budget": TAIL_CALL_INSTRUCTION_BUDGET, "jobs": args.jobs, "limitations": ["module and async execution unavailable", "unclassified parser rejections cannot pass negative tests", "harness sources still require supported grammar and APIs", "native overrides for sta.js, assert.js, propertyHelper.js, and isConstructor.js; raw tests receive no harness", "each mode has a bounded interpreter instruction budget; tail-call fixtures receive at least the recorded tail-call budget"]}
     (args.output / "summary.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps({key: report[key] for key in ("test_files", "scheduled_modes", "results", "elapsed_seconds")}, indent=2))
     return 0 if counters["pass"] == sum(counters.values()) else 1

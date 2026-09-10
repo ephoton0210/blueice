@@ -197,6 +197,36 @@ fn class_async_method_syntax_is_classified_as_an_execution_gap() {
 }
 
 #[test]
+fn empty_async_case_declarations_instantiate_before_execution_support() {
+    for source in [
+        "switch(0){default:async function x(){}}x;",
+        "switch(0){default:async function*x(){}}x;",
+    ] {
+        assert!(
+            matches!(execute(&mut Vm::default(), source), Err(RuntimeError::ReferenceError(name)) if name == "x"),
+            "{source}"
+        );
+    }
+    for source in [
+        "async function x(){}typeof x==='function'",
+        "async function*x(){}typeof x==='function'",
+    ] {
+        assert_eq!(
+            execute(&mut Vm::default(), source),
+            Ok(Value::Bool(true)),
+            "{source}"
+        );
+    }
+    for source in ["(async function(){})()", "(async function*(){})()"] {
+        assert_eq!(
+            execute(&mut Vm::default(), source),
+            Err(RuntimeError::Unsupported("async function execution")),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn function_and_inheritance_early_errors_are_classified() {
     for source in [
         "function f(){super();}",

@@ -354,7 +354,7 @@ impl Vm {
             }
             self.stack.push(result.clone());
             let done = self.get_property(&result, &"done".into())?;
-            let value = if primitive::truthy(&done) {
+            let value = if self.to_boolean(&done)? {
                 None
             } else if read_value {
                 Some(self.get_property(&result, &"value".into())?)
@@ -445,6 +445,9 @@ impl Vm {
             return Err(RuntimeError::TypeError(
                 "arrow function is not a constructor".into(),
             ));
+        }
+        if code.async_function {
+            return Err(RuntimeError::Unsupported("async function execution"));
         }
         let receiver = if construct && code.derived_constructor {
             Value::Undefined
@@ -948,7 +951,7 @@ impl Vm {
         }
         let matcher = self.get_property(value, &JsSymbol::well_known("match").into())?;
         if !matches!(matcher, Value::Undefined) {
-            return Ok(primitive::truthy(&matcher));
+            return self.to_boolean(&matcher);
         }
         Ok(if let Value::Object(id) = value {
             self.heap.regexp(*id)?.is_some()
@@ -1541,7 +1544,7 @@ impl Vm {
             }
             NativeFunction::PrimitiveConstructor(boolean) => {
                 let value = if boolean {
-                    Value::Bool(primitive::truthy(first))
+                    Value::Bool(self.to_boolean(first)?)
                 } else {
                     Value::Number(if args.is_empty() {
                         0.0
@@ -2346,9 +2349,9 @@ impl Vm {
             // Later descriptor getters may allocate and collect earlier values.
             self.stack.push(property.clone());
             match name {
-                "enumerable" => descriptor.enumerable = Some(primitive::truthy(&property)),
-                "configurable" => descriptor.configurable = Some(primitive::truthy(&property)),
-                "writable" => descriptor.writable = Some(primitive::truthy(&property)),
+                "enumerable" => descriptor.enumerable = Some(self.to_boolean(&property)?),
+                "configurable" => descriptor.configurable = Some(self.to_boolean(&property)?),
+                "writable" => descriptor.writable = Some(self.to_boolean(&property)?),
                 "value" => descriptor.value = Some(property),
                 _ => {
                     if property != Value::Undefined && !self.is_callable(&property)? {

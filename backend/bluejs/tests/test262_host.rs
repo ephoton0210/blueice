@@ -61,6 +61,26 @@ fn error_constructors_and_host_globals() {
 }
 
 #[test]
+fn is_html_dda_host_object_keeps_strict_equality_ordinary() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    vm.install_test262_is_html_dda().unwrap();
+    for source in [
+        "(function(){let value=$262.IsHTMLDDA;return !value;})()",
+        "(function(){let value=$262.IsHTMLDDA;return value==null&&value==undefined;})()",
+        "(function(){let value=$262.IsHTMLDDA;return typeof value==='undefined';})()",
+        "(function(){let value=$262.IsHTMLDDA;switch(value){case undefined:return 1;case null:return 2;case value:return 3;}})()===3",
+    ] {
+        assert_eq!(
+            vm.execute(&compile(&parse(source).unwrap()).unwrap())
+                .unwrap(),
+            Value::Bool(true),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn harness_compares_arrays_and_propagates_resource_errors() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();

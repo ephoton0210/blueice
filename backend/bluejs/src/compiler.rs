@@ -2089,7 +2089,7 @@ impl Compiler {
             inferred_name,
             named_expression,
             FunctionCompileOptions {
-                constructible: !arrow && !function.generator,
+                constructible: !arrow && !function.generator && !function.is_async,
                 force_strict: false,
                 class_constructor: false,
                 derived_constructor: false,
@@ -2107,7 +2107,11 @@ impl Compiler {
         named_expression: bool,
         options: FunctionCompileOptions,
     ) -> Result<(), CompileError> {
-        if function.is_async {
+        // Declaration instantiation creates async closures before their body
+        // starts. Preserve that observable lexical behaviour for empty
+        // bodies, while keeping execution-dependent async semantics behind a
+        // deliberate boundary until Promise jobs are available.
+        if function.is_async && !function.body.is_empty() {
             return Err(CompileError::Unsupported("async functions"));
         }
         let child_budget = self.max_bytecode_bytes.saturating_sub(self.offset()?);
@@ -2131,6 +2135,7 @@ impl Compiler {
         )?;
         child.bytecode.arrow = arrow;
         child.bytecode.generator = function.generator;
+        child.bytecode.async_function = function.is_async;
         child.bytecode.constructible = options.constructible;
         child.bytecode.class_constructor = options.class_constructor;
         child.bytecode.derived_constructor = options.derived_constructor;

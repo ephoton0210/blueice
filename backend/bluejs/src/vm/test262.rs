@@ -17,6 +17,26 @@ impl Vm {
         result
     }
 
+    /// Installs the Test262-only host object used to exercise the Annex B
+    /// `[[IsHTMLDDA]]` compatibility slot. It is not an ordinary-realm API.
+    pub fn install_test262_is_html_dda(&mut self) -> Result<(), RuntimeError> {
+        let base = self.stack.len();
+        let result = (|| {
+            let global = self.global("globalThis")?.object_id().unwrap();
+            let prototype = self.object_prototype;
+            let host = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+            // Keep both temporary host objects on the VM stack across the
+            // property-definition allocation safepoints below.
+            self.stack.push(Value::Object(host));
+            let value = self.with_roots(|heap| heap.alloc_html_dda_object(Some(prototype)))?;
+            self.stack.push(Value::Object(value));
+            self.define_data(host, "IsHTMLDDA", Value::Object(value), false, true, false)?;
+            self.define_data(global, "$262", Value::Object(host), true, false, true)
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
     fn install_test262_functions(&mut self) -> Result<(), RuntimeError> {
         let global = self.global("globalThis")?.object_id().unwrap();
         for name in ["isNaN", "isFinite", "parseInt", "parseFloat"] {

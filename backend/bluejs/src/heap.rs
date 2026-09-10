@@ -265,6 +265,9 @@ enum ObjectKind {
 
 struct Object {
     kind: ObjectKind,
+    /// Host-defined Annex B slot. It changes only the abstract operations
+    /// explicitly named by ECMAScript's IsHTMLDDA compatibility semantics.
+    is_html_dda: bool,
     properties: HashMap<PropertyName, Value>,
     order: Vec<PropertyName>,
     attributes: HashMap<PropertyName, PropertyDescriptor>,
@@ -389,6 +392,24 @@ impl Heap {
     /// The returned object is unrooted until registered or attached to a root.
     pub fn alloc_object(&mut self, prototype: Option<ObjectId>) -> Result<ObjectId, HeapError> {
         self.alloc(ObjectKind::Ordinary, prototype)
+    }
+
+    /// Allocates a host-defined exotic with the Annex B `[[IsHTMLDDA]]` slot.
+    /// Only the Test262 host creates one; ordinary JavaScript cannot.
+    pub(crate) fn alloc_html_dda_object(
+        &mut self,
+        prototype: Option<ObjectId>,
+    ) -> Result<ObjectId, HeapError> {
+        let id = self.alloc(ObjectKind::Ordinary, prototype)?;
+        self.objects
+            .get_mut(&id)
+            .expect("freshly allocated object is present")
+            .is_html_dda = true;
+        Ok(id)
+    }
+
+    pub(crate) fn is_html_dda(&self, object: ObjectId) -> Result<bool, HeapError> {
+        Ok(self.object(object)?.is_html_dda)
     }
 
     /// Allocates a sparse array of holes; even a length of u32::MAX costs
@@ -1094,6 +1115,7 @@ impl Heap {
             id,
             Object {
                 kind,
+                is_html_dda: false,
                 properties: HashMap::new(),
                 order: Vec::new(),
                 attributes: HashMap::new(),

@@ -5,6 +5,17 @@
 use super::*;
 
 impl Vm {
+    /// ECMAScript ToBoolean, including the host-defined Annex B IsHTMLDDA
+    /// override. Ordinary objects remain truthy.
+    pub(super) fn to_boolean(&self, value: &Value) -> Result<bool, RuntimeError> {
+        if let Value::Object(object) = value {
+            if self.heap.is_html_dda(*object)? {
+                return Ok(false);
+            }
+        }
+        Ok(primitive::truthy(value))
+    }
+
     pub(super) fn lookup_global_name(&mut self, name: &str) -> Result<Option<Value>, RuntimeError> {
         if let Some(&id) = self.globals.get(name) {
             return Ok(Some(Value::Object(id)));
@@ -35,6 +46,11 @@ impl Vm {
     }
 
     pub(super) fn typeof_value(&self, value: &Value) -> Result<&'static str, RuntimeError> {
+        if let Value::Object(object) = value {
+            if self.heap.is_html_dda(*object)? {
+                return Ok("undefined");
+            }
+        }
         Ok(if self.is_callable(value)? {
             "function"
         } else {

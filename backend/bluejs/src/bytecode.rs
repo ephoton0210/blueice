@@ -194,6 +194,10 @@ pub struct Bytecode {
     pub(crate) function_length: u32,
     pub(crate) arrow: bool,
     pub(crate) generator: bool,
+    /// Async functions require Promise capabilities and job-queue integration
+    /// at call time. Keeping the declaration bit in bytecode lets lexical
+    /// instantiation remain correct before that execution support exists.
+    pub(crate) async_function: bool,
     pub(crate) constructible: bool,
     /// Class constructors require `new`, unlike ordinary constructible
     /// closures. Class methods are non-constructible closures.
@@ -221,6 +225,7 @@ impl Bytecode {
             function_length: 0,
             arrow: false,
             generator: false,
+            async_function: false,
             constructible: false,
             class_constructor: false,
             derived_constructor: false,

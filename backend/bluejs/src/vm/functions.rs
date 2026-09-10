@@ -83,9 +83,8 @@ impl Vm {
                     // The intrinsic can be tail-dispatched here. Custom hooks
                     // still use normal call rooting, error and depth handling.
                     if self.heap.native_function(id)? != Some(NativeFunction::HasInstance) {
-                        return self
-                            .call_native(method, target, vec![value], false)
-                            .map(|v| primitive::truthy(&v));
+                        let result = self.call_native(method, target, vec![value], false)?;
+                        return self.to_boolean(&result);
                     }
                 } else if !self.is_callable(&target)? {
                     return Err(RuntimeError::TypeError(

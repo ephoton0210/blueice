@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from run import Worker, classify, metadata, modes, selected_files
+from run import Worker, classify, instruction_budget, metadata, modes, selected_files
 
 
 class RunnerTests(unittest.TestCase):
@@ -26,6 +26,11 @@ class RunnerTests(unittest.TestCase):
         for kind in ["unsupported", "unclassified_parse_error"]:
             self.assertEqual(classify({"phase": "parse", "kind": kind}, expected), "unsupported")
         self.assertEqual(classify({"kind": "timeout"}, {"phase": "runtime", "type": "RangeError"}), "timeout")
+
+    def test_tail_call_feature_receives_a_budget_large_enough_for_the_standard_harness(self):
+        self.assertEqual(instruction_budget({"features": []}, 100_000), 100_000)
+        self.assertEqual(instruction_budget({"features": ["tail-call-optimization"]}, 100_000), 3_000_000)
+        self.assertEqual(instruction_budget({"features": ["tail-call-optimization"]}, 4_000_000), 4_000_000)
 
     def test_filter_must_select_at_least_one_non_fixture_test(self):
         with tempfile.TemporaryDirectory() as temporary:
