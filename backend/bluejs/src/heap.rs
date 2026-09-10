@@ -111,6 +111,49 @@ pub struct HeapStats {
 pub(crate) type RegExpIteratorState = (ObjectId, JsString, bool, bool, bool);
 pub(crate) type ClosureState = (Rc<Bytecode>, Vec<ObjectId>, Value);
 
+/// A generator's suspended execution context. The VM moves this out while
+/// `.next()` runs, then restores it before any subsequent allocation.
+pub(crate) enum GeneratorState {
+    Start { code: Rc<Bytecode>, captures: Vec<ObjectId>, callee: Value, receiver: Value, args: Vec<Value> },
+    Suspended {
+        code: Rc<Bytecode>,
+        pc: usize,
+        stack: Vec<Value>,
+        bindings: Vec<Option<Value>>,
+        cells: Vec<(usize, ObjectId)>,
+        this: Value,
+        args: Vec<Value>,
+        completion: Value,
+        completion_empty: bool,
+        active_scopes: Vec<u32>,
+    },
+    Done,
+}
+
+impl GeneratorState {
+    fn references(&self) -> Vec<ObjectId> {
+        match self {
+            Self::Start { captures, callee, receiver, args, .. } => captures
+                .iter()
+                .copied()
+                .chain(callee.object_id())
+                .chain(receiver.object_id())
+                .chain(args.iter().filter_map(Value::object_id))
+                .collect(),
+            Self::Suspended { stack, bindings, cells, this, args, completion, .. } => stack
+                .iter()
+                .chain(bindings.iter().flatten())
+                .chain(std::iter::once(this))
+                .chain(args.iter())
+                .chain(std::iter::once(completion))
+                .filter_map(Value::object_id)
+                .chain(cells.iter().map(|(_, id)| *id))
+                .collect(),
+            Self::Done => Vec::new(),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct BoundFunction {
     pub target: ObjectId,
@@ -127,6 +170,7 @@ enum ObjectKind {
     String(JsString),
     NativeFunction { function: NativeFunction, initial_name: JsString },
     Closure { code: Rc<Bytecode>, captures: Vec<ObjectId>, this: Value },
+    Generator { state: Box<GeneratorState> },
     BoundFunction(BoundFunction),
     StringIterator { string: JsString, position: usize },
     RegExp(Rc<crate::regexp::RegExp>),
@@ -168,6 +212,7 @@ impl Object {
             .chain(self.attributes.values().flat_map(|d| d.get.iter().chain(d.set.iter()).filter_map(Value::object_id)))
             .chain(match &self.kind {
                 ObjectKind::Closure { captures, this, .. } => captures.iter().copied().chain(this.object_id()).collect::<Vec<_>>(),
+                ObjectKind::Generator { state } => state.references(),
                 ObjectKind::BoundFunction(bound) => std::iter::once(bound.target).chain(bound.this.object_id()).chain(bound.args.iter().filter_map(Value::object_id)).collect(),
                 ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
                 ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
@@ -281,6 +326,23 @@ impl Heap {
 
     pub(crate) fn alloc_closure(&mut self, code: Rc<Bytecode>, captures: Vec<ObjectId>, this: Value, prototype: ObjectId) -> Result<ObjectId, HeapError> {
         self.alloc(ObjectKind::Closure { code, captures, this }, Some(prototype))
+    }
+
+    pub(crate) fn alloc_generator(&mut self, state: GeneratorState, prototype: ObjectId) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::Generator { state: Box::new(state) }, Some(prototype))
+    }
+
+    pub(crate) fn take_generator_state(&mut self, object: ObjectId) -> Result<GeneratorState, HeapError> {
+        let entry = self.objects.get_mut(&object).ok_or(HeapError::InvalidObject(object))?;
+        let ObjectKind::Generator { state } = &mut entry.kind else { return Err(HeapError::InvalidObject(object)) };
+        Ok(*std::mem::replace(state, Box::new(GeneratorState::Done)))
+    }
+
+    pub(crate) fn set_generator_state(&mut self, object: ObjectId, state: GeneratorState) -> Result<(), HeapError> {
+        let entry = self.objects.get_mut(&object).ok_or(HeapError::InvalidObject(object))?;
+        let ObjectKind::Generator { state: current } = &mut entry.kind else { return Err(HeapError::InvalidObject(object)) };
+        **current = state;
+        Ok(())
     }
 
     pub(crate) fn alloc_bound_function(&mut self, bound: BoundFunction, prototype: Option<ObjectId>) -> Result<ObjectId, HeapError> {
@@ -528,6 +590,7 @@ impl Heap {
             .into_iter()
             .chain(match &kind {
                 ObjectKind::Closure { captures, this, .. } => captures.iter().copied().chain(this.object_id()).collect::<Vec<_>>(),
+                ObjectKind::Generator { state } => state.references(),
                 ObjectKind::BoundFunction(bound) => std::iter::once(bound.target).chain(bound.this.object_id()).chain(bound.args.iter().filter_map(Value::object_id)).collect(),
                 ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
                 ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
@@ -549,6 +612,7 @@ impl Heap {
                 ObjectKind::BoxedPrimitive(value) => value.payload_bytes(),
                 ObjectKind::NativeFunction { initial_name, .. } => initial_name.byte_len(),
                 ObjectKind::Closure { captures, this, .. } => captures.len() * size_of::<ObjectId>() + this.payload_bytes(),
+                ObjectKind::Generator { state } => state.references().len() * size_of::<ObjectId>(),
                 ObjectKind::BoundFunction(bound) => bound.this.payload_bytes() + bound.args.len() * size_of::<Value>() + bound.args.iter().map(Value::payload_bytes).sum::<usize>(),
                 _ => 0,
             };

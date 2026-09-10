@@ -179,13 +179,16 @@ struct Parser {
     /// relational-expression tier refuses to consume a bare `in` as a
     /// binary operator there -- see this module's doc comment.
     no_in: bool,
+    generator_depth: u32,
+    function_depth: u32,
+    static_block_function_depths: Vec<u32>,
 }
 
 impl Parser {
     fn new(source: &str) -> Parser {
         let mut tokenizer = Tokenizer::new(source);
         let (tokens, positions) = tokenize_all(&mut tokenizer);
-        Parser { tokens, positions, tokenizer, pos: 0, no_in: false }
+        Parser { tokens, positions, tokenizer, pos: 0, no_in: false, generator_depth: 0, function_depth: 0, static_block_function_depths: Vec::new() }
     }
 
     fn rescan_suffix(&mut self) {
@@ -318,6 +321,11 @@ impl Parser {
                 }
                 Ok(Stmt::FunctionDecl(f))
             }
+            Token::Identifier(name) if name == "class" => {
+                self.advance();
+                Ok(Stmt::Expr(Expr::Class(self.parse_class()?)))
+            }
+            Token::Identifier(name) if name == "with" => self.parse_with_stmt(),
             Token::Keyword(Keyword::If) => self.parse_if_stmt(),
             Token::Keyword(Keyword::For) => self.parse_for_stmt(),
             Token::Keyword(Keyword::While) => self.parse_while_stmt(),
@@ -558,6 +566,9 @@ impl Parser {
             let param = if self.eat_punct(Punct::LParen) {
                 let p = self.parse_binding_pattern().map_err(known_syntax)?;
                 self.expect_punct(Punct::RParen).map_err(known_syntax)?;
+                if self.static_block_function_depths.last() == Some(&self.function_depth) && matches!(&p, Pattern::Identifier(name) if name == "await") {
+                    return Err(self.syntax_error("await cannot be bound directly in a class static block"));
+                }
                 Some(p)
             } else {
                 None
@@ -581,6 +592,15 @@ impl Parser {
             return Err(self.syntax_error("'try' must be followed by 'catch', 'finally', or both"));
         }
         Ok(Stmt::Try { block, handler, finalizer })
+    }
+
+    fn parse_with_stmt(&mut self) -> Result<Stmt, ParseError> {
+        self.advance();
+        self.expect_punct(Punct::LParen)?;
+        let object = self.parse_expression()?;
+        self.expect_punct(Punct::RParen)?;
+        let body = self.parse_statement()?;
+        Ok(Stmt::With { object, body: Box::new(body) })
     }
 
     // ---- Patterns ----
@@ -714,14 +734,51 @@ impl Parser {
     /// since callers need to branch on it first (statement vs.
     /// expression position).
     fn parse_function(&mut self) -> Result<Function, ParseError> {
+        let generator = self.eat_punct(Punct::Star);
         let name = if let Token::Identifier(_) = self.peek() { Some(self.expect_identifier_name()?) } else { None };
         let params = self.parse_params()?;
-        let body = self.parse_block()?;
-        Ok(Function { name, params, body })
+        self.generator_depth += u32::from(generator);
+        self.function_depth += 1;
+        let body = self.parse_block();
+        self.function_depth -= 1;
+        self.generator_depth -= u32::from(generator);
+        Ok(Function { name, params, body: body?, generator })
     }
 
     fn parse_arrow_body(&mut self) -> Result<ArrowBody, ParseError> {
-        if self.check_punct(Punct::LBrace) { Ok(ArrowBody::Block(self.parse_block()?)) } else { Ok(ArrowBody::Expr(Box::new(self.parse_assignment()?))) }
+        self.function_depth += 1;
+        let body = if self.check_punct(Punct::LBrace) { self.parse_block().map(ArrowBody::Block) } else { self.parse_assignment().map(|value| ArrowBody::Expr(Box::new(value))) };
+        self.function_depth -= 1;
+        body
+    }
+
+    fn parse_class(&mut self) -> Result<Class, ParseError> {
+        let name = if let Token::Identifier(_) = self.peek() { Some(self.expect_identifier_name()?) } else { None };
+        self.expect_punct(Punct::LBrace)?;
+        let mut static_name = false;
+        while !self.check_punct(Punct::RBrace) {
+            let Token::Identifier(static_keyword) = self.peek().clone() else { return Err(self.error("expected a class element")) };
+            if static_keyword != "static" {
+                return Err(self.error("only static class elements are supported"));
+            }
+            self.advance();
+            if self.check_punct(Punct::LBrace) {
+                self.static_block_function_depths.push(self.function_depth);
+                let body = self.parse_block();
+                self.static_block_function_depths.pop();
+                body?;
+                continue;
+            }
+            let method = self.expect_identifier_name()?;
+            let _ = self.parse_params()?;
+            self.function_depth += 1;
+            let body = self.parse_block();
+            self.function_depth -= 1;
+            body?;
+            static_name |= method == "name";
+        }
+        self.expect_punct(Punct::RBrace)?;
+        Ok(Class { name, static_name })
     }
 
     /// Finds the index of the `)` matching the `(` at `open_idx`, or
@@ -1239,6 +1296,19 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Function(self.parse_function()?))
             }
+            Token::Identifier(name) if name == "class" => {
+                self.advance();
+                Ok(Expr::Class(self.parse_class()?))
+            }
+            Token::Identifier(name) if name == "yield" && self.generator_depth != 0 => {
+                self.advance();
+                let value = if matches!(self.peek(), Token::Punct(Punct::Semicolon | Punct::RBrace) | Token::Eof) {
+                    None
+                } else {
+                    Some(Box::new(self.parse_assignment()?))
+                };
+                Ok(Expr::Yield(value))
+            }
             Token::Identifier(name) => {
                 self.advance();
                 Ok(Expr::Identifier(name))
@@ -1297,7 +1367,7 @@ impl Parser {
                         PropertyKey::Number(number) => number.to_string(),
                         PropertyKey::Computed(_) => String::new(),
                     };
-                    props.push(ObjectProp::Method { key, function: Function { name: Some(name), params, body } });
+                    props.push(ObjectProp::Method { key, function: Function { name: Some(name), params, body, generator: false } });
                 } else if matches!(&key, PropertyKey::Identifier(name) if name == "get" || name == "set") && !self.check_punct(Punct::Comma) && !self.check_punct(Punct::RBrace) {
                     let getter = matches!(&key, PropertyKey::Identifier(name) if name == "get");
                     let key = self.parse_property_key()?;
@@ -1313,7 +1383,7 @@ impl Parser {
                         PropertyKey::Computed(_) => String::new(),
                     };
                     let name = format!("{} {}", if getter { "get" } else { "set" }, name);
-                    props.push(ObjectProp::Accessor { key, function: Function { name: Some(name), params, body }, getter });
+                    props.push(ObjectProp::Accessor { key, function: Function { name: Some(name), params, body, generator: false }, getter });
                 } else {
                     let name = match &key {
                         PropertyKey::Identifier(n) => n.clone(),
@@ -1631,6 +1701,7 @@ mod tests {
                     left: Box::new(Expr::Identifier("a".to_string())),
                     right: Box::new(Expr::Identifier("b".to_string()))
                 }))],
+                generator: false,
             })
         );
     }
@@ -1652,6 +1723,7 @@ mod tests {
                     Param { pattern: Pattern::Identifier("rest".to_string()), default: None, rest: true },
                 ],
                 body: vec![],
+                generator: false,
             })
         );
     }
@@ -1770,6 +1842,7 @@ mod tests {
                     rest: false,
                 }],
                 body: vec![],
+                generator: false,
             })
         );
         assert!(matches!(expr("([a,,b=3,...rest]=source)"), Expr::DestructureAssign { pattern: AssignmentPattern::Array(_), .. }));
@@ -1913,7 +1986,7 @@ mod tests {
         // the value becomes its own separate expression statement.
         assert_eq!(
             only_stmt("function f() { return\n1; }"),
-            Stmt::FunctionDecl(Function { name: Some("f".to_string()), params: vec![], body: vec![Stmt::Return(None), Stmt::Expr(Expr::Number(1.0))] })
+            Stmt::FunctionDecl(Function { name: Some("f".to_string()), params: vec![], body: vec![Stmt::Return(None), Stmt::Expr(Expr::Number(1.0))], generator: false })
         );
     }
 

@@ -82,6 +82,12 @@ opcodes! {
     Argument: 5, 0;
     RestArguments: 5, 0;
     Return: 1, 0;
+    TailRecur: 5, 0;
+    Yield: 1, 0;
+    EnterWith: 1, 0;
+    LeaveWith: 1, 0;
+    WithGet: 5, 0;
+    WithSet: 5, 0;
     Global: 5, 0;
     ToPropertyKey: 1, 0;
     GetIterator: 1, 0;
@@ -166,9 +172,13 @@ pub struct Bytecode {
     pub(crate) scopes: Vec<Vec<u32>>,
     pub(crate) functions: Vec<std::rc::Rc<Bytecode>>,
     pub(crate) captures: Vec<u32>,
+    /// The immutable name environment binding of a named function expression.
+    /// It is initialized to the closure object when that closure is called.
+    pub(crate) self_slot: Option<u32>,
     pub(crate) function_name: String,
     pub(crate) function_length: u32,
     pub(crate) arrow: bool,
+    pub(crate) generator: bool,
     pub(crate) constructible: bool,
     pub(crate) strict: bool,
     pub(crate) templates: Vec<TemplateSite>,
@@ -185,9 +195,11 @@ impl Bytecode {
             scopes: Vec::new(),
             functions: Vec::new(),
             captures: Vec::new(),
+            self_slot: None,
             function_name: String::new(),
             function_length: 0,
             arrow: false,
+            generator: false,
             constructible: false,
             strict: false,
             templates: Vec::new(),

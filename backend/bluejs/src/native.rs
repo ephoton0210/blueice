@@ -62,6 +62,8 @@ pub(crate) enum NativeFunction {
     ArrayJoin,
     ArrayIterator,
     ArrayIteratorNext,
+    GeneratorNext,
+    GeneratorReturn,
     Symbol,
     SymbolToString,
     SymbolValueOf,

@@ -103,19 +103,11 @@ impl RuntimeError {
 enum Completion {
     Throw(RuntimeError),
     Return(Value),
+    TailRecur(Vec<Value>),
+    Yield(Value),
     Jump { cleanup: usize, target: usize },
     Resume(usize),
     Halt(Value),
-}
-
-impl Completion {
-    fn value(&self) -> Option<&Value> {
-        match self {
-            Self::Return(value) => Some(value),
-            Self::Throw(RuntimeError::Thrown(value)) => Some(value),
-            Self::Throw(_) | Self::Jump { .. } | Self::Resume(_) | Self::Halt(_) => None,
-        }
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -130,6 +122,7 @@ struct HandlerFrame {
     stack_depth: usize,
     scope_depth: usize,
     iterator_depth: usize,
+    with_depth: usize,
     state: HandlerState,
     pending: Option<usize>,
 }
@@ -138,7 +131,13 @@ enum CompletionAction {
     Continue,
     Jump(usize),
     Return(Value),
+    TailRecur(Vec<Value>),
     Throw(RuntimeError),
+}
+
+enum InterpreterExit {
+    Return(Value),
+    Yield { value: Value, pc: usize },
 }
 
 /// An isolated execution context. Each execute has fresh bindings; this
@@ -160,6 +159,7 @@ pub struct Vm {
     completion_empty: bool,
     active_scopes: Vec<u32>,
     active_scope_slots: Vec<Vec<u32>>,
+    with_objects: Vec<Value>,
     // Values in suspended finally paths live here rather than in Rust-only
     // handler records, so VM safepoints root them during allocations.
     pending_completions: Vec<Completion>,
@@ -177,6 +177,7 @@ pub struct Vm {
     new_target: Value,
     iterator_base: Option<ObjectId>,
     array_iterator_prototype: Option<ObjectId>,
+    generator_prototype: Option<ObjectId>,
     joining: Vec<ObjectId>,
 }
 
@@ -211,6 +212,7 @@ impl Vm {
             completion_empty: true,
             active_scopes: Vec::new(),
             active_scope_slots: Vec::new(),
+            with_objects: Vec::new(),
             pending_completions: Vec::new(),
             completion_saves: Vec::new(),
             remaining_instructions: 0,
@@ -226,6 +228,7 @@ impl Vm {
             new_target: Value::Undefined,
             iterator_base: None,
             array_iterator_prototype: None,
+            generator_prototype: None,
             joining: Vec::new(),
         })
     }
@@ -261,6 +264,7 @@ impl Vm {
         self.completion_empty = true;
         self.active_scopes.clear();
         self.active_scope_slots.clear();
+        self.with_objects.clear();
         // `this` lazily materializes the realm global only when script code
         // actually observes it. This keeps data-only executions within small
         // heap configurations while preserving script and arrow semantics.
@@ -285,6 +289,7 @@ impl Vm {
         self.completion_empty = true;
         self.active_scopes.clear();
         self.active_scope_slots.clear();
+        self.with_objects.clear();
         self.pending_completions.clear();
         self.completion_saves.clear();
         self.heap.collect_major();
@@ -333,6 +338,10 @@ impl Vm {
             self.active_scope_slots.pop();
             self.reset_scope(code, scope);
         }
+    }
+
+    fn unwind_with(&mut self, depth: usize) {
+        self.with_objects.truncate(depth);
     }
 
     fn close_iterators_to(&mut self, iterators: &mut Vec<Value>, depth: usize) {
@@ -391,14 +400,16 @@ impl Vm {
                 return Ok(match completion {
                     Completion::Throw(error) => CompletionAction::Throw(error),
                     Completion::Return(value) => CompletionAction::Return(value),
+                    Completion::TailRecur(args) => CompletionAction::TailRecur(args),
                     Completion::Jump { cleanup, .. } => CompletionAction::Jump(cleanup),
-                    Completion::Resume(_) | Completion::Halt(_) => unreachable!("handled above"),
+                    Completion::Resume(_) | Completion::Halt(_) | Completion::Yield(_) => unreachable!("handled above"),
                 });
             };
             let metadata = frame.metadata;
             let stack_depth = frame.stack_depth;
             let scope_depth = frame.scope_depth;
             let iterator_depth = frame.iterator_depth;
+            let with_depth = frame.with_depth;
             let state = frame.state;
             let handler = &code.handlers[metadata];
             let catch = handler.catch;
@@ -428,6 +439,7 @@ impl Vm {
                 self.stack.truncate(stack_depth);
                 self.unwind_scopes(code, scope_depth);
                 self.close_iterators_to(iterators, iterator_depth);
+                self.unwind_with(with_depth);
             }
 
             if state == HandlerState::Try {
@@ -464,7 +476,22 @@ impl Vm {
     fn with_roots<T>(&mut self, operation: impl FnOnce(&mut Heap) -> Result<T, HeapError>) -> Result<T, RuntimeError> {
         let mut roots = Vec::new();
         let registration = (|| {
-            for value in self.stack.iter().chain(self.bindings.iter().flatten()).chain(std::iter::once(&self.completion)).chain(self.pending_completions.iter().filter_map(Completion::value)).chain(self.completion_saves.iter().map(|(value, _)| value)) {
+            for value in self
+                .stack
+                .iter()
+                .chain(self.bindings.iter().flatten())
+                .chain(std::iter::once(&self.completion))
+                .chain(self.pending_completions.iter().flat_map(|completion| {
+                    let values: &[Value] = match completion {
+                        Completion::Return(value) | Completion::Yield(value) | Completion::Throw(RuntimeError::Thrown(value)) => std::slice::from_ref(value),
+                        Completion::TailRecur(args) => args,
+                        Completion::Throw(_) | Completion::Jump { .. } | Completion::Resume(_) | Completion::Halt(_) => &[],
+                    };
+                    values.iter()
+                }))
+                .chain(self.completion_saves.iter().map(|(value, _)| value))
+                .chain(self.with_objects.iter())
+            {
                 if let Value::Object(id) = value {
                     // Rooting cannot GC, but can exhaust the root-ID
                     // counter. Partial registrations must be released too.
@@ -487,7 +514,12 @@ impl Vm {
         let pending_base = self.pending_completions.len();
         let save_base = self.completion_saves.len();
         let mut iterators = Vec::new();
-        let result = self.interpret(code, &mut iterators);
+        let result = self
+            .interpret(code, &mut iterators, 0, None)
+            .and_then(|exit| match exit {
+                InterpreterExit::Return(value) => Ok(value),
+                InterpreterExit::Yield { .. } => Err(RuntimeError::TypeError("yield requires a generator function".into())),
+            });
         if result.is_err() {
             if let Err(RuntimeError::Thrown(value)) = &result {
                 self.stack.push(value.clone());
@@ -546,8 +578,14 @@ impl Vm {
         visible.into_iter().map(|(name, (binding, slot))| (name, binding, slot)).collect()
     }
 
-    fn interpret(&mut self, code: &Bytecode, iterators: &mut Vec<Value>) -> Result<Value, RuntimeError> {
-        let mut pc = 0;
+    fn interpret(&mut self, code: &Bytecode, iterators: &mut Vec<Value>, start_pc: usize, resume_value: Option<Value>) -> Result<InterpreterExit, RuntimeError> {
+        let stack_base = self.stack.len();
+        let pending_base = self.pending_completions.len();
+        let save_base = self.completion_saves.len();
+        if let Some(value) = resume_value {
+            self.stack.push(value);
+        }
+        let mut pc = start_pc;
         let mut handlers = Vec::new();
         loop {
             self.charge_step()?;
@@ -740,6 +778,35 @@ impl Vm {
                     self.stack.push(array);
                 }
                 Opcode::Return => return Ok(Some(Completion::Return(self.pop()))),
+                Opcode::TailRecur => {
+                    let base = self.stack.len() - operand;
+                    let args = self.stack[base..].to_vec();
+                    self.stack.truncate(base);
+                    return Ok(Some(Completion::TailRecur(args)));
+                }
+                Opcode::Yield => {
+                    if !code.generator || !handlers.is_empty() {
+                        return Err(RuntimeError::TypeError("yield is not supported in this execution context".into()));
+                    }
+                    return Ok(Some(Completion::Yield(self.pop())));
+                }
+                Opcode::EnterWith => {
+                    let object = self.pop();
+                    let object = self.coerce_object(&object)?;
+                    self.with_objects.push(Value::Object(object));
+                }
+                Opcode::LeaveWith => {
+                    self.with_objects.pop().expect("compiler balances with scopes");
+                }
+                Opcode::WithGet => {
+                    let Value::String(name) = &code.constants[operand] else { unreachable!("compiler emits a name") };
+                    let value = self.with_get(&name.to_utf8().expect("compiler emits a UTF-8 identifier"))?;
+                    self.stack.push(value);
+                }
+                Opcode::WithSet => {
+                    let Value::String(name) = &code.constants[operand] else { unreachable!("compiler emits a name") };
+                    self.with_set(&name.to_utf8().expect("compiler emits a UTF-8 identifier"), self.stack.last().expect("assignment has a value").clone())?;
+                }
                 Opcode::Global => {
                     let Value::String(name) = &code.constants[operand] else { unreachable!() };
                     let value = self.global(&name.to_utf8().unwrap())?;
@@ -932,6 +999,7 @@ impl Vm {
                         stack_depth: self.stack.len(),
                         scope_depth: self.active_scopes.len(),
                         iterator_depth: iterators.len(),
+                        with_depth: self.with_objects.len(),
                         state: HandlerState::Try,
                         pending: None,
                     });
@@ -955,10 +1023,27 @@ impl Vm {
                 Err(error) => return Err(error),
             };
             if let Some(completion) = completion {
+                if let Completion::Yield(value) = completion {
+                    return Ok(InterpreterExit::Yield { value, pc });
+                }
                 match self.resolve_completion(code, &mut handlers, iterators, completion)? {
                     CompletionAction::Continue => {}
                     CompletionAction::Jump(target) => pc = target,
-                    CompletionAction::Return(value) => return Ok(value),
+                    CompletionAction::Return(value) => return Ok(InterpreterExit::Return(value)),
+                    CompletionAction::TailRecur(args) => {
+                        self.stack.truncate(stack_base);
+                        self.unwind_scopes(code, 0);
+                        self.unwind_with(0);
+                        self.close_iterators_to(iterators, 0);
+                        handlers.clear();
+                        self.pending_completions.truncate(pending_base);
+                        self.completion_saves.truncate(save_base);
+                        self.completion = Value::Undefined;
+                        self.completion_empty = true;
+                        self.this = Value::Undefined;
+                        self.arguments = args;
+                        pc = 0;
+                    }
                     CompletionAction::Throw(error) => return Err(error),
                 }
             }
@@ -1297,7 +1382,7 @@ impl Vm {
         if let Value::Object(id) = callee {
             if let Some((code, captures, lexical_this)) = self.heap.closure(id)? {
                 let receiver = if code.arrow { lexical_this } else { receiver };
-                return self.call_closure(code, captures, receiver, args, construct);
+                return self.call_closure(code, captures, callee, receiver, args, construct);
             }
         }
         let function = if let Value::Object(id) = callee { self.heap.native_function(id)? } else { None };
@@ -1510,6 +1595,26 @@ impl Vm {
             let Some(prototype) = self.heap.prototype(object)? else { return Ok(false) };
             object = prototype;
         }
+    }
+
+    fn with_get(&mut self, name: &str) -> Result<Value, RuntimeError> {
+        let key = Value::String(name.into());
+        for object in self.with_objects.clone().into_iter().rev() {
+            if self.property_in(&key, &object)? {
+                return self.get_property(&object, &name.into());
+            }
+        }
+        self.lookup_global_name(name)?.ok_or_else(|| RuntimeError::ReferenceError(name.into()))
+    }
+
+    fn with_set(&mut self, name: &str, value: Value) -> Result<(), RuntimeError> {
+        let key = Value::String(name.into());
+        for object in self.with_objects.clone().into_iter().rev() {
+            if self.property_in(&key, &object)? {
+                return self.set_property(&object, &name.into(), &value);
+            }
+        }
+        Err(RuntimeError::ReferenceError(name.into()))
     }
 
     fn add(&mut self, left: Value, right: Value) -> Result<Value, RuntimeError> {

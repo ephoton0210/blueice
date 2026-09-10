@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::heap::GeneratorState;
 use crate::native::{MathMethod, ObjectMethod, PatternMethod, StringMethod};
 use std::rc::Rc;
 
@@ -61,6 +62,29 @@ impl Vm {
             self.heap.unroot(root)?;
         } else {
             self.array_iterator_prototype = Some(prototype);
+        }
+        result
+    }
+
+    fn generator_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
+        if let Some(prototype) = self.generator_prototype {
+            return Ok(prototype);
+        }
+        let constructor = self.string_intrinsics()?.0;
+        let function_prototype = self.heap.prototype(constructor)?.unwrap();
+        let base = self.base_iterator_prototype()?;
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
+        let root = self.heap.root(prototype)?;
+        let result = (|| {
+            self.install_native(prototype, function_prototype, "next", 1, NativeFunction::GeneratorNext)?;
+            self.install_native(prototype, function_prototype, "return", 1, NativeFunction::GeneratorReturn)?;
+            self.define_data(prototype, JsSymbol::well_known("toStringTag"), Value::String("Generator".into()), false, false, true)?;
+            Ok(prototype)
+        })();
+        if result.is_err() {
+            self.heap.unroot(root)?;
+        } else {
+            self.generator_prototype = Some(prototype);
         }
         result
     }
@@ -272,7 +296,7 @@ impl Vm {
         Ok(cell)
     }
 
-    pub(super) fn call_closure(&mut self, code: Rc<Bytecode>, captures: Vec<ObjectId>, receiver: Value, args: Vec<Value>, construct: bool) -> Result<Value, RuntimeError> {
+    pub(super) fn call_closure(&mut self, code: Rc<Bytecode>, captures: Vec<ObjectId>, callee: Value, receiver: Value, args: Vec<Value>, construct: bool) -> Result<Value, RuntimeError> {
         if construct && !code.constructible {
             return Err(RuntimeError::TypeError("arrow function is not a constructor".into()));
         }
@@ -286,6 +310,11 @@ impl Vm {
         } else {
             Value::Object(self.coerce_object(&receiver)?)
         };
+        if code.generator {
+            let prototype = self.generator_prototype()?;
+            let state = GeneratorState::Start { code, captures, callee, receiver, args };
+            return Ok(Value::Object(self.with_roots(|heap| heap.alloc_generator(state, prototype))?));
+        }
         self.stack.push(receiver.clone());
         let constructed = receiver.clone();
         let base = self.stack.len();
@@ -294,7 +323,11 @@ impl Vm {
         self.stack.push(self.completion.clone());
         self.stack.push(self.this.clone());
         self.stack.extend(self.arguments.iter().cloned());
-        let bindings = std::mem::replace(&mut self.bindings, vec![None; code.bindings.len()]);
+        let mut frame_bindings = vec![None; code.bindings.len()];
+        if let Some(slot) = code.self_slot {
+            frame_bindings[slot as usize] = Some(callee);
+        }
+        let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
         let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
         let this = std::mem::replace(&mut self.this, receiver);
@@ -317,6 +350,103 @@ impl Vm {
         self.strict = strict;
         self.stack.truncate(base - 1);
         result.map(|value| if construct && !matches!(value, Value::Object(_)) { constructed } else { value })
+    }
+
+    fn generator_next(&mut self, receiver: &Value) -> Result<Value, RuntimeError> {
+        let Value::Object(generator) = receiver else { return Err(RuntimeError::TypeError("Generator next requires a generator".into())) };
+        let state = self.heap.take_generator_state(*generator)?;
+        if matches!(state, GeneratorState::Done) {
+            self.heap.set_generator_state(*generator, GeneratorState::Done)?;
+            return self.iterator_result(Value::Undefined, true);
+        }
+
+        let (code, pc, resume_value, frame_stack, frame_bindings, frame_cells, frame_this, frame_args, frame_completion, frame_completion_empty, frame_scopes) =
+            match state {
+                GeneratorState::Start { code, captures, callee, receiver, args } => {
+                    let mut bindings = vec![None; code.bindings.len()];
+                    if let Some(slot) = code.self_slot {
+                        bindings[slot as usize] = Some(callee);
+                    }
+                    (code, 0, None, Vec::new(), bindings, captures.into_iter().enumerate().collect(), receiver, args, Value::Undefined, true, Vec::new())
+                }
+                GeneratorState::Suspended { code, pc, stack, bindings, cells, this, args, completion, completion_empty, active_scopes } => {
+                    (code, pc, Some(Value::Undefined), stack, bindings, cells.into_iter().collect(), this, args, completion, completion_empty, active_scopes)
+                }
+                GeneratorState::Done => unreachable!("completed generators returned above"),
+            };
+
+        let base = self.stack.len();
+        self.stack.extend(self.bindings.iter().flatten().cloned());
+        self.stack.extend(self.cells.values().copied().map(Value::Object));
+        self.stack.push(self.completion.clone());
+        self.stack.push(self.this.clone());
+        self.stack.extend(self.arguments.iter().cloned());
+        let frame_base = self.stack.len();
+        self.stack.extend(frame_stack.iter().cloned());
+
+        let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
+        let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
+        let cells = std::mem::replace(&mut self.cells, frame_cells);
+        let this = std::mem::replace(&mut self.this, frame_this);
+        let arguments = std::mem::replace(&mut self.arguments, frame_args);
+        let completion = std::mem::replace(&mut self.completion, frame_completion);
+        let completion_empty = std::mem::replace(&mut self.completion_empty, frame_completion_empty);
+        let active_scopes = std::mem::replace(&mut self.active_scopes, frame_scopes);
+        let active_scope_slots = std::mem::replace(
+            &mut self.active_scope_slots,
+            self.active_scopes.iter().map(|scope| code.scopes[*scope as usize].clone()).collect(),
+        );
+        let strict = std::mem::replace(&mut self.strict, code.strict);
+        let mut iterators = Vec::new();
+        let outcome = self.interpret(&code, &mut iterators, pc, resume_value);
+
+        let (next_state, result) = match outcome {
+            Ok(InterpreterExit::Return(value)) => {
+                self.stack.truncate(frame_base);
+                (GeneratorState::Done, Ok((value, true)))
+            }
+            Ok(InterpreterExit::Yield { value, pc }) => {
+                let stack = self.stack.split_off(frame_base);
+                let state = GeneratorState::Suspended {
+                    code,
+                    pc,
+                    stack,
+                    bindings: std::mem::take(&mut self.bindings),
+                    cells: std::mem::take(&mut self.cells).into_iter().collect(),
+                    this: std::mem::replace(&mut self.this, Value::Undefined),
+                    args: std::mem::take(&mut self.arguments),
+                    completion: std::mem::replace(&mut self.completion, Value::Undefined),
+                    completion_empty: std::mem::replace(&mut self.completion_empty, true),
+                    active_scopes: std::mem::take(&mut self.active_scopes),
+                };
+                (state, Ok((value, false)))
+            }
+            Err(error) => {
+                self.stack.truncate(frame_base);
+                (GeneratorState::Done, Err(error))
+            }
+        };
+        self.heap.set_generator_state(*generator, next_state)?;
+        self.bindings = bindings;
+        self.binding_metadata = binding_metadata;
+        self.cells = cells;
+        self.this = this;
+        self.arguments = arguments;
+        self.completion = completion;
+        self.completion_empty = completion_empty;
+        self.active_scopes = active_scopes;
+        self.active_scope_slots = active_scope_slots;
+        self.strict = strict;
+        self.stack.truncate(base);
+        let (value, done) = result?;
+        self.iterator_result(value, done)
+    }
+
+    fn generator_return(&mut self, receiver: &Value, value: Value) -> Result<Value, RuntimeError> {
+        let Value::Object(generator) = receiver else { return Err(RuntimeError::TypeError("Generator return requires a generator".into())) };
+        let _ = self.heap.take_generator_state(*generator)?;
+        self.heap.set_generator_state(*generator, GeneratorState::Done)?;
+        self.iterator_result(value, true)
     }
 
     pub(super) fn is_callable(&self, value: &Value) -> Result<bool, RuntimeError> {
@@ -792,6 +922,8 @@ impl Vm {
                 let value = if done { Value::Undefined } else { self.get_property(&Value::Object(object), &index.to_string().into())? };
                 self.iterator_result(value, done)
             }
+            NativeFunction::GeneratorNext => self.generator_next(&receiver),
+            NativeFunction::GeneratorReturn => self.generator_return(&receiver, first.clone()),
             NativeFunction::Apply => {
                 if !self.is_callable(&receiver)? {
                     return Err(RuntimeError::TypeError("apply requires a callable".into()));

@@ -29,6 +29,15 @@ pub struct Function {
     pub name: Option<String>,
     pub params: Vec<Param>,
     pub body: Vec<Stmt>,
+    pub generator: bool,
+}
+
+/// The class subset currently records the observable constructor name and
+/// whether a static `name` method replaces that data property.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Class {
+    pub name: Option<String>,
+    pub static_name: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -151,6 +160,7 @@ pub enum Stmt {
     Return(Option<Expr>),
     Throw(Expr),
     Try { block: Vec<Stmt>, handler: Option<CatchClause>, finalizer: Option<Vec<Stmt>> },
+    With { object: Expr, body: Box<Stmt> },
     FunctionDecl(Function),
 }
 
@@ -246,6 +256,8 @@ pub enum Expr {
     Array(Vec<Option<ArrayElement>>),
     Object(Vec<ObjectProp>),
     Function(Function),
+    Class(Class),
+    Yield(Option<Box<Expr>>),
     Arrow { params: Vec<Param>, body: ArrowBody },
     Unary { op: UnaryOp, arg: Box<Expr> },
     Update { op: UpdateOp, arg: Box<Expr>, prefix: bool },

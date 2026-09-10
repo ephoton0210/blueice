@@ -192,6 +192,37 @@ are generator and class grammar/execution, `with`, named-function tail
 recursion, and static-class grammar; they require their owning P1/P0.2 designs
 rather than a broader parse-error classification.
 
+## P0.1 continuation: named tails, generators, classes and `with`
+
+Named function expressions now create their required immutable internal name
+binding. In strict functions, a direct tail call through that unshadowed binding
+reuses the active frame after catch/finally completion processing, rather than
+growing the Rust or JavaScript call stack. This covers the Test262 `try/tco-*`
+cases; it is not yet general proper-tail-call optimization for arbitrary call
+expressions.
+
+Generator functions compile `yield` into resumable bytecode. A heap-owned
+generator state preserves its operand stack, bindings, captured cells, `this`,
+arguments and active lexical scopes across `.next()`; generator iterators expose
+`next`, `return` and `@@iterator`. This slice supports the destructuring and
+overridden `Array.prototype[Symbol.iterator]` generator cases. Yielding while a
+try handler is active remains outside this slice.
+
+The class subset parses anonymous/named class expressions, static methods and
+static blocks needed for name inference and the static-block `await` early
+error. It creates a constructor-shaped callable with the expected observable
+`name`; inheritance, instance methods, private fields and general static-block
+execution remain later work. Sloppy `with` now has a VM-managed object
+environment for simple identifier reads/writes, is unwound with handlers, and
+is rejected in strict code. It does not yet model every `with` interaction with
+closures, `typeof`, updates or implicit global writes.
+
+With `--instruction-budget 5000000` (required because the TCO helpers perform
+100,000 iterations), the filtered `language/statements/try` run now has **398
+pass, 0 fail and 0 unsupported** of 398 scheduled modes, with no harness errors
+or timeouts. Raw output is local at `/tmp/bluejs-test262-try-complete` and the
+reconciled analysis is at `/tmp/bluejs-test262-try-complete-analysis`.
+
 ## Reproduction and continuation
 
 Use a unique output directory for each run; do not run two writers against the

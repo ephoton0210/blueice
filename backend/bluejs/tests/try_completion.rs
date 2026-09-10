@@ -56,6 +56,61 @@ fn direct_eval_uses_the_callers_bindings_completion_and_strictness() {
 }
 
 #[test]
+fn named_function_expressions_bind_their_name_and_reuse_tail_frames() {
+    let mut vm = Vm::new(VmConfig { instruction_budget: 5_000_000, ..VmConfig::default() }).unwrap();
+    for source in [
+        "let f=(function self(){return self;});typeof self==='undefined'&&f()===f",
+        "let caught;try{(function self(){'use strict';self=1;})()}catch(error){caught=error instanceof TypeError;}caught",
+        "let calls=0;(function self(n){'use strict';if(n===0){calls++;return;}try{throw null;}catch(error){return self(n-1);}})(100000);calls===1",
+        "let calls=0;(function self(n){'use strict';if(n===0){calls++;return;}try{}finally{return self(n-1);}})(100000);calls===1",
+        "let calls=0;(function self(n){'use strict';try{if(n===0){calls++;return;}}catch(error){}finally{if(n!==0)return self(n-1);}})(100000);calls===1",
+    ] {
+        assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)), "{source}");
+    }
+}
+
+#[test]
+fn generators_suspend_resume_and_close_as_iterators() {
+    let mut vm = Vm::default();
+    for source in [
+        "let iter=(function*(){yield 1;yield 2;})();let first=iter.next();let second=iter.next();let done=iter.next();first.value===1&&!first.done&&second.value===2&&!second.done&&done.done",
+        "let first=0;let second=0;let iter=(function*(){first++;yield;second++;})();let value;try{throw iter}catch([,]){value=first===1&&second===0;}value",
+        "let first=0;let second=0;let iter=(function*(){first++;yield;second++;})();let value;try{throw iter}catch([...[,]]){value=first===1&&second===1;}value",
+        "let values=[];Array.prototype[Symbol.iterator]=function*(){yield this[0];yield this[1];yield 42;};try{throw [1,2,3]}catch([x,y,z]){values=[x,y,z]}values.join(',')==='1,2,42'",
+    ] {
+        assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)), "{source}");
+    }
+}
+
+#[test]
+fn classes_cover_name_inference_and_static_block_early_errors() {
+    let mut vm = Vm::default();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "let result;try{throw []}catch([cls=class{},named=class Named{},shadow=class{static name(){}}]){result=cls.name==='cls'&&named.name==='Named'&&shadow.name!=='shadow'}result",
+        ),
+        Ok(Value::Bool(true))
+    );
+    assert_eq!(execute(&mut vm, "class C{static{(()=>{try{}catch(await){}})}};true"), Ok(Value::Bool(true)));
+    let invalid = parse("class C{static{try{}catch(await){}}}").unwrap_err();
+    assert!(invalid.known_syntax);
+}
+
+#[test]
+fn with_scopes_resolve_properties_and_unwind_at_handlers() {
+    let mut vm = Vm::default();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "let object={first:'one',second:'two'};let caught;try{with(object){first='changed';throw second}}catch(error){caught=error}object.first==='changed'&&caught==='two'",
+        ),
+        Ok(Value::Bool(true))
+    );
+    assert!(compile(&parse("'use strict';with({}){} ").unwrap()).is_err());
+}
+
+#[test]
 fn finally_runs_for_normal_throw_return_break_and_continue_completions() {
     let mut vm = Vm::default();
     for source in [
