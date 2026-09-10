@@ -164,8 +164,16 @@ impl Vm {
                 "super property is not valid in this eval context".into(),
             ));
         }
-        let global_execution = self.callee == Value::Undefined;
         let visible = self.eval_visible_bindings();
+        let global_execution = self.callee == Value::Undefined;
+        // The persistent global-realm path uses its existing binding cells
+        // for direct eval declarations. Function eval instead distinguishes
+        // the immediate VariableEnvironment from captured outer cells.
+        let variable_environment_names = if global_execution {
+            visible.iter().map(|(name, _, _)| name.clone()).collect()
+        } else {
+            self.eval_variable_environment_names()
+        };
         let mut lexical_conflicts = self.eval_lexical_conflicts();
         if global_execution {
             lexical_conflicts.extend(
@@ -178,6 +186,7 @@ impl Vm {
         let code = crate::compiler::compile_eval(
             &program,
             &visible,
+            &variable_environment_names,
             &lexical_conflicts,
             self.strict,
             self.new_target_allowed,
@@ -212,7 +221,7 @@ impl Vm {
         })?;
         let program =
             crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
-        let code = crate::compiler::compile_eval(&program, &[], &[], false, false, 0)
+        let code = crate::compiler::compile_eval(&program, &[], &[], &[], false, false, 0)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let global_this = self.global("globalThis")?;
         let this = std::mem::replace(&mut self.this, global_this);

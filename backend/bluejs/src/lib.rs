@@ -68,10 +68,12 @@ mod vm;
 
 pub use ast::*;
 pub use bytecode::{Bytecode, Instruction, Opcode, MAY_USE_INLINE_CACHE};
-pub use compiler::{compile, compile_with_limit, CompileError};
+pub use compiler::{
+    compile, compile_module, compile_module_with_limit, compile_with_limit, CompileError,
+};
 pub use heap::{Heap, HeapConfig, HeapError, HeapStats, RootId};
 pub(crate) use parser::parse_eval;
-pub use parser::{parse, ParseError};
+pub use parser::{parse, parse_module, ParseError};
 pub use property::{JsSymbol, PropertyDescriptor, PropertyName};
 pub use string::JsString;
 pub use value::{ObjectId, Value};

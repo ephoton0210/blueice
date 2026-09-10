@@ -3,7 +3,10 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! JSON-lines adapter. The external supervisor owns whole-case wall deadlines.
-use blueice_bluejs::{compile_with_limit, parse, CompileError, RuntimeError, Vm, VmConfig};
+use blueice_bluejs::{
+    compile_module_with_limit, compile_with_limit, parse, parse_module, CompileError, RuntimeError,
+    Vm, VmConfig,
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
@@ -52,15 +55,16 @@ fn runtime(error: RuntimeError) -> Value {
 }
 
 fn evaluate(request: Request) -> Value {
-    if request.mode == "module" {
-        return json!({"kind":"unsupported", "reason":"module host"});
-    }
     let source = if request.mode == "strict" {
         format!("\"use strict\";\n{}", request.source)
     } else {
         request.source
     };
-    let program = match parse(&source) {
+    let program = match if request.mode == "module" {
+        parse_module(&source)
+    } else {
+        parse(&source)
+    } {
         Ok(program) => program,
         Err(error) => {
             return match error.resource {
@@ -80,7 +84,11 @@ fn evaluate(request: Request) -> Value {
             };
         }
     };
-    let code = match compile_with_limit(&program, request.bytecode_limit.unwrap_or(u32::MAX)) {
+    let code = match if request.mode == "module" {
+        compile_module_with_limit(&program, request.bytecode_limit.unwrap_or(u32::MAX))
+    } else {
+        compile_with_limit(&program, request.bytecode_limit.unwrap_or(u32::MAX))
+    } {
         Ok(code) => code,
         Err(error) => {
             return match error {
@@ -167,7 +175,12 @@ fn evaluate(request: Request) -> Value {
             return runtime(error);
         }
     }
-    match vm.execute_script(&code) {
+    let execution = if request.mode == "module" {
+        vm.execute_module(&code)
+    } else {
+        vm.execute_script(&code)
+    };
+    match execution {
         Ok(_) if request.asynchronous => {
             if let Err(error) = vm.run_promise_jobs() {
                 return runtime(error);

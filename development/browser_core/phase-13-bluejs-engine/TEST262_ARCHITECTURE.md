@@ -62,7 +62,7 @@ actually met.
 | P1.1 | Grammar and early-error taxonomy: Unicode identifiers/escapes, reserved words, strict code, labels, remaining operators | Fix foundational early errors needed by P0 in their own slice; then finish the wider grammar. Separate unsupported grammar from proven SyntaxError so parse negatives cannot pass accidentally. |
 | P1.2 | Classes/private names/super/derived constructors | Object contracts, environments and grammar first; private brands, initialization ordering and derived this state need internal slots and call frames. |
 | P1.3 | Generators, async functions/iteration, Promise jobs | Rooted resumable frames and completion propagation first. Specify resume/throw/return and microtask ordering; test cleanup across suspension. |
-| P1.4 | Modules, import/export, dynamic import, top-level await | Persistent environments, live bindings and async jobs first. Test parsing, resolution, linking and evaluation phases independently, cycles and fixture resolution. |
+| P1.4 | Modules, import/export, dynamic import, top-level await | The dependency-free module baseline now forces strict mode, preserves undefined top-level `this`, and avoids classic global publication. Live bindings, import/export parsing, resolution, linking, cycles, dynamic import and top-level await remain separate acceptance slices. |
 | P1.5 | BigInt, ArrayBuffer/DataView/typed arrays, shared memory, weak references | Value/internal-slot and GC contracts first. BigInt arithmetic/coercion, buffer detach/resize, views, agent memory model and weak reachability each get a separate design and acceptance suite. |
 | P1.6 | `$262` realm/agent/GC/buffer hooks, `$DONE`, async completion | Implement each hook alongside its owning architecture (not only at the end). Validate harness correctness before counting newly enabled tests. Never replace a missing operation with a dummy success. |
 | P2.1 | Array/collections/Date/RegExp/JSON/numeric and remaining builtin methods | Consume the P0/P1 contracts. Work one family at a time, ordered by remaining shared dependencies, then failing-mode count. Cover coercion/descriptor/exception edges before declaring a family complete. |
@@ -630,3 +630,50 @@ The current [arguments exotic-object algorithms](https://tc39.es/ecma262/2026/mu
 Direct `eval(...)` now has bytecode distinct from an ordinary call, including the spread form. It uses the caller's visible cells, strictness and `this`; sloppy global direct eval publishes configurable global `var`/function properties, while strict eval creates a temporary variable environment. Calls through aliases, comma expressions, or properties use indirect eval, whose lexical lookup and `this` begin at the realm global environment. The VM records the active VariableEnvironment scope so a sloppy direct eval rejects a `var` that would cross an intervening block, parameter, or not-yet-entered body lexical binding, without rejecting an ordinary shared variable binding.
 
 The fresh `language/arguments-object` selection at `target/test262-arguments-object-current` has **250 pass, 140 fail and 70 unsupported** of 460 scheduled modes. All 140 failures are visible unclassified parser gaps (private names or generator/async-generator method syntax); the 70 unsupported modes require async functions. The current `language/eval-code` selection at `target/test262-eval-code-current` has **739 pass, 109 fail and 76 unsupported** of 924 modes. Its remaining 53 assertion failures are primarily dynamic function-local eval bindings and generator parameter evaluation at call entry; parser/async/module host gaps remain separately classified. These are bounded progress measurements, not a claim that either Test262 family is complete.
+
+## P0.3 continuation: retained references and Annex B call targets
+
+Reference construction is now explicit where a later evaluation can alter name
+resolution. A sloppy direct eval separates the active function's
+VariableEnvironment from merely captured outer cells, so `eval("var x")` in
+an inner closure creates its local dynamic binding instead of overwriting an
+outer capture. `with` assignment resolves its object/binding/unresolvable
+reference before evaluating the RHS; the reference remains stack-rooted through
+the RHS and is then used for PutValue. Compound `with` assignment additionally
+performs GetValue on that retained reference before the RHS, including the
+correct unresolvable-reference error precedence.
+
+The current Annex B web-compat CallExpression assignment-target behavior is
+also retained in the AST. In sloppy code a call target is evaluated exactly
+once and then throws `ReferenceError`, without evaluating the assignment RHS or
+coercing the call result. Strict code remains a syntax error. The same rule
+applies to prefix/postfix updates and `for-in`/`for-of` heads.
+
+Against the prior `language/expressions/assignment` reference slice, the fresh
+run at `target/test262-next-assignment-final` changes **21** non-passing modes
+to pass with **zero** pass-to-nonpass transitions: the seven Annex B sloppy
+runtime cases, eight strict CallExpression early errors, and six module-mode
+assignment-target negatives. The group now has **615 pass, 229 fail and 644
+unsupported** of 1,488 scheduled modes. Public pipeline regressions cover
+direct-eval capture shadowing, `with` simple/compound reference latching,
+unresolvable compound-error precedence, and all six CallExpression target
+forms. This remains a P0.3 slice rather than a complete reference model.
+
+## P1.4 foundation: dependency-free module evaluation
+
+`parse_module`, `compile_module`, and `Vm::execute_module` establish one
+module evaluation context without reusing classic-script global declaration
+publication. Module compilation always enables strict semantics; execution
+keeps top-level `this` undefined, including lexical arrows, while harness
+classic scripts continue to run in the same realm. Module declarations are
+therefore observable locally but do not create `globalThis` properties.
+
+This is deliberately an evaluation baseline, not a module graph. Import/export
+grammar, requested-module resolution, instantiation, live bindings, namespace
+objects, cycles, dynamic import, and top-level await remain P1.4 follow-up
+slices. The fresh `language/module-code` run at
+`target/test262-next-module-baseline` records **26 pass, 386 fail and 190
+unsupported** of 602 modes; before this baseline every selected module mode was
+reported as a module-host unsupported result. The representative local-binding
+and top-level-`this` cases pass, and a public regression locks strictness and
+non-publication behavior.

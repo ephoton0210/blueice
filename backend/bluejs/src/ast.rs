@@ -155,20 +155,16 @@ pub struct CatchClause {
     pub body: Vec<Stmt>,
 }
 
-/// A `for`-loop head that isn't a fresh declaration -- e.g. `for (x of
-/// arr)` where `x` was already declared elsewhere. Restricted to a
-/// [`Pattern`] shape (identifier or destructuring) rather than a full
-/// [`Expr`]: real ECMAScript actually allows an arbitrary
-/// `LeftHandSideExpression` here (e.g. `for (obj.prop of arr)`), but a
-/// hand-written DOM script's `for-in`/`for-of` targets are essentially
-/// always a bare identifier -- assigning into a member expression from
-/// a loop head is the "honest cut" this crate makes rather than
-/// building out full left-hand-side-expression support for a case this
-/// MVP's scope doesn't call for.
+/// A `for`-loop head. Most non-declaration heads use a [`Pattern`], such as
+/// `for (x of values)`. The `Expr` form retains the Annex B web-compat
+/// CallExpression target so execution can evaluate its call and then report
+/// the required runtime ReferenceError, rather than rejecting the source
+/// before the observable call takes place.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ForHead {
     Decl(DeclKind, Pattern),
     Pattern(Pattern),
+    Expr(Expr),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -600,6 +596,7 @@ fn for_head_contains_super(head: &ForHead, search: SuperSearch) -> bool {
         ForHead::Decl(_, pattern) | ForHead::Pattern(pattern) => {
             pattern_contains_super(pattern, search)
         }
+        ForHead::Expr(expr) => expr_contains_super(expr, search),
     }
 }
 

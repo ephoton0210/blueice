@@ -53,7 +53,7 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
             json!({"source":"$262.createRealm()", "mode":"raw"}),
             "unsupported",
         ),
-        (json!({"source":"1", "mode":"module"}), "unsupported"),
+        (json!({"source":"1", "mode":"module"}), "ok"),
         (
             json!({"source":"1", "mode":"sloppy", "asynchronous":true}),
             "timeout",

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
+use blueice_bluejs::{compile, compile_module, parse, parse_module, RuntimeError, Value, Vm};
 
 #[test]
 fn harness_assertions_fail_closed() {
@@ -45,6 +45,25 @@ fn harness_assertions_fail_closed() {
         Vm::default().execute(&compile(&parse("assert(true)").unwrap()).unwrap()),
         Err(RuntimeError::ReferenceError(_))
     ));
+}
+
+#[test]
+fn single_modules_are_strict_and_do_not_publish_classic_globals() {
+    let module = compile_module(
+        &parse_module("var hidden=1;let local=2;let arrow=()=>this;typeof this==='undefined'&&typeof arrow()==='undefined'&&hidden===1&&local===2")
+            .unwrap(),
+    )
+    .unwrap();
+    let mut vm = Vm::default();
+    assert_eq!(vm.execute_module(&module), Ok(Value::Bool(true)));
+
+    let lookup =
+        compile(&parse("typeof hidden==='undefined'&&typeof local==='undefined'").unwrap())
+            .unwrap();
+    assert_eq!(vm.execute_script(&lookup), Ok(Value::Bool(true)));
+
+    let strict_with = parse_module("with({}){}").unwrap();
+    assert!(compile_module(&strict_with).is_err());
 }
 
 #[test]

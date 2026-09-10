@@ -76,6 +76,26 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
     Ok(program)
 }
 
+/// Parses a single ECMAScript module before linking. Import/export grammar and
+/// dependency resolution remain a later module-record slice, but keeping a
+/// distinct public entry point lets the executable module baseline enforce
+/// module strictness and top-level execution semantics without treating it as
+/// a classic script.
+pub fn parse_module(source: &str) -> Result<Program, ParseError> {
+    let mut parser = Parser::new(source);
+    let mut body = Vec::new();
+    while !parser.at_eof() {
+        body.push(parser.parse_statement()?);
+    }
+    let program = Program { body };
+    if contains_super_call_outside_class(&program)
+        || contains_super_property_outside_class(&program)
+    {
+        return Err(parser.syntax_error("super is not valid in module code"));
+    }
+    Ok(program)
+}
+
 /// Parses direct-eval source before its caller applies context-sensitive
 /// `super` early errors. At script top level those expressions are invalid,
 /// but a direct eval inherits the calling method's `[[HomeObject]]`.
@@ -171,21 +191,27 @@ fn keyword_as_str(k: Keyword) -> &'static str {
     }
 }
 
-/// A plain identifier or member expression -- the only two shapes real
-/// ECMAScript accepts as an assignment target or an `++`/`--` operand.
+/// A plain identifier or member expression -- the ordinary assignment-target
+/// and `++`/`--` operand shapes.
 fn is_valid_ref_target(expr: &Expr) -> bool {
     matches!(expr, Expr::Identifier(_) | Expr::Member { .. })
 }
 
-/// Converts an already-parsed expression into a [`Pattern`], for the
-/// no-declaration-keyword `for-in`/`for-of` head (`for (x of arr)`
-/// where `x` was declared elsewhere). Restricted to a bare identifier
-/// -- see [`ForHead`]'s own doc comment in `ast.rs` for why full
-/// left-hand-side-expression/destructuring support here is an
-/// intentional MVP cut, not an oversight.
-fn expr_to_for_head_pattern(expr: Expr) -> Result<Pattern, ParseError> {
+/// Annex B's optional web-compat extension recognizes only CallExpression
+/// targets. In sloppy code they are evaluated and then throw ReferenceError;
+/// strict code still rejects them during static semantics.
+fn is_annex_b_call_assignment_target(expr: &Expr) -> bool {
+    matches!(expr, Expr::Call { .. })
+}
+
+/// Converts an already-parsed expression into a `for-in`/`for-of` head. The
+/// ordinary no-declaration form remains restricted to a bare identifier, but
+/// Annex B preserves a CallExpression target so its observable call happens
+/// before the web-compat runtime ReferenceError.
+fn expr_to_for_head(expr: Expr) -> Result<ForHead, ParseError> {
     match expr {
-        Expr::Identifier(name) => Ok(Pattern::Identifier(name)),
+        Expr::Identifier(name) => Ok(ForHead::Pattern(Pattern::Identifier(name))),
+        expr if is_annex_b_call_assignment_target(&expr) => Ok(ForHead::Expr(expr)),
         _ => Err(ParseError {
             message: "only a plain identifier is supported as a for-in/for-of target when no declaration keyword precedes it".to_string(),
             resource: None,
@@ -651,27 +677,19 @@ impl Parser {
         let expr = expr?;
 
         if self.eat_keyword(Keyword::In) {
-            let left = expr_to_for_head_pattern(expr)?;
+            let left = expr_to_for_head(expr)?;
             let right = self.parse_expression()?;
             self.expect_punct(Punct::RParen)?;
             let body = Box::new(self.parse_statement()?);
-            return Ok(Stmt::ForIn {
-                left: ForHead::Pattern(left),
-                right,
-                body,
-            });
+            return Ok(Stmt::ForIn { left, right, body });
         }
         if self.is_contextual_of() {
             self.advance();
-            let left = expr_to_for_head_pattern(expr)?;
+            let left = expr_to_for_head(expr)?;
             let right = self.parse_assignment()?;
             self.expect_punct(Punct::RParen)?;
             let body = Box::new(self.parse_statement()?);
-            return Ok(Stmt::ForOf {
-                left: ForHead::Pattern(left),
-                right,
-                body,
-            });
+            return Ok(Stmt::ForOf { left, right, body });
         }
         self.expect_punct(Punct::Semicolon)?;
         self.parse_for_rest(Some(ForInit::Expr(expr)))
@@ -1419,7 +1437,7 @@ impl Parser {
         let Some(op) = op else {
             return Ok(left);
         };
-        if !is_valid_ref_target(&left) {
+        if !is_valid_ref_target(&left) && !is_annex_b_call_assignment_target(&left) {
             return Err(self.error("invalid assignment target"));
         }
         self.advance();
@@ -1844,7 +1862,7 @@ impl Parser {
         }
         if self.eat_punct(Punct::PlusPlus) {
             let arg = self.parse_unary()?;
-            if !is_valid_ref_target(&arg) {
+            if !is_valid_ref_target(&arg) && !is_annex_b_call_assignment_target(&arg) {
                 return Err(self.error("invalid '++' operand"));
             }
             return Ok(Expr::Update {
@@ -1855,7 +1873,7 @@ impl Parser {
         }
         if self.eat_punct(Punct::MinusMinus) {
             let arg = self.parse_unary()?;
-            if !is_valid_ref_target(&arg) {
+            if !is_valid_ref_target(&arg) && !is_annex_b_call_assignment_target(&arg) {
                 return Err(self.error("invalid '--' operand"));
             }
             return Ok(Expr::Update {
@@ -1873,7 +1891,7 @@ impl Parser {
         // (ASI); see `token.rs`'s `SpannedToken` doc comment.
         if !self.newline_before() {
             if self.check_punct(Punct::PlusPlus) {
-                if !is_valid_ref_target(&expr) {
+                if !is_valid_ref_target(&expr) && !is_annex_b_call_assignment_target(&expr) {
                     return Err(self.error("invalid '++' operand"));
                 }
                 self.advance();
@@ -1884,7 +1902,7 @@ impl Parser {
                 });
             }
             if self.check_punct(Punct::MinusMinus) {
-                if !is_valid_ref_target(&expr) {
+                if !is_valid_ref_target(&expr) && !is_annex_b_call_assignment_target(&expr) {
                     return Err(self.error("invalid '--' operand"));
                 }
                 self.advance();

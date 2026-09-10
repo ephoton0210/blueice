@@ -41,12 +41,37 @@ pub fn compile(program: &Program) -> Result<Bytecode, CompileError> {
     compile_with_limit(program, u32::MAX)
 }
 
+/// Compiles one already-parsed module before dependency linking. Module
+/// declarations use the ordinary lexical bytecode scope, but force strict
+/// semantics and are intentionally not published as classic global bindings.
+pub fn compile_module(program: &Program) -> Result<Bytecode, CompileError> {
+    compile_module_with_limit(program, u32::MAX)
+}
+
 /// Compiles with an inclusive limit on emitted instruction bytes.
 /// A limit failure returns [`CompileError::ProgramTooLarge`], never partial
 /// bytecode. This does not bound AST depth, constant payloads or total memory.
 pub fn compile_with_limit(
     program: &Program,
     max_bytecode_bytes: u32,
+) -> Result<Bytecode, CompileError> {
+    compile_with_limit_and_mode(program, max_bytecode_bytes, false)
+}
+
+/// Like [`compile_module`], with the Test262 adapter's bytecode resource
+/// limit. This is public so an embedder can apply the same bound before
+/// module linking has expanded to a graph.
+pub fn compile_module_with_limit(
+    program: &Program,
+    max_bytecode_bytes: u32,
+) -> Result<Bytecode, CompileError> {
+    compile_with_limit_and_mode(program, max_bytecode_bytes, true)
+}
+
+fn compile_with_limit_and_mode(
+    program: &Program,
+    max_bytecode_bytes: u32,
+    module: bool,
 ) -> Result<Bytecode, CompileError> {
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
@@ -59,7 +84,7 @@ pub fn compile_with_limit(
         local_scope: 0,
         with_depth: 0,
     };
-    compiler.bytecode.strict = strict_body(&program.body);
+    compiler.bytecode.strict = module || strict_body(&program.body);
     if compiler.bytecode.strict && strict_assignment_to_restricted_name(&program.body) {
         return Err(CompileError::InvalidSyntax(
             "strict code cannot assign to eval or arguments",
@@ -94,6 +119,7 @@ pub fn compile_with_limit(
 pub(crate) fn compile_eval(
     program: &Program,
     visible: &[(String, Binding, u32)],
+    variable_environment_names: &[String],
     lexical_conflicts: &[String],
     strict: bool,
     new_target_allowed: bool,
@@ -155,14 +181,14 @@ pub(crate) fn compile_eval(
         ));
     }
     // Strict eval has its own VariableEnvironment, so its `var` bindings
-    // shadow caller names instead of reusing captured cells. Sloppy direct
-    // eval keeps the caller VariableEnvironment and deliberately shares a
-    // binding that is already visible.
+    // shadow caller names. Sloppy direct eval extends only the immediately
+    // enclosing VariableEnvironment: a name captured from an outer function
+    // remains visible for reads, but must not prevent a new local eval `var`.
     let new_vars = if compiler.bytecode.strict {
         vars
     } else {
         vars.into_iter()
-            .filter(|name| !compiler.names[0].contains_key(name))
+            .filter(|name| !variable_environment_names.contains(name))
             .collect()
     };
     compiler.enter_scope(lexical, &new_vars, true)?;
@@ -1587,6 +1613,14 @@ impl Compiler {
                             u32::from(*op == UpdateOp::Dec) | (u32::from(*prefix) << 1),
                         )?;
                     }
+                } else if matches!(&**arg, Expr::Call { .. }) {
+                    if self.bytecode.strict {
+                        return Err(CompileError::InvalidSyntax(
+                            "a CallExpression cannot be an assignment target in strict code",
+                        ));
+                    }
+                    self.expression(arg)?;
+                    self.emit(Opcode::InvalidAssignmentTarget, 0)?;
                 } else {
                     return Err(CompileError::InvalidSyntax("invalid assignment/member AST"));
                 }
@@ -1776,14 +1810,15 @@ impl Compiler {
     ) -> Result<(), CompileError> {
         self.emit(Opcode::ClearCompletion, 0)?;
         let (pattern, kind) = match left {
-            ForHead::Decl(kind, pattern) => (pattern, Some(*kind)),
-            ForHead::Pattern(pattern) => (pattern, None),
+            ForHead::Decl(kind, pattern) => (Some(pattern), Some(*kind)),
+            ForHead::Pattern(pattern) => (Some(pattern), None),
+            ForHead::Expr(_) => (None, None),
         };
         let lexical = kind.is_some_and(|kind| kind != DeclKind::Var);
         let mut declarations = vec![("*iterator*".to_owned(), DeclKind::Let)];
         if lexical {
             declarations.extend(
-                pattern_names(pattern)
+                pattern_names(pattern.expect("declaration heads have a pattern"))
                     .into_iter()
                     .map(|name| (name, kind.unwrap())),
             );
@@ -1809,7 +1844,7 @@ impl Compiler {
         });
         if lexical {
             self.enter_scope(
-                pattern_names(pattern)
+                pattern_names(pattern.expect("declaration heads have a pattern"))
                     .into_iter()
                     .map(|name| (name, kind.unwrap()))
                     .collect(),
@@ -1817,9 +1852,9 @@ impl Compiler {
                 false,
             )?;
         }
-        match kind {
-            Some(kind) => self.bind_pattern(pattern, kind)?,
-            None => {
+        match left {
+            ForHead::Decl(kind, pattern) => self.bind_pattern(pattern, *kind)?,
+            ForHead::Pattern(pattern) => {
                 let Pattern::Identifier(name) = pattern else {
                     return Err(CompileError::Unsupported(if for_in {
                         "a destructuring for-in assignment target"
@@ -1834,6 +1869,15 @@ impl Compiler {
                     self.emit(Opcode::SetUnboundName, index)?;
                 }
                 self.emit(Opcode::Pop, 0)?;
+            }
+            ForHead::Expr(target) => {
+                if self.bytecode.strict {
+                    return Err(CompileError::InvalidSyntax(
+                        "a CallExpression cannot be an assignment target in strict code",
+                    ));
+                }
+                self.expression(target)?;
+                self.emit(Opcode::InvalidAssignmentTarget, 0)?;
             }
         }
         self.statement(body, false)?;
@@ -1862,6 +1906,18 @@ impl Compiler {
         target: &Expr,
         value: &Expr,
     ) -> Result<(), CompileError> {
+        if matches!(target, Expr::Call { .. }) {
+            if self.bytecode.strict {
+                return Err(CompileError::InvalidSyntax(
+                    "a CallExpression cannot be an assignment target in strict code",
+                ));
+            }
+            // Annex B's web-compat extension evaluates the call but never
+            // evaluates the RHS or performs coercion on the returned value.
+            self.expression(target)?;
+            self.emit(Opcode::InvalidAssignmentTarget, 0)?;
+            return Ok(());
+        }
         if let Expr::Member {
             object,
             property,
@@ -1883,19 +1939,20 @@ impl Compiler {
             }
         }
         if let Expr::Identifier(name) = target {
-            if self.resolve(name).is_none() && self.with_depth != 0 {
+            if self.with_depth != 0 {
+                let index = self.name_constant(name)?;
+                // Resolve the object-environment binding before evaluating
+                // the RHS. A deletion or eval in that RHS must not redirect
+                // PutValue to a later binding lookup.
+                self.emit(Opcode::ResolveWithReference, index)?;
                 if op != AssignOp::Assign {
-                    return Err(CompileError::Unsupported(
-                        "compound assignment in a with statement",
-                    ));
+                    self.emit(Opcode::LoadWithReference, 0)?;
                 }
                 self.expression(value)?;
-                let index = u32::try_from(self.bytecode.constants.len())
-                    .map_err(|_| CompileError::ProgramTooLarge)?;
-                self.bytecode
-                    .constants
-                    .push(Value::String(name.clone().into()));
-                self.emit(Opcode::WithSet, index)?;
+                if let Some(opcode) = compound_assignment_opcode(op) {
+                    self.emit(opcode, 0)?;
+                }
+                self.emit(Opcode::StoreWithReference, 0)?;
                 return Ok(());
             }
         }
@@ -2653,6 +2710,7 @@ fn strict_assignment_in_for_head(head: &ForHead) -> bool {
         ForHead::Pattern(pattern) => pattern_names(pattern)
             .iter()
             .any(|name| restricted_name(name)),
+        ForHead::Expr(expression) => strict_assignment_in_expression(expression),
     }
 }
 

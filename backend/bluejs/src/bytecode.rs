@@ -101,6 +101,9 @@ opcodes! {
     LeaveWith: 1, 0;
     WithGet: 5, 0;
     WithSet: 5, 0;
+    ResolveWithReference: 5, 0;
+    LoadWithReference: 1, 0;
+    StoreWithReference: 1, 0;
     Global: 5, 0;
     ToPropertyKey: 1, 0;
     GetIterator: 1, 0;
@@ -120,6 +123,7 @@ opcodes! {
     CallSpread: 5, 0;
     DirectEvalSpread: 1, 0;
     Throw: 1, 0;
+    InvalidAssignmentTarget: 1, 0;
     PushHandler: 5, 0;
     PopHandler: 1, 0;
     ResumeCompletion: 5, 0;

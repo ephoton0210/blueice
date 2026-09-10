@@ -160,12 +160,7 @@ fn compiler_reports_public_ast_boundaries_without_panicking() {
             "invalid non-computed super member AST"
         ))
     ));
-    assert!(matches!(
-        compile(&parse("with({}){missing+=1}").unwrap()),
-        Err(CompileError::Unsupported(
-            "compound assignment in a with statement"
-        ))
-    ));
+    assert!(compile(&parse("with({}){missing+=1}").unwrap()).is_ok());
     assert!(matches!(
         compile(&parse("function*g(){yield* []}").unwrap()),
         Err(CompileError::Unsupported("yield*"))
@@ -260,7 +255,7 @@ fn runtime_class_and_with_error_paths_are_catchable() {
         "class Base{}class Derived extends Base{constructor(){return 1;}}let caught=false;try{new Derived}catch(error){caught=error instanceof ReferenceError;}caught",
         "let proto={value:1};let object=Object.create(proto);object.value=2;let keys='';for(let key in object){keys+=key;}keys==='value'",
         "let symbol=Symbol('value');let object={[symbol]:1,value:2};let keys='';for(let key in object){keys+=key;}keys==='value'",
-        "try{with({}){missing=1}}catch(error){error instanceof ReferenceError}",
+        "with({}){missing=1}missing===1",
         "let read;with({value:1}){read=value}read===1",
         "try{with({}){missing}}catch(error){error instanceof ReferenceError}",
         "try{missing}catch(error){error instanceof ReferenceError}",
@@ -268,7 +263,7 @@ fn runtime_class_and_with_error_paths_are_catchable() {
         "let array=[1,,...[2]];array.length===3&&array[0]===1&&array[2]===2",
         "let caught=false;try{eval('\\uD800')}catch(error){caught=error instanceof SyntaxError;}caught",
         "let caught=false;try{eval('if')}catch(error){caught=error instanceof SyntaxError;}caught",
-        "let caught=false;try{eval('with({}){value+=1}')}catch(error){caught=error instanceof SyntaxError;}caught",
+        "let caught=false;try{eval('with({}){value+=1}')}catch(error){caught=error instanceof ReferenceError;}caught",
     ] {
         assert_eq!(evaluate(source), Ok(Value::Bool(true)), "{source}");
     }

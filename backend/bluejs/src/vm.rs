@@ -161,6 +161,11 @@ enum InterpreterExit {
     Suspend { pc: usize },
 }
 
+// Ordinary calls still nest the Rust interpreter. Keep this comfortably below
+// the default test-thread stack so recursive JavaScript reports a catchable
+// RangeError instead of aborting the embedding process.
+const MAX_RECURSIVE_CALL_DEPTH: usize = 16;
+
 /// A realm-level declarative or object-backed global binding. The cell is
 /// permanently rooted for the realm lifetime so script closures and later
 /// scripts observe one live binding rather than copied completion values.
@@ -256,6 +261,9 @@ pub struct Vm {
     callee: Value,
     strict: bool,
     call_depth: usize,
+    // Module top-level code has an undefined `this`; classic scripts lazily
+    // substitute the realm global when `this` is first observed.
+    top_level_module: bool,
     globals: HashMap<String, ObjectId>,
     global_bindings: HashMap<String, GlobalBinding>,
     // Slots in the currently executing classic script's outer scope. Nested
@@ -342,6 +350,7 @@ impl Vm {
             callee: Value::Undefined,
             strict: false,
             call_depth: 0,
+            top_level_module: false,
             globals: HashMap::new(),
             global_bindings: HashMap::new(),
             script_global_slots: HashMap::new(),
@@ -377,20 +386,29 @@ impl Vm {
     /// the next execute (including a failing execute), or until this VM is
     /// dropped. Both success and error paths release temporary runtime roots.
     pub fn execute(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
-        self.execute_with_global_bindings(code, false)
+        self.execute_with_global_bindings(code, false, false)
     }
 
     /// Executes a classic script in this realm and publishes successful
     /// top-level `var` and function declarations on `globalThis` for a later
     /// classic script. Lexical bindings retain their script-local boundary.
     pub fn execute_script(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
-        self.execute_with_global_bindings(code, true)
+        self.execute_with_global_bindings(code, true, false)
+    }
+
+    /// Evaluates one already-instantiated module. Its declarations are scoped
+    /// to this evaluation and are never exposed as classic global properties;
+    /// dependency linking and namespace exports intentionally live in the
+    /// subsequent module-graph layer.
+    pub fn execute_module(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
+        self.execute_with_global_bindings(code, false, true)
     }
 
     fn execute_with_global_bindings(
         &mut self,
         code: &Bytecode,
         publish_globals: bool,
+        module: bool,
     ) -> Result<Value, RuntimeError> {
         if let Some(root) = self.result_root.take() {
             self.heap.unroot(root)?;
@@ -403,6 +421,7 @@ impl Vm {
         self.binding_metadata = code.bindings.clone();
         self.remaining_instructions = self.config.instruction_budget;
         self.strict = code.strict;
+        self.top_level_module = module;
         self.completion_empty = true;
         self.active_scopes.clear();
         self.active_scope_slots.clear();
@@ -441,6 +460,7 @@ impl Vm {
         self.active_scopes.clear();
         self.active_scope_slots.clear();
         self.with_objects.clear();
+        self.top_level_module = false;
         self.pending_completions.clear();
         self.completion_saves.clear();
         self.with_roots(|heap| {
@@ -1253,6 +1273,7 @@ impl Vm {
         let active_scope_slots = std::mem::take(&mut self.active_scope_slots);
         let with_objects = std::mem::take(&mut self.with_objects);
         let strict = std::mem::replace(&mut self.strict, code.strict);
+        let top_level_module = std::mem::replace(&mut self.top_level_module, false);
         let global_this = self.global("globalThis")?;
         let this = std::mem::replace(&mut self.this, global_this);
         let arguments = std::mem::take(&mut self.arguments);
@@ -1275,6 +1296,7 @@ impl Vm {
         self.active_scope_slots = active_scope_slots;
         self.with_objects = with_objects;
         self.strict = strict;
+        self.top_level_module = top_level_module;
         self.this = this;
         self.arguments = arguments;
         self.new_target = new_target;
@@ -1307,6 +1329,42 @@ impl Vm {
             .into_iter()
             .map(|(name, (binding, slot))| (name, binding, slot))
             .collect()
+    }
+
+    /// The variable environment is narrower than the set of lexically
+    /// visible cells. In particular, an inner function may capture `x` from
+    /// an outer function while a sloppy direct eval still has to create its
+    /// own `var x` in the inner VariableEnvironment.
+    fn eval_variable_environment_names(&self) -> Vec<String> {
+        let mut names = std::collections::BTreeSet::new();
+        if let Some(position) = self
+            .active_scopes
+            .iter()
+            .position(|scope| *scope == self.variable_scope)
+        {
+            names.extend(self.active_scope_slots[position].iter().filter_map(|slot| {
+                let binding = &self.binding_metadata[*slot as usize];
+                (!binding.lexical).then(|| binding.name.clone())
+            }));
+        }
+        names.extend(self.dynamic_eval_bindings.keys().cloned());
+        names.into_iter().collect()
+    }
+
+    /// A static captured binding is outside the current function's variable
+    /// environment. A sloppy direct eval declaration in that environment
+    /// shadows it for later reads, while a local binding remains dominant.
+    fn eval_aware_binding_value(
+        &mut self,
+        slot: usize,
+        name: &str,
+    ) -> Result<Option<Value>, RuntimeError> {
+        if self.cells.contains_key(&slot) {
+            if let Some(value) = self.dynamic_eval_binding_value(name)? {
+                return Ok(Some(value));
+            }
+        }
+        self.binding_value(slot)
     }
 
     /// Lexical names between a direct eval site and the active function's
@@ -1430,6 +1488,15 @@ impl Vm {
                     }
                     Opcode::Throw => {
                         return Ok(Some(Completion::Throw(RuntimeError::Thrown(self.pop()))))
+                    }
+                    Opcode::InvalidAssignmentTarget => {
+                        // Annex B CallExpression targets evaluate the call,
+                        // then throw before an assignment RHS or update
+                        // coercion can be observed.
+                        self.pop();
+                        return Err(RuntimeError::ReferenceError(
+                            "invalid assignment target".into(),
+                        ));
                     }
                     Opcode::ArrayPush => {
                         let base = self.stack.len() - 2;
@@ -1680,7 +1747,10 @@ impl Vm {
                             captures.push(self.capture(slot as usize)?);
                         }
                         let this = if child.arrow {
-                            if self.this == Value::Undefined && self.call_depth == 0 {
+                            if self.this == Value::Undefined
+                                && self.call_depth == 0
+                                && !self.top_level_module
+                            {
                                 self.global("globalThis")?
                             } else {
                                 self.this.clone()
@@ -1749,7 +1819,10 @@ impl Vm {
                         }
                     }
                     Opcode::This => {
-                        if self.this == Value::Undefined && self.call_depth == 0 {
+                        if self.this == Value::Undefined
+                            && self.call_depth == 0
+                            && !self.top_level_module
+                        {
                             self.this = self.global("globalThis")?;
                         }
                         self.stack.push(self.this.clone());
@@ -1798,7 +1871,7 @@ impl Vm {
                             .bindings
                             .iter()
                             .position(|binding| binding.name == name)
-                            .map(|slot| self.binding_value(slot))
+                            .map(|slot| self.eval_aware_binding_value(slot, &name))
                             .transpose()?;
                         let value = self.with_get(&name, fallback)?;
                         self.stack.push(value);
@@ -1811,6 +1884,120 @@ impl Vm {
                             &name.to_utf8().expect("compiler emits a UTF-8 identifier"),
                             self.stack.last().expect("assignment has a value").clone(),
                         )?;
+                    }
+                    Opcode::ResolveWithReference => {
+                        let Value::String(name) = &code.constants[operand] else {
+                            unreachable!("compiler emits a name")
+                        };
+                        let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                        let key = Value::String(name.clone().into());
+                        let mut object_reference = None;
+                        for object in self.with_objects.clone().into_iter().rev() {
+                            if self.property_in(&key, &object)? {
+                                object_reference = Some(object);
+                                break;
+                            }
+                        }
+                        if let Some(object) = object_reference {
+                            // The pair is a property reference. Keeping it on
+                            // the operand stack makes it survive calls, handler
+                            // unwinding and generator suspension just like an
+                            // ordinary member-reference pair.
+                            self.stack.push(object);
+                            self.stack.push(Value::String(name.into()));
+                        } else if let Some(slot) = code
+                            .bindings
+                            .iter()
+                            .rposition(|binding| binding.name == name)
+                        {
+                            // `Null` tags an internal binding reference; the
+                            // slot is safe because it is compiler-owned and is
+                            // consumed only by StoreWithReference.
+                            self.stack.push(Value::Number(slot as f64));
+                            self.stack.push(Value::Null);
+                        } else {
+                            // `Undefined` tags an unresolvable reference and
+                            // preserves its source name for sloppy PutValue.
+                            self.stack.push(Value::Undefined);
+                            self.stack.push(Value::String(name.into()));
+                        }
+                    }
+                    Opcode::LoadWithReference => {
+                        let marker = self.pop();
+                        let target = self.pop();
+                        let value = match (&target, &marker) {
+                            (Value::Object(object), Value::String(name)) => {
+                                self.get_property(&Value::Object(*object), &name.clone().into())?
+                            }
+                            (Value::Number(slot), Value::Null)
+                                if slot.is_finite()
+                                    && *slot >= 0.0
+                                    && slot.fract() == 0.0
+                                    && (*slot as usize) < code.bindings.len() =>
+                            {
+                                let slot = *slot as usize;
+                                self.eval_aware_binding_value(slot, &code.bindings[slot].name)?
+                                    .ok_or_else(|| {
+                                        RuntimeError::ReferenceError(
+                                            code.bindings[slot].name.clone(),
+                                        )
+                                    })?
+                            }
+                            (Value::Undefined, Value::String(name)) => {
+                                return Err(RuntimeError::ReferenceError(
+                                    name.to_utf8().expect("compiler emits a UTF-8 identifier"),
+                                ));
+                            }
+                            _ => unreachable!("compiler emits a valid with reference"),
+                        };
+                        // Preserve the original Reference for PutValue after
+                        // the RHS has run. `get_property` may invoke a getter,
+                        // so stack-resident values are the GC roots here.
+                        self.stack.push(target);
+                        self.stack.push(marker);
+                        self.stack.push(value);
+                    }
+                    Opcode::StoreWithReference => {
+                        let value = self.pop();
+                        let marker = self.pop();
+                        let target = self.pop();
+                        match (target, marker) {
+                            (Value::Object(object), Value::String(name)) => {
+                                self.set_property(&Value::Object(object), &name.into(), &value)?;
+                            }
+                            (Value::Number(slot), Value::Null)
+                                if slot.is_finite()
+                                    && slot >= 0.0
+                                    && slot.fract() == 0.0
+                                    && (slot as usize) < code.bindings.len() =>
+                            {
+                                let slot = slot as usize;
+                                if self.binding_value(slot)?.is_none() {
+                                    return Err(RuntimeError::ReferenceError(
+                                        code.bindings[slot].name.clone(),
+                                    ));
+                                }
+                                if !code.bindings[slot].mutable {
+                                    return Err(RuntimeError::TypeError(format!(
+                                        "assignment to constant {}",
+                                        code.bindings[slot].name
+                                    )));
+                                }
+                                self.store_binding(slot, value.clone())?;
+                            }
+                            (Value::Undefined, Value::String(name)) => {
+                                let name =
+                                    name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                                if !self.set_dynamic_eval_binding(&name, value.clone())?
+                                    && !self.set_global_binding(&name, value.clone())?
+                                {
+                                    let global = self.global("globalThis")?;
+                                    self.set_property(&global, &name.into(), &value)?;
+                                }
+                            }
+                            _ => unreachable!("compiler emits a valid with reference"),
+                        }
+                        self.stack.push(value);
                     }
                     Opcode::Global => {
                         let Value::String(name) = &code.constants[operand] else {
@@ -1834,9 +2021,11 @@ impl Vm {
                         self.stack.push(Value::Object(constructor));
                     }
                     Opcode::GetBinding => {
-                        let value = self.binding_value(operand)?.ok_or_else(|| {
-                            RuntimeError::ReferenceError(code.bindings[operand].name.clone())
-                        })?;
+                        let value = self
+                            .eval_aware_binding_value(operand, &code.bindings[operand].name)?
+                            .ok_or_else(|| {
+                                RuntimeError::ReferenceError(code.bindings[operand].name.clone())
+                            })?;
                         self.stack.push(value);
                     }
                     Opcode::InitializeBinding => {
@@ -2942,7 +3131,7 @@ impl Vm {
         construct: bool,
         target: Value,
     ) -> Result<Value, RuntimeError> {
-        if self.call_depth >= 32 {
+        if self.call_depth >= MAX_RECURSIVE_CALL_DEPTH {
             return Err(RuntimeError::RangeError(
                 "maximum call depth exceeded".into(),
             ));
