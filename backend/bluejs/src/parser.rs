@@ -45,11 +45,14 @@ pub struct ParseError {
     pub message: String,
     /// Resource failures during literal validation are not SyntaxErrors.
     pub resource: Option<crate::RuntimeError>,
+    /// True only when the parser recognized a specified syntax error. Other
+    /// parse failures may still be unsupported valid grammar in this subset.
+    pub known_syntax: bool,
 }
 
 impl From<LexError> for ParseError {
     fn from(e: LexError) -> ParseError {
-        ParseError { message: e.message, resource: None }
+        ParseError { message: e.message, resource: None, known_syntax: false }
     }
 }
 
@@ -154,8 +157,17 @@ fn is_valid_ref_target(expr: &Expr) -> bool {
 fn expr_to_for_head_pattern(expr: Expr) -> Result<Pattern, ParseError> {
     match expr {
         Expr::Identifier(name) => Ok(Pattern::Identifier(name)),
-        _ => Err(ParseError { message: "only a plain identifier is supported as a for-in/for-of target when no declaration keyword precedes it".to_string(), resource: None }),
+        _ => Err(ParseError {
+            message: "only a plain identifier is supported as a for-in/for-of target when no declaration keyword precedes it".to_string(),
+            resource: None,
+            known_syntax: false,
+        }),
     }
+}
+
+fn known_syntax(mut error: ParseError) -> ParseError {
+    error.known_syntax = true;
+    error
 }
 
 struct Parser {
@@ -244,7 +256,11 @@ impl Parser {
     }
 
     fn error(&self, message: impl Into<String>) -> ParseError {
-        ParseError { message: format!("{} (found {:?})", message.into(), self.peek()), resource: None }
+        ParseError { message: format!("{} (found {:?})", message.into(), self.peek()), resource: None, known_syntax: false }
+    }
+
+    fn syntax_error(&self, message: impl Into<String>) -> ParseError {
+        ParseError { message: format!("{} (found {:?})", message.into(), self.peek()), resource: None, known_syntax: true }
     }
 
     fn expect_identifier_name(&mut self) -> Result<String, ParseError> {
@@ -320,6 +336,7 @@ impl Parser {
             Token::Keyword(Keyword::Return) => self.parse_return_stmt(),
             Token::Keyword(Keyword::Throw) => self.parse_throw_stmt(),
             Token::Keyword(Keyword::Try) => self.parse_try_stmt(),
+            Token::Keyword(Keyword::Catch | Keyword::Finally) => Err(self.syntax_error("catch/finally require a preceding try block")),
             _ => {
                 let expr = self.parse_expression()?;
                 self.consume_semicolon()?;
@@ -533,22 +550,35 @@ impl Parser {
 
     fn parse_try_stmt(&mut self) -> Result<Stmt, ParseError> {
         self.advance();
+        if !self.check_punct(Punct::LBrace) {
+            return Err(self.syntax_error("try requires a block"));
+        }
         let block = self.parse_block()?;
         let handler = if self.eat_keyword(Keyword::Catch) {
             let param = if self.eat_punct(Punct::LParen) {
-                let p = self.parse_binding_pattern()?;
-                self.expect_punct(Punct::RParen)?;
+                let p = self.parse_binding_pattern().map_err(known_syntax)?;
+                self.expect_punct(Punct::RParen).map_err(known_syntax)?;
                 Some(p)
             } else {
                 None
             };
+            if !self.check_punct(Punct::LBrace) {
+                return Err(self.syntax_error("catch requires a block"));
+            }
             Some(CatchClause { param, body: self.parse_block()? })
         } else {
             None
         };
-        let finalizer = if self.eat_keyword(Keyword::Finally) { Some(self.parse_block()?) } else { None };
+        let finalizer = if self.eat_keyword(Keyword::Finally) {
+            if !self.check_punct(Punct::LBrace) {
+                return Err(self.syntax_error("finally requires a block"));
+            }
+            Some(self.parse_block()?)
+        } else {
+            None
+        };
         if handler.is_none() && finalizer.is_none() {
-            return Err(self.error("'try' must be followed by 'catch', 'finally', or both"));
+            return Err(self.syntax_error("'try' must be followed by 'catch', 'finally', or both"));
         }
         Ok(Stmt::Try { block, handler, finalizer })
     }
@@ -579,6 +609,10 @@ impl Parser {
             if self.eat_punct(Punct::Ellipsis) {
                 let pattern = self.parse_binding_pattern()?;
                 elements.push(Some(ArrayPatternElement { pattern, default: None, rest: true }));
+                if !self.check_punct(Punct::RBracket) {
+                    return Err(self.syntax_error("a binding rest element must be final"));
+                }
+                break;
             } else {
                 let pattern = self.parse_binding_pattern()?;
                 let default = if self.eat_punct(Punct::Assign) { Some(self.parse_assignment()?) } else { None };
@@ -598,6 +632,10 @@ impl Parser {
         while !self.check_punct(Punct::RBrace) {
             if self.eat_punct(Punct::Ellipsis) {
                 props.push(ObjectPatternProp::Rest(self.parse_binding_pattern()?));
+                if !self.check_punct(Punct::RBrace) {
+                    return Err(self.syntax_error("a binding rest property must be final"));
+                }
+                break;
             } else {
                 let key = self.parse_property_key()?;
                 if self.eat_punct(Punct::Colon) {
@@ -1163,7 +1201,7 @@ impl Parser {
                 let (pattern, flags) = self.tokenizer.regexp_at(self.positions[self.pos])?;
                 crate::regexp::RegExp::compile(pattern.clone(), &flags).map_err(|error| {
                     let resource = if matches!(error, crate::RuntimeError::SyntaxError(_)) { None } else { Some(error.clone()) };
-                    ParseError { message: error.to_string(), resource }
+                    ParseError { message: error.to_string(), resource, known_syntax: matches!(error, crate::RuntimeError::SyntaxError(_)) }
                 })?;
                 self.rescan_suffix();
                 Ok(Expr::RegExp { pattern, flags })
@@ -2028,6 +2066,19 @@ mod tests {
     #[test]
     fn invalid_binding_pattern_target_is_an_error() {
         assert!(parse("let 5 = x;").is_err());
+    }
+
+    #[test]
+    fn binding_rest_elements_and_properties_must_be_final() {
+        for source in [
+            "try {} catch ([...rest, next]) {}",
+            "try {} catch ([...{value}, next]) {}",
+            "try {} catch ([...rest,]) {}",
+            "try {} catch ({...rest, next}) {}",
+            "try {} catch ({...rest,}) {}",
+        ] {
+            assert!(parse(source).is_err(), "{source}");
+        }
     }
 
     #[test]

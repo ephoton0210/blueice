@@ -117,12 +117,80 @@ and inclusive bytecode-budget cases. `cargo fmt --all -- --check` still reports
 pre-existing formatting differences across the workspace; the new Rust test
 file is rustfmt-clean. No workspace coverage claim is made by the BlueJS gate.
 
-The completed P0.1 subtask is iterator completion state and rest rooting. The
-next P0.1 subtask remains **general Completion records plus catch/finally**:
-design handler metadata, pending completion roots, lexical/operand-stack unwind,
-return/break/continue interception and distinct uncatchable host resource aborts.
-Then execute P0.2 and P0.3 in the order above. No P0 workstream or builtin family
-is marked fully complete by these four Test262 gains.
+The iterator completion state and rest-rooting subtask is complete. The next
+subtask, general Completion records plus `catch`/`finally`, is implemented in
+the limited executable subset described below. P0.1 is still open: labels,
+`switch`, all grammar/early-error work and the remaining control-flow coverage
+must precede P0.2 and P0.3. No P0 workstream or builtin family is fully complete.
+
+## Second P0.1 slice: Completion records and `try` handlers
+
+Official edition-17 clauses read on 2026-09-10: [Completion Record
+specification type](https://262.ecma-international.org/17.0/#sec-completion-record-specification-type),
+[TryStatement](https://262.ecma-international.org/17.0/#sec-try-statement),
+[ReturnStatement](https://262.ecma-international.org/17.0/#sec-return-statement),
+[BreakStatement](https://262.ecma-international.org/17.0/#sec-break-statement),
+and [ContinueStatement](https://262.ecma-international.org/17.0/#sec-continue-statement).
+
+The fixed-width bytecode now owns static handler metadata and control-transfer
+metadata. `PushHandler` captures operand-stack, lexical-scope and active-
+iterator depths; `PopHandler`, `SaveCompletion`, and handler-tagged
+`ResumeCompletion` distinguish normal finalizer entry from a pending abrupt
+completion. `AbruptJump` refers to a cleanup gateway and its eventual target,
+so an inner `break` or `continue` runs exactly the finalizers it leaves without
+running an outer handler whose protected region still contains that target.
+Unwound scope slots and pending return/thrown values stay in VM root sets during
+allocation. Normal finalizer completion applies `UpdateEmpty` behavior to the
+prior statement completion; an abrupt finalizer overrides it.
+
+Runtime `ReferenceError`, `TypeError`, `RangeError`, `SyntaxError`, explicit
+throws, and Test262 assertion errors enter JavaScript `catch` as their matching
+error object or original value. Heap failures, instruction and string limits,
+and regex host failures remain distinct, uncatchable resource aborts. Labels
+remain outside this slice.
+
+Public regressions cover caught values and language errors, catch scope exit,
+normal/throw/return/break/continue finalization, finalizer override, nested
+handler selection, a nested normal finalizer while an outer abrupt completion
+is pending, GC pressure on a caught object, and host-limit bypass. They were
+run through parse → compile → execute rather than a VM-only helper.
+
+The post-change filtered Test262 run covers `language/statements/try`: **249
+pass, 97 fail, 52 unsupported** of 398 scheduled modes across 206 files, with
+zero harness errors, timeouts, or adapter crashes. This is a current slice
+measurement, not a whole-inventory comparison or conformance claim. The
+remaining modes are visible: 73 unclassified parser rejections, 28 unresolved
+names (principally `eval`), 16 assertion failures, 14 unsupported compiler
+cases, eight syntax/early-error mismatches, eight missing expected-error
+results, and two uncaught-value outcomes.
+Its raw output is local at `/tmp/bluejs-test262-try-final`.
+
+## P0.1 continuation: `switch`, `for-in`, direct eval and early errors
+
+The executable subset now also compiles strict-match `switch` dispatch with
+fall-through and completion-aware `break`; `for-in` snapshots enumerable string
+keys through the prototype chain and uses the same finalizer/iterator cleanup
+boundary as `for-of`. Catch parameters have a distinct parameter environment,
+Annex B simple-parameter `var` redeclaration behavior, inferred names for
+default anonymous functions, and the required strict/lexical early errors.
+
+Direct eval parses and compiles source in the active VM frame. It shares the
+caller's visible binding cells, current `this`, strictness and instruction
+budget, while its fresh lexical declarations remain local to the eval frame.
+This is a limited direct-eval slice, not P0.2's persistent global environment,
+complete declaration instantiation or indirect eval. Empty try, catch and
+finally blocks now establish their own empty Completion, so normal finalizers
+restore the protected clause and apply `UpdateEmpty` correctly.
+
+The parser distinguishes the recognized binding-rest and malformed try/catch/
+finally early errors from arbitrary unsupported grammar; only the former are
+reported as parse `SyntaxError` by the Test262 adapter. The filtered run now
+covers `language/statements/try`: **358 pass, 38 fail and 2 unsupported** of
+398 scheduled modes, with zero harness errors, timeouts or adapter crashes.
+Raw output is local at `/tmp/bluejs-test262-try-syntax`. The remaining blockers
+are generator and class grammar/execution, `with`, named-function tail
+recursion, and static-class grammar; they require their owning P1/P0.2 designs
+rather than a broader parse-error classification.
 
 ## Reproduction and continuation
 
@@ -136,7 +204,7 @@ python3 backend/bluejs/test262/analyze.py --run target/test262-architecture-base
 python3 -m unittest discover -s backend/bluejs/test262 -v
 ```
 
-For each slice: select representative failing modes and their prerequisites,
+For each remaining slice: select representative failing modes and their prerequisites,
 write public regressions, record red results, implement, run focused Test262 and
 regression/coverage gates, then reconcile a full before/after inventory. Compare
 unique path/mode pairs, including pass-to-nonpass changes, rather than totals

@@ -7,9 +7,11 @@
 ## Objective
 
 **Test262 implementation order (2026-09-10)**: follow the
-[architecture-first backlog](TEST262_ARCHITECTURE.md). Full per-mode analysis
-and completion/iterator, environment, reference and internal-method foundations
-take precedence over adding individual builtin methods.
+[architecture-first backlog](TEST262_ARCHITECTURE.md). The iterator and
+`try`/Completion slices are implemented for the current executable subset;
+full per-mode analysis and the remaining environment, reference and
+internal-method foundations take precedence over adding individual builtin
+methods.
 
 **Language target expanded (2026-09-09)**: the user requested completion of ECMAScript 2026 (ECMA-262 edition 17). The [edition implementation track](ECMASCRIPT_2026.md) now supersedes the historical MVP cuts as the final language-completion criterion; the existing architecture remains. Full conformance is not yet achieved, and the older slice descriptions below are historical progress records.
 

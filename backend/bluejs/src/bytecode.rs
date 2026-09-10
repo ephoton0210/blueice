@@ -85,6 +85,7 @@ opcodes! {
     Global: 5, 0;
     ToPropertyKey: 1, 0;
     GetIterator: 1, 0;
+    ForInKeys: 1, 0;
     IteratorStep: 5, 0;
     IteratorElision: 1, 0;
     IteratorClose: 1, 0;
@@ -99,6 +100,11 @@ opcodes! {
     ArrayPush: 5, 0;
     CallSpread: 5, 0;
     Throw: 1, 0;
+    PushHandler: 5, 0;
+    PopHandler: 1, 0;
+    ResumeCompletion: 5, 0;
+    SaveCompletion: 1, 0;
+    AbruptJump: 5, 0;
     DefineData: 1, 0;
     DefineAccessor: 5, 0;
     DeleteProperty: 1, 0;
@@ -128,6 +134,27 @@ pub(crate) struct TemplateSite {
     pub cooked: Vec<Option<crate::JsString>>,
 }
 
+/// Static destinations for one `try` statement. Runtime handler frames add
+/// the operand-stack, lexical-scope and iterator depths needed to restore the
+/// execution state on an abrupt completion.
+#[derive(Clone)]
+pub(crate) struct Handler {
+    pub try_start: u32,
+    pub try_end: u32,
+    pub catch: Option<u32>,
+    pub catch_end: Option<u32>,
+    pub finally: Option<u32>,
+}
+
+/// One control-transfer continuation. `cleanup` runs after every enclosing
+/// finalizer; `target` is the eventual destination used to decide which
+/// enclosing handlers the transfer actually leaves.
+#[derive(Clone)]
+pub(crate) struct AbruptJump {
+    pub cleanup: u32,
+    pub target: u32,
+}
+
 /// Read-only compiled code plus its constant pool and binding/scope
 /// metadata. Can execute repeatedly in the same or independent VMs;
 /// runtime object handles are never stored in its constant pool.
@@ -145,6 +172,8 @@ pub struct Bytecode {
     pub(crate) constructible: bool,
     pub(crate) strict: bool,
     pub(crate) templates: Vec<TemplateSite>,
+    pub(crate) handlers: Vec<Handler>,
+    pub(crate) abrupt_jumps: Vec<AbruptJump>,
 }
 
 impl Bytecode {
@@ -162,6 +191,8 @@ impl Bytecode {
             constructible: false,
             strict: false,
             templates: Vec::new(),
+            handlers: Vec::new(),
+            abrupt_jumps: Vec::new(),
         }
     }
 

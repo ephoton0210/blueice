@@ -11,6 +11,16 @@ fn math_uint32(value: f64) -> u32 {
 }
 
 impl Vm {
+    fn direct_eval(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        let Value::String(source) = value else { return Ok(value.clone()) };
+        let source = source.to_utf8().map_err(|_| RuntimeError::SyntaxError("eval source contains an unpaired surrogate".into()))?;
+        let program = crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let code = crate::compiler::compile_eval(&program, &self.eval_visible_bindings(), self.strict)
+            .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+        let captures = code.captures.iter().map(|slot| self.capture(*slot as usize)).collect::<Result<Vec<_>, _>>()?;
+        self.execute_eval(&code, captures)
+    }
+
     pub(super) fn array_push(&mut self, array: &Value, value: &Value, kind: usize) -> Result<(), RuntimeError> {
         let id = array.object_id().unwrap();
         if kind == 2 {
@@ -285,17 +295,25 @@ impl Vm {
         self.stack.push(self.this.clone());
         self.stack.extend(self.arguments.iter().cloned());
         let bindings = std::mem::replace(&mut self.bindings, vec![None; code.bindings.len()]);
+        let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
         let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
         let this = std::mem::replace(&mut self.this, receiver);
         let arguments = std::mem::replace(&mut self.arguments, args);
         let completion = std::mem::replace(&mut self.completion, Value::Undefined);
+        let completion_empty = std::mem::replace(&mut self.completion_empty, true);
+        let active_scopes = std::mem::take(&mut self.active_scopes);
+        let active_scope_slots = std::mem::take(&mut self.active_scope_slots);
         let strict = std::mem::replace(&mut self.strict, code.strict);
         let result = self.run(&code);
         self.bindings = bindings;
+        self.binding_metadata = binding_metadata;
         self.cells = cells;
         self.this = this;
         self.arguments = arguments;
         self.completion = completion;
+        self.completion_empty = completion_empty;
+        self.active_scopes = active_scopes;
+        self.active_scope_slots = active_scope_slots;
         self.strict = strict;
         self.stack.truncate(base - 1);
         result.map(|value| if construct && !matches!(value, Value::Object(_)) { constructed } else { value })
@@ -601,6 +619,7 @@ impl Vm {
         let native = match name {
             "Symbol" => NativeFunction::Symbol,
             "Array" => NativeFunction::Array,
+            "eval" => NativeFunction::Eval,
             "Object" => NativeFunction::Object,
             "Number" => NativeFunction::PrimitiveConstructor(false),
             "Boolean" => NativeFunction::PrimitiveConstructor(true),
@@ -744,6 +763,7 @@ impl Vm {
             NativeFunction::ArrayIsArray => Ok(Value::Bool(first.object_id().is_some_and(|id| self.heap.is_array(id).unwrap_or(false)))),
             NativeFunction::ArrayForEach => self.array_for_each(&receiver, first, native::argument(&args, 1)),
             NativeFunction::ArrayIncludes => self.array_includes(&receiver, first, native::argument(&args, 1)),
+            NativeFunction::Eval => self.direct_eval(first),
             NativeFunction::IsNaN => Ok(Value::Bool(self.coerce_number(first)?.is_nan())),
             NativeFunction::IsFinite => Ok(Value::Bool(self.coerce_number(first)?.is_finite())),
             NativeFunction::ParseInt => self.parse_int(first, native::argument(&args, 1)),
@@ -875,6 +895,7 @@ impl Vm {
                 let join = self.get_property(&object, &"join".into())?;
                 if self.is_callable(&join)? { self.call_native(join, object, vec![], false) } else { self.native_call(NativeFunction::ObjectToString, object, vec![], false) }
             }
+            NativeFunction::ArrayConcat => self.array_concat(&receiver, &args),
             NativeFunction::ArrayJoin => self.array_join(&receiver, first),
             NativeFunction::Symbol => Ok(Value::Symbol(JsSymbol::new(if matches!(first, Value::Undefined) { None } else { Some(self.coerce_string(first)?) }))),
             NativeFunction::Object => {
@@ -953,6 +974,23 @@ impl Vm {
         })();
         self.joining.pop();
         result
+    }
+
+    fn array_concat(&mut self, receiver: &Value, args: &[Value]) -> Result<Value, RuntimeError> {
+        let mut values = Vec::new();
+        for value in std::iter::once(receiver).chain(args) {
+            if let Some(object) = value.object_id().filter(|id| self.heap.is_array(*id).unwrap_or(false)) {
+                let length = self.get_property(&Value::Object(object), &"length".into())?;
+                let length = self.coerce_length(&length)? as u64;
+                for index in 0..length {
+                    self.charge_step()?;
+                    values.push(self.get_property(&Value::Object(object), &index.to_string().into())?);
+                }
+            } else {
+                values.push(value.clone());
+            }
+        }
+        self.array_from(values)
     }
 
     fn array_for_each(&mut self, receiver: &Value, callback: &Value, this_arg: &Value) -> Result<Value, RuntimeError> {

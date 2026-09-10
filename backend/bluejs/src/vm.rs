@@ -8,8 +8,9 @@
 
 use crate::native::{self, NativeFunction};
 use crate::primitive;
+use crate::bytecode::Binding;
 use crate::{Bytecode, Heap, HeapConfig, HeapError, JsString, JsSymbol, ObjectId, Opcode, PropertyDescriptor, PropertyName, RootId, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 mod builtins;
 mod errors;
 mod functions;
@@ -88,6 +89,58 @@ impl From<HeapError> for RuntimeError {
     }
 }
 
+impl RuntimeError {
+    /// Language exceptions participate in ECMAScript completion propagation.
+    /// Limits, allocation failures and failed isolated host workers remain
+    /// uncatchable host aborts: user code must not turn a resource boundary
+    /// into an apparent JavaScript success.
+    fn is_catchable(&self) -> bool {
+        matches!(self, Self::ReferenceError(_) | Self::TypeError(_) | Self::RangeError(_) | Self::SyntaxError(_) | Self::Thrown(_) | Self::Test262(_))
+    }
+}
+
+#[derive(Clone)]
+enum Completion {
+    Throw(RuntimeError),
+    Return(Value),
+    Jump { cleanup: usize, target: usize },
+    Resume(usize),
+    Halt(Value),
+}
+
+impl Completion {
+    fn value(&self) -> Option<&Value> {
+        match self {
+            Self::Return(value) => Some(value),
+            Self::Throw(RuntimeError::Thrown(value)) => Some(value),
+            Self::Throw(_) | Self::Jump { .. } | Self::Resume(_) | Self::Halt(_) => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HandlerState {
+    Try,
+    Catch,
+    Finally,
+}
+
+struct HandlerFrame {
+    metadata: usize,
+    stack_depth: usize,
+    scope_depth: usize,
+    iterator_depth: usize,
+    state: HandlerState,
+    pending: Option<usize>,
+}
+
+enum CompletionAction {
+    Continue,
+    Jump(usize),
+    Return(Value),
+    Throw(RuntimeError),
+}
+
 /// An isolated execution context. Each execute has fresh bindings; this
 /// is not yet a persistent REPL/global environment or browser host.
 pub struct Vm {
@@ -100,7 +153,17 @@ pub struct Vm {
     stack: Vec<Value>,
     // None is a lexical binding's uninitialized state, never JS undefined.
     bindings: Vec<Option<Value>>,
+    // The matching static metadata for `bindings`; nested calls and direct
+    // eval swap it together with their runtime binding vector.
+    binding_metadata: Vec<Binding>,
     completion: Value,
+    completion_empty: bool,
+    active_scopes: Vec<u32>,
+    active_scope_slots: Vec<Vec<u32>>,
+    // Values in suspended finally paths live here rather than in Rust-only
+    // handler records, so VM safepoints root them during allocations.
+    pending_completions: Vec<Completion>,
+    completion_saves: Vec<(Value, bool)>,
     remaining_instructions: u64,
     cells: HashMap<usize, ObjectId>,
     this: Value,
@@ -143,7 +206,13 @@ impl Vm {
             result_root: None,
             stack: Vec::new(),
             bindings: Vec::new(),
+            binding_metadata: Vec::new(),
             completion: Value::Undefined,
+            completion_empty: true,
+            active_scopes: Vec::new(),
+            active_scope_slots: Vec::new(),
+            pending_completions: Vec::new(),
+            completion_saves: Vec::new(),
             remaining_instructions: 0,
             cells: HashMap::new(),
             this: Value::Undefined,
@@ -186,8 +255,12 @@ impl Vm {
         }
         self.heap.collect_major();
         self.bindings.resize(code.bindings.len(), None);
+        self.binding_metadata = code.bindings.clone();
         self.remaining_instructions = self.config.instruction_budget;
         self.strict = code.strict;
+        self.completion_empty = true;
+        self.active_scopes.clear();
+        self.active_scope_slots.clear();
         // `this` lazily materializes the realm global only when script code
         // actually observes it. This keeps data-only executions within small
         // heap configurations while preserving script and arrow semantics.
@@ -206,8 +279,14 @@ impl Vm {
         }
         self.stack.clear();
         self.bindings.clear();
+        self.binding_metadata.clear();
         self.cells.clear();
         self.completion = Value::Undefined;
+        self.completion_empty = true;
+        self.active_scopes.clear();
+        self.active_scope_slots.clear();
+        self.pending_completions.clear();
+        self.completion_saves.clear();
         self.heap.collect_major();
         result
     }
@@ -228,6 +307,152 @@ impl Vm {
         self.stack.pop().expect("compiler balances the operand stack")
     }
 
+    fn reset_scope(&mut self, code: &Bytecode, scope: u32) {
+        for slot in &code.scopes[scope as usize] {
+            self.cells.remove(&(*slot as usize));
+            self.bindings[*slot as usize] = None;
+        }
+    }
+
+    fn leave_scope(&mut self, code: &Bytecode, scope: u32) {
+        if self.active_scopes.last() == Some(&scope) {
+            self.active_scopes.pop();
+            self.active_scope_slots.pop();
+            self.reset_scope(code, scope);
+        } else {
+            // A control-transfer gateway can be resumed after a handler has
+            // already unwound an inner scope before running `finally`.
+            // Gateways still list that lexical scope; it is a no-op now.
+            debug_assert!(!self.active_scopes.contains(&scope), "scope {scope} is below an active inner scope: {:?}", self.active_scopes);
+        }
+    }
+
+    fn unwind_scopes(&mut self, code: &Bytecode, depth: usize) {
+        while self.active_scopes.len() > depth {
+            let scope = self.active_scopes.pop().expect("scope length was checked");
+            self.active_scope_slots.pop();
+            self.reset_scope(code, scope);
+        }
+    }
+
+    fn close_iterators_to(&mut self, iterators: &mut Vec<Value>, depth: usize) {
+        // A compiler-emitted `break` can close its target for-of iterator
+        // before a surrounding handler starts finalizer cleanup.
+        let active = iterators.split_off(depth.min(iterators.len()));
+        for record in active.into_iter().rev() {
+            // This is cleanup for an already-selected abrupt completion. The
+            // original completion wins over a return() failure.
+            let _ = self.iterator_close(&record);
+        }
+    }
+
+    fn error_value(&mut self, error: RuntimeError) -> Result<Value, RuntimeError> {
+        match error {
+            RuntimeError::Thrown(value) => Ok(value),
+            RuntimeError::ReferenceError(message) => self.error_object("ReferenceError", message),
+            RuntimeError::TypeError(message) => self.error_object("TypeError", message),
+            RuntimeError::RangeError(message) => self.error_object("RangeError", message),
+            RuntimeError::SyntaxError(message) => self.error_object("SyntaxError", message),
+            RuntimeError::Test262(message) => self.error_object("Test262Error", message),
+            error => Err(error),
+        }
+    }
+
+    fn error_object(&mut self, name: &str, message: String) -> Result<Value, RuntimeError> {
+        let constructor = self.error_global(name)?;
+        self.call_native(constructor, Value::Undefined, vec![Value::String(message.into())], false)
+    }
+
+    fn restore_completion(&mut self) {
+        let (value, empty) = self.completion_saves.pop().expect("normal finally entry saves its preceding completion");
+        self.completion = value;
+        self.completion_empty = empty;
+    }
+
+    fn resolve_completion(&mut self, code: &Bytecode, handlers: &mut Vec<HandlerFrame>, iterators: &mut Vec<Value>, completion: Completion) -> Result<CompletionAction, RuntimeError> {
+        if let Completion::Halt(value) = completion {
+            return Ok(CompletionAction::Return(value));
+        }
+        if let Completion::Resume(metadata) = completion {
+            if let Some(frame) = handlers.pop_if(|frame| frame.metadata == metadata) {
+                let pending = frame.pending.expect("only an abrupt finally resumes a handler");
+                return self.resolve_completion(code, handlers, iterators, self.pending_completions[pending].clone());
+            }
+            self.restore_completion();
+            return Ok(CompletionAction::Continue);
+        }
+
+        // Keep a potential thrown/returned object reachable while scope and
+        // iterator cleanup can call user code and trigger collection.
+        self.pending_completions.push(completion.clone());
+        let mut completion = completion;
+        loop {
+            let Some(frame) = handlers.last() else {
+                return Ok(match completion {
+                    Completion::Throw(error) => CompletionAction::Throw(error),
+                    Completion::Return(value) => CompletionAction::Return(value),
+                    Completion::Jump { cleanup, .. } => CompletionAction::Jump(cleanup),
+                    Completion::Resume(_) | Completion::Halt(_) => unreachable!("handled above"),
+                });
+            };
+            let metadata = frame.metadata;
+            let stack_depth = frame.stack_depth;
+            let scope_depth = frame.scope_depth;
+            let iterator_depth = frame.iterator_depth;
+            let state = frame.state;
+            let handler = &code.handlers[metadata];
+            let catch = handler.catch;
+            let finally = handler.finally;
+
+            // A break/continue may target a loop that is contained in this
+            // try or catch block. It has not left this handler, so it must not
+            // consume the frame or spuriously run an outer finalizer.
+            if let Completion::Jump { cleanup, target } = completion {
+                let region = match state {
+                    HandlerState::Try => Some((handler.try_start as usize, handler.try_end as usize)),
+                    HandlerState::Catch => handler.catch.map(|start| (start as usize, handler.catch_end.expect("catch end is compiled") as usize)),
+                    HandlerState::Finally => None,
+                };
+                if region.is_some_and(|(start, end)| (start..end).contains(&target)) {
+                    return Ok(CompletionAction::Jump(cleanup));
+                }
+            }
+
+            // Break/continue resume at compiler-emitted cleanup gateways. If
+            // one crosses this handler to reach a finalizer, unwind its try or
+            // catch scope before the finalizer runs; its later gateway skips
+            // that already-cleared scope. Throws and returns have no bytecode
+            // continuation, so they always unwind immediately.
+            let unwind = !matches!(completion, Completion::Jump { .. }) || (state != HandlerState::Finally && finally.is_some());
+            if unwind {
+                self.stack.truncate(stack_depth);
+                self.unwind_scopes(code, scope_depth);
+                self.close_iterators_to(iterators, iterator_depth);
+            }
+
+            if state == HandlerState::Try {
+                if let (Some(target), Completion::Throw(error)) = (catch, &completion) {
+                    let value = self.error_value(error.clone())?;
+                    handlers.last_mut().expect("handler was inspected above").state = HandlerState::Catch;
+                    self.stack.push(value);
+                    return Ok(CompletionAction::Jump(target as usize));
+                }
+            }
+            if state != HandlerState::Finally {
+                if let Some(target) = finally {
+                    let pending = self.pending_completions.len();
+                    self.pending_completions.push(completion);
+                    let frame = handlers.last_mut().expect("handler was inspected above");
+                    frame.state = HandlerState::Finally;
+                    frame.pending = Some(pending);
+                    return Ok(CompletionAction::Jump(target as usize));
+                }
+            }
+            handlers.pop();
+            completion = self.pending_completions.last().expect("completion remains rooted").clone();
+        }
+    }
+
     fn check_string(&self, value: &Value) -> Result<(), RuntimeError> {
         if matches!(value, Value::String(s) if s.byte_len() > self.config.max_string_bytes) {
             Err(RuntimeError::StringLimit { limit: self.config.max_string_bytes })
@@ -239,7 +464,7 @@ impl Vm {
     fn with_roots<T>(&mut self, operation: impl FnOnce(&mut Heap) -> Result<T, HeapError>) -> Result<T, RuntimeError> {
         let mut roots = Vec::new();
         let registration = (|| {
-            for value in self.stack.iter().chain(self.bindings.iter().flatten()).chain(std::iter::once(&self.completion)) {
+            for value in self.stack.iter().chain(self.bindings.iter().flatten()).chain(std::iter::once(&self.completion)).chain(self.pending_completions.iter().filter_map(Completion::value)).chain(self.completion_saves.iter().map(|(value, _)| value)) {
                 if let Value::Object(id) = value {
                     // Rooting cannot GC, but can exhaust the root-ID
                     // counter. Partial registrations must be released too.
@@ -259,6 +484,8 @@ impl Vm {
     }
 
     fn run(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
+        let pending_base = self.pending_completions.len();
+        let save_base = self.completion_saves.len();
         let mut iterators = Vec::new();
         let result = self.interpret(code, &mut iterators);
         if result.is_err() {
@@ -272,16 +499,62 @@ impl Vm {
                 let _ = self.iterator_close(&record);
             }
         }
+        self.pending_completions.truncate(pending_base);
+        self.completion_saves.truncate(save_base);
         result
+    }
+
+    fn execute_eval(&mut self, code: &Bytecode, captures: Vec<ObjectId>) -> Result<Value, RuntimeError> {
+        let base = self.stack.len();
+        self.stack.extend(self.bindings.iter().flatten().cloned());
+        self.stack.extend(self.cells.values().copied().map(Value::Object));
+        self.stack.push(self.completion.clone());
+        self.stack.push(self.this.clone());
+        self.stack.extend(self.arguments.iter().cloned());
+        let bindings = std::mem::replace(&mut self.bindings, vec![None; code.bindings.len()]);
+        let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
+        let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
+        let completion = std::mem::replace(&mut self.completion, Value::Undefined);
+        let completion_empty = std::mem::replace(&mut self.completion_empty, true);
+        let active_scopes = std::mem::take(&mut self.active_scopes);
+        let active_scope_slots = std::mem::take(&mut self.active_scope_slots);
+        let strict = std::mem::replace(&mut self.strict, code.strict);
+        let result = self.run(code);
+        self.bindings = bindings;
+        self.binding_metadata = binding_metadata;
+        self.cells = cells;
+        self.completion = completion;
+        self.completion_empty = completion_empty;
+        self.active_scopes = active_scopes;
+        self.active_scope_slots = active_scope_slots;
+        self.strict = strict;
+        self.stack.truncate(base);
+        result
+    }
+
+    fn eval_visible_bindings(&self) -> Vec<(String, Binding, u32)> {
+        let mut visible = std::collections::BTreeMap::new();
+        for scope in &self.active_scope_slots {
+            for &slot in scope {
+                let slot = slot as usize;
+                visible.insert(self.binding_metadata[slot].name.clone(), (self.binding_metadata[slot].clone(), slot as u32));
+            }
+        }
+        for &slot in self.cells.keys() {
+            visible.entry(self.binding_metadata[slot].name.clone()).or_insert_with(|| (self.binding_metadata[slot].clone(), slot as u32));
+        }
+        visible.into_iter().map(|(name, (binding, slot))| (name, binding, slot)).collect()
     }
 
     fn interpret(&mut self, code: &Bytecode, iterators: &mut Vec<Value>) -> Result<Value, RuntimeError> {
         let mut pc = 0;
+        let mut handlers = Vec::new();
         loop {
             self.charge_step()?;
             let instruction = code.instruction(pc).expect("compiler emits valid instruction boundaries");
             let operand = instruction.operand.unwrap_or(0) as usize;
             pc += instruction.opcode.width();
+            let outcome: Result<Option<Completion>, RuntimeError> = (|| {
             match instruction.opcode {
                 Opcode::DefineData | Opcode::DefineAccessor => {
                     let value = self.pop();
@@ -313,7 +586,7 @@ impl Vm {
                     }
                     self.stack.push(Value::Bool(deleted));
                 }
-                Opcode::Throw => return Err(RuntimeError::Thrown(self.pop())),
+                Opcode::Throw => return Ok(Some(Completion::Throw(RuntimeError::Thrown(self.pop())))),
                 Opcode::ArrayPush => {
                     let base = self.stack.len() - 2;
                     self.array_push(&self.stack[base].clone(), &self.stack[base + 1].clone(), operand)?;
@@ -342,6 +615,12 @@ impl Vm {
                     self.pop();
                     self.stack.push(iterator.clone());
                     iterators.push(iterator);
+                }
+                Opcode::ForInKeys => {
+                    let source = self.stack.last().expect("for-in has a source").clone();
+                    let keys = self.for_in_keys(&source)?;
+                    self.pop();
+                    self.stack.push(keys);
                 }
                 Opcode::IteratorStep => {
                     let record = self.stack.last().unwrap().clone();
@@ -460,7 +739,7 @@ impl Vm {
                     let array = self.array_from(self.arguments.iter().skip(operand).cloned().collect())?;
                     self.stack.push(array);
                 }
-                Opcode::Return => return Ok(self.pop()),
+                Opcode::Return => return Ok(Some(Completion::Return(self.pop()))),
                 Opcode::Global => {
                     let Value::String(name) = &code.constants[operand] else { unreachable!() };
                     let value = self.global(&name.to_utf8().unwrap())?;
@@ -510,13 +789,16 @@ impl Vm {
                         self.stack.push(value.ok_or(RuntimeError::ReferenceError(name))?);
                     }
                 }
-                Opcode::EnterScope | Opcode::LeaveScope => {
+                Opcode::EnterScope => {
                     for slot in &code.scopes[operand] {
                         self.cells.remove(&(*slot as usize));
                         self.bindings[*slot as usize] =
-                            if instruction.opcode == Opcode::EnterScope && !code.bindings[*slot as usize].lexical { Some(Value::Undefined) } else { None };
+                            if !code.bindings[*slot as usize].lexical { Some(Value::Undefined) } else { None };
                     }
+                    self.active_scopes.push(operand as u32);
+                    self.active_scope_slots.push(code.scopes[operand].clone());
                 }
+                Opcode::LeaveScope => self.leave_scope(code, operand as u32),
                 Opcode::Pop => {
                     self.pop();
                 }
@@ -635,9 +917,50 @@ impl Vm {
                         _ => {} // Literal __proto__ with a primitive value has no effect.
                     }
                 }
-                Opcode::SetCompletion => self.completion = self.pop(),
-                Opcode::ClearCompletion => self.completion = Value::Undefined,
-                Opcode::Halt => return Ok(self.completion.clone()),
+                Opcode::SetCompletion => {
+                    self.completion = self.pop();
+                    self.completion_empty = false;
+                }
+                Opcode::ClearCompletion => {
+                    self.completion = Value::Undefined;
+                    self.completion_empty = true;
+                }
+                Opcode::PushHandler => {
+                    debug_assert!(operand < code.handlers.len());
+                    handlers.push(HandlerFrame {
+                        metadata: operand,
+                        stack_depth: self.stack.len(),
+                        scope_depth: self.active_scopes.len(),
+                        iterator_depth: iterators.len(),
+                        state: HandlerState::Try,
+                        pending: None,
+                    });
+                }
+                Opcode::PopHandler => {
+                    handlers.pop().expect("compiler pops its active try handler");
+                }
+                Opcode::SaveCompletion => self.completion_saves.push((self.completion.clone(), self.completion_empty)),
+                Opcode::ResumeCompletion => return Ok(Some(Completion::Resume(operand))),
+                Opcode::AbruptJump => {
+                    let jump = &code.abrupt_jumps[operand];
+                    return Ok(Some(Completion::Jump { cleanup: jump.cleanup as usize, target: jump.target as usize }));
+                }
+                Opcode::Halt => return Ok(Some(Completion::Halt(self.completion.clone()))),
+            }
+            Ok(None)
+            })();
+            let completion = match outcome {
+                Ok(completion) => completion,
+                Err(error) if error.is_catchable() => Some(Completion::Throw(error)),
+                Err(error) => return Err(error),
+            };
+            if let Some(completion) = completion {
+                match self.resolve_completion(code, &mut handlers, iterators, completion)? {
+                    CompletionAction::Continue => {}
+                    CompletionAction::Jump(target) => pc = target,
+                    CompletionAction::Return(value) => return Ok(value),
+                    CompletionAction::Throw(error) => return Err(error),
+                }
             }
         }
     }
@@ -806,6 +1129,29 @@ impl Vm {
         result
     }
 
+    /// Snapshots the enumerable string keys visible through an object's
+    /// prototype chain. Non-enumerable own keys still suppress an inherited
+    /// key with the same name; symbols never participate in `for-in`.
+    fn for_in_keys(&mut self, source: &Value) -> Result<Value, RuntimeError> {
+        let mut current = Some(self.coerce_object(source)?);
+        let mut seen = HashSet::new();
+        let mut keys = Vec::new();
+        while let Some(object) = current {
+            for key in self.heap.own_property_keys(object)? {
+                if !seen.insert(key.clone()) {
+                    continue;
+                }
+                if let PropertyName::String(key) = key {
+                    if self.heap.get_own_property_descriptor(object, PropertyName::String(key.clone()))?.is_some_and(|descriptor| descriptor.enumerable == Some(true)) {
+                        keys.push(Value::String(key));
+                    }
+                }
+            }
+            current = self.heap.prototype(object)?;
+        }
+        self.array_from(keys)
+    }
+
     fn string_intrinsics(&mut self) -> Result<(ObjectId, ObjectId), RuntimeError> {
         if let Some(intrinsics) = self.string_intrinsics {
             return Ok(intrinsics);
@@ -854,6 +1200,7 @@ impl Vm {
             self.install_native(object_prototype, function_prototype, "toString", 0, NativeFunction::ObjectToString)?;
             self.install_native(object_prototype, function_prototype, "valueOf", 0, NativeFunction::ObjectValueOf)?;
             self.install_native(self.array_prototype, function_prototype, "toString", 0, NativeFunction::ArrayToString)?;
+            self.install_native(self.array_prototype, function_prototype, "concat", 1, NativeFunction::ArrayConcat)?;
             self.install_native(self.array_prototype, function_prototype, "join", 1, NativeFunction::ArrayJoin)?;
             self.install_native(self.array_prototype, function_prototype, "forEach", 1, NativeFunction::ArrayForEach)?;
             self.install_native(self.array_prototype, function_prototype, "includes", 1, NativeFunction::ArrayIncludes)?;
@@ -872,6 +1219,7 @@ impl Vm {
                     (object_prototype, PropertyName::from("toString")),
                     (object_prototype, "valueOf".into()),
                     (self.array_prototype, "toString".into()),
+                    (self.array_prototype, "concat".into()),
                     (self.array_prototype, "join".into()),
                     (self.array_prototype, "forEach".into()),
                     (self.array_prototype, "includes".into()),

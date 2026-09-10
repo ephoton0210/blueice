@@ -299,7 +299,7 @@ fn object_operations_preserve_identity_and_evaluation_order() {
 
 #[test]
 fn unsupported_syntax_and_invalid_bindings_fail_before_execution() {
-    for source in ["for(x of y){}", "for(x in y){}", "switch(x){}", "try {} finally {}", "x=1", "let undefined=1"] {
+    for source in ["for(x of y){}", "for(x in y){}", "x=1", "let undefined=1"] {
         assert!(matches!(compile(&parse(source).unwrap()), Err(CompileError::Unsupported(_))), "{source}");
     }
     for source in ["x == 1", "x != 1", "x in y"] {

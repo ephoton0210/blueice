@@ -7,7 +7,7 @@
 //! Every lexical scope has its own slots, reset on entry/exit. Abrupt
 //! loop exits emit the same scope cleanup as ordinary block exits.
 
-use crate::bytecode::Binding;
+use crate::bytecode::{AbruptJump, Binding, Handler};
 use crate::*;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
@@ -43,7 +43,7 @@ pub fn compile(program: &Program) -> Result<Bytecode, CompileError> {
 /// A limit failure returns [`CompileError::ProgramTooLarge`], never partial
 /// bytecode. This does not bound AST depth, constant payloads or total memory.
 pub fn compile_with_limit(program: &Program, max_bytecode_bytes: u32) -> Result<Bytecode, CompileError> {
-    let mut compiler = Compiler { bytecode: Bytecode::empty(), names: Vec::new(), scopes: Vec::new(), loops: Vec::new(), max_bytecode_bytes, function: false, local_scope: 0 };
+    let mut compiler = Compiler { bytecode: Bytecode::empty(), names: Vec::new(), scopes: Vec::new(), loops: Vec::new(), catch_var_slots: Vec::new(), max_bytecode_bytes, function: false, local_scope: 0 };
     compiler.bytecode.strict = strict_body(&program.body);
     let vars = var_names(&program.body)?;
     compiler.enter_scope(lexical_names(&program.body)?, &vars, true)?;
@@ -52,10 +52,39 @@ pub fn compile_with_limit(program: &Program, max_bytecode_bytes: u32) -> Result<
     Ok(compiler.bytecode)
 }
 
+/// Compiles direct-eval source with cells for the caller's visible bindings.
+/// The runtime supplies `visible` from its active lexical environments and
+/// installs the matching cells before running the resulting bytecode.
+pub(crate) fn compile_eval(program: &Program, visible: &[(String, Binding, u32)], strict: bool) -> Result<Bytecode, CompileError> {
+    let mut compiler = Compiler {
+        bytecode: Bytecode::empty(),
+        names: vec![HashMap::new()],
+        scopes: Vec::new(),
+        loops: Vec::new(),
+        catch_var_slots: Vec::new(),
+        max_bytecode_bytes: u32::MAX,
+        function: false,
+        local_scope: 1,
+    };
+    compiler.bytecode.strict = strict || strict_body(&program.body);
+    for (name, binding, caller_slot) in visible {
+        let slot = u32::try_from(compiler.bytecode.bindings.len()).map_err(|_| CompileError::ProgramTooLarge)?;
+        compiler.names[0].insert(name.clone(), slot);
+        compiler.bytecode.bindings.push(binding.clone());
+        compiler.bytecode.captures.push(*caller_slot);
+    }
+    let vars = var_names(&program.body)?;
+    let new_vars = vars.into_iter().filter(|name| !compiler.names[0].contains_key(name)).collect();
+    compiler.enter_scope(lexical_names(&program.body)?, &new_vars, true)?;
+    compiler.statements(&program.body)?;
+    compiler.emit(Opcode::Halt, 0)?;
+    Ok(compiler.bytecode)
+}
+
 struct Loop {
     scope_depth: usize,
-    breaks: Vec<usize>,
-    continues: Vec<usize>,
+    breaks: Vec<(usize, usize)>,
+    continues: Option<Vec<(usize, usize)>>,
     iterator: Option<u32>,
 }
 
@@ -64,6 +93,9 @@ struct Compiler {
     names: Vec<HashMap<String, u32>>,
     scopes: Vec<u32>,
     loops: Vec<Loop>,
+    // Annex B permits a simple catch parameter to be redeclared with `var`
+    // in its block. Those declaration writes target the catch binding.
+    catch_var_slots: Vec<HashMap<String, u32>>,
     max_bytecode_bytes: u32,
     function: bool,
     local_scope: usize,
@@ -153,6 +185,7 @@ impl Compiler {
                 self.expression(value)?;
                 self.emit(Opcode::Throw, 0)?;
             }
+            Stmt::Try { block, handler, finalizer } => self.try_statement(block, handler.as_ref(), finalizer.as_deref())?,
             Stmt::FunctionDecl(_) => {}
             Stmt::Return(value) => {
                 if !self.function {
@@ -201,25 +234,194 @@ impl Compiler {
             Stmt::While { test, body } => self.loop_statement(None, Some(test), None, body, false)?,
             Stmt::DoWhile { body, test } => self.loop_statement(None, Some(test), None, body, true)?,
             Stmt::For { init, test, update, body } => self.loop_statement(init.as_ref(), test.as_ref(), update.as_ref(), body, false)?,
+            Stmt::ForIn { left, right, body } => self.for_in(left, right, body)?,
             Stmt::ForOf { left, right, body } => self.for_of(left, right, body)?,
+            Stmt::Switch { discriminant, cases } => self.switch_statement(discriminant, cases)?,
             Stmt::Break | Stmt::Continue => {
-                let Some(context) = self.loops.last() else { return Err(CompileError::InvalidSyntax("break/continue requires an enclosing loop")) };
+                let index = if matches!(statement, Stmt::Break) {
+                    self.loops.len().checked_sub(1)
+                } else {
+                    self.loops.iter().rposition(|context| context.continues.is_some())
+                };
+                let Some(index) = index else { return Err(CompileError::InvalidSyntax(if matches!(statement, Stmt::Break) { "break requires an enclosing loop or switch" } else { "continue requires an enclosing loop" })) };
+                let context = &self.loops[index];
                 let scopes: Vec<_> = self.scopes[context.scope_depth..].iter().rev().copied().collect();
                 let iterator = context.iterator;
-                for scope in scopes {
-                    self.emit(Opcode::LeaveScope, scope)?;
-                }
+                // A direct jump would skip a surrounding `finally`. Route to
+                // a local cleanup gateway first; a handler resumes there only
+                // after its finalizer has completed, so lexical environments
+                // stay live while `finally` runs.
+                let control = self.bytecode.abrupt_jumps.len();
+                let control_operand = u32::try_from(control).map_err(|_| CompileError::ProgramTooLarge)?;
+                self.bytecode.abrupt_jumps.push(AbruptJump { cleanup: 0, target: 0 });
+                self.emit(Opcode::AbruptJump, control_operand)?;
+                let cleanup = self.offset()?;
+                self.bytecode.abrupt_jumps[control].cleanup = cleanup;
                 if matches!(statement, Stmt::Break) {
                     if let Some(iterator) = iterator {
+                        // Close only after a surrounding finalizer has had a
+                        // chance to replace this break with another completion.
                         self.emit(Opcode::GetBinding, iterator)?;
                         self.emit(Opcode::IteratorClose, 0)?;
                     }
                 }
+                for scope in scopes {
+                    self.emit(Opcode::LeaveScope, scope)?;
+                }
                 let jump = self.emit(Opcode::Jump, 0)?;
-                let context = self.loops.last_mut().unwrap();
-                if matches!(statement, Stmt::Break) { context.breaks.push(jump) } else { context.continues.push(jump) }
+                let context = &mut self.loops[index];
+                if matches!(statement, Stmt::Break) {
+                    context.breaks.push((jump, control));
+                } else {
+                    context.continues.as_mut().expect("selected context is a loop").push((jump, control));
+                }
             }
-            _ => return Err(CompileError::Unsupported("this statement kind (functions, for-in/of, switch, return or exceptions)")),
+        }
+        Ok(())
+    }
+
+    fn scoped_statements(&mut self, statements: &[Stmt]) -> Result<(), CompileError> {
+        self.enter_scope(lexical_names(statements)?, &var_names(statements)?, false)?;
+        self.statements(statements)?;
+        self.leave_scope()
+    }
+
+    fn switch_statement(&mut self, discriminant: &Expr, cases: &[SwitchCase]) -> Result<(), CompileError> {
+        self.emit(Opcode::ClearCompletion, 0)?;
+        let mut lexical = Vec::new();
+        let mut vars = BTreeSet::new();
+        for case in cases {
+            lexical.extend(lexical_names(&case.consequent)?);
+            vars.extend(var_names(&case.consequent)?);
+        }
+        self.enter_scope(lexical, &vars, false)?;
+        self.expression(discriminant)?;
+
+        let mut case_entries = vec![None; cases.len()];
+        for (index, case) in cases.iter().enumerate() {
+            if let Some(test) = &case.test {
+                self.emit(Opcode::Dup, 0)?;
+                self.expression(test)?;
+                self.emit(Opcode::StrictEqual, 0)?;
+                let no_match = self.emit(Opcode::JumpIfFalse, 0)?;
+                case_entries[index] = Some(self.emit(Opcode::Jump, 0)?);
+                self.patch(no_match, self.offset()?);
+            }
+        }
+        let no_match = self.emit(Opcode::Jump, 0)?;
+        let no_match_cleanup = self.offset()?;
+        self.emit(Opcode::Pop, 0)?;
+        let no_match_exit = self.emit(Opcode::Jump, 0)?;
+
+        let mut case_stubs = Vec::with_capacity(cases.len());
+        let mut body_jumps = Vec::with_capacity(cases.len());
+        for _ in cases {
+            case_stubs.push(self.offset()?);
+            self.emit(Opcode::Pop, 0)?;
+            body_jumps.push(self.emit(Opcode::Jump, 0)?);
+        }
+        for (entry, stub) in case_entries.into_iter().zip(&case_stubs) {
+            if let Some(entry) = entry {
+                self.patch(entry, *stub);
+            }
+        }
+        let default = cases.iter().position(|case| case.test.is_none());
+        self.patch(no_match, default.map(|index| case_stubs[index]).unwrap_or(no_match_cleanup));
+
+        self.loops.push(Loop { scope_depth: self.scopes.len(), breaks: Vec::new(), continues: None, iterator: None });
+        for (case, jump) in cases.iter().zip(body_jumps) {
+            self.patch(jump, self.offset()?);
+            self.statements(&case.consequent)?;
+        }
+        let end = self.offset()?;
+        self.patch(no_match_exit, end);
+        let context = self.loops.pop().expect("switch control is active");
+        for (jump, control) in context.breaks {
+            self.patch(jump, end);
+            self.bytecode.abrupt_jumps[control].target = end;
+        }
+        self.leave_scope()?;
+        Ok(())
+    }
+
+    /// Compiles `try` as fixed bytecode plus immutable handler metadata. A
+    /// runtime frame records dynamic stack/scope depths, so a throw can safely
+    /// enter a catch block or run a finalizer without walking the AST.
+    fn try_statement(&mut self, block: &[Stmt], handler: Option<&CatchClause>, finalizer: Option<&[Stmt]>) -> Result<(), CompileError> {
+        let handler_index = u32::try_from(self.bytecode.handlers.len()).map_err(|_| CompileError::ProgramTooLarge)?;
+        self.bytecode.handlers.push(Handler { try_start: 0, try_end: 0, catch: None, catch_end: None, finally: None });
+        self.emit(Opcode::PushHandler, handler_index)?;
+
+        // Each TryBlock has its own Completion. An empty block must not leak
+        // the value of the preceding statement into TryStatement's
+        // UpdateEmpty step.
+        self.emit(Opcode::ClearCompletion, 0)?;
+        self.bytecode.handlers[handler_index as usize].try_start = self.offset()?;
+        self.scoped_statements(block)?;
+        self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
+        self.emit(Opcode::PopHandler, 0)?;
+        if finalizer.is_some() { self.emit(Opcode::SaveCompletion, 0)?; }
+        let normal_exit = self.emit(Opcode::Jump, 0)?;
+
+        let catch_exit = if let Some(catch) = handler {
+            let start = self.offset()?;
+            self.bytecode.handlers[handler_index as usize].catch = Some(start);
+            let parameter_bound_names = catch.param.as_ref().map(pattern_names).unwrap_or_default();
+            if self.bytecode.strict && parameter_bound_names.iter().any(|name| matches!(name.as_str(), "eval" | "arguments")) {
+                return Err(CompileError::InvalidSyntax("strict catch parameters cannot bind eval or arguments"));
+            }
+            if catch_lexical_names(&catch.body).into_iter().any(|name| parameter_bound_names.contains(&name)) {
+                return Err(CompileError::InvalidSyntax("a catch parameter conflicts with a lexical declaration"));
+            }
+            let parameter_names = parameter_bound_names.into_iter().map(|name| (name, DeclKind::Let)).collect();
+            self.enter_scope(parameter_names, &BTreeSet::new(), false)?;
+            let mut catch_var_slots = HashMap::new();
+            if let Some(Pattern::Identifier(name)) = &catch.param {
+                catch_var_slots.insert(name.clone(), self.resolve(name).expect("catch parameter was declared"));
+            }
+            self.catch_var_slots.push(catch_var_slots);
+            if let Some(param) = &catch.param {
+                // The VM places the caught JavaScript value on the stack at
+                // this destination. Binding initialization consumes it.
+                self.bind_pattern(param, DeclKind::Let)?;
+            } else {
+                self.emit(Opcode::Pop, 0)?;
+            }
+            // CatchParameter initialization is not part of the Block's
+            // completion value.
+            self.emit(Opcode::ClearCompletion, 0)?;
+            self.enter_scope(lexical_names(&catch.body)?, &var_names(&catch.body)?, false)?;
+            self.statements(&catch.body)?;
+            self.leave_scope()?;
+            self.catch_var_slots.pop().expect("catch var override is active");
+            self.leave_scope()?;
+            self.bytecode.handlers[handler_index as usize].catch_end = Some(self.offset()?);
+            self.emit(Opcode::PopHandler, 0)?;
+            if finalizer.is_some() { self.emit(Opcode::SaveCompletion, 0)?; }
+            Some(self.emit(Opcode::Jump, 0)?)
+        } else {
+            None
+        };
+
+        if let Some(finalizer) = finalizer {
+            let start = self.offset()?;
+            self.bytecode.handlers[handler_index as usize].finally = Some(start);
+            // A normal finally restores its saved prior Completion only when
+            // this block remains empty; a non-empty finalizer keeps its own.
+            self.emit(Opcode::ClearCompletion, 0)?;
+            self.scoped_statements(finalizer)?;
+            // On a normal entry the handler has already been popped and this
+            // restores the preceding non-empty completion. On an abrupt entry
+            // it replays the pending completion after the finalizer finishes.
+            self.emit(Opcode::ResumeCompletion, handler_index)?;
+            let end = self.offset()?;
+            self.patch(normal_exit, start);
+            if let Some(exit) = catch_exit { self.patch(exit, start); }
+            debug_assert!(end as usize <= self.bytecode.code.len());
+        } else {
+            let end = self.offset()?;
+            self.patch(normal_exit, end);
+            if let Some(exit) = catch_exit { self.patch(exit, end); }
         }
         Ok(())
     }
@@ -252,7 +454,16 @@ impl Compiler {
     fn bind_pattern(&mut self, pattern: &Pattern, kind: DeclKind) -> Result<(), CompileError> {
         match pattern {
             Pattern::Identifier(name) => {
-                let slot = if kind == DeclKind::Var { self.names[self.local_scope][name] } else { self.names.last().unwrap()[name] };
+                let slot = if kind == DeclKind::Var {
+                    self.catch_var_slots
+                        .iter()
+                        .rev()
+                        .find_map(|slots| slots.get(name))
+                        .copied()
+                        .or_else(|| self.names[self.local_scope].get(name).copied())
+                        .or_else(|| self.resolve(name))
+                        .expect("var declaration has a function or eval binding")
+                } else { self.names.last().unwrap()[name] };
                 if kind == DeclKind::Var {
                     self.emit(Opcode::StoreBinding, slot)?;
                     self.emit(Opcode::Pop, 0)?;
@@ -273,7 +484,7 @@ impl Compiler {
                         return Ok(());
                     }
                     self.array_pattern_value()?;
-                    self.pattern_default(element.default.as_ref())?;
+                    self.binding_pattern_default(element.default.as_ref(), &element.pattern)?;
                     self.bind_pattern(&element.pattern, kind)?;
                 }
                 self.emit(Opcode::IteratorFinish, 0)?;
@@ -287,7 +498,7 @@ impl Compiler {
                         ObjectPatternProp::KeyValue { key, value, default } => {
                             self.property_key(key)?;
                             self.emit(Opcode::DestructureProperty, 0)?;
-                            self.pattern_default(default.as_ref())?;
+                            self.binding_pattern_default(default.as_ref(), value)?;
                             self.bind_pattern(value, kind)?;
                         }
                         ObjectPatternProp::Rest(pattern) => {
@@ -331,6 +542,32 @@ impl Compiler {
         Ok(())
     }
 
+    fn binding_pattern_default(&mut self, default: Option<&Expr>, pattern: &Pattern) -> Result<(), CompileError> {
+        let Some(default) = default else { return Ok(()) };
+        self.emit(Opcode::Dup, 0)?;
+        self.constant(Value::Undefined)?;
+        self.emit(Opcode::StrictEqual, 0)?;
+        let skip = self.emit(Opcode::JumpIfFalse, 0)?;
+        self.emit(Opcode::Pop, 0)?;
+        self.expression_with_name(default, match pattern { Pattern::Identifier(name) => Some(name.as_str()), _ => None })?;
+        self.patch(skip, self.offset()?);
+        Ok(())
+    }
+
+    fn expression_with_name(&mut self, expression: &Expr, inferred_name: Option<&str>) -> Result<(), CompileError> {
+        match expression {
+            Expr::Function(function) if function.name.is_none() && inferred_name.is_some() => self.function_named(function, false, inferred_name),
+            Expr::Arrow { params, body } if inferred_name.is_some() => {
+                let body = match body {
+                    ArrowBody::Expr(expr) => vec![Stmt::Return(Some(*expr.clone()))],
+                    ArrowBody::Block(body) => body.clone(),
+                };
+                self.function_named(&Function { name: None, params: params.clone(), body }, true, inferred_name)
+            }
+            _ => self.expression(expression),
+        }
+    }
+
     fn loop_statement(&mut self, init: Option<&ForInit>, test: Option<&Expr>, update: Option<&Expr>, body: &Stmt, do_first: bool) -> Result<(), CompileError> {
         self.emit(Opcode::ClearCompletion, 0)?;
         let lexical = match init {
@@ -357,7 +594,7 @@ impl Compiler {
                 exit = Some(self.emit(Opcode::JumpIfFalse, 0)?);
             }
         }
-        self.loops.push(Loop { scope_depth: self.scopes.len(), breaks: Vec::new(), continues: Vec::new(), iterator: None });
+        self.loops.push(Loop { scope_depth: self.scopes.len(), breaks: Vec::new(), continues: Some(Vec::new()), iterator: None });
         self.statement(body, false)?;
         let continue_at = self.offset()?;
         if let Some(update) = update {
@@ -375,11 +612,13 @@ impl Compiler {
             self.patch(exit, end);
         }
         let context = self.loops.pop().unwrap();
-        for jump in context.breaks {
+        for (jump, control) in context.breaks {
             self.patch(jump, end);
+            self.bytecode.abrupt_jumps[control].target = end;
         }
-        for jump in context.continues {
+        for (jump, control) in context.continues.expect("loop has continue targets") {
             self.patch(jump, continue_at);
+            self.bytecode.abrupt_jumps[control].target = continue_at;
         }
         if own_scope {
             self.leave_scope()?;
@@ -429,7 +668,7 @@ impl Compiler {
                         "String" => {
                             self.emit(Opcode::GlobalString, 0)?;
                         }
-                        "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Function" | "globalThis" | "Intl" | "Error" | "TypeError"
+                        "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Function" | "globalThis" | "Intl" | "Error" | "TypeError" | "eval"
                         | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "JSON" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" => {
                             let index = self.bytecode.constants.len() as u32;
                             self.bytecode.constants.push(Value::String(name.as_str().into()));
@@ -682,7 +921,15 @@ impl Compiler {
         Ok(())
     }
 
+    fn for_in(&mut self, left: &ForHead, right: &Expr, body: &Stmt) -> Result<(), CompileError> {
+        self.for_each(left, right, body, true)
+    }
+
     fn for_of(&mut self, left: &ForHead, right: &Expr, body: &Stmt) -> Result<(), CompileError> {
+        self.for_each(left, right, body, false)
+    }
+
+    fn for_each(&mut self, left: &ForHead, right: &Expr, body: &Stmt, for_in: bool) -> Result<(), CompileError> {
         self.emit(Opcode::ClearCompletion, 0)?;
         let (pattern, kind) = match left {
             ForHead::Decl(kind, pattern) => (pattern, Some(*kind)),
@@ -696,19 +943,22 @@ impl Compiler {
         self.enter_scope(declarations, &BTreeSet::new(), false)?;
         let iterator = self.resolve("*iterator*").unwrap();
         self.expression(right)?;
+        if for_in {
+            self.emit(Opcode::ForInKeys, 0)?;
+        }
         self.emit(Opcode::GetIterator, 0)?;
         self.emit(Opcode::InitializeBinding, iterator)?;
         let start = self.offset()?;
         self.emit(Opcode::GetBinding, iterator)?;
         let exit = self.emit(Opcode::IteratorStep, 0)?;
-        self.loops.push(Loop { scope_depth: self.scopes.len(), breaks: Vec::new(), continues: Vec::new(), iterator: Some(iterator) });
+        self.loops.push(Loop { scope_depth: self.scopes.len(), breaks: Vec::new(), continues: Some(Vec::new()), iterator: Some(iterator) });
         if lexical {
             self.enter_scope(pattern_names(pattern).into_iter().map(|name| (name, kind.unwrap())).collect(), &BTreeSet::new(), false)?;
         }
         match kind {
             Some(kind) => self.bind_pattern(pattern, kind)?,
             None => {
-                let Pattern::Identifier(name) = pattern else { return Err(CompileError::Unsupported("a destructuring for-of assignment target")) };
+                let Pattern::Identifier(name) = pattern else { return Err(CompileError::Unsupported(if for_in { "a destructuring for-in assignment target" } else { "a destructuring for-of assignment target" })) };
                 let slot = self.resolve(name).ok_or(CompileError::Unsupported("implicit global assignment"))?;
                 self.emit(Opcode::StoreBinding, slot)?;
                 self.emit(Opcode::Pop, 0)?;
@@ -722,11 +972,13 @@ impl Compiler {
         let end = self.offset()?;
         self.patch(exit, end);
         let context = self.loops.pop().unwrap();
-        for jump in context.breaks {
+        for (jump, control) in context.breaks {
             self.patch(jump, end);
+            self.bytecode.abrupt_jumps[control].target = end;
         }
-        for jump in context.continues {
+        for (jump, control) in context.continues.expect("for-of loop has continue targets") {
             self.patch(jump, start);
+            self.bytecode.abrupt_jumps[control].target = start;
         }
         self.leave_scope()?;
         Ok(())
@@ -860,12 +1112,17 @@ impl Compiler {
     }
 
     fn function(&mut self, function: &Function, arrow: bool) -> Result<(), CompileError> {
+        self.function_named(function, arrow, None)
+    }
+
+    fn function_named(&mut self, function: &Function, arrow: bool, inferred_name: Option<&str>) -> Result<(), CompileError> {
         let child_budget = self.max_bytecode_bytes.saturating_sub(self.offset()?);
         let mut child = Compiler {
             bytecode: Bytecode::empty(),
             names: vec![HashMap::new()],
             scopes: Vec::new(),
             loops: Vec::new(),
+            catch_var_slots: Vec::new(),
             max_bytecode_bytes: child_budget,
             function: true,
             local_scope: 1,
@@ -873,7 +1130,7 @@ impl Compiler {
         child.bytecode.strict = self.bytecode.strict || strict_body(&function.body);
         child.bytecode.arrow = arrow;
         child.bytecode.constructible = !arrow;
-        child.bytecode.function_name = function.name.clone().unwrap_or_default();
+        child.bytecode.function_name = function.name.clone().or_else(|| inferred_name.map(str::to_owned)).unwrap_or_default();
         child.bytecode.function_length = function.params.iter().take_while(|p| !p.rest && p.default.is_none()).count() as u32;
         let mut visible = std::collections::BTreeMap::new();
         for scope in &self.names {
@@ -892,7 +1149,7 @@ impl Compiler {
         child.enter_scope(lexical_names(&function.body)?, &vars, true)?;
         for (index, param) in function.params.iter().enumerate() {
             child.emit(if param.rest { Opcode::RestArguments } else { Opcode::Argument }, index as u32)?;
-            child.pattern_default(param.default.as_ref())?;
+            child.binding_pattern_default(param.default.as_ref(), &param.pattern)?;
             child.bind_pattern(&param.pattern, DeclKind::Let)?;
         }
         child.statements(&function.body)?;
@@ -960,6 +1217,23 @@ fn lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, Compile
     Ok(names)
 }
 
+/// `CatchParameter` has an additional early error against lexical names in
+/// its directly nested block. Function declarations participate even though
+/// their broader binding behavior is handled separately for Annex B.
+fn catch_lexical_names(statements: &[Stmt]) -> Vec<String> {
+    let mut names = Vec::new();
+    for statement in statements {
+        match statement {
+            Stmt::VarDecl(kind, declarations) if *kind != DeclKind::Var => {
+                names.extend(declarations.iter().flat_map(|declaration| pattern_names(&declaration.pattern)));
+            }
+            Stmt::FunctionDecl(function) => names.push(function.name.clone().expect("declaration has a name")),
+            _ => {}
+        }
+    }
+    names
+}
+
 fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
     let mut names = BTreeSet::new();
     let mut pending: Vec<_> = statements.iter().collect();
@@ -989,11 +1263,25 @@ fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
                 }
                 pending.push(body);
             }
-            Stmt::ForOf { left, body, .. } => {
+            Stmt::ForIn { left, body, .. } | Stmt::ForOf { left, body, .. } => {
                 if let ForHead::Decl(DeclKind::Var, pattern) = left {
                     names.extend(pattern_names(pattern));
                 }
                 pending.push(body);
+            }
+            Stmt::Switch { cases, .. } => {
+                for case in cases {
+                    pending.extend(&case.consequent);
+                }
+            }
+            Stmt::Try { block, handler, finalizer } => {
+                pending.extend(block);
+                if let Some(handler) = handler {
+                    pending.extend(&handler.body);
+                }
+                if let Some(finalizer) = finalizer {
+                    pending.extend(finalizer);
+                }
             }
             _ => {}
         }

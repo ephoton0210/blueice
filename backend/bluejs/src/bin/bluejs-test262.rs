@@ -61,6 +61,7 @@ fn evaluate(request: Request) -> Value {
                 }
                 // The subset parser has no complete unsupported-grammar taxonomy.
                 // Never let its arbitrary rejection satisfy a negative test.
+                None if error.known_syntax => json!({"phase":"parse", "kind":"SyntaxError", "message":error.message}),
                 None => json!({"phase":"parse", "kind":"unclassified_parse_error", "message":error.message}),
             };
         }

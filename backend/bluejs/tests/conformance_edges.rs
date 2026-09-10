@@ -111,6 +111,19 @@ fn destructuring_binds_nested_patterns_defaults_rest_and_iterator_protocols() {
 }
 
 #[test]
+fn catch_parameter_early_errors_are_reported_by_compilation() {
+    for source in [
+        "\"use strict\";try{}catch(eval){}",
+        "\"use strict\";try{}catch(arguments){}",
+        "try{}catch(value){let value;}",
+        "function f(){try{}catch(value){function value(){}}}",
+    ] {
+        let program = parse(source).unwrap();
+        assert!(matches!(compile(&program), Err(CompileError::InvalidSyntax(_))), "{source}");
+    }
+}
+
+#[test]
 fn sequence_expressions_preserve_order_and_enable_assignment_patterns() {
     for source in [
         "let trace='';let value=(trace+='a',trace+='b',7);trace==='ab'&&value===7",
