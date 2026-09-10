@@ -152,7 +152,10 @@ fn bound_internal_edges_survive_collection_and_are_reclaimed() {
         ..Default::default()
     })
     .unwrap();
-    let code = compile(&parse("String; Object; globalThis; 0").unwrap()).unwrap();
+    // Ordinary calls now create an arguments object whose @@iterator is the
+    // realm's Array.prototype.values. Warm that permanent intrinsic before
+    // taking the GC baseline; the assertions below concern transient edges.
+    let code = compile(&parse("String; Object; Array; globalThis; 0").unwrap()).unwrap();
     vm.execute(&code).unwrap();
     let baseline = vm.heap().stats().managed_bytes;
     let code = compile(&parse("let target=function(a){return this.x+a.y;}; let receiver={x:'A'}; let arg={y:'B'}; globalThis.bound=target.bind(receiver,arg); globalThis.ids=[target,receiver,arg]; target=null;receiver=null;arg=null;globalThis.ids").unwrap()).unwrap();

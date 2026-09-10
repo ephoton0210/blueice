@@ -84,11 +84,13 @@ opcodes! {
     GlobalString: 1, 0;
     GetMethod: 1, MAY_USE_INLINE_CACHE;
     Call: 5, 0;
+    DirectEval: 5, 0;
     Construct: 5, 0;
     Closure: 5, 0;
     This: 1, 0;
     Argument: 5, 0;
     RestArguments: 5, 0;
+    ArgumentsObject: 1, 0;
     Return: 1, 0;
     TailRecur: 5, 0;
     Yield: 1, 0;
@@ -113,6 +115,7 @@ opcodes! {
     TemplateObject: 5, 0;
     ArrayPush: 5, 0;
     CallSpread: 5, 0;
+    DirectEvalSpread: 1, 0;
     Throw: 1, 0;
     PushHandler: 5, 0;
     PopHandler: 1, 0;
@@ -196,6 +199,10 @@ pub struct Bytecode {
     /// Names declared by top-level function declarations. Global declaration
     /// instantiation treats these differently from `var` declarations.
     pub(crate) global_function_names: Vec<String>,
+    /// Scope holding a function's VariableEnvironment. Non-simple parameter
+    /// lists use a preceding parameter scope, which direct eval must inspect
+    /// for lexical conflicts before reaching this scope.
+    pub(crate) variable_scope: u32,
     pub(crate) functions: Vec<std::rc::Rc<Bytecode>>,
     pub(crate) captures: Vec<u32>,
     /// The immutable name environment binding of a named function expression.
@@ -203,6 +210,14 @@ pub struct Bytecode {
     pub(crate) self_slot: Option<u32>,
     pub(crate) function_name: String,
     pub(crate) function_length: u32,
+    /// The per-invocation `arguments` binding of a non-arrow function.  The
+    /// interpreter creates it after its function environment has entered.
+    pub(crate) arguments_slot: Option<u32>,
+    /// For a non-strict simple parameter list, the formal binding cell mapped
+    /// by each arguments index. `None` means either an unmapped arguments
+    /// object or a duplicate formal shadowed by a later occurrence.
+    pub(crate) arguments_mapped_slots: Vec<Option<u32>>,
+    pub(crate) arguments_mapped: bool,
     pub(crate) arrow: bool,
     pub(crate) generator: bool,
     /// Async functions require Promise capabilities and job-queue integration
@@ -230,11 +245,15 @@ impl Bytecode {
             bindings: Vec::new(),
             scopes: Vec::new(),
             global_function_names: Vec::new(),
+            variable_scope: 0,
             functions: Vec::new(),
             captures: Vec::new(),
             self_slot: None,
             function_name: String::new(),
             function_length: 0,
+            arguments_slot: None,
+            arguments_mapped_slots: Vec::new(),
+            arguments_mapped: false,
             arrow: false,
             generator: false,
             async_function: false,

@@ -55,6 +55,7 @@ pub(crate) enum NativeFunction {
     HasInstance,
     ReflectConstruct,
     FunctionToString,
+    ThrowTypeError,
     Empty,
     ObjectToString,
     ObjectValueOf,

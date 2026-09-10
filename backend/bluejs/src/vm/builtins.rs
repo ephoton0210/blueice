@@ -5,6 +5,7 @@
 use super::*;
 use crate::heap::GeneratorState;
 use crate::native::{MathMethod, ObjectMethod, PatternMethod, StringMethod};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 pub(super) struct ClosureCall {
@@ -27,7 +28,117 @@ fn math_uint32(value: f64) -> u32 {
 }
 
 impl Vm {
-    fn direct_eval(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+    /// Materializes the per-invocation arguments binding after the function
+    /// environment has entered. Mapped indices point at the same heap cells
+    /// as simple sloppy parameter bindings; every other index remains an
+    /// ordinary data property copied from the argument list.
+    pub(super) fn create_arguments_object(&mut self, code: &Bytecode) -> Result<(), RuntimeError> {
+        let slot = code
+            .arguments_slot
+            .expect("ArgumentsObject is emitted only for a function binding")
+            as usize;
+        let base = self.stack.len();
+        self.stack.extend(self.arguments.iter().cloned());
+        self.stack.push(self.callee.clone());
+        let result = (|| {
+            let mut parameter_map = HashMap::new();
+            if code.arguments_mapped {
+                for (index, parameter_slot) in code.arguments_mapped_slots.iter().enumerate() {
+                    if let Some(parameter_slot) = parameter_slot {
+                        let cell = self.capture(*parameter_slot as usize)?;
+                        // Cells are otherwise reachable only through this
+                        // frame until the exotic object has been allocated.
+                        self.stack.push(Value::Object(cell));
+                        parameter_map.insert(index.to_string().into(), cell);
+                    }
+                }
+            }
+            let object_prototype = self.object_prototype;
+            let object =
+                self.with_roots(|heap| heap.alloc_arguments(parameter_map, object_prototype))?;
+            self.stack.push(Value::Object(object));
+            self.define_data(
+                object,
+                "length",
+                Value::Number(self.arguments.len() as f64),
+                true,
+                false,
+                true,
+            )?;
+            for (index, value) in self.arguments.clone().into_iter().enumerate() {
+                self.define_data(object, index.to_string(), value, true, true, true)?;
+            }
+            let array = self.global("Array")?;
+            let array_prototype = self.get_property(&array, &"prototype".into())?;
+            let iterator =
+                self.get_property(&array_prototype, &JsSymbol::well_known("iterator").into())?;
+            self.define_data(
+                object,
+                JsSymbol::well_known("iterator"),
+                iterator,
+                true,
+                false,
+                true,
+            )?;
+            if code.arguments_mapped {
+                self.define_data(object, "callee", self.callee.clone(), true, false, true)?;
+            } else {
+                let thrower = self.throw_type_error()?;
+                let descriptor = PropertyDescriptor {
+                    get: Some(Value::Object(thrower)),
+                    set: Some(Value::Object(thrower)),
+                    enumerable: Some(false),
+                    configurable: Some(false),
+                    ..PropertyDescriptor::default()
+                };
+                let defined =
+                    self.with_roots(|heap| heap.define_own_property(object, "callee", descriptor))?;
+                assert!(defined, "new arguments object accepts its callee accessor");
+            }
+            self.store_binding(slot, Value::Object(object))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    fn throw_type_error(&mut self) -> Result<ObjectId, RuntimeError> {
+        if let Some(function) = self.throw_type_error {
+            return Ok(function);
+        }
+        let constructor = self.string_intrinsics()?.0;
+        let prototype = self
+            .heap
+            .prototype(constructor)?
+            .expect("String constructor has Function.prototype");
+        let function = self.with_roots(|heap| {
+            heap.alloc_native_function(NativeFunction::ThrowTypeError, "", prototype)
+        })?;
+        let root = self.heap.root(function)?;
+        let result = (|| {
+            self.define_data(
+                function,
+                "name",
+                Value::String("".into()),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(function, "length", Value::Number(0.0), false, false, true)?;
+            Ok(function)
+        })();
+        match result {
+            Ok(function) => {
+                self.throw_type_error = Some(function);
+                Ok(function)
+            }
+            Err(error) => {
+                self.heap.unroot(root)?;
+                Err(error)
+            }
+        }
+    }
+
+    pub(super) fn direct_eval(&mut self, value: &Value) -> Result<Value, RuntimeError> {
         let Value::String(source) = value else {
             return Ok(value.clone());
         };
@@ -47,15 +158,54 @@ impl Vm {
                 "super() is not valid in this eval context".into(),
             ));
         }
+        let visible = self.eval_visible_bindings();
+        let lexical_conflicts = self.eval_lexical_conflicts();
         let code =
-            crate::compiler::compile_eval(&program, &self.eval_visible_bindings(), self.strict)
+            crate::compiler::compile_eval(&program, &visible, &lexical_conflicts, self.strict)
                 .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let captures = code
             .captures
             .iter()
             .map(|slot| self.capture(*slot as usize))
             .collect::<Result<Vec<_>, _>>()?;
-        self.execute_eval(&code, captures)
+        // A sloppy direct eval inherits the caller's VariableEnvironment.
+        // The absence of a current function identifies the realm's global
+        // execution context. Give eval the global `this` even when the outer
+        // script has not observed it yet, and publish `var` bindings there.
+        // Strict eval always receives its own VariableEnvironment.
+        let global_execution = self.callee == Value::Undefined;
+        if global_execution && self.this == Value::Undefined {
+            self.this = self.global("globalThis")?;
+        }
+        let global_var_environment = !code.strict && global_execution;
+        self.execute_eval(&code, captures, global_var_environment)
+    }
+
+    /// Indirect eval starts from the realm global environment. It never
+    /// captures caller bindings, even when the caller itself is strict.
+    fn indirect_eval(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        let Value::String(source) = value else {
+            return Ok(value.clone());
+        };
+        let source = source.to_utf8().map_err(|_| {
+            RuntimeError::SyntaxError("eval source contains an unpaired surrogate".into())
+        })?;
+        let program =
+            crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let code = crate::compiler::compile_eval(&program, &[], &[], false)
+            .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+        let global_this = self.global("globalThis")?;
+        let this = std::mem::replace(&mut self.this, global_this);
+        let result = self.execute_eval(&code, Vec::new(), !code.strict);
+        self.this = this;
+        result
+    }
+
+    pub(super) fn is_intrinsic_eval(&self, value: &Value) -> Result<bool, RuntimeError> {
+        let Some(object) = value.object_id() else {
+            return Ok(false);
+        };
+        Ok(self.heap.native_function(object)? == Some(NativeFunction::Eval))
     }
 
     pub(super) fn array_push(
@@ -491,8 +641,22 @@ impl Vm {
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
         let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
         let script_global_slots = std::mem::take(&mut self.script_global_slots);
+        let variable_scope = std::mem::replace(&mut self.variable_scope, code.variable_scope);
+        let variable_scope_lexicals = std::mem::replace(
+            &mut self.variable_scope_lexicals,
+            code.scopes
+                .get(code.variable_scope as usize)
+                .into_iter()
+                .flat_map(|scope| scope.iter())
+                .filter_map(|slot| {
+                    let binding = &code.bindings[*slot as usize];
+                    binding.lexical.then(|| binding.name.clone())
+                })
+                .collect(),
+        );
         let this = std::mem::replace(&mut self.this, receiver);
         let arguments = std::mem::replace(&mut self.arguments, args);
+        let frame_callee = std::mem::replace(&mut self.callee, callee.clone());
         let completion = std::mem::replace(&mut self.completion, Value::Undefined);
         let completion_empty = std::mem::replace(&mut self.completion_empty, true);
         let active_scopes = std::mem::take(&mut self.active_scopes);
@@ -523,6 +687,8 @@ impl Vm {
         self.binding_metadata = binding_metadata;
         self.cells = cells;
         self.script_global_slots = script_global_slots;
+        self.variable_scope = variable_scope;
+        self.variable_scope_lexicals = variable_scope_lexicals;
         // `super()` in a derived-constructor arrow initializes the enclosing
         // constructor's lexical `this` binding. Nested arrows propagate that
         // initialized receiver one frame at a time on return.
@@ -532,6 +698,7 @@ impl Vm {
             this
         };
         self.arguments = arguments;
+        self.callee = frame_callee;
         self.completion = completion;
         self.completion_empty = completion_empty;
         self.active_scopes = active_scopes;
@@ -576,6 +743,9 @@ impl Vm {
             frame_completion_empty,
             frame_scopes,
             frame_home,
+            frame_callee,
+            frame_variable_scope,
+            frame_variable_scope_lexicals,
         ) = match state {
             GeneratorState::Done => {
                 self.heap
@@ -591,8 +761,19 @@ impl Vm {
                 home,
             } => {
                 let mut bindings = vec![None; code.bindings.len()];
+                let variable_scope = code.variable_scope;
+                let variable_scope_lexicals = code
+                    .scopes
+                    .get(variable_scope as usize)
+                    .into_iter()
+                    .flat_map(|scope| scope.iter())
+                    .filter_map(|slot| {
+                        let binding = &code.bindings[*slot as usize];
+                        binding.lexical.then(|| binding.name.clone())
+                    })
+                    .collect();
                 if let Some(slot) = code.self_slot {
-                    bindings[slot as usize] = Some(callee);
+                    bindings[slot as usize] = Some(callee.clone());
                 }
                 (
                     code,
@@ -607,6 +788,9 @@ impl Vm {
                     true,
                     Vec::new(),
                     home,
+                    callee,
+                    variable_scope,
+                    variable_scope_lexicals,
                 )
             }
             GeneratorState::Suspended {
@@ -621,20 +805,36 @@ impl Vm {
                 completion_empty,
                 active_scopes,
                 home,
-            } => (
-                code,
-                pc,
-                Some(Value::Undefined),
-                stack,
-                bindings,
-                cells.into_iter().collect(),
-                this,
-                args,
-                completion,
-                completion_empty,
-                active_scopes,
-                home,
-            ),
+            } => {
+                let variable_scope = code.variable_scope;
+                let variable_scope_lexicals = code
+                    .scopes
+                    .get(variable_scope as usize)
+                    .into_iter()
+                    .flat_map(|scope| scope.iter())
+                    .filter_map(|slot| {
+                        let binding = &code.bindings[*slot as usize];
+                        binding.lexical.then(|| binding.name.clone())
+                    })
+                    .collect();
+                (
+                    code,
+                    pc,
+                    Some(Value::Undefined),
+                    stack,
+                    bindings,
+                    cells.into_iter().collect(),
+                    this,
+                    args,
+                    completion,
+                    completion_empty,
+                    active_scopes,
+                    home,
+                    Value::Undefined,
+                    variable_scope,
+                    variable_scope_lexicals,
+                )
+            }
         };
 
         let base = self.stack.len();
@@ -665,6 +865,12 @@ impl Vm {
         );
         let strict = std::mem::replace(&mut self.strict, code.strict);
         let home_object = std::mem::replace(&mut self.home_object, frame_home);
+        let callee = std::mem::replace(&mut self.callee, frame_callee);
+        let variable_scope = std::mem::replace(&mut self.variable_scope, frame_variable_scope);
+        let variable_scope_lexicals = std::mem::replace(
+            &mut self.variable_scope_lexicals,
+            frame_variable_scope_lexicals,
+        );
         let mut iterators = Vec::new();
         let outcome = self.interpret(&code, &mut iterators, pc, resume_value);
 
@@ -707,6 +913,9 @@ impl Vm {
         self.active_scope_slots = active_scope_slots;
         self.strict = strict;
         self.home_object = home_object;
+        self.callee = callee;
+        self.variable_scope = variable_scope;
+        self.variable_scope_lexicals = variable_scope_lexicals;
         self.stack.truncate(base);
         let (value, done) = result?;
         self.iterator_result(value, done)
@@ -1381,6 +1590,16 @@ impl Vm {
                     false,
                     false,
                 )?;
+                if name == "Object" {
+                    self.define_data(
+                        self.object_prototype,
+                        "constructor",
+                        Value::Object(id),
+                        true,
+                        false,
+                        true,
+                    )?;
+                }
                 use ObjectMethod::*;
                 for (name, length, method) in [
                     ("getOwnPropertyDescriptor", 2, GetOwnPropertyDescriptor),
@@ -1514,7 +1733,7 @@ impl Vm {
             NativeFunction::ArrayIncludes => {
                 self.array_includes(&receiver, first, native::argument(&args, 1))
             }
-            NativeFunction::Eval => self.direct_eval(first),
+            NativeFunction::Eval => self.indirect_eval(first),
             NativeFunction::IsNaN => Ok(Value::Bool(self.coerce_number(first)?.is_nan())),
             NativeFunction::IsFinite => Ok(Value::Bool(self.coerce_number(first)?.is_finite())),
             NativeFunction::ParseInt => self.parse_int(first, native::argument(&args, 1)),
@@ -1707,6 +1926,9 @@ impl Vm {
             NativeFunction::RegExpMethod(method) => self.regexp_method(method, &receiver, &args),
             NativeFunction::RegExpGetter(name) => self.regexp_getter(name, &receiver),
             NativeFunction::RegExpIteratorNext => self.regexp_iterator_next(&receiver),
+            NativeFunction::ThrowTypeError => Err(RuntimeError::TypeError(
+                "restricted function property".into(),
+            )),
             NativeFunction::Empty => Ok(Value::Undefined),
             NativeFunction::ObjectValueOf => self.coerce_object(&receiver).map(Value::Object),
             NativeFunction::ObjectToString => {
@@ -1723,6 +1945,8 @@ impl Vm {
                             "String"
                         } else if self.heap.is_array(*id)? {
                             "Array"
+                        } else if self.heap.is_arguments(*id)? {
+                            "Arguments"
                         } else if self.is_callable(&receiver)? {
                             "Function"
                         } else if self.heap.regexp(*id)?.is_some() {

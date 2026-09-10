@@ -60,6 +60,11 @@ pub fn compile_with_limit(
         with_depth: 0,
     };
     compiler.bytecode.strict = strict_body(&program.body);
+    if compiler.bytecode.strict && strict_assignment_to_restricted_name(&program.body) {
+        return Err(CompileError::InvalidSyntax(
+            "strict code cannot assign to eval or arguments",
+        ));
+    }
     compiler.bytecode.global_function_names = program
         .body
         .iter()
@@ -89,6 +94,7 @@ pub fn compile_with_limit(
 pub(crate) fn compile_eval(
     program: &Program,
     visible: &[(String, Binding, u32)],
+    lexical_conflicts: &[String],
     strict: bool,
 ) -> Result<Bytecode, CompileError> {
     let mut compiler = Compiler {
@@ -103,6 +109,19 @@ pub(crate) fn compile_eval(
         with_depth: 0,
     };
     compiler.bytecode.strict = strict || strict_body(&program.body);
+    if compiler.bytecode.strict && strict_assignment_to_restricted_name(&program.body) {
+        return Err(CompileError::InvalidSyntax(
+            "strict code cannot assign to eval or arguments",
+        ));
+    }
+    compiler.bytecode.global_function_names = program
+        .body
+        .iter()
+        .filter_map(|statement| match statement {
+            Stmt::FunctionDecl(function) => function.name.clone(),
+            _ => None,
+        })
+        .collect();
     for (name, binding, caller_slot) in visible {
         let slot = u32::try_from(compiler.bytecode.bindings.len())
             .map_err(|_| CompileError::ProgramTooLarge)?;
@@ -119,10 +138,30 @@ pub(crate) fn compile_eval(
                 .filter(|name| !lexical.iter().any(|(lexical_name, _)| lexical_name == name)),
         );
     }
-    let new_vars = vars
-        .into_iter()
-        .filter(|name| !compiler.names[0].contains_key(name))
-        .collect();
+    // EvalDeclarationInstantiation walks from its fresh lexical environment
+    // toward the caller's VariableEnvironment. A sloppy eval `var` cannot
+    // cross a caller lexical (including a non-simple parameter) with the
+    // same name. The compiler receives those caller cells as `visible`.
+    if !compiler.bytecode.strict
+        && vars
+            .iter()
+            .any(|name| lexical_conflicts.iter().any(|conflict| conflict == name))
+    {
+        return Err(CompileError::InvalidSyntax(
+            "eval var declaration conflicts with a lexical binding",
+        ));
+    }
+    // Strict eval has its own VariableEnvironment, so its `var` bindings
+    // shadow caller names instead of reusing captured cells. Sloppy direct
+    // eval keeps the caller VariableEnvironment and deliberately shares a
+    // binding that is already visible.
+    let new_vars = if compiler.bytecode.strict {
+        vars
+    } else {
+        vars.into_iter()
+            .filter(|name| !compiler.names[0].contains_key(name))
+            .collect()
+    };
     compiler.enter_scope(lexical, &new_vars, true)?;
     compiler.statements(&program.body)?;
     compiler.emit(Opcode::Halt, 0)?;
@@ -1577,7 +1616,16 @@ impl Compiler {
                         self.expression(value)?;
                         self.emit(Opcode::ArrayPush, kind)?;
                     }
-                    self.emit(Opcode::CallSpread, u32::from(construct))?;
+                    self.emit(
+                        if !construct
+                            && matches!(&**callee, Expr::Identifier(name) if name == "eval")
+                        {
+                            Opcode::DirectEvalSpread
+                        } else {
+                            Opcode::CallSpread
+                        },
+                        u32::from(construct),
+                    )?;
                     return Ok(());
                 }
                 for arg in args {
@@ -1589,6 +1637,8 @@ impl Compiler {
                 self.emit(
                     if construct {
                         Opcode::Construct
+                    } else if matches!(&**callee, Expr::Identifier(name) if name == "eval") {
+                        Opcode::DirectEval
                     } else {
                         Opcode::Call
                     },
@@ -2308,26 +2358,66 @@ impl Compiler {
         if let Some((name, _)) = lexical.iter().find(|(name, _)| parameters.contains(name)) {
             return Err(CompileError::DuplicateBinding(name.clone()));
         }
-        let parameter_expressions = function
-            .params
-            .iter()
-            .any(|param| param.default.is_some() || pattern_contains_expression(&param.pattern));
+        let simple_parameter_list = function.params.iter().all(|param| {
+            !param.rest
+                && param.default.is_none()
+                && matches!(param.pattern, Pattern::Identifier(_))
+        });
+        // Non-simple formal parameters need the separate parameter/body
+        // environment even when a destructuring pattern has no computed key
+        // or default. The same distinction selects unmapped arguments.
+        let parameter_expressions = !simple_parameter_list;
+        // Arrow functions inherit `arguments`; ordinary functions introduce a
+        // fresh binding unless a formal or a function-body lexical declaration
+        // already occupies that name.  A `var arguments` declaration shares
+        // this function binding rather than creating another one.
+        let arguments_needed = !arrow
+            && !parameters.contains("arguments")
+            && !lexical.iter().any(|(name, _)| name == "arguments");
         if parameter_expressions {
             // Parameter expressions must not resolve into body declarations.
             // All parameter cells exist, uninitialized, before the first
             // initializer; closures keep those cells when the body later
             // creates a separate variable environment.
-            child.enter_scope(
-                parameters
-                    .iter()
-                    .map(|name| (name.clone(), DeclKind::Let))
-                    .collect(),
-                &BTreeSet::new(),
-                true,
-            )?;
+            let mut parameter_bindings: Vec<_> = parameters
+                .iter()
+                .map(|name| (name.clone(), DeclKind::Let))
+                .collect();
+            if arguments_needed {
+                parameter_bindings.push(("arguments".into(), DeclKind::Let));
+                // The arguments binding lives in the parameter environment.
+                // A body `var arguments` is its redeclaration, not a second
+                // binding in the body variable environment.
+                vars.remove("arguments");
+            }
+            child.enter_scope(parameter_bindings, &BTreeSet::new(), true)?;
         } else {
             vars.extend(parameters.iter().cloned());
+            if arguments_needed {
+                vars.insert("arguments".into());
+            }
             child.enter_scope(lexical.clone(), &vars, true)?;
+        }
+        if arguments_needed {
+            let slot = child
+                .resolve("arguments")
+                .expect("function arguments binding was entered");
+            child.bytecode.arguments_slot = Some(slot);
+            if !child.bytecode.strict && simple_parameter_list {
+                child.bytecode.arguments_mapped = true;
+                let mut mapped_names = BTreeSet::new();
+                let mut mapped_slots = vec![None; function.params.len()];
+                for (index, parameter) in function.params.iter().enumerate().rev() {
+                    let Pattern::Identifier(name) = &parameter.pattern else {
+                        unreachable!("simple parameter list contains only identifiers")
+                    };
+                    if mapped_names.insert(name.clone()) {
+                        mapped_slots[index] = child.resolve(name);
+                    }
+                }
+                child.bytecode.arguments_mapped_slots = mapped_slots;
+            }
+            child.emit(Opcode::ArgumentsObject, 0)?;
         }
         for (index, param) in function.params.iter().enumerate() {
             child.emit(
@@ -2345,6 +2435,7 @@ impl Compiler {
             let parameter_slots = child.names.last().unwrap().clone();
             child.local_scope = child.names.len();
             child.enter_scope(lexical, &vars, true)?;
+            child.bytecode.variable_scope = child.scopes.last().copied().unwrap();
             // A redeclared var starts with the parameter's value. A function
             // declaration instead supplies its own value during hoisting.
             for name in vars.intersection(&parameters) {
@@ -2401,6 +2492,277 @@ fn strict_body(body: &[Stmt]) -> bool {
         .any(|stmt| matches!(stmt, Stmt::Expr(Expr::String(s)) if s == "use strict"))
 }
 
+fn strict_assignment_to_restricted_name(statements: &[Stmt]) -> bool {
+    statements.iter().any(strict_assignment_in_statement)
+}
+
+fn strict_assignment_in_statement(statement: &Stmt) -> bool {
+    match statement {
+        Stmt::Empty
+        | Stmt::Break(_)
+        | Stmt::Continue(_)
+        | Stmt::FunctionDecl(_)
+        | Stmt::ClassDecl(_) => false,
+        Stmt::Expr(expr) | Stmt::Throw(expr) => strict_assignment_in_expression(expr),
+        Stmt::Block(statements) => strict_assignment_to_restricted_name(statements),
+        Stmt::VarDecl(_, declarations) => declarations.iter().any(|declaration| {
+            strict_assignment_in_pattern(&declaration.pattern)
+                || declaration
+                    .init
+                    .as_ref()
+                    .is_some_and(strict_assignment_in_expression)
+        }),
+        Stmt::If {
+            test,
+            consequent,
+            alternate,
+        } => {
+            strict_assignment_in_expression(test)
+                || strict_assignment_in_statement(consequent)
+                || alternate
+                    .as_deref()
+                    .is_some_and(strict_assignment_in_statement)
+        }
+        Stmt::For {
+            init,
+            test,
+            update,
+            body,
+        } => {
+            init.as_ref().is_some_and(strict_assignment_in_for_init)
+                || test.as_ref().is_some_and(strict_assignment_in_expression)
+                || update.as_ref().is_some_and(strict_assignment_in_expression)
+                || strict_assignment_in_statement(body)
+        }
+        Stmt::ForIn { left, right, body } | Stmt::ForOf { left, right, body } => {
+            strict_assignment_in_for_head(left)
+                || strict_assignment_in_expression(right)
+                || strict_assignment_in_statement(body)
+        }
+        Stmt::While { test, body } | Stmt::DoWhile { body, test } => {
+            strict_assignment_in_expression(test) || strict_assignment_in_statement(body)
+        }
+        Stmt::Switch {
+            discriminant,
+            cases,
+        } => {
+            strict_assignment_in_expression(discriminant)
+                || cases.iter().any(|case| {
+                    case.test
+                        .as_ref()
+                        .is_some_and(strict_assignment_in_expression)
+                        || strict_assignment_to_restricted_name(&case.consequent)
+                })
+        }
+        Stmt::Labelled { item, .. } | Stmt::ClassField(item) => {
+            strict_assignment_in_statement(item)
+        }
+        Stmt::Return(value) => value.as_ref().is_some_and(strict_assignment_in_expression),
+        Stmt::Try {
+            block,
+            handler,
+            finalizer,
+        } => {
+            strict_assignment_to_restricted_name(block)
+                || handler.as_ref().is_some_and(|handler| {
+                    handler
+                        .param
+                        .as_ref()
+                        .is_some_and(strict_assignment_in_pattern)
+                        || strict_assignment_to_restricted_name(&handler.body)
+                })
+                || finalizer
+                    .as_deref()
+                    .is_some_and(strict_assignment_to_restricted_name)
+        }
+        Stmt::With { object, body } => {
+            strict_assignment_in_expression(object) || strict_assignment_in_statement(body)
+        }
+    }
+}
+
+fn strict_assignment_in_for_init(init: &ForInit) -> bool {
+    match init {
+        ForInit::Expr(expression) => strict_assignment_in_expression(expression),
+        ForInit::VarDecl(_, declarations) => declarations.iter().any(|declaration| {
+            strict_assignment_in_pattern(&declaration.pattern)
+                || declaration
+                    .init
+                    .as_ref()
+                    .is_some_and(strict_assignment_in_expression)
+        }),
+    }
+}
+
+fn strict_assignment_in_for_head(head: &ForHead) -> bool {
+    match head {
+        ForHead::Decl(_, pattern) => strict_assignment_in_pattern(pattern),
+        ForHead::Pattern(pattern) => pattern_names(pattern)
+            .iter()
+            .any(|name| restricted_name(name)),
+    }
+}
+
+fn strict_assignment_in_pattern(pattern: &Pattern) -> bool {
+    match pattern {
+        Pattern::Identifier(_) => false,
+        Pattern::Array(elements) => elements.iter().flatten().any(|element| {
+            strict_assignment_in_pattern(&element.pattern)
+                || element
+                    .default
+                    .as_ref()
+                    .is_some_and(strict_assignment_in_expression)
+        }),
+        Pattern::Object(properties) => properties.iter().any(|property| match property {
+            ObjectPatternProp::KeyValue {
+                key,
+                value,
+                default,
+            } => {
+                strict_assignment_in_property_key(key)
+                    || strict_assignment_in_pattern(value)
+                    || default
+                        .as_ref()
+                        .is_some_and(strict_assignment_in_expression)
+            }
+            ObjectPatternProp::Rest(pattern) => strict_assignment_in_pattern(pattern),
+        }),
+    }
+}
+
+fn strict_assignment_in_assignment_pattern(pattern: &AssignmentPattern) -> bool {
+    match pattern {
+        AssignmentPattern::Target(target) => strict_assignment_target(target),
+        AssignmentPattern::Array(elements) => elements.iter().flatten().any(|element| {
+            strict_assignment_in_assignment_pattern(&element.pattern)
+                || element
+                    .default
+                    .as_ref()
+                    .is_some_and(strict_assignment_in_expression)
+        }),
+        AssignmentPattern::Object(properties) => properties.iter().any(|property| match property {
+            AssignmentPatternProp::KeyValue {
+                key,
+                value,
+                default,
+            } => {
+                strict_assignment_in_property_key(key)
+                    || strict_assignment_in_assignment_pattern(value)
+                    || default
+                        .as_ref()
+                        .is_some_and(strict_assignment_in_expression)
+            }
+            AssignmentPatternProp::Rest(pattern) => {
+                strict_assignment_in_assignment_pattern(pattern)
+            }
+        }),
+    }
+}
+
+fn strict_assignment_in_property_key(key: &PropertyKey) -> bool {
+    matches!(key, PropertyKey::Computed(expression) if strict_assignment_in_expression(expression))
+}
+
+fn strict_assignment_target(expression: &Expr) -> bool {
+    matches!(expression, Expr::Identifier(name) if restricted_name(name))
+        || strict_assignment_in_expression(expression)
+}
+
+fn restricted_name(name: &str) -> bool {
+    matches!(name, "eval" | "arguments")
+}
+
+fn strict_assignment_in_expression(expression: &Expr) -> bool {
+    match expression {
+        Expr::Number(_)
+        | Expr::BigInt(_)
+        | Expr::String(_)
+        | Expr::Bool(_)
+        | Expr::Null
+        | Expr::This
+        | Expr::Identifier(_)
+        | Expr::RegExp { .. }
+        | Expr::Super
+        | Expr::NewTarget
+        | Expr::Function(_)
+        | Expr::Class(_) => false,
+        Expr::Template { expressions, .. } => {
+            expressions.iter().any(strict_assignment_in_expression)
+        }
+        Expr::TaggedTemplate {
+            tag, expressions, ..
+        } => {
+            strict_assignment_in_expression(tag)
+                || expressions.iter().any(strict_assignment_in_expression)
+        }
+        Expr::Array(elements) => elements.iter().flatten().any(|element| match element {
+            ArrayElement::Normal(expression) | ArrayElement::Spread(expression) => {
+                strict_assignment_in_expression(expression)
+            }
+        }),
+        Expr::Object(properties) => properties.iter().any(|property| match property {
+            ObjectProp::KeyValue { key, value, .. } => {
+                strict_assignment_in_property_key(key) || strict_assignment_in_expression(value)
+            }
+            ObjectProp::Spread(expression) => strict_assignment_in_expression(expression),
+            ObjectProp::Method { key, .. } | ObjectProp::Accessor { key, .. } => {
+                strict_assignment_in_property_key(key)
+            }
+        }),
+        Expr::Yield { value, .. } => value
+            .as_deref()
+            .is_some_and(strict_assignment_in_expression),
+        Expr::Await(expression)
+        | Expr::Unary {
+            arg: expression, ..
+        } => strict_assignment_in_expression(expression),
+        Expr::Update { arg, .. } => strict_assignment_target(arg),
+        Expr::Arrow { params, body, .. } => {
+            params.iter().any(|param| {
+                strict_assignment_in_pattern(&param.pattern)
+                    || param
+                        .default
+                        .as_ref()
+                        .is_some_and(strict_assignment_in_expression)
+            }) || match body {
+                ArrowBody::Expr(expression) => strict_assignment_in_expression(expression),
+                ArrowBody::Block(statements) => strict_assignment_to_restricted_name(statements),
+            }
+        }
+        Expr::Binary { left, right, .. } | Expr::Logical { left, right, .. } => {
+            strict_assignment_in_expression(left) || strict_assignment_in_expression(right)
+        }
+        Expr::Sequence(expressions) => expressions.iter().any(strict_assignment_in_expression),
+        Expr::Assign { target, value, .. } => {
+            strict_assignment_target(target) || strict_assignment_in_expression(value)
+        }
+        Expr::DestructureAssign { pattern, value } => {
+            strict_assignment_in_assignment_pattern(pattern)
+                || strict_assignment_in_expression(value)
+        }
+        Expr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            strict_assignment_in_expression(test)
+                || strict_assignment_in_expression(consequent)
+                || strict_assignment_in_expression(alternate)
+        }
+        Expr::Call { callee, args } | Expr::New { callee, args } => {
+            strict_assignment_in_expression(callee)
+                || args.iter().any(|argument| match argument {
+                    Argument::Normal(expression) | Argument::Spread(expression) => {
+                        strict_assignment_in_expression(expression)
+                    }
+                })
+        }
+        Expr::Member {
+            object, property, ..
+        } => strict_assignment_in_expression(object) || strict_assignment_in_expression(property),
+    }
+}
+
 fn validate_function_early_errors(
     function: &Function,
     strict: bool,
@@ -2440,6 +2802,11 @@ fn validate_function_early_errors(
     if function.generator && names.iter().any(|name| name == "yield") {
         return Err(CompileError::InvalidSyntax(
             "generator parameters cannot bind yield",
+        ));
+    }
+    if strict && strict_assignment_to_restricted_name(&function.body) {
+        return Err(CompileError::InvalidSyntax(
+            "strict code cannot assign to eval or arguments",
         ));
     }
     Ok(())
@@ -2557,29 +2924,6 @@ fn pattern_names(pattern: &Pattern) -> Vec<String> {
                 }
             })
             .collect(),
-    }
-}
-
-/// The binding-pattern part of FormalParameters ContainsExpression. Computed
-/// property keys count even when the pattern has no default initializer.
-fn pattern_contains_expression(pattern: &Pattern) -> bool {
-    match pattern {
-        Pattern::Identifier(_) => false,
-        Pattern::Array(elements) => elements.iter().flatten().any(|element| {
-            element.default.is_some() || pattern_contains_expression(&element.pattern)
-        }),
-        Pattern::Object(properties) => properties.iter().any(|property| match property {
-            ObjectPatternProp::KeyValue {
-                key,
-                value,
-                default,
-            } => {
-                matches!(key, PropertyKey::Computed(_))
-                    || default.is_some()
-                    || pattern_contains_expression(value)
-            }
-            ObjectPatternProp::Rest(pattern) => pattern_contains_expression(pattern),
-        }),
     }
 }
 

@@ -229,6 +229,12 @@ enum ObjectKind {
     Array {
         length: u32,
     },
+    /// The `[[ParameterMap]]` of a mapped arguments exotic object. Keys not
+    /// present here are ordinary own data properties, as are every property
+    /// of an unmapped arguments object.
+    Arguments {
+        parameter_map: HashMap<PropertyName, ObjectId>,
+    },
     String(JsString),
     NativeFunction {
         function: NativeFunction,
@@ -316,6 +322,9 @@ impl Object {
                 ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
                 ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
                 ObjectKind::ArrayIterator { object, .. } => vec![*object],
+                ObjectKind::Arguments { parameter_map } => {
+                    parameter_map.values().copied().collect()
+                }
                 _ => Vec::new(),
             })
     }
@@ -423,6 +432,17 @@ impl Heap {
         self.alloc(ObjectKind::Array { length }, prototype)
     }
 
+    /// Allocates the storage for an arguments object. A non-empty parameter
+    /// map makes it an arguments exotic object; an empty map is the ordinary
+    /// unmapped variant but retains the same internal-slot representation.
+    pub(crate) fn alloc_arguments(
+        &mut self,
+        parameter_map: HashMap<PropertyName, ObjectId>,
+        prototype: ObjectId,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::Arguments { parameter_map }, Some(prototype))
+    }
+
     /// A boxed String with read-only, non-configurable virtual indices
     /// and length. The string payload is charged to the managed budget.
     pub fn alloc_string(
@@ -523,14 +543,24 @@ impl Heap {
         object: ObjectId,
         state: GeneratorState,
     ) -> Result<(), HeapError> {
-        let entry = self
-            .objects
-            .get_mut(&object)
-            .ok_or(HeapError::InvalidObject(object))?;
-        let ObjectKind::Generator { state: current } = &mut entry.kind else {
-            return Err(HeapError::InvalidObject(object));
-        };
-        **current = state;
+        // A generator may have been promoted while it was running. Restoring
+        // a suspended frame can then install young bindings/cells into an old
+        // generator object, so this internal-slot write needs the same
+        // remembered-set barrier as an ordinary property write.
+        let references = state.references();
+        {
+            let entry = self
+                .objects
+                .get_mut(&object)
+                .ok_or(HeapError::InvalidObject(object))?;
+            let ObjectKind::Generator { state: current } = &mut entry.kind else {
+                return Err(HeapError::InvalidObject(object));
+            };
+            **current = state;
+        }
+        for reference in references {
+            self.write_barrier(object, Some(reference));
+        }
         Ok(())
     }
 
@@ -860,21 +890,35 @@ impl Heap {
         object: ObjectId,
         key: PropertyName,
     ) -> Result<Option<PropertyDescriptor>, HeapError> {
+        let mapped_cell = self.arguments_parameter_cell(object, &key)?;
         let obj = self.object(object)?;
         if let Some(descriptor) = obj.attributes.get(&key) {
             let mut descriptor = descriptor.clone();
             if !descriptor.accessor() {
-                descriptor.value = obj.own_property(&key);
+                descriptor.value = match mapped_cell {
+                    Some(cell) => self.get_own(cell, "value")?,
+                    None => obj.own_property(&key),
+                };
             }
             return Ok(Some(descriptor));
         }
-        Ok(obj.own_property(&key).map(|value| {
-            let string_virtual =
-                matches!(&obj.kind, ObjectKind::String(s) if string_property(s, &key).is_some());
-            let length = key == "length"
-                && matches!(&obj.kind, ObjectKind::Array { .. } | ObjectKind::String(_));
-            PropertyDescriptor::data(value, !string_virtual, !length, !string_virtual && !length)
-        }))
+        let Some(value) = obj.own_property(&key) else {
+            return Ok(None);
+        };
+        let value = match mapped_cell {
+            Some(cell) => self.get_own(cell, "value")?.unwrap_or(value),
+            None => value,
+        };
+        let string_virtual =
+            matches!(&obj.kind, ObjectKind::String(s) if string_property(s, &key).is_some());
+        let length = key == "length"
+            && matches!(&obj.kind, ObjectKind::Array { .. } | ObjectKind::String(_));
+        Ok(Some(PropertyDescriptor::data(
+            value,
+            !string_virtual,
+            !length,
+            !string_virtual && !length,
+        )))
     }
 
     pub fn define_own_property(
@@ -895,6 +939,7 @@ impl Heap {
         if descriptor.accessor() && (descriptor.value.is_some() || descriptor.writable.is_some()) {
             return Ok(false);
         }
+        let mapped_cell = self.arguments_parameter_cell(object, &key)?;
         let old = self.get_own_property_descriptor(object, &key)?;
         if old.is_none() && !self.object(object)?.extensible {
             return Ok(false);
@@ -950,6 +995,9 @@ impl Heap {
                 }
             }
         }
+        let descriptor_is_accessor = descriptor.accessor();
+        let descriptor_non_writable = descriptor.writable == Some(false);
+        let descriptor_value = descriptor.value.clone();
         let mut merged = old
             .clone()
             .unwrap_or_else(|| PropertyDescriptor::data(Value::Undefined, false, false, false));
@@ -1028,10 +1076,19 @@ impl Heap {
             }
             obj.properties.insert(key.clone(), value);
         }
-        obj.attributes.insert(key, merged);
+        obj.attributes.insert(key.clone(), merged);
         obj.bytes = obj.bytes - old_property - old_attributes + new_property + new_attributes;
         self.managed_bytes =
             self.managed_bytes - old_property - old_attributes + new_property + new_attributes;
+        if !length_failed {
+            if let Some(cell) = mapped_cell {
+                if descriptor_is_accessor || descriptor_non_writable {
+                    self.unmap_arguments_property(object, &key)?;
+                } else if let Some(value) = descriptor_value {
+                    self.set(cell, "value", value)?;
+                }
+            }
+        }
         Ok(!length_failed)
     }
 
@@ -1040,6 +1097,39 @@ impl Heap {
             self.object(object)?.kind,
             ObjectKind::Array { .. }
         ))
+    }
+
+    pub(crate) fn is_arguments(&self, object: ObjectId) -> Result<bool, HeapError> {
+        Ok(matches!(
+            self.object(object)?.kind,
+            ObjectKind::Arguments { .. }
+        ))
+    }
+
+    fn arguments_parameter_cell(
+        &self,
+        object: ObjectId,
+        key: &PropertyName,
+    ) -> Result<Option<ObjectId>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::Arguments { parameter_map } => parameter_map.get(key).copied(),
+            _ => None,
+        })
+    }
+
+    fn unmap_arguments_property(
+        &mut self,
+        object: ObjectId,
+        key: &PropertyName,
+    ) -> Result<(), HeapError> {
+        let obj = self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?;
+        if let ObjectKind::Arguments { parameter_map } = &mut obj.kind {
+            parameter_map.remove(key);
+        }
+        Ok(())
     }
 
     fn alloc(
@@ -1070,6 +1160,9 @@ impl Heap {
                 ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
                 ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
                 ObjectKind::ArrayIterator { object, .. } => vec![*object],
+                ObjectKind::Arguments { parameter_map } => {
+                    parameter_map.values().copied().collect()
+                }
                 _ => Vec::new(),
             })
             .collect();
@@ -1102,6 +1195,9 @@ impl Heap {
                     bound.this.payload_bytes()
                         + bound.args.len() * size_of::<Value>()
                         + bound.args.iter().map(Value::payload_bytes).sum::<usize>()
+                }
+                ObjectKind::Arguments { parameter_map } => {
+                    parameter_map.len() * size_of::<(PropertyName, ObjectId)>()
                 }
                 _ => 0,
             };
@@ -1174,6 +1270,9 @@ impl Heap {
     fn get_key(&self, object: ObjectId, key: PropertyName) -> Result<Value, HeapError> {
         let mut current = Some(object);
         while let Some(id) = current {
+            if let Some(cell) = self.arguments_parameter_cell(id, &key)? {
+                return Ok(self.get_own(cell, "value")?.unwrap_or(Value::Undefined));
+            }
             let obj = self.object(id)?;
             if let Some(value) = obj.own_property(&key) {
                 return Ok(value);
@@ -1204,6 +1303,7 @@ impl Heap {
         key: PropertyName,
         value: Value,
     ) -> Result<(), HeapError> {
+        let mapped_cell = self.arguments_parameter_cell(object, &key)?;
         let obj = self.object(object)?;
         if obj
             .attributes
@@ -1244,21 +1344,27 @@ impl Heap {
         let protected: Vec<_> = std::iter::once(object).chain(value_id).collect();
         self.ensure_room(new_bytes.saturating_sub(old_bytes), &protected)?;
         self.write_barrier(object, value_id);
-        let obj = self
-            .objects
-            .get_mut(&object)
-            .expect("the receiver is protected across collection");
-        if !obj.properties.contains_key(&key) {
-            obj.order.push(key.clone());
-        }
-        if let ObjectKind::Array { length } = &mut obj.kind {
-            if let Some(index) = array_index(&key) {
-                *length = (*length).max(index + 1);
+        let mapped_value = mapped_cell.map(|_| value.clone());
+        {
+            let obj = self
+                .objects
+                .get_mut(&object)
+                .expect("the receiver is protected across collection");
+            if !obj.properties.contains_key(&key) {
+                obj.order.push(key.clone());
             }
+            if let ObjectKind::Array { length } = &mut obj.kind {
+                if let Some(index) = array_index(&key) {
+                    *length = (*length).max(index + 1);
+                }
+            }
+            obj.properties.insert(key, value);
+            obj.bytes = obj.bytes - old_bytes + new_bytes;
         }
-        obj.properties.insert(key, value);
-        obj.bytes = obj.bytes - old_bytes + new_bytes;
         self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
+        if let (Some(cell), Some(value)) = (mapped_cell, mapped_value) {
+            self.set(cell, "value", value)?;
+        }
         Ok(())
     }
 
@@ -1274,6 +1380,7 @@ impl Heap {
     }
 
     fn delete_key(&mut self, object: ObjectId, key: PropertyName) -> Result<bool, HeapError> {
+        let mapped_cell = self.arguments_parameter_cell(object, &key)?;
         let obj = self
             .objects
             .get_mut(&object)
@@ -1301,6 +1408,9 @@ impl Heap {
             obj.order.retain(|name| name != &key);
             obj.bytes -= bytes;
             self.managed_bytes -= bytes;
+        }
+        if mapped_cell.is_some() {
+            self.unmap_arguments_property(object, &key)?;
         }
         Ok(true)
     }

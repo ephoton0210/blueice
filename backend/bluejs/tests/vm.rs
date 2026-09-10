@@ -482,6 +482,21 @@ fn object_operations_preserve_identity_and_evaluation_order() {
 }
 
 #[test]
+fn function_frames_create_mapped_and_unmapped_arguments_objects() {
+    for source in [
+        "function mapped(a,b){let copy=arguments;a=3;copy[1]=4;return copy.length===2&&copy[0]===3&&b===4&&copy.callee===mapped;}mapped(1,2)",
+        "function disconnected(a){delete arguments[0];a=7;return arguments[0]===undefined;}disconnected(1)",
+        "function unmapped(a=1){a=2;return arguments[0]===1;}unmapped(1)",
+        "function outer(a){return (()=>arguments[0])()===7;}outer(7)",
+        "function* generated(a){return arguments.callee===generated&&arguments[0]===a;}generated(3).next().value",
+        "function prototype(){return arguments.constructor.prototype===Object.prototype;}prototype()",
+        "(function(){'use strict';try{arguments.callee;return false;}catch(error){return error instanceof TypeError;}})()",
+    ] {
+        assert_eq!(evaluate(source), Ok(Value::Bool(true)), "{source}");
+    }
+}
+
+#[test]
 fn unsupported_syntax_and_invalid_bindings_fail_before_execution() {
     let source = "let undefined=1";
     let code = compile(&parse(source).unwrap()).expect("the parser accepts the lexical name");

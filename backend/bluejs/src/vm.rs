@@ -199,6 +199,10 @@ pub struct Vm {
     cells: HashMap<usize, ObjectId>,
     this: Value,
     arguments: Vec<Value>,
+    // The current ordinary function object is needed while materializing its
+    // arguments object, notably for the sloppy `arguments.callee` data
+    // property. Arrow functions never materialize a replacement binding.
+    callee: Value,
     strict: bool,
     call_depth: usize,
     globals: HashMap<String, ObjectId>,
@@ -207,6 +211,14 @@ pub struct Vm {
     // function/eval frames temporarily replace this map because slot indices
     // are local to their own bytecode.
     script_global_slots: HashMap<usize, String>,
+    // Scope index for the active function's VariableEnvironment. Direct eval
+    // uses this to distinguish intervening lexical scopes from ordinary
+    // outer bindings that its `var` declarations may reuse.
+    variable_scope: u32,
+    // Lexical declarations in the active VariableEnvironment. During a
+    // non-simple parameter initializer that scope has not been entered yet,
+    // but direct eval must still reject a conflicting `var` declaration.
+    variable_scope_lexicals: Vec<String>,
     iterator_prototype: Option<ObjectId>,
     regexp_iterator_prototype: Option<ObjectId>,
     templates: HashMap<u64, ObjectId>,
@@ -225,6 +237,7 @@ pub struct Vm {
     iterator_base: Option<ObjectId>,
     array_iterator_prototype: Option<ObjectId>,
     generator_prototype: Option<ObjectId>,
+    throw_type_error: Option<ObjectId>,
     joining: Vec<ObjectId>,
 }
 
@@ -266,11 +279,14 @@ impl Vm {
             cells: HashMap::new(),
             this: Value::Undefined,
             arguments: Vec::new(),
+            callee: Value::Undefined,
             strict: false,
             call_depth: 0,
             globals: HashMap::new(),
             global_bindings: HashMap::new(),
             script_global_slots: HashMap::new(),
+            variable_scope: 0,
+            variable_scope_lexicals: Vec::new(),
             iterator_prototype: None,
             regexp_iterator_prototype: None,
             templates: HashMap::new(),
@@ -281,6 +297,7 @@ impl Vm {
             iterator_base: None,
             array_iterator_prototype: None,
             generator_prototype: None,
+            throw_type_error: None,
             joining: Vec::new(),
         })
     }
@@ -415,6 +432,7 @@ impl Vm {
                     global,
                     binding,
                     code.global_function_names.contains(&binding.name),
+                    false,
                 )?;
             }
             self.script_global_slots
@@ -508,6 +526,7 @@ impl Vm {
         global: ObjectId,
         binding: &Binding,
         function: bool,
+        configurable: bool,
     ) -> Result<(), RuntimeError> {
         let property = !binding.lexical;
         let descriptor = self
@@ -535,7 +554,7 @@ impl Vm {
                         heap.define_own_property(
                             global,
                             binding.name.as_str(),
-                            PropertyDescriptor::data(Value::Undefined, true, true, false),
+                            PropertyDescriptor::data(Value::Undefined, true, true, configurable),
                         )
                     })?;
                     if !defined {
@@ -846,6 +865,7 @@ impl Vm {
                 .iter()
                 .chain(self.bindings.iter().flatten())
                 .chain(std::iter::once(&self.completion))
+                .chain(std::iter::once(&self.callee))
                 .chain(self.pending_completions.iter().flat_map(|completion| {
                     let values: &[Value] = match completion {
                         Completion::Return(value)
@@ -916,6 +936,7 @@ impl Vm {
         &mut self,
         code: &Bytecode,
         captures: Vec<ObjectId>,
+        global_var_environment: bool,
     ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
         self.stack.extend(self.bindings.iter().flatten().cloned());
@@ -933,7 +954,15 @@ impl Vm {
         let active_scopes = std::mem::take(&mut self.active_scopes);
         let active_scope_slots = std::mem::take(&mut self.active_scope_slots);
         let strict = std::mem::replace(&mut self.strict, code.strict);
-        let result = self.run(code);
+        let variable_scope = code
+            .strict
+            .then(|| std::mem::replace(&mut self.variable_scope, code.variable_scope));
+        let result = if global_var_environment {
+            self.prepare_eval_global_var_declarations(code)
+                .and_then(|()| self.run(code))
+        } else {
+            self.run(code)
+        };
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;
@@ -943,8 +972,70 @@ impl Vm {
         self.active_scopes = active_scopes;
         self.active_scope_slots = active_scope_slots;
         self.strict = strict;
+        if let Some(variable_scope) = variable_scope {
+            self.variable_scope = variable_scope;
+        }
         self.stack.truncate(base);
         result
+    }
+
+    /// EvalDeclarationInstantiation's global-variable branch. The eval
+    /// lexical environment remains transient, so only `var` and top-level
+    /// function bindings are published into the realm's global environment.
+    fn prepare_eval_global_var_declarations(
+        &mut self,
+        code: &Bytecode,
+    ) -> Result<(), RuntimeError> {
+        let slots = code.scopes.first().cloned().unwrap_or_default();
+        let global = self
+            .global("globalThis")?
+            .object_id()
+            .expect("globalThis is an object");
+
+        for &slot in &slots {
+            let binding = &code.bindings[slot as usize];
+            if binding.lexical {
+                continue;
+            }
+            let existing = self.global_bindings.get(&binding.name);
+            if existing.is_some_and(|binding| !binding.property) {
+                return Err(RuntimeError::SyntaxError(format!(
+                    "global lexical binding {} conflicts with eval declaration",
+                    binding.name
+                )));
+            }
+            if code.global_function_names.contains(&binding.name) {
+                if !self.can_declare_global_function(global, &binding.name)? {
+                    return Err(RuntimeError::TypeError(format!(
+                        "cannot declare global function {}",
+                        binding.name
+                    )));
+                }
+            } else if !self.can_declare_global_var(global, &binding.name)? {
+                return Err(RuntimeError::TypeError(format!(
+                    "cannot declare global var {}",
+                    binding.name
+                )));
+            }
+        }
+
+        for &slot in &slots {
+            let binding = &code.bindings[slot as usize];
+            if binding.lexical {
+                continue;
+            }
+            if !self.global_bindings.contains_key(&binding.name) {
+                self.create_global_binding(
+                    global,
+                    binding,
+                    code.global_function_names.contains(&binding.name),
+                    true,
+                )?;
+            }
+            self.script_global_slots
+                .insert(slot as usize, binding.name.clone());
+        }
+        Ok(())
     }
 
     /// Evaluates a new classic script in the current realm while another
@@ -1021,6 +1112,29 @@ impl Vm {
             .into_iter()
             .map(|(name, (binding, slot))| (name, binding, slot))
             .collect()
+    }
+
+    /// Lexical names between a direct eval site and the active function's
+    /// VariableEnvironment. Unlike captured outer bindings, these prevent a
+    /// sloppy eval `var` declaration from being instantiated.
+    fn eval_lexical_conflicts(&self) -> Vec<String> {
+        let variable_scope_position = self
+            .active_scopes
+            .iter()
+            .position(|scope| *scope == self.variable_scope);
+        let start = variable_scope_position.map_or(0, |index| index + 1);
+        let mut conflicts = self.active_scope_slots[start..]
+            .iter()
+            .flat_map(|slots| slots.iter().copied())
+            .filter_map(|slot| {
+                let binding = &self.binding_metadata[slot as usize];
+                binding.lexical.then(|| binding.name.clone())
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        if variable_scope_position.is_none() {
+            conflicts.extend(self.variable_scope_lexicals.iter().cloned());
+        }
+        conflicts.into_iter().collect()
     }
 
     fn interpret(
@@ -1114,15 +1228,18 @@ impl Vm {
                         )?;
                         self.stack.truncate(base + 1);
                     }
-                    Opcode::CallSpread => {
+                    Opcode::CallSpread | Opcode::DirectEvalSpread => {
                         let base = self.stack.len() - 3;
                         let args = self.array_like_values(&self.stack[base + 2].clone())?;
-                        let result = self.call_native(
-                            self.stack[base].clone(),
-                            self.stack[base + 1].clone(),
-                            args,
-                            operand != 0,
-                        )?;
+                        let callee = self.stack[base].clone();
+                        let receiver = self.stack[base + 1].clone();
+                        let result = if instruction.opcode == Opcode::DirectEvalSpread
+                            && self.is_intrinsic_eval(&callee)?
+                        {
+                            self.direct_eval(native::argument(&args, 0))?
+                        } else {
+                            self.call_native(callee, receiver, args, operand != 0)?
+                        };
                         self.stack.truncate(base);
                         self.stack.push(result);
                     }
@@ -1433,6 +1550,7 @@ impl Vm {
                             .array_from(self.arguments.iter().skip(operand).cloned().collect())?;
                         self.stack.push(array);
                     }
+                    Opcode::ArgumentsObject => self.create_arguments_object(code)?,
                     Opcode::Return => return Ok(Some(Completion::Return(self.pop()))),
                     Opcode::TailRecur => {
                         let base = self.stack.len() - operand;
@@ -1669,16 +1787,25 @@ impl Vm {
                             self.stack.push(receiver);
                         }
                     }
-                    Opcode::Call | Opcode::Construct => {
+                    Opcode::Call | Opcode::DirectEval | Opcode::Construct => {
                         // Leave every call input on the stack until dispatch
                         // completes, so native allocations see all GC roots.
                         let base = self.stack.len() - operand - 2;
-                        let result = self.call_native(
-                            self.stack[base].clone(),
-                            self.stack[base + 1].clone(),
-                            self.stack[base + 2..].to_vec(),
-                            instruction.opcode == Opcode::Construct,
-                        )?;
+                        let callee = self.stack[base].clone();
+                        let receiver = self.stack[base + 1].clone();
+                        let args = self.stack[base + 2..].to_vec();
+                        let result = if instruction.opcode == Opcode::DirectEval
+                            && self.is_intrinsic_eval(&callee)?
+                        {
+                            self.direct_eval(native::argument(&args, 0))?
+                        } else {
+                            self.call_native(
+                                callee,
+                                receiver,
+                                args,
+                                instruction.opcode == Opcode::Construct,
+                            )?
+                        };
                         self.check_string(&result)?;
                         self.stack.truncate(base);
                         self.stack.push(result);
@@ -1850,6 +1977,19 @@ impl Vm {
                 }
                 if key == "hasOwnProperty" {
                     self.has_own_property_intrinsic()?;
+                }
+                // `%Object.prototype%` has an initial own constructor
+                // property. Intrinsics otherwise bootstrap lazily, so make
+                // that property available before an ordinary object observes
+                // its inherited `constructor` (including an arguments
+                // object before source has otherwise mentioned Object).
+                if key == "constructor"
+                    && self
+                        .heap
+                        .get_own_property_descriptor(self.object_prototype, "constructor")?
+                        .is_none()
+                {
+                    self.global("Object")?;
                 }
                 self.get_from_prototype(*id, receiver, key)
             }
