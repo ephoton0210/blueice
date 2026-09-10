@@ -117,6 +117,14 @@ opcodes! {
     DefineClassAccessor: 5, 0;
     DefineClassStaticField: 1, 0;
     CallClassStaticBlock: 1, 0;
+    SetClassHeritage: 1, 0;
+    SuperGet: 1, MAY_USE_INLINE_CACHE;
+    SuperGetMethod: 1, MAY_USE_INLINE_CACHE;
+    SuperSet: 1, MAY_USE_INLINE_CACHE;
+    SuperUpdate: 5, MAY_USE_INLINE_CACHE;
+    SuperCall: 5, 0;
+    SuperCallSpread: 1, 0;
+    SuperCallForward: 1, 0;
     DeleteProperty: 1, 0;
     Instanceof: 1, 0;
     In: 1, 0;
@@ -187,6 +195,9 @@ pub struct Bytecode {
     /// Class constructors require `new`, unlike ordinary constructible
     /// closures. Class methods are non-constructible closures.
     pub(crate) class_constructor: bool,
+    /// Derived class constructors receive their `this` binding from a
+    /// superclass construction rather than from their own call entry.
+    pub(crate) derived_constructor: bool,
     pub(crate) strict: bool,
     pub(crate) templates: Vec<TemplateSite>,
     pub(crate) handlers: Vec<Handler>,
@@ -209,6 +220,7 @@ impl Bytecode {
             generator: false,
             constructible: false,
             class_constructor: false,
+            derived_constructor: false,
             strict: false,
             templates: Vec::new(),
             handlers: Vec::new(),

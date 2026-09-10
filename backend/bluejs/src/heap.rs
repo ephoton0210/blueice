@@ -109,12 +109,26 @@ pub struct HeapStats {
 }
 
 pub(crate) type RegExpIteratorState = (ObjectId, JsString, bool, bool, bool);
-pub(crate) type ClosureState = (Rc<Bytecode>, Vec<ObjectId>, Value);
+pub(crate) type ClosureState = (Rc<Bytecode>, Vec<ObjectId>, Value, Option<ObjectId>, Option<Value>);
+
+#[derive(Default)]
+struct ClosureMetadata {
+    home: Option<ObjectId>,
+    class_base: Option<Value>,
+}
+
+impl ClosureMetadata {
+    fn references(&self) -> impl Iterator<Item = ObjectId> + '_ {
+        self.home.into_iter().chain(self.class_base.iter().filter_map(Value::object_id))
+    }
+}
+
+const CLOSURE_METADATA_BYTES: usize = size_of::<ClosureMetadata>();
 
 /// A generator's suspended execution context. The VM moves this out while
 /// `.next()` runs, then restores it before any subsequent allocation.
 pub(crate) enum GeneratorState {
-    Start { code: Rc<Bytecode>, captures: Vec<ObjectId>, callee: Value, receiver: Value, args: Vec<Value> },
+    Start { code: Rc<Bytecode>, captures: Vec<ObjectId>, callee: Value, receiver: Value, args: Vec<Value>, home: Option<ObjectId> },
     Suspended {
         code: Rc<Bytecode>,
         pc: usize,
@@ -126,6 +140,7 @@ pub(crate) enum GeneratorState {
         completion: Value,
         completion_empty: bool,
         active_scopes: Vec<u32>,
+        home: Option<ObjectId>,
     },
     Done,
 }
@@ -133,14 +148,15 @@ pub(crate) enum GeneratorState {
 impl GeneratorState {
     fn references(&self) -> Vec<ObjectId> {
         match self {
-            Self::Start { captures, callee, receiver, args, .. } => captures
+            Self::Start { captures, callee, receiver, args, home, .. } => captures
                 .iter()
                 .copied()
                 .chain(callee.object_id())
                 .chain(receiver.object_id())
                 .chain(args.iter().filter_map(Value::object_id))
+                .chain(*home)
                 .collect(),
-            Self::Suspended { stack, bindings, cells, this, args, completion, .. } => stack
+            Self::Suspended { stack, bindings, cells, this, args, completion, home, .. } => stack
                 .iter()
                 .chain(bindings.iter().flatten())
                 .chain(std::iter::once(this))
@@ -148,6 +164,7 @@ impl GeneratorState {
                 .chain(std::iter::once(completion))
                 .filter_map(Value::object_id)
                 .chain(cells.iter().map(|(_, id)| *id))
+                .chain(*home)
                 .collect(),
             Self::Done => Vec::new(),
         }
@@ -238,6 +255,7 @@ pub struct Heap {
     next_root: u64,
     config: HeapConfig,
     objects: HashMap<ObjectId, Object>,
+    closure_metadata: HashMap<ObjectId, ClosureMetadata>,
     nursery: Vec<ObjectId>,
     remembered: HashSet<ObjectId>,
     roots: HashMap<RootId, ObjectId>,
@@ -266,6 +284,7 @@ impl Heap {
             next_root: 1,
             config,
             objects: HashMap::new(),
+            closure_metadata: HashMap::new(),
             nursery: Vec::new(),
             remembered: HashSet::new(),
             roots: HashMap::new(),
@@ -437,9 +456,55 @@ impl Heap {
 
     pub(crate) fn closure(&self, object: ObjectId) -> Result<Option<ClosureState>, HeapError> {
         Ok(match &self.object(object)?.kind {
-            ObjectKind::Closure { code, captures, this } => Some((code.clone(), captures.clone(), this.clone())),
+            ObjectKind::Closure { code, captures, this } => {
+                let metadata = self.closure_metadata.get(&object);
+                Some((code.clone(), captures.clone(), this.clone(), metadata.and_then(|metadata| metadata.home), metadata.and_then(|metadata| metadata.class_base.clone())))
+            }
             _ => None,
         })
+    }
+
+    pub(crate) fn set_closure_home(&mut self, object: ObjectId, home: ObjectId) -> Result<(), HeapError> {
+        self.object(home)?;
+        if !matches!(self.object(object)?.kind, ObjectKind::Closure { .. }) {
+            return Err(HeapError::InvalidObject(object));
+        }
+        self.ensure_closure_metadata(object, &[home])?;
+        self.write_barrier(object, Some(home));
+        self.closure_metadata.get_mut(&object).expect("metadata was installed").home = Some(home);
+        Ok(())
+    }
+
+    pub(crate) fn set_class_base(&mut self, object: ObjectId, base: Value) -> Result<(), HeapError> {
+        if !matches!(self.object(object)?.kind, ObjectKind::Closure { .. }) {
+            return Err(HeapError::InvalidObject(object));
+        }
+        if let Some(target) = base.object_id() {
+            self.ensure_closure_metadata(object, &[target])?;
+        } else {
+            self.ensure_closure_metadata(object, &[])?;
+        }
+        self.write_barrier(object, base.object_id());
+        self.closure_metadata.get_mut(&object).expect("metadata was installed").class_base = Some(base);
+        Ok(())
+    }
+
+    pub(crate) fn class_base(&self, object: ObjectId) -> Result<Option<Value>, HeapError> {
+        match &self.object(object)?.kind {
+            ObjectKind::Closure { .. } => Ok(self.closure_metadata.get(&object).and_then(|metadata| metadata.class_base.clone())),
+            _ => Err(HeapError::InvalidObject(object)),
+        }
+    }
+
+    fn ensure_closure_metadata(&mut self, object: ObjectId, protected: &[ObjectId]) -> Result<(), HeapError> {
+        if self.closure_metadata.contains_key(&object) {
+            return Ok(());
+        }
+        let protected: Vec<_> = std::iter::once(object).chain(protected.iter().copied()).collect();
+        self.ensure_room(CLOSURE_METADATA_BYTES, &protected)?;
+        self.closure_metadata.insert(object, ClosureMetadata::default());
+        self.managed_bytes += CLOSURE_METADATA_BYTES;
+        Ok(())
     }
 
     pub(crate) fn alloc_string_iterator(&mut self, string: JsString, prototype: ObjectId) -> Result<ObjectId, HeapError> {
@@ -915,6 +980,9 @@ impl Heap {
         if young_only {
             for id in &self.remembered {
                 work.extend(self.objects[id].references());
+                if let Some(metadata) = self.closure_metadata.get(id) {
+                    work.extend(metadata.references());
+                }
             }
         }
         let mut marked = HashSet::new();
@@ -924,6 +992,9 @@ impl Heap {
                 continue;
             }
             work.extend(obj.references());
+            if let Some(metadata) = self.closure_metadata.get(&id) {
+                work.extend(metadata.references());
+            }
         }
         marked
     }
@@ -935,6 +1006,9 @@ impl Heap {
                 self.objects.get_mut(&id).expect("nursery handle is live").young = false;
             } else {
                 self.managed_bytes -= self.objects.remove(&id).expect("nursery handle is live").bytes;
+                if self.closure_metadata.remove(&id).is_some() {
+                    self.managed_bytes -= CLOSURE_METADATA_BYTES;
+                }
             }
         }
         self.remembered.clear();
@@ -943,6 +1017,7 @@ impl Heap {
 
     fn major_gc(&mut self, protected: &[ObjectId]) {
         let marked = self.mark(false, protected);
+        let reclaimed_metadata = self.closure_metadata.keys().filter(|id| !marked.contains(id)).count();
         self.objects.retain(|id, obj| {
             if marked.contains(id) {
                 obj.young = false;
@@ -952,6 +1027,8 @@ impl Heap {
                 false
             }
         });
+        self.closure_metadata.retain(|id, _| marked.contains(id));
+        self.managed_bytes -= reclaimed_metadata * CLOSURE_METADATA_BYTES;
         self.nursery.clear();
         self.remembered.clear();
         self.next_major_bytes = self.managed_bytes.saturating_mul(2).max(self.config.major_threshold_bytes).min(self.config.max_heap_bytes);

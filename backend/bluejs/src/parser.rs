@@ -750,7 +750,7 @@ impl Parser {
         let body = self.parse_block();
         self.function_depth -= 1;
         self.generator_depth -= u32::from(generator);
-        Ok(Function { name, params, body: body?, generator })
+        Ok(Function { name, params, body: body?, generator, is_async: false })
     }
 
     fn parse_arrow_body(&mut self) -> Result<ArrowBody, ParseError> {
@@ -761,7 +761,13 @@ impl Parser {
     }
 
     fn parse_class(&mut self) -> Result<Class, ParseError> {
-        let name = if let Token::Identifier(_) = self.peek() { Some(self.expect_identifier_name()?) } else { None };
+        let name = if matches!(self.peek(), Token::Identifier(name) if name != "extends") { Some(self.expect_identifier_name()?) } else { None };
+        let extends = if matches!(self.peek(), Token::Identifier(keyword) if keyword == "extends") {
+            self.advance();
+            Some(Box::new(self.parse_lhs_expression()?))
+        } else {
+            None
+        };
         self.expect_punct(Punct::LBrace)?;
         let mut elements = Vec::new();
         let mut has_constructor = false;
@@ -780,6 +786,10 @@ impl Parser {
                 self.static_block_function_depths.pop();
                 elements.push(ClassElement::StaticBlock(body?));
                 continue;
+            }
+            let is_async = self.class_async_method_follows();
+            if is_async {
+                self.advance();
             }
             let accessor = match self.peek() {
                 Token::Identifier(keyword)
@@ -803,16 +813,17 @@ impl Parser {
                 elements.push(ClassElement::Field { key, initializer, is_static });
                 continue;
             }
-            let function = self.parse_method_function(Some(method_name), generator)?;
+            let mut function = self.parse_method_function(Some(method_name), generator)?;
+            function.is_async = is_async;
             if let Some(getter) = accessor {
-                if generator || (getter && !function.params.is_empty()) || (!getter && (function.params.len() != 1 || function.params[0].rest)) {
+                if is_async || generator || (getter && !function.params.is_empty()) || (!getter && (function.params.len() != 1 || function.params[0].rest)) {
                     return Err(self.error("invalid class accessor parameter list"));
                 }
                 elements.push(ClassElement::Accessor { key, function, getter, is_static });
             } else {
                 let constructor = !is_static && !matches!(&key, PropertyKey::Computed(_)) && class_element_name(&key) == "constructor";
                 if constructor {
-                    if generator || has_constructor {
+                    if is_async || generator || has_constructor {
                         return Err(self.error("invalid class constructor"));
                     }
                     has_constructor = true;
@@ -821,7 +832,22 @@ impl Parser {
             }
         }
         self.expect_punct(Punct::RBrace)?;
-        Ok(Class { name, elements })
+        Ok(Class { name, extends, elements })
+    }
+
+    /// `async` is a contextual class-element modifier only when the next
+    /// token starts a method without an intervening line terminator. Keeping
+    /// `async = value` and `async() {}` as ordinary field/method names is
+    /// essential for the class element grammar.
+    fn class_async_method_follows(&self) -> bool {
+        if !matches!(self.peek(), Token::Identifier(name) if name == "async") || self.tokens.get(self.pos + 1).is_none_or(|token| token.newline_before) {
+            return false;
+        }
+        match self.peek_at(1) {
+            Token::Punct(Punct::Star) => true,
+            Token::Identifier(_) | Token::Keyword(_) | Token::String(_) | Token::Number(_) => matches!(self.peek_at(2), Token::Punct(Punct::LParen)),
+            _ => false,
+        }
     }
 
     /// Finds the index of the `)` matching the `(` at `open_idx`, or
@@ -1343,6 +1369,10 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Class(self.parse_class()?))
             }
+            Token::Identifier(name) if name == "super" => {
+                self.advance();
+                Ok(Expr::Super)
+            }
             Token::Identifier(name) if name == "yield" && self.generator_depth != 0 => {
                 self.advance();
                 let value = if matches!(self.peek(), Token::Punct(Punct::Semicolon | Punct::RBrace) | Token::Eof) {
@@ -1410,7 +1440,7 @@ impl Parser {
                         PropertyKey::Number(number) => number.to_string(),
                         PropertyKey::Computed(_) => String::new(),
                     };
-                    props.push(ObjectProp::Method { key, function: Function { name: Some(name), params, body, generator: false } });
+                    props.push(ObjectProp::Method { key, function: Function { name: Some(name), params, body, generator: false, is_async: false } });
                 } else if matches!(&key, PropertyKey::Identifier(name) if name == "get" || name == "set") && !self.check_punct(Punct::Comma) && !self.check_punct(Punct::RBrace) {
                     let getter = matches!(&key, PropertyKey::Identifier(name) if name == "get");
                     let key = self.parse_property_key()?;
@@ -1426,7 +1456,7 @@ impl Parser {
                         PropertyKey::Computed(_) => String::new(),
                     };
                     let name = format!("{} {}", if getter { "get" } else { "set" }, name);
-                    props.push(ObjectProp::Accessor { key, function: Function { name: Some(name), params, body, generator: false }, getter });
+                    props.push(ObjectProp::Accessor { key, function: Function { name: Some(name), params, body, generator: false, is_async: false }, getter });
                 } else {
                     let name = match &key {
                         PropertyKey::Identifier(n) => n.clone(),
@@ -1754,6 +1784,7 @@ mod tests {
                     right: Box::new(Expr::Identifier("b".to_string()))
                 }))],
                 generator: false,
+                is_async: false,
             })
         );
     }
@@ -1776,6 +1807,7 @@ mod tests {
                 ],
                 body: vec![],
                 generator: false,
+                is_async: false,
             })
         );
     }
@@ -1895,6 +1927,7 @@ mod tests {
                 }],
                 body: vec![],
                 generator: false,
+                is_async: false,
             })
         );
         assert!(matches!(expr("([a,,b=3,...rest]=source)"), Expr::DestructureAssign { pattern: AssignmentPattern::Array(_), .. }));
@@ -2038,7 +2071,7 @@ mod tests {
         // the value becomes its own separate expression statement.
         assert_eq!(
             only_stmt("function f() { return\n1; }"),
-            Stmt::FunctionDecl(Function { name: Some("f".to_string()), params: vec![], body: vec![Stmt::Return(None), Stmt::Expr(Expr::Number(1.0))], generator: false })
+            Stmt::FunctionDecl(Function { name: Some("f".to_string()), params: vec![], body: vec![Stmt::Return(None), Stmt::Expr(Expr::Number(1.0))], generator: false, is_async: false })
         );
     }
 

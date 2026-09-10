@@ -7,6 +7,16 @@ use crate::heap::GeneratorState;
 use crate::native::{MathMethod, ObjectMethod, PatternMethod, StringMethod};
 use std::rc::Rc;
 
+pub(super) struct ClosureCall {
+    pub code: Rc<Bytecode>,
+    pub captures: Vec<ObjectId>,
+    pub callee: Value,
+    pub receiver: Value,
+    pub args: Vec<Value>,
+    pub construct: bool,
+    pub home: Option<ObjectId>,
+}
+
 fn math_uint32(value: f64) -> u32 {
     if value.is_finite() { value.trunc().rem_euclid(4_294_967_296.0) as u32 } else { 0 }
 }
@@ -114,7 +124,7 @@ impl Vm {
         if let Some(bound) = self.heap.bound_function(*id)? {
             return Ok(bound.constructible);
         }
-        if let Some((code, _, _)) = self.heap.closure(*id)? {
+        if let Some((code, _, _, _, _)) = self.heap.closure(*id)? {
             return Ok(code.constructible);
         }
         Ok(matches!(
@@ -296,14 +306,17 @@ impl Vm {
         Ok(cell)
     }
 
-    pub(super) fn call_closure(&mut self, code: Rc<Bytecode>, captures: Vec<ObjectId>, callee: Value, receiver: Value, args: Vec<Value>, construct: bool) -> Result<Value, RuntimeError> {
+    pub(super) fn call_closure(&mut self, call: ClosureCall) -> Result<Value, RuntimeError> {
+        let ClosureCall { code, captures, callee, receiver, args, construct, home } = call;
         if code.class_constructor && !construct {
             return Err(RuntimeError::TypeError("class constructor cannot be invoked without new".into()));
         }
         if construct && !code.constructible {
             return Err(RuntimeError::TypeError("arrow function is not a constructor".into()));
         }
-        let receiver = if construct {
+        let receiver = if construct && code.derived_constructor {
+            Value::Undefined
+        } else if construct {
             let prototype = self.constructor_prototype(self.object_prototype)?;
             Value::Object(self.with_roots(|heap| heap.alloc_object(Some(prototype)))?)
         } else if code.arrow || code.strict {
@@ -315,11 +328,10 @@ impl Vm {
         };
         if code.generator {
             let prototype = self.generator_prototype()?;
-            let state = GeneratorState::Start { code, captures, callee, receiver, args };
+            let state = GeneratorState::Start { code, captures, callee, receiver, args, home };
             return Ok(Value::Object(self.with_roots(|heap| heap.alloc_generator(state, prototype))?));
         }
         self.stack.push(receiver.clone());
-        let constructed = receiver.clone();
         let base = self.stack.len();
         self.stack.extend(self.bindings.iter().flatten().cloned());
         self.stack.extend(self.cells.values().copied().map(Value::Object));
@@ -328,7 +340,7 @@ impl Vm {
         self.stack.extend(self.arguments.iter().cloned());
         let mut frame_bindings = vec![None; code.bindings.len()];
         if let Some(slot) = code.self_slot {
-            frame_bindings[slot as usize] = Some(callee);
+            frame_bindings[slot as usize] = Some(callee.clone());
         }
         let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
@@ -340,7 +352,10 @@ impl Vm {
         let active_scopes = std::mem::take(&mut self.active_scopes);
         let active_scope_slots = std::mem::take(&mut self.active_scope_slots);
         let strict = std::mem::replace(&mut self.strict, code.strict);
+        let home_object = std::mem::replace(&mut self.home_object, home);
+        let class_constructor = std::mem::replace(&mut self.class_constructor, code.class_constructor.then(|| callee.object_id().expect("class closures are objects")));
         let result = self.run(&code);
+        let constructed = self.this.clone();
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;
@@ -351,8 +366,20 @@ impl Vm {
         self.active_scopes = active_scopes;
         self.active_scope_slots = active_scope_slots;
         self.strict = strict;
+        self.home_object = home_object;
+        self.class_constructor = class_constructor;
         self.stack.truncate(base - 1);
-        result.map(|value| if construct && !matches!(value, Value::Object(_)) { constructed } else { value })
+        result.and_then(|value| {
+            if construct && !matches!(value, Value::Object(_)) {
+                if matches!(constructed, Value::Object(_)) {
+                    Ok(constructed)
+                } else {
+                    Err(RuntimeError::ReferenceError("derived constructor did not call super()".into()))
+                }
+            } else {
+                Ok(value)
+            }
+        })
     }
 
     fn generator_next(&mut self, receiver: &Value) -> Result<Value, RuntimeError> {
@@ -363,17 +390,17 @@ impl Vm {
             return self.iterator_result(Value::Undefined, true);
         }
 
-        let (code, pc, resume_value, frame_stack, frame_bindings, frame_cells, frame_this, frame_args, frame_completion, frame_completion_empty, frame_scopes) =
+        let (code, pc, resume_value, frame_stack, frame_bindings, frame_cells, frame_this, frame_args, frame_completion, frame_completion_empty, frame_scopes, frame_home) =
             match state {
-                GeneratorState::Start { code, captures, callee, receiver, args } => {
+                GeneratorState::Start { code, captures, callee, receiver, args, home } => {
                     let mut bindings = vec![None; code.bindings.len()];
                     if let Some(slot) = code.self_slot {
                         bindings[slot as usize] = Some(callee);
                     }
-                    (code, 0, None, Vec::new(), bindings, captures.into_iter().enumerate().collect(), receiver, args, Value::Undefined, true, Vec::new())
+                    (code, 0, None, Vec::new(), bindings, captures.into_iter().enumerate().collect(), receiver, args, Value::Undefined, true, Vec::new(), home)
                 }
-                GeneratorState::Suspended { code, pc, stack, bindings, cells, this, args, completion, completion_empty, active_scopes } => {
-                    (code, pc, Some(Value::Undefined), stack, bindings, cells.into_iter().collect(), this, args, completion, completion_empty, active_scopes)
+                GeneratorState::Suspended { code, pc, stack, bindings, cells, this, args, completion, completion_empty, active_scopes, home } => {
+                    (code, pc, Some(Value::Undefined), stack, bindings, cells.into_iter().collect(), this, args, completion, completion_empty, active_scopes, home)
                 }
                 GeneratorState::Done => unreachable!("completed generators returned above"),
             };
@@ -400,6 +427,7 @@ impl Vm {
             self.active_scopes.iter().map(|scope| code.scopes[*scope as usize].clone()).collect(),
         );
         let strict = std::mem::replace(&mut self.strict, code.strict);
+        let home_object = std::mem::replace(&mut self.home_object, frame_home);
         let mut iterators = Vec::new();
         let outcome = self.interpret(&code, &mut iterators, pc, resume_value);
 
@@ -421,6 +449,7 @@ impl Vm {
                     completion: std::mem::replace(&mut self.completion, Value::Undefined),
                     completion_empty: std::mem::replace(&mut self.completion_empty, true),
                     active_scopes: std::mem::take(&mut self.active_scopes),
+                    home: std::mem::take(&mut self.home_object),
                 };
                 (state, Ok((value, false)))
             }
@@ -440,6 +469,7 @@ impl Vm {
         self.active_scopes = active_scopes;
         self.active_scope_slots = active_scope_slots;
         self.strict = strict;
+        self.home_object = home_object;
         self.stack.truncate(base);
         let (value, done) = result?;
         self.iterator_result(value, done)

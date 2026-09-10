@@ -175,6 +175,13 @@ pub struct Vm {
     regexp_iterator_prototype: Option<ObjectId>,
     templates: HashMap<u64, ObjectId>,
     new_target: Value,
+    // The `[[HomeObject]]` of the currently executing method or class
+    // constructor. It is runtime frame state because `super` is lexical.
+    home_object: Option<ObjectId>,
+    // A class constructor's home object is its instance prototype for
+    // `super.property`; `super()` separately needs the constructor closure
+    // that owns the evaluated superclass metadata.
+    class_constructor: Option<ObjectId>,
     iterator_base: Option<ObjectId>,
     array_iterator_prototype: Option<ObjectId>,
     generator_prototype: Option<ObjectId>,
@@ -226,6 +233,8 @@ impl Vm {
             regexp_iterator_prototype: None,
             templates: HashMap::new(),
             new_target: Value::Undefined,
+            home_object: None,
+            class_constructor: None,
             iterator_base: None,
             array_iterator_prototype: None,
             generator_prototype: None,
@@ -598,6 +607,11 @@ impl Vm {
                     let value = self.pop();
                     let (receiver, key) = self.property_reference()?;
                     let object = receiver.object_id().unwrap();
+                    if matches!(instruction.opcode, Opcode::DefineMethod | Opcode::DefineClassAccessor) {
+                        if let Value::Object(function) = value {
+                            self.with_roots(|heap| heap.set_closure_home(function, object))?;
+                        }
+                    }
                     if instruction.opcode == Opcode::DefineData {
                         self.define_data(object, key, value.clone(), true, true, true)?;
                     } else {
@@ -645,6 +659,10 @@ impl Vm {
                 }
                 Opcode::CallClassStaticBlock => {
                     let base = self.stack.len() - 2;
+                    let Value::Object(target) = self.stack[base].clone() else { unreachable!("class constructors are objects") };
+                    if let Value::Object(function) = self.stack[base + 1] {
+                        self.with_roots(|heap| heap.set_closure_home(function, target))?;
+                    }
                     self.call_native(self.stack[base + 1].clone(), self.stack[base].clone(), Vec::new(), false)?;
                     self.stack.truncate(base + 1);
                 }
@@ -653,12 +671,57 @@ impl Vm {
                     let target = self.stack[base + 1].clone();
                     let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
                     let initializer = self.stack[base + 3].clone();
+                    if let (Value::Object(target), Value::Object(function)) = (&target, &initializer) {
+                        self.with_roots(|heap| heap.set_closure_home(*function, *target))?;
+                    }
                     let value = self.call_native(initializer, target.clone(), Vec::new(), false)?;
                     let Value::Object(target) = target else { unreachable!("class fields target the constructor") };
                     if !self.with_roots(|heap| heap.define_own_property(target, key, PropertyDescriptor::data(value, true, true, true)))? {
                         return Err(RuntimeError::TypeError("cannot define class field".into()));
                     }
                     self.stack.truncate(base + 1);
+                }
+                Opcode::SetClassHeritage => self.set_class_heritage()?,
+                Opcode::SuperGet | Opcode::SuperGetMethod => {
+                    let key_value = self.pop();
+                    let key = self.coerce_property_key(&key_value)?;
+                    let value = self.super_get(&key)?;
+                    self.check_string(&value)?;
+                    self.stack.push(value);
+                    if instruction.opcode == Opcode::SuperGetMethod {
+                        self.stack.push(self.this.clone());
+                    }
+                }
+                Opcode::SuperSet => {
+                    let value = self.pop();
+                    let key_value = self.pop();
+                    let key = self.coerce_property_key(&key_value)?;
+                    self.super_set(&key, &value)?;
+                    self.stack.push(value);
+                }
+                Opcode::SuperUpdate => {
+                    let key_value = self.pop();
+                    let key = self.coerce_property_key(&key_value)?;
+                    let old_value = self.super_get(&key)?;
+                    let old = self.coerce_number(&old_value)?;
+                    let new = if operand & 1 == 0 { old + 1.0 } else { old - 1.0 };
+                    self.super_set(&key, &Value::Number(new))?;
+                    self.stack.push(Value::Number(if operand & 2 == 0 { old } else { new }));
+                }
+                Opcode::SuperCall | Opcode::SuperCallSpread | Opcode::SuperCallForward => {
+                    let args = if instruction.opcode == Opcode::SuperCall {
+                        let base = self.stack.len() - operand;
+                        let args = self.stack[base..].to_vec();
+                        self.stack.truncate(base);
+                        args
+                    } else if instruction.opcode == Opcode::SuperCallSpread {
+                        let arguments = self.pop();
+                        self.array_like_values(&arguments)?
+                    } else {
+                        self.arguments.clone()
+                    };
+                    let value = self.super_call(args)?;
+                    self.stack.push(value);
                 }
                 Opcode::RegExpLiteral => {
                     let base = self.stack.len() - 2;
@@ -1182,6 +1245,82 @@ impl Vm {
         }
     }
 
+    fn set_class_heritage(&mut self) -> Result<(), RuntimeError> {
+        let base = self.pop();
+        let Value::Object(class) = self.stack.last().expect("class closure remains on the stack") else {
+            unreachable!("compiler emits a class closure before heritage")
+        };
+        let class = *class;
+        let prototype = self.heap.get(class, "prototype")?.object_id().expect("class constructors have a prototype object");
+        let (constructor_parent, instance_parent) = match &base {
+            Value::Null => (None, None),
+            Value::Object(base) if self.is_constructor(&Value::Object(*base))? => {
+                let instance_parent = match self.get_property(&Value::Object(*base), &"prototype".into())? {
+                    Value::Object(prototype) => Some(prototype),
+                    Value::Null => None,
+                    _ => return Err(RuntimeError::TypeError("superclass prototype must be an object or null".into())),
+                };
+                (Some(*base), instance_parent)
+            }
+            _ => return Err(RuntimeError::TypeError("class extends value is not a constructor or null".into())),
+        };
+        self.heap.set_prototype(class, constructor_parent)?;
+        self.heap.set_prototype(prototype, instance_parent)?;
+        self.with_roots(|heap| heap.set_class_base(class, base))?;
+        self.with_roots(|heap| heap.set_closure_home(class, prototype))?;
+        Ok(())
+    }
+
+    fn super_base(&self) -> Result<ObjectId, RuntimeError> {
+        let home = self.home_object.ok_or_else(|| RuntimeError::TypeError("super is not available in this function".into()))?;
+        self.heap.prototype(home)?.ok_or_else(|| RuntimeError::TypeError("superclass is null".into()))
+    }
+
+    fn super_get(&mut self, key: &PropertyName) -> Result<Value, RuntimeError> {
+        let base = self.super_base()?;
+        self.get_from_prototype(base, &self.this.clone(), key)
+    }
+
+    fn super_set(&mut self, key: &PropertyName, value: &Value) -> Result<(), RuntimeError> {
+        let base = self.super_base()?;
+        let mut current = Some(base);
+        while let Some(object) = current {
+            if let Some(descriptor) = self.heap.get_own_property_descriptor(object, key)? {
+                if descriptor.accessor() {
+                    let setter = descriptor.set.unwrap_or(Value::Undefined);
+                    if self.is_callable(&setter)? {
+                        self.call_native(setter, self.this.clone(), vec![value.clone()], false)?;
+                        return Ok(());
+                    }
+                    return Err(RuntimeError::TypeError("super property has no setter".into()));
+                }
+                if descriptor.writable == Some(false) {
+                    return Err(RuntimeError::TypeError("super property is read-only".into()));
+                }
+                break;
+            }
+            current = self.heap.prototype(object)?;
+        }
+        let Value::Object(receiver) = self.this else {
+            return Err(RuntimeError::ReferenceError("this is uninitialized before super()".into()));
+        };
+        self.with_roots(|heap| heap.set(receiver, key, value.clone())).map_err(|error| match error {
+            RuntimeError::Heap(HeapError::ReadOnlyProperty) => RuntimeError::TypeError("super property cannot be assigned".into()),
+            error => error,
+        })
+    }
+
+    fn super_call(&mut self, args: Vec<Value>) -> Result<Value, RuntimeError> {
+        let constructor = self.class_constructor.ok_or_else(|| RuntimeError::TypeError("super() is not available in this function".into()))?;
+        let base = self.heap.class_base(constructor)?.ok_or_else(|| RuntimeError::TypeError("super() requires a derived constructor".into()))?;
+        if matches!(base, Value::Null) {
+            return Err(RuntimeError::TypeError("super constructor is null".into()));
+        }
+        let value = self.call_with_target(base, Value::Undefined, args, true, self.new_target.clone())?;
+        self.this = value.clone();
+        Ok(value)
+    }
+
     /// Implements CopyDataProperties for an object-rest binding.  The
     /// compiler supplies an internal array of already-coerced excluded keys;
     /// getters are read from the original source object and copied as normal
@@ -1403,9 +1542,9 @@ impl Vm {
             args = prefixes.into_iter().rev().flatten().chain(args).collect();
         }
         if let Value::Object(id) = callee {
-            if let Some((code, captures, lexical_this)) = self.heap.closure(id)? {
+            if let Some((code, captures, lexical_this, home, _)) = self.heap.closure(id)? {
                 let receiver = if code.arrow { lexical_this } else { receiver };
-                return self.call_closure(code, captures, callee, receiver, args, construct);
+                return self.call_closure(builtins::ClosureCall { code, captures, callee, receiver, args, construct, home });
             }
         }
         let function = if let Value::Object(id) = callee { self.heap.native_function(id)? } else { None };

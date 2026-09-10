@@ -108,6 +108,14 @@ struct FunctionCompileOptions {
     constructible: bool,
     force_strict: bool,
     class_constructor: bool,
+    derived_constructor: bool,
+    default_derived_constructor: bool,
+}
+
+impl FunctionCompileOptions {
+    fn class_method() -> Self {
+        Self { constructible: false, force_strict: true, class_constructor: false, derived_constructor: false, default_derived_constructor: false }
+    }
 }
 
 impl Compiler {
@@ -605,7 +613,7 @@ impl Compiler {
                     ArrowBody::Expr(expr) => vec![Stmt::Return(Some(*expr.clone()))],
                     ArrowBody::Block(body) => body.clone(),
                 };
-                self.function_named(&Function { name: None, params: params.clone(), body, generator: false }, true, inferred_name, false)
+                self.function_named(&Function { name: None, params: params.clone(), body, generator: false, is_async: false }, true, inferred_name, false)
             }
             _ => self.expression(expression),
         }
@@ -887,6 +895,11 @@ impl Compiler {
                     }
                 }
             }
+            Expr::Super => return Err(CompileError::InvalidSyntax("super must be used as a property access or constructor call")),
+            Expr::Member { object, property, computed } if matches!(&**object, Expr::Super) => {
+                self.super_property_key(property, *computed)?;
+                self.emit(Opcode::SuperGet, 0)?;
+            }
             Expr::Member { .. } => {
                 self.member_reference(expr)?;
                 self.emit(Opcode::GetProperty, 0)?;
@@ -906,6 +919,14 @@ impl Compiler {
                     self.emit(Opcode::StoreBinding, slot)?;
                     if !prefix {
                         self.emit(Opcode::Pop, 0)?;
+                    }
+                } else if let Expr::Member { object, property, computed } = arg.as_ref() {
+                    if matches!(&**object, Expr::Super) {
+                        self.super_property_key(property, *computed)?;
+                        self.emit(Opcode::SuperUpdate, u32::from(*op == UpdateOp::Dec) | (u32::from(*prefix) << 1))?;
+                    } else {
+                        self.member_reference(arg)?;
+                        self.emit(Opcode::UpdateProperty, u32::from(*op == UpdateOp::Dec) | (u32::from(*prefix) << 1))?;
                     }
                 } else {
                     self.member_reference(arg)?;
@@ -927,7 +948,32 @@ impl Compiler {
             }
             Expr::Call { callee, args } | Expr::New { callee, args } => {
                 let construct = matches!(expr, Expr::New { .. });
-                if !construct && matches!(&**callee, Expr::Member { .. }) {
+                if !construct && matches!(&**callee, Expr::Super) {
+                    if args.iter().any(|arg| matches!(arg, Argument::Spread(_))) {
+                        self.emit(Opcode::NewArray, 0)?;
+                        for arg in args {
+                            let (value, kind) = match arg {
+                                Argument::Normal(value) => (value, 0),
+                                Argument::Spread(value) => (value, 2),
+                            };
+                            self.expression(value)?;
+                            self.emit(Opcode::ArrayPush, kind)?;
+                        }
+                        self.emit(Opcode::SuperCallSpread, 0)?;
+                    } else {
+                        for arg in args {
+                            let Argument::Normal(expr) = arg else { unreachable!("super call spreads take the array path") };
+                            self.expression(expr)?;
+                        }
+                        self.emit(Opcode::SuperCall, u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?)?;
+                    }
+                    return Ok(());
+                }
+                if !construct && matches!(&**callee, Expr::Member { object, .. } if matches!(&**object, Expr::Super)) {
+                    let Expr::Member { property, computed, .. } = callee.as_ref() else { unreachable!() };
+                    self.super_property_key(property, *computed)?;
+                    self.emit(Opcode::SuperGetMethod, 0)?;
+                } else if !construct && matches!(&**callee, Expr::Member { .. }) {
                     self.member_reference(callee)?;
                     self.emit(Opcode::GetMethod, 0)?;
                 } else {
@@ -974,7 +1020,7 @@ impl Compiler {
                     ArrowBody::Expr(expr) => vec![Stmt::Return(Some(*expr.clone()))],
                     ArrowBody::Block(body) => body.clone(),
                 };
-                self.function(&Function { name: None, params: params.clone(), body, generator: false }, true)?;
+                self.function(&Function { name: None, params: params.clone(), body, generator: false, is_async: false }, true)?;
             }
         }
         Ok(())
@@ -1044,6 +1090,28 @@ impl Compiler {
     }
 
     fn assignment(&mut self, op: AssignOp, target: &Expr, value: &Expr) -> Result<(), CompileError> {
+        if let Expr::Member { object, property, computed } = target {
+            if matches!(&**object, Expr::Super) {
+                self.super_property_key(property, *computed)?;
+                if op != AssignOp::Assign {
+                    self.emit(Opcode::Dup, 0)?;
+                    self.emit(Opcode::SuperGet, 0)?;
+                }
+                self.expression(value)?;
+                if let Some(opcode) = match op {
+                    AssignOp::Assign => None,
+                    AssignOp::AddAssign => Some(Opcode::Add),
+                    AssignOp::SubAssign => Some(Opcode::Subtract),
+                    AssignOp::MulAssign => Some(Opcode::Multiply),
+                    AssignOp::DivAssign => Some(Opcode::Divide),
+                    AssignOp::ModAssign => Some(Opcode::Remainder),
+                } {
+                    self.emit(opcode, 0)?;
+                }
+                self.emit(Opcode::SuperSet, 0)?;
+                return Ok(());
+            }
+        }
         if let Expr::Identifier(name) = target {
             if self.resolve(name).is_none() && self.with_depth != 0 {
                 if op != AssignOp::Assign {
@@ -1159,6 +1227,9 @@ impl Compiler {
 
     fn member_reference(&mut self, target: &Expr) -> Result<(), CompileError> {
         let Expr::Member { object, property, computed } = target else { return Err(CompileError::InvalidSyntax("invalid assignment/member AST")) };
+        if matches!(&**object, Expr::Super) {
+            return Err(CompileError::InvalidSyntax("super member requires a dedicated operation"));
+        }
         self.expression(object)?;
         if *computed {
             self.expression(property)?;
@@ -1166,6 +1237,18 @@ impl Compiler {
             self.constant(Value::String(name.clone().into()))?;
         } else {
             return Err(CompileError::InvalidSyntax("invalid non-computed member AST"));
+        }
+        self.emit(Opcode::ToPropertyKey, 0)?;
+        Ok(())
+    }
+
+    fn super_property_key(&mut self, property: &Expr, computed: bool) -> Result<(), CompileError> {
+        if computed {
+            self.expression(property)?;
+        } else if let Expr::Identifier(name) = property {
+            self.constant(Value::String(name.clone().into()))?;
+        } else {
+            return Err(CompileError::InvalidSyntax("invalid non-computed super member AST"));
         }
         self.emit(Opcode::ToPropertyKey, 0)?;
         Ok(())
@@ -1207,9 +1290,10 @@ impl Compiler {
                 if !matches!(key, PropertyKey::Computed(_)) && class_property_name(key) == "constructor" => Some(function.clone()),
             _ => None,
         });
-        let mut constructor = constructor.unwrap_or(Function { name: class.name.clone(), params: Vec::new(), body: Vec::new(), generator: false });
+        let default_constructor = constructor.is_none();
+        let mut constructor = constructor.unwrap_or(Function { name: class.name.clone(), params: Vec::new(), body: Vec::new(), generator: false, is_async: false });
         constructor.name = class.name.clone();
-        let mut body: Vec<_> = class
+        let fields: Vec<_> = class
             .elements
             .iter()
             .filter_map(|element| match element {
@@ -1217,15 +1301,32 @@ impl Compiler {
                 _ => None,
             })
             .collect();
-        body.extend(constructor.body);
+        let constructor_body = std::mem::take(&mut constructor.body);
+        let body = if class.extends.is_some() {
+            if default_constructor { fields.clone() } else { derived_constructor_body(constructor_body, fields.clone())? }
+        } else {
+            let mut body = fields.clone();
+            body.extend(constructor_body);
+            body
+        };
         constructor.body = body;
         self.function_named_with(
             &constructor,
             false,
             inferred_name,
             false,
-            FunctionCompileOptions { constructible: true, force_strict: true, class_constructor: true },
+            FunctionCompileOptions {
+                constructible: true,
+                force_strict: true,
+                class_constructor: true,
+                derived_constructor: class.extends.is_some(),
+                default_derived_constructor: class.extends.is_some() && default_constructor,
+            },
         )?;
+        if let Some(base) = &class.extends {
+            self.expression(base)?;
+            self.emit(Opcode::SetClassHeritage, 0)?;
+        }
         if let Some(slot) = binding {
             self.emit(Opcode::Dup, 0)?;
             self.emit(Opcode::InitializeBinding, slot)?;
@@ -1243,7 +1344,7 @@ impl Compiler {
                         false,
                         None,
                         false,
-                        FunctionCompileOptions { constructible: false, force_strict: true, class_constructor: false },
+                        FunctionCompileOptions::class_method(),
                     )?;
                     self.emit(Opcode::DefineMethod, 0)?;
                     self.emit(Opcode::Pop, 0)?;
@@ -1256,7 +1357,7 @@ impl Compiler {
                         false,
                         None,
                         false,
-                        FunctionCompileOptions { constructible: false, force_strict: true, class_constructor: false },
+                        FunctionCompileOptions::class_method(),
                     )?;
                     self.emit(Opcode::DefineClassAccessor, u32::from(!getter))?;
                     self.emit(Opcode::Pop, 0)?;
@@ -1265,25 +1366,25 @@ impl Compiler {
                     self.class_property_target(true)?;
                     self.property_key(key)?;
                     let value = initializer.clone().unwrap_or_else(undefined_expression);
-                    let initializer = Function { name: None, params: Vec::new(), body: vec![Stmt::Return(Some(value))], generator: false };
+                    let initializer = Function { name: None, params: Vec::new(), body: vec![Stmt::Return(Some(value))], generator: false, is_async: false };
                     self.function_named_with(
                         &initializer,
                         false,
                         None,
                         false,
-                        FunctionCompileOptions { constructible: false, force_strict: true, class_constructor: false },
+                        FunctionCompileOptions::class_method(),
                     )?;
                     self.emit(Opcode::DefineClassStaticField, 0)?;
                 }
                 ClassElement::Field { is_static: false, .. } => {}
                 ClassElement::StaticBlock(body) => {
-                    let block = Function { name: None, params: Vec::new(), body: body.clone(), generator: false };
+                    let block = Function { name: None, params: Vec::new(), body: body.clone(), generator: false, is_async: false };
                     self.function_named_with(
                         &block,
                         false,
                         None,
                         false,
-                        FunctionCompileOptions { constructible: false, force_strict: true, class_constructor: false },
+                        FunctionCompileOptions::class_method(),
                     )?;
                     self.emit(Opcode::CallClassStaticBlock, 0)?;
                 }
@@ -1307,7 +1408,13 @@ impl Compiler {
             arrow,
             inferred_name,
             named_expression,
-            FunctionCompileOptions { constructible: !arrow && !function.generator, force_strict: false, class_constructor: false },
+            FunctionCompileOptions {
+                constructible: !arrow && !function.generator,
+                force_strict: false,
+                class_constructor: false,
+                derived_constructor: false,
+                default_derived_constructor: false,
+            },
         )
     }
 
@@ -1319,6 +1426,9 @@ impl Compiler {
         named_expression: bool,
         options: FunctionCompileOptions,
     ) -> Result<(), CompileError> {
+        if function.is_async {
+            return Err(CompileError::Unsupported("async functions"));
+        }
         let child_budget = self.max_bytecode_bytes.saturating_sub(self.offset()?);
         let mut child = Compiler {
             bytecode: Bytecode::empty(),
@@ -1336,6 +1446,7 @@ impl Compiler {
         child.bytecode.generator = function.generator;
         child.bytecode.constructible = options.constructible;
         child.bytecode.class_constructor = options.class_constructor;
+        child.bytecode.derived_constructor = options.derived_constructor;
         child.bytecode.function_name = function.name.clone().or_else(|| inferred_name.map(str::to_owned)).unwrap_or_default();
         child.bytecode.function_length = function.params.iter().take_while(|p| !p.rest && p.default.is_none()).count() as u32;
         let mut visible = std::collections::BTreeMap::new();
@@ -1364,6 +1475,10 @@ impl Compiler {
             child.emit(if param.rest { Opcode::RestArguments } else { Opcode::Argument }, index as u32)?;
             child.binding_pattern_default(param.default.as_ref(), &param.pattern)?;
             child.bind_pattern(&param.pattern, DeclKind::Let)?;
+        }
+        if options.default_derived_constructor {
+            child.emit(Opcode::SuperCallForward, 0)?;
+            child.emit(Opcode::Pop, 0)?;
         }
         child.statements(&function.body)?;
         child.constant(Value::Undefined)?;
@@ -1413,6 +1528,22 @@ fn class_instance_field(key: &PropertyKey, initializer: Option<&Expr>) -> Stmt {
         target: Box::new(Expr::Member { object: Box::new(Expr::This), property: Box::new(property), computed }),
         value: Box::new(initializer.cloned().unwrap_or_else(undefined_expression)),
     })
+}
+
+/// The VM establishes `this` while executing `super()`. For explicit derived
+/// constructors, fields therefore follow the first direct constructor call.
+/// More complex control flow needs a dedicated derived-this state machine;
+/// report it as unsupported instead of initializing fields at an incorrect
+/// point.
+fn derived_constructor_body(mut body: Vec<Stmt>, fields: Vec<Stmt>) -> Result<Vec<Stmt>, CompileError> {
+    if fields.is_empty() {
+        return Ok(body);
+    }
+    let Some(index) = body.iter().position(|statement| matches!(statement, Stmt::Expr(Expr::Call { callee, .. }) if matches!(&**callee, Expr::Super))) else {
+        return Err(CompileError::Unsupported("instance fields in an explicit derived constructor without a direct super() call"));
+    };
+    body.splice(index + 1..index + 1, fields);
+    Ok(body)
 }
 
 fn binary_opcode(op: BinaryOp) -> Result<Opcode, CompileError> {

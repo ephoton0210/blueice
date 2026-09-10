@@ -30,14 +30,18 @@ pub struct Function {
     pub params: Vec<Param>,
     pub body: Vec<Stmt>,
     pub generator: bool,
+    /// Contextual `async` on a method. Async execution itself is a later
+    /// suspension slice, but retaining the grammar prevents valid programs
+    /// from being misreported as malformed source.
+    pub is_async: bool,
 }
 
 /// A class definition with the executable elements currently supported by the
-/// compiler. Heritage, fields, private elements and decorators remain outside
-/// this AST subset.
+/// compiler. Private elements and decorators remain outside this AST subset.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Class {
     pub name: Option<String>,
+    pub extends: Option<Box<Expr>>,
     pub elements: Vec<ClassElement>,
 }
 
@@ -267,6 +271,7 @@ pub enum Expr {
     Object(Vec<ObjectProp>),
     Function(Function),
     Class(Class),
+    Super,
     Yield(Option<Box<Expr>>),
     Arrow { params: Vec<Param>, body: ArrowBody },
     Unary { op: UnaryOp, arg: Box<Expr> },

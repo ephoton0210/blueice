@@ -210,24 +210,35 @@ try handler is active remains outside this slice.
 
 The class subset now evaluates base class declarations and expressions with
 constructors, instance/static methods and accessors, generator methods, public
-instance/static fields, and static blocks. Methods are strict, non-enumerable,
-non-constructible closures; constructors require `new`, receive a normal
-prototype object and report an ordinary `TypeError` when a class element cannot
-replace a non-configurable property. Static blocks and static-field initializers
-execute with the class as `this`, and a class declaration is initialized before
-those elements run. Named class expressions retain an immutable internal name
-binding for their methods and static blocks. Heritage, private elements,
-decorators and `super` remain later work. Sloppy `with` now has a VM-managed object
-environment for simple identifier reads/writes, is unwound with handlers, and
-is rejected in strict code. It does not yet model every `with` interaction with
-closures, `typeof`, updates or implicit global writes.
+instance/static fields, and static blocks. It also evaluates `extends`: a valid
+superclass creates both constructor and instance prototype chains, and a default
+derived constructor forwards its arguments through `super()`. Explicit derived
+constructors support direct `super()` calls; instance fields run after that call.
+Field initialization behind conditional or otherwise indirect `super()` control
+flow remains a classified compiler gap rather than running at an incorrect
+point. Method `[[HomeObject]]` metadata supports instance and static
+`super` reads, calls, assignments and updates, and remains live while a
+generator method is suspended. Methods are strict, non-enumerable,
+non-constructible closures; constructors require `new` and report an ordinary
+`TypeError` when a class element cannot replace a non-configurable property.
+Static blocks and static-field initializers execute with the class as `this`,
+and a class declaration is initialized before those elements run. Named class
+expressions retain an immutable internal name binding for their methods and
+static blocks. Class async method and async-generator grammar is retained and
+then reported as the explicit `async functions` compiler gap: Promise jobs and
+the `$DONE` host are not implemented. Private elements, decorators, async
+execution and arbitrary derived-field control flow remain later work. Sloppy
+`with` now has a VM-managed object environment for
+simple identifier reads/writes, is unwound with handlers, and is rejected in
+strict code. It does not yet model every `with` interaction with closures,
+`typeof`, updates or implicit global writes.
 
-The focused `language/statements/class` inventory now has **1,871 pass, 5,313
-fail and 1,482 unsupported** of 8,666 scheduled modes, compared with 56 pass
+The focused `language/statements/class` inventory now has **2,008 pass, 4,868
+fail and 1,790 unsupported** of 8,666 scheduled modes, compared with 56 pass
 before this class execution slice. It has no timeout, harness-error or adapter
 crash modes. The raw result is local at
-`/tmp/bluejs-test262-class-final-fields` and its reconciled analysis is at
-`/tmp/bluejs-test262-class-final-fields-analysis`.
+`/tmp/bluejs-test262-class-heritage-spread` and its reconciled analysis is at
+`/tmp/bluejs-test262-class-heritage-spread-analysis`.
 
 With `--instruction-budget 5000000` (required because the TCO helpers perform
 100,000 iterations), the filtered `language/statements/try` run now has **398
