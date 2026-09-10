@@ -180,6 +180,7 @@ struct Parser {
     /// binary operator there -- see this module's doc comment.
     no_in: bool,
     generator_depth: u32,
+    async_depth: u32,
     function_depth: u32,
     static_block_function_depths: Vec<u32>,
 }
@@ -188,7 +189,7 @@ impl Parser {
     fn new(source: &str) -> Parser {
         let mut tokenizer = Tokenizer::new(source);
         let (tokens, positions) = tokenize_all(&mut tokenizer);
-        Parser { tokens, positions, tokenizer, pos: 0, no_in: false, generator_depth: 0, function_depth: 0, static_block_function_depths: Vec::new() }
+        Parser { tokens, positions, tokenizer, pos: 0, no_in: false, generator_depth: 0, async_depth: 0, function_depth: 0, static_block_function_depths: Vec::new() }
     }
 
     fn rescan_suffix(&mut self) {
@@ -321,6 +322,15 @@ impl Parser {
                 }
                 Ok(Stmt::FunctionDecl(f))
             }
+            Token::Identifier(name) if name == "async" && self.async_function_follows() => {
+                self.advance();
+                self.expect_keyword(Keyword::Function)?;
+                let f = self.parse_function_with_async(true)?;
+                if f.name.is_none() {
+                    return Err(self.error("function declarations require a name"));
+                }
+                Ok(Stmt::FunctionDecl(f))
+            }
             Token::Identifier(name) if name == "class" => {
                 self.advance();
                 let class = self.parse_class()?;
@@ -425,6 +435,13 @@ impl Parser {
 
     fn parse_for_stmt(&mut self) -> Result<Stmt, ParseError> {
         self.advance();
+        // Async functions accept `for await (...)`. The current AST uses the
+        // ordinary ForOf shape because async execution is rejected before
+        // bytecode generation; preserving the syntax keeps that rejection
+        // correctly classified instead of reporting malformed source.
+        if self.async_depth != 0 && matches!(self.peek(), Token::Identifier(name) if name == "await") {
+            self.advance();
+        }
         self.expect_punct(Punct::LParen)?;
 
         if self.eat_punct(Punct::Semicolon) {
@@ -738,25 +755,33 @@ impl Parser {
     /// since callers need to branch on it first (statement vs.
     /// expression position).
     fn parse_function(&mut self) -> Result<Function, ParseError> {
-        let generator = self.eat_punct(Punct::Star);
-        let name = if let Token::Identifier(_) = self.peek() { Some(self.expect_identifier_name()?) } else { None };
-        self.parse_method_function(name, generator)
+        self.parse_function_with_async(false)
     }
 
-    fn parse_method_function(&mut self, name: Option<String>, generator: bool) -> Result<Function, ParseError> {
+    fn parse_function_with_async(&mut self, is_async: bool) -> Result<Function, ParseError> {
+        let generator = self.eat_punct(Punct::Star);
+        let name = if let Token::Identifier(_) = self.peek() { Some(self.expect_identifier_name()?) } else { None };
+        self.parse_method_function(name, generator, is_async)
+    }
+
+    fn parse_method_function(&mut self, name: Option<String>, generator: bool, is_async: bool) -> Result<Function, ParseError> {
+        self.async_depth += u32::from(is_async);
         let params = self.parse_params()?;
         self.generator_depth += u32::from(generator);
         self.function_depth += 1;
         let body = self.parse_block();
         self.function_depth -= 1;
         self.generator_depth -= u32::from(generator);
-        Ok(Function { name, params, body: body?, generator, is_async: false })
+        self.async_depth -= u32::from(is_async);
+        Ok(Function { name, params, body: body?, generator, is_async })
     }
 
-    fn parse_arrow_body(&mut self) -> Result<ArrowBody, ParseError> {
+    fn parse_arrow_body(&mut self, is_async: bool) -> Result<ArrowBody, ParseError> {
+        self.async_depth += u32::from(is_async);
         self.function_depth += 1;
         let body = if self.check_punct(Punct::LBrace) { self.parse_block().map(ArrowBody::Block) } else { self.parse_assignment().map(|value| ArrowBody::Expr(Box::new(value))) };
         self.function_depth -= 1;
+        self.async_depth -= u32::from(is_async);
         body
     }
 
@@ -784,7 +809,11 @@ impl Parser {
                 self.static_block_function_depths.push(self.function_depth);
                 let body = self.parse_block();
                 self.static_block_function_depths.pop();
-                elements.push(ClassElement::StaticBlock(body?));
+                let body = body?;
+                if statements_contain_super_call_outside_class(&body) {
+                    return Err(self.syntax_error("a static block cannot contain super()"));
+                }
+                elements.push(ClassElement::StaticBlock(body));
                 continue;
             }
             let is_async = self.class_async_method_follows();
@@ -809,19 +838,27 @@ impl Parser {
                     return Err(self.error("expected class method parameters"));
                 }
                 let initializer = if self.eat_punct(Punct::Assign) { Some(self.parse_assignment()?) } else { None };
+                if initializer.as_ref().is_some_and(expr_contains_super_call_outside_class) {
+                    return Err(self.syntax_error("a class field initializer cannot contain super()"));
+                }
                 self.eat_punct(Punct::Semicolon);
                 elements.push(ClassElement::Field { key, initializer, is_static });
                 continue;
             }
-            let mut function = self.parse_method_function(Some(method_name), generator)?;
-            function.is_async = is_async;
+            let function = self.parse_method_function(Some(method_name), generator, is_async)?;
+            let constructor = accessor.is_none()
+                && !is_static
+                && !matches!(&key, PropertyKey::Computed(_))
+                && class_element_name(&key) == "constructor";
+            if function_contains_super_call_outside_class(&function) && (!constructor || extends.is_none()) {
+                return Err(self.syntax_error("super() is only valid in a derived constructor"));
+            }
             if let Some(getter) = accessor {
                 if is_async || generator || (getter && !function.params.is_empty()) || (!getter && (function.params.len() != 1 || function.params[0].rest)) {
                     return Err(self.error("invalid class accessor parameter list"));
                 }
                 elements.push(ClassElement::Accessor { key, function, getter, is_static });
             } else {
-                let constructor = !is_static && !matches!(&key, PropertyKey::Computed(_)) && class_element_name(&key) == "constructor";
                 if constructor {
                     if is_async || generator || has_constructor {
                         return Err(self.error("invalid class constructor"));
@@ -846,6 +883,24 @@ impl Parser {
         match self.peek_at(1) {
             Token::Punct(Punct::Star) => true,
             Token::Identifier(_) | Token::Keyword(_) | Token::String(_) | Token::Number(_) => matches!(self.peek_at(2), Token::Punct(Punct::LParen)),
+            _ => false,
+        }
+    }
+
+    fn async_function_follows(&self) -> bool {
+        matches!(self.peek(), Token::Identifier(name) if name == "async")
+            && self.tokens.get(self.pos + 1).is_some_and(|token| !token.newline_before && matches!(token.token, Token::Keyword(Keyword::Function)))
+    }
+
+    fn async_arrow_follows(&self) -> bool {
+        if !matches!(self.peek(), Token::Identifier(name) if name == "async") || self.tokens.get(self.pos + 1).is_none_or(|token| token.newline_before) {
+            return false;
+        }
+        match self.peek_at(1) {
+            Token::Identifier(_) => matches!(self.peek_at(2), Token::Punct(Punct::Arrow)),
+            Token::Punct(Punct::LParen) => self
+                .matching_close_paren(self.pos + 1)
+                .is_some_and(|close| matches!(self.tokens.get(close + 1).map(|token| &token.token), Some(Token::Punct(Punct::Arrow)))),
             _ => false,
         }
     }
@@ -883,13 +938,21 @@ impl Parser {
     /// exists for, since the token stream is fully materialized up
     /// front rather than a lazy/streaming lexer.
     fn try_parse_arrow_function(&mut self) -> Result<Option<Expr>, ParseError> {
+        if self.async_arrow_follows() {
+            self.advance();
+            return self.try_parse_arrow_function_with_async(true);
+        }
+        self.try_parse_arrow_function_with_async(false)
+    }
+
+    fn try_parse_arrow_function_with_async(&mut self, is_async: bool) -> Result<Option<Expr>, ParseError> {
         if let Token::Identifier(name) = self.peek().clone() {
             if matches!(self.peek_at(1), Token::Punct(Punct::Arrow)) {
                 self.advance();
                 self.advance();
                 let params = vec![Param { pattern: Pattern::Identifier(name), default: None, rest: false }];
-                let body = self.parse_arrow_body()?;
-                return Ok(Some(Expr::Arrow { params, body }));
+                let body = self.parse_arrow_body(is_async)?;
+                return Ok(Some(Expr::Arrow { params, body, is_async }));
             }
         }
         if self.check_punct(Punct::LParen) {
@@ -897,8 +960,8 @@ impl Parser {
                 if matches!(self.tokens.get(close_idx + 1).map(|t| &t.token), Some(Token::Punct(Punct::Arrow))) {
                     let params = self.parse_params()?;
                     self.expect_punct(Punct::Arrow)?;
-                    let body = self.parse_arrow_body()?;
-                    return Ok(Some(Expr::Arrow { params, body }));
+                    let body = self.parse_arrow_body(is_async)?;
+                    return Ok(Some(Expr::Arrow { params, body, is_async }));
                 }
             }
         }
@@ -1212,6 +1275,10 @@ impl Parser {
         if self.eat_keyword(Keyword::Delete) {
             return Ok(Expr::Unary { op: UnaryOp::Delete, arg: Box::new(self.parse_unary()?) });
         }
+        if self.async_depth != 0 && matches!(self.peek(), Token::Identifier(name) if name == "await") {
+            self.advance();
+            return Ok(Expr::Await(Box::new(self.parse_unary()?)));
+        }
         if self.eat_punct(Punct::PlusPlus) {
             let arg = self.parse_unary()?;
             if !is_valid_ref_target(&arg) {
@@ -1253,7 +1320,19 @@ impl Parser {
     }
 
     fn parse_lhs_expression(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = if self.eat_keyword(Keyword::New) { self.parse_new_expression()? } else { self.parse_primary()? };
+        let mut expr = if self.check_keyword(Keyword::New)
+            && matches!(self.peek_at(1), Token::Punct(Punct::Dot))
+            && matches!(self.peek_at(2), Token::Identifier(name) if name == "target")
+        {
+            self.advance();
+            self.advance();
+            self.advance();
+            Expr::NewTarget
+        } else if self.eat_keyword(Keyword::New) {
+            self.parse_new_expression()?
+        } else {
+            self.parse_primary()?
+        };
         loop {
             if self.eat_punct(Punct::Dot) {
                 let name = self.expect_identifier_name()?;
@@ -1365,6 +1444,11 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Function(self.parse_function()?))
             }
+            Token::Identifier(name) if name == "async" && self.async_function_follows() => {
+                self.advance();
+                self.expect_keyword(Keyword::Function)?;
+                Ok(Expr::Function(self.parse_function_with_async(true)?))
+            }
             Token::Identifier(name) if name == "class" => {
                 self.advance();
                 Ok(Expr::Class(self.parse_class()?))
@@ -1375,12 +1459,13 @@ impl Parser {
             }
             Token::Identifier(name) if name == "yield" && self.generator_depth != 0 => {
                 self.advance();
-                let value = if matches!(self.peek(), Token::Punct(Punct::Semicolon | Punct::RBrace) | Token::Eof) {
+                let delegate = self.eat_punct(Punct::Star);
+                let value = if !delegate && matches!(self.peek(), Token::Punct(Punct::Semicolon | Punct::RBrace) | Token::Eof) {
                     None
                 } else {
                     Some(Box::new(self.parse_assignment()?))
                 };
-                Ok(Expr::Yield(value))
+                Ok(Expr::Yield { value, delegate })
             }
             Token::Identifier(name) => {
                 self.advance();
@@ -1819,9 +1904,10 @@ mod tests {
             Expr::Arrow {
                 params: vec![Param { pattern: Pattern::Identifier("x".to_string()), default: None, rest: false }],
                 body: ArrowBody::Expr(Box::new(Expr::Binary { op: BinaryOp::Add, left: Box::new(Expr::Identifier("x".to_string())), right: Box::new(Expr::Number(1.0)) })),
+                is_async: false,
             }
         );
-        assert_eq!(expr("() => {}"), Expr::Arrow { params: vec![], body: ArrowBody::Block(vec![]) });
+        assert_eq!(expr("() => {}"), Expr::Arrow { params: vec![], body: ArrowBody::Block(vec![]), is_async: false });
         assert_eq!(
             expr("(a, b) => { return a + b; }"),
             Expr::Arrow {
@@ -1834,8 +1920,10 @@ mod tests {
                     left: Box::new(Expr::Identifier("a".to_string())),
                     right: Box::new(Expr::Identifier("b".to_string()))
                 }))]),
+                is_async: false,
             }
         );
+        assert!(matches!(expr("async value => await value"), Expr::Arrow { is_async: true, .. }));
     }
 
     #[test]
@@ -1856,6 +1944,7 @@ mod tests {
                         rest: false,
                     }],
                     body: ArrowBody::Expr(Box::new(Expr::Identifier("x".into()))),
+                    is_async: false,
                 })],
             }
         );
@@ -1873,7 +1962,8 @@ mod tests {
             expr("(x) => () => x"),
             Expr::Arrow {
                 params: vec![Param { pattern: Pattern::Identifier("x".to_string()), default: None, rest: false }],
-                body: ArrowBody::Expr(Box::new(Expr::Arrow { params: vec![], body: ArrowBody::Expr(Box::new(Expr::Identifier("x".to_string()))) })),
+                body: ArrowBody::Expr(Box::new(Expr::Arrow { params: vec![], body: ArrowBody::Expr(Box::new(Expr::Identifier("x".to_string()))), is_async: false })),
+                is_async: false,
             }
         );
     }

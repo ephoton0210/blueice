@@ -216,29 +216,35 @@ derived constructor forwards its arguments through `super()`. Explicit derived
 constructors support direct `super()` calls; instance fields run after that call.
 Field initialization behind conditional or otherwise indirect `super()` control
 flow remains a classified compiler gap rather than running at an incorrect
-point. Method `[[HomeObject]]` metadata supports instance and static
-`super` reads, calls, assignments and updates, and remains live while a
-generator method is suspended. Methods are strict, non-enumerable,
-non-constructible closures; constructors require `new` and report an ordinary
-`TypeError` when a class element cannot replace a non-configurable property.
-Static blocks and static-field initializers execute with the class as `this`,
-and a class declaration is initialized before those elements run. Named class
-expressions retain an immutable internal name binding for their methods and
-static blocks. Class async method and async-generator grammar is retained and
-then reported as the explicit `async functions` compiler gap: Promise jobs and
-the `$DONE` host are not implemented. Private elements, decorators, async
-execution and arbitrary derived-field control flow remain later work. Sloppy
-`with` now has a VM-managed object environment for
+point. The available eval path rejects a lexical `super()` call from an
+instance field before its source can take effect; this does not implement the
+P0.2 distinction between direct and indirect eval. Method `[[HomeObject]]`
+metadata supports instance and static `super` reads, calls, assignments and
+updates, is inherited by arrows (including a derived constructor arrow's
+lexical `super()`), and remains live while a generator method is suspended.
+It is installed for every class constructor so an arrow created by a base-class
+field can use `super` property access. Fields, static blocks, accessors and
+non-derived constructors with a `super()` call now report a known parse
+`SyntaxError`. Methods are strict, non-enumerable, non-constructible closures;
+constructors require `new` and report an ordinary `TypeError` when a class
+element cannot replace a non-configurable property. Static blocks and
+static-field initializers execute with the class as `this`, and a class
+declaration is initialized before those elements run. Named class expressions
+retain an immutable internal name binding for their methods and static blocks.
+Async methods, async generators, async functions and async arrows retain
+`await`, `yield*`, `for await`, and lexical `new.target` syntax, then report
+the explicit `async functions` compiler gap: Promise jobs and the `$DONE` host
+are not implemented. Private elements, decorators, async execution and
+arbitrary derived-field control flow remain later work. Sloppy `with` now has a VM-managed object environment for
 simple identifier reads/writes, is unwound with handlers, and is rejected in
 strict code. It does not yet model every `with` interaction with closures,
 `typeof`, updates or implicit global writes.
 
-The focused `language/statements/class` inventory now has **2,008 pass, 4,868
-fail and 1,790 unsupported** of 8,666 scheduled modes, compared with 56 pass
-before this class execution slice. It has no timeout, harness-error or adapter
-crash modes. The raw result is local at
-`/tmp/bluejs-test262-class-heritage-spread` and its reconciled analysis is at
-`/tmp/bluejs-test262-class-heritage-spread-analysis`.
+The current `language/statements/class` slice has **2,126 pass, 4,476 fail and
+2,064 unsupported** of 8,666 scheduled modes. It uses the pinned Test262
+snapshot, eight workers, a two-second case deadline and a 1,000,000-instruction
+budget. This is a focused regression measurement rather than a conformance
+claim; raw output is local at `/tmp/bluejs-test262-class-super-early`.
 
 With `--instruction-budget 5000000` (required because the TCO helpers perform
 100,000 iterations), the filtered `language/statements/try` run now has **398

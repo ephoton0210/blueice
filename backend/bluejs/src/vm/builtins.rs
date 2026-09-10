@@ -15,6 +15,7 @@ pub(super) struct ClosureCall {
     pub args: Vec<Value>,
     pub construct: bool,
     pub home: Option<ObjectId>,
+    pub class_base: Option<Value>,
 }
 
 fn math_uint32(value: f64) -> u32 {
@@ -26,6 +27,13 @@ impl Vm {
         let Value::String(source) = value else { return Ok(value.clone()) };
         let source = source.to_utf8().map_err(|_| RuntimeError::SyntaxError("eval source contains an unpaired surrogate".into()))?;
         let program = crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let derived_constructor = match self.class_constructor {
+            Some(constructor) => self.heap.class_base(constructor)?.is_some(),
+            None => false,
+        };
+        if crate::ast::contains_super_call_outside_class(&program) && (self.class_field_initializer_depth != 0 || !derived_constructor) {
+            return Err(RuntimeError::SyntaxError("super() is not valid in this eval context".into()));
+        }
         let code = crate::compiler::compile_eval(&program, &self.eval_visible_bindings(), self.strict)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let captures = code.captures.iter().map(|slot| self.capture(*slot as usize)).collect::<Result<Vec<_>, _>>()?;
@@ -307,7 +315,7 @@ impl Vm {
     }
 
     pub(super) fn call_closure(&mut self, call: ClosureCall) -> Result<Value, RuntimeError> {
-        let ClosureCall { code, captures, callee, receiver, args, construct, home } = call;
+        let ClosureCall { code, captures, callee, receiver, args, construct, home, class_base } = call;
         if code.class_constructor && !construct {
             return Err(RuntimeError::TypeError("class constructor cannot be invoked without new".into()));
         }
@@ -353,13 +361,22 @@ impl Vm {
         let active_scope_slots = std::mem::take(&mut self.active_scope_slots);
         let strict = std::mem::replace(&mut self.strict, code.strict);
         let home_object = std::mem::replace(&mut self.home_object, home);
-        let class_constructor = std::mem::replace(&mut self.class_constructor, code.class_constructor.then(|| callee.object_id().expect("class closures are objects")));
+        let next_field_initializer_depth = if code.arrow { self.class_field_initializer_depth } else { 0 };
+        let class_field_initializer_depth = std::mem::replace(&mut self.class_field_initializer_depth, next_field_initializer_depth);
+        let derived_constructor_arrow = code.arrow && class_base.is_some();
+        let class_constructor = std::mem::replace(
+            &mut self.class_constructor,
+            (code.class_constructor || derived_constructor_arrow).then(|| callee.object_id().expect("class and arrow closures are objects")),
+        );
         let result = self.run(&code);
         let constructed = self.this.clone();
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;
-        self.this = this;
+        // `super()` in a derived-constructor arrow initializes the enclosing
+        // constructor's lexical `this` binding. Nested arrows propagate that
+        // initialized receiver one frame at a time on return.
+        self.this = if derived_constructor_arrow && matches!(constructed, Value::Object(_)) { constructed.clone() } else { this };
         self.arguments = arguments;
         self.completion = completion;
         self.completion_empty = completion_empty;
@@ -368,6 +385,7 @@ impl Vm {
         self.strict = strict;
         self.home_object = home_object;
         self.class_constructor = class_constructor;
+        self.class_field_initializer_depth = class_field_initializer_depth;
         self.stack.truncate(base - 1);
         result.and_then(|value| {
             if construct && !matches!(value, Value::Object(_)) {

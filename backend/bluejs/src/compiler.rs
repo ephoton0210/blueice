@@ -220,6 +220,11 @@ impl Compiler {
                 let slot = self.resolve(class.name.as_deref().expect("class declaration has a name")).unwrap();
                 self.class_expression_with_binding(class, None, Some(slot))?;
             }
+            Stmt::ClassField(statement) => {
+                self.emit(Opcode::EnterClassFieldInitializer, 0)?;
+                self.statement(statement, declarations_allowed)?;
+                self.emit(Opcode::LeaveClassFieldInitializer, 0)?;
+            }
             Stmt::Expr(Expr::Class(class)) => {
                 self.class_expression(class, None)?;
                 self.emit(Opcode::Pop, 0)?;
@@ -608,12 +613,12 @@ impl Compiler {
         match expression {
             Expr::Function(function) if function.name.is_none() && inferred_name.is_some() => self.function_named(function, false, inferred_name, false),
             Expr::Class(class) if class.name.is_none() && inferred_name.is_some() => self.class_expression(class, inferred_name),
-            Expr::Arrow { params, body } if inferred_name.is_some() => {
+            Expr::Arrow { params, body, is_async } if inferred_name.is_some() => {
                 let body = match body {
                     ArrowBody::Expr(expr) => vec![Stmt::Return(Some(*expr.clone()))],
                     ArrowBody::Block(body) => body.clone(),
                 };
-                self.function_named(&Function { name: None, params: params.clone(), body, generator: false, is_async: false }, true, inferred_name, false)
+                self.function_named(&Function { name: None, params: params.clone(), body, generator: false, is_async: *is_async }, true, inferred_name, false)
             }
             _ => self.expression(expression),
         }
@@ -1002,11 +1007,15 @@ impl Compiler {
             Expr::This => {
                 self.emit(Opcode::This, 0)?;
             }
+            Expr::NewTarget => return Err(CompileError::Unsupported("new.target")),
             Expr::Function(function) => self.function_expression(function)?,
             Expr::Class(class) => self.class_expression(class, None)?,
-            Expr::Yield(value) => {
+            Expr::Yield { value, delegate } => {
                 if !self.bytecode.generator {
                     return Err(CompileError::InvalidSyntax("yield requires a generator function"));
+                }
+                if *delegate {
+                    return Err(CompileError::Unsupported("yield*"));
                 }
                 if let Some(value) = value {
                     self.expression(value)?;
@@ -1015,12 +1024,13 @@ impl Compiler {
                 }
                 self.emit(Opcode::Yield, 0)?;
             }
-            Expr::Arrow { params, body } => {
+            Expr::Await(_) => return Err(CompileError::Unsupported("await expressions")),
+            Expr::Arrow { params, body, is_async } => {
                 let body = match body {
                     ArrowBody::Expr(expr) => vec![Stmt::Return(Some(*expr.clone()))],
                     ArrowBody::Block(body) => body.clone(),
                 };
-                self.function(&Function { name: None, params: params.clone(), body, generator: false, is_async: false }, true)?;
+                self.function(&Function { name: None, params: params.clone(), body, generator: false, is_async: *is_async }, true)?;
             }
         }
         Ok(())
@@ -1323,6 +1333,7 @@ impl Compiler {
                 default_derived_constructor: class.extends.is_some() && default_constructor,
             },
         )?;
+        self.emit(Opcode::SetClassHome, 0)?;
         if let Some(base) = &class.extends {
             self.expression(base)?;
             self.emit(Opcode::SetClassHeritage, 0)?;
@@ -1523,11 +1534,11 @@ fn class_instance_field(key: &PropertyKey, initializer: Option<&Expr>) -> Stmt {
         PropertyKey::Number(number) => (Expr::Number(*number), true),
         PropertyKey::Computed(expression) => ((*expression.clone()), true),
     };
-    Stmt::Expr(Expr::Assign {
+    Stmt::ClassField(Box::new(Stmt::Expr(Expr::Assign {
         op: AssignOp::Assign,
         target: Box::new(Expr::Member { object: Box::new(Expr::This), property: Box::new(property), computed }),
         value: Box::new(initializer.cloned().unwrap_or_else(undefined_expression)),
-    })
+    })))
 }
 
 /// The VM establishes `this` while executing `super()`. For explicit derived

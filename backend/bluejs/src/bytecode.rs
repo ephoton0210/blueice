@@ -117,6 +117,7 @@ opcodes! {
     DefineClassAccessor: 5, 0;
     DefineClassStaticField: 1, 0;
     CallClassStaticBlock: 1, 0;
+    SetClassHome: 1, 0;
     SetClassHeritage: 1, 0;
     SuperGet: 1, MAY_USE_INLINE_CACHE;
     SuperGetMethod: 1, MAY_USE_INLINE_CACHE;
@@ -125,6 +126,8 @@ opcodes! {
     SuperCall: 5, 0;
     SuperCallSpread: 1, 0;
     SuperCallForward: 1, 0;
+    EnterClassFieldInitializer: 1, 0;
+    LeaveClassFieldInitializer: 1, 0;
     DeleteProperty: 1, 0;
     Instanceof: 1, 0;
     In: 1, 0;

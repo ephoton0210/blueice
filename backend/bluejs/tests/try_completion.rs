@@ -120,8 +120,12 @@ fn derived_classes_construct_through_super_and_keep_home_object_receivers() {
         "class Base{constructor(value){this.value=value;}}class Derived extends Base{}let value=new Derived(3);value.value===3&&value instanceof Derived&&value instanceof Base",
         "class Base{constructor(first,second){this.value=first+second;}}class Derived extends Base{constructor(...values){super(...values);}}(new Derived(2,3)).value===5",
         "class Base{constructor(value){this.value=value;}}class Derived extends Base{copy=this.value;constructor(value){super(value);this.observed=this.copy;}}(new Derived(3)).observed===3",
+        "class Base{constructor(value){this.value=value;}}class Derived extends Base{constructor(value){(()=>super(value+1))();this.observed=this.value;}}(new Derived(3)).observed===4",
+        "let executed=false;class Base{}class Derived extends Base{field=eval('executed=true;()=>super();')}let syntax=false;try{new Derived}catch(error){syntax=error instanceof SyntaxError;}syntax&&!executed",
+        "class C{write=()=>{super.value=7;}static writeStatic=()=>{super.value=11;}}let value=new C;value.write();C.writeStatic();value.value===7&&C.value===11",
         "class Base{static get answer(){return this.value;}static set answer(value){this.value=value;}}class Derived extends Base{}Derived.answer=42;Derived.answer===42&&Base.value===undefined",
         "class Base{constructor(){this._count=1;}get count(){return this._count;}set count(value){this._count=value;}*items(){yield this.count;}}class Derived extends Base{constructor(){super();}*items(){yield super.items().next().value;yield super.count++;}}let value=new Derived;let iter=value.items();iter.next().value===1&&iter.next().value===1&&iter.next().done&&value.count===2",
+        "class Base{method(){return this.value;}static method(){return this.value;}}class Derived extends Base{constructor(){super();this.value=7;}method(){return (()=>super.method())();}static method(){this.value=11;return (()=>super.method())();}}let value=new Derived;value.method()===7&&Derived.method()===11",
     ] {
         assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)), "{source}");
     }
@@ -131,8 +135,30 @@ fn derived_classes_construct_through_super_and_keep_home_object_receivers() {
 fn class_async_method_syntax_is_classified_as_an_execution_gap() {
     let program = parse("class Derived extends Base{async method(){return 1;}static async *items(){yield 2;}}").unwrap();
     assert!(matches!(compile(&program), Err(blueice_bluejs::CompileError::Unsupported("async functions"))));
+    let program = parse("class Base{async method(){return 1;}}class Derived extends Base{async method(value=super.method()){return await value;}static async *items(){for await(let item of [])yield* await super.method();}}").unwrap();
+    assert!(matches!(compile(&program), Err(blueice_bluejs::CompileError::Unsupported("async functions"))));
+    let program = parse("async function helper(){return await 1;}").unwrap();
+    assert!(matches!(compile(&program), Err(blueice_bluejs::CompileError::Unsupported("async functions"))));
+    let program = parse("async function helper(){return new.target;}").unwrap();
+    assert!(matches!(compile(&program), Err(blueice_bluejs::CompileError::Unsupported("async functions"))));
+    let program = parse("let helper=async value=>await value;").unwrap();
+    assert!(matches!(compile(&program), Err(blueice_bluejs::CompileError::Unsupported("async functions"))));
     assert!(parse("class C{async constructor(){}}").is_err());
     assert!(parse("class C{async\nmethod(){}}").is_ok());
+    for source in [
+        "class C{field=super();}",
+        "class C{static field=()=>super();}",
+        "class C{method(){super();}}",
+        "class C{static method(){super();}}",
+        "class C{get field(){super();}}",
+        "class C{static set field(value){super();}}",
+        "class C{constructor(){super();}}",
+        "class C{static{super();}}",
+    ] {
+        let error = parse(source).unwrap_err();
+        assert!(error.known_syntax, "{source}: {error:?}");
+    }
+    assert!(parse("class Base{}class Derived extends Base{constructor(){(()=>super())();}}").is_ok());
     let program = parse("class Derived extends Base{field=1;constructor(){if(true)super();}}").unwrap();
     assert!(matches!(compile(&program), Err(blueice_bluejs::CompileError::Unsupported("instance fields in an explicit derived constructor without a direct super() call"))));
 }
@@ -147,7 +173,7 @@ fn class_home_metadata_survives_minor_collection_while_a_generator_is_suspended(
     assert_eq!(
         execute(
             &mut vm,
-            "class Base{get answer(){return this.value;}}class Derived extends Base{constructor(){super();this.value=7;}*items(){yield 1;yield super.answer;}}let iter=(new Derived).items();let first=iter.next();let padding=[{},{},{},{},{},{},{},{}];first.value===1&&iter.next().value===7",
+            "class Base{get answer(){return this.value;}}class Derived extends Base{constructor(){super();this.value=7;}*items(){let read=()=>super.answer;yield 1;yield read();}}let iter=(new Derived).items();let first=iter.next();let padding=[{},{},{},{},{},{},{},{}];first.value===1&&iter.next().value===7",
         ),
         Ok(Value::Bool(true))
     );

@@ -182,6 +182,10 @@ pub struct Vm {
     // `super.property`; `super()` separately needs the constructor closure
     // that owns the evaluated superclass metadata.
     class_constructor: Option<ObjectId>,
+    // A direct eval in an instance field is outside a constructor for the
+    // `super()` early-error rules even though fields are lowered into the
+    // constructor bytecode.
+    class_field_initializer_depth: u32,
     iterator_base: Option<ObjectId>,
     array_iterator_prototype: Option<ObjectId>,
     generator_prototype: Option<ObjectId>,
@@ -235,6 +239,7 @@ impl Vm {
             new_target: Value::Undefined,
             home_object: None,
             class_constructor: None,
+            class_field_initializer_depth: 0,
             iterator_base: None,
             array_iterator_prototype: None,
             generator_prototype: None,
@@ -278,6 +283,7 @@ impl Vm {
         // actually observes it. This keeps data-only executions within small
         // heap configurations while preserving script and arrow semantics.
         self.this = Value::Undefined;
+        self.class_field_initializer_depth = 0;
         let result = self.run(code).and_then(|value| {
             if publish_globals {
                 self.publish_global_bindings(code)?;
@@ -681,6 +687,7 @@ impl Vm {
                     }
                     self.stack.truncate(base + 1);
                 }
+                Opcode::SetClassHome => self.set_class_home()?,
                 Opcode::SetClassHeritage => self.set_class_heritage()?,
                 Opcode::SuperGet | Opcode::SuperGetMethod => {
                     let key_value = self.pop();
@@ -722,6 +729,10 @@ impl Vm {
                     };
                     let value = self.super_call(args)?;
                     self.stack.push(value);
+                }
+                Opcode::EnterClassFieldInitializer => self.class_field_initializer_depth += 1,
+                Opcode::LeaveClassFieldInitializer => {
+                    self.class_field_initializer_depth = self.class_field_initializer_depth.checked_sub(1).expect("compiler balances class field initializers");
                 }
                 Opcode::RegExpLiteral => {
                     let base = self.stack.len() - 2;
@@ -843,6 +854,24 @@ impl Vm {
                     };
                     let id = self.with_roots(|heap| heap.alloc_closure(child.clone(), captures, this, function_prototype))?;
                     self.stack.push(Value::Object(id));
+                    // Arrow functions inherit their containing function's
+                    // [[HomeObject]] together with lexical `this`.  Keeping
+                    // the new closure on the operand stack first makes it a
+                    // GC root while installing metadata may allocate.
+                    if child.arrow {
+                        if let Some(home) = self.home_object {
+                            self.with_roots(|heap| heap.set_closure_home(id, home))?;
+                        }
+                        // A derived constructor's arrow may invoke `super()`.
+                        // Store its resolved superclass on the arrow closure;
+                        // the call frame then treats that closure as the
+                        // lexical derived-constructor context.
+                        if let Some(constructor) = self.class_constructor {
+                            if let Some(base) = self.heap.class_base(constructor)? {
+                                self.with_roots(|heap| heap.set_class_base(id, base))?;
+                            }
+                        }
+                    }
                     self.define_data(id, "name", Value::String(child.function_name.clone().into()), false, false, true)?;
                     self.define_data(id, "length", Value::Number(child.function_length as f64), false, false, true)?;
                     if child.constructible {
@@ -1271,6 +1300,16 @@ impl Vm {
         Ok(())
     }
 
+    fn set_class_home(&mut self) -> Result<(), RuntimeError> {
+        let class = match self.stack.last().expect("class closure remains on the stack") {
+            Value::Object(class) => *class,
+            _ => unreachable!("compiler emits a class closure before setting its home object"),
+        };
+        let prototype = self.heap.get(class, "prototype")?.object_id().expect("class constructors have a prototype object");
+        self.with_roots(|heap| heap.set_closure_home(class, prototype))?;
+        Ok(())
+    }
+
     fn super_base(&self) -> Result<ObjectId, RuntimeError> {
         let home = self.home_object.ok_or_else(|| RuntimeError::TypeError("super is not available in this function".into()))?;
         self.heap.prototype(home)?.ok_or_else(|| RuntimeError::TypeError("superclass is null".into()))
@@ -1502,6 +1541,22 @@ impl Vm {
         if self.call_depth >= 32 {
             return Err(RuntimeError::RangeError("maximum call depth exceeded".into()));
         }
+        // Arrow functions inherit their enclosing `new.target`.  This is
+        // observable when a derived-constructor arrow invokes `super()`:
+        // the superclass must allocate with the original derived class.
+        let arrow = if !construct {
+            match callee.object_id() {
+                Some(id) => self.heap.closure(id)?.is_some_and(|(code, _, _, _, _)| code.arrow),
+                None => false,
+            }
+        } else {
+            false
+        };
+        let target = if arrow {
+            self.new_target.clone()
+        } else {
+            target
+        };
         self.charge_step()?;
         let base = self.stack.len();
         self.stack.extend([callee.clone(), receiver.clone()]);
@@ -1542,9 +1597,9 @@ impl Vm {
             args = prefixes.into_iter().rev().flatten().chain(args).collect();
         }
         if let Value::Object(id) = callee {
-            if let Some((code, captures, lexical_this, home, _)) = self.heap.closure(id)? {
+            if let Some((code, captures, lexical_this, home, class_base)) = self.heap.closure(id)? {
                 let receiver = if code.arrow { lexical_this } else { receiver };
-                return self.call_closure(builtins::ClosureCall { code, captures, callee, receiver, args, construct, home });
+                return self.call_closure(builtins::ClosureCall { code, captures, callee, receiver, args, construct, home, class_base });
             }
         }
         let function = if let Value::Object(id) = callee { self.heap.native_function(id)? } else { None };
