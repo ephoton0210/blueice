@@ -694,16 +694,22 @@ impl Parser {
 
     fn parse_switch_stmt(&mut self) -> Result<Stmt, ParseError> {
         self.advance();
-        self.expect_punct(Punct::LParen)?;
+        self.expect_punct(Punct::LParen).map_err(known_syntax)?;
+        if self.check_punct(Punct::RParen) {
+            return Err(self.syntax_error("switch requires a discriminant expression"));
+        }
         let discriminant = self.parse_expression()?;
-        self.expect_punct(Punct::RParen)?;
-        self.expect_punct(Punct::LBrace)?;
+        self.expect_punct(Punct::RParen).map_err(known_syntax)?;
+        self.expect_punct(Punct::LBrace).map_err(known_syntax)?;
         let mut cases = Vec::new();
         let mut saw_default = false;
         while !self.check_punct(Punct::RBrace) {
             let test = if self.eat_keyword(Keyword::Case) {
+                if self.check_punct(Punct::Colon) {
+                    return Err(self.syntax_error("case requires an expression"));
+                }
                 let e = self.parse_expression()?;
-                self.expect_punct(Punct::Colon)?;
+                self.expect_punct(Punct::Colon).map_err(known_syntax)?;
                 Some(e)
             } else {
                 if saw_default {
@@ -711,8 +717,9 @@ impl Parser {
                         self.syntax_error("a switch statement can contain only one default clause")
                     );
                 }
-                self.expect_keyword(Keyword::Default)?;
-                self.expect_punct(Punct::Colon)?;
+                self.expect_keyword(Keyword::Default)
+                    .map_err(known_syntax)?;
+                self.expect_punct(Punct::Colon).map_err(known_syntax)?;
                 saw_default = true;
                 None
             };
@@ -722,7 +729,7 @@ impl Parser {
                 && !self.check_keyword(Keyword::Default)
             {
                 if self.at_eof() {
-                    return Err(self.error("unterminated switch statement, expected '}'"));
+                    return Err(self.syntax_error("unterminated switch statement, expected '}'"));
                 }
                 consequent.push(self.parse_statement()?);
             }
@@ -3109,6 +3116,20 @@ mod tests {
         assert!(error
             .message
             .starts_with("a switch statement can contain only one default clause"));
+    }
+
+    #[test]
+    fn malformed_switch_productions_are_known_syntax_errors() {
+        for source in [
+            "switch() {}",
+            "switch {}",
+            "switch(value);",
+            "switch(value) { case: }",
+            "switch(value) { value = 2; case 0: }",
+        ] {
+            let error = parse(source).unwrap_err();
+            assert!(error.known_syntax, "{source}: {error:?}");
+        }
     }
 
     #[test]

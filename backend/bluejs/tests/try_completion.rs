@@ -4,7 +4,7 @@
 
 //! Public-pipeline regressions for Completion records and try handlers.
 
-use blueice_bluejs::{compile, parse, HeapConfig, RuntimeError, Value, Vm, VmConfig};
+use blueice_bluejs::{compile, parse, CompileError, HeapConfig, RuntimeError, Value, Vm, VmConfig};
 
 fn execute(vm: &mut Vm, source: &str) -> Result<Value, RuntimeError> {
     vm.execute(&compile(&parse(source).unwrap()).unwrap())
@@ -327,6 +327,29 @@ fn switch_breaks_are_completion_aware_and_case_matching_is_strict() {
     ] {
         assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)), "{source}");
     }
+    assert!(matches!(
+        execute(&mut vm, "switch(0){default:function* hidden(){}}hidden"),
+        Err(RuntimeError::ReferenceError(name)) if name == "hidden"
+    ));
+}
+
+#[test]
+fn switch_case_function_declarations_obey_lexical_early_errors() {
+    for source in [
+        "'use strict';switch(0){case 0:function f(){}default:function f(){}}",
+        "switch(0){case 0:function f(){}default:function*f(){}}",
+        "switch(0){case 0:function f(){}default:var f;}",
+        "switch(0){case 0:var f;default:function f(){}}",
+    ] {
+        assert!(
+            matches!(
+                compile(&parse(source).unwrap()),
+                Err(CompileError::InvalidSyntax(_))
+            ),
+            "{source}"
+        );
+    }
+    assert!(compile(&parse("switch(0){default:function f(){}}").unwrap()).is_ok());
 }
 
 #[test]

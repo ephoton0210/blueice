@@ -67,6 +67,10 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
             "unclassified_parse_error",
         ),
         (
+            json!({"source":"switch() {}", "mode":"sloppy", "parse_only":true}),
+            "SyntaxError",
+        ),
+        (
             json!({"source":"try{}catch([...rest, next]){}", "mode":"sloppy", "parse_only":true}),
             "SyntaxError",
         ),

@@ -434,3 +434,47 @@ closure-scope cases, each in sloppy and strict mode. The remaining switch
 failures are principally broader declaration-redeclaration early errors; async
 function syntax and host hooks remain separately classified. This is a scoped
 P0.1 improvement, not a claim of complete switch conformance.
+
+## P0.1 continuation: CaseBlock function declarations
+
+The Switch Statement and CaseBlock static semantics were revisited on
+2026-09-10. Direct function and generator declarations in a CaseBlock belong
+to its `LexicallyDeclaredNames`, rather than its `VarDeclaredNames`. Therefore
+they participate in duplicate lexical-declaration and lexical-versus-`var`
+early errors. The sloppy-mode Annex B compatibility exception remains limited
+to duplicate ordinary, non-async, non-generator function declarations.
+
+The compiler now derives CaseBlock lexical names from direct `let`, `const`,
+class, function and generator declarations, and collects its `var` names with
+those function declarations excluded. This makes the declarations genuinely
+switch-local at execution time as well as classifying their early errors. A
+public regression covers duplicate and `var` conflicts, preserves the allowed
+single ordinary-function case, and verifies that a switch-local generator name
+produces `ReferenceError` after the switch. Annex B's additional outer `var`
+binding behavior is not implemented by this slice.
+
+The final run at `target/test262-switch-case-scope/analysis` reconciles
+**199 pass, 0 fail, 16 unsupported, 3 timeout** across the same 218 modes.
+Relative to the preceding switch run, all 17 failures now pass and 32 expected
+negative cases previously classified unsupported are correctly rejected during
+compilation. The remaining modes are parser/async-function gaps, host hooks,
+and tail-call instruction-limit outcomes; this remains a bounded P0.1 advance,
+not full switch conformance.
+
+## P0.1 continuation: Switch production syntax classification
+
+The parser now explicitly marks malformed `switch` productions as known
+SyntaxErrors when the grammar is unambiguous: omitted parentheses or body,
+an empty discriminant, a missing case expression or colon, and a CaseBlock item
+that is neither `case` nor `default`. Expression parsing itself remains
+conservative: a rejection there can still denote valid syntax outside the
+implemented subset, so it is not promoted merely because it occurs in a switch.
+Parser and JSON-lines adapter regressions cover the classified boundary.
+
+The run at `target/test262-switch-grammar/analysis` reconciles **209 pass, 0
+fail, 6 unsupported, 3 timeout**. The five historic malformed-switch tests now
+pass in both strict and sloppy modes, replacing ten unclassified parse outcomes.
+The only remaining switch modes are four async-function execution gaps, two
+`$262`/IsHTMLDDA host-hook cases, and three tail-call instruction-limit
+outcomes. This is still a P0.1 subset result rather than full switch
+conformance.

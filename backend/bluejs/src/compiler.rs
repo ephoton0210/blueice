@@ -593,13 +593,10 @@ impl Compiler {
         cases: &[SwitchCase],
         labels: Vec<String>,
     ) -> Result<(), CompileError> {
+        validate_switch_case_declarations(cases, self.bytecode.strict)?;
         self.emit(Opcode::ClearCompletion, 0)?;
-        let mut lexical = Vec::new();
-        let mut vars = BTreeSet::new();
-        for case in cases {
-            lexical.extend(lexical_names(&case.consequent)?);
-            vars.extend(var_names(&case.consequent)?);
-        }
+        let lexical = switch_lexical_names(cases)?;
+        let vars = switch_var_names(cases)?;
         // Switch evaluation creates its case-block lexical environment only
         // after evaluating the discriminant.  A closure created by the
         // discriminant must therefore capture the surrounding binding, while
@@ -2469,6 +2466,72 @@ fn lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, Compile
     Ok(names)
 }
 
+fn switch_lexical_names(cases: &[SwitchCase]) -> Result<Vec<(String, DeclKind)>, CompileError> {
+    Ok(switch_case_lexical_declarations(cases)?
+        .into_iter()
+        .map(|(name, kind, _)| (name, kind))
+        .collect())
+}
+
+fn switch_case_lexical_declarations(
+    cases: &[SwitchCase],
+) -> Result<Vec<(String, DeclKind, bool)>, CompileError> {
+    let mut lexical = Vec::new();
+    for case in cases {
+        for statement in &case.consequent {
+            match statement {
+                Stmt::VarDecl(kind, declarations) if *kind != DeclKind::Var => {
+                    lexical.extend(
+                        declarations_names(*kind, declarations)?
+                            .into_iter()
+                            .map(|(name, kind)| (name, kind, false)),
+                    );
+                }
+                Stmt::ClassDecl(class) => lexical.push((
+                    class.name.clone().expect("class declaration has a name"),
+                    DeclKind::Const,
+                    false,
+                )),
+                Stmt::FunctionDecl(function) => lexical.push((
+                    function.name.clone().expect("declaration has a name"),
+                    DeclKind::Let,
+                    !function.generator && !function.is_async,
+                )),
+                _ => {}
+            }
+        }
+    }
+    Ok(lexical)
+}
+
+/// CaseBlock has its own static declaration rules. Function declarations are
+/// lexical there, unlike at script/function scope; Annex B preserves the
+/// duplicate ordinary-function exception only for sloppy code.
+fn validate_switch_case_declarations(
+    cases: &[SwitchCase],
+    strict: bool,
+) -> Result<(), CompileError> {
+    let lexical = switch_case_lexical_declarations(cases)?;
+
+    for (index, (name, _, annex_b_function)) in lexical.iter().enumerate() {
+        for (other, _, other_annex_b_function) in &lexical[..index] {
+            if name == other && (strict || !annex_b_function || !other_annex_b_function) {
+                return Err(CompileError::InvalidSyntax(
+                    "duplicate lexical declaration in switch statement",
+                ));
+            }
+        }
+    }
+
+    let vars = switch_var_names(cases)?;
+    if lexical.iter().any(|(name, _, _)| vars.contains(name)) {
+        return Err(CompileError::InvalidSyntax(
+            "a switch lexical declaration conflicts with a var declaration",
+        ));
+    }
+    Ok(())
+}
+
 /// `CatchParameter` has an additional early error against lexical names in
 /// its directly nested block. Function declarations participate even though
 /// their broader binding behavior is handled separately for Annex B.
@@ -2496,11 +2559,22 @@ fn catch_lexical_names(statements: &[Stmt]) -> Vec<String> {
 }
 
 fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
+    var_names_in(statements.iter(), true)
+}
+
+fn switch_var_names(cases: &[SwitchCase]) -> Result<BTreeSet<String>, CompileError> {
+    var_names_in(cases.iter().flat_map(|case| case.consequent.iter()), false)
+}
+
+fn var_names_in<'a>(
+    statements: impl IntoIterator<Item = &'a Stmt>,
+    include_function_declarations: bool,
+) -> Result<BTreeSet<String>, CompileError> {
     let mut names = BTreeSet::new();
-    let mut pending: Vec<_> = statements.iter().collect();
+    let mut pending: Vec<_> = statements.into_iter().collect();
     while let Some(statement) = pending.pop() {
         match statement {
-            Stmt::FunctionDecl(function) => {
+            Stmt::FunctionDecl(function) if include_function_declarations => {
                 names.insert(function.name.clone().expect("declaration has a name"));
             }
             Stmt::VarDecl(DeclKind::Var, declarations) => {
@@ -2537,11 +2611,7 @@ fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
                 }
                 pending.push(body);
             }
-            Stmt::Switch { cases, .. } => {
-                for case in cases {
-                    pending.extend(&case.consequent);
-                }
-            }
+            Stmt::Switch { cases, .. } => names.extend(switch_var_names(cases)?),
             Stmt::Try {
                 block,
                 handler,
