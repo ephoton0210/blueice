@@ -484,10 +484,11 @@ fn object_operations_preserve_identity_and_evaluation_order() {
 #[test]
 fn unsupported_syntax_and_invalid_bindings_fail_before_execution() {
     let source = "let undefined=1";
+    let code = compile(&parse(source).unwrap()).expect("the parser accepts the lexical name");
     assert!(
         matches!(
-            compile(&parse(source).unwrap()),
-            Err(CompileError::Unsupported(_))
+            Vm::default().execute_script(&code),
+            Err(RuntimeError::SyntaxError(_))
         ),
         "{source}"
     );

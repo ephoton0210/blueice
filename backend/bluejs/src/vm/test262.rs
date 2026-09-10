@@ -22,18 +22,33 @@ impl Vm {
     pub fn install_test262_is_html_dda(&mut self) -> Result<(), RuntimeError> {
         let base = self.stack.len();
         let result = (|| {
-            let global = self.global("globalThis")?.object_id().unwrap();
+            let host = self.test262_host()?;
             let prototype = self.object_prototype;
-            let host = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-            // Keep both temporary host objects on the VM stack across the
-            // property-definition allocation safepoints below.
-            self.stack.push(Value::Object(host));
             let value = self.with_roots(|heap| heap.alloc_html_dda_object(Some(prototype)))?;
+            // Keep the host value reachable across the property-definition
+            // allocation safepoint below.
             self.stack.push(Value::Object(value));
             self.define_data(host, "IsHTMLDDA", Value::Object(value), false, true, false)?;
-            self.define_data(global, "$262", Value::Object(host), true, false, true)
+            Ok(())
         })();
         self.stack.truncate(base);
+        result
+    }
+
+    fn test262_host(&mut self) -> Result<ObjectId, RuntimeError> {
+        let global = self.global("globalThis")?.object_id().unwrap();
+        if let Some(Value::Object(host)) = self.heap.get_own(global, "$262")? {
+            return Ok(host);
+        }
+        let prototype = self.object_prototype;
+        let host = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        self.stack.push(Value::Object(host));
+        let result = (|| {
+            self.define_data(global, "$262", Value::Object(host), true, false, true)?;
+            self.define_data(host, "global", Value::Object(global), true, true, true)?;
+            Ok(host)
+        })();
+        self.stack.pop();
         result
     }
 
@@ -45,6 +60,14 @@ impl Vm {
         self.json_global()?;
         let string = self.string_intrinsics()?.0;
         let prototype = self.heap.prototype(string)?.unwrap();
+        let host = self.test262_host()?;
+        self.install_native(
+            host,
+            prototype,
+            "evalScript",
+            1,
+            NativeFunction::Test262("evalScript"),
+        )?;
         self.install_native(
             global,
             prototype,
@@ -175,6 +198,9 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let first = native::argument(args, 0);
         let second = native::argument(args, 1);
+        if name == "evalScript" {
+            return self.test262_eval_script(first);
+        }
         if matches!(
             name,
             "verifyProperty"
@@ -328,6 +354,22 @@ impl Vm {
         } else {
             Err(self.test262_failure(name))
         }
+    }
+
+    fn test262_eval_script(&mut self, source: &Value) -> Result<Value, RuntimeError> {
+        let Value::String(source) = source else {
+            return Err(RuntimeError::TypeError(
+                "$262.evalScript requires a source string".into(),
+            ));
+        };
+        let source = source.to_utf8().map_err(|_| {
+            RuntimeError::SyntaxError("script source contains an unpaired surrogate".into())
+        })?;
+        let program =
+            crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let code = crate::compile(&program)
+            .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+        self.execute_nested_script(&code)
     }
 
     fn test262_property_helper(

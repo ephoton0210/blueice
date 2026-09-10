@@ -448,6 +448,15 @@ pub(crate) fn contains_super_call_outside_class(program: &Program) -> bool {
         .any(|statement| stmt_contains_super(statement, SuperSearch::Call))
 }
 
+/// Whether script source contains a `super` property reference that is not
+/// owned by a nested class or object method.
+pub(crate) fn contains_super_property_outside_class(program: &Program) -> bool {
+    program
+        .body
+        .iter()
+        .any(|statement| stmt_contains_super(statement, SuperSearch::Property))
+}
+
 /// Whether an expression contains a `super()` belonging to its surrounding
 /// class context. Nested classes establish their own context.
 pub(crate) fn expr_contains_super_call_outside_class(expr: &Expr) -> bool {

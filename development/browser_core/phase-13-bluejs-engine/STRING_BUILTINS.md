@@ -53,7 +53,7 @@ Intrinsics initialize lazily per VM, remain rooted after successful setup and ro
 
 The heap budget accounts for managed records, UTF-16 payloads, keys/descriptors and internal capture/name data, not allocator capacity, compiled regex code, bytecode/AST storage or total RSS. The string limit bounds each runtime string. **Regress does not expose a matcher step budget or hard timeout: a single backtracking match or compilation is not bounded by VM instruction fuel.** Template placeholder extraction validates successive closing-brace candidates with the expression parser; source parsing is not covered by VM execution fuel. These are explicit resource limits, not language conformance exceptions.
 
-Supporting language features remain incomplete: BigInt, classes/super, proxy functions, full argument/environment semantics, try/catch/finally, modules/eval, complete Object/Function/RegExp/Array builtins, multiple realms and persistent global bindings are separate work. Arbitrary programs using those dependencies cannot yet be used to claim complete String/Test262 conformance. RegExp.escape is implemented; the complete RegExp Test262 inventory remains open.
+Supporting language features remain incomplete: BigInt, comprehensive classes/super, proxy functions, full argument/environment semantics, complete modules/direct eval, and complete Object/Function/RegExp/Array builtins are separate work. A persistent classic-script global realm is now implemented, but multiple realms and complete global-environment semantics are not. Arbitrary programs using those dependencies cannot yet be used to claim complete String/Test262 conformance. RegExp.escape is implemented; the complete RegExp Test262 inventory remains open.
 
 ## Test review and validation
 

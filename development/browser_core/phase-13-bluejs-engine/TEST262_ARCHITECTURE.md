@@ -56,7 +56,7 @@ actually met.
 | Order | Architecture / test items | Dependencies and acceptance criteria |
 | --- | --- | --- |
 | P0.1 | Completion records and iterator lifetime: `language/statements/{try,throw,return,break,continue,for-of,switch}`, `language/**/dstr`, nested abrupt evaluation | Distinguish normal/throw/return/break/continue, empty/value completion and label targets; keep host resource aborts distinct. Preserve original thrown values and reverse-order cleanup. Iterator `next`, `done`, `value` errors mark done; elisions never read value; defaults/assignment failures close active iterators. Add catch/finally handlers with stack/scope restoration and rooted pending completions before suspension support. |
-| P0.2 | Environments and calls: `language/{global-code,eval-code,arguments-object}`, function/default/rest parameter tests | Build on completion propagation. Persistent global object + declarative records, declaration instantiation even on abrupt script exit, TDZ, parameter/body separation, captured cells, mapped/unmapped arguments, direct/indirect eval and this/new.target. Verify multiple scripts in one realm and independent realms. |
+| P0.2 | Environments and calls: `language/{global-code,eval-code,arguments-object}`, function/default/rest parameter tests | Persistent classic-script global cells, declaration instantiation and `$262.evalScript` now cover the selected global-code slice. Complete declarative/object environment records, direct/indirect eval, mapped/unmapped arguments, full `this`/`new.target`, and independently constructed realms remain; verify each independently. |
 | P0.3 | References and abstract operations: assignment/update/delete/call, computed members, destructuring targets, conversion order | Build on environments. Evaluate and retain references before RHS/value/default evaluation as each production requires; GetValue/PutValue and receiver identity must survive side effects and GC. Add per-production traces and strict/sloppy error-precedence tests. |
 | P0.4 | Object internal methods and callable/constructor contracts: Object/Reflect/Proxy prerequisites | Build on references. Complete descriptors, receiver-aware Set/Get, own keys, extensibility, arrays/string exotics, call/construct/newTarget and internal slots. Route later Proxy traps through these same contracts and retain GC barriers. |
 | P1.1 | Grammar and early-error taxonomy: Unicode identifiers/escapes, reserved words, strict code, labels, remaining operators | Fix foundational early errors needed by P0 in their own slice; then finish the wider grammar. Separate unsupported grammar from proven SyntaxError so parse negatives cannot pass accidentally. |
@@ -187,8 +187,9 @@ default anonymous functions, and the required strict/lexical early errors.
 Direct eval parses and compiles source in the active VM frame. It shares the
 caller's visible binding cells, current `this`, strictness and instruction
 budget, while its fresh lexical declarations remain local to the eval frame.
-This is a limited direct-eval slice, not P0.2's persistent global environment,
-complete declaration instantiation or indirect eval. Empty try, catch and
+This was a limited direct-eval slice before P0.2's persistent global-realm
+work; it still does not complete declaration instantiation or indirect eval.
+Empty try, catch and
 finally blocks now establish their own empty Completion, so normal finalizers
 restore the protected clause and apply `UpdateEmpty` correctly.
 
@@ -406,7 +407,8 @@ labels, finalizer ordering and completion values, iterator closing, malformed
 labelled items, strict `yield`, and sloppy `let` ASI. BlueJS all-target tests
 and all ten Python Test262 runner/analyzer tests pass. The remaining P0.1 work
 is labels' broader grammar interactions and control-flow cases outside this
-slice; module support remains P1.4 and persistent global environments P0.2.
+slice; module support remains P1.4, while the later P0.2 section records the
+classic-script global-realm implementation.
 
 ## P0.1 continuation: switch scope ordering and duplicate defaults
 
@@ -581,3 +583,42 @@ Unary negation and bitwise not use the same numeric branch, so negative BigInt l
 The strict unresolvable-reference cases that previously appeared as shift `unsupported` results now compile a deferred `PutValue`: the RHS is evaluated first, then strict assignment to a missing global throws `ReferenceError`; an already-existing `globalThis` property is assignable. This follows the current [PutValue](https://tc39.es/ecma262/2026/multipage/ecmascript-data-types-and-values.html#sec-putvalue) ordering and removes the three shift-family unsupported modes without treating them as shift semantics.
 
 The fresh focused runs are fully passing: `language/expressions/bitwise` has **209/209**, `left-shift` **89/89**, `right-shift` **73/73**, and `unsigned-right-shift` **89/89** scheduled modes. Public regressions cover arbitrary precision, BigInt `ToPrimitive` through a wrapper and user `valueOf`, negative counts, mixed Numeric rejection, BigInt `>>>`, syntax boundaries and basic boxing. These four filtered selections are not a P1.5 completion claim or evidence of full Test262 conformance.
+
+## P0.2 slice: persistent global realm and legacy global declarations
+
+The current [GlobalDeclarationInstantiation and global environment-record
+algorithms](https://tc39.es/ecma262/2026/multipage/global-object.html) and
+[Annex B.3.2/B.3.3 web-compatibility rules](https://tc39.es/ecma262/2026/multipage/additional-ecmascript-features-for-web-browsers.html#sec-web-compat-globaldeclarationinstantiation)
+were reviewed on 2026-09-10 before this architecture slice. A classic script
+now uses cells retained by the VM's one global realm rather than a new compiled
+scope for every call. It validates global lexical declarations before execution,
+performs the specified global `var` and ordinary-function declaration checks
+against own property descriptors and extensibility, then creates the lexical or
+property-backed binding. That preserves bindings and `globalThis` properties
+across `$262.evalScript` calls, including observable failure-before-side-effect
+when a declaration cannot be made.
+
+`Object.preventExtensions`, `Object.prototype.hasOwnProperty`, the relevant
+intrinsic global properties, and a dynamically compiled global `Function`
+constructor provide the object/host prerequisites exercised by this group. The
+dynamic constructor deliberately has no capture of its caller's lexical
+environment. Top-level `super()` and `super.property` are now parser early
+errors in script code, including arrow-function containment, rather than an
+execution-time unsupported result.
+
+For non-strict legacy syntax, eligible ordinary (not async or generator)
+function declarations in blocks, CaseBlocks and `if` clauses retain their
+block-lexical binding and copy the function value to their Annex B outer `var`
+binding only when the block/clause executes. The candidate analysis rejects an
+outer binding where replacing the function declaration with `var` would create
+an early error; it also implements the Annex B.3.5 simple-catch-parameter
+exception. Class declarations use mutable lexical bindings, matching the
+declaration's specified binding kind.
+
+The fresh `language/global-code` run at
+`target/test262-global-code-script-super` has **212 pass, 0 fail and 16
+unsupported** across 195 files / 228 scheduled modes. The remaining outcomes
+are explicitly parser-classified feature gaps: module import/export syntax (4),
+private names (8), and top-level `new.target` handling (4). This validates the
+selected classic-script architecture only; it is neither an implementation of
+direct `eval` or modules nor a claim of full Test262 conformance.

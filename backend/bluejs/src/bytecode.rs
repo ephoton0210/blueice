@@ -193,6 +193,9 @@ pub struct Bytecode {
     pub(crate) constants: Vec<Value>,
     pub(crate) bindings: Vec<Binding>,
     pub(crate) scopes: Vec<Vec<u32>>,
+    /// Names declared by top-level function declarations. Global declaration
+    /// instantiation treats these differently from `var` declarations.
+    pub(crate) global_function_names: Vec<String>,
     pub(crate) functions: Vec<std::rc::Rc<Bytecode>>,
     pub(crate) captures: Vec<u32>,
     /// The immutable name environment binding of a named function expression.
@@ -226,6 +229,7 @@ impl Bytecode {
             constants: Vec::new(),
             bindings: Vec::new(),
             scopes: Vec::new(),
+            global_function_names: Vec::new(),
             functions: Vec::new(),
             captures: Vec::new(),
             self_slot: None,

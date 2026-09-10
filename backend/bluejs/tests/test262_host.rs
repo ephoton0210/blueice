@@ -61,6 +61,139 @@ fn error_constructors_and_host_globals() {
 }
 
 #[test]
+fn object_prevent_extensions_exposes_the_heap_internal_method() {
+    for source in [
+        "(function(){let object={present:1};return Object.preventExtensions(object)===object&&!Object.isExtensible(object)&&object.present===1&&Object.preventExtensions(1)===1;})()",
+        "(function(){'use strict';let object={};Object.preventExtensions(object);try{object.added=1;return false;}catch(error){return error instanceof TypeError;}})()",
+        "({own:1}).hasOwnProperty('own')&&!({own:1}).hasOwnProperty('missing')",
+    ] {
+        assert_eq!(
+            Vm::default()
+                .execute(&compile(&parse(source).unwrap()).unwrap())
+                .unwrap(),
+            Value::Bool(true),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn global_function_declarations_follow_existing_property_rules() {
+    for source in [
+        "Object.defineProperty(globalThis,'replaceable',{value:0,configurable:true});Object.preventExtensions(globalThis);$262.evalScript('function replaceable(){}');let descriptor=Object.getOwnPropertyDescriptor(globalThis,'replaceable');typeof replaceable==='function'&&descriptor.writable&&descriptor.enumerable&&!descriptor.configurable",
+        "Object.defineProperty(globalThis,'incompatible',{value:0,writable:false,enumerable:true,configurable:false});(function(){try{$262.evalScript('var mustNotExist;function incompatible(){}');return false;}catch(error){return error instanceof TypeError&&typeof mustNotExist==='undefined';}})()",
+    ] {
+        let mut vm = Vm::default();
+        vm.install_test262_harness().unwrap();
+        assert_eq!(
+            vm.execute(&compile(&parse(source).unwrap()).unwrap()).unwrap(),
+            Value::Bool(true),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn sloppy_block_functions_keep_their_lexical_binding_and_update_the_outer_var() {
+    let mut vm = Vm::default();
+    let source = "var initial,current;{function f(){initial=f;f=123;current=f;return 'block';}}f();initial()==='block'&&current===123&&f()==='block'";
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        vm.execute_script(&compile(&parse("typeof f").unwrap()).unwrap())
+            .unwrap(),
+        Value::String("function".into())
+    );
+
+    let mut strict_vm = Vm::default();
+    assert_eq!(
+        strict_vm
+            .execute_script(
+                &compile(&parse("'use strict';{function hidden(){}}typeof hidden").unwrap())
+                    .unwrap()
+            )
+            .unwrap(),
+        Value::String("undefined".into())
+    );
+}
+
+#[test]
+fn sloppy_if_clause_functions_use_the_annex_b_synthetic_block() {
+    let source = "var initial,current;if(true)function f(){initial=f;f=123;current=f;return 'if';}f();initial()==='if'&&current===123&&f()==='if'";
+    assert_eq!(
+        Vm::default()
+            .execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn sloppy_block_functions_cross_a_simple_catch_parameter() {
+    let source =
+        "try{throw null;}catch(f){{function f(){return 1;}}}typeof f==='function'&&f()===1";
+    assert_eq!(
+        Vm::default()
+            .execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn class_declaration_bindings_are_mutable_lexicals() {
+    assert_eq!(
+        Vm::default()
+            .execute_script(
+                &compile(&parse("class Declaration{};Declaration=1;Declaration===1").unwrap())
+                    .unwrap(),
+            )
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn global_lexicals_shadow_configurable_intrinsic_properties() {
+    let mut vm = Vm::default();
+    assert_eq!(
+        vm.execute_script(
+            &compile(
+                &parse("let Array;let descriptor=Object.getOwnPropertyDescriptor(globalThis,'Array');Array===undefined&&typeof globalThis.Array==='function'&&descriptor.configurable&&!descriptor.enumerable&&descriptor.writable")
+                    .unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    vm.install_test262_harness().unwrap();
+    assert!(matches!(
+        vm.execute(&compile(&parse("$262.evalScript('let undefined')").unwrap()).unwrap()),
+        Err(RuntimeError::SyntaxError(_))
+    ));
+}
+
+#[test]
+fn function_constructor_compiles_global_source_without_capturing_caller_bindings() {
+    for source in [
+        "let hidden=1;let fn=Function('return this;');fn()===globalThis&&Function('a','b','return a+b;')(2,3)===5&&Function('return typeof hidden;')()==='undefined'",
+        "(function(){try{Function('return )');return false;}catch(error){return error instanceof SyntaxError;}})()",
+    ] {
+        assert_eq!(
+            Vm::default()
+                .execute(&compile(&parse(source).unwrap()).unwrap())
+                .unwrap(),
+            Value::Bool(true),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn is_html_dda_host_object_keeps_strict_equality_ordinary() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();
@@ -242,7 +375,7 @@ fn harness_allocation_failures_leave_the_vm_usable() {
 }
 
 #[test]
-fn classic_scripts_publish_var_and_function_bindings_without_leaking_lexicals() {
+fn classic_scripts_publish_var_function_and_lexical_bindings_in_one_realm() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();
     let harness =
@@ -254,8 +387,81 @@ fn classic_scripts_publish_var_and_function_bindings_without_leaking_lexicals() 
     assert_eq!(vm.execute_script(&test).unwrap(), Value::Bool(true));
     let lexical = compile(&parse("let secret=1; const hidden=2").unwrap()).unwrap();
     assert_eq!(vm.execute_script(&lexical).unwrap(), Value::Undefined);
-    let lookup =
-        compile(&parse("typeof secret === 'undefined' && typeof hidden === 'undefined'").unwrap())
-            .unwrap();
+    let lookup = compile(&parse("secret === 1 && hidden === 2").unwrap()).unwrap();
     assert_eq!(vm.execute(&lookup).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn classic_scripts_keep_global_var_and_lexical_bindings_live_across_scripts() {
+    let mut vm = Vm::default();
+    let script = |source: &str| compile(&parse(source).unwrap()).unwrap();
+
+    assert_eq!(
+        vm.execute_script(&script(
+            "var counter=1;function readCounter(){return counter}let lexical=4;const fixed=7;function readLexical(){return lexical+fixed}",
+        ))
+        .unwrap(),
+        Value::Undefined
+    );
+    assert_eq!(
+        vm.execute_script(&script("counter=2;globalThis.counter=3;counter"))
+            .unwrap(),
+        Value::Number(3.0)
+    );
+    assert_eq!(
+        vm.execute_script(&script("lexical=5;lexical")).unwrap(),
+        Value::Number(5.0)
+    );
+    assert_eq!(
+        vm.execute_script(&script("readCounter()")),
+        Ok(Value::Number(3.0))
+    );
+    assert_eq!(
+        vm.execute_script(&script("readLexical()")),
+        Ok(Value::Number(12.0))
+    );
+    assert_eq!(
+        vm.execute_script(&script("globalThis.lexical")),
+        Ok(Value::Undefined)
+    );
+    assert!(matches!(
+        vm.execute_script(&script("let lexical=0")),
+        Err(RuntimeError::SyntaxError(_))
+    ));
+    assert!(matches!(
+        vm.execute_script(&script("fixed=0")),
+        Err(RuntimeError::TypeError(_))
+    ));
+    assert_eq!(
+        vm.execute_script(&script("readCounter()===3&&readLexical()===12"))
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn test262_eval_script_enters_the_current_realm_without_discarding_the_caller() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let evaluate =
+        |source: &str, vm: &mut Vm| vm.execute(&compile(&parse(source).unwrap()).unwrap());
+
+    assert_eq!(
+        evaluate(
+            "$262.evalScript('var shared=1;function readShared(){return shared};let lexical=4;const fixed=7');shared=2;globalThis.shared=3;lexical=5;readShared()===3&&lexical+fixed===12&&globalThis.lexical===undefined",
+            &mut vm,
+        ),
+        Ok(Value::Bool(true))
+    );
+    assert_eq!(
+        evaluate("$262.evalScript('6')", &mut vm),
+        Ok(Value::Number(6.0))
+    );
+    assert_eq!(
+        evaluate(
+            "let caught=false;try{$262.evalScript('const malformed =')}catch(error){caught=error instanceof SyntaxError;}caught",
+            &mut vm,
+        ),
+        Ok(Value::Bool(true))
+    );
 }

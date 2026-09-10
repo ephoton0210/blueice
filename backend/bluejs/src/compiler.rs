@@ -60,8 +60,24 @@ pub fn compile_with_limit(
         with_depth: 0,
     };
     compiler.bytecode.strict = strict_body(&program.body);
-    let vars = var_names(&program.body)?;
-    compiler.enter_scope(lexical_names(&program.body)?, &vars, true)?;
+    compiler.bytecode.global_function_names = program
+        .body
+        .iter()
+        .filter_map(|statement| match statement {
+            Stmt::FunctionDecl(function) => function.name.clone(),
+            _ => None,
+        })
+        .collect();
+    let lexical = lexical_names(&program.body)?;
+    let mut vars = top_level_var_names(&program.body)?;
+    if !compiler.bytecode.strict {
+        vars.extend(
+            annex_b_function_names(&program.body, &lexical)
+                .into_iter()
+                .filter(|name| !lexical.iter().any(|(lexical_name, _)| lexical_name == name)),
+        );
+    }
+    compiler.enter_scope(lexical, &vars, true)?;
     compiler.statements(&program.body)?;
     compiler.emit(Opcode::Halt, 0)?;
     Ok(compiler.bytecode)
@@ -94,12 +110,20 @@ pub(crate) fn compile_eval(
         compiler.bytecode.bindings.push(binding.clone());
         compiler.bytecode.captures.push(*caller_slot);
     }
-    let vars = var_names(&program.body)?;
+    let lexical = lexical_names(&program.body)?;
+    let mut vars = top_level_var_names(&program.body)?;
+    if !compiler.bytecode.strict {
+        vars.extend(
+            annex_b_function_names(&program.body, &lexical)
+                .into_iter()
+                .filter(|name| !lexical.iter().any(|(lexical_name, _)| lexical_name == name)),
+        );
+    }
     let new_vars = vars
         .into_iter()
         .filter(|name| !compiler.names[0].contains_key(name))
         .collect();
-    compiler.enter_scope(lexical_names(&program.body)?, &new_vars, true)?;
+    compiler.enter_scope(lexical, &new_vars, true)?;
     compiler.statements(&program.body)?;
     compiler.emit(Opcode::Halt, 0)?;
     Ok(compiler.bytecode)
@@ -197,9 +221,6 @@ impl Compiler {
             .map(|name| (name.clone(), DeclKind::Var))
             .chain(lexical);
         for (name, kind) in declarations {
-            if matches!(name.as_str(), "undefined" | "NaN" | "Infinity") {
-                return Err(CompileError::Unsupported("shadowing ambient constants"));
-            }
             if names.contains_key(&name) || (kind != DeclKind::Var && vars.contains(&name)) {
                 return Err(CompileError::DuplicateBinding(name));
             }
@@ -236,6 +257,38 @@ impl Compiler {
             .find_map(|scope| scope.get(name).copied())
     }
 
+    /// Annex B creates a var binding in the enclosing variable environment
+    /// for eligible sloppy block functions. The block function itself remains
+    /// lexical, so each time its block is evaluated the function value is
+    /// copied into that outer var binding.
+    fn annex_b_outer_var_slot(&self, slot: u32) -> Option<u32> {
+        if self.bytecode.strict || !self.bytecode.bindings[slot as usize].lexical {
+            return None;
+        }
+        let name = &self.bytecode.bindings[slot as usize].name;
+        for scope in self.names[..self.names.len() - 1].iter().rev() {
+            let Some(&candidate) = scope.get(name) else {
+                continue;
+            };
+            let binding = &self.bytecode.bindings[candidate as usize];
+            if !binding.lexical {
+                return Some(candidate);
+            }
+            // Annex B.3.5 permits the function's var binding to pass through
+            // a simple catch parameter. Other lexical bindings prevent the
+            // legacy outer var from being introduced.
+            if self
+                .catch_var_slots
+                .iter()
+                .any(|slots| slots.get(name) == Some(&candidate))
+            {
+                continue;
+            }
+            return None;
+        }
+        None
+    }
+
     fn statements(&mut self, statements: &[Stmt]) -> Result<(), CompileError> {
         for statement in statements {
             if let Stmt::FunctionDecl(function) = statement {
@@ -243,8 +296,22 @@ impl Compiler {
                 let slot = self
                     .resolve(function.name.as_ref().expect("declaration has a name"))
                     .unwrap();
-                self.emit(Opcode::StoreBinding, slot)?;
-                self.emit(Opcode::Pop, 0)?;
+                if self.bytecode.bindings[slot as usize].lexical {
+                    self.emit(Opcode::InitializeBinding, slot)?;
+                } else {
+                    self.emit(Opcode::StoreBinding, slot)?;
+                    self.emit(Opcode::Pop, 0)?;
+                }
+                // Annex B.3.2/B.3.3 only supplies the legacy outer var for
+                // ordinary functions. Generator and async declarations stay
+                // exclusively lexical even in sloppy code.
+                if is_annex_b_function(function) {
+                    if let Some(outer) = self.annex_b_outer_var_slot(slot) {
+                        self.emit(Opcode::GetBinding, slot)?;
+                        self.emit(Opcode::StoreBinding, outer)?;
+                        self.emit(Opcode::Pop, 0)?;
+                    }
+                }
             }
         }
         for statement in statements {
@@ -351,7 +418,7 @@ impl Compiler {
                 self.emit(Opcode::SetCompletion, 0)?;
             }
             Stmt::Block(body) => {
-                self.enter_scope(lexical_names(body)?, &var_names(body)?, false)?;
+                self.enter_scope(block_lexical_names(body)?, &var_names(body)?, false)?;
                 self.statements(body)?;
                 self.leave_scope()?;
             }
@@ -371,11 +438,11 @@ impl Compiler {
                 self.emit(Opcode::ClearCompletion, 0)?;
                 self.expression(test)?;
                 let no = self.emit(Opcode::JumpIfFalse, 0)?;
-                self.statement(consequent, false)?;
+                self.if_clause_statement(consequent)?;
                 let end = self.emit(Opcode::Jump, 0)?;
                 self.patch(no, self.offset()?);
                 if let Some(alternate) = alternate {
-                    self.statement(alternate, false)?;
+                    self.if_clause_statement(alternate)?;
                 }
                 self.patch(end, self.offset()?);
             }
@@ -409,6 +476,23 @@ impl Compiler {
             Stmt::Continue(label) => self.control_transfer(label.as_deref(), true)?,
         }
         Ok(())
+    }
+
+    /// Annex B.3.3 parses a sloppy FunctionDeclaration in an `if` clause as
+    /// a synthetic block whose lexical function binding is then copied to the
+    /// Annex B outer var binding when that clause executes.
+    fn if_clause_statement(&mut self, statement: &Stmt) -> Result<(), CompileError> {
+        if !self.bytecode.strict && matches!(statement, Stmt::FunctionDecl(_)) {
+            self.enter_scope(
+                block_lexical_names(std::slice::from_ref(statement))?,
+                &BTreeSet::new(),
+                false,
+            )?;
+            self.statements(std::slice::from_ref(statement))?;
+            self.leave_scope()
+        } else {
+            self.statement(statement, false)
+        }
     }
 
     fn labelled_statement(&mut self, label: &str, item: &Stmt) -> Result<(), CompileError> {
@@ -582,7 +666,11 @@ impl Compiler {
     }
 
     fn scoped_statements(&mut self, statements: &[Stmt]) -> Result<(), CompileError> {
-        self.enter_scope(lexical_names(statements)?, &var_names(statements)?, false)?;
+        self.enter_scope(
+            block_lexical_names(statements)?,
+            &var_names(statements)?,
+            false,
+        )?;
         self.statements(statements)?;
         self.leave_scope()
     }
@@ -741,7 +829,11 @@ impl Compiler {
             // CatchParameter initialization is not part of the Block's
             // completion value.
             self.emit(Opcode::ClearCompletion, 0)?;
-            self.enter_scope(lexical_names(&catch.body)?, &var_names(&catch.body)?, false)?;
+            self.enter_scope(
+                block_lexical_names(&catch.body)?,
+                &var_names(&catch.body)?,
+                false,
+            )?;
             self.statements(&catch.body)?;
             self.leave_scope()?;
             self.catch_var_slots
@@ -1704,7 +1796,7 @@ impl Compiler {
             }
         }
         if let Expr::Identifier(name) = target {
-            if self.resolve(name).is_none() && self.bytecode.strict {
+            if self.resolve(name).is_none() {
                 let index = self.name_constant(name)?;
                 if op != AssignOp::Assign {
                     self.emit(Opcode::UnboundName, index)?;
@@ -2199,13 +2291,20 @@ impl Compiler {
             });
             child.bytecode.self_slot = Some(slot);
         }
-        let mut vars = var_names(&function.body)?;
+        let mut vars = top_level_var_names(&function.body)?;
         let parameters: BTreeSet<_> = function
             .params
             .iter()
             .flat_map(|param| pattern_names(&param.pattern))
             .collect();
         let lexical = lexical_names(&function.body)?;
+        if !child.bytecode.strict {
+            vars.extend(
+                annex_b_function_names(&function.body, &lexical)
+                    .into_iter()
+                    .filter(|name| !lexical.iter().any(|(lexical_name, _)| lexical_name == name)),
+            );
+        }
         if let Some((name, _)) = lexical.iter().find(|(name, _)| parameters.contains(name)) {
             return Err(CompileError::DuplicateBinding(name.clone()));
         }
@@ -2508,7 +2607,23 @@ fn lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, Compile
         if let Stmt::ClassDecl(class) = statement {
             names.push((
                 class.name.clone().expect("class declaration has a name"),
-                DeclKind::Const,
+                DeclKind::Let,
+            ));
+        }
+    }
+    Ok(names)
+}
+
+fn block_lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, CompileError> {
+    let mut names = lexical_names(statements)?;
+    for statement in statements {
+        if let Stmt::FunctionDecl(function) = statement {
+            names.push((
+                function
+                    .name
+                    .clone()
+                    .expect("function declaration has a name"),
+                DeclKind::Let,
             ));
         }
     }
@@ -2538,7 +2653,7 @@ fn switch_case_lexical_declarations(
                 }
                 Stmt::ClassDecl(class) => lexical.push((
                     class.name.clone().expect("class declaration has a name"),
-                    DeclKind::Const,
+                    DeclKind::Let,
                     false,
                 )),
                 Stmt::FunctionDecl(function) => lexical.push((
@@ -2607,25 +2722,20 @@ fn catch_lexical_names(statements: &[Stmt]) -> Vec<String> {
     names
 }
 
+fn top_level_var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
+    let mut names = var_names(statements)?;
+    names.extend(statements.iter().filter_map(|statement| match statement {
+        Stmt::FunctionDecl(function) => function.name.clone(),
+        _ => None,
+    }));
+    Ok(names)
+}
+
 fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
-    var_names_in(statements.iter(), true)
-}
-
-fn switch_var_names(cases: &[SwitchCase]) -> Result<BTreeSet<String>, CompileError> {
-    var_names_in(cases.iter().flat_map(|case| case.consequent.iter()), false)
-}
-
-fn var_names_in<'a>(
-    statements: impl IntoIterator<Item = &'a Stmt>,
-    include_function_declarations: bool,
-) -> Result<BTreeSet<String>, CompileError> {
     let mut names = BTreeSet::new();
-    let mut pending: Vec<_> = statements.into_iter().collect();
+    let mut pending: Vec<_> = statements.iter().collect();
     while let Some(statement) = pending.pop() {
         match statement {
-            Stmt::FunctionDecl(function) if include_function_declarations => {
-                names.insert(function.name.clone().expect("declaration has a name"));
-            }
             Stmt::VarDecl(DeclKind::Var, declarations) => {
                 for declaration in declarations {
                     names.extend(pattern_names(&declaration.pattern));
@@ -2660,7 +2770,9 @@ fn var_names_in<'a>(
                 }
                 pending.push(body);
             }
-            Stmt::Switch { cases, .. } => names.extend(switch_var_names(cases)?),
+            Stmt::Switch { cases, .. } => {
+                pending.extend(cases.iter().flat_map(|case| case.consequent.iter()))
+            }
             Stmt::Try {
                 block,
                 handler,
@@ -2678,6 +2790,195 @@ fn var_names_in<'a>(
         }
     }
     Ok(names)
+}
+
+fn switch_var_names(cases: &[SwitchCase]) -> Result<BTreeSet<String>, CompileError> {
+    var_names(
+        &cases
+            .iter()
+            .flat_map(|case| case.consequent.iter().cloned())
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn annex_b_function_names(
+    statements: &[Stmt],
+    root_lexical: &[(String, DeclKind)],
+) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    let blocked = root_lexical.iter().map(|(name, _)| name.clone()).collect();
+    collect_annex_b_function_names(statements, &blocked, &mut names);
+    names
+}
+
+fn is_annex_b_function(function: &Function) -> bool {
+    !function.generator && !function.is_async
+}
+
+fn insert_annex_b_function_name(
+    function: &Function,
+    blocked: &BTreeSet<String>,
+    names: &mut BTreeSet<String>,
+) {
+    if is_annex_b_function(function) {
+        let name = function
+            .name
+            .clone()
+            .expect("function declaration has a name");
+        if !blocked.contains(&name) {
+            names.insert(name);
+        }
+    }
+}
+
+/// Annex B only introduces the outer var when replacing the block-level
+/// function with `var f` would not cause a script early error. Track lexical
+/// ancestors while collecting candidates so a nested `let f`, loop binding or
+/// destructuring catch parameter suppresses that legacy outer binding.
+fn collect_annex_b_function_names(
+    statements: &[Stmt],
+    blocked: &BTreeSet<String>,
+    names: &mut BTreeSet<String>,
+) {
+    for statement in statements {
+        match statement {
+            Stmt::Block(body) => {
+                for statement in body {
+                    if let Stmt::FunctionDecl(function) = statement {
+                        insert_annex_b_function_name(function, blocked, names);
+                    }
+                }
+                let mut nested_blocked = blocked.clone();
+                extend_block_lexical_names(&mut nested_blocked, body);
+                collect_annex_b_function_names(body, &nested_blocked, names);
+            }
+            Stmt::Switch { cases, .. } => {
+                for case in cases {
+                    for statement in &case.consequent {
+                        if let Stmt::FunctionDecl(function) = statement {
+                            insert_annex_b_function_name(function, blocked, names);
+                        }
+                    }
+                }
+                let mut nested_blocked = blocked.clone();
+                for case in cases {
+                    extend_block_lexical_names(&mut nested_blocked, &case.consequent);
+                }
+                for case in cases {
+                    collect_annex_b_function_names(&case.consequent, &nested_blocked, names);
+                }
+            }
+            Stmt::If {
+                consequent,
+                alternate,
+                ..
+            } => {
+                if let Stmt::FunctionDecl(function) = &**consequent {
+                    insert_annex_b_function_name(function, blocked, names);
+                } else {
+                    collect_annex_b_function_names(
+                        std::slice::from_ref(&**consequent),
+                        blocked,
+                        names,
+                    );
+                }
+                if let Some(alternate) = alternate {
+                    if let Stmt::FunctionDecl(function) = &**alternate {
+                        insert_annex_b_function_name(function, blocked, names);
+                    } else {
+                        collect_annex_b_function_names(
+                            std::slice::from_ref(&**alternate),
+                            blocked,
+                            names,
+                        );
+                    }
+                }
+            }
+            Stmt::For { init, body, .. } => {
+                let mut nested_blocked = blocked.clone();
+                if let Some(ForInit::VarDecl(kind, declarations)) = init {
+                    if *kind != DeclKind::Var {
+                        nested_blocked.extend(
+                            declarations
+                                .iter()
+                                .flat_map(|declaration| pattern_names(&declaration.pattern)),
+                        );
+                    }
+                }
+                collect_annex_b_function_names(
+                    std::slice::from_ref(&**body),
+                    &nested_blocked,
+                    names,
+                );
+            }
+            Stmt::ForIn { left, body, .. } | Stmt::ForOf { left, body, .. } => {
+                let mut nested_blocked = blocked.clone();
+                if let ForHead::Decl(kind, pattern) = left {
+                    if *kind != DeclKind::Var {
+                        nested_blocked.extend(pattern_names(pattern));
+                    }
+                }
+                collect_annex_b_function_names(
+                    std::slice::from_ref(&**body),
+                    &nested_blocked,
+                    names,
+                );
+            }
+            Stmt::While { body, .. }
+            | Stmt::DoWhile { body, .. }
+            | Stmt::With { body, .. }
+            | Stmt::Labelled { item: body, .. } => {
+                collect_annex_b_function_names(std::slice::from_ref(&**body), blocked, names)
+            }
+            Stmt::Try {
+                block,
+                handler,
+                finalizer,
+            } => {
+                collect_annex_b_function_names(block, blocked, names);
+                if let Some(handler) = handler {
+                    let mut nested_blocked = blocked.clone();
+                    // Annex B.3.5 makes a simple catch identifier a special
+                    // case: the synthesized var passes through it. A pattern
+                    // parameter still makes the replacement an early error.
+                    if let Some(parameter) = &handler.param {
+                        if !matches!(parameter, Pattern::Identifier(_)) {
+                            nested_blocked.extend(pattern_names(parameter));
+                        }
+                    }
+                    collect_annex_b_function_names(&handler.body, &nested_blocked, names);
+                }
+                if let Some(finalizer) = finalizer {
+                    collect_annex_b_function_names(finalizer, blocked, names);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn extend_block_lexical_names(blocked: &mut BTreeSet<String>, statements: &[Stmt]) {
+    for statement in statements {
+        match statement {
+            Stmt::VarDecl(kind, declarations) if *kind != DeclKind::Var => blocked.extend(
+                declarations
+                    .iter()
+                    .flat_map(|declaration| pattern_names(&declaration.pattern)),
+            ),
+            Stmt::ClassDecl(class) => {
+                blocked.insert(class.name.clone().expect("class declaration has a name"));
+            }
+            Stmt::FunctionDecl(function) => {
+                blocked.insert(
+                    function
+                        .name
+                        .clone()
+                        .expect("function declaration has a name"),
+                );
+            }
+            _ => {}
+        }
+    }
 }
 
 #[cfg(test)]

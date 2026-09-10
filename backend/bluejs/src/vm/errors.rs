@@ -17,6 +17,12 @@ impl Vm {
     }
 
     pub(super) fn lookup_global_name(&mut self, name: &str) -> Result<Option<Value>, RuntimeError> {
+        if self.global_bindings.contains_key(name) {
+            return self
+                .global_binding_value(name)?
+                .map(Some)
+                .ok_or_else(|| RuntimeError::ReferenceError(name.into()));
+        }
         if let Some(&id) = self.globals.get(name) {
             return Ok(Some(Value::Object(id)));
         }

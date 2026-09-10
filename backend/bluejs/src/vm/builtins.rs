@@ -396,7 +396,7 @@ impl Vm {
         }
         Ok(())
     }
-    pub(super) fn binding_value(&self, slot: usize) -> Result<Option<Value>, RuntimeError> {
+    pub(super) fn binding_value(&mut self, slot: usize) -> Result<Option<Value>, RuntimeError> {
         if let Some(cell) = self.cells.get(&slot) {
             Ok(self.heap.get_own(*cell, "value")?)
         } else {
@@ -406,7 +406,7 @@ impl Vm {
 
     pub(super) fn store_binding(&mut self, slot: usize, value: Value) -> Result<(), RuntimeError> {
         if let Some(&cell) = self.cells.get(&slot) {
-            self.with_roots(|heap| heap.set(cell, "value", value))?;
+            self.store_global_cell(cell, value)?;
         } else {
             self.bindings[slot] = Some(value);
         }
@@ -490,6 +490,7 @@ impl Vm {
         let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
         let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
+        let script_global_slots = std::mem::take(&mut self.script_global_slots);
         let this = std::mem::replace(&mut self.this, receiver);
         let arguments = std::mem::replace(&mut self.arguments, args);
         let completion = std::mem::replace(&mut self.completion, Value::Undefined);
@@ -521,6 +522,7 @@ impl Vm {
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;
+        self.script_global_slots = script_global_slots;
         // `super()` in a derived-constructor arrow initializes the enclosing
         // constructor's lexical `this` binding. Nested arrows propagate that
         // initialized receiver one frame at a time on return.
@@ -1103,6 +1105,18 @@ impl Vm {
 
     pub(super) fn global(&mut self, name: &str) -> Result<Value, RuntimeError> {
         self.string_intrinsics()?;
+        if name == "String" {
+            let id = self
+                .string_intrinsics
+                .expect("String intrinsics initialized")
+                .0;
+            if self.globals.insert(name.into(), id).is_none() {
+                if let Some(&global) = self.globals.get("globalThis") {
+                    self.define_data(global, name, Value::Object(id), true, false, true)?;
+                }
+            }
+            return Ok(Value::Object(id));
+        }
         if matches!(
             name,
             "Error"
@@ -1133,6 +1147,7 @@ impl Vm {
         let constructor = self.string_intrinsics.unwrap().0;
         let prototype = self.heap.prototype(constructor)?.unwrap();
         let native = match name {
+            "Function" => NativeFunction::Function,
             "Symbol" => NativeFunction::Symbol,
             "Array" => NativeFunction::Array,
             "eval" => NativeFunction::Eval,
@@ -1377,6 +1392,7 @@ impl Vm {
                     ("setPrototypeOf", 2, SetPrototypeOf),
                     ("create", 2, Create),
                     ("isExtensible", 1, IsExtensible),
+                    ("preventExtensions", 1, PreventExtensions),
                 ] {
                     self.install_native(
                         id,
@@ -1418,6 +1434,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let first = native::argument(&args, 0);
         match function {
+            NativeFunction::Function => self.function_constructor(&args),
             NativeFunction::Error(name) => self.error_constructor(name, &args, construct),
             NativeFunction::ErrorToString => self.error_to_string(&receiver),
             NativeFunction::Test262(name) => self.test262_call(name, &args),
@@ -2228,6 +2245,126 @@ impl Vm {
         Ok(Value::Number(result))
     }
 
+    /// ECMA-262 Function constructor. Dynamic function source is compiled in
+    /// the realm's global environment rather than inheriting the native
+    /// caller's active lexical bindings.
+    fn function_constructor(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let mut source = String::from("function anonymous(");
+        for (index, argument) in args.iter().enumerate() {
+            if index != 0 {
+                source.push(',');
+            }
+            if index + 1 == args.len() {
+                break;
+            }
+            source.push_str(&self.coerce_string(argument)?.to_utf8().map_err(|_| {
+                RuntimeError::SyntaxError(
+                    "Function parameter contains an unpaired surrogate".into(),
+                )
+            })?);
+        }
+        source.push_str(") {\n");
+        if let Some(body) = args.last() {
+            source.push_str(&self.coerce_string(body)?.to_utf8().map_err(|_| {
+                RuntimeError::SyntaxError("Function body contains an unpaired surrogate".into())
+            })?);
+        }
+        source.push_str("\n}");
+
+        let program =
+            crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let code = crate::compile(&program)
+            .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+        let child = code
+            .functions
+            .first()
+            .cloned()
+            .expect("Function wrapper compiles one function declaration");
+
+        let (_, string_prototype) = self.string_intrinsics()?;
+        let function_constructor = self
+            .heap
+            .get(string_prototype, "constructor")?
+            .object_id()
+            .expect("String constructor is an object");
+        let function_prototype = self
+            .heap
+            .prototype(function_constructor)?
+            .expect("Function.prototype exists");
+        // Compiling the wrapper declaration produces a single capture for
+        // its declaration name. It is an implementation detail of using the
+        // ordinary compiler, not a capture of the Function caller.
+        let stack_base = self.stack.len();
+        let function: Result<ObjectId, RuntimeError> = (|| {
+            let mut captures = Vec::with_capacity(child.captures.len());
+            for _ in &child.captures {
+                let cell = self.with_roots(|heap| heap.alloc_object(None))?;
+                self.stack.push(Value::Object(cell));
+                captures.push(cell);
+            }
+            let function = self.with_roots(|heap| {
+                heap.alloc_closure(
+                    child.clone(),
+                    captures.clone(),
+                    Value::Undefined,
+                    function_prototype,
+                )
+            })?;
+            self.stack.push(Value::Object(function));
+            for (&slot, &cell) in child.captures.iter().zip(&captures) {
+                let value = if code.bindings[slot as usize].name == "anonymous" {
+                    Value::Object(function)
+                } else {
+                    Value::Undefined
+                };
+                self.with_roots(|heap| heap.set(cell, "value", value))?;
+            }
+            Ok(function)
+        })();
+        self.stack.truncate(stack_base);
+        let function = function?;
+        self.stack.push(Value::Object(function));
+        let result = (|| {
+            self.define_data(
+                function,
+                "name",
+                Value::String("anonymous".into()),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                function,
+                "length",
+                Value::Number(child.function_length as f64),
+                false,
+                false,
+                true,
+            )?;
+            let object_prototype = self.object_prototype;
+            let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+            self.define_data(
+                function,
+                "prototype",
+                Value::Object(prototype),
+                true,
+                false,
+                false,
+            )?;
+            self.define_data(
+                prototype,
+                "constructor",
+                Value::Object(function),
+                true,
+                false,
+                true,
+            )
+        })();
+        self.stack.truncate(stack_base);
+        result?;
+        Ok(Value::Object(function))
+    }
+
     pub(super) fn coerce_object(&mut self, value: &Value) -> Result<ObjectId, RuntimeError> {
         match value {
             Value::Object(id) => Ok(*id),
@@ -2265,12 +2402,15 @@ impl Vm {
         if method == IsExtensible && !matches!(first, Value::Object(_)) {
             return Ok(Value::Bool(false));
         }
+        if method == PreventExtensions && !matches!(first, Value::Object(_)) {
+            return Ok(first.clone());
+        }
         if matches!(method, DefineProperty | OwnKeys) && !matches!(first, Value::Object(_)) {
             return Err(RuntimeError::TypeError(
                 "operation requires an object".into(),
             ));
         }
-        let object = if method == PropertyIsEnumerable {
+        let object = if matches!(method, PropertyIsEnumerable | HasOwnProperty) {
             self.coerce_object(receiver)?
         } else if method == Create {
             let prototype = match first {
@@ -2328,6 +2468,14 @@ impl Vm {
                     self.heap
                         .get_own_property_descriptor(object, key)?
                         .is_some_and(|descriptor| descriptor.enumerable == Some(true)),
+                ))
+            }
+            HasOwnProperty => {
+                let key = self.coerce_property_key(native::argument(args, 0))?;
+                Ok(Value::Bool(
+                    self.heap
+                        .get_own_property_descriptor(object, key)?
+                        .is_some(),
                 ))
             }
             Keys | GetOwnPropertyNames | GetOwnPropertySymbols | OwnKeys => {
@@ -2403,6 +2551,10 @@ impl Vm {
                 Ok(Value::Object(object))
             }
             IsExtensible => Ok(Value::Bool(self.heap.is_extensible(object)?)),
+            PreventExtensions => {
+                self.heap.prevent_extensions(object)?;
+                Ok(Value::Object(object))
+            }
         }
     }
 

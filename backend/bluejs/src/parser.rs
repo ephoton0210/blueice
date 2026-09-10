@@ -67,7 +67,13 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
     while !parser.at_eof() {
         body.push(parser.parse_statement()?);
     }
-    Ok(Program { body })
+    let program = Program { body };
+    if contains_super_call_outside_class(&program)
+        || contains_super_property_outside_class(&program)
+    {
+        return Err(parser.syntax_error("super is not valid in script code"));
+    }
+    Ok(program)
 }
 
 // Preserve source positions so the parser can select the RegExp lexical goal
@@ -2309,6 +2315,18 @@ mod tests {
         assert_eq!(expr("this"), Expr::This);
         assert_eq!(expr("undefined"), Expr::Identifier("undefined".to_string()));
         assert_eq!(expr("x"), Expr::Identifier("x".to_string()));
+    }
+
+    #[test]
+    fn rejects_super_calls_and_properties_in_script_code() {
+        for source in [
+            "super()",
+            "super.property",
+            "()=>super()",
+            "()=>super.property",
+        ] {
+            assert!(parse(source).is_err(), "{source}");
+        }
     }
 
     #[test]

@@ -160,8 +160,19 @@ enum InterpreterExit {
     Yield { value: Value, pc: usize },
 }
 
-/// An isolated execution context. Each execute has fresh bindings; this
-/// is not yet a persistent REPL/global environment or browser host.
+/// A realm-level declarative or object-backed global binding. The cell is
+/// permanently rooted for the realm lifetime so script closures and later
+/// scripts observe one live binding rather than copied completion values.
+struct GlobalBinding {
+    cell: ObjectId,
+    mutable: bool,
+    property: bool,
+    _root: RootId,
+}
+
+/// An isolated execution context with one realm global environment. Ordinary
+/// [`Vm::execute`] calls use fresh local bindings; classic scripts additionally
+/// retain their global declarations for later [`Vm::execute_script`] calls.
 pub struct Vm {
     config: VmConfig,
     heap: Heap,
@@ -191,6 +202,11 @@ pub struct Vm {
     strict: bool,
     call_depth: usize,
     globals: HashMap<String, ObjectId>,
+    global_bindings: HashMap<String, GlobalBinding>,
+    // Slots in the currently executing classic script's outer scope. Nested
+    // function/eval frames temporarily replace this map because slot indices
+    // are local to their own bytecode.
+    script_global_slots: HashMap<usize, String>,
     iterator_prototype: Option<ObjectId>,
     regexp_iterator_prototype: Option<ObjectId>,
     templates: HashMap<u64, ObjectId>,
@@ -253,6 +269,8 @@ impl Vm {
             strict: false,
             call_depth: 0,
             globals: HashMap::new(),
+            global_bindings: HashMap::new(),
+            script_global_slots: HashMap::new(),
             iterator_prototype: None,
             regexp_iterator_prototype: None,
             templates: HashMap::new(),
@@ -303,15 +321,16 @@ impl Vm {
         self.active_scopes.clear();
         self.active_scope_slots.clear();
         self.with_objects.clear();
+        self.script_global_slots.clear();
+        if publish_globals {
+            self.prepare_global_declarations(code)?;
+        }
         // `this` lazily materializes the realm global only when script code
         // actually observes it. This keeps data-only executions within small
         // heap configurations while preserving script and arrow semantics.
         self.this = Value::Undefined;
         self.class_field_initializer_depth = 0;
         let result = self.run(code).and_then(|value| {
-            if publish_globals {
-                self.publish_global_bindings(code)?;
-            }
             if let Value::Object(id) = value {
                 self.result_root = Some(self.heap.root(id)?);
             }
@@ -324,6 +343,7 @@ impl Vm {
         self.bindings.clear();
         self.binding_metadata.clear();
         self.cells.clear();
+        self.script_global_slots.clear();
         self.completion = Value::Undefined;
         self.completion_empty = true;
         self.active_scopes.clear();
@@ -335,21 +355,273 @@ impl Vm {
         result
     }
 
-    fn publish_global_bindings(&mut self, code: &Bytecode) -> Result<(), RuntimeError> {
+    /// GlobalDeclarationInstantiation for this VM's implemented classic
+    /// script subset. Validation happens before execution, while bindings are
+    /// created before any initializer so an abrupt script still leaves the
+    /// required persistent TDZ state in its realm.
+    fn prepare_global_declarations(&mut self, code: &Bytecode) -> Result<(), RuntimeError> {
+        let slots = code.scopes.first().cloned().unwrap_or_default();
         let global = self
             .global("globalThis")?
             .object_id()
             .expect("globalThis is an object");
-        for (slot, binding) in code.bindings.iter().enumerate() {
+
+        for &slot in &slots {
+            let binding = &code.bindings[slot as usize];
             if binding.lexical {
-                continue;
+                self.materialize_lexical_global(global, &binding.name)?;
             }
-            let Some(value) = self.binding_value(slot)? else {
-                continue;
-            };
-            self.define_data(global, binding.name.as_str(), value, true, true, false)?;
+        }
+
+        for &slot in &slots {
+            let binding = &code.bindings[slot as usize];
+            let existing = self.global_bindings.get(&binding.name);
+            if binding.lexical {
+                if existing.is_some()
+                    || self
+                        .heap
+                        .get_own_property_descriptor(global, binding.name.as_str())?
+                        .is_some_and(|descriptor| descriptor.configurable == Some(false))
+                {
+                    return Err(RuntimeError::SyntaxError(format!(
+                        "global binding {} cannot be redeclared",
+                        binding.name
+                    )));
+                }
+            } else if existing.is_some_and(|binding| !binding.property) {
+                return Err(RuntimeError::SyntaxError(format!(
+                    "global lexical binding {} conflicts with var declaration",
+                    binding.name
+                )));
+            } else if code.global_function_names.contains(&binding.name) {
+                if !self.can_declare_global_function(global, &binding.name)? {
+                    return Err(RuntimeError::TypeError(format!(
+                        "cannot declare global function {}",
+                        binding.name
+                    )));
+                }
+            } else if !self.can_declare_global_var(global, &binding.name)? {
+                return Err(RuntimeError::TypeError(format!(
+                    "cannot declare global var {}",
+                    binding.name
+                )));
+            }
+        }
+
+        for &slot in &slots {
+            let binding = &code.bindings[slot as usize];
+            if !self.global_bindings.contains_key(&binding.name) {
+                self.create_global_binding(
+                    global,
+                    binding,
+                    code.global_function_names.contains(&binding.name),
+                )?;
+            }
+            self.script_global_slots
+                .insert(slot as usize, binding.name.clone());
         }
         Ok(())
+    }
+
+    /// Standard global properties exist independently of a script lexical
+    /// declaration that shadows them. Most intrinsics are otherwise lazy, so
+    /// materialize only the property that a global lexical declaration needs
+    /// to inspect or shadow.
+    fn materialize_lexical_global(
+        &mut self,
+        global: ObjectId,
+        name: &str,
+    ) -> Result<(), RuntimeError> {
+        let constant = match name {
+            "undefined" => Some(Value::Undefined),
+            "NaN" => Some(Value::Number(f64::NAN)),
+            "Infinity" => Some(Value::Number(f64::INFINITY)),
+            _ => None,
+        };
+        if let Some(value) = constant {
+            if self
+                .heap
+                .get_own_property_descriptor(global, name)?
+                .is_none()
+            {
+                self.define_data(global, name, value, false, false, false)?;
+            }
+            return Ok(());
+        }
+        if matches!(
+            name,
+            "String"
+                | "Symbol"
+                | "RegExp"
+                | "Object"
+                | "Reflect"
+                | "Math"
+                | "Number"
+                | "Boolean"
+                | "BigInt"
+                | "Array"
+                | "Function"
+                | "Intl"
+                | "Error"
+                | "TypeError"
+                | "RangeError"
+                | "SyntaxError"
+                | "ReferenceError"
+                | "EvalError"
+                | "URIError"
+                | "eval"
+                | "isNaN"
+                | "isFinite"
+                | "parseInt"
+                | "parseFloat"
+                | "JSON"
+        ) {
+            self.global(name)?;
+        }
+        Ok(())
+    }
+
+    fn can_declare_global_var(&self, global: ObjectId, name: &str) -> Result<bool, RuntimeError> {
+        Ok(self
+            .heap
+            .get_own_property_descriptor(global, name)?
+            .is_some()
+            || self.heap.is_extensible(global)?)
+    }
+
+    fn can_declare_global_function(
+        &self,
+        global: ObjectId,
+        name: &str,
+    ) -> Result<bool, RuntimeError> {
+        let Some(descriptor) = self.heap.get_own_property_descriptor(global, name)? else {
+            return Ok(self.heap.is_extensible(global)?);
+        };
+        Ok(descriptor.configurable == Some(true)
+            || (descriptor.value.is_some()
+                && descriptor.writable == Some(true)
+                && descriptor.enumerable == Some(true)))
+    }
+
+    fn create_global_binding(
+        &mut self,
+        global: ObjectId,
+        binding: &Binding,
+        function: bool,
+    ) -> Result<(), RuntimeError> {
+        let property = !binding.lexical;
+        let descriptor = self
+            .heap
+            .get_own_property_descriptor(global, binding.name.as_str())?;
+        let initial = if property && !function {
+            descriptor
+                .as_ref()
+                .and_then(|descriptor| descriptor.value.clone())
+                .unwrap_or(Value::Undefined)
+        } else {
+            Value::Undefined
+        };
+        let cell = self.with_roots(|heap| heap.alloc_object(None))?;
+        let root = self.heap.root(cell)?;
+        let result = (|| {
+            if property {
+                if function
+                    && descriptor
+                        .as_ref()
+                        .is_some_and(|descriptor| descriptor.configurable == Some(true))
+                    || descriptor.is_none()
+                {
+                    let defined = self.with_roots(|heap| {
+                        heap.define_own_property(
+                            global,
+                            binding.name.as_str(),
+                            PropertyDescriptor::data(Value::Undefined, true, true, false),
+                        )
+                    })?;
+                    if !defined {
+                        return Err(RuntimeError::TypeError(
+                            "cannot create global binding".into(),
+                        ));
+                    }
+                } else if function {
+                    self.with_roots(|heap| {
+                        heap.set(global, binding.name.as_str(), Value::Undefined)
+                    })?;
+                }
+            }
+            if property {
+                self.with_roots(|heap| heap.set(cell, "value", initial.clone()))?;
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            self.heap.unroot(root)?;
+            return Err(error);
+        }
+        self.global_bindings.insert(
+            binding.name.clone(),
+            GlobalBinding {
+                cell,
+                mutable: binding.mutable,
+                property,
+                _root: root,
+            },
+        );
+        Ok(())
+    }
+
+    fn global_binding_value(&self, name: &str) -> Result<Option<Value>, RuntimeError> {
+        let Some(binding) = self.global_bindings.get(name) else {
+            return Ok(None);
+        };
+        self.heap.get_own(binding.cell, "value").map_err(Into::into)
+    }
+
+    fn set_global_binding(&mut self, name: &str, value: Value) -> Result<bool, RuntimeError> {
+        let Some(binding) = self.global_bindings.get(name) else {
+            return Ok(false);
+        };
+        let cell = binding.cell;
+        let mutable = binding.mutable;
+        if self.heap.get_own(cell, "value")?.is_none() {
+            return Err(RuntimeError::ReferenceError(name.into()));
+        }
+        if !mutable {
+            return Err(RuntimeError::TypeError(format!(
+                "assignment to constant {name}"
+            )));
+        }
+        self.store_global_cell(cell, value)?;
+        Ok(true)
+    }
+
+    fn store_global_cell(&mut self, cell: ObjectId, value: Value) -> Result<(), RuntimeError> {
+        self.with_roots(|heap| heap.set(cell, "value", value.clone()))?;
+        let property = self.global_bindings.iter().find_map(|(name, binding)| {
+            (binding.cell == cell && binding.property).then(|| name.clone())
+        });
+        if let Some(name) = property {
+            let global = self
+                .global("globalThis")?
+                .object_id()
+                .expect("globalThis is an object");
+            self.with_roots(|heap| heap.set(global, name, value))?;
+        }
+        Ok(())
+    }
+
+    fn global_property_cell(&self, object: ObjectId, key: &PropertyName) -> Option<ObjectId> {
+        if self.globals.get("globalThis") != Some(&object) {
+            return None;
+        }
+        let PropertyName::String(name) = key else {
+            return None;
+        };
+        let name = name.to_utf8().ok()?;
+        self.global_bindings
+            .get(&name)
+            .filter(|binding| binding.property)
+            .map(|binding| binding.cell)
     }
 
     fn pop(&mut self) -> Value {
@@ -655,6 +927,7 @@ impl Vm {
         let bindings = std::mem::replace(&mut self.bindings, vec![None; code.bindings.len()]);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
         let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
+        let script_global_slots = std::mem::take(&mut self.script_global_slots);
         let completion = std::mem::replace(&mut self.completion, Value::Undefined);
         let completion_empty = std::mem::replace(&mut self.completion_empty, true);
         let active_scopes = std::mem::take(&mut self.active_scopes);
@@ -664,11 +937,66 @@ impl Vm {
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;
+        self.script_global_slots = script_global_slots;
         self.completion = completion;
         self.completion_empty = completion_empty;
         self.active_scopes = active_scopes;
         self.active_scope_slots = active_scope_slots;
         self.strict = strict;
+        self.stack.truncate(base);
+        result
+    }
+
+    /// Evaluates a new classic script in the current realm while another
+    /// script/function frame is active (the Test262 `$262.evalScript` host
+    /// path). It deliberately gets fresh script bindings and global `this`,
+    /// but preserves the caller frame and the remaining resource budget.
+    fn execute_nested_script(&mut self, code: &Bytecode) -> Result<Value, RuntimeError> {
+        let base = self.stack.len();
+        self.stack.extend(self.bindings.iter().flatten().cloned());
+        self.stack
+            .extend(self.cells.values().copied().map(Value::Object));
+        self.stack.push(self.completion.clone());
+        self.stack.push(self.this.clone());
+        self.stack.extend(self.arguments.iter().cloned());
+        self.stack.extend(self.with_objects.iter().cloned());
+        let bindings = std::mem::replace(&mut self.bindings, vec![None; code.bindings.len()]);
+        let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
+        let cells = std::mem::take(&mut self.cells);
+        let completion = std::mem::replace(&mut self.completion, Value::Undefined);
+        let completion_empty = std::mem::replace(&mut self.completion_empty, true);
+        let active_scopes = std::mem::take(&mut self.active_scopes);
+        let active_scope_slots = std::mem::take(&mut self.active_scope_slots);
+        let with_objects = std::mem::take(&mut self.with_objects);
+        let strict = std::mem::replace(&mut self.strict, code.strict);
+        let global_this = self.global("globalThis")?;
+        let this = std::mem::replace(&mut self.this, global_this);
+        let arguments = std::mem::take(&mut self.arguments);
+        let new_target = std::mem::replace(&mut self.new_target, Value::Undefined);
+        let home_object = std::mem::take(&mut self.home_object);
+        let class_constructor = std::mem::take(&mut self.class_constructor);
+        let class_field_initializer_depth =
+            std::mem::replace(&mut self.class_field_initializer_depth, 0);
+        let script_global_slots = std::mem::take(&mut self.script_global_slots);
+        let result = self
+            .prepare_global_declarations(code)
+            .and_then(|()| self.run(code));
+        self.bindings = bindings;
+        self.binding_metadata = binding_metadata;
+        self.cells = cells;
+        self.completion = completion;
+        self.completion_empty = completion_empty;
+        self.active_scopes = active_scopes;
+        self.active_scope_slots = active_scope_slots;
+        self.with_objects = with_objects;
+        self.strict = strict;
+        self.this = this;
+        self.arguments = arguments;
+        self.new_target = new_target;
+        self.home_object = home_object;
+        self.class_constructor = class_constructor;
+        self.class_field_initializer_depth = class_field_initializer_depth;
+        self.script_global_slots = script_global_slots;
         self.stack.truncate(base);
         result
     }
@@ -1218,17 +1546,28 @@ impl Vm {
                             unreachable!("compiler emits a name")
                         };
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let global = self.global("globalThis")?;
-                        let global_id = global.object_id().expect("globalThis is an object");
-                        let key: PropertyName = name.as_str().into();
-                        if code.strict && !self.has_property(global_id, &key)? {
-                            return Err(RuntimeError::ReferenceError(name));
-                        }
                         let value = self.stack.last().expect("assignment has a value").clone();
-                        self.set_property(&global, &key, &value)?;
+                        if !self.set_global_binding(&name, value.clone())? {
+                            let global = self.global("globalThis")?;
+                            let global_id = global.object_id().expect("globalThis is an object");
+                            let key: PropertyName = name.as_str().into();
+                            if code.strict && !self.has_property(global_id, &key)? {
+                                return Err(RuntimeError::ReferenceError(name));
+                            }
+                            self.set_property(&global, &key, &value)?;
+                        }
                     }
                     Opcode::EnterScope => {
                         for slot in &code.scopes[operand] {
+                            if let Some(name) = self.script_global_slots.get(&(*slot as usize)) {
+                                let cell = self
+                                    .global_bindings
+                                    .get(name)
+                                    .expect("prepared global binding survives script execution")
+                                    .cell;
+                                self.cells.insert(*slot as usize, cell);
+                                continue;
+                            }
                             self.cells.remove(&(*slot as usize));
                             self.bindings[*slot as usize] =
                                 if !code.bindings[*slot as usize].lexical {
@@ -1490,6 +1829,12 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         match receiver {
             Value::Object(id) => {
+                if let Some(cell) = self.global_property_cell(*id, key) {
+                    return self
+                        .heap
+                        .get_own(cell, "value")?
+                        .ok_or_else(|| RuntimeError::ReferenceError("global binding".into()));
+                }
                 if self.string_intrinsics.is_none()
                     && (key == "toString"
                         || key == "valueOf"
@@ -1502,6 +1847,9 @@ impl Vm {
                 }
                 if key == "propertyIsEnumerable" {
                     self.property_is_enumerable_intrinsic()?;
+                }
+                if key == "hasOwnProperty" {
+                    self.has_own_property_intrinsic()?;
                 }
                 self.get_from_prototype(*id, receiver, key)
             }
@@ -1551,6 +1899,19 @@ impl Vm {
         key: &PropertyName,
         value: &Value,
     ) -> Result<(), RuntimeError> {
+        if let Value::Object(object) = receiver {
+            if let Some(cell) = self.global_property_cell(*object, key) {
+                let result = self.with_roots(|heap| heap.set(*object, key.clone(), value.clone()));
+                return match result {
+                    Err(RuntimeError::Heap(HeapError::ReadOnlyProperty)) if self.strict => Err(
+                        RuntimeError::TypeError("property cannot be assigned".into()),
+                    ),
+                    Err(RuntimeError::Heap(HeapError::ReadOnlyProperty)) => Ok(()),
+                    Ok(()) => self.with_roots(|heap| heap.set(cell, "value", value.clone())),
+                    Err(error) => Err(error),
+                };
+            }
+        }
         // ToObject provides the lookup chain; accessor calls retain the
         // original primitive receiver. Creating a data property still fails.
         let object = self.coerce_object(receiver)?;
@@ -2094,6 +2455,7 @@ impl Vm {
                 for (owner, key) in [
                     (object_prototype, PropertyName::from("toString")),
                     (object_prototype, "valueOf".into()),
+                    (object_prototype, "hasOwnProperty".into()),
                     (self.array_prototype, "toString".into()),
                     (self.array_prototype, "concat".into()),
                     (self.array_prototype, "join".into()),
@@ -2154,6 +2516,24 @@ impl Vm {
             "propertyIsEnumerable",
             1,
             NativeFunction::ObjectMethod(native::ObjectMethod::PropertyIsEnumerable),
+        )
+    }
+
+    fn has_own_property_intrinsic(&mut self) -> Result<(), RuntimeError> {
+        if self
+            .heap
+            .get_own_property_descriptor(self.object_prototype, "hasOwnProperty")?
+            .is_some()
+        {
+            return Ok(());
+        }
+        let function_prototype = self.string_intrinsics()?.1;
+        self.install_native(
+            self.object_prototype,
+            function_prototype,
+            "hasOwnProperty",
+            1,
+            NativeFunction::ObjectMethod(native::ObjectMethod::HasOwnProperty),
         )
     }
 

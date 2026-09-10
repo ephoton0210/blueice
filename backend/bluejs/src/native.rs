@@ -11,6 +11,7 @@ use unicode_normalization::UnicodeNormalization;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NativeFunction {
+    Function,
     String,
     Array,
     ArrayIsArray,
@@ -137,6 +138,8 @@ pub(crate) enum ObjectMethod {
     Create,
     OwnKeys,
     IsExtensible,
+    PreventExtensions,
+    HasOwnProperty,
     PropertyIsEnumerable,
 }
 
