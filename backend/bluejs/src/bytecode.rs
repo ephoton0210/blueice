@@ -113,6 +113,10 @@ opcodes! {
     AbruptJump: 5, 0;
     DefineData: 1, 0;
     DefineAccessor: 5, 0;
+    DefineMethod: 1, 0;
+    DefineClassAccessor: 5, 0;
+    DefineClassStaticField: 1, 0;
+    CallClassStaticBlock: 1, 0;
     DeleteProperty: 1, 0;
     Instanceof: 1, 0;
     In: 1, 0;
@@ -180,6 +184,9 @@ pub struct Bytecode {
     pub(crate) arrow: bool,
     pub(crate) generator: bool,
     pub(crate) constructible: bool,
+    /// Class constructors require `new`, unlike ordinary constructible
+    /// closures. Class methods are non-constructible closures.
+    pub(crate) class_constructor: bool,
     pub(crate) strict: bool,
     pub(crate) templates: Vec<TemplateSite>,
     pub(crate) handlers: Vec<Handler>,
@@ -201,6 +208,7 @@ impl Bytecode {
             arrow: false,
             generator: false,
             constructible: false,
+            class_constructor: false,
             strict: false,
             templates: Vec::new(),
             handlers: Vec::new(),

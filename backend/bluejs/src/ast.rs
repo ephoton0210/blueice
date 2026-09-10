@@ -32,12 +32,21 @@ pub struct Function {
     pub generator: bool,
 }
 
-/// The class subset currently records the observable constructor name and
-/// whether a static `name` method replaces that data property.
+/// A class definition with the executable elements currently supported by the
+/// compiler. Heritage, fields, private elements and decorators remain outside
+/// this AST subset.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Class {
     pub name: Option<String>,
-    pub static_name: bool,
+    pub elements: Vec<ClassElement>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ClassElement {
+    Method { key: PropertyKey, function: Function, is_static: bool },
+    Accessor { key: PropertyKey, function: Function, getter: bool, is_static: bool },
+    Field { key: PropertyKey, initializer: Option<Expr>, is_static: bool },
+    StaticBlock(Vec<Stmt>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -162,6 +171,7 @@ pub enum Stmt {
     Try { block: Vec<Stmt>, handler: Option<CatchClause>, finalizer: Option<Vec<Stmt>> },
     With { object: Expr, body: Box<Stmt> },
     FunctionDecl(Function),
+    ClassDecl(Class),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

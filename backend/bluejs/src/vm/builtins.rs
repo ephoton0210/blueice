@@ -297,6 +297,9 @@ impl Vm {
     }
 
     pub(super) fn call_closure(&mut self, code: Rc<Bytecode>, captures: Vec<ObjectId>, callee: Value, receiver: Value, args: Vec<Value>, construct: bool) -> Result<Value, RuntimeError> {
+        if code.class_constructor && !construct {
+            return Err(RuntimeError::TypeError("class constructor cannot be invoked without new".into()));
+        }
         if construct && !code.constructible {
             return Err(RuntimeError::TypeError("arrow function is not a constructor".into()));
         }

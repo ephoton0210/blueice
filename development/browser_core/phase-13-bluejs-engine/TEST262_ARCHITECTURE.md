@@ -208,14 +208,26 @@ arguments and active lexical scopes across `.next()`; generator iterators expose
 overridden `Array.prototype[Symbol.iterator]` generator cases. Yielding while a
 try handler is active remains outside this slice.
 
-The class subset parses anonymous/named class expressions, static methods and
-static blocks needed for name inference and the static-block `await` early
-error. It creates a constructor-shaped callable with the expected observable
-`name`; inheritance, instance methods, private fields and general static-block
-execution remain later work. Sloppy `with` now has a VM-managed object
+The class subset now evaluates base class declarations and expressions with
+constructors, instance/static methods and accessors, generator methods, public
+instance/static fields, and static blocks. Methods are strict, non-enumerable,
+non-constructible closures; constructors require `new`, receive a normal
+prototype object and report an ordinary `TypeError` when a class element cannot
+replace a non-configurable property. Static blocks and static-field initializers
+execute with the class as `this`, and a class declaration is initialized before
+those elements run. Named class expressions retain an immutable internal name
+binding for their methods and static blocks. Heritage, private elements,
+decorators and `super` remain later work. Sloppy `with` now has a VM-managed object
 environment for simple identifier reads/writes, is unwound with handlers, and
 is rejected in strict code. It does not yet model every `with` interaction with
 closures, `typeof`, updates or implicit global writes.
+
+The focused `language/statements/class` inventory now has **1,871 pass, 5,313
+fail and 1,482 unsupported** of 8,666 scheduled modes, compared with 56 pass
+before this class execution slice. It has no timeout, harness-error or adapter
+crash modes. The raw result is local at
+`/tmp/bluejs-test262-class-final-fields` and its reconciled analysis is at
+`/tmp/bluejs-test262-class-final-fields-analysis`.
 
 With `--instruction-budget 5000000` (required because the TCO helpers perform
 100,000 iterations), the filtered `language/statements/try` run now has **398

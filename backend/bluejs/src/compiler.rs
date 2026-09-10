@@ -103,6 +103,13 @@ struct Compiler {
     with_depth: usize,
 }
 
+#[derive(Clone, Copy)]
+struct FunctionCompileOptions {
+    constructible: bool,
+    force_strict: bool,
+    class_constructor: bool,
+}
+
 impl Compiler {
     fn offset(&self) -> Result<u32, CompileError> {
         u32::try_from(self.bytecode.code.len()).map_err(|_| CompileError::ProgramTooLarge)
@@ -201,6 +208,10 @@ impl Compiler {
                 self.emit(Opcode::LeaveWith, 0)?;
             }
             Stmt::FunctionDecl(_) => {}
+            Stmt::ClassDecl(class) => {
+                let slot = self.resolve(class.name.as_deref().expect("class declaration has a name")).unwrap();
+                self.class_expression_with_binding(class, None, Some(slot))?;
+            }
             Stmt::Expr(Expr::Class(class)) => {
                 self.class_expression(class, None)?;
                 self.emit(Opcode::Pop, 0)?;
@@ -1180,19 +1191,134 @@ impl Compiler {
     }
 
     fn class_expression(&mut self, class: &Class, inferred_name: Option<&str>) -> Result<(), CompileError> {
-        let constructor = Function { name: class.name.clone(), params: Vec::new(), body: Vec::new(), generator: false };
-        self.function_named(&constructor, false, inferred_name, false)?;
-        if class.static_name {
+        let Some(name) = class.name.as_ref() else {
+            return self.class_expression_with_binding(class, inferred_name, None);
+        };
+        self.enter_scope(vec![(name.clone(), DeclKind::Const)], &BTreeSet::new(), true)?;
+        let binding = self.resolve(name).expect("class name was entered into its expression scope");
+        let result = self.class_expression_with_binding(class, inferred_name, Some(binding));
+        self.leave_scope()?;
+        result
+    }
+
+    fn class_expression_with_binding(&mut self, class: &Class, inferred_name: Option<&str>, binding: Option<u32>) -> Result<(), CompileError> {
+        let constructor = class.elements.iter().find_map(|element| match element {
+            ClassElement::Method { key, function, is_static: false }
+                if !matches!(key, PropertyKey::Computed(_)) && class_property_name(key) == "constructor" => Some(function.clone()),
+            _ => None,
+        });
+        let mut constructor = constructor.unwrap_or(Function { name: class.name.clone(), params: Vec::new(), body: Vec::new(), generator: false });
+        constructor.name = class.name.clone();
+        let mut body: Vec<_> = class
+            .elements
+            .iter()
+            .filter_map(|element| match element {
+                ClassElement::Field { key, initializer, is_static: false } => Some(class_instance_field(key, initializer.as_ref())),
+                _ => None,
+            })
+            .collect();
+        body.extend(constructor.body);
+        constructor.body = body;
+        self.function_named_with(
+            &constructor,
+            false,
+            inferred_name,
+            false,
+            FunctionCompileOptions { constructible: true, force_strict: true, class_constructor: true },
+        )?;
+        if let Some(slot) = binding {
             self.emit(Opcode::Dup, 0)?;
-            self.constant(Value::String("name".into()))?;
-            self.constant(Value::Undefined)?;
-            self.emit(Opcode::DefineData, 0)?;
-            self.emit(Opcode::Pop, 0)?;
+            self.emit(Opcode::InitializeBinding, slot)?;
+        }
+        for element in &class.elements {
+            match element {
+                ClassElement::Method { key, function, is_static } => {
+                    if !is_static && !matches!(key, PropertyKey::Computed(_)) && class_property_name(key) == "constructor" {
+                        continue;
+                    }
+                    self.class_property_target(*is_static)?;
+                    self.property_key(key)?;
+                    self.function_named_with(
+                        function,
+                        false,
+                        None,
+                        false,
+                        FunctionCompileOptions { constructible: false, force_strict: true, class_constructor: false },
+                    )?;
+                    self.emit(Opcode::DefineMethod, 0)?;
+                    self.emit(Opcode::Pop, 0)?;
+                }
+                ClassElement::Accessor { key, function, getter, is_static } => {
+                    self.class_property_target(*is_static)?;
+                    self.property_key(key)?;
+                    self.function_named_with(
+                        function,
+                        false,
+                        None,
+                        false,
+                        FunctionCompileOptions { constructible: false, force_strict: true, class_constructor: false },
+                    )?;
+                    self.emit(Opcode::DefineClassAccessor, u32::from(!getter))?;
+                    self.emit(Opcode::Pop, 0)?;
+                }
+                ClassElement::Field { key, initializer, is_static: true } => {
+                    self.class_property_target(true)?;
+                    self.property_key(key)?;
+                    let value = initializer.clone().unwrap_or_else(undefined_expression);
+                    let initializer = Function { name: None, params: Vec::new(), body: vec![Stmt::Return(Some(value))], generator: false };
+                    self.function_named_with(
+                        &initializer,
+                        false,
+                        None,
+                        false,
+                        FunctionCompileOptions { constructible: false, force_strict: true, class_constructor: false },
+                    )?;
+                    self.emit(Opcode::DefineClassStaticField, 0)?;
+                }
+                ClassElement::Field { is_static: false, .. } => {}
+                ClassElement::StaticBlock(body) => {
+                    let block = Function { name: None, params: Vec::new(), body: body.clone(), generator: false };
+                    self.function_named_with(
+                        &block,
+                        false,
+                        None,
+                        false,
+                        FunctionCompileOptions { constructible: false, force_strict: true, class_constructor: false },
+                    )?;
+                    self.emit(Opcode::CallClassStaticBlock, 0)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn class_property_target(&mut self, is_static: bool) -> Result<(), CompileError> {
+        self.emit(Opcode::Dup, 0)?;
+        if !is_static {
+            self.constant(Value::String("prototype".into()))?;
+            self.emit(Opcode::GetProperty, 0)?;
         }
         Ok(())
     }
 
     fn function_named(&mut self, function: &Function, arrow: bool, inferred_name: Option<&str>, named_expression: bool) -> Result<(), CompileError> {
+        self.function_named_with(
+            function,
+            arrow,
+            inferred_name,
+            named_expression,
+            FunctionCompileOptions { constructible: !arrow && !function.generator, force_strict: false, class_constructor: false },
+        )
+    }
+
+    fn function_named_with(
+        &mut self,
+        function: &Function,
+        arrow: bool,
+        inferred_name: Option<&str>,
+        named_expression: bool,
+        options: FunctionCompileOptions,
+    ) -> Result<(), CompileError> {
         let child_budget = self.max_bytecode_bytes.saturating_sub(self.offset()?);
         let mut child = Compiler {
             bytecode: Bytecode::empty(),
@@ -1205,10 +1331,11 @@ impl Compiler {
             local_scope: 1,
             with_depth: 0,
         };
-        child.bytecode.strict = self.bytecode.strict || strict_body(&function.body);
+        child.bytecode.strict = options.force_strict || self.bytecode.strict || strict_body(&function.body);
         child.bytecode.arrow = arrow;
         child.bytecode.generator = function.generator;
-        child.bytecode.constructible = !arrow && !function.generator;
+        child.bytecode.constructible = options.constructible;
+        child.bytecode.class_constructor = options.class_constructor;
         child.bytecode.function_name = function.name.clone().or_else(|| inferred_name.map(str::to_owned)).unwrap_or_default();
         child.bytecode.function_length = function.params.iter().take_while(|p| !p.rest && p.default.is_none()).count() as u32;
         let mut visible = std::collections::BTreeMap::new();
@@ -1261,6 +1388,33 @@ fn strict_body(body: &[Stmt]) -> bool {
     body.iter().take_while(|stmt| matches!(stmt, Stmt::Expr(Expr::String(_)))).any(|stmt| matches!(stmt, Stmt::Expr(Expr::String(s)) if s == "use strict"))
 }
 
+fn class_property_name(key: &PropertyKey) -> String {
+    match key {
+        PropertyKey::Identifier(name) => name.clone(),
+        PropertyKey::String(name) => name.to_utf8().unwrap_or_default(),
+        PropertyKey::Number(number) => number.to_string(),
+        PropertyKey::Computed(_) => String::new(),
+    }
+}
+
+fn undefined_expression() -> Expr {
+    Expr::Unary { op: UnaryOp::Void, arg: Box::new(Expr::Number(0.0)) }
+}
+
+fn class_instance_field(key: &PropertyKey, initializer: Option<&Expr>) -> Stmt {
+    let (property, computed) = match key {
+        PropertyKey::Identifier(name) => (Expr::Identifier(name.clone()), false),
+        PropertyKey::String(name) => (Expr::String(name.clone()), true),
+        PropertyKey::Number(number) => (Expr::Number(*number), true),
+        PropertyKey::Computed(expression) => ((*expression.clone()), true),
+    };
+    Stmt::Expr(Expr::Assign {
+        op: AssignOp::Assign,
+        target: Box::new(Expr::Member { object: Box::new(Expr::This), property: Box::new(property), computed }),
+        value: Box::new(initializer.cloned().unwrap_or_else(undefined_expression)),
+    })
+}
+
 fn binary_opcode(op: BinaryOp) -> Result<Opcode, CompileError> {
     Ok(match op {
         BinaryOp::Add => Opcode::Add,
@@ -1306,6 +1460,9 @@ fn lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, Compile
                 names.extend(declarations_names(*kind, declarations)?);
             }
         }
+        if let Stmt::ClassDecl(class) = statement {
+            names.push((class.name.clone().expect("class declaration has a name"), DeclKind::Const));
+        }
     }
     Ok(names)
 }
@@ -1321,6 +1478,7 @@ fn catch_lexical_names(statements: &[Stmt]) -> Vec<String> {
                 names.extend(declarations.iter().flat_map(|declaration| pattern_names(&declaration.pattern)));
             }
             Stmt::FunctionDecl(function) => names.push(function.name.clone().expect("declaration has a name")),
+            Stmt::ClassDecl(class) => names.push(class.name.clone().expect("class declaration has a name")),
             _ => {}
         }
     }

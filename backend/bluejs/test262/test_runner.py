@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from run import Worker, classify, metadata, modes
+from run import Worker, classify, metadata, modes, selected_files
 
 
 class RunnerTests(unittest.TestCase):
@@ -26,6 +26,22 @@ class RunnerTests(unittest.TestCase):
         for kind in ["unsupported", "unclassified_parse_error"]:
             self.assertEqual(classify({"phase": "parse", "kind": kind}, expected), "unsupported")
         self.assertEqual(classify({"kind": "timeout"}, {"phase": "runtime", "type": "RangeError"}), "timeout")
+
+    def test_filter_must_select_at_least_one_non_fixture_test(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            corpus = Path(temporary)
+            test = corpus / "test"
+            test.mkdir()
+            matching = test / "language" / "match.js"
+            fixture = test / "language" / "match_FIXTURE.js"
+            matching.parent.mkdir()
+            matching.write_text("/*---\n---*/")
+            fixture.write_text("/*---\n---*/")
+            all_files = sorted(test.rglob("*.js"))
+
+            self.assertEqual(selected_files(all_files, corpus, "language/match"), [matching])
+            with self.assertRaisesRegex(ValueError, "selected no test files"):
+                selected_files(all_files, corpus, "language/missing")
 
     def test_supervisor_terminates_and_restarts_a_stalled_process(self):
         with tempfile.TemporaryDirectory() as temporary:

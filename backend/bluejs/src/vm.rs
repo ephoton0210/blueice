@@ -594,21 +594,27 @@ impl Vm {
             pc += instruction.opcode.width();
             let outcome: Result<Option<Completion>, RuntimeError> = (|| {
             match instruction.opcode {
-                Opcode::DefineData | Opcode::DefineAccessor => {
+                Opcode::DefineData | Opcode::DefineAccessor | Opcode::DefineMethod | Opcode::DefineClassAccessor => {
                     let value = self.pop();
                     let (receiver, key) = self.property_reference()?;
                     let object = receiver.object_id().unwrap();
                     if instruction.opcode == Opcode::DefineData {
                         self.define_data(object, key, value.clone(), true, true, true)?;
                     } else {
-                        let descriptor = PropertyDescriptor {
-                            get: (operand == 0).then(|| value.clone()),
-                            set: (operand != 0).then(|| value.clone()),
-                            enumerable: Some(true),
-                            configurable: Some(true),
-                            ..Default::default()
+                        let descriptor = if instruction.opcode == Opcode::DefineMethod {
+                            PropertyDescriptor::data(value.clone(), true, false, true)
+                        } else {
+                            PropertyDescriptor {
+                                get: (operand == 0).then(|| value.clone()),
+                                set: (operand != 0).then(|| value.clone()),
+                                enumerable: Some(instruction.opcode == Opcode::DefineAccessor),
+                                configurable: Some(true),
+                                ..Default::default()
+                            }
                         };
-                        self.with_roots(|heap| heap.define_own_property(object, key, descriptor))?;
+                        if !self.with_roots(|heap| heap.define_own_property(object, key, descriptor))? {
+                            return Err(RuntimeError::TypeError("cannot define class property".into()));
+                        }
                     }
                     self.stack.push(value);
                 }
@@ -636,6 +642,23 @@ impl Vm {
                     let result = self.call_native(self.stack[base].clone(), self.stack[base + 1].clone(), args, operand != 0)?;
                     self.stack.truncate(base);
                     self.stack.push(result);
+                }
+                Opcode::CallClassStaticBlock => {
+                    let base = self.stack.len() - 2;
+                    self.call_native(self.stack[base + 1].clone(), self.stack[base].clone(), Vec::new(), false)?;
+                    self.stack.truncate(base + 1);
+                }
+                Opcode::DefineClassStaticField => {
+                    let base = self.stack.len() - 4;
+                    let target = self.stack[base + 1].clone();
+                    let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
+                    let initializer = self.stack[base + 3].clone();
+                    let value = self.call_native(initializer, target.clone(), Vec::new(), false)?;
+                    let Value::Object(target) = target else { unreachable!("class fields target the constructor") };
+                    if !self.with_roots(|heap| heap.define_own_property(target, key, PropertyDescriptor::data(value, true, true, true)))? {
+                        return Err(RuntimeError::TypeError("cannot define class field".into()));
+                    }
+                    self.stack.truncate(base + 1);
                 }
                 Opcode::RegExpLiteral => {
                     let base = self.stack.len() - 2;
@@ -762,7 +785,7 @@ impl Vm {
                     if child.constructible {
                         let object_prototype = self.object_prototype;
                         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-                        self.define_data(id, "prototype", Value::Object(prototype), true, false, false)?;
+                        self.define_data(id, "prototype", Value::Object(prototype), !child.class_constructor, false, false)?;
                         self.define_data(prototype, "constructor", Value::Object(id), true, false, true)?;
                     }
                 }

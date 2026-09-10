@@ -323,7 +323,11 @@ impl Parser {
             }
             Token::Identifier(name) if name == "class" => {
                 self.advance();
-                Ok(Stmt::Expr(Expr::Class(self.parse_class()?)))
+                let class = self.parse_class()?;
+                if class.name.is_none() {
+                    return Err(self.error("class declarations require a name"));
+                }
+                Ok(Stmt::ClassDecl(class))
             }
             Token::Identifier(name) if name == "with" => self.parse_with_stmt(),
             Token::Keyword(Keyword::If) => self.parse_if_stmt(),
@@ -736,6 +740,10 @@ impl Parser {
     fn parse_function(&mut self) -> Result<Function, ParseError> {
         let generator = self.eat_punct(Punct::Star);
         let name = if let Token::Identifier(_) = self.peek() { Some(self.expect_identifier_name()?) } else { None };
+        self.parse_method_function(name, generator)
+    }
+
+    fn parse_method_function(&mut self, name: Option<String>, generator: bool) -> Result<Function, ParseError> {
         let params = self.parse_params()?;
         self.generator_depth += u32::from(generator);
         self.function_depth += 1;
@@ -755,30 +763,65 @@ impl Parser {
     fn parse_class(&mut self) -> Result<Class, ParseError> {
         let name = if let Token::Identifier(_) = self.peek() { Some(self.expect_identifier_name()?) } else { None };
         self.expect_punct(Punct::LBrace)?;
-        let mut static_name = false;
+        let mut elements = Vec::new();
+        let mut has_constructor = false;
         while !self.check_punct(Punct::RBrace) {
-            let Token::Identifier(static_keyword) = self.peek().clone() else { return Err(self.error("expected a class element")) };
-            if static_keyword != "static" {
-                return Err(self.error("only static class elements are supported"));
+            if self.eat_punct(Punct::Semicolon) {
+                continue;
             }
-            self.advance();
-            if self.check_punct(Punct::LBrace) {
+            let is_static = matches!(self.peek(), Token::Identifier(static_keyword) if static_keyword == "static")
+                && !matches!(self.peek_at(1), Token::Punct(Punct::LParen));
+            if is_static {
+                self.advance();
+            }
+            if is_static && self.check_punct(Punct::LBrace) {
                 self.static_block_function_depths.push(self.function_depth);
                 let body = self.parse_block();
                 self.static_block_function_depths.pop();
-                body?;
+                elements.push(ClassElement::StaticBlock(body?));
                 continue;
             }
-            let method = self.expect_identifier_name()?;
-            let _ = self.parse_params()?;
-            self.function_depth += 1;
-            let body = self.parse_block();
-            self.function_depth -= 1;
-            body?;
-            static_name |= method == "name";
+            let accessor = match self.peek() {
+                Token::Identifier(keyword)
+                    if (keyword == "get" || keyword == "set")
+                        && !matches!(self.peek_at(1), Token::Punct(Punct::LParen)) => {
+                    let getter = keyword == "get";
+                    self.advance();
+                    Some(getter)
+                }
+                _ => None,
+            };
+            let generator = self.eat_punct(Punct::Star);
+            let key = self.parse_property_key()?;
+            let method_name = class_element_name(&key);
+            if !self.check_punct(Punct::LParen) {
+                if generator || accessor.is_some() {
+                    return Err(self.error("expected class method parameters"));
+                }
+                let initializer = if self.eat_punct(Punct::Assign) { Some(self.parse_assignment()?) } else { None };
+                self.eat_punct(Punct::Semicolon);
+                elements.push(ClassElement::Field { key, initializer, is_static });
+                continue;
+            }
+            let function = self.parse_method_function(Some(method_name), generator)?;
+            if let Some(getter) = accessor {
+                if generator || (getter && !function.params.is_empty()) || (!getter && (function.params.len() != 1 || function.params[0].rest)) {
+                    return Err(self.error("invalid class accessor parameter list"));
+                }
+                elements.push(ClassElement::Accessor { key, function, getter, is_static });
+            } else {
+                let constructor = !is_static && !matches!(&key, PropertyKey::Computed(_)) && class_element_name(&key) == "constructor";
+                if constructor {
+                    if generator || has_constructor {
+                        return Err(self.error("invalid class constructor"));
+                    }
+                    has_constructor = true;
+                }
+                elements.push(ClassElement::Method { key, function, is_static });
+            }
         }
         self.expect_punct(Punct::RBrace)?;
-        Ok(Class { name, static_name })
+        Ok(Class { name, elements })
     }
 
     /// Finds the index of the `)` matching the `(` at `open_idx`, or
@@ -1398,6 +1441,15 @@ impl Parser {
         }
         self.expect_punct(Punct::RBrace)?;
         Ok(Expr::Object(props))
+    }
+}
+
+fn class_element_name(key: &PropertyKey) -> String {
+    match key {
+        PropertyKey::Identifier(name) => name.clone(),
+        PropertyKey::String(name) => name.to_utf8().unwrap_or_default(),
+        PropertyKey::Number(number) => number.to_string(),
+        PropertyKey::Computed(_) => String::new(),
     }
 }
 

@@ -83,7 +83,7 @@ fn generators_suspend_resume_and_close_as_iterators() {
 }
 
 #[test]
-fn classes_cover_name_inference_and_static_block_early_errors() {
+fn classes_construct_instances_install_methods_and_keep_static_block_early_errors() {
     let mut vm = Vm::default();
     assert_eq!(
         execute(
@@ -93,6 +93,21 @@ fn classes_cover_name_inference_and_static_block_early_errors() {
         Ok(Value::Bool(true))
     );
     assert_eq!(execute(&mut vm, "class C{static{(()=>{try{}catch(await){}})}};true"), Ok(Value::Bool(true)));
+    for source in [
+        "class C{constructor(value){this.value=value;}twice(){return this.value*2;}static create(value){return new C(value);}}let instance=C.create(21);instance.twice()===42&&instance.constructor===C&&Object.keys(C.prototype).length===0",
+        "class C{get value(){return this.stored;}set value(value){this.stored=value;}static name(){return 'method';}}let instance=new C;instance.value=7;instance.value===7&&C.name()==='method'",
+        "class C{method(){return this===undefined;}}let method=C.prototype.method;let rejected=false;try{C()}catch(error){rejected=error instanceof TypeError;}method()&&rejected",
+        "let rejected=false;try{class C{static ['prototype'](){}}}catch(error){rejected=error instanceof TypeError;}rejected",
+        "class C{constructor(value){this.value=value;}*items(){yield 1;yield this.value;}static *single(){yield 3;}}let iter=(new C(2)).items();iter.next().value===1&&iter.next().value===2&&C.single().next().value===3",
+        "class C{static{this.answer=41;this.answer++;}}C.answer===42",
+        "class C{static{this.self=C;}}C.self===C",
+        "class C{first=1;second=this.first+1;static first=3;static second=this.first+1;}let value=new C;value.first===1&&value.second===2&&C.first===3&&C.second===4&&Object.keys(value).length===2",
+        "let rejected=false;try{class C{static prototype=1;}}catch(error){rejected=error instanceof TypeError;}rejected",
+        "let C=class Inner{static{this.self=Inner;}value(){return Inner;}};let value=new C;C.self===C&&value.value()===C&&typeof Inner==='undefined'",
+        "let C=class Inner{replace(){Inner=1;}};let rejected=false;try{(new C).replace()}catch(error){rejected=error instanceof TypeError;}rejected",
+    ] {
+        assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)), "{source}");
+    }
     let invalid = parse("class C{static{try{}catch(await){}}}").unwrap_err();
     assert!(invalid.known_syntax);
 }

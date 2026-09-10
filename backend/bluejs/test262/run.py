@@ -96,6 +96,18 @@ def modes(data):
     return ["sloppy", "strict"]
 
 
+def selected_files(all_files, corpus, pattern):
+    files = [
+        path
+        for path in all_files
+        if "_FIXTURE" not in path.name
+        and pattern in path.relative_to(corpus / "test").as_posix()
+    ]
+    if pattern and not files:
+        raise ValueError(f"--filter selected no test files: {pattern!r}")
+    return files
+
+
 def classify(reply, negative):
     kind = reply.get("kind")
     if kind == "unsupported":
@@ -213,7 +225,10 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     all_files = sorted((args.corpus / "test").rglob("*.js"))
     fixtures = [path for path in all_files if "_FIXTURE" in path.name]
-    files = [path for path in all_files if "_FIXTURE" not in path.name and args.filter in path.relative_to(args.corpus / "test").as_posix()]
+    try:
+        files = selected_files(all_files, args.corpus, args.filter)
+    except ValueError as error:
+        parser.error(str(error))
     counters = collections.Counter()
     features = collections.defaultdict(collections.Counter)
     groups = collections.defaultdict(collections.Counter)
