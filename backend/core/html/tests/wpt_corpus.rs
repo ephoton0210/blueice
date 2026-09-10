@@ -96,9 +96,70 @@ fn strip_unsupported_lines(dump: &str) -> String {
 /// bug-free, just that an element *off* it failing is expected, not a
 /// regression.
 const MVP_ELEMENTS: &[&str] = &[
-    "html", "head", "title", "meta", "link", "style", "script", "body", "div", "span", "p", "br", "hr", "section", "article", "header", "footer", "nav", "main", "aside", "ul", "ol", "li", "pre",
-    "blockquote", "figure", "figcaption", "h1", "h2", "h3", "h4", "h5", "h6", "a", "b", "i", "em", "strong", "u", "small", "code", "sub", "sup", "form", "input", "button", "label", "select",
-    "option", "optgroup", "textarea", "fieldset", "legend", "table", "caption", "colgroup", "col", "thead", "tbody", "tfoot", "tr", "td", "th", "img",
+    "html",
+    "head",
+    "title",
+    "meta",
+    "link",
+    "style",
+    "script",
+    "body",
+    "div",
+    "span",
+    "p",
+    "br",
+    "hr",
+    "section",
+    "article",
+    "header",
+    "footer",
+    "nav",
+    "main",
+    "aside",
+    "ul",
+    "ol",
+    "li",
+    "pre",
+    "blockquote",
+    "figure",
+    "figcaption",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "a",
+    "b",
+    "i",
+    "em",
+    "strong",
+    "u",
+    "small",
+    "code",
+    "sub",
+    "sup",
+    "form",
+    "input",
+    "button",
+    "label",
+    "select",
+    "option",
+    "optgroup",
+    "textarea",
+    "fieldset",
+    "legend",
+    "table",
+    "caption",
+    "colgroup",
+    "col",
+    "thead",
+    "tbody",
+    "tfoot",
+    "tr",
+    "td",
+    "th",
+    "img",
 ];
 
 /// A rough, classification-only tag-name scanner over raw `#data` --
@@ -153,7 +214,12 @@ fn mentions_element_outside_mvp_scope(data: &str) -> bool {
 /// separate mode, confirmed against the merged spec PR's actual text
 /// and its own test-suite update (html5lib/html5lib-tests#178) rather
 /// than the outdated reference implementation.
-fn likely_out_of_scope_reason(full_name: &str, file: &str, data: &str, expected_raw: &str) -> Option<&'static str> {
+fn likely_out_of_scope_reason(
+    full_name: &str,
+    file: &str,
+    data: &str,
+    expected_raw: &str,
+) -> Option<&'static str> {
     let _ = full_name;
     if file.starts_with("scripted_") || file == "noscript01.dat" {
         return Some("scripting (needs real JS execution or a scripting-disabled parsing mode)");
@@ -161,7 +227,12 @@ fn likely_out_of_scope_reason(full_name: &str, file: &str, data: &str, expected_
     if file == "template.dat" || data.contains("<template") {
         return Some("<template> element (not in MVP HTML scope)");
     }
-    if file == "namespace-sensitivity.dat" || expected_raw.contains("<svg ") || expected_raw.contains("<math ") || data.contains("<svg") || data.contains("<math") {
+    if file == "namespace-sensitivity.dat"
+        || expected_raw.contains("<svg ")
+        || expected_raw.contains("<math ")
+        || data.contains("<svg")
+        || data.contains("<math")
+    {
         return Some("SVG/MathML foreign content (explicit MVP non-goal)");
     }
     if file == "quirks01.dat" {
@@ -177,10 +248,16 @@ fn likely_out_of_scope_reason(full_name: &str, file: &str, data: &str, expected_
     // (`&amp; &lt; &gt; &quot; &apos; &nbsp;` plus numeric/hex refs) is
     // an explicit Phase 2 HTML-scope cut, not a bug.
     let known = ["&amp;", "&lt;", "&gt;", "&quot;", "&apos;", "&nbsp;"];
-    let stripped = known.iter().fold(data.to_string(), |acc, k| acc.replace(k, ""));
+    let stripped = known
+        .iter()
+        .fold(data.to_string(), |acc, k| acc.replace(k, ""));
     let has_other_named_ref = stripped.match_indices('&').any(|(i, _)| {
         let after = &stripped[i + 1..];
-        !after.starts_with('#') && after.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+        !after.starts_with('#')
+            && after
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic())
     });
     if has_other_named_ref {
         return Some("named character reference outside the minimal supported set");
@@ -189,7 +266,8 @@ fn likely_out_of_scope_reason(full_name: &str, file: &str, data: &str, expected_
 }
 
 fn corpus_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../development/browser_core/reference/wpt/html/syntax/parsing/resources")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../development/browser_core/reference/wpt/html/syntax/parsing/resources")
 }
 
 #[test]
@@ -201,7 +279,10 @@ fn wpt_tree_construction_corpus() {
     }
 
     let fixtures = load_fixtures(&dir);
-    assert!(!fixtures.is_empty(), "corpus directory exists but no .dat files were found in it");
+    assert!(
+        !fixtures.is_empty(),
+        "corpus directory exists but no .dat files were found in it"
+    );
 
     use std::collections::BTreeMap;
     let mut per_file: BTreeMap<String, (usize, usize)> = BTreeMap::new(); // file -> (pass, fail)
@@ -219,7 +300,12 @@ fn wpt_tree_construction_corpus() {
             skipped_no_document += 1;
             continue;
         };
-        let file = fixture.name.split('#').next().unwrap_or(&fixture.name).to_string();
+        let file = fixture
+            .name
+            .split('#')
+            .next()
+            .unwrap_or(&fixture.name)
+            .to_string();
 
         let doc = blueice_html::parse(fixture.data());
         let actual_raw = blueice_dom::dump(&doc);
@@ -243,13 +329,19 @@ fn wpt_tree_construction_corpus() {
     let total: usize = per_file.values().map(|(p, f)| p + f).sum();
     println!();
     println!("=== WPT tree-construction corpus ===");
-    println!("{total_passed}/{total} passed ({:.1}%)", 100.0 * total_passed as f64 / total.max(1) as f64);
+    println!(
+        "{total_passed}/{total} passed ({:.1}%)",
+        100.0 * total_passed as f64 / total.max(1) as f64
+    );
     println!("skipped: {skipped_fragment} fragment-context cases (innerHTML-style parsing, out of MVP scope), {skipped_no_document} with no #document section");
     println!();
     println!("per file (pass/total):");
     for (file, (pass, fail)) in &per_file {
         let file_total = pass + fail;
-        println!("  {file:<45} {pass:>4}/{file_total:<4} ({:.0}%)", 100.0 * *pass as f64 / (file_total.max(1)) as f64);
+        println!(
+            "  {file:<45} {pass:>4}/{file_total:<4} ({:.0}%)",
+            100.0 * *pass as f64 / (file_total.max(1)) as f64
+        );
     }
 
     println!();
@@ -258,7 +350,10 @@ fn wpt_tree_construction_corpus() {
         println!("  {count:>4}  {reason}");
     }
     println!();
-    println!("=== {} UNCLASSIFIED failures (not an obvious scope cut -- worth reading) ===", unclassified.len());
+    println!(
+        "=== {} UNCLASSIFIED failures (not an obvious scope cut -- worth reading) ===",
+        unclassified.len()
+    );
     for (name, expected, actual) in &unclassified {
         println!("--- {name} ---\nexpected:\n{expected}\nactual:\n{actual}\n");
     }
@@ -292,7 +387,10 @@ mod tests {
     #[test]
     fn drops_a_single_line_comment() {
         let dump = "| <html>\n|   <body>\n|     \"FOO\"\n|     <!--  BAR  -->\n|     \"BAZ\"";
-        assert_eq!(strip_unsupported_lines(dump), "| <html>\n|   <body>\n|     \"FOO\"\n|     \"BAZ\"");
+        assert_eq!(
+            strip_unsupported_lines(dump),
+            "| <html>\n|   <body>\n|     \"FOO\"\n|     \"BAZ\""
+        );
     }
 
     #[test]
@@ -302,7 +400,10 @@ mod tests {
         // two raw lines with no per-line marker on the second one --
         // both must be dropped, not just the first.
         let dump = "| <html>\n|   <body>\n|     \"FOO\"\n|     <!--  BAR --!\n>BAZ -->";
-        assert_eq!(strip_unsupported_lines(dump), "| <html>\n|   <body>\n|     \"FOO\"");
+        assert_eq!(
+            strip_unsupported_lines(dump),
+            "| <html>\n|   <body>\n|     \"FOO\""
+        );
     }
 
     #[test]

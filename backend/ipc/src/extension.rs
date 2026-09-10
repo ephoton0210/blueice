@@ -56,7 +56,10 @@ pub enum ExtensionRequest {
     /// declared versions is explicit future work (see the plan doc's
     /// "Wiring design" section); this minimal slice's handshake accepts
     /// any declared versions without checking them.
-    Hello { extension_id: String, capability_versions: BTreeMap<String, u32> },
+    Hello {
+        extension_id: String,
+        capability_versions: BTreeMap<String, u32>,
+    },
     /// Query the (for this minimal slice, placeholder) AI-facing
     /// representation, read-only -- requires the `dom:read` capability.
     /// No fields: this minimal slice doesn't wire a real target/query
@@ -131,7 +134,13 @@ pub fn default_extension_socket_path() -> PathBuf {
 unsafe fn libc_getuid() -> u32 {
     std::fs::read_to_string("/proc/self/status")
         .ok()
-        .and_then(|status| status.lines().find_map(|line| line.strip_prefix("Uid:")).and_then(|rest| rest.split_whitespace().next()).and_then(|s| s.parse().ok()))
+        .and_then(|status| {
+            status
+                .lines()
+                .find_map(|line| line.strip_prefix("Uid:"))
+                .and_then(|rest| rest.split_whitespace().next())
+                .and_then(|s| s.parse().ok())
+        })
         .unwrap_or_else(std::process::id)
 }
 
@@ -149,10 +158,18 @@ mod tests {
     #[test]
     fn extension_request_round_trips_over_a_real_socket() {
         for req in [
-            ExtensionRequest::Hello { extension_id: "minimal-slice-extension".to_string(), capability_versions: sample_capability_versions() },
-            ExtensionRequest::Hello { extension_id: "some-other-extension".to_string(), capability_versions: BTreeMap::new() },
+            ExtensionRequest::Hello {
+                extension_id: "minimal-slice-extension".to_string(),
+                capability_versions: sample_capability_versions(),
+            },
+            ExtensionRequest::Hello {
+                extension_id: "some-other-extension".to_string(),
+                capability_versions: BTreeMap::new(),
+            },
             ExtensionRequest::DomRead,
-            ExtensionRequest::DomWrite { value: "new content".to_string() },
+            ExtensionRequest::DomWrite {
+                value: "new content".to_string(),
+            },
         ] {
             let (mut a, mut b) = UnixStream::pair().unwrap();
             write_extension_request(&mut a, &req).unwrap();
@@ -164,9 +181,14 @@ mod tests {
     fn extension_reply_round_trips_over_a_real_socket() {
         for reply in [
             ExtensionReply::HelloAck,
-            ExtensionReply::DomReadResult { value: "placeholder".to_string() },
+            ExtensionReply::DomReadResult {
+                value: "placeholder".to_string(),
+            },
             ExtensionReply::DomWriteAck,
-            ExtensionReply::CapabilityDenied { capability: "dom:write".to_string(), reason: "not granted".to_string() },
+            ExtensionReply::CapabilityDenied {
+                capability: "dom:write".to_string(),
+                reason: "not granted".to_string(),
+            },
         ] {
             let (mut a, mut b) = UnixStream::pair().unwrap();
             write_extension_reply(&mut a, &reply).unwrap();
@@ -178,10 +200,24 @@ mod tests {
     fn multiple_requests_can_be_written_and_read_in_sequence_on_one_stream() {
         let mut buf = Vec::new();
         write_extension_request(&mut buf, &ExtensionRequest::DomRead).unwrap();
-        write_extension_request(&mut buf, &ExtensionRequest::DomWrite { value: "x".to_string() }).unwrap();
+        write_extension_request(
+            &mut buf,
+            &ExtensionRequest::DomWrite {
+                value: "x".to_string(),
+            },
+        )
+        .unwrap();
         let mut cursor = std::io::Cursor::new(buf);
-        assert_eq!(read_extension_request(&mut cursor).unwrap(), ExtensionRequest::DomRead);
-        assert_eq!(read_extension_request(&mut cursor).unwrap(), ExtensionRequest::DomWrite { value: "x".to_string() });
+        assert_eq!(
+            read_extension_request(&mut cursor).unwrap(),
+            ExtensionRequest::DomRead
+        );
+        assert_eq!(
+            read_extension_request(&mut cursor).unwrap(),
+            ExtensionRequest::DomWrite {
+                value: "x".to_string()
+            }
+        );
     }
 
     #[test]

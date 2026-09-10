@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use blueice_bluejs::{RuntimeError, Value, Vm, compile, parse};
+use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
 
 fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap())
@@ -10,7 +10,11 @@ fn evaluate(source: &str) -> Result<Value, RuntimeError> {
 
 fn check(sources: &[&str]) {
     for source in sources {
-        assert_eq!(evaluate(source).unwrap_or_else(|e| panic!("{source}: {e}")), Value::Bool(true), "{source}");
+        assert_eq!(
+            evaluate(source).unwrap_or_else(|e| panic!("{source}: {e}")),
+            Value::Bool(true),
+            "{source}"
+        );
     }
 }
 
@@ -26,8 +30,14 @@ fn object_conversion_and_replacement_callbacks() {
         "let obj={s:'abc', f:function(){return this.s.toUpperCase();}}; obj.f() === 'ABC'",
         "'x'.replace('x',()=>({toString:()=> 'done'})) === 'done'",
     ]);
-    for source in ["String({toString:1,valueOf:2})", "String({toString:()=>({}),valueOf:()=>({})})"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}");
+    for source in [
+        "String({toString:1,valueOf:2})",
+        "String({toString:()=>({}),valueOf:()=>({})})",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
     }
 }
 
@@ -42,8 +52,15 @@ fn symbols_and_string_iteration() {
         "String.prototype[Symbol.iterator].name === '[Symbol.iterator]' && String.prototype[Symbol.iterator].length === 0",
         "let out=''; for(let x of 'A😀B'){out+=x.length;} out === '121'",
     ]);
-    for source in ["new String(Symbol())", "''.concat(Symbol())", "String.prototype[Symbol.iterator].call(null)"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}");
+    for source in [
+        "new String(Symbol())",
+        "''.concat(Symbol())",
+        "String.prototype[Symbol.iterator].call(null)",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
     }
 }
 
@@ -57,8 +74,16 @@ fn string_symbol_protocols_observe_receiver_and_order() {
         "let o={[Symbol.matchAll]:()=>42}; 'abc'.matchAll(o) === 42",
         "let o={toString:()=> 'b',[Symbol.match]:false}; 'abc'.includes(o)",
     ]);
-    for source in ["'x'.includes({[Symbol.match]:true})", "'x'.startsWith({[Symbol.match]:true})", "'x'.endsWith({[Symbol.match]:true})", "'x'.match({[Symbol.match]:3})"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}");
+    for source in [
+        "'x'.includes({[Symbol.match]:true})",
+        "'x'.startsWith({[Symbol.match]:true})",
+        "'x'.endsWith({[Symbol.match]:true})",
+        "'x'.match({[Symbol.match]:3})",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
     }
 }
 
@@ -75,8 +100,15 @@ fn regexp_backed_string_methods() {
         "let it='a1b2'.matchAll(new RegExp('([0-9])','g')); let a=it.next().value; let b=it.next().value; a[1] === '1' && a.index === 1 && b.index === 3 && it.next().done",
         "let r=new RegExp('a','g'); r.lastIndex=1; let it='aa'.matchAll(r); it.next().value.index === 1 && r.lastIndex === 1",
     ]);
-    for source in ["'a'.matchAll(new RegExp('a'))", "'a'.replaceAll(new RegExp('a'),'b')", "'a'.includes(new RegExp('a'))"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}");
+    for source in [
+        "'a'.matchAll(new RegExp('a'))",
+        "'a'.replaceAll(new RegExp('a'),'b')",
+        "'a'.includes(new RegExp('a'))",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
     }
 }
 
@@ -90,8 +122,14 @@ fn builtin_and_string_exotic_descriptors() {
         "Object.keys(new String('abc')).length === 3 && Object.keys(String.prototype).length === 0",
         "let o={}; Object.defineProperty(o,'toString',{get:()=> ()=> 'ok'}); String(o) === 'ok'",
     ]);
-    for source in ["'use strict'; let s=new String('a'); s[0]='b'", "Object.defineProperty(new String('a'),'0',{value:'b'})"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}");
+    for source in [
+        "'use strict'; let s=new String('a'); s[0]='b'",
+        "Object.defineProperty(new String('a'),'0',{value:'b'})",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
     }
 }
 
@@ -122,11 +160,20 @@ fn observable_conversion_order_and_gc_pressure() {
     ];
     for source in sources {
         let mut vm = Vm::new(blueice_bluejs::VmConfig {
-            heap: blueice_bluejs::HeapConfig { nursery_capacity: 1, major_threshold_bytes: 256, max_heap_bytes: 256 * 1024 },
+            heap: blueice_bluejs::HeapConfig {
+                nursery_capacity: 1,
+                major_threshold_bytes: 256,
+                max_heap_bytes: 256 * 1024,
+            },
             ..Default::default()
         })
         .unwrap();
-        assert_eq!(vm.execute(&compile(&parse(source).unwrap()).unwrap()).unwrap(), Value::Bool(true), "{source}");
+        assert_eq!(
+            vm.execute(&compile(&parse(source).unwrap()).unwrap())
+                .unwrap(),
+            Value::Bool(true),
+            "{source}"
+        );
     }
 }
 
@@ -144,8 +191,16 @@ fn regexp_protocol_edge_cases() {
         "let r=new RegExp('a','g'); let n=0; r.exec=function(s){n++;return null;}; 'aa'.match(r) === null && n === 1",
         "let o={flags:'', [Symbol.match]:true, [Symbol.replace]:()=>1}; o[Symbol.match]=false; 'x'.replaceAll(o,'') === 1",
     ]);
-    for source in ["new RegExp('[')", "new RegExp('a','gg')", "new RegExp('a','uv')", "new RegExp('a','z')"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::SyntaxError(_))), "{source}");
+    for source in [
+        "new RegExp('[')",
+        "new RegExp('a','gg')",
+        "new RegExp('a','uv')",
+        "new RegExp('a','z')",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::SyntaxError(_))),
+            "{source}"
+        );
     }
 }
 
@@ -202,8 +257,14 @@ fn accessor_literals_and_delete_follow_string_exotic_rules() {
         "let n=0; let o={set value(v){n=v;},get value(){return n;}}; o.value=3; o.value === 3",
         "let p={}; Object.defineProperty(p,'x',{value:1}); let o={__proto__:p,x:2}; o.x === 2",
     ]);
-    for source in ["'use strict'; delete 'a'[0]", "'use strict'; let s=new String('a'); delete s[0]"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}");
+    for source in [
+        "'use strict'; delete 'a'[0]",
+        "'use strict'; let s=new String('a'); delete s[0]",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
     }
 }
 
@@ -212,11 +273,23 @@ fn bootstrap_failures_are_transactional_at_every_allocation_stage() {
     use blueice_bluejs::{HeapConfig, HeapError, VmConfig};
     let code = compile(&parse("String").unwrap()).unwrap();
     for ceiling in (1024..80000).step_by(503) {
-        let mut vm = Vm::new(VmConfig { heap: HeapConfig { nursery_capacity: 1, major_threshold_bytes: 256, max_heap_bytes: ceiling }, ..Default::default() }).unwrap();
+        let mut vm = Vm::new(VmConfig {
+            heap: HeapConfig {
+                nursery_capacity: 1,
+                major_threshold_bytes: 256,
+                max_heap_bytes: ceiling,
+            },
+            ..Default::default()
+        })
+        .unwrap();
         let baseline = vm.heap().stats().managed_bytes;
         for _ in 0..2 {
             match vm.execute(&code) {
-                Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. })) => assert_eq!(vm.heap().stats().managed_bytes, baseline, "ceiling {ceiling}"),
+                Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. })) => assert_eq!(
+                    vm.heap().stats().managed_bytes,
+                    baseline,
+                    "ceiling {ceiling}"
+                ),
                 Ok(_) => break,
                 other => panic!("unexpected bootstrap result {other:?}"),
             }
@@ -245,10 +318,20 @@ fn capture_identity_and_primitive_protocol_lookup() {
         "Boolean.prototype[Symbol.matchAll]=()=>42; 'a'.matchAll(true) === 42",
     ]);
     let source = "let o={}; Object.defineProperty(o,'x',{get value(){return {x:'alive'};},get writable(){let a={};return true;},get configurable(){let a={};return true;}}); o.x.x === 'alive'";
-    let mut vm =
-        Vm::new(blueice_bluejs::VmConfig { heap: blueice_bluejs::HeapConfig { nursery_capacity: 1, major_threshold_bytes: 1, max_heap_bytes: 256 * 1024 }, ..Default::default() })
-            .unwrap();
-    assert_eq!(vm.execute(&compile(&parse(source).unwrap()).unwrap()).unwrap(), Value::Bool(true));
+    let mut vm = Vm::new(blueice_bluejs::VmConfig {
+        heap: blueice_bluejs::HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 1,
+            max_heap_bytes: 256 * 1024,
+        },
+        ..Default::default()
+    })
+    .unwrap();
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
 }
 
 #[test]
@@ -322,8 +405,14 @@ fn conversion_iteration_and_descriptor_errors() {
     }
     let error = evaluate("function recurse(){return recurse();} recurse()").unwrap_err();
     assert!(matches!(error, RuntimeError::RangeError(_)));
-    assert!(evaluate("new RegExp('[')").unwrap_err().to_string().starts_with("SyntaxError:"));
-    assert!(evaluate("throw {x:1}").unwrap_err().to_string().starts_with("uncaught JavaScript value:"));
+    assert!(evaluate("new RegExp('[')")
+        .unwrap_err()
+        .to_string()
+        .starts_with("SyntaxError:"));
+    assert!(evaluate("throw {x:1}")
+        .unwrap_err()
+        .to_string()
+        .starts_with("uncaught JavaScript value:"));
 }
 
 #[test]
@@ -384,9 +473,18 @@ fn abrupt_loop_completion_closes_iterators_and_preserves_thrown_objects() {
             .unwrap(),
     )
     .unwrap();
-    let Err(RuntimeError::Thrown(Value::Object(thrown))) = vm.execute(&code) else { panic!("expected original thrown object") };
-    assert_eq!(vm.heap().get(thrown, "message").unwrap(), Value::String("original".into()));
-    assert_eq!(vm.execute(&compile(&parse("globalThis.closed").unwrap()).unwrap()).unwrap(), Value::Number(1.0));
+    let Err(RuntimeError::Thrown(Value::Object(thrown))) = vm.execute(&code) else {
+        panic!("expected original thrown object")
+    };
+    assert_eq!(
+        vm.heap().get(thrown, "message").unwrap(),
+        Value::String("original".into())
+    );
+    assert_eq!(
+        vm.execute(&compile(&parse("globalThis.closed").unwrap()).unwrap())
+            .unwrap(),
+        Value::Number(1.0)
+    );
     assert!(vm.heap().get(thrown, "message").is_err());
 }
 
@@ -409,8 +507,17 @@ fn primitive_string_setters_receive_the_original_receiver() {
         "let result=''; Object.defineProperty(String.prototype,'x',{set(v){'use strict';result=this+v;}}); 'a'.x=2; result === 'a2'",
         "'use strict'; let result=''; Object.defineProperty(String.prototype,'x',{set(v){'use strict';result=typeof this;}}); 'a'.x=2; result === 'string'",
     ]);
-    for source in ["null.x=1", "undefined.x=1", "delete null.x", "delete undefined.x", "'use strict'; 'a'.x=1"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}");
+    for source in [
+        "null.x=1",
+        "undefined.x=1",
+        "delete null.x",
+        "delete undefined.x",
+        "'use strict'; 'a'.x=1",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
     }
 }
 
@@ -419,10 +526,29 @@ fn lazy_global_and_iterator_initialization_recovers_from_heap_limits() {
     use blueice_bluejs::{HeapConfig, HeapError, VmConfig};
     let warm = compile(&parse("String").unwrap()).unwrap();
     let alive = compile(&parse("1+1").unwrap()).unwrap();
-    for source in ["Object", "Symbol", "Number", "Boolean", "RegExp", "(3).x", "Object(3)", "'x'[Symbol.iterator]()", "[1][Symbol.iterator]()", "'x'.matchAll('x')"] {
+    for source in [
+        "Object",
+        "Symbol",
+        "Number",
+        "Boolean",
+        "RegExp",
+        "(3).x",
+        "Object(3)",
+        "'x'[Symbol.iterator]()",
+        "[1][Symbol.iterator]()",
+        "'x'.matchAll('x')",
+    ] {
         let code = compile(&parse(source).unwrap()).unwrap();
         for ceiling in (64000..110000).step_by(251) {
-            let mut vm = Vm::new(VmConfig { heap: HeapConfig { nursery_capacity: 1, major_threshold_bytes: 256, max_heap_bytes: ceiling }, ..Default::default() }).unwrap();
+            let mut vm = Vm::new(VmConfig {
+                heap: HeapConfig {
+                    nursery_capacity: 1,
+                    major_threshold_bytes: 256,
+                    max_heap_bytes: ceiling,
+                },
+                ..Default::default()
+            })
+            .unwrap();
             if vm.execute(&warm).is_err() {
                 continue;
             }
@@ -466,16 +592,44 @@ fn syntax_metadata_and_remaining_protocol_boundaries() {
         "let props={}; Object.defineProperty(props,'hidden',{value:{value:3}}); Object.create(null,props).hidden === undefined",
         "let n=0; let r={flags:'g',global:true,exec(){n++;return n===1?{0:'ab',length:1,index:0}:n===2?{0:'b',length:1,index:1}:null;}}; RegExp.prototype[Symbol.replace].call(r,'abc','X') === 'Xc'",
     ]);
-    for source in ["'use strict'; let x; delete x", "({get x(a){}})", "({set x(){}})", "({'x'})", "/x\n/", "/x\\\n/", "/x\\", "/(/", "String.raw`abc", "String.raw`abc\\"] {
-        assert!(parse(source).is_err() || compile(&parse(source).unwrap()).is_err(), "{source}");
+    for source in [
+        "'use strict'; let x; delete x",
+        "({get x(a){}})",
+        "({set x(){}})",
+        "({'x'})",
+        "/x\n/",
+        "/x\\\n/",
+        "/x\\",
+        "/(/",
+        "String.raw`abc",
+        "String.raw`abc\\",
+    ] {
+        assert!(
+            parse(source).is_err() || compile(&parse(source).unwrap()).is_err(),
+            "{source}"
+        );
     }
-    check(&["String.raw`a\r\nb` === 'a\\nb'", "String.raw`a\\\r\nb` === 'a\\\\\\nb'", "function t(s){return s[0];} t`a\\\nb` === 'ab'"]);
+    check(&[
+        "String.raw`a\r\nb` === 'a\\nb'",
+        "String.raw`a\\\r\nb` === 'a\\\\\\nb'",
+        "function t(s){return s[0];} t`a\\\nb` === 'ab'",
+    ]);
     let mut vm = Vm::new(blueice_bluejs::VmConfig {
-        heap: blueice_bluejs::HeapConfig { nursery_capacity: 1, major_threshold_bytes: 256, max_heap_bytes: 256 * 1024 },
+        heap: blueice_bluejs::HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 256,
+            max_heap_bytes: 256 * 1024,
+        },
         ..Default::default()
     })
     .unwrap();
-    let code = compile(&parse("function make(){return ()=>this.x;} let f=make.call({x:'alive'}); let garbage={}; f()").unwrap()).unwrap();
+    let code = compile(
+        &parse(
+            "function make(){return ()=>this.x;} let f=make.call({x:'alive'}); let garbage={}; f()",
+        )
+        .unwrap(),
+    )
+    .unwrap();
     assert_eq!(vm.execute(&code).unwrap(), Value::String("alive".into()));
     for source in ["[...null]", "new (()=>{})()"] {
         assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))));
@@ -489,10 +643,19 @@ fn array_length_descriptors_coerce_twice_and_reject_invalid_lengths() {
         "let n=0; let a=[]; Object.defineProperty(a,'length',{value:{valueOf(){n++;return 2;}}}); a.length === 2 && n === 2",
         "let a=[]; Object.defineProperty(a,'length',{value:'2'}); a.length === 2",
     ]);
-    for source in ["Object.defineProperty([],'length',{value:1.5})", "let n=0; Object.defineProperty([],'length',{value:{valueOf(){return n++;}}})"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::RangeError(_))), "{source}");
+    for source in [
+        "Object.defineProperty([],'length',{value:1.5})",
+        "let n=0; Object.defineProperty([],'length',{value:{valueOf(){return n++;}}})",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::RangeError(_))),
+            "{source}"
+        );
     }
-    assert!(matches!(evaluate("let o={}; Object.setPrototypeOf(o,o)"), Err(RuntimeError::TypeError(_))));
+    assert!(matches!(
+        evaluate("let o={}; Object.setPrototypeOf(o,o)"),
+        Err(RuntimeError::TypeError(_))
+    ));
 }
 
 #[test]
@@ -506,11 +669,19 @@ fn complete_string_surface_has_specified_property_attributes() {
 
 #[test]
 fn nested_functions_share_the_total_compiled_byte_budget() {
-    use blueice_bluejs::{CompileError, compile_with_limit};
+    use blueice_bluejs::{compile_with_limit, CompileError};
     let body = "1;".repeat(100);
     let single = parse(&format!("function a(){{function b(){{{body}}}}}")).unwrap();
-    let required = (1..2000).find(|&limit| compile_with_limit(&single, limit).is_ok()).unwrap();
-    let doubled = parse(&format!("function a(){{function b(){{{body}}}}} function c(){{function d(){{{body}}}}}")).unwrap();
-    assert!(matches!(compile_with_limit(&doubled, required + required / 2), Err(CompileError::ProgramTooLarge)));
+    let required = (1..2000)
+        .find(|&limit| compile_with_limit(&single, limit).is_ok())
+        .unwrap();
+    let doubled = parse(&format!(
+        "function a(){{function b(){{{body}}}}} function c(){{function d(){{{body}}}}}"
+    ))
+    .unwrap();
+    assert!(matches!(
+        compile_with_limit(&doubled, required + required / 2),
+        Err(CompileError::ProgramTooLarge)
+    ));
     assert!(compile_with_limit(&doubled, required * 2).is_ok());
 }

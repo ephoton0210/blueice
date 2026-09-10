@@ -23,7 +23,9 @@ pub enum CompileError {
 impl fmt::Display for CompileError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unsupported(feature) => write!(f, "BlueJS execution does not yet support {feature}"),
+            Self::Unsupported(feature) => {
+                write!(f, "BlueJS execution does not yet support {feature}")
+            }
             Self::DuplicateBinding(name) => write!(f, "duplicate or conflicting binding: {name}"),
             Self::InvalidSyntax(message) => f.write_str(message),
             Self::ProgramTooLarge => f.write_str("BlueJS program exceeds the bytecode size limit"),
@@ -42,8 +44,21 @@ pub fn compile(program: &Program) -> Result<Bytecode, CompileError> {
 /// Compiles with an inclusive limit on emitted instruction bytes.
 /// A limit failure returns [`CompileError::ProgramTooLarge`], never partial
 /// bytecode. This does not bound AST depth, constant payloads or total memory.
-pub fn compile_with_limit(program: &Program, max_bytecode_bytes: u32) -> Result<Bytecode, CompileError> {
-    let mut compiler = Compiler { bytecode: Bytecode::empty(), names: Vec::new(), scopes: Vec::new(), loops: Vec::new(), catch_var_slots: Vec::new(), max_bytecode_bytes, function: false, local_scope: 0, with_depth: 0 };
+pub fn compile_with_limit(
+    program: &Program,
+    max_bytecode_bytes: u32,
+) -> Result<Bytecode, CompileError> {
+    let mut compiler = Compiler {
+        bytecode: Bytecode::empty(),
+        names: Vec::new(),
+        scopes: Vec::new(),
+        loops: Vec::new(),
+        catch_var_slots: Vec::new(),
+        max_bytecode_bytes,
+        function: false,
+        local_scope: 0,
+        with_depth: 0,
+    };
     compiler.bytecode.strict = strict_body(&program.body);
     let vars = var_names(&program.body)?;
     compiler.enter_scope(lexical_names(&program.body)?, &vars, true)?;
@@ -55,7 +70,11 @@ pub fn compile_with_limit(program: &Program, max_bytecode_bytes: u32) -> Result<
 /// Compiles direct-eval source with cells for the caller's visible bindings.
 /// The runtime supplies `visible` from its active lexical environments and
 /// installs the matching cells before running the resulting bytecode.
-pub(crate) fn compile_eval(program: &Program, visible: &[(String, Binding, u32)], strict: bool) -> Result<Bytecode, CompileError> {
+pub(crate) fn compile_eval(
+    program: &Program,
+    visible: &[(String, Binding, u32)],
+    strict: bool,
+) -> Result<Bytecode, CompileError> {
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
         names: vec![HashMap::new()],
@@ -69,13 +88,17 @@ pub(crate) fn compile_eval(program: &Program, visible: &[(String, Binding, u32)]
     };
     compiler.bytecode.strict = strict || strict_body(&program.body);
     for (name, binding, caller_slot) in visible {
-        let slot = u32::try_from(compiler.bytecode.bindings.len()).map_err(|_| CompileError::ProgramTooLarge)?;
+        let slot = u32::try_from(compiler.bytecode.bindings.len())
+            .map_err(|_| CompileError::ProgramTooLarge)?;
         compiler.names[0].insert(name.clone(), slot);
         compiler.bytecode.bindings.push(binding.clone());
         compiler.bytecode.captures.push(*caller_slot);
     }
     let vars = var_names(&program.body)?;
-    let new_vars = vars.into_iter().filter(|name| !compiler.names[0].contains_key(name)).collect();
+    let new_vars = vars
+        .into_iter()
+        .filter(|name| !compiler.names[0].contains_key(name))
+        .collect();
     compiler.enter_scope(lexical_names(&program.body)?, &new_vars, true)?;
     compiler.statements(&program.body)?;
     compiler.emit(Opcode::Halt, 0)?;
@@ -117,7 +140,14 @@ struct FunctionCompileOptions {
 
 impl FunctionCompileOptions {
     fn class_method() -> Self {
-        Self { constructible: false, force_strict: true, class_constructor: false, derived_constructor: false, default_derived_constructor: false, class_method: true }
+        Self {
+            constructible: false,
+            force_strict: true,
+            class_constructor: false,
+            derived_constructor: false,
+            default_derived_constructor: false,
+            class_method: true,
+        }
     }
 }
 
@@ -128,7 +158,10 @@ impl Compiler {
 
     fn emit(&mut self, opcode: Opcode, operand: u32) -> Result<usize, CompileError> {
         let offset = self.offset()? as usize;
-        if offset.checked_add(opcode.width()).is_none_or(|end| end > self.max_bytecode_bytes as usize) {
+        if offset
+            .checked_add(opcode.width())
+            .is_none_or(|end| end > self.max_bytecode_bytes as usize)
+        {
             return Err(CompileError::ProgramTooLarge);
         }
         self.bytecode.code.push(opcode as u8);
@@ -143,16 +176,26 @@ impl Compiler {
     }
 
     fn constant(&mut self, value: Value) -> Result<(), CompileError> {
-        let index = u32::try_from(self.bytecode.constants.len()).map_err(|_| CompileError::ProgramTooLarge)?;
+        let index = u32::try_from(self.bytecode.constants.len())
+            .map_err(|_| CompileError::ProgramTooLarge)?;
         self.bytecode.constants.push(value);
         self.emit(Opcode::Constant, index)?;
         Ok(())
     }
 
-    fn enter_scope(&mut self, lexical: Vec<(String, DeclKind)>, vars: &BTreeSet<String>, global: bool) -> Result<(), CompileError> {
+    fn enter_scope(
+        &mut self,
+        lexical: Vec<(String, DeclKind)>,
+        vars: &BTreeSet<String>,
+        global: bool,
+    ) -> Result<(), CompileError> {
         let mut names = HashMap::new();
         let mut slots = Vec::new();
-        let declarations = vars.iter().filter(|_| global).map(|name| (name.clone(), DeclKind::Var)).chain(lexical);
+        let declarations = vars
+            .iter()
+            .filter(|_| global)
+            .map(|name| (name.clone(), DeclKind::Var))
+            .chain(lexical);
         for (name, kind) in declarations {
             if matches!(name.as_str(), "undefined" | "NaN" | "Infinity") {
                 return Err(CompileError::Unsupported("shadowing ambient constants"));
@@ -160,12 +203,18 @@ impl Compiler {
             if names.contains_key(&name) || (kind != DeclKind::Var && vars.contains(&name)) {
                 return Err(CompileError::DuplicateBinding(name));
             }
-            let slot = u32::try_from(self.bytecode.bindings.len()).map_err(|_| CompileError::ProgramTooLarge)?;
-            self.bytecode.bindings.push(Binding { name: name.clone(), mutable: kind != DeclKind::Const, lexical: kind != DeclKind::Var });
+            let slot = u32::try_from(self.bytecode.bindings.len())
+                .map_err(|_| CompileError::ProgramTooLarge)?;
+            self.bytecode.bindings.push(Binding {
+                name: name.clone(),
+                mutable: kind != DeclKind::Const,
+                lexical: kind != DeclKind::Var,
+            });
             names.insert(name, slot);
             slots.push(slot);
         }
-        let scope = u32::try_from(self.bytecode.scopes.len()).map_err(|_| CompileError::ProgramTooLarge)?;
+        let scope =
+            u32::try_from(self.bytecode.scopes.len()).map_err(|_| CompileError::ProgramTooLarge)?;
         self.bytecode.scopes.push(slots);
         self.names.push(names);
         self.scopes.push(scope);
@@ -181,14 +230,19 @@ impl Compiler {
     }
 
     fn resolve(&self, name: &str) -> Option<u32> {
-        self.names.iter().rev().find_map(|scope| scope.get(name).copied())
+        self.names
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name).copied())
     }
 
     fn statements(&mut self, statements: &[Stmt]) -> Result<(), CompileError> {
         for statement in statements {
             if let Stmt::FunctionDecl(function) = statement {
                 self.function(function, false)?;
-                let slot = self.resolve(function.name.as_ref().expect("declaration has a name")).unwrap();
+                let slot = self
+                    .resolve(function.name.as_ref().expect("declaration has a name"))
+                    .unwrap();
                 self.emit(Opcode::StoreBinding, slot)?;
                 self.emit(Opcode::Pop, 0)?;
             }
@@ -199,16 +253,26 @@ impl Compiler {
         Ok(())
     }
 
-    fn statement(&mut self, statement: &Stmt, declarations_allowed: bool) -> Result<(), CompileError> {
+    fn statement(
+        &mut self,
+        statement: &Stmt,
+        declarations_allowed: bool,
+    ) -> Result<(), CompileError> {
         match statement {
             Stmt::Throw(value) => {
                 self.expression(value)?;
                 self.emit(Opcode::Throw, 0)?;
             }
-            Stmt::Try { block, handler, finalizer } => self.try_statement(block, handler.as_ref(), finalizer.as_deref())?,
+            Stmt::Try {
+                block,
+                handler,
+                finalizer,
+            } => self.try_statement(block, handler.as_ref(), finalizer.as_deref())?,
             Stmt::With { object, body } => {
                 if self.bytecode.strict {
-                    return Err(CompileError::InvalidSyntax("with is forbidden in strict mode"));
+                    return Err(CompileError::InvalidSyntax(
+                        "with is forbidden in strict mode",
+                    ));
                 }
                 self.expression(object)?;
                 self.emit(Opcode::EnterWith, 0)?;
@@ -220,7 +284,9 @@ impl Compiler {
             }
             Stmt::FunctionDecl(_) => {}
             Stmt::ClassDecl(class) => {
-                let slot = self.resolve(class.name.as_deref().expect("class declaration has a name")).unwrap();
+                let slot = self
+                    .resolve(class.name.as_deref().expect("class declaration has a name"))
+                    .unwrap();
                 self.class_expression_with_binding(class, None, Some(slot))?;
             }
             Stmt::ClassField(statement) => {
@@ -236,17 +302,30 @@ impl Compiler {
                 if !self.function {
                     return Err(CompileError::InvalidSyntax("return requires a function"));
                 }
-                if let Some(args) = value.as_ref().and_then(|value| self.self_tail_call_args(value)) {
+                if let Some(args) = value
+                    .as_ref()
+                    .and_then(|value| self.self_tail_call_args(value))
+                {
                     for argument in args {
-                        let Argument::Normal(value) = argument else { unreachable!("self tail calls exclude spread arguments") };
+                        let Argument::Normal(value) = argument else {
+                            unreachable!("self tail calls exclude spread arguments")
+                        };
                         self.expression(value)?;
                     }
-                    let iterators: Vec<_> = self.loops.iter().rev().filter_map(|context| context.iterator).collect();
+                    let iterators: Vec<_> = self
+                        .loops
+                        .iter()
+                        .rev()
+                        .filter_map(|context| context.iterator)
+                        .collect();
                     for iterator in iterators {
                         self.emit(Opcode::GetBinding, iterator)?;
                         self.emit(Opcode::IteratorClose, 0)?;
                     }
-                    self.emit(Opcode::TailRecur, u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?)?;
+                    self.emit(
+                        Opcode::TailRecur,
+                        u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
+                    )?;
                     return Ok(());
                 }
                 if let Some(value) = value {
@@ -254,7 +333,12 @@ impl Compiler {
                 } else {
                     self.constant(Value::Undefined)?;
                 }
-                let iterators: Vec<_> = self.loops.iter().rev().filter_map(|context| context.iterator).collect();
+                let iterators: Vec<_> = self
+                    .loops
+                    .iter()
+                    .rev()
+                    .filter_map(|context| context.iterator)
+                    .collect();
                 for iterator in iterators {
                     self.emit(Opcode::GetBinding, iterator)?;
                     self.emit(Opcode::IteratorClose, 0)?;
@@ -273,11 +357,17 @@ impl Compiler {
             }
             Stmt::VarDecl(kind, declarations) => {
                 if !declarations_allowed && *kind != DeclKind::Var {
-                    return Err(CompileError::InvalidSyntax("a lexical declaration requires a block"));
+                    return Err(CompileError::InvalidSyntax(
+                        "a lexical declaration requires a block",
+                    ));
                 }
                 self.declarations(*kind, declarations)?;
             }
-            Stmt::If { test, consequent, alternate } => {
+            Stmt::If {
+                test,
+                consequent,
+                alternate,
+            } => {
                 self.emit(Opcode::ClearCompletion, 0)?;
                 self.expression(test)?;
                 let no = self.emit(Opcode::JumpIfFalse, 0)?;
@@ -289,12 +379,31 @@ impl Compiler {
                 }
                 self.patch(end, self.offset()?);
             }
-            Stmt::While { test, body } => self.loop_statement(None, Some(test), None, body, false, Vec::new())?,
-            Stmt::DoWhile { body, test } => self.loop_statement(None, Some(test), None, body, true, Vec::new())?,
-            Stmt::For { init, test, update, body } => self.loop_statement(init.as_ref(), test.as_ref(), update.as_ref(), body, false, Vec::new())?,
+            Stmt::While { test, body } => {
+                self.loop_statement(None, Some(test), None, body, false, Vec::new())?
+            }
+            Stmt::DoWhile { body, test } => {
+                self.loop_statement(None, Some(test), None, body, true, Vec::new())?
+            }
+            Stmt::For {
+                init,
+                test,
+                update,
+                body,
+            } => self.loop_statement(
+                init.as_ref(),
+                test.as_ref(),
+                update.as_ref(),
+                body,
+                false,
+                Vec::new(),
+            )?,
             Stmt::ForIn { left, right, body } => self.for_in(left, right, body, Vec::new())?,
             Stmt::ForOf { left, right, body } => self.for_of(left, right, body, Vec::new())?,
-            Stmt::Switch { discriminant, cases } => self.switch_statement(discriminant, cases, Vec::new())?,
+            Stmt::Switch {
+                discriminant,
+                cases,
+            } => self.switch_statement(discriminant, cases, Vec::new())?,
             Stmt::Labelled { label, item } => self.labelled_statement(label, item)?,
             Stmt::Break(label) => self.control_transfer(label.as_deref(), false)?,
             Stmt::Continue(label) => self.control_transfer(label.as_deref(), true)?,
@@ -305,42 +414,90 @@ impl Compiler {
     fn labelled_statement(&mut self, label: &str, item: &Stmt) -> Result<(), CompileError> {
         let mut labels = vec![label.to_string()];
         let mut item = item;
-        while let Stmt::Labelled { label, item: nested } = item {
+        while let Stmt::Labelled {
+            label,
+            item: nested,
+        } = item
+        {
             labels.push(label.clone());
             item = nested;
         }
-        if labels.iter().any(|label| label == "yield" && self.bytecode.strict) {
-            return Err(CompileError::InvalidSyntax("yield cannot be used as a label in strict code"));
+        if labels
+            .iter()
+            .any(|label| label == "yield" && self.bytecode.strict)
+        {
+            return Err(CompileError::InvalidSyntax(
+                "yield cannot be used as a label in strict code",
+            ));
         }
         if labels.iter().any(|label| {
             labels.iter().filter(|other| *other == label).count() != 1
-                || self.loops.iter().any(|context| context.labels.iter().any(|other| other == label))
+                || self
+                    .loops
+                    .iter()
+                    .any(|context| context.labels.iter().any(|other| other == label))
         }) {
             return Err(CompileError::InvalidSyntax("duplicate label"));
         }
         match item {
-            Stmt::While { test, body } => self.loop_statement(None, Some(test), None, body, false, labels),
-            Stmt::DoWhile { body, test } => self.loop_statement(None, Some(test), None, body, true, labels),
-            Stmt::For { init, test, update, body } => self.loop_statement(init.as_ref(), test.as_ref(), update.as_ref(), body, false, labels),
+            Stmt::While { test, body } => {
+                self.loop_statement(None, Some(test), None, body, false, labels)
+            }
+            Stmt::DoWhile { body, test } => {
+                self.loop_statement(None, Some(test), None, body, true, labels)
+            }
+            Stmt::For {
+                init,
+                test,
+                update,
+                body,
+            } => self.loop_statement(
+                init.as_ref(),
+                test.as_ref(),
+                update.as_ref(),
+                body,
+                false,
+                labels,
+            ),
             Stmt::ForIn { left, right, body } => self.for_in(left, right, body, labels),
             Stmt::ForOf { left, right, body } => self.for_of(left, right, body, labels),
-            Stmt::Switch { discriminant, cases } => self.switch_statement(discriminant, cases, labels),
-            Stmt::VarDecl(kind, _) if *kind != DeclKind::Var => Err(CompileError::InvalidSyntax("a labelled statement cannot contain a lexical declaration")),
-            Stmt::ClassDecl(_) => Err(CompileError::InvalidSyntax("a labelled statement cannot contain a class declaration")),
-            Stmt::FunctionDecl(function) if self.bytecode.strict || function.generator || function.is_async => {
-                Err(CompileError::InvalidSyntax("invalid labelled function declaration"))
+            Stmt::Switch {
+                discriminant,
+                cases,
+            } => self.switch_statement(discriminant, cases, labels),
+            Stmt::VarDecl(kind, _) if *kind != DeclKind::Var => Err(CompileError::InvalidSyntax(
+                "a labelled statement cannot contain a lexical declaration",
+            )),
+            Stmt::ClassDecl(_) => Err(CompileError::InvalidSyntax(
+                "a labelled statement cannot contain a class declaration",
+            )),
+            Stmt::FunctionDecl(function)
+                if self.bytecode.strict || function.generator || function.is_async =>
+            {
+                Err(CompileError::InvalidSyntax(
+                    "invalid labelled function declaration",
+                ))
             }
             Stmt::FunctionDecl(function) => {
                 // Annex B permits this sloppy-mode form. Its binding is
                 // var-scoped, while creation occurs when the label executes.
                 self.function(function, false)?;
-                let slot = self.resolve(function.name.as_ref().expect("declaration has a name")).unwrap();
+                let slot = self
+                    .resolve(function.name.as_ref().expect("declaration has a name"))
+                    .unwrap();
                 self.emit(Opcode::StoreBinding, slot)?;
                 self.emit(Opcode::Pop, 0)?;
                 Ok(())
             }
             _ => {
-                self.loops.push(Loop { labels, breakable: false, scope_depth: self.scopes.len(), breaks: Vec::new(), continues: None, iterator: None });
+                self.loops.push(Loop {
+                    labels,
+                    breakable: false,
+                    scope_depth: self.scopes.len(),
+                    breaks: Vec::new(),
+                    continues: None,
+                    iterator: None,
+                });
                 self.statement(item, false)?;
                 let end = self.offset()?;
                 let context = self.loops.pop().expect("label control is active");
@@ -353,26 +510,53 @@ impl Compiler {
         }
     }
 
-    fn control_transfer(&mut self, label: Option<&str>, is_continue: bool) -> Result<(), CompileError> {
+    fn control_transfer(
+        &mut self,
+        label: Option<&str>,
+        is_continue: bool,
+    ) -> Result<(), CompileError> {
         let index = match label {
-            Some(label) => self.loops.iter().rposition(|context| context.labels.iter().any(|candidate| candidate == label)),
-            None if is_continue => self.loops.iter().rposition(|context| context.continues.is_some()),
+            Some(label) => self
+                .loops
+                .iter()
+                .rposition(|context| context.labels.iter().any(|candidate| candidate == label)),
+            None if is_continue => self
+                .loops
+                .iter()
+                .rposition(|context| context.continues.is_some()),
             None => self.loops.iter().rposition(|context| context.breakable),
         };
         let Some(index) = index else {
-            return Err(CompileError::InvalidSyntax(if is_continue { "continue requires an enclosing iteration statement" } else { "break requires an enclosing loop, switch, or label" }));
+            return Err(CompileError::InvalidSyntax(if is_continue {
+                "continue requires an enclosing iteration statement"
+            } else {
+                "break requires an enclosing loop, switch, or label"
+            }));
         };
         if is_continue && self.loops[index].continues.is_none() {
-            return Err(CompileError::InvalidSyntax("continue label does not name an iteration statement"));
+            return Err(CompileError::InvalidSyntax(
+                "continue label does not name an iteration statement",
+            ));
         }
-        let scopes: Vec<_> = self.scopes[self.loops[index].scope_depth..].iter().rev().copied().collect();
+        let scopes: Vec<_> = self.scopes[self.loops[index].scope_depth..]
+            .iter()
+            .rev()
+            .copied()
+            .collect();
         let first_iterator = index + usize::from(is_continue);
-        let iterators: Vec<_> = self.loops[first_iterator..].iter().rev().filter_map(|context| context.iterator).collect();
+        let iterators: Vec<_> = self.loops[first_iterator..]
+            .iter()
+            .rev()
+            .filter_map(|context| context.iterator)
+            .collect();
         // A direct jump would skip a surrounding `finally`. Route to a local
         // cleanup gateway first; handlers resume there only after finalizers.
         let control = self.bytecode.abrupt_jumps.len();
         let control_operand = u32::try_from(control).map_err(|_| CompileError::ProgramTooLarge)?;
-        self.bytecode.abrupt_jumps.push(AbruptJump { cleanup: 0, target: 0 });
+        self.bytecode.abrupt_jumps.push(AbruptJump {
+            cleanup: 0,
+            target: 0,
+        });
         self.emit(Opcode::AbruptJump, control_operand)?;
         let cleanup = self.offset()?;
         self.bytecode.abrupt_jumps[control].cleanup = cleanup;
@@ -386,7 +570,11 @@ impl Compiler {
         let jump = self.emit(Opcode::Jump, 0)?;
         let context = &mut self.loops[index];
         if is_continue {
-            context.continues.as_mut().expect("selected context is an iteration statement").push((jump, control));
+            context
+                .continues
+                .as_mut()
+                .expect("selected context is an iteration statement")
+                .push((jump, control));
         } else {
             context.breaks.push((jump, control));
         }
@@ -399,7 +587,12 @@ impl Compiler {
         self.leave_scope()
     }
 
-    fn switch_statement(&mut self, discriminant: &Expr, cases: &[SwitchCase], labels: Vec<String>) -> Result<(), CompileError> {
+    fn switch_statement(
+        &mut self,
+        discriminant: &Expr,
+        cases: &[SwitchCase],
+        labels: Vec<String>,
+    ) -> Result<(), CompileError> {
         self.emit(Opcode::ClearCompletion, 0)?;
         let mut lexical = Vec::new();
         let mut vars = BTreeSet::new();
@@ -444,9 +637,21 @@ impl Compiler {
             }
         }
         let default = cases.iter().position(|case| case.test.is_none());
-        self.patch(no_match, default.map(|index| case_stubs[index]).unwrap_or(no_match_cleanup));
+        self.patch(
+            no_match,
+            default
+                .map(|index| case_stubs[index])
+                .unwrap_or(no_match_cleanup),
+        );
 
-        self.loops.push(Loop { labels, breakable: true, scope_depth: self.scopes.len(), breaks: Vec::new(), continues: None, iterator: None });
+        self.loops.push(Loop {
+            labels,
+            breakable: true,
+            scope_depth: self.scopes.len(),
+            breaks: Vec::new(),
+            continues: None,
+            iterator: None,
+        });
         for (case, jump) in cases.iter().zip(body_jumps) {
             self.patch(jump, self.offset()?);
             self.statements(&case.consequent)?;
@@ -465,9 +670,21 @@ impl Compiler {
     /// Compiles `try` as fixed bytecode plus immutable handler metadata. A
     /// runtime frame records dynamic stack/scope depths, so a throw can safely
     /// enter a catch block or run a finalizer without walking the AST.
-    fn try_statement(&mut self, block: &[Stmt], handler: Option<&CatchClause>, finalizer: Option<&[Stmt]>) -> Result<(), CompileError> {
-        let handler_index = u32::try_from(self.bytecode.handlers.len()).map_err(|_| CompileError::ProgramTooLarge)?;
-        self.bytecode.handlers.push(Handler { try_start: 0, try_end: 0, catch: None, catch_end: None, finally: None });
+    fn try_statement(
+        &mut self,
+        block: &[Stmt],
+        handler: Option<&CatchClause>,
+        finalizer: Option<&[Stmt]>,
+    ) -> Result<(), CompileError> {
+        let handler_index = u32::try_from(self.bytecode.handlers.len())
+            .map_err(|_| CompileError::ProgramTooLarge)?;
+        self.bytecode.handlers.push(Handler {
+            try_start: 0,
+            try_end: 0,
+            catch: None,
+            catch_end: None,
+            finally: None,
+        });
         self.emit(Opcode::PushHandler, handler_index)?;
 
         // Each TryBlock has its own Completion. An empty block must not leak
@@ -478,24 +695,43 @@ impl Compiler {
         self.scoped_statements(block)?;
         self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
         self.emit(Opcode::PopHandler, 0)?;
-        if finalizer.is_some() { self.emit(Opcode::SaveCompletion, 0)?; }
+        if finalizer.is_some() {
+            self.emit(Opcode::SaveCompletion, 0)?;
+        }
         let normal_exit = self.emit(Opcode::Jump, 0)?;
 
         let catch_exit = if let Some(catch) = handler {
             let start = self.offset()?;
             self.bytecode.handlers[handler_index as usize].catch = Some(start);
             let parameter_bound_names = catch.param.as_ref().map(pattern_names).unwrap_or_default();
-            if self.bytecode.strict && parameter_bound_names.iter().any(|name| matches!(name.as_str(), "eval" | "arguments")) {
-                return Err(CompileError::InvalidSyntax("strict catch parameters cannot bind eval or arguments"));
+            if self.bytecode.strict
+                && parameter_bound_names
+                    .iter()
+                    .any(|name| matches!(name.as_str(), "eval" | "arguments"))
+            {
+                return Err(CompileError::InvalidSyntax(
+                    "strict catch parameters cannot bind eval or arguments",
+                ));
             }
-            if catch_lexical_names(&catch.body).into_iter().any(|name| parameter_bound_names.contains(&name)) {
-                return Err(CompileError::InvalidSyntax("a catch parameter conflicts with a lexical declaration"));
+            if catch_lexical_names(&catch.body)
+                .into_iter()
+                .any(|name| parameter_bound_names.contains(&name))
+            {
+                return Err(CompileError::InvalidSyntax(
+                    "a catch parameter conflicts with a lexical declaration",
+                ));
             }
-            let parameter_names = parameter_bound_names.into_iter().map(|name| (name, DeclKind::Let)).collect();
+            let parameter_names = parameter_bound_names
+                .into_iter()
+                .map(|name| (name, DeclKind::Let))
+                .collect();
             self.enter_scope(parameter_names, &BTreeSet::new(), false)?;
             let mut catch_var_slots = HashMap::new();
             if let Some(Pattern::Identifier(name)) = &catch.param {
-                catch_var_slots.insert(name.clone(), self.resolve(name).expect("catch parameter was declared"));
+                catch_var_slots.insert(
+                    name.clone(),
+                    self.resolve(name).expect("catch parameter was declared"),
+                );
             }
             self.catch_var_slots.push(catch_var_slots);
             if let Some(param) = &catch.param {
@@ -511,11 +747,15 @@ impl Compiler {
             self.enter_scope(lexical_names(&catch.body)?, &var_names(&catch.body)?, false)?;
             self.statements(&catch.body)?;
             self.leave_scope()?;
-            self.catch_var_slots.pop().expect("catch var override is active");
+            self.catch_var_slots
+                .pop()
+                .expect("catch var override is active");
             self.leave_scope()?;
             self.bytecode.handlers[handler_index as usize].catch_end = Some(self.offset()?);
             self.emit(Opcode::PopHandler, 0)?;
-            if finalizer.is_some() { self.emit(Opcode::SaveCompletion, 0)?; }
+            if finalizer.is_some() {
+                self.emit(Opcode::SaveCompletion, 0)?;
+            }
             Some(self.emit(Opcode::Jump, 0)?)
         } else {
             None
@@ -534,29 +774,42 @@ impl Compiler {
             self.emit(Opcode::ResumeCompletion, handler_index)?;
             let end = self.offset()?;
             self.patch(normal_exit, start);
-            if let Some(exit) = catch_exit { self.patch(exit, start); }
+            if let Some(exit) = catch_exit {
+                self.patch(exit, start);
+            }
             debug_assert!(end as usize <= self.bytecode.code.len());
         } else {
             let end = self.offset()?;
             self.patch(normal_exit, end);
-            if let Some(exit) = catch_exit { self.patch(exit, end); }
+            if let Some(exit) = catch_exit {
+                self.patch(exit, end);
+            }
         }
         Ok(())
     }
 
-    fn declarations(&mut self, kind: DeclKind, declarations: &[VarDeclarator]) -> Result<(), CompileError> {
+    fn declarations(
+        &mut self,
+        kind: DeclKind,
+        declarations: &[VarDeclarator],
+    ) -> Result<(), CompileError> {
         for declaration in declarations {
             if kind == DeclKind::Const && declaration.init.is_none() {
                 return Err(CompileError::InvalidSyntax("const requires an initializer"));
             }
-            if matches!(declaration.pattern, Pattern::Identifier(_)) && kind == DeclKind::Var && declaration.init.is_none() {
+            if matches!(declaration.pattern, Pattern::Identifier(_))
+                && kind == DeclKind::Var
+                && declaration.init.is_none()
+            {
                 continue;
             }
             if let Some(value) = &declaration.init {
                 self.expression(value)?
             } else {
                 if !matches!(declaration.pattern, Pattern::Identifier(_)) {
-                    return Err(CompileError::InvalidSyntax("a destructuring declaration requires an initializer"));
+                    return Err(CompileError::InvalidSyntax(
+                        "a destructuring declaration requires an initializer",
+                    ));
                 }
                 self.constant(Value::Undefined)?
             }
@@ -581,7 +834,9 @@ impl Compiler {
                         .or_else(|| self.names[self.local_scope].get(name).copied())
                         .or_else(|| self.resolve(name))
                         .expect("var declaration has a function or eval binding")
-                } else { self.names.last().unwrap()[name] };
+                } else {
+                    self.names.last().unwrap()[name]
+                };
                 if kind == DeclKind::Var {
                     self.emit(Opcode::StoreBinding, slot)?;
                     self.emit(Opcode::Pop, 0)?;
@@ -613,7 +868,11 @@ impl Compiler {
                 self.emit(Opcode::NewArray, 0)?;
                 for property in properties {
                     match property {
-                        ObjectPatternProp::KeyValue { key, value, default } => {
+                        ObjectPatternProp::KeyValue {
+                            key,
+                            value,
+                            default,
+                        } => {
                             self.property_key(key)?;
                             self.emit(Opcode::DestructureProperty, 0)?;
                             self.binding_pattern_default(default.as_ref(), value)?;
@@ -649,7 +908,9 @@ impl Compiler {
     /// Replaces an `undefined` binding value with a pattern/parameter
     /// initializer.  `null` remains a value, as required by ECMA-262.
     fn pattern_default(&mut self, default: Option<&Expr>) -> Result<(), CompileError> {
-        let Some(default) = default else { return Ok(()) };
+        let Some(default) = default else {
+            return Ok(());
+        };
         self.emit(Opcode::Dup, 0)?;
         self.constant(Value::Undefined)?;
         self.emit(Opcode::StrictEqual, 0)?;
@@ -660,28 +921,63 @@ impl Compiler {
         Ok(())
     }
 
-    fn binding_pattern_default(&mut self, default: Option<&Expr>, pattern: &Pattern) -> Result<(), CompileError> {
-        let Some(default) = default else { return Ok(()) };
+    fn binding_pattern_default(
+        &mut self,
+        default: Option<&Expr>,
+        pattern: &Pattern,
+    ) -> Result<(), CompileError> {
+        let Some(default) = default else {
+            return Ok(());
+        };
         self.emit(Opcode::Dup, 0)?;
         self.constant(Value::Undefined)?;
         self.emit(Opcode::StrictEqual, 0)?;
         let skip = self.emit(Opcode::JumpIfFalse, 0)?;
         self.emit(Opcode::Pop, 0)?;
-        self.expression_with_name(default, match pattern { Pattern::Identifier(name) => Some(name.as_str()), _ => None })?;
+        self.expression_with_name(
+            default,
+            match pattern {
+                Pattern::Identifier(name) => Some(name.as_str()),
+                _ => None,
+            },
+        )?;
         self.patch(skip, self.offset()?);
         Ok(())
     }
 
-    fn expression_with_name(&mut self, expression: &Expr, inferred_name: Option<&str>) -> Result<(), CompileError> {
+    fn expression_with_name(
+        &mut self,
+        expression: &Expr,
+        inferred_name: Option<&str>,
+    ) -> Result<(), CompileError> {
         match expression {
-            Expr::Function(function) if function.name.is_none() && inferred_name.is_some() => self.function_named(function, false, inferred_name, false),
-            Expr::Class(class) if class.name.is_none() && inferred_name.is_some() => self.class_expression(class, inferred_name),
-            Expr::Arrow { params, body, is_async } if inferred_name.is_some() => {
+            Expr::Function(function) if function.name.is_none() && inferred_name.is_some() => {
+                self.function_named(function, false, inferred_name, false)
+            }
+            Expr::Class(class) if class.name.is_none() && inferred_name.is_some() => {
+                self.class_expression(class, inferred_name)
+            }
+            Expr::Arrow {
+                params,
+                body,
+                is_async,
+            } if inferred_name.is_some() => {
                 let body = match body {
                     ArrowBody::Expr(expr) => vec![Stmt::Return(Some(*expr.clone()))],
                     ArrowBody::Block(body) => body.clone(),
                 };
-                self.function_named(&Function { name: None, params: params.clone(), body, generator: false, is_async: *is_async }, true, inferred_name, false)
+                self.function_named(
+                    &Function {
+                        name: None,
+                        params: params.clone(),
+                        body,
+                        generator: false,
+                        is_async: *is_async,
+                    },
+                    true,
+                    inferred_name,
+                    false,
+                )
             }
             _ => self.expression(expression),
         }
@@ -698,7 +994,9 @@ impl Compiler {
     ) -> Result<(), CompileError> {
         self.emit(Opcode::ClearCompletion, 0)?;
         let lexical = match init {
-            Some(ForInit::VarDecl(kind, decls)) if *kind != DeclKind::Var => declarations_names(*kind, decls)?,
+            Some(ForInit::VarDecl(kind, decls)) if *kind != DeclKind::Var => {
+                declarations_names(*kind, decls)?
+            }
             _ => Vec::new(),
         };
         let own_scope = !lexical.is_empty();
@@ -721,7 +1019,14 @@ impl Compiler {
                 exit = Some(self.emit(Opcode::JumpIfFalse, 0)?);
             }
         }
-        self.loops.push(Loop { labels, breakable: true, scope_depth: self.scopes.len(), breaks: Vec::new(), continues: Some(Vec::new()), iterator: None });
+        self.loops.push(Loop {
+            labels,
+            breakable: true,
+            scope_depth: self.scopes.len(),
+            breaks: Vec::new(),
+            continues: Some(Vec::new()),
+            iterator: None,
+        });
         self.statement(body, false)?;
         let continue_at = self.offset()?;
         if let Some(update) = update {
@@ -760,7 +1065,12 @@ impl Compiler {
                 self.constant(Value::String(flags.clone()))?;
                 self.emit(Opcode::RegExpLiteral, 0)?;
             }
-            Expr::TaggedTemplate { tag, raw, cooked, expressions } => {
+            Expr::TaggedTemplate {
+                tag,
+                raw,
+                cooked,
+                expressions,
+            } => {
                 if matches!(&**tag, Expr::Member { .. }) {
                     self.member_reference(tag)?;
                     self.emit(Opcode::GetMethod, 0)?;
@@ -768,12 +1078,21 @@ impl Compiler {
                     self.expression(tag)?;
                     self.constant(Value::Undefined)?;
                 }
-                static NEXT_SITE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+                static NEXT_SITE: std::sync::atomic::AtomicU64 =
+                    std::sync::atomic::AtomicU64::new(1);
                 let id = NEXT_SITE
-                    .fetch_update(std::sync::atomic::Ordering::Relaxed, std::sync::atomic::Ordering::Relaxed, |n| n.checked_add(1))
+                    .fetch_update(
+                        std::sync::atomic::Ordering::Relaxed,
+                        std::sync::atomic::Ordering::Relaxed,
+                        |n| n.checked_add(1),
+                    )
                     .map_err(|_| CompileError::ProgramTooLarge)?;
                 let site = self.bytecode.templates.len() as u32;
-                self.bytecode.templates.push(crate::bytecode::TemplateSite { id, raw: raw.clone(), cooked: cooked.clone() });
+                self.bytecode.templates.push(crate::bytecode::TemplateSite {
+                    id,
+                    raw: raw.clone(),
+                    cooked: cooked.clone(),
+                });
                 self.emit(Opcode::TemplateObject, site)?;
                 for expression in expressions {
                     self.expression(expression)?;
@@ -786,13 +1105,18 @@ impl Compiler {
             Expr::Null => self.constant(Value::Null)?,
             Expr::Identifier(name) => {
                 if self.bytecode.strict && matches!(name.as_str(), "yield" | "let") {
-                    return Err(CompileError::InvalidSyntax("a reserved word cannot be used as an identifier in strict code"));
+                    return Err(CompileError::InvalidSyntax(
+                        "a reserved word cannot be used as an identifier in strict code",
+                    ));
                 }
                 if let Some(slot) = self.resolve(name) {
                     self.emit(Opcode::GetBinding, slot)?;
                 } else if self.with_depth != 0 {
-                    let index = u32::try_from(self.bytecode.constants.len()).map_err(|_| CompileError::ProgramTooLarge)?;
-                    self.bytecode.constants.push(Value::String(name.clone().into()));
+                    let index = u32::try_from(self.bytecode.constants.len())
+                        .map_err(|_| CompileError::ProgramTooLarge)?;
+                    self.bytecode
+                        .constants
+                        .push(Value::String(name.clone().into()));
                     self.emit(Opcode::WithGet, index)?;
                 } else {
                     match name.as_str() {
@@ -802,15 +1126,23 @@ impl Compiler {
                         "String" => {
                             self.emit(Opcode::GlobalString, 0)?;
                         }
-                        "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Function" | "globalThis" | "Intl" | "Error" | "TypeError" | "eval"
-                        | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "JSON" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" => {
+                        "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number"
+                        | "Boolean" | "Array" | "Function" | "globalThis" | "Intl" | "Error"
+                        | "TypeError" | "eval" | "isNaN" | "isFinite" | "parseInt"
+                        | "parseFloat" | "JSON" | "RangeError" | "SyntaxError"
+                        | "ReferenceError" | "EvalError" | "URIError" => {
                             let index = self.bytecode.constants.len() as u32;
-                            self.bytecode.constants.push(Value::String(name.as_str().into()));
+                            self.bytecode
+                                .constants
+                                .push(Value::String(name.as_str().into()));
                             self.emit(Opcode::Global, index)?;
                         }
                         _ => {
-                            let index = u32::try_from(self.bytecode.constants.len()).map_err(|_| CompileError::ProgramTooLarge)?;
-                            self.bytecode.constants.push(Value::String(name.clone().into()));
+                            let index = u32::try_from(self.bytecode.constants.len())
+                                .map_err(|_| CompileError::ProgramTooLarge)?;
+                            self.bytecode
+                                .constants
+                                .push(Value::String(name.clone().into()));
                             self.emit(Opcode::UnboundName, index)?;
                         }
                     }
@@ -836,7 +1168,9 @@ impl Compiler {
                         self.emit(opcode, 0)?;
                     } else if let Expr::Identifier(name) = &**arg {
                         if self.bytecode.strict {
-                            return Err(CompileError::InvalidSyntax("cannot delete a binding in strict mode"));
+                            return Err(CompileError::InvalidSyntax(
+                                "cannot delete a binding in strict mode",
+                            ));
                         }
                         self.constant(Value::Bool(self.resolve(name).is_none()))?;
                     } else {
@@ -849,9 +1183,14 @@ impl Compiler {
                 if *op == UnaryOp::Typeof
                     && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Function" | "globalThis" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "JSON"))
                 {
-                    let Expr::Identifier(name) = &**arg else { unreachable!() };
-                    let index = u32::try_from(self.bytecode.constants.len()).map_err(|_| CompileError::ProgramTooLarge)?;
-                    self.bytecode.constants.push(Value::String(name.as_str().into()));
+                    let Expr::Identifier(name) = &**arg else {
+                        unreachable!()
+                    };
+                    let index = u32::try_from(self.bytecode.constants.len())
+                        .map_err(|_| CompileError::ProgramTooLarge)?;
+                    self.bytecode
+                        .constants
+                        .push(Value::String(name.as_str().into()));
                     self.emit(Opcode::TypeofName, index)?;
                 } else {
                     self.expression(arg)?;
@@ -887,7 +1226,11 @@ impl Compiler {
                     }
                 }
             }
-            Expr::Conditional { test, consequent, alternate } => {
+            Expr::Conditional {
+                test,
+                consequent,
+                alternate,
+            } => {
                 self.expression(test)?;
                 let no = self.emit(Opcode::JumpIfFalse, 0)?;
                 self.expression(consequent)?;
@@ -897,7 +1240,10 @@ impl Compiler {
                 self.patch(end, self.offset()?);
             }
             Expr::Array(elements) => {
-                if elements.iter().any(|element| matches!(element, Some(ArrayElement::Spread(_)))) {
+                if elements
+                    .iter()
+                    .any(|element| matches!(element, Some(ArrayElement::Spread(_))))
+                {
                     self.emit(Opcode::NewArray, 0)?;
                     for element in elements {
                         let kind = match element {
@@ -918,11 +1264,14 @@ impl Compiler {
                     }
                     return Ok(());
                 }
-                let length = u32::try_from(elements.len()).map_err(|_| CompileError::ProgramTooLarge)?;
+                let length =
+                    u32::try_from(elements.len()).map_err(|_| CompileError::ProgramTooLarge)?;
                 self.emit(Opcode::NewArray, length)?;
                 for (index, element) in elements.iter().enumerate() {
                     let Some(element) = element else { continue };
-                    let ArrayElement::Normal(value) = element else { return Err(CompileError::Unsupported("array spread")) };
+                    let ArrayElement::Normal(value) = element else {
+                        return Err(CompileError::Unsupported("array spread"));
+                    };
                     self.emit(Opcode::Dup, 0)?;
                     self.constant(Value::String(index.to_string().into()))?;
                     self.expression(value)?;
@@ -939,11 +1288,15 @@ impl Compiler {
                         self.emit(Opcode::CopyDataProperties, 0)?;
                         continue;
                     }
-                    if let ObjectProp::Method { key, function } | ObjectProp::Accessor { key, function, .. } = property {
+                    if let ObjectProp::Method { key, function }
+                    | ObjectProp::Accessor { key, function, .. } = property
+                    {
                         self.emit(Opcode::Dup, 0)?;
                         self.property_key(key)?;
                         self.function(function, false)?;
-                        std::rc::Rc::get_mut(self.bytecode.functions.last_mut().unwrap()).unwrap().constructible = false;
+                        std::rc::Rc::get_mut(self.bytecode.functions.last_mut().unwrap())
+                            .unwrap()
+                            .constructible = false;
                         if let ObjectProp::Accessor { getter, .. } = property {
                             self.emit(Opcode::DefineAccessor, u32::from(!getter))?;
                         } else {
@@ -952,7 +1305,14 @@ impl Compiler {
                         self.emit(Opcode::Pop, 0)?;
                         continue;
                     }
-                    let ObjectProp::KeyValue { key, value, shorthand } = property else { unreachable!("spread is handled above") };
+                    let ObjectProp::KeyValue {
+                        key,
+                        value,
+                        shorthand,
+                    } = property
+                    else {
+                        unreachable!("spread is handled above")
+                    };
                     self.emit(Opcode::Dup, 0)?;
                     let prototype_key = match key {
                         PropertyKey::Identifier(name) => name == "__proto__",
@@ -961,7 +1321,9 @@ impl Compiler {
                     };
                     if !shorthand && prototype_key {
                         if has_proto {
-                            return Err(CompileError::InvalidSyntax("duplicate literal __proto__ setter"));
+                            return Err(CompileError::InvalidSyntax(
+                                "duplicate literal __proto__ setter",
+                            ));
                         }
                         has_proto = true;
                         self.expression(value)?;
@@ -974,8 +1336,16 @@ impl Compiler {
                     }
                 }
             }
-            Expr::Super => return Err(CompileError::InvalidSyntax("super must be used as a property access or constructor call")),
-            Expr::Member { object, property, computed } if matches!(&**object, Expr::Super) => {
+            Expr::Super => {
+                return Err(CompileError::InvalidSyntax(
+                    "super must be used as a property access or constructor call",
+                ))
+            }
+            Expr::Member {
+                object,
+                property,
+                computed,
+            } if matches!(&**object, Expr::Super) => {
                 self.super_property_key(property, *computed)?;
                 self.emit(Opcode::SuperGet, 0)?;
             }
@@ -984,34 +1354,59 @@ impl Compiler {
                 self.emit(Opcode::GetProperty, 0)?;
             }
             Expr::Assign { op, target, value } => self.assignment(*op, target, value)?,
-            Expr::DestructureAssign { pattern, value } => self.destructuring_assignment(pattern, value)?,
+            Expr::DestructureAssign { pattern, value } => {
+                self.destructuring_assignment(pattern, value)?
+            }
             Expr::Update { op, arg, prefix } => {
                 if let Expr::Identifier(name) = &**arg {
-                    let slot = self.resolve(name).ok_or(CompileError::Unsupported("implicit global assignment"))?;
+                    let slot = self
+                        .resolve(name)
+                        .ok_or(CompileError::Unsupported("implicit global assignment"))?;
                     self.emit(Opcode::GetBinding, slot)?;
                     self.emit(Opcode::ToNumber, 0)?;
                     if !prefix {
                         self.emit(Opcode::Dup, 0)?;
                     }
                     self.constant(Value::Number(1.0))?;
-                    self.emit(if *op == UpdateOp::Inc { Opcode::Add } else { Opcode::Subtract }, 0)?;
+                    self.emit(
+                        if *op == UpdateOp::Inc {
+                            Opcode::Add
+                        } else {
+                            Opcode::Subtract
+                        },
+                        0,
+                    )?;
                     self.emit(Opcode::StoreBinding, slot)?;
                     if !prefix {
                         self.emit(Opcode::Pop, 0)?;
                     }
-                } else if let Expr::Member { object, property, computed } = arg.as_ref() {
+                } else if let Expr::Member {
+                    object,
+                    property,
+                    computed,
+                } = arg.as_ref()
+                {
                     if matches!(&**object, Expr::Super) {
                         self.super_property_key(property, *computed)?;
-                        self.emit(Opcode::SuperUpdate, u32::from(*op == UpdateOp::Dec) | (u32::from(*prefix) << 1))?;
+                        self.emit(
+                            Opcode::SuperUpdate,
+                            u32::from(*op == UpdateOp::Dec) | (u32::from(*prefix) << 1),
+                        )?;
                     } else {
                         self.member_reference(arg)?;
-                        self.emit(Opcode::UpdateProperty, u32::from(*op == UpdateOp::Dec) | (u32::from(*prefix) << 1))?;
+                        self.emit(
+                            Opcode::UpdateProperty,
+                            u32::from(*op == UpdateOp::Dec) | (u32::from(*prefix) << 1),
+                        )?;
                     }
                 } else {
                     return Err(CompileError::InvalidSyntax("invalid assignment/member AST"));
                 }
             }
-            Expr::Template { quasis, expressions } => {
+            Expr::Template {
+                quasis,
+                expressions,
+            } => {
                 if quasis.len() != expressions.len() + 1 {
                     return Err(CompileError::InvalidSyntax("invalid template AST"));
                 }
@@ -1040,15 +1435,27 @@ impl Compiler {
                         self.emit(Opcode::SuperCallSpread, 0)?;
                     } else {
                         for arg in args {
-                            let Argument::Normal(expr) = arg else { unreachable!("super call spreads take the array path") };
+                            let Argument::Normal(expr) = arg else {
+                                unreachable!("super call spreads take the array path")
+                            };
                             self.expression(expr)?;
                         }
-                        self.emit(Opcode::SuperCall, u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?)?;
+                        self.emit(
+                            Opcode::SuperCall,
+                            u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
+                        )?;
                     }
                     return Ok(());
                 }
-                if !construct && matches!(&**callee, Expr::Member { object, .. } if matches!(&**object, Expr::Super)) {
-                    let Expr::Member { property, computed, .. } = callee.as_ref() else { unreachable!() };
+                if !construct
+                    && matches!(&**callee, Expr::Member { object, .. } if matches!(&**object, Expr::Super))
+                {
+                    let Expr::Member {
+                        property, computed, ..
+                    } = callee.as_ref()
+                    else {
+                        unreachable!()
+                    };
                     self.super_property_key(property, *computed)?;
                     self.emit(Opcode::SuperGetMethod, 0)?;
                 } else if !construct && matches!(&**callee, Expr::Member { .. }) {
@@ -1072,10 +1479,19 @@ impl Compiler {
                     return Ok(());
                 }
                 for arg in args {
-                    let Argument::Normal(expr) = arg else { unreachable!("spread calls are emitted above") };
+                    let Argument::Normal(expr) = arg else {
+                        unreachable!("spread calls are emitted above")
+                    };
                     self.expression(expr)?;
                 }
-                self.emit(if construct { Opcode::Construct } else { Opcode::Call }, u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?)?;
+                self.emit(
+                    if construct {
+                        Opcode::Construct
+                    } else {
+                        Opcode::Call
+                    },
+                    u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
+                )?;
             }
             Expr::This => {
                 self.emit(Opcode::This, 0)?;
@@ -1085,7 +1501,9 @@ impl Compiler {
             Expr::Class(class) => self.class_expression(class, None)?,
             Expr::Yield { value, delegate } => {
                 if !self.bytecode.generator {
-                    return Err(CompileError::InvalidSyntax("yield requires a generator function"));
+                    return Err(CompileError::InvalidSyntax(
+                        "yield requires a generator function",
+                    ));
                 }
                 if *delegate {
                     return Err(CompileError::Unsupported("yield*"));
@@ -1098,26 +1516,58 @@ impl Compiler {
                 self.emit(Opcode::Yield, 0)?;
             }
             Expr::Await(_) => return Err(CompileError::Unsupported("await expressions")),
-            Expr::Arrow { params, body, is_async } => {
+            Expr::Arrow {
+                params,
+                body,
+                is_async,
+            } => {
                 let body = match body {
                     ArrowBody::Expr(expr) => vec![Stmt::Return(Some(*expr.clone()))],
                     ArrowBody::Block(body) => body.clone(),
                 };
-                self.function(&Function { name: None, params: params.clone(), body, generator: false, is_async: *is_async }, true)?;
+                self.function(
+                    &Function {
+                        name: None,
+                        params: params.clone(),
+                        body,
+                        generator: false,
+                        is_async: *is_async,
+                    },
+                    true,
+                )?;
             }
         }
         Ok(())
     }
 
-    fn for_in(&mut self, left: &ForHead, right: &Expr, body: &Stmt, labels: Vec<String>) -> Result<(), CompileError> {
+    fn for_in(
+        &mut self,
+        left: &ForHead,
+        right: &Expr,
+        body: &Stmt,
+        labels: Vec<String>,
+    ) -> Result<(), CompileError> {
         self.for_each(left, right, body, true, labels)
     }
 
-    fn for_of(&mut self, left: &ForHead, right: &Expr, body: &Stmt, labels: Vec<String>) -> Result<(), CompileError> {
+    fn for_of(
+        &mut self,
+        left: &ForHead,
+        right: &Expr,
+        body: &Stmt,
+        labels: Vec<String>,
+    ) -> Result<(), CompileError> {
         self.for_each(left, right, body, false, labels)
     }
 
-    fn for_each(&mut self, left: &ForHead, right: &Expr, body: &Stmt, for_in: bool, labels: Vec<String>) -> Result<(), CompileError> {
+    fn for_each(
+        &mut self,
+        left: &ForHead,
+        right: &Expr,
+        body: &Stmt,
+        for_in: bool,
+        labels: Vec<String>,
+    ) -> Result<(), CompileError> {
         self.emit(Opcode::ClearCompletion, 0)?;
         let (pattern, kind) = match left {
             ForHead::Decl(kind, pattern) => (pattern, Some(*kind)),
@@ -1126,7 +1576,11 @@ impl Compiler {
         let lexical = kind.is_some_and(|kind| kind != DeclKind::Var);
         let mut declarations = vec![("*iterator*".to_owned(), DeclKind::Let)];
         if lexical {
-            declarations.extend(pattern_names(pattern).into_iter().map(|name| (name, kind.unwrap())));
+            declarations.extend(
+                pattern_names(pattern)
+                    .into_iter()
+                    .map(|name| (name, kind.unwrap())),
+            );
         }
         self.enter_scope(declarations, &BTreeSet::new(), false)?;
         let iterator = self.resolve("*iterator*").unwrap();
@@ -1139,15 +1593,37 @@ impl Compiler {
         let start = self.offset()?;
         self.emit(Opcode::GetBinding, iterator)?;
         let exit = self.emit(Opcode::IteratorStep, 0)?;
-        self.loops.push(Loop { labels, breakable: true, scope_depth: self.scopes.len(), breaks: Vec::new(), continues: Some(Vec::new()), iterator: Some(iterator) });
+        self.loops.push(Loop {
+            labels,
+            breakable: true,
+            scope_depth: self.scopes.len(),
+            breaks: Vec::new(),
+            continues: Some(Vec::new()),
+            iterator: Some(iterator),
+        });
         if lexical {
-            self.enter_scope(pattern_names(pattern).into_iter().map(|name| (name, kind.unwrap())).collect(), &BTreeSet::new(), false)?;
+            self.enter_scope(
+                pattern_names(pattern)
+                    .into_iter()
+                    .map(|name| (name, kind.unwrap()))
+                    .collect(),
+                &BTreeSet::new(),
+                false,
+            )?;
         }
         match kind {
             Some(kind) => self.bind_pattern(pattern, kind)?,
             None => {
-                let Pattern::Identifier(name) = pattern else { return Err(CompileError::Unsupported(if for_in { "a destructuring for-in assignment target" } else { "a destructuring for-of assignment target" })) };
-                let slot = self.resolve(name).ok_or(CompileError::Unsupported("implicit global assignment"))?;
+                let Pattern::Identifier(name) = pattern else {
+                    return Err(CompileError::Unsupported(if for_in {
+                        "a destructuring for-in assignment target"
+                    } else {
+                        "a destructuring for-of assignment target"
+                    }));
+                };
+                let slot = self
+                    .resolve(name)
+                    .ok_or(CompileError::Unsupported("implicit global assignment"))?;
                 self.emit(Opcode::StoreBinding, slot)?;
                 self.emit(Opcode::Pop, 0)?;
             }
@@ -1172,8 +1648,18 @@ impl Compiler {
         Ok(())
     }
 
-    fn assignment(&mut self, op: AssignOp, target: &Expr, value: &Expr) -> Result<(), CompileError> {
-        if let Expr::Member { object, property, computed } = target {
+    fn assignment(
+        &mut self,
+        op: AssignOp,
+        target: &Expr,
+        value: &Expr,
+    ) -> Result<(), CompileError> {
+        if let Expr::Member {
+            object,
+            property,
+            computed,
+        } = target
+        {
             if matches!(&**object, Expr::Super) {
                 self.super_property_key(property, *computed)?;
                 if op != AssignOp::Assign {
@@ -1198,11 +1684,16 @@ impl Compiler {
         if let Expr::Identifier(name) = target {
             if self.resolve(name).is_none() && self.with_depth != 0 {
                 if op != AssignOp::Assign {
-                    return Err(CompileError::Unsupported("compound assignment in a with statement"));
+                    return Err(CompileError::Unsupported(
+                        "compound assignment in a with statement",
+                    ));
                 }
                 self.expression(value)?;
-                let index = u32::try_from(self.bytecode.constants.len()).map_err(|_| CompileError::ProgramTooLarge)?;
-                self.bytecode.constants.push(Value::String(name.clone().into()));
+                let index = u32::try_from(self.bytecode.constants.len())
+                    .map_err(|_| CompileError::ProgramTooLarge)?;
+                self.bytecode
+                    .constants
+                    .push(Value::String(name.clone().into()));
                 self.emit(Opcode::WithSet, index)?;
                 return Ok(());
             }
@@ -1214,8 +1705,11 @@ impl Compiler {
                 if self.bytecode.strict {
                     return Err(CompileError::Unsupported("implicit global assignment"));
                 }
-                let index = u32::try_from(self.bytecode.constants.len()).map_err(|_| CompileError::ProgramTooLarge)?;
-                self.bytecode.constants.push(Value::String("globalThis".into()));
+                let index = u32::try_from(self.bytecode.constants.len())
+                    .map_err(|_| CompileError::ProgramTooLarge)?;
+                self.bytecode
+                    .constants
+                    .push(Value::String("globalThis".into()));
                 self.emit(Opcode::Global, index)?;
                 self.constant(Value::String(name.clone().into()))?;
                 self.emit(Opcode::ToPropertyKey, 0)?;
@@ -1254,7 +1748,11 @@ impl Compiler {
 
     /// AssignmentPatternEvaluation. The first copy of the RHS is the
     /// expression's result; the second is consumed by the recursive pattern.
-    fn destructuring_assignment(&mut self, pattern: &AssignmentPattern, value: &Expr) -> Result<(), CompileError> {
+    fn destructuring_assignment(
+        &mut self,
+        pattern: &AssignmentPattern,
+        value: &Expr,
+    ) -> Result<(), CompileError> {
         self.expression(value)?;
         self.emit(Opcode::Dup, 0)?;
         self.assign_pattern(pattern)
@@ -1286,7 +1784,11 @@ impl Compiler {
                 self.emit(Opcode::NewArray, 0)?;
                 for property in properties {
                     match property {
-                        AssignmentPatternProp::KeyValue { key, value, default } => {
+                        AssignmentPatternProp::KeyValue {
+                            key,
+                            value,
+                            default,
+                        } => {
                             self.property_key(key)?;
                             self.emit(Opcode::DestructureProperty, 0)?;
                             self.pattern_default(default.as_ref())?;
@@ -1310,7 +1812,9 @@ impl Compiler {
     /// the outer assignment pattern keeps its duplicate RHS beneath it.
     fn assign_pattern_target(&mut self, target: &Expr) -> Result<(), CompileError> {
         if let Expr::Identifier(name) = target {
-            let slot = self.resolve(name).ok_or(CompileError::Unsupported("implicit global assignment"))?;
+            let slot = self
+                .resolve(name)
+                .ok_or(CompileError::Unsupported("implicit global assignment"))?;
             self.emit(Opcode::StoreBinding, slot)?;
         } else {
             self.member_reference(target)?;
@@ -1321,9 +1825,18 @@ impl Compiler {
     }
 
     fn member_reference(&mut self, target: &Expr) -> Result<(), CompileError> {
-        let Expr::Member { object, property, computed } = target else { return Err(CompileError::InvalidSyntax("invalid assignment/member AST")) };
+        let Expr::Member {
+            object,
+            property,
+            computed,
+        } = target
+        else {
+            return Err(CompileError::InvalidSyntax("invalid assignment/member AST"));
+        };
         if matches!(&**object, Expr::Super) {
-            return Err(CompileError::InvalidSyntax("super member requires a dedicated operation"));
+            return Err(CompileError::InvalidSyntax(
+                "super member requires a dedicated operation",
+            ));
         }
         self.expression(object)?;
         if *computed {
@@ -1331,7 +1844,9 @@ impl Compiler {
         } else if let Expr::Identifier(name) = &**property {
             self.constant(Value::String(name.clone().into()))?;
         } else {
-            return Err(CompileError::InvalidSyntax("invalid non-computed member AST"));
+            return Err(CompileError::InvalidSyntax(
+                "invalid non-computed member AST",
+            ));
         }
         self.emit(Opcode::ToPropertyKey, 0)?;
         Ok(())
@@ -1343,7 +1858,9 @@ impl Compiler {
         } else if let Expr::Identifier(name) = property {
             self.constant(Value::String(name.clone().into()))?;
         } else {
-            return Err(CompileError::InvalidSyntax("invalid non-computed super member AST"));
+            return Err(CompileError::InvalidSyntax(
+                "invalid non-computed super member AST",
+            ));
         }
         self.emit(Opcode::ToPropertyKey, 0)?;
         Ok(())
@@ -1368,37 +1885,71 @@ impl Compiler {
         self.function_named(function, false, None, function.name.is_some())
     }
 
-    fn class_expression(&mut self, class: &Class, inferred_name: Option<&str>) -> Result<(), CompileError> {
+    fn class_expression(
+        &mut self,
+        class: &Class,
+        inferred_name: Option<&str>,
+    ) -> Result<(), CompileError> {
         let Some(name) = class.name.as_ref() else {
             return self.class_expression_with_binding(class, inferred_name, None);
         };
-        self.enter_scope(vec![(name.clone(), DeclKind::Const)], &BTreeSet::new(), true)?;
-        let binding = self.resolve(name).expect("class name was entered into its expression scope");
+        self.enter_scope(
+            vec![(name.clone(), DeclKind::Const)],
+            &BTreeSet::new(),
+            true,
+        )?;
+        let binding = self
+            .resolve(name)
+            .expect("class name was entered into its expression scope");
         let result = self.class_expression_with_binding(class, inferred_name, Some(binding));
         self.leave_scope()?;
         result
     }
 
-    fn class_expression_with_binding(&mut self, class: &Class, inferred_name: Option<&str>, binding: Option<u32>) -> Result<(), CompileError> {
+    fn class_expression_with_binding(
+        &mut self,
+        class: &Class,
+        inferred_name: Option<&str>,
+        binding: Option<u32>,
+    ) -> Result<(), CompileError> {
         let constructor = class.elements.iter().find_map(|element| match element {
-            ClassElement::Method { key, function, is_static: false }
-                if class_property_name(key).is_some_and(|name| name == "constructor") => Some(function.clone()),
+            ClassElement::Method {
+                key,
+                function,
+                is_static: false,
+            } if class_property_name(key).is_some_and(|name| name == "constructor") => {
+                Some(function.clone())
+            }
             _ => None,
         });
         let default_constructor = constructor.is_none();
-        let mut constructor = constructor.unwrap_or(Function { name: class.name.clone(), params: Vec::new(), body: Vec::new(), generator: false, is_async: false });
+        let mut constructor = constructor.unwrap_or(Function {
+            name: class.name.clone(),
+            params: Vec::new(),
+            body: Vec::new(),
+            generator: false,
+            is_async: false,
+        });
         constructor.name = class.name.clone();
         let fields: Vec<_> = class
             .elements
             .iter()
             .filter_map(|element| match element {
-                ClassElement::Field { key, initializer, is_static: false } => Some(class_instance_field(key, initializer.as_ref())),
+                ClassElement::Field {
+                    key,
+                    initializer,
+                    is_static: false,
+                } => Some(class_instance_field(key, initializer.as_ref())),
                 _ => None,
             })
             .collect();
         let constructor_body = std::mem::take(&mut constructor.body);
         let body = if class.extends.is_some() {
-            if default_constructor { fields.clone() } else { derived_constructor_body(constructor_body, fields.clone())? }
+            if default_constructor {
+                fields.clone()
+            } else {
+                derived_constructor_body(constructor_body, fields.clone())?
+            }
         } else {
             let mut body = fields.clone();
             body.extend(constructor_body);
@@ -1430,8 +1981,14 @@ impl Compiler {
         }
         for element in &class.elements {
             match element {
-                ClassElement::Method { key, function, is_static } => {
-                    if !is_static && class_property_name(key).is_some_and(|name| name == "constructor") {
+                ClassElement::Method {
+                    key,
+                    function,
+                    is_static,
+                } => {
+                    if !is_static
+                        && class_property_name(key).is_some_and(|name| name == "constructor")
+                    {
                         continue;
                     }
                     self.class_property_target(*is_static)?;
@@ -1446,7 +2003,12 @@ impl Compiler {
                     self.emit(Opcode::DefineMethod, 0)?;
                     self.emit(Opcode::Pop, 0)?;
                 }
-                ClassElement::Accessor { key, function, getter, is_static } => {
+                ClassElement::Accessor {
+                    key,
+                    function,
+                    getter,
+                    is_static,
+                } => {
                     self.class_property_target(*is_static)?;
                     self.property_key(key)?;
                     self.function_named_with(
@@ -1459,11 +2021,21 @@ impl Compiler {
                     self.emit(Opcode::DefineClassAccessor, u32::from(!getter))?;
                     self.emit(Opcode::Pop, 0)?;
                 }
-                ClassElement::Field { key, initializer, is_static: true } => {
+                ClassElement::Field {
+                    key,
+                    initializer,
+                    is_static: true,
+                } => {
                     self.class_property_target(true)?;
                     self.property_key(key)?;
                     let value = initializer.clone().unwrap_or_else(undefined_expression);
-                    let initializer = Function { name: None, params: Vec::new(), body: vec![Stmt::Return(Some(value))], generator: false, is_async: false };
+                    let initializer = Function {
+                        name: None,
+                        params: Vec::new(),
+                        body: vec![Stmt::Return(Some(value))],
+                        generator: false,
+                        is_async: false,
+                    };
                     self.function_named_with(
                         &initializer,
                         false,
@@ -1473,9 +2045,17 @@ impl Compiler {
                     )?;
                     self.emit(Opcode::DefineClassStaticField, 0)?;
                 }
-                ClassElement::Field { is_static: false, .. } => {}
+                ClassElement::Field {
+                    is_static: false, ..
+                } => {}
                 ClassElement::StaticBlock(body) => {
-                    let block = Function { name: None, params: Vec::new(), body: body.clone(), generator: false, is_async: false };
+                    let block = Function {
+                        name: None,
+                        params: Vec::new(),
+                        body: body.clone(),
+                        generator: false,
+                        is_async: false,
+                    };
                     self.function_named_with(
                         &block,
                         false,
@@ -1499,7 +2079,13 @@ impl Compiler {
         Ok(())
     }
 
-    fn function_named(&mut self, function: &Function, arrow: bool, inferred_name: Option<&str>, named_expression: bool) -> Result<(), CompileError> {
+    fn function_named(
+        &mut self,
+        function: &Function,
+        arrow: bool,
+        inferred_name: Option<&str>,
+        named_expression: bool,
+    ) -> Result<(), CompileError> {
         self.function_named_with(
             function,
             arrow,
@@ -1539,15 +2125,28 @@ impl Compiler {
             local_scope: 1,
             with_depth: 0,
         };
-        child.bytecode.strict = options.force_strict || self.bytecode.strict || strict_body(&function.body);
-        validate_function_early_errors(function, child.bytecode.strict, !options.class_method && !options.class_constructor)?;
+        child.bytecode.strict =
+            options.force_strict || self.bytecode.strict || strict_body(&function.body);
+        validate_function_early_errors(
+            function,
+            child.bytecode.strict,
+            !options.class_method && !options.class_constructor,
+        )?;
         child.bytecode.arrow = arrow;
         child.bytecode.generator = function.generator;
         child.bytecode.constructible = options.constructible;
         child.bytecode.class_constructor = options.class_constructor;
         child.bytecode.derived_constructor = options.derived_constructor;
-        child.bytecode.function_name = function.name.clone().or_else(|| inferred_name.map(str::to_owned)).unwrap_or_default();
-        child.bytecode.function_length = function.params.iter().take_while(|p| !p.rest && p.default.is_none()).count() as u32;
+        child.bytecode.function_name = function
+            .name
+            .clone()
+            .or_else(|| inferred_name.map(str::to_owned))
+            .unwrap_or_default();
+        child.bytecode.function_length = function
+            .params
+            .iter()
+            .take_while(|p| !p.rest && p.default.is_none())
+            .count() as u32;
         let mut visible = std::collections::BTreeMap::new();
         for scope in &self.names {
             visible.extend(scope.iter().map(|(name, slot)| (name.clone(), *slot)));
@@ -1555,35 +2154,68 @@ impl Compiler {
         for (name, slot) in visible {
             let index = child.bytecode.bindings.len() as u32;
             child.names[0].insert(name, index);
-            child.bytecode.bindings.push(self.bytecode.bindings[slot as usize].clone());
+            child
+                .bytecode
+                .bindings
+                .push(self.bytecode.bindings[slot as usize].clone());
             child.bytecode.captures.push(slot);
         }
         if named_expression {
-            let name = function.name.as_ref().expect("named function expression has a name").clone();
-            let slot = u32::try_from(child.bytecode.bindings.len()).map_err(|_| CompileError::ProgramTooLarge)?;
+            let name = function
+                .name
+                .as_ref()
+                .expect("named function expression has a name")
+                .clone();
+            let slot = u32::try_from(child.bytecode.bindings.len())
+                .map_err(|_| CompileError::ProgramTooLarge)?;
             child.names[0].insert(name.clone(), slot);
-            child.bytecode.bindings.push(Binding { name, mutable: false, lexical: true });
+            child.bytecode.bindings.push(Binding {
+                name,
+                mutable: false,
+                lexical: true,
+            });
             child.bytecode.self_slot = Some(slot);
         }
         let mut vars = var_names(&function.body)?;
-        let parameters: BTreeSet<_> = function.params.iter().flat_map(|param| pattern_names(&param.pattern)).collect();
+        let parameters: BTreeSet<_> = function
+            .params
+            .iter()
+            .flat_map(|param| pattern_names(&param.pattern))
+            .collect();
         let lexical = lexical_names(&function.body)?;
         if let Some((name, _)) = lexical.iter().find(|(name, _)| parameters.contains(name)) {
             return Err(CompileError::DuplicateBinding(name.clone()));
         }
-        let parameter_expressions = function.params.iter().any(|param| param.default.is_some() || pattern_contains_expression(&param.pattern));
+        let parameter_expressions = function
+            .params
+            .iter()
+            .any(|param| param.default.is_some() || pattern_contains_expression(&param.pattern));
         if parameter_expressions {
             // Parameter expressions must not resolve into body declarations.
             // All parameter cells exist, uninitialized, before the first
             // initializer; closures keep those cells when the body later
             // creates a separate variable environment.
-            child.enter_scope(parameters.iter().map(|name| (name.clone(), DeclKind::Let)).collect(), &BTreeSet::new(), true)?;
+            child.enter_scope(
+                parameters
+                    .iter()
+                    .map(|name| (name.clone(), DeclKind::Let))
+                    .collect(),
+                &BTreeSet::new(),
+                true,
+            )?;
         } else {
             vars.extend(parameters.iter().cloned());
             child.enter_scope(lexical.clone(), &vars, true)?;
         }
         for (index, param) in function.params.iter().enumerate() {
-            child.emit(if param.rest { Opcode::RestArguments } else { Opcode::Argument }, index as u32)?;
+            child.emit(
+                if param.rest {
+                    Opcode::RestArguments
+                } else {
+                    Opcode::Argument
+                },
+                index as u32,
+            )?;
             child.binding_pattern_default(param.default.as_ref(), &param.pattern)?;
             child.bind_pattern(&param.pattern, DeclKind::Let)?;
         }
@@ -1598,7 +2230,10 @@ impl Compiler {
                     continue;
                 }
                 child.emit(Opcode::GetBinding, parameter_slots[name])?;
-                child.emit(Opcode::InitializeBinding, child.names[child.local_scope][name])?;
+                child.emit(
+                    Opcode::InitializeBinding,
+                    child.names[child.local_scope][name],
+                )?;
             }
         }
         if options.default_derived_constructor {
@@ -1609,31 +2244,59 @@ impl Compiler {
         child.constant(Value::Undefined)?;
         child.emit(Opcode::Return, 0)?;
         let child_bytes = child_budget - child.max_bytecode_bytes + child.offset()?;
-        self.max_bytecode_bytes = self.max_bytecode_bytes.checked_sub(child_bytes).ok_or(CompileError::ProgramTooLarge)?;
+        self.max_bytecode_bytes = self
+            .max_bytecode_bytes
+            .checked_sub(child_bytes)
+            .ok_or(CompileError::ProgramTooLarge)?;
         let index = self.bytecode.functions.len() as u32;
-        self.bytecode.functions.push(std::rc::Rc::new(child.bytecode));
+        self.bytecode
+            .functions
+            .push(std::rc::Rc::new(child.bytecode));
         self.emit(Opcode::Closure, index)?;
         Ok(())
     }
 
     fn self_tail_call_args<'a>(&self, value: &'a Expr) -> Option<&'a [Argument]> {
-        let Expr::Call { callee, args } = value else { return None };
-        let Expr::Identifier(name) = callee.as_ref() else { return None };
+        let Expr::Call { callee, args } = value else {
+            return None;
+        };
+        let Expr::Identifier(name) = callee.as_ref() else {
+            return None;
+        };
         let slot = self.bytecode.self_slot?;
-        (self.bytecode.strict && self.resolve(name) == Some(slot) && args.iter().all(|argument| matches!(argument, Argument::Normal(_)))).then_some(args)
+        (self.bytecode.strict
+            && self.resolve(name) == Some(slot)
+            && args
+                .iter()
+                .all(|argument| matches!(argument, Argument::Normal(_))))
+        .then_some(args)
     }
 }
 
 fn strict_body(body: &[Stmt]) -> bool {
-    body.iter().take_while(|stmt| matches!(stmt, Stmt::Expr(Expr::String(_)))).any(|stmt| matches!(stmt, Stmt::Expr(Expr::String(s)) if s == "use strict"))
+    body.iter()
+        .take_while(|stmt| matches!(stmt, Stmt::Expr(Expr::String(_))))
+        .any(|stmt| matches!(stmt, Stmt::Expr(Expr::String(s)) if s == "use strict"))
 }
 
-fn validate_function_early_errors(function: &Function, strict: bool, name_is_binding: bool) -> Result<(), CompileError> {
-    let simple = function.params.iter().all(|param| !param.rest && param.default.is_none() && matches!(param.pattern, Pattern::Identifier(_)));
+fn validate_function_early_errors(
+    function: &Function,
+    strict: bool,
+    name_is_binding: bool,
+) -> Result<(), CompileError> {
+    let simple = function.params.iter().all(|param| {
+        !param.rest && param.default.is_none() && matches!(param.pattern, Pattern::Identifier(_))
+    });
     if strict_body(&function.body) && !simple {
-        return Err(CompileError::InvalidSyntax("a function with non-simple parameters cannot contain a use strict directive"));
+        return Err(CompileError::InvalidSyntax(
+            "a function with non-simple parameters cannot contain a use strict directive",
+        ));
     }
-    let names: Vec<_> = function.params.iter().flat_map(|param| pattern_names(&param.pattern)).collect();
+    let names: Vec<_> = function
+        .params
+        .iter()
+        .flat_map(|param| pattern_names(&param.pattern))
+        .collect();
     if strict || !simple {
         let mut unique = BTreeSet::new();
         if names.iter().any(|name| !unique.insert(name)) {
@@ -1648,10 +2311,14 @@ fn validate_function_early_errors(function: &Function, strict: bool, name_is_bin
             .chain(names.iter())
             .any(|name| matches!(name.as_str(), "eval" | "arguments" | "yield"))
     {
-        return Err(CompileError::InvalidSyntax("strict functions cannot bind eval, arguments, or yield"));
+        return Err(CompileError::InvalidSyntax(
+            "strict functions cannot bind eval, arguments, or yield",
+        ));
     }
     if function.generator && names.iter().any(|name| name == "yield") {
-        return Err(CompileError::InvalidSyntax("generator parameters cannot bind yield"));
+        return Err(CompileError::InvalidSyntax(
+            "generator parameters cannot bind yield",
+        ));
     }
     Ok(())
 }
@@ -1666,7 +2333,10 @@ fn class_property_name(key: &PropertyKey) -> Option<String> {
 }
 
 fn undefined_expression() -> Expr {
-    Expr::Unary { op: UnaryOp::Void, arg: Box::new(Expr::Number(0.0)) }
+    Expr::Unary {
+        op: UnaryOp::Void,
+        arg: Box::new(Expr::Number(0.0)),
+    }
 }
 
 fn class_instance_field(key: &PropertyKey, initializer: Option<&Expr>) -> Stmt {
@@ -1678,7 +2348,11 @@ fn class_instance_field(key: &PropertyKey, initializer: Option<&Expr>) -> Stmt {
     };
     Stmt::ClassField(Box::new(Stmt::Expr(Expr::Assign {
         op: AssignOp::Assign,
-        target: Box::new(Expr::Member { object: Box::new(Expr::This), property: Box::new(property), computed }),
+        target: Box::new(Expr::Member {
+            object: Box::new(Expr::This),
+            property: Box::new(property),
+            computed,
+        }),
         value: Box::new(initializer.cloned().unwrap_or_else(undefined_expression)),
     })))
 }
@@ -1688,7 +2362,10 @@ fn class_instance_field(key: &PropertyKey, initializer: Option<&Expr>) -> Stmt {
 /// More complex control flow needs a dedicated derived-this state machine;
 /// report it as unsupported instead of initializing fields at an incorrect
 /// point.
-fn derived_constructor_body(mut body: Vec<Stmt>, fields: Vec<Stmt>) -> Result<Vec<Stmt>, CompileError> {
+fn derived_constructor_body(
+    mut body: Vec<Stmt>,
+    fields: Vec<Stmt>,
+) -> Result<Vec<Stmt>, CompileError> {
     if fields.is_empty() {
         return Ok(body);
     }
@@ -1722,11 +2399,17 @@ fn binary_opcode(op: BinaryOp) -> Result<Opcode, CompileError> {
 fn pattern_names(pattern: &Pattern) -> Vec<String> {
     match pattern {
         Pattern::Identifier(name) => vec![name.clone()],
-        Pattern::Array(elements) => elements.iter().flatten().flat_map(|element| pattern_names(&element.pattern)).collect(),
+        Pattern::Array(elements) => elements
+            .iter()
+            .flatten()
+            .flat_map(|element| pattern_names(&element.pattern))
+            .collect(),
         Pattern::Object(properties) => properties
             .iter()
             .flat_map(|property| match property {
-                ObjectPatternProp::KeyValue { value, .. } | ObjectPatternProp::Rest(value) => pattern_names(value),
+                ObjectPatternProp::KeyValue { value, .. } | ObjectPatternProp::Rest(value) => {
+                    pattern_names(value)
+                }
             })
             .collect(),
     }
@@ -1737,15 +2420,28 @@ fn pattern_names(pattern: &Pattern) -> Vec<String> {
 fn pattern_contains_expression(pattern: &Pattern) -> bool {
     match pattern {
         Pattern::Identifier(_) => false,
-        Pattern::Array(elements) => elements.iter().flatten().any(|element| element.default.is_some() || pattern_contains_expression(&element.pattern)),
+        Pattern::Array(elements) => elements.iter().flatten().any(|element| {
+            element.default.is_some() || pattern_contains_expression(&element.pattern)
+        }),
         Pattern::Object(properties) => properties.iter().any(|property| match property {
-            ObjectPatternProp::KeyValue { key, value, default } => matches!(key, PropertyKey::Computed(_)) || default.is_some() || pattern_contains_expression(value),
+            ObjectPatternProp::KeyValue {
+                key,
+                value,
+                default,
+            } => {
+                matches!(key, PropertyKey::Computed(_))
+                    || default.is_some()
+                    || pattern_contains_expression(value)
+            }
             ObjectPatternProp::Rest(pattern) => pattern_contains_expression(pattern),
         }),
     }
 }
 
-fn declarations_names(kind: DeclKind, declarations: &[VarDeclarator]) -> Result<Vec<(String, DeclKind)>, CompileError> {
+fn declarations_names(
+    kind: DeclKind,
+    declarations: &[VarDeclarator],
+) -> Result<Vec<(String, DeclKind)>, CompileError> {
     let mut names = Vec::new();
     for declaration in declarations {
         for name in pattern_names(&declaration.pattern) {
@@ -1764,7 +2460,10 @@ fn lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, Compile
             }
         }
         if let Stmt::ClassDecl(class) = statement {
-            names.push((class.name.clone().expect("class declaration has a name"), DeclKind::Const));
+            names.push((
+                class.name.clone().expect("class declaration has a name"),
+                DeclKind::Const,
+            ));
         }
     }
     Ok(names)
@@ -1778,10 +2477,18 @@ fn catch_lexical_names(statements: &[Stmt]) -> Vec<String> {
     for statement in statements {
         match statement {
             Stmt::VarDecl(kind, declarations) if *kind != DeclKind::Var => {
-                names.extend(declarations.iter().flat_map(|declaration| pattern_names(&declaration.pattern)));
+                names.extend(
+                    declarations
+                        .iter()
+                        .flat_map(|declaration| pattern_names(&declaration.pattern)),
+                );
             }
-            Stmt::FunctionDecl(function) => names.push(function.name.clone().expect("declaration has a name")),
-            Stmt::ClassDecl(class) => names.push(class.name.clone().expect("class declaration has a name")),
+            Stmt::FunctionDecl(function) => {
+                names.push(function.name.clone().expect("declaration has a name"))
+            }
+            Stmt::ClassDecl(class) => {
+                names.push(class.name.clone().expect("class declaration has a name"))
+            }
             _ => {}
         }
     }
@@ -1802,13 +2509,19 @@ fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
                 }
             }
             Stmt::Block(body) => pending.extend(body),
-            Stmt::If { consequent, alternate, .. } => {
+            Stmt::If {
+                consequent,
+                alternate,
+                ..
+            } => {
                 pending.push(consequent);
                 if let Some(alternate) = alternate {
                     pending.push(alternate);
                 }
             }
-            Stmt::While { body, .. } | Stmt::DoWhile { body, .. } | Stmt::With { body, .. } => pending.push(body),
+            Stmt::While { body, .. } | Stmt::DoWhile { body, .. } | Stmt::With { body, .. } => {
+                pending.push(body)
+            }
             Stmt::Labelled { item, .. } => pending.push(item),
             Stmt::For { init, body, .. } => {
                 if let Some(ForInit::VarDecl(DeclKind::Var, declarations)) = init {
@@ -1829,7 +2542,11 @@ fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
                     pending.extend(&case.consequent);
                 }
             }
-            Stmt::Try { block, handler, finalizer } => {
+            Stmt::Try {
+                block,
+                handler,
+                finalizer,
+            } => {
                 pending.extend(block);
                 if let Some(handler) = handler {
                     pending.extend(&handler.body);
@@ -1850,6 +2567,11 @@ mod tests {
 
     #[test]
     fn computed_class_keys_do_not_have_constructor_names() {
-        assert_eq!(class_property_name(&PropertyKey::Computed(Box::new(Expr::Identifier("key".into())))), None);
+        assert_eq!(
+            class_property_name(&PropertyKey::Computed(Box::new(Expr::Identifier(
+                "key".into()
+            )))),
+            None
+        );
     }
 }

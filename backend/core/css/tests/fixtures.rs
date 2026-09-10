@@ -55,7 +55,13 @@ fn dump_styles(doc: &Document, styles: &HashMap<NodeId, ComputedStyle>) -> Strin
     out
 }
 
-fn dump_styles_node(doc: &Document, id: NodeId, styles: &HashMap<NodeId, ComputedStyle>, depth: usize, out: &mut String) {
+fn dump_styles_node(
+    doc: &Document,
+    id: NodeId,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    depth: usize,
+    out: &mut String,
+) {
     let NodeData::Element { tag_name, .. } = doc.data(id) else {
         return;
     };
@@ -64,7 +70,10 @@ fn dump_styles_node(doc: &Document, id: NodeId, styles: &HashMap<NodeId, Compute
     if let Some(style) = styles.get(&id) {
         let prop_indent = "  ".repeat(depth + 1);
         out.push_str(&format!("| {prop_indent}display={}\n", style.display));
-        out.push_str(&format!("| {prop_indent}color={}\n", format_color(style.color)));
+        out.push_str(&format!(
+            "| {prop_indent}color={}\n",
+            format_color(style.color)
+        ));
         let mut others: Vec<_> = style.other.iter().collect();
         others.sort_by_key(|(k, _)| (*k).clone());
         for (k, v) in others {
@@ -86,11 +95,17 @@ fn computed_style_fixtures() {
     let mut failures = Vec::new();
 
     for fixture in &fixtures {
-        let Some(expected) = fixture.section("styles") else { continue };
+        let Some(expected) = fixture.section("styles") else {
+            continue;
+        };
         checked += 1;
 
         let doc = blueice_html::parse(fixture.data());
-        let author: Vec<Rule> = fixture.section("css").map(blueice_css::parse).map(|s| s.rules).unwrap_or_default();
+        let author: Vec<Rule> = fixture
+            .section("css")
+            .map(blueice_css::parse)
+            .map(|s| s.rules)
+            .unwrap_or_default();
         let sheets: Vec<(Origin, &[Rule])> = if author.is_empty() {
             vec![(Origin::Ua, &ua)]
         } else {
@@ -112,6 +127,14 @@ fn computed_style_fixtures() {
         }
     }
 
-    assert!(checked > 0, "at least one fixture must have a #styles section");
-    assert!(failures.is_empty(), "{} fixture(s) mismatched:\n\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        checked > 0,
+        "at least one fixture must have a #styles section"
+    );
+    assert!(
+        failures.is_empty(),
+        "{} fixture(s) mismatched:\n\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }

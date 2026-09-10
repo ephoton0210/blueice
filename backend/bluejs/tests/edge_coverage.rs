@@ -80,7 +80,9 @@ fn parser_scans_super_calls_inside_class_control_and_expression_containers() {
         assert!(parse(source).is_err(), "{source}");
     }
     assert!(parse("function outside({value=super.value}){}").is_err());
-    assert!(parse("class Base{}class Derived extends Base{constructor({value=super()}){}}").is_ok());
+    assert!(
+        parse("class Base{}class Derived extends Base{constructor({value=super()}){}}").is_ok()
+    );
 }
 
 #[test]
@@ -298,7 +300,9 @@ fn suspended_generator_roots_and_done_state_survive_collection() {
         Err(RuntimeError::Thrown(Value::Number(1.0)))
     ));
     assert_eq!(
-        evaluate("let generator=function* self(){yield self;};generator().next().value===generator"),
+        evaluate(
+            "let generator=function* self(){yield self;};generator().next().value===generator"
+        ),
         Ok(Value::Bool(true))
     );
 }

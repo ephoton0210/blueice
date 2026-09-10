@@ -250,7 +250,17 @@ impl Bytecode {
 
     pub(crate) fn instruction(&self, offset: usize) -> Option<Instruction> {
         let opcode = Opcode::decode(*self.code.get(offset)?)?;
-        let operand = if opcode.width() == 5 { Some(u32::from_le_bytes(self.code.get(offset + 1..offset + 5)?.try_into().ok()?)) } else { None };
-        Some(Instruction { offset, opcode, operand })
+        let operand = if opcode.width() == 5 {
+            Some(u32::from_le_bytes(
+                self.code.get(offset + 1..offset + 5)?.try_into().ok()?,
+            ))
+        } else {
+            None
+        };
+        Some(Instruction {
+            offset,
+            opcode,
+            operand,
+        })
     }
 }

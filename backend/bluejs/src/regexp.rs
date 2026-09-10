@@ -15,7 +15,11 @@ impl RegExp {
         Self::compile_with_timeout(source, flags, crate::regex_worker::DEFAULT_TIMEOUT)
     }
 
-    pub fn compile_with_timeout(source: JsString, flags: &JsString, timeout: std::time::Duration) -> Result<Self, RuntimeError> {
+    pub fn compile_with_timeout(
+        source: JsString,
+        flags: &JsString,
+        timeout: std::time::Duration,
+    ) -> Result<Self, RuntimeError> {
         let mut seen = Vec::new();
         for &flag in flags.as_code_units() {
             if !b"dgimsuvy".iter().any(|&f| u16::from(f) == flag) || seen.contains(&flag) {
@@ -24,22 +28,48 @@ impl RegExp {
             seen.push(flag);
         }
         if seen.contains(&u16::from(b'u')) && seen.contains(&u16::from(b'v')) {
-            return Err(RuntimeError::SyntaxError("RegExp flags u and v are mutually exclusive".into()));
+            return Err(RuntimeError::SyntaxError(
+                "RegExp flags u and v are mutually exclusive".into(),
+            ));
         }
         seen.sort_unstable();
-        let flags: String = seen.iter().map(|&c| char::from_u32(c as u32).unwrap()).collect();
-        let request = crate::regex_worker::Request { source: source.as_code_units().to_vec(), flags: flags.clone(), input: None, start: 0 };
+        let flags: String = seen
+            .iter()
+            .map(|&c| char::from_u32(c as u32).unwrap())
+            .collect();
+        let request = crate::regex_worker::Request {
+            source: source.as_code_units().to_vec(),
+            flags: flags.clone(),
+            input: None,
+            start: 0,
+        };
         match crate::regex_worker::request(request, timeout)? {
             crate::regex_worker::Reply::Compiled => {}
-            crate::regex_worker::Reply::SyntaxError(message) => return Err(RuntimeError::SyntaxError(message)),
+            crate::regex_worker::Reply::SyntaxError(message) => {
+                return Err(RuntimeError::SyntaxError(message))
+            }
             _ => return Err(RuntimeError::RegexWorker("unexpected compile reply".into())),
         }
         let capture_names = capture_names(&source, flags.contains('v'));
-        Ok(Self { source, flags, capture_names })
+        Ok(Self {
+            source,
+            flags,
+            capture_names,
+        })
     }
 
-    pub fn find(&self, string: &JsString, start: usize, timeout: std::time::Duration) -> Result<Option<crate::regex_worker::Match>, RuntimeError> {
-        let request = crate::regex_worker::Request { source: self.source.as_code_units().to_vec(), flags: self.flags.clone(), input: Some(string.as_code_units().to_vec()), start };
+    pub fn find(
+        &self,
+        string: &JsString,
+        start: usize,
+        timeout: std::time::Duration,
+    ) -> Result<Option<crate::regex_worker::Match>, RuntimeError> {
+        let request = crate::regex_worker::Request {
+            source: self.source.as_code_units().to_vec(),
+            flags: self.flags.clone(),
+            input: Some(string.as_code_units().to_vec()),
+            start,
+        };
         match crate::regex_worker::request(request, timeout)? {
             crate::regex_worker::Reply::Found(matched) => Ok(matched),
             _ => Err(RuntimeError::RegexWorker("unexpected match reply".into())),
@@ -65,7 +95,9 @@ fn capture_names(source: &JsString, unicode_sets: bool) -> Vec<(String, usize)> 
             0x28 if depth == 0 => {
                 if units.get(index) != Some(&0x3f) {
                     capture += 1;
-                } else if units.get(index + 1) == Some(&0x3c) && !matches!(units.get(index + 2), Some(0x3d | 0x21)) {
+                } else if units.get(index + 1) == Some(&0x3c)
+                    && !matches!(units.get(index + 2), Some(0x3d | 0x21))
+                {
                     capture += 1;
                     index += 2;
                     let mut name = JsString::default();
@@ -74,8 +106,14 @@ fn capture_names(source: &JsString, unicode_sets: bool) -> Vec<(String, usize)> 
                             index += 2; // validated Unicode escape, \\uXXXX or \\u{X}
                             let braced = units[index] == 0x7b;
                             index += usize::from(braced);
-                            let end = if braced { index + units[index..].iter().position(|c| *c == 0x7d).unwrap() } else { index + 4 };
-                            let point = units[index..end].iter().fold(0, |n, c| n * 16 + char::from_u32(*c as u32).unwrap().to_digit(16).unwrap());
+                            let end = if braced {
+                                index + units[index..].iter().position(|c| *c == 0x7d).unwrap()
+                            } else {
+                                index + 4
+                            };
+                            let point = units[index..end].iter().fold(0, |n, c| {
+                                n * 16 + char::from_u32(*c as u32).unwrap().to_digit(16).unwrap()
+                            });
                             name.push_code_point(point);
                             index = end + usize::from(braced);
                         } else {
@@ -96,7 +134,18 @@ fn capture_names(source: &JsString, unicode_sets: bool) -> Vec<(String, usize)> 
 pub(crate) fn advance(string: &JsString, position: usize, unicode: bool) -> usize {
     let units = string.as_code_units();
     position.saturating_add(
-        if unicode && units.get(position).is_some_and(|c| (0xd800..=0xdbff).contains(c)) && units.get(position + 1).is_some_and(|c| (0xdc00..=0xdfff).contains(c)) { 2 } else { 1 },
+        if unicode
+            && units
+                .get(position)
+                .is_some_and(|c| (0xd800..=0xdbff).contains(c))
+            && units
+                .get(position + 1)
+                .is_some_and(|c| (0xdc00..=0xdfff).contains(c))
+        {
+            2
+        } else {
+            1
+        },
     )
 }
 
@@ -122,7 +171,12 @@ pub(crate) fn escape_code_point(point: u32, first: bool) -> JsString {
         return format!("\\{control}").into();
     }
     if scalar.is_none_or(|c| ",-=<>#&!%:;@~'`\"".contains(c) || crate::primitive::whitespace(c)) {
-        return if point <= 0xff { format!("\\x{point:02x}") } else { format!("\\u{point:04x}") }.into();
+        return if point <= 0xff {
+            format!("\\x{point:02x}")
+        } else {
+            format!("\\u{point:04x}")
+        }
+        .into();
     }
     let mut result = JsString::default();
     result.push_code_point(point);

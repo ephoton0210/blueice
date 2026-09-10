@@ -60,9 +60,9 @@ pub fn specificity(selector: &ComplexSelector) -> Specificity {
         for s in &compound.simple_selectors {
             match s {
                 SimpleSelector::Id(_) => id += 1,
-                SimpleSelector::Class(_) | SimpleSelector::AttrPresence(_) | SimpleSelector::AttrEquals(_, _) => {
-                    class_like += 1
-                }
+                SimpleSelector::Class(_)
+                | SimpleSelector::AttrPresence(_)
+                | SimpleSelector::AttrEquals(_, _) => class_like += 1,
                 SimpleSelector::Type(_) => ty += 1,
                 SimpleSelector::Universal => {}
             }
@@ -72,8 +72,15 @@ pub fn specificity(selector: &ComplexSelector) -> Specificity {
 }
 
 fn trim_whitespace(tokens: &[Token]) -> &[Token] {
-    let start = tokens.iter().position(|t| *t != Token::Whitespace).unwrap_or(tokens.len());
-    let end = tokens.iter().rposition(|t| *t != Token::Whitespace).map(|i| i + 1).unwrap_or(0);
+    let start = tokens
+        .iter()
+        .position(|t| *t != Token::Whitespace)
+        .unwrap_or(tokens.len());
+    let end = tokens
+        .iter()
+        .rposition(|t| *t != Token::Whitespace)
+        .map(|i| i + 1)
+        .unwrap_or(0);
     if start >= end {
         &[]
     } else {
@@ -87,7 +94,10 @@ fn trim_whitespace(tokens: &[Token]) -> &[Token] {
 /// whole list -- matching real engines silently ignoring an invalid
 /// selector in a list rather than rejecting sibling ones.
 pub fn parse_selector_list(tokens: &[Token]) -> Vec<ComplexSelector> {
-    tokens.split(|t| *t == Token::Comma).filter_map(parse_complex_selector).collect()
+    tokens
+        .split(|t| *t == Token::Comma)
+        .filter_map(parse_complex_selector)
+        .collect()
 }
 
 fn parse_complex_selector(tokens: &[Token]) -> Option<ComplexSelector> {
@@ -121,11 +131,16 @@ fn parse_complex_selector(tokens: &[Token]) -> Option<ComplexSelector> {
 
     let compounds: Option<Vec<Compound>> = raw_compounds
         .iter()
-        .map(|toks| parse_simple_selectors(toks).map(|simple_selectors| Compound { simple_selectors }))
+        .map(|toks| {
+            parse_simple_selectors(toks).map(|simple_selectors| Compound { simple_selectors })
+        })
         .collect();
     let compounds = compounds?;
 
-    Some(ComplexSelector { compounds, combinators })
+    Some(ComplexSelector {
+        compounds,
+        combinators,
+    })
 }
 
 fn parse_simple_selectors(tokens: &[Token]) -> Option<Vec<SimpleSelector>> {
@@ -145,7 +160,9 @@ fn parse_simple_selectors(tokens: &[Token]) -> Option<Vec<SimpleSelector>> {
                 i += 1;
             }
             Token::Delim('.') => {
-                let Some(Token::Ident(name)) = tokens.get(i + 1) else { return None };
+                let Some(Token::Ident(name)) = tokens.get(i + 1) else {
+                    return None;
+                };
                 result.push(SimpleSelector::Class(name.clone()));
                 i += 2;
             }
@@ -154,7 +171,9 @@ fn parse_simple_selectors(tokens: &[Token]) -> Option<Vec<SimpleSelector>> {
                 i += 1;
             }
             Token::LeftBracket => {
-                let Some(Token::Ident(attr)) = tokens.get(i + 1) else { return None };
+                let Some(Token::Ident(attr)) = tokens.get(i + 1) else {
+                    return None;
+                };
                 let attr = attr.to_ascii_lowercase();
                 match tokens.get(i + 2) {
                     Some(Token::RightBracket) => {
@@ -183,13 +202,19 @@ fn parse_simple_selectors(tokens: &[Token]) -> Option<Vec<SimpleSelector>> {
 }
 
 fn compound_matches(doc: &Document, node: NodeId, compound: &Compound) -> bool {
-    let NodeData::Element { tag_name, attributes } = doc.data(node) else {
+    let NodeData::Element {
+        tag_name,
+        attributes,
+    } = doc.data(node)
+    else {
         return false;
     };
     compound.simple_selectors.iter().all(|s| match s {
         SimpleSelector::Universal => true,
         SimpleSelector::Type(t) => tag_name == t,
-        SimpleSelector::Class(c) => attributes.iter().any(|(k, v)| k == "class" && v.split_whitespace().any(|cls| cls == c)),
+        SimpleSelector::Class(c) => attributes
+            .iter()
+            .any(|(k, v)| k == "class" && v.split_whitespace().any(|cls| cls == c)),
         SimpleSelector::Id(id) => attributes.iter().any(|(k, v)| k == "id" && v == id),
         SimpleSelector::AttrPresence(a) => attributes.iter().any(|(k, _)| k == a),
         SimpleSelector::AttrEquals(a, v) => attributes.iter().any(|(k, val)| k == a && val == v),
@@ -226,13 +251,18 @@ fn matches_from(doc: &Document, selector: &ComplexSelector, i: usize, node: Node
     }
     match selector.combinators[i - 1] {
         Combinator::Child => {
-            let Some(parent) = doc.parent(node) else { return false };
-            compound_matches(doc, parent, &selector.compounds[i - 1]) && matches_from(doc, selector, i - 1, parent)
+            let Some(parent) = doc.parent(node) else {
+                return false;
+            };
+            compound_matches(doc, parent, &selector.compounds[i - 1])
+                && matches_from(doc, selector, i - 1, parent)
         }
         Combinator::Descendant => {
             let mut ancestor = doc.parent(node);
             while let Some(a) = ancestor {
-                if compound_matches(doc, a, &selector.compounds[i - 1]) && matches_from(doc, selector, i - 1, a) {
+                if compound_matches(doc, a, &selector.compounds[i - 1])
+                    && matches_from(doc, selector, i - 1, a)
+                {
                     return true;
                 }
                 ancestor = doc.parent(a);
@@ -259,17 +289,46 @@ mod tests {
 
     #[test]
     fn type_class_id_and_universal() {
-        assert_eq!(one("div").compounds, vec![Compound { simple_selectors: vec![SimpleSelector::Type("div".to_string())] }]);
-        assert_eq!(one(".foo").compounds, vec![Compound { simple_selectors: vec![SimpleSelector::Class("foo".to_string())] }]);
-        assert_eq!(one("#foo").compounds, vec![Compound { simple_selectors: vec![SimpleSelector::Id("foo".to_string())] }]);
-        assert_eq!(one("*").compounds, vec![Compound { simple_selectors: vec![SimpleSelector::Universal] }]);
+        assert_eq!(
+            one("div").compounds,
+            vec![Compound {
+                simple_selectors: vec![SimpleSelector::Type("div".to_string())]
+            }]
+        );
+        assert_eq!(
+            one(".foo").compounds,
+            vec![Compound {
+                simple_selectors: vec![SimpleSelector::Class("foo".to_string())]
+            }]
+        );
+        assert_eq!(
+            one("#foo").compounds,
+            vec![Compound {
+                simple_selectors: vec![SimpleSelector::Id("foo".to_string())]
+            }]
+        );
+        assert_eq!(
+            one("*").compounds,
+            vec![Compound {
+                simple_selectors: vec![SimpleSelector::Universal]
+            }]
+        );
     }
 
     #[test]
     fn type_names_are_case_insensitive_class_and_id_are_not() {
-        assert_eq!(one("DIV").compounds[0].simple_selectors, vec![SimpleSelector::Type("div".to_string())]);
-        assert_eq!(one(".Foo").compounds[0].simple_selectors, vec![SimpleSelector::Class("Foo".to_string())]);
-        assert_eq!(one("#Foo").compounds[0].simple_selectors, vec![SimpleSelector::Id("Foo".to_string())]);
+        assert_eq!(
+            one("DIV").compounds[0].simple_selectors,
+            vec![SimpleSelector::Type("div".to_string())]
+        );
+        assert_eq!(
+            one(".Foo").compounds[0].simple_selectors,
+            vec![SimpleSelector::Class("Foo".to_string())]
+        );
+        assert_eq!(
+            one("#Foo").compounds[0].simple_selectors,
+            vec![SimpleSelector::Id("Foo".to_string())]
+        );
     }
 
     #[test]
@@ -294,11 +353,17 @@ mod tests {
         );
         assert_eq!(
             one(r#"[type="text"]"#).compounds[0].simple_selectors,
-            vec![SimpleSelector::AttrEquals("type".to_string(), "text".to_string())]
+            vec![SimpleSelector::AttrEquals(
+                "type".to_string(),
+                "text".to_string()
+            )]
         );
         assert_eq!(
             one("[type=text]").compounds[0].simple_selectors,
-            vec![SimpleSelector::AttrEquals("type".to_string(), "text".to_string())],
+            vec![SimpleSelector::AttrEquals(
+                "type".to_string(),
+                "text".to_string()
+            )],
             "unquoted attribute values are also valid"
         );
     }
@@ -326,7 +391,10 @@ mod tests {
     #[test]
     fn mixed_combinators_multi_level() {
         let sel = one("ul > li.item a");
-        assert_eq!(sel.combinators, vec![Combinator::Child, Combinator::Descendant]);
+        assert_eq!(
+            sel.combinators,
+            vec![Combinator::Child, Combinator::Descendant]
+        );
         assert_eq!(sel.compounds.len(), 3);
     }
 
@@ -342,7 +410,10 @@ mod tests {
         // selector must still parse.
         let list = selectors("p, a:hover");
         assert_eq!(list.len(), 1);
-        assert_eq!(list[0].compounds[0].simple_selectors, vec![SimpleSelector::Type("p".to_string())]);
+        assert_eq!(
+            list[0].compounds[0].simple_selectors,
+            vec![SimpleSelector::Type("p".to_string())]
+        );
     }
 
     #[test]
@@ -362,7 +433,10 @@ mod tests {
     fn elem(doc: &mut Document, tag: &str, attrs: &[(&str, &str)]) -> NodeId {
         doc.create_node(NodeData::Element {
             tag_name: tag.to_string(),
-            attributes: attrs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            attributes: attrs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
         })
     }
 
@@ -406,9 +480,15 @@ mod tests {
         doc.append_child(ul, li);
         doc.append_child(li, a);
 
-        assert!(matches(&doc, a, &one("ul a")), "descendant, not just direct child");
+        assert!(
+            matches(&doc, a, &one("ul a")),
+            "descendant, not just direct child"
+        );
         assert!(matches(&doc, li, &one("ul li")));
-        assert!(!matches(&doc, a, &one("ul > a")), "a is not a direct child of ul");
+        assert!(
+            !matches(&doc, a, &one("ul > a")),
+            "a is not a direct child of ul"
+        );
     }
 
     #[test]
@@ -444,7 +524,10 @@ mod tests {
         doc.append_child(div, y_inner);
         doc.append_child(y_inner, z);
 
-        assert!(matches(&doc, z, &one("x > y z")), "must backtrack to y.outer, whose parent is x");
+        assert!(
+            matches(&doc, z, &one("x > y z")),
+            "must backtrack to y.outer, whose parent is x"
+        );
     }
 
     #[test]
@@ -456,14 +539,19 @@ mod tests {
         doc.append_child(root, section);
         doc.append_child(section, p);
 
-        assert!(!matches(&doc, p, &one("div p")), "p's ancestor is section, not div");
+        assert!(
+            !matches(&doc, p, &one("div p")),
+            "p's ancestor is section, not div"
+        );
     }
 
     #[test]
     fn text_node_never_matches_any_selector() {
         let mut doc = Document::new();
         let root = doc.root();
-        let text = doc.create_node(NodeData::Text { data: "hi".to_string() });
+        let text = doc.create_node(NodeData::Text {
+            data: "hi".to_string(),
+        });
         doc.append_child(root, text);
         assert!(!matches(&doc, text, &one("*")));
     }

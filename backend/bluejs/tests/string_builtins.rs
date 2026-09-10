@@ -22,8 +22,17 @@ fn constructor_statics_and_native_method_identity() {
     ] {
         assert_eq!(evaluate(source).unwrap(), Value::Bool(true), "{source}");
     }
-    for source in ["String.fromCodePoint(-1)", "String.fromCodePoint(0.5)", "String.fromCodePoint(NaN)", "String.fromCodePoint(Infinity)", "String.fromCodePoint(0x110000)"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::RangeError(_))), "{source}");
+    for source in [
+        "String.fromCodePoint(-1)",
+        "String.fromCodePoint(0.5)",
+        "String.fromCodePoint(NaN)",
+        "String.fromCodePoint(Infinity)",
+        "String.fromCodePoint(0x110000)",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::RangeError(_))),
+            "{source}"
+        );
     }
 }
 
@@ -55,7 +64,10 @@ fn boxed_strings_preserve_identity_and_read_only_virtual_properties() {
     ] {
         assert_eq!(evaluate(source).unwrap(), Value::Bool(true), "{source}");
     }
-    assert!(matches!(evaluate("new String.fromCharCode(65)"), Err(RuntimeError::TypeError(_))));
+    assert!(matches!(
+        evaluate("new String.fromCharCode(65)"),
+        Err(RuntimeError::TypeError(_))
+    ));
 }
 
 #[test]
@@ -86,8 +98,17 @@ fn calls_preserve_receivers_shadowing_and_evaluation_order() {
     ] {
         assert_eq!(evaluate(source).unwrap(), Value::Bool(true), "{source}");
     }
-    for source in ["let f='abc'.slice; f(1)", "String.prototype.slice.call(null)", "String.prototype.valueOf.call(3)", "'abc'.missing()", "1()"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}");
+    for source in [
+        "let f='abc'.slice; f(1)",
+        "String.prototype.slice.call(null)",
+        "String.prototype.valueOf.call(3)",
+        "'abc'.missing()",
+        "1()",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
     }
 }
 
@@ -108,10 +129,16 @@ fn padding_repetition_and_trimming_follow_utf16_and_es_whitespace() {
         assert_eq!(evaluate(source).unwrap(), Value::Bool(true), "{source}");
     }
     for source in ["''.repeat(-1)", "''.repeat(Infinity)"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::RangeError(_))), "{source}");
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::RangeError(_))),
+            "{source}"
+        );
     }
     for source in ["'a'.repeat(1e300)", "'a'.padStart(Infinity)"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::StringLimit { .. })), "{source}");
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::StringLimit { .. })),
+            "{source}"
+        );
     }
 }
 
@@ -132,7 +159,10 @@ fn raw_and_split_use_array_like_properties_and_code_units() {
         assert_eq!(evaluate(source).unwrap(), Value::Bool(true), "{source}");
     }
     for source in ["String.raw()", "String.raw({})", "String.raw({raw:null})"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}");
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
     }
 }
 
@@ -149,7 +179,10 @@ fn string_replacement_patterns_and_native_callbacks() {
     ] {
         assert_eq!(evaluate(source).unwrap(), Value::Bool(true), "{source}");
     }
-    assert!(matches!(evaluate("'a'.replace('a',String.fromCodePoint)"), Err(RuntimeError::RangeError(_))));
+    assert!(matches!(
+        evaluate("'a'.replace('a',String.fromCodePoint)"),
+        Err(RuntimeError::RangeError(_))
+    ));
 }
 
 #[test]
@@ -169,20 +202,46 @@ fn unicode_case_mapping_and_all_normalization_forms_preserve_lone_surrogates() {
     ] {
         assert_eq!(evaluate(source).unwrap(), Value::Bool(true), "{source}");
     }
-    for source in ["'a'.normalize('bad')", "'a'.normalize(null)", r"'a'.normalize('\ud800')"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::RangeError(_))), "{source}");
+    for source in [
+        "'a'.normalize('bad')",
+        "'a'.normalize(null)",
+        r"'a'.normalize('\ud800')",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::RangeError(_))),
+            "{source}"
+        );
     }
 }
 
 #[test]
 fn legacy_browser_string_wrappers_and_substr_are_real_methods() {
-    for (method, tag) in
-        [("big", "big"), ("blink", "blink"), ("bold", "b"), ("fixed", "tt"), ("italics", "i"), ("small", "small"), ("strike", "strike"), ("sub", "sub"), ("sup", "sup")]
-    {
-        assert_eq!(evaluate(&format!("'<x>'.{method}()")).unwrap(), Value::String(format!("<{tag}><x></{tag}>").into()));
+    for (method, tag) in [
+        ("big", "big"),
+        ("blink", "blink"),
+        ("bold", "b"),
+        ("fixed", "tt"),
+        ("italics", "i"),
+        ("small", "small"),
+        ("strike", "strike"),
+        ("sub", "sub"),
+        ("sup", "sup"),
+    ] {
+        assert_eq!(
+            evaluate(&format!("'<x>'.{method}()")).unwrap(),
+            Value::String(format!("<{tag}><x></{tag}>").into())
+        );
     }
-    for (method, tag, attribute) in [("anchor", "a", "name"), ("link", "a", "href"), ("fontcolor", "font", "color"), ("fontsize", "font", "size")] {
-        assert_eq!(evaluate(&format!(r#"'x'.{method}('"&<>')"#)).unwrap(), Value::String(format!("<{tag} {attribute}=\"&quot;&<>\">x</{tag}>").into()));
+    for (method, tag, attribute) in [
+        ("anchor", "a", "name"),
+        ("link", "a", "href"),
+        ("fontcolor", "font", "color"),
+        ("fontsize", "font", "size"),
+    ] {
+        assert_eq!(
+            evaluate(&format!(r#"'x'.{method}('"&<>')"#)).unwrap(),
+            Value::String(format!("<{tag} {attribute}=\"&quot;&<>\">x</{tag}>").into())
+        );
     }
     for source in [
         "'abcd'.substr(-2,1) === 'c' && 'abcd'.substr(1) === 'bcd'",
@@ -197,7 +256,11 @@ fn legacy_browser_string_wrappers_and_substr_are_real_methods() {
 
 #[test]
 fn native_growth_limits_and_partial_bootstrap_do_not_leak_roots() {
-    let mut vm = Vm::new(VmConfig { max_string_bytes: 64, ..VmConfig::default() }).unwrap();
+    let mut vm = Vm::new(VmConfig {
+        max_string_bytes: 64,
+        ..VmConfig::default()
+    })
+    .unwrap();
     for source in [
         "'a'.repeat(33)",
         "'a'.concat('a'.repeat(32))",
@@ -210,26 +273,60 @@ fn native_growth_limits_and_partial_bootstrap_do_not_leak_roots() {
         "String.raw({raw:['a'.repeat(32),'b']})",
     ] {
         let code = compile(&parse(source).unwrap()).unwrap();
-        assert_eq!(vm.execute(&code), Err(RuntimeError::StringLimit { limit: 64 }), "{source}");
+        assert_eq!(
+            vm.execute(&code),
+            Err(RuntimeError::StringLimit { limit: 64 }),
+            "{source}"
+        );
     }
     let static_codes = format!("String.fromCharCode({})", vec!["65"; 33].join(","));
-    assert_eq!(vm.execute(&compile(&parse(&static_codes).unwrap()).unwrap()), Err(RuntimeError::StringLimit { limit: 64 }));
+    assert_eq!(
+        vm.execute(&compile(&parse(&static_codes).unwrap()).unwrap()),
+        Err(RuntimeError::StringLimit { limit: 64 })
+    );
     // Exercise failures before and after allocating/rooting the constructor,
     // including partial method registration. Retry in the same VM each time.
     for ceiling in [512, 1024, 2048, 4096, 8192, 16384] {
-        let mut vm = Vm::new(VmConfig { heap: HeapConfig { nursery_capacity: 1, major_threshold_bytes: 256, max_heap_bytes: ceiling }, ..VmConfig::default() }).unwrap();
+        let mut vm = Vm::new(VmConfig {
+            heap: HeapConfig {
+                nursery_capacity: 1,
+                major_threshold_bytes: 256,
+                max_heap_bytes: ceiling,
+            },
+            ..VmConfig::default()
+        })
+        .unwrap();
         let baseline = vm.heap().stats().managed_bytes;
         for _ in 0..2 {
-            assert!(matches!(vm.execute(&compile(&parse("String").unwrap()).unwrap()), Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. }))));
-            assert_eq!(vm.heap().stats().managed_bytes, baseline, "ceiling {ceiling}");
+            assert!(matches!(
+                vm.execute(&compile(&parse("String").unwrap()).unwrap()),
+                Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. }))
+            ));
+            assert_eq!(
+                vm.heap().stats().managed_bytes,
+                baseline,
+                "ceiling {ceiling}"
+            );
         }
-        assert_eq!(vm.execute(&compile(&parse("42").unwrap()).unwrap()).unwrap(), Value::Number(42.0));
+        assert_eq!(
+            vm.execute(&compile(&parse("42").unwrap()).unwrap())
+                .unwrap(),
+            Value::Number(42.0)
+        );
     }
 }
 
 #[test]
 fn native_call_inputs_and_split_results_survive_gc_and_errors() {
-    let mut vm = Vm::new(VmConfig { heap: HeapConfig { nursery_capacity: 1, major_threshold_bytes: 256, max_heap_bytes: 128 * 1024 }, ..VmConfig::default() }).unwrap();
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 256,
+            max_heap_bytes: 128 * 1024,
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
     for source in [
         "let o={raw:['a','b']}; let s=String.raw(o,7); o.raw[0]+s === 'aa7b'",
         "let a='x'.repeat(128).split(''); let garbage={}; a[127] === 'x' && a.length === 128",
@@ -237,16 +334,44 @@ fn native_call_inputs_and_split_results_survive_gc_and_errors() {
         "String.prototype.charAt.call(true) === 't' && 'abc'.slice(1) === 'bc'",
         "'abc'.length++ === 3 && ('x'[0]='z') === 'z'",
     ] {
-        assert_eq!(vm.execute(&compile(&parse(source).unwrap()).unwrap()).unwrap(), Value::Bool(true), "{source}");
+        assert_eq!(
+            vm.execute(&compile(&parse(source).unwrap()).unwrap())
+                .unwrap(),
+            Value::Bool(true),
+            "{source}"
+        );
     }
-    for source in ["String.prototype.split.call(null)", "String.prototype.replace.call(undefined)", "String.prototype.toString.call({})"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}");
+    for source in [
+        "String.prototype.split.call(null)",
+        "String.prototype.replace.call(undefined)",
+        "String.prototype.toString.call({})",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
     }
-    assert_eq!(evaluate("String({})").unwrap(), Value::String("[object Object]".into()));
-    assert_eq!(evaluate("String.prototype.slice.call({})").unwrap(), Value::String("[object Object]".into()));
+    assert_eq!(
+        evaluate("String({})").unwrap(),
+        Value::String("[object Object]".into())
+    );
+    assert_eq!(
+        evaluate("String.prototype.slice.call({})").unwrap(),
+        Value::String("[object Object]".into())
+    );
     assert_eq!(evaluate("(1).missing").unwrap(), Value::Undefined);
-    let mut limited = Vm::new(VmConfig { instruction_budget: 50, ..VmConfig::default() }).unwrap();
+    let mut limited = Vm::new(VmConfig {
+        instruction_budget: 50,
+        ..VmConfig::default()
+    })
+    .unwrap();
     let raw = "let r={length:1000}; String.raw({raw:r})";
-    assert_eq!(limited.execute(&compile(&parse(raw).unwrap()).unwrap()), Err(RuntimeError::InstructionLimit));
-    assert_eq!(limited.execute(&compile(&parse("'a'.repeat(100).split('')").unwrap()).unwrap()), Err(RuntimeError::InstructionLimit));
+    assert_eq!(
+        limited.execute(&compile(&parse(raw).unwrap()).unwrap()),
+        Err(RuntimeError::InstructionLimit)
+    );
+    assert_eq!(
+        limited.execute(&compile(&parse("'a'.repeat(100).split('')").unwrap()).unwrap()),
+        Err(RuntimeError::InstructionLimit)
+    );
 }

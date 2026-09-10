@@ -57,7 +57,11 @@ fn direct_eval_uses_the_callers_bindings_completion_and_strictness() {
 
 #[test]
 fn named_function_expressions_bind_their_name_and_reuse_tail_frames() {
-    let mut vm = Vm::new(VmConfig { instruction_budget: 5_000_000, ..VmConfig::default() }).unwrap();
+    let mut vm = Vm::new(VmConfig {
+        instruction_budget: 5_000_000,
+        ..VmConfig::default()
+    })
+    .unwrap();
     for source in [
         "let f=(function self(){return self;});typeof self==='undefined'&&f()===f",
         "let caught;try{(function self(){'use strict';self=1;})()}catch(error){caught=error instanceof TypeError;}caught",
@@ -92,7 +96,10 @@ fn classes_construct_instances_install_methods_and_keep_static_block_early_error
         ),
         Ok(Value::Bool(true))
     );
-    assert_eq!(execute(&mut vm, "class C{static{(()=>{try{}catch(await){}})}};true"), Ok(Value::Bool(true)));
+    assert_eq!(
+        execute(&mut vm, "class C{static{(()=>{try{}catch(await){}})}};true"),
+        Ok(Value::Bool(true))
+    );
     for source in [
         "class C{constructor(value){this.value=value;}twice(){return this.value*2;}static create(value){return new C(value);}}let instance=C.create(21);instance.twice()===42&&instance.constructor===C&&Object.keys(C.prototype).length===0",
         "class C{get value(){return this.stored;}set value(value){this.stored=value;}static name(){return 'method';}}let instance=new C;instance.value=7;instance.value===7&&C.name()==='method'",
@@ -133,16 +140,34 @@ fn derived_classes_construct_through_super_and_keep_home_object_receivers() {
 
 #[test]
 fn class_async_method_syntax_is_classified_as_an_execution_gap() {
-    let program = parse("class Derived extends Base{async method(){return 1;}static async *items(){yield 2;}}").unwrap();
-    assert!(matches!(compile(&program), Err(blueice_bluejs::CompileError::Unsupported("async functions"))));
+    let program = parse(
+        "class Derived extends Base{async method(){return 1;}static async *items(){yield 2;}}",
+    )
+    .unwrap();
+    assert!(matches!(
+        compile(&program),
+        Err(blueice_bluejs::CompileError::Unsupported("async functions"))
+    ));
     let program = parse("class Base{async method(){return 1;}}class Derived extends Base{async method(value=super.method()){return await value;}static async *items(){for await(let item of [])yield* await super.method();}}").unwrap();
-    assert!(matches!(compile(&program), Err(blueice_bluejs::CompileError::Unsupported("async functions"))));
+    assert!(matches!(
+        compile(&program),
+        Err(blueice_bluejs::CompileError::Unsupported("async functions"))
+    ));
     let program = parse("async function helper(){return await 1;}").unwrap();
-    assert!(matches!(compile(&program), Err(blueice_bluejs::CompileError::Unsupported("async functions"))));
+    assert!(matches!(
+        compile(&program),
+        Err(blueice_bluejs::CompileError::Unsupported("async functions"))
+    ));
     let program = parse("async function helper(){return new.target;}").unwrap();
-    assert!(matches!(compile(&program), Err(blueice_bluejs::CompileError::Unsupported("async functions"))));
+    assert!(matches!(
+        compile(&program),
+        Err(blueice_bluejs::CompileError::Unsupported("async functions"))
+    ));
     let program = parse("let helper=async value=>await value;").unwrap();
-    assert!(matches!(compile(&program), Err(blueice_bluejs::CompileError::Unsupported("async functions"))));
+    assert!(matches!(
+        compile(&program),
+        Err(blueice_bluejs::CompileError::Unsupported("async functions"))
+    ));
     assert!(parse("class C{async constructor(){}}").is_err());
     assert!(parse("class C{async\nmethod(){}}").is_ok());
     for source in [
@@ -158,9 +183,17 @@ fn class_async_method_syntax_is_classified_as_an_execution_gap() {
         let error = parse(source).unwrap_err();
         assert!(error.known_syntax, "{source}: {error:?}");
     }
-    assert!(parse("class Base{}class Derived extends Base{constructor(){(()=>super())();}}").is_ok());
-    let program = parse("class Derived extends Base{field=1;constructor(){if(true)super();}}").unwrap();
-    assert!(matches!(compile(&program), Err(blueice_bluejs::CompileError::Unsupported("instance fields in an explicit derived constructor without a direct super() call"))));
+    assert!(
+        parse("class Base{}class Derived extends Base{constructor(){(()=>super())();}}").is_ok()
+    );
+    let program =
+        parse("class Derived extends Base{field=1;constructor(){if(true)super();}}").unwrap();
+    assert!(matches!(
+        compile(&program),
+        Err(blueice_bluejs::CompileError::Unsupported(
+            "instance fields in an explicit derived constructor without a direct super() call"
+        ))
+    ));
 }
 
 #[test]
@@ -185,14 +218,24 @@ fn function_and_inheritance_early_errors_are_classified() {
         "'use strict';function*g(){function f(value=yield){unbound=value;}}",
     ] {
         let program = parse(source).unwrap();
-        assert!(matches!(compile(&program), Err(blueice_bluejs::CompileError::InvalidSyntax(_))), "{source}");
+        assert!(
+            matches!(
+                compile(&program),
+                Err(blueice_bluejs::CompileError::InvalidSyntax(_))
+            ),
+            "{source}"
+        );
     }
 }
 
 #[test]
 fn class_home_metadata_survives_minor_collection_while_a_generator_is_suspended() {
     let mut vm = Vm::new(VmConfig {
-        heap: HeapConfig { nursery_capacity: 1, major_threshold_bytes: 256, max_heap_bytes: 512 * 1024 },
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 256,
+            max_heap_bytes: 512 * 1024,
+        },
         ..VmConfig::default()
     })
     .unwrap();

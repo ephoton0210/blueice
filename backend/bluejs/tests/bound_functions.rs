@@ -10,7 +10,11 @@ fn evaluate(source: &str) -> Result<Value, RuntimeError> {
 
 fn check(sources: &[&str]) {
     for source in sources {
-        assert_eq!(evaluate(source).unwrap_or_else(|e| panic!("{source}: {e}")), Value::Bool(true), "{source}");
+        assert_eq!(
+            evaluate(source).unwrap_or_else(|e| panic!("{source}: {e}")),
+            Value::Bool(true),
+            "{source}"
+        );
     }
 }
 
@@ -43,9 +47,17 @@ fn bound_metadata_observes_length_name_and_original_prototype() {
         "function f(){} Object.defineProperty(f,'length',{value:-0}); 1/f.bind(null).length === Infinity",
         "function f(){} let g=f.bind(null); Object.defineProperty(g,'name',{get(){throw 1;}}); g.toString().includes('[native code]')",
     ]);
-    for (length, expected) in
-        [("Infinity", "Infinity"), ("-Infinity", "0"), ("NaN", "0"), ("-0", "0"), ("-3.9", "0"), ("3.9", "2"), ("'3'", "0"), ("Symbol()", "0"), ("{valueOf(){throw 1;}}", "0")]
-    {
+    for (length, expected) in [
+        ("Infinity", "Infinity"),
+        ("-Infinity", "0"),
+        ("NaN", "0"),
+        ("-0", "0"),
+        ("-3.9", "0"),
+        ("3.9", "2"),
+        ("'3'", "0"),
+        ("Symbol()", "0"),
+        ("{valueOf(){throw 1;}}", "0"),
+    ] {
         check(&[&format!("function f(){{}} Object.defineProperty(f,'length',{{value:{length}}}); f.bind(null,1).length === {expected}")]);
     }
 }
@@ -61,10 +73,16 @@ fn bound_constructors_substitute_new_target_by_identity() {
         "function F(){} let B=F.bind(null); B.prototype={x:1}; Object.getPrototypeOf(Reflect.construct(F,[],B)) === B.prototype && Object.getPrototypeOf(Reflect.construct(B,[],B)) === F.prototype",
         "function F(){return {x:1};} let B=F.bind(null); (new B()).x === 1",
     ]);
-    for source in
-        ["let B=(()=>{}).bind(null); new B()", "let B=String.prototype.slice.bind('a'); new B()", "Reflect.construct(String,[],(()=>{}).bind(null))", "new String.bind(null)"]
-    {
-        assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}");
+    for source in [
+        "let B=(()=>{}).bind(null); new B()",
+        "let B=String.prototype.slice.bind('a'); new B()",
+        "Reflect.construct(String,[],(()=>{}).bind(null))",
+        "new String.bind(null)",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
     }
 }
 
@@ -85,8 +103,17 @@ fn instanceof_uses_custom_protocols_and_bound_targets() {
         "let p=Object.getPrototypeOf(String); let d=Object.getOwnPropertyDescriptor(p,Symbol.hasInstance); !d.writable && !d.enumerable && !d.configurable && d.value.name === '[Symbol.hasInstance]' && d.value.length === 1",
         "let f=()=>{}; f.prototype={}; Object.create(f.prototype) instanceof f && !({} instanceof f)",
     ]);
-    for source in ["1 instanceof 1", "({}) instanceof {}", "1 instanceof {[Symbol.hasInstance]:1}", "({}) instanceof (()=>{})", "function F(){} F.prototype=1; ({}) instanceof F"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}");
+    for source in [
+        "1 instanceof 1",
+        "({}) instanceof {}",
+        "1 instanceof {[Symbol.hasInstance]:1}",
+        "({}) instanceof (()=>{})",
+        "function F(){} F.prototype=1; ({}) instanceof F",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
     }
 }
 
@@ -102,26 +129,47 @@ fn bound_getter_errors_and_target_throws_propagate() {
     ] {
         assert_eq!(evaluate(source), Err(RuntimeError::Thrown(Value::String(thrown.into()))), "{source}");
     }
-    for source in ["String.bind.call(null)", "String.bind.call({get length(){throw 1;}})", "String.bind.call(1)"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}");
+    for source in [
+        "String.bind.call(null)",
+        "String.bind.call({get length(){throw 1;}})",
+        "String.bind.call(1)",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
     }
 }
 
 #[test]
 fn bound_internal_edges_survive_collection_and_are_reclaimed() {
-    let mut vm = Vm::new(VmConfig { heap: HeapConfig { nursery_capacity: 1, major_threshold_bytes: 256, max_heap_bytes: 256 * 1024 }, ..Default::default() }).unwrap();
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 256,
+            max_heap_bytes: 256 * 1024,
+        },
+        ..Default::default()
+    })
+    .unwrap();
     let code = compile(&parse("String; Object; globalThis; 0").unwrap()).unwrap();
     vm.execute(&code).unwrap();
     let baseline = vm.heap().stats().managed_bytes;
     let code = compile(&parse("let target=function(a){return this.x+a.y;}; let receiver={x:'A'}; let arg={y:'B'}; globalThis.bound=target.bind(receiver,arg); globalThis.ids=[target,receiver,arg]; target=null;receiver=null;arg=null;globalThis.ids").unwrap()).unwrap();
-    let Value::Object(ids) = vm.execute(&code).unwrap() else { panic!("expected handle array") };
+    let Value::Object(ids) = vm.execute(&code).unwrap() else {
+        panic!("expected handle array")
+    };
     let retained: Vec<_> = (0..3)
         .map(|i| match vm.heap().get(ids, i.to_string()).unwrap() {
             Value::Object(id) => id,
             value => panic!("expected retained object: {value:?}"),
         })
         .collect();
-    let code = compile(&parse("delete globalThis.ids; for(let i=0;i<40;i++){let garbage={};} globalThis.bound()").unwrap()).unwrap();
+    let code = compile(
+        &parse("delete globalThis.ids; for(let i=0;i<40;i++){let garbage={};} globalThis.bound()")
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(vm.execute(&code).unwrap(), Value::String("AB".into()));
     assert!(retained.iter().all(|id| vm.heap().contains(*id)));
     assert!(!vm.heap().contains(ids));
@@ -129,9 +177,16 @@ fn bound_internal_edges_survive_collection_and_are_reclaimed() {
     vm.execute(&code).unwrap();
     assert!(retained.iter().all(|id| !vm.heap().contains(*id)));
     assert_eq!(vm.heap().stats().managed_bytes, baseline);
-    let code = compile(&parse("let f=function(a){throw a;}.bind(null,{message:'kept'}); f()").unwrap()).unwrap();
-    let Err(RuntimeError::Thrown(Value::Object(thrown))) = vm.execute(&code) else { panic!("expected thrown object") };
-    assert_eq!(vm.heap().get(thrown, "message").unwrap(), Value::String("kept".into()));
+    let code =
+        compile(&parse("let f=function(a){throw a;}.bind(null,{message:'kept'}); f()").unwrap())
+            .unwrap();
+    let Err(RuntimeError::Thrown(Value::Object(thrown))) = vm.execute(&code) else {
+        panic!("expected thrown object")
+    };
+    assert_eq!(
+        vm.heap().get(thrown, "message").unwrap(),
+        Value::String("kept".into())
+    );
     vm.execute(&compile(&parse("0").unwrap()).unwrap()).unwrap();
     assert!(!vm.heap().contains(thrown));
     assert_eq!(vm.heap().stats().managed_bytes, baseline);
@@ -143,24 +198,60 @@ fn retained_arguments_are_charged_and_failed_bindings_release_roots() {
     let code = compile(&parse("String.bind(null)").unwrap()).unwrap();
     vm.execute(&code).unwrap();
     let empty_bytes = vm.heap().stats().managed_bytes;
-    for source in ["String.bind('a'.repeat(1000))", "String.bind(null,'a'.repeat(1000))", "String.bind(null,Symbol('a'.repeat(1000)))"] {
+    for source in [
+        "String.bind('a'.repeat(1000))",
+        "String.bind(null,'a'.repeat(1000))",
+        "String.bind(null,Symbol('a'.repeat(1000)))",
+    ] {
         let code = compile(&parse(source).unwrap()).unwrap();
         vm.execute(&code).unwrap();
-        assert!(vm.heap().stats().managed_bytes >= empty_bytes + 2000, "{source}");
+        assert!(
+            vm.heap().stats().managed_bytes >= empty_bytes + 2000,
+            "{source}"
+        );
     }
-    let mut vm = Vm::new(VmConfig { max_string_bytes: 64, ..Default::default() }).unwrap();
-    let code = compile(&parse("function f(){} Object.defineProperty(f,'name',{value:'x'.repeat(32)}); f.bind(null)").unwrap()).unwrap();
-    assert_eq!(vm.execute(&code), Err(RuntimeError::StringLimit { limit: 64 }));
-    let heap = HeapConfig { nursery_capacity: 1, major_threshold_bytes: 256, max_heap_bytes: 128 * 1024 };
-    let mut vm = Vm::new(VmConfig { heap, ..Default::default() }).unwrap();
-    vm.execute(&compile(&parse("String; 0").unwrap()).unwrap()).unwrap();
+    let mut vm = Vm::new(VmConfig {
+        max_string_bytes: 64,
+        ..Default::default()
+    })
+    .unwrap();
+    let code = compile(
+        &parse(
+            "function f(){} Object.defineProperty(f,'name',{value:'x'.repeat(32)}); f.bind(null)",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        vm.execute(&code),
+        Err(RuntimeError::StringLimit { limit: 64 })
+    );
+    let heap = HeapConfig {
+        nursery_capacity: 1,
+        major_threshold_bytes: 256,
+        max_heap_bytes: 128 * 1024,
+    };
+    let mut vm = Vm::new(VmConfig {
+        heap,
+        ..Default::default()
+    })
+    .unwrap();
+    vm.execute(&compile(&parse("String; 0").unwrap()).unwrap())
+        .unwrap();
     let baseline = vm.heap().stats().managed_bytes;
     let code = compile(&parse("String.bind(null, 'x'.repeat(128*1024))").unwrap()).unwrap();
     for _ in 0..2 {
-        assert!(matches!(vm.execute(&code), Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. }))));
+        assert!(matches!(
+            vm.execute(&code),
+            Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. }))
+        ));
         assert_eq!(vm.heap().stats().managed_bytes, baseline);
     }
-    assert_eq!(vm.execute(&compile(&parse("String.bind(null,'ok')()").unwrap()).unwrap()).unwrap(), Value::String("ok".into()));
+    assert_eq!(
+        vm.execute(&compile(&parse("String.bind(null,'ok')()").unwrap()).unwrap())
+            .unwrap(),
+        Value::String("ok".into())
+    );
 }
 
 #[test]
@@ -170,16 +261,37 @@ fn bound_chains_use_fuel_without_adding_execution_frames() {
         "function F(){} Object.setPrototypeOf(F,null); let B=F; for(let i=0;i<80;i++){B=String.bind.call(B,null);} (new B()) instanceof B",
         "function f(...args){return args.join('');} let g=f; for(let i=0;i<80;i++){g=g.bind(null,i%10);} g('!') === '0123456789'.repeat(8)+'!'",
     ]);
-    let mut vm = Vm::new(VmConfig { instruction_budget: 1000, ..Default::default() }).unwrap();
+    let mut vm = Vm::new(VmConfig {
+        instruction_budget: 1000,
+        ..Default::default()
+    })
+    .unwrap();
     // Setup uses several executions so the eventual chain traversal, rather
     // than setup's bytecode, is what exhausts the per-execution fuel budget.
-    vm.execute(&compile(&parse("globalThis.f=String; globalThis.o=new String('x'); 0").unwrap()).unwrap()).unwrap();
-    let code = compile(&parse("for(let i=0;i<20;i++){globalThis.f=globalThis.f.bind(null);} 0").unwrap()).unwrap();
+    vm.execute(
+        &compile(&parse("globalThis.f=String; globalThis.o=new String('x'); 0").unwrap()).unwrap(),
+    )
+    .unwrap();
+    let code =
+        compile(&parse("for(let i=0;i<20;i++){globalThis.f=globalThis.f.bind(null);} 0").unwrap())
+            .unwrap();
     for _ in 0..55 {
         vm.execute(&code).unwrap();
     }
-    for source in ["globalThis.f()", "new globalThis.f()", "globalThis.o instanceof globalThis.f"] {
-        assert_eq!(vm.execute(&compile(&parse(source).unwrap()).unwrap()), Err(RuntimeError::InstructionLimit), "{source}");
+    for source in [
+        "globalThis.f()",
+        "new globalThis.f()",
+        "globalThis.o instanceof globalThis.f",
+    ] {
+        assert_eq!(
+            vm.execute(&compile(&parse(source).unwrap()).unwrap()),
+            Err(RuntimeError::InstructionLimit),
+            "{source}"
+        );
     }
-    assert_eq!(vm.execute(&compile(&parse("'ok'").unwrap()).unwrap()).unwrap(), Value::String("ok".into()));
+    assert_eq!(
+        vm.execute(&compile(&parse("'ok'").unwrap()).unwrap())
+            .unwrap(),
+        Value::String("ok".into())
+    );
 }

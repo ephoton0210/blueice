@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use blueice_bluejs::{RuntimeError, Value, Vm, compile, parse};
+use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
 
 fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap())
@@ -28,22 +28,49 @@ fn locale_casing_and_canonicalization() {
         "Intl.getCanonicalLocales('en-u-ca-gregory-u-nu-latn')",
         "Intl.getCanonicalLocales('de-1901-1901')",
     ] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::RangeError(_))), "{source}");
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::RangeError(_))),
+            "{source}"
+        );
     }
-    for source in ["Intl.getCanonicalLocales(null)", "Intl.getCanonicalLocales([4])", "Intl.getCanonicalLocales([undefined])", "''.toLocaleUpperCase([Symbol()])"] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}");
+    for source in [
+        "Intl.getCanonicalLocales(null)",
+        "Intl.getCanonicalLocales([4])",
+        "Intl.getCanonicalLocales([undefined])",
+        "''.toLocaleUpperCase([Symbol()])",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
     }
 }
 
 #[test]
 fn locale_objects_preserve_canonical_locale_state() {
     for (source, expected) in [
-        ("new Intl.Locale('EN-latn-us-1901-u-ca-islamicc-kn-true').toString()", "en-Latn-US-1901-u-ca-islamic-civil-kn"),
-        ("new Intl.Locale('EN-latn-us-1901-u-ca-islamicc-kn-true').baseName", "en-Latn-US-1901"),
-        ("new Intl.Locale('EN-latn-us-1901-u-ca-islamicc-kn-true').calendar", "islamic-civil"),
-        ("Intl.getCanonicalLocales('en-u-ca-ethiopic-amete-alem')[0]", "en-u-ca-ethioaa"),
+        (
+            "new Intl.Locale('EN-latn-us-1901-u-ca-islamicc-kn-true').toString()",
+            "en-Latn-US-1901-u-ca-islamic-civil-kn",
+        ),
+        (
+            "new Intl.Locale('EN-latn-us-1901-u-ca-islamicc-kn-true').baseName",
+            "en-Latn-US-1901",
+        ),
+        (
+            "new Intl.Locale('EN-latn-us-1901-u-ca-islamicc-kn-true').calendar",
+            "islamic-civil",
+        ),
+        (
+            "Intl.getCanonicalLocales('en-u-ca-ethiopic-amete-alem')[0]",
+            "en-u-ca-ethioaa",
+        ),
     ] {
-        assert_eq!(evaluate(source), Ok(Value::String(expected.into())), "{source}");
+        assert_eq!(
+            evaluate(source),
+            Ok(Value::String(expected.into())),
+            "{source}"
+        );
     }
     for source in [
         "let l=new Intl.Locale('EN-latn-us-1901-u-ca-islamicc-kn-true'); l.toString() === 'en-Latn-US-1901-u-ca-islamic-civil-kn' && l.baseName === 'en-Latn-US-1901' && l.language === 'en' && l.script === 'Latn' && l.region === 'US' && l.variants === '1901' && l.calendar === 'islamic-civil' && l.numeric",
@@ -99,9 +126,20 @@ fn locale_objects_preserve_canonical_locale_state() {
         "Intl.Locale.prototype.getWeekInfo.call({})",
         "[1].forEach(1)",
     ] {
-        assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_) | RuntimeError::RangeError(_))), "{source}");
+        assert!(
+            matches!(
+                evaluate(source),
+                Err(RuntimeError::TypeError(_) | RuntimeError::RangeError(_))
+            ),
+            "{source}"
+        );
     }
-    assert_eq!(evaluate("Intl.Locale.prototype.toString.call({})"), Err(RuntimeError::TypeError("receiver is not an Intl.Locale".into())));
+    assert_eq!(
+        evaluate("Intl.Locale.prototype.toString.call({})"),
+        Err(RuntimeError::TypeError(
+            "receiver is not an Intl.Locale".into()
+        ))
+    );
     assert_eq!(
         evaluate("let g=Object.getOwnPropertyDescriptor(Intl.Locale.prototype,'language').get; g.call({})"),
         Err(RuntimeError::TypeError("receiver is not an Intl.Locale".into()))
@@ -128,14 +166,35 @@ fn collator_options_and_bound_comparison() {
     ] {
         assert_eq!(evaluate(source).unwrap(), Value::Bool(true), "{source}");
     }
-    for option in ["usage:'bad'", "localeMatcher:'bad'", "sensitivity:'bad'", "caseFirst:'bad'", "collation:'bad_type'"] {
-        assert!(matches!(evaluate(&format!("new Intl.Collator('en',{{{option}}})")), Err(RuntimeError::RangeError(_))), "{option}");
+    for option in [
+        "usage:'bad'",
+        "localeMatcher:'bad'",
+        "sensitivity:'bad'",
+        "caseFirst:'bad'",
+        "collation:'bad_type'",
+    ] {
+        assert!(
+            matches!(
+                evaluate(&format!("new Intl.Collator('en',{{{option}}})")),
+                Err(RuntimeError::RangeError(_))
+            ),
+            "{option}"
+        );
     }
-    assert!(matches!(evaluate(r"new Intl.Collator('en',{usage:'\ud800'})"), Err(RuntimeError::RangeError(_))));
-    for source in
-        ["Intl.Collator.prototype.compare", "Intl.Collator.prototype.resolvedOptions.call({})", "Intl.Collator.prototype.resolvedOptions.call(1)", "new Intl.Collator('en',null)"]
-    {
-        assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}");
+    assert!(matches!(
+        evaluate(r"new Intl.Collator('en',{usage:'\ud800'})"),
+        Err(RuntimeError::RangeError(_))
+    ));
+    for source in [
+        "Intl.Collator.prototype.compare",
+        "Intl.Collator.prototype.resolvedOptions.call({})",
+        "Intl.Collator.prototype.resolvedOptions.call(1)",
+        "new Intl.Collator('en',null)",
+    ] {
+        assert!(
+            matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
     }
 }
 
@@ -167,22 +226,63 @@ fn collation_extensions_defaults_and_constructor_prototypes() {
     ] {
         assert_eq!(evaluate(source).unwrap(), Value::Bool(true), "{source}");
     }
-    for tag in ["", "a", "abcd", "en-", "en-u", "en--US", "en-abc", "en-t-de-1901-1901", r"en-\ud800"] {
-        assert!(matches!(evaluate(&format!("Intl.getCanonicalLocales('{tag}')")), Err(RuntimeError::RangeError(_))), "{tag}");
+    for tag in [
+        "",
+        "a",
+        "abcd",
+        "en-",
+        "en-u",
+        "en--US",
+        "en-abc",
+        "en-t-de-1901-1901",
+        r"en-\ud800",
+    ] {
+        assert!(
+            matches!(
+                evaluate(&format!("Intl.getCanonicalLocales('{tag}')")),
+                Err(RuntimeError::RangeError(_))
+            ),
+            "{tag}"
+        );
     }
 }
 
 #[test]
 fn collator_compare_cycles_survive_collection_and_are_reclaimed() {
     use blueice_bluejs::{HeapConfig, VmConfig};
-    let mut vm = Vm::new(VmConfig { heap: HeapConfig { nursery_capacity: 1, major_threshold_bytes: 256, max_heap_bytes: 256 * 1024 }, ..Default::default() }).unwrap();
-    let run = |vm: &mut Vm, source| vm.execute(&compile(&parse(source).unwrap()).unwrap()).unwrap();
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 256,
+            max_heap_bytes: 256 * 1024,
+        },
+        ..Default::default()
+    })
+    .unwrap();
+    let run = |vm: &mut Vm, source| {
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap()
+    };
     run(&mut vm, "Intl; globalThis; 0");
     let baseline = vm.heap().stats().managed_bytes;
-    let Value::Object(collator) = run(&mut vm, "globalThis.c=new Intl.Collator('sv'); globalThis.c") else { panic!("expected Collator") };
-    run(&mut vm, "globalThis.f=globalThis.c.compare; delete globalThis.c; 0");
+    let Value::Object(collator) = run(
+        &mut vm,
+        "globalThis.c=new Intl.Collator('sv'); globalThis.c",
+    ) else {
+        panic!("expected Collator")
+    };
+    run(
+        &mut vm,
+        "globalThis.f=globalThis.c.compare; delete globalThis.c; 0",
+    );
     assert!(vm.heap().contains(collator));
-    assert_eq!(run(&mut vm, "for(let i=0;i<30;i++){let x={};} globalThis.f('ä','z') > 0"), Value::Bool(true));
+    assert_eq!(
+        run(
+            &mut vm,
+            "for(let i=0;i<30;i++){let x={};} globalThis.f('ä','z') > 0"
+        ),
+        Value::Bool(true)
+    );
     run(&mut vm, "delete globalThis.f; 0");
     assert!(!vm.heap().contains(collator));
     assert_eq!(vm.heap().stats().managed_bytes, baseline);
@@ -195,7 +295,15 @@ fn intl_and_error_bootstrap_failures_release_partial_roots() {
     for source in ["Intl", "Error", "TypeError"] {
         let code = compile(&parse(source).unwrap()).unwrap();
         for ceiling in (64000..125000).step_by(307) {
-            let mut vm = Vm::new(VmConfig { heap: HeapConfig { nursery_capacity: 1, major_threshold_bytes: 256, max_heap_bytes: ceiling }, ..Default::default() }).unwrap();
+            let mut vm = Vm::new(VmConfig {
+                heap: HeapConfig {
+                    nursery_capacity: 1,
+                    major_threshold_bytes: 256,
+                    max_heap_bytes: ceiling,
+                },
+                ..Default::default()
+            })
+            .unwrap();
             if vm.execute(&warm).is_err() {
                 continue;
             }

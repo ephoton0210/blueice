@@ -68,7 +68,10 @@ impl Page {
         // recycled ID (plan §1's stable-ID-across-mutations requirement).
         self.doc = blueice_html::parse_continuing_from(html, self.doc.next_node_id());
         let author = crate::stylesheet::extract_inline_stylesheets(&self.doc);
-        self.styles = cascade(&self.doc, &[(Origin::Ua, &self.ua), (Origin::Author, &author)]);
+        self.styles = cascade(
+            &self.doc,
+            &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
+        );
         self.scroll_y = 0.0;
         // A fresh document invalidates every NodeId a prior interaction
         // might have recorded -- holding onto a stale ID here would let
@@ -81,7 +84,14 @@ impl Page {
     }
 
     fn relayout(&mut self) {
-        self.fragment = layout(&self.doc, self.doc.root(), &self.styles, Constraints { available_width: self.viewport_width });
+        self.fragment = layout(
+            &self.doc,
+            self.doc.root(),
+            &self.styles,
+            Constraints {
+                available_width: self.viewport_width,
+            },
+        );
         let max_scroll = (self.fragment.height - self.viewport_height).max(0.0);
         self.scroll_y = self.scroll_y.min(max_scroll);
     }
@@ -121,7 +131,12 @@ impl Page {
     /// method from outside the crate, so skipping the gate for a real
     /// (non-built-in, non-test) navigation is a compile error, not a
     /// runtime convention a differently-written caller could omit.
-    pub(crate) fn apply_fetched(&mut self, _clearance: crate::gatekeeper_client::GatekeeperClearance, url: &str, html: &str) {
+    pub(crate) fn apply_fetched(
+        &mut self,
+        _clearance: crate::gatekeeper_client::GatekeeperClearance,
+        url: &str,
+        html: &str,
+    ) {
         self.load_html(html);
         self.url = Some(url.to_string());
     }
@@ -282,7 +297,12 @@ impl Page {
     /// how "scrolling" works without real overflow-clipped layout.
     pub fn render_visible(&self) -> Pixmap {
         let full = rasterize(&self.render());
-        crop(&full, self.scroll_y, self.viewport_width, self.viewport_height)
+        crop(
+            &full,
+            self.scroll_y,
+            self.viewport_width,
+            self.viewport_height,
+        )
     }
 }
 
@@ -302,7 +322,11 @@ fn crop(pixmap: &Pixmap, top: f64, width: f64, height: f64) -> Pixmap {
             pixels.extend(std::iter::repeat_n(255u8, w as usize * 4));
         }
     }
-    Pixmap { width: w, height: h, pixels }
+    Pixmap {
+        width: w,
+        height: h,
+        pixels,
+    }
 }
 
 /// Finds `id`'s own fragment and resolves its bounds to document-
@@ -315,13 +339,26 @@ fn crop(pixmap: &Pixmap, top: f64, width: f64, height: f64) -> Pixmap {
 /// [`Page::render`]'s highlight overlay, [`Page::act`]'s
 /// `ScrollIntoView`, and `ai_snapshot`'s bounds extraction, so the
 /// three never disagree about where a node actually is.
-pub(crate) fn find_fragment_bounds(fragment: &Fragment, id: NodeId, offset_x: f64, offset_y: f64) -> Option<blueice_ipc::Bounds> {
+pub(crate) fn find_fragment_bounds(
+    fragment: &Fragment,
+    id: NodeId,
+    offset_x: f64,
+    offset_y: f64,
+) -> Option<blueice_ipc::Bounds> {
     let x = offset_x + fragment.x;
     let y = offset_y + fragment.y;
     if fragment.node == Some(id) {
-        return Some(blueice_ipc::Bounds { x, y, width: fragment.width, height: fragment.height });
+        return Some(blueice_ipc::Bounds {
+            x,
+            y,
+            width: fragment.width,
+            height: fragment.height,
+        });
     }
-    fragment.children.iter().find_map(|child| find_fragment_bounds(child, id, x, y))
+    fragment
+        .children
+        .iter()
+        .find_map(|child| find_fragment_bounds(child, id, x, y))
 }
 
 const HIGHLIGHT_COLOR: Color = Color::Rgba(255, 149, 0, 255);
@@ -333,13 +370,50 @@ const HIGHLIGHT_THICKNESS: f64 = 2.0;
 /// `Page` owns, not a CSS box-model feature `blueice-paint` needs to
 /// know about.
 fn highlight_border_commands(bounds: blueice_ipc::Bounds) -> Vec<PaintCommand> {
-    let blueice_ipc::Bounds { x, y, width, height } = bounds;
+    let blueice_ipc::Bounds {
+        x,
+        y,
+        width,
+        height,
+    } = bounds;
     let t = HIGHLIGHT_THICKNESS;
     vec![
-        PaintCommand::BorderEdge { rect: Rect { x, y, width, height: t }, color: HIGHLIGHT_COLOR },
-        PaintCommand::BorderEdge { rect: Rect { x: x + width - t, y, width: t, height }, color: HIGHLIGHT_COLOR },
-        PaintCommand::BorderEdge { rect: Rect { x, y: y + height - t, width, height: t }, color: HIGHLIGHT_COLOR },
-        PaintCommand::BorderEdge { rect: Rect { x, y, width: t, height }, color: HIGHLIGHT_COLOR },
+        PaintCommand::BorderEdge {
+            rect: Rect {
+                x,
+                y,
+                width,
+                height: t,
+            },
+            color: HIGHLIGHT_COLOR,
+        },
+        PaintCommand::BorderEdge {
+            rect: Rect {
+                x: x + width - t,
+                y,
+                width: t,
+                height,
+            },
+            color: HIGHLIGHT_COLOR,
+        },
+        PaintCommand::BorderEdge {
+            rect: Rect {
+                x,
+                y: y + height - t,
+                width,
+                height: t,
+            },
+            color: HIGHLIGHT_COLOR,
+        },
+        PaintCommand::BorderEdge {
+            rect: Rect {
+                x,
+                y,
+                width: t,
+                height,
+            },
+            color: HIGHLIGHT_COLOR,
+        },
     ]
 }
 
@@ -347,7 +421,13 @@ fn hit_test(fragment: &Fragment, x: f64, y: f64) -> Option<NodeId> {
     hit_test_rec(fragment, x, y, 0.0, 0.0)
 }
 
-fn hit_test_rec(fragment: &Fragment, x: f64, y: f64, offset_x: f64, offset_y: f64) -> Option<NodeId> {
+fn hit_test_rec(
+    fragment: &Fragment,
+    x: f64,
+    y: f64,
+    offset_x: f64,
+    offset_y: f64,
+) -> Option<NodeId> {
     let fx = offset_x + fragment.x;
     let fy = offset_y + fragment.y;
     if x < fx || y < fy || x > fx + fragment.width || y > fy + fragment.height {
@@ -363,7 +443,11 @@ fn hit_test_rec(fragment: &Fragment, x: f64, y: f64, offset_x: f64, offset_y: f6
 
 fn nearest_link_href(doc: &Document, mut node: NodeId) -> Option<String> {
     loop {
-        if let NodeData::Element { tag_name, attributes } = doc.data(node) {
+        if let NodeData::Element {
+            tag_name,
+            attributes,
+        } = doc.data(node)
+        {
             if tag_name == "a" {
                 if let Some((_, href)) = attributes.iter().find(|(k, _)| k == "href") {
                     return Some(href.clone());
@@ -385,8 +469,12 @@ pub(crate) fn built_in_page(url: &str) -> Option<String> {
     if url == "about:blank" {
         return Some(String::new());
     }
-    if url == crate::credits::CREDITS_URL || url.starts_with(&format!("{}?", crate::credits::CREDITS_URL)) {
-        return Some(crate::credits::credits_html(crate::credits::locale_from_url(url)));
+    if url == crate::credits::CREDITS_URL
+        || url.starts_with(&format!("{}?", crate::credits::CREDITS_URL))
+    {
+        return Some(crate::credits::credits_html(
+            crate::credits::locale_from_url(url),
+        ));
     }
     None
 }
@@ -411,7 +499,11 @@ mod tests {
         let mut page = Page::new(320.0, 200.0);
         page.load_html_str("<p>hi</p>", Some("about:blank".to_string()));
         assert_eq!(page.url(), Some("about:blank"));
-        assert!(page.render().commands.iter().any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "hi")));
+        assert!(page
+            .render()
+            .commands
+            .iter()
+            .any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "hi")));
     }
 
     #[test]
@@ -420,9 +512,15 @@ mod tests {
         page.navigate("about:credits").unwrap();
         assert_eq!(page.url(), Some("about:credits"));
         let text = all_text(&page.render());
-        assert!(text.contains("Chromium"), "must reproduce the Chromium BSD-3-Clause notice: {text}");
+        assert!(
+            text.contains("Chromium"),
+            "must reproduce the Chromium BSD-3-Clause notice: {text}"
+        );
         assert!(text.contains("Gecko"), "must credit Gecko: {text}");
-        assert!(text.contains("DejaVu"), "must credit the bundled DejaVu font: {text}");
+        assert!(
+            text.contains("DejaVu"),
+            "must credit the bundled DejaVu font: {text}"
+        );
     }
 
     #[test]
@@ -431,7 +529,10 @@ mod tests {
         page.navigate("about:credits?lang=zh-TW").unwrap();
         assert_eq!(page.url(), Some("about:credits?lang=zh-TW"));
         let text = all_text(&page.render());
-        assert!(text.contains("關於"), "must render the localized page: {text}");
+        assert!(
+            text.contains("關於"),
+            "must render the localized page: {text}"
+        );
     }
 
     #[test]
@@ -450,7 +551,10 @@ mod tests {
 
         page.load_html_str("<p>second</p>", None);
 
-        assert!(!page.doc().contains(stale_id), "a NodeId real in the previous document must not resolve to anything in the new one");
+        assert!(
+            !page.doc().contains(stale_id),
+            "a NodeId real in the previous document must not resolve to anything in the new one"
+        );
         assert!(page.doc().next_node_id() >= first_next_id, "the new document's allocator must continue from where the old one left off, not restart at 0");
     }
 
@@ -478,7 +582,9 @@ mod tests {
 
         page.act(input_id, NodeAction::SetValue("hello".to_string()));
 
-        let NodeData::Element { attributes, .. } = page.doc().data(input_id) else { panic!("expected an element") };
+        let NodeData::Element { attributes, .. } = page.doc().data(input_id) else {
+            panic!("expected an element")
+        };
         assert!(attributes.contains(&("value".to_string(), "hello".to_string())));
     }
 
@@ -529,11 +635,23 @@ mod tests {
             let mut buf = [0u8; 1024];
             let _ = stream.read(&mut buf);
             let body = "<p>fetched</p>";
-            stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).unwrap();
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
         });
         let mut page = Page::new(320.0, 200.0);
         page.navigate(&format!("http://{addr}")).unwrap();
-        assert!(page.render().commands.iter().any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "fetched")));
+        assert!(page
+            .render()
+            .commands
+            .iter()
+            .any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "fetched")));
     }
 
     fn distinct_line_count(frame: &Frame) -> usize {
@@ -557,7 +675,10 @@ mod tests {
         let wide_lines = distinct_line_count(&page.render());
         page.resize(50.0, 200.0);
         let narrow_lines = distinct_line_count(&page.render());
-        assert!(narrow_lines > wide_lines, "a much narrower viewport must wrap onto more lines");
+        assert!(
+            narrow_lines > wide_lines,
+            "a much narrower viewport must wrap onto more lines"
+        );
     }
 
     #[test]
@@ -567,7 +688,10 @@ mod tests {
         page.scroll_by(-100.0);
         assert_eq!(page.scroll_y(), 0.0, "cannot scroll above the top");
         page.scroll_by(10_000.0);
-        assert!(page.scroll_y() > 0.0 && page.scroll_y() <= 500.0, "cannot scroll past the bottom of the content");
+        assert!(
+            page.scroll_y() > 0.0 && page.scroll_y() <= 500.0,
+            "cannot scroll past the bottom of the content"
+        );
     }
 
     #[test]
@@ -575,7 +699,10 @@ mod tests {
         let mut page = Page::new(320.0, 200.0);
         page.load_html_str(r#"<a href="https://example.com/next">click me</a>"#, None);
         // the link is the only content, at the top-left of the page
-        assert_eq!(page.click(2.0, 2.0), Some("https://example.com/next".to_string()));
+        assert_eq!(
+            page.click(2.0, 2.0),
+            Some("https://example.com/next".to_string())
+        );
     }
 
     #[test]
@@ -602,7 +729,10 @@ mod tests {
     #[test]
     fn render_visible_crops_to_the_viewport_size() {
         let mut page = Page::new(50.0, 30.0);
-        page.load_html_str("<div style=\"height: 500px; background-color: red;\"></div>", None);
+        page.load_html_str(
+            "<div style=\"height: 500px; background-color: red;\"></div>",
+            None,
+        );
         let visible = page.render_visible();
         assert_eq!(visible.width, 50);
         assert_eq!(visible.height, 30);
@@ -616,10 +746,18 @@ mod tests {
             None,
         );
         let top = page.render_visible();
-        assert_eq!(top.get_pixel(0, 0), [255, 0, 0, 255], "scrolled to top, red div is visible");
+        assert_eq!(
+            top.get_pixel(0, 0),
+            [255, 0, 0, 255],
+            "scrolled to top, red div is visible"
+        );
 
         page.scroll_by(10.0);
         let scrolled = page.render_visible();
-        assert_eq!(scrolled.get_pixel(0, 0), [0, 0, 255, 255], "scrolled down 10px, blue div is now visible");
+        assert_eq!(
+            scrolled.get_pixel(0, 0),
+            [0, 0, 255, 255],
+            "scrolled down 10px, blue div is now visible"
+        );
     }
 }

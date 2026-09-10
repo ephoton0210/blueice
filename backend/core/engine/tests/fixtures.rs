@@ -29,7 +29,9 @@ fn end_to_end_render_fixtures() {
     let mut failures = Vec::new();
 
     for fixture in &fixtures {
-        let Some(expected) = fixture.section("paint") else { continue };
+        let Some(expected) = fixture.section("paint") else {
+            continue;
+        };
         checked += 1;
 
         let css = fixture.section("css").unwrap_or("");
@@ -49,6 +51,14 @@ fn end_to_end_render_fixtures() {
         }
     }
 
-    assert!(checked > 0, "at least one fixture must have a #paint section");
-    assert!(failures.is_empty(), "{} fixture(s) mismatched end to end through render():\n\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        checked > 0,
+        "at least one fixture must have a #paint section"
+    );
+    assert!(
+        failures.is_empty(),
+        "{} fixture(s) mismatched end to end through render():\n\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }

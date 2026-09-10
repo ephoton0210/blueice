@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! JSON-lines adapter. The external supervisor owns whole-case wall deadlines.
-use blueice_bluejs::{CompileError, RuntimeError, Vm, VmConfig, compile_with_limit, parse};
+use blueice_bluejs::{compile_with_limit, parse, CompileError, RuntimeError, Vm, VmConfig};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 
 #[derive(Deserialize)]
@@ -28,7 +28,8 @@ struct Request {
 }
 
 fn runtime(error: RuntimeError) -> Value {
-    if matches!(&error, RuntimeError::ReferenceError(name) if matches!(name.as_str(), "$262" | "$DONE" | "print")) {
+    if matches!(&error, RuntimeError::ReferenceError(name) if matches!(name.as_str(), "$262" | "$DONE" | "print"))
+    {
         return json!({"kind":"unsupported", "reason":"missing Test262 host hook", "message":error.to_string()});
     }
     let kind = match &error {
@@ -49,7 +50,11 @@ fn evaluate(request: Request) -> Value {
     if request.mode == "module" {
         return json!({"kind":"unsupported", "reason":"module host"});
     }
-    let source = if request.mode == "strict" { format!("\"use strict\";\n{}", request.source) } else { request.source };
+    let source = if request.mode == "strict" {
+        format!("\"use strict\";\n{}", request.source)
+    } else {
+        request.source
+    };
     let program = match parse(&source) {
         Ok(program) => program,
         Err(error) => {
@@ -61,8 +66,12 @@ fn evaluate(request: Request) -> Value {
                 }
                 // The subset parser has no complete unsupported-grammar taxonomy.
                 // Never let its arbitrary rejection satisfy a negative test.
-                None if error.known_syntax => json!({"phase":"parse", "kind":"SyntaxError", "message":error.message}),
-                None => json!({"phase":"parse", "kind":"unclassified_parse_error", "message":error.message}),
+                None if error.known_syntax => {
+                    json!({"phase":"parse", "kind":"SyntaxError", "message":error.message})
+                }
+                None => {
+                    json!({"phase":"parse", "kind":"unclassified_parse_error", "message":error.message})
+                }
             };
         }
     };
@@ -71,7 +80,9 @@ fn evaluate(request: Request) -> Value {
         Err(error) => {
             return match error {
                 CompileError::Unsupported(reason) => json!({"kind":"unsupported", "reason":reason}),
-                CompileError::ProgramTooLarge => json!({"kind":"resource_error", "message":error.to_string()}),
+                CompileError::ProgramTooLarge => {
+                    json!({"kind":"resource_error", "message":error.to_string()})
+                }
                 _ => json!({"phase":"parse", "kind":"SyntaxError", "message":error.to_string()}),
             };
         }
@@ -84,13 +95,25 @@ fn evaluate(request: Request) -> Value {
     }
     // The native host replaces these core helpers. Other includes execute as
     // separate classic scripts in the same VM realm.
-    let unknown: Vec<_> = request.includes.iter().filter(|name| !matches!(name.as_str(), "sta.js" | "assert.js" | "propertyHelper.js" | "isConstructor.js")).collect();
+    let unknown: Vec<_> = request
+        .includes
+        .iter()
+        .filter(|name| {
+            !matches!(
+                name.as_str(),
+                "sta.js" | "assert.js" | "propertyHelper.js" | "isConstructor.js"
+            )
+        })
+        .collect();
     if request.mode != "raw" && !unknown.is_empty() && request.harness_sources.is_empty() {
         return json!({"kind":"unsupported", "reason":"harness includes require persistent script globals", "includes":unknown});
     }
     // Conformance inputs run under an explicit, bounded interpreter budget.
     // Keep the library VM default independent from the runner's resource policy.
-    let mut config = VmConfig { instruction_budget: request.instruction_budget.unwrap_or(100_000), ..VmConfig::default() };
+    let mut config = VmConfig {
+        instruction_budget: request.instruction_budget.unwrap_or(100_000),
+        ..VmConfig::default()
+    };
     if let Some(limit) = request.heap_limit {
         config.heap.max_heap_bytes = limit;
         config.heap.major_threshold_bytes = config.heap.major_threshold_bytes.min(limit);
@@ -111,14 +134,22 @@ fn evaluate(request: Request) -> Value {
         }
     }
     for source in request.harness_sources {
-        let source = if request.mode == "strict" { format!("\"use strict\";\n{source}") } else { source };
+        let source = if request.mode == "strict" {
+            format!("\"use strict\";\n{source}")
+        } else {
+            source
+        };
         let program = match parse(&source) {
             Ok(program) => program,
-            Err(error) => return json!({"kind":"unsupported", "reason":"harness source parse unsupported", "message":error.message}),
+            Err(error) => {
+                return json!({"kind":"unsupported", "reason":"harness source parse unsupported", "message":error.message})
+            }
         };
         let code = match compile_with_limit(&program, request.bytecode_limit.unwrap_or(u32::MAX)) {
             Ok(code) => code,
-            Err(error) => return json!({"kind":"unsupported", "reason":"harness source compile unsupported", "message":error.to_string()}),
+            Err(error) => {
+                return json!({"kind":"unsupported", "reason":"harness source compile unsupported", "message":error.to_string()})
+            }
         };
         if let Err(error) = vm.execute_script(&code) {
             return runtime(error);

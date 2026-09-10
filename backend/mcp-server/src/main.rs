@@ -11,7 +11,7 @@
 //! `frontend-reference/src/main.rs` is (see `CLAUDE.md`).
 
 use blueice_mcp_server::BlueIceMcpServer;
-use rmcp::{ServiceExt, transport::stdio};
+use rmcp::{transport::stdio, ServiceExt};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

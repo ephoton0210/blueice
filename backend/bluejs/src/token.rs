@@ -174,7 +174,9 @@ pub struct LexError {
 
 impl LexError {
     fn new(message: impl Into<String>) -> LexError {
-        LexError { message: message.into() }
+        LexError {
+            message: message.into(),
+        }
     }
 }
 
@@ -228,7 +230,9 @@ impl Tokenizer {
         let mut pattern = JsString::default();
         let mut class = false;
         loop {
-            let c = self.advance().ok_or_else(|| LexError::new("unterminated RegExp literal"))?;
+            let c = self
+                .advance()
+                .ok_or_else(|| LexError::new("unterminated RegExp literal"))?;
             if is_line_terminator(c) {
                 return Err(LexError::new("line terminator in RegExp literal"));
             }
@@ -237,7 +241,9 @@ impl Tokenizer {
             }
             pattern.push_code_point(c as u32);
             if c == '\\' {
-                let escaped = self.advance().ok_or_else(|| LexError::new("unterminated RegExp escape"))?;
+                let escaped = self
+                    .advance()
+                    .ok_or_else(|| LexError::new("unterminated RegExp escape"))?;
                 if is_line_terminator(escaped) {
                     return Err(LexError::new("line terminator in RegExp escape"));
                 }
@@ -255,7 +261,10 @@ impl Tokenizer {
         Ok((pattern, flags))
     }
 
-    pub(crate) fn tagged_template_at(&mut self, position: usize) -> Result<TaggedTemplateData, LexError> {
+    pub(crate) fn tagged_template_at(
+        &mut self,
+        position: usize,
+    ) -> Result<TaggedTemplateData, LexError> {
         self.pos = position;
         self.skip_trivia()?;
         self.advance();
@@ -263,7 +272,9 @@ impl Tokenizer {
         let mut current = String::new();
         let mut expressions = Vec::new();
         loop {
-            let c = self.advance().ok_or_else(|| LexError::new("unterminated tagged template"))?;
+            let c = self
+                .advance()
+                .ok_or_else(|| LexError::new("unterminated tagged template"))?;
             if c == '`' {
                 raw.push(current);
                 break;
@@ -274,7 +285,9 @@ impl Tokenizer {
                 expressions.push(self.scan_raw_until_matching_brace()?);
             } else if c == '\\' {
                 current.push(c);
-                let c = self.advance().ok_or_else(|| LexError::new("unterminated tagged template escape"))?;
+                let c = self
+                    .advance()
+                    .ok_or_else(|| LexError::new("unterminated tagged template escape"))?;
                 if c == '\r' {
                     if self.peek() == Some('\n') {
                         self.advance();
@@ -311,11 +324,18 @@ impl Tokenizer {
                 Some(result)
             })
             .collect();
-        Ok((raw.into_iter().map(Into::into).collect(), cooked, expressions))
+        Ok((
+            raw.into_iter().map(Into::into).collect(),
+            cooked,
+            expressions,
+        ))
     }
 
     pub fn new(input: &str) -> Tokenizer {
-        Tokenizer { input: input.chars().collect(), pos: 0 }
+        Tokenizer {
+            input: input.chars().collect(),
+            pos: 0,
+        }
     }
 
     fn peek(&self) -> Option<char> {
@@ -386,7 +406,10 @@ impl Tokenizer {
     pub fn next_spanned(&mut self) -> Result<SpannedToken, LexError> {
         let newline_before = self.skip_trivia()?;
         let token = self.next_token()?;
-        Ok(SpannedToken { token, newline_before })
+        Ok(SpannedToken {
+            token,
+            newline_before,
+        })
     }
 
     fn next_token(&mut self) -> Result<Token, LexError> {
@@ -466,7 +489,10 @@ impl Tokenizer {
                     self.advance();
                 }
                 Some('_') => {
-                    if !separators || digits.is_empty() || !self.peek_at(1).is_some_and(|c| c.is_digit(radix)) {
+                    if !separators
+                        || digits.is_empty()
+                        || !self.peek_at(1).is_some_and(|c| c.is_digit(radix))
+                    {
                         return Err(LexError::new("numeric separator must occur between digits"));
                     }
                     self.advance();
@@ -477,15 +503,22 @@ impl Tokenizer {
     }
 
     fn finish_number(&self, number: f64) -> Result<Token, LexError> {
-        if self.peek().is_some_and(|c| is_ident_start(c) || c.is_ascii_digit() || c == '\\') {
-            return Err(LexError::new("identifier or digit immediately after numeric literal"));
+        if self
+            .peek()
+            .is_some_and(|c| is_ident_start(c) || c.is_ascii_digit() || c == '\\')
+        {
+            return Err(LexError::new(
+                "identifier or digit immediately after numeric literal",
+            ));
         }
         Ok(Token::Number(number))
     }
 
     fn scan_escape(&mut self) -> Result<Option<u32>, LexError> {
         // Caller has already consumed the leading '\\'.
-        let c = self.advance().ok_or_else(|| LexError::new("unterminated escape sequence"))?;
+        let c = self
+            .advance()
+            .ok_or_else(|| LexError::new("unterminated escape sequence"))?;
         Ok(Some(match c {
             'n' => 0x0a,
             't' => 0x09,
@@ -502,7 +535,12 @@ impl Tokenizer {
             }
             '\'' | '"' | '`' | '\\' | '$' => c as u32,
             'x' => {
-                let hex: String = (0..2).map(|_| self.advance().ok_or_else(|| LexError::new("unterminated \\x escape"))).collect::<Result<_, _>>()?;
+                let hex: String = (0..2)
+                    .map(|_| {
+                        self.advance()
+                            .ok_or_else(|| LexError::new("unterminated \\x escape"))
+                    })
+                    .collect::<Result<_, _>>()?;
                 Self::hex_escape(&hex, "\\x")?
             }
             'u' => {
@@ -512,14 +550,20 @@ impl Tokenizer {
                     while self.peek().is_some_and(|c| c != '}') {
                         hex.push(self.advance().unwrap());
                     }
-                    self.advance().ok_or_else(|| LexError::new("unterminated \\u{...} escape"))?;
+                    self.advance()
+                        .ok_or_else(|| LexError::new("unterminated \\u{...} escape"))?;
                     let code = Self::hex_escape(&hex, "\\u{...}")?;
                     if code > 0x10ffff {
                         return Err(LexError::new("invalid \\u{...} escape codepoint"));
                     }
                     code
                 } else {
-                    let hex: String = (0..4).map(|_| self.advance().ok_or_else(|| LexError::new("unterminated \\u escape"))).collect::<Result<_, _>>()?;
+                    let hex: String = (0..4)
+                        .map(|_| {
+                            self.advance()
+                                .ok_or_else(|| LexError::new("unterminated \\u escape"))
+                        })
+                        .collect::<Result<_, _>>()?;
                     Self::hex_escape(&hex, "\\u")?
                 }
             }
@@ -533,7 +577,8 @@ impl Tokenizer {
         if hex.is_empty() || !hex.bytes().all(|c| c.is_ascii_hexdigit()) {
             return Err(LexError::new(format!("invalid {kind} escape '{hex}'")));
         }
-        u32::from_str_radix(hex, 16).map_err(|_| LexError::new(format!("invalid {kind} escape '{hex}'")))
+        u32::from_str_radix(hex, 16)
+            .map_err(|_| LexError::new(format!("invalid {kind} escape '{hex}'")))
     }
 
     fn scan_string(&mut self, quote: char) -> Result<Token, LexError> {
@@ -546,7 +591,11 @@ impl Tokenizer {
                     self.advance();
                     return Ok(Token::String(out));
                 }
-                Some('\n' | '\r') => return Err(LexError::new("unterminated string literal (line terminator)")),
+                Some('\n' | '\r') => {
+                    return Err(LexError::new(
+                        "unterminated string literal (line terminator)",
+                    ))
+                }
                 Some('\\') => {
                     self.advance();
                     if let Some(c) = self.scan_escape()? {
@@ -583,7 +632,10 @@ impl Tokenizer {
                 Some('`') => {
                     self.advance();
                     quasis.push(current);
-                    return Ok(Token::Template { quasis, raw_expressions });
+                    return Ok(Token::Template {
+                        quasis,
+                        raw_expressions,
+                    });
                 }
                 Some('$') if self.peek_at(1) == Some('{') => {
                     self.advance();
@@ -625,7 +677,9 @@ impl Tokenizer {
                 return Ok(out);
             }
         }
-        Err(LexError::new("unterminated or invalid template placeholder"))
+        Err(LexError::new(
+            "unterminated or invalid template placeholder",
+        ))
     }
 
     fn scan_identifier_or_keyword(&mut self) -> Result<Token, LexError> {
@@ -634,14 +688,26 @@ impl Tokenizer {
             let first = text.is_empty();
             let character = match self.peek() {
                 Some('\\') => self.scan_identifier_escape()?,
-                Some(character) if if first { is_ident_start(character) } else { is_ident_continue(character) } => {
+                Some(character)
+                    if if first {
+                        is_ident_start(character)
+                    } else {
+                        is_ident_continue(character)
+                    } =>
+                {
                     self.advance();
                     character
                 }
                 _ => break,
             };
-            if if first { !is_ident_start(character) } else { !is_ident_continue(character) } {
-                return Err(LexError::new("unicode escape does not form a valid identifier character"));
+            if if first {
+                !is_ident_start(character)
+            } else {
+                !is_ident_continue(character)
+            } {
+                return Err(LexError::new(
+                    "unicode escape does not form a valid identifier character",
+                ));
             }
             text.push(character);
         }
@@ -663,19 +729,26 @@ impl Tokenizer {
             while self.peek().is_some_and(|character| character != '}') {
                 hex.push(self.advance().unwrap());
             }
-            self.advance().ok_or_else(|| LexError::new("unterminated \\u{...} identifier escape"))?;
+            self.advance()
+                .ok_or_else(|| LexError::new("unterminated \\u{...} identifier escape"))?;
             let code = Self::hex_escape(&hex, "\\u{...}")?;
             if code > 0x10ffff {
-                return Err(LexError::new("invalid \\u{...} identifier escape codepoint"));
+                return Err(LexError::new(
+                    "invalid \\u{...} identifier escape codepoint",
+                ));
             }
             code
         } else {
             let hex: String = (0..4)
-                .map(|_| self.advance().ok_or_else(|| LexError::new("unterminated \\u identifier escape")))
+                .map(|_| {
+                    self.advance()
+                        .ok_or_else(|| LexError::new("unterminated \\u identifier escape"))
+                })
                 .collect::<Result<_, _>>()?;
             Self::hex_escape(&hex, "\\u")?
         };
-        char::from_u32(code).ok_or_else(|| LexError::new("identifier escape is not a Unicode scalar value"))
+        char::from_u32(code)
+            .ok_or_else(|| LexError::new("identifier escape is not a Unicode scalar value"))
     }
 
     fn scan_punct(&mut self) -> Result<Token, LexError> {
@@ -792,7 +865,9 @@ impl Tokenizer {
                     self.advance();
                     Punct::AndAnd
                 } else {
-                    return Err(LexError::new("bitwise '&' is not supported (out of BlueJS's MVP scope)"));
+                    return Err(LexError::new(
+                        "bitwise '&' is not supported (out of BlueJS's MVP scope)",
+                    ));
                 }
             }
             '|' => {
@@ -800,7 +875,9 @@ impl Tokenizer {
                     self.advance();
                     Punct::OrOr
                 } else {
-                    return Err(LexError::new("bitwise '|' is not supported (out of BlueJS's MVP scope)"));
+                    return Err(LexError::new(
+                        "bitwise '|' is not supported (out of BlueJS's MVP scope)",
+                    ));
                 }
             }
             '?' => {
@@ -845,7 +922,16 @@ mod tests {
         // Assert token boundaries independently of the full parser/VM.
         assert_eq!(
             tokens("0xA_B 0b1_0 0o7_0 07 08 1_0 0.5"),
-            vec![Token::Number(171.0), Token::Number(2.0), Token::Number(56.0), Token::Number(7.0), Token::Number(8.0), Token::Number(10.0), Token::Number(0.5), Token::Eof,]
+            vec![
+                Token::Number(171.0),
+                Token::Number(2.0),
+                Token::Number(56.0),
+                Token::Number(7.0),
+                Token::Number(8.0),
+                Token::Number(10.0),
+                Token::Number(0.5),
+                Token::Eof,
+            ]
         );
     }
 
@@ -861,44 +947,82 @@ mod tests {
     fn template_cooking_normalizes_newlines_but_preserves_placeholder_comments() {
         assert_eq!(
             tokens("`a\r\nb${1/* } */+2}c\rd`"),
-            vec![Token::Template { quasis: vec!["a\nb".into(), "c\nd".into()], raw_expressions: vec!["1/* } */+2".into()] }, Token::Eof,]
+            vec![
+                Token::Template {
+                    quasis: vec!["a\nb".into(), "c\nd".into()],
+                    raw_expressions: vec!["1/* } */+2".into()]
+                },
+                Token::Eof,
+            ]
         );
         for newline in ["\n", "\r", "\r\n", "\u{2028}", "\u{2029}"] {
-            assert_eq!(tokens(&format!("'a\\{newline}b'")), vec![Token::String("ab".into()), Token::Eof]);
+            assert_eq!(
+                tokens(&format!("'a\\{newline}b'")),
+                vec![Token::String("ab".into()), Token::Eof]
+            );
             let mut tokenizer = Tokenizer::new(&format!("/*{newline}*/x"));
             let spanned = tokenizer.next_spanned().unwrap();
             assert!(spanned.newline_before);
             assert_eq!(spanned.token, Token::Identifier("x".into()));
         }
-        assert!(Tokenizer::new("`${1/* unterminated }`").next_spanned().is_err());
+        assert!(Tokenizer::new("`${1/* unterminated }`")
+            .next_spanned()
+            .is_err());
     }
 
     #[test]
     fn scans_every_simple_escape_sequence() {
-        assert_eq!(tokens(r"'\t\r\b\f\v\0'"), vec![Token::String("\t\r\u{8}\u{c}\u{b}\0".into()), Token::Eof]);
+        assert_eq!(
+            tokens(r"'\t\r\b\f\v\0'"),
+            vec![Token::String("\t\r\u{8}\u{c}\u{b}\0".into()), Token::Eof]
+        );
         assert_eq!(tokens(r"'\q'"), vec![Token::String("q".into()), Token::Eof]);
         // unrecognized escape: falls back to the escaped character itself
     }
 
     #[test]
     fn a_backslash_newline_is_a_line_continuation_contributing_no_character() {
-        assert_eq!(tokens("'a\\\nb'"), vec![Token::String("ab".into()), Token::Eof]);
+        assert_eq!(
+            tokens("'a\\\nb'"),
+            vec![Token::String("ab".into()), Token::Eof]
+        );
     }
 
     #[test]
     fn scans_a_bare_four_hex_digit_unicode_escape_without_braces() {
-        assert_eq!(tokens("'\\u0041'"), vec![Token::String("A".into()), Token::Eof]);
+        assert_eq!(
+            tokens("'\\u0041'"),
+            vec![Token::String("A".into()), Token::Eof]
+        );
     }
 
     #[test]
     fn scans_string_literals_with_escapes() {
-        assert_eq!(tokens(r#""hello""#), vec![Token::String("hello".into()), Token::Eof]);
-        assert_eq!(tokens("'hello'"), vec![Token::String("hello".into()), Token::Eof]);
-        assert_eq!(tokens(r#""a\nb""#), vec![Token::String("a\nb".into()), Token::Eof]);
-        assert_eq!(tokens(r#""a\"b""#), vec![Token::String("a\"b".into()), Token::Eof]);
-        assert_eq!(tokens(r"'\u{1F600}'"), vec![Token::String("\u{1F600}".into()), Token::Eof]);
+        assert_eq!(
+            tokens(r#""hello""#),
+            vec![Token::String("hello".into()), Token::Eof]
+        );
+        assert_eq!(
+            tokens("'hello'"),
+            vec![Token::String("hello".into()), Token::Eof]
+        );
+        assert_eq!(
+            tokens(r#""a\nb""#),
+            vec![Token::String("a\nb".into()), Token::Eof]
+        );
+        assert_eq!(
+            tokens(r#""a\"b""#),
+            vec![Token::String("a\"b".into()), Token::Eof]
+        );
+        assert_eq!(
+            tokens(r"'\u{1F600}'"),
+            vec![Token::String("\u{1F600}".into()), Token::Eof]
+        );
         assert_eq!(tokens(r"'A'"), vec![Token::String("A".into()), Token::Eof]);
-        assert_eq!(tokens(r"'\x41'"), vec![Token::String("A".into()), Token::Eof]);
+        assert_eq!(
+            tokens(r"'\x41'"),
+            vec![Token::String("A".into()), Token::Eof]
+        );
     }
 
     #[test]
@@ -909,32 +1033,80 @@ mod tests {
 
     #[test]
     fn scans_identifiers_and_keywords() {
-        assert_eq!(tokens("foo _bar $baz"), vec![Token::Identifier("foo".to_string()), Token::Identifier("_bar".to_string()), Token::Identifier("$baz".to_string()), Token::Eof]);
-        assert_eq!(tokens(r"\u0065xtends \u{61}sync"), vec![Token::Identifier("extends".to_string()), Token::Identifier("async".to_string()), Token::Eof]);
+        assert_eq!(
+            tokens("foo _bar $baz"),
+            vec![
+                Token::Identifier("foo".to_string()),
+                Token::Identifier("_bar".to_string()),
+                Token::Identifier("$baz".to_string()),
+                Token::Eof
+            ]
+        );
+        assert_eq!(
+            tokens(r"\u0065xtends \u{61}sync"),
+            vec![
+                Token::Identifier("extends".to_string()),
+                Token::Identifier("async".to_string()),
+                Token::Eof
+            ]
+        );
         assert!(Tokenizer::new(r"\u0030").next_spanned().is_err());
-        assert_eq!(tokens("undefined"), vec![Token::Identifier("undefined".to_string()), Token::Eof]);
+        assert_eq!(
+            tokens("undefined"),
+            vec![Token::Identifier("undefined".to_string()), Token::Eof]
+        );
         assert_eq!(
             tokens("let x = true"),
-            vec![Token::Keyword(Keyword::Let), Token::Identifier("x".to_string()), Token::Punct(Punct::Assign), Token::Keyword(Keyword::True), Token::Eof]
+            vec![
+                Token::Keyword(Keyword::Let),
+                Token::Identifier("x".to_string()),
+                Token::Punct(Punct::Assign),
+                Token::Keyword(Keyword::True),
+                Token::Eof
+            ]
         );
     }
 
     #[test]
     fn scans_a_simple_template_literal_with_no_placeholders() {
-        assert_eq!(tokens("`hello`"), vec![Token::Template { quasis: vec!["hello".into()], raw_expressions: vec![] }, Token::Eof]);
+        assert_eq!(
+            tokens("`hello`"),
+            vec![
+                Token::Template {
+                    quasis: vec!["hello".into()],
+                    raw_expressions: vec![]
+                },
+                Token::Eof
+            ]
+        );
     }
 
     #[test]
     fn scans_a_template_literal_with_placeholders() {
         assert_eq!(
             tokens("`a${x}b${y + 1}c`"),
-            vec![Token::Template { quasis: vec!["a".into(), "b".into(), "c".into()], raw_expressions: vec!["x".to_string(), "y + 1".to_string()] }, Token::Eof]
+            vec![
+                Token::Template {
+                    quasis: vec!["a".into(), "b".into(), "c".into()],
+                    raw_expressions: vec!["x".to_string(), "y + 1".to_string()]
+                },
+                Token::Eof
+            ]
         );
     }
 
     #[test]
     fn template_literal_body_text_resolves_escapes() {
-        assert_eq!(tokens("`a\\nb`"), vec![Token::Template { quasis: vec!["a\nb".into()], raw_expressions: vec![] }, Token::Eof]);
+        assert_eq!(
+            tokens("`a\\nb`"),
+            vec![
+                Token::Template {
+                    quasis: vec!["a\nb".into()],
+                    raw_expressions: vec![]
+                },
+                Token::Eof
+            ]
+        );
     }
 
     #[test]
@@ -957,21 +1129,60 @@ mod tests {
         // since this is *raw* copying for brace-balancing, not cooking).
         assert_eq!(
             tokens(r#"`${ "a\"}" }`"#),
-            vec![Token::Template { quasis: vec![Default::default(), Default::default()], raw_expressions: vec![" \"a\\\"}\" ".to_string()] }, Token::Eof]
+            vec![
+                Token::Template {
+                    quasis: vec![Default::default(), Default::default()],
+                    raw_expressions: vec![" \"a\\\"}\" ".to_string()]
+                },
+                Token::Eof
+            ]
         );
         let toks = tokens("`${ `a\\`b${1}` }`");
-        assert_eq!(toks, vec![Token::Template { quasis: vec![Default::default(), Default::default()], raw_expressions: vec![" `a\\`b${1}` ".to_string()] }, Token::Eof]);
+        assert_eq!(
+            toks,
+            vec![
+                Token::Template {
+                    quasis: vec![Default::default(), Default::default()],
+                    raw_expressions: vec![" `a\\`b${1}` ".to_string()]
+                },
+                Token::Eof
+            ]
+        );
     }
 
     #[test]
     fn template_placeholder_can_contain_braces_strings_and_nested_templates() {
-        assert_eq!(tokens("`${ {} }`"), vec![Token::Template { quasis: vec![Default::default(), Default::default()], raw_expressions: vec![" {} ".to_string()] }, Token::Eof]);
+        assert_eq!(
+            tokens("`${ {} }`"),
+            vec![
+                Token::Template {
+                    quasis: vec![Default::default(), Default::default()],
+                    raw_expressions: vec![" {} ".to_string()]
+                },
+                Token::Eof
+            ]
+        );
         assert_eq!(
             tokens(r#"`${ "}" }`"#),
-            vec![Token::Template { quasis: vec![Default::default(), Default::default()], raw_expressions: vec![r#" "}" "#.to_string()] }, Token::Eof]
+            vec![
+                Token::Template {
+                    quasis: vec![Default::default(), Default::default()],
+                    raw_expressions: vec![r#" "}" "#.to_string()]
+                },
+                Token::Eof
+            ]
         );
         let toks = tokens("`${ `${a}` }`");
-        assert_eq!(toks, vec![Token::Template { quasis: vec![Default::default(), Default::default()], raw_expressions: vec![" `${a}` ".to_string()] }, Token::Eof]);
+        assert_eq!(
+            toks,
+            vec![
+                Token::Template {
+                    quasis: vec![Default::default(), Default::default()],
+                    raw_expressions: vec![" `${a}` ".to_string()]
+                },
+                Token::Eof
+            ]
+        );
     }
 
     #[test]
@@ -994,10 +1205,43 @@ mod tests {
                 Token::Eof
             ]
         );
-        assert_eq!(tokens("=> ..."), vec![Token::Punct(Punct::Arrow), Token::Punct(Punct::Ellipsis), Token::Eof]);
-        assert_eq!(tokens("++ -- + -"), vec![Token::Punct(Punct::PlusPlus), Token::Punct(Punct::MinusMinus), Token::Punct(Punct::Plus), Token::Punct(Punct::Minus), Token::Eof]);
-        assert_eq!(tokens("&& || ??"), vec![Token::Punct(Punct::AndAnd), Token::Punct(Punct::OrOr), Token::Punct(Punct::QuestionQuestion), Token::Eof]);
-        assert_eq!(tokens("<= >= < >"), vec![Token::Punct(Punct::LtEq), Token::Punct(Punct::GtEq), Token::Punct(Punct::Lt), Token::Punct(Punct::Gt), Token::Eof]);
+        assert_eq!(
+            tokens("=> ..."),
+            vec![
+                Token::Punct(Punct::Arrow),
+                Token::Punct(Punct::Ellipsis),
+                Token::Eof
+            ]
+        );
+        assert_eq!(
+            tokens("++ -- + -"),
+            vec![
+                Token::Punct(Punct::PlusPlus),
+                Token::Punct(Punct::MinusMinus),
+                Token::Punct(Punct::Plus),
+                Token::Punct(Punct::Minus),
+                Token::Eof
+            ]
+        );
+        assert_eq!(
+            tokens("&& || ??"),
+            vec![
+                Token::Punct(Punct::AndAnd),
+                Token::Punct(Punct::OrOr),
+                Token::Punct(Punct::QuestionQuestion),
+                Token::Eof
+            ]
+        );
+        assert_eq!(
+            tokens("<= >= < >"),
+            vec![
+                Token::Punct(Punct::LtEq),
+                Token::Punct(Punct::GtEq),
+                Token::Punct(Punct::Lt),
+                Token::Punct(Punct::Gt),
+                Token::Eof
+            ]
+        );
         assert_eq!(
             tokens("+= -= *= /= %="),
             vec![
@@ -1033,8 +1277,14 @@ mod tests {
 
     #[test]
     fn skips_line_and_block_comments() {
-        assert_eq!(tokens("1 // comment\n2"), vec![Token::Number(1.0), Token::Number(2.0), Token::Eof]);
-        assert_eq!(tokens("1 /* block \n comment */ 2"), vec![Token::Number(1.0), Token::Number(2.0), Token::Eof]);
+        assert_eq!(
+            tokens("1 // comment\n2"),
+            vec![Token::Number(1.0), Token::Number(2.0), Token::Eof]
+        );
+        assert_eq!(
+            tokens("1 /* block \n comment */ 2"),
+            vec![Token::Number(1.0), Token::Number(2.0), Token::Eof]
+        );
     }
 
     #[test]

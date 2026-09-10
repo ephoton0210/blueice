@@ -85,7 +85,10 @@ impl ReadTimeout for std::os::unix::net::UnixStream {
 }
 
 fn is_timeout(err: &io::Error) -> bool {
-    matches!(err.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut)
+    matches!(
+        err.kind(),
+        io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+    )
 }
 
 /// Runs the message loop for one client connection until it sends
@@ -130,7 +133,13 @@ fn is_timeout(err: &io::Error) -> bool {
 /// `OpenTab`/`ListTabs` aren't scoped to an existing tab at all (there's
 /// no "current tab" concept `core` tracks -- see [`TabManager`]'s own
 /// docs for why) and ignore any `tab_id` on the envelope.
-pub fn run_session<S: Read + Write + ReadTimeout>(tabs: &mut TabManager, stream: &mut S, frame_dir: &Path, generation: &mut u64, gatekeeper_socket: &Path) -> io::Result<()> {
+pub fn run_session<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+) -> io::Result<()> {
     // Best-effort: on at least one real platform, setting a read
     // timeout on a Unix domain socket whose peer has *already*
     // disconnected (a client that connects and drops the connection
@@ -156,7 +165,9 @@ pub fn run_session<S: Read + Write + ReadTimeout>(tabs: &mut TabManager, stream:
     loop {
         match blueice_ipc::read_client_message_with_ids(stream) {
             Ok((tab_id, request_id, msg)) => {
-                let target = tab_id.map(TabId::from_u64).unwrap_or_else(|| tabs.default_tab());
+                let target = tab_id
+                    .map(TabId::from_u64)
+                    .unwrap_or_else(|| tabs.default_tab());
                 // Every per-tab reply below echoes `Some(target.as_u64())`,
                 // the *resolved* tab -- not the raw (possibly `None`, if
                 // the request left it defaulted) `tab_id` the request
@@ -168,7 +179,9 @@ pub fn run_session<S: Read + Write + ReadTimeout>(tabs: &mut TabManager, stream:
                 // by a request that left it implicit.
                 let reply_tab = Some(target.as_u64());
                 match msg {
-                    ClientMessage::Hello { protocol_version } => reply_hello(stream, request_id, protocol_version)?,
+                    ClientMessage::Hello { protocol_version } => {
+                        reply_hello(stream, request_id, protocol_version)?
+                    }
                     ClientMessage::Navigate { url } => match tabs.get_mut(target) {
                         Some(page) => begin_gated_navigation(
                             page,
@@ -191,7 +204,9 @@ pub fn run_session<S: Read + Write + ReadTimeout>(tabs: &mut TabManager, stream:
                         match tabs.get_mut(target) {
                             Some(page) => {
                                 page.resize(width as f64, height as f64);
-                                send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
+                                send_frame(
+                                    page, stream, frame_dir, generation, reply_tab, request_id,
+                                )?;
                             }
                             None => write_unknown_tab_error(stream, request_id, target)?,
                         }
@@ -234,12 +249,22 @@ pub fn run_session<S: Read + Write + ReadTimeout>(tabs: &mut TabManager, stream:
                     ClientMessage::GetRepresentation => match tabs.get_mut(target) {
                         Some(page) => {
                             let snapshot = page.snapshot(*generation, target.as_u64());
-                            blueice_ipc::write_server_message_with_ids(stream, reply_tab, request_id, &ServerMessage::Representation(snapshot))?;
+                            blueice_ipc::write_server_message_with_ids(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                &ServerMessage::Representation(snapshot),
+                            )?;
                         }
                         None => write_unknown_tab_error(stream, request_id, target)?,
                     },
                     ClientMessage::GetDom => match tabs.get_mut(target) {
-                        Some(page) => blueice_ipc::write_server_message_with_ids(stream, reply_tab, request_id, &ServerMessage::Dom(page.dom_dump()))?,
+                        Some(page) => blueice_ipc::write_server_message_with_ids(
+                            stream,
+                            reply_tab,
+                            request_id,
+                            &ServerMessage::Dom(page.dom_dump()),
+                        )?,
                         None => write_unknown_tab_error(stream, request_id, target)?,
                     },
                     ClientMessage::ActOn { id, action } => match tabs.get_mut(target) {
@@ -264,7 +289,9 @@ pub fn run_session<S: Read + Write + ReadTimeout>(tabs: &mut TabManager, stream:
                                 // no-op, same as a coordinate Click
                                 // elsewhere -- no reply.
                                 None if is_click => {}
-                                None => send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?,
+                                None => send_frame(
+                                    page, stream, frame_dir, generation, reply_tab, request_id,
+                                )?,
                             }
                         }
                         None => write_unknown_tab_error(stream, request_id, target)?,
@@ -276,20 +303,44 @@ pub fn run_session<S: Read + Write + ReadTimeout>(tabs: &mut TabManager, stream:
                         }
                         None => write_unknown_tab_error(stream, request_id, target)?,
                     },
-                    ClientMessage::OpenTab { url } => {
-                        handle_open_tab(tabs, stream, frame_dir, generation, request_id, url, &mut pending_nav_seq, &completion_tx, gatekeeper_socket)?
-                    }
+                    ClientMessage::OpenTab { url } => handle_open_tab(
+                        tabs,
+                        stream,
+                        frame_dir,
+                        generation,
+                        request_id,
+                        url,
+                        &mut pending_nav_seq,
+                        &completion_tx,
+                        gatekeeper_socket,
+                    )?,
                     ClientMessage::CloseTab => {
                         if tabs.close_tab(target) {
-                            blueice_ipc::write_server_message_with_ids(stream, reply_tab, request_id, &ServerMessage::TabClosed { tab_id: target.as_u64() })?;
+                            blueice_ipc::write_server_message_with_ids(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                &ServerMessage::TabClosed {
+                                    tab_id: target.as_u64(),
+                                },
+                            )?;
                         } else {
                             write_unknown_tab_error(stream, request_id, target)?;
                         }
                     }
                     ClientMessage::ListTabs => {
-                        let summaries: Vec<TabSummary> =
-                            tabs.ids().map(|id| TabSummary { id: id.as_u64(), url: tabs.get(id).and_then(Page::url).map(str::to_string) }).collect();
-                        blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Tabs(summaries))?;
+                        let summaries: Vec<TabSummary> = tabs
+                            .ids()
+                            .map(|id| TabSummary {
+                                id: id.as_u64(),
+                                url: tabs.get(id).and_then(Page::url).map(str::to_string),
+                            })
+                            .collect();
+                        blueice_ipc::write_server_message_with_id(
+                            stream,
+                            request_id,
+                            &ServerMessage::Tabs(summaries),
+                        )?;
                     }
                     // Chrome commands (window show/hide) operate on
                     // `frontend`'s own window, not on anything `core`
@@ -307,7 +358,14 @@ pub fn run_session<S: Read + Write + ReadTimeout>(tabs: &mut TabManager, stream:
         }
 
         while let Ok(completion) = completion_rx.try_recv() {
-            apply_completion(tabs, stream, frame_dir, generation, &pending_nav_seq, completion)?;
+            apply_completion(
+                tabs,
+                stream,
+                frame_dir,
+                generation,
+                &pending_nav_seq,
+                completion,
+            )?;
         }
     }
 }
@@ -373,7 +431,16 @@ fn begin_gated_navigation<S: Write>(
 ) -> io::Result<()> {
     if let Some(html) = crate::page::built_in_page(&url) {
         page.load_html_str(&html, Some(url));
-        return reply_success(page, stream, frame_dir, generation, reply_tab, request_id, &kind, tab_id.as_u64());
+        return reply_success(
+            page,
+            stream,
+            frame_dir,
+            generation,
+            reply_tab,
+            request_id,
+            &kind,
+            tab_id.as_u64(),
+        );
     }
     if let Err(e) = blueice_net::validate_url_scheme(&url) {
         return write_error(stream, reply_tab, request_id, e.to_string());
@@ -387,7 +454,13 @@ fn begin_gated_navigation<S: Write>(
     let socket = gatekeeper_socket.to_path_buf();
     thread::spawn(move || {
         let outcome = gatekeeper_client::check_and_fetch(tab_id, url, &socket);
-        let _ = tx.send(Completion { tab_id, seq: this_seq, request_id, kind, outcome });
+        let _ = tx.send(Completion {
+            tab_id,
+            seq: this_seq,
+            request_id,
+            kind,
+            outcome,
+        });
     });
     Ok(())
 }
@@ -411,9 +484,15 @@ fn reply_success<S: Write>(
 ) -> io::Result<()> {
     match kind {
         PendingKind::Navigate => reply_navigated(page, stream, reply_tab, request_id)?,
-        PendingKind::OpenTab => {
-            blueice_ipc::write_server_message_with_ids(stream, reply_tab, request_id, &ServerMessage::TabOpened { tab_id, url: page.url().map(str::to_string) })?
-        }
+        PendingKind::OpenTab => blueice_ipc::write_server_message_with_ids(
+            stream,
+            reply_tab,
+            request_id,
+            &ServerMessage::TabOpened {
+                tab_id,
+                url: page.url().map(str::to_string),
+            },
+        )?,
     }
     send_frame(page, stream, frame_dir, generation, reply_tab, request_id)
 }
@@ -428,8 +507,21 @@ fn reply_success<S: Write>(
 /// `completion` never touched `Page`/`TabManager` state itself; this
 /// (called only from the main loop) is the one place a gated
 /// navigation's result actually lands.
-fn apply_completion<S: Write>(tabs: &mut TabManager, stream: &mut S, frame_dir: &Path, generation: &mut u64, pending_nav_seq: &HashMap<TabId, u64>, completion: Completion) -> io::Result<()> {
-    let Completion { tab_id, seq, request_id, kind, outcome } = completion;
+fn apply_completion<S: Write>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    pending_nav_seq: &HashMap<TabId, u64>,
+    completion: Completion,
+) -> io::Result<()> {
+    let Completion {
+        tab_id,
+        seq,
+        request_id,
+        kind,
+        outcome,
+    } = completion;
     if pending_nav_seq.get(&tab_id) != Some(&seq) {
         return Ok(()); // superseded by a later navigation to this tab
     }
@@ -438,13 +530,37 @@ fn apply_completion<S: Write>(tabs: &mut TabManager, stream: &mut S, frame_dir: 
     };
     let reply_tab = Some(tab_id.as_u64());
     match outcome {
-        NavOutcome::Cleared { clearance, final_url, html } => {
+        NavOutcome::Cleared {
+            clearance,
+            final_url,
+            html,
+        } => {
             page.apply_fetched(clearance, &final_url, &html);
-            reply_success(page, stream, frame_dir, generation, reply_tab, request_id, &kind, tab_id.as_u64())
+            reply_success(
+                page,
+                stream,
+                frame_dir,
+                generation,
+                reply_tab,
+                request_id,
+                &kind,
+                tab_id.as_u64(),
+            )
         }
-        NavOutcome::GatekeeperBlocked { reason, category, url } => {
-            blueice_ipc::write_server_message_with_ids(stream, reply_tab, request_id, &ServerMessage::GatekeeperBlocked { reason, category, url })
-        }
+        NavOutcome::GatekeeperBlocked {
+            reason,
+            category,
+            url,
+        } => blueice_ipc::write_server_message_with_ids(
+            stream,
+            reply_tab,
+            request_id,
+            &ServerMessage::GatekeeperBlocked {
+                reason,
+                category,
+                url,
+            },
+        ),
         NavOutcome::FetchFailed { message } => write_error(stream, reply_tab, request_id, message),
     }
 }
@@ -473,9 +589,19 @@ fn handle_open_tab<S: Write>(
 ) -> io::Result<()> {
     let new_id = tabs.open_tab();
     let Some(url) = url else {
-        return blueice_ipc::write_server_message_with_ids(stream, Some(new_id.as_u64()), request_id, &ServerMessage::TabOpened { tab_id: new_id.as_u64(), url: None });
+        return blueice_ipc::write_server_message_with_ids(
+            stream,
+            Some(new_id.as_u64()),
+            request_id,
+            &ServerMessage::TabOpened {
+                tab_id: new_id.as_u64(),
+                url: None,
+            },
+        );
     };
-    let page = tabs.get_mut(new_id).expect("a tab this function just created must exist");
+    let page = tabs
+        .get_mut(new_id)
+        .expect("a tab this function just created must exist");
     begin_gated_navigation(
         page,
         stream,
@@ -506,9 +632,19 @@ fn perform_handshake<S: Read + Write>(stream: &mut S) -> io::Result<bool> {
         match blueice_ipc::read_client_message_with_id(stream) {
             Ok((request_id, msg)) => {
                 return match msg {
-                    ClientMessage::Hello { protocol_version } => reply_hello(stream, request_id, protocol_version).map(|()| protocol_version == blueice_ipc::PROTOCOL_VERSION),
+                    ClientMessage::Hello { protocol_version } => {
+                        reply_hello(stream, request_id, protocol_version)
+                            .map(|()| protocol_version == blueice_ipc::PROTOCOL_VERSION)
+                    }
                     _ => {
-                        blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Error { message: "the first message on a connection must be Hello".to_string() })?;
+                        blueice_ipc::write_server_message_with_id(
+                            stream,
+                            request_id,
+                            &ServerMessage::Error {
+                                message: "the first message on a connection must be Hello"
+                                    .to_string(),
+                            },
+                        )?;
                         Ok(false)
                     }
                 };
@@ -519,23 +655,57 @@ fn perform_handshake<S: Read + Write>(stream: &mut S) -> io::Result<bool> {
     }
 }
 
-fn reply_hello<S: Write>(stream: &mut S, request_id: Option<u64>, protocol_version: u32) -> io::Result<()> {
+fn reply_hello<S: Write>(
+    stream: &mut S,
+    request_id: Option<u64>,
+    protocol_version: u32,
+) -> io::Result<()> {
     if protocol_version == blueice_ipc::PROTOCOL_VERSION {
-        blueice_ipc::write_server_message_with_id(stream, request_id, &ServerMessage::Hello { protocol_version: blueice_ipc::PROTOCOL_VERSION })
+        blueice_ipc::write_server_message_with_id(
+            stream,
+            request_id,
+            &ServerMessage::Hello {
+                protocol_version: blueice_ipc::PROTOCOL_VERSION,
+            },
+        )
     } else {
         blueice_ipc::write_server_message_with_id(
             stream,
             request_id,
-            &ServerMessage::Error { message: format!("unsupported protocol_version {protocol_version}, this core speaks {}", blueice_ipc::PROTOCOL_VERSION) },
+            &ServerMessage::Error {
+                message: format!(
+                    "unsupported protocol_version {protocol_version}, this core speaks {}",
+                    blueice_ipc::PROTOCOL_VERSION
+                ),
+            },
         )
     }
 }
 
-fn reply_navigated<S: Write>(page: &Page, stream: &mut S, tab_id: Option<u64>, request_id: Option<u64>) -> io::Result<()> {
-    blueice_ipc::write_server_message_with_ids(stream, tab_id, request_id, &ServerMessage::Navigated { url: page.url().unwrap_or_default().to_string() })
+fn reply_navigated<S: Write>(
+    page: &Page,
+    stream: &mut S,
+    tab_id: Option<u64>,
+    request_id: Option<u64>,
+) -> io::Result<()> {
+    blueice_ipc::write_server_message_with_ids(
+        stream,
+        tab_id,
+        request_id,
+        &ServerMessage::Navigated {
+            url: page.url().unwrap_or_default().to_string(),
+        },
+    )
 }
 
-fn send_frame<S: Write>(page: &Page, stream: &mut S, frame_dir: &Path, generation: &mut u64, tab_id: Option<u64>, request_id: Option<u64>) -> io::Result<()> {
+fn send_frame<S: Write>(
+    page: &Page,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    tab_id: Option<u64>,
+    request_id: Option<u64>,
+) -> io::Result<()> {
     let pixmap = page.render_visible();
     *generation += 1;
     let path = shm::write_frame(frame_dir, *generation, &pixmap.pixels)?;
@@ -543,12 +713,27 @@ fn send_frame<S: Write>(page: &Page, stream: &mut S, frame_dir: &Path, generatio
         stream,
         tab_id,
         request_id,
-        &ServerMessage::FrameReady { shm_path: path.to_string_lossy().into_owned(), width: pixmap.width, height: pixmap.height, generation: *generation },
+        &ServerMessage::FrameReady {
+            shm_path: path.to_string_lossy().into_owned(),
+            width: pixmap.width,
+            height: pixmap.height,
+            generation: *generation,
+        },
     )
 }
 
-fn write_error<S: Write>(stream: &mut S, tab_id: Option<u64>, request_id: Option<u64>, message: String) -> io::Result<()> {
-    blueice_ipc::write_server_message_with_ids(stream, tab_id, request_id, &ServerMessage::Error { message })
+fn write_error<S: Write>(
+    stream: &mut S,
+    tab_id: Option<u64>,
+    request_id: Option<u64>,
+    message: String,
+) -> io::Result<()> {
+    blueice_ipc::write_server_message_with_ids(
+        stream,
+        tab_id,
+        request_id,
+        &ServerMessage::Error { message },
+    )
 }
 
 /// A `tab_id` (explicit or defaulted) that doesn't resolve to a live
@@ -556,8 +741,17 @@ fn write_error<S: Write>(stream: &mut S, tab_id: Option<u64>, request_id: Option
 /// `Error` reply, never a silent no-op. Echoes `target` itself as the
 /// reply's `tab_id`, so the client at least learns which (nonexistent)
 /// tab it addressed.
-fn write_unknown_tab_error<S: Write>(stream: &mut S, request_id: Option<u64>, target: TabId) -> io::Result<()> {
-    write_error(stream, Some(target.as_u64()), request_id, format!("unknown tab {}", target.as_u64()))
+fn write_unknown_tab_error<S: Write>(
+    stream: &mut S,
+    request_id: Option<u64>,
+    target: TabId,
+) -> io::Result<()> {
+    write_error(
+        stream,
+        Some(target.as_u64()),
+        request_id,
+        format!("unknown tab {}", target.as_u64()),
+    )
 }
 
 #[cfg(test)]
@@ -570,7 +764,10 @@ mod tests {
     use std::time::Instant;
 
     fn temp_frame_dir(label: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("blueice-session-test-{label}-{}", std::process::id()))
+        std::env::temp_dir().join(format!(
+            "blueice-session-test-{label}-{}",
+            std::process::id()
+        ))
     }
 
     fn client_pair() -> (UnixStream, UnixStream) {
@@ -652,9 +849,24 @@ mod tests {
         });
         handshake(&mut client);
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Resize { width: 100, height: 50 }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Resize {
+                width: 100,
+                height: 50,
+            },
+        )
+        .unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
-        assert!(matches!(reply, ServerMessage::FrameReady { generation: 1, width: 100, height: 50, .. }));
+        assert!(matches!(
+            reply,
+            ServerMessage::FrameReady {
+                generation: 1,
+                width: 100,
+                height: 50,
+                ..
+            }
+        ));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -672,7 +884,15 @@ mod tests {
             let mut buf = [0u8; 1024];
             let _ = std::io::Read::read(&mut stream, &mut buf);
             let body = "<p>fetched page</p>";
-            std::io::Write::write_all(&mut stream, format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).unwrap();
+            std::io::Write::write_all(
+                &mut stream,
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
         });
 
         let (mut client, mut server) = client_pair();
@@ -685,15 +905,26 @@ mod tests {
         handshake(&mut client);
 
         let url = format!("http://{addr}");
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Navigate { url: url.clone() }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate { url: url.clone() },
+        )
+        .unwrap();
         let navigated = blueice_ipc::read_server_message(&mut client).unwrap();
         assert_eq!(navigated, ServerMessage::Navigated { url });
         let frame = blueice_ipc::read_server_message(&mut client).unwrap();
         let shm_path = match frame {
-            ServerMessage::FrameReady { shm_path, generation: 1, .. } => shm_path,
+            ServerMessage::FrameReady {
+                shm_path,
+                generation: 1,
+                ..
+            } => shm_path,
             other => panic!("expected FrameReady, got {other:?}"),
         };
-        assert!(shm::map_frame(std::path::Path::new(&shm_path)).is_ok(), "the frame-plane file must actually exist and be mappable");
+        assert!(
+            shm::map_frame(std::path::Path::new(&shm_path)).is_ok(),
+            "the frame-plane file must actually exist and be mappable"
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -713,7 +944,13 @@ mod tests {
         });
         handshake(&mut client);
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Navigate { url: "not-a-valid-url".to_string() }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate {
+                url: "not-a-valid-url".to_string(),
+            },
+        )
+        .unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
         assert!(matches!(reply, ServerMessage::Error { .. }));
 
@@ -733,7 +970,15 @@ mod tests {
             let mut buf = [0u8; 1024];
             let _ = std::io::Read::read(&mut stream, &mut buf);
             let body = "<p>landed</p>";
-            std::io::Write::write_all(&mut stream, format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).unwrap();
+            std::io::Write::write_all(
+                &mut stream,
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
         });
         let url = format!("http://{addr}");
 
@@ -743,12 +988,20 @@ mod tests {
             let mut tabs = TabManager::new(320.0, 200.0);
             default_page(&mut tabs).load_html_str(&format!(r#"<a href="{url}">go</a>"#), None);
             let mut generation = 0u64;
-            run_session(&mut tabs, &mut server, &dir_for_thread, &mut generation, &gatekeeper).unwrap();
+            run_session(
+                &mut tabs,
+                &mut server,
+                &dir_for_thread,
+                &mut generation,
+                &gatekeeper,
+            )
+            .unwrap();
         });
         handshake(&mut client);
 
         // clicking the link navigates: expect Navigated then FrameReady
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Click { x: 2.0, y: 2.0 }).unwrap();
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Click { x: 2.0, y: 2.0 })
+            .unwrap();
         let navigated = blueice_ipc::read_server_message(&mut client).unwrap();
         assert!(matches!(navigated, ServerMessage::Navigated { .. }));
         let frame = blueice_ipc::read_server_message(&mut client).unwrap();
@@ -772,10 +1025,21 @@ mod tests {
         });
         handshake(&mut client);
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Chrome(blueice_ipc::ChromeCommand::SetVisible(false))).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Chrome(blueice_ipc::ChromeCommand::SetVisible(false)),
+        )
+        .unwrap();
         // proven by the fact that a subsequent message still gets a
         // normal reply -- Chrome(SetVisible) didn't wedge or end the session.
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Resize { width: 10, height: 10 }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Resize {
+                width: 10,
+                height: 10,
+            },
+        )
+        .unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
         assert!(matches!(reply, ServerMessage::FrameReady { .. }));
 
@@ -811,23 +1075,41 @@ mod tests {
         handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
-        let ServerMessage::Representation(snap) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
+        let ServerMessage::Representation(snap) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Representation")
+        };
         let input_id = snap.nodes[0].id;
 
         let assert_matching_generation = |client: &mut UnixStream, send: ClientMessage| {
             blueice_ipc::write_client_message(client, &send).unwrap();
             let frame = blueice_ipc::read_server_message(client).unwrap();
-            let ServerMessage::FrameReady { generation: frame_generation, .. } = frame else { panic!("expected FrameReady, got {frame:?}") };
+            let ServerMessage::FrameReady {
+                generation: frame_generation,
+                ..
+            } = frame
+            else {
+                panic!("expected FrameReady, got {frame:?}")
+            };
 
             blueice_ipc::write_client_message(client, &ClientMessage::GetRepresentation).unwrap();
             let reply = blueice_ipc::read_server_message(client).unwrap();
-            let ServerMessage::Representation(snapshot) = reply else { panic!("expected Representation, got {reply:?}") };
+            let ServerMessage::Representation(snapshot) = reply else {
+                panic!("expected Representation, got {reply:?}")
+            };
             assert_eq!(snapshot.generation, frame_generation);
         };
 
         assert_matching_generation(&mut client, ClientMessage::Scroll { delta_y: 10.0 });
         assert_matching_generation(&mut client, ClientMessage::Highlight { id: Some(input_id) });
-        assert_matching_generation(&mut client, ClientMessage::ActOn { id: input_id, action: NodeAction::Focus });
+        assert_matching_generation(
+            &mut client,
+            ClientMessage::ActOn {
+                id: input_id,
+                action: NodeAction::Focus,
+            },
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -852,15 +1134,33 @@ mod tests {
         });
         handshake(&mut client);
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Resize { width: 100, height: 50 }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Resize {
+                width: 100,
+                height: 50,
+            },
+        )
+        .unwrap();
         let frame = blueice_ipc::read_server_message(&mut client).unwrap();
-        let ServerMessage::FrameReady { generation: frame_generation, .. } = frame else { panic!("expected FrameReady, got {frame:?}") };
+        let ServerMessage::FrameReady {
+            generation: frame_generation,
+            ..
+        } = frame
+        else {
+            panic!("expected FrameReady, got {frame:?}")
+        };
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
-        let ServerMessage::Representation(snapshot) = reply else { panic!("expected Representation, got {reply:?}") };
+        let ServerMessage::Representation(snapshot) = reply else {
+            panic!("expected Representation, got {reply:?}")
+        };
         assert_eq!(snapshot.generation, frame_generation);
-        assert!(snapshot.nodes.iter().any(|n| n.name.as_deref() == Some("Go")));
+        assert!(snapshot
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("Go")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -874,7 +1174,8 @@ mod tests {
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
             let mut tabs = TabManager::new(320.0, 200.0);
-            default_page(&mut tabs).load_html_str(r#"<div style="background-color: red;">x</div>"#, None);
+            default_page(&mut tabs)
+                .load_html_str(r#"<div style="background-color: red;">x</div>"#, None);
             let mut generation = 0u64;
             run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper).unwrap();
             dir
@@ -883,7 +1184,9 @@ mod tests {
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetDom).unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
-        let ServerMessage::Dom(dump) = reply else { panic!("expected Dom, got {reply:?}") };
+        let ServerMessage::Dom(dump) = reply else {
+            panic!("expected Dom, got {reply:?}")
+        };
         assert!(dump.contains("<div>"), "a bare div has no AI-representation role but must still appear in the full DOM dump: {dump}");
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
@@ -902,7 +1205,15 @@ mod tests {
             let mut buf = [0u8; 1024];
             let _ = std::io::Read::read(&mut stream, &mut buf);
             let body = "<p>landed via id</p>";
-            std::io::Write::write_all(&mut stream, format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).unwrap();
+            std::io::Write::write_all(
+                &mut stream,
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
         });
         let url = format!("http://{addr}");
 
@@ -917,10 +1228,26 @@ mod tests {
         handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
-        let ServerMessage::Representation(snapshot) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
-        let link_id = snapshot.nodes.iter().find(|n| n.name.as_deref() == Some("go")).unwrap().id;
+        let ServerMessage::Representation(snapshot) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Representation")
+        };
+        let link_id = snapshot
+            .nodes
+            .iter()
+            .find(|n| n.name.as_deref() == Some("go"))
+            .unwrap()
+            .id;
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::ActOn { id: link_id, action: NodeAction::Click }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::ActOn {
+                id: link_id,
+                action: NodeAction::Click,
+            },
+        )
+        .unwrap();
         let navigated = blueice_ipc::read_server_message(&mut client).unwrap();
         assert!(matches!(navigated, ServerMessage::Navigated { .. }));
         let frame = blueice_ipc::read_server_message(&mut client).unwrap();
@@ -938,7 +1265,8 @@ mod tests {
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
             let mut tabs = TabManager::new(320.0, 200.0);
-            default_page(&mut tabs).load_html_str(r#"<input id="name" type="text" placeholder="Name">"#, None);
+            default_page(&mut tabs)
+                .load_html_str(r#"<input id="name" type="text" placeholder="Name">"#, None);
             let mut generation = 0u64;
             run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper).unwrap();
             dir
@@ -946,16 +1274,34 @@ mod tests {
         handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
-        let ServerMessage::Representation(before) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
+        let ServerMessage::Representation(before) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Representation")
+        };
         let input_id = before.nodes[0].id;
         assert!(!before.nodes[0].state.focused);
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::ActOn { id: input_id, action: NodeAction::Focus }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::ActOn {
+                id: input_id,
+                action: NodeAction::Focus,
+            },
+        )
+        .unwrap();
         let frame = blueice_ipc::read_server_message(&mut client).unwrap();
-        assert!(matches!(frame, ServerMessage::FrameReady { .. }), "Focus is a state change and still gets a FrameReady, per session.rs's own docs");
+        assert!(
+            matches!(frame, ServerMessage::FrameReady { .. }),
+            "Focus is a state change and still gets a FrameReady, per session.rs's own docs"
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
-        let ServerMessage::Representation(after) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
+        let ServerMessage::Representation(after) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Representation")
+        };
         assert!(after.nodes[0].state.focused);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
@@ -979,10 +1325,24 @@ mod tests {
 
         // an unknown id with Click: same "no reply at all" contract as
         // a coordinate click that lands on nothing.
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::ActOn { id: 999_999, action: NodeAction::Click }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::ActOn {
+                id: 999_999,
+                action: NodeAction::Click,
+            },
+        )
+        .unwrap();
         // proven by the fact that the next message still gets a normal
         // reply -- the unknown id didn't wedge or end the session.
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Resize { width: 10, height: 10 }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Resize {
+                width: 10,
+                height: 10,
+            },
+        )
+        .unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
         assert!(matches!(reply, ServerMessage::FrameReady { .. }));
 
@@ -1014,19 +1374,48 @@ mod tests {
         handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
-        let ServerMessage::Representation(snap) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
+        let ServerMessage::Representation(snap) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Representation")
+        };
         let stale_id = snap.nodes[0].id;
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Navigate { url: "about:blank".to_string() }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate {
+                url: "about:blank".to_string(),
+            },
+        )
+        .unwrap();
         let navigated = blueice_ipc::read_server_message(&mut client).unwrap();
-        assert_eq!(navigated, ServerMessage::Navigated { url: "about:blank".to_string() });
+        assert_eq!(
+            navigated,
+            ServerMessage::Navigated {
+                url: "about:blank".to_string()
+            }
+        );
         let _frame = blueice_ipc::read_server_message(&mut client).unwrap();
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::ActOn { id: stale_id, action: NodeAction::Click }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::ActOn {
+                id: stale_id,
+                action: NodeAction::Click,
+            },
+        )
+        .unwrap();
         // proven the same way as the never-allocated-id case: the next
         // message still gets a normal reply, so the stale id neither
         // wedged the session nor triggered a misdirected action.
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Resize { width: 10, height: 10 }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Resize {
+                width: 10,
+                height: 10,
+            },
+        )
+        .unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
         assert!(matches!(reply, ServerMessage::FrameReady { .. }));
 
@@ -1050,10 +1439,18 @@ mod tests {
         handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
-        let ServerMessage::Representation(snap) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
+        let ServerMessage::Representation(snap) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Representation")
+        };
         let link_id = snap.nodes[0].id;
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Highlight { id: Some(link_id) }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Highlight { id: Some(link_id) },
+        )
+        .unwrap();
         let frame = blueice_ipc::read_server_message(&mut client).unwrap();
         assert!(matches!(frame, ServerMessage::FrameReady { .. }));
 
@@ -1076,12 +1473,20 @@ mod tests {
         });
         handshake(&mut client);
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Hover { x: 2.0, y: 2.0 }).unwrap();
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Hover { x: 2.0, y: 2.0 })
+            .unwrap();
         // proven the same way SetVisible/Chrome is: the next message
         // still gets a normal reply, so Hover didn't wedge the session.
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
-        let ServerMessage::Representation(snap) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
-        assert!(snap.nodes[0].state.hovered, "the hovered state must be visible via GetRepresentation");
+        let ServerMessage::Representation(snap) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Representation")
+        };
+        assert!(
+            snap.nodes[0].state.hovered,
+            "the hovered state must be visible via GetRepresentation"
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -1110,16 +1515,38 @@ mod tests {
         handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
-        let ServerMessage::Representation(before) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
+        let ServerMessage::Representation(before) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Representation")
+        };
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Chrome(blueice_ipc::ChromeCommand::SetVisible(false))).unwrap();
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Chrome(blueice_ipc::ChromeCommand::SetVisible(true))).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Chrome(blueice_ipc::ChromeCommand::SetVisible(false)),
+        )
+        .unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Chrome(blueice_ipc::ChromeCommand::SetVisible(true)),
+        )
+        .unwrap();
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
-        let ServerMessage::Representation(after) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
+        let ServerMessage::Representation(after) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Representation")
+        };
 
-        assert_eq!(before.nodes, after.nodes, "a hide/show cycle must not change the engine's render-pass state");
-        assert_eq!(before.generation, after.generation, "no frame is re-rendered just from a visibility toggle");
+        assert_eq!(
+            before.nodes, after.nodes,
+            "a hide/show cycle must not change the engine's render-pass state"
+        );
+        assert_eq!(
+            before.generation, after.generation,
+            "no frame is re-rendered just from a visibility toggle"
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -1153,9 +1580,15 @@ mod tests {
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
-        assert!(matches!(reply, ServerMessage::Error { .. }), "expected an Error reply, got {reply:?}");
+        assert!(
+            matches!(reply, ServerMessage::Error { .. }),
+            "expected an Error reply, got {reply:?}"
+        );
 
-        assert!(handle.join().unwrap().is_ok(), "the session must end cleanly, not hang, after rejecting the handshake");
+        assert!(
+            handle.join().unwrap().is_ok(),
+            "the session must end cleanly, not hang, after rejecting the handshake"
+        );
     }
 
     #[test]
@@ -1169,11 +1602,23 @@ mod tests {
             run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper)
         });
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Hello { protocol_version: blueice_ipc::PROTOCOL_VERSION + 1 }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Hello {
+                protocol_version: blueice_ipc::PROTOCOL_VERSION + 1,
+            },
+        )
+        .unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
-        assert!(matches!(reply, ServerMessage::Error { .. }), "expected an Error reply, got {reply:?}");
+        assert!(
+            matches!(reply, ServerMessage::Error { .. }),
+            "expected an Error reply, got {reply:?}"
+        );
 
-        assert!(handle.join().unwrap().is_ok(), "the session must end cleanly, not hang, after rejecting an unsupported version");
+        assert!(
+            handle.join().unwrap().is_ok(),
+            "the session must end cleanly, not hang, after rejecting an unsupported version"
+        );
     }
 
     #[test]
@@ -1193,9 +1638,20 @@ mod tests {
         });
         handshake(&mut client);
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Hello { protocol_version: blueice_ipc::PROTOCOL_VERSION }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Hello {
+                protocol_version: blueice_ipc::PROTOCOL_VERSION,
+            },
+        )
+        .unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
-        assert_eq!(reply, ServerMessage::Hello { protocol_version: blueice_ipc::PROTOCOL_VERSION });
+        assert_eq!(
+            reply,
+            ServerMessage::Hello {
+                protocol_version: blueice_ipc::PROTOCOL_VERSION
+            }
+        );
 
         // proven the same way other no-special-effect messages are:
         // the session is still alive and answers normally afterward.
@@ -1218,7 +1674,12 @@ mod tests {
         });
         handshake(&mut client);
 
-        blueice_ipc::write_client_message_with_id(&mut client, Some(99), &ClientMessage::GetRepresentation).unwrap();
+        blueice_ipc::write_client_message_with_id(
+            &mut client,
+            Some(99),
+            &ClientMessage::GetRepresentation,
+        )
+        .unwrap();
         let (request_id, reply) = blueice_ipc::read_server_message_with_id(&mut client).unwrap();
         assert_eq!(request_id, Some(99));
         assert!(matches!(reply, ServerMessage::Representation(_)));
@@ -1245,7 +1706,14 @@ mod tests {
         // proven the same way other no-reply messages are: the next
         // message still gets a normal reply, so Unknown didn't wedge
         // or end the session.
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Resize { width: 10, height: 10 }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Resize {
+                width: 10,
+                height: 10,
+            },
+        )
+        .unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
         assert!(matches!(reply, ServerMessage::FrameReady { .. }));
 
@@ -1268,17 +1736,37 @@ mod tests {
         handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
-        let ServerMessage::Tabs(before) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Tabs") };
-        assert_eq!(before.len(), 1, "a fresh core starts with exactly one tab, same as before Phase 16");
+        let ServerMessage::Tabs(before) = blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Tabs")
+        };
+        assert_eq!(
+            before.len(),
+            1,
+            "a fresh core starts with exactly one tab, same as before Phase 16"
+        );
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: None }).unwrap();
-        let ServerMessage::TabOpened { tab_id: new_id, url } = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected TabOpened") };
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: None })
+            .unwrap();
+        let ServerMessage::TabOpened {
+            tab_id: new_id,
+            url,
+        } = blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected TabOpened")
+        };
         assert_eq!(url, None);
         assert_ne!(new_id, before[0].id);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
-        let ServerMessage::Tabs(after) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Tabs") };
-        assert_eq!(after.iter().map(|t| t.id).collect::<Vec<_>>(), vec![before[0].id, new_id]);
+        let ServerMessage::Tabs(after) = blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Tabs")
+        };
+        assert_eq!(
+            after.iter().map(|t| t.id).collect::<Vec<_>>(),
+            vec![before[0].id, new_id]
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -1296,7 +1784,15 @@ mod tests {
             let mut buf = [0u8; 1024];
             let _ = std::io::Read::read(&mut stream, &mut buf);
             let body = "<p>opened via url</p>";
-            std::io::Write::write_all(&mut stream, format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).unwrap();
+            std::io::Write::write_all(
+                &mut stream,
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
         });
 
         let (mut client, mut server) = client_pair();
@@ -1309,19 +1805,45 @@ mod tests {
         handshake(&mut client);
 
         let url = format!("http://{addr}");
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: Some(url.clone()) }).unwrap();
-        let ServerMessage::TabOpened { tab_id: new_id, url: opened_url } = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected TabOpened") };
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::OpenTab {
+                url: Some(url.clone()),
+            },
+        )
+        .unwrap();
+        let ServerMessage::TabOpened {
+            tab_id: new_id,
+            url: opened_url,
+        } = blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected TabOpened")
+        };
         assert_eq!(opened_url, Some(url));
         let frame = blueice_ipc::read_server_message(&mut client).unwrap();
-        assert!(matches!(frame, ServerMessage::FrameReady { .. }), "expected FrameReady, got {frame:?}");
+        assert!(
+            matches!(frame, ServerMessage::FrameReady { .. }),
+            "expected FrameReady, got {frame:?}"
+        );
 
         // The new tab's content must actually be addressable afterward.
-        blueice_ipc::write_client_message_with_ids(&mut client, Some(new_id), None, &ClientMessage::GetRepresentation).unwrap();
+        blueice_ipc::write_client_message_with_ids(
+            &mut client,
+            Some(new_id),
+            None,
+            &ClientMessage::GetRepresentation,
+        )
+        .unwrap();
         let (reply_tab, _, reply) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
         assert_eq!(reply_tab, Some(new_id));
-        let ServerMessage::Representation(snapshot) = reply else { panic!("expected Representation, got {reply:?}") };
+        let ServerMessage::Representation(snapshot) = reply else {
+            panic!("expected Representation, got {reply:?}")
+        };
         assert_eq!(snapshot.tab_id, new_id);
-        assert!(snapshot.nodes.iter().any(|n| n.name.as_deref() == Some("opened via url")));
+        assert!(snapshot
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("opened via url")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -1341,15 +1863,27 @@ mod tests {
         });
         handshake(&mut client);
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: Some("not-a-valid-url".to_string()) }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::OpenTab {
+                url: Some("not-a-valid-url".to_string()),
+            },
+        )
+        .unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
-        assert!(matches!(reply, ServerMessage::Error { .. }), "expected Error, got {reply:?}");
+        assert!(
+            matches!(reply, ServerMessage::Error { .. }),
+            "expected Error, got {reply:?}"
+        );
 
         // The session must still be alive and taking new commands
         // afterward -- proven the same way every other no-crash case
         // in this file is.
         blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
-        assert!(matches!(blueice_ipc::read_server_message(&mut client).unwrap(), ServerMessage::Tabs(_)));
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Tabs(_)
+        ));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -1371,25 +1905,54 @@ mod tests {
         handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
-        let ServerMessage::Tabs(initial) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Tabs") };
+        let ServerMessage::Tabs(initial) = blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Tabs")
+        };
         let tab_one = initial[0].id;
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: None }).unwrap();
-        let ServerMessage::TabOpened { tab_id: tab_two, .. } = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected TabOpened") };
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: None })
+            .unwrap();
+        let ServerMessage::TabOpened {
+            tab_id: tab_two, ..
+        } = blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected TabOpened")
+        };
 
         // Scroll only tab_two.
-        blueice_ipc::write_client_message_with_ids(&mut client, Some(tab_two), None, &ClientMessage::Scroll { delta_y: 500.0 }).unwrap();
+        blueice_ipc::write_client_message_with_ids(
+            &mut client,
+            Some(tab_two),
+            None,
+            &ClientMessage::Scroll { delta_y: 500.0 },
+        )
+        .unwrap();
         let frame = blueice_ipc::read_server_message(&mut client).unwrap();
         assert!(matches!(frame, ServerMessage::FrameReady { .. }));
 
         // tab_one's representation must be completely unaffected --
         // still showing its own content, scroll untouched.
-        blueice_ipc::write_client_message_with_ids(&mut client, Some(tab_one), None, &ClientMessage::GetRepresentation).unwrap();
+        blueice_ipc::write_client_message_with_ids(
+            &mut client,
+            Some(tab_one),
+            None,
+            &ClientMessage::GetRepresentation,
+        )
+        .unwrap();
         let (_, _, reply) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
-        let ServerMessage::Representation(snap) = reply else { panic!("expected Representation, got {reply:?}") };
+        let ServerMessage::Representation(snap) = reply else {
+            panic!("expected Representation, got {reply:?}")
+        };
         assert_eq!(snap.tab_id, tab_one);
-        assert_eq!(snap.scroll_y, 0.0, "scrolling tab_two must not move tab_one's scroll position");
-        assert!(snap.nodes.iter().any(|n| n.name.as_deref() == Some("tab one")));
+        assert_eq!(
+            snap.scroll_y, 0.0,
+            "scrolling tab_two must not move tab_one's scroll position"
+        );
+        assert!(snap
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("tab one")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -1412,7 +1975,15 @@ mod tests {
             let mut buf = [0u8; 1024];
             let _ = std::io::Read::read(&mut stream, &mut buf);
             let body = "<p>tab two content</p>";
-            std::io::Write::write_all(&mut stream, format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).unwrap();
+            std::io::Write::write_all(
+                &mut stream,
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
         });
 
         let (mut client, mut server) = client_pair();
@@ -1426,25 +1997,54 @@ mod tests {
         handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
-        let ServerMessage::Tabs(initial) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Tabs") };
+        let ServerMessage::Tabs(initial) = blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Tabs")
+        };
         let tab_one = initial[0].id;
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: None }).unwrap();
-        let ServerMessage::TabOpened { tab_id: tab_two, .. } = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected TabOpened") };
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: None })
+            .unwrap();
+        let ServerMessage::TabOpened {
+            tab_id: tab_two, ..
+        } = blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected TabOpened")
+        };
 
         let url = format!("http://{addr}");
-        blueice_ipc::write_client_message_with_ids(&mut client, Some(tab_two), None, &ClientMessage::Navigate { url: url.clone() }).unwrap();
-        let (reply_tab, _, navigated) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+        blueice_ipc::write_client_message_with_ids(
+            &mut client,
+            Some(tab_two),
+            None,
+            &ClientMessage::Navigate { url: url.clone() },
+        )
+        .unwrap();
+        let (reply_tab, _, navigated) =
+            blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
         assert_eq!(reply_tab, Some(tab_two));
         assert_eq!(navigated, ServerMessage::Navigated { url });
         let (_, _, frame) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
         assert!(matches!(frame, ServerMessage::FrameReady { .. }));
 
-        blueice_ipc::write_client_message_with_ids(&mut client, Some(tab_one), None, &ClientMessage::GetRepresentation).unwrap();
+        blueice_ipc::write_client_message_with_ids(
+            &mut client,
+            Some(tab_one),
+            None,
+            &ClientMessage::GetRepresentation,
+        )
+        .unwrap();
         let (_, _, reply) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
-        let ServerMessage::Representation(snap) = reply else { panic!("expected Representation, got {reply:?}") };
+        let ServerMessage::Representation(snap) = reply else {
+            panic!("expected Representation, got {reply:?}")
+        };
         assert_eq!(snap.tab_id, tab_one);
-        assert!(snap.nodes.iter().any(|n| n.name.as_deref() == Some("tab one")), "tab one's content must be untouched by tab two's gated navigation");
+        assert!(
+            snap.nodes
+                .iter()
+                .any(|n| n.name.as_deref() == Some("tab one")),
+            "tab one's content must be untouched by tab two's gated navigation"
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -1464,15 +2064,31 @@ mod tests {
         });
         handshake(&mut client);
 
-        blueice_ipc::write_client_message_with_ids(&mut client, Some(999_999), None, &ClientMessage::GetRepresentation).unwrap();
+        blueice_ipc::write_client_message_with_ids(
+            &mut client,
+            Some(999_999),
+            None,
+            &ClientMessage::GetRepresentation,
+        )
+        .unwrap();
         let (reply_tab, _, reply) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
-        assert_eq!(reply_tab, Some(999_999), "the reply should still echo back which (nonexistent) tab was addressed");
-        assert!(matches!(reply, ServerMessage::Error { .. }), "expected Error, got {reply:?}");
+        assert_eq!(
+            reply_tab,
+            Some(999_999),
+            "the reply should still echo back which (nonexistent) tab was addressed"
+        );
+        assert!(
+            matches!(reply, ServerMessage::Error { .. }),
+            "expected Error, got {reply:?}"
+        );
 
         // The session must survive an unknown-tab error, same as every
         // other error case in this file.
         blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
-        assert!(matches!(blueice_ipc::read_server_message(&mut client).unwrap(), ServerMessage::Tabs(_)));
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Tabs(_)
+        ));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -1492,21 +2108,47 @@ mod tests {
         });
         handshake(&mut client);
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: None }).unwrap();
-        let ServerMessage::TabOpened { tab_id: new_id, .. } = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected TabOpened") };
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: None })
+            .unwrap();
+        let ServerMessage::TabOpened { tab_id: new_id, .. } =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected TabOpened")
+        };
 
-        blueice_ipc::write_client_message_with_ids(&mut client, Some(new_id), None, &ClientMessage::CloseTab).unwrap();
+        blueice_ipc::write_client_message_with_ids(
+            &mut client,
+            Some(new_id),
+            None,
+            &ClientMessage::CloseTab,
+        )
+        .unwrap();
         let (reply_tab, _, reply) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
         assert_eq!(reply_tab, Some(new_id));
         assert_eq!(reply, ServerMessage::TabClosed { tab_id: new_id });
 
-        blueice_ipc::write_client_message_with_ids(&mut client, Some(new_id), None, &ClientMessage::GetRepresentation).unwrap();
+        blueice_ipc::write_client_message_with_ids(
+            &mut client,
+            Some(new_id),
+            None,
+            &ClientMessage::GetRepresentation,
+        )
+        .unwrap();
         let (_, _, reply) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
-        assert!(matches!(reply, ServerMessage::Error { .. }), "a closed tab's id must no longer resolve, expected Error, got {reply:?}");
+        assert!(
+            matches!(reply, ServerMessage::Error { .. }),
+            "a closed tab's id must no longer resolve, expected Error, got {reply:?}"
+        );
 
         // Closing again is a harmless-but-reported "unknown tab" error,
         // not a panic or a second TabClosed.
-        blueice_ipc::write_client_message_with_ids(&mut client, Some(new_id), None, &ClientMessage::CloseTab).unwrap();
+        blueice_ipc::write_client_message_with_ids(
+            &mut client,
+            Some(new_id),
+            None,
+            &ClientMessage::CloseTab,
+        )
+        .unwrap();
         let (_, _, reply) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
         assert!(matches!(reply, ServerMessage::Error { .. }));
 
@@ -1536,13 +2178,25 @@ mod tests {
         handshake(&mut client);
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
-        let ServerMessage::Tabs(tabs) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Tabs") };
+        let ServerMessage::Tabs(tabs) = blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Tabs")
+        };
         let default_tab_id = tabs[0].id;
 
         // Sent with no tab_id at all -- the envelope-level default.
-        blueice_ipc::write_client_message_with_id(&mut client, None, &ClientMessage::GetRepresentation).unwrap();
+        blueice_ipc::write_client_message_with_id(
+            &mut client,
+            None,
+            &ClientMessage::GetRepresentation,
+        )
+        .unwrap();
         let (reply_tab, _, reply) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
-        assert_eq!(reply_tab, Some(default_tab_id), "the reply must echo the resolved tab, not None");
+        assert_eq!(
+            reply_tab,
+            Some(default_tab_id),
+            "the reply must echo the resolved tab, not None"
+        );
         assert!(matches!(reply, ServerMessage::Representation(_)));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
@@ -1561,11 +2215,18 @@ mod tests {
         thread::spawn(move || {
             for incoming in listener.incoming() {
                 let Ok(mut stream) = incoming else { break };
-                let Ok(req) = blueice_ipc::gatekeeper::read_gatekeeper_request(&mut stream) else { continue };
+                let Ok(req) = blueice_ipc::gatekeeper::read_gatekeeper_request(&mut stream) else {
+                    continue;
+                };
                 let reply = match req {
-                    blueice_ipc::gatekeeper::GatekeeperRequest::CheckUrl { .. } => blueice_ipc::gatekeeper::GatekeeperReply::Cleared,
+                    blueice_ipc::gatekeeper::GatekeeperRequest::CheckUrl { .. } => {
+                        blueice_ipc::gatekeeper::GatekeeperReply::Cleared
+                    }
                     blueice_ipc::gatekeeper::GatekeeperRequest::CheckContent { .. } => {
-                        blueice_ipc::gatekeeper::GatekeeperReply::Rejected { reason: "hidden instruction-shaped text".to_string(), category: "prompt-injection".to_string() }
+                        blueice_ipc::gatekeeper::GatekeeperReply::Rejected {
+                            reason: "hidden instruction-shaped text".to_string(),
+                            category: "prompt-injection".to_string(),
+                        }
                     }
                 };
                 let _ = blueice_ipc::gatekeeper::write_gatekeeper_reply(&mut stream, &reply);
@@ -1579,30 +2240,63 @@ mod tests {
             let mut buf = [0u8; 1024];
             let _ = std::io::Read::read(&mut stream, &mut buf);
             let body = "<p>malicious page</p>";
-            std::io::Write::write_all(&mut stream, format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).unwrap();
+            std::io::Write::write_all(
+                &mut stream,
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
         });
 
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
             let mut tabs = TabManager::new(320.0, 200.0);
             let mut generation = 0u64;
-            run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper_path).unwrap();
+            run_session(
+                &mut tabs,
+                &mut server,
+                &dir,
+                &mut generation,
+                &gatekeeper_path,
+            )
+            .unwrap();
             dir
         });
         handshake(&mut client);
 
         let url = format!("http://{addr}");
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Navigate { url: url.clone() }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate { url: url.clone() },
+        )
+        .unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
-        assert_eq!(reply, ServerMessage::GatekeeperBlocked { reason: "hidden instruction-shaped text".to_string(), category: "prompt-injection".to_string(), url: url.clone() });
+        assert_eq!(
+            reply,
+            ServerMessage::GatekeeperBlocked {
+                reason: "hidden instruction-shaped text".to_string(),
+                category: "prompt-injection".to_string(),
+                url: url.clone()
+            }
+        );
 
         // The page must not have changed: a follow-up GetRepresentation
         // shows no trace of the blocked page's content (no `FrameReady`
         // was ever produced for it either, since the only reply so far
         // was the GatekeeperBlocked above).
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
-        let ServerMessage::Representation(snap) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
-        assert!(!snap.nodes.iter().any(|n| n.name.as_deref() == Some("malicious page")));
+        let ServerMessage::Representation(snap) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Representation")
+        };
+        assert!(!snap
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("malicious page")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -1617,14 +2311,30 @@ mod tests {
         let handle = thread::spawn(move || {
             let mut tabs = TabManager::new(320.0, 200.0);
             let mut generation = 0u64;
-            run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper_path).unwrap();
+            run_session(
+                &mut tabs,
+                &mut server,
+                &dir,
+                &mut generation,
+                &gatekeeper_path,
+            )
+            .unwrap();
             dir
         });
         handshake(&mut client);
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Navigate { url: "http://example.invalid/".to_string() }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate {
+                url: "http://example.invalid/".to_string(),
+            },
+        )
+        .unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
-        assert!(matches!(reply, ServerMessage::GatekeeperBlocked { .. }), "an unreachable gatekeeper must fail closed, got {reply:?}");
+        assert!(
+            matches!(reply, ServerMessage::GatekeeperBlocked { .. }),
+            "an unreachable gatekeeper must fail closed, got {reply:?}"
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -1647,14 +2357,30 @@ mod tests {
         let handle = thread::spawn(move || {
             let mut tabs = TabManager::new(320.0, 200.0);
             let mut generation = 0u64;
-            run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper_path).unwrap();
+            run_session(
+                &mut tabs,
+                &mut server,
+                &dir,
+                &mut generation,
+                &gatekeeper_path,
+            )
+            .unwrap();
             dir
         });
         handshake(&mut client);
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Navigate { url: "http://example.invalid/".to_string() }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate {
+                url: "http://example.invalid/".to_string(),
+            },
+        )
+        .unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
-        assert!(matches!(reply, ServerMessage::GatekeeperBlocked { .. }), "a gatekeeper that drops the connection must fail closed, got {reply:?}");
+        assert!(
+            matches!(reply, ServerMessage::GatekeeperBlocked { .. }),
+            "a gatekeeper that drops the connection must fail closed, got {reply:?}"
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -1677,10 +2403,14 @@ mod tests {
                 let Ok(mut stream) = incoming else { break };
                 thread::spawn(move || {
                     if let Ok(req) = blueice_ipc::gatekeeper::read_gatekeeper_request(&mut stream) {
-                        if matches!(&req, blueice_ipc::gatekeeper::GatekeeperRequest::CheckUrl { url } if url.contains("slow-tab")) {
+                        if matches!(&req, blueice_ipc::gatekeeper::GatekeeperRequest::CheckUrl { url } if url.contains("slow-tab"))
+                        {
                             thread::sleep(Duration::from_millis(300));
                         }
-                        let _ = blueice_ipc::gatekeeper::write_gatekeeper_reply(&mut stream, &blueice_ipc::gatekeeper::GatekeeperReply::Cleared);
+                        let _ = blueice_ipc::gatekeeper::write_gatekeeper_reply(
+                            &mut stream,
+                            &blueice_ipc::gatekeeper::GatekeeperReply::Cleared,
+                        );
                     }
                 });
             }
@@ -1690,22 +2420,46 @@ mod tests {
         let handle = thread::spawn(move || {
             let mut tabs = TabManager::new(320.0, 200.0);
             let mut generation = 0u64;
-            run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper_path).unwrap();
+            run_session(
+                &mut tabs,
+                &mut server,
+                &dir,
+                &mut generation,
+                &gatekeeper_path,
+            )
+            .unwrap();
             dir
         });
         handshake(&mut client);
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: None }).unwrap();
-        let ServerMessage::TabOpened { tab_id: tab_b, .. } = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected TabOpened") };
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: None })
+            .unwrap();
+        let ServerMessage::TabOpened { tab_id: tab_b, .. } =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected TabOpened")
+        };
 
         // Kick off the default tab's navigation, whose gatekeeper check
         // stalls for 300ms -- fire-and-forget, its own reply isn't
         // waited on here.
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Navigate { url: "http://127.0.0.1:1/slow-tab".to_string() }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate {
+                url: "http://127.0.0.1:1/slow-tab".to_string(),
+            },
+        )
+        .unwrap();
 
         // Immediately address tab_b with an unrelated message.
         let start = Instant::now();
-        blueice_ipc::write_client_message_with_ids(&mut client, Some(tab_b), None, &ClientMessage::GetRepresentation).unwrap();
+        blueice_ipc::write_client_message_with_ids(
+            &mut client,
+            Some(tab_b),
+            None,
+            &ClientMessage::GetRepresentation,
+        )
+        .unwrap();
         let (reply_tab, _, reply) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
         assert_eq!(reply_tab, Some(tab_b));
         assert!(matches!(reply, ServerMessage::Representation(_)));
@@ -1727,10 +2481,14 @@ mod tests {
                 let Ok(mut stream) = incoming else { break };
                 thread::spawn(move || {
                     if let Ok(req) = blueice_ipc::gatekeeper::read_gatekeeper_request(&mut stream) {
-                        if matches!(&req, blueice_ipc::gatekeeper::GatekeeperRequest::CheckUrl { url } if url.contains("first")) {
+                        if matches!(&req, blueice_ipc::gatekeeper::GatekeeperRequest::CheckUrl { url } if url.contains("first"))
+                        {
                             thread::sleep(Duration::from_millis(300));
                         }
-                        let _ = blueice_ipc::gatekeeper::write_gatekeeper_reply(&mut stream, &blueice_ipc::gatekeeper::GatekeeperReply::Cleared);
+                        let _ = blueice_ipc::gatekeeper::write_gatekeeper_reply(
+                            &mut stream,
+                            &blueice_ipc::gatekeeper::GatekeeperReply::Cleared,
+                        );
                     }
                 });
             }
@@ -1743,14 +2501,29 @@ mod tests {
             let mut buf = [0u8; 1024];
             let _ = std::io::Read::read(&mut stream, &mut buf);
             let body = "<p>second page</p>";
-            std::io::Write::write_all(&mut stream, format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).unwrap();
+            std::io::Write::write_all(
+                &mut stream,
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
         });
 
         let (mut client, mut server) = client_pair();
         let handle = thread::spawn(move || {
             let mut tabs = TabManager::new(320.0, 200.0);
             let mut generation = 0u64;
-            run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper_path).unwrap();
+            run_session(
+                &mut tabs,
+                &mut server,
+                &dir,
+                &mut generation,
+                &gatekeeper_path,
+            )
+            .unwrap();
             dir
         });
         handshake(&mut client);
@@ -1758,11 +2531,23 @@ mod tests {
         // First navigation: stalls 300ms on its own CheckUrl stage, and
         // even once cleared points nowhere reachable -- must never
         // become visible.
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Navigate { url: "http://127.0.0.1:1/first-slow".to_string() }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate {
+                url: "http://127.0.0.1:1/first-slow".to_string(),
+            },
+        )
+        .unwrap();
         // Second navigation to the same (default) tab, sent immediately
         // after, well before the first's gatekeeper check resolves.
         let second_url = format!("http://{second_addr}");
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Navigate { url: second_url.clone() }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate {
+                url: second_url.clone(),
+            },
+        )
+        .unwrap();
 
         let navigated = blueice_ipc::read_server_message(&mut client).unwrap();
         assert_eq!(navigated, ServerMessage::Navigated { url: second_url });
@@ -1775,8 +2560,15 @@ mod tests {
         // real message still gets exactly one, normal reply.
         thread::sleep(Duration::from_millis(400));
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
-        let ServerMessage::Representation(snap) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
-        assert!(snap.nodes.iter().any(|n| n.name.as_deref() == Some("second page")));
+        let ServerMessage::Representation(snap) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Representation")
+        };
+        assert!(snap
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("second page")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -1798,10 +2590,15 @@ mod tests {
         thread::spawn(move || {
             for incoming in listener.incoming() {
                 let Ok(mut stream) = incoming else { break };
-                let Ok(_req) = blueice_ipc::gatekeeper::read_gatekeeper_request(&mut stream) else { continue };
+                let Ok(_req) = blueice_ipc::gatekeeper::read_gatekeeper_request(&mut stream) else {
+                    continue;
+                };
                 let _ = blueice_ipc::gatekeeper::write_gatekeeper_reply(
                     &mut stream,
-                    &blueice_ipc::gatekeeper::GatekeeperReply::Rejected { reason: "known-bad domain".to_string(), category: "blocklist".to_string() },
+                    &blueice_ipc::gatekeeper::GatekeeperReply::Rejected {
+                        reason: "known-bad domain".to_string(),
+                        category: "blocklist".to_string(),
+                    },
                 );
             }
         });
@@ -1810,23 +2607,50 @@ mod tests {
         let handle = thread::spawn(move || {
             let mut tabs = TabManager::new(320.0, 200.0);
             let mut generation = 0u64;
-            run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper_path).unwrap();
+            run_session(
+                &mut tabs,
+                &mut server,
+                &dir,
+                &mut generation,
+                &gatekeeper_path,
+            )
+            .unwrap();
             dir
         });
         handshake(&mut client);
 
         let url = "http://example.invalid/".to_string();
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: Some(url.clone()) }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::OpenTab {
+                url: Some(url.clone()),
+            },
+        )
+        .unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
-        assert_eq!(reply, ServerMessage::GatekeeperBlocked { reason: "known-bad domain".to_string(), category: "blocklist".to_string(), url });
+        assert_eq!(
+            reply,
+            ServerMessage::GatekeeperBlocked {
+                reason: "known-bad domain".to_string(),
+                category: "blocklist".to_string(),
+                url
+            }
+        );
 
         // The session must still be alive afterward, same as every
         // other error/blocked case in this file -- and `ListTabs` must
         // still show the new (blank) tab `OpenTab` always creates,
         // per `ServerMessage::TabOpened`'s own documented limitation.
         blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
-        let ServerMessage::Tabs(tabs) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Tabs") };
-        assert_eq!(tabs.len(), 2, "OpenTab always creates the tab, even though its requested navigation was blocked");
+        let ServerMessage::Tabs(tabs) = blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Tabs")
+        };
+        assert_eq!(
+            tabs.len(),
+            2,
+            "OpenTab always creates the tab, even though its requested navigation was blocked"
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -1849,13 +2673,17 @@ mod tests {
             for incoming in listener.incoming() {
                 let Ok(mut stream) = incoming else { break };
                 thread::spawn(move || {
-                    if let Ok(_req) = blueice_ipc::gatekeeper::read_gatekeeper_request(&mut stream) {
+                    if let Ok(_req) = blueice_ipc::gatekeeper::read_gatekeeper_request(&mut stream)
+                    {
                         // Stalls every stage, so the navigation this
                         // test kicks off never resolves within the
                         // test's own lifetime -- the point is proving
                         // `Resize` doesn't wait on it at all.
                         thread::sleep(Duration::from_secs(5));
-                        let _ = blueice_ipc::gatekeeper::write_gatekeeper_reply(&mut stream, &blueice_ipc::gatekeeper::GatekeeperReply::Cleared);
+                        let _ = blueice_ipc::gatekeeper::write_gatekeeper_reply(
+                            &mut stream,
+                            &blueice_ipc::gatekeeper::GatekeeperReply::Cleared,
+                        );
                     }
                 });
             }
@@ -1866,24 +2694,65 @@ mod tests {
             let mut tabs = TabManager::new(320.0, 200.0);
             default_page(&mut tabs).load_html_str("<p>still the old page</p>", None);
             let mut generation = 0u64;
-            run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper_path).unwrap();
+            run_session(
+                &mut tabs,
+                &mut server,
+                &dir,
+                &mut generation,
+                &gatekeeper_path,
+            )
+            .unwrap();
             dir
         });
         handshake(&mut client);
 
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Navigate { url: "http://127.0.0.1:1/never-resolves".to_string() }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate {
+                url: "http://127.0.0.1:1/never-resolves".to_string(),
+            },
+        )
+        .unwrap();
 
         let start = Instant::now();
-        blueice_ipc::write_client_message(&mut client, &ClientMessage::Resize { width: 111, height: 222 }).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Resize {
+                width: 111,
+                height: 222,
+            },
+        )
+        .unwrap();
         let reply = blueice_ipc::read_server_message(&mut client).unwrap();
-        assert!(matches!(reply, ServerMessage::FrameReady { width: 111, height: 222, .. }), "expected an immediate FrameReady for the resize, got {reply:?}");
-        assert!(start.elapsed() < Duration::from_millis(500), "Resize must apply immediately, not wait behind the pending navigation, took {:?}", start.elapsed());
+        assert!(
+            matches!(
+                reply,
+                ServerMessage::FrameReady {
+                    width: 111,
+                    height: 222,
+                    ..
+                }
+            ),
+            "expected an immediate FrameReady for the resize, got {reply:?}"
+        );
+        assert!(
+            start.elapsed() < Duration::from_millis(500),
+            "Resize must apply immediately, not wait behind the pending navigation, took {:?}",
+            start.elapsed()
+        );
 
         // The old page's content is still what's shown -- the pending
         // navigation never actually applied.
         blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
-        let ServerMessage::Representation(snap) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
-        assert!(snap.nodes.iter().any(|n| n.name.as_deref() == Some("still the old page")));
+        let ServerMessage::Representation(snap) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Representation")
+        };
+        assert!(snap
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("still the old page")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();

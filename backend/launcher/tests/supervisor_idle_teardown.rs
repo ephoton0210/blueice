@@ -21,7 +21,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 fn unique_path(label: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("blueice-launcher-supervisor-{label}-{}", std::process::id()))
+    std::env::temp_dir().join(format!(
+        "blueice-launcher-supervisor-{label}-{}",
+        std::process::id()
+    ))
 }
 
 fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
@@ -65,12 +68,20 @@ impl Launcher {
             .spawn()
             .expect("failed to spawn blueice-launcher");
 
-        assert!(wait_for(&rendezvous_socket, Duration::from_secs(5)), "blueice-launcher never created its rendezvous socket");
-        Launcher { child, rendezvous_socket, frame_dir }
+        assert!(
+            wait_for(&rendezvous_socket, Duration::from_secs(5)),
+            "blueice-launcher never created its rendezvous socket"
+        );
+        Launcher {
+            child,
+            rendezvous_socket,
+            frame_dir,
+        }
     }
 
     fn connect(&self) -> UnixStream {
-        UnixStream::connect(&self.rendezvous_socket).expect("failed to connect to the launcher's rendezvous socket")
+        UnixStream::connect(&self.rendezvous_socket)
+            .expect("failed to connect to the launcher's rendezvous socket")
     }
 
     fn wait_or_kill(&mut self, timeout: Duration) {
@@ -115,7 +126,10 @@ fn core_survives_many_simulated_low_memory_polls_since_it_is_always_resident() {
     let mut client = launcher.connect();
     write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
     let reply = read_server_message(&mut client).unwrap();
-    assert!(matches!(reply, ServerMessage::Representation(_)), "expected a real Representation reply from a still-alive core, got {reply:?}");
+    assert!(
+        matches!(reply, ServerMessage::Representation(_)),
+        "expected a real Representation reply from a still-alive core, got {reply:?}"
+    );
 
     write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
     launcher.wait_or_kill(Duration::from_secs(5));

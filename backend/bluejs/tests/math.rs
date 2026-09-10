@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Math namespace behavior through parse, compile and VM dispatch.
-use blueice_bluejs::{HeapConfig, RuntimeError, Value, Vm, VmConfig, compile, parse};
+use blueice_bluejs::{compile, parse, HeapConfig, RuntimeError, Value, Vm, VmConfig};
 
 fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap())
@@ -48,7 +48,15 @@ fn methods_coerce_arguments_in_left_to_right_order() {
 fn math_initialization_releases_its_root_when_native_installation_exhausts_the_heap() {
     let code = compile(&parse("Math.PI").unwrap()).unwrap();
     let limit = 75_000;
-    let mut vm = Vm::new(VmConfig { heap: HeapConfig { nursery_capacity: 1, major_threshold_bytes: limit, max_heap_bytes: limit }, ..VmConfig::default() }).unwrap();
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: limit,
+            max_heap_bytes: limit,
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
     assert!(matches!(vm.execute(&code), Err(RuntimeError::Heap(_))));
     assert!(vm.heap().stats().managed_bytes < limit);
 }

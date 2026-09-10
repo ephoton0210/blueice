@@ -50,7 +50,9 @@
 //! process from simply declaring a different extension's id. Tracked as
 //! still-open in `phase-9-extension-protocol/PLAN.md`, not solved here.
 
-use blueice_ipc::extension::{read_extension_request, write_extension_reply, ExtensionReply, ExtensionRequest};
+use blueice_ipc::extension::{
+    read_extension_request, write_extension_reply, ExtensionReply, ExtensionRequest,
+};
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Read, Write};
 
@@ -69,7 +71,8 @@ pub const CAPABILITY_DOM_WRITE: &str = "dom:write";
 /// [`ExtensionReply::DomReadResult`]'s value for a granted `DomRead` in
 /// this minimal slice -- a fixed placeholder, not real `Page` state; see
 /// this crate's own module docs for why.
-const PLACEHOLDER_DOM_READ_VALUE: &str = "<blueice-extension-host: no real Page is wired into this minimal slice>";
+const PLACEHOLDER_DOM_READ_VALUE: &str =
+    "<blueice-extension-host: no real Page is wired into this minimal slice>";
 
 /// Which capabilities each connected extension has been granted --
 /// `phase-9-extension-protocol/PLAN.md`'s "Wiring design" describes this
@@ -92,13 +95,18 @@ impl Default for ExtensionRegistry {
 impl ExtensionRegistry {
     /// An empty registry: no extension_id is granted anything.
     pub fn new() -> Self {
-        Self { grants: HashMap::new() }
+        Self {
+            grants: HashMap::new(),
+        }
     }
 
     /// Grants `capability` to `extension_id`, in addition to whatever
     /// it already holds.
     pub fn grant(&mut self, extension_id: impl Into<String>, capability: impl Into<String>) {
-        self.grants.entry(extension_id.into()).or_default().insert(capability.into());
+        self.grants
+            .entry(extension_id.into())
+            .or_default()
+            .insert(capability.into());
     }
 
     /// The actual enforcement point: does `extension_id` currently hold
@@ -107,7 +115,9 @@ impl ExtensionRegistry {
     /// docs for why an unknown identity isn't rejected outright at
     /// handshake time.
     pub fn has_capability(&self, extension_id: &str, capability: &str) -> bool {
-        self.grants.get(extension_id).is_some_and(|caps| caps.contains(capability))
+        self.grants
+            .get(extension_id)
+            .is_some_and(|caps| caps.contains(capability))
     }
 
     /// Seeds the hardcoded single-extension grant this minimal slice
@@ -152,7 +162,10 @@ impl ExtensionRegistry {
 /// to treat that the same as an ordinary disconnect rather than
 /// escalate it, the same choice `run_session` already made for the
 /// analogous case on the external protocol.
-pub fn handle_extension_connection<S: Read + Write>(registry: &ExtensionRegistry, stream: &mut S) -> io::Result<()> {
+pub fn handle_extension_connection<S: Read + Write>(
+    registry: &ExtensionRegistry,
+    stream: &mut S,
+) -> io::Result<()> {
     let mut extension_id = match read_extension_request(stream) {
         Ok(ExtensionRequest::Hello { extension_id, .. }) => {
             write_extension_reply(stream, &ExtensionReply::HelloAck)?;
@@ -168,13 +181,21 @@ pub fn handle_extension_connection<S: Read + Write>(registry: &ExtensionRegistry
             Err(_) => return Ok(()),
         };
         match request {
-            ExtensionRequest::Hello { extension_id: new_id, .. } => {
+            ExtensionRequest::Hello {
+                extension_id: new_id,
+                ..
+            } => {
                 extension_id = new_id;
                 write_extension_reply(stream, &ExtensionReply::HelloAck)?;
             }
             ExtensionRequest::DomRead => {
                 if registry.has_capability(&extension_id, CAPABILITY_DOM_READ) {
-                    write_extension_reply(stream, &ExtensionReply::DomReadResult { value: PLACEHOLDER_DOM_READ_VALUE.to_string() })?;
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::DomReadResult {
+                            value: PLACEHOLDER_DOM_READ_VALUE.to_string(),
+                        },
+                    )?;
                 } else {
                     write_extension_reply(
                         stream,
@@ -211,7 +232,10 @@ mod tests {
     use std::thread;
 
     fn hello(extension_id: &str) -> ExtensionRequest {
-        ExtensionRequest::Hello { extension_id: extension_id.to_string(), capability_versions: BTreeMap::new() }
+        ExtensionRequest::Hello {
+            extension_id: extension_id.to_string(),
+            capability_versions: BTreeMap::new(),
+        }
     }
 
     #[test]
@@ -243,10 +267,18 @@ mod tests {
         let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
 
         write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::HelloAck);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::HelloAck
+        );
 
         write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::DomReadResult { value: PLACEHOLDER_DOM_READ_VALUE.to_string() });
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::DomReadResult {
+                value: PLACEHOLDER_DOM_READ_VALUE.to_string()
+            }
+        );
 
         drop(client);
         handle.join().unwrap().unwrap();
@@ -259,9 +291,18 @@ mod tests {
         let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
 
         write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::HelloAck);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::HelloAck
+        );
 
-        write_extension_request(&mut client, &ExtensionRequest::DomWrite { value: "hijacked".to_string() }).unwrap();
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::DomWrite {
+                value: "hijacked".to_string(),
+            },
+        )
+        .unwrap();
         match read_extension_reply(&mut client).unwrap() {
             ExtensionReply::CapabilityDenied { capability, reason } => {
                 assert_eq!(capability, CAPABILITY_DOM_WRITE);
@@ -286,13 +327,30 @@ mod tests {
         let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
 
         write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::HelloAck);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::HelloAck
+        );
 
-        write_extension_request(&mut client, &ExtensionRequest::DomWrite { value: "x".to_string() }).unwrap();
-        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::CapabilityDenied { .. }));
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::DomWrite {
+                value: "x".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::CapabilityDenied { .. }
+        ));
 
         write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::DomReadResult { value: PLACEHOLDER_DOM_READ_VALUE.to_string() });
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::DomReadResult {
+                value: PLACEHOLDER_DOM_READ_VALUE.to_string()
+            }
+        );
 
         drop(client);
         handle.join().unwrap().unwrap();
@@ -305,11 +363,16 @@ mod tests {
         let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
 
         write_extension_request(&mut client, &hello("never-registered-extension")).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::HelloAck);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::HelloAck
+        );
 
         write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
         match read_extension_reply(&mut client).unwrap() {
-            ExtensionReply::CapabilityDenied { capability, .. } => assert_eq!(capability, CAPABILITY_DOM_READ),
+            ExtensionReply::CapabilityDenied { capability, .. } => {
+                assert_eq!(capability, CAPABILITY_DOM_READ)
+            }
             other => panic!("expected CapabilityDenied, got {other:?}"),
         }
 
@@ -351,18 +414,32 @@ mod tests {
         let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
 
         write_extension_request(&mut client, &hello("some-other-extension")).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::HelloAck);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::HelloAck
+        );
 
         // Not yet granted anything under this first identity.
         write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
-        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::CapabilityDenied { .. }));
+        assert!(matches!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::CapabilityDenied { .. }
+        ));
 
         // Re-identify as the granted extension on the same connection.
         write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::HelloAck);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::HelloAck
+        );
 
         write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::DomReadResult { value: PLACEHOLDER_DOM_READ_VALUE.to_string() });
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::DomReadResult {
+                value: PLACEHOLDER_DOM_READ_VALUE.to_string()
+            }
+        );
 
         drop(client);
         handle.join().unwrap().unwrap();
@@ -375,7 +452,10 @@ mod tests {
         let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
 
         write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::HelloAck);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::HelloAck
+        );
 
         // A truncated frame: a length prefix promising more bytes than
         // are ever sent.
@@ -399,7 +479,10 @@ mod tests {
             let (mut client, mut server) = UnixStream::pair().unwrap();
             let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
             write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-            assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::HelloAck);
+            assert_eq!(
+                read_extension_reply(&mut client).unwrap(),
+                ExtensionReply::HelloAck
+            );
             drop(client);
             handle.join().unwrap().unwrap();
         }

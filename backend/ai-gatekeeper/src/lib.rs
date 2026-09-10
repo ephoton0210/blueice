@@ -37,7 +37,9 @@ pub fn handle_one_check<S: Read + Write>(stream: &mut S) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use blueice_ipc::gatekeeper::{read_gatekeeper_reply, write_gatekeeper_request, GatekeeperRequest};
+    use blueice_ipc::gatekeeper::{
+        read_gatekeeper_reply, write_gatekeeper_request, GatekeeperRequest,
+    };
     use std::os::unix::net::UnixStream;
     use std::thread;
 
@@ -46,8 +48,17 @@ mod tests {
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let handle = thread::spawn(move || handle_one_check(&mut server));
 
-        write_gatekeeper_request(&mut client, &GatekeeperRequest::CheckUrl { url: "https://example.com".to_string() }).unwrap();
-        assert_eq!(read_gatekeeper_reply(&mut client).unwrap(), GatekeeperReply::Cleared);
+        write_gatekeeper_request(
+            &mut client,
+            &GatekeeperRequest::CheckUrl {
+                url: "https://example.com".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_gatekeeper_reply(&mut client).unwrap(),
+            GatekeeperReply::Cleared
+        );
 
         handle.join().unwrap().unwrap();
     }
@@ -57,8 +68,18 @@ mod tests {
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let handle = thread::spawn(move || handle_one_check(&mut server));
 
-        write_gatekeeper_request(&mut client, &GatekeeperRequest::CheckContent { url: "https://example.com".to_string(), html: "<p>hi</p>".to_string() }).unwrap();
-        assert_eq!(read_gatekeeper_reply(&mut client).unwrap(), GatekeeperReply::Cleared);
+        write_gatekeeper_request(
+            &mut client,
+            &GatekeeperRequest::CheckContent {
+                url: "https://example.com".to_string(),
+                html: "<p>hi</p>".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_gatekeeper_reply(&mut client).unwrap(),
+            GatekeeperReply::Cleared
+        );
 
         handle.join().unwrap().unwrap();
     }
@@ -86,8 +107,17 @@ mod tests {
         for _ in 0..2 {
             let (mut client, mut server) = UnixStream::pair().unwrap();
             let handle = thread::spawn(move || handle_one_check(&mut server));
-            write_gatekeeper_request(&mut client, &GatekeeperRequest::CheckUrl { url: "https://example.com".to_string() }).unwrap();
-            assert_eq!(read_gatekeeper_reply(&mut client).unwrap(), GatekeeperReply::Cleared);
+            write_gatekeeper_request(
+                &mut client,
+                &GatekeeperRequest::CheckUrl {
+                    url: "https://example.com".to_string(),
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                read_gatekeeper_reply(&mut client).unwrap(),
+                GatekeeperReply::Cleared
+            );
             handle.join().unwrap().unwrap();
         }
     }

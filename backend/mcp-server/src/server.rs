@@ -20,9 +20,11 @@ use crate::{CoreConnection, CoreProcess};
 use base64::Engine;
 use blueice_ipc::NodeAction;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{CallToolResult, ContentBlock as Content, Implementation, ServerCapabilities, ServerInfo};
+use rmcp::model::{
+    CallToolResult, ContentBlock as Content, Implementation, ServerCapabilities, ServerInfo,
+};
 use rmcp::schemars;
-use rmcp::{ErrorData, ServerHandler, tool, tool_handler, tool_router};
+use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler};
 use serde::Deserialize;
 use std::io;
 use std::os::unix::net::UnixStream;
@@ -120,7 +122,9 @@ pub struct BlueIceMcpServer {
 
 impl BlueIceMcpServer {
     pub fn spawn(width: u32, height: u32) -> io::Result<Self> {
-        Ok(BlueIceMcpServer { core: CoreProcess::connect(width, height)? })
+        Ok(BlueIceMcpServer {
+            core: CoreProcess::connect(width, height)?,
+        })
     }
 
     fn conn(&self) -> Arc<Mutex<CoreConnection<UnixStream>>> {
@@ -130,63 +134,126 @@ impl BlueIceMcpServer {
 
 #[tool_router]
 impl BlueIceMcpServer {
-    #[tool(description = "Navigate to a URL and return the resulting page representation (an accessibility-tree-shaped snapshot, per phase-1-ai-representation-layer/PLAN.md)")]
-    async fn navigate(&self, Parameters(NavigateParams { url, tab_id }): Parameters<NavigateParams>) -> Result<CallToolResult, ErrorData> {
+    #[tool(
+        description = "Navigate to a URL and return the resulting page representation (an accessibility-tree-shaped snapshot, per phase-1-ai-representation-layer/PLAN.md)"
+    )]
+    async fn navigate(
+        &self,
+        Parameters(NavigateParams { url, tab_id }): Parameters<NavigateParams>,
+    ) -> Result<CallToolResult, ErrorData> {
         let outcome = blocking(self.conn(), move |conn| conn.navigate(&url, tab_id)).await?;
         Ok(outcome_to_result(outcome))
     }
 
     #[tool(description = "Get the current page's representation without performing any action")]
-    async fn get_page_representation(&self, Parameters(GetPageParams { tab_id }): Parameters<GetPageParams>) -> Result<CallToolResult, ErrorData> {
+    async fn get_page_representation(
+        &self,
+        Parameters(GetPageParams { tab_id }): Parameters<GetPageParams>,
+    ) -> Result<CallToolResult, ErrorData> {
         let snapshot = blocking(self.conn(), move |conn| conn.representation(tab_id)).await?;
         let text = serde_json::to_string_pretty(&snapshot).unwrap_or_else(|_| "{}".to_string());
-        Ok(CallToolResult::success(vec![Content::text(crate::wrap_untrusted_page_content(&text))]))
+        Ok(CallToolResult::success(vec![Content::text(
+            crate::wrap_untrusted_page_content(&text),
+        )]))
     }
 
     #[tool(
         description = "Get the full DOM tree as a canonical text dump, unfiltered by the AI representation's semantic-role/display:none exclusion -- useful for structural comparison against another browser's DOM"
     )]
-    async fn get_dom(&self, Parameters(GetPageParams { tab_id }): Parameters<GetPageParams>) -> Result<CallToolResult, ErrorData> {
+    async fn get_dom(
+        &self,
+        Parameters(GetPageParams { tab_id }): Parameters<GetPageParams>,
+    ) -> Result<CallToolResult, ErrorData> {
         let dump = blocking(self.conn(), move |conn| conn.dom(tab_id)).await?;
-        Ok(CallToolResult::success(vec![Content::text(crate::wrap_untrusted_page_content(&dump))]))
+        Ok(CallToolResult::success(vec![Content::text(
+            crate::wrap_untrusted_page_content(&dump),
+        )]))
     }
 
-    #[tool(description = "Click the element with this node ID (follows a link's href if it is or is inside one, same as a human click)")]
-    async fn click(&self, Parameters(NodeIdParams { node_id, tab_id }): Parameters<NodeIdParams>) -> Result<CallToolResult, ErrorData> {
-        let outcome = blocking(self.conn(), move |conn| conn.act(node_id, NodeAction::Click, tab_id)).await?;
+    #[tool(
+        description = "Click the element with this node ID (follows a link's href if it is or is inside one, same as a human click)"
+    )]
+    async fn click(
+        &self,
+        Parameters(NodeIdParams { node_id, tab_id }): Parameters<NodeIdParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let outcome = blocking(self.conn(), move |conn| {
+            conn.act(node_id, NodeAction::Click, tab_id)
+        })
+        .await?;
         Ok(outcome_to_result(outcome))
     }
 
     #[tool(description = "Set the value of an input/textarea/select element identified by node ID")]
-    async fn type_text(&self, Parameters(TypeTextParams { node_id, text, tab_id }): Parameters<TypeTextParams>) -> Result<CallToolResult, ErrorData> {
-        let outcome = blocking(self.conn(), move |conn| conn.act(node_id, NodeAction::SetValue(text), tab_id)).await?;
+    async fn type_text(
+        &self,
+        Parameters(TypeTextParams {
+            node_id,
+            text,
+            tab_id,
+        }): Parameters<TypeTextParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let outcome = blocking(self.conn(), move |conn| {
+            conn.act(node_id, NodeAction::SetValue(text), tab_id)
+        })
+        .await?;
         Ok(outcome_to_result(outcome))
     }
 
     #[tool(description = "Move keyboard focus to the element with this node ID")]
-    async fn focus(&self, Parameters(NodeIdParams { node_id, tab_id }): Parameters<NodeIdParams>) -> Result<CallToolResult, ErrorData> {
-        let outcome = blocking(self.conn(), move |conn| conn.act(node_id, NodeAction::Focus, tab_id)).await?;
+    async fn focus(
+        &self,
+        Parameters(NodeIdParams { node_id, tab_id }): Parameters<NodeIdParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let outcome = blocking(self.conn(), move |conn| {
+            conn.act(node_id, NodeAction::Focus, tab_id)
+        })
+        .await?;
         Ok(outcome_to_result(outcome))
     }
 
-    #[tool(description = "Scroll the page so the element with this node ID is aligned to the top of the viewport")]
-    async fn scroll_into_view(&self, Parameters(NodeIdParams { node_id, tab_id }): Parameters<NodeIdParams>) -> Result<CallToolResult, ErrorData> {
-        let outcome = blocking(self.conn(), move |conn| conn.act(node_id, NodeAction::ScrollIntoView, tab_id)).await?;
+    #[tool(
+        description = "Scroll the page so the element with this node ID is aligned to the top of the viewport"
+    )]
+    async fn scroll_into_view(
+        &self,
+        Parameters(NodeIdParams { node_id, tab_id }): Parameters<NodeIdParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let outcome = blocking(self.conn(), move |conn| {
+            conn.act(node_id, NodeAction::ScrollIntoView, tab_id)
+        })
+        .await?;
         Ok(outcome_to_result(outcome))
     }
 
-    #[tool(description = "Highlight an element for the human-visible window (an outline drawn around its current bounds), or clear the highlight by omitting node_id")]
-    async fn highlight(&self, Parameters(HighlightParams { node_id, tab_id }): Parameters<HighlightParams>) -> Result<CallToolResult, ErrorData> {
+    #[tool(
+        description = "Highlight an element for the human-visible window (an outline drawn around its current bounds), or clear the highlight by omitting node_id"
+    )]
+    async fn highlight(
+        &self,
+        Parameters(HighlightParams { node_id, tab_id }): Parameters<HighlightParams>,
+    ) -> Result<CallToolResult, ErrorData> {
         let outcome = blocking(self.conn(), move |conn| conn.highlight(node_id, tab_id)).await?;
         Ok(outcome_to_result(outcome))
     }
 
-    #[tool(description = "Take a PNG screenshot of the most recently rendered frame for a tab (call navigate/open_tab on it first; there is nothing to screenshot before that). Omit tab_id for whichever tab most recently rendered a frame.")]
-    async fn screenshot(&self, Parameters(GetPageParams { tab_id }): Parameters<GetPageParams>) -> Result<CallToolResult, ErrorData> {
+    #[tool(
+        description = "Take a PNG screenshot of the most recently rendered frame for a tab (call navigate/open_tab on it first; there is nothing to screenshot before that). Omit tab_id for whichever tab most recently rendered a frame."
+    )]
+    async fn screenshot(
+        &self,
+        Parameters(GetPageParams { tab_id }): Parameters<GetPageParams>,
+    ) -> Result<CallToolResult, ErrorData> {
         let png = blocking(self.conn(), move |conn| {
-            let Some(frame) = conn.last_frame(tab_id).cloned() else { return Ok(None) };
+            let Some(frame) = conn.last_frame(tab_id).cloned() else {
+                return Ok(None);
+            };
             let mapped = blueice_ipc::shm::map_frame(std::path::Path::new(&frame.shm_path))?;
-            Ok(Some(crate::frame_to_png_bytes(&mapped, frame.width, frame.height)?))
+            Ok(Some(crate::frame_to_png_bytes(
+                &mapped,
+                frame.width,
+                frame.height,
+            )?))
         })
         .await?;
 
@@ -201,9 +268,14 @@ impl BlueIceMcpServer {
                 // warning as a leading text block, not just the text
                 // tools.
                 let warning = crate::wrap_untrusted_page_content("(see attached image)");
-                Ok(CallToolResult::success(vec![Content::text(warning), Content::image(b64, "image/png")]))
+                Ok(CallToolResult::success(vec![
+                    Content::text(warning),
+                    Content::image(b64, "image/png"),
+                ]))
             }
-            None => Ok(CallToolResult::error(vec![Content::text("no frame has been rendered yet for that tab -- call navigate/open_tab first")])),
+            None => Ok(CallToolResult::error(vec![Content::text(
+                "no frame has been rendered yet for that tab -- call navigate/open_tab first",
+            )])),
         }
     }
 
@@ -213,27 +285,48 @@ impl BlueIceMcpServer {
     async fn list_tabs(&self) -> Result<CallToolResult, ErrorData> {
         let tabs = blocking(self.conn(), |conn| conn.list_tabs()).await?;
         let text = serde_json::to_string_pretty(&tabs).unwrap_or_else(|_| "[]".to_string());
-        Ok(CallToolResult::success(vec![Content::text(crate::wrap_untrusted_page_content(&text))]))
+        Ok(CallToolResult::success(vec![Content::text(
+            crate::wrap_untrusted_page_content(&text),
+        )]))
     }
 
-    #[tool(description = "Open a new tab, optionally navigating it to a URL immediately. Returns the new tab's id -- pass it to other tools to address this tab specifically.")]
-    async fn open_tab(&self, Parameters(OpenTabParams { url }): Parameters<OpenTabParams>) -> Result<CallToolResult, ErrorData> {
+    #[tool(
+        description = "Open a new tab, optionally navigating it to a URL immediately. Returns the new tab's id -- pass it to other tools to address this tab specifically."
+    )]
+    async fn open_tab(
+        &self,
+        Parameters(OpenTabParams { url }): Parameters<OpenTabParams>,
+    ) -> Result<CallToolResult, ErrorData> {
         let outcome = blocking(self.conn(), move |conn| conn.open_tab(url.as_deref())).await?;
         match outcome {
             crate::OpenTabOutcome::Opened { tab_id, url } => {
-                let text = serde_json::to_string_pretty(&serde_json::json!({ "tab_id": tab_id, "url": url })).unwrap_or_else(|_| "{}".to_string());
-                Ok(CallToolResult::success(vec![Content::text(crate::wrap_untrusted_page_content(&text))]))
+                let text = serde_json::to_string_pretty(
+                    &serde_json::json!({ "tab_id": tab_id, "url": url }),
+                )
+                .unwrap_or_else(|_| "{}".to_string());
+                Ok(CallToolResult::success(vec![Content::text(
+                    crate::wrap_untrusted_page_content(&text),
+                )]))
             }
-            crate::OpenTabOutcome::Error(message) => Ok(CallToolResult::error(vec![Content::text(message)])),
+            crate::OpenTabOutcome::Error(message) => {
+                Ok(CallToolResult::error(vec![Content::text(message)]))
+            }
         }
     }
 
     #[tool(description = "Close a tab by id. Closing the last remaining tab is allowed.")]
-    async fn close_tab(&self, Parameters(CloseTabParams { tab_id }): Parameters<CloseTabParams>) -> Result<CallToolResult, ErrorData> {
+    async fn close_tab(
+        &self,
+        Parameters(CloseTabParams { tab_id }): Parameters<CloseTabParams>,
+    ) -> Result<CallToolResult, ErrorData> {
         let outcome = blocking(self.conn(), move |conn| conn.close_tab(tab_id)).await?;
         match outcome {
-            crate::CloseTabOutcome::Closed => Ok(CallToolResult::success(vec![Content::text(format!("tab {tab_id} closed"))])),
-            crate::CloseTabOutcome::Error(message) => Ok(CallToolResult::error(vec![Content::text(message)])),
+            crate::CloseTabOutcome::Closed => Ok(CallToolResult::success(vec![Content::text(
+                format!("tab {tab_id} closed"),
+            )])),
+            crate::CloseTabOutcome::Error(message) => {
+                Ok(CallToolResult::error(vec![Content::text(message)]))
+            }
         }
     }
 }

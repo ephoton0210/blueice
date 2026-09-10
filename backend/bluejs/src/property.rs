@@ -16,12 +16,23 @@ pub struct JsSymbol {
 impl JsSymbol {
     pub fn new(description: Option<JsString>) -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(64);
-        Self { id: NEXT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1)).expect("Symbol identity space exhausted"), description }
+        Self {
+            id: NEXT
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+                .expect("Symbol identity space exhausted"),
+            description,
+        }
     }
 
     pub fn well_known(name: &str) -> Self {
-        let index = WELL_KNOWN.iter().position(|&n| n == name).expect("valid well-known Symbol");
-        Self { id: index as u64 + 1, description: Some(format!("Symbol.{name}").into()) }
+        let index = WELL_KNOWN
+            .iter()
+            .position(|&n| n == name)
+            .expect("valid well-known Symbol");
+        Self {
+            id: index as u64 + 1,
+            description: Some(format!("Symbol.{name}").into()),
+        }
     }
 
     pub(crate) fn descriptive_string(&self) -> JsString {
@@ -150,7 +161,13 @@ pub struct PropertyDescriptor {
 
 impl PropertyDescriptor {
     pub fn data(value: Value, writable: bool, enumerable: bool, configurable: bool) -> Self {
-        Self { value: Some(value), writable: Some(writable), enumerable: Some(enumerable), configurable: Some(configurable), ..Self::default() }
+        Self {
+            value: Some(value),
+            writable: Some(writable),
+            enumerable: Some(enumerable),
+            configurable: Some(configurable),
+            ..Self::default()
+        }
     }
     pub(crate) fn accessor(&self) -> bool {
         self.get.is_some() || self.set.is_some()

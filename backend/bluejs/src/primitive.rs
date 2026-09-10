@@ -36,7 +36,11 @@ pub(crate) fn number(value: &Value) -> Result<f64, RuntimeError> {
         Value::Number(n) => *n,
         // A StringNumericLiteral cannot contain surrogate code points.
         Value::String(s) => s.to_utf8().map_or(f64::NAN, |s| string_number(&s)),
-        Value::Symbol(_) | Value::Object(_) => return Err(RuntimeError::TypeError("Number conversion requires a non-Symbol primitive".into())),
+        Value::Symbol(_) | Value::Object(_) => {
+            return Err(RuntimeError::TypeError(
+                "Number conversion requires a non-Symbol primitive".into(),
+            ))
+        }
     })
 }
 
@@ -47,34 +51,62 @@ pub(crate) fn string(value: &Value) -> Result<JsString, RuntimeError> {
         Value::Bool(b) => b.to_string().into(),
         Value::String(s) => s.clone(),
         Value::Number(n) if n.is_nan() => "NaN".into(),
-        Value::Number(n) if n.is_infinite() => if n.is_sign_negative() { "-Infinity" } else { "Infinity" }.into(),
+        Value::Number(n) if n.is_infinite() => if n.is_sign_negative() {
+            "-Infinity"
+        } else {
+            "Infinity"
+        }
+        .into(),
         Value::Number(n) if *n == 0.0 => "0".into(),
         Value::Number(n) => number_string(*n).into(),
-        Value::Symbol(_) | Value::Object(_) => return Err(RuntimeError::TypeError("String conversion requires a non-Symbol primitive".into())),
+        Value::Symbol(_) | Value::Object(_) => {
+            return Err(RuntimeError::TypeError(
+                "String conversion requires a non-Symbol primitive".into(),
+            ))
+        }
     })
 }
 
 fn number_string(n: f64) -> String {
     let shortest = format!("{:e}", n.abs());
-    let (mantissa, exponent) = shortest.split_once('e').expect("scientific format includes exponent");
+    let (mantissa, exponent) = shortest
+        .split_once('e')
+        .expect("scientific format includes exponent");
     let exponent: i32 = exponent.parse().expect("formatted exponent is an integer");
     let mut digits = mantissa.replace('.', "");
-    let significand: u64 = digits.parse().expect("shortest f64 has at most 17 decimal digits");
+    let significand: u64 = digits
+        .parse()
+        .expect("shortest f64 has at most 17 decimal digits");
     if lower_even_tie(n.abs(), significand, exponent + 1 - digits.len() as i32) {
         digits = (significand - 1).to_string();
     }
     let sign = if n.is_sign_negative() { "-" } else { "" };
     if !(-6..21).contains(&exponent) {
-        let fraction = if digits.len() == 1 { String::new() } else { format!(".{}", &digits[1..]) };
-        format!("{sign}{}{fraction}e{}{exponent}", &digits[..1], if exponent < 0 { "" } else { "+" })
+        let fraction = if digits.len() == 1 {
+            String::new()
+        } else {
+            format!(".{}", &digits[1..])
+        };
+        format!(
+            "{sign}{}{fraction}e{}{exponent}",
+            &digits[..1],
+            if exponent < 0 { "" } else { "+" }
+        )
     } else {
         let point = exponent + 1;
         if point <= 0 {
             format!("{sign}0.{}{digits}", "0".repeat(-point as usize))
         } else if point as usize >= digits.len() {
-            format!("{sign}{digits}{}", "0".repeat(point as usize - digits.len()))
+            format!(
+                "{sign}{digits}{}",
+                "0".repeat(point as usize - digits.len())
+            )
         } else {
-            format!("{sign}{}.{}", &digits[..point as usize], &digits[point as usize..])
+            format!(
+                "{sign}{}.{}",
+                &digits[..point as usize],
+                &digits[point as usize..]
+            )
         }
     }
 }
@@ -186,7 +218,9 @@ pub(crate) fn radix_number(s: &str, digit_bits: u32) -> f64 {
     let mut guard = false;
     let mut sticky = false;
     for c in s.chars() {
-        let Some(digit) = c.to_digit(1 << digit_bits) else { return f64::NAN };
+        let Some(digit) = c.to_digit(1 << digit_bits) else {
+            return f64::NAN;
+        };
         for shift in (0..digit_bits).rev() {
             let bit = (digit >> shift) & 1;
             if count == 0 && bit == 0 {

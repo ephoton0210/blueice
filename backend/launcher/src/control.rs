@@ -102,12 +102,20 @@ mod tests {
         let mut buf = Vec::new();
         write_control_request(&mut buf, &ControlRequest::Cutover).unwrap();
         let mut cursor = Cursor::new(buf);
-        assert_eq!(read_control_request(&mut cursor).unwrap(), ControlRequest::Cutover);
+        assert_eq!(
+            read_control_request(&mut cursor).unwrap(),
+            ControlRequest::Cutover
+        );
     }
 
     #[test]
     fn control_reply_round_trips_both_variants() {
-        for reply in [ControlReply::CutoverDone { tabs_migrated: 3 }, ControlReply::CutoverFailed { reason: "boom".to_string() }] {
+        for reply in [
+            ControlReply::CutoverDone { tabs_migrated: 3 },
+            ControlReply::CutoverFailed {
+                reason: "boom".to_string(),
+            },
+        ] {
             let mut buf = Vec::new();
             write_control_reply(&mut buf, &reply).unwrap();
             let mut cursor = Cursor::new(buf);
@@ -117,21 +125,33 @@ mod tests {
 
     #[test]
     fn default_control_socket_path_differs_from_the_rendezvous_socket_path() {
-        assert_ne!(default_control_socket_path(), crate::default_rendezvous_socket_path());
+        assert_ne!(
+            default_control_socket_path(),
+            crate::default_rendezvous_socket_path()
+        );
     }
 
     #[test]
     fn default_control_socket_path_ends_in_control_sock() {
-        assert_eq!(default_control_socket_path().file_name().unwrap(), "control.sock");
+        assert_eq!(
+            default_control_socket_path().file_name().unwrap(),
+            "control.sock"
+        );
     }
 
     #[test]
     fn control_protocol_round_trips_over_a_real_unix_socket() {
         let (mut a, mut b) = UnixStream::pair().unwrap();
         write_control_request(&mut a, &ControlRequest::Cutover).unwrap();
-        assert_eq!(read_control_request(&mut b).unwrap(), ControlRequest::Cutover);
+        assert_eq!(
+            read_control_request(&mut b).unwrap(),
+            ControlRequest::Cutover
+        );
         write_control_reply(&mut b, &ControlReply::CutoverDone { tabs_migrated: 1 }).unwrap();
-        assert_eq!(read_control_reply(&mut a).unwrap(), ControlReply::CutoverDone { tabs_migrated: 1 });
+        assert_eq!(
+            read_control_reply(&mut a).unwrap(),
+            ControlReply::CutoverDone { tabs_migrated: 1 }
+        );
     }
 
     #[test]

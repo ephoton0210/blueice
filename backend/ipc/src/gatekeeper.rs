@@ -101,7 +101,13 @@ pub fn default_gatekeeper_socket_path() -> PathBuf {
 unsafe fn libc_getuid() -> u32 {
     std::fs::read_to_string("/proc/self/status")
         .ok()
-        .and_then(|status| status.lines().find_map(|line| line.strip_prefix("Uid:")).and_then(|rest| rest.split_whitespace().next()).and_then(|s| s.parse().ok()))
+        .and_then(|status| {
+            status
+                .lines()
+                .find_map(|line| line.strip_prefix("Uid:"))
+                .and_then(|rest| rest.split_whitespace().next())
+                .and_then(|s| s.parse().ok())
+        })
         .unwrap_or_else(std::process::id)
 }
 
@@ -113,8 +119,13 @@ mod tests {
     #[test]
     fn gatekeeper_request_round_trips_over_a_real_socket() {
         for req in [
-            GatekeeperRequest::CheckUrl { url: "https://example.com".to_string() },
-            GatekeeperRequest::CheckContent { url: "https://example.com".to_string(), html: "<p>hi</p>".to_string() },
+            GatekeeperRequest::CheckUrl {
+                url: "https://example.com".to_string(),
+            },
+            GatekeeperRequest::CheckContent {
+                url: "https://example.com".to_string(),
+                html: "<p>hi</p>".to_string(),
+            },
         ] {
             let (mut a, mut b) = UnixStream::pair().unwrap();
             write_gatekeeper_request(&mut a, &req).unwrap();
@@ -124,7 +135,13 @@ mod tests {
 
     #[test]
     fn gatekeeper_reply_round_trips_over_a_real_socket() {
-        for reply in [GatekeeperReply::Cleared, GatekeeperReply::Rejected { reason: "phishing-shaped domain".to_string(), category: "known-bad-domain".to_string() }] {
+        for reply in [
+            GatekeeperReply::Cleared,
+            GatekeeperReply::Rejected {
+                reason: "phishing-shaped domain".to_string(),
+                category: "known-bad-domain".to_string(),
+            },
+        ] {
             let (mut a, mut b) = UnixStream::pair().unwrap();
             write_gatekeeper_reply(&mut a, &reply).unwrap();
             assert_eq!(read_gatekeeper_reply(&mut b).unwrap(), reply);
@@ -134,11 +151,33 @@ mod tests {
     #[test]
     fn multiple_requests_can_be_written_and_read_in_sequence_on_one_stream() {
         let mut buf = Vec::new();
-        write_gatekeeper_request(&mut buf, &GatekeeperRequest::CheckUrl { url: "https://a.example".to_string() }).unwrap();
-        write_gatekeeper_request(&mut buf, &GatekeeperRequest::CheckUrl { url: "https://b.example".to_string() }).unwrap();
+        write_gatekeeper_request(
+            &mut buf,
+            &GatekeeperRequest::CheckUrl {
+                url: "https://a.example".to_string(),
+            },
+        )
+        .unwrap();
+        write_gatekeeper_request(
+            &mut buf,
+            &GatekeeperRequest::CheckUrl {
+                url: "https://b.example".to_string(),
+            },
+        )
+        .unwrap();
         let mut cursor = std::io::Cursor::new(buf);
-        assert_eq!(read_gatekeeper_request(&mut cursor).unwrap(), GatekeeperRequest::CheckUrl { url: "https://a.example".to_string() });
-        assert_eq!(read_gatekeeper_request(&mut cursor).unwrap(), GatekeeperRequest::CheckUrl { url: "https://b.example".to_string() });
+        assert_eq!(
+            read_gatekeeper_request(&mut cursor).unwrap(),
+            GatekeeperRequest::CheckUrl {
+                url: "https://a.example".to_string()
+            }
+        );
+        assert_eq!(
+            read_gatekeeper_request(&mut cursor).unwrap(),
+            GatekeeperRequest::CheckUrl {
+                url: "https://b.example".to_string()
+            }
+        );
     }
 
     #[test]

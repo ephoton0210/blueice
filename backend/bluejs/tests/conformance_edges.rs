@@ -3,10 +3,14 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Public-interface regressions from the coverage/conformance review.
-use blueice_bluejs::{CompileError, RuntimeError, Value, Vm, VmConfig, compile, compile_with_limit, parse};
+use blueice_bluejs::{
+    compile, compile_with_limit, parse, CompileError, RuntimeError, Value, Vm, VmConfig,
+};
 
 fn evaluate(source: &str) -> Value {
-    Vm::default().execute(&compile(&parse(source).unwrap()).unwrap()).unwrap()
+    Vm::default()
+        .execute(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap()
 }
 
 #[test]
@@ -57,16 +61,31 @@ fn void_evaluates_its_operand_and_returns_undefined() {
         assert_eq!(evaluate(source), Value::Bool(true), "{source}");
     }
     let code = compile(&parse("void missing").unwrap()).unwrap();
-    assert!(matches!(Vm::default().execute(&code), Err(RuntimeError::ReferenceError(_))));
+    assert!(matches!(
+        Vm::default().execute(&code),
+        Err(RuntimeError::ReferenceError(_))
+    ));
 }
 
 #[test]
 fn nested_parentheses_and_ordinary_length_do_not_take_special_paths() {
     assert_eq!(evaluate("(((1+2)*3))"), Value::Number(9.0));
-    assert_eq!(evaluate("let o={length:'text'}; o.length"), Value::String("text".into()));
-    assert_eq!(evaluate("let p={length:7}; ({__proto__:p}).length"), Value::Number(7.0));
-    assert_eq!(evaluate("typeof undefined"), Value::String("undefined".into()));
-    assert_eq!(evaluate("let x; typeof x"), Value::String("undefined".into()));
+    assert_eq!(
+        evaluate("let o={length:'text'}; o.length"),
+        Value::String("text".into())
+    );
+    assert_eq!(
+        evaluate("let p={length:7}; ({__proto__:p}).length"),
+        Value::Number(7.0)
+    );
+    assert_eq!(
+        evaluate("typeof undefined"),
+        Value::String("undefined".into())
+    );
+    assert_eq!(
+        evaluate("let x; typeof x"),
+        Value::String("undefined".into())
+    );
 }
 
 #[test]
@@ -104,9 +123,20 @@ fn destructuring_binds_nested_patterns_defaults_rest_and_iterator_protocols() {
         assert_eq!(evaluate(source), Value::Bool(true), "{source}");
     }
 
-    for source in ["let {}=null", "let [x]=null", "let x;({x}=null)", "let x;([x]=null)"] {
+    for source in [
+        "let {}=null",
+        "let [x]=null",
+        "let x;({x}=null)",
+        "let x;([x]=null)",
+    ] {
         let code = compile(&parse(source).unwrap()).unwrap();
-        assert!(matches!(Vm::default().execute(&code), Err(RuntimeError::TypeError(_))), "{source}");
+        assert!(
+            matches!(
+                Vm::default().execute(&code),
+                Err(RuntimeError::TypeError(_))
+            ),
+            "{source}"
+        );
     }
 }
 
@@ -119,7 +149,10 @@ fn catch_parameter_early_errors_are_reported_by_compilation() {
         "function f(){try{}catch(value){function value(){}}}",
     ] {
         let program = parse(source).unwrap();
-        assert!(matches!(compile(&program), Err(CompileError::InvalidSyntax(_))), "{source}");
+        assert!(
+            matches!(compile(&program), Err(CompileError::InvalidSyntax(_))),
+            "{source}"
+        );
     }
 }
 
@@ -137,7 +170,15 @@ fn sequence_expressions_preserve_order_and_enable_assignment_patterns() {
     }
     // Expression commas require another operand, unlike a trailing elision
     // in an array pattern. Unary void also requires an operand.
-    for source in ["1,", "(1,)", "void", "void (1,)", "let [,]=;", "`${1 2}`", "`${1;2}`"] {
+    for source in [
+        "1,",
+        "(1,)",
+        "void",
+        "void (1,)",
+        "let [,]=;",
+        "`${1 2}`",
+        "`${1;2}`",
+    ] {
         assert!(parse(source).is_err(), "{source}");
     }
 }
@@ -186,24 +227,54 @@ fn json_parse_and_stringify_preserve_data_properties_and_json_escapes() {
         assert_eq!(evaluate(source), Value::Bool(true), "{source}");
     }
 
-    let cyclic = compile(&parse("let object={};object.self=object;JSON.stringify(object)").unwrap()).unwrap();
-    assert!(matches!(Vm::default().execute(&cyclic), Err(RuntimeError::TypeError(_))));
+    let cyclic =
+        compile(&parse("let object={};object.self=object;JSON.stringify(object)").unwrap())
+            .unwrap();
+    assert!(matches!(
+        Vm::default().execute(&cyclic),
+        Err(RuntimeError::TypeError(_))
+    ));
 
     for source in [r"JSON.parse('\uD800')", "JSON.parse('not JSON')"] {
         let code = compile(&parse(source).unwrap()).unwrap();
-        assert!(matches!(Vm::default().execute(&code), Err(RuntimeError::SyntaxError(_))), "{source}");
+        assert!(
+            matches!(
+                Vm::default().execute(&code),
+                Err(RuntimeError::SyntaxError(_))
+            ),
+            "{source}"
+        );
     }
 
     let oversized = compile(&parse("JSON.stringify('four')").unwrap()).unwrap();
-    let mut vm = Vm::new(VmConfig { max_string_bytes: 4, ..VmConfig::default() }).unwrap();
-    assert_eq!(vm.execute(&oversized), Err(RuntimeError::StringLimit { limit: 4 }));
+    let mut vm = Vm::new(VmConfig {
+        max_string_bytes: 4,
+        ..VmConfig::default()
+    })
+    .unwrap();
+    assert_eq!(
+        vm.execute(&oversized),
+        Err(RuntimeError::StringLimit { limit: 4 })
+    );
 }
 
 #[test]
 fn malformed_hexadecimal_escapes_are_rejected_instead_of_accepting_signs() {
-    for escape in [r"\x+1", r"\x-0", r"\u+001", r"\u-000", r"\u{+1}", r"\u{-0}", r"\u{}", r"\u{FFFFFFFFF}"] {
+    for escape in [
+        r"\x+1",
+        r"\x-0",
+        r"\u+001",
+        r"\u-000",
+        r"\u{+1}",
+        r"\u{-0}",
+        r"\u{}",
+        r"\u{FFFFFFFFF}",
+    ] {
         for quote in ['\'', '"', '`'] {
-            assert!(parse(&format!("{quote}{escape}{quote}")).is_err(), "{quote}{escape}{quote}");
+            assert!(
+                parse(&format!("{quote}{escape}{quote}")).is_err(),
+                "{quote}{escape}{quote}"
+            );
         }
     }
 }
@@ -225,14 +296,26 @@ fn escape_errors_retain_actionable_diagnostics_through_the_public_parser() {
         let error = parse(source).unwrap_err();
         assert!(error.message.contains(message), "{source}: {error:?}");
     }
-    assert_eq!(evaluate(r"'\x00\x7F\xFF\u0041\u{1F600}'"), Value::String("\0\u{7f}ÿA😀".into()));
-    assert_eq!(evaluate(r"'\u{00000000000000000000000000000041}'"), Value::String("A".into()));
+    assert_eq!(
+        evaluate(r"'\x00\x7F\xFF\u0041\u{1F600}'"),
+        Value::String("\0\u{7f}ÿA😀".into())
+    );
+    assert_eq!(
+        evaluate(r"'\u{00000000000000000000000000000041}'"),
+        Value::String("A".into())
+    );
 }
 
 #[test]
 fn strings_preserve_surrogate_code_units_through_the_public_pipeline() {
-    for (source, units) in [(r"'\uD800'", vec![0xd800]), (r"'\u{DFFF}'", vec![0xdfff]), (r"'\uD83D\uDE00'", vec![0xd83d, 0xde00])] {
-        let Value::String(value) = evaluate(source) else { panic!("string literal must return a string") };
+    for (source, units) in [
+        (r"'\uD800'", vec![0xd800]),
+        (r"'\u{DFFF}'", vec![0xdfff]),
+        (r"'\uD83D\uDE00'", vec![0xd83d, 0xde00]),
+    ] {
+        let Value::String(value) = evaluate(source) else {
+            panic!("string literal must return a string")
+        };
         assert_eq!(value.as_code_units(), units, "{source}");
     }
 }
@@ -260,18 +343,43 @@ fn bytecode_budget_is_inclusive_and_preserves_default_output() {
         let bounded = compile_with_limit(&ast, limit).unwrap();
         assert_eq!(bounded.bytes(), normal.bytes(), "{source}");
         assert_eq!(bounded.constants(), normal.constants(), "{source}");
-        assert_eq!(Vm::default().execute(&bounded), Vm::default().execute(&normal), "{source}");
+        assert_eq!(
+            Vm::default().execute(&bounded),
+            Vm::default().execute(&normal),
+            "{source}"
+        );
         for insufficient in 0..limit {
-            assert_eq!(compile_with_limit(&ast, insufficient).err().expect("below required size"), CompileError::ProgramTooLarge, "{source}, limit {insufficient}");
+            assert_eq!(
+                compile_with_limit(&ast, insufficient)
+                    .err()
+                    .expect("below required size"),
+                CompileError::ProgramTooLarge,
+                "{source}, limit {insufficient}"
+            );
         }
     }
 }
 
 #[test]
 fn bytecode_budget_rejects_partial_instructions_and_propagates_expression_errors() {
-    for (source, limit) in [("", 0), ("", 4), ("", 5), ("1", 9), ("-1", 10), ("true||false", 15), ("false&&true", 15), ("null??1", 15)] {
-        let error = compile_with_limit(&parse(source).unwrap(), limit).err().expect("insufficient instruction budget");
-        assert_eq!(error, CompileError::ProgramTooLarge, "{source}, limit {limit}");
+    for (source, limit) in [
+        ("", 0),
+        ("", 4),
+        ("", 5),
+        ("1", 9),
+        ("-1", 10),
+        ("true||false", 15),
+        ("false&&true", 15),
+        ("null??1", 15),
+    ] {
+        let error = compile_with_limit(&parse(source).unwrap(), limit)
+            .err()
+            .expect("insufficient instruction budget");
+        assert_eq!(
+            error,
+            CompileError::ProgramTooLarge,
+            "{source}, limit {limit}"
+        );
         assert!(error.to_string().contains("bytecode size limit"));
     }
     assert!(compile_with_limit(&parse("").unwrap(), 6).is_ok());
@@ -303,14 +411,25 @@ fn shortest_decimal_midpoints_neighbors_and_presentation_boundaries() {
         ("1.7976931348623157e308", "1.7976931348623157e+308"),
     ] {
         for sign in ["", "-"] {
-            assert_eq!(evaluate(&format!("''+({sign}{literal})")), Value::String(format!("{sign}{expected}").into()), "{sign}{literal}");
+            assert_eq!(
+                evaluate(&format!("''+({sign}{literal})")),
+                Value::String(format!("{sign}{expected}").into()),
+                "{sign}{literal}"
+            );
         }
     }
 }
 
 #[test]
 fn decimal_scanning_retains_fraction_exponent_and_overflow_behavior() {
-    for (literal, expected) in [("0", 0.0), ("1.", 1.0), (".25", 0.25), ("1.e3", 1000.0), ("1e+309", f64::INFINITY), ("1e-400", 0.0)] {
+    for (literal, expected) in [
+        ("0", 0.0),
+        ("1.", 1.0),
+        (".25", 0.25),
+        ("1.e3", 1000.0),
+        ("1e+309", f64::INFINITY),
+        ("1e-400", 0.0),
+    ] {
         assert_eq!(evaluate(literal), Value::Number(expected), "{literal}");
     }
     for malformed in ["1e", "1e+", "1e-", "1.e+"] {
@@ -327,8 +446,14 @@ fn number_strings_round_trip_at_every_binary_exponent_boundary() {
                 let bits = sign | (exponent << 52) | fraction;
                 let n = f64::from_bits(bits);
                 let code = compile(&parse(&format!("''+({n:e})")).unwrap()).unwrap();
-                let Value::String(text) = vm.execute(&code).unwrap() else { panic!("string concatenation must return a string") };
-                assert_eq!(text.to_utf8().unwrap().parse::<f64>().unwrap().to_bits(), bits, "{bits:016x}: {text:?}");
+                let Value::String(text) = vm.execute(&code).unwrap() else {
+                    panic!("string concatenation must return a string")
+                };
+                assert_eq!(
+                    text.to_utf8().unwrap().parse::<f64>().unwrap().to_bits(),
+                    bits,
+                    "{bits:016x}: {text:?}"
+                );
             }
         }
     }

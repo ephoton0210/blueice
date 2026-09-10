@@ -43,8 +43,9 @@ pub mod supervisor;
 pub use control::default_control_socket_path;
 
 use blueice_ipc::{
-    read_client_message_with_ids, read_server_message_with_id, read_server_message_with_ids, write_client_message_with_id, write_client_message_with_ids,
-    write_server_message_with_ids, ClientMessage, ServerMessage, TabSummary,
+    read_client_message_with_ids, read_server_message_with_id, read_server_message_with_ids,
+    write_client_message_with_id, write_client_message_with_ids, write_server_message_with_ids,
+    ClientMessage, ServerMessage, TabSummary,
 };
 use std::io;
 use std::net::Shutdown;
@@ -89,7 +90,13 @@ pub(crate) fn rendezvous_socket_dir() -> PathBuf {
 unsafe fn libc_getuid() -> u32 {
     std::fs::read_to_string("/proc/self/status")
         .ok()
-        .and_then(|status| status.lines().find_map(|line| line.strip_prefix("Uid:")).and_then(|rest| rest.split_whitespace().next()).and_then(|s| s.parse().ok()))
+        .and_then(|status| {
+            status
+                .lines()
+                .find_map(|line| line.strip_prefix("Uid:"))
+                .and_then(|rest| rest.split_whitespace().next())
+                .and_then(|s| s.parse().ok())
+        })
         .unwrap_or_else(std::process::id)
 }
 
@@ -145,14 +152,23 @@ const CLIENT_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 /// write here); a client whose *channel* is gone -- its own writer
 /// thread already exited, per [`register_client`] -- is dropped from
 /// the list rather than treated as fatal to the broadcast itself.
-pub fn broadcast_core_to_clients(mut core: UnixStream, clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>>) {
+pub fn broadcast_core_to_clients(
+    mut core: UnixStream,
+    clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>>,
+) {
     loop {
         let (tab_id, request_id, message) = match read_server_message_with_ids(&mut core) {
             Ok(triple) => triple,
             Err(_) => return,
         };
-        let tagged = TaggedServerMessage { tab_id, request_id, message };
-        let mut clients = clients.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let tagged = TaggedServerMessage {
+            tab_id,
+            request_id,
+            message,
+        };
+        let mut clients = clients
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         clients.retain(|client| client.send(tagged.clone()).is_ok());
     }
 }
@@ -191,13 +207,27 @@ pub fn broadcast_core_to_clients(mut core: UnixStream, clients: Arc<Mutex<Vec<Se
 /// disconnect already does. This same self-pruning is what
 /// [`capture_v1_tabs`]'s synthetic internal client relies on to clean
 /// itself up, without needing any explicit client-identity tracking.
-pub fn register_client(client: UnixStream, core_writer: Arc<Mutex<UnixStream>>, clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>>) -> io::Result<()> {
+pub fn register_client(
+    client: UnixStream,
+    core_writer: Arc<Mutex<UnixStream>>,
+    clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>>,
+) -> io::Result<()> {
     let mut write_half = client_write_half(&client)?;
     let (sender, receiver) = mpsc::channel::<TaggedServerMessage>();
-    clients.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(sender);
+    clients
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .push(sender);
     thread::spawn(move || {
         for msg in receiver {
-            if write_server_message_with_ids(&mut write_half, msg.tab_id, msg.request_id, &msg.message).is_err() {
+            if write_server_message_with_ids(
+                &mut write_half,
+                msg.tab_id,
+                msg.request_id,
+                &msg.message,
+            )
+            .is_err()
+            {
                 return; // dropping `receiver` here is what prunes this client above
             }
         }
@@ -237,7 +267,13 @@ fn client_write_half(client: &UnixStream) -> io::Result<UnixStream> {
 ///   `core_stream` -- this thread's death was expected. It exits
 ///   quietly without signaling `done`, leaving the broker running under
 ///   whichever generation is now current.
-fn spawn_generation_tagged_broadcast(core_stream: UnixStream, clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>>, generation: Arc<AtomicU64>, my_generation: u64, done: Sender<()>) {
+fn spawn_generation_tagged_broadcast(
+    core_stream: UnixStream,
+    clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>>,
+    generation: Arc<AtomicU64>,
+    my_generation: u64,
+    done: Sender<()>,
+) {
     thread::spawn(move || {
         broadcast_core_to_clients(core_stream, clients);
         if generation.load(Ordering::SeqCst) == my_generation {
@@ -302,7 +338,10 @@ const TAB_CAPTURE_TIMEOUT: Duration = Duration::from_secs(5);
 /// request_id sharing the same broker is vanishingly unlikely. Mirrors
 /// `blueice-mcp-server`'s own `fastrand_like_suffix`.
 fn synthetic_request_id() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0)
 }
 
 /// Captures v1's currently-open tab list, as a synthetic internal
@@ -324,14 +363,24 @@ fn synthetic_request_id() -> u64 {
 /// dead-channel pruning removes it -- the same self-cleanup mechanism
 /// already relied on for any other client's writer thread exiting, so
 /// no new client-identity-tracking machinery is needed just for this.
-fn capture_v1_tabs(core_writer: &Arc<Mutex<UnixStream>>, clients: &Arc<Mutex<Vec<Sender<TaggedServerMessage>>>>, timeout: Duration) -> Result<Vec<TabSummary>, String> {
+fn capture_v1_tabs(
+    core_writer: &Arc<Mutex<UnixStream>>,
+    clients: &Arc<Mutex<Vec<Sender<TaggedServerMessage>>>>,
+    timeout: Duration,
+) -> Result<Vec<TabSummary>, String> {
     let (sender, receiver) = mpsc::channel::<TaggedServerMessage>();
-    clients.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(sender);
+    clients
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .push(sender);
 
     let request_id = synthetic_request_id();
     {
-        let mut core = core_writer.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        write_client_message_with_id(&mut *core, Some(request_id), &ClientMessage::ListTabs).map_err(|e| format!("failed to send ListTabs to v1: {e}"))?;
+        let mut core = core_writer
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        write_client_message_with_id(&mut *core, Some(request_id), &ClientMessage::ListTabs)
+            .map_err(|e| format!("failed to send ListTabs to v1: {e}"))?;
     }
 
     let deadline = Instant::now() + timeout;
@@ -341,7 +390,11 @@ fn capture_v1_tabs(core_writer: &Arc<Mutex<UnixStream>>, clients: &Arc<Mutex<Vec
             return Err("timed out waiting for v1's ListTabs reply".to_string());
         }
         match receiver.recv_timeout(remaining) {
-            Ok(TaggedServerMessage { request_id: Some(id), message: ServerMessage::Tabs(tabs), .. }) if id == request_id => return Ok(tabs),
+            Ok(TaggedServerMessage {
+                request_id: Some(id),
+                message: ServerMessage::Tabs(tabs),
+                ..
+            }) if id == request_id => return Ok(tabs),
             Ok(_) => continue, // some other client's concurrent broadcast traffic
             // A timeout inside `recv_timeout` itself (as opposed to the
             // deadline check above) is not yet the final "timed out"
@@ -349,7 +402,12 @@ fn capture_v1_tabs(core_writer: &Arc<Mutex<UnixStream>>, clients: &Arc<Mutex<Vec
             // message once `remaining` is truly exhausted, rather than
             // this arm misreporting it as a disconnect.
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
-            Err(mpsc::RecvTimeoutError::Disconnected) => return Err("v1's broadcast connection ended while waiting for its ListTabs reply".to_string()),
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(
+                    "v1's broadcast connection ended while waiting for its ListTabs reply"
+                        .to_string(),
+                )
+            }
         }
     }
 }
@@ -371,12 +429,23 @@ fn replay_tabs(v2_stream: &mut UnixStream, captured_tabs: &[TabSummary]) -> Resu
         if i == 0 {
             let Some(url) = &tab.url else { continue };
             let request_id = synthetic_request_id();
-            write_client_message_with_id(v2_stream, Some(request_id), &ClientMessage::Navigate { url: url.clone() })
-                .map_err(|e| format!("failed to replay the default tab's Navigate into v2: {e}"))?;
+            write_client_message_with_id(
+                v2_stream,
+                Some(request_id),
+                &ClientMessage::Navigate { url: url.clone() },
+            )
+            .map_err(|e| format!("failed to replay the default tab's Navigate into v2: {e}"))?;
             expect_navigate_success(v2_stream, request_id)?;
         } else {
             let request_id = synthetic_request_id();
-            write_client_message_with_id(v2_stream, Some(request_id), &ClientMessage::OpenTab { url: tab.url.clone() }).map_err(|e| format!("failed to replay tab {i}'s OpenTab into v2: {e}"))?;
+            write_client_message_with_id(
+                v2_stream,
+                Some(request_id),
+                &ClientMessage::OpenTab {
+                    url: tab.url.clone(),
+                },
+            )
+            .map_err(|e| format!("failed to replay tab {i}'s OpenTab into v2: {e}"))?;
             expect_open_tab_success(v2_stream, request_id, tab.url.is_some())?;
         }
     }
@@ -396,7 +465,8 @@ fn replay_tabs(v2_stream: &mut UnixStream, captured_tabs: &[TabSummary]) -> Resu
 fn expect_navigate_success(v2_stream: &mut UnixStream, request_id: u64) -> Result<(), String> {
     let mut navigated = false;
     loop {
-        let (reply_id, message) = read_server_message_with_id(v2_stream).map_err(|e| format!("failed reading v2's reply while replaying: {e}"))?;
+        let (reply_id, message) = read_server_message_with_id(v2_stream)
+            .map_err(|e| format!("failed reading v2's reply while replaying: {e}"))?;
         if matches!(reply_id, Some(id) if id != request_id) {
             continue;
         }
@@ -404,8 +474,14 @@ fn expect_navigate_success(v2_stream: &mut UnixStream, request_id: u64) -> Resul
             ServerMessage::Navigated { .. } => navigated = true,
             ServerMessage::FrameReady { .. } if navigated => return Ok(()),
             ServerMessage::FrameReady { .. } => continue, // shouldn't happen before Navigated, but don't misinterpret
-            ServerMessage::Error { message } => return Err(format!("v2 rejected the replayed Navigate: {message}")),
-            ServerMessage::GatekeeperBlocked { reason, .. } => return Err(format!("v2's gatekeeper blocked the replayed Navigate: {reason}")),
+            ServerMessage::Error { message } => {
+                return Err(format!("v2 rejected the replayed Navigate: {message}"))
+            }
+            ServerMessage::GatekeeperBlocked { reason, .. } => {
+                return Err(format!(
+                    "v2's gatekeeper blocked the replayed Navigate: {reason}"
+                ))
+            }
             _ => continue,
         }
     }
@@ -416,10 +492,15 @@ fn expect_navigate_success(v2_stream: &mut UnixStream, request_id: u64) -> Resul
 /// `TabOpened` when the tab was actually navigated (`expects_frame`),
 /// so a blank replayed tab is considered done as soon as `TabOpened`
 /// itself arrives.
-fn expect_open_tab_success(v2_stream: &mut UnixStream, request_id: u64, expects_frame: bool) -> Result<(), String> {
+fn expect_open_tab_success(
+    v2_stream: &mut UnixStream,
+    request_id: u64,
+    expects_frame: bool,
+) -> Result<(), String> {
     let mut opened = false;
     loop {
-        let (reply_id, message) = read_server_message_with_id(v2_stream).map_err(|e| format!("failed reading v2's reply while replaying: {e}"))?;
+        let (reply_id, message) = read_server_message_with_id(v2_stream)
+            .map_err(|e| format!("failed reading v2's reply while replaying: {e}"))?;
         if matches!(reply_id, Some(id) if id != request_id) {
             continue;
         }
@@ -432,8 +513,14 @@ fn expect_open_tab_success(v2_stream: &mut UnixStream, request_id: u64, expects_
             }
             ServerMessage::FrameReady { .. } if opened => return Ok(()),
             ServerMessage::FrameReady { .. } => continue,
-            ServerMessage::Error { message } => return Err(format!("v2 rejected the replayed OpenTab: {message}")),
-            ServerMessage::GatekeeperBlocked { reason, .. } => return Err(format!("v2's gatekeeper blocked the replayed OpenTab: {reason}")),
+            ServerMessage::Error { message } => {
+                return Err(format!("v2 rejected the replayed OpenTab: {message}"))
+            }
+            ServerMessage::GatekeeperBlocked { reason, .. } => {
+                return Err(format!(
+                    "v2's gatekeeper blocked the replayed OpenTab: {reason}"
+                ))
+            }
             _ => continue,
         }
     }
@@ -447,9 +534,11 @@ fn expect_open_tab_success(v2_stream: &mut UnixStream, request_id: u64, expects_
 /// deferred).
 fn health_check(v2_stream: &mut UnixStream, captured_tabs: &[TabSummary]) -> Result<(), String> {
     let request_id = synthetic_request_id();
-    write_client_message_with_id(v2_stream, Some(request_id), &ClientMessage::ListTabs).map_err(|e| format!("failed to send v2's health-check ListTabs: {e}"))?;
+    write_client_message_with_id(v2_stream, Some(request_id), &ClientMessage::ListTabs)
+        .map_err(|e| format!("failed to send v2's health-check ListTabs: {e}"))?;
     loop {
-        let (reply_id, message) = read_server_message_with_id(v2_stream).map_err(|e| format!("failed reading v2's health-check reply: {e}"))?;
+        let (reply_id, message) = read_server_message_with_id(v2_stream)
+            .map_err(|e| format!("failed reading v2's health-check reply: {e}"))?;
         if matches!(reply_id, Some(id) if id != request_id) {
             continue;
         }
@@ -475,7 +564,10 @@ fn health_check(v2_stream: &mut UnixStream, captured_tabs: &[TabSummary]) -> Res
 /// cutover attempt would bump to if it succeeds) makes this unique
 /// across repeated cutover attempts too, not just between v1 and v2.
 fn v2_frame_dir(v1_frame_dir: &Path, target_generation: u64) -> PathBuf {
-    let stem = v1_frame_dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "frames".to_string());
+    let stem = v1_frame_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "frames".to_string());
     v1_frame_dir.with_file_name(format!("{stem}-cutover-{target_generation}"))
 }
 
@@ -491,13 +583,31 @@ fn v2_frame_dir(v1_frame_dir: &Path, target_generation: u64) -> PathBuf {
 fn perform_swap(broker: &Arc<Broker>, v2: SpawnedCore, target_generation: u64) {
     broker.generation.store(target_generation, Ordering::SeqCst);
 
-    let v2_broadcast_stream = v2.stream.try_clone().expect("try_clone on a fresh stream should not fail");
-    spawn_generation_tagged_broadcast(v2_broadcast_stream, Arc::clone(&broker.clients), Arc::clone(&broker.generation), target_generation, broker.done.clone());
+    let v2_broadcast_stream = v2
+        .stream
+        .try_clone()
+        .expect("try_clone on a fresh stream should not fail");
+    spawn_generation_tagged_broadcast(
+        v2_broadcast_stream,
+        Arc::clone(&broker.clients),
+        Arc::clone(&broker.generation),
+        target_generation,
+        broker.done.clone(),
+    );
 
-    let v2_writer_stream = v2.stream.try_clone().expect("try_clone on a fresh stream should not fail");
-    *broker.core_writer.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = v2_writer_stream;
+    let v2_writer_stream = v2
+        .stream
+        .try_clone()
+        .expect("try_clone on a fresh stream should not fail");
+    *broker
+        .core_writer
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = v2_writer_stream;
 
-    let mut active = broker.active_core.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut active = broker
+        .active_core
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if let Some(v1) = active.replace(v2) {
         // Unblocks v1's old broadcast thread's blocked read (shutdown
         // affects every fd sharing this socket's underlying open file
@@ -517,16 +627,21 @@ fn perform_swap(broker: &Arc<Broker>, v2: SpawnedCore, target_generation: u64) {
 /// "Wiring design" for why no retry policy exists yet. v1 is never
 /// touched until every step through the health check has succeeded.
 fn cutover(broker: &Arc<Broker>) -> control::ControlReply {
-    let captured_tabs = match capture_v1_tabs(&broker.core_writer, &broker.clients, TAB_CAPTURE_TIMEOUT) {
-        Ok(tabs) => tabs,
-        Err(reason) => return control::ControlReply::CutoverFailed { reason },
-    };
+    let captured_tabs =
+        match capture_v1_tabs(&broker.core_writer, &broker.clients, TAB_CAPTURE_TIMEOUT) {
+            Ok(tabs) => tabs,
+            Err(reason) => return control::ControlReply::CutoverFailed { reason },
+        };
 
     let target_generation = broker.generation.load(Ordering::SeqCst) + 1;
     let frame_dir = v2_frame_dir(&broker.frame_dir, target_generation);
     let mut v2 = match SpawnedCore::spawn(broker.width, broker.height, &frame_dir) {
         Ok(v2) => v2,
-        Err(e) => return control::ControlReply::CutoverFailed { reason: format!("failed to spawn v2: {e}") },
+        Err(e) => {
+            return control::ControlReply::CutoverFailed {
+                reason: format!("failed to spawn v2: {e}"),
+            }
+        }
     };
 
     if let Err(reason) = replay_tabs(&mut v2.stream, &captured_tabs) {
@@ -579,7 +694,13 @@ fn handle_control_connection(mut conn: UnixStream, broker: &Arc<Broker>) -> io::
 /// which the OS reclaims regardless of those threads' blocked state
 /// (matching `blueice-core`'s own "just run until the underlying
 /// connection ends" simplicity level).
-pub fn run_broker(rendezvous_listener: UnixListener, control_listener: UnixListener, core: SpawnedCore, width: f64, height: f64) -> io::Result<()> {
+pub fn run_broker(
+    rendezvous_listener: UnixListener,
+    control_listener: UnixListener,
+    core: SpawnedCore,
+    width: f64,
+    height: f64,
+) -> io::Result<()> {
     let frame_dir = core.frame_dir.clone();
     let core_writer = Arc::new(Mutex::new(core.stream.try_clone()?));
     let broadcast_stream = core.stream.try_clone()?;
@@ -598,14 +719,24 @@ pub fn run_broker(rendezvous_listener: UnixListener, control_listener: UnixListe
         done: done_tx.clone(),
     });
 
-    spawn_generation_tagged_broadcast(broadcast_stream, Arc::clone(&clients), Arc::clone(&generation), 0, done_tx);
+    spawn_generation_tagged_broadcast(
+        broadcast_stream,
+        Arc::clone(&clients),
+        Arc::clone(&generation),
+        0,
+        done_tx,
+    );
 
     let accept_clients = Arc::clone(&clients);
     let accept_core_writer = Arc::clone(&core_writer);
     thread::spawn(move || {
         for incoming in rendezvous_listener.incoming() {
             let Ok(client) = incoming else { break };
-            let _ = register_client(client, Arc::clone(&accept_core_writer), Arc::clone(&accept_clients));
+            let _ = register_client(
+                client,
+                Arc::clone(&accept_core_writer),
+                Arc::clone(&accept_clients),
+            );
         }
     });
 
@@ -639,9 +770,17 @@ pub fn run_broker(rendezvous_listener: UnixListener, control_listener: UnixListe
 /// for the installed binary and for a `cargo test` integration-test
 /// binary, which lands one level deeper (`target/<profile>/deps/`).
 fn sibling_core_binary(this_exe: &Path) -> PathBuf {
-    let name = if cfg!(windows) { "blueice-core.exe" } else { "blueice-core" };
+    let name = if cfg!(windows) {
+        "blueice-core.exe"
+    } else {
+        "blueice-core"
+    };
     let dir = this_exe.parent().unwrap_or_else(|| Path::new("."));
-    let dir = if dir.file_name().is_some_and(|n| n == "deps") { dir.parent().unwrap_or(dir) } else { dir };
+    let dir = if dir.file_name().is_some_and(|n| n == "deps") {
+        dir.parent().unwrap_or(dir)
+    } else {
+        dir
+    };
     dir.join(name)
 }
 
@@ -656,7 +795,10 @@ fn sibling_core_binary(this_exe: &Path) -> PathBuf {
 fn unique_internal_socket_path() -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!("blueice-launcher-core-{}-{n}.sock", std::process::id()))
+    std::env::temp_dir().join(format!(
+        "blueice-launcher-core-{}-{n}.sock",
+        std::process::id()
+    ))
 }
 
 fn wait_for_socket(path: &Path, timeout: Duration) -> bool {
@@ -700,7 +842,10 @@ impl SpawnedCore {
             .spawn()?;
 
         if !wait_for_socket(&internal_socket_path, Duration::from_secs(5)) {
-            return Err(io::Error::other(format!("blueice-core never created its socket at {}", internal_socket_path.display())));
+            return Err(io::Error::other(format!(
+                "blueice-core never created its socket at {}",
+                internal_socket_path.display()
+            )));
         }
         let mut stream = UnixStream::connect(&internal_socket_path)?;
         // `core` requires the very first message on a fresh connection
@@ -713,7 +858,12 @@ impl SpawnedCore {
         // answers it again rather than re-gating (see `blueice_engine::
         // session::run_session`'s own docs).
         blueice_ipc::client_handshake(&mut stream)?;
-        Ok(SpawnedCore { child, internal_socket_path, frame_dir: frame_dir.to_path_buf(), stream })
+        Ok(SpawnedCore {
+            child,
+            internal_socket_path,
+            frame_dir: frame_dir.to_path_buf(),
+            stream,
+        })
     }
 }
 
@@ -742,12 +892,25 @@ mod tests {
         let (core_side, mut core_observed) = UnixStream::pair().unwrap();
         let core = Arc::new(Mutex::new(core_side));
 
-        write_client_message(&mut client_observed, &ClientMessage::Resize { width: 10, height: 20 }).unwrap();
+        write_client_message(
+            &mut client_observed,
+            &ClientMessage::Resize {
+                width: 10,
+                height: 20,
+            },
+        )
+        .unwrap();
         drop(client_observed); // triggers a clean disconnect after the one message
 
         forward_client_to_core(client_side, Arc::clone(&core));
 
-        assert_eq!(read_client_message(&mut core_observed).unwrap(), ClientMessage::Resize { width: 10, height: 20 });
+        assert_eq!(
+            read_client_message(&mut core_observed).unwrap(),
+            ClientMessage::Resize {
+                width: 10,
+                height: 20
+            }
+        );
     }
 
     #[test]
@@ -786,14 +949,28 @@ mod tests {
         let (core_side, mut core_observed) = UnixStream::pair().unwrap();
         let core = Arc::new(Mutex::new(core_side));
 
-        write_client_message_with_ids(&mut client_observed, Some(3), Some(42), &ClientMessage::Navigate { url: "https://example.com".to_string() }).unwrap();
+        write_client_message_with_ids(
+            &mut client_observed,
+            Some(3),
+            Some(42),
+            &ClientMessage::Navigate {
+                url: "https://example.com".to_string(),
+            },
+        )
+        .unwrap();
         drop(client_observed);
 
         forward_client_to_core(client_side, Arc::clone(&core));
 
         assert_eq!(
             read_client_message_with_ids(&mut core_observed).unwrap(),
-            (Some(3), Some(42), ClientMessage::Navigate { url: "https://example.com".to_string() })
+            (
+                Some(3),
+                Some(42),
+                ClientMessage::Navigate {
+                    url: "https://example.com".to_string()
+                }
+            )
         );
     }
 
@@ -804,12 +981,24 @@ mod tests {
         let (sender2, receiver2) = mpsc::channel();
         let clients = Arc::new(Mutex::new(vec![sender1, sender2]));
 
-        write_server_message(&mut core_observed, &ServerMessage::Navigated { url: "about:blank".to_string() }).unwrap();
+        write_server_message(
+            &mut core_observed,
+            &ServerMessage::Navigated {
+                url: "about:blank".to_string(),
+            },
+        )
+        .unwrap();
         drop(core_observed); // ends the broadcaster loop after the one message
 
         broadcast_core_to_clients(core_side, clients);
 
-        let expected = TaggedServerMessage { tab_id: None, request_id: None, message: ServerMessage::Navigated { url: "about:blank".to_string() } };
+        let expected = TaggedServerMessage {
+            tab_id: None,
+            request_id: None,
+            message: ServerMessage::Navigated {
+                url: "about:blank".to_string(),
+            },
+        };
         assert_eq!(receiver1.recv().unwrap(), expected);
         assert_eq!(receiver2.recv().unwrap(), expected);
     }
@@ -820,28 +1009,57 @@ mod tests {
         let (sender, receiver) = mpsc::channel();
         let clients = Arc::new(Mutex::new(vec![sender]));
 
-        write_server_message_with_ids(&mut core_observed, Some(3), Some(42), &ServerMessage::Navigated { url: "about:blank".to_string() }).unwrap();
+        write_server_message_with_ids(
+            &mut core_observed,
+            Some(3),
+            Some(42),
+            &ServerMessage::Navigated {
+                url: "about:blank".to_string(),
+            },
+        )
+        .unwrap();
         drop(core_observed);
 
         broadcast_core_to_clients(core_side, clients);
 
-        assert_eq!(receiver.recv().unwrap(), TaggedServerMessage { tab_id: Some(3), request_id: Some(42), message: ServerMessage::Navigated { url: "about:blank".to_string() } });
+        assert_eq!(
+            receiver.recv().unwrap(),
+            TaggedServerMessage {
+                tab_id: Some(3),
+                request_id: Some(42),
+                message: ServerMessage::Navigated {
+                    url: "about:blank".to_string()
+                }
+            }
+        );
     }
 
     #[test]
-    fn broadcast_core_to_clients_drops_a_client_whose_channel_is_gone_without_affecting_the_others() {
+    fn broadcast_core_to_clients_drops_a_client_whose_channel_is_gone_without_affecting_the_others()
+    {
         let (core_side, mut core_observed) = UnixStream::pair().unwrap();
         let (dead_sender, dead_receiver) = mpsc::channel();
         drop(dead_receiver); // stands in for that client's writer thread having already exited
         let (live_sender, live_receiver) = mpsc::channel();
         let clients = Arc::new(Mutex::new(vec![dead_sender, live_sender]));
 
-        write_server_message(&mut core_observed, &ServerMessage::Navigated { url: "about:blank".to_string() }).unwrap();
+        write_server_message(
+            &mut core_observed,
+            &ServerMessage::Navigated {
+                url: "about:blank".to_string(),
+            },
+        )
+        .unwrap();
         drop(core_observed);
 
         broadcast_core_to_clients(core_side, Arc::clone(&clients));
 
-        assert_eq!(live_receiver.recv().unwrap().message, ServerMessage::Navigated { url: "about:blank".to_string() });
+        assert_eq!(
+            live_receiver.recv().unwrap().message,
+            ServerMessage::Navigated {
+                url: "about:blank".to_string()
+            }
+        );
         // the dead client's sender must have been pruned from the list.
         assert_eq!(clients.lock().unwrap().len(), 1);
     }
@@ -851,20 +1069,41 @@ mod tests {
         let (client_side, mut client_observed) = UnixStream::pair().unwrap();
         let (core_side, mut core_observed) = UnixStream::pair().unwrap();
         let core_writer = Arc::new(Mutex::new(core_side));
-        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
+        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> =
+            Arc::new(Mutex::new(Vec::new()));
 
         register_client(client_side, Arc::clone(&core_writer), Arc::clone(&clients)).unwrap();
 
         // fan-in: a message the "client" sends must reach core.
         write_client_message(&mut client_observed, &ClientMessage::GetRepresentation).unwrap();
-        assert_eq!(read_client_message(&mut core_observed).unwrap(), ClientMessage::GetRepresentation);
+        assert_eq!(
+            read_client_message(&mut core_observed).unwrap(),
+            ClientMessage::GetRepresentation
+        );
 
         // fan-out: a message sent into the registered channel (standing
         // in for the broadcaster) must reach the client's real socket,
         // relayed by this client's own writer thread.
         let registered = clients.lock().unwrap().pop().unwrap();
-        registered.send(TaggedServerMessage { tab_id: Some(1), request_id: Some(9), message: ServerMessage::Navigated { url: "x".to_string() } }).unwrap();
-        assert_eq!(read_server_message_with_ids(&mut client_observed).unwrap(), (Some(1), Some(9), ServerMessage::Navigated { url: "x".to_string() }));
+        registered
+            .send(TaggedServerMessage {
+                tab_id: Some(1),
+                request_id: Some(9),
+                message: ServerMessage::Navigated {
+                    url: "x".to_string(),
+                },
+            })
+            .unwrap();
+        assert_eq!(
+            read_server_message_with_ids(&mut client_observed).unwrap(),
+            (
+                Some(1),
+                Some(9),
+                ServerMessage::Navigated {
+                    url: "x".to_string()
+                }
+            )
+        );
     }
 
     #[test]
@@ -879,7 +1118,10 @@ mod tests {
         // the channel/writer-thread split together provide.
         let (client_side, _client_observed) = UnixStream::pair().unwrap();
         let write_half = client_write_half(&client_side).unwrap();
-        assert_eq!(write_half.write_timeout().unwrap(), Some(CLIENT_WRITE_TIMEOUT));
+        assert_eq!(
+            write_half.write_timeout().unwrap(),
+            Some(CLIENT_WRITE_TIMEOUT)
+        );
     }
 
     #[test]
@@ -900,10 +1142,21 @@ mod tests {
         let (live_client_side, mut live_client_observed) = UnixStream::pair().unwrap();
         let (core_writer_side, _unused) = UnixStream::pair().unwrap();
         let core_writer = Arc::new(Mutex::new(core_writer_side));
-        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
+        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> =
+            Arc::new(Mutex::new(Vec::new()));
 
-        register_client(slow_client_side, Arc::clone(&core_writer), Arc::clone(&clients)).unwrap();
-        register_client(live_client_side, Arc::clone(&core_writer), Arc::clone(&clients)).unwrap();
+        register_client(
+            slow_client_side,
+            Arc::clone(&core_writer),
+            Arc::clone(&clients),
+        )
+        .unwrap();
+        register_client(
+            live_client_side,
+            Arc::clone(&core_writer),
+            Arc::clone(&clients),
+        )
+        .unwrap();
 
         // Comfortably larger than any realistic default kernel socket
         // buffer, so the write to `slow_client`'s writer thread genuinely
@@ -924,7 +1177,10 @@ mod tests {
         assert!(start.elapsed() < Duration::from_secs(1), "fanning out must be a cheap non-blocking queue push regardless of any client's own writer-thread state");
 
         let received = read_server_message(&mut live_client_observed).unwrap();
-        assert_eq!(received, big_message, "the live client must receive its own copy promptly, not stalled behind the slow one");
+        assert_eq!(
+            received, big_message,
+            "the live client must receive its own copy promptly, not stalled behind the slow one"
+        );
     }
 
     #[test]
@@ -939,13 +1195,19 @@ mod tests {
     #[test]
     fn sibling_core_binary_sits_next_to_the_launcher_binary() {
         let exe = PathBuf::from("/some/target/debug/blueice-launcher");
-        assert_eq!(sibling_core_binary(&exe), PathBuf::from("/some/target/debug/blueice-core"));
+        assert_eq!(
+            sibling_core_binary(&exe),
+            PathBuf::from("/some/target/debug/blueice-core")
+        );
     }
 
     #[test]
     fn sibling_core_binary_steps_out_of_a_deps_directory_for_integration_tests() {
         let exe = PathBuf::from("/some/target/debug/deps/broker_end_to_end-abc123");
-        assert_eq!(sibling_core_binary(&exe), PathBuf::from("/some/target/debug/blueice-core"));
+        assert_eq!(
+            sibling_core_binary(&exe),
+            PathBuf::from("/some/target/debug/blueice-core")
+        );
     }
 
     #[test]
@@ -963,7 +1225,8 @@ mod tests {
 
     #[test]
     fn wait_for_socket_returns_true_once_the_path_exists() {
-        let path = std::env::temp_dir().join(format!("blueice-launcher-wait-test-{}", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("blueice-launcher-wait-test-{}", std::process::id()));
         let _ = std::fs::remove_file(&path);
         std::fs::write(&path, b"x").unwrap();
         assert!(wait_for_socket(&path, Duration::from_millis(50)));
@@ -972,7 +1235,10 @@ mod tests {
 
     #[test]
     fn wait_for_socket_times_out_if_the_path_never_appears() {
-        let path = std::env::temp_dir().join(format!("blueice-launcher-wait-test-missing-{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "blueice-launcher-wait-test-missing-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_file(&path);
         assert!(!wait_for_socket(&path, Duration::from_millis(50)));
     }
@@ -989,59 +1255,110 @@ mod tests {
         let (client_side, mut client_observed) = UnixStream::pair().unwrap();
         let (core_side, mut core_observed) = UnixStream::pair().unwrap();
         let core_writer = Arc::new(Mutex::new(core_side.try_clone().unwrap()));
-        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
+        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> =
+            Arc::new(Mutex::new(Vec::new()));
 
         register_client(client_side, Arc::clone(&core_writer), Arc::clone(&clients)).unwrap();
 
-        write_client_message_with_ids(&mut client_observed, Some(3), Some(42), &ClientMessage::Navigate { url: "https://example.com".to_string() }).unwrap();
+        write_client_message_with_ids(
+            &mut client_observed,
+            Some(3),
+            Some(42),
+            &ClientMessage::Navigate {
+                url: "https://example.com".to_string(),
+            },
+        )
+        .unwrap();
 
         let (tab_id, request_id, msg) = read_client_message_with_ids(&mut core_observed).unwrap();
-        assert_eq!(tab_id, Some(3), "the broker must not silently drop tab_id on the forwarding path");
-        assert_eq!(request_id, Some(42), "the broker must not silently drop request_id on the forwarding path");
-        assert_eq!(msg, ClientMessage::Navigate { url: "https://example.com".to_string() });
+        assert_eq!(
+            tab_id,
+            Some(3),
+            "the broker must not silently drop tab_id on the forwarding path"
+        );
+        assert_eq!(
+            request_id,
+            Some(42),
+            "the broker must not silently drop request_id on the forwarding path"
+        );
+        assert_eq!(
+            msg,
+            ClientMessage::Navigate {
+                url: "https://example.com".to_string()
+            }
+        );
 
-        write_server_message_with_ids(&mut core_observed, Some(3), Some(42), &ServerMessage::Navigated { url: "https://example.com".to_string() }).unwrap();
+        write_server_message_with_ids(
+            &mut core_observed,
+            Some(3),
+            Some(42),
+            &ServerMessage::Navigated {
+                url: "https://example.com".to_string(),
+            },
+        )
+        .unwrap();
         drop(core_observed); // ends the broadcaster loop after the one message
 
         broadcast_core_to_clients(core_side, Arc::clone(&clients));
 
         let (tab_id, request_id, msg) = read_server_message_with_ids(&mut client_observed).unwrap();
-        assert_eq!(tab_id, Some(3), "the broker must not silently drop tab_id on the reply path");
-        assert_eq!(request_id, Some(42), "the broker must not silently drop request_id on the reply path");
-        assert_eq!(msg, ServerMessage::Navigated { url: "https://example.com".to_string() });
+        assert_eq!(
+            tab_id,
+            Some(3),
+            "the broker must not silently drop tab_id on the reply path"
+        );
+        assert_eq!(
+            request_id,
+            Some(42),
+            "the broker must not silently drop request_id on the reply path"
+        );
+        assert_eq!(
+            msg,
+            ServerMessage::Navigated {
+                url: "https://example.com".to_string()
+            }
+        );
     }
 
     #[test]
     fn generation_tagged_broadcast_signals_done_when_its_generation_is_still_current() {
         let (core_side, core_observed) = UnixStream::pair().unwrap();
         drop(core_observed); // "core" is already gone
-        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
+        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> =
+            Arc::new(Mutex::new(Vec::new()));
         let generation = Arc::new(AtomicU64::new(0));
         let (done_tx, done_rx) = mpsc::channel();
 
         spawn_generation_tagged_broadcast(core_side, clients, Arc::clone(&generation), 0, done_tx);
 
-        done_rx.recv_timeout(Duration::from_secs(5)).expect("an unsuperseded broadcast thread's death must signal done");
+        done_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("an unsuperseded broadcast thread's death must signal done");
     }
 
     #[test]
     fn generation_tagged_broadcast_stays_quiet_when_superseded() {
         let (core_side, core_observed) = UnixStream::pair().unwrap();
         drop(core_observed); // standing in for a cutover's deliberate close of v1's stream
-        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
+        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> =
+            Arc::new(Mutex::new(Vec::new()));
         let generation = Arc::new(AtomicU64::new(1)); // already bumped past this thread's own generation
         let (done_tx, done_rx) = mpsc::channel();
 
         spawn_generation_tagged_broadcast(core_side, clients, generation, 0, done_tx);
 
-        assert!(done_rx.recv_timeout(Duration::from_millis(200)).is_err(), "a superseded broadcast thread's death must NOT signal done");
+        assert!(
+            done_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+            "a superseded broadcast thread's death must NOT signal done"
+        );
     }
 
     #[test]
     fn capture_v1_tabs_filters_for_the_matching_request_id_and_ignores_other_traffic() {
         let (core_side, mut core_observed) = UnixStream::pair().unwrap();
         let core_writer = Arc::new(Mutex::new(core_side.try_clone().unwrap()));
-        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
+        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> =
+            Arc::new(Mutex::new(Vec::new()));
 
         // `capture_v1_tabs` only ever *writes* into `core_writer` and
         // then waits on its own registered channel -- something else
@@ -1049,7 +1366,8 @@ mod tests {
         // to actually read `core`'s replies and fan them out to
         // `clients`. Stands that in here.
         let broadcast_clients = Arc::clone(&clients);
-        let broadcaster = thread::spawn(move || broadcast_core_to_clients(core_side, broadcast_clients));
+        let broadcaster =
+            thread::spawn(move || broadcast_core_to_clients(core_side, broadcast_clients));
 
         let responder = thread::spawn(move || {
             let (_, request_id, msg) = read_client_message_with_ids(&mut core_observed).unwrap();
@@ -1057,13 +1375,34 @@ mod tests {
             // Some unrelated broadcast traffic first (another client's
             // concurrent action) -- must be skipped, not mistaken for
             // this call's own reply.
-            write_server_message_with_id(&mut core_observed, Some(999_999), &ServerMessage::Navigated { url: "https://unrelated.example".to_string() }).unwrap();
-            write_server_message_with_id(&mut core_observed, request_id, &ServerMessage::Tabs(vec![TabSummary { id: 1, url: Some("about:blank".to_string()) }])).unwrap();
+            write_server_message_with_id(
+                &mut core_observed,
+                Some(999_999),
+                &ServerMessage::Navigated {
+                    url: "https://unrelated.example".to_string(),
+                },
+            )
+            .unwrap();
+            write_server_message_with_id(
+                &mut core_observed,
+                request_id,
+                &ServerMessage::Tabs(vec![TabSummary {
+                    id: 1,
+                    url: Some("about:blank".to_string()),
+                }]),
+            )
+            .unwrap();
             drop(core_observed); // ends the broadcaster loop
         });
 
         let tabs = capture_v1_tabs(&core_writer, &clients, Duration::from_secs(5)).unwrap();
-        assert_eq!(tabs, vec![TabSummary { id: 1, url: Some("about:blank".to_string()) }]);
+        assert_eq!(
+            tabs,
+            vec![TabSummary {
+                id: 1,
+                url: Some("about:blank".to_string())
+            }]
+        );
         responder.join().unwrap();
         broadcaster.join().unwrap();
     }
@@ -1072,7 +1411,8 @@ mod tests {
     fn capture_v1_tabs_fails_if_no_reply_arrives_within_the_timeout() {
         let (core_side, _core_observed) = UnixStream::pair().unwrap(); // nobody replies
         let core_writer = Arc::new(Mutex::new(core_side));
-        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
+        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> =
+            Arc::new(Mutex::new(Vec::new()));
 
         assert!(capture_v1_tabs(&core_writer, &clients, Duration::from_millis(100)).is_err());
     }
@@ -1082,7 +1422,8 @@ mod tests {
         let (core_side, core_observed) = UnixStream::pair().unwrap();
         drop(core_observed); // "core" is already gone before ever replying
         let core_writer = Arc::new(Mutex::new(core_side));
-        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
+        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> =
+            Arc::new(Mutex::new(Vec::new()));
 
         // A short timeout parameter, not the real multi-second
         // `TAB_CAPTURE_TIMEOUT`: whether the write itself fails
@@ -1097,10 +1438,12 @@ mod tests {
     fn capture_v1_tabs_registers_and_the_stale_sender_self_prunes_on_the_next_broadcast() {
         let (core_side, mut core_observed) = UnixStream::pair().unwrap();
         let core_writer = Arc::new(Mutex::new(core_side.try_clone().unwrap()));
-        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> = Arc::new(Mutex::new(Vec::new()));
+        let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> =
+            Arc::new(Mutex::new(Vec::new()));
 
         let broadcast_clients = Arc::clone(&clients);
-        let broadcaster = thread::spawn(move || broadcast_core_to_clients(core_side, broadcast_clients));
+        let broadcaster =
+            thread::spawn(move || broadcast_core_to_clients(core_side, broadcast_clients));
 
         // Explicit hand-off, not just "send two messages in a row": the
         // *second* message must not reach the broadcaster until
@@ -1113,25 +1456,44 @@ mod tests {
         let (capture_returned_tx, capture_returned_rx) = mpsc::channel::<()>();
         let responder = thread::spawn(move || {
             let (_, request_id, _) = read_client_message_with_ids(&mut core_observed).unwrap();
-            write_server_message_with_id(&mut core_observed, request_id, &ServerMessage::Tabs(vec![])).unwrap();
+            write_server_message_with_id(
+                &mut core_observed,
+                request_id,
+                &ServerMessage::Tabs(vec![]),
+            )
+            .unwrap();
             let _ = capture_returned_rx.recv();
             // This second broadcast message, sent only once the caller
             // below has confirmed `capture_v1_tabs` already returned, is
             // what the stale, still-registered `Sender` fails to
             // deliver, triggering its self-prune.
-            write_server_message(&mut core_observed, &ServerMessage::Navigated { url: "x".to_string() }).unwrap();
+            write_server_message(
+                &mut core_observed,
+                &ServerMessage::Navigated {
+                    url: "x".to_string(),
+                },
+            )
+            .unwrap();
             drop(core_observed); // ends the broadcaster loop
         });
 
         capture_v1_tabs(&core_writer, &clients, Duration::from_secs(5)).unwrap();
-        assert_eq!(clients.lock().unwrap().len(), 1, "the synthetic client is still registered right after capture returns");
+        assert_eq!(
+            clients.lock().unwrap().len(),
+            1,
+            "the synthetic client is still registered right after capture returns"
+        );
         let _ = capture_returned_tx.send(());
 
         // Wait for the broadcaster to process the second message (and
         // then end, once `core_observed` is dropped) before checking
         // that the stale sender was pruned.
         broadcaster.join().unwrap();
-        assert_eq!(clients.lock().unwrap().len(), 0, "the stale synthetic sender must self-prune once its receiver has been dropped");
+        assert_eq!(
+            clients.lock().unwrap().len(),
+            0,
+            "the stale synthetic sender must self-prune once its receiver has been dropped"
+        );
         responder.join().unwrap();
     }
 
@@ -1139,24 +1501,83 @@ mod tests {
     fn replay_tabs_navigates_the_first_tab_and_opens_the_rest() {
         let (mut stream, mut server) = UnixStream::pair().unwrap();
         let tabs = vec![
-            TabSummary { id: 1, url: Some("about:blank".to_string()) },
-            TabSummary { id: 2, url: Some("about:credits".to_string()) },
+            TabSummary {
+                id: 1,
+                url: Some("about:blank".to_string()),
+            },
+            TabSummary {
+                id: 2,
+                url: Some("about:credits".to_string()),
+            },
             TabSummary { id: 3, url: None },
         ];
         let responder = thread::spawn(move || {
             let (_, req, msg) = read_client_message_with_ids(&mut server).unwrap();
-            assert_eq!(msg, ClientMessage::Navigate { url: "about:blank".to_string() });
-            write_server_message_with_id(&mut server, req, &ServerMessage::Navigated { url: "about:blank".to_string() }).unwrap();
-            write_server_message_with_id(&mut server, req, &ServerMessage::FrameReady { shm_path: "x".into(), width: 1, height: 1, generation: 1 }).unwrap();
+            assert_eq!(
+                msg,
+                ClientMessage::Navigate {
+                    url: "about:blank".to_string()
+                }
+            );
+            write_server_message_with_id(
+                &mut server,
+                req,
+                &ServerMessage::Navigated {
+                    url: "about:blank".to_string(),
+                },
+            )
+            .unwrap();
+            write_server_message_with_id(
+                &mut server,
+                req,
+                &ServerMessage::FrameReady {
+                    shm_path: "x".into(),
+                    width: 1,
+                    height: 1,
+                    generation: 1,
+                },
+            )
+            .unwrap();
 
             let (_, req, msg) = read_client_message_with_ids(&mut server).unwrap();
-            assert_eq!(msg, ClientMessage::OpenTab { url: Some("about:credits".to_string()) });
-            write_server_message_with_id(&mut server, req, &ServerMessage::TabOpened { tab_id: 2, url: Some("about:credits".to_string()) }).unwrap();
-            write_server_message_with_id(&mut server, req, &ServerMessage::FrameReady { shm_path: "y".into(), width: 1, height: 1, generation: 2 }).unwrap();
+            assert_eq!(
+                msg,
+                ClientMessage::OpenTab {
+                    url: Some("about:credits".to_string())
+                }
+            );
+            write_server_message_with_id(
+                &mut server,
+                req,
+                &ServerMessage::TabOpened {
+                    tab_id: 2,
+                    url: Some("about:credits".to_string()),
+                },
+            )
+            .unwrap();
+            write_server_message_with_id(
+                &mut server,
+                req,
+                &ServerMessage::FrameReady {
+                    shm_path: "y".into(),
+                    width: 1,
+                    height: 1,
+                    generation: 2,
+                },
+            )
+            .unwrap();
 
             let (_, req, msg) = read_client_message_with_ids(&mut server).unwrap();
             assert_eq!(msg, ClientMessage::OpenTab { url: None });
-            write_server_message_with_id(&mut server, req, &ServerMessage::TabOpened { tab_id: 3, url: None }).unwrap();
+            write_server_message_with_id(
+                &mut server,
+                req,
+                &ServerMessage::TabOpened {
+                    tab_id: 3,
+                    url: None,
+                },
+            )
+            .unwrap();
             // no FrameReady expected, since url was None
         });
 
@@ -1182,10 +1603,20 @@ mod tests {
     #[test]
     fn replay_tabs_aborts_on_the_first_error_reply() {
         let (mut stream, mut server) = UnixStream::pair().unwrap();
-        let tabs = vec![TabSummary { id: 1, url: Some("http://bad".to_string()) }];
+        let tabs = vec![TabSummary {
+            id: 1,
+            url: Some("http://bad".to_string()),
+        }];
         let responder = thread::spawn(move || {
             let (_, req, _msg) = read_client_message_with_ids(&mut server).unwrap();
-            write_server_message_with_id(&mut server, req, &ServerMessage::Error { message: "boom".to_string() }).unwrap();
+            write_server_message_with_id(
+                &mut server,
+                req,
+                &ServerMessage::Error {
+                    message: "boom".to_string(),
+                },
+            )
+            .unwrap();
         });
 
         let err = replay_tabs(&mut stream, &tabs).unwrap_err();
@@ -1196,11 +1627,26 @@ mod tests {
     #[test]
     fn replay_tabs_aborts_on_a_gatekeeper_blocked_reply_for_a_later_tab() {
         let (mut stream, mut server) = UnixStream::pair().unwrap();
-        let tabs = vec![TabSummary { id: 1, url: None }, TabSummary { id: 2, url: Some("http://bad".to_string()) }];
+        let tabs = vec![
+            TabSummary { id: 1, url: None },
+            TabSummary {
+                id: 2,
+                url: Some("http://bad".to_string()),
+            },
+        ];
         let responder = thread::spawn(move || {
             let (_, req, msg) = read_client_message_with_ids(&mut server).unwrap();
             assert!(matches!(msg, ClientMessage::OpenTab { .. }));
-            write_server_message_with_id(&mut server, req, &ServerMessage::GatekeeperBlocked { reason: "nope".to_string(), category: "test".to_string(), url: "http://bad".to_string() }).unwrap();
+            write_server_message_with_id(
+                &mut server,
+                req,
+                &ServerMessage::GatekeeperBlocked {
+                    reason: "nope".to_string(),
+                    category: "test".to_string(),
+                    url: "http://bad".to_string(),
+                },
+            )
+            .unwrap();
         });
 
         let err = replay_tabs(&mut stream, &tabs).unwrap_err();
@@ -1211,11 +1657,23 @@ mod tests {
     #[test]
     fn replay_tabs_aborts_on_a_gatekeeper_blocked_reply_for_the_first_default_tab() {
         let (mut stream, mut server) = UnixStream::pair().unwrap();
-        let tabs = vec![TabSummary { id: 1, url: Some("http://bad".to_string()) }];
+        let tabs = vec![TabSummary {
+            id: 1,
+            url: Some("http://bad".to_string()),
+        }];
         let responder = thread::spawn(move || {
             let (_, req, msg) = read_client_message_with_ids(&mut server).unwrap();
             assert!(matches!(msg, ClientMessage::Navigate { .. }));
-            write_server_message_with_id(&mut server, req, &ServerMessage::GatekeeperBlocked { reason: "blocked".to_string(), category: "test".to_string(), url: "http://bad".to_string() }).unwrap();
+            write_server_message_with_id(
+                &mut server,
+                req,
+                &ServerMessage::GatekeeperBlocked {
+                    reason: "blocked".to_string(),
+                    category: "test".to_string(),
+                    url: "http://bad".to_string(),
+                },
+            )
+            .unwrap();
         });
 
         let err = replay_tabs(&mut stream, &tabs).unwrap_err();
@@ -1230,13 +1688,40 @@ mod tests {
         // different id than the one this call's own message was tagged
         // with must be skipped, not mistaken for the real reply.
         let (mut stream, mut server) = UnixStream::pair().unwrap();
-        let tabs = vec![TabSummary { id: 1, url: Some("about:blank".to_string()) }];
+        let tabs = vec![TabSummary {
+            id: 1,
+            url: Some("about:blank".to_string()),
+        }];
         let responder = thread::spawn(move || {
             let (_, req, msg) = read_client_message_with_ids(&mut server).unwrap();
             assert!(matches!(msg, ClientMessage::Navigate { .. }));
-            write_server_message_with_id(&mut server, Some(123_456), &ServerMessage::Error { message: "belongs to someone else".to_string() }).unwrap();
-            write_server_message_with_id(&mut server, req, &ServerMessage::Navigated { url: "about:blank".to_string() }).unwrap();
-            write_server_message_with_id(&mut server, req, &ServerMessage::FrameReady { shm_path: "x".into(), width: 1, height: 1, generation: 1 }).unwrap();
+            write_server_message_with_id(
+                &mut server,
+                Some(123_456),
+                &ServerMessage::Error {
+                    message: "belongs to someone else".to_string(),
+                },
+            )
+            .unwrap();
+            write_server_message_with_id(
+                &mut server,
+                req,
+                &ServerMessage::Navigated {
+                    url: "about:blank".to_string(),
+                },
+            )
+            .unwrap();
+            write_server_message_with_id(
+                &mut server,
+                req,
+                &ServerMessage::FrameReady {
+                    shm_path: "x".into(),
+                    width: 1,
+                    height: 1,
+                    generation: 1,
+                },
+            )
+            .unwrap();
         });
 
         replay_tabs(&mut stream, &tabs).unwrap();
@@ -1246,13 +1731,41 @@ mod tests {
     #[test]
     fn health_check_ignores_a_reply_carrying_a_mismatched_request_id_and_other_traffic() {
         let (mut stream, mut server) = UnixStream::pair().unwrap();
-        let expected = vec![TabSummary { id: 1, url: Some("about:blank".to_string()) }];
+        let expected = vec![TabSummary {
+            id: 1,
+            url: Some("about:blank".to_string()),
+        }];
         let responder = thread::spawn(move || {
             let (_, req, msg) = read_client_message_with_ids(&mut server).unwrap();
             assert!(matches!(msg, ClientMessage::ListTabs));
-            write_server_message_with_id(&mut server, Some(999), &ServerMessage::Navigated { url: "unrelated".to_string() }).unwrap();
-            write_server_message_with_id(&mut server, req, &ServerMessage::FrameReady { shm_path: "z".into(), width: 1, height: 1, generation: 1 }).unwrap();
-            write_server_message_with_id(&mut server, req, &ServerMessage::Tabs(vec![TabSummary { id: 99, url: Some("about:blank".to_string()) }])).unwrap();
+            write_server_message_with_id(
+                &mut server,
+                Some(999),
+                &ServerMessage::Navigated {
+                    url: "unrelated".to_string(),
+                },
+            )
+            .unwrap();
+            write_server_message_with_id(
+                &mut server,
+                req,
+                &ServerMessage::FrameReady {
+                    shm_path: "z".into(),
+                    width: 1,
+                    height: 1,
+                    generation: 1,
+                },
+            )
+            .unwrap();
+            write_server_message_with_id(
+                &mut server,
+                req,
+                &ServerMessage::Tabs(vec![TabSummary {
+                    id: 99,
+                    url: Some("about:blank".to_string()),
+                }]),
+            )
+            .unwrap();
         });
 
         health_check(&mut stream, &expected).unwrap();
@@ -1262,12 +1775,23 @@ mod tests {
     #[test]
     fn health_check_succeeds_when_urls_match() {
         let (mut stream, mut server) = UnixStream::pair().unwrap();
-        let expected = vec![TabSummary { id: 1, url: Some("about:blank".to_string()) }];
+        let expected = vec![TabSummary {
+            id: 1,
+            url: Some("about:blank".to_string()),
+        }];
         let responder = thread::spawn(move || {
             let (_, req, msg) = read_client_message_with_ids(&mut server).unwrap();
             assert!(matches!(msg, ClientMessage::ListTabs));
             // v2's own ids differ from v1's -- only urls must match.
-            write_server_message_with_id(&mut server, req, &ServerMessage::Tabs(vec![TabSummary { id: 99, url: Some("about:blank".to_string()) }])).unwrap();
+            write_server_message_with_id(
+                &mut server,
+                req,
+                &ServerMessage::Tabs(vec![TabSummary {
+                    id: 99,
+                    url: Some("about:blank".to_string()),
+                }]),
+            )
+            .unwrap();
         });
 
         health_check(&mut stream, &expected).unwrap();
@@ -1277,7 +1801,10 @@ mod tests {
     #[test]
     fn health_check_fails_when_urls_dont_match() {
         let (mut stream, mut server) = UnixStream::pair().unwrap();
-        let expected = vec![TabSummary { id: 1, url: Some("about:blank".to_string()) }];
+        let expected = vec![TabSummary {
+            id: 1,
+            url: Some("about:blank".to_string()),
+        }];
         let responder = thread::spawn(move || {
             let (_, req, _msg) = read_client_message_with_ids(&mut server).unwrap();
             write_server_message_with_id(&mut server, req, &ServerMessage::Tabs(vec![])).unwrap();
@@ -1294,6 +1821,9 @@ mod tests {
         let b = v2_frame_dir(&v1, 2);
         assert_ne!(a, v1);
         assert_ne!(b, v1);
-        assert_ne!(a, b, "a repeated cutover must not reuse the same v2 frame_dir");
+        assert_ne!(
+            a, b,
+            "a repeated cutover must not reuse the same v2 frame_dir"
+        );
     }
 }

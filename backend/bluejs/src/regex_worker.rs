@@ -55,17 +55,27 @@ impl Match {
         self.captures.iter().cloned()
     }
     pub fn named_groups(&self) -> impl Iterator<Item = (&str, Option<Range<usize>>)> + '_ {
-        self.names.iter().map(|(name, range)| (name.as_str(), range.clone()))
+        self.names
+            .iter()
+            .map(|(name, range)| (name.as_str(), range.clone()))
     }
     fn valid(&self, length: usize) -> bool {
         self.captures.first().is_some_and(Option::is_some)
-            && self.captures.iter().chain(self.names.iter().map(|(_, range)| range)).flatten().all(|r| r.start <= r.end && r.end <= length)
+            && self
+                .captures
+                .iter()
+                .chain(self.names.iter().map(|(_, range)| range))
+                .flatten()
+                .all(|r| r.start <= r.end && r.end <= length)
     }
 }
 
 fn frame_write(writer: &mut dyn Write, bytes: &[u8]) -> io::Result<()> {
     if bytes.len() > MAX_FRAME {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "regex frame exceeds limit"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "regex frame exceeds limit",
+        ));
     }
     writer.write_all(&(bytes.len() as u32).to_le_bytes())?;
     writer.write_all(bytes)?;
@@ -77,7 +87,10 @@ fn frame_read(reader: &mut dyn Read) -> io::Result<Vec<u8>> {
     reader.read_exact(&mut length)?;
     let length = u32::from_le_bytes(length) as usize;
     if length > MAX_FRAME {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "regex frame exceeds limit"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "regex frame exceeds limit",
+        ));
     }
     let mut bytes = vec![0; length];
     reader.read_exact(&mut bytes)?;
@@ -99,13 +112,23 @@ impl Worker {
             None => {
                 let executable = std::env::current_exe()?;
                 let mut directory = executable.parent().unwrap();
-                if directory.file_name().is_some_and(|name| name == "deps" || name == "examples") {
+                if directory
+                    .file_name()
+                    .is_some_and(|name| name == "deps" || name == "examples")
+                {
                     directory = directory.parent().unwrap();
                 }
-                directory.join(format!("bluejs-regexp-worker{}", std::env::consts::EXE_SUFFIX))
+                directory.join(format!(
+                    "bluejs-regexp-worker{}",
+                    std::env::consts::EXE_SUFFIX
+                ))
             }
         };
-        let mut child = Command::new(path).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()?;
+        let mut child = Command::new(path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()?;
         let mut input = child.stdin.take().unwrap();
         let mut output = child.stdout.take().unwrap();
         let (requests, incoming) = mpsc::channel::<Vec<u8>>();
@@ -124,20 +147,32 @@ impl Worker {
                 }
             }
         });
-        let mut worker = Self { child, requests: Some(requests), replies, io_thread: Some(io_thread), failed: false };
+        let mut worker = Self {
+            child,
+            requests: Some(requests),
+            replies,
+            io_thread: Some(io_thread),
+            failed: false,
+        };
         // Process startup is separately bounded; cold executable loading must
         // not consume a short budget intended for a regex operation.
         match worker.replies.recv_timeout(Duration::from_secs(2)) {
             Ok(Ok(ready)) if ready == READY => Ok(worker),
             _ => {
                 worker.failed = true;
-                Err(io::Error::other("regex worker startup failed or exceeded two seconds"))
+                Err(io::Error::other(
+                    "regex worker startup failed or exceeded two seconds",
+                ))
             }
         }
     }
 
     fn transact(&mut self, bytes: Vec<u8>, timeout: Duration) -> Result<Vec<u8>, RuntimeError> {
-        self.requests.as_ref().unwrap().send(bytes).map_err(worker_error)?;
+        self.requests
+            .as_ref()
+            .unwrap()
+            .send(bytes)
+            .map_err(worker_error)?;
         self.replies
             .recv_timeout(timeout)
             .map_err(|error| match error {
@@ -179,13 +214,17 @@ pub(crate) fn request(request: Request, timeout: Duration) -> Result<Reply, Runt
         if slot.is_none() {
             *slot = Some(Worker::start().map_err(worker_error)?);
         }
-        let result = slot.as_mut().unwrap().transact(bytes, timeout).and_then(|bytes| {
-            let reply: Reply = serde_json::from_slice(&bytes).map_err(worker_error)?;
-            if matches!(&reply, Reply::Found(Some(matched)) if !matched.valid(length)) {
-                return Err(worker_error("invalid regex capture range"));
-            }
-            Ok(reply)
-        });
+        let result = slot
+            .as_mut()
+            .unwrap()
+            .transact(bytes, timeout)
+            .and_then(|bytes| {
+                let reply: Reply = serde_json::from_slice(&bytes).map_err(worker_error)?;
+                if matches!(&reply, Reply::Found(Some(matched)) if !matched.valid(length)) {
+                    return Err(worker_error("invalid regex capture range"));
+                }
+                Ok(reply)
+            });
         if result.is_err() {
             let mut worker = slot.take().unwrap();
             worker.failed = true;
@@ -207,18 +246,28 @@ pub fn serve() -> io::Result<()> {
             Err(error) => return Err(error),
         };
         let request: Request = serde_json::from_slice(&bytes)?;
-        let same = cached.as_ref().is_some_and(|(source, flags, _)| *source == request.source && *flags == request.flags);
+        let same = cached
+            .as_ref()
+            .is_some_and(|(source, flags, _)| *source == request.source && *flags == request.flags);
         if !same {
             let unicode = request.flags.contains(['u', 'v']);
             let points: Vec<u32> = if unicode {
-                char::decode_utf16(request.source.iter().copied()).map(|c| c.map_or_else(|e| u32::from(e.unpaired_surrogate()), |c| c as u32)).collect()
+                char::decode_utf16(request.source.iter().copied())
+                    .map(|c| c.map_or_else(|e| u32::from(e.unpaired_surrogate()), |c| c as u32))
+                    .collect()
             } else {
                 request.source.iter().map(|&c| u32::from(c)).collect()
             };
-            match regress::Regex::from_unicode(points.into_iter(), regress::Flags::from(request.flags.as_str())) {
+            match regress::Regex::from_unicode(
+                points.into_iter(),
+                regress::Flags::from(request.flags.as_str()),
+            ) {
                 Ok(regex) => cached = Some((request.source, request.flags.clone(), regex)),
                 Err(error) => {
-                    frame_write(&mut output, &serde_json::to_vec(&Reply::SyntaxError(error.to_string()))?)?;
+                    frame_write(
+                        &mut output,
+                        &serde_json::to_vec(&Reply::SyntaxError(error.to_string()))?,
+                    )?;
                     continue;
                 }
             }
@@ -232,7 +281,15 @@ pub fn serve() -> io::Result<()> {
             } else {
                 regex.find_from_ucs2(&input, request.start).next()
             };
-            Reply::Found(found.map(|m| Match { captures: m.groups().collect(), names: m.named_groups().map(|(name, range)| (name.to_string(), range)).collect() }))
+            Reply::Found(found.map(|m| {
+                Match {
+                    captures: m.groups().collect(),
+                    names: m
+                        .named_groups()
+                        .map(|(name, range)| (name.to_string(), range))
+                        .collect(),
+                }
+            }))
         } else {
             Reply::Compiled
         };

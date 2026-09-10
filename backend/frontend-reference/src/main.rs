@@ -56,7 +56,10 @@ use winit::window::{Window, WindowId};
 /// `BACKGROUND` constant), so alpha is never consulted here -- there's
 /// nothing underneath a BlueIce frame to blend against.
 fn rgba_to_xrgb(pixels: &[u8]) -> Vec<u32> {
-    pixels.chunks_exact(4).map(|p| (u32::from(p[0]) << 16) | (u32::from(p[1]) << 8) | u32::from(p[2])).collect()
+    pixels
+        .chunks_exact(4)
+        .map(|p| (u32::from(p[0]) << 16) | (u32::from(p[1]) << 8) | u32::from(p[2]))
+        .collect()
 }
 
 /// `core` is expected to sit next to this binary in the same build
@@ -65,8 +68,15 @@ fn rgba_to_xrgb(pixels: &[u8]) -> Vec<u32> {
 /// for the common case while still being explicit about the
 /// assumption, rather than silently searching `$PATH`.
 fn sibling_core_binary(this_exe: &Path) -> PathBuf {
-    let name = if cfg!(windows) { "blueice-core.exe" } else { "blueice-core" };
-    this_exe.parent().map(|dir| dir.join(name)).unwrap_or_else(|| PathBuf::from(name))
+    let name = if cfg!(windows) {
+        "blueice-core.exe"
+    } else {
+        "blueice-core"
+    };
+    this_exe
+        .parent()
+        .map(|dir| dir.join(name))
+        .unwrap_or_else(|| PathBuf::from(name))
 }
 
 /// Picks a supported locale from a `LANG`-shaped environment value
@@ -80,9 +90,19 @@ fn sibling_core_binary(this_exe: &Path) -> PathBuf {
 /// same relationship stdin's `show`/`hide`/`credits` commands have to
 /// a real AI-facing control channel.
 fn detect_locale(lang_env: Option<&str>) -> &'static str {
-    let Some(lang_env) = lang_env else { return blueice_i18n::DEFAULT_LOCALE };
-    let tag = lang_env.split('.').next().unwrap_or(lang_env).replace('_', "-");
-    blueice_i18n::SUPPORTED_LOCALES.iter().find(|candidate| candidate.eq_ignore_ascii_case(&tag)).copied().unwrap_or(blueice_i18n::DEFAULT_LOCALE)
+    let Some(lang_env) = lang_env else {
+        return blueice_i18n::DEFAULT_LOCALE;
+    };
+    let tag = lang_env
+        .split('.')
+        .next()
+        .unwrap_or(lang_env)
+        .replace('_', "-");
+    blueice_i18n::SUPPORTED_LOCALES
+        .iter()
+        .find(|candidate| candidate.eq_ignore_ascii_case(&tag))
+        .copied()
+        .unwrap_or(blueice_i18n::DEFAULT_LOCALE)
 }
 
 fn unique_socket_path() -> PathBuf {
@@ -149,7 +169,12 @@ impl App {
         }
         match shm::map_frame(Path::new(shm_path)) {
             Ok(mapped) => {
-                self.frame = Some(CurrentFrame { width, height, generation, pixels_xrgb: rgba_to_xrgb(&mapped) });
+                self.frame = Some(CurrentFrame {
+                    width,
+                    height,
+                    generation,
+                    pixels_xrgb: rgba_to_xrgb(&mapped),
+                });
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }
@@ -159,10 +184,13 @@ impl App {
     }
 
     fn redraw(&mut self) {
-        let (Some(window), Some(surface), Some(frame)) = (&self.window, &mut self.surface, &self.frame) else {
+        let (Some(window), Some(surface), Some(frame)) =
+            (&self.window, &mut self.surface, &self.frame)
+        else {
             return;
         };
-        let (Some(w), Some(h)) = (NonZeroU32::new(frame.width), NonZeroU32::new(frame.height)) else {
+        let (Some(w), Some(h)) = (NonZeroU32::new(frame.width), NonZeroU32::new(frame.height))
+        else {
             return;
         };
         if surface.resize(w, h).is_err() {
@@ -183,22 +211,35 @@ impl ApplicationHandler<UserEvent> for App {
         }
         let title = blueice_i18n::translate(self.locale, "frontend", "window-title-default", &[]);
         let attrs = Window::default_attributes().with_title(&title);
-        let window = Rc::new(event_loop.create_window(attrs).expect("failed to create window"));
+        let window = Rc::new(
+            event_loop
+                .create_window(attrs)
+                .expect("failed to create window"),
+        );
         let context = Context::new(window.clone()).expect("failed to create softbuffer context");
-        let surface = Surface::new(&context, window.clone()).expect("failed to create softbuffer surface");
+        let surface =
+            Surface::new(&context, window.clone()).expect("failed to create softbuffer surface");
         self.window = Some(window);
         self.surface = Some(surface);
         self.redraw();
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
         match event {
             WindowEvent::CloseRequested => {
                 self.send(&ClientMessage::Shutdown);
                 event_loop.exit();
             }
             WindowEvent::Resized(size) if size.width > 0 && size.height > 0 => {
-                self.send(&ClientMessage::Resize { width: size.width, height: size.height });
+                self.send(&ClientMessage::Resize {
+                    width: size.width,
+                    height: size.height,
+                });
             }
             WindowEvent::RedrawRequested => self.redraw(),
             WindowEvent::CursorMoved { position, .. } => {
@@ -207,9 +248,16 @@ impl ApplicationHandler<UserEvent> for App {
                 // truth for "what's hovered" -- see
                 // `phase-1-ai-representation-layer/PLAN.md` §4 and
                 // `blueice_ipc::ClientMessage::Hover`'s own docs.
-                self.send(&ClientMessage::Hover { x: position.x, y: position.y });
+                self.send(&ClientMessage::Hover {
+                    x: position.x,
+                    y: position.y,
+                });
             }
-            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                ..
+            } => {
                 let (x, y) = self.cursor;
                 self.send(&ClientMessage::Click { x, y });
             }
@@ -226,12 +274,22 @@ impl ApplicationHandler<UserEvent> for App {
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
-            UserEvent::Server(ServerMessage::FrameReady { shm_path, width, height, generation }) => {
+            UserEvent::Server(ServerMessage::FrameReady {
+                shm_path,
+                width,
+                height,
+                generation,
+            }) => {
                 self.apply_frame(&shm_path, width, height, generation);
             }
             UserEvent::Server(ServerMessage::Navigated { url }) => {
                 if let Some(window) = &self.window {
-                    window.set_title(&blueice_i18n::translate(self.locale, "frontend", "window-title-navigated", &[("url", &url)]));
+                    window.set_title(&blueice_i18n::translate(
+                        self.locale,
+                        "frontend",
+                        "window-title-navigated",
+                        &[("url", &url)],
+                    ));
                 }
             }
             UserEvent::Server(ServerMessage::Error { message }) => {
@@ -242,8 +300,14 @@ impl ApplicationHandler<UserEvent> for App {
             // UI for the "detailed risk explanation" the plan calls
             // for yet -- surfaced the same minimal way `Error` is,
             // pending that real UI work.
-            UserEvent::Server(ServerMessage::GatekeeperBlocked { reason, category, url }) => {
-                eprintln!("blueice-frontend: core's gatekeeper blocked {url} ({category}): {reason}");
+            UserEvent::Server(ServerMessage::GatekeeperBlocked {
+                reason,
+                category,
+                url,
+            }) => {
+                eprintln!(
+                    "blueice-frontend: core's gatekeeper blocked {url} ({category}): {reason}"
+                );
             }
             // This reference frontend has no AI-facing consumer of its
             // own -- a Representation/Dom only arrives if something
@@ -279,7 +343,9 @@ impl ApplicationHandler<UserEvent> for App {
                 if let Some(window) = &self.window {
                     window.set_visible(visible);
                 }
-                self.send(&ClientMessage::Chrome(blueice_ipc::ChromeCommand::SetVisible(visible)));
+                self.send(&ClientMessage::Chrome(
+                    blueice_ipc::ChromeCommand::SetVisible(visible),
+                ));
             }
             UserEvent::Navigate(url) => self.send(&ClientMessage::Navigate { url }),
             UserEvent::Quit => {
@@ -305,7 +371,9 @@ fn stdin_line_to_event(line: &str) -> Option<UserEvent> {
         "credits" => Some(UserEvent::Navigate(CREDITS_URL.to_string())),
         "quit" => Some(UserEvent::Quit),
         other if !other.is_empty() => {
-            eprintln!("blueice-frontend: unrecognized command {other:?} (try show/hide/credits/quit)");
+            eprintln!(
+                "blueice-frontend: unrecognized command {other:?} (try show/hide/credits/quit)"
+            );
             None
         }
         _ => None,
@@ -346,7 +414,9 @@ fn spawn_server_reader(mut reader: UnixStream, proxy: EventLoopProxy<UserEvent>)
 }
 
 fn main() {
-    let url = std::env::args().nth(1).unwrap_or_else(|| "https://example.com".to_string());
+    let url = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "https://example.com".to_string());
 
     let this_exe = std::env::current_exe().expect("failed to resolve own executable path");
     let core_bin = sibling_core_binary(&this_exe);
@@ -361,30 +431,54 @@ fn main() {
         .arg("--height")
         .arg("600")
         .spawn()
-        .unwrap_or_else(|e| panic!("failed to spawn {} ({e}) -- expected it next to {}", core_bin.display(), this_exe.display()));
+        .unwrap_or_else(|e| {
+            panic!(
+                "failed to spawn {} ({e}) -- expected it next to {}",
+                core_bin.display(),
+                this_exe.display()
+            )
+        });
 
     if !wait_for_socket(&socket_path, Duration::from_secs(5)) {
-        panic!("blueice-core never created its socket at {}", socket_path.display());
+        panic!(
+            "blueice-core never created its socket at {}",
+            socket_path.display()
+        );
     }
     let mut writer = UnixStream::connect(&socket_path).expect("failed to connect to blueice-core");
     // `core` requires the very first message on a fresh connection to
     // be `Hello` (`phase-1-ai-representation-layer/PLAN.md` §3) -- done
     // here, before `spawn_server_reader` starts, so nothing else races
     // to read the handshake reply meant for this call.
-    blueice_ipc::client_handshake(&mut writer).expect("blueice-core rejected the protocol_version handshake");
-    let reader = writer.try_clone().expect("failed to clone the core connection for the reader thread");
+    blueice_ipc::client_handshake(&mut writer)
+        .expect("blueice-core rejected the protocol_version handshake");
+    let reader = writer
+        .try_clone()
+        .expect("failed to clone the core connection for the reader thread");
 
-    let event_loop = EventLoop::<UserEvent>::with_user_event().build().expect("failed to create the event loop");
+    let event_loop = EventLoop::<UserEvent>::with_user_event()
+        .build()
+        .expect("failed to create the event loop");
     let proxy = event_loop.create_proxy();
 
     spawn_server_reader(reader, proxy.clone());
     spawn_stdin_commands(proxy);
 
     let locale = detect_locale(std::env::var("LANG").ok().as_deref());
-    let mut app = App { core, writer, window: None, surface: None, frame: None, cursor: (0.0, 0.0), locale };
+    let mut app = App {
+        core,
+        writer,
+        window: None,
+        surface: None,
+        frame: None,
+        cursor: (0.0, 0.0),
+        locale,
+    };
     app.send(&ClientMessage::Navigate { url });
 
-    event_loop.run_app(&mut app).expect("event loop exited with an error");
+    event_loop
+        .run_app(&mut app)
+        .expect("event loop exited with an error");
 
     let _ = std::fs::remove_file(&socket_path);
 }
@@ -417,7 +511,10 @@ mod tests {
     #[test]
     fn unique_socket_path_stays_short_enough_for_af_unix() {
         let path = unique_socket_path();
-        assert!(path.to_string_lossy().len() < 100, "AF_UNIX paths are capped around 108 bytes");
+        assert!(
+            path.to_string_lossy().len() < 100,
+            "AF_UNIX paths are capped around 108 bytes"
+        );
     }
 
     #[test]
@@ -438,13 +535,21 @@ mod tests {
 
     #[test]
     fn stdin_show_and_hide_map_to_set_visible_events() {
-        assert!(matches!(stdin_line_to_event("show"), Some(UserEvent::SetVisible(true))));
-        assert!(matches!(stdin_line_to_event("hide"), Some(UserEvent::SetVisible(false))));
+        assert!(matches!(
+            stdin_line_to_event("show"),
+            Some(UserEvent::SetVisible(true))
+        ));
+        assert!(matches!(
+            stdin_line_to_event("hide"),
+            Some(UserEvent::SetVisible(false))
+        ));
     }
 
     #[test]
     fn stdin_credits_command_navigates_to_the_built_in_credits_page() {
-        assert!(matches!(stdin_line_to_event("credits"), Some(UserEvent::Navigate(url)) if url == CREDITS_URL));
+        assert!(
+            matches!(stdin_line_to_event("credits"), Some(UserEvent::Navigate(url)) if url == CREDITS_URL)
+        );
     }
 
     #[test]
@@ -454,7 +559,10 @@ mod tests {
 
     #[test]
     fn stdin_commands_are_trimmed_of_surrounding_whitespace() {
-        assert!(matches!(stdin_line_to_event("  credits  "), Some(UserEvent::Navigate(_))));
+        assert!(matches!(
+            stdin_line_to_event("  credits  "),
+            Some(UserEvent::Navigate(_))
+        ));
     }
 
     #[test]
@@ -480,7 +588,10 @@ mod tests {
 
     #[test]
     fn detect_locale_falls_back_to_default_for_an_unsupported_lang() {
-        assert_eq!(detect_locale(Some("fr_FR.UTF-8")), blueice_i18n::DEFAULT_LOCALE);
+        assert_eq!(
+            detect_locale(Some("fr_FR.UTF-8")),
+            blueice_i18n::DEFAULT_LOCALE
+        );
     }
 
     #[test]

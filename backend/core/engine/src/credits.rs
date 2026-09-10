@@ -52,7 +52,11 @@ pub fn locale_from_url(url: &str) -> &str {
         .unwrap_or(blueice_i18n::DEFAULT_LOCALE)
 }
 
-const CHROMIUM_CONDITION_KEYS: [&str; 3] = ["chromium-condition-1", "chromium-condition-2", "chromium-condition-3"];
+const CHROMIUM_CONDITION_KEYS: [&str; 3] = [
+    "chromium-condition-1",
+    "chromium-condition-2",
+    "chromium-condition-3",
+];
 
 /// Builds the credits page HTML for `locale`, pulling every string
 /// through `blueice-i18n`'s `credits` namespace instead of embedding
@@ -63,8 +67,16 @@ pub fn credits_html(locale: &str) -> String {
     let is_translated = locale != blueice_i18n::DEFAULT_LOCALE;
 
     let mut body = String::new();
-    body.push_str(&format!("<h1>{}</h1><p>{}</p>", t("about-title"), t("about-intro")));
-    body.push_str(&format!("<h2>{}</h2><p>{}</p>", t("technical-references-heading"), t("technical-references-body")));
+    body.push_str(&format!(
+        "<h1>{}</h1><p>{}</p>",
+        t("about-title"),
+        t("about-intro")
+    ));
+    body.push_str(&format!(
+        "<h2>{}</h2><p>{}</p>",
+        t("technical-references-heading"),
+        t("technical-references-body")
+    ));
 
     body.push_str(&format!("<h2>{}</h2>", en("chromium-heading")));
     push_license_block(&mut body, &en);
@@ -73,16 +85,36 @@ pub fn credits_html(locale: &str) -> String {
         push_license_block(&mut body, &t);
     }
 
-    body.push_str(&format!("<h2>{}</h2><p>{}</p>", en("gecko-heading"), t("gecko-body")));
+    body.push_str(&format!(
+        "<h2>{}</h2><p>{}</p>",
+        en("gecko-heading"),
+        t("gecko-body")
+    ));
 
-    body.push_str(&format!("<h2>{}</h2><p>{}</p>", en("fonts-heading"), en("fonts-intro")));
-    body.push_str(&format!("<p>{}</p><p>{}</p>", en("fonts-copyright"), en("fonts-permission")));
+    body.push_str(&format!(
+        "<h2>{}</h2><p>{}</p>",
+        en("fonts-heading"),
+        en("fonts-intro")
+    ));
+    body.push_str(&format!(
+        "<p>{}</p><p>{}</p>",
+        en("fonts-copyright"),
+        en("fonts-permission")
+    ));
     if is_translated {
         body.push_str(&format!("<p>{}</p>", t("translation-notice")));
-        body.push_str(&format!("<p>{}</p><p>{}</p>", t("fonts-copyright"), t("fonts-permission")));
+        body.push_str(&format!(
+            "<p>{}</p><p>{}</p>",
+            t("fonts-copyright"),
+            t("fonts-permission")
+        ));
     }
 
-    format!("<html><head><title>{}</title></head><body>{}</body></html>", t("about-title"), body)
+    format!(
+        "<html><head><title>{}</title></head><body>{}</body></html>",
+        t("about-title"),
+        body
+    )
 }
 
 /// Appends the Chromium copyright/conditions/disclaimer block using
@@ -91,7 +123,11 @@ pub fn credits_html(locale: &str) -> String {
 /// English-original and translated renderings can never drift apart
 /// in shape, only in which strings they pull.
 fn push_license_block(body: &mut String, lookup: &dyn Fn(&str) -> String) {
-    body.push_str(&format!("<p>{}</p><p>{}</p><ul>", lookup("chromium-copyright"), lookup("chromium-conditions-intro")));
+    body.push_str(&format!(
+        "<p>{}</p><p>{}</p><ul>",
+        lookup("chromium-copyright"),
+        lookup("chromium-conditions-intro")
+    ));
     for key in CHROMIUM_CONDITION_KEYS {
         body.push_str(&format!("<li>{}</li>", lookup(key)));
     }
@@ -119,7 +155,10 @@ mod tests {
 
     #[test]
     fn locale_from_url_falls_back_for_an_unsupported_locale() {
-        assert_eq!(locale_from_url("about:credits?lang=klingon"), blueice_i18n::DEFAULT_LOCALE);
+        assert_eq!(
+            locale_from_url("about:credits?lang=klingon"),
+            blueice_i18n::DEFAULT_LOCALE
+        );
     }
 
     #[test]
@@ -130,7 +169,10 @@ mod tests {
         assert!(html.contains("THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS"));
         assert!(html.contains("Mozilla Public License"));
         assert!(html.contains("Bitstream"));
-        assert!(!html.contains("非正式翻譯"), "the English-only page must not carry a translation notice");
+        assert!(
+            !html.contains("非正式翻譯"),
+            "the English-only page must not carry a translation notice"
+        );
     }
 
     #[test]

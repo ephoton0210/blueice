@@ -4,17 +4,33 @@
 
 //! Explicit opt-in: cargo test -p blueice-bluejs --test node_differential -- --ignored
 //! Node is an independent oracle, not a runtime or default-test dependency.
-use blueice_bluejs::{RuntimeError, Value, Vm, compile, parse};
+use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
 use std::io::Write;
 use std::process::{Command, Stdio};
 
 #[test]
 #[ignore = "requires Node.js on PATH; run explicitly with --ignored"]
 fn primitive_completions_and_error_classes_match_node() {
-    let mut corpus: Vec<String> = include_str!("fixtures/execution.txt").lines().filter(|line| !line.trim().is_empty() && !line.starts_with('#')).map(str::to_owned).collect();
-    corpus.extend(include_str!("fixtures/string_protocols.txt").lines().filter(|line| !line.trim().is_empty() && !line.starts_with('#')).map(str::to_owned));
-    corpus.extend(include_str!("fixtures/bound_functions.txt").lines().filter(|line| !line.trim().is_empty() && !line.starts_with('#')).map(str::to_owned));
-    for locale in ["en", "tr", "az", "lt", "el", "sv", "de", "da", "ja", "th", "zz"] {
+    let mut corpus: Vec<String> = include_str!("fixtures/execution.txt")
+        .lines()
+        .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
+        .map(str::to_owned)
+        .collect();
+    corpus.extend(
+        include_str!("fixtures/string_protocols.txt")
+            .lines()
+            .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
+            .map(str::to_owned),
+    );
+    corpus.extend(
+        include_str!("fixtures/bound_functions.txt")
+            .lines()
+            .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
+            .map(str::to_owned),
+    );
+    for locale in [
+        "en", "tr", "az", "lt", "el", "sv", "de", "da", "ja", "th", "zz",
+    ] {
         for string in ["Iİiı", "I\\u0301", "ΟΣ", "άι", "Straße", "I\\ud800İ", ""] {
             for method in ["toLocaleLowerCase", "toLocaleUpperCase"] {
                 corpus.push(format!("'{string}'.{method}('{locale}')"));
@@ -30,8 +46,16 @@ fn primitive_completions_and_error_classes_match_node() {
             "{caseFirst:'lower'}",
             "{ignorePunctuation:true}",
         ] {
-            for (left, right) in [("ä", "z"), ("é", "e"), ("2", "10"), ("A", "a"), ("a-b", "ab")] {
-                corpus.push(format!("'{left}'.localeCompare('{right}','{locale}',{options})"));
+            for (left, right) in [
+                ("ä", "z"),
+                ("é", "e"),
+                ("2", "10"),
+                ("A", "a"),
+                ("a-b", "ab"),
+            ] {
+                corpus.push(format!(
+                    "'{left}'.localeCompare('{right}','{locale}',{options})"
+                ));
             }
         }
     }
@@ -95,22 +119,75 @@ fn primitive_completions_and_error_classes_match_node() {
         }
         corpus.push(format!("[{}].join('|')", parts.join(",")));
     }
-    for input in [r"\ud800\udc00", r"\udbff\udfff", r"\ud800\ud800\udc00", r"\ud800\udc00\udc00", r"\udc00\ud800", r"\udc00\ud800\udc00\ud800"] {
+    for input in [
+        r"\ud800\udc00",
+        r"\udbff\udfff",
+        r"\ud800\ud800\udc00",
+        r"\ud800\udc00\udc00",
+        r"\udc00\ud800",
+        r"\udc00\ud800\udc00\ud800",
+    ] {
         corpus.push(format!("RegExp.escape('{input}')"));
     }
-    for length in ["Infinity", "-Infinity", "NaN", "-0", "-3.9", "3.9", "'3'", "Symbol()", "{valueOf(){throw 1;}}"] {
+    for length in [
+        "Infinity",
+        "-Infinity",
+        "NaN",
+        "-0",
+        "-3.9",
+        "3.9",
+        "'3'",
+        "Symbol()",
+        "{valueOf(){throw 1;}}",
+    ] {
         corpus.push(format!("function f(){{}} Object.defineProperty(f,'length',{{value:{length}}}); f.bind(null,1).length"));
     }
-    for input in ["", "undefined", "null", "1", "true", "Symbol()", "new String('x')", "{toString(){throw 1;}}", "{[Symbol.toPrimitive](){throw 1;}}"] {
+    for input in [
+        "",
+        "undefined",
+        "null",
+        "1",
+        "true",
+        "Symbol()",
+        "new String('x')",
+        "{toString(){throw 1;}}",
+        "{[Symbol.toPrimitive](){throw 1;}}",
+    ] {
         corpus.push(format!("RegExp.escape({input})"));
     }
     // Cross-product exercises the independent regexp matcher, UTF-16 offsets,
     // replacement expansion and split capture insertion through String APIs.
-    for pattern in ["", "a", "(a)(b)?", "(?<x>a)", "a|b", "^a", "b$", ".", "[ab]+", "[^a]", "a*?", "(?=a)", "(?<=a)b", "(a)\\1", "\\d+", "\\p{ASCII}", "[a&&b]", "\\u{1F600}"] {
+    for pattern in [
+        "",
+        "a",
+        "(a)(b)?",
+        "(?<x>a)",
+        "a|b",
+        "^a",
+        "b$",
+        ".",
+        "[ab]+",
+        "[^a]",
+        "a*?",
+        "(?=a)",
+        "(?<=a)b",
+        "(a)\\1",
+        "\\d+",
+        "\\p{ASCII}",
+        "[a&&b]",
+        "\\u{1F600}",
+    ] {
         for flags in ["", "g", "y", "u", "gu", "gy", "v", "dgi"] {
             for string in ["", "ab", "aba", "aa", "a1b22", "A😀B", "\\ud800a"] {
-                for operation in ["s.search(r)", "String(s.match(r))", "s.replace(r,'[$&][$1][$<x>]')", "String(s.split(r))"] {
-                    corpus.push(format!("let s='{string}'; let r=new RegExp({pattern:?},'{flags}'); {operation}"));
+                for operation in [
+                    "s.search(r)",
+                    "String(s.match(r))",
+                    "s.replace(r,'[$&][$1][$<x>]')",
+                    "String(s.split(r))",
+                ] {
+                    corpus.push(format!(
+                        "let s='{string}'; let r=new RegExp({pattern:?},'{flags}'); {operation}"
+                    ));
                 }
                 if flags.contains('g') {
                     corpus.push(format!("let r=new RegExp({pattern:?},'{flags}'); let out=''; for(let m of '{string}'.matchAll(r)){{out+=m.index+':'+m[0]+';';}} out"));
@@ -145,11 +222,39 @@ fn primitive_completions_and_error_classes_match_node() {
         corpus.push(format!("String.fromCharCode({unit})"));
     }
     for string in ["", "abc", r"\ud800", r"A\ud83d\ude00B", r"e\u0301"] {
-        for position in ["undefined", "NaN", "-Infinity", "Infinity", "-4", "-1", "-0", "0", "1", "2", "4", "0.9", "-0.9"] {
-            for method in ["at", "charAt", "charCodeAt", "codePointAt", "slice", "substring", "substr"] {
+        for position in [
+            "undefined",
+            "NaN",
+            "-Infinity",
+            "Infinity",
+            "-4",
+            "-1",
+            "-0",
+            "0",
+            "1",
+            "2",
+            "4",
+            "0.9",
+            "-0.9",
+        ] {
+            for method in [
+                "at",
+                "charAt",
+                "charCodeAt",
+                "codePointAt",
+                "slice",
+                "substring",
+                "substr",
+            ] {
                 corpus.push(format!("'{string}'.{method}({position})"));
             }
-            for method in ["indexOf", "lastIndexOf", "startsWith", "endsWith", "includes"] {
+            for method in [
+                "indexOf",
+                "lastIndexOf",
+                "startsWith",
+                "endsWith",
+                "includes",
+            ] {
                 for search in ["", "a", r"\ude00"] {
                     corpus.push(format!("'{string}'.{method}('{search}',{position})"));
                 }
@@ -194,20 +299,43 @@ fn primitive_completions_and_error_classes_match_node() {
         .spawn()
         .expect("install Node.js to run the opt-in differential test");
     let mut stdin = node.stdin.take().unwrap();
-    let input: String = corpus.iter().map(|source| source.bytes().map(|b| format!("{b:02x}")).collect::<String>() + "\n").collect();
+    let input: String = corpus
+        .iter()
+        .map(|source| {
+            source
+                .bytes()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>()
+                + "\n"
+        })
+        .collect();
     let writer = std::thread::spawn(move || stdin.write_all(input.as_bytes()));
     let output = node.wait_with_output().unwrap();
     writer.join().unwrap().unwrap();
-    assert!(output.status.success(), "Node oracle failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "Node oracle failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let expected = String::from_utf8(output.stdout).unwrap();
     let expected: Vec<_> = expected.lines().collect();
-    assert_eq!(corpus.len(), expected.len(), "oracle must return exactly one result per script");
-    println!("Comparing {} isolated scripts against Node.js", corpus.len());
+    assert_eq!(
+        corpus.len(),
+        expected.len(),
+        "oracle must return exactly one result per script"
+    );
+    println!(
+        "Comparing {} isolated scripts against Node.js",
+        corpus.len()
+    );
     for (source, expected) in corpus.iter().zip(expected) {
         let result = match parse(source) {
             Err(_) => "error:SyntaxError".into(),
             Ok(ast) => match compile(&ast) {
-                Err(blueice_bluejs::CompileError::DuplicateBinding(_) | blueice_bluejs::CompileError::InvalidSyntax(_)) => "error:SyntaxError".into(),
+                Err(
+                    blueice_bluejs::CompileError::DuplicateBinding(_)
+                    | blueice_bluejs::CompileError::InvalidSyntax(_),
+                ) => "error:SyntaxError".into(),
                 Err(error) => panic!("fixture {source} cannot execute: {error}"),
                 // Intrinsics are mutable and VM-owned. Fresh bindings alone
                 // do not isolate prototype writes between oracle fixtures.
@@ -225,7 +353,13 @@ fn canonical(result: Result<Value, RuntimeError>) -> String {
         Ok(Value::Bool(b)) => format!("bool:{b}"),
         Ok(Value::Number(n)) if n.is_nan() => "number:NaN".into(),
         Ok(Value::Number(n)) => format!("number:{:016x}", n.to_bits()),
-        Ok(Value::String(s)) => format!("string:{}", s.as_code_units().iter().map(|unit| format!("{unit:04x}")).collect::<String>()),
+        Ok(Value::String(s)) => format!(
+            "string:{}",
+            s.as_code_units()
+                .iter()
+                .map(|unit| format!("{unit:04x}"))
+                .collect::<String>()
+        ),
         Err(RuntimeError::ReferenceError(_)) => "error:ReferenceError".into(),
         Err(RuntimeError::TypeError(_)) => "error:TypeError".into(),
         Err(RuntimeError::RangeError(_)) => "error:RangeError".into(),

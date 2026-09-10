@@ -22,7 +22,9 @@
 //! a runtime convention a differently-written caller could omit.
 
 use crate::TabId;
-use blueice_ipc::gatekeeper::{read_gatekeeper_reply, write_gatekeeper_request, GatekeeperReply, GatekeeperRequest};
+use blueice_ipc::gatekeeper::{
+    read_gatekeeper_reply, write_gatekeeper_request, GatekeeperReply, GatekeeperRequest,
+};
 use std::io;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
@@ -46,12 +48,20 @@ pub(crate) struct GatekeeperClearance {
 pub(crate) enum NavOutcome {
     /// Both gatekeeper stages cleared and the fetch succeeded: ready to
     /// apply via [`crate::Page::apply_fetched`].
-    Cleared { clearance: GatekeeperClearance, final_url: String, html: String },
+    Cleared {
+        clearance: GatekeeperClearance,
+        final_url: String,
+        html: String,
+    },
     /// Either gatekeeper stage rejected the navigation, or the
     /// gatekeeper itself was unreachable (fail-closed, see module
     /// docs) -- maps to `ServerMessage::GatekeeperBlocked`, distinct
     /// from an ordinary fetch failure.
-    GatekeeperBlocked { reason: String, category: String, url: String },
+    GatekeeperBlocked {
+        reason: String,
+        category: String,
+        url: String,
+    },
     /// The gatekeeper cleared the URL stage, but the actual network
     /// fetch itself failed -- an ordinary navigation error, mapped to
     /// `ServerMessage::Error` exactly as an unfetchable URL was before
@@ -80,8 +90,13 @@ fn check_stage(gatekeeper_socket: &Path, request: &GatekeeperRequest) -> StageOu
     })();
     match attempt {
         Ok(GatekeeperReply::Cleared) => StageOutcome::Cleared,
-        Ok(GatekeeperReply::Rejected { reason, category }) => StageOutcome::Rejected { reason, category },
-        Err(_) => StageOutcome::Rejected { reason: "the gatekeeper is unreachable".to_string(), category: "gatekeeper-unavailable".to_string() },
+        Ok(GatekeeperReply::Rejected { reason, category }) => {
+            StageOutcome::Rejected { reason, category }
+        }
+        Err(_) => StageOutcome::Rejected {
+            reason: "the gatekeeper is unreachable".to_string(),
+            category: "gatekeeper-unavailable".to_string(),
+        },
     }
 }
 
@@ -91,22 +106,48 @@ fn check_stage(gatekeeper_socket: &Path, request: &GatekeeperRequest) -> StageOu
 /// never touches any `Page`/`TabManager` state itself, only produces a
 /// value the caller applies back on the main thread once it arrives.
 pub(crate) fn check_and_fetch(tab_id: TabId, url: String, gatekeeper_socket: &Path) -> NavOutcome {
-    if let StageOutcome::Rejected { reason, category } = check_stage(gatekeeper_socket, &GatekeeperRequest::CheckUrl { url: url.clone() }) {
-        return NavOutcome::GatekeeperBlocked { reason, category, url };
+    if let StageOutcome::Rejected { reason, category } = check_stage(
+        gatekeeper_socket,
+        &GatekeeperRequest::CheckUrl { url: url.clone() },
+    ) {
+        return NavOutcome::GatekeeperBlocked {
+            reason,
+            category,
+            url,
+        };
     }
 
     let fetched = match blueice_net::fetch(&url) {
         Ok(fetched) => fetched,
-        Err(e) => return NavOutcome::FetchFailed { message: e.to_string() },
+        Err(e) => {
+            return NavOutcome::FetchFailed {
+                message: e.to_string(),
+            }
+        }
     };
 
-    if let StageOutcome::Rejected { reason, category } =
-        check_stage(gatekeeper_socket, &GatekeeperRequest::CheckContent { url: fetched.final_url.clone(), html: fetched.body.clone() })
-    {
-        return NavOutcome::GatekeeperBlocked { reason, category, url: fetched.final_url };
+    if let StageOutcome::Rejected { reason, category } = check_stage(
+        gatekeeper_socket,
+        &GatekeeperRequest::CheckContent {
+            url: fetched.final_url.clone(),
+            html: fetched.body.clone(),
+        },
+    ) {
+        return NavOutcome::GatekeeperBlocked {
+            reason,
+            category,
+            url: fetched.final_url,
+        };
     }
 
-    NavOutcome::Cleared { clearance: GatekeeperClearance { tab_id, url: fetched.final_url.clone() }, final_url: fetched.final_url, html: fetched.body }
+    NavOutcome::Cleared {
+        clearance: GatekeeperClearance {
+            tab_id,
+            url: fetched.final_url.clone(),
+        },
+        final_url: fetched.final_url,
+        html: fetched.body,
+    }
 }
 
 #[cfg(test)]
@@ -150,7 +191,15 @@ mod tests {
             let (mut stream, _) = listener.accept().unwrap();
             let mut buf = [0u8; 1024];
             let _ = stream.read(&mut buf);
-            stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).unwrap();
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
         });
         format!("http://{addr}")
     }
@@ -160,7 +209,9 @@ mod tests {
         let gatekeeper = clearing_gatekeeper("cleared");
         let url = serve_html("<p>hi</p>");
         match check_and_fetch(TabId::from_u64(1), url.clone(), &gatekeeper) {
-            NavOutcome::Cleared { final_url, html, .. } => {
+            NavOutcome::Cleared {
+                final_url, html, ..
+            } => {
                 assert_eq!(final_url, url);
                 assert!(html.contains("hi"));
             }
@@ -171,10 +222,20 @@ mod tests {
     #[test]
     fn fails_closed_when_no_gatekeeper_is_listening() {
         let gatekeeper = unique_gatekeeper_socket_path("unreachable"); // nothing bound here
-        match check_and_fetch(TabId::from_u64(1), "http://127.0.0.1:1/".to_string(), &gatekeeper) {
-            NavOutcome::GatekeeperBlocked { category, .. } => assert_eq!(category, "gatekeeper-unavailable"),
-            NavOutcome::Cleared { .. } => panic!("an unreachable gatekeeper must never be treated as cleared"),
-            NavOutcome::FetchFailed { .. } => panic!("an unreachable gatekeeper must block before ever attempting a fetch"),
+        match check_and_fetch(
+            TabId::from_u64(1),
+            "http://127.0.0.1:1/".to_string(),
+            &gatekeeper,
+        ) {
+            NavOutcome::GatekeeperBlocked { category, .. } => {
+                assert_eq!(category, "gatekeeper-unavailable")
+            }
+            NavOutcome::Cleared { .. } => {
+                panic!("an unreachable gatekeeper must never be treated as cleared")
+            }
+            NavOutcome::FetchFailed { .. } => {
+                panic!("an unreachable gatekeeper must block before ever attempting a fetch")
+            }
         }
     }
 
@@ -186,11 +247,22 @@ mod tests {
         thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let _req = read_gatekeeper_request(&mut stream).unwrap();
-            write_gatekeeper_reply(&mut stream, &GatekeeperReply::Rejected { reason: "known-bad domain".to_string(), category: "blocklist".to_string() }).unwrap();
+            write_gatekeeper_reply(
+                &mut stream,
+                &GatekeeperReply::Rejected {
+                    reason: "known-bad domain".to_string(),
+                    category: "blocklist".to_string(),
+                },
+            )
+            .unwrap();
         });
 
         match check_and_fetch(TabId::from_u64(7), "http://127.0.0.1:1/".to_string(), &path) {
-            NavOutcome::GatekeeperBlocked { reason, category, url } => {
+            NavOutcome::GatekeeperBlocked {
+                reason,
+                category,
+                url,
+            } => {
                 assert_eq!(reason, "known-bad domain");
                 assert_eq!(category, "blocklist");
                 assert_eq!(url, "http://127.0.0.1:1/");
@@ -207,10 +279,15 @@ mod tests {
         thread::spawn(move || {
             for incoming in listener.incoming() {
                 let Ok(mut stream) = incoming else { break };
-                let Ok(req) = read_gatekeeper_request(&mut stream) else { continue };
+                let Ok(req) = read_gatekeeper_request(&mut stream) else {
+                    continue;
+                };
                 let reply = match req {
                     GatekeeperRequest::CheckUrl { .. } => GatekeeperReply::Cleared,
-                    GatekeeperRequest::CheckContent { .. } => GatekeeperReply::Rejected { reason: "hidden text".to_string(), category: "prompt-injection".to_string() },
+                    GatekeeperRequest::CheckContent { .. } => GatekeeperReply::Rejected {
+                        reason: "hidden text".to_string(),
+                        category: "prompt-injection".to_string(),
+                    },
                 };
                 let _ = write_gatekeeper_reply(&mut stream, &reply);
             }
@@ -218,7 +295,11 @@ mod tests {
         let url = serve_html("<p>malicious</p>");
 
         match check_and_fetch(TabId::from_u64(3), url.clone(), &path) {
-            NavOutcome::GatekeeperBlocked { reason, category, url: reported_url } => {
+            NavOutcome::GatekeeperBlocked {
+                reason,
+                category,
+                url: reported_url,
+            } => {
                 assert_eq!(reason, "hidden text");
                 assert_eq!(category, "prompt-injection");
                 assert_eq!(reported_url, url);

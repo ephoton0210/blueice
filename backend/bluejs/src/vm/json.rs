@@ -18,8 +18,20 @@ impl Vm {
         let id = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
         let root = self.heap.root(id)?;
         let result = (|| {
-            self.install_native(id, function_prototype, "parse", 2, NativeFunction::JsonParse)?;
-            self.install_native(id, function_prototype, "stringify", 3, NativeFunction::JsonStringify)?;
+            self.install_native(
+                id,
+                function_prototype,
+                "parse",
+                2,
+                NativeFunction::JsonParse,
+            )?;
+            self.install_native(
+                id,
+                function_prototype,
+                "stringify",
+                3,
+                NativeFunction::JsonStringify,
+            )?;
             Ok(Value::Object(id))
         })();
         match result {
@@ -39,8 +51,11 @@ impl Vm {
 
     pub(super) fn json_parse(&mut self, input: &Value) -> Result<Value, RuntimeError> {
         let input = self.coerce_string(input)?;
-        let input = input.to_utf8().map_err(|_| RuntimeError::SyntaxError("invalid JSON text".into()))?;
-        let value = serde_json::from_str(&input).map_err(|_| RuntimeError::SyntaxError("invalid JSON text".into()))?;
+        let input = input
+            .to_utf8()
+            .map_err(|_| RuntimeError::SyntaxError("invalid JSON text".into()))?;
+        let value = serde_json::from_str(&input)
+            .map_err(|_| RuntimeError::SyntaxError("invalid JSON text".into()))?;
         self.json_from_serde(value)
     }
 
@@ -56,7 +71,8 @@ impl Vm {
             }
             serde_json::Value::Array(values) => {
                 let prototype = self.array_prototype;
-                let array = self.with_roots(|heap| heap.alloc_array(values.len() as u32, Some(prototype)))?;
+                let array =
+                    self.with_roots(|heap| heap.alloc_array(values.len() as u32, Some(prototype)))?;
                 self.stack.push(Value::Object(array));
                 let result: Result<Value, RuntimeError> = (|| {
                     for (index, value) in values.into_iter().enumerate() {
@@ -106,7 +122,11 @@ impl Vm {
             Value::Undefined | Value::Symbol(_) => Ok(None),
             Value::Null => Ok(Some("null".into())),
             Value::Bool(value) => Ok(Some(if *value { "true" } else { "false" }.into())),
-            Value::Number(value) => Ok(Some(if value.is_finite() { primitive::string(&Value::Number(*value))? } else { "null".into() })),
+            Value::Number(value) => Ok(Some(if value.is_finite() {
+                primitive::string(&Value::Number(*value))?
+            } else {
+                "null".into()
+            })),
             Value::String(value) => Ok(Some(json_quote(value).into())),
             Value::Object(object) => {
                 if self.is_callable(value)? {
@@ -116,7 +136,11 @@ impl Vm {
                     return Err(RuntimeError::TypeError("cyclic JSON value".into()));
                 }
                 self.joining.push(*object);
-                let result = if self.heap.is_array(*object)? { self.json_array(*object) } else { self.json_object(*object) };
+                let result = if self.heap.is_array(*object)? {
+                    self.json_array(*object)
+                } else {
+                    self.json_object(*object)
+                };
                 self.joining.pop();
                 result.map(Some)
             }
@@ -133,7 +157,9 @@ impl Vm {
                 text.push(',');
             }
             let value = self.get_property(&Value::Object(array), &index.to_string().into())?;
-            let value = self.json_serialize(&value)?.unwrap_or_else(|| "null".into());
+            let value = self
+                .json_serialize(&value)?
+                .unwrap_or_else(|| "null".into());
             text.push_str(&value.to_utf8().expect("JSON serialization is well-formed"));
         }
         text.push(']');
@@ -145,12 +171,20 @@ impl Vm {
         let mut first = true;
         for key in self.heap.own_property_keys(object)? {
             self.charge_step()?;
-            let PropertyName::String(key) = key else { continue };
-            if self.heap.get_own_property_descriptor(object, &key)?.is_none_or(|descriptor| descriptor.enumerable != Some(true)) {
+            let PropertyName::String(key) = key else {
+                continue;
+            };
+            if self
+                .heap
+                .get_own_property_descriptor(object, &key)?
+                .is_none_or(|descriptor| descriptor.enumerable != Some(true))
+            {
                 continue;
             }
             let value = self.get_property(&Value::Object(object), &PropertyName::from(&key))?;
-            let Some(value) = self.json_serialize(&value)? else { continue };
+            let Some(value) = self.json_serialize(&value)? else {
+                continue;
+            };
             if !first {
                 text.push(',');
             }
@@ -178,8 +212,19 @@ fn json_quote(value: &JsString) -> String {
             0x22 => text.push_str("\\\""),
             0x5c => text.push_str("\\\\"),
             0x00..=0x1f => text.push_str(&format!("\\u{unit:04x}")),
-            0xd800..=0xdbff if units.get(index + 1).is_some_and(|next| (0xdc00..=0xdfff).contains(next)) => {
-                text.push(char::from_u32(0x10000 + ((u32::from(unit) - 0xd800) << 10) + (u32::from(units[index + 1]) - 0xdc00)).unwrap());
+            0xd800..=0xdbff
+                if units
+                    .get(index + 1)
+                    .is_some_and(|next| (0xdc00..=0xdfff).contains(next)) =>
+            {
+                text.push(
+                    char::from_u32(
+                        0x10000
+                            + ((u32::from(unit) - 0xd800) << 10)
+                            + (u32::from(units[index + 1]) - 0xdc00),
+                    )
+                    .unwrap(),
+                );
                 index += 1;
             }
             0xd800..=0xdfff => text.push_str(&format!("\\u{unit:04x}")),

@@ -58,12 +58,21 @@ impl Pixmap {
         for _ in 0..(width as usize * height as usize) {
             pixels.extend_from_slice(&BACKGROUND);
         }
-        Pixmap { width, height, pixels }
+        Pixmap {
+            width,
+            height,
+            pixels,
+        }
     }
 
     pub fn get_pixel(&self, x: u32, y: u32) -> [u8; 4] {
         let idx = ((y * self.width + x) * 4) as usize;
-        [self.pixels[idx], self.pixels[idx + 1], self.pixels[idx + 2], self.pixels[idx + 3]]
+        [
+            self.pixels[idx],
+            self.pixels[idx + 1],
+            self.pixels[idx + 2],
+            self.pixels[idx + 3],
+        ]
     }
 
     fn set_pixel_blended(&mut self, x: i64, y: i64, r: u8, g: u8, b: u8, a: u8) {
@@ -84,7 +93,9 @@ impl Pixmap {
     }
 
     fn fill_rect(&mut self, x: f64, y: f64, w: f64, h: f64, color: Color) {
-        let Color::Rgba(r, g, b, a) = color else { return };
+        let Color::Rgba(r, g, b, a) = color else {
+            return;
+        };
         let (x0, y0) = (x.round() as i64, y.round() as i64);
         let (x1, y1) = ((x + w).round() as i64, (y + h).round() as i64);
         for py in y0..y1 {
@@ -95,7 +106,9 @@ impl Pixmap {
     }
 
     fn draw_text(&mut self, run: TextRun<'_>) {
-        let Color::Rgba(r, g, b, a) = run.color else { return };
+        let Color::Rgba(r, g, b, a) = run.color else {
+            return;
+        };
         let baseline_y = run.y + run.font_size_px * ASSUMED_ASCENT_RATIO;
         let mut pen_x = run.x;
         for ch in run.text.chars() {
@@ -134,7 +147,9 @@ impl Pixmap {
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
         let mut writer = encoder.write_header().map_err(std::io::Error::other)?;
-        writer.write_image_data(&self.pixels).map_err(std::io::Error::other)
+        writer
+            .write_image_data(&self.pixels)
+            .map_err(std::io::Error::other)
     }
 }
 
@@ -144,11 +159,29 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
     let mut pixmap = Pixmap::blank(frame.width.ceil() as u32, frame.height.ceil() as u32);
     for command in &frame.commands {
         match command {
-            PaintCommand::Rect { rect, color } => pixmap.fill_rect(rect.x, rect.y, rect.width, rect.height, *color),
-            PaintCommand::BorderEdge { rect, color } => pixmap.fill_rect(rect.x, rect.y, rect.width, rect.height, *color),
-            PaintCommand::Text { x, y, text, color, font_size_px, bold, italic } => {
-                pixmap.draw_text(TextRun { x: *x, y: *y, text, color: *color, font_size_px: *font_size_px, bold: *bold, italic: *italic })
+            PaintCommand::Rect { rect, color } => {
+                pixmap.fill_rect(rect.x, rect.y, rect.width, rect.height, *color)
             }
+            PaintCommand::BorderEdge { rect, color } => {
+                pixmap.fill_rect(rect.x, rect.y, rect.width, rect.height, *color)
+            }
+            PaintCommand::Text {
+                x,
+                y,
+                text,
+                color,
+                font_size_px,
+                bold,
+                italic,
+            } => pixmap.draw_text(TextRun {
+                x: *x,
+                y: *y,
+                text,
+                color: *color,
+                font_size_px: *font_size_px,
+                bold: *bold,
+                italic: *italic,
+            }),
         }
     }
     pixmap
@@ -160,7 +193,11 @@ mod tests {
     use blueice_paint::Rect;
 
     fn frame(width: f64, height: f64, commands: Vec<PaintCommand>) -> Frame {
-        Frame { width, height, commands }
+        Frame {
+            width,
+            height,
+            commands,
+        }
     }
 
     #[test]
@@ -180,13 +217,33 @@ mod tests {
         let pixmap = rasterize(&frame(
             10.0,
             10.0,
-            vec![PaintCommand::Rect { rect: Rect { x: 2.0, y: 3.0, width: 4.0, height: 2.0 }, color: Color::Rgba(255, 0, 0, 255) }],
+            vec![PaintCommand::Rect {
+                rect: Rect {
+                    x: 2.0,
+                    y: 3.0,
+                    width: 4.0,
+                    height: 2.0,
+                },
+                color: Color::Rgba(255, 0, 0, 255),
+            }],
         ));
         assert_eq!(pixmap.get_pixel(2, 3), [255, 0, 0, 255]);
         assert_eq!(pixmap.get_pixel(5, 4), [255, 0, 0, 255]);
-        assert_eq!(pixmap.get_pixel(6, 3), [255, 255, 255, 255], "one pixel past the right edge stays background");
-        assert_eq!(pixmap.get_pixel(2, 5), [255, 255, 255, 255], "one pixel past the bottom edge stays background");
-        assert_eq!(pixmap.get_pixel(1, 3), [255, 255, 255, 255], "one pixel before the left edge stays background");
+        assert_eq!(
+            pixmap.get_pixel(6, 3),
+            [255, 255, 255, 255],
+            "one pixel past the right edge stays background"
+        );
+        assert_eq!(
+            pixmap.get_pixel(2, 5),
+            [255, 255, 255, 255],
+            "one pixel past the bottom edge stays background"
+        );
+        assert_eq!(
+            pixmap.get_pixel(1, 3),
+            [255, 255, 255, 255],
+            "one pixel before the left edge stays background"
+        );
     }
 
     #[test]
@@ -195,8 +252,24 @@ mod tests {
             10.0,
             10.0,
             vec![
-                PaintCommand::Rect { rect: Rect { x: 0.0, y: 0.0, width: 10.0, height: 10.0 }, color: Color::Rgba(255, 0, 0, 255) },
-                PaintCommand::Rect { rect: Rect { x: 2.0, y: 2.0, width: 2.0, height: 2.0 }, color: Color::Rgba(0, 0, 255, 255) },
+                PaintCommand::Rect {
+                    rect: Rect {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 10.0,
+                        height: 10.0,
+                    },
+                    color: Color::Rgba(255, 0, 0, 255),
+                },
+                PaintCommand::Rect {
+                    rect: Rect {
+                        x: 2.0,
+                        y: 2.0,
+                        width: 2.0,
+                        height: 2.0,
+                    },
+                    color: Color::Rgba(0, 0, 255, 255),
+                },
             ],
         ));
         assert_eq!(pixmap.get_pixel(2, 2), [0, 0, 255, 255]);
@@ -205,10 +278,29 @@ mod tests {
 
     #[test]
     fn semi_transparent_rect_blends_with_the_background() {
-        let pixmap = rasterize(&frame(4.0, 4.0, vec![PaintCommand::Rect { rect: Rect { x: 0.0, y: 0.0, width: 4.0, height: 4.0 }, color: Color::Rgba(0, 0, 0, 128) }]));
+        let pixmap = rasterize(&frame(
+            4.0,
+            4.0,
+            vec![PaintCommand::Rect {
+                rect: Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 4.0,
+                    height: 4.0,
+                },
+                color: Color::Rgba(0, 0, 0, 128),
+            }],
+        ));
         let [r, g, b, a] = pixmap.get_pixel(0, 0);
-        assert!(r < 255 && r > 0, "blended halfway between black and white, not fully either");
-        assert_eq!((r, g, b, a), (r, r, r, 255), "gray, and still fully opaque as far as the canvas is concerned");
+        assert!(
+            r < 255 && r > 0,
+            "blended halfway between black and white, not fully either"
+        );
+        assert_eq!(
+            (r, g, b, a),
+            (r, r, r, 255),
+            "gray, and still fully opaque as far as the canvas is concerned"
+        );
     }
 
     #[test]
@@ -216,15 +308,36 @@ mod tests {
         let pixmap = rasterize(&frame(
             200.0,
             30.0,
-            vec![PaintCommand::Text { x: 0.0, y: 0.0, text: "Hi".to_string(), color: Color::Rgba(0, 0, 0, 255), font_size_px: 16.0, bold: false, italic: false }],
+            vec![PaintCommand::Text {
+                x: 0.0,
+                y: 0.0,
+                text: "Hi".to_string(),
+                color: Color::Rgba(0, 0, 0, 255),
+                font_size_px: 16.0,
+                bold: false,
+                italic: false,
+            }],
         ));
-        let has_ink = (0..pixmap.height).any(|y| (0..pixmap.width).any(|x| pixmap.get_pixel(x, y) != [255, 255, 255, 255]));
+        let has_ink = (0..pixmap.height)
+            .any(|y| (0..pixmap.width).any(|x| pixmap.get_pixel(x, y) != [255, 255, 255, 255]));
         assert!(has_ink, "rendering \"Hi\" must actually darken some pixels");
     }
 
     #[test]
     fn empty_text_paints_nothing() {
-        let pixmap = rasterize(&frame(20.0, 20.0, vec![PaintCommand::Text { x: 0.0, y: 0.0, text: String::new(), color: Color::Rgba(0, 0, 0, 255), font_size_px: 16.0, bold: false, italic: false }]));
+        let pixmap = rasterize(&frame(
+            20.0,
+            20.0,
+            vec![PaintCommand::Text {
+                x: 0.0,
+                y: 0.0,
+                text: String::new(),
+                color: Color::Rgba(0, 0, 0, 255),
+                font_size_px: 16.0,
+                bold: false,
+                italic: false,
+            }],
+        ));
         for y in 0..pixmap.height {
             for x in 0..pixmap.width {
                 assert_eq!(pixmap.get_pixel(x, y), [255, 255, 255, 255]);
@@ -234,22 +347,79 @@ mod tests {
 
     #[test]
     fn different_characters_advance_the_pen_so_they_dont_overlap() {
-        let one_char = rasterize(&frame(200.0, 30.0, vec![PaintCommand::Text { x: 0.0, y: 0.0, text: "M".to_string(), color: Color::Rgba(0, 0, 0, 255), font_size_px: 20.0, bold: false, italic: false }]));
-        let two_char = rasterize(&frame(200.0, 30.0, vec![PaintCommand::Text { x: 0.0, y: 0.0, text: "MM".to_string(), color: Color::Rgba(0, 0, 0, 255), font_size_px: 20.0, bold: false, italic: false }]));
-        let ink_extent = |p: &Pixmap| -> u32 { (0..p.width).rev().find(|&x| (0..p.height).any(|y| p.get_pixel(x, y) != [255, 255, 255, 255])).unwrap_or(0) };
-        assert!(ink_extent(&two_char) > ink_extent(&one_char), "two characters must occupy more horizontal space than one");
+        let one_char = rasterize(&frame(
+            200.0,
+            30.0,
+            vec![PaintCommand::Text {
+                x: 0.0,
+                y: 0.0,
+                text: "M".to_string(),
+                color: Color::Rgba(0, 0, 0, 255),
+                font_size_px: 20.0,
+                bold: false,
+                italic: false,
+            }],
+        ));
+        let two_char = rasterize(&frame(
+            200.0,
+            30.0,
+            vec![PaintCommand::Text {
+                x: 0.0,
+                y: 0.0,
+                text: "MM".to_string(),
+                color: Color::Rgba(0, 0, 0, 255),
+                font_size_px: 20.0,
+                bold: false,
+                italic: false,
+            }],
+        ));
+        let ink_extent = |p: &Pixmap| -> u32 {
+            (0..p.width)
+                .rev()
+                .find(|&x| (0..p.height).any(|y| p.get_pixel(x, y) != [255, 255, 255, 255]))
+                .unwrap_or(0)
+        };
+        assert!(
+            ink_extent(&two_char) > ink_extent(&one_char),
+            "two characters must occupy more horizontal space than one"
+        );
     }
 
     #[test]
     fn zero_alpha_color_paints_nothing() {
-        let pixmap = rasterize(&frame(4.0, 4.0, vec![PaintCommand::Rect { rect: Rect { x: 0.0, y: 0.0, width: 4.0, height: 4.0 }, color: Color::Rgba(0, 0, 0, 0) }]));
+        let pixmap = rasterize(&frame(
+            4.0,
+            4.0,
+            vec![PaintCommand::Rect {
+                rect: Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 4.0,
+                    height: 4.0,
+                },
+                color: Color::Rgba(0, 0, 0, 0),
+            }],
+        ));
         assert_eq!(pixmap.get_pixel(0, 0), [255, 255, 255, 255]);
     }
 
     #[test]
     fn save_png_round_trips_through_a_real_decoder() {
-        let pixmap = rasterize(&frame(3.0, 3.0, vec![PaintCommand::Rect { rect: Rect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 }, color: Color::Rgba(10, 20, 30, 255) }]));
-        let path = std::env::temp_dir().join(format!("blueice-raster-test-{}.png", std::process::id()));
+        let pixmap = rasterize(&frame(
+            3.0,
+            3.0,
+            vec![PaintCommand::Rect {
+                rect: Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1.0,
+                    height: 1.0,
+                },
+                color: Color::Rgba(10, 20, 30, 255),
+            }],
+        ));
+        let path =
+            std::env::temp_dir().join(format!("blueice-raster-test-{}.png", std::process::id()));
         pixmap.save_png(&path).unwrap();
 
         let file = std::fs::File::open(&path).unwrap();

@@ -77,17 +77,30 @@ fn fixture_page_parses_into_a_sane_tree_via_the_public_api() {
     assert!(matches!(doc.data(html), NodeData::Element { tag_name, .. } if tag_name == "html"));
 
     let title = find_by_tag(&doc, html, "title").expect("title");
-    assert_eq!(text_content(&doc, title), "Fixture & Friends", "entity in title must resolve");
+    assert_eq!(
+        text_content(&doc, title),
+        "Fixture & Friends",
+        "entity in title must resolve"
+    );
 
     let style = find_by_tag(&doc, html, "style").expect("style");
-    assert!(find_by_tag(&doc, style, "body").is_none(), "style content is opaque, not tree-constructed");
+    assert!(
+        find_by_tag(&doc, style, "body").is_none(),
+        "style content is opaque, not tree-constructed"
+    );
 
     let script = find_by_tag(&doc, html, "script").expect("script");
     assert!(find_by_tag(&doc, script, "not-a-tag").is_none());
-    assert!(text_content(&doc, script).contains("<not-a-tag>"), "script content is opaque text, unescaped");
+    assert!(
+        text_content(&doc, script).contains("<not-a-tag>"),
+        "script content is opaque text, unescaped"
+    );
 
     let ul = find_by_tag(&doc, html, "ul").expect("ul");
-    let items: Vec<_> = doc.children(ul).filter(|&c| matches!(doc.data(c), NodeData::Element{tag_name,..} if tag_name=="li")).collect();
+    let items: Vec<_> = doc
+        .children(ul)
+        .filter(|&c| matches!(doc.data(c), NodeData::Element{tag_name,..} if tag_name=="li"))
+        .collect();
     assert_eq!(items.len(), 3, "each <li> auto-closes the previous one");
 
     let form = find_by_tag(&doc, html, "form").expect("form");
@@ -99,11 +112,19 @@ fn fixture_page_parses_into_a_sane_tree_via_the_public_api() {
     // the stray text directly inside <table> before any row must be
     // foster-parented out, as a sibling before the table
     let table_pos = doc.children(body).position(|c| c == table).unwrap();
-    assert!(table_pos > 0, "foster-parented text should precede the table as body's child");
+    assert!(
+        table_pos > 0,
+        "foster-parented text should precede the table as body's child"
+    );
 
     let rows: Vec<_> = {
-        let tbody = doc.children(table).find(|&c| matches!(doc.data(c), NodeData::Element{tag_name,..} if tag_name=="tbody")).unwrap();
-        doc.children(tbody).filter(|&c| matches!(doc.data(c), NodeData::Element{tag_name,..} if tag_name=="tr")).collect()
+        let tbody = doc
+            .children(table)
+            .find(|&c| matches!(doc.data(c), NodeData::Element{tag_name,..} if tag_name=="tbody"))
+            .unwrap();
+        doc.children(tbody)
+            .filter(|&c| matches!(doc.data(c), NodeData::Element{tag_name,..} if tag_name=="tr"))
+            .collect()
     };
     assert_eq!(rows.len(), 2, "second <tr> implicitly closes the first");
 

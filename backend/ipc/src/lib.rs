@@ -76,14 +76,24 @@ pub enum ClientMessage {
     /// answered again rather than re-gating the whole session, since
     /// tearing down a shared connection over one client's handshake
     /// would end every other client's session too.
-    Hello { protocol_version: u32 },
+    Hello {
+        protocol_version: u32,
+    },
     /// Load a new URL, replacing the current page.
-    Navigate { url: String },
+    Navigate {
+        url: String,
+    },
     /// The viewport size changed; `core` re-lays-out at the new width.
-    Resize { width: u32, height: u32 },
+    Resize {
+        width: u32,
+        height: u32,
+    },
     /// A click at a point in viewport coordinates (post-scroll, i.e.
     /// `(0,0)` is always the top-left of what's currently visible).
-    Click { x: f64, y: f64 },
+    Click {
+        x: f64,
+        y: f64,
+    },
     /// The pointer moved to this viewport point (same coordinate space
     /// as `Click`) -- `core` resolves it to a node the same way `Click`
     /// already does, becoming the single source of truth for "what's
@@ -91,23 +101,33 @@ pub enum ClientMessage {
     /// facing `NodeState::hovered` field read from the same state
     /// rather than two independently-tracked copies
     /// (`phase-1-ai-representation-layer/PLAN.md` §4).
-    Hover { x: f64, y: f64 },
+    Hover {
+        x: f64,
+        y: f64,
+    },
     /// Scroll the viewport by this many CSS pixels (positive = down).
-    Scroll { delta_y: f64 },
+    Scroll {
+        delta_y: f64,
+    },
     /// Requests a fresh [`AiSnapshot`] of the current page, replied to
     /// with [`ServerMessage::Representation`].
     GetRepresentation,
     /// Act on a specific, stably-addressed element -- see
     /// [`NodeAction`]'s own docs for why this is ID-addressed rather
     /// than coordinate-based.
-    ActOn { id: u64, action: NodeAction },
+    ActOn {
+        id: u64,
+        action: NodeAction,
+    },
     /// Highlights `id` (drawn as an outline derived fresh from that
     /// node's current bounds on every paint) or clears the highlight
     /// (`None`) -- the AI-to-human sync direction plan §1 asks for:
     /// keyed by ID, so it automatically tracks the node through any
     /// layout change instead of a caller having to recompute a screen
     /// rectangle itself.
-    Highlight { id: Option<u64> },
+    Highlight {
+        id: Option<u64>,
+    },
     /// Requests a full DOM tree dump (`blueice_dom::dump`'s canonical
     /// text format -- the same one `blueice-testing`'s fixture corpus
     /// checks `blueice-html` against), replied to with
@@ -124,7 +144,9 @@ pub enum ClientMessage {
     /// slice. `url` is optional purely for convenience (equivalent to
     /// opening a blank tab, then a `Navigate` addressed to it); `None`
     /// opens a blank tab.
-    OpenTab { url: Option<String> },
+    OpenTab {
+        url: Option<String>,
+    },
     /// Closes the addressed tab (the envelope's `tab_id`, same as
     /// every other per-tab message -- not a redundant inline field),
     /// replied to with [`ServerMessage::TabClosed`]. Closing the last
@@ -155,17 +177,26 @@ pub enum ServerMessage {
     /// `core`'s own, echoed so the client can also self-check
     /// compatibility, not just rely on not having received an
     /// [`ServerMessage::Error`].
-    Hello { protocol_version: u32 },
+    Hello {
+        protocol_version: u32,
+    },
     /// A new frame is available. `shm_path` names a shared-memory-
     /// backed file the client maps read-only; `generation` increases on
     /// every frame so a client can detect and drop stale
     /// notifications (playing the role Chromium's `SyncToken`/Gecko's
     /// fence do for producer/consumer synchronization, per
     /// `research/frontend-ipc.md` §4) without needing its own clock.
-    FrameReady { shm_path: String, width: u32, height: u32, generation: u64 },
+    FrameReady {
+        shm_path: String,
+        width: u32,
+        height: u32,
+        generation: u64,
+    },
     /// Navigation finished (or failed) -- `url` is the final URL after
     /// following any redirects.
-    Navigated { url: String },
+    Navigated {
+        url: String,
+    },
     /// Reply to [`ClientMessage::GetRepresentation`].
     Representation(AiSnapshot),
     /// Reply to [`ClientMessage::GetDom`].
@@ -178,12 +209,19 @@ pub enum ServerMessage {
     /// still exists, just blank -- a real, narrow limitation of this
     /// minimal first slice: the client isn't told that orphaned tab's
     /// id directly, though `ListTabs` will show it).
-    TabOpened { tab_id: u64, url: Option<String> },
+    TabOpened {
+        tab_id: u64,
+        url: Option<String>,
+    },
     /// Reply to [`ClientMessage::CloseTab`].
-    TabClosed { tab_id: u64 },
+    TabClosed {
+        tab_id: u64,
+    },
     /// Reply to [`ClientMessage::ListTabs`].
     Tabs(Vec<TabSummary>),
-    Error { message: String },
+    Error {
+        message: String,
+    },
     /// A navigation was blocked by `ai-gatekeeper`'s review (either the
     /// URL stage or the content stage, see [`crate::gatekeeper`]) --
     /// `phase-7-local-ai/PLAN.md`'s "Wiring design": `core` never
@@ -193,7 +231,11 @@ pub enum ServerMessage {
     /// instead of [`ServerMessage::Navigated`]/[`ServerMessage::
     /// TabOpened`] whenever that review didn't clear. `url` is the
     /// (possibly post-redirect) URL the blocked review was about.
-    GatekeeperBlocked { reason: String, category: String, url: String },
+    GatekeeperBlocked {
+        reason: String,
+        category: String,
+        url: String,
+    },
     /// See [`ClientMessage::Unknown`] -- the same forward-compatibility
     /// fallback, in the other direction.
     #[serde(other)]
@@ -245,10 +287,23 @@ fn read_exact_no_progress_loss<R: Read>(r: &mut R, buf: &mut [u8]) -> io::Result
     let mut filled = 0;
     while filled < buf.len() {
         match r.read(&mut buf[filled..]) {
-            Ok(0) => return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "failed to fill whole buffer")),
+            Ok(0) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "failed to fill whole buffer",
+                ))
+            }
             Ok(n) => filled += n,
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-            Err(e) if filled > 0 && matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) => continue,
+            Err(e)
+                if filled > 0
+                    && matches!(
+                        e.kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                    ) =>
+            {
+                continue
+            }
             Err(e) => return Err(e),
         }
     }
@@ -277,7 +332,11 @@ fn read_client_envelope<R: Read>(r: &mut R) -> io::Result<ClientEnvelope> {
     }
     let request_id = value.get("request_id").and_then(serde_json::Value::as_u64);
     let tab_id = value.get("tab_id").and_then(serde_json::Value::as_u64);
-    Ok(ClientEnvelope { request_id, tab_id, message: ClientMessage::Unknown })
+    Ok(ClientEnvelope {
+        request_id,
+        tab_id,
+        message: ClientMessage::Unknown,
+    })
 }
 
 /// The [`ServerMessage`] counterpart to [`read_client_envelope`].
@@ -289,7 +348,11 @@ fn read_server_envelope<R: Read>(r: &mut R) -> io::Result<ServerEnvelope> {
     }
     let request_id = value.get("request_id").and_then(serde_json::Value::as_u64);
     let tab_id = value.get("tab_id").and_then(serde_json::Value::as_u64);
-    Ok(ServerEnvelope { request_id, tab_id, message: ServerMessage::Unknown })
+    Ok(ServerEnvelope {
+        request_id,
+        tab_id,
+        message: ServerMessage::Unknown,
+    })
 }
 
 /// A client-generated correlation id, echoed back verbatim on the
@@ -344,15 +407,38 @@ pub fn write_client_message<W: Write>(w: &mut W, msg: &ClientMessage) -> io::Res
     write_client_message_with_id(w, None, msg)
 }
 
-pub fn write_client_message_with_id<W: Write>(w: &mut W, request_id: Option<u64>, msg: &ClientMessage) -> io::Result<()> {
-    write_framed(w, &ClientEnvelope { request_id, tab_id: None, message: msg.clone() })
+pub fn write_client_message_with_id<W: Write>(
+    w: &mut W,
+    request_id: Option<u64>,
+    msg: &ClientMessage,
+) -> io::Result<()> {
+    write_framed(
+        w,
+        &ClientEnvelope {
+            request_id,
+            tab_id: None,
+            message: msg.clone(),
+        },
+    )
 }
 
 /// Like [`write_client_message_with_id`], additionally addressing the
 /// message to `tab_id` (`None` for the default tab, or for a message
 /// that isn't per-tab-scoped at all).
-pub fn write_client_message_with_ids<W: Write>(w: &mut W, tab_id: Option<u64>, request_id: Option<u64>, msg: &ClientMessage) -> io::Result<()> {
-    write_framed(w, &ClientEnvelope { request_id, tab_id, message: msg.clone() })
+pub fn write_client_message_with_ids<W: Write>(
+    w: &mut W,
+    tab_id: Option<u64>,
+    request_id: Option<u64>,
+    msg: &ClientMessage,
+) -> io::Result<()> {
+    write_framed(
+        w,
+        &ClientEnvelope {
+            request_id,
+            tab_id,
+            message: msg.clone(),
+        },
+    )
 }
 
 pub fn read_client_message<R: Read>(r: &mut R) -> io::Result<ClientMessage> {
@@ -366,7 +452,9 @@ pub fn read_client_message_with_id<R: Read>(r: &mut R) -> io::Result<(Option<u64
 
 /// Like [`read_client_message_with_id`], additionally returning the
 /// envelope's `tab_id` as `(tab_id, request_id, message)`.
-pub fn read_client_message_with_ids<R: Read>(r: &mut R) -> io::Result<(Option<u64>, Option<u64>, ClientMessage)> {
+pub fn read_client_message_with_ids<R: Read>(
+    r: &mut R,
+) -> io::Result<(Option<u64>, Option<u64>, ClientMessage)> {
     let envelope = read_client_envelope(r)?;
     Ok((envelope.tab_id, envelope.request_id, envelope.message))
 }
@@ -375,14 +463,37 @@ pub fn write_server_message<W: Write>(w: &mut W, msg: &ServerMessage) -> io::Res
     write_server_message_with_id(w, None, msg)
 }
 
-pub fn write_server_message_with_id<W: Write>(w: &mut W, request_id: Option<u64>, msg: &ServerMessage) -> io::Result<()> {
-    write_framed(w, &ServerEnvelope { request_id, tab_id: None, message: msg.clone() })
+pub fn write_server_message_with_id<W: Write>(
+    w: &mut W,
+    request_id: Option<u64>,
+    msg: &ServerMessage,
+) -> io::Result<()> {
+    write_framed(
+        w,
+        &ServerEnvelope {
+            request_id,
+            tab_id: None,
+            message: msg.clone(),
+        },
+    )
 }
 
 /// Like [`write_server_message_with_id`], additionally echoing back
 /// which tab this reply is about.
-pub fn write_server_message_with_ids<W: Write>(w: &mut W, tab_id: Option<u64>, request_id: Option<u64>, msg: &ServerMessage) -> io::Result<()> {
-    write_framed(w, &ServerEnvelope { request_id, tab_id, message: msg.clone() })
+pub fn write_server_message_with_ids<W: Write>(
+    w: &mut W,
+    tab_id: Option<u64>,
+    request_id: Option<u64>,
+    msg: &ServerMessage,
+) -> io::Result<()> {
+    write_framed(
+        w,
+        &ServerEnvelope {
+            request_id,
+            tab_id,
+            message: msg.clone(),
+        },
+    )
 }
 
 pub fn read_server_message<R: Read>(r: &mut R) -> io::Result<ServerMessage> {
@@ -396,7 +507,9 @@ pub fn read_server_message_with_id<R: Read>(r: &mut R) -> io::Result<(Option<u64
 
 /// Like [`read_server_message_with_id`], additionally returning the
 /// envelope's `tab_id` as `(tab_id, request_id, message)`.
-pub fn read_server_message_with_ids<R: Read>(r: &mut R) -> io::Result<(Option<u64>, Option<u64>, ServerMessage)> {
+pub fn read_server_message_with_ids<R: Read>(
+    r: &mut R,
+) -> io::Result<(Option<u64>, Option<u64>, ServerMessage)> {
     let envelope = read_server_envelope(r)?;
     Ok((envelope.tab_id, envelope.request_id, envelope.message))
 }
@@ -410,11 +523,18 @@ pub fn read_server_message_with_ids<R: Read>(r: &mut R) -> io::Result<(Option<u6
 /// since `core` rejects a fresh connection whose first message isn't
 /// `Hello`.
 pub fn client_handshake<S: Read + Write>(stream: &mut S) -> io::Result<()> {
-    write_client_message(stream, &ClientMessage::Hello { protocol_version: PROTOCOL_VERSION })?;
+    write_client_message(
+        stream,
+        &ClientMessage::Hello {
+            protocol_version: PROTOCOL_VERSION,
+        },
+    )?;
     match read_server_message(stream)? {
         ServerMessage::Hello { protocol_version } if protocol_version == PROTOCOL_VERSION => Ok(()),
         ServerMessage::Error { message } => Err(io::Error::other(message)),
-        other => Err(io::Error::other(format!("expected a Hello handshake reply, got {other:?}"))),
+        other => Err(io::Error::other(format!(
+            "expected a Hello handshake reply, got {other:?}"
+        ))),
     }
 }
 
@@ -426,19 +546,31 @@ mod tests {
     #[test]
     fn client_message_round_trips_through_the_wire_format() {
         for msg in [
-            ClientMessage::Hello { protocol_version: PROTOCOL_VERSION },
-            ClientMessage::Navigate { url: "https://example.com".to_string() },
-            ClientMessage::Resize { width: 800, height: 600 },
+            ClientMessage::Hello {
+                protocol_version: PROTOCOL_VERSION,
+            },
+            ClientMessage::Navigate {
+                url: "https://example.com".to_string(),
+            },
+            ClientMessage::Resize {
+                width: 800,
+                height: 600,
+            },
             ClientMessage::Click { x: 12.5, y: 30.0 },
             ClientMessage::Scroll { delta_y: -40.0 },
             ClientMessage::Chrome(ChromeCommand::SetVisible(false)),
             ClientMessage::Hover { x: 5.0, y: 6.0 },
             ClientMessage::GetRepresentation,
-            ClientMessage::ActOn { id: 7, action: NodeAction::Click },
+            ClientMessage::ActOn {
+                id: 7,
+                action: NodeAction::Click,
+            },
             ClientMessage::Highlight { id: Some(7) },
             ClientMessage::Highlight { id: None },
             ClientMessage::GetDom,
-            ClientMessage::OpenTab { url: Some("https://example.com".to_string()) },
+            ClientMessage::OpenTab {
+                url: Some("https://example.com".to_string()),
+            },
             ClientMessage::OpenTab { url: None },
             ClientMessage::CloseTab,
             ClientMessage::ListTabs,
@@ -455,9 +587,18 @@ mod tests {
     #[test]
     fn server_message_round_trips_through_the_wire_format() {
         for msg in [
-            ServerMessage::Hello { protocol_version: PROTOCOL_VERSION },
-            ServerMessage::FrameReady { shm_path: "/dev/shm/blueice-1".to_string(), width: 800, height: 600, generation: 42 },
-            ServerMessage::Navigated { url: "https://example.com/".to_string() },
+            ServerMessage::Hello {
+                protocol_version: PROTOCOL_VERSION,
+            },
+            ServerMessage::FrameReady {
+                shm_path: "/dev/shm/blueice-1".to_string(),
+                width: 800,
+                height: 600,
+                generation: 42,
+            },
+            ServerMessage::Navigated {
+                url: "https://example.com/".to_string(),
+            },
             ServerMessage::Representation(AiSnapshot {
                 generation: 42,
                 tab_id: 1,
@@ -470,8 +611,16 @@ mod tests {
                     role: Role::Link,
                     name: Some("Example".to_string()),
                     name_from: Some(NameFrom::Contents),
-                    state: NodeState { hovered: true, ..Default::default() },
-                    bounds: Bounds { x: 0.0, y: 0.0, width: 10.0, height: 5.0 },
+                    state: NodeState {
+                        hovered: true,
+                        ..Default::default()
+                    },
+                    bounds: Bounds {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 10.0,
+                        height: 5.0,
+                    },
                     opacity: 1.0,
                     occluded: false,
                     occluded_by: None,
@@ -479,11 +628,25 @@ mod tests {
                 }],
             }),
             ServerMessage::Dom("| <html>\n".to_string()),
-            ServerMessage::TabOpened { tab_id: 2, url: Some("https://example.com/".to_string()) },
-            ServerMessage::TabOpened { tab_id: 2, url: None },
+            ServerMessage::TabOpened {
+                tab_id: 2,
+                url: Some("https://example.com/".to_string()),
+            },
+            ServerMessage::TabOpened {
+                tab_id: 2,
+                url: None,
+            },
             ServerMessage::TabClosed { tab_id: 2 },
-            ServerMessage::Tabs(vec![TabSummary { id: 1, url: None }, TabSummary { id: 2, url: Some("https://example.com/".to_string()) }]),
-            ServerMessage::Error { message: "oops".to_string() },
+            ServerMessage::Tabs(vec![
+                TabSummary { id: 1, url: None },
+                TabSummary {
+                    id: 2,
+                    url: Some("https://example.com/".to_string()),
+                },
+            ]),
+            ServerMessage::Error {
+                message: "oops".to_string(),
+            },
             ServerMessage::GatekeeperBlocked {
                 reason: "hidden instruction-shaped text".to_string(),
                 category: "prompt-injection".to_string(),
@@ -501,11 +664,27 @@ mod tests {
     #[test]
     fn multiple_messages_can_be_written_and_read_in_sequence_on_one_stream() {
         let mut buf = Vec::new();
-        write_client_message(&mut buf, &ClientMessage::Resize { width: 1, height: 2 }).unwrap();
+        write_client_message(
+            &mut buf,
+            &ClientMessage::Resize {
+                width: 1,
+                height: 2,
+            },
+        )
+        .unwrap();
         write_client_message(&mut buf, &ClientMessage::Shutdown).unwrap();
         let mut cursor = Cursor::new(buf);
-        assert_eq!(read_client_message(&mut cursor).unwrap(), ClientMessage::Resize { width: 1, height: 2 });
-        assert_eq!(read_client_message(&mut cursor).unwrap(), ClientMessage::Shutdown);
+        assert_eq!(
+            read_client_message(&mut cursor).unwrap(),
+            ClientMessage::Resize {
+                width: 1,
+                height: 2
+            }
+        );
+        assert_eq!(
+            read_client_message(&mut cursor).unwrap(),
+            ClientMessage::Shutdown
+        );
     }
 
     #[test]
@@ -544,12 +723,19 @@ mod tests {
         use std::os::unix::net::UnixStream;
         let (mut a, mut b) = UnixStream::pair().unwrap();
 
-        let sent = ClientMessage::Navigate { url: "https://example.com".to_string() };
+        let sent = ClientMessage::Navigate {
+            url: "https://example.com".to_string(),
+        };
         write_client_message(&mut a, &sent).unwrap();
         let received = read_client_message(&mut b).unwrap();
         assert_eq!(received, sent);
 
-        let sent = ServerMessage::FrameReady { shm_path: "/tmp/x".to_string(), width: 10, height: 20, generation: 1 };
+        let sent = ServerMessage::FrameReady {
+            shm_path: "/tmp/x".to_string(),
+            width: 10,
+            height: 20,
+            generation: 1,
+        };
         write_server_message(&mut b, &sent).unwrap();
         let received = read_server_message(&mut a).unwrap();
         assert_eq!(received, sent);
@@ -560,7 +746,10 @@ mod tests {
         let mut buf = Vec::new();
         write_client_message(&mut buf, &ClientMessage::Shutdown).unwrap();
         let mut cursor = Cursor::new(buf);
-        assert_eq!(read_client_message_with_id(&mut cursor).unwrap(), (None, ClientMessage::Shutdown));
+        assert_eq!(
+            read_client_message_with_id(&mut cursor).unwrap(),
+            (None, ClientMessage::Shutdown)
+        );
     }
 
     #[test]
@@ -570,33 +759,60 @@ mod tests {
         // the default externally-tagged representation, unlike struct
         // variants (`Navigate`) -- both must still carry a request_id
         // through the same envelope.
-        for msg in [ClientMessage::Shutdown, ClientMessage::Navigate { url: "https://example.com".to_string() }] {
+        for msg in [
+            ClientMessage::Shutdown,
+            ClientMessage::Navigate {
+                url: "https://example.com".to_string(),
+            },
+        ] {
             let mut buf = Vec::new();
             write_client_message_with_id(&mut buf, Some(42), &msg).unwrap();
             let mut cursor = Cursor::new(buf);
-            assert_eq!(read_client_message_with_id(&mut cursor).unwrap(), (Some(42), msg));
+            assert_eq!(
+                read_client_message_with_id(&mut cursor).unwrap(),
+                (Some(42), msg)
+            );
         }
 
         let mut buf = Vec::new();
-        let reply = ServerMessage::Representation(AiSnapshot { generation: 1, tab_id: 1, url: None, scroll_y: 0.0, nodes: vec![] });
+        let reply = ServerMessage::Representation(AiSnapshot {
+            generation: 1,
+            tab_id: 1,
+            url: None,
+            scroll_y: 0.0,
+            nodes: vec![],
+        });
         write_server_message_with_id(&mut buf, Some(7), &reply).unwrap();
         let mut cursor = Cursor::new(buf);
-        assert_eq!(read_server_message_with_id(&mut cursor).unwrap(), (Some(7), reply));
+        assert_eq!(
+            read_server_message_with_id(&mut cursor).unwrap(),
+            (Some(7), reply)
+        );
     }
 
     #[test]
     fn a_tab_id_round_trips_alongside_a_request_id() {
-        let msg = ClientMessage::Navigate { url: "https://example.com".to_string() };
+        let msg = ClientMessage::Navigate {
+            url: "https://example.com".to_string(),
+        };
         let mut buf = Vec::new();
         write_client_message_with_ids(&mut buf, Some(3), Some(42), &msg).unwrap();
         let mut cursor = Cursor::new(buf);
-        assert_eq!(read_client_message_with_ids(&mut cursor).unwrap(), (Some(3), Some(42), msg));
+        assert_eq!(
+            read_client_message_with_ids(&mut cursor).unwrap(),
+            (Some(3), Some(42), msg)
+        );
 
-        let reply = ServerMessage::Navigated { url: "https://example.com".to_string() };
+        let reply = ServerMessage::Navigated {
+            url: "https://example.com".to_string(),
+        };
         let mut buf = Vec::new();
         write_server_message_with_ids(&mut buf, Some(3), Some(42), &reply).unwrap();
         let mut cursor = Cursor::new(buf);
-        assert_eq!(read_server_message_with_ids(&mut cursor).unwrap(), (Some(3), Some(42), reply));
+        assert_eq!(
+            read_server_message_with_ids(&mut cursor).unwrap(),
+            (Some(3), Some(42), reply)
+        );
     }
 
     #[test]
@@ -609,7 +825,10 @@ mod tests {
         let mut buf = Vec::new();
         write_client_message(&mut buf, &ClientMessage::GetRepresentation).unwrap();
         let mut cursor = Cursor::new(buf);
-        assert_eq!(read_client_message_with_ids(&mut cursor).unwrap(), (None, None, ClientMessage::GetRepresentation));
+        assert_eq!(
+            read_client_message_with_ids(&mut cursor).unwrap(),
+            (None, None, ClientMessage::GetRepresentation)
+        );
     }
 
     #[test]
@@ -620,7 +839,10 @@ mod tests {
         let mut buf = Vec::new();
         write_client_message_with_ids(&mut buf, Some(5), None, &ClientMessage::ListTabs).unwrap();
         let mut cursor = Cursor::new(buf);
-        assert_eq!(read_client_message_with_ids(&mut cursor).unwrap(), (Some(5), None, ClientMessage::ListTabs));
+        assert_eq!(
+            read_client_message_with_ids(&mut cursor).unwrap(),
+            (Some(5), None, ClientMessage::ListTabs)
+        );
     }
 
     #[test]
@@ -630,7 +852,10 @@ mod tests {
         buf.extend_from_slice(&(bad_payload.len() as u32).to_le_bytes());
         buf.extend_from_slice(bad_payload);
         let mut cursor = Cursor::new(buf);
-        assert_eq!(read_client_message(&mut cursor).unwrap(), ClientMessage::Unknown);
+        assert_eq!(
+            read_client_message(&mut cursor).unwrap(),
+            ClientMessage::Unknown
+        );
     }
 
     #[test]
@@ -640,7 +865,10 @@ mod tests {
         buf.extend_from_slice(&(bad_payload.len() as u32).to_le_bytes());
         buf.extend_from_slice(bad_payload);
         let mut cursor = Cursor::new(buf);
-        assert_eq!(read_server_message(&mut cursor).unwrap(), ServerMessage::Unknown);
+        assert_eq!(
+            read_server_message(&mut cursor).unwrap(),
+            ServerMessage::Unknown
+        );
     }
 
     #[test]
@@ -648,8 +876,19 @@ mod tests {
         use std::os::unix::net::UnixStream;
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let responder = std::thread::spawn(move || {
-            assert_eq!(read_client_message(&mut server).unwrap(), ClientMessage::Hello { protocol_version: PROTOCOL_VERSION });
-            write_server_message(&mut server, &ServerMessage::Hello { protocol_version: PROTOCOL_VERSION }).unwrap();
+            assert_eq!(
+                read_client_message(&mut server).unwrap(),
+                ClientMessage::Hello {
+                    protocol_version: PROTOCOL_VERSION
+                }
+            );
+            write_server_message(
+                &mut server,
+                &ServerMessage::Hello {
+                    protocol_version: PROTOCOL_VERSION,
+                },
+            )
+            .unwrap();
         });
         client_handshake(&mut client).unwrap();
         responder.join().unwrap();
@@ -661,7 +900,13 @@ mod tests {
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let responder = std::thread::spawn(move || {
             let _ = read_client_message(&mut server).unwrap();
-            write_server_message(&mut server, &ServerMessage::Error { message: "unsupported protocol_version".to_string() }).unwrap();
+            write_server_message(
+                &mut server,
+                &ServerMessage::Error {
+                    message: "unsupported protocol_version".to_string(),
+                },
+            )
+            .unwrap();
         });
         let err = client_handshake(&mut client).unwrap_err();
         assert!(err.to_string().contains("unsupported protocol_version"));
@@ -674,7 +919,13 @@ mod tests {
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let responder = std::thread::spawn(move || {
             let _ = read_client_message(&mut server).unwrap();
-            write_server_message(&mut server, &ServerMessage::Navigated { url: "about:blank".to_string() }).unwrap();
+            write_server_message(
+                &mut server,
+                &ServerMessage::Navigated {
+                    url: "about:blank".to_string(),
+                },
+            )
+            .unwrap();
         });
         assert!(client_handshake(&mut client).is_err());
         responder.join().unwrap();

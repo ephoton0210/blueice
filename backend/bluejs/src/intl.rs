@@ -31,14 +31,23 @@ pub(crate) struct Collator {
 
 impl Collator {
     pub fn bytes(&self) -> usize {
-        std::mem::size_of::<Self>() + self.locale.len() + self.usage.len() + self.sensitivity.len() + self.collation.len()
+        std::mem::size_of::<Self>()
+            + self.locale.len()
+            + self.usage.len()
+            + self.sensitivity.len()
+            + self.collation.len()
     }
     pub fn compare(&self, left: &JsString, right: &JsString) -> Value {
-        Value::Number(match self.algorithm.compare_utf16(left.as_code_units(), right.as_code_units()) {
-            std::cmp::Ordering::Less => -1.0,
-            std::cmp::Ordering::Equal => 0.0,
-            std::cmp::Ordering::Greater => 1.0,
-        })
+        Value::Number(
+            match self
+                .algorithm
+                .compare_utf16(left.as_code_units(), right.as_code_units())
+            {
+                std::cmp::Ordering::Less => -1.0,
+                std::cmp::Ordering::Equal => 0.0,
+                std::cmp::Ordering::Greater => 1.0,
+            },
+        )
     }
 }
 
@@ -58,7 +67,9 @@ pub(crate) fn canonicalize(string: &JsString) -> Result<IcuLocale, RuntimeError>
     }
     let mut variants = std::collections::HashSet::new();
     for part in parts.take_while(|part| part.len() != 1) {
-        if (part.len() >= 5 || part.len() == 4 && part.as_bytes()[0].is_ascii_digit()) && !variants.insert(part) {
+        if (part.len() >= 5 || part.len() == 4 && part.as_bytes()[0].is_ascii_digit())
+            && !variants.insert(part)
+        {
             return Err(invalid());
         }
     }
@@ -68,11 +79,31 @@ pub(crate) fn canonicalize(string: &JsString) -> Result<IcuLocale, RuntimeError>
     // Unicode keyword aliases to the consumer. ECMA-402 exposes their UTS 35
     // canonical spelling through Locale and getCanonicalLocales.
     let calendar: icu_locale_core::extensions::unicode::Key = "ca".parse().unwrap();
-    if locale.extensions.unicode.keywords.get(&calendar).is_some_and(|value| value.to_string() == "islamicc") {
-        locale.extensions.unicode.keywords.set(calendar, "islamic-civil".parse().unwrap());
+    if locale
+        .extensions
+        .unicode
+        .keywords
+        .get(&calendar)
+        .is_some_and(|value| value.to_string() == "islamicc")
+    {
+        locale
+            .extensions
+            .unicode
+            .keywords
+            .set(calendar, "islamic-civil".parse().unwrap());
     }
-    if locale.extensions.unicode.keywords.get(&calendar).is_some_and(|value| value.to_string() == "ethiopic-amete-alem") {
-        locale.extensions.unicode.keywords.set(calendar, "ethioaa".parse().unwrap());
+    if locale
+        .extensions
+        .unicode
+        .keywords
+        .get(&calendar)
+        .is_some_and(|value| value.to_string() == "ethiopic-amete-alem")
+    {
+        locale
+            .extensions
+            .unicode
+            .keywords
+            .set(calendar, "ethioaa".parse().unwrap());
     }
     Ok(locale)
 }
@@ -81,12 +112,19 @@ pub(crate) fn canonicalize(string: &JsString) -> Result<IcuLocale, RuntimeError>
 // select ICU's CLDR fallback data. Unknown languages negotiate to en-US.
 pub(crate) fn supported(locale: &IcuLocale) -> bool {
     const LANGUAGES: &str = "af am ar as az be bg bn bo br bs ca ceb chr cs cy da de dsb dz ee el en eo es et fa ff fi fil fo fr fy ga gl gu ha haw he hi hr hsb hu hy id ig is it ja ka kk kl km kn ko kok ku ky la lb lkt ln lo lt lv mk ml mn mr ms mt my nb ne nl nn no om or pa pl ps pt ro ru sa se si sk sl so sq sr sv sw ta te th tk to tr ug uk ur uz vi wae wo xh yi yo zh zu";
-    LANGUAGES.split(' ').any(|language| locale.id.language.as_str() == language)
+    LANGUAGES
+        .split(' ')
+        .any(|language| locale.id.language.as_str() == language)
 }
 
 pub(crate) fn keyword(locale: &IcuLocale, name: &str) -> Option<String> {
     let key: icu_locale_core::extensions::unicode::Key = name.parse().unwrap();
-    locale.extensions.unicode.keywords.get(&key).map(|value| value.to_string())
+    locale
+        .extensions
+        .unicode
+        .keywords
+        .get(&key)
+        .map(|value| value.to_string())
 }
 
 pub(crate) fn preferences(locale: &IcuLocale) -> CollatorPreferences {
@@ -108,12 +146,21 @@ pub(crate) fn supports_collation(locale: &IcuLocale, collation: &str) -> bool {
         )
 }
 
-pub(crate) fn case_map(string: &JsString, locale: &IcuLocale, upper: bool, limit: usize) -> Result<JsString, RuntimeError> {
+pub(crate) fn case_map(
+    string: &JsString,
+    locale: &IcuLocale,
+    upper: bool,
+    limit: usize,
+) -> Result<JsString, RuntimeError> {
     let mapper = icu_casemap::CaseMapper::new();
     let mut result = JsString::default();
     let mut run = String::new();
     let flush = |run: &mut String, result: &mut JsString| -> Result<(), RuntimeError> {
-        let mapped = if upper { mapper.uppercase_to_string(run, &locale.id) } else { mapper.lowercase_to_string(run, &locale.id) };
+        let mapped = if upper {
+            mapper.uppercase_to_string(run, &locale.id)
+        } else {
+            mapper.lowercase_to_string(run, &locale.id)
+        };
         native::append(result, &JsString::from(mapped.as_ref()), limit)?;
         run.clear();
         Ok(())
@@ -123,7 +170,11 @@ pub(crate) fn case_map(string: &JsString, locale: &IcuLocale, upper: bool, limit
             Ok(c) => run.push(c),
             Err(error) => {
                 flush(&mut run, &mut result)?;
-                native::append(&mut result, &JsString::from_code_units(vec![error.unpaired_surrogate()]), limit)?;
+                native::append(
+                    &mut result,
+                    &JsString::from_code_units(vec![error.unpaired_surrogate()]),
+                    limit,
+                )?;
             }
         }
     }

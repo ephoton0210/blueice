@@ -87,8 +87,15 @@ fn split_on(tokens: &[Token], is_sep: impl Fn(&Token) -> bool) -> Vec<&[Token]> 
 }
 
 fn trim_ws(tokens: &[Token]) -> &[Token] {
-    let start = tokens.iter().position(|t| *t != Token::Whitespace).unwrap_or(tokens.len());
-    let end = tokens.iter().rposition(|t| *t != Token::Whitespace).map(|i| i + 1).unwrap_or(0);
+    let start = tokens
+        .iter()
+        .position(|t| *t != Token::Whitespace)
+        .unwrap_or(tokens.len());
+    let end = tokens
+        .iter()
+        .rposition(|t| *t != Token::Whitespace)
+        .map(|i| i + 1)
+        .unwrap_or(0);
     if start >= end {
         &[]
     } else {
@@ -124,7 +131,9 @@ fn expand_box_shorthand(values: Vec<Value>) -> Option<[Value; 4]> {
 /// line, but still needs to *recognize* the full keyword set so the
 /// combined `border` shorthand below can tell a style component apart
 /// from a color or a width by trying each in turn).
-const BORDER_STYLE_KEYWORDS: &[&str] = &["none", "hidden", "solid", "dashed", "dotted", "double", "groove", "ridge", "inset", "outset"];
+const BORDER_STYLE_KEYWORDS: &[&str] = &[
+    "none", "hidden", "solid", "dashed", "dotted", "double", "groove", "ridge", "inset", "outset",
+];
 
 /// Expands a 1-to-4-value box shorthand (`margin`, `padding`,
 /// `border-width`, `border-style`, `border-color`) into its four
@@ -133,16 +142,31 @@ const BORDER_STYLE_KEYWORDS: &[&str] = &["none", "hidden", "solid", "dashed", "d
 /// [`Length::Zero`] (true for `margin`/`padding`/`border-width`; false
 /// for `border-style`/`border-color`, which have no numeric form at
 /// all).
-fn expand_box_shorthand_property(prefix: &str, suffix: &str, value_tokens: &[Token], is_length: bool) -> Vec<(String, Value)> {
+fn expand_box_shorthand_property(
+    prefix: &str,
+    suffix: &str,
+    value_tokens: &[Token],
+    is_length: bool,
+) -> Vec<(String, Value)> {
     let probe_property = format!("{prefix}-top{suffix}");
     let components: Option<Vec<Value>> = split_on(value_tokens, |t| *t == Token::Whitespace)
         .into_iter()
         .map(trim_ws)
         .filter(|c| !c.is_empty())
-        .map(|c| if is_length { parse_component_value(&probe_property, c) } else { parse_value(c) })
+        .map(|c| {
+            if is_length {
+                parse_component_value(&probe_property, c)
+            } else {
+                parse_value(c)
+            }
+        })
         .collect();
-    let Some(components) = components else { return vec![] };
-    let Some([top, right, bottom, left]) = expand_box_shorthand(components) else { return vec![] };
+    let Some(components) = components else {
+        return vec![];
+    };
+    let Some([top, right, bottom, left]) = expand_box_shorthand(components) else {
+        return vec![];
+    };
     vec![
         (format!("{prefix}-top{suffix}"), top),
         (format!("{prefix}-right{suffix}"), right),
@@ -168,11 +192,19 @@ fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(String, Value
             let mut width = None;
             let mut style = None;
             let mut color = None;
-            for component in split_on(value_tokens, |t| *t == Token::Whitespace).into_iter().map(trim_ws).filter(|c| !c.is_empty()) {
-                let Some(v) = parse_value(component) else { continue };
+            for component in split_on(value_tokens, |t| *t == Token::Whitespace)
+                .into_iter()
+                .map(trim_ws)
+                .filter(|c| !c.is_empty())
+            {
+                let Some(v) = parse_value(component) else {
+                    continue;
+                };
                 match v {
                     Value::Color(_) => color = Some(v),
-                    Value::Keyword(ref k) if BORDER_STYLE_KEYWORDS.contains(&k.as_str()) => style = Some(v),
+                    Value::Keyword(ref k) if BORDER_STYLE_KEYWORDS.contains(&k.as_str()) => {
+                        style = Some(v)
+                    }
                     Value::Length(_) => width = Some(v),
                     Value::Number(0.0) => width = Some(Value::Length(Length::Zero)),
                     _ => {}
@@ -225,7 +257,9 @@ pub fn parse_declarations(tokens: &[Token]) -> Vec<Declaration> {
             if decl_tokens.is_empty() {
                 return None;
             }
-            let Token::Ident(prop) = &decl_tokens[0] else { return None };
+            let Token::Ident(prop) = &decl_tokens[0] else {
+                return None;
+            };
             let property = prop.to_ascii_lowercase();
             if decl_tokens.get(1) != Some(&Token::Colon) {
                 return None;
@@ -248,7 +282,11 @@ pub fn parse_declarations(tokens: &[Token]) -> Vec<Declaration> {
         .flat_map(|(property, value_tokens, important)| {
             expand_property(&property, value_tokens)
                 .into_iter()
-                .map(move |(property, value)| Declaration { property, value, important })
+                .map(move |(property, value)| Declaration {
+                    property,
+                    value,
+                    important,
+                })
         })
         .collect()
 }
@@ -290,7 +328,10 @@ pub fn parse_rules(tokens: &[Token]) -> Vec<Rule> {
                 };
                 let selector_tokens = &tokens[i..i + brace];
                 let body_start = i + brace + 1;
-                let Some(close_offset) = tokens[body_start..].iter().position(|t| *t == Token::RightBrace) else {
+                let Some(close_offset) = tokens[body_start..]
+                    .iter()
+                    .position(|t| *t == Token::RightBrace)
+                else {
                     break; // unterminated block
                 };
                 let body_tokens = &tokens[body_start..body_start + close_offset];
@@ -323,10 +364,17 @@ mod tests {
     fn single_rule_single_declaration() {
         let rules = parse("p { color: red; }");
         assert_eq!(rules.len(), 1);
-        assert_eq!(rules[0].selectors[0].compounds[0].simple_selectors, vec![SimpleSelector::Type("p".to_string())]);
+        assert_eq!(
+            rules[0].selectors[0].compounds[0].simple_selectors,
+            vec![SimpleSelector::Type("p".to_string())]
+        );
         assert_eq!(
             rules[0].declarations,
-            vec![Declaration { property: "color".to_string(), value: Value::Color(Color::Rgba(255, 0, 0, 255)), important: false }]
+            vec![Declaration {
+                property: "color".to_string(),
+                value: Value::Color(Color::Rgba(255, 0, 0, 255)),
+                important: false
+            }]
         );
     }
 
@@ -353,7 +401,10 @@ mod tests {
     fn important_is_case_insensitive_and_tolerates_whitespace() {
         let rules = parse("p { color: red ! IMPORTANT; }");
         assert!(rules[0].declarations[0].important);
-        assert_eq!(rules[0].declarations[0].value, Value::Color(Color::Rgba(255, 0, 0, 255)));
+        assert_eq!(
+            rules[0].declarations[0].value,
+            Value::Color(Color::Rgba(255, 0, 0, 255))
+        );
     }
 
     #[test]
@@ -370,7 +421,10 @@ mod tests {
         // wholesale -- media queries themselves are out of MVP scope --
         // but the sheet keeps parsing afterward.
         assert_eq!(rules.len(), 1);
-        assert_eq!(rules[0].declarations[0].value, Value::Color(Color::Rgba(0, 0, 255, 255)));
+        assert_eq!(
+            rules[0].declarations[0].value,
+            Value::Color(Color::Rgba(0, 0, 255, 255))
+        );
     }
 
     #[test]
@@ -383,7 +437,10 @@ mod tests {
     fn rule_with_invalid_selector_is_dropped() {
         let rules = parse("a:hover { color: red; } p { color: blue; }");
         assert_eq!(rules.len(), 1);
-        assert_eq!(rules[0].selectors[0].compounds[0].simple_selectors, vec![SimpleSelector::Type("p".to_string())]);
+        assert_eq!(
+            rules[0].selectors[0].compounds[0].simple_selectors,
+            vec![SimpleSelector::Type("p".to_string())]
+        );
     }
 
     #[test]
@@ -399,7 +456,10 @@ mod tests {
         let decls = &rules[0].declarations;
         assert_eq!(decls.len(), 4);
         for side in ["top", "right", "bottom", "left"] {
-            let d = decls.iter().find(|d| d.property == format!("margin-{side}")).unwrap();
+            let d = decls
+                .iter()
+                .find(|d| d.property == format!("margin-{side}"))
+                .unwrap();
             assert_eq!(d.value, Value::Length(Length::Px(10.0)));
         }
     }
@@ -407,7 +467,15 @@ mod tests {
     #[test]
     fn margin_shorthand_two_values() {
         let rules = parse("p { margin: 10px 20px; }");
-        let get = |side: &str| rules[0].declarations.iter().find(|d| d.property == format!("margin-{side}")).unwrap().value.clone();
+        let get = |side: &str| {
+            rules[0]
+                .declarations
+                .iter()
+                .find(|d| d.property == format!("margin-{side}"))
+                .unwrap()
+                .value
+                .clone()
+        };
         assert_eq!(get("top"), Value::Length(Length::Px(10.0)));
         assert_eq!(get("bottom"), Value::Length(Length::Px(10.0)));
         assert_eq!(get("right"), Value::Length(Length::Px(20.0)));
@@ -417,7 +485,15 @@ mod tests {
     #[test]
     fn margin_shorthand_three_values() {
         let rules = parse("p { margin: 1px 2px 3px; }");
-        let get = |side: &str| rules[0].declarations.iter().find(|d| d.property == format!("margin-{side}")).unwrap().value.clone();
+        let get = |side: &str| {
+            rules[0]
+                .declarations
+                .iter()
+                .find(|d| d.property == format!("margin-{side}"))
+                .unwrap()
+                .value
+                .clone()
+        };
         assert_eq!(get("top"), Value::Length(Length::Px(1.0)));
         assert_eq!(get("right"), Value::Length(Length::Px(2.0)));
         assert_eq!(get("left"), Value::Length(Length::Px(2.0)));
@@ -427,7 +503,15 @@ mod tests {
     #[test]
     fn margin_shorthand_four_values() {
         let rules = parse("p { margin: 1px 2px 3px 4px; }");
-        let get = |side: &str| rules[0].declarations.iter().find(|d| d.property == format!("margin-{side}")).unwrap().value.clone();
+        let get = |side: &str| {
+            rules[0]
+                .declarations
+                .iter()
+                .find(|d| d.property == format!("margin-{side}"))
+                .unwrap()
+                .value
+                .clone()
+        };
         assert_eq!(get("top"), Value::Length(Length::Px(1.0)));
         assert_eq!(get("right"), Value::Length(Length::Px(2.0)));
         assert_eq!(get("bottom"), Value::Length(Length::Px(3.0)));
@@ -446,7 +530,10 @@ mod tests {
         let decls = &rules[0].declarations;
         assert_eq!(decls.len(), 4);
         for side in ["top", "right", "bottom", "left"] {
-            let d = decls.iter().find(|d| d.property == format!("border-{side}-width")).unwrap();
+            let d = decls
+                .iter()
+                .find(|d| d.property == format!("border-{side}-width"))
+                .unwrap();
             assert_eq!(d.value, Value::Length(Length::Px(2.0)));
         }
     }
@@ -455,9 +542,15 @@ mod tests {
     fn border_style_and_border_color_shorthands_expand_to_four_sides() {
         let rules = parse("p { border-style: dashed; border-color: red; }");
         let decls = &rules[0].declarations;
-        let style_top = decls.iter().find(|d| d.property == "border-top-style").unwrap();
+        let style_top = decls
+            .iter()
+            .find(|d| d.property == "border-top-style")
+            .unwrap();
         assert_eq!(style_top.value, Value::Keyword("dashed".to_string()));
-        let color_left = decls.iter().find(|d| d.property == "border-left-color").unwrap();
+        let color_left = decls
+            .iter()
+            .find(|d| d.property == "border-left-color")
+            .unwrap();
         assert_eq!(color_left.value, Value::Color(Color::Rgba(255, 0, 0, 255)));
     }
 
@@ -467,9 +560,30 @@ mod tests {
         let decls = &rules[0].declarations;
         assert_eq!(decls.len(), 12, "width+style+color x 4 sides");
         for side in ["top", "right", "bottom", "left"] {
-            assert_eq!(decls.iter().find(|d| d.property == format!("border-{side}-width")).unwrap().value, Value::Length(Length::Px(1.0)));
-            assert_eq!(decls.iter().find(|d| d.property == format!("border-{side}-style")).unwrap().value, Value::Keyword("solid".to_string()));
-            assert_eq!(decls.iter().find(|d| d.property == format!("border-{side}-color")).unwrap().value, Value::Color(Color::Rgba(0, 0, 0, 255)));
+            assert_eq!(
+                decls
+                    .iter()
+                    .find(|d| d.property == format!("border-{side}-width"))
+                    .unwrap()
+                    .value,
+                Value::Length(Length::Px(1.0))
+            );
+            assert_eq!(
+                decls
+                    .iter()
+                    .find(|d| d.property == format!("border-{side}-style"))
+                    .unwrap()
+                    .value,
+                Value::Keyword("solid".to_string())
+            );
+            assert_eq!(
+                decls
+                    .iter()
+                    .find(|d| d.property == format!("border-{side}-color"))
+                    .unwrap()
+                    .value,
+                Value::Color(Color::Rgba(0, 0, 0, 255))
+            );
         }
     }
 
@@ -514,7 +628,10 @@ mod tests {
     #[test]
     fn font_family_takes_the_first_name_in_the_list() {
         let rules = parse(r#"p { font-family: "Helvetica Neue", Arial, sans-serif; }"#);
-        assert_eq!(rules[0].declarations[0].value, Value::Keyword("helvetica neue".to_string()));
+        assert_eq!(
+            rules[0].declarations[0].value,
+            Value::Keyword("helvetica neue".to_string())
+        );
     }
 
     #[test]

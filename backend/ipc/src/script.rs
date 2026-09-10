@@ -67,11 +67,19 @@ pub enum ScriptRequest {
     /// same convention [`crate::ai::AiNode::id`] already uses for the
     /// same reason: this crate doesn't depend on `blueice-dom` for a
     /// plain numeric handle.
-    AppendChild { tab_id: u64, parent: u64, child: u64 },
+    AppendChild {
+        tab_id: u64,
+        parent: u64,
+        child: u64,
+    },
     /// `node.textContent` getter, scoped to one tab.
     GetTextContent { tab_id: u64, node: u64 },
     /// `node.textContent` setter, scoped to one tab.
-    SetTextContent { tab_id: u64, node: u64, value: String },
+    SetTextContent {
+        tab_id: u64,
+        node: u64,
+        value: String,
+    },
 }
 
 /// `core`'s reply to one [`ScriptRequest`].
@@ -145,7 +153,13 @@ pub fn default_script_socket_path() -> PathBuf {
 unsafe fn libc_getuid() -> u32 {
     std::fs::read_to_string("/proc/self/status")
         .ok()
-        .and_then(|status| status.lines().find_map(|line| line.strip_prefix("Uid:")).and_then(|rest| rest.split_whitespace().next()).and_then(|s| s.parse().ok()))
+        .and_then(|status| {
+            status
+                .lines()
+                .find_map(|line| line.strip_prefix("Uid:"))
+                .and_then(|rest| rest.split_whitespace().next())
+                .and_then(|s| s.parse().ok())
+        })
         .unwrap_or_else(std::process::id)
 }
 
@@ -158,12 +172,32 @@ mod tests {
     fn script_request_round_trips_over_a_real_socket() {
         for req in [
             ScriptRequest::Hello,
-            ScriptRequest::GetElementById { tab_id: 1, id: "widget".to_string() },
-            ScriptRequest::CreateElement { tab_id: 1, tag_name: "li".to_string() },
-            ScriptRequest::CreateTextNode { tab_id: 1, data: "hello".to_string() },
-            ScriptRequest::AppendChild { tab_id: 1, parent: 10, child: 11 },
-            ScriptRequest::GetTextContent { tab_id: 1, node: 10 },
-            ScriptRequest::SetTextContent { tab_id: 1, node: 10, value: "updated".to_string() },
+            ScriptRequest::GetElementById {
+                tab_id: 1,
+                id: "widget".to_string(),
+            },
+            ScriptRequest::CreateElement {
+                tab_id: 1,
+                tag_name: "li".to_string(),
+            },
+            ScriptRequest::CreateTextNode {
+                tab_id: 1,
+                data: "hello".to_string(),
+            },
+            ScriptRequest::AppendChild {
+                tab_id: 1,
+                parent: 10,
+                child: 11,
+            },
+            ScriptRequest::GetTextContent {
+                tab_id: 1,
+                node: 10,
+            },
+            ScriptRequest::SetTextContent {
+                tab_id: 1,
+                node: 10,
+                value: "updated".to_string(),
+            },
         ] {
             let (mut a, mut b) = UnixStream::pair().unwrap();
             write_script_request(&mut a, &req).unwrap();
@@ -179,8 +213,12 @@ mod tests {
             ScriptReply::Node { node: None },
             ScriptReply::NodeCreated { node: 43 },
             ScriptReply::Ack,
-            ScriptReply::Text { value: "hello".to_string() },
-            ScriptReply::Error { message: "no such tab".to_string() },
+            ScriptReply::Text {
+                value: "hello".to_string(),
+            },
+            ScriptReply::Error {
+                message: "no such tab".to_string(),
+            },
         ] {
             let (mut a, mut b) = UnixStream::pair().unwrap();
             write_script_reply(&mut a, &reply).unwrap();
@@ -191,11 +229,37 @@ mod tests {
     #[test]
     fn multiple_requests_can_be_written_and_read_in_sequence_on_one_stream() {
         let mut buf = Vec::new();
-        write_script_request(&mut buf, &ScriptRequest::GetElementById { tab_id: 1, id: "a".to_string() }).unwrap();
-        write_script_request(&mut buf, &ScriptRequest::GetElementById { tab_id: 1, id: "b".to_string() }).unwrap();
+        write_script_request(
+            &mut buf,
+            &ScriptRequest::GetElementById {
+                tab_id: 1,
+                id: "a".to_string(),
+            },
+        )
+        .unwrap();
+        write_script_request(
+            &mut buf,
+            &ScriptRequest::GetElementById {
+                tab_id: 1,
+                id: "b".to_string(),
+            },
+        )
+        .unwrap();
         let mut cursor = std::io::Cursor::new(buf);
-        assert_eq!(read_script_request(&mut cursor).unwrap(), ScriptRequest::GetElementById { tab_id: 1, id: "a".to_string() });
-        assert_eq!(read_script_request(&mut cursor).unwrap(), ScriptRequest::GetElementById { tab_id: 1, id: "b".to_string() });
+        assert_eq!(
+            read_script_request(&mut cursor).unwrap(),
+            ScriptRequest::GetElementById {
+                tab_id: 1,
+                id: "a".to_string()
+            }
+        );
+        assert_eq!(
+            read_script_request(&mut cursor).unwrap(),
+            ScriptRequest::GetElementById {
+                tab_id: 1,
+                id: "b".to_string()
+            }
+        );
     }
 
     #[test]

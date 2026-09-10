@@ -62,7 +62,9 @@ impl JsString {
             if !(u16::from(b'0')..=u16::from(b'9')).contains(&unit) {
                 return None;
             }
-            index = index.checked_mul(10)?.checked_add(usize::from(unit) - usize::from(b'0'))?;
+            index = index
+                .checked_mul(10)?
+                .checked_add(usize::from(unit) - usize::from(b'0'))?;
         }
         Some(index)
     }

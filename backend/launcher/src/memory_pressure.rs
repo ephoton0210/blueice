@@ -39,7 +39,9 @@ pub struct SystemMemorySource {
 
 impl SystemMemorySource {
     pub fn new() -> Self {
-        SystemMemorySource { system: Mutex::new(sysinfo::System::new_all()) }
+        SystemMemorySource {
+            system: Mutex::new(sysinfo::System::new_all()),
+        }
     }
 }
 
@@ -51,7 +53,10 @@ impl Default for SystemMemorySource {
 
 impl MemorySource for SystemMemorySource {
     fn available_ratio(&self) -> f64 {
-        let mut system = self.system.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut system = self
+            .system
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         system.refresh_memory();
         let total = system.total_memory();
         if total == 0 {
@@ -92,7 +97,12 @@ pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(10);
 /// every role `registry` currently reports as idle-eligible. Split out
 /// from [`spawn_pressure_monitor`]'s loop so this is a plain, fast unit
 /// test -- no thread, no real sleep, no real memory query.
-pub fn poll_once(registry: &mut ProcessRegistry, source: &dyn MemorySource, threshold: f64, now: Instant) {
+pub fn poll_once(
+    registry: &mut ProcessRegistry,
+    source: &dyn MemorySource,
+    threshold: f64,
+    now: Instant,
+) {
     if source.available_ratio() >= threshold {
         return;
     }
@@ -108,10 +118,17 @@ pub fn poll_once(registry: &mut ProcessRegistry, source: &dyn MemorySource, thre
 /// way every other background thread this crate spawns already does
 /// (`forward_client_to_core`'s per-client threads are never joined
 /// either -- the process exiting reclaims them).
-pub fn spawn_pressure_monitor(registry: Arc<Mutex<ProcessRegistry>>, source: Arc<dyn MemorySource>, threshold: f64, interval: Duration) -> thread::JoinHandle<()> {
+pub fn spawn_pressure_monitor(
+    registry: Arc<Mutex<ProcessRegistry>>,
+    source: Arc<dyn MemorySource>,
+    threshold: f64,
+    interval: Duration,
+) -> thread::JoinHandle<()> {
     thread::spawn(move || loop {
         {
-            let mut registry = registry.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let mut registry = registry
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             poll_once(&mut registry, source.as_ref(), threshold, Instant::now());
         }
         thread::sleep(interval);
@@ -132,12 +149,27 @@ mod tests {
     fn plenty_of_memory_leaves_idle_eligible_roles_alone() {
         let mut registry = ProcessRegistry::new();
         let start = Instant::now();
-        registry.register("mcp-server", ProcessPolicy::IdleTeardown { idle_timeout: Duration::from_secs(1) }, Some(spawn_dummy_child()), start);
+        registry.register(
+            "mcp-server",
+            ProcessPolicy::IdleTeardown {
+                idle_timeout: Duration::from_secs(1),
+            },
+            Some(spawn_dummy_child()),
+            start,
+        );
         let source = FixedMemorySource(0.90); // well above any reasonable threshold
 
-        poll_once(&mut registry, &source, DEFAULT_PRESSURE_THRESHOLD, start + Duration::from_secs(1_000_000));
+        poll_once(
+            &mut registry,
+            &source,
+            DEFAULT_PRESSURE_THRESHOLD,
+            start + Duration::from_secs(1_000_000),
+        );
 
-        assert!(registry.is_resident("mcp-server"), "no pressure means no teardown, even though the role is otherwise idle-eligible");
+        assert!(
+            registry.is_resident("mcp-server"),
+            "no pressure means no teardown, even though the role is otherwise idle-eligible"
+        );
         registry.teardown("mcp-server");
     }
 
@@ -145,10 +177,22 @@ mod tests {
     fn low_memory_tears_down_idle_eligible_roles() {
         let mut registry = ProcessRegistry::new();
         let start = Instant::now();
-        registry.register("mcp-server", ProcessPolicy::IdleTeardown { idle_timeout: Duration::from_secs(1) }, Some(spawn_dummy_child()), start);
+        registry.register(
+            "mcp-server",
+            ProcessPolicy::IdleTeardown {
+                idle_timeout: Duration::from_secs(1),
+            },
+            Some(spawn_dummy_child()),
+            start,
+        );
         let source = FixedMemorySource(0.02); // well below any reasonable threshold
 
-        poll_once(&mut registry, &source, DEFAULT_PRESSURE_THRESHOLD, start + Duration::from_secs(1_000_000));
+        poll_once(
+            &mut registry,
+            &source,
+            DEFAULT_PRESSURE_THRESHOLD,
+            start + Duration::from_secs(1_000_000),
+        );
 
         assert!(!registry.is_resident("mcp-server"));
     }
@@ -160,22 +204,45 @@ mod tests {
         registry.register("core", ProcessPolicy::AlwaysResident, None, start);
         let source = FixedMemorySource(0.0); // as much pressure as this signal can express
 
-        poll_once(&mut registry, &source, DEFAULT_PRESSURE_THRESHOLD, start + Duration::from_secs(1_000_000));
+        poll_once(
+            &mut registry,
+            &source,
+            DEFAULT_PRESSURE_THRESHOLD,
+            start + Duration::from_secs(1_000_000),
+        );
 
-        assert!(registry.is_resident("core"), "AlwaysResident must survive even maximal simulated pressure");
+        assert!(
+            registry.is_resident("core"),
+            "AlwaysResident must survive even maximal simulated pressure"
+        );
     }
 
     #[test]
     fn low_memory_does_not_tear_down_a_role_thats_not_yet_idle() {
         let mut registry = ProcessRegistry::new();
         let start = Instant::now();
-        registry.register("mcp-server", ProcessPolicy::IdleTeardown { idle_timeout: Duration::from_secs(60) }, Some(spawn_dummy_child()), start);
+        registry.register(
+            "mcp-server",
+            ProcessPolicy::IdleTeardown {
+                idle_timeout: Duration::from_secs(60),
+            },
+            Some(spawn_dummy_child()),
+            start,
+        );
         let source = FixedMemorySource(0.0);
 
         // Only 1s after registration -- nowhere near the 60s idle_timeout, even under maximal pressure.
-        poll_once(&mut registry, &source, DEFAULT_PRESSURE_THRESHOLD, start + Duration::from_secs(1));
+        poll_once(
+            &mut registry,
+            &source,
+            DEFAULT_PRESSURE_THRESHOLD,
+            start + Duration::from_secs(1),
+        );
 
-        assert!(registry.is_resident("mcp-server"), "pressure alone must not evict a role that isn't actually idle yet");
+        assert!(
+            registry.is_resident("mcp-server"),
+            "pressure alone must not evict a role that isn't actually idle yet"
+        );
         registry.teardown("mcp-server");
     }
 
@@ -187,6 +254,9 @@ mod tests {
         // be inherently flaky across environments).
         let source = SystemMemorySource::new();
         let ratio = source.available_ratio();
-        assert!((0.0..=1.0).contains(&ratio), "expected a ratio in 0.0..=1.0, got {ratio}");
+        assert!(
+            (0.0..=1.0).contains(&ratio),
+            "expected a ratio in 0.0..=1.0, got {ratio}"
+        );
     }
 }

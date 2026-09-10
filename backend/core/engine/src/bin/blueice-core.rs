@@ -57,8 +57,16 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         let mut value = || it.next().ok_or_else(|| format!("{flag} requires a value"));
         match flag.as_str() {
             "--socket" => socket = Some(PathBuf::from(value()?)),
-            "--width" => width = value()?.parse().map_err(|_| "--width must be a number".to_string())?,
-            "--height" => height = value()?.parse().map_err(|_| "--height must be a number".to_string())?,
+            "--width" => {
+                width = value()?
+                    .parse()
+                    .map_err(|_| "--width must be a number".to_string())?
+            }
+            "--height" => {
+                height = value()?
+                    .parse()
+                    .map_err(|_| "--height must be a number".to_string())?
+            }
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             other => return Err(format!("unrecognized argument: {other}")),
@@ -66,7 +74,13 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     }
 
     let socket = socket.ok_or_else(|| "--socket <path> is required".to_string())?;
-    Ok(Args { socket, width, height, frame_dir, gatekeeper_socket })
+    Ok(Args {
+        socket,
+        width,
+        height,
+        frame_dir,
+        gatekeeper_socket,
+    })
 }
 
 fn main() -> ExitCode {
@@ -78,8 +92,12 @@ fn main() -> ExitCode {
         }
     };
 
-    let frame_dir = args.frame_dir.unwrap_or_else(|| std::env::temp_dir().join(format!("blueice-core-frames-{}", std::process::id())));
-    let gatekeeper_socket = args.gatekeeper_socket.unwrap_or_else(blueice_ipc::gatekeeper::default_gatekeeper_socket_path);
+    let frame_dir = args.frame_dir.unwrap_or_else(|| {
+        std::env::temp_dir().join(format!("blueice-core-frames-{}", std::process::id()))
+    });
+    let gatekeeper_socket = args
+        .gatekeeper_socket
+        .unwrap_or_else(blueice_ipc::gatekeeper::default_gatekeeper_socket_path);
 
     // A stale socket file from a previous run (e.g. one that crashed
     // instead of exiting cleanly) makes bind() fail with AddrInUse
@@ -89,7 +107,10 @@ fn main() -> ExitCode {
     let listener = match UnixListener::bind(&args.socket) {
         Ok(listener) => listener,
         Err(e) => {
-            eprintln!("blueice-core: failed to bind {}: {e}", args.socket.display());
+            eprintln!(
+                "blueice-core: failed to bind {}: {e}",
+                args.socket.display()
+            );
             return ExitCode::FAILURE;
         }
     };
@@ -98,7 +119,13 @@ fn main() -> ExitCode {
         let (mut stream, _) = listener.accept()?;
         let mut tabs = TabManager::new(args.width, args.height);
         let mut generation = 0u64;
-        session::run_session(&mut tabs, &mut stream, &frame_dir, &mut generation, &gatekeeper_socket)
+        session::run_session(
+            &mut tabs,
+            &mut stream,
+            &frame_dir,
+            &mut generation,
+            &gatekeeper_socket,
+        )
     })();
 
     let _ = std::fs::remove_file(&args.socket);
@@ -138,7 +165,19 @@ mod tests {
 
     #[test]
     fn every_flag_is_parsed() {
-        let parsed = args(&["--socket", "/tmp/x.sock", "--width", "100", "--height", "50", "--frame-dir", "/tmp/frames", "--gatekeeper-socket", "/tmp/gk.sock"]).unwrap();
+        let parsed = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--width",
+            "100",
+            "--height",
+            "50",
+            "--frame-dir",
+            "/tmp/frames",
+            "--gatekeeper-socket",
+            "/tmp/gk.sock",
+        ])
+        .unwrap();
         assert_eq!(
             parsed,
             Args {
@@ -153,21 +192,33 @@ mod tests {
 
     #[test]
     fn a_flag_missing_its_value_is_an_error() {
-        assert_eq!(args(&["--socket"]), Err("--socket requires a value".to_string()));
+        assert_eq!(
+            args(&["--socket"]),
+            Err("--socket requires a value".to_string())
+        );
     }
 
     #[test]
     fn a_non_numeric_width_is_an_error() {
-        assert_eq!(args(&["--socket", "/tmp/x.sock", "--width", "not-a-number"]), Err("--width must be a number".to_string()));
+        assert_eq!(
+            args(&["--socket", "/tmp/x.sock", "--width", "not-a-number"]),
+            Err("--width must be a number".to_string())
+        );
     }
 
     #[test]
     fn a_non_numeric_height_is_an_error() {
-        assert_eq!(args(&["--socket", "/tmp/x.sock", "--height", "not-a-number"]), Err("--height must be a number".to_string()));
+        assert_eq!(
+            args(&["--socket", "/tmp/x.sock", "--height", "not-a-number"]),
+            Err("--height must be a number".to_string())
+        );
     }
 
     #[test]
     fn an_unrecognized_flag_is_an_error() {
-        assert_eq!(args(&["--bogus"]), Err("unrecognized argument: --bogus".to_string()));
+        assert_eq!(
+            args(&["--bogus"]),
+            Err("unrecognized argument: --bogus".to_string())
+        );
     }
 }

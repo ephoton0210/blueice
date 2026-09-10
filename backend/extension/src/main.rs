@@ -68,7 +68,10 @@ fn main() -> ExitCode {
     let listener = match UnixListener::bind(&args.socket) {
         Ok(listener) => listener,
         Err(e) => {
-            eprintln!("blueice-extension-host: failed to bind {}: {e}", args.socket.display());
+            eprintln!(
+                "blueice-extension-host: failed to bind {}: {e}",
+                args.socket.display()
+            );
             return ExitCode::FAILURE;
         }
     };
@@ -97,16 +100,27 @@ mod tests {
 
     #[test]
     fn socket_flag_is_parsed() {
-        assert_eq!(args(&["--socket", "/tmp/x.sock"]).unwrap(), Args { socket: PathBuf::from("/tmp/x.sock") });
+        assert_eq!(
+            args(&["--socket", "/tmp/x.sock"]).unwrap(),
+            Args {
+                socket: PathBuf::from("/tmp/x.sock")
+            }
+        );
     }
 
     #[test]
     fn a_flag_missing_its_value_is_an_error() {
-        assert_eq!(args(&["--socket"]), Err("--socket requires a value".to_string()));
+        assert_eq!(
+            args(&["--socket"]),
+            Err("--socket requires a value".to_string())
+        );
     }
 
     #[test]
     fn an_unrecognized_flag_is_an_error() {
-        assert_eq!(args(&["--socket", "/tmp/x.sock", "--bogus"]), Err("unrecognized argument: --bogus".to_string()));
+        assert_eq!(
+            args(&["--socket", "/tmp/x.sock", "--bogus"]),
+            Err("unrecognized argument: --bogus".to_string())
+        );
     }
 }

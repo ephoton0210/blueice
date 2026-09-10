@@ -6,10 +6,13 @@
 //! Allocating instructions root all VM-held objects around heap
 //! safepoints. The collector itself additionally protects store inputs.
 
+use crate::bytecode::Binding;
 use crate::native::{self, NativeFunction};
 use crate::primitive;
-use crate::bytecode::Binding;
-use crate::{Bytecode, Heap, HeapConfig, HeapError, JsString, JsSymbol, ObjectId, Opcode, PropertyDescriptor, PropertyName, RootId, Value};
+use crate::{
+    Bytecode, Heap, HeapConfig, HeapError, JsString, JsSymbol, ObjectId, Opcode,
+    PropertyDescriptor, PropertyName, RootId, Value,
+};
 use std::collections::{HashMap, HashSet};
 mod builtins;
 mod errors;
@@ -36,7 +39,12 @@ pub struct VmConfig {
 
 impl Default for VmConfig {
     fn default() -> Self {
-        Self { heap: HeapConfig::default(), instruction_budget: 1_000_000, max_string_bytes: 1024 * 1024, regex_timeout: crate::regex_worker::DEFAULT_TIMEOUT }
+        Self {
+            heap: HeapConfig::default(),
+            instruction_budget: 1_000_000,
+            max_string_bytes: 1024 * 1024,
+            regex_timeout: crate::regex_worker::DEFAULT_TIMEOUT,
+        }
     }
 }
 
@@ -95,7 +103,15 @@ impl RuntimeError {
     /// uncatchable host aborts: user code must not turn a resource boundary
     /// into an apparent JavaScript success.
     fn is_catchable(&self) -> bool {
-        matches!(self, Self::ReferenceError(_) | Self::TypeError(_) | Self::RangeError(_) | Self::SyntaxError(_) | Self::Thrown(_) | Self::Test262(_))
+        matches!(
+            self,
+            Self::ReferenceError(_)
+                | Self::TypeError(_)
+                | Self::RangeError(_)
+                | Self::SyntaxError(_)
+                | Self::Thrown(_)
+                | Self::Test262(_)
+        )
     }
 }
 
@@ -266,7 +282,11 @@ impl Vm {
         self.execute_with_global_bindings(code, true)
     }
 
-    fn execute_with_global_bindings(&mut self, code: &Bytecode, publish_globals: bool) -> Result<Value, RuntimeError> {
+    fn execute_with_global_bindings(
+        &mut self,
+        code: &Bytecode,
+        publish_globals: bool,
+    ) -> Result<Value, RuntimeError> {
         if let Some(root) = self.result_root.take() {
             self.heap.unroot(root)?;
         }
@@ -312,19 +332,26 @@ impl Vm {
     }
 
     fn publish_global_bindings(&mut self, code: &Bytecode) -> Result<(), RuntimeError> {
-        let global = self.global("globalThis")?.object_id().expect("globalThis is an object");
+        let global = self
+            .global("globalThis")?
+            .object_id()
+            .expect("globalThis is an object");
         for (slot, binding) in code.bindings.iter().enumerate() {
             if binding.lexical {
                 continue;
             }
-            let Some(value) = self.binding_value(slot)? else { continue };
+            let Some(value) = self.binding_value(slot)? else {
+                continue;
+            };
             self.define_data(global, binding.name.as_str(), value, true, true, false)?;
         }
         Ok(())
     }
 
     fn pop(&mut self) -> Value {
-        self.stack.pop().expect("compiler balances the operand stack")
+        self.stack
+            .pop()
+            .expect("compiler balances the operand stack")
     }
 
     fn reset_scope(&mut self, code: &Bytecode, scope: u32) {
@@ -343,7 +370,11 @@ impl Vm {
             // A control-transfer gateway can be resumed after a handler has
             // already unwound an inner scope before running `finally`.
             // Gateways still list that lexical scope; it is a no-op now.
-            debug_assert!(!self.active_scopes.contains(&scope), "scope {scope} is below an active inner scope: {:?}", self.active_scopes);
+            debug_assert!(
+                !self.active_scopes.contains(&scope),
+                "scope {scope} is below an active inner scope: {:?}",
+                self.active_scopes
+            );
         }
     }
 
@@ -384,23 +415,44 @@ impl Vm {
 
     fn error_object(&mut self, name: &str, message: String) -> Result<Value, RuntimeError> {
         let constructor = self.error_global(name)?;
-        self.call_native(constructor, Value::Undefined, vec![Value::String(message.into())], false)
+        self.call_native(
+            constructor,
+            Value::Undefined,
+            vec![Value::String(message.into())],
+            false,
+        )
     }
 
     fn restore_completion(&mut self) {
-        let (value, empty) = self.completion_saves.pop().expect("normal finally entry saves its preceding completion");
+        let (value, empty) = self
+            .completion_saves
+            .pop()
+            .expect("normal finally entry saves its preceding completion");
         self.completion = value;
         self.completion_empty = empty;
     }
 
-    fn resolve_completion(&mut self, code: &Bytecode, handlers: &mut Vec<HandlerFrame>, iterators: &mut Vec<Value>, completion: Completion) -> Result<CompletionAction, RuntimeError> {
+    fn resolve_completion(
+        &mut self,
+        code: &Bytecode,
+        handlers: &mut Vec<HandlerFrame>,
+        iterators: &mut Vec<Value>,
+        completion: Completion,
+    ) -> Result<CompletionAction, RuntimeError> {
         if let Completion::Halt(value) = completion {
             return Ok(CompletionAction::Return(value));
         }
         if let Completion::Resume(metadata) = completion {
             if let Some(frame) = handlers.pop_if(|frame| frame.metadata == metadata) {
-                let pending = frame.pending.expect("only an abrupt finally resumes a handler");
-                return self.resolve_completion(code, handlers, iterators, self.pending_completions[pending].clone());
+                let pending = frame
+                    .pending
+                    .expect("only an abrupt finally resumes a handler");
+                return self.resolve_completion(
+                    code,
+                    handlers,
+                    iterators,
+                    self.pending_completions[pending].clone(),
+                );
             }
             self.restore_completion();
             return Ok(CompletionAction::Continue);
@@ -416,7 +468,10 @@ impl Vm {
                     Completion::Throw(error) => CompletionAction::Throw(error),
                     Completion::Return(value) => CompletionAction::Return(value),
                     Completion::TailRecur(args) => CompletionAction::TailRecur(args),
-                    Completion::Jump { cleanup, .. } => CompletionAction::Jump(cleanup), Completion::Resume(_) | Completion::Halt(_) | Completion::Yield(_) => unreachable!("handled above"),
+                    Completion::Jump { cleanup, .. } => CompletionAction::Jump(cleanup),
+                    Completion::Resume(_) | Completion::Halt(_) | Completion::Yield(_) => {
+                        unreachable!("handled above")
+                    }
                 });
             };
             let metadata = frame.metadata;
@@ -434,8 +489,15 @@ impl Vm {
             // consume the frame or spuriously run an outer finalizer.
             if let Completion::Jump { cleanup, target } = completion {
                 let region = match state {
-                    HandlerState::Try => Some((handler.try_start as usize, handler.try_end as usize)),
-                    HandlerState::Catch => handler.catch.map(|start| (start as usize, handler.catch_end.expect("catch end is compiled") as usize)),
+                    HandlerState::Try => {
+                        Some((handler.try_start as usize, handler.try_end as usize))
+                    }
+                    HandlerState::Catch => handler.catch.map(|start| {
+                        (
+                            start as usize,
+                            handler.catch_end.expect("catch end is compiled") as usize,
+                        )
+                    }),
                     HandlerState::Finally => None,
                 };
                 if region.is_some_and(|(start, end)| (start..end).contains(&target)) {
@@ -448,7 +510,8 @@ impl Vm {
             // catch scope before the finalizer runs; its later gateway skips
             // that already-cleared scope. Throws and returns have no bytecode
             // continuation, so they always unwind immediately.
-            let unwind = !matches!(completion, Completion::Jump { .. }) || (state != HandlerState::Finally && finally.is_some());
+            let unwind = !matches!(completion, Completion::Jump { .. })
+                || (state != HandlerState::Finally && finally.is_some());
             if unwind {
                 self.stack.truncate(stack_depth);
                 self.unwind_scopes(code, scope_depth);
@@ -459,7 +522,10 @@ impl Vm {
             if state == HandlerState::Try {
                 if let (Some(target), Completion::Throw(error)) = (catch, &completion) {
                     let value = self.error_value(error.clone())?;
-                    handlers.last_mut().expect("handler was inspected above").state = HandlerState::Catch;
+                    handlers
+                        .last_mut()
+                        .expect("handler was inspected above")
+                        .state = HandlerState::Catch;
                     self.stack.push(value);
                     return Ok(CompletionAction::Jump(target as usize));
                 }
@@ -475,19 +541,28 @@ impl Vm {
                 }
             }
             handlers.pop();
-            completion = self.pending_completions.last().expect("completion remains rooted").clone();
+            completion = self
+                .pending_completions
+                .last()
+                .expect("completion remains rooted")
+                .clone();
         }
     }
 
     fn check_string(&self, value: &Value) -> Result<(), RuntimeError> {
         if matches!(value, Value::String(s) if s.byte_len() > self.config.max_string_bytes) {
-            Err(RuntimeError::StringLimit { limit: self.config.max_string_bytes })
+            Err(RuntimeError::StringLimit {
+                limit: self.config.max_string_bytes,
+            })
         } else {
             Ok(())
         }
     }
 
-    fn with_roots<T>(&mut self, operation: impl FnOnce(&mut Heap) -> Result<T, HeapError>) -> Result<T, RuntimeError> {
+    fn with_roots<T>(
+        &mut self,
+        operation: impl FnOnce(&mut Heap) -> Result<T, HeapError>,
+    ) -> Result<T, RuntimeError> {
         let mut roots = Vec::new();
         let registration = (|| {
             for value in self
@@ -497,9 +572,16 @@ impl Vm {
                 .chain(std::iter::once(&self.completion))
                 .chain(self.pending_completions.iter().flat_map(|completion| {
                     let values: &[Value] = match completion {
-                        Completion::Return(value) | Completion::Yield(value) | Completion::Throw(RuntimeError::Thrown(value)) => std::slice::from_ref(value),
+                        Completion::Return(value)
+                        | Completion::Yield(value)
+                        | Completion::Throw(RuntimeError::Thrown(value)) => {
+                            std::slice::from_ref(value)
+                        }
                         Completion::TailRecur(args) => args,
-                        Completion::Throw(_) | Completion::Jump { .. } | Completion::Resume(_) | Completion::Halt(_) => &[],
+                        Completion::Throw(_)
+                        | Completion::Jump { .. }
+                        | Completion::Resume(_)
+                        | Completion::Halt(_) => &[],
                     };
                     values.iter()
                 }))
@@ -519,7 +601,9 @@ impl Vm {
         })();
         let result = registration.and_then(|()| operation(&mut self.heap));
         for root in roots {
-            self.heap.unroot(root).expect("temporary root belongs to this safepoint");
+            self.heap
+                .unroot(root)
+                .expect("temporary root belongs to this safepoint");
         }
         result.map_err(RuntimeError::from)
     }
@@ -532,7 +616,9 @@ impl Vm {
             .interpret(code, &mut iterators, 0, None)
             .and_then(|exit| match exit {
                 InterpreterExit::Return(value) => Ok(value),
-                InterpreterExit::Yield { .. } => Err(RuntimeError::TypeError("yield requires a generator function".into())),
+                InterpreterExit::Yield { .. } => Err(RuntimeError::TypeError(
+                    "yield requires a generator function".into(),
+                )),
             });
         if result.is_err() {
             if let Err(RuntimeError::Thrown(value)) = &result {
@@ -550,10 +636,15 @@ impl Vm {
         result
     }
 
-    fn execute_eval(&mut self, code: &Bytecode, captures: Vec<ObjectId>) -> Result<Value, RuntimeError> {
+    fn execute_eval(
+        &mut self,
+        code: &Bytecode,
+        captures: Vec<ObjectId>,
+    ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
         self.stack.extend(self.bindings.iter().flatten().cloned());
-        self.stack.extend(self.cells.values().copied().map(Value::Object));
+        self.stack
+            .extend(self.cells.values().copied().map(Value::Object));
         self.stack.push(self.completion.clone());
         self.stack.push(self.this.clone());
         self.stack.extend(self.arguments.iter().cloned());
@@ -583,16 +674,30 @@ impl Vm {
         for scope in &self.active_scope_slots {
             for &slot in scope {
                 let slot = slot as usize;
-                visible.insert(self.binding_metadata[slot].name.clone(), (self.binding_metadata[slot].clone(), slot as u32));
+                visible.insert(
+                    self.binding_metadata[slot].name.clone(),
+                    (self.binding_metadata[slot].clone(), slot as u32),
+                );
             }
         }
         for &slot in self.cells.keys() {
-            visible.entry(self.binding_metadata[slot].name.clone()).or_insert_with(|| (self.binding_metadata[slot].clone(), slot as u32));
+            visible
+                .entry(self.binding_metadata[slot].name.clone())
+                .or_insert_with(|| (self.binding_metadata[slot].clone(), slot as u32));
         }
-        visible.into_iter().map(|(name, (binding, slot))| (name, binding, slot)).collect()
+        visible
+            .into_iter()
+            .map(|(name, (binding, slot))| (name, binding, slot))
+            .collect()
     }
 
-    fn interpret(&mut self, code: &Bytecode, iterators: &mut Vec<Value>, start_pc: usize, resume_value: Option<Value>) -> Result<InterpreterExit, RuntimeError> {
+    fn interpret(
+        &mut self,
+        code: &Bytecode,
+        iterators: &mut Vec<Value>,
+        start_pc: usize,
+        resume_value: Option<Value>,
+    ) -> Result<InterpreterExit, RuntimeError> {
         let stack_base = self.stack.len();
         let pending_base = self.pending_completions.len();
         let save_base = self.completion_saves.len();
@@ -603,527 +708,711 @@ impl Vm {
         let mut handlers = Vec::new();
         loop {
             self.charge_step()?;
-            let instruction = code.instruction(pc).expect("compiler emits valid instruction boundaries");
+            let instruction = code
+                .instruction(pc)
+                .expect("compiler emits valid instruction boundaries");
             let operand = instruction.operand.unwrap_or(0) as usize;
             pc += instruction.opcode.width();
             let outcome: Result<Option<Completion>, RuntimeError> = (|| {
-            match instruction.opcode {
-                Opcode::DefineData | Opcode::DefineAccessor | Opcode::DefineMethod | Opcode::DefineClassAccessor => {
-                    let value = self.pop();
-                    let (receiver, key) = self.property_reference()?;
-                    let object = receiver.object_id().unwrap();
-                    if matches!(instruction.opcode, Opcode::DefineMethod | Opcode::DefineClassAccessor) {
-                        if let Value::Object(function) = value { self.with_roots(|heap| heap.set_closure_home(function, object))?; }
-                    }
-                    if instruction.opcode == Opcode::DefineData {
-                        self.define_data(object, key, value.clone(), true, true, true)?;
-                    } else {
-                        let descriptor = if instruction.opcode == Opcode::DefineMethod {
-                            PropertyDescriptor::data(value.clone(), true, false, true)
-                        } else {
-                            PropertyDescriptor {
-                                get: (operand == 0).then(|| value.clone()),
-                                set: (operand != 0).then(|| value.clone()),
-                                enumerable: Some(instruction.opcode == Opcode::DefineAccessor),
-                                configurable: Some(true),
-                                ..Default::default()
+                match instruction.opcode {
+                    Opcode::DefineData
+                    | Opcode::DefineAccessor
+                    | Opcode::DefineMethod
+                    | Opcode::DefineClassAccessor => {
+                        let value = self.pop();
+                        let (receiver, key) = self.property_reference()?;
+                        let object = receiver.object_id().unwrap();
+                        if matches!(
+                            instruction.opcode,
+                            Opcode::DefineMethod | Opcode::DefineClassAccessor
+                        ) {
+                            if let Value::Object(function) = value {
+                                self.with_roots(|heap| heap.set_closure_home(function, object))?;
                             }
+                        }
+                        if instruction.opcode == Opcode::DefineData {
+                            self.define_data(object, key, value.clone(), true, true, true)?;
+                        } else {
+                            let descriptor = if instruction.opcode == Opcode::DefineMethod {
+                                PropertyDescriptor::data(value.clone(), true, false, true)
+                            } else {
+                                PropertyDescriptor {
+                                    get: (operand == 0).then(|| value.clone()),
+                                    set: (operand != 0).then(|| value.clone()),
+                                    enumerable: Some(instruction.opcode == Opcode::DefineAccessor),
+                                    configurable: Some(true),
+                                    ..Default::default()
+                                }
+                            };
+                            if !self.with_roots(|heap| {
+                                heap.define_own_property(object, key, descriptor)
+                            })? {
+                                return Err(RuntimeError::TypeError(
+                                    "cannot define class property".into(),
+                                ));
+                            }
+                        }
+                        self.stack.push(value);
+                    }
+                    Opcode::DeleteProperty => {
+                        let (receiver, key) = self.property_reference()?;
+                        let deleted = match receiver {
+                            Value::Object(id) => self.heap.delete(id, key)?,
+                            Value::String(s) => {
+                                !matches!(&key, PropertyName::String(key) if s.own_property(key).is_some())
+                            }
+                            _ => true,
                         };
-                        if !self.with_roots(|heap| heap.define_own_property(object, key, descriptor))? {
-                            return Err(RuntimeError::TypeError("cannot define class property".into()));
+                        if !deleted && self.strict {
+                            return Err(RuntimeError::TypeError(
+                                "cannot delete non-configurable property".into(),
+                            ));
+                        }
+                        self.stack.push(Value::Bool(deleted));
+                    }
+                    Opcode::Throw => {
+                        return Ok(Some(Completion::Throw(RuntimeError::Thrown(self.pop()))))
+                    }
+                    Opcode::ArrayPush => {
+                        let base = self.stack.len() - 2;
+                        self.array_push(
+                            &self.stack[base].clone(),
+                            &self.stack[base + 1].clone(),
+                            operand,
+                        )?;
+                        self.stack.truncate(base + 1);
+                    }
+                    Opcode::CallSpread => {
+                        let base = self.stack.len() - 3;
+                        let args = self.array_like_values(&self.stack[base + 2].clone())?;
+                        let result = self.call_native(
+                            self.stack[base].clone(),
+                            self.stack[base + 1].clone(),
+                            args,
+                            operand != 0,
+                        )?;
+                        self.stack.truncate(base);
+                        self.stack.push(result);
+                    }
+                    Opcode::CallClassStaticBlock => {
+                        let base = self.stack.len() - 2;
+                        let Value::Object(target) = self.stack[base].clone() else {
+                            unreachable!("class constructors are objects")
+                        };
+                        if let Value::Object(function) = self.stack[base + 1] {
+                            self.with_roots(|heap| heap.set_closure_home(function, target))?;
+                        }
+                        self.call_native(
+                            self.stack[base + 1].clone(),
+                            self.stack[base].clone(),
+                            Vec::new(),
+                            false,
+                        )?;
+                        self.stack.truncate(base + 1);
+                    }
+                    Opcode::DefineClassStaticField => {
+                        let base = self.stack.len() - 4;
+                        let target = self.stack[base + 1].clone();
+                        let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
+                        let initializer = self.stack[base + 3].clone();
+                        if let (Value::Object(target), Value::Object(function)) =
+                            (&target, &initializer)
+                        {
+                            self.with_roots(|heap| heap.set_closure_home(*function, *target))?;
+                        }
+                        let value =
+                            self.call_native(initializer, target.clone(), Vec::new(), false)?;
+                        let Value::Object(target) = target else {
+                            unreachable!("class fields target the constructor")
+                        };
+                        if !self.with_roots(|heap| {
+                            heap.define_own_property(
+                                target,
+                                key,
+                                PropertyDescriptor::data(value, true, true, true),
+                            )
+                        })? {
+                            return Err(RuntimeError::TypeError(
+                                "cannot define class field".into(),
+                            ));
+                        }
+                        self.stack.truncate(base + 1);
+                    }
+                    Opcode::SetClassHome => self.set_class_home()?,
+                    Opcode::SetClassHeritage => self.set_class_heritage()?,
+                    Opcode::SuperGet | Opcode::SuperGetMethod => {
+                        let key_value = self.pop();
+                        let key = self.coerce_property_key(&key_value)?;
+                        let value = self.super_get(&key)?;
+                        self.check_string(&value)?;
+                        self.stack.push(value);
+                        if instruction.opcode == Opcode::SuperGetMethod {
+                            self.stack.push(self.this.clone());
                         }
                     }
-                    self.stack.push(value);
-                }
-                Opcode::DeleteProperty => {
-                    let (receiver, key) = self.property_reference()?;
-                    let deleted = match receiver {
-                        Value::Object(id) => self.heap.delete(id, key)?,
-                        Value::String(s) => !matches!(&key, PropertyName::String(key) if s.own_property(key).is_some()),
-                        _ => true,
-                    };
-                    if !deleted && self.strict {
-                        return Err(RuntimeError::TypeError("cannot delete non-configurable property".into()));
+                    Opcode::SuperSet => {
+                        let value = self.pop();
+                        let key_value = self.pop();
+                        let key = self.coerce_property_key(&key_value)?;
+                        self.super_set(&key, &value)?;
+                        self.stack.push(value);
                     }
-                    self.stack.push(Value::Bool(deleted));
-                }
-                Opcode::Throw => return Ok(Some(Completion::Throw(RuntimeError::Thrown(self.pop())))),
-                Opcode::ArrayPush => {
-                    let base = self.stack.len() - 2;
-                    self.array_push(&self.stack[base].clone(), &self.stack[base + 1].clone(), operand)?;
-                    self.stack.truncate(base + 1);
-                }
-                Opcode::CallSpread => {
-                    let base = self.stack.len() - 3;
-                    let args = self.array_like_values(&self.stack[base + 2].clone())?;
-                    let result = self.call_native(self.stack[base].clone(), self.stack[base + 1].clone(), args, operand != 0)?;
-                    self.stack.truncate(base);
-                    self.stack.push(result);
-                }
-                Opcode::CallClassStaticBlock => {
-                    let base = self.stack.len() - 2;
-                    let Value::Object(target) = self.stack[base].clone() else { unreachable!("class constructors are objects") };
-                    if let Value::Object(function) = self.stack[base + 1] { self.with_roots(|heap| heap.set_closure_home(function, target))?; }
-                    self.call_native(self.stack[base + 1].clone(), self.stack[base].clone(), Vec::new(), false)?;
-                    self.stack.truncate(base + 1);
-                }
-                Opcode::DefineClassStaticField => {
-                    let base = self.stack.len() - 4;
-                    let target = self.stack[base + 1].clone();
-                    let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
-                    let initializer = self.stack[base + 3].clone();
-                    if let (Value::Object(target), Value::Object(function)) = (&target, &initializer) { self.with_roots(|heap| heap.set_closure_home(*function, *target))?; }
-                    let value = self.call_native(initializer, target.clone(), Vec::new(), false)?;
-                    let Value::Object(target) = target else { unreachable!("class fields target the constructor") };
-                    if !self.with_roots(|heap| heap.define_own_property(target, key, PropertyDescriptor::data(value, true, true, true)))? {
-                        return Err(RuntimeError::TypeError("cannot define class field".into()));
+                    Opcode::SuperUpdate => {
+                        let key_value = self.pop();
+                        let key = self.coerce_property_key(&key_value)?;
+                        let old_value = self.super_get(&key)?;
+                        let old = self.coerce_number(&old_value)?;
+                        let new = if operand & 1 == 0 {
+                            old + 1.0
+                        } else {
+                            old - 1.0
+                        };
+                        self.super_set(&key, &Value::Number(new))?;
+                        self.stack
+                            .push(Value::Number(if operand & 2 == 0 { old } else { new }));
                     }
-                    self.stack.truncate(base + 1);
-                }
-                Opcode::SetClassHome => self.set_class_home()?,
-                Opcode::SetClassHeritage => self.set_class_heritage()?,
-                Opcode::SuperGet | Opcode::SuperGetMethod => {
-                    let key_value = self.pop();
-                    let key = self.coerce_property_key(&key_value)?;
-                    let value = self.super_get(&key)?;
-                    self.check_string(&value)?;
-                    self.stack.push(value);
-                    if instruction.opcode == Opcode::SuperGetMethod {
+                    Opcode::SuperCall | Opcode::SuperCallSpread | Opcode::SuperCallForward => {
+                        let args = if instruction.opcode == Opcode::SuperCall {
+                            let base = self.stack.len() - operand;
+                            let args = self.stack[base..].to_vec();
+                            self.stack.truncate(base);
+                            args
+                        } else if instruction.opcode == Opcode::SuperCallSpread {
+                            let arguments = self.pop();
+                            self.array_like_values(&arguments)?
+                        } else {
+                            self.arguments.clone()
+                        };
+                        let value = self.super_call(args)?;
+                        self.stack.push(value);
+                    }
+                    Opcode::EnterClassFieldInitializer => self.class_field_initializer_depth += 1,
+                    Opcode::LeaveClassFieldInitializer => {
+                        self.class_field_initializer_depth = self
+                            .class_field_initializer_depth
+                            .checked_sub(1)
+                            .expect("compiler balances class field initializers");
+                    }
+                    Opcode::RegExpLiteral => {
+                        let base = self.stack.len() - 2;
+                        let regexp = self.regexp_create(
+                            &self.stack[base].clone(),
+                            &self.stack[base + 1].clone(),
+                        )?;
+                        self.stack.truncate(base);
+                        self.stack.push(regexp);
+                    }
+                    Opcode::TemplateObject => {
+                        let object = self.template_object(&code.templates[operand])?;
+                        self.stack.push(object);
+                    }
+                    Opcode::GetIterator => {
+                        let value = self.stack.last().unwrap().clone();
+                        let iterator = self.get_iterator(&value)?;
+                        self.pop();
+                        self.stack.push(iterator.clone());
+                        iterators.push(iterator);
+                    }
+                    Opcode::ForInKeys => {
+                        let source = self.stack.last().expect("for-in has a source").clone();
+                        let keys = self.for_in_keys(&source)?;
+                        self.pop();
+                        self.stack.push(keys);
+                    }
+                    Opcode::IteratorStep => {
+                        let record = self.stack.last().unwrap().clone();
+                        iterators.retain(|active| active != &record);
+                        let result = self.iterator_step(&record, true)?;
+                        self.pop();
+                        if let Some(value) = result {
+                            iterators.push(record);
+                            self.stack.push(value);
+                        } else {
+                            pc = operand;
+                        }
+                    }
+                    Opcode::IteratorElision => {
+                        let record = self.stack.last().unwrap().clone();
+                        iterators.retain(|active| active != &record);
+                        if self.iterator_step(&record, false)?.is_some() {
+                            iterators.push(record);
+                        }
+                    }
+                    Opcode::IteratorClose => {
+                        let record = self.stack.last().unwrap().clone();
+                        iterators.retain(|active| active != &record);
+                        self.iterator_close(&record)?;
+                        self.pop();
+                    }
+                    Opcode::IteratorFinish => {
+                        let record = self.stack.last().unwrap().clone();
+                        let Value::Object(id) = record else {
+                            unreachable!("compiler only emits iterator records")
+                        };
+                        let done =
+                            matches!(self.heap.get_own(id, "done")?, Some(Value::Bool(true)));
+                        iterators.retain(|candidate| candidate != &record);
+                        if !done {
+                            self.iterator_close(&record)?;
+                        }
+                        self.pop();
+                    }
+                    Opcode::IteratorRest => {
+                        let record = self.stack.last().unwrap().clone();
+                        let base = self.stack.len() - 1;
+                        iterators.retain(|candidate| candidate != &record);
+                        iterators.push(record.clone());
+                        // Keep accumulated values in a rooted managed array while
+                        // subsequent next/done/value callbacks can trigger GC.
+                        let array = self.array_from(Vec::new())?;
+                        self.stack.push(array.clone());
+                        while let Some(value) = self.iterator_step(&record, true)? {
+                            self.charge_step()?;
+                            self.array_push(&array, &value, 0)?;
+                        }
+                        iterators.retain(|candidate| candidate != &record);
+                        self.stack.truncate(base);
+                        self.stack.push(array);
+                    }
+                    Opcode::RequireObject => {
+                        let value = self.stack.last().unwrap().clone();
+                        self.coerce_object(&value)?;
+                    }
+                    Opcode::DestructureProperty => {
+                        let base = self.stack.len() - 3;
+                        let source = self.stack[base].clone();
+                        let excluded = self.stack[base + 1].clone();
+                        let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
+                        let value = self.get_property(&source, &key)?;
+                        self.array_push(&excluded, &key.value(), 0)?;
+                        self.stack.truncate(base);
+                        self.stack.extend([source, excluded, value]);
+                    }
+                    Opcode::ObjectRest => {
+                        let base = self.stack.len() - 2;
+                        let source = self.stack[base].clone();
+                        let excluded = self.stack[base + 1].clone();
+                        let rest = self.destructure_object_rest(&source, &excluded)?;
+                        self.stack.truncate(base);
+                        self.stack.push(rest);
+                    }
+                    Opcode::CopyDataProperties => {
+                        let base = self.stack.len() - 2;
+                        let Value::Object(target) = self.stack[base].clone() else {
+                            unreachable!("compiler creates an object literal target")
+                        };
+                        let source = self.stack[base + 1].clone();
+                        self.copy_data_properties(target, &source, &[])?;
+                        self.pop();
+                    }
+                    Opcode::Closure => {
+                        let child = code.functions[operand].clone();
+                        let (_, prototype) = self.string_intrinsics()?;
+                        let constructor = self
+                            .heap
+                            .get(prototype, "constructor")?
+                            .object_id()
+                            .unwrap();
+                        let function_prototype = self.heap.prototype(constructor)?.unwrap();
+                        let mut captures = Vec::new();
+                        for &slot in &child.captures {
+                            captures.push(self.capture(slot as usize)?);
+                        }
+                        let this = if child.arrow {
+                            if self.this == Value::Undefined && self.call_depth == 0 {
+                                self.global("globalThis")?
+                            } else {
+                                self.this.clone()
+                            }
+                        } else {
+                            Value::Undefined
+                        };
+                        let id = self.with_roots(|heap| {
+                            heap.alloc_closure(child.clone(), captures, this, function_prototype)
+                        })?;
+                        self.stack.push(Value::Object(id));
+                        // Arrow functions inherit their containing function's
+                        // [[HomeObject]] together with lexical `this`.  Keeping
+                        // the new closure on the operand stack first makes it a
+                        // GC root while installing metadata may allocate.
+                        if child.arrow {
+                            if let Some(home) = self.home_object {
+                                self.with_roots(|heap| heap.set_closure_home(id, home))?;
+                            }
+                            // A derived constructor's arrow may invoke `super()`.
+                            // Store its resolved superclass on the arrow closure;
+                            // the call frame then treats that closure as the
+                            // lexical derived-constructor context.
+                            if let Some(constructor) = self.class_constructor {
+                                if let Some(base) = self.heap.class_base(constructor)? {
+                                    self.with_roots(|heap| heap.set_class_base(id, base))?;
+                                }
+                            }
+                        }
+                        self.define_data(
+                            id,
+                            "name",
+                            Value::String(child.function_name.clone().into()),
+                            false,
+                            false,
+                            true,
+                        )?;
+                        self.define_data(
+                            id,
+                            "length",
+                            Value::Number(child.function_length as f64),
+                            false,
+                            false,
+                            true,
+                        )?;
+                        if child.constructible {
+                            let object_prototype = self.object_prototype;
+                            let prototype =
+                                self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+                            self.define_data(
+                                id,
+                                "prototype",
+                                Value::Object(prototype),
+                                !child.class_constructor,
+                                false,
+                                false,
+                            )?;
+                            self.define_data(
+                                prototype,
+                                "constructor",
+                                Value::Object(id),
+                                true,
+                                false,
+                                true,
+                            )?;
+                        }
+                    }
+                    Opcode::This => {
+                        if self.this == Value::Undefined && self.call_depth == 0 {
+                            self.this = self.global("globalThis")?;
+                        }
                         self.stack.push(self.this.clone());
                     }
-                }
-                Opcode::SuperSet => {
-                    let value = self.pop();
-                    let key_value = self.pop();
-                    let key = self.coerce_property_key(&key_value)?;
-                    self.super_set(&key, &value)?;
-                    self.stack.push(value);
-                }
-                Opcode::SuperUpdate => {
-                    let key_value = self.pop();
-                    let key = self.coerce_property_key(&key_value)?;
-                    let old_value = self.super_get(&key)?;
-                    let old = self.coerce_number(&old_value)?;
-                    let new = if operand & 1 == 0 { old + 1.0 } else { old - 1.0 };
-                    self.super_set(&key, &Value::Number(new))?;
-                    self.stack.push(Value::Number(if operand & 2 == 0 { old } else { new }));
-                }
-                Opcode::SuperCall | Opcode::SuperCallSpread | Opcode::SuperCallForward => {
-                    let args = if instruction.opcode == Opcode::SuperCall {
+                    Opcode::Argument => self
+                        .stack
+                        .push(native::argument(&self.arguments, operand).clone()),
+                    Opcode::RestArguments => {
+                        let array = self
+                            .array_from(self.arguments.iter().skip(operand).cloned().collect())?;
+                        self.stack.push(array);
+                    }
+                    Opcode::Return => return Ok(Some(Completion::Return(self.pop()))),
+                    Opcode::TailRecur => {
                         let base = self.stack.len() - operand;
                         let args = self.stack[base..].to_vec();
                         self.stack.truncate(base);
-                        args
-                    } else if instruction.opcode == Opcode::SuperCallSpread {
-                        let arguments = self.pop();
-                        self.array_like_values(&arguments)?
-                    } else {
-                        self.arguments.clone()
-                    };
-                    let value = self.super_call(args)?;
-                    self.stack.push(value);
-                }
-                Opcode::EnterClassFieldInitializer => self.class_field_initializer_depth += 1,
-                Opcode::LeaveClassFieldInitializer => {
-                    self.class_field_initializer_depth = self.class_field_initializer_depth.checked_sub(1).expect("compiler balances class field initializers");
-                }
-                Opcode::RegExpLiteral => {
-                    let base = self.stack.len() - 2;
-                    let regexp = self.regexp_create(&self.stack[base].clone(), &self.stack[base + 1].clone())?;
-                    self.stack.truncate(base);
-                    self.stack.push(regexp);
-                }
-                Opcode::TemplateObject => {
-                    let object = self.template_object(&code.templates[operand])?;
-                    self.stack.push(object);
-                }
-                Opcode::GetIterator => {
-                    let value = self.stack.last().unwrap().clone();
-                    let iterator = self.get_iterator(&value)?;
-                    self.pop();
-                    self.stack.push(iterator.clone());
-                    iterators.push(iterator);
-                }
-                Opcode::ForInKeys => {
-                    let source = self.stack.last().expect("for-in has a source").clone();
-                    let keys = self.for_in_keys(&source)?;
-                    self.pop();
-                    self.stack.push(keys);
-                }
-                Opcode::IteratorStep => {
-                    let record = self.stack.last().unwrap().clone();
-                    iterators.retain(|active| active != &record);
-                    let result = self.iterator_step(&record, true)?;
-                    self.pop();
-                    if let Some(value) = result {
-                        iterators.push(record);
+                        return Ok(Some(Completion::TailRecur(args)));
+                    }
+                    Opcode::Yield => {
+                        if !code.generator || !handlers.is_empty() {
+                            return Err(RuntimeError::TypeError(
+                                "yield is not supported in this execution context".into(),
+                            ));
+                        }
+                        return Ok(Some(Completion::Yield(self.pop())));
+                    }
+                    Opcode::EnterWith => {
+                        let object = self.pop();
+                        let object = self.coerce_object(&object)?;
+                        self.with_objects.push(Value::Object(object));
+                    }
+                    Opcode::LeaveWith => {
+                        self.with_objects
+                            .pop()
+                            .expect("compiler balances with scopes");
+                    }
+                    Opcode::WithGet => {
+                        let Value::String(name) = &code.constants[operand] else {
+                            unreachable!("compiler emits a name")
+                        };
+                        let value = self.with_get(
+                            &name.to_utf8().expect("compiler emits a UTF-8 identifier"),
+                        )?;
                         self.stack.push(value);
-                    } else {
-                        pc = operand;
                     }
-                }
-                Opcode::IteratorElision => {
-                    let record = self.stack.last().unwrap().clone();
-                    iterators.retain(|active| active != &record);
-                    if self.iterator_step(&record, false)?.is_some() {
-                        iterators.push(record);
+                    Opcode::WithSet => {
+                        let Value::String(name) = &code.constants[operand] else {
+                            unreachable!("compiler emits a name")
+                        };
+                        self.with_set(
+                            &name.to_utf8().expect("compiler emits a UTF-8 identifier"),
+                            self.stack.last().expect("assignment has a value").clone(),
+                        )?;
                     }
-                }
-                Opcode::IteratorClose => {
-                    let record = self.stack.last().unwrap().clone();
-                    iterators.retain(|active| active != &record);
-                    self.iterator_close(&record)?;
-                    self.pop();
-                }
-                Opcode::IteratorFinish => {
-                    let record = self.stack.last().unwrap().clone();
-                    let Value::Object(id) = record else { unreachable!("compiler only emits iterator records") };
-                    let done = matches!(self.heap.get_own(id, "done")?, Some(Value::Bool(true)));
-                    iterators.retain(|candidate| candidate != &record);
-                    if !done {
-                        self.iterator_close(&record)?;
+                    Opcode::Global => {
+                        let Value::String(name) = &code.constants[operand] else {
+                            unreachable!()
+                        };
+                        let value = self.global(&name.to_utf8().unwrap())?;
+                        self.stack.push(value);
                     }
-                    self.pop();
-                }
-                Opcode::IteratorRest => {
-                    let record = self.stack.last().unwrap().clone();
-                    let base = self.stack.len() - 1;
-                    iterators.retain(|candidate| candidate != &record);
-                    iterators.push(record.clone());
-                    // Keep accumulated values in a rooted managed array while
-                    // subsequent next/done/value callbacks can trigger GC.
-                    let array = self.array_from(Vec::new())?;
-                    self.stack.push(array.clone());
-                    while let Some(value) = self.iterator_step(&record, true)? {
-                        self.charge_step()?;
-                        self.array_push(&array, &value, 0)?;
+                    Opcode::ToPropertyKey => {
+                        let value = self.stack.last().unwrap().clone();
+                        let key = self.coerce_property_key(&value)?;
+                        self.pop();
+                        self.stack.push(key.value());
                     }
-                    iterators.retain(|candidate| candidate != &record);
-                    self.stack.truncate(base);
-                    self.stack.push(array);
-                }
-                Opcode::RequireObject => {
-                    let value = self.stack.last().unwrap().clone();
-                    self.coerce_object(&value)?;
-                }
-                Opcode::DestructureProperty => {
-                    let base = self.stack.len() - 3;
-                    let source = self.stack[base].clone();
-                    let excluded = self.stack[base + 1].clone();
-                    let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
-                    let value = self.get_property(&source, &key)?;
-                    self.array_push(&excluded, &key.value(), 0)?;
-                    self.stack.truncate(base);
-                    self.stack.extend([source, excluded, value]);
-                }
-                Opcode::ObjectRest => {
-                    let base = self.stack.len() - 2;
-                    let source = self.stack[base].clone();
-                    let excluded = self.stack[base + 1].clone();
-                    let rest = self.destructure_object_rest(&source, &excluded)?;
-                    self.stack.truncate(base);
-                    self.stack.push(rest);
-                }
-                Opcode::CopyDataProperties => {
-                    let base = self.stack.len() - 2;
-                    let Value::Object(target) = self.stack[base].clone() else { unreachable!("compiler creates an object literal target") };
-                    let source = self.stack[base + 1].clone();
-                    self.copy_data_properties(target, &source, &[])?;
-                    self.pop();
-                }
-                Opcode::Closure => {
-                    let child = code.functions[operand].clone();
-                    let (_, prototype) = self.string_intrinsics()?;
-                    let constructor = self.heap.get(prototype, "constructor")?.object_id().unwrap();
-                    let function_prototype = self.heap.prototype(constructor)?.unwrap();
-                    let mut captures = Vec::new();
-                    for &slot in &child.captures {
-                        captures.push(self.capture(slot as usize)?);
+                    Opcode::Constant => {
+                        self.check_string(&code.constants[operand])?;
+                        self.stack.push(code.constants[operand].clone());
                     }
-                    let this = if child.arrow {
-                        if self.this == Value::Undefined && self.call_depth == 0 { self.global("globalThis")? } else { self.this.clone() }
-                    } else {
-                        Value::Undefined
-                    };
-                    let id = self.with_roots(|heap| heap.alloc_closure(child.clone(), captures, this, function_prototype))?;
-                    self.stack.push(Value::Object(id));
-                    // Arrow functions inherit their containing function's
-                    // [[HomeObject]] together with lexical `this`.  Keeping
-                    // the new closure on the operand stack first makes it a
-                    // GC root while installing metadata may allocate.
-                    if child.arrow {
-                        if let Some(home) = self.home_object {
-                            self.with_roots(|heap| heap.set_closure_home(id, home))?;
+                    Opcode::GlobalString => {
+                        let (constructor, _) = self.string_intrinsics()?;
+                        self.stack.push(Value::Object(constructor));
+                    }
+                    Opcode::GetBinding => {
+                        let value = self.binding_value(operand)?.ok_or_else(|| {
+                            RuntimeError::ReferenceError(code.bindings[operand].name.clone())
+                        })?;
+                        self.stack.push(value);
+                    }
+                    Opcode::InitializeBinding => {
+                        let value = self.pop();
+                        self.store_binding(operand, value)?;
+                    }
+                    Opcode::StoreBinding => {
+                        // ECMA-262 §9.1.1.1.5: TDZ takes precedence over the
+                        // immutable-binding assignment error, including const.
+                        if self.binding_value(operand)?.is_none() {
+                            return Err(RuntimeError::ReferenceError(
+                                code.bindings[operand].name.clone(),
+                            ));
                         }
-                        // A derived constructor's arrow may invoke `super()`.
-                        // Store its resolved superclass on the arrow closure;
-                        // the call frame then treats that closure as the
-                        // lexical derived-constructor context.
-                        if let Some(constructor) = self.class_constructor {
-                            if let Some(base) = self.heap.class_base(constructor)? {
-                                self.with_roots(|heap| heap.set_class_base(id, base))?;
+                        if !code.bindings[operand].mutable {
+                            return Err(RuntimeError::TypeError(format!(
+                                "assignment to constant {}",
+                                code.bindings[operand].name
+                            )));
+                        }
+                        self.store_binding(
+                            operand,
+                            self.stack.last().expect("store has a value").clone(),
+                        )?;
+                    }
+                    Opcode::UnboundName | Opcode::TypeofName => {
+                        let Value::String(name) = &code.constants[operand] else {
+                            unreachable!("compiler emits a name")
+                        };
+                        let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                        let value = self.lookup_global_name(&name)?;
+                        if instruction.opcode == Opcode::TypeofName {
+                            let value = value.unwrap_or(Value::Undefined);
+                            self.stack
+                                .push(Value::String(self.typeof_value(&value)?.into()));
+                        } else {
+                            self.stack
+                                .push(value.ok_or(RuntimeError::ReferenceError(name))?);
+                        }
+                    }
+                    Opcode::EnterScope => {
+                        for slot in &code.scopes[operand] {
+                            self.cells.remove(&(*slot as usize));
+                            self.bindings[*slot as usize] =
+                                if !code.bindings[*slot as usize].lexical {
+                                    Some(Value::Undefined)
+                                } else {
+                                    None
+                                };
+                        }
+                        self.active_scopes.push(operand as u32);
+                        self.active_scope_slots.push(code.scopes[operand].clone());
+                    }
+                    Opcode::LeaveScope => self.leave_scope(code, operand as u32),
+                    Opcode::Pop => {
+                        self.pop();
+                    }
+                    Opcode::Dup => self
+                        .stack
+                        .push(self.stack.last().expect("dup has a value").clone()),
+                    Opcode::Dup2 => {
+                        let index = self.stack.len() - 2;
+                        self.stack.push(self.stack[index].clone());
+                        self.stack.push(self.stack[index + 1].clone());
+                    }
+                    Opcode::Add => self.binary(Self::add)?,
+                    Opcode::Subtract => self.numeric(|a, b| a - b)?,
+                    Opcode::Multiply => self.numeric(|a, b| a * b)?,
+                    Opcode::Divide => self.numeric(|a, b| a / b)?,
+                    Opcode::Remainder => self.numeric(|a, b| a % b)?,
+                    Opcode::StrictEqual => self.binary(|_, a, b| Ok(Value::Bool(a == b)))?,
+                    Opcode::StrictNotEqual => self.binary(|_, a, b| Ok(Value::Bool(a != b)))?,
+                    Opcode::Equal => {
+                        self.binary(|vm, a, b| vm.loose_equal(a, b).map(Value::Bool))?
+                    }
+                    Opcode::NotEqual => self
+                        .binary(|vm, a, b| vm.loose_equal(a, b).map(|equal| Value::Bool(!equal)))?,
+                    Opcode::Instanceof => self.binary(|vm, value, target| {
+                        vm.has_instance(value, target, false).map(Value::Bool)
+                    })?,
+                    Opcode::In => self
+                        .binary(|vm, key, object| vm.property_in(&key, &object).map(Value::Bool))?,
+                    Opcode::Less => self.relational(|order| order == Ordering::Less)?,
+                    Opcode::Greater => self.relational(|order| order == Ordering::Greater)?,
+                    Opcode::LessEqual => self.relational(|order| order != Ordering::Greater)?,
+                    Opcode::GreaterEqual => self.relational(|order| order != Ordering::Less)?,
+                    Opcode::Negate
+                    | Opcode::ToNumber
+                    | Opcode::ToString
+                    | Opcode::Not
+                    | Opcode::Typeof => {
+                        let arg = self.stack.last().unwrap().clone();
+                        let value = match instruction.opcode {
+                            Opcode::Negate => Value::Number(-self.coerce_number(&arg)?),
+                            Opcode::ToNumber => Value::Number(self.coerce_number(&arg)?),
+                            Opcode::ToString => Value::String(self.coerce_string(&arg)?),
+                            Opcode::Not => Value::Bool(!primitive::truthy(&arg)),
+                            _ => {
+                                let callable = self.is_callable(&arg)?;
+                                Value::String(
+                                    if callable {
+                                        "function"
+                                    } else {
+                                        primitive::type_name(&arg)
+                                    }
+                                    .into(),
+                                )
                             }
+                        };
+                        self.check_string(&value)?;
+                        self.pop();
+                        self.stack.push(value);
+                    }
+                    Opcode::Jump => pc = operand,
+                    Opcode::JumpIfFalse | Opcode::JumpIfTrue | Opcode::JumpIfNotNullish => {
+                        let arg = self.pop();
+                        let take = match instruction.opcode {
+                            Opcode::JumpIfFalse => !primitive::truthy(&arg),
+                            Opcode::JumpIfTrue => primitive::truthy(&arg),
+                            _ => !matches!(arg, Value::Null | Value::Undefined),
+                        };
+                        if take {
+                            pc = operand;
                         }
                     }
-                    self.define_data(id, "name", Value::String(child.function_name.clone().into()), false, false, true)?;
-                    self.define_data(id, "length", Value::Number(child.function_length as f64), false, false, true)?;
-                    if child.constructible {
-                        let object_prototype = self.object_prototype;
-                        let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-                        self.define_data(id, "prototype", Value::Object(prototype), !child.class_constructor, false, false)?;
-                        self.define_data(prototype, "constructor", Value::Object(id), true, false, true)?;
+                    Opcode::NewObject => {
+                        let prototype = self.object_prototype;
+                        let id = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+                        self.stack.push(Value::Object(id));
                     }
-                }
-                Opcode::This => {
-                    if self.this == Value::Undefined && self.call_depth == 0 {
-                        self.this = self.global("globalThis")?;
+                    Opcode::NewArray => {
+                        let prototype = self.array_prototype;
+                        let id = self
+                            .with_roots(|heap| heap.alloc_array(operand as u32, Some(prototype)))?;
+                        self.stack.push(Value::Object(id));
                     }
-                    self.stack.push(self.this.clone());
-                }
-                Opcode::Argument => self.stack.push(native::argument(&self.arguments, operand).clone()),
-                Opcode::RestArguments => {
-                    let array = self.array_from(self.arguments.iter().skip(operand).cloned().collect())?;
-                    self.stack.push(array);
-                }
-                Opcode::Return => return Ok(Some(Completion::Return(self.pop()))),
-                Opcode::TailRecur => {
-                    let base = self.stack.len() - operand;
-                    let args = self.stack[base..].to_vec();
-                    self.stack.truncate(base);
-                    return Ok(Some(Completion::TailRecur(args)));
-                }
-                Opcode::Yield => {
-                    if !code.generator || !handlers.is_empty() {
-                        return Err(RuntimeError::TypeError("yield is not supported in this execution context".into()));
-                    }
-                    return Ok(Some(Completion::Yield(self.pop())));
-                }
-                Opcode::EnterWith => {
-                    let object = self.pop();
-                    let object = self.coerce_object(&object)?;
-                    self.with_objects.push(Value::Object(object));
-                }
-                Opcode::LeaveWith => {
-                    self.with_objects.pop().expect("compiler balances with scopes");
-                }
-                Opcode::WithGet => {
-                    let Value::String(name) = &code.constants[operand] else { unreachable!("compiler emits a name") };
-                    let value = self.with_get(&name.to_utf8().expect("compiler emits a UTF-8 identifier"))?;
-                    self.stack.push(value);
-                }
-                Opcode::WithSet => {
-                    let Value::String(name) = &code.constants[operand] else { unreachable!("compiler emits a name") };
-                    self.with_set(&name.to_utf8().expect("compiler emits a UTF-8 identifier"), self.stack.last().expect("assignment has a value").clone())?;
-                }
-                Opcode::Global => {
-                    let Value::String(name) = &code.constants[operand] else { unreachable!() };
-                    let value = self.global(&name.to_utf8().unwrap())?;
-                    self.stack.push(value);
-                }
-                Opcode::ToPropertyKey => {
-                    let value = self.stack.last().unwrap().clone();
-                    let key = self.coerce_property_key(&value)?;
-                    self.pop();
-                    self.stack.push(key.value());
-                }
-                Opcode::Constant => {
-                    self.check_string(&code.constants[operand])?;
-                    self.stack.push(code.constants[operand].clone());
-                }
-                Opcode::GlobalString => {
-                    let (constructor, _) = self.string_intrinsics()?;
-                    self.stack.push(Value::Object(constructor));
-                }
-                Opcode::GetBinding => {
-                    let value = self.binding_value(operand)?.ok_or_else(|| RuntimeError::ReferenceError(code.bindings[operand].name.clone()))?;
-                    self.stack.push(value);
-                }
-                Opcode::InitializeBinding => {
-                    let value = self.pop();
-                    self.store_binding(operand, value)?;
-                }
-                Opcode::StoreBinding => {
-                    // ECMA-262 §9.1.1.1.5: TDZ takes precedence over the
-                    // immutable-binding assignment error, including const.
-                    if self.binding_value(operand)?.is_none() {
-                        return Err(RuntimeError::ReferenceError(code.bindings[operand].name.clone()));
-                    }
-                    if !code.bindings[operand].mutable {
-                        return Err(RuntimeError::TypeError(format!("assignment to constant {}", code.bindings[operand].name)));
-                    }
-                    self.store_binding(operand, self.stack.last().expect("store has a value").clone())?;
-                }
-                Opcode::UnboundName | Opcode::TypeofName => {
-                    let Value::String(name) = &code.constants[operand] else { unreachable!("compiler emits a name") };
-                    let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                    let value = self.lookup_global_name(&name)?;
-                    if instruction.opcode == Opcode::TypeofName {
-                        let value = value.unwrap_or(Value::Undefined);
-                        self.stack.push(Value::String(self.typeof_value(&value)?.into()));
-                    } else {
-                        self.stack.push(value.ok_or(RuntimeError::ReferenceError(name))?);
-                    }
-                }
-                Opcode::EnterScope => {
-                    for slot in &code.scopes[operand] {
-                        self.cells.remove(&(*slot as usize));
-                        self.bindings[*slot as usize] =
-                            if !code.bindings[*slot as usize].lexical { Some(Value::Undefined) } else { None };
-                    }
-                    self.active_scopes.push(operand as u32);
-                    self.active_scope_slots.push(code.scopes[operand].clone());
-                }
-                Opcode::LeaveScope => self.leave_scope(code, operand as u32),
-                Opcode::Pop => {
-                    self.pop();
-                }
-                Opcode::Dup => self.stack.push(self.stack.last().expect("dup has a value").clone()),
-                Opcode::Dup2 => {
-                    let index = self.stack.len() - 2;
-                    self.stack.push(self.stack[index].clone());
-                    self.stack.push(self.stack[index + 1].clone());
-                }
-                Opcode::Add => self.binary(Self::add)?,
-                Opcode::Subtract => self.numeric(|a, b| a - b)?,
-                Opcode::Multiply => self.numeric(|a, b| a * b)?,
-                Opcode::Divide => self.numeric(|a, b| a / b)?,
-                Opcode::Remainder => self.numeric(|a, b| a % b)?,
-                Opcode::StrictEqual => self.binary(|_, a, b| Ok(Value::Bool(a == b)))?,
-                Opcode::StrictNotEqual => self.binary(|_, a, b| Ok(Value::Bool(a != b)))?,
-                Opcode::Equal => self.binary(|vm, a, b| vm.loose_equal(a, b).map(Value::Bool))?,
-                Opcode::NotEqual => self.binary(|vm, a, b| vm.loose_equal(a, b).map(|equal| Value::Bool(!equal)))?,
-                Opcode::Instanceof => self.binary(|vm, value, target| vm.has_instance(value, target, false).map(Value::Bool))?,
-                Opcode::In => self.binary(|vm, key, object| vm.property_in(&key, &object).map(Value::Bool))?,
-                Opcode::Less => self.relational(|order| order == Ordering::Less)?,
-                Opcode::Greater => self.relational(|order| order == Ordering::Greater)?,
-                Opcode::LessEqual => self.relational(|order| order != Ordering::Greater)?,
-                Opcode::GreaterEqual => self.relational(|order| order != Ordering::Less)?,
-                Opcode::Negate | Opcode::ToNumber | Opcode::ToString | Opcode::Not | Opcode::Typeof => {
-                    let arg = self.stack.last().unwrap().clone();
-                    let value = match instruction.opcode {
-                        Opcode::Negate => Value::Number(-self.coerce_number(&arg)?),
-                        Opcode::ToNumber => Value::Number(self.coerce_number(&arg)?),
-                        Opcode::ToString => Value::String(self.coerce_string(&arg)?),
-                        Opcode::Not => Value::Bool(!primitive::truthy(&arg)),
-                        _ => {
-                            let callable = self.is_callable(&arg)?;
-                            Value::String(if callable { "function" } else { primitive::type_name(&arg) }.into())
+                    Opcode::GetProperty | Opcode::GetMethod => {
+                        let (receiver, key) = self.property_reference()?;
+                        let value = self.get_property(&receiver, &key)?;
+                        self.check_string(&value)?;
+                        self.stack.push(value);
+                        if instruction.opcode == Opcode::GetMethod {
+                            self.stack.push(receiver);
                         }
-                    };
-                    self.check_string(&value)?;
-                    self.pop();
-                    self.stack.push(value);
-                }
-                Opcode::Jump => pc = operand,
-                Opcode::JumpIfFalse | Opcode::JumpIfTrue | Opcode::JumpIfNotNullish => {
-                    let arg = self.pop();
-                    let take = match instruction.opcode {
-                        Opcode::JumpIfFalse => !primitive::truthy(&arg),
-                        Opcode::JumpIfTrue => primitive::truthy(&arg),
-                        _ => !matches!(arg, Value::Null | Value::Undefined),
-                    };
-                    if take {
-                        pc = operand;
                     }
-                }
-                Opcode::NewObject => {
-                    let prototype = self.object_prototype;
-                    let id = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-                    self.stack.push(Value::Object(id));
-                }
-                Opcode::NewArray => {
-                    let prototype = self.array_prototype;
-                    let id = self.with_roots(|heap| heap.alloc_array(operand as u32, Some(prototype)))?;
-                    self.stack.push(Value::Object(id));
-                }
-                Opcode::GetProperty | Opcode::GetMethod => {
-                    let (receiver, key) = self.property_reference()?;
-                    let value = self.get_property(&receiver, &key)?;
-                    self.check_string(&value)?;
-                    self.stack.push(value);
-                    if instruction.opcode == Opcode::GetMethod {
-                        self.stack.push(receiver);
+                    Opcode::Call | Opcode::Construct => {
+                        // Leave every call input on the stack until dispatch
+                        // completes, so native allocations see all GC roots.
+                        let base = self.stack.len() - operand - 2;
+                        let result = self.call_native(
+                            self.stack[base].clone(),
+                            self.stack[base + 1].clone(),
+                            self.stack[base + 2..].to_vec(),
+                            instruction.opcode == Opcode::Construct,
+                        )?;
+                        self.check_string(&result)?;
+                        self.stack.truncate(base);
+                        self.stack.push(result);
                     }
-                }
-                Opcode::Call | Opcode::Construct => {
-                    // Leave every call input on the stack until dispatch
-                    // completes, so native allocations see all GC roots.
-                    let base = self.stack.len() - operand - 2;
-                    let result =
-                        self.call_native(self.stack[base].clone(), self.stack[base + 1].clone(), self.stack[base + 2..].to_vec(), instruction.opcode == Opcode::Construct)?;
-                    self.check_string(&result)?;
-                    self.stack.truncate(base);
-                    self.stack.push(result);
-                }
-                Opcode::SetProperty => {
-                    let value = self.pop();
-                    let (object, key) = self.property_reference()?;
-                    self.set_property(&object, &key, &value)?;
-                    self.stack.push(value);
-                }
-                Opcode::SetDestructureProperty => {
-                    // A destructuring leaf has already produced its value;
-                    // evaluating a member target appends its object/key after
-                    // that value. Preserve the value for the caller to pop.
-                    let base = self.stack.len() - 3;
-                    let value = self.stack[base].clone();
-                    let object = self.stack[base + 1].clone();
-                    let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
-                    self.set_property(&object, &key, &value)?;
-                    self.stack.truncate(base);
-                    self.stack.push(value);
-                }
-                Opcode::UpdateProperty => {
-                    let (object, key) = self.property_reference()?;
-                    self.stack.push(object.clone());
-                    let old = self.get_property(&object, &key)?;
-                    let old = self.coerce_number(&old)?;
-                    let new = if operand & 1 == 0 { old + 1.0 } else { old - 1.0 };
-                    self.set_property(&object, &key, &Value::Number(new))?;
-                    self.stack.pop();
-                    self.stack.push(Value::Number(if operand & 2 == 0 { old } else { new }));
-                }
-                Opcode::SetLiteralPrototype => {
-                    let value = self.pop();
-                    let Value::Object(object) = self.pop() else { unreachable!("literal receiver is an object") };
-                    match value {
-                        Value::Object(prototype) => self.heap.set_prototype(object, Some(prototype))?,
-                        Value::Null => self.heap.set_prototype(object, None)?,
-                        _ => {} // Literal __proto__ with a primitive value has no effect.
+                    Opcode::SetProperty => {
+                        let value = self.pop();
+                        let (object, key) = self.property_reference()?;
+                        self.set_property(&object, &key, &value)?;
+                        self.stack.push(value);
                     }
+                    Opcode::SetDestructureProperty => {
+                        // A destructuring leaf has already produced its value;
+                        // evaluating a member target appends its object/key after
+                        // that value. Preserve the value for the caller to pop.
+                        let base = self.stack.len() - 3;
+                        let value = self.stack[base].clone();
+                        let object = self.stack[base + 1].clone();
+                        let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
+                        self.set_property(&object, &key, &value)?;
+                        self.stack.truncate(base);
+                        self.stack.push(value);
+                    }
+                    Opcode::UpdateProperty => {
+                        let (object, key) = self.property_reference()?;
+                        self.stack.push(object.clone());
+                        let old = self.get_property(&object, &key)?;
+                        let old = self.coerce_number(&old)?;
+                        let new = if operand & 1 == 0 {
+                            old + 1.0
+                        } else {
+                            old - 1.0
+                        };
+                        self.set_property(&object, &key, &Value::Number(new))?;
+                        self.stack.pop();
+                        self.stack
+                            .push(Value::Number(if operand & 2 == 0 { old } else { new }));
+                    }
+                    Opcode::SetLiteralPrototype => {
+                        let value = self.pop();
+                        let Value::Object(object) = self.pop() else {
+                            unreachable!("literal receiver is an object")
+                        };
+                        match value {
+                            Value::Object(prototype) => {
+                                self.heap.set_prototype(object, Some(prototype))?
+                            }
+                            Value::Null => self.heap.set_prototype(object, None)?,
+                            _ => {} // Literal __proto__ with a primitive value has no effect.
+                        }
+                    }
+                    Opcode::SetCompletion => {
+                        self.completion = self.pop();
+                        self.completion_empty = false;
+                    }
+                    Opcode::ClearCompletion => {
+                        self.completion = Value::Undefined;
+                        self.completion_empty = true;
+                    }
+                    Opcode::PushHandler => {
+                        debug_assert!(operand < code.handlers.len());
+                        handlers.push(HandlerFrame {
+                            metadata: operand,
+                            stack_depth: self.stack.len(),
+                            scope_depth: self.active_scopes.len(),
+                            iterator_depth: iterators.len(),
+                            with_depth: self.with_objects.len(),
+                            state: HandlerState::Try,
+                            pending: None,
+                        });
+                    }
+                    Opcode::PopHandler => {
+                        handlers
+                            .pop()
+                            .expect("compiler pops its active try handler");
+                    }
+                    Opcode::SaveCompletion => self
+                        .completion_saves
+                        .push((self.completion.clone(), self.completion_empty)),
+                    Opcode::ResumeCompletion => return Ok(Some(Completion::Resume(operand))),
+                    Opcode::AbruptJump => {
+                        let jump = &code.abrupt_jumps[operand];
+                        return Ok(Some(Completion::Jump {
+                            cleanup: jump.cleanup as usize,
+                            target: jump.target as usize,
+                        }));
+                    }
+                    Opcode::Halt => return Ok(Some(Completion::Halt(self.completion.clone()))),
                 }
-                Opcode::SetCompletion => {
-                    self.completion = self.pop();
-                    self.completion_empty = false;
-                }
-                Opcode::ClearCompletion => {
-                    self.completion = Value::Undefined;
-                    self.completion_empty = true;
-                }
-                Opcode::PushHandler => {
-                    debug_assert!(operand < code.handlers.len());
-                    handlers.push(HandlerFrame {
-                        metadata: operand,
-                        stack_depth: self.stack.len(),
-                        scope_depth: self.active_scopes.len(),
-                        iterator_depth: iterators.len(),
-                        with_depth: self.with_objects.len(),
-                        state: HandlerState::Try,
-                        pending: None,
-                    });
-                }
-                Opcode::PopHandler => {
-                    handlers.pop().expect("compiler pops its active try handler");
-                }
-                Opcode::SaveCompletion => self.completion_saves.push((self.completion.clone(), self.completion_empty)),
-                Opcode::ResumeCompletion => return Ok(Some(Completion::Resume(operand))),
-                Opcode::AbruptJump => {
-                    let jump = &code.abrupt_jumps[operand];
-                    return Ok(Some(Completion::Jump { cleanup: jump.cleanup as usize, target: jump.target as usize }));
-                }
-                Opcode::Halt => return Ok(Some(Completion::Halt(self.completion.clone()))),
-            }
-            Ok(None)
+                Ok(None)
             })();
             let completion = match outcome {
                 Ok(completion) => completion,
@@ -1166,7 +1455,11 @@ impl Vm {
         Ok(())
     }
 
-    fn get_property(&mut self, receiver: &Value, key: &PropertyName) -> Result<Value, RuntimeError> {
+    fn get_property(
+        &mut self,
+        receiver: &Value,
+        key: &PropertyName,
+    ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
         self.stack.push(receiver.clone());
         let result = self.get_property_value(receiver, key);
@@ -1174,7 +1467,11 @@ impl Vm {
         result
     }
 
-    fn get_property_value(&mut self, receiver: &Value, key: &PropertyName) -> Result<Value, RuntimeError> {
+    fn get_property_value(
+        &mut self,
+        receiver: &Value,
+        key: &PropertyName,
+    ) -> Result<Value, RuntimeError> {
         match receiver {
             Value::Object(id) => {
                 if self.string_intrinsics.is_none()
@@ -1198,20 +1495,30 @@ impl Vm {
                 let (_, prototype) = self.string_intrinsics()?;
                 self.get_from_prototype(prototype, receiver, key)
             }
-            Value::Null | Value::Undefined => Err(RuntimeError::TypeError("cannot access a property of null or undefined".into())),
+            Value::Null | Value::Undefined => Err(RuntimeError::TypeError(
+                "cannot access a property of null or undefined".into(),
+            )),
             _ => {
                 let constructor = self.global(match receiver {
                     Value::Symbol(_) => "Symbol",
                     Value::Bool(_) => "Boolean",
                     _ => "Number",
                 })?;
-                let prototype = self.get_property(&constructor, &"prototype".into())?.object_id().unwrap();
+                let prototype = self
+                    .get_property(&constructor, &"prototype".into())?
+                    .object_id()
+                    .unwrap();
                 self.get_from_prototype(prototype, receiver, key)
             }
         }
     }
 
-    fn set_property(&mut self, receiver: &Value, key: &PropertyName, value: &Value) -> Result<(), RuntimeError> {
+    fn set_property(
+        &mut self,
+        receiver: &Value,
+        key: &PropertyName,
+        value: &Value,
+    ) -> Result<(), RuntimeError> {
         let base = self.stack.len();
         self.stack.extend([receiver.clone(), value.clone()]);
         let result = self.set_property_value(receiver, key, value);
@@ -1219,7 +1526,12 @@ impl Vm {
         result
     }
 
-    fn set_property_value(&mut self, receiver: &Value, key: &PropertyName, value: &Value) -> Result<(), RuntimeError> {
+    fn set_property_value(
+        &mut self,
+        receiver: &Value,
+        key: &PropertyName,
+        value: &Value,
+    ) -> Result<(), RuntimeError> {
         // ToObject provides the lookup chain; accessor calls retain the
         // original primitive receiver. Creating a data property still fails.
         let object = self.coerce_object(receiver)?;
@@ -1233,23 +1545,43 @@ impl Vm {
                         self.call_native(setter, receiver.clone(), vec![value.clone()], false)?;
                         return Ok(());
                     }
-                    return if self.strict { Err(RuntimeError::TypeError("property has no setter".into())) } else { Ok(()) };
+                    return if self.strict {
+                        Err(RuntimeError::TypeError("property has no setter".into()))
+                    } else {
+                        Ok(())
+                    };
                 }
                 if desc.writable == Some(false) {
-                    return if self.strict { Err(RuntimeError::TypeError("property is read-only".into())) } else { Ok(()) };
+                    return if self.strict {
+                        Err(RuntimeError::TypeError("property is read-only".into()))
+                    } else {
+                        Ok(())
+                    };
                 }
                 break;
             }
             current = self.heap.prototype(id)?;
         }
         if !matches!(receiver, Value::Object(_)) {
-            return if self.strict { Err(RuntimeError::TypeError("cannot assign to primitive property".into())) } else { Ok(()) };
+            return if self.strict {
+                Err(RuntimeError::TypeError(
+                    "cannot assign to primitive property".into(),
+                ))
+            } else {
+                Ok(())
+            };
         }
-        let stored = if key == "length" && self.heap.is_array(object)? { self.array_length_value(value)? } else { value.clone() };
+        let stored = if key == "length" && self.heap.is_array(object)? {
+            self.array_length_value(value)?
+        } else {
+            value.clone()
+        };
         match self.with_roots(|heap| heap.set(object, key, stored)) {
             Err(RuntimeError::Heap(HeapError::ReadOnlyProperty)) => {
                 if self.strict {
-                    Err(RuntimeError::TypeError("property cannot be assigned".into()))
+                    Err(RuntimeError::TypeError(
+                        "property cannot be assigned".into(),
+                    ))
                 } else {
                     Ok(())
                 }
@@ -1262,26 +1594,46 @@ impl Vm {
         let key = self.pop();
         let key = self.coerce_property_key(&key)?;
         match self.pop() {
-            Value::Null | Value::Undefined => Err(RuntimeError::TypeError("cannot access a property of null or undefined".into())),
+            Value::Null | Value::Undefined => Err(RuntimeError::TypeError(
+                "cannot access a property of null or undefined".into(),
+            )),
             receiver => Ok((receiver, key)),
         }
     }
 
     fn set_class_heritage(&mut self) -> Result<(), RuntimeError> {
         let base = self.pop();
-        let class = self.stack.last().expect("class closure remains on the stack").object_id().expect("compiler emits a class closure before heritage");
-        let prototype = self.heap.get(class, "prototype")?.object_id().expect("class constructors have a prototype object");
+        let class = self
+            .stack
+            .last()
+            .expect("class closure remains on the stack")
+            .object_id()
+            .expect("compiler emits a class closure before heritage");
+        let prototype = self
+            .heap
+            .get(class, "prototype")?
+            .object_id()
+            .expect("class constructors have a prototype object");
         let (constructor_parent, instance_parent) = match &base {
             Value::Null => (None, None),
             Value::Object(base) if self.is_constructor(&Value::Object(*base))? => {
-                let instance_parent = match self.get_property(&Value::Object(*base), &"prototype".into())? {
-                    Value::Object(prototype) => Some(prototype),
-                    Value::Null => None,
-                    _ => return Err(RuntimeError::TypeError("superclass prototype must be an object or null".into())),
-                };
+                let instance_parent =
+                    match self.get_property(&Value::Object(*base), &"prototype".into())? {
+                        Value::Object(prototype) => Some(prototype),
+                        Value::Null => None,
+                        _ => {
+                            return Err(RuntimeError::TypeError(
+                                "superclass prototype must be an object or null".into(),
+                            ))
+                        }
+                    };
                 (Some(*base), instance_parent)
             }
-            _ => return Err(RuntimeError::TypeError("class extends value is not a constructor or null".into())),
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "class extends value is not a constructor or null".into(),
+                ))
+            }
         };
         self.heap.set_prototype(class, constructor_parent)?;
         self.heap.set_prototype(prototype, instance_parent)?;
@@ -1291,15 +1643,28 @@ impl Vm {
     }
 
     fn set_class_home(&mut self) -> Result<(), RuntimeError> {
-        let class = self.stack.last().expect("class closure remains on the stack").object_id().expect("compiler emits a class closure before setting its home object");
-        let prototype = self.heap.get(class, "prototype")?.object_id().expect("class constructors have a prototype object");
+        let class = self
+            .stack
+            .last()
+            .expect("class closure remains on the stack")
+            .object_id()
+            .expect("compiler emits a class closure before setting its home object");
+        let prototype = self
+            .heap
+            .get(class, "prototype")?
+            .object_id()
+            .expect("class constructors have a prototype object");
         self.with_roots(|heap| heap.set_closure_home(class, prototype))?;
         Ok(())
     }
 
     fn super_base(&self) -> Result<ObjectId, RuntimeError> {
-        let home = self.home_object.ok_or_else(|| RuntimeError::TypeError("super is not available in this function".into()))?;
-        self.heap.prototype(home)?.ok_or_else(|| RuntimeError::TypeError("superclass is null".into()))
+        let home = self.home_object.ok_or_else(|| {
+            RuntimeError::TypeError("super is not available in this function".into())
+        })?;
+        self.heap
+            .prototype(home)?
+            .ok_or_else(|| RuntimeError::TypeError("superclass is null".into()))
     }
 
     fn super_get(&mut self, key: &PropertyName) -> Result<Value, RuntimeError> {
@@ -1318,28 +1683,45 @@ impl Vm {
                         self.call_native(setter, self.this.clone(), vec![value.clone()], false)?;
                         return Ok(());
                     }
-                    return Err(RuntimeError::TypeError("super property has no setter".into()));
+                    return Err(RuntimeError::TypeError(
+                        "super property has no setter".into(),
+                    ));
                 }
                 if descriptor.writable == Some(false) {
-                    return Err(RuntimeError::TypeError("super property is read-only".into()));
+                    return Err(RuntimeError::TypeError(
+                        "super property is read-only".into(),
+                    ));
                 }
                 break;
             }
             current = self.heap.prototype(object)?;
         }
         let Value::Object(receiver) = self.this else {
-            return Err(RuntimeError::ReferenceError("this is uninitialized before super()".into()));
+            return Err(RuntimeError::ReferenceError(
+                "this is uninitialized before super()".into(),
+            ));
         };
-        self.with_roots(|heap| heap.set(receiver, key, value.clone())).map_err(|error| match error { RuntimeError::Heap(HeapError::ReadOnlyProperty) => RuntimeError::TypeError("super property cannot be assigned".into()), error => error })
+        self.with_roots(|heap| heap.set(receiver, key, value.clone()))
+            .map_err(|error| match error {
+                RuntimeError::Heap(HeapError::ReadOnlyProperty) => {
+                    RuntimeError::TypeError("super property cannot be assigned".into())
+                }
+                error => error,
+            })
     }
 
     fn super_call(&mut self, args: Vec<Value>) -> Result<Value, RuntimeError> {
-        let constructor = self.class_constructor.ok_or_else(|| RuntimeError::TypeError("super() is not available in this function".into()))?;
-        let base = self.heap.class_base(constructor)?.ok_or_else(|| RuntimeError::TypeError("super() requires a derived constructor".into()))?;
+        let constructor = self.class_constructor.ok_or_else(|| {
+            RuntimeError::TypeError("super() is not available in this function".into())
+        })?;
+        let base = self.heap.class_base(constructor)?.ok_or_else(|| {
+            RuntimeError::TypeError("super() requires a derived constructor".into())
+        })?;
         if matches!(base, Value::Null) {
             return Err(RuntimeError::TypeError("super constructor is null".into()));
         }
-        let value = self.call_with_target(base, Value::Undefined, args, true, self.new_target.clone())?;
+        let value =
+            self.call_with_target(base, Value::Undefined, args, true, self.new_target.clone())?;
         self.this = value.clone();
         Ok(value)
     }
@@ -1347,7 +1729,11 @@ impl Vm {
     /// compiler supplies an internal array of already-coerced excluded keys;
     /// getters are read from the original source object and copied as normal
     /// enumerable data properties onto a fresh ordinary object.
-    fn destructure_object_rest(&mut self, source: &Value, excluded: &Value) -> Result<Value, RuntimeError> {
+    fn destructure_object_rest(
+        &mut self,
+        source: &Value,
+        excluded: &Value,
+    ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
         let result = (|| {
             let length_value = self.get_property(excluded, &"length".into())?;
@@ -1372,7 +1758,12 @@ impl Vm {
     /// The enumerable-property portion of CopyDataProperties.  Object spread
     /// skips nullish sources, while object-rest has already performed
     /// RequireObjectCoercible before arriving here.
-    fn copy_data_properties(&mut self, target: ObjectId, source: &Value, excluded: &[PropertyName]) -> Result<(), RuntimeError> {
+    fn copy_data_properties(
+        &mut self,
+        target: ObjectId,
+        source: &Value,
+        excluded: &[PropertyName],
+    ) -> Result<(), RuntimeError> {
         if matches!(source, Value::Null | Value::Undefined) {
             return Ok(());
         }
@@ -1385,12 +1776,21 @@ impl Vm {
                 if excluded.iter().any(|excluded| excluded == &key) {
                     continue;
                 }
-                let descriptor = self.heap.get_own_property_descriptor(source_object, &key)?.expect("own key has an own descriptor");
+                let descriptor = self
+                    .heap
+                    .get_own_property_descriptor(source_object, &key)?
+                    .expect("own key has an own descriptor");
                 if descriptor.enumerable != Some(true) {
                     continue;
                 }
                 let value = self.get_property(&Value::Object(source_object), &key)?;
-                self.with_roots(|heap| heap.define_own_property(target, key, PropertyDescriptor::data(value, true, true, true)))?;
+                self.with_roots(|heap| {
+                    heap.define_own_property(
+                        target,
+                        key,
+                        PropertyDescriptor::data(value, true, true, true),
+                    )
+                })?;
             }
             Ok(())
         })();
@@ -1411,7 +1811,11 @@ impl Vm {
                     continue;
                 }
                 if let PropertyName::String(key) = key {
-                    if self.heap.get_own_property_descriptor(object, PropertyName::String(key.clone()))?.is_some_and(|descriptor| descriptor.enumerable == Some(true)) {
+                    if self
+                        .heap
+                        .get_own_property_descriptor(object, PropertyName::String(key.clone()))?
+                        .is_some_and(|descriptor| descriptor.enumerable == Some(true))
+                    {
                         keys.push(Value::String(key));
                     }
                 }
@@ -1426,30 +1830,150 @@ impl Vm {
             return Ok(intrinsics);
         }
         let object_prototype = self.object_prototype;
-        let function_prototype = self.with_roots(|heap| heap.alloc_native_function(NativeFunction::Empty, "", object_prototype))?;
-        let constructor = self.with_roots(|heap| heap.alloc_native_function(NativeFunction::String, "String", function_prototype))?;
+        let function_prototype = self.with_roots(|heap| {
+            heap.alloc_native_function(NativeFunction::Empty, "", object_prototype)
+        })?;
+        let constructor = self.with_roots(|heap| {
+            heap.alloc_native_function(NativeFunction::String, "String", function_prototype)
+        })?;
         let root = self.heap.root(constructor)?;
         let result = (|| {
-            let prototype = self.with_roots(|heap| heap.alloc_string(JsString::default(), Some(object_prototype)))?;
-            self.define_data(constructor, "prototype", Value::Object(prototype), false, false, false)?;
-            self.define_data(prototype, "constructor", Value::Object(constructor), true, false, true)?;
-            self.define_data(constructor, "name", Value::String("String".into()), false, false, true)?;
-            self.define_data(constructor, "length", Value::Number(1.0), false, false, true)?;
-            self.define_data(function_prototype, "length", Value::Number(0.0), false, false, true)?;
-            self.define_data(function_prototype, "name", Value::String(JsString::default()), false, false, true)?;
-            self.install_native(function_prototype, function_prototype, "call", 1, NativeFunction::Call)?;
-            self.install_native(function_prototype, function_prototype, "apply", 2, NativeFunction::Apply)?;
-            self.install_native(function_prototype, function_prototype, "bind", 1, NativeFunction::Bind)?;
-            self.install_symbol_native(function_prototype, function_prototype, "hasInstance", 1, NativeFunction::HasInstance)?;
-            self.install_native(function_prototype, function_prototype, "toString", 0, NativeFunction::FunctionToString)?;
-            self.install_native(constructor, function_prototype, "fromCharCode", 1, NativeFunction::FromCharCode)?;
-            self.install_native(constructor, function_prototype, "fromCodePoint", 1, NativeFunction::FromCodePoint)?;
-            self.install_native(constructor, function_prototype, "raw", 1, NativeFunction::Raw)?;
-            self.install_native(prototype, function_prototype, "split", 2, NativeFunction::Split)?;
-            self.install_native(prototype, function_prototype, "replace", 2, NativeFunction::Replace)?;
-            self.install_native(prototype, function_prototype, "replaceAll", 2, NativeFunction::ReplaceAll)?;
+            let prototype = self.with_roots(|heap| {
+                heap.alloc_string(JsString::default(), Some(object_prototype))
+            })?;
+            self.define_data(
+                constructor,
+                "prototype",
+                Value::Object(prototype),
+                false,
+                false,
+                false,
+            )?;
+            self.define_data(
+                prototype,
+                "constructor",
+                Value::Object(constructor),
+                true,
+                false,
+                true,
+            )?;
+            self.define_data(
+                constructor,
+                "name",
+                Value::String("String".into()),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                constructor,
+                "length",
+                Value::Number(1.0),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                function_prototype,
+                "length",
+                Value::Number(0.0),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                function_prototype,
+                "name",
+                Value::String(JsString::default()),
+                false,
+                false,
+                true,
+            )?;
+            self.install_native(
+                function_prototype,
+                function_prototype,
+                "call",
+                1,
+                NativeFunction::Call,
+            )?;
+            self.install_native(
+                function_prototype,
+                function_prototype,
+                "apply",
+                2,
+                NativeFunction::Apply,
+            )?;
+            self.install_native(
+                function_prototype,
+                function_prototype,
+                "bind",
+                1,
+                NativeFunction::Bind,
+            )?;
+            self.install_symbol_native(
+                function_prototype,
+                function_prototype,
+                "hasInstance",
+                1,
+                NativeFunction::HasInstance,
+            )?;
+            self.install_native(
+                function_prototype,
+                function_prototype,
+                "toString",
+                0,
+                NativeFunction::FunctionToString,
+            )?;
+            self.install_native(
+                constructor,
+                function_prototype,
+                "fromCharCode",
+                1,
+                NativeFunction::FromCharCode,
+            )?;
+            self.install_native(
+                constructor,
+                function_prototype,
+                "fromCodePoint",
+                1,
+                NativeFunction::FromCodePoint,
+            )?;
+            self.install_native(
+                constructor,
+                function_prototype,
+                "raw",
+                1,
+                NativeFunction::Raw,
+            )?;
+            self.install_native(
+                prototype,
+                function_prototype,
+                "split",
+                2,
+                NativeFunction::Split,
+            )?;
+            self.install_native(
+                prototype,
+                function_prototype,
+                "replace",
+                2,
+                NativeFunction::Replace,
+            )?;
+            self.install_native(
+                prototype,
+                function_prototype,
+                "replaceAll",
+                2,
+                NativeFunction::ReplaceAll,
+            )?;
             for &(name, length, method) in native::STRING_METHODS {
-                self.install_native(prototype, function_prototype, name, length, NativeFunction::StringMethod(method))?;
+                self.install_native(
+                    prototype,
+                    function_prototype,
+                    name,
+                    length,
+                    NativeFunction::StringMethod(method),
+                )?;
             }
             for (name, length, method) in [
                 ("toLocaleLowerCase", 0, NativeFunction::ToLocaleLowerCase),
@@ -1462,18 +1986,82 @@ impl Vm {
                 let function = self.heap.get(prototype, original)?;
                 self.define_data(prototype, alias, function, true, false, true)?;
             }
-            self.install_symbol_native(prototype, function_prototype, "iterator", 0, NativeFunction::StringIterator)?;
-            for (name, method) in [("match", native::PatternMethod::Match), ("matchAll", native::PatternMethod::MatchAll), ("search", native::PatternMethod::Search)] {
-                self.install_native(prototype, function_prototype, name, 1, NativeFunction::Pattern(method))?;
+            self.install_symbol_native(
+                prototype,
+                function_prototype,
+                "iterator",
+                0,
+                NativeFunction::StringIterator,
+            )?;
+            for (name, method) in [
+                ("match", native::PatternMethod::Match),
+                ("matchAll", native::PatternMethod::MatchAll),
+                ("search", native::PatternMethod::Search),
+            ] {
+                self.install_native(
+                    prototype,
+                    function_prototype,
+                    name,
+                    1,
+                    NativeFunction::Pattern(method),
+                )?;
             }
-            self.install_native(object_prototype, function_prototype, "toString", 0, NativeFunction::ObjectToString)?;
-            self.install_native(object_prototype, function_prototype, "valueOf", 0, NativeFunction::ObjectValueOf)?;
-            self.install_native(self.array_prototype, function_prototype, "toString", 0, NativeFunction::ArrayToString)?;
-            self.install_native(self.array_prototype, function_prototype, "concat", 1, NativeFunction::ArrayConcat)?;
-            self.install_native(self.array_prototype, function_prototype, "join", 1, NativeFunction::ArrayJoin)?;
-            self.install_native(self.array_prototype, function_prototype, "forEach", 1, NativeFunction::ArrayForEach)?;
-            self.install_native(self.array_prototype, function_prototype, "includes", 1, NativeFunction::ArrayIncludes)?;
-            self.install_symbol_native(self.array_prototype, function_prototype, "iterator", 0, NativeFunction::ArrayIterator)?;
+            self.install_native(
+                object_prototype,
+                function_prototype,
+                "toString",
+                0,
+                NativeFunction::ObjectToString,
+            )?;
+            self.install_native(
+                object_prototype,
+                function_prototype,
+                "valueOf",
+                0,
+                NativeFunction::ObjectValueOf,
+            )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
+                "toString",
+                0,
+                NativeFunction::ArrayToString,
+            )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
+                "concat",
+                1,
+                NativeFunction::ArrayConcat,
+            )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
+                "join",
+                1,
+                NativeFunction::ArrayJoin,
+            )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
+                "forEach",
+                1,
+                NativeFunction::ArrayForEach,
+            )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
+                "includes",
+                1,
+                NativeFunction::ArrayIncludes,
+            )?;
+            self.install_symbol_native(
+                self.array_prototype,
+                function_prototype,
+                "iterator",
+                0,
+                NativeFunction::ArrayIterator,
+            )?;
             Ok((constructor, prototype))
         })();
         match result {
@@ -1492,7 +2080,10 @@ impl Vm {
                     (self.array_prototype, "join".into()),
                     (self.array_prototype, "forEach".into()),
                     (self.array_prototype, "includes".into()),
-                    (self.array_prototype, JsSymbol::well_known("iterator").into()),
+                    (
+                        self.array_prototype,
+                        JsSymbol::well_known("iterator").into(),
+                    ),
                 ] {
                     self.heap.delete(owner, key)?;
                 }
@@ -1502,12 +2093,26 @@ impl Vm {
         }
     }
 
-    fn install_native(&mut self, owner: ObjectId, prototype: ObjectId, name: &str, length: u32, function: NativeFunction) -> Result<(), RuntimeError> {
+    fn install_native(
+        &mut self,
+        owner: ObjectId,
+        prototype: ObjectId,
+        name: &str,
+        length: u32,
+        function: NativeFunction,
+    ) -> Result<(), RuntimeError> {
         let id = self.with_roots(|heap| heap.alloc_native_function(function, name, prototype))?;
         self.stack.push(Value::Object(id));
         let result = (|| {
             self.define_data(id, "name", Value::String(name.into()), false, false, true)?;
-            self.define_data(id, "length", Value::Number(f64::from(length)), false, false, true)?;
+            self.define_data(
+                id,
+                "length",
+                Value::Number(f64::from(length)),
+                false,
+                false,
+                true,
+            )?;
             self.define_data(owner, name, Value::Object(id), true, false, true)
         })();
         self.stack.pop();
@@ -1515,21 +2120,43 @@ impl Vm {
         Ok(())
     }
 
-    fn call_native(&mut self, callee: Value, receiver: Value, args: Vec<Value>, construct: bool) -> Result<Value, RuntimeError> {
-        let target = if construct { callee.clone() } else { Value::Undefined };
+    fn call_native(
+        &mut self,
+        callee: Value,
+        receiver: Value,
+        args: Vec<Value>,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        let target = if construct {
+            callee.clone()
+        } else {
+            Value::Undefined
+        };
         self.call_with_target(callee, receiver, args, construct, target)
     }
 
-    fn call_with_target(&mut self, callee: Value, receiver: Value, args: Vec<Value>, construct: bool, target: Value) -> Result<Value, RuntimeError> {
+    fn call_with_target(
+        &mut self,
+        callee: Value,
+        receiver: Value,
+        args: Vec<Value>,
+        construct: bool,
+        target: Value,
+    ) -> Result<Value, RuntimeError> {
         if self.call_depth >= 32 {
-            return Err(RuntimeError::RangeError("maximum call depth exceeded".into()));
+            return Err(RuntimeError::RangeError(
+                "maximum call depth exceeded".into(),
+            ));
         }
         // Arrow functions inherit their enclosing `new.target`.  This is
         // observable when a derived-constructor arrow invokes `super()`:
         // the superclass must allocate with the original derived class.
         let arrow = if !construct {
             match callee.object_id() {
-                Some(id) => self.heap.closure(id)?.is_some_and(|(code, _, _, _, _)| code.arrow),
+                Some(id) => self
+                    .heap
+                    .closure(id)?
+                    .is_some_and(|(code, _, _, _, _)| code.arrow),
                 None => false,
             }
         } else {
@@ -1547,25 +2174,37 @@ impl Vm {
         self.stack.push(target.clone());
         let previous_target = std::mem::replace(&mut self.new_target, target);
         self.call_depth += 1;
-        let result = self.dispatch_call(callee, receiver, args, construct).and_then(|value| {
-            self.check_string(&value)?;
-            Ok(value)
-        });
+        let result = self
+            .dispatch_call(callee, receiver, args, construct)
+            .and_then(|value| {
+                self.check_string(&value)?;
+                Ok(value)
+            });
         self.new_target = previous_target;
         self.call_depth -= 1;
         self.stack.truncate(base);
         result
     }
 
-    fn dispatch_call(&mut self, mut callee: Value, mut receiver: Value, mut args: Vec<Value>, construct: bool) -> Result<Value, RuntimeError> {
+    fn dispatch_call(
+        &mut self,
+        mut callee: Value,
+        mut receiver: Value,
+        mut args: Vec<Value>,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
         // Bound wrappers have no execution contexts of their own. Walk them
         // with fuel rather than consuming Rust stack or the JS frame limit.
         let mut prefixes = Vec::new();
         while let Value::Object(id) = callee {
-            let Some(bound) = self.heap.bound_function(id)?.cloned() else { break };
+            let Some(bound) = self.heap.bound_function(id)?.cloned() else {
+                break;
+            };
             self.charge_step()?;
             if construct && !bound.constructible {
-                return Err(RuntimeError::TypeError("bound target is not a constructor".into()));
+                return Err(RuntimeError::TypeError(
+                    "bound target is not a constructor".into(),
+                ));
             }
             if construct && self.new_target == callee {
                 self.new_target = Value::Object(bound.target);
@@ -1582,11 +2221,26 @@ impl Vm {
         if let Value::Object(id) = callee {
             if let Some((code, captures, lexical_this, home, class_base)) = self.heap.closure(id)? {
                 let receiver = if code.arrow { lexical_this } else { receiver };
-                return self.call_closure(builtins::ClosureCall { code, captures, callee, receiver, args, construct, home, class_base });
+                return self.call_closure(builtins::ClosureCall {
+                    code,
+                    captures,
+                    callee,
+                    receiver,
+                    args,
+                    construct,
+                    home,
+                    class_base,
+                });
             }
         }
-        let function = if let Value::Object(id) = callee { self.heap.native_function(id)? } else { None };
-        let Some(function) = function else { return Err(RuntimeError::TypeError("value is not callable".into())) };
+        let function = if let Value::Object(id) = callee {
+            self.heap.native_function(id)?
+        } else {
+            None
+        };
+        let Some(function) = function else {
+            return Err(RuntimeError::TypeError("value is not callable".into()));
+        };
         if construct
             && !matches!(
                 function,
@@ -1616,7 +2270,9 @@ impl Vm {
 
     fn string_receiver(&mut self, value: &Value) -> Result<JsString, RuntimeError> {
         if matches!(value, Value::Null | Value::Undefined) {
-            return Err(RuntimeError::TypeError("String method requires a non-null receiver".into()));
+            return Err(RuntimeError::TypeError(
+                "String method requires a non-null receiver".into(),
+            ));
         }
         self.coerce_string(value)
     }
@@ -1634,10 +2290,18 @@ impl Vm {
         for index in 0..count {
             self.charge_step()?; // A huge array-like length with empty entries must still terminate.
             let literal = self.get_property(&raw, &index.to_string().into())?;
-            native::append(&mut result, &self.coerce_string(&literal)?, self.config.max_string_bytes)?;
+            native::append(
+                &mut result,
+                &self.coerce_string(&literal)?,
+                self.config.max_string_bytes,
+            )?;
             if index + 1 < count {
                 if let Some(substitution) = args.get(index as usize + 1) {
-                    native::append(&mut result, &self.coerce_string(substitution)?, self.config.max_string_bytes)?;
+                    native::append(
+                        &mut result,
+                        &self.coerce_string(substitution)?,
+                        self.config.max_string_bytes,
+                    )?;
                 }
             }
         }
@@ -1646,19 +2310,30 @@ impl Vm {
 
     fn string_split(&mut self, receiver: &Value, args: &[Value]) -> Result<Value, RuntimeError> {
         if matches!(receiver, Value::Null | Value::Undefined) {
-            return Err(RuntimeError::TypeError("String method requires a non-null receiver".into()));
+            return Err(RuntimeError::TypeError(
+                "String method requires a non-null receiver".into(),
+            ));
         }
         let separator = native::argument(args, 0);
         if !matches!(separator, Value::Null | Value::Undefined) {
             let method = self.get_method(separator, &JsSymbol::well_known("split").into())?;
             if method != Value::Undefined {
-                return self.call_native(method, separator.clone(), vec![receiver.clone(), native::argument(args, 1).clone()], false);
+                return self.call_native(
+                    method,
+                    separator.clone(),
+                    vec![receiver.clone(), native::argument(args, 1).clone()],
+                    false,
+                );
             }
         }
         let string = self.string_receiver(receiver)?;
         let separator = native::argument(args, 0);
         let limit = native::argument(args, 1);
-        let limit = if matches!(limit, Value::Undefined) { u32::MAX } else { native::uint32(&Value::Number(self.coerce_number(limit)?))? };
+        let limit = if matches!(limit, Value::Undefined) {
+            u32::MAX
+        } else {
+            native::uint32(&Value::Number(self.coerce_number(limit)?))?
+        };
         // Even a zero limit converts the separator first (§22.1.3.23).
         let search = self.coerce_string(separator)?;
         let prototype = self.array_prototype;
@@ -1677,7 +2352,9 @@ impl Vm {
                 }
                 start + 1
             } else if search.len() <= units.len() {
-                (start..=units.len() - search.len()).find(|&index| units[index..].starts_with(search.as_code_units())).unwrap_or(units.len())
+                (start..=units.len() - search.len())
+                    .find(|&index| units[index..].starts_with(search.as_code_units()))
+                    .unwrap_or(units.len())
             } else {
                 units.len()
             };
@@ -1692,9 +2369,16 @@ impl Vm {
         Ok(Value::Object(array))
     }
 
-    fn string_replace(&mut self, receiver: &Value, args: &[Value], all: bool) -> Result<Value, RuntimeError> {
+    fn string_replace(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+        all: bool,
+    ) -> Result<Value, RuntimeError> {
         if matches!(receiver, Value::Null | Value::Undefined) {
-            return Err(RuntimeError::TypeError("String method requires a non-null receiver".into()));
+            return Err(RuntimeError::TypeError(
+                "String method requires a non-null receiver".into(),
+            ));
         }
         let search = native::argument(args, 0);
         if !matches!(search, Value::Null | Value::Undefined) {
@@ -1703,32 +2387,57 @@ impl Vm {
             }
             let method = self.get_method(search, &JsSymbol::well_known("replace").into())?;
             if method != Value::Undefined {
-                return self.call_native(method, search.clone(), vec![receiver.clone(), native::argument(args, 1).clone()], false);
+                return self.call_native(
+                    method,
+                    search.clone(),
+                    vec![receiver.clone(), native::argument(args, 1).clone()],
+                    false,
+                );
             }
         }
         let string = self.string_receiver(receiver)?;
         let search = self.coerce_string(native::argument(args, 0))?;
         let replace = native::argument(args, 1);
         let callable = self.is_callable(replace)?;
-        let template = if callable { JsString::default() } else { self.coerce_string(replace)? };
+        let template = if callable {
+            JsString::default()
+        } else {
+            self.coerce_string(replace)?
+        };
         let mut result = JsString::default();
         let mut end = 0;
         let mut next = 0;
         if search.len() <= string.len() {
-            while let Some(position) = (next..=string.len() - search.len()).find(|&index| string.as_code_units()[index..].starts_with(search.as_code_units())) {
+            while let Some(position) = (next..=string.len() - search.len())
+                .find(|&index| string.as_code_units()[index..].starts_with(search.as_code_units()))
+            {
                 self.charge_step()?;
                 let replacement = if callable {
                     let value = self.call_native(
                         replace.clone(),
                         Value::Undefined,
-                        vec![Value::String(search.clone()), Value::Number(position as f64), Value::String(string.clone())],
+                        vec![
+                            Value::String(search.clone()),
+                            Value::Number(position as f64),
+                            Value::String(string.clone()),
+                        ],
                         false,
                     )?;
                     self.coerce_string(&value)?
                 } else {
-                    native::substitution(&string, &search, position, &template, self.config.max_string_bytes)?
+                    native::substitution(
+                        &string,
+                        &search,
+                        position,
+                        &template,
+                        self.config.max_string_bytes,
+                    )?
                 };
-                native::append(&mut result, &JsString::from_code_units(string.as_code_units()[end..position].to_vec()), self.config.max_string_bytes)?;
+                native::append(
+                    &mut result,
+                    &JsString::from_code_units(string.as_code_units()[end..position].to_vec()),
+                    self.config.max_string_bytes,
+                )?;
                 native::append(&mut result, &replacement, self.config.max_string_bytes)?;
                 end = position + search.len();
                 if !all {
@@ -1737,11 +2446,18 @@ impl Vm {
                 next = position + search.len().max(1);
             }
         }
-        native::append(&mut result, &JsString::from_code_units(string.as_code_units()[end..].to_vec()), self.config.max_string_bytes)?;
+        native::append(
+            &mut result,
+            &JsString::from_code_units(string.as_code_units()[end..].to_vec()),
+            self.config.max_string_bytes,
+        )?;
         Ok(Value::String(result))
     }
 
-    fn binary(&mut self, operation: impl FnOnce(&mut Self, Value, Value) -> Result<Value, RuntimeError>) -> Result<(), RuntimeError> {
+    fn binary(
+        &mut self,
+        operation: impl FnOnce(&mut Self, Value, Value) -> Result<Value, RuntimeError>,
+    ) -> Result<(), RuntimeError> {
         let base = self.stack.len() - 2;
         let value = operation(self, self.stack[base].clone(), self.stack[base + 1].clone())?;
         self.stack.truncate(base);
@@ -1750,7 +2466,12 @@ impl Vm {
     }
 
     fn numeric(&mut self, operation: fn(f64, f64) -> f64) -> Result<(), RuntimeError> {
-        self.binary(|vm, a, b| Ok(Value::Number(operation(vm.coerce_number(&a)?, vm.coerce_number(&b)?))))
+        self.binary(|vm, a, b| {
+            Ok(Value::Number(operation(
+                vm.coerce_number(&a)?,
+                vm.coerce_number(&b)?,
+            )))
+        })
     }
 
     fn relational(&mut self, accept: fn(Ordering) -> bool) -> Result<(), RuntimeError> {
@@ -1765,19 +2486,36 @@ impl Vm {
         if std::mem::discriminant(&left) == std::mem::discriminant(&right) {
             return Ok(left == right);
         }
-        if matches!((&left, &right), (Value::Null, Value::Undefined) | (Value::Undefined, Value::Null)) {
+        if matches!(
+            (&left, &right),
+            (Value::Null, Value::Undefined) | (Value::Undefined, Value::Null)
+        ) {
             return Ok(true);
         }
         match (left, right) {
-            (Value::Number(left), Value::String(right)) => Ok(left == primitive::number(&Value::String(right))?),
-            (Value::String(left), Value::Number(right)) => Ok(primitive::number(&Value::String(left))? == right),
-            (Value::Bool(left), right) => self.loose_equal(Value::Number(if left { 1.0 } else { 0.0 }), right),
-            (left, Value::Bool(right)) => self.loose_equal(left, Value::Number(if right { 1.0 } else { 0.0 })),
-            (Value::Object(left), right @ (Value::Number(_) | Value::String(_) | Value::Symbol(_))) => {
+            (Value::Number(left), Value::String(right)) => {
+                Ok(left == primitive::number(&Value::String(right))?)
+            }
+            (Value::String(left), Value::Number(right)) => {
+                Ok(primitive::number(&Value::String(left))? == right)
+            }
+            (Value::Bool(left), right) => {
+                self.loose_equal(Value::Number(if left { 1.0 } else { 0.0 }), right)
+            }
+            (left, Value::Bool(right)) => {
+                self.loose_equal(left, Value::Number(if right { 1.0 } else { 0.0 }))
+            }
+            (
+                Value::Object(left),
+                right @ (Value::Number(_) | Value::String(_) | Value::Symbol(_)),
+            ) => {
                 let left = self.coerce_primitive(&Value::Object(left), "default")?;
                 self.loose_equal(left, right)
             }
-            (left @ (Value::Number(_) | Value::String(_) | Value::Symbol(_)), Value::Object(right)) => {
+            (
+                left @ (Value::Number(_) | Value::String(_) | Value::Symbol(_)),
+                Value::Object(right),
+            ) => {
                 let right = self.coerce_primitive(&Value::Object(right), "default")?;
                 self.loose_equal(left, right)
             }
@@ -1786,13 +2524,23 @@ impl Vm {
     }
 
     fn property_in(&mut self, key: &Value, object: &Value) -> Result<bool, RuntimeError> {
-        let Value::Object(mut object) = object else { return Err(RuntimeError::TypeError("right operand of in must be an object".into())) };
+        let Value::Object(mut object) = object else {
+            return Err(RuntimeError::TypeError(
+                "right operand of in must be an object".into(),
+            ));
+        };
         let key = self.coerce_property_key(key)?;
         loop {
-            if self.heap.get_own_property_descriptor(object, &key)?.is_some() {
+            if self
+                .heap
+                .get_own_property_descriptor(object, &key)?
+                .is_some()
+            {
                 return Ok(true);
             }
-            let Some(prototype) = self.heap.prototype(object)? else { return Ok(false) };
+            let Some(prototype) = self.heap.prototype(object)? else {
+                return Ok(false);
+            };
             object = prototype;
         }
     }
@@ -1804,7 +2552,8 @@ impl Vm {
                 return self.get_property(&object, &name.into());
             }
         }
-        self.lookup_global_name(name)?.ok_or_else(|| RuntimeError::ReferenceError(name.into()))
+        self.lookup_global_name(name)?
+            .ok_or_else(|| RuntimeError::ReferenceError(name.into()))
     }
 
     fn with_set(&mut self, name: &str, value: Value) -> Result<(), RuntimeError> {
@@ -1823,13 +2572,20 @@ impl Vm {
         if matches!(left, Value::String(_)) || matches!(right, Value::String(_)) {
             let mut a = primitive::string(&left)?;
             let b = primitive::string(&right)?;
-            if a.byte_len().checked_add(b.byte_len()).is_none_or(|len| len > self.config.max_string_bytes) {
-                return Err(RuntimeError::StringLimit { limit: self.config.max_string_bytes });
+            if a.byte_len()
+                .checked_add(b.byte_len())
+                .is_none_or(|len| len > self.config.max_string_bytes)
+            {
+                return Err(RuntimeError::StringLimit {
+                    limit: self.config.max_string_bytes,
+                });
             }
             a.push_str(&b);
             Ok(Value::String(a))
         } else {
-            Ok(Value::Number(primitive::number(&left)? + primitive::number(&right)?))
+            Ok(Value::Number(
+                primitive::number(&left)? + primitive::number(&right)?,
+            ))
         }
     }
 }
@@ -1844,17 +2600,29 @@ mod tests {
         vm.install_test262_harness().unwrap();
         vm.remaining_instructions = vm.config.instruction_budget;
         let test262_error = vm.error_value(RuntimeError::Test262("failure".into()));
-        assert!(matches!(test262_error, Ok(Value::Object(_))), "{test262_error:?}");
-        assert_eq!(vm.error_value(RuntimeError::InstructionLimit), Err(RuntimeError::InstructionLimit));
+        assert!(
+            matches!(test262_error, Ok(Value::Object(_))),
+            "{test262_error:?}"
+        );
+        assert_eq!(
+            vm.error_value(RuntimeError::InstructionLimit),
+            Err(RuntimeError::InstructionLimit)
+        );
         let mut code = Bytecode::empty();
         code.constants.push(Value::Undefined);
-        code.code.extend([Opcode::Constant as u8, 0, 0, 0, 0, Opcode::Yield as u8]);
+        code.code
+            .extend([Opcode::Constant as u8, 0, 0, 0, 0, Opcode::Yield as u8]);
         vm.remaining_instructions = vm.config.instruction_budget;
         let yield_error = vm.execute(&code);
-        assert!(matches!(yield_error, Err(RuntimeError::TypeError(ref message)) if message == "yield is not supported in this execution context"), "{yield_error:?}");
+        assert!(
+            matches!(yield_error, Err(RuntimeError::TypeError(ref message)) if message == "yield is not supported in this execution context"),
+            "{yield_error:?}"
+        );
         code.generator = true;
         vm.remaining_instructions = vm.config.instruction_budget;
-        assert!(matches!(vm.execute(&code), Err(RuntimeError::TypeError(message)) if message == "yield requires a generator function"));
+        assert!(
+            matches!(vm.execute(&code), Err(RuntimeError::TypeError(message)) if message == "yield requires a generator function")
+        );
     }
 
     #[test]
@@ -1864,7 +2632,10 @@ mod tests {
         vm.heap.set(object, "value", Value::Number(7.0)).unwrap();
         vm.with_objects.push(Value::Object(object));
         assert_eq!(vm.with_get("value"), Ok(Value::Number(7.0)));
-        assert_eq!(vm.with_get("missing"), Err(RuntimeError::ReferenceError("missing".into())));
+        assert_eq!(
+            vm.with_get("missing"),
+            Err(RuntimeError::ReferenceError("missing".into()))
+        );
     }
 
     #[test]
@@ -1873,32 +2644,77 @@ mod tests {
         let target = vm.heap.alloc_object(None).unwrap();
         let mut function_code = Bytecode::empty();
         function_code.code.push(Opcode::Halt as u8);
-        let function = vm.heap.alloc_closure(std::rc::Rc::new(function_code), Vec::new(), Value::Undefined, vm.object_prototype).unwrap();
+        let function = vm
+            .heap
+            .alloc_closure(
+                std::rc::Rc::new(function_code),
+                Vec::new(),
+                Value::Undefined,
+                vm.object_prototype,
+            )
+            .unwrap();
         let mut code = Bytecode::empty();
-        code.code.extend([Opcode::DefineMethod as u8, Opcode::Halt as u8]);
+        code.code
+            .extend([Opcode::DefineMethod as u8, Opcode::Halt as u8]);
 
-        vm.stack = vec![Value::Object(target), Value::String("method".into()), Value::Object(function)];
+        vm.stack = vec![
+            Value::Object(target),
+            Value::String("method".into()),
+            Value::Object(function),
+        ];
         vm.remaining_instructions = vm.config.instruction_budget;
-        assert!(matches!(vm.interpret(&code, &mut Vec::new(), 0, None), Ok(InterpreterExit::Return(Value::Undefined))));
-        vm.stack = vec![Value::Object(target), Value::String("empty".into()), Value::Undefined];
+        assert!(matches!(
+            vm.interpret(&code, &mut Vec::new(), 0, None),
+            Ok(InterpreterExit::Return(Value::Undefined))
+        ));
+        vm.stack = vec![
+            Value::Object(target),
+            Value::String("empty".into()),
+            Value::Undefined,
+        ];
         vm.remaining_instructions = vm.config.instruction_budget;
-        assert!(matches!(vm.interpret(&code, &mut Vec::new(), 0, None), Ok(InterpreterExit::Return(Value::Undefined))));
+        assert!(matches!(
+            vm.interpret(&code, &mut Vec::new(), 0, None),
+            Ok(InterpreterExit::Return(Value::Undefined))
+        ));
 
         code.code[0] = Opcode::CallClassStaticBlock as u8;
         vm.stack = vec![Value::Object(target), Value::Object(function)];
         vm.remaining_instructions = vm.config.instruction_budget;
-        assert!(matches!(vm.interpret(&code, &mut Vec::new(), 0, None), Ok(InterpreterExit::Return(Value::Undefined))));
+        assert!(matches!(
+            vm.interpret(&code, &mut Vec::new(), 0, None),
+            Ok(InterpreterExit::Return(Value::Undefined))
+        ));
         vm.stack = vec![Value::Object(target), Value::Undefined];
         vm.remaining_instructions = vm.config.instruction_budget;
-        assert!(matches!(vm.interpret(&code, &mut Vec::new(), 0, None), Err(RuntimeError::TypeError(_))));
+        assert!(matches!(
+            vm.interpret(&code, &mut Vec::new(), 0, None),
+            Err(RuntimeError::TypeError(_))
+        ));
 
         code.code[0] = Opcode::DefineClassStaticField as u8;
-        vm.stack = vec![Value::Undefined, Value::Object(target), Value::String("field".into()), Value::Object(function)];
+        vm.stack = vec![
+            Value::Undefined,
+            Value::Object(target),
+            Value::String("field".into()),
+            Value::Object(function),
+        ];
         vm.remaining_instructions = vm.config.instruction_budget;
-        assert!(matches!(vm.interpret(&code, &mut Vec::new(), 0, None), Ok(InterpreterExit::Return(Value::Undefined))));
-        vm.stack = vec![Value::Undefined, Value::Object(target), Value::String("emptyField".into()), Value::Undefined];
+        assert!(matches!(
+            vm.interpret(&code, &mut Vec::new(), 0, None),
+            Ok(InterpreterExit::Return(Value::Undefined))
+        ));
+        vm.stack = vec![
+            Value::Undefined,
+            Value::Object(target),
+            Value::String("emptyField".into()),
+            Value::Undefined,
+        ];
         vm.remaining_instructions = vm.config.instruction_budget;
-        assert!(matches!(vm.interpret(&code, &mut Vec::new(), 0, None), Err(RuntimeError::TypeError(_))));
+        assert!(matches!(
+            vm.interpret(&code, &mut Vec::new(), 0, None),
+            Err(RuntimeError::TypeError(_))
+        ));
     }
 
     #[test]
@@ -1910,7 +2726,12 @@ mod tests {
         vm.heap.prevent_extensions(receiver).unwrap();
         vm.home_object = Some(home);
         vm.this = Value::Object(receiver);
-        assert_eq!(vm.super_set(&"value".into(), &Value::Number(1.0)), Err(RuntimeError::TypeError("super property cannot be assigned".into())));
+        assert_eq!(
+            vm.super_set(&"value".into(), &Value::Number(1.0)),
+            Err(RuntimeError::TypeError(
+                "super property cannot be assigned".into()
+            ))
+        );
 
         let base = vm.heap.alloc_object(None).unwrap();
         let home = vm.heap.alloc_object(Some(base)).unwrap();
@@ -1919,38 +2740,92 @@ mod tests {
         vm.heap.collect_major();
         vm.home_object = Some(home);
         vm.this = Value::Object(stale_receiver);
-        assert_eq!(vm.super_set(&"value".into(), &Value::Number(1.0)), Err(RuntimeError::Heap(HeapError::InvalidObject(stale_receiver))));
+        assert_eq!(
+            vm.super_set(&"value".into(), &Value::Number(1.0)),
+            Err(RuntimeError::Heap(HeapError::InvalidObject(stale_receiver)))
+        );
     }
 
     #[test]
     fn super_and_eval_context_errors_describe_missing_internal_context() {
         let mut vm = Vm::default();
-        assert_eq!(vm.super_base(), Err(RuntimeError::TypeError("super is not available in this function".into())));
+        assert_eq!(
+            vm.super_base(),
+            Err(RuntimeError::TypeError(
+                "super is not available in this function".into()
+            ))
+        );
         let home = vm.heap.alloc_object(None).unwrap();
         vm.home_object = Some(home);
-        assert_eq!(vm.super_base(), Err(RuntimeError::TypeError("superclass is null".into())));
-        assert_eq!(vm.super_call(Vec::new()), Err(RuntimeError::TypeError("super() is not available in this function".into())));
-        let closure = vm.heap.alloc_closure(std::rc::Rc::new(Bytecode::empty()), Vec::new(), Value::Undefined, vm.object_prototype).unwrap();
+        assert_eq!(
+            vm.super_base(),
+            Err(RuntimeError::TypeError("superclass is null".into()))
+        );
+        assert_eq!(
+            vm.super_call(Vec::new()),
+            Err(RuntimeError::TypeError(
+                "super() is not available in this function".into()
+            ))
+        );
+        let closure = vm
+            .heap
+            .alloc_closure(
+                std::rc::Rc::new(Bytecode::empty()),
+                Vec::new(),
+                Value::Undefined,
+                vm.object_prototype,
+            )
+            .unwrap();
         vm.class_constructor = Some(closure);
-        assert_eq!(vm.super_call(Vec::new()), Err(RuntimeError::TypeError("super() requires a derived constructor".into())));
+        assert_eq!(
+            vm.super_call(Vec::new()),
+            Err(RuntimeError::TypeError(
+                "super() requires a derived constructor".into()
+            ))
+        );
         vm.heap.set_class_base(closure, Value::Null).unwrap();
-        assert_eq!(vm.super_call(Vec::new()), Err(RuntimeError::TypeError("super constructor is null".into())));
-        vm.binding_metadata.push(Binding { name: "captured".into(), mutable: true, lexical: true });
+        assert_eq!(
+            vm.super_call(Vec::new()),
+            Err(RuntimeError::TypeError("super constructor is null".into()))
+        );
+        vm.binding_metadata.push(Binding {
+            name: "captured".into(),
+            mutable: true,
+            lexical: true,
+        });
         vm.cells.insert(0, home);
-        assert_eq!(vm.eval_visible_bindings().into_iter().map(|(name, _, slot)| (name, slot)).collect::<Vec<_>>(), vec![("captured".into(), 0)]);
+        assert_eq!(
+            vm.eval_visible_bindings()
+                .into_iter()
+                .map(|(name, _, slot)| (name, slot))
+                .collect::<Vec<_>>(),
+            vec![("captured".into(), 0)]
+        );
     }
 
     #[test]
     fn compiler_owned_bytecode_invariants_fail_loudly() {
         let no_handler = Bytecode::empty();
         let mut vm = Vm::default();
-        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| vm.resolve_completion(&no_handler, &mut Vec::new(), &mut Vec::new(), Completion::Yield(Value::Undefined)))).is_err());
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| vm.resolve_completion(
+                &no_handler,
+                &mut Vec::new(),
+                &mut Vec::new(),
+                Completion::Yield(Value::Undefined)
+            )))
+            .is_err()
+        );
         let mut vm = Vm::default();
         vm.stack.push(Value::Number(0.0));
-        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| vm.set_class_heritage())).is_err());
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| vm.set_class_heritage()))
+                .is_err()
+        );
         let mut vm = Vm::default();
         vm.stack.push(Value::Number(0.0));
-        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| vm.set_class_home())).is_err());
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| vm.set_class_home())).is_err()
+        );
     }
-
 }

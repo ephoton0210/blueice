@@ -23,7 +23,9 @@
 //! `text.rs` already flags as a placeholder.
 
 use crate::fragment::{Fragment, FragmentKind};
-use crate::text::{break_into_lines, collect_words, default_line_height, space_width, StyleMap, Word};
+use crate::text::{
+    break_into_lines, collect_words, default_line_height, space_width, StyleMap, Word,
+};
 use blueice_css::{Length, Value};
 use blueice_dom::{Document, NodeData, NodeId};
 use std::collections::HashMap;
@@ -63,7 +65,10 @@ fn length_px(value: &Value, font_size: f64, percentage_base: f64) -> Option<f64>
 /// "just don't center" fallback is a safe, visible-not-silent
 /// degradation rather than a crash).
 fn side(other: &HashMap<String, Value>, prop: &str, font_size: f64, percentage_base: f64) -> f64 {
-    other.get(prop).and_then(|v| length_px(v, font_size, percentage_base)).unwrap_or(0.0)
+    other
+        .get(prop)
+        .and_then(|v| length_px(v, font_size, percentage_base))
+        .unwrap_or(0.0)
 }
 
 fn is_border_box(other: &HashMap<String, Value>) -> bool {
@@ -71,7 +76,11 @@ fn is_border_box(other: &HashMap<String, Value>) -> bool {
 }
 
 /// `None` means "auto" (or absent) -- the caller fills remaining space.
-fn resolve_width(other: &HashMap<String, Value>, font_size: f64, containing_width: f64) -> Option<f64> {
+fn resolve_width(
+    other: &HashMap<String, Value>,
+    font_size: f64,
+    containing_width: f64,
+) -> Option<f64> {
     match other.get("width") {
         None => None,
         Some(Value::Keyword(k)) if k == "auto" => None,
@@ -103,7 +112,12 @@ fn resolve_line_height(value: &Value, font_size: f64) -> Option<f64> {
     }
 }
 
-pub(crate) fn layout_block(doc: &Document, node: NodeId, styles: &StyleMap, available_width: f64) -> Fragment {
+pub(crate) fn layout_block(
+    doc: &Document,
+    node: NodeId,
+    styles: &StyleMap,
+    available_width: f64,
+) -> Fragment {
     let style = styles.get(&node);
     let font_size = style.map(|s| s.font_size_px).unwrap_or(16.0);
     let empty = HashMap::new();
@@ -144,7 +158,8 @@ pub(crate) fn layout_block(doc: &Document, node: NodeId, styles: &StyleMap, avai
             BoxGen::Inline => pending_inline.push(child),
             BoxGen::Block => {
                 if !pending_inline.is_empty() {
-                    let (lines, used_height) = layout_inline_run(doc, &pending_inline, styles, content_width, cursor_y);
+                    let (lines, used_height) =
+                        layout_inline_run(doc, &pending_inline, styles, content_width, cursor_y);
                     children_fragments.extend(lines);
                     cursor_y += used_height;
                     pending_inline.clear();
@@ -154,9 +169,12 @@ pub(crate) fn layout_block(doc: &Document, node: NodeId, styles: &StyleMap, avai
                 let child_font_size = child_style.map(|s| s.font_size_px).unwrap_or(font_size);
                 let child_empty = HashMap::new();
                 let child_other = child_style.map(|s| &s.other).unwrap_or(&child_empty);
-                let child_margin_top = side(child_other, "margin-top", child_font_size, content_width);
-                let child_margin_bottom = side(child_other, "margin-bottom", child_font_size, content_width);
-                let child_margin_left = side(child_other, "margin-left", child_font_size, content_width);
+                let child_margin_top =
+                    side(child_other, "margin-top", child_font_size, content_width);
+                let child_margin_bottom =
+                    side(child_other, "margin-bottom", child_font_size, content_width);
+                let child_margin_left =
+                    side(child_other, "margin-left", child_font_size, content_width);
 
                 cursor_y += child_margin_top;
                 let mut child_fragment = layout_block(doc, child, styles, content_width);
@@ -168,14 +186,17 @@ pub(crate) fn layout_block(doc: &Document, node: NodeId, styles: &StyleMap, avai
         }
     }
     if !pending_inline.is_empty() {
-        let (lines, used_height) = layout_inline_run(doc, &pending_inline, styles, content_width, cursor_y);
+        let (lines, used_height) =
+            layout_inline_run(doc, &pending_inline, styles, content_width, cursor_y);
         children_fragments.extend(lines);
         cursor_y += used_height;
     }
 
     let intrinsic_content_height = cursor_y;
     let content_height = match resolve_height(other, font_size) {
-        Some(h) if border_box_sizing => (h - padding_top - padding_bottom - border_top - border_bottom).max(0.0),
+        Some(h) if border_box_sizing => {
+            (h - padding_top - padding_bottom - border_top - border_bottom).max(0.0)
+        }
         Some(h) => h,
         None => intrinsic_content_height,
     };
@@ -198,7 +219,13 @@ pub(crate) fn layout_block(doc: &Document, node: NodeId, styles: &StyleMap, avai
     }
 }
 
-fn layout_inline_run(doc: &Document, pending: &[NodeId], styles: &StyleMap, available_width: f64, y_offset: f64) -> (Vec<Fragment>, f64) {
+fn layout_inline_run(
+    doc: &Document,
+    pending: &[NodeId],
+    styles: &StyleMap,
+    available_width: f64,
+    y_offset: f64,
+) -> (Vec<Fragment>, f64) {
     let mut words: Vec<Word> = Vec::new();
     for &n in pending {
         match doc.data(n) {
@@ -241,10 +268,26 @@ fn layout_line(words: &[Word], line_height: f64, y: f64, space_width: f64) -> Fr
         if i > 0 {
             x += space_width;
         }
-        children.push(Fragment { node: Some(w.style_node), kind: FragmentKind::Text(w.text.clone()), x, y: 0.0, width: w.width, height: line_height, children: Vec::new() });
+        children.push(Fragment {
+            node: Some(w.style_node),
+            kind: FragmentKind::Text(w.text.clone()),
+            x,
+            y: 0.0,
+            width: w.width,
+            height: line_height,
+            children: Vec::new(),
+        });
         x += w.width;
     }
-    Fragment { node: None, kind: FragmentKind::Line, x: 0.0, y, width: x, height: line_height, children }
+    Fragment {
+        node: None,
+        kind: FragmentKind::Line,
+        x: 0.0,
+        y,
+        width: x,
+        height: line_height,
+        children,
+    }
 }
 
 #[cfg(test)]
@@ -302,7 +345,11 @@ mod tests {
 
     #[test]
     fn em_margin_resolves_against_the_elements_own_font_size() {
-        let f = body_fragment("<div>x</div>", "div { font-size: 20px; margin-top: 2em; }", 800.0);
+        let f = body_fragment(
+            "<div>x</div>",
+            "div { font-size: 20px; margin-top: 2em; }",
+            800.0,
+        );
         assert_eq!(f.children[0].y, 40.0);
     }
 
@@ -313,12 +360,19 @@ mod tests {
             "div { width: 200px; padding: 10px; border-left-width: 5px; border-right-width: 5px; box-sizing: border-box; }",
             800.0,
         );
-        assert_eq!(f.children[0].width, 200.0, "border-box width is the total, not content + extra");
+        assert_eq!(
+            f.children[0].width, 200.0,
+            "border-box width is the total, not content + extra"
+        );
     }
 
     #[test]
     fn content_box_sizing_adds_padding_and_border_on_top_of_specified_width() {
-        let f = body_fragment("<div>x</div>", "div { width: 200px; padding: 10px; }", 800.0);
+        let f = body_fragment(
+            "<div>x</div>",
+            "div { width: 200px; padding: 10px; }",
+            800.0,
+        );
         assert_eq!(f.children[0].width, 220.0);
     }
 
@@ -331,7 +385,10 @@ mod tests {
         );
         assert_eq!(f.children.len(), 2);
         assert_eq!(f.children[0].y, 0.0);
-        assert_eq!(f.children[1].y, 60.0, "second div starts after first's height + margin-bottom");
+        assert_eq!(
+            f.children[1].y, 60.0,
+            "second div starts after first's height + margin-bottom"
+        );
     }
 
     // ---- interaction tests: added by a dedicated post-implementation
@@ -355,12 +412,20 @@ mod tests {
     fn inline_run_flushes_before_a_following_block_sibling() {
         let f = body_fragment("<div>text<p>block</p></div>", "", 800.0);
         let div = &f.children[0];
-        assert_eq!(div.children.len(), 2, "one line fragment, then the p's block fragment");
+        assert_eq!(
+            div.children.len(),
+            2,
+            "one line fragment, then the p's block fragment"
+        );
         let line = &div.children[0];
         assert_eq!(line.kind, FragmentKind::Line);
         let p = &div.children[1];
         assert_eq!(p.kind, FragmentKind::Block);
-        assert_eq!(p.y, line.y + line.height, "p starts immediately after the flushed line, not overlapping it");
+        assert_eq!(
+            p.y,
+            line.y + line.height,
+            "p starts immediately after the flushed line, not overlapping it"
+        );
     }
 
     #[test]
@@ -370,13 +435,25 @@ mod tests {
         assert_eq!(p.kind, FragmentKind::Block);
         let line = &f.children[1];
         assert_eq!(line.kind, FragmentKind::Line);
-        assert_eq!(line.y, p.y + p.height, "trailing inline text starts after the preceding block, not at y=0");
+        assert_eq!(
+            line.y,
+            p.y + p.height,
+            "trailing inline text starts after the preceding block, not at y=0"
+        );
     }
 
     #[test]
     fn display_none_removes_the_element_and_its_subtree() {
-        let f = body_fragment("<div>a</div><div class=\"gone\"><span>x</span></div><div>b</div>", ".gone { display: none; }", 800.0);
-        assert_eq!(f.children.len(), 2, "the display:none div contributes no fragment at all");
+        let f = body_fragment(
+            "<div>a</div><div class=\"gone\"><span>x</span></div><div>b</div>",
+            ".gone { display: none; }",
+            800.0,
+        );
+        assert_eq!(
+            f.children.len(),
+            2,
+            "the display:none div contributes no fragment at all"
+        );
     }
 
     #[test]
@@ -387,16 +464,28 @@ mod tests {
         let line = &p.children[0];
         assert_eq!(line.kind, FragmentKind::Line);
         assert_eq!(line.children.len(), 2);
-        assert_eq!(line.children[0].kind, FragmentKind::Text("hello".to_string()));
-        assert_eq!(line.children[1].kind, FragmentKind::Text("world".to_string()));
-        assert!(line.children[1].x > line.children[0].x + line.children[0].width, "world starts after hello plus a space gap");
+        assert_eq!(
+            line.children[0].kind,
+            FragmentKind::Text("hello".to_string())
+        );
+        assert_eq!(
+            line.children[1].kind,
+            FragmentKind::Text("world".to_string())
+        );
+        assert!(
+            line.children[1].x > line.children[0].x + line.children[0].width,
+            "world starts after hello plus a space gap"
+        );
     }
 
     #[test]
     fn narrow_container_wraps_inline_content_onto_multiple_lines() {
         let f = body_fragment("<p>aaaa bbbb cccc</p>", "", 40.0);
         let p = &f.children[0];
-        assert!(p.children.len() > 1, "text must wrap across multiple lines in a narrow container");
+        assert!(
+            p.children.len() > 1,
+            "text must wrap across multiple lines in a narrow container"
+        );
         for line in &p.children {
             assert_eq!(line.kind, FragmentKind::Line);
         }
@@ -412,8 +501,16 @@ mod tests {
         let b_node = find_by_tag(&doc, doc.root(), "b").unwrap();
 
         let line = &p.children[0];
-        let bold_word = line.children.iter().find(|w| w.kind == FragmentKind::Text("bold".to_string())).unwrap();
-        assert_eq!(bold_word.node, Some(b_node), "the word's style node is <b>, not <p>");
+        let bold_word = line
+            .children
+            .iter()
+            .find(|w| w.kind == FragmentKind::Text("bold".to_string()))
+            .unwrap();
+        assert_eq!(
+            bold_word.node,
+            Some(b_node),
+            "the word's style node is <b>, not <p>"
+        );
     }
 
     #[test]
@@ -432,7 +529,10 @@ mod tests {
     fn missing_style_falls_back_to_sane_defaults_without_panicking() {
         let mut doc = Document::new();
         let root = doc.root();
-        let div = doc.create_node(NodeData::Element { tag_name: "div".to_string(), attributes: vec![] });
+        let div = doc.create_node(NodeData::Element {
+            tag_name: "div".to_string(),
+            attributes: vec![],
+        });
         doc.append_child(root, div);
         let styles: StyleMap = HashMap::new();
         let f = layout_block(&doc, div, &styles, 800.0);
@@ -442,7 +542,11 @@ mod tests {
     #[test]
     fn whitespace_only_text_between_block_siblings_contributes_no_phantom_line() {
         let f = body_fragment("<div>a</div>\n  <div>b</div>", "", 800.0);
-        assert_eq!(f.children.len(), 2, "no extra Line fragment from the whitespace text node");
+        assert_eq!(
+            f.children.len(),
+            2,
+            "no extra Line fragment from the whitespace text node"
+        );
     }
 
     #[test]

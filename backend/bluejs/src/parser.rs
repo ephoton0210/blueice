@@ -52,7 +52,11 @@ pub struct ParseError {
 
 impl From<LexError> for ParseError {
     fn from(e: LexError) -> ParseError {
-        ParseError { message: e.message, resource: None, known_syntax: false }
+        ParseError {
+            message: e.message,
+            resource: None,
+            known_syntax: false,
+        }
     }
 }
 
@@ -82,9 +86,15 @@ fn tokenize_all(tokenizer: &mut Tokenizer) -> (Vec<SpannedToken>, Vec<usize>) {
                 }
             }
             Err(error) => {
-                tokens.push(SpannedToken { token: Token::Invalid(error.message), newline_before: false });
+                tokens.push(SpannedToken {
+                    token: Token::Invalid(error.message),
+                    newline_before: false,
+                });
                 positions.push(tokenizer.position());
-                tokens.push(SpannedToken { token: Token::Eof, newline_before: false });
+                tokens.push(SpannedToken {
+                    token: Token::Eof,
+                    newline_before: false,
+                });
                 return (tokens, positions);
             }
         }
@@ -189,7 +199,17 @@ impl Parser {
     fn new(source: &str) -> Parser {
         let mut tokenizer = Tokenizer::new(source);
         let (tokens, positions) = tokenize_all(&mut tokenizer);
-        Parser { tokens, positions, tokenizer, pos: 0, no_in: false, generator_depth: 0, async_depth: 0, function_depth: 0, static_block_function_depths: Vec::new() }
+        Parser {
+            tokens,
+            positions,
+            tokenizer,
+            pos: 0,
+            no_in: false,
+            generator_depth: 0,
+            async_depth: 0,
+            function_depth: 0,
+            static_block_function_depths: Vec::new(),
+        }
     }
 
     fn rescan_suffix(&mut self) {
@@ -252,20 +272,36 @@ impl Parser {
     }
 
     fn expect_punct(&mut self, p: Punct) -> Result<(), ParseError> {
-        if self.eat_punct(p) { Ok(()) } else { Err(self.error(format!("expected {p:?}"))) }
+        if self.eat_punct(p) {
+            Ok(())
+        } else {
+            Err(self.error(format!("expected {p:?}")))
+        }
     }
 
     fn expect_keyword(&mut self, k: Keyword) -> Result<(), ParseError> {
-        if self.eat_keyword(k) { Ok(()) } else { Err(self.error(format!("expected keyword {k:?}"))) }
+        if self.eat_keyword(k) {
+            Ok(())
+        } else {
+            Err(self.error(format!("expected keyword {k:?}")))
+        }
     }
 
     fn error(&self, message: impl Into<String>) -> ParseError {
         let known_syntax = matches!(self.peek(), Token::Invalid(message) if !message.contains("not supported") && !message.contains("unexpected character '#'"));
-        ParseError { message: format!("{} (found {:?})", message.into(), self.peek()), resource: None, known_syntax }
+        ParseError {
+            message: format!("{} (found {:?})", message.into(), self.peek()),
+            resource: None,
+            known_syntax,
+        }
     }
 
     fn syntax_error(&self, message: impl Into<String>) -> ParseError {
-        ParseError { message: format!("{} (found {:?})", message.into(), self.peek()), resource: None, known_syntax: true }
+        ParseError {
+            message: format!("{} (found {:?})", message.into(), self.peek()),
+            resource: None,
+            known_syntax: true,
+        }
     }
 
     fn expect_identifier_name(&mut self) -> Result<String, ParseError> {
@@ -321,8 +357,12 @@ impl Parser {
                 if f.name.is_none() {
                     return Err(self.error("function declarations require a name"));
                 }
-                if self.static_block_function_depths.last() == Some(&self.function_depth) && f.name.as_deref() == Some("await") {
-                    return Err(self.syntax_error("await cannot be bound by a function declaration in a class static block"));
+                if self.static_block_function_depths.last() == Some(&self.function_depth)
+                    && f.name.as_deref() == Some("await")
+                {
+                    return Err(self.syntax_error(
+                        "await cannot be bound by a function declaration in a class static block",
+                    ));
                 }
                 Ok(Stmt::FunctionDecl(f))
             }
@@ -354,8 +394,12 @@ impl Parser {
             Token::Keyword(Keyword::Return) => self.parse_return_stmt(),
             Token::Keyword(Keyword::Throw) => self.parse_throw_stmt(),
             Token::Keyword(Keyword::Try) => self.parse_try_stmt(),
-            Token::Keyword(Keyword::Catch | Keyword::Finally) => Err(self.syntax_error("catch/finally require a preceding try block")),
-            Token::Identifier(_) if matches!(self.peek_at(1), Token::Punct(Punct::Colon)) => self.parse_labelled_stmt(),
+            Token::Keyword(Keyword::Catch | Keyword::Finally) => {
+                Err(self.syntax_error("catch/finally require a preceding try block"))
+            }
+            Token::Identifier(_) if matches!(self.peek_at(1), Token::Punct(Punct::Colon)) => {
+                self.parse_labelled_stmt()
+            }
             _ => {
                 let expr = self.parse_expression()?;
                 self.consume_semicolon()?;
@@ -380,21 +424,32 @@ impl Parser {
             None
         };
         self.consume_semicolon()?;
-        Ok(if is_continue { Stmt::Continue(label) } else { Stmt::Break(label) })
+        Ok(if is_continue {
+            Stmt::Continue(label)
+        } else {
+            Stmt::Break(label)
+        })
     }
 
     fn parse_labelled_stmt(&mut self) -> Result<Stmt, ParseError> {
         let label = self.expect_identifier_name()?;
         self.expect_punct(Punct::Colon)?;
-        if label == "await" && self.static_block_function_depths.last() == Some(&self.function_depth) {
-            return Err(self.syntax_error("await cannot be used as a label in a class static block"));
+        if label == "await"
+            && self.static_block_function_depths.last() == Some(&self.function_depth)
+        {
+            return Err(
+                self.syntax_error("await cannot be used as a label in a class static block")
+            );
         }
 
         // In sloppy code, `let` may begin the labelled expression statement
         // `L: let` when ASI follows. It is not a lexical declaration there.
         // `let [` is the one prohibited lookahead form.
         let item = if self.check_keyword(Keyword::Let)
-            && self.tokens.get(self.pos + 1).is_some_and(|token| token.newline_before)
+            && self
+                .tokens
+                .get(self.pos + 1)
+                .is_some_and(|token| token.newline_before)
         {
             self.advance();
             if self.check_punct(Punct::LBracket) {
@@ -407,15 +462,26 @@ impl Parser {
         };
         match &item {
             Stmt::VarDecl(kind, _) if *kind != DeclKind::Var => {
-                return Err(self.syntax_error("a labelled statement cannot contain a lexical declaration"));
+                return Err(
+                    self.syntax_error("a labelled statement cannot contain a lexical declaration")
+                );
             }
-            Stmt::ClassDecl(_) => return Err(self.syntax_error("a labelled statement cannot contain a class declaration")),
+            Stmt::ClassDecl(_) => {
+                return Err(
+                    self.syntax_error("a labelled statement cannot contain a class declaration")
+                )
+            }
             Stmt::FunctionDecl(function) if function.generator || function.is_async => {
-                return Err(self.syntax_error("a labelled statement cannot contain a generator or async function declaration"));
+                return Err(self.syntax_error(
+                    "a labelled statement cannot contain a generator or async function declaration",
+                ));
             }
             _ => {}
         }
-        Ok(Stmt::Labelled { label, item: Box::new(item) })
+        Ok(Stmt::Labelled {
+            label,
+            item: Box::new(item),
+        })
     }
 
     fn parse_block(&mut self) -> Result<Vec<Stmt>, ParseError> {
@@ -442,7 +508,11 @@ impl Parser {
         let mut decls = Vec::new();
         loop {
             let pattern = self.parse_binding_pattern()?;
-            let init = if self.eat_punct(Punct::Assign) { Some(self.parse_assignment()?) } else { None };
+            let init = if self.eat_punct(Punct::Assign) {
+                Some(self.parse_assignment()?)
+            } else {
+                None
+            };
             decls.push(VarDeclarator { pattern, init });
             if !self.eat_punct(Punct::Comma) {
                 break;
@@ -457,8 +527,16 @@ impl Parser {
         let test = self.parse_expression()?;
         self.expect_punct(Punct::RParen)?;
         let consequent = Box::new(self.parse_statement()?);
-        let alternate = if self.eat_keyword(Keyword::Else) { Some(Box::new(self.parse_statement()?)) } else { None };
-        Ok(Stmt::If { test, consequent, alternate })
+        let alternate = if self.eat_keyword(Keyword::Else) {
+            Some(Box::new(self.parse_statement()?))
+        } else {
+            None
+        };
+        Ok(Stmt::If {
+            test,
+            consequent,
+            alternate,
+        })
     }
 
     fn parse_while_stmt(&mut self) -> Result<Stmt, ParseError> {
@@ -490,7 +568,9 @@ impl Parser {
         // ordinary ForOf shape because async execution is rejected before
         // bytecode generation; preserving the syntax keeps that rejection
         // correctly classified instead of reporting malformed source.
-        if self.async_depth != 0 && matches!(self.peek(), Token::Identifier(name) if name == "await") {
+        if self.async_depth != 0
+            && matches!(self.peek(), Token::Identifier(name) if name == "await")
+        {
             self.advance();
         }
         self.expect_punct(Punct::LParen)?;
@@ -513,20 +593,34 @@ impl Parser {
                 let right = self.parse_expression()?;
                 self.expect_punct(Punct::RParen)?;
                 let body = Box::new(self.parse_statement()?);
-                return Ok(Stmt::ForIn { left: ForHead::Decl(decl_kind, pattern), right, body });
+                return Ok(Stmt::ForIn {
+                    left: ForHead::Decl(decl_kind, pattern),
+                    right,
+                    body,
+                });
             }
             if self.is_contextual_of() {
                 self.advance();
                 let right = self.parse_assignment()?;
                 self.expect_punct(Punct::RParen)?;
                 let body = Box::new(self.parse_statement()?);
-                return Ok(Stmt::ForOf { left: ForHead::Decl(decl_kind, pattern), right, body });
+                return Ok(Stmt::ForOf {
+                    left: ForHead::Decl(decl_kind, pattern),
+                    right,
+                    body,
+                });
             }
 
-            let mut declarators = vec![VarDeclarator { pattern, init: self.parse_optional_for_init_value()? }];
+            let mut declarators = vec![VarDeclarator {
+                pattern,
+                init: self.parse_optional_for_init_value()?,
+            }];
             while self.eat_punct(Punct::Comma) {
                 let pattern = self.parse_binding_pattern()?;
-                declarators.push(VarDeclarator { pattern, init: self.parse_optional_for_init_value()? });
+                declarators.push(VarDeclarator {
+                    pattern,
+                    init: self.parse_optional_for_init_value()?,
+                });
             }
             self.expect_punct(Punct::Semicolon)?;
             return self.parse_for_rest(Some(ForInit::VarDecl(decl_kind, declarators)));
@@ -542,7 +636,11 @@ impl Parser {
             let right = self.parse_expression()?;
             self.expect_punct(Punct::RParen)?;
             let body = Box::new(self.parse_statement()?);
-            return Ok(Stmt::ForIn { left: ForHead::Pattern(left), right, body });
+            return Ok(Stmt::ForIn {
+                left: ForHead::Pattern(left),
+                right,
+                body,
+            });
         }
         if self.is_contextual_of() {
             self.advance();
@@ -550,7 +648,11 @@ impl Parser {
             let right = self.parse_assignment()?;
             self.expect_punct(Punct::RParen)?;
             let body = Box::new(self.parse_statement()?);
-            return Ok(Stmt::ForOf { left: ForHead::Pattern(left), right, body });
+            return Ok(Stmt::ForOf {
+                left: ForHead::Pattern(left),
+                right,
+                body,
+            });
         }
         self.expect_punct(Punct::Semicolon)?;
         self.parse_for_rest(Some(ForInit::Expr(expr)))
@@ -569,12 +671,25 @@ impl Parser {
     }
 
     fn parse_for_rest(&mut self, init: Option<ForInit>) -> Result<Stmt, ParseError> {
-        let test = if self.check_punct(Punct::Semicolon) { None } else { Some(self.parse_expression()?) };
+        let test = if self.check_punct(Punct::Semicolon) {
+            None
+        } else {
+            Some(self.parse_expression()?)
+        };
         self.expect_punct(Punct::Semicolon)?;
-        let update = if self.check_punct(Punct::RParen) { None } else { Some(self.parse_expression()?) };
+        let update = if self.check_punct(Punct::RParen) {
+            None
+        } else {
+            Some(self.parse_expression()?)
+        };
         self.expect_punct(Punct::RParen)?;
         let body = Box::new(self.parse_statement()?);
-        Ok(Stmt::For { init, test, update, body })
+        Ok(Stmt::For {
+            init,
+            test,
+            update,
+            body,
+        })
     }
 
     fn parse_switch_stmt(&mut self) -> Result<Stmt, ParseError> {
@@ -592,7 +707,9 @@ impl Parser {
                 Some(e)
             } else {
                 if saw_default {
-                    return Err(self.syntax_error("a switch statement can contain only one default clause"));
+                    return Err(
+                        self.syntax_error("a switch statement can contain only one default clause")
+                    );
                 }
                 self.expect_keyword(Keyword::Default)?;
                 self.expect_punct(Punct::Colon)?;
@@ -600,7 +717,10 @@ impl Parser {
                 None
             };
             let mut consequent = Vec::new();
-            while !self.check_punct(Punct::RBrace) && !self.check_keyword(Keyword::Case) && !self.check_keyword(Keyword::Default) {
+            while !self.check_punct(Punct::RBrace)
+                && !self.check_keyword(Keyword::Case)
+                && !self.check_keyword(Keyword::Default)
+            {
                 if self.at_eof() {
                     return Err(self.error("unterminated switch statement, expected '}'"));
                 }
@@ -609,12 +729,19 @@ impl Parser {
             cases.push(SwitchCase { test, consequent });
         }
         self.expect_punct(Punct::RBrace)?;
-        Ok(Stmt::Switch { discriminant, cases })
+        Ok(Stmt::Switch {
+            discriminant,
+            cases,
+        })
     }
 
     fn parse_return_stmt(&mut self) -> Result<Stmt, ParseError> {
         self.advance();
-        if self.check_punct(Punct::Semicolon) || self.check_punct(Punct::RBrace) || self.at_eof() || self.newline_before() {
+        if self.check_punct(Punct::Semicolon)
+            || self.check_punct(Punct::RBrace)
+            || self.at_eof()
+            || self.newline_before()
+        {
             self.consume_semicolon()?;
             return Ok(Stmt::Return(None));
         }
@@ -643,8 +770,12 @@ impl Parser {
             let param = if self.eat_punct(Punct::LParen) {
                 let p = self.parse_binding_pattern().map_err(known_syntax)?;
                 self.expect_punct(Punct::RParen).map_err(known_syntax)?;
-                if self.static_block_function_depths.last() == Some(&self.function_depth) && matches!(&p, Pattern::Identifier(name) if name == "await") {
-                    return Err(self.syntax_error("await cannot be bound directly in a class static block"));
+                if self.static_block_function_depths.last() == Some(&self.function_depth)
+                    && matches!(&p, Pattern::Identifier(name) if name == "await")
+                {
+                    return Err(
+                        self.syntax_error("await cannot be bound directly in a class static block")
+                    );
                 }
                 Some(p)
             } else {
@@ -653,7 +784,10 @@ impl Parser {
             if !self.check_punct(Punct::LBrace) {
                 return Err(self.syntax_error("catch requires a block"));
             }
-            Some(CatchClause { param, body: self.parse_block()? })
+            Some(CatchClause {
+                param,
+                body: self.parse_block()?,
+            })
         } else {
             None
         };
@@ -668,7 +802,11 @@ impl Parser {
         if handler.is_none() && finalizer.is_none() {
             return Err(self.syntax_error("'try' must be followed by 'catch', 'finally', or both"));
         }
-        Ok(Stmt::Try { block, handler, finalizer })
+        Ok(Stmt::Try {
+            block,
+            handler,
+            finalizer,
+        })
     }
 
     fn parse_with_stmt(&mut self) -> Result<Stmt, ParseError> {
@@ -677,7 +815,10 @@ impl Parser {
         let object = self.parse_expression()?;
         self.expect_punct(Punct::RParen)?;
         let body = self.parse_statement()?;
-        Ok(Stmt::With { object, body: Box::new(body) })
+        Ok(Stmt::With {
+            object,
+            body: Box::new(body),
+        })
     }
 
     // ---- Patterns ----
@@ -705,15 +846,27 @@ impl Parser {
             }
             if self.eat_punct(Punct::Ellipsis) {
                 let pattern = self.parse_binding_pattern()?;
-                elements.push(Some(ArrayPatternElement { pattern, default: None, rest: true }));
+                elements.push(Some(ArrayPatternElement {
+                    pattern,
+                    default: None,
+                    rest: true,
+                }));
                 if !self.check_punct(Punct::RBracket) {
                     return Err(self.syntax_error("a binding rest element must be final"));
                 }
                 break;
             } else {
                 let pattern = self.parse_binding_pattern()?;
-                let default = if self.eat_punct(Punct::Assign) { Some(self.parse_assignment()?) } else { None };
-                elements.push(Some(ArrayPatternElement { pattern, default, rest: false }));
+                let default = if self.eat_punct(Punct::Assign) {
+                    Some(self.parse_assignment()?)
+                } else {
+                    None
+                };
+                elements.push(Some(ArrayPatternElement {
+                    pattern,
+                    default,
+                    rest: false,
+                }));
             }
             if !self.check_punct(Punct::RBracket) {
                 self.expect_punct(Punct::Comma)?;
@@ -737,15 +890,31 @@ impl Parser {
                 let key = self.parse_property_key()?;
                 if self.eat_punct(Punct::Colon) {
                     let value = self.parse_binding_pattern()?;
-                    let default = if self.eat_punct(Punct::Assign) { Some(self.parse_assignment()?) } else { None };
-                    props.push(ObjectPatternProp::KeyValue { key, value, default });
+                    let default = if self.eat_punct(Punct::Assign) {
+                        Some(self.parse_assignment()?)
+                    } else {
+                        None
+                    };
+                    props.push(ObjectPatternProp::KeyValue {
+                        key,
+                        value,
+                        default,
+                    });
                 } else {
                     let name = match &key {
                         PropertyKey::Identifier(n) => n.clone(),
                         _ => return Err(self.error("expected ':' in destructuring pattern")),
                     };
-                    let default = if self.eat_punct(Punct::Assign) { Some(self.parse_assignment()?) } else { None };
-                    props.push(ObjectPatternProp::KeyValue { key: PropertyKey::Identifier(name.clone()), value: Pattern::Identifier(name), default });
+                    let default = if self.eat_punct(Punct::Assign) {
+                        Some(self.parse_assignment()?)
+                    } else {
+                        None
+                    };
+                    props.push(ObjectPatternProp::KeyValue {
+                        key: PropertyKey::Identifier(name.clone()),
+                        value: Pattern::Identifier(name),
+                        default,
+                    });
                 }
             }
             if !self.check_punct(Punct::RBrace) {
@@ -795,7 +964,11 @@ impl Parser {
                 if self.eat_punct(Punct::Assign) {
                     return Err(self.syntax_error("a rest parameter cannot have a default value"));
                 }
-                params.push(Param { pattern, default: None, rest: true });
+                params.push(Param {
+                    pattern,
+                    default: None,
+                    rest: true,
+                });
                 if self.eat_punct(Punct::Comma) {
                     return Err(self.syntax_error("a rest parameter cannot have a trailing comma"));
                 }
@@ -803,17 +976,29 @@ impl Parser {
             } else {
                 let pattern = self.parse_binding_pattern()?;
                 let default = if self.eat_punct(Punct::Assign) {
-                    if self.async_depth != 0 && matches!(self.peek(), Token::Identifier(name) if name == "await") {
-                        return Err(self.syntax_error("await is not allowed in an async function parameter initializer"));
+                    if self.async_depth != 0
+                        && matches!(self.peek(), Token::Identifier(name) if name == "await")
+                    {
+                        return Err(self.syntax_error(
+                            "await is not allowed in an async function parameter initializer",
+                        ));
                     }
-                    if self.generator_depth != 0 && matches!(self.peek(), Token::Identifier(name) if name == "yield") {
-                        return Err(self.syntax_error("yield is not allowed in a generator parameter initializer"));
+                    if self.generator_depth != 0
+                        && matches!(self.peek(), Token::Identifier(name) if name == "yield")
+                    {
+                        return Err(self.syntax_error(
+                            "yield is not allowed in a generator parameter initializer",
+                        ));
                     }
                     Some(self.parse_assignment()?)
                 } else {
                     None
                 };
-                params.push(Param { pattern, default, rest: false });
+                params.push(Param {
+                    pattern,
+                    default,
+                    rest: false,
+                });
             }
             if !self.check_punct(Punct::RParen) {
                 self.expect_punct(Punct::Comma)?;
@@ -833,23 +1018,36 @@ impl Parser {
 
     fn parse_function_with_async(&mut self, is_async: bool) -> Result<Function, ParseError> {
         let generator = self.eat_punct(Punct::Star);
-        if matches!(self.peek(), Token::Invalid(message) if message.contains("unexpected character '#'")) {
+        if matches!(self.peek(), Token::Invalid(message) if message.contains("unexpected character '#'"))
+        {
             return Err(self.syntax_error("a function cannot have a private name"));
         }
-        let name = if let Token::Identifier(_) = self.peek() { Some(self.expect_identifier_name()?) } else { None };
+        let name = if let Token::Identifier(_) = self.peek() {
+            Some(self.expect_identifier_name()?)
+        } else {
+            None
+        };
         if !self.check_punct(Punct::LParen) {
             return Err(self.syntax_error("a function parameter list must begin with '('"));
         }
         let function = self.parse_method_function(name, generator, is_async)?;
-        if function_contains_super_call_outside_class(&function) || function_contains_super_property_outside_class(&function) {
+        if function_contains_super_call_outside_class(&function)
+            || function_contains_super_property_outside_class(&function)
+        {
             return Err(self.syntax_error("a normal function cannot contain super"));
         }
         Ok(function)
     }
 
-    fn parse_method_function(&mut self, name: Option<String>, generator: bool, is_async: bool) -> Result<Function, ParseError> {
+    fn parse_method_function(
+        &mut self,
+        name: Option<String>,
+        generator: bool,
+        is_async: bool,
+    ) -> Result<Function, ParseError> {
         let outer_async_depth = std::mem::replace(&mut self.async_depth, u32::from(is_async));
-        let outer_generator_depth = std::mem::replace(&mut self.generator_depth, u32::from(generator));
+        let outer_generator_depth =
+            std::mem::replace(&mut self.generator_depth, u32::from(generator));
         // `parse_params` also enters grammar that the subset may not yet
         // implement. Preserve an unclassified parse failure from that grammar;
         // explicit parameter early errors mark themselves as known syntax.
@@ -859,20 +1057,35 @@ impl Parser {
         self.function_depth -= 1;
         self.generator_depth = outer_generator_depth;
         self.async_depth = outer_async_depth;
-        Ok(Function { name, params, body: body?, generator, is_async })
+        Ok(Function {
+            name,
+            params,
+            body: body?,
+            generator,
+            is_async,
+        })
     }
 
     fn parse_arrow_body(&mut self, is_async: bool) -> Result<ArrowBody, ParseError> {
         self.async_depth += u32::from(is_async);
         self.function_depth += 1;
-        let body = if self.check_punct(Punct::LBrace) { self.parse_block().map(ArrowBody::Block) } else { self.parse_assignment().map(|value| ArrowBody::Expr(Box::new(value))) };
+        let body = if self.check_punct(Punct::LBrace) {
+            self.parse_block().map(ArrowBody::Block)
+        } else {
+            self.parse_assignment()
+                .map(|value| ArrowBody::Expr(Box::new(value)))
+        };
         self.function_depth -= 1;
         self.async_depth -= u32::from(is_async);
         body
     }
 
     fn parse_class(&mut self) -> Result<Class, ParseError> {
-        let name = if matches!(self.peek(), Token::Identifier(name) if name != "extends") { Some(self.expect_identifier_name()?) } else { None };
+        let name = if matches!(self.peek(), Token::Identifier(name) if name != "extends") {
+            Some(self.expect_identifier_name()?)
+        } else {
+            None
+        };
         let extends = if matches!(self.peek(), Token::Identifier(keyword) if keyword == "extends") {
             self.advance();
             Some(Box::new(self.parse_lhs_expression()?))
@@ -909,7 +1122,8 @@ impl Parser {
             let accessor = match self.peek() {
                 Token::Identifier(keyword)
                     if (keyword == "get" || keyword == "set")
-                        && !matches!(self.peek_at(1), Token::Punct(Punct::LParen)) => {
+                        && !matches!(self.peek_at(1), Token::Punct(Punct::LParen)) =>
+                {
                     let getter = keyword == "get";
                     self.advance();
                     Some(getter)
@@ -923,12 +1137,25 @@ impl Parser {
                 if generator || accessor.is_some() {
                     return Err(self.error("expected class method parameters"));
                 }
-                let initializer = if self.eat_punct(Punct::Assign) { Some(self.parse_assignment()?) } else { None };
-                if initializer.as_ref().is_some_and(expr_contains_super_call_outside_class) {
-                    return Err(self.syntax_error("a class field initializer cannot contain super()"));
+                let initializer = if self.eat_punct(Punct::Assign) {
+                    Some(self.parse_assignment()?)
+                } else {
+                    None
+                };
+                if initializer
+                    .as_ref()
+                    .is_some_and(expr_contains_super_call_outside_class)
+                {
+                    return Err(
+                        self.syntax_error("a class field initializer cannot contain super()")
+                    );
                 }
                 self.eat_punct(Punct::Semicolon);
-                elements.push(ClassElement::Field { key, initializer, is_static });
+                elements.push(ClassElement::Field {
+                    key,
+                    initializer,
+                    is_static,
+                });
                 continue;
             }
             let function = self.parse_method_function(Some(method_name), generator, is_async)?;
@@ -936,14 +1163,25 @@ impl Parser {
                 && !is_static
                 && !matches!(&key, PropertyKey::Computed(_))
                 && class_element_name(&key) == "constructor";
-            if function_contains_super_call_outside_class(&function) && (!constructor || extends.is_none()) {
+            if function_contains_super_call_outside_class(&function)
+                && (!constructor || extends.is_none())
+            {
                 return Err(self.syntax_error("super() is only valid in a derived constructor"));
             }
             if let Some(getter) = accessor {
-                if is_async || generator || (getter && !function.params.is_empty()) || (!getter && (function.params.len() != 1 || function.params[0].rest)) {
+                if is_async
+                    || generator
+                    || (getter && !function.params.is_empty())
+                    || (!getter && (function.params.len() != 1 || function.params[0].rest))
+                {
                     return Err(self.error("invalid class accessor parameter list"));
                 }
-                elements.push(ClassElement::Accessor { key, function, getter, is_static });
+                elements.push(ClassElement::Accessor {
+                    key,
+                    function,
+                    getter,
+                    is_static,
+                });
             } else {
                 if constructor {
                     if is_async || generator || has_constructor {
@@ -951,11 +1189,19 @@ impl Parser {
                     }
                     has_constructor = true;
                 }
-                elements.push(ClassElement::Method { key, function, is_static });
+                elements.push(ClassElement::Method {
+                    key,
+                    function,
+                    is_static,
+                });
             }
         }
         self.expect_punct(Punct::RBrace)?;
-        Ok(Class { name, extends, elements })
+        Ok(Class {
+            name,
+            extends,
+            elements,
+        })
     }
 
     /// `async` is a contextual class-element modifier only when the next
@@ -963,23 +1209,37 @@ impl Parser {
     /// `async = value` and `async() {}` as ordinary field/method names is
     /// essential for the class element grammar.
     fn class_async_method_follows(&self) -> bool {
-        if !matches!(self.peek(), Token::Identifier(name) if name == "async") || self.tokens.get(self.pos + 1).is_none_or(|token| token.newline_before) {
+        if !matches!(self.peek(), Token::Identifier(name) if name == "async")
+            || self
+                .tokens
+                .get(self.pos + 1)
+                .is_none_or(|token| token.newline_before)
+        {
             return false;
         }
         match self.peek_at(1) {
             Token::Punct(Punct::Star) => true,
-            Token::Identifier(_) | Token::Keyword(_) | Token::String(_) | Token::Number(_) => matches!(self.peek_at(2), Token::Punct(Punct::LParen)),
+            Token::Identifier(_) | Token::Keyword(_) | Token::String(_) | Token::Number(_) => {
+                matches!(self.peek_at(2), Token::Punct(Punct::LParen))
+            }
             _ => false,
         }
     }
 
     fn async_function_follows(&self) -> bool {
         matches!(self.peek(), Token::Identifier(name) if name == "async")
-            && self.tokens.get(self.pos + 1).is_some_and(|token| !token.newline_before && matches!(token.token, Token::Keyword(Keyword::Function)))
+            && self.tokens.get(self.pos + 1).is_some_and(|token| {
+                !token.newline_before && matches!(token.token, Token::Keyword(Keyword::Function))
+            })
     }
 
     fn async_arrow_follows(&self) -> bool {
-        if !matches!(self.peek(), Token::Identifier(name) if name == "async") || self.tokens.get(self.pos + 1).is_none_or(|token| token.newline_before) {
+        if !matches!(self.peek(), Token::Identifier(name) if name == "async")
+            || self
+                .tokens
+                .get(self.pos + 1)
+                .is_none_or(|token| token.newline_before)
+        {
             return false;
         }
         match self.peek_at(1) {
@@ -1032,23 +1292,41 @@ impl Parser {
         self.try_parse_arrow_function_with_async(false)
     }
 
-    fn try_parse_arrow_function_with_async(&mut self, is_async: bool) -> Result<Option<Expr>, ParseError> {
+    fn try_parse_arrow_function_with_async(
+        &mut self,
+        is_async: bool,
+    ) -> Result<Option<Expr>, ParseError> {
         if let Token::Identifier(name) = self.peek().clone() {
             if matches!(self.peek_at(1), Token::Punct(Punct::Arrow)) {
                 self.advance();
                 self.advance();
-                let params = vec![Param { pattern: Pattern::Identifier(name), default: None, rest: false }];
+                let params = vec![Param {
+                    pattern: Pattern::Identifier(name),
+                    default: None,
+                    rest: false,
+                }];
                 let body = self.parse_arrow_body(is_async)?;
-                return Ok(Some(Expr::Arrow { params, body, is_async }));
+                return Ok(Some(Expr::Arrow {
+                    params,
+                    body,
+                    is_async,
+                }));
             }
         }
         if self.check_punct(Punct::LParen) {
             if let Some(close_idx) = self.matching_close_paren(self.pos) {
-                if matches!(self.tokens.get(close_idx + 1).map(|t| &t.token), Some(Token::Punct(Punct::Arrow))) {
+                if matches!(
+                    self.tokens.get(close_idx + 1).map(|t| &t.token),
+                    Some(Token::Punct(Punct::Arrow))
+                ) {
                     let params = self.parse_params()?;
                     self.expect_punct(Punct::Arrow)?;
                     let body = self.parse_arrow_body(is_async)?;
-                    return Ok(Some(Expr::Arrow { params, body, is_async }));
+                    return Ok(Some(Expr::Arrow {
+                        params,
+                        body,
+                        is_async,
+                    }));
                 }
             }
         }
@@ -1082,7 +1360,10 @@ impl Parser {
             let pattern = self.parse_assignment_pattern()?;
             self.expect_punct(Punct::Assign)?;
             let value = self.parse_assignment()?;
-            return Ok(Expr::DestructureAssign { pattern, value: Box::new(value) });
+            return Ok(Expr::DestructureAssign {
+                pattern,
+                value: Box::new(value),
+            });
         }
         let left = self.parse_conditional()?;
         let op = match self.peek() {
@@ -1102,7 +1383,11 @@ impl Parser {
         }
         self.advance();
         let value = self.parse_assignment()?;
-        Ok(Expr::Assign { op, target: Box::new(left), value: Box::new(value) })
+        Ok(Expr::Assign {
+            op,
+            target: Box::new(left),
+            value: Box::new(value),
+        })
     }
 
     /// A leading array/object cover grammar is a destructuring target only
@@ -1123,7 +1408,10 @@ impl Parser {
                 Token::Punct(punct) if delimiters.last() == Some(&punct) => {
                     delimiters.pop();
                     if delimiters.is_empty() {
-                        return matches!(self.tokens.get(index + 1).map(|token| &token.token), Some(Token::Punct(Punct::Assign)));
+                        return matches!(
+                            self.tokens.get(index + 1).map(|token| &token.token),
+                            Some(Token::Punct(Punct::Assign))
+                        );
                     }
                 }
                 Token::Eof => return false,
@@ -1164,9 +1452,15 @@ impl Parser {
             } else {
                 None
             };
-            elements.push(Some(AssignmentPatternElement { pattern, default, rest }));
+            elements.push(Some(AssignmentPatternElement {
+                pattern,
+                default,
+                rest,
+            }));
             if rest && !self.check_punct(Punct::RBracket) {
-                return Err(self.error("a rest element must be last in a destructuring assignment pattern"));
+                return Err(
+                    self.error("a rest element must be last in a destructuring assignment pattern")
+                );
             }
             if !self.check_punct(Punct::RBracket) {
                 self.expect_punct(Punct::Comma)?;
@@ -1181,22 +1475,43 @@ impl Parser {
         let mut properties = Vec::new();
         while !self.check_punct(Punct::RBrace) {
             if self.eat_punct(Punct::Ellipsis) {
-                properties.push(AssignmentPatternProp::Rest(self.parse_assignment_pattern()?));
+                properties.push(AssignmentPatternProp::Rest(
+                    self.parse_assignment_pattern()?,
+                ));
                 if !self.check_punct(Punct::RBrace) {
-                    return Err(self.error("a rest property must be last in a destructuring assignment pattern"));
+                    return Err(self.error(
+                        "a rest property must be last in a destructuring assignment pattern",
+                    ));
                 }
             } else {
                 let key = self.parse_property_key()?;
                 let (value, default) = if self.eat_punct(Punct::Colon) {
                     let value = self.parse_assignment_pattern()?;
-                    let default = if self.eat_punct(Punct::Assign) { Some(self.parse_assignment()?) } else { None };
+                    let default = if self.eat_punct(Punct::Assign) {
+                        Some(self.parse_assignment()?)
+                    } else {
+                        None
+                    };
                     (value, default)
                 } else {
-                    let PropertyKey::Identifier(name) = &key else { return Err(self.error("expected ':' in destructuring assignment pattern")) };
-                    let default = if self.eat_punct(Punct::Assign) { Some(self.parse_assignment()?) } else { None };
-                    (AssignmentPattern::Target(Box::new(Expr::Identifier(name.clone()))), default)
+                    let PropertyKey::Identifier(name) = &key else {
+                        return Err(self.error("expected ':' in destructuring assignment pattern"));
+                    };
+                    let default = if self.eat_punct(Punct::Assign) {
+                        Some(self.parse_assignment()?)
+                    } else {
+                        None
+                    };
+                    (
+                        AssignmentPattern::Target(Box::new(Expr::Identifier(name.clone()))),
+                        default,
+                    )
                 };
-                properties.push(AssignmentPatternProp::KeyValue { key, value, default });
+                properties.push(AssignmentPatternProp::KeyValue {
+                    key,
+                    value,
+                    default,
+                });
             }
             if !self.check_punct(Punct::RBrace) {
                 self.expect_punct(Punct::Comma)?;
@@ -1220,7 +1535,11 @@ impl Parser {
             let consequent = consequent?;
             self.expect_punct(Punct::Colon)?;
             let alternate = self.parse_assignment()?;
-            return Ok(Expr::Conditional { test: Box::new(test), consequent: Box::new(consequent), alternate: Box::new(alternate) });
+            return Ok(Expr::Conditional {
+                test: Box::new(test),
+                consequent: Box::new(consequent),
+                alternate: Box::new(alternate),
+            });
         }
         Ok(test)
     }
@@ -1235,7 +1554,11 @@ impl Parser {
             if logical_right {
                 return Err(self.error("parentheses required when mixing ?? with && or ||"));
             }
-            left = Expr::Logical { op: LogicalOp::Nullish, left: Box::new(left), right: Box::new(right) };
+            left = Expr::Logical {
+                op: LogicalOp::Nullish,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1244,7 +1567,11 @@ impl Parser {
         let (mut left, mut logical) = self.parse_logical_and()?;
         while self.eat_punct(Punct::OrOr) {
             let (right, _) = self.parse_logical_and()?;
-            left = Expr::Logical { op: LogicalOp::Or, left: Box::new(left), right: Box::new(right) };
+            left = Expr::Logical {
+                op: LogicalOp::Or,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
             logical = true;
         }
         Ok((left, logical))
@@ -1255,7 +1582,11 @@ impl Parser {
         let mut logical = false;
         while self.eat_punct(Punct::AndAnd) {
             let right = self.parse_equality()?;
-            left = Expr::Logical { op: LogicalOp::And, left: Box::new(left), right: Box::new(right) };
+            left = Expr::Logical {
+                op: LogicalOp::And,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
             logical = true;
         }
         Ok((left, logical))
@@ -1277,7 +1608,11 @@ impl Parser {
             };
             self.advance();
             let right = self.parse_relational()?;
-            left = Expr::Binary { op, left: Box::new(left), right: Box::new(right) };
+            left = Expr::Binary {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1302,7 +1637,11 @@ impl Parser {
             };
             self.advance();
             let right = self.parse_additive()?;
-            left = Expr::Binary { op, left: Box::new(left), right: Box::new(right) };
+            left = Expr::Binary {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1319,7 +1658,11 @@ impl Parser {
             };
             self.advance();
             let right = self.parse_multiplicative()?;
-            left = Expr::Binary { op, left: Box::new(left), right: Box::new(right) };
+            left = Expr::Binary {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -1338,31 +1681,55 @@ impl Parser {
             };
             self.advance();
             let right = self.parse_unary()?;
-            left = Expr::Binary { op, left: Box::new(left), right: Box::new(right) };
+            left = Expr::Binary {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
 
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
         if self.eat_punct(Punct::Bang) {
-            return Ok(Expr::Unary { op: UnaryOp::Not, arg: Box::new(self.parse_unary()?) });
+            return Ok(Expr::Unary {
+                op: UnaryOp::Not,
+                arg: Box::new(self.parse_unary()?),
+            });
         }
         if self.eat_punct(Punct::Minus) {
-            return Ok(Expr::Unary { op: UnaryOp::Neg, arg: Box::new(self.parse_unary()?) });
+            return Ok(Expr::Unary {
+                op: UnaryOp::Neg,
+                arg: Box::new(self.parse_unary()?),
+            });
         }
         if self.eat_punct(Punct::Plus) {
-            return Ok(Expr::Unary { op: UnaryOp::Plus, arg: Box::new(self.parse_unary()?) });
+            return Ok(Expr::Unary {
+                op: UnaryOp::Plus,
+                arg: Box::new(self.parse_unary()?),
+            });
         }
         if self.eat_keyword(Keyword::Typeof) {
-            return Ok(Expr::Unary { op: UnaryOp::Typeof, arg: Box::new(self.parse_unary()?) });
+            return Ok(Expr::Unary {
+                op: UnaryOp::Typeof,
+                arg: Box::new(self.parse_unary()?),
+            });
         }
         if self.eat_keyword(Keyword::Void) {
-            return Ok(Expr::Unary { op: UnaryOp::Void, arg: Box::new(self.parse_unary()?) });
+            return Ok(Expr::Unary {
+                op: UnaryOp::Void,
+                arg: Box::new(self.parse_unary()?),
+            });
         }
         if self.eat_keyword(Keyword::Delete) {
-            return Ok(Expr::Unary { op: UnaryOp::Delete, arg: Box::new(self.parse_unary()?) });
+            return Ok(Expr::Unary {
+                op: UnaryOp::Delete,
+                arg: Box::new(self.parse_unary()?),
+            });
         }
-        if self.async_depth != 0 && matches!(self.peek(), Token::Identifier(name) if name == "await") {
+        if self.async_depth != 0
+            && matches!(self.peek(), Token::Identifier(name) if name == "await")
+        {
             self.advance();
             return Ok(Expr::Await(Box::new(self.parse_unary()?)));
         }
@@ -1371,14 +1738,22 @@ impl Parser {
             if !is_valid_ref_target(&arg) {
                 return Err(self.error("invalid '++' operand"));
             }
-            return Ok(Expr::Update { op: UpdateOp::Inc, arg: Box::new(arg), prefix: true });
+            return Ok(Expr::Update {
+                op: UpdateOp::Inc,
+                arg: Box::new(arg),
+                prefix: true,
+            });
         }
         if self.eat_punct(Punct::MinusMinus) {
             let arg = self.parse_unary()?;
             if !is_valid_ref_target(&arg) {
                 return Err(self.error("invalid '--' operand"));
             }
-            return Ok(Expr::Update { op: UpdateOp::Dec, arg: Box::new(arg), prefix: true });
+            return Ok(Expr::Update {
+                op: UpdateOp::Dec,
+                arg: Box::new(arg),
+                prefix: true,
+            });
         }
         self.parse_postfix()
     }
@@ -1393,14 +1768,22 @@ impl Parser {
                     return Err(self.error("invalid '++' operand"));
                 }
                 self.advance();
-                return Ok(Expr::Update { op: UpdateOp::Inc, arg: Box::new(expr), prefix: false });
+                return Ok(Expr::Update {
+                    op: UpdateOp::Inc,
+                    arg: Box::new(expr),
+                    prefix: false,
+                });
             }
             if self.check_punct(Punct::MinusMinus) {
                 if !is_valid_ref_target(&expr) {
                     return Err(self.error("invalid '--' operand"));
                 }
                 self.advance();
-                return Ok(Expr::Update { op: UpdateOp::Dec, arg: Box::new(expr), prefix: false });
+                return Ok(Expr::Update {
+                    op: UpdateOp::Dec,
+                    arg: Box::new(expr),
+                    prefix: false,
+                });
             }
         }
         Ok(expr)
@@ -1423,19 +1806,40 @@ impl Parser {
         loop {
             if self.eat_punct(Punct::Dot) {
                 let name = self.expect_identifier_name()?;
-                expr = Expr::Member { object: Box::new(expr), property: Box::new(Expr::Identifier(name)), computed: false };
+                expr = Expr::Member {
+                    object: Box::new(expr),
+                    property: Box::new(Expr::Identifier(name)),
+                    computed: false,
+                };
             } else if self.eat_punct(Punct::LBracket) {
                 let prop = self.parse_expression()?;
                 self.expect_punct(Punct::RBracket)?;
-                expr = Expr::Member { object: Box::new(expr), property: Box::new(prop), computed: true };
+                expr = Expr::Member {
+                    object: Box::new(expr),
+                    property: Box::new(prop),
+                    computed: true,
+                };
             } else if self.check_punct(Punct::LParen) {
                 let args = self.parse_arguments()?;
-                expr = Expr::Call { callee: Box::new(expr), args };
+                expr = Expr::Call {
+                    callee: Box::new(expr),
+                    args,
+                };
             } else if self.tokenizer.at_template(self.positions[self.pos]) {
-                let (raw, cooked, sources) = self.tokenizer.tagged_template_at(self.positions[self.pos])?;
+                let (raw, cooked, sources) = self
+                    .tokenizer
+                    .tagged_template_at(self.positions[self.pos])?;
                 self.rescan_suffix();
-                let expressions = sources.iter().map(|source| parse_expression_from_source(source)).collect::<Result<Vec<_>, _>>()?;
-                expr = Expr::TaggedTemplate { tag: Box::new(expr), raw, cooked, expressions };
+                let expressions = sources
+                    .iter()
+                    .map(|source| parse_expression_from_source(source))
+                    .collect::<Result<Vec<_>, _>>()?;
+                expr = Expr::TaggedTemplate {
+                    tag: Box::new(expr),
+                    raw,
+                    cooked,
+                    expressions,
+                };
             } else {
                 break;
             }
@@ -1453,21 +1857,40 @@ impl Parser {
     /// covers every realistic `new` usage a hand-written DOM script
     /// makes without needing the spec's full grammar distinction.
     fn parse_new_expression(&mut self) -> Result<Expr, ParseError> {
-        let mut callee = if self.eat_keyword(Keyword::New) { self.parse_new_expression()? } else { self.parse_primary()? };
+        let mut callee = if self.eat_keyword(Keyword::New) {
+            self.parse_new_expression()?
+        } else {
+            self.parse_primary()?
+        };
         loop {
             if self.eat_punct(Punct::Dot) {
                 let name = self.expect_identifier_name()?;
-                callee = Expr::Member { object: Box::new(callee), property: Box::new(Expr::Identifier(name)), computed: false };
+                callee = Expr::Member {
+                    object: Box::new(callee),
+                    property: Box::new(Expr::Identifier(name)),
+                    computed: false,
+                };
             } else if self.eat_punct(Punct::LBracket) {
                 let prop = self.parse_expression()?;
                 self.expect_punct(Punct::RBracket)?;
-                callee = Expr::Member { object: Box::new(callee), property: Box::new(prop), computed: true };
+                callee = Expr::Member {
+                    object: Box::new(callee),
+                    property: Box::new(prop),
+                    computed: true,
+                };
             } else {
                 break;
             }
         }
-        let args = if self.check_punct(Punct::LParen) { self.parse_arguments()? } else { Vec::new() };
-        Ok(Expr::New { callee: Box::new(callee), args })
+        let args = if self.check_punct(Punct::LParen) {
+            self.parse_arguments()?
+        } else {
+            Vec::new()
+        };
+        Ok(Expr::New {
+            callee: Box::new(callee),
+            args,
+        })
     }
 
     fn parse_arguments(&mut self) -> Result<Vec<Argument>, ParseError> {
@@ -1492,8 +1915,16 @@ impl Parser {
             Token::Punct(Punct::Slash | Punct::SlashAssign) => {
                 let (pattern, flags) = self.tokenizer.regexp_at(self.positions[self.pos])?;
                 crate::regexp::RegExp::compile(pattern.clone(), &flags).map_err(|error| {
-                    let resource = if matches!(error, crate::RuntimeError::SyntaxError(_)) { None } else { Some(error.clone()) };
-                    ParseError { message: error.to_string(), resource, known_syntax: matches!(error, crate::RuntimeError::SyntaxError(_)) }
+                    let resource = if matches!(error, crate::RuntimeError::SyntaxError(_)) {
+                        None
+                    } else {
+                        Some(error.clone())
+                    };
+                    ParseError {
+                        message: error.to_string(),
+                        resource,
+                        known_syntax: matches!(error, crate::RuntimeError::SyntaxError(_)),
+                    }
                 })?;
                 self.rescan_suffix();
                 Ok(Expr::RegExp { pattern, flags })
@@ -1507,7 +1938,10 @@ impl Parser {
                 self.advance();
                 Ok(Expr::String(s))
             }
-            Token::Template { quasis, raw_expressions } => {
+            Token::Template {
+                quasis,
+                raw_expressions,
+            } => {
                 self.advance();
                 parse_template(quasis, raw_expressions)
             }
@@ -1547,7 +1981,11 @@ impl Parser {
             Token::Identifier(name) if name == "yield" && self.generator_depth != 0 => {
                 self.advance();
                 let delegate = self.eat_punct(Punct::Star);
-                let value = if !delegate && matches!(self.peek(), Token::Punct(Punct::Semicolon | Punct::RBrace) | Token::Eof) {
+                let value = if !delegate
+                    && matches!(
+                        self.peek(),
+                        Token::Punct(Punct::Semicolon | Punct::RBrace) | Token::Eof
+                    ) {
                     None
                 } else {
                     Some(Box::new(self.parse_assignment()?))
@@ -1602,7 +2040,11 @@ impl Parser {
                 let key = self.parse_property_key()?;
                 if self.eat_punct(Punct::Colon) {
                     let value = self.parse_assignment()?;
-                    props.push(ObjectProp::KeyValue { key, value, shorthand: false });
+                    props.push(ObjectProp::KeyValue {
+                        key,
+                        value,
+                        shorthand: false,
+                    });
                 } else if self.check_punct(Punct::LParen) {
                     let params = self.parse_params()?;
                     let body = self.parse_block()?;
@@ -1612,12 +2054,26 @@ impl Parser {
                         PropertyKey::Number(number) => number.to_string(),
                         PropertyKey::Computed(_) => String::new(),
                     };
-                    props.push(ObjectProp::Method { key, function: Function { name: Some(name), params, body, generator: false, is_async: false } });
-                } else if matches!(&key, PropertyKey::Identifier(name) if name == "get" || name == "set") && !self.check_punct(Punct::Comma) && !self.check_punct(Punct::RBrace) {
+                    props.push(ObjectProp::Method {
+                        key,
+                        function: Function {
+                            name: Some(name),
+                            params,
+                            body,
+                            generator: false,
+                            is_async: false,
+                        },
+                    });
+                } else if matches!(&key, PropertyKey::Identifier(name) if name == "get" || name == "set")
+                    && !self.check_punct(Punct::Comma)
+                    && !self.check_punct(Punct::RBrace)
+                {
                     let getter = matches!(&key, PropertyKey::Identifier(name) if name == "get");
                     let key = self.parse_property_key()?;
                     let params = self.parse_params()?;
-                    if (getter && !params.is_empty()) || (!getter && (params.len() != 1 || params[0].rest)) {
+                    if (getter && !params.is_empty())
+                        || (!getter && (params.len() != 1 || params[0].rest))
+                    {
                         return Err(self.error("invalid accessor parameter list"));
                     }
                     let body = self.parse_block()?;
@@ -1628,13 +2084,27 @@ impl Parser {
                         PropertyKey::Computed(_) => String::new(),
                     };
                     let name = format!("{} {}", if getter { "get" } else { "set" }, name);
-                    props.push(ObjectProp::Accessor { key, function: Function { name: Some(name), params, body, generator: false, is_async: false }, getter });
+                    props.push(ObjectProp::Accessor {
+                        key,
+                        function: Function {
+                            name: Some(name),
+                            params,
+                            body,
+                            generator: false,
+                            is_async: false,
+                        },
+                        getter,
+                    });
                 } else {
                     let name = match &key {
                         PropertyKey::Identifier(n) => n.clone(),
                         _ => return Err(self.error("expected ':' after object property key")),
                     };
-                    props.push(ObjectProp::KeyValue { key: PropertyKey::Identifier(name.clone()), value: Expr::Identifier(name), shorthand: true });
+                    props.push(ObjectProp::KeyValue {
+                        key: PropertyKey::Identifier(name.clone()),
+                        value: Expr::Identifier(name),
+                        shorthand: true,
+                    });
                 }
             }
             if !self.check_punct(Punct::RBrace) {
@@ -1655,18 +2125,29 @@ fn class_element_name(key: &PropertyKey) -> String {
     }
 }
 
-fn parse_template(quasis: Vec<crate::JsString>, raw_expressions: Vec<String>) -> Result<Expr, ParseError> {
-    let expressions = raw_expressions.iter().map(|src| parse_expression_from_source(src)).collect::<Result<Vec<_>, _>>()?;
-    Ok(Expr::Template { quasis, expressions })
+fn parse_template(
+    quasis: Vec<crate::JsString>,
+    raw_expressions: Vec<String>,
+) -> Result<Expr, ParseError> {
+    let expressions = raw_expressions
+        .iter()
+        .map(|src| parse_expression_from_source(src))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Expr::Template {
+        quasis,
+        expressions,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
     fn regexp_lexical_goals_are_visible_in_the_public_ast() {
-        use crate::{Expr, Stmt, parse};
+        use crate::{parse, Expr, Stmt};
         let program = parse("/a/g").unwrap();
-        assert!(matches!(&program.body[0],Stmt::Expr(Expr::RegExp {pattern,flags}) if pattern == "a" && flags == "g"));
+        assert!(
+            matches!(&program.body[0],Stmt::Expr(Expr::RegExp {pattern,flags}) if pattern == "a" && flags == "g")
+        );
         assert!(parse("delete object.x").is_ok());
         for source in ["/(/", "/a\n/", "String.raw`unterminated", "'\\u{110000}'"] {
             assert!(parse(source).is_err(), "{source}");
@@ -1701,7 +2182,12 @@ mod tests {
         assert!(!Parser::new("async").async_arrow_follows());
         assert!(!Parser::new("value").async_arrow_follows());
         assert!(!Parser::new("async\n(value)=>value").async_arrow_follows());
-        assert_eq!(class_element_name(&PropertyKey::Computed(Box::new(Expr::Identifier("key".into())))), "");
+        assert_eq!(
+            class_element_name(&PropertyKey::Computed(Box::new(Expr::Identifier(
+                "key".into()
+            )))),
+            ""
+        );
     }
 
     use super::*;
@@ -1716,7 +2202,12 @@ mod tests {
 
     fn only_stmt(src: &str) -> Stmt {
         let p = program(src);
-        assert_eq!(p.body.len(), 1, "expected exactly one statement in {src:?}, got {:?}", p.body);
+        assert_eq!(
+            p.body.len(),
+            1,
+            "expected exactly one statement in {src:?}, got {:?}",
+            p.body
+        );
         p.body.into_iter().next().unwrap()
     }
 
@@ -1738,10 +2229,16 @@ mod tests {
             expr("`sum: ${a + b}!`"),
             Expr::Template {
                 quasis: vec!["sum: ".into(), "!".into()],
-                expressions: vec![Expr::Binary { op: BinaryOp::Add, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) }]
+                expressions: vec![Expr::Binary {
+                    op: BinaryOp::Add,
+                    left: Box::new(Expr::Identifier("a".to_string())),
+                    right: Box::new(Expr::Identifier("b".to_string()))
+                }]
             }
         );
-        assert!(matches!(expr(r"tag`value: ${1}`"), Expr::TaggedTemplate { expressions, .. } if expressions == vec![Expr::Number(1.0)]));
+        assert!(
+            matches!(expr(r"tag`value: ${1}`"), Expr::TaggedTemplate { expressions, .. } if expressions == vec![Expr::Number(1.0)])
+        );
     }
 
     #[test]
@@ -1751,7 +2248,11 @@ mod tests {
             Expr::Binary {
                 op: BinaryOp::Add,
                 left: Box::new(Expr::Number(1.0)),
-                right: Box::new(Expr::Binary { op: BinaryOp::Mul, left: Box::new(Expr::Number(2.0)), right: Box::new(Expr::Number(3.0)) })
+                right: Box::new(Expr::Binary {
+                    op: BinaryOp::Mul,
+                    left: Box::new(Expr::Number(2.0)),
+                    right: Box::new(Expr::Number(3.0))
+                })
             }
         );
     }
@@ -1762,7 +2263,11 @@ mod tests {
             expr("a < b === c"),
             Expr::Binary {
                 op: BinaryOp::StrictEq,
-                left: Box::new(Expr::Binary { op: BinaryOp::Lt, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) }),
+                left: Box::new(Expr::Binary {
+                    op: BinaryOp::Lt,
+                    left: Box::new(Expr::Identifier("a".to_string())),
+                    right: Box::new(Expr::Identifier("b".to_string()))
+                }),
                 right: Box::new(Expr::Identifier("c".to_string())),
             }
         );
@@ -1775,20 +2280,48 @@ mod tests {
             Expr::Logical {
                 op: LogicalOp::Or,
                 left: Box::new(Expr::Identifier("a".to_string())),
-                right: Box::new(Expr::Logical { op: LogicalOp::And, left: Box::new(Expr::Identifier("b".to_string())), right: Box::new(Expr::Identifier("c".to_string())) })
+                right: Box::new(Expr::Logical {
+                    op: LogicalOp::And,
+                    left: Box::new(Expr::Identifier("b".to_string())),
+                    right: Box::new(Expr::Identifier("c".to_string()))
+                })
             }
         );
     }
 
     #[test]
     fn parses_nullish_coalescing_typeof_instanceof_in() {
-        assert_eq!(expr("a ?? b"), Expr::Logical { op: LogicalOp::Nullish, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) });
-        assert_eq!(expr("typeof x"), Expr::Unary { op: UnaryOp::Typeof, arg: Box::new(Expr::Identifier("x".to_string())) });
+        assert_eq!(
+            expr("a ?? b"),
+            Expr::Logical {
+                op: LogicalOp::Nullish,
+                left: Box::new(Expr::Identifier("a".to_string())),
+                right: Box::new(Expr::Identifier("b".to_string()))
+            }
+        );
+        assert_eq!(
+            expr("typeof x"),
+            Expr::Unary {
+                op: UnaryOp::Typeof,
+                arg: Box::new(Expr::Identifier("x".to_string()))
+            }
+        );
         assert_eq!(
             expr("x instanceof Foo"),
-            Expr::Binary { op: BinaryOp::Instanceof, left: Box::new(Expr::Identifier("x".to_string())), right: Box::new(Expr::Identifier("Foo".to_string())) }
+            Expr::Binary {
+                op: BinaryOp::Instanceof,
+                left: Box::new(Expr::Identifier("x".to_string())),
+                right: Box::new(Expr::Identifier("Foo".to_string()))
+            }
         );
-        assert_eq!(expr("'k' in obj"), Expr::Binary { op: BinaryOp::In, left: Box::new(Expr::String("k".into())), right: Box::new(Expr::Identifier("obj".to_string())) });
+        assert_eq!(
+            expr("'k' in obj"),
+            Expr::Binary {
+                op: BinaryOp::In,
+                left: Box::new(Expr::String("k".into())),
+                right: Box::new(Expr::Identifier("obj".to_string()))
+            }
+        );
     }
 
     #[test]
@@ -1809,18 +2342,64 @@ mod tests {
 
     #[test]
     fn parses_assignment_and_compound_assignment() {
-        assert_eq!(expr("x = 1"), Expr::Assign { op: AssignOp::Assign, target: Box::new(Expr::Identifier("x".to_string())), value: Box::new(Expr::Number(1.0)) });
-        assert_eq!(expr("x += 1"), Expr::Assign { op: AssignOp::AddAssign, target: Box::new(Expr::Identifier("x".to_string())), value: Box::new(Expr::Number(1.0)) });
-        assert_eq!(expr("x -= 1"), Expr::Assign { op: AssignOp::SubAssign, target: Box::new(Expr::Identifier("x".to_string())), value: Box::new(Expr::Number(1.0)) });
-        assert_eq!(expr("x *= 2"), Expr::Assign { op: AssignOp::MulAssign, target: Box::new(Expr::Identifier("x".to_string())), value: Box::new(Expr::Number(2.0)) });
-        assert_eq!(expr("x /= 2"), Expr::Assign { op: AssignOp::DivAssign, target: Box::new(Expr::Identifier("x".to_string())), value: Box::new(Expr::Number(2.0)) });
-        assert_eq!(expr("x %= 2"), Expr::Assign { op: AssignOp::ModAssign, target: Box::new(Expr::Identifier("x".to_string())), value: Box::new(Expr::Number(2.0)) });
+        assert_eq!(
+            expr("x = 1"),
+            Expr::Assign {
+                op: AssignOp::Assign,
+                target: Box::new(Expr::Identifier("x".to_string())),
+                value: Box::new(Expr::Number(1.0))
+            }
+        );
+        assert_eq!(
+            expr("x += 1"),
+            Expr::Assign {
+                op: AssignOp::AddAssign,
+                target: Box::new(Expr::Identifier("x".to_string())),
+                value: Box::new(Expr::Number(1.0))
+            }
+        );
+        assert_eq!(
+            expr("x -= 1"),
+            Expr::Assign {
+                op: AssignOp::SubAssign,
+                target: Box::new(Expr::Identifier("x".to_string())),
+                value: Box::new(Expr::Number(1.0))
+            }
+        );
+        assert_eq!(
+            expr("x *= 2"),
+            Expr::Assign {
+                op: AssignOp::MulAssign,
+                target: Box::new(Expr::Identifier("x".to_string())),
+                value: Box::new(Expr::Number(2.0))
+            }
+        );
+        assert_eq!(
+            expr("x /= 2"),
+            Expr::Assign {
+                op: AssignOp::DivAssign,
+                target: Box::new(Expr::Identifier("x".to_string())),
+                value: Box::new(Expr::Number(2.0))
+            }
+        );
+        assert_eq!(
+            expr("x %= 2"),
+            Expr::Assign {
+                op: AssignOp::ModAssign,
+                target: Box::new(Expr::Identifier("x".to_string())),
+                value: Box::new(Expr::Number(2.0))
+            }
+        );
         assert_eq!(
             expr("x = y = 1"),
             Expr::Assign {
                 op: AssignOp::Assign,
                 target: Box::new(Expr::Identifier("x".to_string())),
-                value: Box::new(Expr::Assign { op: AssignOp::Assign, target: Box::new(Expr::Identifier("y".to_string())), value: Box::new(Expr::Number(1.0)) })
+                value: Box::new(Expr::Assign {
+                    op: AssignOp::Assign,
+                    target: Box::new(Expr::Identifier("y".to_string())),
+                    value: Box::new(Expr::Number(1.0))
+                })
             }
         );
     }
@@ -1837,10 +2416,38 @@ mod tests {
 
     #[test]
     fn parses_prefix_and_postfix_update_expressions() {
-        assert_eq!(expr("++x"), Expr::Update { op: UpdateOp::Inc, arg: Box::new(Expr::Identifier("x".to_string())), prefix: true });
-        assert_eq!(expr("x++"), Expr::Update { op: UpdateOp::Inc, arg: Box::new(Expr::Identifier("x".to_string())), prefix: false });
-        assert_eq!(expr("--x"), Expr::Update { op: UpdateOp::Dec, arg: Box::new(Expr::Identifier("x".to_string())), prefix: true });
-        assert_eq!(expr("x--"), Expr::Update { op: UpdateOp::Dec, arg: Box::new(Expr::Identifier("x".to_string())), prefix: false });
+        assert_eq!(
+            expr("++x"),
+            Expr::Update {
+                op: UpdateOp::Inc,
+                arg: Box::new(Expr::Identifier("x".to_string())),
+                prefix: true
+            }
+        );
+        assert_eq!(
+            expr("x++"),
+            Expr::Update {
+                op: UpdateOp::Inc,
+                arg: Box::new(Expr::Identifier("x".to_string())),
+                prefix: false
+            }
+        );
+        assert_eq!(
+            expr("--x"),
+            Expr::Update {
+                op: UpdateOp::Dec,
+                arg: Box::new(Expr::Identifier("x".to_string())),
+                prefix: true
+            }
+        );
+        assert_eq!(
+            expr("x--"),
+            Expr::Update {
+                op: UpdateOp::Dec,
+                arg: Box::new(Expr::Identifier("x".to_string())),
+                prefix: false
+            }
+        );
     }
 
     #[test]
@@ -1849,7 +2456,14 @@ mod tests {
         let p = program("x\n++y");
         assert_eq!(
             p.body,
-            vec![Stmt::Expr(Expr::Identifier("x".to_string())), Stmt::Expr(Expr::Update { op: UpdateOp::Inc, arg: Box::new(Expr::Identifier("y".to_string())), prefix: true })]
+            vec![
+                Stmt::Expr(Expr::Identifier("x".to_string())),
+                Stmt::Expr(Expr::Update {
+                    op: UpdateOp::Inc,
+                    arg: Box::new(Expr::Identifier("y".to_string())),
+                    prefix: true
+                })
+            ]
         );
     }
 
@@ -1865,7 +2479,11 @@ mod tests {
             expr("a.b[c](d)"),
             Expr::Call {
                 callee: Box::new(Expr::Member {
-                    object: Box::new(Expr::Member { object: Box::new(Expr::Identifier("a".to_string())), property: Box::new(Expr::Identifier("b".to_string())), computed: false }),
+                    object: Box::new(Expr::Member {
+                        object: Box::new(Expr::Identifier("a".to_string())),
+                        property: Box::new(Expr::Identifier("b".to_string())),
+                        computed: false
+                    }),
                     property: Box::new(Expr::Identifier("c".to_string())),
                     computed: true,
                 }),
@@ -1879,7 +2497,11 @@ mod tests {
         assert_eq!(
             expr("new a[b]()"),
             Expr::New {
-                callee: Box::new(Expr::Member { object: Box::new(Expr::Identifier("a".to_string())), property: Box::new(Expr::Identifier("b".to_string())), computed: true }),
+                callee: Box::new(Expr::Member {
+                    object: Box::new(Expr::Identifier("a".to_string())),
+                    property: Box::new(Expr::Identifier("b".to_string())),
+                    computed: true
+                }),
                 args: vec![]
             }
         );
@@ -1887,13 +2509,29 @@ mod tests {
 
     #[test]
     fn parses_new_expressions() {
-        assert_eq!(expr("new Error(\"boom\")"), Expr::New { callee: Box::new(Expr::Identifier("Error".to_string())), args: vec![Argument::Normal(Expr::String("boom".into()))] });
-        assert_eq!(expr("new Foo"), Expr::New { callee: Box::new(Expr::Identifier("Foo".to_string())), args: vec![] });
+        assert_eq!(
+            expr("new Error(\"boom\")"),
+            Expr::New {
+                callee: Box::new(Expr::Identifier("Error".to_string())),
+                args: vec![Argument::Normal(Expr::String("boom".into()))]
+            }
+        );
+        assert_eq!(
+            expr("new Foo"),
+            Expr::New {
+                callee: Box::new(Expr::Identifier("Foo".to_string())),
+                args: vec![]
+            }
+        );
         assert_eq!(
             expr("new a.b.C()"),
             Expr::New {
                 callee: Box::new(Expr::Member {
-                    object: Box::new(Expr::Member { object: Box::new(Expr::Identifier("a".to_string())), property: Box::new(Expr::Identifier("b".to_string())), computed: false }),
+                    object: Box::new(Expr::Member {
+                        object: Box::new(Expr::Identifier("a".to_string())),
+                        property: Box::new(Expr::Identifier("b".to_string())),
+                        computed: false
+                    }),
                     property: Box::new(Expr::Identifier("C".to_string())),
                     computed: false,
                 }),
@@ -1902,7 +2540,16 @@ mod tests {
         );
         // A call immediately after `new Foo()` attaches to the `New`
         // node via the outer left-hand-side loop, not `parse_new_expression` itself.
-        assert_eq!(expr("new Foo()()"), Expr::Call { callee: Box::new(Expr::New { callee: Box::new(Expr::Identifier("Foo".to_string())), args: vec![] }), args: vec![] });
+        assert_eq!(
+            expr("new Foo()()"),
+            Expr::Call {
+                callee: Box::new(Expr::New {
+                    callee: Box::new(Expr::Identifier("Foo".to_string())),
+                    args: vec![]
+                }),
+                args: vec![]
+            }
+        );
     }
 
     #[test]
@@ -1911,7 +2558,11 @@ mod tests {
             expr("f(1, ...xs, 2)"),
             Expr::Call {
                 callee: Box::new(Expr::Identifier("f".to_string())),
-                args: vec![Argument::Normal(Expr::Number(1.0)), Argument::Spread(Expr::Identifier("xs".to_string())), Argument::Normal(Expr::Number(2.0))],
+                args: vec![
+                    Argument::Normal(Expr::Number(1.0)),
+                    Argument::Spread(Expr::Identifier("xs".to_string())),
+                    Argument::Normal(Expr::Number(2.0))
+                ],
             }
         );
     }
@@ -1920,11 +2571,33 @@ mod tests {
     fn parses_array_literal_with_holes_and_spread_and_trailing_comma() {
         assert_eq!(
             expr("[1, 2, 3]"),
-            Expr::Array(vec![Some(ArrayElement::Normal(Expr::Number(1.0))), Some(ArrayElement::Normal(Expr::Number(2.0))), Some(ArrayElement::Normal(Expr::Number(3.0)))])
+            Expr::Array(vec![
+                Some(ArrayElement::Normal(Expr::Number(1.0))),
+                Some(ArrayElement::Normal(Expr::Number(2.0))),
+                Some(ArrayElement::Normal(Expr::Number(3.0)))
+            ])
         );
-        assert_eq!(expr("[1,,3]"), Expr::Array(vec![Some(ArrayElement::Normal(Expr::Number(1.0))), None, Some(ArrayElement::Normal(Expr::Number(3.0)))]));
-        assert_eq!(expr("[1, 2,]"), Expr::Array(vec![Some(ArrayElement::Normal(Expr::Number(1.0))), Some(ArrayElement::Normal(Expr::Number(2.0)))]));
-        assert_eq!(expr("[...xs]"), Expr::Array(vec![Some(ArrayElement::Spread(Expr::Identifier("xs".to_string())))]));
+        assert_eq!(
+            expr("[1,,3]"),
+            Expr::Array(vec![
+                Some(ArrayElement::Normal(Expr::Number(1.0))),
+                None,
+                Some(ArrayElement::Normal(Expr::Number(3.0)))
+            ])
+        );
+        assert_eq!(
+            expr("[1, 2,]"),
+            Expr::Array(vec![
+                Some(ArrayElement::Normal(Expr::Number(1.0))),
+                Some(ArrayElement::Normal(Expr::Number(2.0)))
+            ])
+        );
+        assert_eq!(
+            expr("[...xs]"),
+            Expr::Array(vec![Some(ArrayElement::Spread(Expr::Identifier(
+                "xs".to_string()
+            )))])
+        );
     }
 
     #[test]
@@ -1932,9 +2605,21 @@ mod tests {
         assert_eq!(
             expr("{a: 1, b, [c]: 2, ...rest}"),
             Expr::Object(vec![
-                ObjectProp::KeyValue { key: PropertyKey::Identifier("a".to_string()), value: Expr::Number(1.0), shorthand: false },
-                ObjectProp::KeyValue { key: PropertyKey::Identifier("b".to_string()), value: Expr::Identifier("b".to_string()), shorthand: true },
-                ObjectProp::KeyValue { key: PropertyKey::Computed(Box::new(Expr::Identifier("c".to_string()))), value: Expr::Number(2.0), shorthand: false },
+                ObjectProp::KeyValue {
+                    key: PropertyKey::Identifier("a".to_string()),
+                    value: Expr::Number(1.0),
+                    shorthand: false
+                },
+                ObjectProp::KeyValue {
+                    key: PropertyKey::Identifier("b".to_string()),
+                    value: Expr::Identifier("b".to_string()),
+                    shorthand: true
+                },
+                ObjectProp::KeyValue {
+                    key: PropertyKey::Computed(Box::new(Expr::Identifier("c".to_string()))),
+                    value: Expr::Number(2.0),
+                    shorthand: false
+                },
                 ObjectProp::Spread(Expr::Identifier("rest".to_string())),
             ])
         );
@@ -1969,7 +2654,14 @@ mod tests {
         // resolve the same way at statement position) -- confirming
         // object literals are unambiguous only in expression position,
         // e.g. wrapped in parens.
-        assert_eq!(expr("({a: 1})"), Expr::Object(vec![ObjectProp::KeyValue { key: PropertyKey::Identifier("a".to_string()), value: Expr::Number(1.0), shorthand: false }]));
+        assert_eq!(
+            expr("({a: 1})"),
+            Expr::Object(vec![ObjectProp::KeyValue {
+                key: PropertyKey::Identifier("a".to_string()),
+                value: Expr::Number(1.0),
+                shorthand: false
+            }])
+        );
     }
 
     #[test]
@@ -1979,8 +2671,16 @@ mod tests {
             Stmt::FunctionDecl(Function {
                 name: Some("add".to_string()),
                 params: vec![
-                    Param { pattern: Pattern::Identifier("a".to_string()), default: None, rest: false },
-                    Param { pattern: Pattern::Identifier("b".to_string()), default: None, rest: false }
+                    Param {
+                        pattern: Pattern::Identifier("a".to_string()),
+                        default: None,
+                        rest: false
+                    },
+                    Param {
+                        pattern: Pattern::Identifier("b".to_string()),
+                        default: None,
+                        rest: false
+                    }
                 ],
                 body: vec![Stmt::Return(Some(Expr::Binary {
                     op: BinaryOp::Add,
@@ -2005,9 +2705,21 @@ mod tests {
             Expr::Function(Function {
                 name: Some("f".to_string()),
                 params: vec![
-                    Param { pattern: Pattern::Identifier("a".to_string()), default: None, rest: false },
-                    Param { pattern: Pattern::Identifier("b".to_string()), default: Some(Expr::Number(1.0)), rest: false },
-                    Param { pattern: Pattern::Identifier("rest".to_string()), default: None, rest: true },
+                    Param {
+                        pattern: Pattern::Identifier("a".to_string()),
+                        default: None,
+                        rest: false
+                    },
+                    Param {
+                        pattern: Pattern::Identifier("b".to_string()),
+                        default: Some(Expr::Number(1.0)),
+                        rest: false
+                    },
+                    Param {
+                        pattern: Pattern::Identifier("rest".to_string()),
+                        default: None,
+                        rest: true
+                    },
                 ],
                 body: vec![],
                 generator: false,
@@ -2021,18 +2733,41 @@ mod tests {
         assert_eq!(
             expr("x => x + 1"),
             Expr::Arrow {
-                params: vec![Param { pattern: Pattern::Identifier("x".to_string()), default: None, rest: false }],
-                body: ArrowBody::Expr(Box::new(Expr::Binary { op: BinaryOp::Add, left: Box::new(Expr::Identifier("x".to_string())), right: Box::new(Expr::Number(1.0)) })),
+                params: vec![Param {
+                    pattern: Pattern::Identifier("x".to_string()),
+                    default: None,
+                    rest: false
+                }],
+                body: ArrowBody::Expr(Box::new(Expr::Binary {
+                    op: BinaryOp::Add,
+                    left: Box::new(Expr::Identifier("x".to_string())),
+                    right: Box::new(Expr::Number(1.0))
+                })),
                 is_async: false,
             }
         );
-        assert_eq!(expr("() => {}"), Expr::Arrow { params: vec![], body: ArrowBody::Block(vec![]), is_async: false });
+        assert_eq!(
+            expr("() => {}"),
+            Expr::Arrow {
+                params: vec![],
+                body: ArrowBody::Block(vec![]),
+                is_async: false
+            }
+        );
         assert_eq!(
             expr("(a, b) => { return a + b; }"),
             Expr::Arrow {
                 params: vec![
-                    Param { pattern: Pattern::Identifier("a".to_string()), default: None, rest: false },
-                    Param { pattern: Pattern::Identifier("b".to_string()), default: None, rest: false }
+                    Param {
+                        pattern: Pattern::Identifier("a".to_string()),
+                        default: None,
+                        rest: false
+                    },
+                    Param {
+                        pattern: Pattern::Identifier("b".to_string()),
+                        default: None,
+                        rest: false
+                    }
                 ],
                 body: ArrowBody::Block(vec![Stmt::Return(Some(Expr::Binary {
                     op: BinaryOp::Add,
@@ -2042,7 +2777,10 @@ mod tests {
                 is_async: false,
             }
         );
-        assert!(matches!(expr("async value => await value"), Expr::Arrow { is_async: true, .. }));
+        assert!(matches!(
+            expr("async value => await value"),
+            Expr::Arrow { is_async: true, .. }
+        ));
     }
 
     #[test]
@@ -2057,7 +2795,11 @@ mod tests {
                         pattern: Pattern::Identifier("x".into()),
                         default: Some(Expr::Binary {
                             op: BinaryOp::Mul,
-                            left: Box::new(Expr::Binary { op: BinaryOp::Add, left: Box::new(Expr::Number(1.0)), right: Box::new(Expr::Number(2.0)) }),
+                            left: Box::new(Expr::Binary {
+                                op: BinaryOp::Add,
+                                left: Box::new(Expr::Number(1.0)),
+                                right: Box::new(Expr::Number(2.0))
+                            }),
                             right: Box::new(Expr::Number(3.0)),
                         }),
                         rest: false,
@@ -2080,8 +2822,16 @@ mod tests {
         assert_eq!(
             expr("(x) => () => x"),
             Expr::Arrow {
-                params: vec![Param { pattern: Pattern::Identifier("x".to_string()), default: None, rest: false }],
-                body: ArrowBody::Expr(Box::new(Expr::Arrow { params: vec![], body: ArrowBody::Expr(Box::new(Expr::Identifier("x".to_string()))), is_async: false })),
+                params: vec![Param {
+                    pattern: Pattern::Identifier("x".to_string()),
+                    default: None,
+                    rest: false
+                }],
+                body: ArrowBody::Expr(Box::new(Expr::Arrow {
+                    params: vec![],
+                    body: ArrowBody::Expr(Box::new(Expr::Identifier("x".to_string()))),
+                    is_async: false
+                })),
                 is_async: false,
             }
         );
@@ -2095,10 +2845,22 @@ mod tests {
                 DeclKind::Let,
                 vec![VarDeclarator {
                     pattern: Pattern::Array(vec![
-                        Some(ArrayPatternElement { pattern: Pattern::Identifier("a".to_string()), default: None, rest: false }),
+                        Some(ArrayPatternElement {
+                            pattern: Pattern::Identifier("a".to_string()),
+                            default: None,
+                            rest: false
+                        }),
                         None,
-                        Some(ArrayPatternElement { pattern: Pattern::Identifier("b".to_string()), default: None, rest: false }),
-                        Some(ArrayPatternElement { pattern: Pattern::Identifier("rest".to_string()), default: None, rest: true }),
+                        Some(ArrayPatternElement {
+                            pattern: Pattern::Identifier("b".to_string()),
+                            default: None,
+                            rest: false
+                        }),
+                        Some(ArrayPatternElement {
+                            pattern: Pattern::Identifier("rest".to_string()),
+                            default: None,
+                            rest: true
+                        }),
                     ]),
                     init: Some(Expr::Identifier("arr".to_string())),
                 }],
@@ -2110,7 +2872,11 @@ mod tests {
                 DeclKind::Const,
                 vec![VarDeclarator {
                     pattern: Pattern::Object(vec![
-                        ObjectPatternProp::KeyValue { key: PropertyKey::Identifier("a".to_string()), value: Pattern::Identifier("a".to_string()), default: None },
+                        ObjectPatternProp::KeyValue {
+                            key: PropertyKey::Identifier("a".to_string()),
+                            value: Pattern::Identifier("a".to_string()),
+                            default: None
+                        },
                         ObjectPatternProp::KeyValue {
                             key: PropertyKey::Identifier("b".to_string()),
                             value: Pattern::Identifier("renamed".to_string()),
@@ -2128,8 +2894,16 @@ mod tests {
                 name: Some("f".to_string()),
                 params: vec![Param {
                     pattern: Pattern::Array(vec![
-                        Some(ArrayPatternElement { pattern: Pattern::Identifier("a".to_string()), default: None, rest: false }),
-                        Some(ArrayPatternElement { pattern: Pattern::Identifier("b".to_string()), default: None, rest: false }),
+                        Some(ArrayPatternElement {
+                            pattern: Pattern::Identifier("a".to_string()),
+                            default: None,
+                            rest: false
+                        }),
+                        Some(ArrayPatternElement {
+                            pattern: Pattern::Identifier("b".to_string()),
+                            default: None,
+                            rest: false
+                        }),
                     ]),
                     default: None,
                     rest: false,
@@ -2139,8 +2913,20 @@ mod tests {
                 is_async: false,
             })
         );
-        assert!(matches!(expr("([a,,b=3,...rest]=source)"), Expr::DestructureAssign { pattern: AssignmentPattern::Array(_), .. }));
-        assert!(matches!(expr("({a,b:c=2,...rest}=source)"), Expr::DestructureAssign { pattern: AssignmentPattern::Object(_), .. }));
+        assert!(matches!(
+            expr("([a,,b=3,...rest]=source)"),
+            Expr::DestructureAssign {
+                pattern: AssignmentPattern::Array(_),
+                ..
+            }
+        ));
+        assert!(matches!(
+            expr("({a,b:c=2,...rest}=source)"),
+            Expr::DestructureAssign {
+                pattern: AssignmentPattern::Object(_),
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -2150,12 +2936,27 @@ mod tests {
             Stmt::VarDecl(
                 DeclKind::Var,
                 vec![
-                    VarDeclarator { pattern: Pattern::Identifier("a".to_string()), init: Some(Expr::Number(1.0)) },
-                    VarDeclarator { pattern: Pattern::Identifier("b".to_string()), init: Some(Expr::Number(2.0)) }
+                    VarDeclarator {
+                        pattern: Pattern::Identifier("a".to_string()),
+                        init: Some(Expr::Number(1.0))
+                    },
+                    VarDeclarator {
+                        pattern: Pattern::Identifier("b".to_string()),
+                        init: Some(Expr::Number(2.0))
+                    }
                 ]
             )
         );
-        assert_eq!(only_stmt("let x;"), Stmt::VarDecl(DeclKind::Let, vec![VarDeclarator { pattern: Pattern::Identifier("x".to_string()), init: None }]));
+        assert_eq!(
+            only_stmt("let x;"),
+            Stmt::VarDecl(
+                DeclKind::Let,
+                vec![VarDeclarator {
+                    pattern: Pattern::Identifier("x".to_string()),
+                    init: None
+                }]
+            )
+        );
     }
 
     #[test]
@@ -2172,8 +2973,20 @@ mod tests {
 
     #[test]
     fn parses_while_and_do_while() {
-        assert_eq!(only_stmt("while (a) b;"), Stmt::While { test: Expr::Identifier("a".to_string()), body: Box::new(Stmt::Expr(Expr::Identifier("b".to_string()))) });
-        assert_eq!(only_stmt("do a; while (b);"), Stmt::DoWhile { body: Box::new(Stmt::Expr(Expr::Identifier("a".to_string()))), test: Expr::Identifier("b".to_string()) });
+        assert_eq!(
+            only_stmt("while (a) b;"),
+            Stmt::While {
+                test: Expr::Identifier("a".to_string()),
+                body: Box::new(Stmt::Expr(Expr::Identifier("b".to_string())))
+            }
+        );
+        assert_eq!(
+            only_stmt("do a; while (b);"),
+            Stmt::DoWhile {
+                body: Box::new(Stmt::Expr(Expr::Identifier("a".to_string()))),
+                test: Expr::Identifier("b".to_string())
+            }
+        );
     }
 
     #[test]
@@ -2181,14 +2994,36 @@ mod tests {
         assert_eq!(
             only_stmt("for (let i = 0; i < 10; i++) {}"),
             Stmt::For {
-                init: Some(ForInit::VarDecl(DeclKind::Let, vec![VarDeclarator { pattern: Pattern::Identifier("i".to_string()), init: Some(Expr::Number(0.0)) }])),
-                test: Some(Expr::Binary { op: BinaryOp::Lt, left: Box::new(Expr::Identifier("i".to_string())), right: Box::new(Expr::Number(10.0)) }),
-                update: Some(Expr::Update { op: UpdateOp::Inc, arg: Box::new(Expr::Identifier("i".to_string())), prefix: false }),
+                init: Some(ForInit::VarDecl(
+                    DeclKind::Let,
+                    vec![VarDeclarator {
+                        pattern: Pattern::Identifier("i".to_string()),
+                        init: Some(Expr::Number(0.0))
+                    }]
+                )),
+                test: Some(Expr::Binary {
+                    op: BinaryOp::Lt,
+                    left: Box::new(Expr::Identifier("i".to_string())),
+                    right: Box::new(Expr::Number(10.0))
+                }),
+                update: Some(Expr::Update {
+                    op: UpdateOp::Inc,
+                    arg: Box::new(Expr::Identifier("i".to_string())),
+                    prefix: false
+                }),
                 body: Box::new(Stmt::Block(vec![])),
             }
         );
         // All three clauses empty.
-        assert_eq!(only_stmt("for (;;) {}"), Stmt::For { init: None, test: None, update: None, body: Box::new(Stmt::Block(vec![])) });
+        assert_eq!(
+            only_stmt("for (;;) {}"),
+            Stmt::For {
+                init: None,
+                test: None,
+                update: None,
+                body: Box::new(Stmt::Block(vec![]))
+            }
+        );
     }
 
     #[test]
@@ -2196,9 +3031,21 @@ mod tests {
         assert_eq!(
             only_stmt("for (i = 0; i < 10; i++) {}"),
             Stmt::For {
-                init: Some(ForInit::Expr(Expr::Assign { op: AssignOp::Assign, target: Box::new(Expr::Identifier("i".to_string())), value: Box::new(Expr::Number(0.0)) })),
-                test: Some(Expr::Binary { op: BinaryOp::Lt, left: Box::new(Expr::Identifier("i".to_string())), right: Box::new(Expr::Number(10.0)) }),
-                update: Some(Expr::Update { op: UpdateOp::Inc, arg: Box::new(Expr::Identifier("i".to_string())), prefix: false }),
+                init: Some(ForInit::Expr(Expr::Assign {
+                    op: AssignOp::Assign,
+                    target: Box::new(Expr::Identifier("i".to_string())),
+                    value: Box::new(Expr::Number(0.0))
+                })),
+                test: Some(Expr::Binary {
+                    op: BinaryOp::Lt,
+                    left: Box::new(Expr::Identifier("i".to_string())),
+                    right: Box::new(Expr::Number(10.0))
+                }),
+                update: Some(Expr::Update {
+                    op: UpdateOp::Inc,
+                    arg: Box::new(Expr::Identifier("i".to_string())),
+                    prefix: false
+                }),
                 body: Box::new(Stmt::Block(vec![])),
             }
         );
@@ -2224,7 +3071,11 @@ mod tests {
         );
         assert_eq!(
             only_stmt("for (x of items) {}"),
-            Stmt::ForOf { left: ForHead::Pattern(Pattern::Identifier("x".to_string())), right: Expr::Identifier("items".to_string()), body: Box::new(Stmt::Block(vec![])) }
+            Stmt::ForOf {
+                left: ForHead::Pattern(Pattern::Identifier("x".to_string())),
+                right: Expr::Identifier("items".to_string()),
+                body: Box::new(Stmt::Block(vec![]))
+            }
         );
     }
 
@@ -2235,8 +3086,17 @@ mod tests {
             Stmt::Switch {
                 discriminant: Expr::Identifier("x".to_string()),
                 cases: vec![
-                    SwitchCase { test: Some(Expr::Number(1.0)), consequent: vec![Stmt::Expr(Expr::Identifier("a".to_string())), Stmt::Break(None)] },
-                    SwitchCase { test: None, consequent: vec![Stmt::Expr(Expr::Identifier("b".to_string()))] },
+                    SwitchCase {
+                        test: Some(Expr::Number(1.0)),
+                        consequent: vec![
+                            Stmt::Expr(Expr::Identifier("a".to_string())),
+                            Stmt::Break(None)
+                        ]
+                    },
+                    SwitchCase {
+                        test: None,
+                        consequent: vec![Stmt::Expr(Expr::Identifier("b".to_string()))]
+                    },
                 ],
             }
         );
@@ -2246,7 +3106,9 @@ mod tests {
     fn duplicate_switch_default_is_a_known_syntax_error() {
         let error = parse("switch (value) { default: first; default: second; }").unwrap_err();
         assert!(error.known_syntax);
-        assert!(error.message.starts_with("a switch statement can contain only one default clause"));
+        assert!(error
+            .message
+            .starts_with("a switch statement can contain only one default clause"));
     }
 
     #[test]
@@ -2255,7 +3117,10 @@ mod tests {
             only_stmt("try { a; } catch (e) { b; } finally { c; }"),
             Stmt::Try {
                 block: vec![Stmt::Expr(Expr::Identifier("a".to_string()))],
-                handler: Some(CatchClause { param: Some(Pattern::Identifier("e".to_string())), body: vec![Stmt::Expr(Expr::Identifier("b".to_string()))] }),
+                handler: Some(CatchClause {
+                    param: Some(Pattern::Identifier("e".to_string())),
+                    body: vec![Stmt::Expr(Expr::Identifier("b".to_string()))]
+                }),
                 finalizer: Some(vec![Stmt::Expr(Expr::Identifier("c".to_string()))]),
             }
         );
@@ -2263,7 +3128,10 @@ mod tests {
             only_stmt("try { a; } catch { b; }"),
             Stmt::Try {
                 block: vec![Stmt::Expr(Expr::Identifier("a".to_string()))],
-                handler: Some(CatchClause { param: None, body: vec![Stmt::Expr(Expr::Identifier("b".to_string()))] }),
+                handler: Some(CatchClause {
+                    param: None,
+                    body: vec![Stmt::Expr(Expr::Identifier("b".to_string()))]
+                }),
                 finalizer: None
             }
         );
@@ -2274,7 +3142,10 @@ mod tests {
     fn parses_throw_and_forbids_newline_before_its_expression() {
         assert_eq!(
             only_stmt("throw new Error(\"x\");"),
-            Stmt::Throw(Expr::New { callee: Box::new(Expr::Identifier("Error".to_string())), args: vec![Argument::Normal(Expr::String("x".into()))] })
+            Stmt::Throw(Expr::New {
+                callee: Box::new(Expr::Identifier("Error".to_string())),
+                args: vec![Argument::Normal(Expr::String("x".into()))]
+            })
         );
         assert!(parse("throw\nnew Error(\"x\");").is_err());
     }
@@ -2287,7 +3158,13 @@ mod tests {
         // the value becomes its own separate expression statement.
         assert_eq!(
             only_stmt("function f() { return\n1; }"),
-            Stmt::FunctionDecl(Function { name: Some("f".to_string()), params: vec![], body: vec![Stmt::Return(None), Stmt::Expr(Expr::Number(1.0))], generator: false, is_async: false })
+            Stmt::FunctionDecl(Function {
+                name: Some("f".to_string()),
+                params: vec![],
+                body: vec![Stmt::Return(None), Stmt::Expr(Expr::Number(1.0))],
+                generator: false,
+                is_async: false
+            })
         );
     }
 
@@ -2342,19 +3219,46 @@ mod tests {
         // as property names) -- exercises `keyword_as_str` broadly.
         assert_eq!(
             expr("obj.default"),
-            Expr::Member { object: Box::new(Expr::Identifier("obj".to_string())), property: Box::new(Expr::Identifier("default".to_string())), computed: false }
+            Expr::Member {
+                object: Box::new(Expr::Identifier("obj".to_string())),
+                property: Box::new(Expr::Identifier("default".to_string())),
+                computed: false
+            }
         );
-        assert_eq!(expr("obj.in"), Expr::Member { object: Box::new(Expr::Identifier("obj".to_string())), property: Box::new(Expr::Identifier("in".to_string())), computed: false });
+        assert_eq!(
+            expr("obj.in"),
+            Expr::Member {
+                object: Box::new(Expr::Identifier("obj".to_string())),
+                property: Box::new(Expr::Identifier("in".to_string())),
+                computed: false
+            }
+        );
         assert_eq!(
             expr("obj.function"),
-            Expr::Member { object: Box::new(Expr::Identifier("obj".to_string())), property: Box::new(Expr::Identifier("function".to_string())), computed: false }
+            Expr::Member {
+                object: Box::new(Expr::Identifier("obj".to_string())),
+                property: Box::new(Expr::Identifier("function".to_string())),
+                computed: false
+            }
         );
         assert_eq!(
             expr("{default: 1, case: 2, new: 3}"),
             Expr::Object(vec![
-                ObjectProp::KeyValue { key: PropertyKey::Identifier("default".to_string()), value: Expr::Number(1.0), shorthand: false },
-                ObjectProp::KeyValue { key: PropertyKey::Identifier("case".to_string()), value: Expr::Number(2.0), shorthand: false },
-                ObjectProp::KeyValue { key: PropertyKey::Identifier("new".to_string()), value: Expr::Number(3.0), shorthand: false },
+                ObjectProp::KeyValue {
+                    key: PropertyKey::Identifier("default".to_string()),
+                    value: Expr::Number(1.0),
+                    shorthand: false
+                },
+                ObjectProp::KeyValue {
+                    key: PropertyKey::Identifier("case".to_string()),
+                    value: Expr::Number(2.0),
+                    shorthand: false
+                },
+                ObjectProp::KeyValue {
+                    key: PropertyKey::Identifier("new".to_string()),
+                    value: Expr::Number(3.0),
+                    shorthand: false
+                },
             ])
         );
     }
@@ -2388,7 +3292,14 @@ mod tests {
 
     #[test]
     fn object_literal_accepts_a_string_key() {
-        assert_eq!(expr(r#"{"a-b": 1}"#), Expr::Object(vec![ObjectProp::KeyValue { key: PropertyKey::String("a-b".into()), value: Expr::Number(1.0), shorthand: false }]));
+        assert_eq!(
+            expr(r#"{"a-b": 1}"#),
+            Expr::Object(vec![ObjectProp::KeyValue {
+                key: PropertyKey::String("a-b".into()),
+                value: Expr::Number(1.0),
+                shorthand: false
+            }])
+        );
     }
 
     #[test]
@@ -2398,25 +3309,102 @@ mod tests {
 
     #[test]
     fn parses_every_equality_relational_additive_and_multiplicative_operator() {
-        assert_eq!(expr("a != b"), Expr::Binary { op: BinaryOp::NotEq, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) });
+        assert_eq!(
+            expr("a != b"),
+            Expr::Binary {
+                op: BinaryOp::NotEq,
+                left: Box::new(Expr::Identifier("a".to_string())),
+                right: Box::new(Expr::Identifier("b".to_string()))
+            }
+        );
         assert_eq!(
             expr("a !== b"),
-            Expr::Binary { op: BinaryOp::StrictNotEq, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) }
+            Expr::Binary {
+                op: BinaryOp::StrictNotEq,
+                left: Box::new(Expr::Identifier("a".to_string())),
+                right: Box::new(Expr::Identifier("b".to_string()))
+            }
         );
-        assert_eq!(expr("a > b"), Expr::Binary { op: BinaryOp::Gt, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) });
-        assert_eq!(expr("a <= b"), Expr::Binary { op: BinaryOp::LtEq, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) });
-        assert_eq!(expr("a >= b"), Expr::Binary { op: BinaryOp::GtEq, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) });
-        assert_eq!(expr("a - b"), Expr::Binary { op: BinaryOp::Sub, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) });
-        assert_eq!(expr("a / b"), Expr::Binary { op: BinaryOp::Div, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) });
-        assert_eq!(expr("a % b"), Expr::Binary { op: BinaryOp::Mod, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) });
+        assert_eq!(
+            expr("a > b"),
+            Expr::Binary {
+                op: BinaryOp::Gt,
+                left: Box::new(Expr::Identifier("a".to_string())),
+                right: Box::new(Expr::Identifier("b".to_string()))
+            }
+        );
+        assert_eq!(
+            expr("a <= b"),
+            Expr::Binary {
+                op: BinaryOp::LtEq,
+                left: Box::new(Expr::Identifier("a".to_string())),
+                right: Box::new(Expr::Identifier("b".to_string()))
+            }
+        );
+        assert_eq!(
+            expr("a >= b"),
+            Expr::Binary {
+                op: BinaryOp::GtEq,
+                left: Box::new(Expr::Identifier("a".to_string())),
+                right: Box::new(Expr::Identifier("b".to_string()))
+            }
+        );
+        assert_eq!(
+            expr("a - b"),
+            Expr::Binary {
+                op: BinaryOp::Sub,
+                left: Box::new(Expr::Identifier("a".to_string())),
+                right: Box::new(Expr::Identifier("b".to_string()))
+            }
+        );
+        assert_eq!(
+            expr("a / b"),
+            Expr::Binary {
+                op: BinaryOp::Div,
+                left: Box::new(Expr::Identifier("a".to_string())),
+                right: Box::new(Expr::Identifier("b".to_string()))
+            }
+        );
+        assert_eq!(
+            expr("a % b"),
+            Expr::Binary {
+                op: BinaryOp::Mod,
+                left: Box::new(Expr::Identifier("a".to_string())),
+                right: Box::new(Expr::Identifier("b".to_string()))
+            }
+        );
     }
 
     #[test]
     fn parses_unary_not_neg_and_plus() {
-        assert_eq!(expr("!a"), Expr::Unary { op: UnaryOp::Not, arg: Box::new(Expr::Identifier("a".to_string())) });
-        assert_eq!(expr("-a"), Expr::Unary { op: UnaryOp::Neg, arg: Box::new(Expr::Identifier("a".to_string())) });
-        assert_eq!(expr("+a"), Expr::Unary { op: UnaryOp::Plus, arg: Box::new(Expr::Identifier("a".to_string())) });
-        assert_eq!(expr("void a"), Expr::Unary { op: UnaryOp::Void, arg: Box::new(Expr::Identifier("a".to_string())) });
+        assert_eq!(
+            expr("!a"),
+            Expr::Unary {
+                op: UnaryOp::Not,
+                arg: Box::new(Expr::Identifier("a".to_string()))
+            }
+        );
+        assert_eq!(
+            expr("-a"),
+            Expr::Unary {
+                op: UnaryOp::Neg,
+                arg: Box::new(Expr::Identifier("a".to_string()))
+            }
+        );
+        assert_eq!(
+            expr("+a"),
+            Expr::Unary {
+                op: UnaryOp::Plus,
+                arg: Box::new(Expr::Identifier("a".to_string()))
+            }
+        );
+        assert_eq!(
+            expr("void a"),
+            Expr::Unary {
+                op: UnaryOp::Void,
+                arg: Box::new(Expr::Identifier("a".to_string()))
+            }
+        );
     }
 
     #[test]
@@ -2427,7 +3415,14 @@ mod tests {
 
     #[test]
     fn parses_loose_equality() {
-        assert_eq!(expr("a == b"), Expr::Binary { op: BinaryOp::Eq, left: Box::new(Expr::Identifier("a".to_string())), right: Box::new(Expr::Identifier("b".to_string())) });
+        assert_eq!(
+            expr("a == b"),
+            Expr::Binary {
+                op: BinaryOp::Eq,
+                left: Box::new(Expr::Identifier("a".to_string())),
+                right: Box::new(Expr::Identifier("b".to_string()))
+            }
+        );
     }
 
     #[test]
@@ -2478,12 +3473,26 @@ mod tests {
                 init: Some(ForInit::VarDecl(
                     DeclKind::Let,
                     vec![
-                        VarDeclarator { pattern: Pattern::Identifier("i".to_string()), init: Some(Expr::Number(0.0)) },
-                        VarDeclarator { pattern: Pattern::Identifier("j".to_string()), init: Some(Expr::Number(10.0)) },
+                        VarDeclarator {
+                            pattern: Pattern::Identifier("i".to_string()),
+                            init: Some(Expr::Number(0.0))
+                        },
+                        VarDeclarator {
+                            pattern: Pattern::Identifier("j".to_string()),
+                            init: Some(Expr::Number(10.0))
+                        },
                     ]
                 )),
-                test: Some(Expr::Binary { op: BinaryOp::Lt, left: Box::new(Expr::Identifier("i".to_string())), right: Box::new(Expr::Identifier("j".to_string())) }),
-                update: Some(Expr::Update { op: UpdateOp::Inc, arg: Box::new(Expr::Identifier("i".to_string())), prefix: false }),
+                test: Some(Expr::Binary {
+                    op: BinaryOp::Lt,
+                    left: Box::new(Expr::Identifier("i".to_string())),
+                    right: Box::new(Expr::Identifier("j".to_string()))
+                }),
+                update: Some(Expr::Update {
+                    op: UpdateOp::Inc,
+                    arg: Box::new(Expr::Identifier("i".to_string())),
+                    prefix: false
+                }),
                 body: Box::new(Stmt::Block(vec![])),
             }
         );
@@ -2491,9 +3500,23 @@ mod tests {
         assert_eq!(
             only_stmt("for (let i; i < 10; i++) {}"),
             Stmt::For {
-                init: Some(ForInit::VarDecl(DeclKind::Let, vec![VarDeclarator { pattern: Pattern::Identifier("i".to_string()), init: None }])),
-                test: Some(Expr::Binary { op: BinaryOp::Lt, left: Box::new(Expr::Identifier("i".to_string())), right: Box::new(Expr::Number(10.0)) }),
-                update: Some(Expr::Update { op: UpdateOp::Inc, arg: Box::new(Expr::Identifier("i".to_string())), prefix: false }),
+                init: Some(ForInit::VarDecl(
+                    DeclKind::Let,
+                    vec![VarDeclarator {
+                        pattern: Pattern::Identifier("i".to_string()),
+                        init: None
+                    }]
+                )),
+                test: Some(Expr::Binary {
+                    op: BinaryOp::Lt,
+                    left: Box::new(Expr::Identifier("i".to_string())),
+                    right: Box::new(Expr::Number(10.0))
+                }),
+                update: Some(Expr::Update {
+                    op: UpdateOp::Inc,
+                    arg: Box::new(Expr::Identifier("i".to_string())),
+                    prefix: false
+                }),
                 body: Box::new(Stmt::Block(vec![])),
             }
         );
@@ -2503,7 +3526,11 @@ mod tests {
     fn for_in_without_a_declaration_keyword_uses_the_existing_variable() {
         assert_eq!(
             only_stmt("for (k in obj) {}"),
-            Stmt::ForIn { left: ForHead::Pattern(Pattern::Identifier("k".to_string())), right: Expr::Identifier("obj".to_string()), body: Box::new(Stmt::Block(vec![])) }
+            Stmt::ForIn {
+                left: ForHead::Pattern(Pattern::Identifier("k".to_string())),
+                right: Expr::Identifier("obj".to_string()),
+                body: Box::new(Stmt::Block(vec![]))
+            }
         );
     }
 
@@ -2524,7 +3551,11 @@ mod tests {
             expr("(1 + 2) * 3"),
             Expr::Binary {
                 op: BinaryOp::Mul,
-                left: Box::new(Expr::Binary { op: BinaryOp::Add, left: Box::new(Expr::Number(1.0)), right: Box::new(Expr::Number(2.0)) }),
+                left: Box::new(Expr::Binary {
+                    op: BinaryOp::Add,
+                    left: Box::new(Expr::Number(1.0)),
+                    right: Box::new(Expr::Number(2.0))
+                }),
                 right: Box::new(Expr::Number(3.0))
             }
         );

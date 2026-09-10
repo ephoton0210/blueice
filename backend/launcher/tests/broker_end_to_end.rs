@@ -22,8 +22,13 @@
 //! that a cutover which can't complete leaves v1 serving every
 //! already-connected client exactly as before.
 
-use blueice_ipc::{read_server_message, read_server_message_with_id, write_client_message, write_client_message_with_id, ClientMessage, ServerMessage};
-use blueice_launcher::control::{read_control_reply, write_control_request, ControlReply, ControlRequest};
+use blueice_ipc::{
+    read_server_message, read_server_message_with_id, write_client_message,
+    write_client_message_with_id, ClientMessage, ServerMessage,
+};
+use blueice_launcher::control::{
+    read_control_reply, write_control_request, ControlReply, ControlRequest,
+};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
@@ -40,7 +45,10 @@ fn unique_path(label: &str) -> PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!("blueice-launcher-e2e-{label}-{}-{n}", std::process::id()))
+    std::env::temp_dir().join(format!(
+        "blueice-launcher-e2e-{label}-{}-{n}",
+        std::process::id()
+    ))
 }
 
 fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
@@ -59,7 +67,11 @@ fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
 /// -- and deliberately block -- the frame directory a cutover attempt
 /// will give v2. See `a_cutover_that_fails_during_replay_leaves_v1_serving_normally`.
 fn expected_v2_frame_dir(v1_frame_dir: &Path, target_generation: u64) -> PathBuf {
-    let stem = v1_frame_dir.file_name().unwrap().to_string_lossy().into_owned();
+    let stem = v1_frame_dir
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
     v1_frame_dir.with_file_name(format!("{stem}-cutover-{target_generation}"))
 }
 
@@ -95,17 +107,30 @@ impl Launcher {
             .spawn()
             .expect("failed to spawn blueice-launcher");
 
-        assert!(wait_for(&rendezvous_socket, Duration::from_secs(5)), "blueice-launcher never created its rendezvous socket");
-        assert!(wait_for(&control_socket, Duration::from_secs(5)), "blueice-launcher never created its control socket");
-        Launcher { child, rendezvous_socket, control_socket, frame_dir }
+        assert!(
+            wait_for(&rendezvous_socket, Duration::from_secs(5)),
+            "blueice-launcher never created its rendezvous socket"
+        );
+        assert!(
+            wait_for(&control_socket, Duration::from_secs(5)),
+            "blueice-launcher never created its control socket"
+        );
+        Launcher {
+            child,
+            rendezvous_socket,
+            control_socket,
+            frame_dir,
+        }
     }
 
     fn connect(&self) -> UnixStream {
-        UnixStream::connect(&self.rendezvous_socket).expect("failed to connect to the launcher's rendezvous socket")
+        UnixStream::connect(&self.rendezvous_socket)
+            .expect("failed to connect to the launcher's rendezvous socket")
     }
 
     fn connect_control(&self) -> UnixStream {
-        UnixStream::connect(&self.control_socket).expect("failed to connect to the launcher's control socket")
+        UnixStream::connect(&self.control_socket)
+            .expect("failed to connect to the launcher's control socket")
     }
 
     /// The internal socket path `blueice_launcher::SpawnedCore::spawn`
@@ -156,11 +181,17 @@ fn an_unrecognized_argument_exits_with_failure_and_creates_no_socket() {
     let rendezvous_socket = unique_path("bad-args-rendezvous.sock");
     let _ = std::fs::remove_file(&rendezvous_socket);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_blueice-launcher")).args(["--socket", rendezvous_socket.to_str().unwrap(), "--bogus"]).output().expect("failed to run blueice-launcher");
+    let output = Command::new(env!("CARGO_BIN_EXE_blueice-launcher"))
+        .args(["--socket", rendezvous_socket.to_str().unwrap(), "--bogus"])
+        .output()
+        .expect("failed to run blueice-launcher");
 
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("--bogus"));
-    assert!(!rendezvous_socket.exists(), "a launcher that failed argument parsing must never spawn core or bind a socket");
+    assert!(
+        !rendezvous_socket.exists(),
+        "a launcher that failed argument parsing must never spawn core or bind a socket"
+    );
 }
 
 #[test]
@@ -177,46 +208,97 @@ fn two_clients_through_the_same_launcher_observe_the_same_render_pass() {
     // rendered content has no boxes at all, so its cropped-to-viewport
     // pixmap width would be clamped to a content-derived minimum rather
     // than actually reflecting the resize below.
-    write_client_message(&mut human, &ClientMessage::Navigate { url: "about:credits".to_string() }).unwrap();
+    write_client_message(
+        &mut human,
+        &ClientMessage::Navigate {
+            url: "about:credits".to_string(),
+        },
+    )
+    .unwrap();
     let navigated = read_server_message(&mut human).unwrap();
     assert!(matches!(navigated, ServerMessage::Navigated { .. }));
     let initial_frame = read_server_message(&mut human).unwrap();
     assert!(matches!(initial_frame, ServerMessage::FrameReady { .. }));
     // The other connection must see this initial navigation too.
-    assert!(matches!(read_server_message(&mut ai).unwrap(), ServerMessage::Navigated { .. }));
-    assert!(matches!(read_server_message(&mut ai).unwrap(), ServerMessage::FrameReady { .. }));
+    assert!(matches!(
+        read_server_message(&mut ai).unwrap(),
+        ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        read_server_message(&mut ai).unwrap(),
+        ServerMessage::FrameReady { .. }
+    ));
 
     // The AI's action (an ActOn-free, plain Resize here for simplicity)
     // must produce a FrameReady the *human* connection also receives,
     // even though the human connection never sent anything itself --
     // this is the actual "same render pass" property, not just "both
     // connections work independently."
-    write_client_message(&mut ai, &ClientMessage::Resize { width: 111, height: 222 }).unwrap();
+    write_client_message(
+        &mut ai,
+        &ClientMessage::Resize {
+            width: 111,
+            height: 222,
+        },
+    )
+    .unwrap();
 
     let ai_frame = read_server_message(&mut ai).unwrap();
-    let ServerMessage::FrameReady { generation: ai_generation, width: 111, height: 222, .. } = ai_frame else { panic!("expected FrameReady, got {ai_frame:?}") };
+    let ServerMessage::FrameReady {
+        generation: ai_generation,
+        width: 111,
+        height: 222,
+        ..
+    } = ai_frame
+    else {
+        panic!("expected FrameReady, got {ai_frame:?}")
+    };
 
     let human_frame = read_server_message(&mut human).unwrap();
-    let ServerMessage::FrameReady { generation: human_generation, width: 111, height: 222, .. } = human_frame else { panic!("expected the human connection to also see the resize's FrameReady, got {human_frame:?}") };
-    assert_eq!(ai_generation, human_generation, "both connections must see the identical generation for the same state change");
+    let ServerMessage::FrameReady {
+        generation: human_generation,
+        width: 111,
+        height: 222,
+        ..
+    } = human_frame
+    else {
+        panic!("expected the human connection to also see the resize's FrameReady, got {human_frame:?}")
+    };
+    assert_eq!(
+        ai_generation, human_generation,
+        "both connections must see the identical generation for the same state change"
+    );
 
     // Now the *human* connection acts (Scroll), and the AI connection
     // -- via GetRepresentation -- must report that exact same new
     // generation, proving the sharing holds in both directions.
     write_client_message(&mut human, &ClientMessage::Scroll { delta_y: 5.0 }).unwrap();
     let human_frame2 = read_server_message(&mut human).unwrap();
-    let ServerMessage::FrameReady { generation: scroll_generation, .. } = human_frame2 else { panic!("expected FrameReady, got {human_frame2:?}") };
+    let ServerMessage::FrameReady {
+        generation: scroll_generation,
+        ..
+    } = human_frame2
+    else {
+        panic!("expected FrameReady, got {human_frame2:?}")
+    };
     assert!(scroll_generation > human_generation);
 
     // Drain the same broadcast off the AI connection first (it must see
     // it too, unprompted).
     let ai_frame2 = read_server_message(&mut ai).unwrap();
-    assert!(matches!(ai_frame2, ServerMessage::FrameReady { generation, .. } if generation == scroll_generation));
+    assert!(
+        matches!(ai_frame2, ServerMessage::FrameReady { generation, .. } if generation == scroll_generation)
+    );
 
     write_client_message(&mut ai, &ClientMessage::GetRepresentation).unwrap();
     let reply = read_server_message(&mut ai).unwrap();
-    let ServerMessage::Representation(snapshot) = reply else { panic!("expected Representation, got {reply:?}") };
-    assert_eq!(snapshot.generation, scroll_generation, "GetRepresentation must reflect the state the *other* connection's action just produced");
+    let ServerMessage::Representation(snapshot) = reply else {
+        panic!("expected Representation, got {reply:?}")
+    };
+    assert_eq!(
+        snapshot.generation, scroll_generation,
+        "GetRepresentation must reflect the state the *other* connection's action just produced"
+    );
 
     // This broadcasts to *human* too, same as every other reply in this
     // test -- drain it the same way a real always-reading client
@@ -260,10 +342,16 @@ fn shutdown_with_no_cutover_still_ends_the_whole_launcher_cleanly() {
         if let Some(status) = launcher.child.try_wait().unwrap() {
             break status;
         }
-        assert!(Instant::now() < deadline, "the launcher must exit on its own after a Shutdown with no cutover involved");
+        assert!(
+            Instant::now() < deadline,
+            "the launcher must exit on its own after a Shutdown with no cutover involved"
+        );
         thread::sleep(Duration::from_millis(20));
     };
-    assert!(status.success(), "the launcher must exit cleanly (not be killed) after an ordinary Shutdown cascade");
+    assert!(
+        status.success(),
+        "the launcher must exit cleanly (not be killed) after an ordinary Shutdown cascade"
+    );
 }
 
 #[test]
@@ -274,30 +362,62 @@ fn a_client_survives_a_cutover_and_sees_v2s_replayed_state() {
     // Give v1 two tabs with distinct, real (built-in, no network
     // needed) content, so cutover has something non-trivial to capture
     // and replay.
-    write_client_message(&mut client, &ClientMessage::Navigate { url: "about:credits".to_string() }).unwrap();
-    assert!(matches!(read_server_message(&mut client).unwrap(), ServerMessage::Navigated { .. }));
-    assert!(matches!(read_server_message(&mut client).unwrap(), ServerMessage::FrameReady { .. }));
+    write_client_message(
+        &mut client,
+        &ClientMessage::Navigate {
+            url: "about:credits".to_string(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        read_server_message(&mut client).unwrap(),
+        ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        read_server_message(&mut client).unwrap(),
+        ServerMessage::FrameReady { .. }
+    ));
 
-    write_client_message(&mut client, &ClientMessage::OpenTab { url: Some("about:blank".to_string()) }).unwrap();
+    write_client_message(
+        &mut client,
+        &ClientMessage::OpenTab {
+            url: Some("about:blank".to_string()),
+        },
+    )
+    .unwrap();
     let opened = read_server_message(&mut client).unwrap();
-    assert!(matches!(opened, ServerMessage::TabOpened { url: Some(_), .. }), "expected the second tab to have navigated, got {opened:?}");
-    assert!(matches!(read_server_message(&mut client).unwrap(), ServerMessage::FrameReady { .. }));
+    assert!(
+        matches!(opened, ServerMessage::TabOpened { url: Some(_), .. }),
+        "expected the second tab to have navigated, got {opened:?}"
+    );
+    assert!(matches!(
+        read_server_message(&mut client).unwrap(),
+        ServerMessage::FrameReady { .. }
+    ));
 
     let v1_internal_socket = launcher.v1_internal_socket_path();
-    assert!(v1_internal_socket.exists(), "sanity check: v1 must actually be up before cutover");
+    assert!(
+        v1_internal_socket.exists(),
+        "sanity check: v1 must actually be up before cutover"
+    );
 
     // Trigger the cutover, on a *separate* connection to the control
     // socket -- the client above never touches this socket at all.
     let mut control = launcher.connect_control();
     write_control_request(&mut control, &ControlRequest::Cutover).unwrap();
     let reply = read_control_reply(&mut control).unwrap();
-    let ControlReply::CutoverDone { tabs_migrated } = reply else { panic!("expected CutoverDone, got {reply:?}") };
+    let ControlReply::CutoverDone { tabs_migrated } = reply else {
+        panic!("expected CutoverDone, got {reply:?}")
+    };
     assert_eq!(tabs_migrated, 2);
 
     // (c) v1's process is actually dead: `SpawnedCore::Drop` removes
     // its internal socket file, and only runs once the child has
     // actually been killed and reaped.
-    assert!(!v1_internal_socket.exists(), "v1's internal socket must be gone once cutover has torn it down");
+    assert!(
+        !v1_internal_socket.exists(),
+        "v1's internal socket must be gone once cutover has torn it down"
+    );
 
     // (a) the *original* client connection was never dropped by the
     // cutover -- it can still send and receive on the exact same
@@ -324,7 +444,13 @@ fn a_client_survives_a_cutover_and_sees_v2s_replayed_state() {
     // cutover -- same URLs, same order, ids may legitimately differ
     // (v2 assigns its own fresh ones).
     let urls: Vec<Option<String>> = tabs.iter().map(|t| t.url.clone()).collect();
-    assert_eq!(urls, vec![Some("about:credits".to_string()), Some("about:blank".to_string())]);
+    assert_eq!(
+        urls,
+        vec![
+            Some("about:credits".to_string()),
+            Some("about:blank".to_string())
+        ]
+    );
 
     write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
     launcher.wait_or_kill(Duration::from_secs(5));
@@ -338,9 +464,21 @@ fn a_cutover_that_fails_during_replay_leaves_v1_serving_normally() {
     // Give v1 a real (built-in) current URL, so replay actually
     // attempts a `Navigate` into v2 rather than trivially skipping a
     // still-blank default tab.
-    write_client_message(&mut client, &ClientMessage::Navigate { url: "about:credits".to_string() }).unwrap();
-    assert!(matches!(read_server_message(&mut client).unwrap(), ServerMessage::Navigated { .. }));
-    assert!(matches!(read_server_message(&mut client).unwrap(), ServerMessage::FrameReady { .. }));
+    write_client_message(
+        &mut client,
+        &ClientMessage::Navigate {
+            url: "about:credits".to_string(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        read_server_message(&mut client).unwrap(),
+        ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        read_server_message(&mut client).unwrap(),
+        ServerMessage::FrameReady { .. }
+    ));
 
     // Block v2's frame directory with a plain file where a directory is
     // expected. `blueice-core` never touches `frame_dir` until its
@@ -354,12 +492,16 @@ fn a_cutover_that_fails_during_replay_leaves_v1_serving_normally() {
     // generation 1), so the frame_dir name is fully predictable.
     let blocked_v2_frame_dir = expected_v2_frame_dir(&launcher.frame_dir, 1);
     let _ = std::fs::remove_file(&blocked_v2_frame_dir);
-    std::fs::write(&blocked_v2_frame_dir, b"not a directory").expect("failed to pre-create the blocking file");
+    std::fs::write(&blocked_v2_frame_dir, b"not a directory")
+        .expect("failed to pre-create the blocking file");
 
     let mut control = launcher.connect_control();
     write_control_request(&mut control, &ControlRequest::Cutover).unwrap();
     let reply = read_control_reply(&mut control).unwrap();
-    assert!(matches!(reply, ControlReply::CutoverFailed { .. }), "expected CutoverFailed, got {reply:?}");
+    assert!(
+        matches!(reply, ControlReply::CutoverFailed { .. }),
+        "expected CutoverFailed, got {reply:?}"
+    );
 
     // v1 must still be serving this already-connected client completely
     // normally, with no observable disruption from the failed attempt.
@@ -368,7 +510,8 @@ fn a_cutover_that_fails_during_replay_leaves_v1_serving_normally() {
     // `Tabs` reply to every registered client (including this one)
     // before replay ever failed, and that stray message must not be
     // mistaken for this request's own reply.
-    write_client_message_with_id(&mut client, Some(555), &ClientMessage::GetRepresentation).unwrap();
+    write_client_message_with_id(&mut client, Some(555), &ClientMessage::GetRepresentation)
+        .unwrap();
     let rep = loop {
         let (reply_id, message) = read_server_message_with_id(&mut client).unwrap();
         if matches!(reply_id, Some(id) if id != 555) {
@@ -376,7 +519,10 @@ fn a_cutover_that_fails_during_replay_leaves_v1_serving_normally() {
         }
         break message;
     };
-    assert!(matches!(rep, ServerMessage::Representation(_)), "expected v1 to keep answering normally, got {rep:?}");
+    assert!(
+        matches!(rep, ServerMessage::Representation(_)),
+        "expected v1 to keep answering normally, got {rep:?}"
+    );
 
     let _ = std::fs::remove_file(&blocked_v2_frame_dir);
     write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
