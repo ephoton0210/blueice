@@ -1755,3 +1755,13 @@ fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
     }
     Ok(names)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn computed_class_keys_do_not_have_constructor_names() {
+        assert_eq!(class_property_name(&PropertyKey::Computed(Box::new(Expr::Identifier("key".into())))), "");
+    }
+}

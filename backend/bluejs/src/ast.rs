@@ -494,3 +494,45 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn super_member() -> Expr {
+        Expr::Member { object: Box::new(Expr::Super), property: Box::new(Expr::Identifier("value".into())), computed: false }
+    }
+
+    fn function(body: Vec<Stmt>) -> Function {
+        Function { name: None, params: Vec::new(), body, generator: false, is_async: false }
+    }
+
+    #[test]
+    fn super_early_error_scanners_visit_all_executable_container_shapes() {
+        for body in [
+            vec![Stmt::Switch { discriminant: Expr::Number(0.0), cases: vec![SwitchCase { test: Some(super_member()), consequent: Vec::new() }] }],
+            vec![Stmt::Switch { discriminant: Expr::Number(0.0), cases: vec![SwitchCase { test: None, consequent: vec![Stmt::Expr(super_member())] }] }],
+            vec![Stmt::For { init: Some(ForInit::Expr(super_member())), test: None, update: None, body: Box::new(Stmt::Empty) }],
+            vec![Stmt::ClassField(Box::new(Stmt::Expr(super_member())))],
+        ] {
+            assert!(function_contains_super_property_outside_class(&function(body)));
+        }
+        for expression in [
+            Expr::Template { quasis: vec!["".into()], expressions: vec![super_member()] },
+            Expr::Array(vec![Some(ArrayElement::Normal(super_member()))]),
+            Expr::Array(vec![Some(ArrayElement::Spread(super_member()))]),
+            Expr::Object(vec![ObjectProp::Spread(super_member())]),
+            Expr::DestructureAssign { pattern: AssignmentPattern::Target(Box::new(super_member())), value: Box::new(Expr::Identifier("source".into())) },
+            Expr::DestructureAssign { pattern: AssignmentPattern::Array(vec![Some(AssignmentPatternElement { pattern: AssignmentPattern::Target(Box::new(Expr::Identifier("target".into()))), default: Some(super_member()), rest: false })]), value: Box::new(Expr::Identifier("source".into())) },
+            Expr::DestructureAssign { pattern: AssignmentPattern::Object(vec![AssignmentPatternProp::KeyValue { key: PropertyKey::Computed(Box::new(super_member())), value: AssignmentPattern::Target(Box::new(Expr::Identifier("target".into()))), default: None }]), value: Box::new(Expr::Identifier("source".into())) },
+            Expr::DestructureAssign { pattern: AssignmentPattern::Object(vec![AssignmentPatternProp::KeyValue { key: PropertyKey::Identifier("key".into()), value: AssignmentPattern::Target(Box::new(Expr::Identifier("target".into()))), default: Some(super_member()) }]), value: Box::new(Expr::Identifier("source".into())) },
+            Expr::DestructureAssign { pattern: AssignmentPattern::Object(vec![AssignmentPatternProp::Rest(AssignmentPattern::Target(Box::new(super_member())))]), value: Box::new(Expr::Identifier("source".into())) },
+        ] {
+            assert!(expr_contains_super(&expression, SuperSearch::Property));
+        }
+        assert!(!expr_contains_super(&Expr::Class(Class { name: None, extends: None, elements: Vec::new() }), SuperSearch::Property));
+        assert!(function_contains_super_property_outside_class(&Function { name: None, params: vec![Param { pattern: Pattern::Identifier("parameter".into()), default: Some(super_member()), rest: false }], body: Vec::new(), generator: false, is_async: false }));
+        assert!(contains_super_call_outside_class(&Program { body: vec![Stmt::Expr(Expr::Call { callee: Box::new(Expr::Super), args: Vec::new() })] }));
+        assert!(expr_contains_super_call_outside_class(&Expr::New { callee: Box::new(Expr::Identifier("C".into())), args: vec![Argument::Normal(Expr::Call { callee: Box::new(Expr::Super), args: Vec::new() })] }));
+    }
+}

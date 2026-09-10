@@ -1850,3 +1850,37 @@ impl Vm {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn interpreter_converts_catchable_errors_and_rejects_a_top_level_yield() {
+        let mut vm = Vm::default();
+        vm.install_test262_harness().unwrap();
+        vm.remaining_instructions = vm.config.instruction_budget;
+        let test262_error = vm.error_value(RuntimeError::Test262("failure".into()));
+        assert!(matches!(test262_error, Ok(Value::Object(_))), "{test262_error:?}");
+        assert_eq!(vm.error_value(RuntimeError::InstructionLimit), Err(RuntimeError::InstructionLimit));
+        let mut code = Bytecode::empty();
+        code.constants.push(Value::Undefined);
+        code.code.extend([Opcode::Constant as u8, 0, 0, 0, 0, Opcode::Yield as u8]);
+        vm.remaining_instructions = vm.config.instruction_budget;
+        let yield_error = vm.execute(&code);
+        assert!(matches!(yield_error, Err(RuntimeError::TypeError(ref message)) if message == "yield is not supported in this execution context"), "{yield_error:?}");
+        code.generator = true;
+        vm.remaining_instructions = vm.config.instruction_budget;
+        assert!(matches!(vm.execute(&code), Err(RuntimeError::TypeError(message)) if message == "yield requires a generator function"));
+    }
+
+    #[test]
+    fn with_lookup_uses_the_object_then_reports_an_unbound_name() {
+        let mut vm = Vm::default();
+        let object = vm.heap.alloc_object(None).unwrap();
+        vm.heap.set(object, "value", Value::Number(7.0)).unwrap();
+        vm.with_objects.push(Value::Object(object));
+        assert_eq!(vm.with_get("value"), Ok(Value::Number(7.0)));
+        assert_eq!(vm.with_get("missing"), Err(RuntimeError::ReferenceError("missing".into())));
+    }
+}

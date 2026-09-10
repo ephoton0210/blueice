@@ -72,6 +72,8 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
         (json!({"source":"with({}){var f=function(){return 3;};}assert.sameValue(f(),3)", "mode":"sloppy"}), "ok"),
         (json!({"source":"function f(a=b,b=2){}f()", "mode":"sloppy"}), "ReferenceError"),
         (json!({"source":"function f(a=1,get=()=>a){var a=2;return get();}assert.sameValue(f(),1)", "mode":"sloppy"}), "ok"),
+        (json!({"source":"async function work(){}", "mode":"sloppy"}), "unsupported"),
+        (json!({"source":"1", "mode":"sloppy", "includes":["helpers.js"], "harness_sources":["async function work(){}"]}), "unsupported"),
     ];
     let requests: Vec<_> = cases.iter().map(|(request, _)| request.clone()).collect();
     let replies = adapter(&requests, None);

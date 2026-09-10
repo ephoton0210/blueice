@@ -327,15 +327,16 @@ the comparison is `/tmp/bluejs-crate-comparison.json`.
 
 Validation: BlueJS all-target tests, workspace tests (outside the socket-restricted
 sandbox), workspace all-target Clippy with `-D warnings`, and all 10 Python
-runner/analyzer tests pass. The coverage gate was measured both before and after
-this change: **10,182/10,369 lines (98.20%)** before, **10,221/10,402 (98.26%)**
-after. It still exits 1 against the required 100% threshold: 181 lines remain
-uncovered in existing grammar, class/generator and VM paths. No exclusions or
-threshold changes were made. Reports are `/tmp/bluejs-crate-coverage-before.log`,
-`/tmp/bluejs-crate-coverage-after.log` and `/tmp/bluejs-crate-missing-after.txt`.
-This continuation does not claim that every crate gate passes. The earlier
-crate-wide rustfmt differences also remain; the new regression file is
-rustfmt-clean.
+runner/analyzer tests pass. A further public-pipeline and internal-boundary
+regression pass covers `super` scanning, class element failures, adapter
+unsupported results, suspended-generator GC roots, `with` lookup, and malformed
+bytecode invariants. It raises line coverage from **10,221/10,402 (98.26%)** to
+**10,434/10,487 (99.49%)**. The gate still exits 1 against the required 100%
+threshold: 53 lines remain, primarily defensive `unreachable!` invariants and
+failure-cleanup branches. No exclusions or threshold changes were made. The
+final report is `/tmp/bluejs-crate-missing-final.txt`. This continuation does
+not claim that every crate gate passes. The earlier crate-wide rustfmt
+differences also remain; the new standalone regression file is rustfmt-clean.
 
 ## Reproduction and continuation
 

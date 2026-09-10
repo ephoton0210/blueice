@@ -1058,3 +1058,44 @@ pub(crate) fn same_value(a: &Value, b: &Value) -> bool {
 fn attribute_bytes(key: &PropertyName, descriptor: &PropertyDescriptor) -> usize {
     size_of::<(PropertyName, PropertyDescriptor)>() + key.byte_len() + descriptor.get.iter().chain(descriptor.set.iter()).map(Value::payload_bytes).sum::<usize>()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn closure_metadata_validates_its_receiver_and_is_reclaimed_with_a_young_closure() {
+        let mut heap = Heap::new(HeapConfig { nursery_capacity: 16, ..HeapConfig::default() }).unwrap();
+        let prototype = heap.alloc_object(None).unwrap();
+        let ordinary = heap.alloc_object(None).unwrap();
+        let closure = heap.alloc_closure(Rc::new(Bytecode::empty()), Vec::new(), Value::Undefined, prototype).unwrap();
+        assert_eq!(heap.set_closure_home(ordinary, prototype), Err(HeapError::InvalidObject(ordinary)));
+        assert_eq!(heap.set_class_base(ordinary, Value::Null), Err(HeapError::InvalidObject(ordinary)));
+        assert_eq!(heap.class_base(ordinary), Err(HeapError::InvalidObject(ordinary)));
+        heap.set_class_base(closure, Value::Null).unwrap();
+        assert_eq!(heap.class_base(closure).unwrap(), Some(Value::Null));
+        heap.collect_minor();
+        assert!(!heap.contains(closure));
+    }
+
+    #[test]
+    fn suspended_generator_references_keep_every_saved_object_visible_to_gc() {
+        let mut heap = Heap::default();
+        let prototype = heap.alloc_object(None).unwrap();
+        let stack = heap.alloc_object(None).unwrap();
+        let binding = heap.alloc_object(None).unwrap();
+        let this = heap.alloc_object(None).unwrap();
+        let argument = heap.alloc_object(None).unwrap();
+        let completion = heap.alloc_object(None).unwrap();
+        let cell = heap.alloc_object(None).unwrap();
+        let home = heap.alloc_object(None).unwrap();
+        let state = GeneratorState::Suspended {
+            code: Rc::new(Bytecode::empty()), pc: 0, stack: vec![Value::Object(stack)], bindings: vec![Some(Value::Object(binding))], cells: vec![(0, cell)], this: Value::Object(this), args: vec![Value::Object(argument)], completion: Value::Object(completion), completion_empty: true, active_scopes: Vec::new(), home: Some(home),
+        };
+        let references = state.references();
+        for object in [stack, binding, this, argument, completion, cell, home] {
+            assert!(references.contains(&object));
+        }
+        assert!(heap.contains(prototype));
+    }
+}
