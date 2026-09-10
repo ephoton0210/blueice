@@ -135,6 +135,99 @@ fn module_namespace_properties_follow_export_cells() {
 }
 
 #[test]
+fn module_namespace_has_exotic_descriptor_symbol_and_integrity_semantics() {
+    let sources = [
+        (
+            "namespace-exotic/main.js",
+            "import * as ns from './dependency.js';let descriptor=Object.getOwnPropertyDescriptor(ns,'z');let names=Object.getOwnPropertyNames(ns);let symbols=Object.getOwnPropertySymbols(ns);let rejected=false;let frozen=false;try{ns.z=0}catch(error){rejected=error instanceof TypeError}try{Object.freeze(ns)}catch(error){frozen=error instanceof TypeError}Object.getPrototypeOf(ns)===null&&!Object.isExtensible(ns)&&Object.preventExtensions(ns)===ns&&Object.isSealed(ns)&&!Object.isFrozen(ns)&&Reflect.defineProperty(ns,'z',{value:3})&&!Reflect.defineProperty(ns,'z',{value:4})&&!Reflect.set(ns,'z',0)&&!Reflect.deleteProperty(ns,'z')&&frozen&&descriptor.value===3&&descriptor.writable&&descriptor.enumerable&&!descriptor.configurable&&names.length===2&&names[0]==='a'&&names[1]==='z'&&symbols.length===1&&Object.prototype.toString.call(ns)==='[object Module]'&&rejected&&ns.z===3",
+        ),
+        (
+            "namespace-exotic/dependency.js",
+            "export const z=3;export const a=1",
+        ),
+    ];
+    let modules: HashMap<_, _> = sources
+        .into_iter()
+        .map(|(name, source)| {
+            (
+                name.to_string(),
+                compile_module(&parse_module(source).unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        Vm::default().execute_module_graph("namespace-exotic/main.js", &modules),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn dynamic_import_resolves_against_the_module_registry_in_a_promise_job() {
+    let sources = [
+        (
+            "dynamic/main.js",
+            "import('./dependency.js').then(ns=>{if(ns.value===42)$DONE();else $DONE(new Error('wrong namespace'))})",
+        ),
+        ("dynamic/dependency.js", "export const value=42"),
+    ];
+    let modules: HashMap<_, _> = sources
+        .into_iter()
+        .map(|(name, source)| {
+            (
+                name.to_string(),
+                compile_module(&parse_module(source).unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    let mut vm = Vm::default();
+    vm.install_test262_done().unwrap();
+    assert!(vm.execute_module_graph("dynamic/main.js", &modules).is_ok());
+    assert_eq!(vm.take_test262_done(), None);
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
+}
+
+#[test]
+fn top_level_await_observes_fulfilled_and_rejected_async_completions() {
+    for source in [
+        "async function value(){return 42}export let observed=await value();observed===42",
+        "async function fail(){throw new TypeError('expected')}let caught=false;try{await fail()}catch(error){caught=error instanceof TypeError}caught",
+    ] {
+        let module = compile_module(&parse_module(source).unwrap()).unwrap();
+        let modules = HashMap::from([("await/main.js".to_string(), module)]);
+        assert_eq!(
+            Vm::default().execute_module_graph("await/main.js", &modules),
+            Ok(Value::Bool(true)),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn top_level_await_drains_a_dynamic_import_job_and_resumes_the_module() {
+    let sources = [
+        (
+            "await-import/main.js",
+            "let namespace=await import('./dependency.js');namespace.value===42",
+        ),
+        ("await-import/dependency.js", "export const value=42"),
+    ];
+    let modules: HashMap<_, _> = sources
+        .into_iter()
+        .map(|(name, source)| {
+            (
+                name.to_string(),
+                compile_module(&parse_module(source).unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        Vm::default().execute_module_graph("await-import/main.js", &modules),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
 fn module_graph_initializes_function_exports_before_cyclic_evaluation() {
     let sources = [
         (

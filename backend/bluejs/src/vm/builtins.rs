@@ -1178,7 +1178,7 @@ impl Vm {
         Ok(prototype)
     }
 
-    fn new_promise(&mut self) -> Result<ObjectId, RuntimeError> {
+    pub(super) fn new_promise(&mut self) -> Result<ObjectId, RuntimeError> {
         let prototype = self.promise_prototype()?;
         let promise = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         self.promises.insert(
@@ -1191,7 +1191,7 @@ impl Vm {
         Ok(promise)
     }
 
-    fn settle_promise(
+    pub(super) fn settle_promise(
         &mut self,
         promise: ObjectId,
         status: PromiseStatus,
@@ -1211,7 +1211,7 @@ impl Vm {
         let reactions = std::mem::take(&mut record.reactions);
         record.status = status;
         self.promise_jobs
-            .extend(reactions.into_iter().map(|reaction| PromiseJob {
+            .extend(reactions.into_iter().map(|reaction| PromiseJob::Reaction {
                 target: reaction.target,
                 handler: if fulfilled {
                     reaction.on_fulfilled
@@ -1247,7 +1247,7 @@ impl Vm {
                 PromiseStatus::Rejected(value) => (false, value.clone()),
             }
         };
-        self.promise_jobs.push_back(PromiseJob {
+        self.promise_jobs.push_back(PromiseJob::Reaction {
             target,
             handler: if status.0 {
                 reaction.on_fulfilled
@@ -1259,23 +1259,120 @@ impl Vm {
         Ok(Value::Object(target))
     }
 
+    /// Implements the settled-value portion of Await. A pending promise needs
+    /// a saved interpreter continuation, which remains a separate boundary.
+    pub(super) fn await_value(&self, value: Value) -> Result<Value, RuntimeError> {
+        let Some(promise) = value.object_id() else {
+            return Ok(value);
+        };
+        let Some(record) = self.promises.get(&promise) else {
+            return Ok(value);
+        };
+        match &record.status {
+            PromiseStatus::Pending => Err(RuntimeError::Unsupported("pending await continuation")),
+            PromiseStatus::Fulfilled(value) => Ok(value.clone()),
+            PromiseStatus::Rejected(value) => Err(RuntimeError::Thrown(value.clone())),
+        }
+    }
+
+    fn promise_resolve(&mut self, value: Value) -> Result<Value, RuntimeError> {
+        if value
+            .object_id()
+            .is_some_and(|promise| self.promises.contains_key(&promise))
+        {
+            return Ok(value);
+        }
+        let promise = self.new_promise()?;
+        self.settle_promise(promise, PromiseStatus::Fulfilled(value))?;
+        Ok(Value::Object(promise))
+    }
+
+    fn promise_reject(&mut self, value: Value) -> Result<Value, RuntimeError> {
+        let promise = self.new_promise()?;
+        self.settle_promise(promise, PromiseStatus::Rejected(value))?;
+        Ok(Value::Object(promise))
+    }
+
+    fn promise_all(&mut self, values: &Value) -> Result<Value, RuntimeError> {
+        let values = self.array_like_values(values)?;
+        let promise = self.new_promise()?;
+        self.promise_jobs.push_back(PromiseJob::All {
+            target: promise,
+            values,
+        });
+        Ok(Value::Object(promise))
+    }
+
     pub fn run_promise_jobs(&mut self) -> Result<(), RuntimeError> {
         while let Some(job) = self.promise_jobs.pop_front() {
-            let result = if self.is_callable(&job.handler)? {
-                self.call_native(
-                    job.handler,
-                    Value::Undefined,
-                    vec![job.value.clone()],
-                    false,
-                )
-            } else {
-                Ok(job.value.clone())
-            };
-            match result {
-                Ok(value) => self.settle_promise(job.target, PromiseStatus::Fulfilled(value))?,
-                Err(error) => {
-                    let error = self.error_value(error)?;
-                    self.settle_promise(job.target, PromiseStatus::Rejected(error))?;
+            match job {
+                PromiseJob::Reaction {
+                    target,
+                    handler,
+                    value,
+                } => {
+                    let result = if self.is_callable(&handler)? {
+                        self.call_native(handler, Value::Undefined, vec![value.clone()], false)
+                    } else {
+                        Ok(value)
+                    };
+                    match result {
+                        Ok(value) => {
+                            self.settle_promise(target, PromiseStatus::Fulfilled(value))?
+                        }
+                        Err(error) => {
+                            let error = self.error_value(error)?;
+                            self.settle_promise(target, PromiseStatus::Rejected(error))?;
+                        }
+                    }
+                }
+                PromiseJob::DynamicImport {
+                    target,
+                    referrer,
+                    specifier,
+                } => {
+                    let result = self.dynamic_import_job(&referrer, &specifier);
+                    match result {
+                        Ok(namespace) => {
+                            self.settle_promise(target, PromiseStatus::Fulfilled(namespace))?
+                        }
+                        Err(error) => {
+                            let error = self.error_value(error)?;
+                            self.settle_promise(target, PromiseStatus::Rejected(error))?;
+                        }
+                    }
+                }
+                PromiseJob::All { target, values } => {
+                    let mut resolved = Vec::with_capacity(values.len());
+                    let mut rejection = None;
+                    for value in values {
+                        let Some(promise) = value.object_id() else {
+                            resolved.push(value);
+                            continue;
+                        };
+                        let Some(record) = self.promises.get(&promise) else {
+                            resolved.push(value);
+                            continue;
+                        };
+                        match &record.status {
+                            PromiseStatus::Fulfilled(value) => resolved.push(value.clone()),
+                            PromiseStatus::Rejected(value) => {
+                                rejection = Some(value.clone());
+                                break;
+                            }
+                            PromiseStatus::Pending => {
+                                return Err(RuntimeError::Unsupported(
+                                    "Promise.all pending dependency",
+                                ));
+                            }
+                        }
+                    }
+                    if let Some(value) = rejection {
+                        self.settle_promise(target, PromiseStatus::Rejected(value))?;
+                    } else {
+                        let values = self.array_from(resolved)?;
+                        self.settle_promise(target, PromiseStatus::Fulfilled(values))?;
+                    }
                 }
             }
         }
@@ -1716,6 +1813,7 @@ impl Vm {
             "Function" => NativeFunction::Function,
             "Symbol" => NativeFunction::Symbol,
             "Array" => NativeFunction::Array,
+            "Promise" => NativeFunction::Promise,
             "eval" => NativeFunction::Eval,
             "Object" => NativeFunction::Object,
             "Number" => NativeFunction::PrimitiveConstructor(false),
@@ -1814,6 +1912,27 @@ impl Vm {
                         false,
                     )?;
                 }
+            } else if name == "Promise" {
+                let promise_prototype = self.promise_prototype()?;
+                self.define_data(
+                    id,
+                    "prototype",
+                    Value::Object(promise_prototype),
+                    false,
+                    false,
+                    false,
+                )?;
+                self.define_data(
+                    promise_prototype,
+                    "constructor",
+                    Value::Object(id),
+                    true,
+                    false,
+                    true,
+                )?;
+                self.install_native(id, prototype, "resolve", 1, NativeFunction::PromiseResolve)?;
+                self.install_native(id, prototype, "reject", 1, NativeFunction::PromiseReject)?;
+                self.install_native(id, prototype, "all", 1, NativeFunction::PromiseAll)?;
             } else if name == "Array" {
                 self.define_data(
                     id,
@@ -1938,6 +2057,24 @@ impl Vm {
                     2,
                     NativeFunction::ReflectConstruct,
                 )?;
+                for (name, length, method) in [
+                    ("defineProperty", 3, ObjectMethod::ReflectDefineProperty),
+                    ("set", 3, ObjectMethod::ReflectSet),
+                    ("deleteProperty", 2, ObjectMethod::ReflectDeleteProperty),
+                    (
+                        "preventExtensions",
+                        1,
+                        ObjectMethod::ReflectPreventExtensions,
+                    ),
+                ] {
+                    self.install_native(
+                        id,
+                        prototype,
+                        name,
+                        length,
+                        NativeFunction::ObjectMethod(method),
+                    )?;
+                }
             } else {
                 self.define_data(
                     id,
@@ -1969,6 +2106,10 @@ impl Vm {
                     ("create", 2, Create),
                     ("isExtensible", 1, IsExtensible),
                     ("preventExtensions", 1, PreventExtensions),
+                    ("seal", 1, Seal),
+                    ("freeze", 1, Freeze),
+                    ("isSealed", 1, IsSealed),
+                    ("isFrozen", 1, IsFrozen),
                 ] {
                     self.install_native(
                         id,
@@ -2010,6 +2151,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let first = native::argument(&args, 0);
         match function {
+            NativeFunction::Promise => Err(RuntimeError::Unsupported("Promise constructor")),
             NativeFunction::Function => self.function_constructor(&args),
             NativeFunction::Error(name) => self.error_constructor(name, &args, construct),
             NativeFunction::ErrorToString => self.error_to_string(&receiver),
@@ -2024,6 +2166,9 @@ impl Vm {
                 Ok(Value::Undefined)
             }
             NativeFunction::PromiseThen => self.promise_then(&receiver, &args),
+            NativeFunction::PromiseResolve => self.promise_resolve(first.clone()),
+            NativeFunction::PromiseReject => self.promise_reject(first.clone()),
+            NativeFunction::PromiseAll => self.promise_all(first),
             NativeFunction::ToLocaleLowerCase
             | NativeFunction::ToLocaleUpperCase
             | NativeFunction::LocaleCompare => {
@@ -2993,10 +3138,23 @@ impl Vm {
         if method == IsExtensible && !matches!(first, Value::Object(_)) {
             return Ok(Value::Bool(false));
         }
-        if method == PreventExtensions && !matches!(first, Value::Object(_)) {
+        if matches!(method, IsSealed | IsFrozen) && !matches!(first, Value::Object(_)) {
+            return Ok(Value::Bool(true));
+        }
+        if matches!(method, PreventExtensions | Seal | Freeze) && !matches!(first, Value::Object(_))
+        {
             return Ok(first.clone());
         }
-        if matches!(method, DefineProperty | OwnKeys) && !matches!(first, Value::Object(_)) {
+        if matches!(
+            method,
+            DefineProperty
+                | OwnKeys
+                | ReflectDefineProperty
+                | ReflectSet
+                | ReflectDeleteProperty
+                | ReflectPreventExtensions
+        ) && !matches!(first, Value::Object(_))
+        {
             return Err(RuntimeError::TypeError(
                 "operation requires an object".into(),
             ));
@@ -3019,16 +3177,21 @@ impl Vm {
         };
         self.stack.push(Value::Object(object));
         match method {
-            GetOwnPropertyDescriptor | DefineProperty => {
+            GetOwnPropertyDescriptor | DefineProperty | ReflectDefineProperty => {
                 let key = self.coerce_property_key(native::argument(args, 1))?;
-                if method == DefineProperty {
+                if matches!(method, DefineProperty | ReflectDefineProperty) {
                     let mut descriptor = self.read_descriptor(native::argument(args, 2))?;
                     if key == "length" && self.heap.is_array(object)? {
                         if let Some(value) = &descriptor.value {
                             descriptor.value = Some(self.array_length_value(value)?);
                         }
                     }
-                    if !self.with_roots(|heap| heap.define_own_property(object, key, descriptor))? {
+                    let defined =
+                        self.with_roots(|heap| heap.define_own_property(object, key, descriptor))?;
+                    if method == ReflectDefineProperty {
+                        return Ok(Value::Bool(defined));
+                    }
+                    if !defined {
                         return Err(RuntimeError::TypeError("cannot redefine property".into()));
                     }
                     return Ok(Value::Object(object));
@@ -3145,6 +3308,63 @@ impl Vm {
             PreventExtensions => {
                 self.heap.prevent_extensions(object)?;
                 Ok(Value::Object(object))
+            }
+            ReflectPreventExtensions => {
+                self.heap.prevent_extensions(object)?;
+                Ok(Value::Bool(true))
+            }
+            ReflectSet => {
+                let key = self.coerce_property_key(native::argument(args, 1))?;
+                let value = native::argument(args, 2).clone();
+                match self.with_roots(|heap| heap.set(object, key, value)) {
+                    Ok(()) => Ok(Value::Bool(true)),
+                    Err(RuntimeError::Heap(HeapError::ReadOnlyProperty)) => Ok(Value::Bool(false)),
+                    Err(error) => Err(error),
+                }
+            }
+            ReflectDeleteProperty => {
+                let key = self.coerce_property_key(native::argument(args, 1))?;
+                Ok(Value::Bool(self.heap.delete(object, key)?))
+            }
+            Seal | Freeze => {
+                let keys = self.heap.own_property_keys(object)?;
+                for key in keys {
+                    let current = self
+                        .heap
+                        .get_own_property_descriptor(object, &key)?
+                        .expect("an own key has an own descriptor");
+                    let descriptor = PropertyDescriptor {
+                        configurable: Some(false),
+                        writable: (method == Freeze && current.value.is_some()).then_some(false),
+                        ..Default::default()
+                    };
+                    if !self.with_roots(|heap| heap.define_own_property(object, key, descriptor))? {
+                        return Err(RuntimeError::TypeError(
+                            "cannot make object non-extensible".into(),
+                        ));
+                    }
+                }
+                self.heap.prevent_extensions(object)?;
+                Ok(first.clone())
+            }
+            IsSealed | IsFrozen => {
+                if self.heap.is_extensible(object)? {
+                    return Ok(Value::Bool(false));
+                }
+                for key in self.heap.own_property_keys(object)? {
+                    let descriptor = self
+                        .heap
+                        .get_own_property_descriptor(object, key)?
+                        .expect("an own key has an own descriptor");
+                    if descriptor.configurable != Some(false)
+                        || (method == IsFrozen
+                            && descriptor.value.is_some()
+                            && descriptor.writable != Some(false))
+                    {
+                        return Ok(Value::Bool(false));
+                    }
+                }
+                Ok(Value::Bool(true))
             }
         }
     }

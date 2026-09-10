@@ -61,16 +61,22 @@ class RunnerTests(unittest.TestCase):
             test = Path(temporary) / "test"
             entry = test / "modules" / "entry.js"
             dependency = test / "modules" / "nested" / "dependency.js"
+            dynamic = test / "modules" / "dynamic.js"
             unrelated = test / "modules" / "unrelated.js"
             dependency.parent.mkdir(parents=True)
-            entry.write_text("import { value } from './nested/dependency.js'; value;")
+            entry.write_text("import { value } from './nested/dependency.js'; import('./dynamic.js'); value;")
             dependency.write_text("export { value } from '../entry.js';")
+            dynamic.write_text("export const dynamic = true;")
             unrelated.write_text("export const ignored = true;")
 
             sources = module_sources(entry, test)
             self.assertEqual(
                 set(sources),
-                {"modules/entry.js", "modules/nested/dependency.js"},
+                {
+                    "modules/entry.js",
+                    "modules/nested/dependency.js",
+                    "modules/dynamic.js",
+                },
             )
 
     def test_supervisor_terminates_and_restarts_a_stalled_process(self):

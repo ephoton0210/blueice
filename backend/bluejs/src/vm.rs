@@ -101,6 +101,9 @@ impl From<HeapError> for RuntimeError {
     fn from(error: HeapError) -> Self {
         match error {
             HeapError::InvalidArrayLength => Self::RangeError("invalid array length".into()),
+            HeapError::UninitializedModuleExport => {
+                Self::ReferenceError("module export is uninitialized".into())
+            }
             _ => Self::Heap(error),
         }
     }
@@ -224,10 +227,21 @@ struct PromiseRecord {
     reactions: Vec<PromiseReaction>,
 }
 
-struct PromiseJob {
-    target: ObjectId,
-    handler: Value,
-    value: Value,
+enum PromiseJob {
+    Reaction {
+        target: ObjectId,
+        handler: Value,
+        value: Value,
+    },
+    DynamicImport {
+        target: ObjectId,
+        referrer: String,
+        specifier: String,
+    },
+    All {
+        target: ObjectId,
+        values: Vec<Value>,
+    },
 }
 
 /// A Test262 realm owns a complete VM, while its public global is a facade
@@ -236,6 +250,44 @@ struct PromiseJob {
 /// object identity from the nested heap.
 struct Test262Realm {
     vm: Box<Vm>,
+}
+
+/// Runtime state displaced while a pending top-level await drives jobs. The
+/// job may link and evaluate another module graph in this same realm, so the
+/// outer interpreter's frame must survive both the nested graph's cleanup and
+/// an intervening collection.
+struct SuspendedModuleExecution {
+    result_root: Option<RootId>,
+    stack: Vec<Value>,
+    bindings: Vec<Option<Value>>,
+    binding_metadata: Vec<Binding>,
+    completion: Value,
+    completion_empty: bool,
+    active_scopes: Vec<u32>,
+    active_scope_slots: Vec<Vec<u32>>,
+    with_objects: Vec<Value>,
+    pending_completions: Vec<Completion>,
+    completion_saves: Vec<(Value, bool)>,
+    remaining_instructions: u64,
+    cells: HashMap<usize, ObjectId>,
+    dynamic_eval_bindings: HashMap<String, DynamicEvalBinding>,
+    eval_dynamic_slots: HashMap<usize, String>,
+    dynamic_eval_outer_bindings: Vec<HashMap<String, DynamicEvalBinding>>,
+    this: Value,
+    arguments: Vec<Value>,
+    callee: Value,
+    strict: bool,
+    top_level_module: bool,
+    script_global_slots: HashMap<usize, String>,
+    variable_scope: u32,
+    variable_scope_lexicals: Vec<String>,
+    templates: HashMap<u64, ObjectId>,
+    new_target: Value,
+    new_target_allowed: bool,
+    home_object: Option<ObjectId>,
+    class_constructor: Option<ObjectId>,
+    class_field_initializer_depth: u32,
+    active_module_name: Option<String>,
 }
 
 /// An isolated execution context with one realm global environment. Ordinary
@@ -265,10 +317,22 @@ pub struct Vm {
     completion_saves: Vec<(Value, bool)>,
     remaining_instructions: u64,
     cells: HashMap<usize, ObjectId>,
-    // Namespace properties subscribe to their exporter cells.  The current
-    // object representation has data properties rather than exotic module
-    // namespace accessors, so writes fan out here to retain live values.
-    module_namespace_properties: HashMap<ObjectId, Vec<(ObjectId, String)>>,
+    /// Bytecodes supplied by the host for this realm's module loader.
+    /// Dynamic imports resolve only inside this explicit registry.
+    module_registry: HashMap<String, Bytecode>,
+    /// Retains the entry namespace until a dynamic-import job has handed it
+    /// to its promise.  The next graph evaluation replaces this cache.
+    last_module_namespace: Option<ObjectId>,
+    last_module_namespace_root: Option<RootId>,
+    /// Per-realm Module Record namespace cache. Dynamic import is required to
+    /// return this same object for repeated requests, including a namespace
+    /// already made visible through a static `import * as` binding.
+    module_namespace_cache: HashMap<String, ObjectId>,
+    module_namespace_roots: HashMap<String, RootId>,
+    /// The defining source-text module for currently executing code. A
+    /// closure receives the same association at creation time.
+    active_module_name: Option<String>,
+    module_closure_referrers: HashMap<ObjectId, String>,
     // Bindings created by sloppy direct eval in the active ordinary-function
     // VariableEnvironment. They move into a generator's suspended state when
     // it yields and are rooted at interpreter safepoints.
@@ -369,7 +433,13 @@ impl Vm {
             completion_saves: Vec::new(),
             remaining_instructions: 0,
             cells: HashMap::new(),
-            module_namespace_properties: HashMap::new(),
+            module_registry: HashMap::new(),
+            last_module_namespace: None,
+            last_module_namespace_root: None,
+            module_namespace_cache: HashMap::new(),
+            module_namespace_roots: HashMap::new(),
+            active_module_name: None,
+            module_closure_referrers: HashMap::new(),
             dynamic_eval_bindings: HashMap::new(),
             eval_dynamic_slots: HashMap::new(),
             dynamic_eval_outer_bindings: Vec::new(),
@@ -432,6 +502,19 @@ impl Vm {
         self.execute_with_global_bindings(code, false, true)
     }
 
+    /// Installs the bounded module-loader context used by dynamic `import()`
+    /// from classic script code. The host supplies precompiled Module-goal
+    /// bytecode and an opaque referrer key; BlueJS never reads module files
+    /// itself.
+    pub fn set_module_loader_context(
+        &mut self,
+        referrer: impl Into<String>,
+        modules: HashMap<String, Bytecode>,
+    ) {
+        self.module_registry = modules;
+        self.active_module_name = Some(referrer.into());
+    }
+
     /// Links and synchronously evaluates one static module graph.
     ///
     /// Keys in `modules` are host-resolved module names. Relative requests
@@ -448,6 +531,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let mut roots = Vec::new();
         let result = (|| {
+            self.module_registry = modules.clone();
             let mut visiting = HashSet::new();
             let mut visited = HashSet::new();
             let mut order = Vec::new();
@@ -456,6 +540,10 @@ impl Vm {
             if let Some(root) = self.result_root.take() {
                 self.heap.unroot(root)?;
             }
+            if let Some(root) = self.last_module_namespace_root.take() {
+                self.heap.unroot(root)?;
+            }
+            self.last_module_namespace = None;
             self.with_roots(|heap| {
                 heap.collect_major();
                 Ok(())
@@ -464,7 +552,6 @@ impl Vm {
             self.bindings.clear();
             self.binding_metadata.clear();
             self.cells.clear();
-            self.module_namespace_properties.clear();
             self.active_scopes.clear();
             self.active_scope_slots.clear();
             self.with_objects.clear();
@@ -608,6 +695,9 @@ impl Vm {
             }
 
             let value = self.evaluate_module_record(entry, modules, &mut linked)?;
+            let namespace = self.module_namespace(entry, modules, &mut linked, &mut roots)?;
+            self.last_module_namespace = Some(namespace);
+            self.last_module_namespace_root = Some(self.heap.root(namespace)?);
             if let Value::Object(id) = value {
                 self.result_root = Some(self.heap.root(id)?);
             }
@@ -621,7 +711,6 @@ impl Vm {
         self.bindings.clear();
         self.binding_metadata.clear();
         self.cells.clear();
-        self.module_namespace_properties.clear();
         self.active_scopes.clear();
         self.active_scope_slots.clear();
         self.with_objects.clear();
@@ -711,6 +800,218 @@ impl Vm {
             return Ok(parts.join("/"));
         }
         Ok(request.to_string())
+    }
+
+    /// Dynamic `import()` first creates a Promise capability, then defers all
+    /// resolution, linking and evaluation to the realm job queue.  The host
+    /// registry is deliberately the same finite registry used for static
+    /// module graphs, so no JavaScript source can escape the supplied tree.
+    fn dynamic_import(&mut self, specifier: Value) -> Result<Value, RuntimeError> {
+        let promise = self.new_promise()?;
+        let specifier = match self.coerce_string(&specifier) {
+            Ok(specifier) => specifier.to_utf8().map_err(|_| {
+                RuntimeError::TypeError("module specifier is not a Unicode string".into())
+            }),
+            Err(error) => Err(error),
+        };
+        match specifier {
+            Ok(specifier) => {
+                let referrer = self
+                    .active_module_name
+                    .clone()
+                    .unwrap_or_else(|| "<script>".to_string());
+                self.promise_jobs.push_back(PromiseJob::DynamicImport {
+                    target: promise,
+                    referrer,
+                    specifier,
+                });
+            }
+            Err(error) => {
+                let error = self.error_value(error)?;
+                self.settle_promise(promise, PromiseStatus::Rejected(error))?;
+            }
+        }
+        Ok(Value::Object(promise))
+    }
+
+    fn dynamic_import_job(
+        &mut self,
+        referrer: &str,
+        specifier: &str,
+    ) -> Result<Value, RuntimeError> {
+        let entry = Self::resolve_module_request(referrer, specifier)?;
+        if let Some(namespace) = self.module_namespace_cache.get(&entry) {
+            return Ok(Value::Object(*namespace));
+        }
+        let modules = self.module_registry.clone();
+        self.execute_module_graph(&entry, &modules)?;
+        let namespace = self
+            .last_module_namespace
+            .ok_or(RuntimeError::ModuleResolution(format!(
+                "dynamic import of {entry} did not produce a namespace"
+            )))?;
+        Ok(Value::Object(namespace))
+    }
+
+    fn suspend_module_execution(&mut self) -> SuspendedModuleExecution {
+        SuspendedModuleExecution {
+            result_root: self.result_root.take(),
+            stack: std::mem::take(&mut self.stack),
+            bindings: std::mem::take(&mut self.bindings),
+            binding_metadata: std::mem::take(&mut self.binding_metadata),
+            completion: std::mem::replace(&mut self.completion, Value::Undefined),
+            completion_empty: std::mem::replace(&mut self.completion_empty, true),
+            active_scopes: std::mem::take(&mut self.active_scopes),
+            active_scope_slots: std::mem::take(&mut self.active_scope_slots),
+            with_objects: std::mem::take(&mut self.with_objects),
+            pending_completions: std::mem::take(&mut self.pending_completions),
+            completion_saves: std::mem::take(&mut self.completion_saves),
+            remaining_instructions: std::mem::replace(&mut self.remaining_instructions, 0),
+            cells: std::mem::take(&mut self.cells),
+            dynamic_eval_bindings: std::mem::take(&mut self.dynamic_eval_bindings),
+            eval_dynamic_slots: std::mem::take(&mut self.eval_dynamic_slots),
+            dynamic_eval_outer_bindings: std::mem::take(&mut self.dynamic_eval_outer_bindings),
+            this: std::mem::replace(&mut self.this, Value::Undefined),
+            arguments: std::mem::take(&mut self.arguments),
+            callee: std::mem::replace(&mut self.callee, Value::Undefined),
+            strict: std::mem::replace(&mut self.strict, false),
+            top_level_module: std::mem::replace(&mut self.top_level_module, false),
+            script_global_slots: std::mem::take(&mut self.script_global_slots),
+            variable_scope: std::mem::replace(&mut self.variable_scope, 0),
+            variable_scope_lexicals: std::mem::take(&mut self.variable_scope_lexicals),
+            templates: std::mem::take(&mut self.templates),
+            new_target: std::mem::replace(&mut self.new_target, Value::Undefined),
+            new_target_allowed: std::mem::replace(&mut self.new_target_allowed, false),
+            home_object: self.home_object.take(),
+            class_constructor: self.class_constructor.take(),
+            class_field_initializer_depth: std::mem::replace(
+                &mut self.class_field_initializer_depth,
+                0,
+            ),
+            active_module_name: self.active_module_name.take(),
+        }
+    }
+
+    fn restore_module_execution(&mut self, execution: SuspendedModuleExecution) {
+        self.result_root = execution.result_root;
+        self.stack = execution.stack;
+        self.bindings = execution.bindings;
+        self.binding_metadata = execution.binding_metadata;
+        self.completion = execution.completion;
+        self.completion_empty = execution.completion_empty;
+        self.active_scopes = execution.active_scopes;
+        self.active_scope_slots = execution.active_scope_slots;
+        self.with_objects = execution.with_objects;
+        self.pending_completions = execution.pending_completions;
+        self.completion_saves = execution.completion_saves;
+        self.remaining_instructions = execution.remaining_instructions;
+        self.cells = execution.cells;
+        self.dynamic_eval_bindings = execution.dynamic_eval_bindings;
+        self.eval_dynamic_slots = execution.eval_dynamic_slots;
+        self.dynamic_eval_outer_bindings = execution.dynamic_eval_outer_bindings;
+        self.this = execution.this;
+        self.arguments = execution.arguments;
+        self.callee = execution.callee;
+        self.strict = execution.strict;
+        self.top_level_module = execution.top_level_module;
+        self.script_global_slots = execution.script_global_slots;
+        self.variable_scope = execution.variable_scope;
+        self.variable_scope_lexicals = execution.variable_scope_lexicals;
+        self.templates = execution.templates;
+        self.new_target = execution.new_target;
+        self.new_target_allowed = execution.new_target_allowed;
+        self.home_object = execution.home_object;
+        self.class_constructor = execution.class_constructor;
+        self.class_field_initializer_depth = execution.class_field_initializer_depth;
+        self.active_module_name = execution.active_module_name;
+    }
+
+    fn root_suspended_module_execution(
+        &mut self,
+        execution: &SuspendedModuleExecution,
+    ) -> Result<Vec<RootId>, RuntimeError> {
+        let mut roots = Vec::new();
+        let registration: Result<(), HeapError> = (|| {
+            let mut root_value = |value: &Value| -> Result<(), HeapError> {
+                if let Value::Object(id) = value {
+                    roots.push(self.heap.root(*id)?);
+                }
+                Ok(())
+            };
+            for value in execution
+                .stack
+                .iter()
+                .chain(execution.bindings.iter().flatten())
+                .chain(std::iter::once(&execution.completion))
+                .chain(execution.with_objects.iter())
+                .chain(std::iter::once(&execution.this))
+                .chain(execution.arguments.iter())
+                .chain(std::iter::once(&execution.callee))
+                .chain(std::iter::once(&execution.new_target))
+                .chain(execution.completion_saves.iter().map(|(value, _)| value))
+            {
+                root_value(value)?;
+            }
+            for completion in &execution.pending_completions {
+                let values: &[Value] = match completion {
+                    Completion::Return(value)
+                    | Completion::Yield(value)
+                    | Completion::Throw(RuntimeError::Thrown(value)) => std::slice::from_ref(value),
+                    Completion::TailRecur(values) => values,
+                    Completion::Throw(_)
+                    | Completion::Jump { .. }
+                    | Completion::Resume(_)
+                    | Completion::Halt(_) => &[],
+                };
+                for value in values {
+                    root_value(value)?;
+                }
+            }
+            for cell in execution.cells.values() {
+                roots.push(self.heap.root(*cell)?);
+            }
+            for binding in execution.dynamic_eval_bindings.values() {
+                roots.push(self.heap.root(binding.cell)?);
+            }
+            for bindings in &execution.dynamic_eval_outer_bindings {
+                for binding in bindings.values() {
+                    roots.push(self.heap.root(binding.cell)?);
+                }
+            }
+            for id in execution.templates.values().copied() {
+                roots.push(self.heap.root(id)?);
+            }
+            for id in [execution.home_object, execution.class_constructor]
+                .into_iter()
+                .flatten()
+            {
+                roots.push(self.heap.root(id)?);
+            }
+            Ok(())
+        })();
+        if let Err(error) = registration {
+            for root in roots {
+                self.heap.unroot(root)?;
+            }
+            return Err(error.into());
+        }
+        Ok(roots)
+    }
+
+    fn drain_jobs_while_module_suspended(&mut self) -> Result<(), RuntimeError> {
+        let execution = self.suspend_module_execution();
+        let roots = self.root_suspended_module_execution(&execution)?;
+        let result = self.run_promise_jobs();
+        // The nested graph's normal completion is not the outer module's
+        // completion. Its namespace has its own dedicated cache root.
+        if let Some(root) = self.result_root.take() {
+            self.heap.unroot(root)?;
+        }
+        self.restore_module_execution(execution);
+        for root in roots {
+            self.heap.unroot(root)?;
+        }
+        result
     }
 
     fn resolve_export(
@@ -833,6 +1134,9 @@ impl Vm {
         linked: &mut HashMap<String, LinkedModule>,
         roots: &mut Vec<RootId>,
     ) -> Result<ObjectId, RuntimeError> {
+        if let Some(namespace) = self.module_namespace_cache.get(module) {
+            return Ok(*namespace);
+        }
         if let Some(namespace) = linked
             .get(module)
             .ok_or_else(|| {
@@ -842,18 +1146,11 @@ impl Vm {
         {
             return Ok(namespace);
         }
-        let prototype = self.object_prototype;
-        let namespace = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-        roots.push(self.heap.root(namespace)?);
-        linked
-            .get_mut(module)
-            .expect("linked module record exists")
-            .namespace = Some(namespace);
-
         let names = Self::exported_names(modules, module, &mut HashSet::new())?;
+        let mut exports = Vec::with_capacity(names.len());
         for name in names {
             let resolution = Self::resolve_export(modules, module, &name, &mut Vec::new())?;
-            let value = match resolution {
+            let cell = match resolution {
                 ExportResolution::Binding {
                     module: exporter,
                     slot,
@@ -867,25 +1164,34 @@ impl Vm {
                                 "export {name} from {exporter} has no binding"
                             ))
                         })?;
-                    self.module_namespace_properties
-                        .entry(cell)
-                        .or_default()
-                        .push((namespace, name.clone()));
-                    self.heap
-                        .get_own(cell, "value")?
-                        .unwrap_or(Value::Undefined)
+                    cell
                 }
                 ExportResolution::Namespace { module } => {
-                    Value::Object(self.module_namespace(&module, modules, linked, roots)?)
+                    // Namespace exports still need a binding cell: namespace
+                    // exotic properties are live bindings uniformly, and this
+                    // one is an immutable binding to the target namespace.
+                    let value =
+                        Value::Object(self.module_namespace(&module, modules, linked, roots)?);
+                    let cell = self.with_roots(|heap| heap.alloc_object(None))?;
+                    roots.push(self.heap.root(cell)?);
+                    self.with_roots(|heap| heap.set(cell, "value", value))?;
+                    cell
                 }
                 ExportResolution::Missing | ExportResolution::Ambiguous => continue,
             };
-            // Updating cells uses `Heap::set`, so these are writable internal
-            // data properties.  The binding that holds the namespace remains
-            // immutable; full namespace exotic property attributes are a
-            // later object-model slice.
-            self.define_data(namespace, name, value, true, true, false)?;
+            exports.push((name.into(), cell));
         }
+        let namespace = self.with_roots(|heap| heap.alloc_module_namespace(exports))?;
+        roots.push(self.heap.root(namespace)?);
+        linked
+            .get_mut(module)
+            .expect("linked module record exists")
+            .namespace = Some(namespace);
+        let cache_root = self.heap.root(namespace)?;
+        self.module_namespace_cache
+            .insert(module.to_string(), namespace);
+        self.module_namespace_roots
+            .insert(module.to_string(), cache_root);
         Ok(namespace)
     }
 
@@ -969,6 +1275,7 @@ impl Vm {
             self.active_scope_slots
                 .push(code.scopes.first().cloned().unwrap_or_default());
             let mut iterators = Vec::new();
+            let previous_module = self.active_module_name.replace(name.to_string());
             let value = self
                 .interpret(code, &mut iterators, entry, None, None)
                 .and_then(|exit| match exit {
@@ -980,6 +1287,7 @@ impl Vm {
                         unreachable!("module evaluation does not suspend")
                     }
                 });
+            self.active_module_name = previous_module;
             let cells = std::mem::take(&mut self.cells);
             let record = linked.get_mut(name).expect("checked module record exists");
             record.cells = cells;
@@ -1349,11 +1657,6 @@ impl Vm {
 
     fn store_global_cell(&mut self, cell: ObjectId, value: Value) -> Result<(), RuntimeError> {
         self.with_roots(|heap| heap.set(cell, "value", value.clone()))?;
-        if let Some(properties) = self.module_namespace_properties.get(&cell).cloned() {
-            for (namespace, name) in properties {
-                self.with_roots(|heap| heap.set(namespace, name, value.clone()))?;
-            }
-        }
         let property = self.global_bindings.iter().find_map(|(name, binding)| {
             (binding.cell == cell && binding.property).then(|| name.clone())
         });
@@ -1665,10 +1968,29 @@ impl Vm {
                 }
             }
             for job in &self.promise_jobs {
-                roots.push(self.heap.root(job.target)?);
-                for value in [&job.handler, &job.value] {
-                    if let Value::Object(id) = value {
-                        roots.push(self.heap.root(*id)?);
+                match job {
+                    PromiseJob::Reaction {
+                        target,
+                        handler,
+                        value,
+                    } => {
+                        roots.push(self.heap.root(*target)?);
+                        for value in [handler, value] {
+                            if let Value::Object(id) = value {
+                                roots.push(self.heap.root(*id)?);
+                            }
+                        }
+                    }
+                    PromiseJob::DynamicImport { target, .. } => {
+                        roots.push(self.heap.root(*target)?)
+                    }
+                    PromiseJob::All { target, values } => {
+                        roots.push(self.heap.root(*target)?);
+                        for value in values {
+                            if let Value::Object(id) = value {
+                                roots.push(self.heap.root(*id)?);
+                            }
+                        }
                     }
                 }
             }
@@ -2362,6 +2684,9 @@ impl Vm {
                         let id = self.with_roots(|heap| {
                             heap.alloc_closure(child.clone(), captures, this, function_prototype)
                         })?;
+                        if let Some(module) = &self.active_module_name {
+                            self.module_closure_referrers.insert(id, module.clone());
+                        }
                         self.stack.push(Value::Object(id));
                         // Arrow functions inherit their containing function's
                         // [[HomeObject]] together with lexical `this`.  Keeping
@@ -2452,6 +2777,23 @@ impl Vm {
                             ));
                         }
                         return Ok(Some(Completion::Yield(self.pop())));
+                    }
+                    Opcode::Await => {
+                        let awaited = self.pop();
+                        let pending = awaited
+                            .object_id()
+                            .and_then(|promise| self.promises.get(&promise))
+                            .is_some_and(|record| matches!(record.status, PromiseStatus::Pending));
+                        if pending {
+                            self.drain_jobs_while_module_suspended()?;
+                        }
+                        let value = self.await_value(awaited)?;
+                        self.stack.push(value);
+                    }
+                    Opcode::DynamicImport => {
+                        let specifier = self.pop();
+                        let promise = self.dynamic_import(specifier)?;
+                        self.stack.push(promise);
                     }
                     Opcode::EnterWith => {
                         let object = self.pop();
@@ -3780,6 +4122,12 @@ impl Vm {
         let next_new_target_allowed = (arrow && self.new_target_allowed) || regular_function;
         let previous_new_target_allowed =
             std::mem::replace(&mut self.new_target_allowed, next_new_target_allowed);
+        let previous_module = callee.object_id().and_then(|id| {
+            self.module_closure_referrers
+                .get(&id)
+                .cloned()
+                .map(|module| self.active_module_name.replace(module))
+        });
         self.call_depth += 1;
         let result = self
             .dispatch_call(callee, receiver, args, construct)
@@ -3789,6 +4137,9 @@ impl Vm {
             });
         self.new_target = previous_target;
         self.new_target_allowed = previous_new_target_allowed;
+        if let Some(module) = previous_module {
+            self.active_module_name = module;
+        }
         self.call_depth -= 1;
         self.stack.truncate(base);
         result

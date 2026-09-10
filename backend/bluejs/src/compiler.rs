@@ -1432,8 +1432,8 @@ impl Compiler {
                         }
                         "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number"
                         | "Boolean" | "BigInt" | "Array" | "Function" | "globalThis" | "Intl"
-                        | "Error" | "TypeError" | "eval" | "isNaN" | "isFinite" | "parseInt"
-                        | "parseFloat" | "JSON" | "RangeError" | "SyntaxError"
+                        | "Promise" | "Error" | "TypeError" | "eval" | "isNaN" | "isFinite"
+                        | "parseInt" | "parseFloat" | "JSON" | "RangeError" | "SyntaxError"
                         | "ReferenceError" | "EvalError" | "URIError" => {
                             let index = self.bytecode.constants.len() as u32;
                             self.bytecode
@@ -1872,7 +1872,19 @@ impl Compiler {
                 }
                 self.emit(Opcode::Yield, 0)?;
             }
-            Expr::Await(_) => return Err(CompileError::Unsupported("await expressions")),
+            Expr::Await(expression) => {
+                if !self.bytecode.async_function && !self.bytecode.module {
+                    return Err(CompileError::InvalidSyntax(
+                        "await is only valid in async functions or modules",
+                    ));
+                }
+                self.expression(expression)?;
+                self.emit(Opcode::Await, 0)?;
+            }
+            Expr::DynamicImport(specifier) => {
+                self.expression(specifier)?;
+                self.emit(Opcode::DynamicImport, 0)?;
+            }
             Expr::Arrow {
                 params,
                 body,
@@ -2942,6 +2954,7 @@ fn strict_assignment_in_expression(expression: &Expr) -> bool {
             .as_deref()
             .is_some_and(strict_assignment_in_expression),
         Expr::Await(expression)
+        | Expr::DynamicImport(expression)
         | Expr::Unary {
             arg: expression, ..
         } => strict_assignment_in_expression(expression),

@@ -82,11 +82,12 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
 /// module strictness and top-level syntax separate from classic scripts.
 pub fn parse_module(source: &str) -> Result<Module, ParseError> {
     let mut parser = Parser::new(source);
+    parser.module_await = true;
     let mut body = Vec::new();
     let mut imports = Vec::new();
     let mut exports = Vec::new();
     while !parser.at_eof() {
-        if parser.check_identifier("import") {
+        if parser.check_identifier("import") && !parser.check_punct_at(1, Punct::LParen) {
             imports.extend(parser.parse_import_declaration()?);
         } else if parser.check_identifier("export") {
             parser.parse_export_declaration(&mut body, &mut exports)?;
@@ -280,6 +281,9 @@ struct Parser {
     no_in: bool,
     generator_depth: u32,
     async_depth: u32,
+    /// `await` is a keyword at the outermost level of the Module goal, but
+    /// remains an IdentifierName in nested ordinary functions.
+    module_await: bool,
     function_depth: u32,
     static_block_function_depths: Vec<u32>,
 }
@@ -296,6 +300,7 @@ impl Parser {
             no_in: false,
             generator_depth: 0,
             async_depth: 0,
+            module_await: false,
             function_depth: 0,
             static_block_function_depths: Vec::new(),
         }
@@ -336,6 +341,10 @@ impl Parser {
 
     fn check_punct(&self, p: Punct) -> bool {
         matches!(self.peek(), Token::Punct(pp) if *pp == p)
+    }
+
+    fn check_punct_at(&self, offset: usize, p: Punct) -> bool {
+        matches!(self.peek_at(offset), Token::Punct(pp) if *pp == p)
     }
 
     fn check_keyword(&self, k: Keyword) -> bool {
@@ -1392,6 +1401,7 @@ impl Parser {
         is_async: bool,
     ) -> Result<Function, ParseError> {
         let outer_async_depth = std::mem::replace(&mut self.async_depth, u32::from(is_async));
+        let outer_module_await = std::mem::replace(&mut self.module_await, false);
         let outer_generator_depth =
             std::mem::replace(&mut self.generator_depth, u32::from(generator));
         // `parse_params` also enters grammar that the subset may not yet
@@ -1403,6 +1413,7 @@ impl Parser {
         self.function_depth -= 1;
         self.generator_depth = outer_generator_depth;
         self.async_depth = outer_async_depth;
+        self.module_await = outer_module_await;
         Ok(Function {
             name,
             params,
@@ -1414,6 +1425,7 @@ impl Parser {
 
     fn parse_arrow_body(&mut self, is_async: bool) -> Result<ArrowBody, ParseError> {
         self.async_depth += u32::from(is_async);
+        let outer_module_await = std::mem::replace(&mut self.module_await, false);
         self.function_depth += 1;
         let body = if self.check_punct(Punct::LBrace) {
             self.parse_block().map(ArrowBody::Block)
@@ -1423,6 +1435,7 @@ impl Parser {
         };
         self.function_depth -= 1;
         self.async_depth -= u32::from(is_async);
+        self.module_await = outer_module_await;
         body
     }
 
@@ -2156,7 +2169,7 @@ impl Parser {
                 arg: Box::new(self.parse_unary()?),
             });
         }
-        if self.async_depth != 0
+        if (self.async_depth != 0 || self.module_await)
             && matches!(self.peek(), Token::Identifier(name) if name == "await")
         {
             self.advance();
@@ -2424,6 +2437,15 @@ impl Parser {
                     Some(Box::new(self.parse_assignment()?))
                 };
                 Ok(Expr::Yield { value, delegate })
+            }
+            Token::Identifier(name)
+                if name == "import" && self.check_punct_at(1, Punct::LParen) =>
+            {
+                self.advance();
+                self.expect_punct(Punct::LParen)?;
+                let specifier = self.parse_assignment()?;
+                self.expect_punct(Punct::RParen)?;
+                Ok(Expr::DynamicImport(Box::new(specifier)))
             }
             Token::Identifier(name) => {
                 self.advance();

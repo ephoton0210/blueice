@@ -166,7 +166,7 @@ fn derived_classes_construct_through_super_and_keep_home_object_receivers() {
 }
 
 #[test]
-fn async_methods_compile_without_await_and_classify_await_as_a_gap() {
+fn async_methods_compile_and_accept_settled_await_expressions() {
     let program = parse(
         "class Derived extends Base{async method(){return 1;}static async *items(){yield 2;}}",
     )
@@ -178,21 +178,11 @@ fn async_methods_compile_without_await_and_classify_await_as_a_gap() {
         Err(blueice_bluejs::CompileError::Unsupported(_))
     ));
     let program = parse("async function helper(){return await 1;}").unwrap();
-    assert!(matches!(
-        compile(&program),
-        Err(blueice_bluejs::CompileError::Unsupported(
-            "await expressions"
-        ))
-    ));
+    assert!(compile(&program).is_ok());
     let program = parse("async function helper(){return new.target;}").unwrap();
     assert!(compile(&program).is_ok());
     let program = parse("let helper=async value=>await value;").unwrap();
-    assert!(matches!(
-        compile(&program),
-        Err(blueice_bluejs::CompileError::Unsupported(
-            "await expressions"
-        ))
-    ));
+    assert!(compile(&program).is_ok());
     assert!(parse("class C{async constructor(){}}").is_err());
     assert!(parse("class C{async\nmethod(){}}").is_ok());
     for source in [

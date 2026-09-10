@@ -430,9 +430,11 @@ pub enum Expr {
         value: Option<Box<Expr>>,
         delegate: bool,
     },
-    /// `await` is retained for async function grammar even though async
-    /// execution and Promise jobs remain an explicit compiler gap.
+    /// Contextual `await`, valid in async functions and at module top level.
     Await(Box<Expr>),
+    /// The `import()` expression is distinct from the static module-item
+    /// grammar and always evaluates to a Promise.
+    DynamicImport(Box<Expr>),
     Arrow {
         params: Vec<Param>,
         body: ArrowBody,
@@ -782,9 +784,10 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
         Expr::Yield { value, .. } => value
             .as_deref()
             .is_some_and(|expr| expr_contains_super(expr, search)),
-        Expr::Await(expr) | Expr::Unary { arg: expr, .. } | Expr::Update { arg: expr, .. } => {
-            expr_contains_super(expr, search)
-        }
+        Expr::Await(expr)
+        | Expr::DynamicImport(expr)
+        | Expr::Unary { arg: expr, .. }
+        | Expr::Update { arg: expr, .. } => expr_contains_super(expr, search),
         Expr::Arrow { params, body, .. } => {
             params.iter().any(|param| {
                 pattern_contains_super(&param.pattern, search)

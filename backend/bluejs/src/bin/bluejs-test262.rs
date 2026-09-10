@@ -137,6 +137,25 @@ fn evaluate(request: Request) -> Value {
             Err(error) => return compile_error(error),
         }
     };
+    if request.mode != "module" {
+        for (path, module_source) in &request.module_sources {
+            if request.module_path.as_deref() == Some(path.as_str()) {
+                continue;
+            }
+            let program = match parse_module(module_source) {
+                Ok(program) => program,
+                Err(error) => return parse_error(error),
+            };
+            let code = match compile_module_with_limit(
+                &program,
+                request.bytecode_limit.unwrap_or(u32::MAX),
+            ) {
+                Ok(code) => code,
+                Err(error) => return compile_error(error),
+            };
+            module_codes.insert(path.clone(), code);
+        }
+    }
     if request.parse_only {
         return json!({"kind":"ok", "phase":"parse"});
     }
@@ -189,6 +208,15 @@ fn evaluate(request: Request) -> Value {
         if let Err(error) = vm.install_test262_is_html_dda() {
             return json!({"kind":"harness_error", "message":error.to_string()});
         }
+    }
+    if request.mode != "module" && !module_codes.is_empty() {
+        vm.set_module_loader_context(
+            request
+                .module_path
+                .clone()
+                .unwrap_or_else(|| "<script>".to_string()),
+            module_codes.clone(),
+        );
     }
     for source in request.harness_sources {
         let source = if request.mode == "strict" {

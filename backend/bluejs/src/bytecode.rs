@@ -97,6 +97,8 @@ opcodes! {
     Return: 1, 0;
     TailRecur: 5, 0;
     Yield: 1, 0;
+    Await: 1, 0;
+    DynamicImport: 1, 0;
     EnterWith: 1, 0;
     LeaveWith: 1, 0;
     WithGet: 5, 0;

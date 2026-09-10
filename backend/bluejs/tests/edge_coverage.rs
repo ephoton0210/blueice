@@ -99,7 +99,7 @@ fn compiler_reports_public_ast_boundaries_without_panicking() {
         (Expr::NewTarget, "new.target"),
         (
             Expr::Await(Box::new(Expr::Number(1.0))),
-            "await expressions",
+            "await is only valid in async functions or modules",
         ),
         (
             Expr::Yield {
@@ -186,7 +186,9 @@ fn compiler_reports_public_ast_boundaries_without_panicking() {
     };
     assert!(matches!(
         compile(&expression_program(rejected_member_update)),
-        Err(CompileError::Unsupported("await expressions"))
+        Err(CompileError::InvalidSyntax(
+            "await is only valid in async functions or modules"
+        ))
     ));
     assert!(matches!(
         compile(&expression_program(Expr::Update {

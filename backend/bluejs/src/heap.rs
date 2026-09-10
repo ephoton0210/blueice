@@ -26,7 +26,7 @@
 //! an allocator guarantee or a whole-process memory limit.
 
 use crate::native::NativeFunction;
-use crate::{Bytecode, JsString, ObjectId, PropertyDescriptor, PropertyName, Value};
+use crate::{Bytecode, JsString, JsSymbol, ObjectId, PropertyDescriptor, PropertyName, Value};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::mem::size_of;
@@ -78,6 +78,7 @@ pub enum HeapError {
     InvalidRoot(RootId),
     PrototypeCycle,
     InvalidArrayLength,
+    UninitializedModuleExport,
     ReadOnlyProperty,
     HeapLimitExceeded { limit: usize },
     IdExhausted,
@@ -94,6 +95,9 @@ impl fmt::Display for HeapError {
                 f,
                 "invalid BlueJS array length: expected an integer from 0 to 4294967295"
             ),
+            Self::UninitializedModuleExport => {
+                write!(f, "module namespace export is uninitialized")
+            }
             Self::ReadOnlyProperty => write!(f, "cannot assign to a read-only BlueJS property"),
             Self::HeapLimitExceeded { limit } => {
                 write!(f, "BlueJS managed heap limit exceeded ({limit} bytes)")
@@ -273,6 +277,12 @@ enum ObjectKind {
         unicode: bool,
         done: bool,
     },
+    /// An ECMA-262 Module Namespace Exotic Object.  Each string export holds
+    /// the exporter cell itself, not a copied value, so `[[Get]]` remains a
+    /// live read even after graph evaluation has completed.
+    ModuleNamespace {
+        exports: Vec<(JsString, ObjectId)>,
+    },
 }
 
 struct Object {
@@ -330,6 +340,9 @@ impl Object {
                 ObjectKind::ArrayIterator { object, .. } => vec![*object],
                 ObjectKind::Arguments { parameter_map } => {
                     parameter_map.values().copied().collect()
+                }
+                ObjectKind::ModuleNamespace { exports } => {
+                    exports.iter().map(|(_, cell)| *cell).collect()
                 }
                 _ => Vec::new(),
             })
@@ -407,6 +420,27 @@ impl Heap {
     /// The returned object is unrooted until registered or attached to a root.
     pub fn alloc_object(&mut self, prototype: Option<ObjectId>) -> Result<ObjectId, HeapError> {
         self.alloc(ObjectKind::Ordinary, prototype)
+    }
+
+    /// Creates a non-extensible Module Namespace Exotic Object.  Its string
+    /// exports are retained as binding cells; reading a namespace property
+    /// therefore observes the current exporter value rather than a snapshot.
+    pub(crate) fn alloc_module_namespace(
+        &mut self,
+        mut exports: Vec<(JsString, ObjectId)>,
+    ) -> Result<ObjectId, HeapError> {
+        for (_, cell) in &exports {
+            self.object(*cell)?;
+        }
+        exports.sort_by(|(left, _), (right, _)| left.as_code_units().cmp(right.as_code_units()));
+        let namespace = self.alloc(ObjectKind::ModuleNamespace { exports }, None)?;
+        self.define_own_property(
+            namespace,
+            JsSymbol::well_known("toStringTag"),
+            PropertyDescriptor::data(Value::String("Module".into()), false, false, false),
+        )?;
+        self.prevent_extensions(namespace)?;
+        Ok(namespace)
     }
 
     /// Allocates a host-defined exotic with the Annex B `[[IsHTMLDDA]]` slot.
@@ -896,6 +930,12 @@ impl Heap {
         object: ObjectId,
         key: PropertyName,
     ) -> Result<Option<PropertyDescriptor>, HeapError> {
+        if let Some(cell) = self.module_namespace_export_cell(object, &key)? {
+            let value = self
+                .get_own(cell, "value")?
+                .ok_or(HeapError::UninitializedModuleExport)?;
+            return Ok(Some(PropertyDescriptor::data(value, true, true, false)));
+        }
         let mapped_cell = self.arguments_parameter_cell(object, &key)?;
         let obj = self.object(object)?;
         if let Some(descriptor) = obj.attributes.get(&key) {
@@ -943,6 +983,25 @@ impl Heap {
         descriptor: PropertyDescriptor,
     ) -> Result<bool, HeapError> {
         if descriptor.accessor() && (descriptor.value.is_some() || descriptor.writable.is_some()) {
+            return Ok(false);
+        }
+        if let Some(cell) = self.module_namespace_export_cell(object, &key)? {
+            let current = self
+                .get_own(cell, "value")?
+                .ok_or(HeapError::UninitializedModuleExport)?;
+            if descriptor.configurable == Some(true)
+                || descriptor.enumerable == Some(false)
+                || descriptor.accessor()
+                || descriptor.writable == Some(false)
+            {
+                return Ok(false);
+            }
+            return Ok(descriptor
+                .value
+                .as_ref()
+                .is_none_or(|value| same_value(value, &current)));
+        }
+        if self.is_module_namespace(object)? && matches!(key, PropertyName::String(_)) {
             return Ok(false);
         }
         let mapped_cell = self.arguments_parameter_cell(object, &key)?;
@@ -1123,6 +1182,29 @@ impl Heap {
         })
     }
 
+    fn is_module_namespace(&self, object: ObjectId) -> Result<bool, HeapError> {
+        Ok(matches!(
+            self.object(object)?.kind,
+            ObjectKind::ModuleNamespace { .. }
+        ))
+    }
+
+    fn module_namespace_export_cell(
+        &self,
+        object: ObjectId,
+        key: &PropertyName,
+    ) -> Result<Option<ObjectId>, HeapError> {
+        let PropertyName::String(name) = key else {
+            return Ok(None);
+        };
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::ModuleNamespace { exports } => exports
+                .iter()
+                .find_map(|(export, cell)| (export == name).then_some(*cell)),
+            _ => None,
+        })
+    }
+
     fn unmap_arguments_property(
         &mut self,
         object: ObjectId,
@@ -1169,6 +1251,9 @@ impl Heap {
                 ObjectKind::Arguments { parameter_map } => {
                     parameter_map.values().copied().collect()
                 }
+                ObjectKind::ModuleNamespace { exports } => {
+                    exports.iter().map(|(_, cell)| *cell).collect()
+                }
                 _ => Vec::new(),
             })
             .collect();
@@ -1205,6 +1290,10 @@ impl Heap {
                 ObjectKind::Arguments { parameter_map } => {
                     parameter_map.len() * size_of::<(PropertyName, ObjectId)>()
                 }
+                ObjectKind::ModuleNamespace { exports } => exports
+                    .iter()
+                    .map(|(name, _)| name.byte_len() + size_of::<(JsString, ObjectId)>())
+                    .sum(),
                 _ => 0,
             };
         self.ensure_room(bytes, &protected)?;
@@ -1265,7 +1354,14 @@ impl Heap {
         object: ObjectId,
         key: impl Into<PropertyName>,
     ) -> Result<Option<Value>, HeapError> {
-        Ok(self.object(object)?.own_property(&key.into()))
+        let key = key.into();
+        if let Some(cell) = self.module_namespace_export_cell(object, &key)? {
+            return self
+                .get_own(cell, "value")?
+                .map(Some)
+                .ok_or(HeapError::UninitializedModuleExport);
+        }
+        Ok(self.object(object)?.own_property(&key))
     }
 
     /// Ordinary data-property lookup through the prototype chain.
@@ -1276,6 +1372,11 @@ impl Heap {
     fn get_key(&self, object: ObjectId, key: PropertyName) -> Result<Value, HeapError> {
         let mut current = Some(object);
         while let Some(id) = current {
+            if let Some(cell) = self.module_namespace_export_cell(id, &key)? {
+                return self
+                    .get_own(cell, "value")?
+                    .ok_or(HeapError::UninitializedModuleExport);
+            }
             if let Some(cell) = self.arguments_parameter_cell(id, &key)? {
                 return Ok(self.get_own(cell, "value")?.unwrap_or(Value::Undefined));
             }
@@ -1309,6 +1410,9 @@ impl Heap {
         key: PropertyName,
         value: Value,
     ) -> Result<(), HeapError> {
+        if self.module_namespace_export_cell(object, &key)?.is_some() {
+            return Err(HeapError::ReadOnlyProperty);
+        }
         let mapped_cell = self.arguments_parameter_cell(object, &key)?;
         let obj = self.object(object)?;
         if obj
@@ -1386,6 +1490,12 @@ impl Heap {
     }
 
     fn delete_key(&mut self, object: ObjectId, key: PropertyName) -> Result<bool, HeapError> {
+        if self.module_namespace_export_cell(object, &key)?.is_some() {
+            return Ok(false);
+        }
+        if self.is_module_namespace(object)? && matches!(key, PropertyName::String(_)) {
+            return Ok(true);
+        }
         let mapped_cell = self.arguments_parameter_cell(object, &key)?;
         let obj = self
             .objects
@@ -1427,6 +1537,19 @@ impl Heap {
     /// 2^32-1 and noncanonical spellings are not indices.
     pub fn own_property_keys(&self, object: ObjectId) -> Result<Vec<PropertyName>, HeapError> {
         let obj = self.object(object)?;
+        if let ObjectKind::ModuleNamespace { exports } = &obj.kind {
+            let mut keys: Vec<_> = exports
+                .iter()
+                .map(|(export, _)| PropertyName::String(export.clone()))
+                .collect();
+            keys.extend(
+                obj.order
+                    .iter()
+                    .filter(|key| matches!(key, PropertyName::Symbol(_)))
+                    .cloned(),
+            );
+            return Ok(keys);
+        }
         let mut indices = Vec::new();
         let mut strings = Vec::new();
         let mut symbols = Vec::new();

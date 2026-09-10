@@ -513,12 +513,10 @@ object identity and reaches `case IsHTMLDDA`.
 
 The current [async function algorithms](https://tc39.es/ecma262/2026/multipage/control-abstraction-objects.html)
 require Promise capabilities, async completion propagation, and (for async
-generators) request queues. BlueJS does not yet have that Promise/job-queue
-architecture, so it does not claim execution support. It now does compile an
-empty async or async-generator declaration into a non-constructible closure,
-which lets CaseBlock declaration instantiation create the required lexical
-binding. Calling that closure reports the explicit runtime `unsupported` gap;
-non-empty async bodies remain compiler-unsupported.
+generators) request queues. The later P1.4 module slice adds a rooted Promise
+reaction/loader job queue and settled async-function completion; this older
+switch result must therefore not be read as the current async boundary. Generic
+resumable async frames, thenable assimilation and async generators remain open.
 
 The resulting fresh run at `target/test262-switch-is-html-async/` reconciles
 **218 pass, 0 fail, 0 unsupported, 0 timeout** across all 218 current
@@ -668,9 +666,9 @@ keeps top-level `this` undefined, including lexical arrows, while harness
 classic scripts continue to run in the same realm. Module declarations are
 therefore observable locally but do not create `globalThis` properties.
 
-This is deliberately an evaluation baseline, not a module graph. Import/export
+This was deliberately an evaluation baseline, not a module graph. Import/export
 grammar, requested-module resolution, instantiation, live bindings, namespace
-objects, cycles, dynamic import, and top-level await remain P1.4 follow-up
+objects, cycles, dynamic import, and top-level await were P1.4 follow-up
 slices. The fresh `language/module-code` run at
 `target/test262-next-module-baseline` records **26 pass, 386 fail and 190
 unsupported** of 602 modes; before this baseline every selected module mode was
@@ -696,19 +694,58 @@ records the entry metadata and a top-level declaration-instantiation boundary.
 relative requests against those keys. It first visits the complete reachable
 graph, allocates one cell per module binding, aliases named import slots to
 the exporter cell, runs every declaration prefix, then evaluates dependencies
-depth-first. Local assignments therefore update imports after evaluation; the
-same cell subscription updates the implemented namespace object's string-named
-properties. Default function declarations have a dedicated hoisted binding,
-rather than being incorrectly lowered to a later `const` initializer.
+depth-first. Local assignments therefore update imports after evaluation.
+Default function declarations have a dedicated hoisted binding, rather than
+being incorrectly lowered to a later `const` initializer.
 
 The Test262 runner now recursively supplies relative `_FIXTURE` sources to
-the adapter. The fresh `language/module-code` run at
-`target/test262-module-final` records **109 pass, 348 fail and 145
+the adapter. The initial `language/module-code` run at
+`target/test262-module-final` recorded **109 pass, 348 fail and 145
 unsupported** of 602 modes, versus the dependency-free baseline's 26 passes.
 Representative named import, indirect re-export, default-function cycle and
-namespace binding cases pass. This is intentionally not a complete Module
-Namespace Exotic Object: descriptor attributes, symbols, integrity operations,
-full TDZ getter behavior, dynamic import and top-level await remain separate
-object-model and async-linking work. Public regressions cover named live cells,
+namespace binding cases passed. Public regressions cover named live cells,
 function-cycle instantiation, default export hoisting, indirect exports/import
 immutability, and namespace property updates.
+
+## P1.4 continuation: namespace exotics, dynamic import and top-level await
+
+The [ECMAScript 2026 Module Namespace Exotic Object algorithms](https://tc39.es/ecma262/2026/multipage/ordinary-and-exotic-objects-behaviours.html)
+were checked on 2026-09-11. Namespace exports now retain exporter cells in the
+heap rather than copied values. Their `[[GetOwnProperty]]` descriptors are
+live, writable/enumerable/non-configurable data descriptors; `[[Set]]` still
+rejects export writes. Namespace objects have a `null` prototype, are
+non-extensible, list string exports in UTF-16 code-unit order before ordinary
+symbol keys, and own a non-writable/non-enumerable/non-configurable
+`Symbol.toStringTag` value of `"Module"`. The VM roots one cached namespace
+per realm module, so static namespace imports and repeated dynamic imports
+observe object identity as required. `Reflect.defineProperty`, `Reflect.set`,
+`Reflect.deleteProperty` and `Reflect.preventExtensions` expose the relevant
+boolean internal-method results; `Object.seal`/`freeze` and
+`isSealed`/`isFrozen` make the integrity-level distinction observable. The
+focused `language/module-code/namespace` run at
+`target/test262-namespace-exotic-final-2` records **21 pass and 17 fail** of
+38 modes; remaining failures require unrelated iterator/callable support or
+the still-incomplete TDZ error-object path.
+
+`import()` is parsed as an expression rather than a static ModuleItem. A host
+provides a finite precompiled registry and referrer key; relative requests are
+resolved within that registry and no filesystem lookup occurs in the VM. A
+dynamic-import job links/evaluates a previously unseen entry and fulfills its
+Promise with the cached namespace. The Test262 collector includes reachable
+literal dynamic-import fixtures for module and script cases. The Promise slice
+adds `resolve`, `reject`, `all`, reactions and loader jobs sufficient for this
+path and `$DONE` draining.
+
+Module-goal `await` compiles to an Await opcode. Settled Promise completions
+continue immediately; for a pending loader Promise, the VM roots and saves its
+current module execution state, drains queued jobs, then restores the frame
+and continues. A Promise still pending after that drain remains an explicit
+unsupported outcome: generic resumable async frames, thenable assimilation,
+async dependency ordering and host-driven loading are not claimed. The fresh
+`language/module-code` run at `target/test262-module-namespace-dynamic-tla-final`
+records **310 pass, 152 fail, 137 unsupported and 3 timeout** of 602 modes.
+The focused `language/expressions/dynamic-import/reuse-namespace-object` run
+at `target/test262-dynamic-import-reuse-final` has **5 pass of 5**, and the
+focused `language/module-code/top-level-await/await-awaits-thenable-not-callable`
+run at `target/test262-tla-basic` has **1 pass of 1**. These are bounded
+acceptance slices, not a claim of complete module or async conformance.
