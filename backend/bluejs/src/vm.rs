@@ -145,6 +145,7 @@ enum HandlerState {
     Finally,
 }
 
+#[derive(Clone)]
 struct HandlerFrame {
     metadata: usize,
     stack_depth: usize,
@@ -165,8 +166,21 @@ enum CompletionAction {
 
 enum InterpreterExit {
     Return(Value),
-    Yield { value: Value, pc: usize },
-    Suspend { pc: usize },
+    Yield {
+        value: Value,
+        pc: usize,
+    },
+    Suspend {
+        pc: usize,
+    },
+    /// A Source Text Module reaches an Await expression. Its execution
+    /// context is moved into `ModuleContinuation` before the next job turn
+    /// resumes it.
+    Await {
+        promise: ObjectId,
+        pc: usize,
+        handlers: Vec<HandlerFrame>,
+    },
 }
 
 // Ordinary calls still nest the Rust interpreter. Keep this comfortably below
@@ -200,6 +214,33 @@ struct LinkedModule {
     namespace: Option<ObjectId>,
     evaluated: bool,
     evaluating: bool,
+    suspended: bool,
+    completion: Option<Value>,
+    /// An asynchronous module keeps its abrupt completion after its frame has
+    /// been released. Static parents and later dynamic imports observe this
+    /// stored evaluation error instead of attempting to execute it again.
+    error: Option<Value>,
+}
+
+/// The realm keeps Source Text Module Records after an entry evaluation.
+/// Dynamic imports must observe the same live bindings and evaluation status
+/// as static imports in an earlier graph, rather than creating a second set
+/// of cells for the same canonical module name.
+struct ModuleGraphState {
+    linked: HashMap<String, LinkedModule>,
+    roots: Vec<RootId>,
+}
+
+/// The resumable portion of a top-level module evaluation. `execution`
+/// carries the live lexical cells, stack and realm state; `pc` points just
+/// after the Await opcode, where its settlement value is pushed on resume.
+struct ModuleContinuation {
+    module: String,
+    code: Bytecode,
+    pc: usize,
+    execution: SuspendedModuleExecution,
+    iterators: Vec<Value>,
+    handlers: Vec<HandlerFrame>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -208,6 +249,7 @@ enum ExportResolution {
     Missing,
     Ambiguous,
     Namespace { module: String },
+    Source { module: String },
 }
 
 enum PromiseStatus {
@@ -216,10 +258,31 @@ enum PromiseStatus {
     Rejected(Value),
 }
 
-struct PromiseReaction {
+enum PromiseAwaitStatus {
+    Pending,
+    Fulfilled(Value),
+    Rejected(Value),
+}
+
+impl PromiseStatus {
+    fn clone_for_await(&self) -> PromiseAwaitStatus {
+        match self {
+            Self::Pending => PromiseAwaitStatus::Pending,
+            Self::Fulfilled(value) => PromiseAwaitStatus::Fulfilled(value.clone()),
+            Self::Rejected(value) => PromiseAwaitStatus::Rejected(value.clone()),
+        }
+    }
+}
+
+struct PromiseThenReaction {
     target: ObjectId,
     on_fulfilled: Value,
     on_rejected: Value,
+}
+
+enum PromiseReaction {
+    Then(PromiseThenReaction),
+    ModuleAwait { continuation: u64 },
 }
 
 struct PromiseRecord {
@@ -227,21 +290,45 @@ struct PromiseRecord {
     reactions: Vec<PromiseReaction>,
 }
 
+/// Aggregation bookkeeping for `Promise.all`. Each input observes its own
+/// resolution job; the target is fulfilled only after every indexed slot has
+/// settled, so a pending dependency never becomes a host-level unsupported
+/// condition.
+struct PromiseAllState {
+    values: Vec<Option<Value>>,
+    remaining: usize,
+}
+
 enum PromiseJob {
     Reaction {
         target: ObjectId,
         handler: Value,
         value: Value,
+        fulfilled: bool,
+    },
+    /// PromiseResolveThenableJob. Keeping this as a real queue entry (rather
+    /// than calling `then` inline) preserves the observable microtask turn
+    /// between resolving a thenable and resuming an await/reaction.
+    Thenable {
+        target: ObjectId,
+        thenable: Value,
+        then: Value,
     },
     DynamicImport {
         target: ObjectId,
         referrer: String,
         specifier: String,
     },
-    All {
-        target: ObjectId,
-        values: Vec<Value>,
+    ModuleAwait {
+        continuation: u64,
+        value: Value,
+        fulfilled: bool,
     },
+}
+
+enum DynamicImportResult {
+    Fulfilled(Value),
+    Waiting(String),
 }
 
 /// A Test262 realm owns a complete VM, while its public global is a facade
@@ -320,6 +407,12 @@ pub struct Vm {
     /// Bytecodes supplied by the host for this realm's module loader.
     /// Dynamic imports resolve only inside this explicit registry.
     module_registry: HashMap<String, Bytecode>,
+    /// Host-provided source-phase module records. Their opaque identities are
+    /// intentionally separate from executable module bytecode.
+    module_source_registry: HashSet<String>,
+    module_source_cache: HashMap<String, ObjectId>,
+    module_source_roots: HashMap<String, RootId>,
+    abstract_module_source_prototype: Option<ObjectId>,
     /// Retains the entry namespace until a dynamic-import job has handed it
     /// to its promise.  The next graph evaluation replaces this cache.
     last_module_namespace: Option<ObjectId>,
@@ -329,6 +422,12 @@ pub struct Vm {
     /// already made visible through a static `import * as` binding.
     module_namespace_cache: HashMap<String, ObjectId>,
     module_namespace_roots: HashMap<String, RootId>,
+    module_graph: Option<ModuleGraphState>,
+    module_continuations: HashMap<u64, ModuleContinuation>,
+    next_module_continuation: u64,
+    module_pending_dependencies: HashMap<String, HashSet<String>>,
+    module_async_parents: HashMap<String, Vec<String>>,
+    module_import_waiters: HashMap<String, Vec<ObjectId>>,
     /// The defining source-text module for currently executing code. A
     /// closure receives the same association at creation time.
     active_module_name: Option<String>,
@@ -389,7 +488,10 @@ pub struct Vm {
     array_iterator_prototype: Option<ObjectId>,
     generator_prototype: Option<ObjectId>,
     promise_prototype: Option<ObjectId>,
+    map_prototype: Option<ObjectId>,
+    set_prototype: Option<ObjectId>,
     promises: HashMap<ObjectId, PromiseRecord>,
+    promise_all: HashMap<ObjectId, PromiseAllState>,
     promise_jobs: VecDeque<PromiseJob>,
     test262_done: Option<Result<(), Value>>,
     test262_realms: HashMap<ObjectId, Test262Realm>,
@@ -434,10 +536,20 @@ impl Vm {
             remaining_instructions: 0,
             cells: HashMap::new(),
             module_registry: HashMap::new(),
+            module_source_registry: HashSet::new(),
+            module_source_cache: HashMap::new(),
+            module_source_roots: HashMap::new(),
+            abstract_module_source_prototype: None,
             last_module_namespace: None,
             last_module_namespace_root: None,
             module_namespace_cache: HashMap::new(),
             module_namespace_roots: HashMap::new(),
+            module_graph: None,
+            module_continuations: HashMap::new(),
+            next_module_continuation: 0,
+            module_pending_dependencies: HashMap::new(),
+            module_async_parents: HashMap::new(),
+            module_import_waiters: HashMap::new(),
             active_module_name: None,
             module_closure_referrers: HashMap::new(),
             dynamic_eval_bindings: HashMap::new(),
@@ -466,7 +578,10 @@ impl Vm {
             array_iterator_prototype: None,
             generator_prototype: None,
             promise_prototype: None,
+            map_prototype: None,
+            set_prototype: None,
             promises: HashMap::new(),
+            promise_all: HashMap::new(),
             promise_jobs: VecDeque::new(),
             test262_done: None,
             test262_realms: HashMap::new(),
@@ -515,6 +630,13 @@ impl Vm {
         self.active_module_name = Some(referrer.into());
     }
 
+    /// Installs the host's canonical names for source-phase module records.
+    /// These records produce Module Source Objects and must not be supplied as
+    /// executable Source Text Module bytecode.
+    pub fn set_module_source_loader_context(&mut self, sources: Vec<String>) {
+        self.module_source_registry = sources.into_iter().collect();
+    }
+
     /// Links and synchronously evaluates one static module graph.
     ///
     /// Keys in `modules` are host-resolved module names. Relative requests
@@ -529,13 +651,35 @@ impl Vm {
         entry: &str,
         modules: &HashMap<String, Bytecode>,
     ) -> Result<Value, RuntimeError> {
-        let mut roots = Vec::new();
-        let result = (|| {
+        self.execute_module_graph_inner(entry, modules, true)
+    }
+
+    /// The Dynamic Import job owns its own observable queue turns. It must
+    /// link/evaluate a module graph without recursively draining those jobs;
+    /// otherwise a sibling dynamic import can start and finish before the
+    /// importing job has installed its completion reaction.
+    fn execute_module_graph_inner(
+        &mut self,
+        entry: &str,
+        modules: &HashMap<String, Bytecode>,
+        drain_jobs: bool,
+    ) -> Result<Value, RuntimeError> {
+        let (mut linked, mut roots, fresh_graph) = match self.module_graph.take() {
+            Some(graph) => (graph.linked, graph.roots, false),
+            None => (HashMap::new(), Vec::new(), true),
+        };
+        let mut result = (|| {
             self.module_registry = modules.clone();
-            let mut visiting = HashSet::new();
-            let mut visited = HashSet::new();
-            let mut order = Vec::new();
-            Self::collect_module_graph(modules, entry, &mut visiting, &mut visited, &mut order)?;
+            // Resolution errors can be converted to a dynamic-import Promise
+            // rejection before graph setup reaches the usual execution reset.
+            // Give that host-visible error construction a fresh budget too.
+            self.remaining_instructions = self.config.instruction_budget;
+            // The host supplies the closed source set for this realm. Link
+            // every supplied record once so a later dynamic import shares a
+            // static import's cells instead of constructing a second module
+            // instance for the same canonical path.
+            let mut order: Vec<_> = modules.keys().cloned().collect();
+            order.sort_unstable();
 
             if let Some(root) = self.result_root.take() {
                 self.heap.unroot(root)?;
@@ -565,133 +709,211 @@ impl Vm {
             self.this = Value::Undefined;
             self.top_level_module = true;
 
-            let mut linked: HashMap<String, LinkedModule> = order
-                .iter()
-                .cloned()
-                .map(|name| {
-                    (
-                        name,
-                        LinkedModule {
-                            cells: HashMap::new(),
-                            namespace: None,
-                            evaluated: false,
-                            evaluating: false,
-                        },
-                    )
-                })
-                .collect();
-
-            // ModuleDeclarationInstantiation creates all own bindings before
-            // wiring imports.  A `var` binding is initialized immediately;
-            // lexical bindings deliberately have no `value` property yet.
-            for name in &order {
-                let code = modules
-                    .get(name)
-                    .expect("reachable module was checked during collection");
-                if !code.module {
-                    return Err(RuntimeError::ModuleResolution(format!(
-                        "{name} was not compiled using the module goal"
-                    )));
-                }
-                let imported_slots: HashSet<_> = code
-                    .module_imports
+            if fresh_graph {
+                linked = order
                     .iter()
-                    .filter_map(|import| import.local_slot.map(|slot| slot as usize))
+                    .cloned()
+                    .map(|name| {
+                        (
+                            name,
+                            LinkedModule {
+                                cells: HashMap::new(),
+                                namespace: None,
+                                evaluated: false,
+                                evaluating: false,
+                                suspended: false,
+                                completion: None,
+                                error: None,
+                            },
+                        )
+                    })
                     .collect();
-                let slots = code.scopes.first().cloned().unwrap_or_default();
-                let record = linked
-                    .get_mut(name)
-                    .expect("linked record was allocated for every module");
-                for slot in slots {
-                    let slot = slot as usize;
-                    if imported_slots.contains(&slot) {
-                        continue;
-                    }
-                    let cell = self.with_roots(|heap| heap.alloc_object(None))?;
-                    roots.push(self.heap.root(cell)?);
-                    if !code.bindings[slot].lexical {
-                        self.with_roots(|heap| heap.set(cell, "value", Value::Undefined))?;
-                    }
-                    record.cells.insert(slot, cell);
-                }
-            }
 
-            // Import bindings are immutable aliases.  The importer stores the
-            // exporter's *cell*, so later stores in the exporting module are
-            // visible without any copy or notification mechanism.
-            for name in &order {
-                let code = modules
-                    .get(name)
-                    .expect("reachable module was checked during collection");
-                let mut aliases = Vec::new();
-                for import in &code.module_imports {
-                    let Some(local_slot) = import.local_slot else {
-                        continue;
-                    };
-                    let target = Self::resolve_module_request(name, &import.module_request)?;
-                    let resolution = match &import.import_name {
-                        ModuleImportName::Named(import_name) => {
-                            Self::resolve_export(modules, &target, import_name, &mut Vec::new())?
+                // ModuleDeclarationInstantiation creates all own bindings before
+                // wiring imports.  A `var` binding is initialized immediately;
+                // lexical bindings deliberately have no `value` property yet.
+                for name in &order {
+                    let code = modules
+                        .get(name)
+                        .expect("reachable module was checked during collection");
+                    if !code.module {
+                        return Err(RuntimeError::ModuleResolution(format!(
+                            "{name} was not compiled using the module goal"
+                        )));
+                    }
+                    let imported_slots: HashSet<_> = code
+                        .module_imports
+                        .iter()
+                        .filter_map(|import| import.local_slot.map(|slot| slot as usize))
+                        .collect();
+                    let slots = code.scopes.first().cloned().unwrap_or_default();
+                    let record = linked
+                        .get_mut(name)
+                        .expect("linked record was allocated for every module");
+                    for slot in slots {
+                        let slot = slot as usize;
+                        if imported_slots.contains(&slot) {
+                            continue;
                         }
-                        ModuleImportName::Namespace => ExportResolution::Namespace {
-                            module: target.clone(),
-                        },
-                    };
-                    let cell = match resolution {
-                        ExportResolution::Binding {
-                            module: exporter,
-                            slot,
-                        } => linked
-                            .get(&exporter)
-                            .and_then(|record| record.cells.get(&slot))
-                            .copied()
-                            .ok_or_else(|| {
-                                RuntimeError::ModuleResolution(format!(
-                                    "export binding from {exporter} has no cell"
-                                ))
-                            })?,
-                        ExportResolution::Namespace { module } => {
-                            let namespace =
-                                self.module_namespace(&module, modules, &mut linked, &mut roots)?;
-                            let cell = self.with_roots(|heap| heap.alloc_object(None))?;
-                            roots.push(self.heap.root(cell)?);
-                            self.with_roots(|heap| {
-                                heap.set(cell, "value", Value::Object(namespace))
-                            })?;
-                            cell
+                        let cell = self.with_roots(|heap| heap.alloc_object(None))?;
+                        roots.push(self.heap.root(cell)?);
+                        if !code.bindings[slot].lexical {
+                            self.with_roots(|heap| heap.set(cell, "value", Value::Undefined))?;
                         }
-                        ExportResolution::Missing | ExportResolution::Ambiguous => {
-                            let import_name = match &import.import_name {
-                                ModuleImportName::Named(name) => name.as_str(),
-                                ModuleImportName::Namespace => "*",
-                            };
-                            return Err(RuntimeError::ModuleResolution(format!(
-                                "{} does not export {import_name}",
-                                import.module_request
+                        record.cells.insert(slot, cell);
+                    }
+                }
+
+                // Validate every named indirect export before evaluating any
+                // module body.  A missing or ambiguous `export { x } from ...`
+                // is a ModuleDeclarationInstantiation error, including when the
+                // body would otherwise call $DONOTEVALUATE().  Star exports do
+                // not themselves fail here; their ambiguity matters only when a
+                // particular name is resolved by an import or indirect export.
+                for name in &order {
+                    let code = modules
+                        .get(name)
+                        .expect("reachable module was checked during collection");
+                    for export in &code.module_exports {
+                        let ModuleExport::Indirect {
+                            export_name,
+                            module_request,
+                            import_name,
+                        } = export
+                        else {
+                            continue;
+                        };
+                        let target = Self::resolve_module_request(name, module_request)?;
+                        match Self::resolve_export(modules, &target, import_name, &mut Vec::new())?
+                        {
+                            ExportResolution::Binding { .. }
+                            | ExportResolution::Namespace { .. }
+                            | ExportResolution::Source { .. } => {}
+                            ExportResolution::Missing | ExportResolution::Ambiguous => {
+                                return Err(RuntimeError::ModuleResolution(format!(
+                                "{module_request} does not export {import_name} for {export_name}"
                             )));
+                            }
                         }
-                    };
-                    aliases.push((local_slot as usize, cell));
+                    }
+                    for export in &code.module_exports {
+                        let ModuleExport::Source { module_request, .. } = export else {
+                            continue;
+                        };
+                        let target = Self::resolve_module_request(name, module_request)?;
+                        self.module_source_object(&target, modules)?;
+                    }
+                    // Source-phase requests are resolved while loading the graph,
+                    // before ordinary ModuleDeclarationInstantiation validates
+                    // named imports elsewhere in that graph. This keeps a host
+                    // failure to supply a source record distinct from a later
+                    // SyntaxError linking failure.
+                    for import in &code.module_imports {
+                        if !matches!(import.import_name, ModuleImportName::Source) {
+                            continue;
+                        }
+                        let target = Self::resolve_module_request(name, &import.module_request)?;
+                        self.module_source_object(&target, modules)?;
+                    }
                 }
-                let record = linked
-                    .get_mut(name)
-                    .expect("linked record was allocated for every module");
-                for (slot, cell) in aliases {
-                    record.cells.insert(slot, cell);
-                }
-            }
 
-            // Run declaration instantiation for every reachable module before
-            // evaluating any body.  This makes function exports callable
-            // across a cycle, while lexical exports remain in their TDZ.
-            for name in &order {
-                let code = modules
-                    .get(name)
-                    .expect("reachable module was checked during collection");
-                let record = linked
-                    .get_mut(name)
-                    .expect("linked record was allocated for every module");
-                self.initialize_module_record(code, &mut record.cells)?;
+                // Import bindings are immutable aliases.  The importer stores the
+                // exporter's *cell*, so later stores in the exporting module are
+                // visible without any copy or notification mechanism.
+                for name in &order {
+                    let code = modules
+                        .get(name)
+                        .expect("reachable module was checked during collection");
+                    let mut aliases = Vec::new();
+                    for import in &code.module_imports {
+                        let Some(local_slot) = import.local_slot else {
+                            continue;
+                        };
+                        let target = Self::resolve_module_request(name, &import.module_request)?;
+                        let resolution = match &import.import_name {
+                            ModuleImportName::Named(import_name) => Self::resolve_export(
+                                modules,
+                                &target,
+                                import_name,
+                                &mut Vec::new(),
+                            )?,
+                            ModuleImportName::Namespace => ExportResolution::Namespace {
+                                module: target.clone(),
+                            },
+                            ModuleImportName::Source => ExportResolution::Source {
+                                module: target.clone(),
+                            },
+                        };
+                        let cell = match resolution {
+                            ExportResolution::Binding {
+                                module: exporter,
+                                slot,
+                            } => linked
+                                .get(&exporter)
+                                .and_then(|record| record.cells.get(&slot))
+                                .copied()
+                                .ok_or_else(|| {
+                                    RuntimeError::ModuleResolution(format!(
+                                        "export binding from {exporter} has no cell"
+                                    ))
+                                })?,
+                            ExportResolution::Namespace { module } => {
+                                let namespace = self.module_namespace(
+                                    &module,
+                                    modules,
+                                    &mut linked,
+                                    &mut roots,
+                                )?;
+                                let cell = self.with_roots(|heap| heap.alloc_object(None))?;
+                                roots.push(self.heap.root(cell)?);
+                                self.with_roots(|heap| {
+                                    heap.set(cell, "value", Value::Object(namespace))
+                                })?;
+                                cell
+                            }
+                            ExportResolution::Source { module } => {
+                                let source = self.module_source_object(&module, modules)?;
+                                let cell = self.with_roots(|heap| heap.alloc_object(None))?;
+                                roots.push(self.heap.root(cell)?);
+                                self.with_roots(|heap| {
+                                    heap.set(cell, "value", Value::Object(source))
+                                })?;
+                                cell
+                            }
+                            ExportResolution::Missing | ExportResolution::Ambiguous => {
+                                let import_name = match &import.import_name {
+                                    ModuleImportName::Named(name) => name.as_str(),
+                                    ModuleImportName::Namespace => "*",
+                                    ModuleImportName::Source => "source",
+                                };
+                                return Err(RuntimeError::ModuleResolution(format!(
+                                    "{} does not export {import_name}",
+                                    import.module_request
+                                )));
+                            }
+                        };
+                        aliases.push((local_slot as usize, cell));
+                    }
+                    let record = linked
+                        .get_mut(name)
+                        .expect("linked record was allocated for every module");
+                    for (slot, cell) in aliases {
+                        record.cells.insert(slot, cell);
+                    }
+                }
+
+                // Run declaration instantiation for every reachable module before
+                // evaluating any body.  This makes function exports callable
+                // across a cycle, while lexical exports remain in their TDZ.
+                for name in &order {
+                    let code = modules
+                        .get(name)
+                        .expect("reachable module was checked during collection");
+                    let record = linked
+                        .get_mut(name)
+                        .expect("linked record was allocated for every module");
+                    self.initialize_module_record(code, &mut record.cells)?;
+                }
             }
 
             let value = self.evaluate_module_record(entry, modules, &mut linked)?;
@@ -704,8 +926,60 @@ impl Vm {
             Ok(value)
         })();
 
-        for root in roots {
-            self.heap.unroot(root)?;
+        // Keep an abrupt object completion observable to the embedding host
+        // until the next execution, just as `execute_with_global_bindings`
+        // does for scripts.  In particular, Test262 needs to inspect an
+        // Error's `name` after a module evaluation rejects.
+        if let Err(RuntimeError::Thrown(Value::Object(id))) = &result {
+            self.result_root = Some(self.heap.root(*id)?);
+        }
+
+        if fresh_graph && result.is_err() {
+            for root in roots {
+                self.heap.unroot(root)?;
+            }
+        } else {
+            self.module_graph = Some(ModuleGraphState { linked, roots });
+        }
+        // A module can become asynchronous solely through a dependency.  The
+        // host-facing evaluation path must advance that dependency's queued
+        // continuation just as it does for an entry containing `await`
+        // itself, otherwise an immediately rejected imported module is
+        // reported as a successful evaluation.
+        let entry_is_async = self
+            .module_graph
+            .as_ref()
+            .and_then(|graph| graph.linked.get(entry))
+            .is_some_and(|record| record.suspended)
+            || modules.get(entry).is_some_and(|code| {
+                code.instructions()
+                    .any(|instruction| instruction.opcode == Opcode::Await)
+            });
+        if result.is_ok() && drain_jobs && entry_is_async && !self.promise_jobs.is_empty() {
+            self.remaining_instructions = self.config.instruction_budget;
+            if let Err(error) = self.run_promise_jobs() {
+                result = Err(error);
+            }
+        }
+        if result.is_ok() {
+            if let Some(error) = self
+                .module_graph
+                .as_ref()
+                .and_then(|graph| graph.linked.get(entry))
+                .and_then(|record| record.error.clone())
+            {
+                result = Err(RuntimeError::Thrown(error));
+            }
+        }
+        if result.is_ok() {
+            if let Some(value) = self
+                .module_graph
+                .as_ref()
+                .and_then(|graph| graph.linked.get(entry))
+                .and_then(|record| record.completion.clone())
+            {
+                result = Ok(value);
+            }
         }
         self.stack.clear();
         self.bindings.clear();
@@ -728,52 +1002,6 @@ impl Vm {
             Ok(())
         })?;
         result
-    }
-
-    fn collect_module_graph(
-        modules: &HashMap<String, Bytecode>,
-        name: &str,
-        visiting: &mut HashSet<String>,
-        visited: &mut HashSet<String>,
-        order: &mut Vec<String>,
-    ) -> Result<(), RuntimeError> {
-        if visited.contains(name) || visiting.contains(name) {
-            return Ok(());
-        }
-        let code = modules.get(name).ok_or_else(|| {
-            RuntimeError::ModuleResolution(format!("module {name} was not supplied by the host"))
-        })?;
-        if !code.module {
-            return Err(RuntimeError::ModuleResolution(format!(
-                "{name} was not compiled using the module goal"
-            )));
-        }
-        visiting.insert(name.to_string());
-        let mut requests: Vec<&str> = code
-            .module_imports
-            .iter()
-            .map(|import| import.module_request.as_str())
-            .collect();
-        requests.extend(
-            code.module_exports
-                .iter()
-                .filter_map(|export| match export {
-                    ModuleExport::Indirect { module_request, .. }
-                    | ModuleExport::Star { module_request }
-                    | ModuleExport::Namespace { module_request, .. } => {
-                        Some(module_request.as_str())
-                    }
-                    ModuleExport::Local { .. } => None,
-                }),
-        );
-        for request in requests {
-            let target = Self::resolve_module_request(name, request)?;
-            Self::collect_module_graph(modules, &target, visiting, visited, order)?;
-        }
-        visiting.remove(name);
-        visited.insert(name.to_string());
-        order.push(name.to_string());
-        Ok(())
     }
 
     fn resolve_module_request(referrer: &str, request: &str) -> Result<String, RuntimeError> {
@@ -800,6 +1028,38 @@ impl Vm {
             return Ok(parts.join("/"));
         }
         Ok(request.to_string())
+    }
+
+    /// Materializes the host identity supplied for a source-phase import.
+    /// Source Text Modules deliberately do not expose such a representation:
+    /// accepting bytecode here would accidentally link or evaluate a module
+    /// whose import phase must remain opaque.
+    fn module_source_object(
+        &mut self,
+        module: &str,
+        modules: &HashMap<String, Bytecode>,
+    ) -> Result<ObjectId, RuntimeError> {
+        if let Some(source) = self.module_source_cache.get(module) {
+            return Ok(*source);
+        }
+        if modules.contains_key(module) {
+            return Err(RuntimeError::ModuleResolution(format!(
+                "{module} is a Source Text Module and has no source-phase representation"
+            )));
+        }
+        if !self.module_source_registry.contains(module) {
+            return Err(RuntimeError::TypeError(format!(
+                "host did not provide a source-phase representation for {module}"
+            )));
+        }
+        let prototype = self
+            .abstract_module_source_prototype
+            .unwrap_or(self.object_prototype);
+        let source = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        let root = self.heap.root(source)?;
+        self.module_source_cache.insert(module.to_string(), source);
+        self.module_source_roots.insert(module.to_string(), root);
+        Ok(source)
     }
 
     /// Dynamic `import()` first creates a Promise capability, then defers all
@@ -838,19 +1098,44 @@ impl Vm {
         &mut self,
         referrer: &str,
         specifier: &str,
-    ) -> Result<Value, RuntimeError> {
+    ) -> Result<DynamicImportResult, RuntimeError> {
         let entry = Self::resolve_module_request(referrer, specifier)?;
-        if let Some(namespace) = self.module_namespace_cache.get(&entry) {
-            return Ok(Value::Object(*namespace));
+        if let Some(record) = self
+            .module_graph
+            .as_ref()
+            .and_then(|graph| graph.linked.get(&entry))
+        {
+            if let Some(error) = &record.error {
+                return Err(RuntimeError::Thrown(error.clone()));
+            }
+            if record.evaluated {
+                let namespace = self.module_namespace_cache.get(&entry).copied().ok_or(
+                    RuntimeError::ModuleResolution(format!(
+                        "dynamic import of {entry} did not produce a namespace"
+                    )),
+                )?;
+                return Ok(DynamicImportResult::Fulfilled(Value::Object(namespace)));
+            }
+            if record.evaluating || record.suspended {
+                return Ok(DynamicImportResult::Waiting(entry));
+            }
         }
         let modules = self.module_registry.clone();
-        self.execute_module_graph(&entry, &modules)?;
+        self.execute_module_graph_inner(&entry, &modules, false)?;
+        if self
+            .module_graph
+            .as_ref()
+            .and_then(|graph| graph.linked.get(&entry))
+            .is_some_and(|record| record.evaluating || record.suspended)
+        {
+            return Ok(DynamicImportResult::Waiting(entry));
+        }
         let namespace = self
             .last_module_namespace
             .ok_or(RuntimeError::ModuleResolution(format!(
                 "dynamic import of {entry} did not produce a namespace"
             )))?;
-        Ok(Value::Object(namespace))
+        Ok(DynamicImportResult::Fulfilled(Value::Object(namespace)))
     }
 
     fn suspend_module_execution(&mut self) -> SuspendedModuleExecution {
@@ -998,20 +1283,294 @@ impl Vm {
         Ok(roots)
     }
 
-    fn drain_jobs_while_module_suspended(&mut self) -> Result<(), RuntimeError> {
+    fn run_next_job_while_module_suspended(&mut self) -> Result<bool, RuntimeError> {
         let execution = self.suspend_module_execution();
         let roots = self.root_suspended_module_execution(&execution)?;
-        let result = self.run_promise_jobs();
+        // Promise jobs run in a fresh ECMAScript execution context.  In
+        // particular, a dynamic-import job can enter a module whose
+        // top-level `await` must not inherit the suspended caller's function
+        // depth; otherwise it is mistaken for an ordinary async-function
+        // await and cannot install a module continuation.
+        let call_depth = std::mem::replace(&mut self.call_depth, 0);
+        // Jobs execute in their own execution contexts. The suspended
+        // module's remaining interpreter fuel must not leave every queued
+        // reaction with a zero budget after state displacement.
+        self.remaining_instructions = self.config.instruction_budget;
+        let result = self.run_next_promise_job();
         // The nested graph's normal completion is not the outer module's
         // completion. Its namespace has its own dedicated cache root.
         if let Some(root) = self.result_root.take() {
             self.heap.unroot(root)?;
         }
         self.restore_module_execution(execution);
+        self.call_depth = call_depth;
         for root in roots {
             self.heap.unroot(root)?;
         }
         result
+    }
+
+    fn resume_module_await(
+        &mut self,
+        continuation: u64,
+        value: Value,
+        fulfilled: bool,
+    ) -> Result<(), RuntimeError> {
+        let continuation =
+            self.module_continuations
+                .remove(&continuation)
+                .ok_or(RuntimeError::Unsupported(
+                    "unknown module await continuation",
+                ))?;
+        let ModuleContinuation {
+            module,
+            code,
+            pc,
+            execution,
+            mut iterators,
+            mut handlers,
+        } = continuation;
+        self.restore_module_execution(execution);
+        let outcome = if fulfilled {
+            self.interpret(&code, &mut iterators, pc, Some(value), None, Some(handlers))
+        } else {
+            match self.resolve_completion(
+                &code,
+                &mut handlers,
+                &mut iterators,
+                Completion::Throw(RuntimeError::Thrown(value)),
+            )? {
+                CompletionAction::Continue => {
+                    self.interpret(&code, &mut iterators, pc, None, None, Some(handlers))
+                }
+                CompletionAction::Jump(target) => {
+                    self.interpret(&code, &mut iterators, target, None, None, Some(handlers))
+                }
+                CompletionAction::Return(value) => Ok(InterpreterExit::Return(value)),
+                CompletionAction::TailRecur(_) => Err(RuntimeError::TypeError(
+                    "top-level await cannot recur".into(),
+                )),
+                CompletionAction::Throw(error) => Err(error),
+            }
+        };
+        let mut graph = self
+            .module_graph
+            .take()
+            .ok_or(RuntimeError::Unsupported("module graph continuation"))?;
+        let result = match outcome {
+            Ok(InterpreterExit::Return(value)) => {
+                {
+                    let record = graph
+                        .linked
+                        .get_mut(&module)
+                        .expect("suspended module remains linked");
+                    record.cells = std::mem::take(&mut self.cells);
+                    record.evaluating = false;
+                    record.suspended = false;
+                    record.evaluated = true;
+                    record.completion = Some(value.clone());
+                }
+                let modules = self.module_registry.clone();
+                self.settle_dynamic_import_waiters(&module)?;
+                self.settle_module_parents(module.clone(), &modules, &mut graph.linked)?;
+                Ok(value)
+            }
+            Ok(InterpreterExit::Await {
+                promise,
+                pc,
+                handlers,
+            }) => {
+                let execution = self.suspend_module_execution();
+                let record = graph
+                    .linked
+                    .get_mut(&module)
+                    .expect("suspended module remains linked");
+                record.cells = execution.cells.clone();
+                record.suspended = true;
+                self.suspend_module_await(
+                    ModuleContinuation {
+                        module: module.clone(),
+                        code,
+                        pc,
+                        execution,
+                        iterators,
+                        handlers,
+                    },
+                    promise,
+                )?;
+                Ok(Value::Undefined)
+            }
+            Ok(InterpreterExit::Yield { .. }) => Err(RuntimeError::TypeError(
+                "yield requires a generator function".into(),
+            )),
+            Ok(InterpreterExit::Suspend { .. }) => {
+                unreachable!("module execution has no generator suspend boundary")
+            }
+            Err(error) => {
+                let error = self.error_value(error)?;
+                let record = graph
+                    .linked
+                    .get_mut(&module)
+                    .expect("suspended module remains linked");
+                record.cells = std::mem::take(&mut self.cells);
+                record.evaluating = false;
+                record.suspended = false;
+                record.evaluated = true;
+                record.completion = None;
+                record.error = Some(error.clone());
+                self.reject_module_and_parents(module, error, &mut graph.linked)?;
+                Ok(Value::Undefined)
+            }
+        };
+        self.module_graph = Some(graph);
+        result.map(|_| ())
+    }
+
+    /// Completing an async dependency releases the modules that were waiting
+    /// on it during InnerModuleEvaluation. Process one breadth-first layer at
+    /// a time: siblings retain source/DFS order, while an indirect parent is
+    /// considered only after its direct siblings have had their turn.
+    fn settle_module_parents(
+        &mut self,
+        completed: String,
+        modules: &HashMap<String, Bytecode>,
+        linked: &mut HashMap<String, LinkedModule>,
+    ) -> Result<(), RuntimeError> {
+        let mut completed = std::collections::VecDeque::from([completed]);
+        while let Some(child) = completed.pop_front() {
+            let parents = self.module_async_parents.remove(&child).unwrap_or_default();
+            for parent in parents {
+                let ready = self
+                    .module_pending_dependencies
+                    .get_mut(&parent)
+                    .is_some_and(|dependencies| {
+                        dependencies.remove(&child);
+                        dependencies.is_empty()
+                    });
+                if !ready {
+                    continue;
+                }
+                self.module_pending_dependencies.remove(&parent);
+                let record = linked
+                    .get_mut(&parent)
+                    .expect("async parent remains linked");
+                record.evaluating = false;
+                record.suspended = false;
+                self.evaluate_module_record(&parent, modules, linked)?;
+                if linked.get(&parent).is_some_and(|record| record.evaluated) {
+                    self.settle_dynamic_import_waiters(&parent)?;
+                    completed.push_back(parent);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Propagate an async module evaluation error through its static parents.
+    /// Dynamic imports observe rejection from each affected module, while the
+    /// surrounding promise checkpoint continues processing independent jobs.
+    fn reject_module_and_parents(
+        &mut self,
+        module: String,
+        error: Value,
+        linked: &mut HashMap<String, LinkedModule>,
+    ) -> Result<(), RuntimeError> {
+        let mut rejected = std::collections::VecDeque::from([module]);
+        while let Some(module) = rejected.pop_front() {
+            self.reject_dynamic_import_waiters(&module, error.clone())?;
+            for parent in self
+                .module_async_parents
+                .remove(&module)
+                .unwrap_or_default()
+            {
+                self.module_pending_dependencies.remove(&parent);
+                let record = linked
+                    .get_mut(&parent)
+                    .expect("async parent remains linked");
+                if record.error.is_some() {
+                    continue;
+                }
+                record.evaluating = false;
+                record.suspended = false;
+                record.evaluated = true;
+                record.completion = None;
+                record.error = Some(error.clone());
+                rejected.push_back(parent);
+            }
+        }
+        Ok(())
+    }
+
+    fn settle_dynamic_import_waiters(&mut self, module: &str) -> Result<(), RuntimeError> {
+        let Some(waiters) = self.module_import_waiters.remove(module) else {
+            return Ok(());
+        };
+        let namespace = self.module_namespace_cache.get(module).copied().ok_or(
+            RuntimeError::ModuleResolution(format!(
+                "dynamic import of {module} did not produce a namespace"
+            )),
+        )?;
+        for promise in waiters {
+            self.settle_promise(promise, PromiseStatus::Fulfilled(Value::Object(namespace)))?;
+        }
+        Ok(())
+    }
+
+    fn reject_dynamic_import_waiters(
+        &mut self,
+        module: &str,
+        error: Value,
+    ) -> Result<(), RuntimeError> {
+        let Some(waiters) = self.module_import_waiters.remove(module) else {
+            return Ok(());
+        };
+        for promise in waiters {
+            self.settle_promise(promise, PromiseStatus::Rejected(error.clone()))?;
+        }
+        Ok(())
+    }
+
+    fn suspend_module_await(
+        &mut self,
+        continuation_state: ModuleContinuation,
+        promise: ObjectId,
+    ) -> Result<(), RuntimeError> {
+        let continuation = self.next_module_continuation;
+        self.next_module_continuation = self
+            .next_module_continuation
+            .checked_add(1)
+            .ok_or(RuntimeError::InstructionLimit)?;
+        self.module_continuations
+            .insert(continuation, continuation_state);
+        let status = self
+            .promises
+            .get(&promise)
+            .ok_or(RuntimeError::TypeError("invalid await Promise".into()))?
+            .status
+            .clone_for_await();
+        match status {
+            PromiseAwaitStatus::Pending => self
+                .promises
+                .get_mut(&promise)
+                .expect("checked await Promise exists")
+                .reactions
+                .push(PromiseReaction::ModuleAwait { continuation }),
+            PromiseAwaitStatus::Fulfilled(value) => {
+                self.promise_jobs.push_back(PromiseJob::ModuleAwait {
+                    continuation,
+                    value,
+                    fulfilled: true,
+                });
+            }
+            PromiseAwaitStatus::Rejected(value) => {
+                self.promise_jobs.push_back(PromiseJob::ModuleAwait {
+                    continuation,
+                    value,
+                    fulfilled: false,
+                });
+            }
+        }
+        Ok(())
     }
 
     fn resolve_export(
@@ -1058,6 +1617,14 @@ impl Vm {
                             module: Self::resolve_module_request(module, module_request)?,
                         });
                     }
+                    ModuleExport::Source {
+                        export_name: name,
+                        module_request,
+                    } if name == export_name => {
+                        return Ok(ExportResolution::Source {
+                            module: Self::resolve_module_request(module, module_request)?,
+                        });
+                    }
                     _ => {}
                 }
             }
@@ -1073,8 +1640,9 @@ impl Vm {
                 match Self::resolve_export(modules, &target, export_name, resolve_set)? {
                     ExportResolution::Missing => {}
                     ExportResolution::Ambiguous => return Ok(ExportResolution::Ambiguous),
-                    ExportResolution::Namespace { .. } => return Ok(ExportResolution::Ambiguous),
-                    found @ ExportResolution::Binding { .. } => {
+                    found @ (ExportResolution::Binding { .. }
+                    | ExportResolution::Namespace { .. }
+                    | ExportResolution::Source { .. }) => {
                         if candidate == ExportResolution::Missing {
                             candidate = found;
                         } else if candidate != found {
@@ -1108,7 +1676,8 @@ impl Vm {
                 match export {
                     ModuleExport::Local { export_name, .. }
                     | ModuleExport::Indirect { export_name, .. }
-                    | ModuleExport::Namespace { export_name, .. } => {
+                    | ModuleExport::Namespace { export_name, .. }
+                    | ModuleExport::Source { export_name, .. } => {
                         names.insert(export_name.clone());
                     }
                     ModuleExport::Star { module_request } => {
@@ -1147,6 +1716,21 @@ impl Vm {
             return Ok(namespace);
         }
         let names = Self::exported_names(modules, module, &mut HashSet::new())?;
+        // Publish an identity-stable placeholder before resolving namespace
+        // exports. A module may re-export its own namespace, directly or
+        // through a cycle; waiting until after recursive resolution would
+        // recurse indefinitely and overflow the host stack.
+        let namespace = self.with_roots(|heap| heap.alloc_module_namespace(Vec::new()))?;
+        roots.push(self.heap.root(namespace)?);
+        linked
+            .get_mut(module)
+            .expect("linked module record exists")
+            .namespace = Some(namespace);
+        let cache_root = self.heap.root(namespace)?;
+        self.module_namespace_cache
+            .insert(module.to_string(), namespace);
+        self.module_namespace_roots
+            .insert(module.to_string(), cache_root);
         let mut exports = Vec::with_capacity(names.len());
         for name in names {
             let resolution = Self::resolve_export(modules, module, &name, &mut Vec::new())?;
@@ -1177,21 +1761,18 @@ impl Vm {
                     self.with_roots(|heap| heap.set(cell, "value", value))?;
                     cell
                 }
+                ExportResolution::Source { module } => {
+                    let value = Value::Object(self.module_source_object(&module, modules)?);
+                    let cell = self.with_roots(|heap| heap.alloc_object(None))?;
+                    roots.push(self.heap.root(cell)?);
+                    self.with_roots(|heap| heap.set(cell, "value", value))?;
+                    cell
+                }
                 ExportResolution::Missing | ExportResolution::Ambiguous => continue,
             };
             exports.push((name.into(), cell));
         }
-        let namespace = self.with_roots(|heap| heap.alloc_module_namespace(exports))?;
-        roots.push(self.heap.root(namespace)?);
-        linked
-            .get_mut(module)
-            .expect("linked module record exists")
-            .namespace = Some(namespace);
-        let cache_root = self.heap.root(namespace)?;
-        self.module_namespace_cache
-            .insert(module.to_string(), namespace);
-        self.module_namespace_roots
-            .insert(module.to_string(), cache_root);
+        self.with_roots(|heap| heap.initialize_module_namespace(namespace, exports))?;
         Ok(namespace)
     }
 
@@ -1221,7 +1802,7 @@ impl Vm {
         ))? as usize;
         self.enter_module_record(code, std::mem::take(cells));
         let mut iterators = Vec::new();
-        let result = self.interpret(code, &mut iterators, 0, None, Some(entry));
+        let result = self.interpret(code, &mut iterators, 0, None, Some(entry), None);
         *cells = std::mem::take(&mut self.cells);
         self.stack.clear();
         self.active_scopes.clear();
@@ -1230,6 +1811,80 @@ impl Vm {
             InterpreterExit::Suspend { pc } if pc == entry => Ok(()),
             _ => unreachable!("module declaration prefix always suspends at its evaluation entry"),
         }
+    }
+
+    /// Returns whether a requested-module edge can reach `goal`.  This small
+    /// graph walk is used only while wiring async parents, after linking has
+    /// already validated every request.
+    fn module_reaches(
+        from: &str,
+        goal: &str,
+        modules: &HashMap<String, Bytecode>,
+        visited: &mut HashSet<String>,
+    ) -> Result<bool, RuntimeError> {
+        if from == goal {
+            return Ok(true);
+        }
+        if !visited.insert(from.to_string()) {
+            return Ok(false);
+        }
+        let code = modules.get(from).ok_or_else(|| {
+            RuntimeError::ModuleResolution(format!("module {from} was not linked"))
+        })?;
+        let mut requests: Vec<_> = code
+            .module_imports
+            .iter()
+            .filter_map(|import| {
+                (!matches!(import.import_name, ModuleImportName::Source))
+                    .then_some(import.module_request.as_str())
+            })
+            .collect();
+        requests.extend(
+            code.module_exports
+                .iter()
+                .filter_map(|export| match export {
+                    ModuleExport::Indirect { module_request, .. }
+                    | ModuleExport::Star { module_request }
+                    | ModuleExport::Namespace { module_request, .. } => {
+                        Some(module_request.as_str())
+                    }
+                    ModuleExport::Local { .. } | ModuleExport::Source { .. } => None,
+                }),
+        );
+        for request in requests {
+            let target = Self::resolve_module_request(from, request)?;
+            if Self::module_reaches(&target, goal, modules, visited)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// InnerModuleEvaluation attaches an importer to a suspended dependency's
+    /// cycle root, not necessarily the particular module that appeared in
+    /// the import declaration.  Without this distinction an outside importer
+    /// can resume between a cycle leaf and its root's own top-level await.
+    fn async_dependency_root(
+        &self,
+        dependency: &str,
+        modules: &HashMap<String, Bytecode>,
+        linked: &HashMap<String, LinkedModule>,
+    ) -> Result<String, RuntimeError> {
+        for candidate in self
+            .module_async_parents
+            .get(dependency)
+            .into_iter()
+            .flatten()
+        {
+            if linked
+                .get(candidate)
+                .is_some_and(|record| record.evaluating || record.suspended)
+                && Self::module_reaches(dependency, candidate, modules, &mut HashSet::new())?
+            {
+                return Ok(candidate.clone());
+            }
+        }
+        Ok(dependency.to_string())
     }
 
     fn evaluate_module_record(
@@ -1243,6 +1898,9 @@ impl Vm {
                 "module {name} was not linked"
             )));
         };
+        if let Some(error) = &record.error {
+            return Err(RuntimeError::Thrown(error.clone()));
+        }
         if record.evaluated || record.evaluating {
             return Ok(Value::Undefined);
         }
@@ -1252,14 +1910,66 @@ impl Vm {
             .evaluating = true;
         let result = (|| {
             let code = modules.get(name).expect("linked module has bytecode");
-            let requests: Vec<_> = code
+            // [[RequestedModules]] includes requests from every import and
+            // indirect, star, or namespace export. Evaluating only imports
+            // leaves cells reached through `export * from` in the TDZ when a
+            // module imports its own re-exported binding.
+            let mut requests: Vec<_> = code
                 .module_imports
                 .iter()
-                .map(|import| import.module_request.clone())
+                .filter_map(|import| {
+                    (!matches!(import.import_name, ModuleImportName::Source))
+                        .then_some(import.module_request.clone())
+                })
                 .collect();
+            requests.extend(
+                code.module_exports
+                    .iter()
+                    .filter_map(|export| match export {
+                        ModuleExport::Indirect { module_request, .. }
+                        | ModuleExport::Star { module_request }
+                        | ModuleExport::Namespace { module_request, .. } => {
+                            Some(module_request.clone())
+                        }
+                        ModuleExport::Local { .. } | ModuleExport::Source { .. } => None,
+                    }),
+            );
+            // InnerModuleEvaluation visits [[RequestedModules]] in source
+            // order. Sorting makes an independent sibling run before an
+            // earlier async dependency has executed its synchronous prefix.
+            let mut ordered_requests = Vec::new();
             for request in requests {
+                if !ordered_requests.contains(&request) {
+                    ordered_requests.push(request);
+                }
+            }
+            let mut pending_dependencies = Vec::new();
+            for request in ordered_requests {
                 let target = Self::resolve_module_request(name, &request)?;
                 self.evaluate_module_record(&target, modules, linked)?;
+                if linked.get(&target).is_some_and(|record| record.suspended) {
+                    pending_dependencies
+                        .push(self.async_dependency_root(&target, modules, linked)?);
+                }
+            }
+            if !pending_dependencies.is_empty() {
+                let dependencies = self
+                    .module_pending_dependencies
+                    .entry(name.to_string())
+                    .or_default();
+                for dependency in pending_dependencies {
+                    if dependencies.insert(dependency.clone()) {
+                        self.module_async_parents
+                            .entry(dependency)
+                            .or_default()
+                            .push(name.to_string());
+                    }
+                }
+                linked
+                    .get_mut(name)
+                    .expect("checked module record exists")
+                    .suspended = true;
+                return Ok(Value::Undefined);
             }
             let entry = code.module_evaluate_entry.ok_or(RuntimeError::Unsupported(
                 "module declaration instantiation",
@@ -1271,31 +1981,72 @@ impl Vm {
                     .cells,
             );
             self.enter_module_record(code, cells);
+            // A sibling Source Text Module runs in a fresh execution context.
+            // A suspended async dependency deliberately leaves its displaced
+            // frame with zero ambient fuel, which must not exhaust this
+            // independent module before its first instruction.
+            self.remaining_instructions = self.config.instruction_budget;
             self.active_scopes.push(0);
             self.active_scope_slots
                 .push(code.scopes.first().cloned().unwrap_or_default());
             let mut iterators = Vec::new();
             let previous_module = self.active_module_name.replace(name.to_string());
-            let value = self
-                .interpret(code, &mut iterators, entry, None, None)
-                .and_then(|exit| match exit {
-                    InterpreterExit::Return(value) => Ok(value),
-                    InterpreterExit::Yield { .. } => Err(RuntimeError::TypeError(
-                        "yield requires a generator function".into(),
-                    )),
-                    InterpreterExit::Suspend { .. } => {
-                        unreachable!("module evaluation does not suspend")
-                    }
-                });
-            self.active_module_name = previous_module;
-            let cells = std::mem::take(&mut self.cells);
-            let record = linked.get_mut(name).expect("checked module record exists");
-            record.cells = cells;
-            value
+            let outcome = self.interpret(code, &mut iterators, entry, None, None, None);
+            match outcome {
+                Ok(InterpreterExit::Return(value)) => {
+                    self.active_module_name = previous_module;
+                    let cells = std::mem::take(&mut self.cells);
+                    let record = linked.get_mut(name).expect("checked module record exists");
+                    record.cells = cells;
+                    record.completion = Some(value.clone());
+                    Ok(value)
+                }
+                Ok(InterpreterExit::Await {
+                    promise,
+                    pc,
+                    handlers,
+                }) => {
+                    // Move the realm frame out before another sibling module
+                    // evaluates. The continuation is attached to the Await
+                    // promise and resumes in its own Promise job turn.
+                    let execution = self.suspend_module_execution();
+                    self.active_module_name = previous_module;
+                    let record = linked.get_mut(name).expect("checked module record exists");
+                    record.cells = execution.cells.clone();
+                    record.suspended = true;
+                    self.suspend_module_await(
+                        ModuleContinuation {
+                            module: name.to_string(),
+                            code: code.clone(),
+                            pc,
+                            execution,
+                            iterators,
+                            handlers,
+                        },
+                        promise,
+                    )?;
+                    Ok(Value::Undefined)
+                }
+                Ok(InterpreterExit::Yield { .. }) => Err(RuntimeError::TypeError(
+                    "yield requires a generator function".into(),
+                )),
+                Ok(InterpreterExit::Suspend { .. }) => {
+                    unreachable!("module evaluation does not suspend")
+                }
+                Err(error) => {
+                    self.active_module_name = previous_module;
+                    let cells = std::mem::take(&mut self.cells);
+                    let record = linked.get_mut(name).expect("checked module record exists");
+                    record.cells = cells;
+                    Err(error)
+                }
+            }
         })();
         let record = linked.get_mut(name).expect("checked module record exists");
-        record.evaluating = false;
-        if result.is_ok() {
+        if !record.suspended {
+            record.evaluating = false;
+        }
+        if result.is_ok() && !record.suspended {
             record.evaluated = true;
         }
         result
@@ -1473,6 +2224,8 @@ impl Vm {
                 | "Boolean"
                 | "BigInt"
                 | "Array"
+                | "Map"
+                | "Set"
                 | "Function"
                 | "Intl"
                 | "Error"
@@ -1751,6 +2504,10 @@ impl Vm {
             RuntimeError::TypeError(message) => self.error_object("TypeError", message),
             RuntimeError::RangeError(message) => self.error_object("RangeError", message),
             RuntimeError::SyntaxError(message) => self.error_object("SyntaxError", message),
+            // Dynamic import reports a linking/host-resolution failure by
+            // rejecting its Promise with a SyntaxError; it must not escape
+            // the job queue as an implementation error.
+            RuntimeError::ModuleResolution(message) => self.error_object("SyntaxError", message),
             RuntimeError::Test262(message) => self.error_object("Test262Error", message),
             error => Err(error),
         }
@@ -1955,7 +2712,13 @@ impl Vm {
                     PromiseStatus::Pending => record
                         .reactions
                         .iter()
-                        .flat_map(|reaction| [&reaction.on_fulfilled, &reaction.on_rejected])
+                        .filter_map(|reaction| match reaction {
+                            PromiseReaction::Then(reaction) => {
+                                Some([&reaction.on_fulfilled, &reaction.on_rejected])
+                            }
+                            PromiseReaction::ModuleAwait { .. } => None,
+                        })
+                        .flatten()
                         .collect(),
                     PromiseStatus::Fulfilled(value) | PromiseStatus::Rejected(value) => {
                         vec![value]
@@ -1967,12 +2730,20 @@ impl Vm {
                     }
                 }
             }
+            for state in self.promise_all.values() {
+                for value in state.values.iter().flatten() {
+                    if let Value::Object(id) = value {
+                        roots.push(self.heap.root(*id)?);
+                    }
+                }
+            }
             for job in &self.promise_jobs {
                 match job {
                     PromiseJob::Reaction {
                         target,
                         handler,
                         value,
+                        ..
                     } => {
                         roots.push(self.heap.root(*target)?);
                         for value in [handler, value] {
@@ -1981,15 +2752,24 @@ impl Vm {
                             }
                         }
                     }
-                    PromiseJob::DynamicImport { target, .. } => {
-                        roots.push(self.heap.root(*target)?)
-                    }
-                    PromiseJob::All { target, values } => {
+                    PromiseJob::Thenable {
+                        target,
+                        thenable,
+                        then,
+                    } => {
                         roots.push(self.heap.root(*target)?);
-                        for value in values {
+                        for value in [thenable, then] {
                             if let Value::Object(id) = value {
                                 roots.push(self.heap.root(*id)?);
                             }
+                        }
+                    }
+                    PromiseJob::DynamicImport { target, .. } => {
+                        roots.push(self.heap.root(*target)?)
+                    }
+                    PromiseJob::ModuleAwait { value, .. } => {
+                        if let Value::Object(id) = value {
+                            roots.push(self.heap.root(*id)?);
                         }
                     }
                 }
@@ -2013,13 +2793,16 @@ impl Vm {
         let save_base = self.completion_saves.len();
         let mut iterators = Vec::new();
         let result = self
-            .interpret(code, &mut iterators, 0, None, None)
+            .interpret(code, &mut iterators, 0, None, None, None)
             .and_then(|exit| match exit {
                 InterpreterExit::Return(value) => Ok(value),
                 InterpreterExit::Yield { .. } => Err(RuntimeError::TypeError(
                     "yield requires a generator function".into(),
                 )),
                 InterpreterExit::Suspend { .. } => unreachable!("only generator entry suspends"),
+                InterpreterExit::Await { .. } => {
+                    unreachable!("only module evaluation can suspend at await")
+                }
             });
         if result.is_err() {
             if let Err(RuntimeError::Thrown(value)) = &result {
@@ -2331,6 +3114,7 @@ impl Vm {
         start_pc: usize,
         resume_value: Option<Value>,
         suspend_at: Option<usize>,
+        restored_handlers: Option<Vec<HandlerFrame>>,
     ) -> Result<InterpreterExit, RuntimeError> {
         let stack_base = self.stack.len();
         let pending_base = self.pending_completions.len();
@@ -2339,7 +3123,8 @@ impl Vm {
             self.stack.push(value);
         }
         let mut pc = start_pc;
-        let mut handlers = Vec::new();
+        let mut handlers = restored_handlers.unwrap_or_default();
+        let mut top_level_await = None;
         loop {
             if suspend_at == Some(pc) {
                 return Ok(InterpreterExit::Suspend { pc });
@@ -2779,13 +3564,35 @@ impl Vm {
                         return Ok(Some(Completion::Yield(self.pop())));
                     }
                     Opcode::Await => {
-                        let awaited = self.pop();
-                        let pending = awaited
-                            .object_id()
-                            .and_then(|promise| self.promises.get(&promise))
-                            .is_some_and(|record| matches!(record.status, PromiseStatus::Pending));
-                        if pending {
-                            self.drain_jobs_while_module_suspended()?;
+                        // Await always applies PromiseResolve before it
+                        // observes settlement, so plain thenables use the
+                        // same queued resolution path as Promise values.
+                        let awaited_value = self.pop();
+                        let awaited = self.promise_resolve(awaited_value)?;
+                        if self.top_level_module && self.call_depth == 0 {
+                            top_level_await = Some(
+                                awaited
+                                    .object_id()
+                                    .expect("PromiseResolve returns a Promise object"),
+                            );
+                            return Ok(None);
+                        }
+                        // Await resumes only after the next queued turn. A
+                        // fulfilled Promise still crosses that boundary; a
+                        // pending one may need several pre-existing jobs to
+                        // settle, but we never collapse later turns into the
+                        // current continuation.
+                        loop {
+                            let pending = awaited
+                                .object_id()
+                                .and_then(|promise| self.promises.get(&promise))
+                                .is_some_and(|record| {
+                                    matches!(record.status, PromiseStatus::Pending)
+                                });
+                            let advanced = self.run_next_job_while_module_suspended()?;
+                            if !pending || !advanced {
+                                break;
+                            }
                         }
                         let value = self.await_value(awaited)?;
                         self.stack.push(value);
@@ -3283,6 +4090,13 @@ impl Vm {
                 Err(error) if error.is_catchable() => Some(Completion::Throw(error)),
                 Err(error) => return Err(error),
             };
+            if let Some(promise) = top_level_await.take() {
+                return Ok(InterpreterExit::Await {
+                    promise,
+                    pc,
+                    handlers: std::mem::take(&mut handlers),
+                });
+            }
             if let Some(completion) = completion {
                 if let Completion::Yield(value) = completion {
                     return Ok(InterpreterExit::Yield { value, pc });
@@ -3603,6 +4417,12 @@ impl Vm {
                 "this is uninitialized before super()".into(),
             ));
         };
+        // OrdinarySetWithOwnDescriptor obtains Receiver's own descriptor
+        // before deciding whether it can create or update a data property.
+        // For Module Namespace Exotic Objects that lookup performs [[Get]];
+        // an exported-but-uninitialized binding must therefore throw a
+        // ReferenceError instead of being collapsed into a read-only result.
+        let _ = self.heap.get_own_property_descriptor(receiver, key)?;
         self.with_roots(|heap| heap.set(receiver, key, value.clone()))
             .map_err(|error| match error {
                 RuntimeError::Heap(HeapError::ReadOnlyProperty) => {
@@ -3957,6 +4777,20 @@ impl Vm {
                 1,
                 NativeFunction::ArrayIncludes,
             )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
+                "push",
+                1,
+                NativeFunction::ArrayPush,
+            )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
+                "indexOf",
+                1,
+                NativeFunction::ArrayIndexOf,
+            )?;
             self.install_symbol_native(
                 self.array_prototype,
                 function_prototype,
@@ -3996,6 +4830,17 @@ impl Vm {
         }
     }
 
+    /// Native functions inherit from %Function.prototype%, not from
+    /// %String.prototype%. The String intrinsic cache deliberately stores
+    /// the latter as its second member, so callers that install a callable
+    /// must use this helper rather than indexing that cache directly.
+    fn function_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
+        let (string_constructor, _) = self.string_intrinsics()?;
+        self.heap
+            .prototype(string_constructor)?
+            .ok_or_else(|| RuntimeError::TypeError("Function prototype is unavailable".into()))
+    }
+
     fn install_native(
         &mut self,
         owner: ObjectId,
@@ -4031,7 +4876,7 @@ impl Vm {
         {
             return Ok(());
         }
-        let function_prototype = self.string_intrinsics()?.1;
+        let function_prototype = self.function_prototype()?;
         self.install_native(
             self.object_prototype,
             function_prototype,
@@ -4049,7 +4894,7 @@ impl Vm {
         {
             return Ok(());
         }
-        let function_prototype = self.string_intrinsics()?.1;
+        let function_prototype = self.function_prototype()?;
         self.install_native(
             self.object_prototype,
             function_prototype,
@@ -4205,11 +5050,15 @@ impl Vm {
                 function,
                 NativeFunction::String
                     | NativeFunction::Array
+                    | NativeFunction::Map
+                    | NativeFunction::Set
                     | NativeFunction::Object
                     | NativeFunction::RegExp
                     | NativeFunction::Collator
                     | NativeFunction::Locale
                     | NativeFunction::Error(_)
+                    | NativeFunction::Promise
+                    | NativeFunction::Function
                     | NativeFunction::PrimitiveConstructor(_)
             )
         {
@@ -4576,25 +5425,13 @@ impl Vm {
     }
 
     fn property_in(&mut self, key: &Value, object: &Value) -> Result<bool, RuntimeError> {
-        let Value::Object(mut object) = object else {
+        let Value::Object(object) = object else {
             return Err(RuntimeError::TypeError(
                 "right operand of in must be an object".into(),
             ));
         };
         let key = self.coerce_property_key(key)?;
-        loop {
-            if self
-                .heap
-                .get_own_property_descriptor(object, &key)?
-                .is_some()
-            {
-                return Ok(true);
-            }
-            let Some(prototype) = self.heap.prototype(object)? else {
-                return Ok(false);
-            };
-            object = prototype;
-        }
+        self.has_property(*object, &key)
     }
 
     fn with_get(
@@ -4750,7 +5587,7 @@ mod tests {
         ];
         vm.remaining_instructions = vm.config.instruction_budget;
         assert!(matches!(
-            vm.interpret(&code, &mut Vec::new(), 0, None, None),
+            vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
             Ok(InterpreterExit::Return(Value::Undefined))
         ));
         vm.stack = vec![
@@ -4760,7 +5597,7 @@ mod tests {
         ];
         vm.remaining_instructions = vm.config.instruction_budget;
         assert!(matches!(
-            vm.interpret(&code, &mut Vec::new(), 0, None, None),
+            vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
             Ok(InterpreterExit::Return(Value::Undefined))
         ));
 
@@ -4768,13 +5605,13 @@ mod tests {
         vm.stack = vec![Value::Object(target), Value::Object(function)];
         vm.remaining_instructions = vm.config.instruction_budget;
         assert!(matches!(
-            vm.interpret(&code, &mut Vec::new(), 0, None, None),
+            vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
             Ok(InterpreterExit::Return(Value::Undefined))
         ));
         vm.stack = vec![Value::Object(target), Value::Undefined];
         vm.remaining_instructions = vm.config.instruction_budget;
         assert!(matches!(
-            vm.interpret(&code, &mut Vec::new(), 0, None, None),
+            vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
             Err(RuntimeError::TypeError(_))
         ));
 
@@ -4787,7 +5624,7 @@ mod tests {
         ];
         vm.remaining_instructions = vm.config.instruction_budget;
         assert!(matches!(
-            vm.interpret(&code, &mut Vec::new(), 0, None, None),
+            vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
             Ok(InterpreterExit::Return(Value::Undefined))
         ));
         vm.stack = vec![
@@ -4798,7 +5635,7 @@ mod tests {
         ];
         vm.remaining_instructions = vm.config.instruction_budget;
         assert!(matches!(
-            vm.interpret(&code, &mut Vec::new(), 0, None, None),
+            vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
             Err(RuntimeError::TypeError(_))
         ));
     }

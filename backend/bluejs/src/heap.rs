@@ -443,6 +443,45 @@ impl Heap {
         Ok(namespace)
     }
 
+    /// Completes a namespace allocated with an empty export list.  Namespace
+    /// exports can themselves name the namespace currently under
+    /// construction (`export * as self from "./self.js"`), so the VM first
+    /// publishes an identity-stable placeholder and fills its private export
+    /// cells once recursive namespace resolution returns.  This is an
+    /// internal construction operation; JavaScript still observes a
+    /// non-extensible Module Namespace Exotic Object throughout.
+    pub(crate) fn initialize_module_namespace(
+        &mut self,
+        namespace: ObjectId,
+        mut exports: Vec<(JsString, ObjectId)>,
+    ) -> Result<(), HeapError> {
+        for (_, cell) in &exports {
+            self.object(*cell)?;
+        }
+        exports.sort_by(|(left, _), (right, _)| left.as_code_units().cmp(right.as_code_units()));
+        let additional = exports
+            .iter()
+            .map(|(name, _)| name.byte_len() + size_of::<(JsString, ObjectId)>())
+            .sum();
+        self.ensure_room(additional, &[namespace])?;
+        for (_, cell) in &exports {
+            self.write_barrier(namespace, Some(*cell));
+        }
+        let object = self
+            .objects
+            .get_mut(&namespace)
+            .ok_or(HeapError::InvalidObject(namespace))?;
+        let ObjectKind::ModuleNamespace { exports: existing } = &mut object.kind else {
+            return Err(HeapError::InvalidObject(namespace));
+        };
+        if !existing.is_empty() {
+            return Err(HeapError::InvalidObject(namespace));
+        }
+        *existing = exports;
+        self.managed_bytes += additional;
+        Ok(())
+    }
+
     /// Allocates a host-defined exotic with the Annex B `[[IsHTMLDDA]]` slot.
     /// Only the Test262 host creates one; ordinary JavaScript cannot.
     pub(crate) fn alloc_html_dda_object(

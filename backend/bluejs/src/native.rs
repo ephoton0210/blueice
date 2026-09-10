@@ -14,9 +14,13 @@ pub(crate) enum NativeFunction {
     Function,
     String,
     Array,
+    Map,
+    Set,
     ArrayIsArray,
     ArrayForEach,
     ArrayIncludes,
+    ArrayPush,
+    ArrayIndexOf,
     Eval,
     IsNaN,
     IsFinite,
@@ -27,6 +31,9 @@ pub(crate) enum NativeFunction {
     Math(MathMethod),
     Error(&'static str),
     ErrorToString,
+    /// Test262 exposes this otherwise non-global intrinsic through `$262`.
+    AbstractModuleSource,
+    AbstractModuleSourceToStringTag,
     Test262(&'static str),
     Test262RealmEval(ObjectId),
     ToLocaleLowerCase,
@@ -68,10 +75,27 @@ pub(crate) enum NativeFunction {
     GeneratorNext,
     GeneratorReturn,
     Promise,
+    /// One half of a Promise capability. The target identity is carried by
+    /// the otherwise ordinary native function, so the resolving functions
+    /// can be passed to an executor without exposing VM bookkeeping to JS.
+    PromiseResolvingFunction {
+        promise: ObjectId,
+        fulfill: bool,
+    },
     PromiseThen,
+    PromiseCatch,
+    PromiseFinally,
     PromiseResolve,
     PromiseReject,
     PromiseAll,
+    PromiseAllResolve {
+        target: ObjectId,
+        index: u32,
+    },
+    PromiseAllReject {
+        target: ObjectId,
+    },
+    PromiseWithResolvers,
     Test262Done,
     Symbol,
     SymbolToString,
@@ -80,7 +104,10 @@ pub(crate) enum NativeFunction {
     BigIntToString,
     BigIntValueOf,
     PrimitiveConstructor(bool),
-    PrimitiveMethod { boolean: bool, string: bool },
+    PrimitiveMethod {
+        boolean: bool,
+        string: bool,
+    },
     Object,
     ObjectMethod(ObjectMethod),
     StringIterator,
@@ -155,6 +182,7 @@ pub(crate) enum ObjectMethod {
     ReflectSet,
     ReflectDeleteProperty,
     ReflectPreventExtensions,
+    ReflectHas,
     HasOwnProperty,
     PropertyIsEnumerable,
 }

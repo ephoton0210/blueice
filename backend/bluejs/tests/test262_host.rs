@@ -68,6 +68,30 @@ fn single_modules_are_strict_and_do_not_publish_classic_globals() {
 }
 
 #[test]
+fn module_parser_enforces_top_level_lexical_and_export_early_errors() {
+    for source in [
+        "function duplicate(){}function duplicate(){}",
+        "var collision;function collision(){}",
+        "import { value as eval } from './dependency.js';",
+        "import { value as arguments } from './dependency.js';",
+        "class Name{}export default function Name(){}",
+        "export { 'local' as 'public' };function local(){}",
+        "if (true) { import value from './dependency.js'; }",
+        "function nested() { export default 1; }",
+    ] {
+        assert!(parse_module(source).is_err(), "{source}");
+    }
+    assert!(parse_module("class Name{}export default function Other(){}").is_ok());
+    assert!(parse_module("export { local as 'public' };function local(){}").is_ok());
+    assert!(parse_module("import('./dependency.js')").is_ok());
+    assert!(parse_module("import value from './dependency.js' with { type: 'json', }; export * from './dependency.js' with { type: 'json' }").is_ok());
+    assert!(parse_module(
+        "import value from './dependency.js' with { type: 'json', 'type': 'json' }"
+    )
+    .is_err());
+}
+
+#[test]
 fn module_graph_links_named_imports_as_live_bindings_before_evaluation() {
     let sources = [
         (
@@ -104,6 +128,45 @@ fn module_graph_links_default_function_exports() {
     assert_eq!(
         Vm::default().execute_module_graph("default/main.js", &modules),
         Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn anonymous_default_exports_infer_default_without_an_inner_binding() {
+    for source in [
+        "export default function(){} import value from './main.js';value.name==='default'",
+        "export default (function(){});import value from './main.js';value.name==='default'",
+        "export default class{} import value from './main.js';value.name==='default'",
+        "export default (()=>{});import value from './main.js';value.name==='default'",
+    ] {
+        let modules = HashMap::from([(
+            "default-name/main.js".to_string(),
+            compile_module(&parse_module(source).unwrap()).unwrap(),
+        )]);
+        assert_eq!(
+            Vm::default().execute_module_graph("default-name/main.js", &modules),
+            Ok(Value::Bool(true)),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn module_graph_keeps_a_thrown_error_alive_for_the_embedding_host() {
+    let modules = HashMap::from([(
+        "module-error/main.js".to_string(),
+        compile_module(&parse_module("throw new Test262Error('expected')").unwrap()).unwrap(),
+    )]);
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let Err(RuntimeError::Thrown(Value::Object(error))) =
+        vm.execute_module_graph("module-error/main.js", &modules)
+    else {
+        panic!("module should have thrown its Test262Error");
+    };
+    assert_eq!(
+        vm.heap().get(error, "name").unwrap(),
+        Value::String("Test262Error".into())
     );
 }
 
@@ -188,6 +251,142 @@ fn dynamic_import_resolves_against_the_module_registry_in_a_promise_job() {
 }
 
 #[test]
+fn async_test_style_promise_chain_observes_an_async_function() {
+    let mut vm = Vm::default();
+    vm.install_test262_done().unwrap();
+    let source = "function asyncTest(test){test().then(function(){$DONE()},function(error){$DONE(error)})}asyncTest(async function(){})";
+    vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
+}
+
+#[test]
+fn promise_constructor_invokes_its_executor_and_settles_once() {
+    let mut vm = Vm::default();
+    vm.install_test262_done().unwrap();
+    let source = "let count=0;let promise=new Promise(function(resolve,reject){resolve(42);reject(new Error('late'))});promise.then(function(value){if(value===42&&count===0){count++;$DONE()}else{$DONE(new Test262Error('wrong fulfillment'))}},function(error){$DONE(error)})";
+    vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
+
+    let rejected = compile(
+        &parse("new Promise(function(){throw new RangeError('expected')}).then(null,function(error){if(error instanceof RangeError)$DONE();else $DONE(error)})")
+            .unwrap(),
+    )
+    .unwrap();
+    vm.execute_script(&rejected).unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
+
+    let capability = compile(
+        &parse("let capability=Promise.withResolvers();let values=[];capability.promise.then(function(value){values.push(value);if(values.length===1&&values[0]===7)$DONE();else $DONE(new Test262Error('wrong capability value'))});capability.resolve(7);capability.reject(new Error('late'))")
+            .unwrap(),
+    )
+    .unwrap();
+    vm.execute_script(&capability).unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
+
+    let aggregate = compile(
+        &parse("let first=Promise.withResolvers();let second=Promise.withResolvers();Promise.all([first.promise,second.promise]).then(function(values){if(values[0]===1&&values[1]===2)$DONE();else $DONE(new Test262Error('wrong Promise.all values'))},$DONE);second.resolve(2);first.resolve(1)")
+            .unwrap(),
+    )
+    .unwrap();
+    vm.execute_script(&aggregate).unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
+}
+
+#[test]
+fn async_test_style_chain_handles_a_rejected_dynamic_import() {
+    let modules = HashMap::from([(
+        "async-import/broken.js".to_string(),
+        compile_module(
+            &parse_module("import source value from '<missing>'; export { value };").unwrap(),
+        )
+        .unwrap(),
+    )]);
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    vm.install_test262_done().unwrap();
+    vm.set_module_loader_context("async-import/main.js", modules);
+    let source = "function asyncTest(test){if(!Object.prototype.hasOwnProperty.call(globalThis,'$DONE')){throw new Test262Error()}if(typeof test!=='function'){$DONE(new Test262Error());return}try{test().then(function(){$DONE()},function(error){$DONE(error)})}catch(error){$DONE(error)}}function expectImportFailure(specifier){return import(specifier).then(function(){throw new Test262Error()},function(error){if(error instanceof SyntaxError){throw new Test262Error()}})}asyncTest(async function(){await expectImportFailure('./broken.js');await expectImportFailure('./broken.js');await expectImportFailure('./broken.js')})";
+    vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
+}
+
+#[test]
+fn async_helpers_accept_source_phase_host_resolution_rejections() {
+    let fixture_root = "language/module-code/source-phase-import/";
+    let modules = HashMap::from([
+        (
+            format!("{fixture_root}import-source-binding-name_FIXTURE.js"),
+            compile_module(&parse_module(include_str!(
+                "../../../development/browser_core/reference/test262/test/language/module-code/source-phase-import/import-source-binding-name_FIXTURE.js"
+            ))
+            .unwrap())
+            .unwrap(),
+        ),
+        (
+            format!("{fixture_root}import-source-binding-name-2_FIXTURE.js"),
+            compile_module(&parse_module(include_str!(
+                "../../../development/browser_core/reference/test262/test/language/module-code/source-phase-import/import-source-binding-name-2_FIXTURE.js"
+            ))
+            .unwrap())
+            .unwrap(),
+        ),
+        (
+            format!("{fixture_root}import-source-newlines_FIXTURE.js"),
+            compile_module(&parse_module(include_str!(
+                "../../../development/browser_core/reference/test262/test/language/module-code/source-phase-import/import-source-newlines_FIXTURE.js"
+            ))
+            .unwrap())
+            .unwrap(),
+        ),
+        (
+            format!("{fixture_root}ensure-linking-error_FIXTURE.js"),
+            compile_module(&parse_module(include_str!(
+                "../../../development/browser_core/reference/test262/test/language/module-code/source-phase-import/ensure-linking-error_FIXTURE.js"
+            ))
+            .unwrap())
+            .unwrap(),
+        ),
+    ]);
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    vm.install_test262_done().unwrap();
+    vm.set_module_loader_context(format!("{fixture_root}import-source.js"), modules);
+    vm.execute_script(
+        &compile(
+            &parse(include_str!(
+                "../../../development/browser_core/reference/test262/harness/asyncHelpers.js"
+            ))
+            .unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        vm.execute_script(&compile(&parse("typeof asyncTest").unwrap()).unwrap()),
+        Ok(Value::String("function".into()))
+    );
+    vm.execute_script(
+        &compile(&parse(include_str!(
+            "../../../development/browser_core/reference/test262/test/language/module-code/source-phase-import/import-source.js"
+        ))
+        .unwrap())
+        .unwrap(),
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
+}
+
+#[test]
 fn top_level_await_observes_fulfilled_and_rejected_async_completions() {
     for source in [
         "async function value(){return 42}export let observed=await value();observed===42",
@@ -197,6 +396,22 @@ fn top_level_await_observes_fulfilled_and_rejected_async_completions() {
         let modules = HashMap::from([("await/main.js".to_string(), module)]);
         assert_eq!(
             Vm::default().execute_module_graph("await/main.js", &modules),
+            Ok(Value::Bool(true)),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn top_level_await_assimilates_thenables_through_the_job_queue() {
+    for source in [
+        "let thenable={then(resolve){resolve(42)}};await thenable===42",
+        "let marker={};let thenable={then(){throw marker}};let caught;try{await thenable}catch(error){caught=error}caught===marker",
+    ] {
+        let module = compile_module(&parse_module(source).unwrap()).unwrap();
+        let modules = HashMap::from([("thenable/main.js".to_string(), module)]);
+        assert_eq!(
+            Vm::default().execute_module_graph("thenable/main.js", &modules),
             Ok(Value::Bool(true)),
             "{source}"
         );
@@ -281,6 +496,147 @@ fn module_graph_keeps_indirect_exports_and_import_immutability() {
         .collect();
     assert_eq!(
         Vm::default().execute_module_graph("indirect/main.js", &modules),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn module_graph_reexports_import_bindings_without_losing_their_origin() {
+    let sources = [
+        (
+            "reexport/consumer.js",
+            "import { value } from './bridge.js'; import { namespace } from './namespace-bridge.js'; value===42&&namespace.value===42",
+        ),
+        (
+            "reexport/bridge.js",
+            "import { value } from './dependency.js'; export { value };",
+        ),
+        (
+            "reexport/namespace-bridge.js",
+            "import * as namespace from './dependency.js'; export { namespace };",
+        ),
+        ("reexport/dependency.js", "export const value=42;"),
+    ];
+    let modules: HashMap<_, _> = sources
+        .into_iter()
+        .map(|(name, source)| {
+            (
+                name.to_string(),
+                compile_module(&parse_module(source).unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        Vm::default().execute_module_graph("reexport/consumer.js", &modules),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn module_graph_deduplicates_identical_star_reexport_bindings() {
+    let sources = [
+        (
+            "star-reexport/main.js",
+            "export * from './through-export.js'; export * from './through-import.js'; import { value } from './main.js'; value===42",
+        ),
+        (
+            "star-reexport/through-export.js",
+            "export { value } from './dependency.js';",
+        ),
+        (
+            "star-reexport/through-import.js",
+            "import { value } from './dependency.js'; export { value };",
+        ),
+        ("star-reexport/dependency.js", "export const value=42;"),
+    ];
+    let modules: HashMap<_, _> = sources
+        .into_iter()
+        .map(|(name, source)| {
+            (
+                name.to_string(),
+                compile_module(&parse_module(source).unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        Vm::default().execute_module_graph("star-reexport/main.js", &modules),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn module_namespace_handles_a_self_namespace_reexport_without_recursing() {
+    let modules = HashMap::from([(
+        "self-namespace/main.js".to_string(),
+        compile_module(
+            &parse_module(
+                "import * as namespace from './main.js';export * as self from './main.js';export const value=42;namespace.self===namespace",
+            )
+            .unwrap(),
+        )
+        .unwrap(),
+    )]);
+    assert_eq!(
+        Vm::default().execute_module_graph("self-namespace/main.js", &modules),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn module_graph_rejects_invalid_indirect_exports_before_evaluation() {
+    let sources = [
+        (
+            "invalid-export/main.js",
+            "$DONOTEVALUATE(); export { value } from './ambiguous.js';",
+        ),
+        (
+            "invalid-export/ambiguous.js",
+            "export * from './left.js'; export * from './right.js';",
+        ),
+        ("invalid-export/left.js", "export const value=1;"),
+        ("invalid-export/right.js", "export const value=2;"),
+    ];
+    let modules: HashMap<_, _> = sources
+        .into_iter()
+        .map(|(name, source)| {
+            (
+                name.to_string(),
+                compile_module(&parse_module(source).unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    assert!(matches!(
+        Vm::default().execute_module_graph("invalid-export/main.js", &modules),
+        Err(RuntimeError::ModuleResolution(_))
+    ));
+}
+
+#[test]
+fn module_graph_links_source_phase_imports_without_evaluating_the_source_record() {
+    let sources = [
+        (
+            "source-phase/main.js",
+            "import { source } from './bridge.js'; typeof source==='object'&&source instanceof $262.AbstractModuleSource",
+        ),
+        (
+            "source-phase/bridge.js",
+            "import source source from '<module source>'; export { source };",
+        ),
+    ];
+    let modules: HashMap<_, _> = sources
+        .into_iter()
+        .map(|(name, source)| {
+            (
+                name.to_string(),
+                compile_module(&parse_module(source).unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    vm.set_module_source_loader_context(vec!["<module source>".to_string()]);
+    assert_eq!(
+        vm.execute_module_graph("source-phase/main.js", &modules),
         Ok(Value::Bool(true))
     );
 }

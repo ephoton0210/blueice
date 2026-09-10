@@ -13,7 +13,7 @@ impl Vm {
         if let Some(&id) = self.globals.get("JSON") {
             return Ok(Value::Object(id));
         }
-        let function_prototype = self.string_intrinsics()?.1;
+        let function_prototype = self.function_prototype()?;
         let object_prototype = self.object_prototype;
         let id = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
         let root = self.heap.root(id)?;

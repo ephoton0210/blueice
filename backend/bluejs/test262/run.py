@@ -36,6 +36,12 @@ MODULE_REQUEST = re.compile(
     re.DOTALL,
 )
 DYNAMIC_IMPORT_REQUEST = re.compile(r'''\bimport\s*\(\s*["']([^"']+)["']\s*\)''')
+DYNAMIC_IMPORT_EXPRESSION = re.compile(r'''\bimport\s*\(''')
+RELATIVE_STRING = re.compile(r'''["'](\.{1,2}/[^"']+)["']''')
+SOURCE_PHASE_IMPORT_REQUEST = re.compile(
+    r'''\bimport\s+source\s+[\w$]+\s+from\s*["']([^"']+)["']''',
+    re.DOTALL,
+)
 NATIVE_INCLUDES = frozenset({"sta.js", "assert.js", "propertyHelper.js", "isConstructor.js"})
 TAIL_CALL_INSTRUCTION_BUDGET = 3_000_000
 
@@ -102,8 +108,14 @@ def modes(data):
     return ["sloppy", "strict"]
 
 
-def module_sources(entry, test_root):
-    """Collect reachable relative static and literal dynamic module sources."""
+def module_sources(entry, test_root, include_dynamic_string_roots=False):
+    """Collect static imports and, when needed, relative dynamic-import roots.
+
+    A dynamic import with a variable specifier cannot be resolved statically.
+    Test262 fixtures conventionally retain its relative candidate strings in
+    the test source, so a caller may opt into supplying existing sibling
+    files without making unrelated ordinary module tests over-inclusive.
+    """
     test_root = test_root.resolve()
     pending = [entry.resolve()]
     sources = {}
@@ -118,6 +130,8 @@ def module_sources(entry, test_root):
             match.group(1) or match.group(2) for match in MODULE_REQUEST.finditer(source)
         ]
         requests.extend(match.group(1) for match in DYNAMIC_IMPORT_REQUEST.finditer(source))
+        if include_dynamic_string_roots:
+            requests.extend(match.group(1) for match in RELATIVE_STRING.finditer(source))
         for request in requests:
             if not request or not request.startswith("."):
                 continue
@@ -303,10 +317,22 @@ def main():
         for mode in modes(data):
             negative = data.get("negative")
             request = {"source": source, "mode": mode, "includes": data.get("includes", []), "harness_sources": harness_sources, "asynchronous": "async" in data.get("flags", []), "parse_only": bool(negative and negative["phase"] == "parse"), "is_html_dda": "IsHTMLDDA" in data.get("features", []), "instruction_budget": instruction_budget(data, args.instruction_budget)}
-            if mode == "module" or DYNAMIC_IMPORT_REQUEST.search(source):
-                sources = module_sources(path, args.corpus / "test")
+            if mode == "module" or DYNAMIC_IMPORT_EXPRESSION.search(source):
+                sources = module_sources(
+                    path,
+                    args.corpus / "test",
+                    include_dynamic_string_roots=bool(DYNAMIC_IMPORT_EXPRESSION.search(source)),
+                )
                 request["module_path"] = relative
                 request["module_sources"] = sources
+                request["module_source_requests"] = sorted(
+                    {
+                        match.group(1)
+                        for module_source in sources.values()
+                        for match in SOURCE_PHASE_IMPORT_REQUEST.finditer(module_source)
+                        if match.group(1) == "<module source>"
+                    }
+                )
             reply = local.worker.run(request)
             results.append({"path": relative, "mode": mode, "status": classify(reply, negative), "expected": negative, "actual": reply, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
         return results
@@ -326,7 +352,7 @@ def main():
     finally:
         for worker in workers:
             worker.close()
-    report = {"snapshot": SNAPSHOT, "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(), "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "regex_worker_sha256": hashlib.sha256(args.adapter.with_name("bluejs-regexp-worker").read_bytes()).hexdigest(), "complete_inventory": not args.filter, "filter": args.filter, "discovered_js": len(all_files), "fixture_resources": len(fixtures), "test_files": len(files), "scheduled_modes": sum(counters.values()), "results": counters, "groups": groups, "features": features, "elapsed_seconds": round(time.monotonic() - start, 3), "timeout_seconds": args.timeout, "instruction_budget": args.instruction_budget, "tail_call_instruction_budget": TAIL_CALL_INSTRUCTION_BUDGET, "jobs": args.jobs, "limitations": ["static module graphs, Module Namespace Exotic Objects, literal dynamic imports and bounded top-level-await job draining are implemented; generic pending-Promise continuations, thenable assimilation and host module loading remain unavailable", "unclassified parser rejections cannot pass negative tests", "harness sources still require supported grammar and APIs", "native overrides for sta.js, assert.js, propertyHelper.js, and isConstructor.js; raw tests receive no harness", "each mode has a bounded interpreter instruction budget; tail-call fixtures receive at least the recorded tail-call budget"]}
+    report = {"snapshot": SNAPSHOT, "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(), "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "regex_worker_sha256": hashlib.sha256(args.adapter.with_name("bluejs-regexp-worker").read_bytes()).hexdigest(), "complete_inventory": not args.filter, "filter": args.filter, "discovered_js": len(all_files), "fixture_resources": len(fixtures), "test_files": len(files), "scheduled_modes": sum(counters.values()), "results": counters, "groups": groups, "features": features, "elapsed_seconds": round(time.monotonic() - start, 3), "timeout_seconds": args.timeout, "instruction_budget": args.instruction_budget, "tail_call_instruction_budget": TAIL_CALL_INSTRUCTION_BUDGET, "jobs": args.jobs, "limitations": ["static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation and resumable top-level-await jobs are implemented; generic pending-Promise continuations for ordinary async functions/generators, async iteration and host module loading remain unavailable", "unclassified parser rejections cannot pass negative tests", "harness sources still require supported grammar and APIs", "native overrides for sta.js, assert.js, propertyHelper.js, and isConstructor.js; raw tests receive no harness", "each mode has a bounded interpreter instruction budget; tail-call fixtures receive at least the recorded tail-call budget"]}
     (args.output / "summary.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps({key: report[key] for key in ("test_files", "scheduled_modes", "results", "elapsed_seconds")}, indent=2))
     return 0 if counters["pass"] == sum(counters.values()) else 1

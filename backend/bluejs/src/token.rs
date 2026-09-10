@@ -207,6 +207,10 @@ impl LexError {
 pub struct SpannedToken {
     pub token: Token,
     pub newline_before: bool,
+    /// Whether this IdentifierName used a Unicode escape.  Contextual
+    /// keywords such as `await` cannot be escaped when the grammar requires
+    /// the keyword spelling, so the parser must retain this lexical fact.
+    pub identifier_escaped: bool,
 }
 
 pub(crate) type TaggedTemplateData = (Vec<JsString>, Vec<Option<JsString>>, Vec<String>);
@@ -214,6 +218,11 @@ pub(crate) type TaggedTemplateData = (Vec<JsString>, Vec<Option<JsString>>, Vec<
 pub struct Tokenizer {
     input: Vec<char>,
     pos: usize,
+    /// Annex B HTML close comments are recognized only at the start of a
+    /// physical line (after whitespace).  Keep that lexical state here so
+    /// trivia does not need to rescan prior source text.
+    line_start: bool,
+    identifier_escaped: bool,
 }
 
 fn is_ident_start(c: char) -> bool {
@@ -350,6 +359,8 @@ impl Tokenizer {
         Tokenizer {
             input: input.chars().collect(),
             pos: 0,
+            line_start: true,
+            identifier_escaped: false,
         }
     }
 
@@ -363,8 +374,13 @@ impl Tokenizer {
 
     fn advance(&mut self) -> Option<char> {
         let c = self.peek();
-        if c.is_some() {
+        if let Some(c) = c {
             self.pos += 1;
+            if is_line_terminator(c) {
+                self.line_start = true;
+            } else if !crate::primitive::whitespace(c) {
+                self.line_start = false;
+            }
         }
         c
     }
@@ -374,14 +390,53 @@ impl Tokenizer {
     /// [`SpannedToken`]).
     fn skip_trivia(&mut self) -> Result<bool, LexError> {
         let mut saw_newline = false;
+        // Annex B permits a legacy HTML close comment after leading trivia,
+        // and directly after a block comment even when a token preceded that
+        // comment on the same line.
+        let mut html_close_allowed = self.line_start;
         loop {
             match self.peek() {
                 Some(c) if is_line_terminator(c) => {
                     saw_newline = true;
                     self.advance();
+                    html_close_allowed = true;
                 }
                 Some(c) if crate::primitive::whitespace(c) => {
                     self.advance();
+                }
+                // Annex B's legacy HTML comments are lexical comments in
+                // Script code. `<!--` has no line-start restriction, while
+                // `-->` is recognized only after a line terminator and any
+                // following whitespace/comments.
+                Some('<')
+                    if self.peek_at(1) == Some('!')
+                        && self.peek_at(2) == Some('-')
+                        && self.peek_at(3) == Some('-') =>
+                {
+                    for _ in 0..4 {
+                        self.advance();
+                    }
+                    while let Some(c) = self.peek() {
+                        if is_line_terminator(c) {
+                            break;
+                        }
+                        self.advance();
+                    }
+                }
+                Some('-')
+                    if html_close_allowed
+                        && self.peek_at(1) == Some('-')
+                        && self.peek_at(2) == Some('>') =>
+                {
+                    for _ in 0..3 {
+                        self.advance();
+                    }
+                    while let Some(c) = self.peek() {
+                        if is_line_terminator(c) {
+                            break;
+                        }
+                        self.advance();
+                    }
                 }
                 Some('/') if self.peek_at(1) == Some('/') => {
                     while let Some(c) = self.peek() {
@@ -390,6 +445,7 @@ impl Tokenizer {
                         }
                         self.advance();
                     }
+                    html_close_allowed = true;
                 }
                 Some('/') if self.peek_at(1) == Some('*') => {
                     self.advance();
@@ -404,6 +460,7 @@ impl Tokenizer {
                             Some('*') if self.peek_at(1) == Some('/') => {
                                 self.advance();
                                 self.advance();
+                                html_close_allowed = true;
                                 break;
                             }
                             Some(_) => {
@@ -420,10 +477,12 @@ impl Tokenizer {
 
     pub fn next_spanned(&mut self) -> Result<SpannedToken, LexError> {
         let newline_before = self.skip_trivia()?;
+        self.identifier_escaped = false;
         let token = self.next_token()?;
         Ok(SpannedToken {
             token,
             newline_before,
+            identifier_escaped: self.identifier_escaped,
         })
     }
 
@@ -729,7 +788,10 @@ impl Tokenizer {
         loop {
             let first = text.is_empty();
             let character = match self.peek() {
-                Some('\\') => self.scan_identifier_escape()?,
+                Some('\\') => {
+                    self.identifier_escaped = true;
+                    self.scan_identifier_escape()?
+                }
                 Some(character)
                     if if first {
                         is_ident_start(character)
@@ -1376,6 +1438,26 @@ mod tests {
         assert_eq!(
             tokens("1 /* block \n comment */ 2"),
             vec![Token::Number(1.0), Token::Number(2.0), Token::Eof]
+        );
+    }
+
+    #[test]
+    fn skips_annex_b_html_comments() {
+        assert_eq!(
+            tokens("<!-- ignored\n1\n  --> ignored\n2"),
+            vec![Token::Number(1.0), Token::Number(2.0), Token::Eof]
+        );
+        // The close spelling remains ordinary punctuator source away from a
+        // line start; accepting it there would change executable code.
+        assert_eq!(
+            tokens("1 --> 2"),
+            vec![
+                Token::Number(1.0),
+                Token::Punct(Punct::MinusMinus),
+                Token::Punct(Punct::Gt),
+                Token::Number(2.0),
+                Token::Eof,
+            ]
         );
     }
 

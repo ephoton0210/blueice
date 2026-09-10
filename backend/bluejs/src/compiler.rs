@@ -13,6 +13,12 @@ use crate::bytecode::{
 };
 use crate::*;
 use std::collections::{BTreeSet, HashMap};
+
+/// Parser-private binding used to represent an anonymous `export default`
+/// declaration.  It can never be spelled by ECMAScript source, which lets
+/// compilation retain the binding separately from the `"default"` inferred
+/// function/class name required by SetFunctionName.
+const MODULE_DEFAULT_BINDING: &str = "\0bluejs_module_default";
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -167,9 +173,26 @@ fn compile_with_limit_and_mode(
                     import_name: match &import.import_name {
                         ImportName::Named(name) => CompiledModuleImportName::Named(name.clone()),
                         ImportName::Namespace => CompiledModuleImportName::Namespace,
+                        ImportName::Source => CompiledModuleImportName::Source,
                     },
                     local_slot,
                 }
+            })
+            .collect();
+        // An `export { local }` that names an imported binding is not a
+        // local export in a Source Text Module Record.  It is an indirect
+        // export of the original imported name (or a namespace export for
+        // `import * as local`).  Keeping that distinction is essential for
+        // ResolveExport: a local slot is private to this record, whereas the
+        // export must retain the dependency edge through cycles and star
+        // export ambiguity checks.
+        let imported_locals: HashMap<&str, &ImportEntry> = module_imports
+            .iter()
+            .filter_map(|import| {
+                import
+                    .local_name
+                    .as_deref()
+                    .map(|local_name| (local_name, import))
             })
             .collect();
         compiler.bytecode.module_exports = module_exports
@@ -178,14 +201,41 @@ fn compile_with_limit_and_mode(
                 ExportEntry::Local {
                     export_name,
                     local_name,
-                } => Ok(CompiledModuleExport::Local {
-                    export_name: export_name.clone(),
-                    local_slot: compiler
-                        .resolve(local_name)
-                        .ok_or(CompileError::InvalidSyntax(
-                            "export references an undeclared local binding",
-                        ))?,
-                }),
+                } => match imported_locals.get(local_name.as_str()) {
+                    Some(ImportEntry {
+                        module_request,
+                        import_name: ImportName::Named(import_name),
+                        ..
+                    }) => Ok(CompiledModuleExport::Indirect {
+                        export_name: export_name.clone(),
+                        module_request: module_request.clone(),
+                        import_name: import_name.clone(),
+                    }),
+                    Some(ImportEntry {
+                        module_request,
+                        import_name: ImportName::Namespace,
+                        ..
+                    }) => Ok(CompiledModuleExport::Namespace {
+                        export_name: export_name.clone(),
+                        module_request: module_request.clone(),
+                    }),
+                    Some(ImportEntry {
+                        module_request,
+                        import_name: ImportName::Source,
+                        ..
+                    }) => Ok(CompiledModuleExport::Source {
+                        export_name: export_name.clone(),
+                        module_request: module_request.clone(),
+                    }),
+                    None => Ok(CompiledModuleExport::Local {
+                        export_name: export_name.clone(),
+                        local_slot: compiler.resolve(local_name).ok_or(
+                            CompileError::InvalidSyntax(
+                                "export references an undeclared local binding",
+                            ),
+                        )?,
+                    }),
+                },
                 ExportEntry::Indirect {
                     export_name,
                     module_request,
@@ -503,7 +553,17 @@ impl Compiler {
                 Stmt::ModuleDefaultFunction { function, binding } => (function, binding),
                 _ => continue,
             };
-            self.function(function, false)?;
+            if matches!(statement, Stmt::ModuleDefaultFunction { binding, .. } if binding == MODULE_DEFAULT_BINDING)
+            {
+                // An anonymous default function declaration has a private
+                // module binding, but its function object is named
+                // `"default"`.  This is inference, not a named function
+                // expression, so it must not create an inner `default`
+                // lexical binding.
+                self.function_named(function, false, Some("default"), false)?;
+            } else {
+                self.function(function, false)?;
+            }
             let slot = self.resolve(binding_name).unwrap();
             if self.bytecode.bindings[slot as usize].lexical {
                 self.emit(Opcode::InitializeBinding, slot)?;
@@ -1107,7 +1167,13 @@ impl Compiler {
                 continue;
             }
             if let Some(value) = &declaration.init {
-                self.expression(value)?
+                let inferred_name = match (&declaration.pattern, self.bytecode.module) {
+                    (Pattern::Identifier(name), true) if name == MODULE_DEFAULT_BINDING => {
+                        Some("default")
+                    }
+                    _ => None,
+                };
+                self.expression_with_name(value, inferred_name)?
             } else {
                 if !matches!(declaration.pattern, Pattern::Identifier(_)) {
                     return Err(CompileError::InvalidSyntax(
@@ -1938,10 +2004,18 @@ impl Compiler {
         labels: Vec<String>,
     ) -> Result<(), CompileError> {
         self.emit(Opcode::ClearCompletion, 0)?;
-        let (pattern, kind) = match left {
-            ForHead::Decl(kind, pattern) => (Some(pattern), Some(*kind)),
-            ForHead::Pattern(pattern) => (Some(pattern), None),
-            ForHead::Expr(_) => (None, None),
+        let (pattern, kind, annex_b_initializer) = match left {
+            ForHead::Decl(kind, pattern) => (Some(pattern), Some(*kind), None),
+            ForHead::AnnexBVarInit(pattern, initializer) => {
+                if self.bytecode.strict || !for_in {
+                    return Err(CompileError::InvalidSyntax(
+                        "a for-in declaration initializer is valid only in sloppy var code",
+                    ));
+                }
+                (Some(pattern), Some(DeclKind::Var), Some(initializer))
+            }
+            ForHead::Pattern(pattern) => (Some(pattern), None, None),
+            ForHead::Expr(_) => (None, None, None),
         };
         let lexical = kind.is_some_and(|kind| kind != DeclKind::Var);
         let mut declarations = vec![("*iterator*".to_owned(), DeclKind::Let)];
@@ -1954,6 +2028,13 @@ impl Compiler {
         }
         self.enter_scope(declarations, &BTreeSet::new(), false)?;
         let iterator = self.resolve("*iterator*").unwrap();
+        if let Some(initializer) = annex_b_initializer {
+            self.expression(initializer)?;
+            self.bind_pattern(
+                pattern.expect("Annex B initializer has a declaration pattern"),
+                DeclKind::Var,
+            )?;
+        }
         self.expression(right)?;
         if for_in {
             self.emit(Opcode::ForInKeys, 0)?;
@@ -1983,6 +2064,7 @@ impl Compiler {
         }
         match left {
             ForHead::Decl(kind, pattern) => self.bind_pattern(pattern, *kind)?,
+            ForHead::AnnexBVarInit(pattern, _) => self.bind_pattern(pattern, DeclKind::Var)?,
             ForHead::Pattern(pattern) => {
                 let Pattern::Identifier(name) = pattern else {
                     return Err(CompileError::Unsupported(if for_in {
@@ -2837,6 +2919,9 @@ fn strict_assignment_in_for_init(init: &ForInit) -> bool {
 fn strict_assignment_in_for_head(head: &ForHead) -> bool {
     match head {
         ForHead::Decl(_, pattern) => strict_assignment_in_pattern(pattern),
+        ForHead::AnnexBVarInit(pattern, initializer) => {
+            strict_assignment_in_pattern(pattern) || strict_assignment_in_expression(initializer)
+        }
         ForHead::Pattern(pattern) => pattern_names(pattern)
             .iter()
             .any(|name| restricted_name(name)),
@@ -3351,7 +3436,9 @@ fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
                 pending.push(body);
             }
             Stmt::ForIn { left, body, .. } | Stmt::ForOf { left, body, .. } => {
-                if let ForHead::Decl(DeclKind::Var, pattern) = left {
+                if let ForHead::Decl(DeclKind::Var, pattern) | ForHead::AnnexBVarInit(pattern, _) =
+                    left
+                {
                     names.extend(pattern_names(pattern));
                 }
                 pending.push(body);

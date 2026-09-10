@@ -33,6 +33,9 @@ pub struct Module {
 pub enum ImportName {
     Named(String),
     Namespace,
+    /// `import source local from "specifier"`: a host-provided Module Source
+    /// Object, never linked or evaluated as an ordinary module.
+    Source,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -211,6 +214,9 @@ pub struct CatchClause {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ForHead {
     Decl(DeclKind, Pattern),
+    /// Annex B permits a `var` initializer in a sloppy for-in head. The
+    /// initializer is evaluated once before the RHS expression.
+    AnnexBVarInit(Pattern, Expr),
     Pattern(Pattern),
     Expr(Expr),
 }
@@ -654,6 +660,9 @@ fn for_head_contains_super(head: &ForHead, search: SuperSearch) -> bool {
     match head {
         ForHead::Decl(_, pattern) | ForHead::Pattern(pattern) => {
             pattern_contains_super(pattern, search)
+        }
+        ForHead::AnnexBVarInit(pattern, initializer) => {
+            pattern_contains_super(pattern, search) || expr_contains_super(initializer, search)
         }
         ForHead::Expr(expr) => expr_contains_super(expr, search),
     }

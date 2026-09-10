@@ -195,6 +195,7 @@ impl Vm {
             0,
             NativeFunction::Test262("$DONOTEVALUATE"),
         )?;
+        self.install_abstract_module_source(host, prototype)?;
         let error = self.error_global("Test262Error")?.object_id().unwrap();
         self.define_data(
             global,
@@ -212,6 +213,85 @@ impl Vm {
             NativeFunction::Test262("thrower"),
         )?;
         Ok(())
+    }
+
+    /// Test262 hosts expose otherwise non-global intrinsics through `$262`.
+    /// Source-phase module objects created by the linker use this prototype,
+    /// which keeps `instanceof $262.AbstractModuleSource` faithful without
+    /// making the proposal intrinsic observable in ordinary realm globals.
+    fn install_abstract_module_source(
+        &mut self,
+        host: ObjectId,
+        function_prototype: ObjectId,
+    ) -> Result<(), RuntimeError> {
+        if self.abstract_module_source_prototype.is_some() {
+            return Ok(());
+        }
+        let constructor = self.with_roots(|heap| {
+            heap.alloc_native_function(
+                NativeFunction::AbstractModuleSource,
+                "AbstractModuleSource",
+                function_prototype,
+            )
+        })?;
+        self.stack.push(Value::Object(constructor));
+        let object_prototype = self.object_prototype;
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+        self.stack.push(Value::Object(prototype));
+        let result = (|| {
+            self.define_data(
+                constructor,
+                "name",
+                Value::String("AbstractModuleSource".into()),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                constructor,
+                "length",
+                Value::Number(0.0),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                constructor,
+                "prototype",
+                Value::Object(prototype),
+                false,
+                false,
+                false,
+            )?;
+            self.define_data(
+                prototype,
+                "constructor",
+                Value::Object(constructor),
+                true,
+                false,
+                true,
+            )?;
+            self.install_getter(
+                prototype,
+                function_prototype,
+                JsSymbol::well_known("toStringTag").into(),
+                "get [Symbol.toStringTag]",
+                NativeFunction::AbstractModuleSourceToStringTag,
+            )?;
+            self.define_data(
+                host,
+                "AbstractModuleSource",
+                Value::Object(constructor),
+                true,
+                false,
+                true,
+            )?;
+            self.abstract_module_source_prototype = Some(prototype);
+            Ok(())
+        })();
+        self.stack.pop();
+        self.stack.pop();
+        result
     }
 
     pub(super) fn test262_call(
@@ -405,7 +485,7 @@ impl Vm {
     fn test262_create_realm(&mut self) -> Result<Value, RuntimeError> {
         let realm = Box::new(Vm::new(self.config)?);
         let prototype = self.object_prototype;
-        let function_prototype = self.string_intrinsics()?.1;
+        let function_prototype = self.function_prototype()?;
         let base = self.stack.len();
         let result = (|| {
             let global = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;

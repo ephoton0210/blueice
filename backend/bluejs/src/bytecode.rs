@@ -178,6 +178,7 @@ pub(crate) struct Binding {
 pub(crate) enum ModuleImportName {
     Named(String),
     Namespace,
+    Source,
 }
 
 #[derive(Clone)]
@@ -202,6 +203,12 @@ pub(crate) enum ModuleExport {
         module_request: String,
     },
     Namespace {
+        export_name: String,
+        module_request: String,
+    },
+    /// A local re-export of a source-phase import. It resolves to the
+    /// source record's Module Source Object rather than a lexical cell.
+    Source {
         export_name: String,
         module_request: String,
     },

@@ -396,6 +396,8 @@ impl Vm {
             Some(
                 NativeFunction::String
                     | NativeFunction::Array
+                    | NativeFunction::Map
+                    | NativeFunction::Set
                     | NativeFunction::Object
                     | NativeFunction::RegExp
                     | NativeFunction::Collator
@@ -875,6 +877,7 @@ impl Vm {
             0,
             None,
             Some(code.generator_entry as usize),
+            None,
         );
         let state = match outcome {
             Ok(InterpreterExit::Suspend { pc }) => {
@@ -901,6 +904,9 @@ impl Vm {
             }
             Ok(InterpreterExit::Return(_)) | Ok(InterpreterExit::Yield { .. }) => {
                 unreachable!("generator entry contains only instantiation bytecode")
+            }
+            Ok(InterpreterExit::Await { .. }) => {
+                unreachable!("generator entry cannot contain top-level await")
             }
             Err(error) => Err(error),
         };
@@ -1088,7 +1094,7 @@ impl Vm {
             frame_variable_scope_lexicals,
         );
         let mut iterators = Vec::new();
-        let outcome = self.interpret(&code, &mut iterators, pc, resume_value, None);
+        let outcome = self.interpret(&code, &mut iterators, pc, resume_value, None, None);
 
         let (next_state, result) = match outcome {
             Ok(InterpreterExit::Return(value)) => {
@@ -1123,6 +1129,9 @@ impl Vm {
             }
             Ok(InterpreterExit::Suspend { .. }) => {
                 unreachable!("ordinary generator execution has no suspend boundary")
+            }
+            Ok(InterpreterExit::Await { .. }) => {
+                unreachable!("generator execution cannot contain top-level await")
             }
         };
         self.heap.set_generator_state(*generator, next_state)?;
@@ -1166,7 +1175,7 @@ impl Vm {
         }
         let object_prototype = self.object_prototype;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let function_prototype = self.string_intrinsics()?.1;
+        let function_prototype = self.function_prototype()?;
         self.install_native(
             prototype,
             function_prototype,
@@ -1174,8 +1183,80 @@ impl Vm {
             2,
             NativeFunction::PromiseThen,
         )?;
+        self.install_native(
+            prototype,
+            function_prototype,
+            "catch",
+            1,
+            NativeFunction::PromiseCatch,
+        )?;
+        self.install_native(
+            prototype,
+            function_prototype,
+            "finally",
+            1,
+            NativeFunction::PromiseFinally,
+        )?;
         self.promise_prototype = Some(prototype);
         Ok(prototype)
+    }
+
+    /// Map and Set have distinct ordinary prototypes.  This shared bootstrap
+    /// keeps constructor/new-target inheritance correct before collection
+    /// entries and iterators are introduced.
+    fn collection_prototype(&mut self, map: bool) -> Result<ObjectId, RuntimeError> {
+        let cached = if map {
+            self.map_prototype
+        } else {
+            self.set_prototype
+        };
+        if let Some(prototype) = cached {
+            return Ok(prototype);
+        }
+        let object_prototype = self.object_prototype;
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+        self.stack.push(Value::Object(prototype));
+        let result = self.define_data(
+            prototype,
+            JsSymbol::well_known("toStringTag"),
+            Value::String(if map { "Map" } else { "Set" }.into()),
+            false,
+            false,
+            true,
+        );
+        self.stack.pop();
+        result?;
+        if map {
+            self.map_prototype = Some(prototype);
+        } else {
+            self.set_prototype = Some(prototype);
+        }
+        Ok(prototype)
+    }
+
+    fn collection_constructor(
+        &mut self,
+        map: bool,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        if !construct {
+            return Err(RuntimeError::TypeError(
+                if map {
+                    "Map constructor must be called with new"
+                } else {
+                    "Set constructor must be called with new"
+                }
+                .into(),
+            ));
+        }
+        let default = self.collection_prototype(map)?;
+        let prototype = self.constructor_prototype(default)?;
+        let collection = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        self.stack.push(Value::Object(collection));
+        let result = self.define_data(collection, "size", Value::Number(0.0), false, false, true);
+        self.stack.pop();
+        result?;
+        Ok(Value::Object(collection))
     }
 
     pub(super) fn new_promise(&mut self) -> Result<ObjectId, RuntimeError> {
@@ -1189,6 +1270,93 @@ impl Vm {
             },
         );
         Ok(promise)
+    }
+
+    /// Create one of the resolving functions belonging to a Promise
+    /// capability. Their target is private native-function state rather than
+    /// a JavaScript-visible property, which keeps `resolve.call(...)` and
+    /// `reject.call(...)` correct.
+    fn promise_resolving_function(
+        &mut self,
+        promise: ObjectId,
+        fulfill: bool,
+    ) -> Result<Value, RuntimeError> {
+        let prototype = self.function_prototype()?;
+        let function = NativeFunction::PromiseResolvingFunction { promise, fulfill };
+        let id = self.with_roots(|heap| heap.alloc_native_function(function, "", prototype))?;
+        self.stack.push(Value::Object(id));
+        let result = (|| {
+            self.define_data(id, "name", Value::String("".into()), false, false, true)?;
+            self.define_data(id, "length", Value::Number(1.0), false, false, true)?;
+            Ok(Value::Object(id))
+        })();
+        self.stack.pop();
+        result
+    }
+
+    fn promise_constructor(
+        &mut self,
+        executor: Value,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        if !construct {
+            return Err(RuntimeError::TypeError(
+                "Promise constructor must be called with new".into(),
+            ));
+        }
+        if !self.is_callable(&executor)? {
+            return Err(RuntimeError::TypeError(
+                "Promise resolver is not a function".into(),
+            ));
+        }
+        let promise = self.new_promise()?;
+        // The capability must survive allocations for its resolving functions
+        // and for executor invocation.
+        self.stack.push(Value::Object(promise));
+        let result = (|| {
+            let resolve = self.promise_resolving_function(promise, true)?;
+            let reject = self.promise_resolving_function(promise, false)?;
+            match self.call_native(executor, Value::Undefined, vec![resolve, reject], false) {
+                Ok(_) => {}
+                Err(RuntimeError::Thrown(value)) => {
+                    self.settle_promise(promise, PromiseStatus::Rejected(value))?;
+                }
+                Err(error) => {
+                    let value = self.error_value(error)?;
+                    self.settle_promise(promise, PromiseStatus::Rejected(value))?;
+                }
+            }
+            Ok(Value::Object(promise))
+        })();
+        self.stack.pop();
+        result
+    }
+
+    fn promise_with_resolvers(&mut self) -> Result<Value, RuntimeError> {
+        let base = self.stack.len();
+        let promise = self.new_promise()?;
+        self.stack.push(Value::Object(promise));
+        let result = (|| {
+            let resolve = self.promise_resolving_function(promise, true)?;
+            let reject = self.promise_resolving_function(promise, false)?;
+            self.stack.extend([resolve.clone(), reject.clone()]);
+            let object_prototype = self.object_prototype;
+            let capability = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+            self.stack.push(Value::Object(capability));
+            self.define_data(
+                capability,
+                "promise",
+                Value::Object(promise),
+                true,
+                true,
+                true,
+            )?;
+            self.define_data(capability, "resolve", resolve, true, true, true)?;
+            self.define_data(capability, "reject", reject, true, true, true)?;
+            Ok(Value::Object(capability))
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     pub(super) fn settle_promise(
@@ -1211,14 +1379,72 @@ impl Vm {
         let reactions = std::mem::take(&mut record.reactions);
         record.status = status;
         self.promise_jobs
-            .extend(reactions.into_iter().map(|reaction| PromiseJob::Reaction {
-                target: reaction.target,
-                handler: if fulfilled {
-                    reaction.on_fulfilled
-                } else {
-                    reaction.on_rejected
+            .extend(reactions.into_iter().map(|reaction| match reaction {
+                PromiseReaction::Then(reaction) => PromiseJob::Reaction {
+                    target: reaction.target,
+                    handler: if fulfilled {
+                        reaction.on_fulfilled
+                    } else {
+                        reaction.on_rejected
+                    },
+                    value: value.clone(),
+                    fulfilled,
                 },
-                value: value.clone(),
+                PromiseReaction::ModuleAwait { continuation } => PromiseJob::ModuleAwait {
+                    continuation,
+                    value: value.clone(),
+                    fulfilled,
+                },
+            }));
+        Ok(())
+    }
+
+    /// Resolve a capability from a value returned by user code. Promise
+    /// reactions adopt another BlueJS Promise instead of fulfilling with the
+    /// Promise object itself, which is essential for `then`, async functions
+    /// and top-level await.
+    fn resolve_promise(&mut self, promise: ObjectId, value: Value) -> Result<(), RuntimeError> {
+        if value.object_id() == Some(promise) {
+            let error = self.error_object("TypeError", "Promise resolved with itself".into())?;
+            return self.settle_promise(promise, PromiseStatus::Rejected(error));
+        }
+        let resolution = self.promise_resolve(value)?;
+        let Value::Object(resolved) = resolution else {
+            unreachable!("Promise.resolve always returns a promise")
+        };
+        let status = match self.promises.get(&resolved) {
+            Some(PromiseRecord {
+                status: PromiseStatus::Fulfilled(value),
+                ..
+            }) => Some((true, value.clone())),
+            Some(PromiseRecord {
+                status: PromiseStatus::Rejected(value),
+                ..
+            }) => Some((false, value.clone())),
+            Some(PromiseRecord {
+                status: PromiseStatus::Pending,
+                ..
+            }) => None,
+            None => unreachable!("Promise.resolve returns a registered promise"),
+        };
+        if let Some((fulfilled, value)) = status {
+            return self.settle_promise(
+                promise,
+                if fulfilled {
+                    PromiseStatus::Fulfilled(value)
+                } else {
+                    PromiseStatus::Rejected(value)
+                },
+            );
+        }
+        self.promises
+            .get_mut(&resolved)
+            .expect("checked pending promise exists")
+            .reactions
+            .push(PromiseReaction::Then(PromiseThenReaction {
+                target: promise,
+                on_fulfilled: Value::Undefined,
+                on_rejected: Value::Undefined,
             }));
         Ok(())
     }
@@ -1231,7 +1457,7 @@ impl Vm {
                 "Promise.prototype.then receiver".into(),
             ))?;
         let target = self.new_promise()?;
-        let reaction = PromiseReaction {
+        let reaction = PromiseThenReaction {
             target,
             on_fulfilled: native::argument(args, 0).clone(),
             on_rejected: native::argument(args, 1).clone(),
@@ -1240,7 +1466,7 @@ impl Vm {
             let record = self.promises.get_mut(&promise).unwrap();
             match &record.status {
                 PromiseStatus::Pending => {
-                    record.reactions.push(reaction);
+                    record.reactions.push(PromiseReaction::Then(reaction));
                     return Ok(Value::Object(target));
                 }
                 PromiseStatus::Fulfilled(value) => (true, value.clone()),
@@ -1255,8 +1481,28 @@ impl Vm {
                 reaction.on_rejected
             },
             value: status.1,
+            fulfilled: status.0,
         });
         Ok(Value::Object(target))
+    }
+
+    fn promise_catch(
+        &mut self,
+        receiver: &Value,
+        reason_handler: &Value,
+    ) -> Result<Value, RuntimeError> {
+        self.promise_then(receiver, &[Value::Undefined, reason_handler.clone()])
+    }
+
+    fn promise_finally(
+        &mut self,
+        receiver: &Value,
+        handler: &Value,
+    ) -> Result<Value, RuntimeError> {
+        // A non-callable handler already passes the original completion
+        // through in `promise_then`. Callable handlers run on both paths;
+        // reaction adoption is handled by the shared job queue.
+        self.promise_then(receiver, &[handler.clone(), handler.clone()])
     }
 
     /// Implements the settled-value portion of Await. A pending promise needs
@@ -1275,7 +1521,7 @@ impl Vm {
         }
     }
 
-    fn promise_resolve(&mut self, value: Value) -> Result<Value, RuntimeError> {
+    pub(super) fn promise_resolve(&mut self, value: Value) -> Result<Value, RuntimeError> {
         if value
             .object_id()
             .is_some_and(|promise| self.promises.contains_key(&promise))
@@ -1283,7 +1529,24 @@ impl Vm {
             return Ok(value);
         }
         let promise = self.new_promise()?;
-        self.settle_promise(promise, PromiseStatus::Fulfilled(value))?;
+        let then = match &value {
+            Value::Object(_) => self.get_property(&value, &"then".into()),
+            _ => Ok(Value::Undefined),
+        };
+        match then {
+            Ok(then) if self.is_callable(&then)? => {
+                self.promise_jobs.push_back(PromiseJob::Thenable {
+                    target: promise,
+                    thenable: value,
+                    then,
+                });
+            }
+            Ok(_) => self.settle_promise(promise, PromiseStatus::Fulfilled(value))?,
+            Err(error) => {
+                let error = self.error_value(error)?;
+                self.settle_promise(promise, PromiseStatus::Rejected(error))?;
+            }
+        }
         Ok(Value::Object(promise))
     }
 
@@ -1293,95 +1556,241 @@ impl Vm {
         Ok(Value::Object(promise))
     }
 
-    fn promise_all(&mut self, values: &Value) -> Result<Value, RuntimeError> {
-        let values = self.array_like_values(values)?;
-        let promise = self.new_promise()?;
-        self.promise_jobs.push_back(PromiseJob::All {
-            target: promise,
-            values,
-        });
-        Ok(Value::Object(promise))
+    fn promise_all_handler(
+        &mut self,
+        target: ObjectId,
+        index: Option<u32>,
+    ) -> Result<Value, RuntimeError> {
+        let prototype = self.function_prototype()?;
+        let function = match index {
+            Some(index) => NativeFunction::PromiseAllResolve { target, index },
+            None => NativeFunction::PromiseAllReject { target },
+        };
+        let id = self.with_roots(|heap| heap.alloc_native_function(function, "", prototype))?;
+        self.stack.push(Value::Object(id));
+        let result = (|| {
+            self.define_data(id, "name", Value::String("".into()), false, false, true)?;
+            self.define_data(id, "length", Value::Number(1.0), false, false, true)?;
+            Ok(Value::Object(id))
+        })();
+        self.stack.pop();
+        result
     }
 
-    pub fn run_promise_jobs(&mut self) -> Result<(), RuntimeError> {
-        while let Some(job) = self.promise_jobs.pop_front() {
-            match job {
-                PromiseJob::Reaction {
-                    target,
-                    handler,
-                    value,
-                } => {
-                    let result = if self.is_callable(&handler)? {
-                        self.call_native(handler, Value::Undefined, vec![value.clone()], false)
-                    } else {
-                        Ok(value)
-                    };
-                    match result {
-                        Ok(value) => {
-                            self.settle_promise(target, PromiseStatus::Fulfilled(value))?
-                        }
-                        Err(error) => {
-                            let error = self.error_value(error)?;
-                            self.settle_promise(target, PromiseStatus::Rejected(error))?;
-                        }
-                    }
-                }
-                PromiseJob::DynamicImport {
-                    target,
-                    referrer,
-                    specifier,
-                } => {
-                    let result = self.dynamic_import_job(&referrer, &specifier);
-                    match result {
-                        Ok(namespace) => {
-                            self.settle_promise(target, PromiseStatus::Fulfilled(namespace))?
-                        }
-                        Err(error) => {
-                            let error = self.error_value(error)?;
-                            self.settle_promise(target, PromiseStatus::Rejected(error))?;
-                        }
-                    }
-                }
-                PromiseJob::All { target, values } => {
-                    let mut resolved = Vec::with_capacity(values.len());
-                    let mut rejection = None;
-                    for value in values {
-                        let Some(promise) = value.object_id() else {
-                            resolved.push(value);
-                            continue;
-                        };
-                        let Some(record) = self.promises.get(&promise) else {
-                            resolved.push(value);
-                            continue;
-                        };
-                        match &record.status {
-                            PromiseStatus::Fulfilled(value) => resolved.push(value.clone()),
-                            PromiseStatus::Rejected(value) => {
-                                rejection = Some(value.clone());
-                                break;
-                            }
-                            PromiseStatus::Pending => {
-                                return Err(RuntimeError::Unsupported(
-                                    "Promise.all pending dependency",
-                                ));
-                            }
-                        }
-                    }
-                    if let Some(value) = rejection {
-                        self.settle_promise(target, PromiseStatus::Rejected(value))?;
-                    } else {
-                        let values = self.array_from(resolved)?;
-                        self.settle_promise(target, PromiseStatus::Fulfilled(values))?;
-                    }
-                }
+    fn promise_all_settled(
+        &mut self,
+        target: ObjectId,
+        index: u32,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
+        let complete = {
+            let Some(state) = self.promise_all.get_mut(&target) else {
+                return Ok(());
+            };
+            let slot = state
+                .values
+                .get_mut(index as usize)
+                .expect("Promise.all reaction index was allocated");
+            if slot.is_some() {
+                return Ok(());
             }
+            *slot = Some(value);
+            state.remaining -= 1;
+            (state.remaining == 0).then(|| {
+                state
+                    .values
+                    .iter()
+                    .cloned()
+                    .map(|value| value.expect("completed Promise.all has every value"))
+                    .collect::<Vec<_>>()
+            })
+        };
+        let Some(values) = complete else {
+            return Ok(());
+        };
+        self.promise_all.remove(&target);
+        let base = self.stack.len();
+        self.stack.extend(values.iter().cloned());
+        let values = self.array_from(values);
+        self.stack.truncate(base);
+        let values = values?;
+        self.settle_promise(target, PromiseStatus::Fulfilled(values))
+    }
+
+    fn promise_all_reject(&mut self, target: ObjectId, value: Value) -> Result<(), RuntimeError> {
+        if self.promise_all.remove(&target).is_some() {
+            self.settle_promise(target, PromiseStatus::Rejected(value))?;
         }
         Ok(())
     }
 
+    fn promise_all(&mut self, values: &Value) -> Result<Value, RuntimeError> {
+        let values = self.array_like_values(values)?;
+        let promise = self.new_promise()?;
+        if values.is_empty() {
+            let values = self.array_from(Vec::new())?;
+            self.settle_promise(promise, PromiseStatus::Fulfilled(values))?;
+            return Ok(Value::Object(promise));
+        }
+        self.promise_all.insert(
+            promise,
+            PromiseAllState {
+                values: vec![None; values.len()],
+                remaining: values.len(),
+            },
+        );
+        for (index, value) in values.into_iter().enumerate() {
+            let input = self.promise_resolve(value)?;
+            let Value::Object(input) = input else {
+                unreachable!("Promise.resolve always returns a promise")
+            };
+            let fulfilled = self.promise_all_handler(promise, Some(index as u32))?;
+            let rejected = self.promise_all_handler(promise, None)?;
+            // Promise reactions require a target capability even though the
+            // aggregate handlers ignore their own continuation. The dummy
+            // Promise remains an ordinary resolved Promise after execution.
+            let continuation = self.new_promise()?;
+            let reaction = PromiseThenReaction {
+                target: continuation,
+                on_fulfilled: fulfilled,
+                on_rejected: rejected,
+            };
+            let status = match &self
+                .promises
+                .get(&input)
+                .expect("Promise.resolve registered its result")
+                .status
+            {
+                PromiseStatus::Pending => None,
+                PromiseStatus::Fulfilled(value) => Some((true, value.clone())),
+                PromiseStatus::Rejected(value) => Some((false, value.clone())),
+            };
+            if let Some((fulfilled, value)) = status {
+                self.promise_jobs.push_back(PromiseJob::Reaction {
+                    target: continuation,
+                    handler: if fulfilled {
+                        reaction.on_fulfilled
+                    } else {
+                        reaction.on_rejected
+                    },
+                    value,
+                    fulfilled,
+                });
+            } else {
+                self.promises
+                    .get_mut(&input)
+                    .expect("checked pending promise exists")
+                    .reactions
+                    .push(PromiseReaction::Then(reaction));
+            }
+        }
+        Ok(Value::Object(promise))
+    }
+
+    pub fn run_promise_jobs(&mut self) -> Result<(), RuntimeError> {
+        while !self.promise_jobs.is_empty() {
+            // Each queued Promise reaction has its own execution context and
+            // therefore its own instruction budget. A module continuation
+            // deliberately leaves the ambient interpreter with zero fuel
+            // while suspended; it must not starve the next job turn.
+            self.remaining_instructions = self.config.instruction_budget;
+            self.run_next_promise_job()?;
+        }
+        Ok(())
+    }
+
+    /// Execute exactly one Promise job.  Async functions and top-level await
+    /// resume from a queued continuation, rather than draining later turns
+    /// in the same checkpoint, so callers that need an await boundary can
+    /// advance the queue one observable turn at a time.
+    pub(super) fn run_next_promise_job(&mut self) -> Result<bool, RuntimeError> {
+        let Some(job) = self.promise_jobs.pop_front() else {
+            return Ok(false);
+        };
+        match job {
+            PromiseJob::Reaction {
+                target,
+                handler,
+                value,
+                fulfilled,
+            } => {
+                if !self.is_callable(&handler)? {
+                    self.settle_promise(
+                        target,
+                        if fulfilled {
+                            PromiseStatus::Fulfilled(value)
+                        } else {
+                            PromiseStatus::Rejected(value)
+                        },
+                    )?;
+                    return Ok(true);
+                }
+                let result = self.call_native(handler, Value::Undefined, vec![value], false);
+                match result {
+                    Ok(value) => self.resolve_promise(target, value)?,
+                    Err(error) => {
+                        let error = self.error_value(error)?;
+                        self.settle_promise(target, PromiseStatus::Rejected(error))?;
+                    }
+                }
+            }
+            PromiseJob::Thenable {
+                target,
+                thenable,
+                then,
+            } => {
+                let result = (|| {
+                    let resolve = self.promise_resolving_function(target, true)?;
+                    let reject = self.promise_resolving_function(target, false)?;
+                    self.call_native(then, thenable, vec![resolve, reject], false)
+                })();
+                if let Err(error) = result {
+                    let error = self.error_value(error)?;
+                    self.settle_promise(target, PromiseStatus::Rejected(error))?;
+                }
+            }
+            PromiseJob::DynamicImport {
+                target,
+                referrer,
+                specifier,
+            } => {
+                let result = self.dynamic_import_job(&referrer, &specifier);
+                match result {
+                    Ok(DynamicImportResult::Fulfilled(namespace)) => {
+                        self.settle_promise(target, PromiseStatus::Fulfilled(namespace))?
+                    }
+                    Ok(DynamicImportResult::Waiting(module)) => {
+                        self.module_import_waiters
+                            .entry(module)
+                            .or_default()
+                            .push(target);
+                    }
+                    // Dynamic import delegates loading and linking to the
+                    // host. A host module-resolution failure rejects the
+                    // capability with its host error rather than leaking
+                    // the static-module SyntaxError classification.
+                    Err(RuntimeError::ModuleResolution(message)) => {
+                        let error = self.error_object("TypeError", message)?;
+                        self.settle_promise(target, PromiseStatus::Rejected(error))?;
+                    }
+                    Err(error) => {
+                        let error = self.error_value(error)?;
+                        self.settle_promise(target, PromiseStatus::Rejected(error))?;
+                    }
+                }
+            }
+            PromiseJob::ModuleAwait {
+                continuation,
+                value,
+                fulfilled,
+            } => self.resume_module_await(continuation, value, fulfilled)?,
+        }
+        Ok(true)
+    }
+
     pub fn install_test262_done(&mut self) -> Result<(), RuntimeError> {
         let global = self.global("globalThis")?.object_id().unwrap();
-        let prototype = self.string_intrinsics()?.1;
+        let prototype = self.function_prototype()?;
         self.install_native(global, prototype, "$DONE", 1, NativeFunction::Test262Done)
     }
 
@@ -1813,6 +2222,8 @@ impl Vm {
             "Function" => NativeFunction::Function,
             "Symbol" => NativeFunction::Symbol,
             "Array" => NativeFunction::Array,
+            "Map" => NativeFunction::Map,
+            "Set" => NativeFunction::Set,
             "Promise" => NativeFunction::Promise,
             "eval" => NativeFunction::Eval,
             "Object" => NativeFunction::Object,
@@ -1933,6 +2344,13 @@ impl Vm {
                 self.install_native(id, prototype, "resolve", 1, NativeFunction::PromiseResolve)?;
                 self.install_native(id, prototype, "reject", 1, NativeFunction::PromiseReject)?;
                 self.install_native(id, prototype, "all", 1, NativeFunction::PromiseAll)?;
+                self.install_native(
+                    id,
+                    prototype,
+                    "withResolvers",
+                    0,
+                    NativeFunction::PromiseWithResolvers,
+                )?;
             } else if name == "Array" {
                 self.define_data(
                     id,
@@ -1951,6 +2369,24 @@ impl Vm {
                     true,
                 )?;
                 self.install_native(id, prototype, "isArray", 1, NativeFunction::ArrayIsArray)?;
+            } else if matches!(name, "Map" | "Set") {
+                let collection_prototype = self.collection_prototype(name == "Map")?;
+                self.define_data(
+                    id,
+                    "prototype",
+                    Value::Object(collection_prototype),
+                    false,
+                    false,
+                    false,
+                )?;
+                self.define_data(
+                    collection_prototype,
+                    "constructor",
+                    Value::Object(id),
+                    true,
+                    false,
+                    true,
+                )?;
             } else if name == "Function" {
                 self.define_data(
                     id,
@@ -2066,6 +2502,7 @@ impl Vm {
                         1,
                         ObjectMethod::ReflectPreventExtensions,
                     ),
+                    ("has", 2, ObjectMethod::ReflectHas),
                 ] {
                     self.install_native(
                         id,
@@ -2151,7 +2588,19 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let first = native::argument(&args, 0);
         match function {
-            NativeFunction::Promise => Err(RuntimeError::Unsupported("Promise constructor")),
+            NativeFunction::Promise => self.promise_constructor(first.clone(), construct),
+            NativeFunction::PromiseResolvingFunction { promise, fulfill } => {
+                if fulfill {
+                    self.resolve_promise(promise, first.clone())?;
+                } else {
+                    self.settle_promise(promise, PromiseStatus::Rejected(first.clone()))?;
+                }
+                Ok(Value::Undefined)
+            }
+            NativeFunction::AbstractModuleSource => Err(RuntimeError::TypeError(
+                "AbstractModuleSource is an abstract constructor".into(),
+            )),
+            NativeFunction::AbstractModuleSourceToStringTag => Ok(Value::Undefined),
             NativeFunction::Function => self.function_constructor(&args),
             NativeFunction::Error(name) => self.error_constructor(name, &args, construct),
             NativeFunction::ErrorToString => self.error_to_string(&receiver),
@@ -2166,9 +2615,20 @@ impl Vm {
                 Ok(Value::Undefined)
             }
             NativeFunction::PromiseThen => self.promise_then(&receiver, &args),
+            NativeFunction::PromiseCatch => self.promise_catch(&receiver, first),
+            NativeFunction::PromiseFinally => self.promise_finally(&receiver, first),
             NativeFunction::PromiseResolve => self.promise_resolve(first.clone()),
             NativeFunction::PromiseReject => self.promise_reject(first.clone()),
             NativeFunction::PromiseAll => self.promise_all(first),
+            NativeFunction::PromiseAllResolve { target, index } => {
+                self.promise_all_settled(target, index, first.clone())?;
+                Ok(Value::Undefined)
+            }
+            NativeFunction::PromiseAllReject { target } => {
+                self.promise_all_reject(target, first.clone())?;
+                Ok(Value::Undefined)
+            }
+            NativeFunction::PromiseWithResolvers => self.promise_with_resolvers(),
             NativeFunction::ToLocaleLowerCase
             | NativeFunction::ToLocaleUpperCase
             | NativeFunction::LocaleCompare => {
@@ -2234,6 +2694,8 @@ impl Vm {
                 }
                 self.array_from(args)
             }
+            NativeFunction::Map => self.collection_constructor(true, construct),
+            NativeFunction::Set => self.collection_constructor(false, construct),
             NativeFunction::ArrayIsArray => Ok(Value::Bool(
                 first
                     .object_id()
@@ -2244,6 +2706,22 @@ impl Vm {
             }
             NativeFunction::ArrayIncludes => {
                 self.array_includes(&receiver, first, native::argument(&args, 1))
+            }
+            NativeFunction::ArrayPush => {
+                let object = self.coerce_object(&receiver)?;
+                let array = Value::Object(object);
+                self.stack.push(array.clone());
+                let result = (|| {
+                    for value in &args {
+                        self.array_push(&array, value, 0)?;
+                    }
+                    self.heap.get(object, "length").map_err(Into::into)
+                })();
+                self.stack.pop();
+                result
+            }
+            NativeFunction::ArrayIndexOf => {
+                self.array_index_of(&receiver, first, native::argument(&args, 1))
             }
             NativeFunction::Eval => self.indirect_eval(first),
             NativeFunction::IsNaN => Ok(Value::Bool(self.coerce_number(first)?.is_nan())),
@@ -2774,11 +3252,48 @@ impl Vm {
         Ok(Value::Bool(false))
     }
 
+    fn array_index_of(
+        &mut self,
+        receiver: &Value,
+        search: &Value,
+        from_index: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as i64;
+            let from_index = if *from_index == Value::Undefined {
+                0
+            } else {
+                self.coerce_number(from_index)? as i64
+            };
+            let mut index = if from_index < 0 {
+                (length + from_index).max(0)
+            } else {
+                from_index.min(length)
+            };
+            while index < length {
+                self.charge_step()?;
+                let key: PropertyName = index.to_string().into();
+                if self.has_property(object, &key)?
+                    && self.get_property(&Value::Object(object), &key)? == *search
+                {
+                    return Ok(Value::Number(index as f64));
+                }
+                index += 1;
+            }
+            Ok(Value::Number(-1.0))
+        })();
+        self.stack.pop();
+        result
+    }
+
     fn math_global(&mut self) -> Result<Value, RuntimeError> {
         if let Some(&id) = self.globals.get("Math") {
             return Ok(Value::Object(id));
         }
-        let function_prototype = self.string_intrinsics()?.1;
+        let function_prototype = self.function_prototype()?;
         let object_prototype = self.object_prototype;
         let math = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
         let root = self.heap.root(math)?;
@@ -3153,6 +3668,7 @@ impl Vm {
                 | ReflectSet
                 | ReflectDeleteProperty
                 | ReflectPreventExtensions
+                | ReflectHas
         ) && !matches!(first, Value::Object(_))
         {
             return Err(RuntimeError::TypeError(
@@ -3325,6 +3841,10 @@ impl Vm {
             ReflectDeleteProperty => {
                 let key = self.coerce_property_key(native::argument(args, 1))?;
                 Ok(Value::Bool(self.heap.delete(object, key)?))
+            }
+            ReflectHas => {
+                let key = self.coerce_property_key(native::argument(args, 1))?;
+                Ok(Value::Bool(self.has_property(object, &key)?))
             }
             Seal | Freeze => {
                 let keys = self.heap.own_property_keys(object)?;

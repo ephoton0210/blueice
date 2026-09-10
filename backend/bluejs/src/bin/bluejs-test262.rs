@@ -25,6 +25,8 @@ struct Request {
     #[serde(default)]
     module_sources: HashMap<String, String>,
     #[serde(default)]
+    module_source_requests: Vec<String>,
+    #[serde(default)]
     asynchronous: bool,
     #[serde(default)]
     parse_only: bool,
@@ -63,6 +65,25 @@ fn runtime(error: RuntimeError) -> Value {
         "runtime"
     };
     json!({"phase":phase, "kind":kind, "message":error.to_string()})
+}
+
+/// Preserve the observable name of an Error object thrown through JavaScript.
+/// The host adapter otherwise loses the difference between `$ERROR(...)` and
+/// an arbitrary thrown value, which makes valid Test262 runtime-negative
+/// cases look like unclassified `ThrownValue` failures.
+fn runtime_with_vm(vm: &Vm, error: RuntimeError) -> Value {
+    if let RuntimeError::Thrown(blueice_bluejs::Value::Object(object)) = &error {
+        if let Ok(blueice_bluejs::Value::String(name)) = vm.heap().get(*object, "name") {
+            if let Ok(name) = name.to_utf8() {
+                return json!({
+                    "phase": "runtime",
+                    "kind": name,
+                    "message": error.to_string(),
+                });
+            }
+        }
+    }
+    runtime(error)
 }
 
 fn evaluate(request: Request) -> Value {
@@ -194,6 +215,7 @@ fn evaluate(request: Request) -> Value {
         Ok(vm) => vm,
         Err(error) => return json!({"kind":"harness_error", "message":error.to_string()}),
     };
+    vm.set_module_source_loader_context(request.module_source_requests);
     if request.mode != "raw" {
         if let Err(error) = vm.install_test262_harness() {
             return json!({"kind":"harness_error", "message":error.to_string()});
@@ -237,7 +259,7 @@ fn evaluate(request: Request) -> Value {
             }
         };
         if let Err(error) = vm.execute_script(&code) {
-            return runtime(error);
+            return runtime_with_vm(&vm, error);
         }
     }
     let execution = if request.mode == "module" {
@@ -249,16 +271,16 @@ fn evaluate(request: Request) -> Value {
     match execution {
         Ok(_) if request.asynchronous => {
             if let Err(error) = vm.run_promise_jobs() {
-                return runtime(error);
+                return runtime_with_vm(&vm, error);
             }
             match vm.take_test262_done() {
                 Some(Ok(())) => json!({"kind":"ok", "phase":"runtime"}),
-                Some(Err(value)) => runtime(RuntimeError::Thrown(value)),
+                Some(Err(value)) => runtime_with_vm(&vm, RuntimeError::Thrown(value)),
                 None => json!({"kind":"timeout", "message":"async test did not call $DONE"}),
             }
         }
         Ok(_) => json!({"kind":"ok", "phase":"runtime"}),
-        Err(error) => runtime(error),
+        Err(error) => runtime_with_vm(&vm, error),
     }
 }
 

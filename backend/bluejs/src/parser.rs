@@ -83,6 +83,7 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
 pub fn parse_module(source: &str) -> Result<Module, ParseError> {
     let mut parser = Parser::new(source);
     parser.module_await = true;
+    parser.module = true;
     let mut body = Vec::new();
     let mut imports = Vec::new();
     let mut exports = Vec::new();
@@ -115,11 +116,73 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
             }
         }
     }
+    validate_module_declarations(&body, &imports, &parser)?;
     Ok(Module {
         body,
         imports,
         exports,
     })
+}
+
+/// Module items use one lexical environment: imported bindings, top-level
+/// functions, classes, and lexical declarations must be unique, and none may
+/// collide with a top-level `var`. Modules are always strict, so `eval` and
+/// `arguments` cannot be imported bindings either.
+fn validate_module_declarations(
+    body: &[Stmt],
+    imports: &[ImportEntry],
+    parser: &Parser,
+) -> Result<(), ParseError> {
+    let mut lexical = std::collections::HashSet::new();
+    for import in imports {
+        let Some(name) = &import.local_name else {
+            continue;
+        };
+        if matches!(name.as_str(), "eval" | "arguments") {
+            return Err(parser.syntax_error("module import binds eval or arguments"));
+        }
+        if !lexical.insert(name.clone()) {
+            return Err(parser.syntax_error("duplicate module lexical declaration"));
+        }
+    }
+    let mut vars = std::collections::HashSet::new();
+    for statement in body {
+        match statement {
+            Stmt::VarDecl(kind, declarations) => {
+                for declaration in declarations {
+                    for name in pattern_bound_names(&declaration.pattern) {
+                        if *kind == DeclKind::Var {
+                            vars.insert(name);
+                        } else if !lexical.insert(name) {
+                            return Err(parser.syntax_error("duplicate module lexical declaration"));
+                        }
+                    }
+                }
+            }
+            Stmt::FunctionDecl(function) => {
+                let name = function.name.as_ref().expect("declaration has a name");
+                if !lexical.insert(name.clone()) {
+                    return Err(parser.syntax_error("duplicate module lexical declaration"));
+                }
+            }
+            Stmt::ModuleDefaultFunction { binding, .. } if !lexical.insert(binding.clone()) => {
+                return Err(parser.syntax_error("duplicate module lexical declaration"));
+            }
+            Stmt::ClassDecl(class) => {
+                let name = class.name.as_ref().expect("declaration has a name");
+                if !lexical.insert(name.clone()) {
+                    return Err(parser.syntax_error("duplicate module lexical declaration"));
+                }
+            }
+            _ => {}
+        }
+    }
+    if lexical.iter().any(|name| vars.contains(name)) {
+        return Err(
+            parser.syntax_error("module lexical declaration conflicts with a var declaration")
+        );
+    }
+    Ok(())
 }
 
 fn pattern_bound_names(pattern: &Pattern) -> Vec<String> {
@@ -173,11 +236,13 @@ fn tokenize_all(tokenizer: &mut Tokenizer) -> (Vec<SpannedToken>, Vec<usize>) {
                 tokens.push(SpannedToken {
                     token: Token::Invalid(error.message),
                     newline_before: false,
+                    identifier_escaped: false,
                 });
                 positions.push(tokenizer.position());
                 tokens.push(SpannedToken {
                     token: Token::Eof,
                     newline_before: false,
+                    identifier_escaped: false,
                 });
                 return (tokens, positions);
             }
@@ -284,6 +349,10 @@ struct Parser {
     /// `await` is a keyword at the outermost level of the Module goal, but
     /// remains an IdentifierName in nested ordinary functions.
     module_await: bool,
+    /// The Module goal remains in force below nested statements and functions
+    /// even where `await` temporarily becomes an IdentifierName. Static
+    /// import/export declarations are restricted to the ModuleItem list.
+    module: bool,
     function_depth: u32,
     static_block_function_depths: Vec<u32>,
 }
@@ -301,6 +370,7 @@ impl Parser {
             generator_depth: 0,
             async_depth: 0,
             module_await: false,
+            module: false,
             function_depth: 0,
             static_block_function_depths: Vec::new(),
         }
@@ -325,6 +395,10 @@ impl Parser {
 
     fn newline_before(&self) -> bool {
         self.tokens[self.pos].newline_before
+    }
+
+    fn current_identifier_escaped(&self) -> bool {
+        self.tokens[self.pos].identifier_escaped
     }
 
     fn at_eof(&self) -> bool {
@@ -353,6 +427,10 @@ impl Parser {
 
     fn check_identifier(&self, expected: &str) -> bool {
         matches!(self.peek(), Token::Identifier(name) if name == expected)
+    }
+
+    fn check_identifier_at(&self, offset: usize, expected: &str) -> bool {
+        matches!(self.peek_at(offset), Token::Identifier(name) if name == expected)
     }
 
     fn eat_identifier(&mut self, expected: &str) -> bool {
@@ -464,6 +542,38 @@ impl Parser {
         matches!(self.peek(), Token::Identifier(name) if name == "of")
     }
 
+    /// Parse the import-attributes `with { ... }` clause.  Module records in
+    /// this host currently retain only the module-request string, but the
+    /// grammar and duplicate-key early error are observable before host
+    /// resolution and therefore belong in the parser rather than in the
+    /// Test262 adapter.
+    fn parse_import_attributes(&mut self) -> Result<(), ParseError> {
+        if !self.eat_identifier("with") {
+            return Ok(());
+        }
+        self.expect_punct(Punct::LBrace)?;
+        let mut keys = std::collections::HashSet::new();
+        while !self.check_punct(Punct::RBrace) {
+            let key = self.expect_module_export_name()?;
+            if !keys.insert(key) {
+                return Err(self.syntax_error("duplicate import attribute key"));
+            }
+            self.expect_punct(Punct::Colon)?;
+            match self.advance() {
+                Token::String(_) => {}
+                _ => return Err(self.syntax_error("import attribute values must be strings")),
+            }
+            if self.eat_punct(Punct::Comma) {
+                if self.check_punct(Punct::RBrace) {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        self.expect_punct(Punct::RBrace)
+    }
+
     /// Consumes a statement-terminating `;`, or applies automatic
     /// semicolon insertion (see `token.rs`'s [`SpannedToken`] doc
     /// comment): a `}`, EOF, or a preceding line terminator all count
@@ -488,12 +598,37 @@ impl Parser {
         self.advance();
         if matches!(self.peek(), Token::String(_)) {
             let module_request = self.expect_module_name()?;
+            self.parse_import_attributes()?;
             self.consume_semicolon()?;
             // A side-effect-only import still creates a requested module.
             return Ok(vec![ImportEntry {
                 module_request,
                 import_name: ImportName::Named(String::new()),
                 local_name: None,
+            }]);
+        }
+
+        // Source phase imports deliberately use contextual identifiers: both
+        // `source` and `from` remain valid imported binding names. Recognize
+        // this before the ordinary default-import branch, where
+        // `import source local from "..."` would otherwise be read as a
+        // default binding followed by an unexpected identifier.
+        if self.check_identifier("source")
+            && matches!(self.peek_at(1), Token::Identifier(_))
+            && self.check_identifier_at(2, "from")
+        {
+            self.advance();
+            let local_name = self.expect_binding_identifier()?;
+            if !self.eat_identifier("from") {
+                return Err(self.syntax_error("source import requires 'from'"));
+            }
+            let module_request = self.expect_module_name()?;
+            self.parse_import_attributes()?;
+            self.consume_semicolon()?;
+            return Ok(vec![ImportEntry {
+                module_request,
+                import_name: ImportName::Source,
+                local_name: Some(local_name),
             }]);
         }
 
@@ -532,6 +667,7 @@ impl Parser {
             return Err(self.syntax_error("import declaration requires 'from'"));
         }
         let module_request = self.expect_module_name()?;
+        self.parse_import_attributes()?;
         self.consume_semicolon()?;
         if entries.is_empty() {
             return Ok(vec![ImportEntry {
@@ -567,6 +703,7 @@ impl Parser {
                 return Err(self.syntax_error("star export requires 'from'"));
             }
             let module_request = self.expect_module_name()?;
+            self.parse_import_attributes()?;
             self.consume_semicolon()?;
             exports.push(match export_name {
                 Some(export_name) => ExportEntry::Namespace {
@@ -579,57 +716,76 @@ impl Parser {
         }
         if self.eat_identifier("default") || self.eat_keyword(Keyword::Default) {
             let hidden = "\0bluejs_module_default".to_string();
-            match self.peek().clone() {
+            let (local_name, consume_terminator) = match self.peek().clone() {
                 Token::Keyword(Keyword::Function) => {
                     self.advance();
+                    let function = self.parse_function()?;
+                    let binding = function.name.clone().unwrap_or_else(|| hidden.clone());
                     body.push(Stmt::ModuleDefaultFunction {
-                        function: self.parse_function()?,
-                        binding: hidden.clone(),
+                        function,
+                        binding: binding.clone(),
                     });
+                    (binding, false)
                 }
                 Token::Identifier(name) if name == "async" && self.async_function_follows() => {
                     self.advance();
                     self.expect_keyword(Keyword::Function)?;
+                    let function = self.parse_function_with_async(true)?;
+                    let binding = function.name.clone().unwrap_or_else(|| hidden.clone());
                     body.push(Stmt::ModuleDefaultFunction {
-                        function: self.parse_function_with_async(true)?,
-                        binding: hidden.clone(),
+                        function,
+                        binding: binding.clone(),
                     });
+                    (binding, false)
                 }
                 Token::Identifier(name) if name == "class" => {
                     self.advance();
+                    let class = self.parse_class()?;
+                    if let Some(binding) = class.name.clone() {
+                        body.push(Stmt::ClassDecl(class));
+                        (binding, false)
+                    } else {
+                        body.push(Stmt::VarDecl(
+                            DeclKind::Const,
+                            vec![VarDeclarator {
+                                pattern: Pattern::Identifier(hidden.clone()),
+                                init: Some(Expr::Class(class)),
+                            }],
+                        ));
+                        (hidden.clone(), false)
+                    }
+                }
+                _ => {
                     body.push(Stmt::VarDecl(
                         DeclKind::Const,
                         vec![VarDeclarator {
                             pattern: Pattern::Identifier(hidden.clone()),
-                            init: Some(Expr::Class(self.parse_class()?)),
+                            init: Some(self.parse_assignment()?),
                         }],
                     ));
+                    (hidden, true)
                 }
-                _ => body.push(Stmt::VarDecl(
-                    DeclKind::Const,
-                    vec![VarDeclarator {
-                        pattern: Pattern::Identifier(hidden.clone()),
-                        init: Some(self.parse_assignment()?),
-                    }],
-                )),
+            };
+            if consume_terminator {
+                self.consume_semicolon()?;
             }
-            self.consume_semicolon()?;
             exports.push(ExportEntry::Local {
                 export_name: "default".to_string(),
-                local_name: hidden,
+                local_name,
             });
             return Ok(());
         }
         if self.eat_punct(Punct::LBrace) {
             let mut specifiers = Vec::new();
             while !self.check_punct(Punct::RBrace) {
+                let local_is_string = matches!(self.peek(), Token::String(_));
                 let local_name = self.expect_module_export_name()?;
                 let export_name = if self.eat_identifier("as") {
                     self.expect_module_export_name()?
                 } else {
                     local_name.clone()
                 };
-                specifiers.push((local_name, export_name));
+                specifiers.push((local_name, export_name, local_is_string));
                 if !self.check_punct(Punct::RBrace) {
                     self.expect_punct(Punct::Comma)?;
                 }
@@ -637,7 +793,8 @@ impl Parser {
             self.expect_punct(Punct::RBrace)?;
             if self.eat_identifier("from") {
                 let module_request = self.expect_module_name()?;
-                for (import_name, export_name) in specifiers {
+                self.parse_import_attributes()?;
+                for (import_name, export_name, _) in specifiers {
                     exports.push(ExportEntry::Indirect {
                         export_name,
                         module_request: module_request.clone(),
@@ -645,7 +802,12 @@ impl Parser {
                     });
                 }
             } else {
-                for (local_name, export_name) in specifiers {
+                for (local_name, export_name, local_is_string) in specifiers {
+                    if local_is_string {
+                        return Err(
+                            self.syntax_error("a local module export name must be an identifier")
+                        );
+                    }
                     exports.push(ExportEntry::Local {
                         export_name,
                         local_name,
@@ -698,6 +860,14 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
+        if self.module
+            && ((self.check_identifier("import") && !self.check_punct_at(1, Punct::LParen))
+                || self.check_identifier("export"))
+        {
+            return Err(self.syntax_error(
+                "static import/export declarations are only valid at module top level",
+            ));
+        }
         match self.peek().clone() {
             Token::Punct(Punct::Semicolon) => {
                 self.advance();
@@ -920,11 +1090,11 @@ impl Parser {
 
     fn parse_for_stmt(&mut self) -> Result<Stmt, ParseError> {
         self.advance();
-        // Async functions accept `for await (...)`. The current AST uses the
-        // ordinary ForOf shape because async execution is rejected before
-        // bytecode generation; preserving the syntax keeps that rejection
-        // correctly classified instead of reporting malformed source.
-        if self.async_depth != 0
+        // Async functions and Module code accept `for await (...)`.  The
+        // implemented iterator record is shared with ordinary for-of for
+        // synchronous iterables; values produced by the expression and body
+        // still use the surrounding await context.
+        if (self.async_depth != 0 || self.module_await)
             && matches!(self.peek(), Token::Identifier(name) if name == "await")
         {
             self.advance();
@@ -967,9 +1137,28 @@ impl Parser {
                 });
             }
 
+            let initializer = self.parse_optional_for_init_value()?;
+            if self.check_keyword(Keyword::In) {
+                if let Some(initializer) = initializer {
+                    if decl_kind == DeclKind::Var && matches!(pattern, Pattern::Identifier(_)) {
+                        self.advance();
+                        let right = self.parse_expression()?;
+                        self.expect_punct(Punct::RParen)?;
+                        let body = Box::new(self.parse_statement()?);
+                        return Ok(Stmt::ForIn {
+                            left: ForHead::AnnexBVarInit(pattern, initializer),
+                            right,
+                            body,
+                        });
+                    }
+                    return Err(known_syntax(self.syntax_error(
+                        "for-in/of declaration heads cannot have initializers",
+                    )));
+                }
+            }
             let mut declarators = vec![VarDeclarator {
                 pattern,
-                init: self.parse_optional_for_init_value()?,
+                init: initializer,
             }];
             while self.eat_punct(Punct::Comma) {
                 let pattern = self.parse_binding_pattern()?;
@@ -977,6 +1166,20 @@ impl Parser {
                     pattern,
                     init: self.parse_optional_for_init_value()?,
                 });
+            }
+            // A lexical/var declaration with an initializer cannot form a
+            // for-in/of head. Parsing its initializer with `in` disabled
+            // intentionally leaves the separator available for this exact
+            // early-error classification instead of degrading into a generic
+            // missing-semicolon parser failure.
+            if (self.check_keyword(Keyword::In) || self.is_contextual_of())
+                && declarators
+                    .iter()
+                    .any(|declarator| declarator.init.is_some())
+            {
+                return Err(known_syntax(self.syntax_error(
+                    "for-in/of declaration heads cannot have initializers",
+                )));
             }
             self.expect_punct(Punct::Semicolon)?;
             return self.parse_for_rest(Some(ForInit::VarDecl(decl_kind, declarators)));
@@ -988,7 +1191,7 @@ impl Parser {
         let expr = expr?;
 
         if self.eat_keyword(Keyword::In) {
-            let left = expr_to_for_head(expr)?;
+            let left = expr_to_for_head(expr).map_err(known_syntax)?;
             let right = self.parse_expression()?;
             self.expect_punct(Punct::RParen)?;
             let body = Box::new(self.parse_statement()?);
@@ -996,7 +1199,7 @@ impl Parser {
         }
         if self.is_contextual_of() {
             self.advance();
-            let left = expr_to_for_head(expr)?;
+            let left = expr_to_for_head(expr).map_err(known_syntax)?;
             let right = self.parse_assignment()?;
             self.expect_punct(Punct::RParen)?;
             let body = Box::new(self.parse_statement()?);
@@ -1753,7 +1956,11 @@ impl Parser {
             return Ok(left);
         };
         if !is_valid_ref_target(&left) && !is_annex_b_call_assignment_target(&left) {
-            return Err(self.error("invalid assignment target"));
+            // An AssignmentExpression whose left-hand side was parsed
+            // successfully but is not a reference is an ECMAScript early
+            // error, rather than an unsupported production.  This notably
+            // covers `(await value) = other` in modules and async functions.
+            return Err(self.syntax_error("invalid assignment target"));
         }
         self.advance();
         let value = self.parse_assignment()?;
@@ -2172,7 +2379,16 @@ impl Parser {
         if (self.async_depth != 0 || self.module_await)
             && matches!(self.peek(), Token::Identifier(name) if name == "await")
         {
+            if self.current_identifier_escaped() {
+                return Err(self.syntax_error("the await keyword cannot contain an escape"));
+            }
             self.advance();
+            if matches!(
+                self.peek(),
+                Token::Punct(Punct::Semicolon | Punct::RBrace | Punct::RParen) | Token::Eof
+            ) {
+                return Err(self.syntax_error("await requires an operand"));
+            }
             return Ok(Expr::Await(Box::new(self.parse_unary()?)));
         }
         if self.eat_punct(Punct::PlusPlus) {
@@ -2299,6 +2515,12 @@ impl Parser {
     /// covers every realistic `new` usage a hand-written DOM script
     /// makes without needing the spec's full grammar distinction.
     fn parse_new_expression(&mut self) -> Result<Expr, ParseError> {
+        // `new` takes a NewExpression/MemberExpression operand.  An
+        // AwaitExpression is only admitted with explicit parentheses, as in
+        // `new (await Constructor)`; `new await` is an early SyntaxError.
+        if self.module_await && self.check_identifier("await") {
+            return Err(self.syntax_error("await cannot immediately follow new"));
+        }
         let mut callee = if self.eat_keyword(Keyword::New) {
             self.parse_new_expression()?
         } else {
@@ -2447,6 +2669,18 @@ impl Parser {
                 self.expect_punct(Punct::RParen)?;
                 Ok(Expr::DynamicImport(Box::new(specifier)))
             }
+            Token::Identifier(name)
+                if name == "await"
+                    && self.async_depth == 0
+                    && !self.module_await
+                    && self.token_starts_expression(1) =>
+            {
+                // In a non-async function, `await` is an IdentifierReference.
+                // A second primary expression cannot follow it without an
+                // operator, so this is grammar-invalid, not an unsupported
+                // await production (e.g. `function f() { await 0; }`).
+                Err(self.syntax_error("unexpected expression after await identifier"))
+            }
             Token::Identifier(name) => {
                 self.advance();
                 Ok(Expr::Identifier(name))
@@ -2461,6 +2695,26 @@ impl Parser {
             Token::Punct(Punct::LBrace) => self.parse_object_literal(),
             _ => Err(self.error("expected an expression")),
         }
+    }
+
+    fn token_starts_expression(&self, offset: usize) -> bool {
+        matches!(
+            self.peek_at(offset),
+            Token::Number(_)
+                | Token::BigInt(_)
+                | Token::String(_)
+                | Token::Template { .. }
+                | Token::Identifier(_)
+                | Token::Keyword(
+                    Keyword::True
+                        | Keyword::False
+                        | Keyword::Null
+                        | Keyword::This
+                        | Keyword::Function
+                        | Keyword::New
+                )
+                | Token::Punct(Punct::LParen | Punct::LBracket | Punct::LBrace)
+        )
     }
 
     fn parse_array_literal(&mut self) -> Result<Expr, ParseError> {

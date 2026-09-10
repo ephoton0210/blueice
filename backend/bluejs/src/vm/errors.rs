@@ -61,8 +61,16 @@ impl Vm {
     ) -> Result<bool, RuntimeError> {
         let mut current = Some(object);
         while let Some(id) = current {
-            if self.heap.get_own_property_descriptor(id, key)?.is_some() {
-                return Ok(true);
+            match self.heap.get_own_property_descriptor(id, key) {
+                Ok(Some(_)) | Err(HeapError::UninitializedModuleExport) => {
+                    // A namespace's [[HasProperty]] observes membership in
+                    // [[Exports]], not the current value of that binding.
+                    // An uninitialized export is therefore present even
+                    // though [[Get]] and [[GetOwnProperty]] would throw.
+                    return Ok(true);
+                }
+                Ok(None) => {}
+                Err(error) => return Err(error.into()),
             }
             current = self.heap.prototype(id)?;
         }
