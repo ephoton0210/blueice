@@ -366,3 +366,44 @@ unique path/mode pairs, including pass-to-nonpass changes, rather than totals
 alone. Preserve raw outcomes so improved parsing that exposes a later missing
 dependency is not confused with a newly passing test. Never mark this backlog
 complete until the full applicable inventory passes with audited host behavior.
+
+## P0.1 continuation: labelled control transfer
+
+The labelled-statement clauses, [Labelled Statements](https://262.ecma-international.org/17.0/#sec-labelled-statements),
+[Break Statement](https://262.ecma-international.org/17.0/#sec-break-statement),
+and [Continue Statement](https://262.ecma-international.org/17.0/#sec-continue-statement),
+were read before this slice. The AST now retains a label wrapper and optional
+label targets on `break`/`continue`. The compiler collapses a consecutive label
+chain onto its final loop or `switch`; a label over another statement owns its
+own non-breakable control context. Consequently an unlabelled `break` still
+selects only an enclosing loop or `switch`, while a named break can leave any
+labelled statement and a named continue is accepted only for a label on an
+iteration statement.
+
+Every transfer uses the existing `AbruptJump` cleanup gateway, so an intervening
+`finally` runs before the target is reached. Breaks close every active iterator
+they leave, from inner to outer; a continue preserves its target iterator while
+closing only inner iterators. The parser handles ASI after labelled sloppy
+`let`, rejects the `let [` lookahead, rejects lexical/class/async/generator
+declarations as labelled items, and classifies a class-static-block `await`
+label as a syntax error. Sloppy unresolvable simple assignment now writes the
+global object, which permits an unreachable labelled `let` expression to
+compile; unqualified global reads and the remaining global-environment model
+stay in P0.2.
+
+The pre-change pinned Test262 run for `language/statements/labeled` scheduled
+38 modes from 25 files: **0 pass, 16 fail, 22 unsupported**. The post-change
+run with eight workers, two-second timeout and the standard 100,000-instruction
+budget reconciles **35 pass, 0 fail, 2 unsupported, 1 timeout**. The unsupported
+modes are the two module-host cases. The sole timeout is `tco.js`, whose helper
+deliberately exceeds the standard budget; its isolated run passes with the
+documented 5,000,000-instruction TCO budget. The post-run analysis is at
+`target/test262-label-final/analysis`; the independent high-budget output is at
+`target/test262-label-tco/analysis`.
+
+Public regressions cover nested labelled break/continue targets, chained loop
+labels, finalizer ordering and completion values, iterator closing, malformed
+labelled items, strict `yield`, and sloppy `let` ASI. BlueJS all-target tests
+and all ten Python Test262 runner/analyzer tests pass. The remaining P0.1 work
+is labels' broader grammar interactions and control-flow cases outside this
+slice; module support remains P1.4 and persistent global environments P0.2.

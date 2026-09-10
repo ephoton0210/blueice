@@ -168,8 +168,12 @@ pub enum Stmt {
     While { test: Expr, body: Box<Stmt> },
     DoWhile { body: Box<Stmt>, test: Expr },
     Switch { discriminant: Expr, cases: Vec<SwitchCase> },
-    Break,
-    Continue,
+    /// A labelled statement. Labels target the entire wrapped statement;
+    /// consecutive labels are collapsed by the compiler onto an iteration
+    /// statement when appropriate.
+    Labelled { label: String, item: Box<Stmt> },
+    Break(Option<String>),
+    Continue(Option<String>),
     Return(Option<Expr>),
     Throw(Expr),
     Try { block: Vec<Stmt>, handler: Option<CatchClause>, finalizer: Option<Vec<Stmt>> },
@@ -344,7 +348,7 @@ fn stmts_contain_super(statements: &[Stmt], search: SuperSearch) -> bool {
 
 fn stmt_contains_super(statement: &Stmt, search: SuperSearch) -> bool {
     match statement {
-        Stmt::Empty | Stmt::Break | Stmt::Continue | Stmt::ClassDecl(_) => false,
+        Stmt::Empty | Stmt::Break(_) | Stmt::Continue(_) | Stmt::ClassDecl(_) => false,
         Stmt::Expr(expr) | Stmt::Throw(expr) => expr_contains_super(expr, search),
         Stmt::Block(statements) => stmts_contain_super(statements, search),
         Stmt::VarDecl(_, declarations) => declarations
@@ -376,6 +380,7 @@ fn stmt_contains_super(statement: &Stmt, search: SuperSearch) -> bool {
                 || finalizer.as_deref().is_some_and(|statements| stmts_contain_super(statements, search))
         }
         Stmt::With { object, body } => expr_contains_super(object, search) || stmt_contains_super(body, search),
+        Stmt::Labelled { item, .. } => stmt_contains_super(item, search),
         Stmt::FunctionDecl(function) => function_contains_super(function, search),
         Stmt::ClassField(statement) => stmt_contains_super(statement, search),
     }

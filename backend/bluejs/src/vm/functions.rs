@@ -20,9 +20,11 @@ impl Vm {
         let mut length = 0.0;
         if self.heap.get_own_property_descriptor(id, "length")?.is_some() {
             if let Value::Number(number) = self.get_property(&target, &"length".into())? {
-                // f64::max maps NaN and negative infinity to zero; positive
-                // infinity survives subtraction of the finite argument count.
-                length = (number.trunc() - count as f64).max(0.0);
+                // ECMAScript's max(0, …) returns +0 for a -0 target length.
+                // `f64::max` may retain the receiver's -0 sign for equal
+                // operands, so make that observable zero explicitly.
+                let candidate = number.trunc() - count as f64;
+                length = if candidate.is_nan() || candidate <= 0.0 { 0.0 } else { candidate };
             }
         }
         self.define_data(function, "length", Value::Number(length), false, false, true)?;

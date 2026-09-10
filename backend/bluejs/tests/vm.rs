@@ -299,9 +299,11 @@ fn object_operations_preserve_identity_and_evaluation_order() {
 
 #[test]
 fn unsupported_syntax_and_invalid_bindings_fail_before_execution() {
-    for source in ["for(x of y){}", "for(x in y){}", "x=1", "let undefined=1"] {
+    for source in ["for(x of y){}", "for(x in y){}", "let undefined=1"] {
         assert!(matches!(compile(&parse(source).unwrap()), Err(CompileError::Unsupported(_))), "{source}");
     }
+    assert_eq!(evaluate("x=1; globalThis.x").unwrap(), Value::Number(1.0));
+    assert!(matches!(compile(&parse("'use strict'; x=1").unwrap()), Err(CompileError::Unsupported(_))));
     for source in ["x == 1", "x != 1", "x in y"] {
         assert!(compile(&parse(source).unwrap()).is_ok(), "{source}");
     }

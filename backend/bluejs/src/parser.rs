@@ -349,26 +349,73 @@ impl Parser {
             Token::Keyword(Keyword::While) => self.parse_while_stmt(),
             Token::Keyword(Keyword::Do) => self.parse_do_while_stmt(),
             Token::Keyword(Keyword::Switch) => self.parse_switch_stmt(),
-            Token::Keyword(Keyword::Break) => {
-                self.advance();
-                self.consume_semicolon()?;
-                Ok(Stmt::Break)
-            }
-            Token::Keyword(Keyword::Continue) => {
-                self.advance();
-                self.consume_semicolon()?;
-                Ok(Stmt::Continue)
-            }
+            Token::Keyword(Keyword::Break) => self.parse_break_or_continue(false),
+            Token::Keyword(Keyword::Continue) => self.parse_break_or_continue(true),
             Token::Keyword(Keyword::Return) => self.parse_return_stmt(),
             Token::Keyword(Keyword::Throw) => self.parse_throw_stmt(),
             Token::Keyword(Keyword::Try) => self.parse_try_stmt(),
             Token::Keyword(Keyword::Catch | Keyword::Finally) => Err(self.syntax_error("catch/finally require a preceding try block")),
+            Token::Identifier(_) if matches!(self.peek_at(1), Token::Punct(Punct::Colon)) => self.parse_labelled_stmt(),
             _ => {
                 let expr = self.parse_expression()?;
                 self.consume_semicolon()?;
                 Ok(Stmt::Expr(expr))
             }
         }
+    }
+
+    fn parse_break_or_continue(&mut self, is_continue: bool) -> Result<Stmt, ParseError> {
+        self.advance();
+        // A line terminator triggers ASI, so an identifier on the following
+        // line begins the next statement rather than naming this transfer.
+        let label = if !self.newline_before() {
+            match self.peek().clone() {
+                Token::Identifier(name) => {
+                    self.advance();
+                    Some(name)
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+        self.consume_semicolon()?;
+        Ok(if is_continue { Stmt::Continue(label) } else { Stmt::Break(label) })
+    }
+
+    fn parse_labelled_stmt(&mut self) -> Result<Stmt, ParseError> {
+        let label = self.expect_identifier_name()?;
+        self.expect_punct(Punct::Colon)?;
+        if label == "await" && self.static_block_function_depths.last() == Some(&self.function_depth) {
+            return Err(self.syntax_error("await cannot be used as a label in a class static block"));
+        }
+
+        // In sloppy code, `let` may begin the labelled expression statement
+        // `L: let` when ASI follows. It is not a lexical declaration there.
+        // `let [` is the one prohibited lookahead form.
+        let item = if self.check_keyword(Keyword::Let)
+            && self.tokens.get(self.pos + 1).is_some_and(|token| token.newline_before)
+        {
+            self.advance();
+            if self.check_punct(Punct::LBracket) {
+                return Err(self.syntax_error("a labelled expression cannot begin with 'let ['"));
+            }
+            self.consume_semicolon()?;
+            Stmt::Expr(Expr::Identifier("let".to_string()))
+        } else {
+            self.parse_statement()?
+        };
+        match &item {
+            Stmt::VarDecl(kind, _) if *kind != DeclKind::Var => {
+                return Err(self.syntax_error("a labelled statement cannot contain a lexical declaration"));
+            }
+            Stmt::ClassDecl(_) => return Err(self.syntax_error("a labelled statement cannot contain a class declaration")),
+            Stmt::FunctionDecl(function) if function.generator || function.is_async => {
+                return Err(self.syntax_error("a labelled statement cannot contain a generator or async function declaration"));
+            }
+            _ => {}
+        }
+        Ok(Stmt::Labelled { label, item: Box::new(item) })
     }
 
     fn parse_block(&mut self) -> Result<Vec<Stmt>, ParseError> {
@@ -2183,7 +2230,7 @@ mod tests {
             Stmt::Switch {
                 discriminant: Expr::Identifier("x".to_string()),
                 cases: vec![
-                    SwitchCase { test: Some(Expr::Number(1.0)), consequent: vec![Stmt::Expr(Expr::Identifier("a".to_string())), Stmt::Break] },
+                    SwitchCase { test: Some(Expr::Number(1.0)), consequent: vec![Stmt::Expr(Expr::Identifier("a".to_string())), Stmt::Break(None)] },
                     SwitchCase { test: None, consequent: vec![Stmt::Expr(Expr::Identifier("b".to_string()))] },
                 ],
             }
@@ -2273,7 +2320,7 @@ mod tests {
     #[test]
     fn parses_bare_semicolon_and_continue_statements() {
         assert_eq!(only_stmt(";"), Stmt::Empty);
-        assert_eq!(only_stmt("continue;"), Stmt::Continue);
+        assert_eq!(only_stmt("continue;"), Stmt::Continue(None));
     }
 
     #[test]

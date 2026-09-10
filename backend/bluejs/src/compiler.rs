@@ -83,6 +83,8 @@ pub(crate) fn compile_eval(program: &Program, visible: &[(String, Binding, u32)]
 }
 
 struct Loop {
+    labels: Vec<String>,
+    breakable: bool,
     scope_depth: usize,
     breaks: Vec<(usize, usize)>,
     continues: Option<Vec<(usize, usize)>>,
@@ -287,51 +289,106 @@ impl Compiler {
                 }
                 self.patch(end, self.offset()?);
             }
-            Stmt::While { test, body } => self.loop_statement(None, Some(test), None, body, false)?,
-            Stmt::DoWhile { body, test } => self.loop_statement(None, Some(test), None, body, true)?,
-            Stmt::For { init, test, update, body } => self.loop_statement(init.as_ref(), test.as_ref(), update.as_ref(), body, false)?,
-            Stmt::ForIn { left, right, body } => self.for_in(left, right, body)?,
-            Stmt::ForOf { left, right, body } => self.for_of(left, right, body)?,
-            Stmt::Switch { discriminant, cases } => self.switch_statement(discriminant, cases)?,
-            Stmt::Break | Stmt::Continue => {
-                let index = if matches!(statement, Stmt::Break) {
-                    self.loops.len().checked_sub(1)
-                } else {
-                    self.loops.iter().rposition(|context| context.continues.is_some())
-                };
-                let Some(index) = index else { return Err(CompileError::InvalidSyntax(if matches!(statement, Stmt::Break) { "break requires an enclosing loop or switch" } else { "continue requires an enclosing loop" })) };
-                let context = &self.loops[index];
-                let scopes: Vec<_> = self.scopes[context.scope_depth..].iter().rev().copied().collect();
-                let iterator = context.iterator;
-                // A direct jump would skip a surrounding `finally`. Route to
-                // a local cleanup gateway first; a handler resumes there only
-                // after its finalizer has completed, so lexical environments
-                // stay live while `finally` runs.
-                let control = self.bytecode.abrupt_jumps.len();
-                let control_operand = u32::try_from(control).map_err(|_| CompileError::ProgramTooLarge)?;
-                self.bytecode.abrupt_jumps.push(AbruptJump { cleanup: 0, target: 0 });
-                self.emit(Opcode::AbruptJump, control_operand)?;
-                let cleanup = self.offset()?;
-                self.bytecode.abrupt_jumps[control].cleanup = cleanup;
-                if matches!(statement, Stmt::Break) {
-                    if let Some(iterator) = iterator {
-                        // Close only after a surrounding finalizer has had a
-                        // chance to replace this break with another completion.
-                        self.emit(Opcode::GetBinding, iterator)?;
-                        self.emit(Opcode::IteratorClose, 0)?;
-                    }
-                }
-                for scope in scopes {
-                    self.emit(Opcode::LeaveScope, scope)?;
-                }
-                let jump = self.emit(Opcode::Jump, 0)?;
-                let context = &mut self.loops[index];
-                if matches!(statement, Stmt::Break) {
-                    context.breaks.push((jump, control));
-                } else {
-                    context.continues.as_mut().expect("selected context is a loop").push((jump, control));
-                }
+            Stmt::While { test, body } => self.loop_statement(None, Some(test), None, body, false, Vec::new())?,
+            Stmt::DoWhile { body, test } => self.loop_statement(None, Some(test), None, body, true, Vec::new())?,
+            Stmt::For { init, test, update, body } => self.loop_statement(init.as_ref(), test.as_ref(), update.as_ref(), body, false, Vec::new())?,
+            Stmt::ForIn { left, right, body } => self.for_in(left, right, body, Vec::new())?,
+            Stmt::ForOf { left, right, body } => self.for_of(left, right, body, Vec::new())?,
+            Stmt::Switch { discriminant, cases } => self.switch_statement(discriminant, cases, Vec::new())?,
+            Stmt::Labelled { label, item } => self.labelled_statement(label, item)?,
+            Stmt::Break(label) => self.control_transfer(label.as_deref(), false)?,
+            Stmt::Continue(label) => self.control_transfer(label.as_deref(), true)?,
+        }
+        Ok(())
+    }
+
+    fn labelled_statement(&mut self, label: &str, item: &Stmt) -> Result<(), CompileError> {
+        let mut labels = vec![label.to_string()];
+        let mut item = item;
+        while let Stmt::Labelled { label, item: nested } = item {
+            labels.push(label.clone());
+            item = nested;
+        }
+        if labels.iter().any(|label| label == "yield" && self.bytecode.strict) {
+            return Err(CompileError::InvalidSyntax("yield cannot be used as a label in strict code"));
+        }
+        if labels.iter().any(|label| {
+            labels.iter().filter(|other| *other == label).count() != 1
+                || self.loops.iter().any(|context| context.labels.iter().any(|other| other == label))
+        }) {
+            return Err(CompileError::InvalidSyntax("duplicate label"));
+        }
+        match item {
+            Stmt::While { test, body } => self.loop_statement(None, Some(test), None, body, false, labels),
+            Stmt::DoWhile { body, test } => self.loop_statement(None, Some(test), None, body, true, labels),
+            Stmt::For { init, test, update, body } => self.loop_statement(init.as_ref(), test.as_ref(), update.as_ref(), body, false, labels),
+            Stmt::ForIn { left, right, body } => self.for_in(left, right, body, labels),
+            Stmt::ForOf { left, right, body } => self.for_of(left, right, body, labels),
+            Stmt::Switch { discriminant, cases } => self.switch_statement(discriminant, cases, labels),
+            Stmt::VarDecl(kind, _) if *kind != DeclKind::Var => Err(CompileError::InvalidSyntax("a labelled statement cannot contain a lexical declaration")),
+            Stmt::ClassDecl(_) => Err(CompileError::InvalidSyntax("a labelled statement cannot contain a class declaration")),
+            Stmt::FunctionDecl(function) if self.bytecode.strict || function.generator || function.is_async => {
+                Err(CompileError::InvalidSyntax("invalid labelled function declaration"))
             }
+            Stmt::FunctionDecl(function) => {
+                // Annex B permits this sloppy-mode form. Its binding is
+                // var-scoped, while creation occurs when the label executes.
+                self.function(function, false)?;
+                let slot = self.resolve(function.name.as_ref().expect("declaration has a name")).unwrap();
+                self.emit(Opcode::StoreBinding, slot)?;
+                self.emit(Opcode::Pop, 0)?;
+                Ok(())
+            }
+            _ => {
+                self.loops.push(Loop { labels, breakable: false, scope_depth: self.scopes.len(), breaks: Vec::new(), continues: None, iterator: None });
+                self.statement(item, false)?;
+                let end = self.offset()?;
+                let context = self.loops.pop().expect("label control is active");
+                for (jump, control) in context.breaks {
+                    self.patch(jump, end);
+                    self.bytecode.abrupt_jumps[control].target = end;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn control_transfer(&mut self, label: Option<&str>, is_continue: bool) -> Result<(), CompileError> {
+        let index = match label {
+            Some(label) => self.loops.iter().rposition(|context| context.labels.iter().any(|candidate| candidate == label)),
+            None if is_continue => self.loops.iter().rposition(|context| context.continues.is_some()),
+            None => self.loops.iter().rposition(|context| context.breakable),
+        };
+        let Some(index) = index else {
+            return Err(CompileError::InvalidSyntax(if is_continue { "continue requires an enclosing iteration statement" } else { "break requires an enclosing loop, switch, or label" }));
+        };
+        if is_continue && self.loops[index].continues.is_none() {
+            return Err(CompileError::InvalidSyntax("continue label does not name an iteration statement"));
+        }
+        let scopes: Vec<_> = self.scopes[self.loops[index].scope_depth..].iter().rev().copied().collect();
+        let first_iterator = index + usize::from(is_continue);
+        let iterators: Vec<_> = self.loops[first_iterator..].iter().rev().filter_map(|context| context.iterator).collect();
+        // A direct jump would skip a surrounding `finally`. Route to a local
+        // cleanup gateway first; handlers resume there only after finalizers.
+        let control = self.bytecode.abrupt_jumps.len();
+        let control_operand = u32::try_from(control).map_err(|_| CompileError::ProgramTooLarge)?;
+        self.bytecode.abrupt_jumps.push(AbruptJump { cleanup: 0, target: 0 });
+        self.emit(Opcode::AbruptJump, control_operand)?;
+        let cleanup = self.offset()?;
+        self.bytecode.abrupt_jumps[control].cleanup = cleanup;
+        for iterator in iterators {
+            self.emit(Opcode::GetBinding, iterator)?;
+            self.emit(Opcode::IteratorClose, 0)?;
+        }
+        for scope in scopes {
+            self.emit(Opcode::LeaveScope, scope)?;
+        }
+        let jump = self.emit(Opcode::Jump, 0)?;
+        let context = &mut self.loops[index];
+        if is_continue {
+            context.continues.as_mut().expect("selected context is an iteration statement").push((jump, control));
+        } else {
+            context.breaks.push((jump, control));
         }
         Ok(())
     }
@@ -342,7 +399,7 @@ impl Compiler {
         self.leave_scope()
     }
 
-    fn switch_statement(&mut self, discriminant: &Expr, cases: &[SwitchCase]) -> Result<(), CompileError> {
+    fn switch_statement(&mut self, discriminant: &Expr, cases: &[SwitchCase], labels: Vec<String>) -> Result<(), CompileError> {
         self.emit(Opcode::ClearCompletion, 0)?;
         let mut lexical = Vec::new();
         let mut vars = BTreeSet::new();
@@ -384,7 +441,7 @@ impl Compiler {
         let default = cases.iter().position(|case| case.test.is_none());
         self.patch(no_match, default.map(|index| case_stubs[index]).unwrap_or(no_match_cleanup));
 
-        self.loops.push(Loop { scope_depth: self.scopes.len(), breaks: Vec::new(), continues: None, iterator: None });
+        self.loops.push(Loop { labels, breakable: true, scope_depth: self.scopes.len(), breaks: Vec::new(), continues: None, iterator: None });
         for (case, jump) in cases.iter().zip(body_jumps) {
             self.patch(jump, self.offset()?);
             self.statements(&case.consequent)?;
@@ -625,7 +682,15 @@ impl Compiler {
         }
     }
 
-    fn loop_statement(&mut self, init: Option<&ForInit>, test: Option<&Expr>, update: Option<&Expr>, body: &Stmt, do_first: bool) -> Result<(), CompileError> {
+    fn loop_statement(
+        &mut self,
+        init: Option<&ForInit>,
+        test: Option<&Expr>,
+        update: Option<&Expr>,
+        body: &Stmt,
+        do_first: bool,
+        labels: Vec<String>,
+    ) -> Result<(), CompileError> {
         self.emit(Opcode::ClearCompletion, 0)?;
         let lexical = match init {
             Some(ForInit::VarDecl(kind, decls)) if *kind != DeclKind::Var => declarations_names(*kind, decls)?,
@@ -651,7 +716,7 @@ impl Compiler {
                 exit = Some(self.emit(Opcode::JumpIfFalse, 0)?);
             }
         }
-        self.loops.push(Loop { scope_depth: self.scopes.len(), breaks: Vec::new(), continues: Some(Vec::new()), iterator: None });
+        self.loops.push(Loop { labels, breakable: true, scope_depth: self.scopes.len(), breaks: Vec::new(), continues: Some(Vec::new()), iterator: None });
         self.statement(body, false)?;
         let continue_at = self.offset()?;
         if let Some(update) = update {
@@ -715,8 +780,8 @@ impl Compiler {
             Expr::Bool(b) => self.constant(Value::Bool(*b))?,
             Expr::Null => self.constant(Value::Null)?,
             Expr::Identifier(name) => {
-                if self.bytecode.strict && name == "yield" {
-                    return Err(CompileError::InvalidSyntax("yield cannot be used as an identifier in strict code"));
+                if self.bytecode.strict && matches!(name.as_str(), "yield" | "let") {
+                    return Err(CompileError::InvalidSyntax("a reserved word cannot be used as an identifier in strict code"));
                 }
                 if let Some(slot) = self.resolve(name) {
                     self.emit(Opcode::GetBinding, slot)?;
@@ -1039,15 +1104,15 @@ impl Compiler {
         Ok(())
     }
 
-    fn for_in(&mut self, left: &ForHead, right: &Expr, body: &Stmt) -> Result<(), CompileError> {
-        self.for_each(left, right, body, true)
+    fn for_in(&mut self, left: &ForHead, right: &Expr, body: &Stmt, labels: Vec<String>) -> Result<(), CompileError> {
+        self.for_each(left, right, body, true, labels)
     }
 
-    fn for_of(&mut self, left: &ForHead, right: &Expr, body: &Stmt) -> Result<(), CompileError> {
-        self.for_each(left, right, body, false)
+    fn for_of(&mut self, left: &ForHead, right: &Expr, body: &Stmt, labels: Vec<String>) -> Result<(), CompileError> {
+        self.for_each(left, right, body, false, labels)
     }
 
-    fn for_each(&mut self, left: &ForHead, right: &Expr, body: &Stmt, for_in: bool) -> Result<(), CompileError> {
+    fn for_each(&mut self, left: &ForHead, right: &Expr, body: &Stmt, for_in: bool, labels: Vec<String>) -> Result<(), CompileError> {
         self.emit(Opcode::ClearCompletion, 0)?;
         let (pattern, kind) = match left {
             ForHead::Decl(kind, pattern) => (pattern, Some(*kind)),
@@ -1069,7 +1134,7 @@ impl Compiler {
         let start = self.offset()?;
         self.emit(Opcode::GetBinding, iterator)?;
         let exit = self.emit(Opcode::IteratorStep, 0)?;
-        self.loops.push(Loop { scope_depth: self.scopes.len(), breaks: Vec::new(), continues: Some(Vec::new()), iterator: Some(iterator) });
+        self.loops.push(Loop { labels, breakable: true, scope_depth: self.scopes.len(), breaks: Vec::new(), continues: Some(Vec::new()), iterator: Some(iterator) });
         if lexical {
             self.enter_scope(pattern_names(pattern).into_iter().map(|name| (name, kind.unwrap())).collect(), &BTreeSet::new(), false)?;
         }
@@ -1138,7 +1203,19 @@ impl Compiler {
             }
         }
         let binding = if let Expr::Identifier(name) = target {
-            Some(self.resolve(name).ok_or(CompileError::Unsupported("implicit global assignment"))?)
+            if let Some(slot) = self.resolve(name) {
+                Some(slot)
+            } else {
+                if self.bytecode.strict {
+                    return Err(CompileError::Unsupported("implicit global assignment"));
+                }
+                let index = u32::try_from(self.bytecode.constants.len()).map_err(|_| CompileError::ProgramTooLarge)?;
+                self.bytecode.constants.push(Value::String("globalThis".into()));
+                self.emit(Opcode::Global, index)?;
+                self.constant(Value::String(name.clone().into()))?;
+                self.emit(Opcode::ToPropertyKey, 0)?;
+                None
+            }
         } else {
             self.member_reference(target)?;
             None
@@ -1727,6 +1804,7 @@ fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
                 }
             }
             Stmt::While { body, .. } | Stmt::DoWhile { body, .. } | Stmt::With { body, .. } => pending.push(body),
+            Stmt::Labelled { item, .. } => pending.push(item),
             Stmt::For { init, body, .. } => {
                 if let Some(ForInit::VarDecl(DeclKind::Var, declarations)) = init {
                     for declaration in declarations {
