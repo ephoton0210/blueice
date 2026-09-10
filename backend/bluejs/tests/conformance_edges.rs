@@ -33,6 +33,7 @@ fn all_supported_keywords_work_as_literal_and_member_property_names() {
         "finally",
         "new",
         "typeof",
+        "void",
         "instanceof",
         "in",
         "true",
@@ -43,6 +44,20 @@ fn all_supported_keywords_work_as_literal_and_member_property_names() {
         let source = format!("let o={{{keyword}:7}}; o.{keyword}+=2; o['{keyword}']");
         assert_eq!(evaluate(&source), Value::Number(9.0), "{keyword}");
     }
+}
+
+#[test]
+fn void_evaluates_its_operand_and_returns_undefined() {
+    for source in [
+        "void 0===undefined",
+        "let calls=0;void(calls+=1);calls===1",
+        "let object={value:0};void(object.value=7);object.value===7",
+        "let value=0;void(value=1),value===1",
+    ] {
+        assert_eq!(evaluate(source), Value::Bool(true), "{source}");
+    }
+    let code = compile(&parse("void missing").unwrap()).unwrap();
+    assert!(matches!(Vm::default().execute(&code), Err(RuntimeError::ReferenceError(_))));
 }
 
 #[test]
@@ -92,6 +107,20 @@ fn destructuring_binds_nested_patterns_defaults_rest_and_iterator_protocols() {
     for source in ["let {}=null", "let [x]=null", "let x;({x}=null)", "let x;([x]=null)"] {
         let code = compile(&parse(source).unwrap()).unwrap();
         assert!(matches!(Vm::default().execute(&code), Err(RuntimeError::TypeError(_))), "{source}");
+    }
+}
+
+#[test]
+fn sequence_expressions_preserve_order_and_enable_assignment_patterns() {
+    for source in [
+        "let trace='';let value=(trace+='a',trace+='b',7);trace==='ab'&&value===7",
+        "let first=0,last=0;(first=1,last=first+2,last)===3&&first===1&&last===3",
+        "let value;0,([value]=[7]);value===7",
+        "let sum=0;for(let i=0,j=1;i<3;i++,j+=2){sum+=j;}sum===9",
+        "function value(){return 1,2,3;}value()===3",
+        "let values=[1,2];values[(0,1)]===2",
+    ] {
+        assert_eq!(evaluate(source), Value::Bool(true), "{source}");
     }
 }
 

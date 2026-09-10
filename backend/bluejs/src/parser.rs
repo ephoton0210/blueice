@@ -128,6 +128,7 @@ fn keyword_as_str(k: Keyword) -> &'static str {
         Keyword::Finally => "finally",
         Keyword::New => "new",
         Keyword::Typeof => "typeof",
+        Keyword::Void => "void",
         Keyword::Delete => "delete",
         Keyword::Instanceof => "instanceof",
         Keyword::In => "in",
@@ -743,9 +744,20 @@ impl Parser {
     // ---- Expressions ----
 
     fn parse_expression(&mut self) -> Result<Expr, ParseError> {
-        // No comma operator in MVP scope, so "Expression" and
-        // "AssignmentExpression" coincide here.
-        self.parse_assignment()
+        // `Expression` is a left-associative sequence of assignment
+        // expressions. Callers which require AssignmentExpression
+        // (arguments, initializers, patterns, and conditional arms) stay on
+        // `parse_assignment`, because commas delimit those productions.
+        let first = self.parse_assignment()?;
+        let mut expressions = vec![first];
+        while self.eat_punct(Punct::Comma) {
+            expressions.push(self.parse_assignment()?);
+        }
+        if expressions.len() == 1 {
+            Ok(expressions.pop().unwrap())
+        } else {
+            Ok(Expr::Sequence(expressions))
+        }
     }
 
     fn parse_assignment(&mut self) -> Result<Expr, ParseError> {
@@ -1029,6 +1041,9 @@ impl Parser {
         }
         if self.eat_keyword(Keyword::Typeof) {
             return Ok(Expr::Unary { op: UnaryOp::Typeof, arg: Box::new(self.parse_unary()?) });
+        }
+        if self.eat_keyword(Keyword::Void) {
+            return Ok(Expr::Unary { op: UnaryOp::Void, arg: Box::new(self.parse_unary()?) });
         }
         if self.eat_keyword(Keyword::Delete) {
             return Ok(Expr::Unary { op: UnaryOp::Delete, arg: Box::new(self.parse_unary()?) });

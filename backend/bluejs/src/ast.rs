@@ -159,6 +159,7 @@ pub enum UnaryOp {
     Neg,
     Plus,
     Not,
+    Void,
     Typeof,
     Delete,
 }
@@ -250,6 +251,9 @@ pub enum Expr {
     Update { op: UpdateOp, arg: Box<Expr>, prefix: bool },
     Binary { op: BinaryOp, left: Box<Expr>, right: Box<Expr> },
     Logical { op: LogicalOp, left: Box<Expr>, right: Box<Expr> },
+    /// A left-to-right `Expression` sequence separated by commas. The value
+    /// of the sequence is its final assignment expression.
+    Sequence(Vec<Expr>),
     Assign { op: AssignOp, target: Box<Expr>, value: Box<Expr> },
     DestructureAssign { pattern: AssignmentPattern, value: Box<Expr> },
     Conditional { test: Box<Expr>, consequent: Box<Expr>, alternate: Box<Expr> },

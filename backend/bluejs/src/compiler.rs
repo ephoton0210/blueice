@@ -445,12 +445,18 @@ impl Compiler {
                 }
             }
             Expr::Unary { op, arg } => {
+                if *op == UnaryOp::Void {
+                    self.expression(arg)?;
+                    self.emit(Opcode::Pop, 0)?;
+                    self.constant(Value::Undefined)?;
+                    return Ok(());
+                }
                 let opcode = match op {
                     UnaryOp::Neg => Opcode::Negate,
                     UnaryOp::Plus => Opcode::ToNumber,
                     UnaryOp::Not => Opcode::Not,
                     UnaryOp::Typeof => Opcode::Typeof,
-                    UnaryOp::Delete => Opcode::DeleteProperty,
+                    UnaryOp::Delete | UnaryOp::Void => Opcode::DeleteProperty,
                 };
                 if *op == UnaryOp::Delete {
                     if matches!(&**arg, Expr::Member { .. }) {
@@ -500,6 +506,14 @@ impl Compiler {
                 self.emit(Opcode::Pop, 0)?;
                 self.expression(right)?;
                 self.patch(jump, self.offset()?);
+            }
+            Expr::Sequence(expressions) => {
+                for (index, expression) in expressions.iter().enumerate() {
+                    self.expression(expression)?;
+                    if index + 1 != expressions.len() {
+                        self.emit(Opcode::Pop, 0)?;
+                    }
+                }
             }
             Expr::Conditional { test, consequent, alternate } => {
                 self.expression(test)?;
