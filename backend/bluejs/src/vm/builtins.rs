@@ -784,6 +784,13 @@ impl Vm {
         primitive::number(&self.coerce_primitive(value, "number")?)
     }
 
+    pub(super) fn coerce_numeric(
+        &mut self,
+        value: &Value,
+    ) -> Result<primitive::Numeric, RuntimeError> {
+        primitive::numeric(&self.coerce_primitive(value, "number")?)
+    }
+
     pub(super) fn coerce_length(&mut self, value: &Value) -> Result<f64, RuntimeError> {
         native::length(&Value::Number(self.coerce_number(value)?))
     }
@@ -1132,6 +1139,7 @@ impl Vm {
             "Object" => NativeFunction::Object,
             "Number" => NativeFunction::PrimitiveConstructor(false),
             "Boolean" => NativeFunction::PrimitiveConstructor(true),
+            "BigInt" => NativeFunction::BigInt,
             "isNaN" => NativeFunction::IsNaN,
             "isFinite" => NativeFunction::IsFinite,
             "parseInt" => NativeFunction::ParseInt,
@@ -1252,10 +1260,13 @@ impl Vm {
                     false,
                     false,
                 )?;
-            } else if matches!(name, "Number" | "Boolean") {
+            } else if matches!(name, "Number" | "Boolean" | "BigInt") {
                 let boolean = name == "Boolean";
+                let bigint = name == "BigInt";
                 let value = if boolean {
                     Value::Bool(false)
+                } else if bigint {
+                    Value::BigInt(0.into())
                 } else {
                     Value::Number(0.0)
                 };
@@ -1277,27 +1288,44 @@ impl Vm {
                     false,
                     true,
                 )?;
-                self.install_native(
-                    boxed_prototype,
-                    prototype,
-                    "toString",
-                    0,
-                    NativeFunction::PrimitiveMethod {
-                        boolean,
-                        string: true,
-                    },
-                )?;
-                self.install_native(
-                    boxed_prototype,
-                    prototype,
-                    "valueOf",
-                    0,
-                    NativeFunction::PrimitiveMethod {
-                        boolean,
-                        string: false,
-                    },
-                )?;
-                if !boolean {
+                if bigint {
+                    self.install_native(
+                        boxed_prototype,
+                        prototype,
+                        "toString",
+                        0,
+                        NativeFunction::BigIntToString,
+                    )?;
+                    self.install_native(
+                        boxed_prototype,
+                        prototype,
+                        "valueOf",
+                        0,
+                        NativeFunction::BigIntValueOf,
+                    )?;
+                } else {
+                    self.install_native(
+                        boxed_prototype,
+                        prototype,
+                        "toString",
+                        0,
+                        NativeFunction::PrimitiveMethod {
+                            boolean,
+                            string: true,
+                        },
+                    )?;
+                    self.install_native(
+                        boxed_prototype,
+                        prototype,
+                        "valueOf",
+                        0,
+                        NativeFunction::PrimitiveMethod {
+                            boolean,
+                            string: false,
+                        },
+                    )?;
+                }
+                if name == "Number" {
                     for (property, value) in [
                         ("EPSILON", f64::EPSILON),
                         ("MAX_SAFE_INTEGER", 9_007_199_254_740_991.0),
@@ -1579,6 +1607,20 @@ impl Vm {
                     heap.alloc_boxed_primitive(value, prototype)
                 })?))
             }
+            NativeFunction::BigInt => {
+                if construct {
+                    return Err(RuntimeError::TypeError(
+                        "BigInt is not a constructor".into(),
+                    ));
+                }
+                let value = self.coerce_primitive(first, "number")?;
+                let Value::BigInt(value) = value else {
+                    return Err(RuntimeError::TypeError(
+                        "BigInt conversion is not implemented for this value".into(),
+                    ));
+                };
+                Ok(Value::BigInt(value))
+            }
             NativeFunction::PrimitiveMethod { boolean, string } => {
                 let value = if let Value::Object(id) = receiver {
                     self.heap.boxed_primitive(id)?.unwrap_or(Value::Undefined)
@@ -1616,6 +1658,23 @@ impl Vm {
                     Ok(Value::Symbol(symbol))
                 }
             }
+            NativeFunction::BigIntToString | NativeFunction::BigIntValueOf => {
+                let value = if let Value::Object(id) = receiver {
+                    self.heap.boxed_primitive(id)?.unwrap_or(Value::Undefined)
+                } else {
+                    receiver
+                };
+                let Value::BigInt(value) = value else {
+                    return Err(RuntimeError::TypeError(
+                        "BigInt method requires a BigInt".into(),
+                    ));
+                };
+                if function == NativeFunction::BigIntToString {
+                    Ok(Value::String(value.to_string().into()))
+                } else {
+                    Ok(Value::BigInt(value))
+                }
+            }
             NativeFunction::RegExp => {
                 if !construct
                     && *native::argument(&args, 1) == Value::Undefined
@@ -1640,6 +1699,7 @@ impl Vm {
                     Value::String(_) => "String",
                     Value::Symbol(_) => "Symbol",
                     Value::Number(_) => "Number",
+                    Value::BigInt(_) => "BigInt",
                     Value::Bool(_) => "Boolean",
                     Value::Object(id) => {
                         if self.heap.boxed_string(*id)?.is_some() {
@@ -1654,7 +1714,9 @@ impl Vm {
                             match value {
                                 Value::Number(_) => "Number",
                                 Value::Bool(_) => "Boolean",
-                                _ => "Symbol",
+                                Value::BigInt(_) => "BigInt",
+                                Value::Symbol(_) => "Symbol",
+                                _ => "Object",
                             }
                         } else {
                             "Object"
@@ -2180,6 +2242,7 @@ impl Vm {
                 let constructor = self.global(match value {
                     Value::Symbol(_) => "Symbol",
                     Value::Bool(_) => "Boolean",
+                    Value::BigInt(_) => "BigInt",
                     _ => "Number",
                 })?;
                 let prototype = self

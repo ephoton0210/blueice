@@ -36,6 +36,7 @@ opcodes! {
     InitializeBinding: 5, 0;
     StoreBinding: 5, 0;
     UnboundName: 5, 0;
+    SetUnboundName: 5, 0;
     EnterScope: 5, 0;
     LeaveScope: 5, 0;
     Pop: 1, 0;

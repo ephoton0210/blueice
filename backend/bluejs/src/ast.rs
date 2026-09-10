@@ -11,6 +11,7 @@
 //! existing member references as well as identifiers.
 
 use crate::JsString;
+use num_bigint::BigInt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
@@ -348,6 +349,7 @@ pub enum ArrowBody {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Number(f64),
+    BigInt(BigInt),
     String(JsString),
     Bool(bool),
     Null,
@@ -677,6 +679,7 @@ fn property_key_contains_super(key: &PropertyKey, search: SuperSearch) -> bool {
 fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
     match expr {
         Expr::Number(_)
+        | Expr::BigInt(_)
         | Expr::String(_)
         | Expr::Bool(_)
         | Expr::Null

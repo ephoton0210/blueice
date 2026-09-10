@@ -127,6 +127,9 @@ impl Vm {
             } else {
                 "null".into()
             })),
+            Value::BigInt(_) => Err(RuntimeError::TypeError(
+                "cannot serialize a BigInt value as JSON".into(),
+            )),
             Value::String(value) => Ok(Some(json_quote(value).into())),
             Value::Object(object) => {
                 if self.is_callable(value)? {

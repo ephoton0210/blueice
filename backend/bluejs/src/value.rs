@@ -8,6 +8,7 @@
 //! units throughout parsing, execution and property storage.
 
 use crate::{JsString, JsSymbol};
+use num_bigint::BigInt;
 
 /// An opaque object identity. The heap identity prevents a handle from
 /// another (even already-dropped) heap aliasing one of this heap's
@@ -29,6 +30,7 @@ pub enum Value {
     Null,
     Bool(bool),
     Number(f64),
+    BigInt(BigInt),
     String(JsString),
     Symbol(JsSymbol),
     Object(ObjectId),
@@ -46,6 +48,7 @@ impl Value {
         match self {
             Value::String(s) => s.byte_len(),
             Value::Symbol(s) => s.description.as_ref().map_or(0, JsString::byte_len),
+            Value::BigInt(n) => n.to_signed_bytes_le().len(),
             _ => 0,
         }
     }

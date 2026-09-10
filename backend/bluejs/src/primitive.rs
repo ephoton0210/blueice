@@ -5,13 +5,24 @@
 //! Primitive coercions, after observable ToPrimitive has run in the VM.
 
 use crate::{JsString, RuntimeError, Value};
+use num_bigint::BigInt;
+use num_traits::Zero;
 use std::cmp::Ordering;
+
+/// The ECMAScript Numeric union, kept distinct from `Number` conversion so
+/// callers can reject Number/BigInt mixing after observable ToPrimitive.
+#[derive(Debug, Clone)]
+pub(crate) enum Numeric {
+    Number(f64),
+    BigInt(BigInt),
+}
 
 pub(crate) fn truthy(value: &Value) -> bool {
     match value {
         Value::Undefined | Value::Null => false,
         Value::Bool(b) => *b,
         Value::Number(n) => *n != 0.0 && !n.is_nan(),
+        Value::BigInt(n) => !n.is_zero(),
         Value::String(s) => !s.is_empty(),
         Value::Object(_) | Value::Symbol(_) => true,
     }
@@ -23,6 +34,7 @@ pub(crate) fn type_name(value: &Value) -> &'static str {
         Value::Null | Value::Object(_) => "object",
         Value::Bool(_) => "boolean",
         Value::Number(_) => "number",
+        Value::BigInt(_) => "bigint",
         Value::String(_) => "string",
         Value::Symbol(_) => "symbol",
     }
@@ -36,12 +48,19 @@ pub(crate) fn number(value: &Value) -> Result<f64, RuntimeError> {
         Value::Number(n) => *n,
         // A StringNumericLiteral cannot contain surrogate code points.
         Value::String(s) => s.to_utf8().map_or(f64::NAN, |s| string_number(&s)),
-        Value::Symbol(_) | Value::Object(_) => {
+        Value::BigInt(_) | Value::Symbol(_) | Value::Object(_) => {
             return Err(RuntimeError::TypeError(
                 "Number conversion requires a non-Symbol primitive".into(),
             ))
         }
     })
+}
+
+pub(crate) fn numeric(value: &Value) -> Result<Numeric, RuntimeError> {
+    match value {
+        Value::BigInt(value) => Ok(Numeric::BigInt(value.clone())),
+        _ => Ok(Numeric::Number(number(value)?)),
+    }
 }
 
 /// ECMAScript ToUint32 applied after observable numeric coercion. The finite
@@ -75,6 +94,7 @@ pub(crate) fn string(value: &Value) -> Result<JsString, RuntimeError> {
         .into(),
         Value::Number(n) if *n == 0.0 => "0".into(),
         Value::Number(n) => number_string(*n).into(),
+        Value::BigInt(n) => n.to_string().into(),
         Value::Symbol(_) | Value::Object(_) => {
             return Err(RuntimeError::TypeError(
                 "String conversion requires a non-Symbol primitive".into(),

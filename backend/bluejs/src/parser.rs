@@ -2018,6 +2018,10 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Number(n))
             }
+            Token::BigInt(n) => {
+                self.advance();
+                Ok(Expr::BigInt(n))
+            }
             Token::String(s) => {
                 self.advance();
                 Ok(Expr::String(s))

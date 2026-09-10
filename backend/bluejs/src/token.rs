@@ -5,10 +5,10 @@
 //! BlueJS tokenizer: a `&str` -> [`Token`] stream, scoped to exactly
 //! `phase-2-mvp-scope/PLAN.md`'s "MVP JS scope (decided)" -- not the
 //! full ECMAScript lexical grammar. The edition 17 implementation track
-//! now extends that original subset: Number radix literals/separators,
-//! ECMAScript whitespace/line terminators and string continuations are
-//! implemented. Regex literals, `**`, BigInt, tagged templates and legacy
-//! octal escapes remain to be implemented.
+//! now extends that original subset: Number/BigInt radix literals and
+//! separators, ECMAScript whitespace/line terminators and string
+//! continuations are implemented. Regex literals, `**`, tagged templates
+//! and legacy octal escapes remain to be implemented.
 //! [`Keyword`] mirrors this: `undefined` is deliberately NOT a keyword
 //! here (unlike `null`/`true`/`false`) because it isn't one in real
 //! ECMAScript either -- it's an ordinary identifier bound to a global
@@ -19,10 +19,12 @@
 //! units so Unicode escapes can preserve lone surrogates losslessly.
 
 use crate::JsString;
+use num_bigint::BigInt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     Number(f64),
+    BigInt(BigInt),
     /// A plain (non-template) string literal, already "cooked" --
     /// escape sequences resolved to the characters they represent.
     String(JsString),
@@ -462,10 +464,23 @@ impl Tokenizer {
                 if digits.is_empty() {
                     return Err(LexError::new("non-decimal literal requires digits"));
                 }
+                if self.peek() == Some('n') {
+                    self.advance();
+                    return self.finish_bigint(&digits, 1 << bits);
+                }
                 return self.finish_number(crate::primitive::radix_number(&digits, bits));
             }
         }
         let mut text = self.scan_digits(10, !leading_zero)?;
+        if self.peek() == Some('n') {
+            self.advance();
+            if leading_zero && text.len() > 1 {
+                return Err(LexError::new(
+                    "decimal BigInt literal cannot have a leading zero",
+                ));
+            }
+            return self.finish_bigint(&text, 10);
+        }
         // Legacy leading-zero octal literals exist in sloppy scripts.
         // Unlike leading-zero decimals containing 8/9, they have no
         // decimal fraction/exponent production (§12.9.3).
@@ -525,6 +540,20 @@ impl Tokenizer {
             ));
         }
         Ok(Token::Number(number))
+    }
+
+    fn finish_bigint(&self, digits: &str, radix: u32) -> Result<Token, LexError> {
+        if self
+            .peek()
+            .is_some_and(|c| is_ident_start(c) || c.is_ascii_digit() || c == '\\')
+        {
+            return Err(LexError::new(
+                "identifier or digit immediately after BigInt literal",
+            ));
+        }
+        let value = BigInt::parse_bytes(digits.as_bytes(), radix)
+            .expect("scanner validates BigInt literal digits");
+        Ok(Token::BigInt(value))
     }
 
     fn scan_escape(&mut self) -> Result<Option<u32>, LexError> {

@@ -13,6 +13,8 @@ use crate::{
     Bytecode, Heap, HeapConfig, HeapError, JsString, JsSymbol, ObjectId, Opcode,
     PropertyDescriptor, PropertyName, RootId, Value,
 };
+use num_bigint::{BigInt, Sign};
+use num_traits::ToPrimitive;
 use std::collections::{HashMap, HashSet};
 mod builtins;
 mod errors;
@@ -1211,6 +1213,20 @@ impl Vm {
                                 .push(value.ok_or(RuntimeError::ReferenceError(name))?);
                         }
                     }
+                    Opcode::SetUnboundName => {
+                        let Value::String(name) = &code.constants[operand] else {
+                            unreachable!("compiler emits a name")
+                        };
+                        let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                        let global = self.global("globalThis")?;
+                        let global_id = global.object_id().expect("globalThis is an object");
+                        let key: PropertyName = name.as_str().into();
+                        if code.strict && !self.has_property(global_id, &key)? {
+                            return Err(RuntimeError::ReferenceError(name));
+                        }
+                        let value = self.stack.last().expect("assignment has a value").clone();
+                        self.set_property(&global, &key, &value)?;
+                    }
                     Opcode::EnterScope => {
                         for slot in &code.scopes[operand] {
                             self.cells.remove(&(*slot as usize));
@@ -1241,12 +1257,12 @@ impl Vm {
                     Opcode::Multiply => self.numeric(|a, b| a * b)?,
                     Opcode::Divide => self.numeric(|a, b| a / b)?,
                     Opcode::Remainder => self.numeric(|a, b| a % b)?,
-                    Opcode::ShiftLeft => self.shift(|a, b| a.wrapping_shl(b) as f64)?,
-                    Opcode::ShiftRight => self.shift(|a, b| (a >> b) as f64)?,
-                    Opcode::UnsignedShiftRight => self.shift(|a, b| ((a as u32) >> b) as f64)?,
-                    Opcode::BitAnd => self.bitwise(|a, b| a & b)?,
-                    Opcode::BitXor => self.bitwise(|a, b| a ^ b)?,
-                    Opcode::BitOr => self.bitwise(|a, b| a | b)?,
+                    Opcode::ShiftLeft | Opcode::ShiftRight | Opcode::UnsignedShiftRight => {
+                        self.shift(instruction.opcode)?
+                    }
+                    Opcode::BitAnd | Opcode::BitXor | Opcode::BitOr => {
+                        self.bitwise(instruction.opcode)?
+                    }
                     Opcode::StrictEqual => self.binary(|_, a, b| Ok(Value::Bool(a == b)))?,
                     Opcode::StrictNotEqual => self.binary(|_, a, b| Ok(Value::Bool(a != b)))?,
                     Opcode::Equal => {
@@ -1271,10 +1287,8 @@ impl Vm {
                     | Opcode::Typeof => {
                         let arg = self.stack.last().unwrap().clone();
                         let value = match instruction.opcode {
-                            Opcode::Negate => Value::Number(-self.coerce_number(&arg)?),
-                            Opcode::BitNot => Value::Number(
-                                (!primitive::to_int32(self.coerce_number(&arg)?)) as f64,
-                            ),
+                            Opcode::Negate => self.negate(&arg)?,
+                            Opcode::BitNot => self.bit_not(&arg)?,
                             Opcode::ToNumber => Value::Number(self.coerce_number(&arg)?),
                             Opcode::ToString => Value::String(self.coerce_string(&arg)?),
                             Opcode::Not => Value::Bool(!self.to_boolean(&arg)?),
@@ -2497,19 +2511,86 @@ impl Vm {
         })
     }
 
-    fn bitwise(&mut self, operation: fn(i32, i32) -> i32) -> Result<(), RuntimeError> {
-        self.binary(|vm, left, right| {
-            let left = primitive::to_int32(vm.coerce_number(&left)?);
-            let right = primitive::to_int32(vm.coerce_number(&right)?);
-            Ok(Value::Number(operation(left, right) as f64))
+    fn negate(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        Ok(match self.coerce_numeric(value)? {
+            primitive::Numeric::Number(value) => Value::Number(-value),
+            primitive::Numeric::BigInt(value) => Value::BigInt(-value),
         })
     }
 
-    fn shift(&mut self, operation: fn(i32, u32) -> f64) -> Result<(), RuntimeError> {
+    fn bit_not(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        Ok(match self.coerce_numeric(value)? {
+            primitive::Numeric::Number(value) => {
+                Value::Number((!primitive::to_int32(value)) as f64)
+            }
+            primitive::Numeric::BigInt(value) => Value::BigInt(!value),
+        })
+    }
+
+    fn bitwise(&mut self, operation: Opcode) -> Result<(), RuntimeError> {
         self.binary(|vm, left, right| {
-            let left = primitive::to_int32(vm.coerce_number(&left)?);
-            let right = primitive::to_uint32(vm.coerce_number(&right)?) & 0x1f;
-            Ok(Value::Number(operation(left, right)))
+            let left = vm.coerce_numeric(&left)?;
+            let right = vm.coerce_numeric(&right)?;
+            match (left, right) {
+                (primitive::Numeric::Number(left), primitive::Numeric::Number(right)) => {
+                    let left = primitive::to_int32(left);
+                    let right = primitive::to_int32(right);
+                    let value = match operation {
+                        Opcode::BitAnd => left & right,
+                        Opcode::BitXor => left ^ right,
+                        Opcode::BitOr => left | right,
+                        _ => unreachable!("bitwise caller selects a bitwise opcode"),
+                    };
+                    Ok(Value::Number(value as f64))
+                }
+                (primitive::Numeric::BigInt(left), primitive::Numeric::BigInt(right)) => {
+                    let value = match operation {
+                        Opcode::BitAnd => left & right,
+                        Opcode::BitXor => left ^ right,
+                        Opcode::BitOr => left | right,
+                        _ => unreachable!("bitwise caller selects a bitwise opcode"),
+                    };
+                    Ok(Value::BigInt(value))
+                }
+                _ => Err(RuntimeError::TypeError(
+                    "cannot mix BigInt and other types in a bitwise operation".into(),
+                )),
+            }
+        })
+    }
+
+    fn shift(&mut self, operation: Opcode) -> Result<(), RuntimeError> {
+        self.binary(|vm, left, right| {
+            let left = vm.coerce_numeric(&left)?;
+            let right = vm.coerce_numeric(&right)?;
+            match (left, right) {
+                (primitive::Numeric::Number(left), primitive::Numeric::Number(right)) => {
+                    let left = primitive::to_int32(left);
+                    let right = primitive::to_uint32(right) & 0x1f;
+                    let value = match operation {
+                        Opcode::ShiftLeft => left.wrapping_shl(right) as f64,
+                        Opcode::ShiftRight => (left >> right) as f64,
+                        Opcode::UnsignedShiftRight => ((left as u32) >> right) as f64,
+                        _ => unreachable!("shift caller selects a shift opcode"),
+                    };
+                    Ok(Value::Number(value))
+                }
+                (primitive::Numeric::BigInt(left), primitive::Numeric::BigInt(right)) => {
+                    if operation == Opcode::UnsignedShiftRight {
+                        return Err(RuntimeError::TypeError(
+                            "BigInt does not support unsigned right shift".into(),
+                        ));
+                    }
+                    Ok(Value::BigInt(bigint_shift(
+                        left,
+                        right,
+                        operation == Opcode::ShiftLeft,
+                    )?))
+                }
+                _ => Err(RuntimeError::TypeError(
+                    "cannot mix BigInt and other types in a shift operation".into(),
+                )),
+            }
         })
     }
 
@@ -2637,6 +2718,31 @@ impl Vm {
             ))
         }
     }
+}
+
+/// BigInt shifts use the full signed right operand, unlike Number shifts
+/// whose count is reduced modulo 32. A negative count reverses direction.
+fn bigint_shift(value: BigInt, count: BigInt, left: bool) -> Result<BigInt, RuntimeError> {
+    let reverse = count.sign() == Sign::Minus;
+    let shift_left = left != reverse;
+    let magnitude = count.magnitude().to_usize();
+    let Some(magnitude) = magnitude else {
+        if !shift_left {
+            return Ok(if value.sign() == Sign::Minus {
+                BigInt::from(-1)
+            } else {
+                BigInt::from(0)
+            });
+        }
+        return Err(RuntimeError::RangeError(
+            "BigInt shift count exceeds implementation capacity".into(),
+        ));
+    };
+    Ok(if shift_left {
+        value << magnitude
+    } else {
+        value >> magnitude
+    })
 }
 
 #[cfg(test)]

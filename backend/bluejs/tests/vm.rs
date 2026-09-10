@@ -483,19 +483,41 @@ fn object_operations_preserve_identity_and_evaluation_order() {
 
 #[test]
 fn unsupported_syntax_and_invalid_bindings_fail_before_execution() {
-    for source in ["for(x of y){}", "for(x in y){}", "let undefined=1"] {
+    let source = "let undefined=1";
+    assert!(
+        matches!(
+            compile(&parse(source).unwrap()),
+            Err(CompileError::Unsupported(_))
+        ),
+        "{source}"
+    );
+    for source in ["for(x of y){}", "for(x in y){}"] {
+        assert!(compile(&parse(source).unwrap()).is_ok(), "{source}");
+    }
+    assert_eq!(evaluate("for(x of [1,2]){};x").unwrap(), Value::Number(2.0));
+    assert_eq!(
+        evaluate("for(x in {key:1}){};x").unwrap(),
+        Value::String("key".into())
+    );
+    for source in [
+        "'use strict';for(x of [1]){}",
+        "'use strict';for(x in {key:1}){}",
+    ] {
+        let code = compile(&parse(source).unwrap()).expect("strict loop should compile");
         assert!(
             matches!(
-                compile(&parse(source).unwrap()),
-                Err(CompileError::Unsupported(_))
+                Vm::default().execute(&code),
+                Err(RuntimeError::ReferenceError(_))
             ),
             "{source}"
         );
     }
     assert_eq!(evaluate("x=1; globalThis.x").unwrap(), Value::Number(1.0));
+    let strict_unbound = compile(&parse("'use strict'; x=1").unwrap())
+        .expect("strict unbound assignment should compile");
     assert!(matches!(
-        compile(&parse("'use strict'; x=1").unwrap()),
-        Err(CompileError::Unsupported(_))
+        Vm::default().execute(&strict_unbound),
+        Err(RuntimeError::ReferenceError(_))
     ));
     for source in ["x == 1", "x != 1", "x in y"] {
         assert!(compile(&parse(source).unwrap()).is_ok(), "{source}");

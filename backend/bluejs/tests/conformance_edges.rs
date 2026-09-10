@@ -82,6 +82,24 @@ fn number_bitwise_operators_coerce_mask_and_preserve_reference_evaluation() {
 }
 
 #[test]
+fn bigint_bitwise_operators_preserve_precision_and_reject_mixed_numeric_types() {
+    for source in [
+        "(~0n)===-1n&&(5n&3n)===1n&&(5n|2n)===7n&&(5n^3n)===6n",
+        "(1n<<33n)===8589934592n&&(5n<<-1n)===2n&&(-8n>>1n)===-4n&&(-8n>>-1n)===-16n",
+        "(Object(3n)&1n)===1n&&(({valueOf(){return 2n}}|1n)===3n)",
+        "typeof 0n==='bigint'&&String(-2n)==='-2'&&BigInt(2n)===2n&&Object.prototype.toString.call(Object(1n))==='[object BigInt]'",
+        "let caught=false;try{1n&1}catch(error){caught=error instanceof TypeError;}caught",
+        "let caught=false;try{1n>>>0n}catch(error){caught=error instanceof TypeError;}caught",
+    ] {
+        let code = compile(&parse(source).unwrap()).unwrap();
+        assert_eq!(Vm::default().execute(&code), Ok(Value::Bool(true)), "{source}");
+    }
+    for source in ["1.0n", "1e1n", "01n", "0x1nn"] {
+        assert!(parse(source).is_err(), "{source}");
+    }
+}
+
+#[test]
 fn number_static_constants_have_spec_values_and_attributes() {
     assert!(matches!(
         evaluate("Number.NaN"),
@@ -114,6 +132,18 @@ fn property_is_enumerable_observes_only_own_enumerable_properties() {
         ),
         Value::Bool(true)
     );
+}
+
+#[test]
+fn strict_unresolvable_assignments_fail_at_put_value_after_the_rhs() {
+    for source in [
+        "\"use strict\";let marker=0;let caught=false;try{missing=(marker=1)}catch(error){caught=error instanceof ReferenceError;}caught&&marker===1",
+        "\"use strict\";let caught=false;try{x<<(x=1)}catch(error){caught=error instanceof ReferenceError;}caught",
+        "\"use strict\";globalThis.bound=1;bound=2;globalThis.bound===2",
+    ] {
+        let code = compile(&parse(source).unwrap()).expect("strict assignment should compile");
+        assert_eq!(Vm::default().execute(&code), Ok(Value::Bool(true)), "{source}");
+    }
 }
 
 #[test]

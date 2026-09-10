@@ -1097,6 +1097,7 @@ impl Compiler {
                 self.emit(Opcode::Call, expressions.len() as u32 + 1)?;
             }
             Expr::Number(n) => self.constant(Value::Number(*n))?,
+            Expr::BigInt(n) => self.constant(Value::BigInt(n.clone()))?,
             Expr::String(s) => self.constant(Value::String(s.clone()))?,
             Expr::Bool(b) => self.constant(Value::Bool(*b))?,
             Expr::Null => self.constant(Value::Null)?,
@@ -1124,8 +1125,8 @@ impl Compiler {
                             self.emit(Opcode::GlobalString, 0)?;
                         }
                         "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number"
-                        | "Boolean" | "Array" | "Function" | "globalThis" | "Intl" | "Error"
-                        | "TypeError" | "eval" | "isNaN" | "isFinite" | "parseInt"
+                        | "Boolean" | "BigInt" | "Array" | "Function" | "globalThis" | "Intl"
+                        | "Error" | "TypeError" | "eval" | "isNaN" | "isFinite" | "parseInt"
                         | "parseFloat" | "JSON" | "RangeError" | "SyntaxError"
                         | "ReferenceError" | "EvalError" | "URIError" => {
                             let index = self.bytecode.constants.len() as u32;
@@ -1357,10 +1358,17 @@ impl Compiler {
             }
             Expr::Update { op, arg, prefix } => {
                 if let Expr::Identifier(name) = &**arg {
-                    let slot = self
-                        .resolve(name)
-                        .ok_or(CompileError::Unsupported("implicit global assignment"))?;
-                    self.emit(Opcode::GetBinding, slot)?;
+                    let binding = self.resolve(name);
+                    let name_index = if binding.is_none() {
+                        Some(self.name_constant(name)?)
+                    } else {
+                        None
+                    };
+                    if let Some(slot) = binding {
+                        self.emit(Opcode::GetBinding, slot)?;
+                    } else {
+                        self.emit(Opcode::UnboundName, name_index.unwrap())?;
+                    }
                     self.emit(Opcode::ToNumber, 0)?;
                     if !prefix {
                         self.emit(Opcode::Dup, 0)?;
@@ -1374,7 +1382,11 @@ impl Compiler {
                         },
                         0,
                     )?;
-                    self.emit(Opcode::StoreBinding, slot)?;
+                    if let Some(slot) = binding {
+                        self.emit(Opcode::StoreBinding, slot)?;
+                    } else {
+                        self.emit(Opcode::SetUnboundName, name_index.unwrap())?;
+                    }
                     if !prefix {
                         self.emit(Opcode::Pop, 0)?;
                     }
@@ -1619,10 +1631,12 @@ impl Compiler {
                         "a destructuring for-of assignment target"
                     }));
                 };
-                let slot = self
-                    .resolve(name)
-                    .ok_or(CompileError::Unsupported("implicit global assignment"))?;
-                self.emit(Opcode::StoreBinding, slot)?;
+                if let Some(slot) = self.resolve(name) {
+                    self.emit(Opcode::StoreBinding, slot)?;
+                } else {
+                    let index = self.name_constant(name)?;
+                    self.emit(Opcode::SetUnboundName, index)?;
+                }
                 self.emit(Opcode::Pop, 0)?;
             }
         }
@@ -1689,13 +1703,24 @@ impl Compiler {
                 return Ok(());
             }
         }
+        if let Expr::Identifier(name) = target {
+            if self.resolve(name).is_none() && self.bytecode.strict {
+                let index = self.name_constant(name)?;
+                if op != AssignOp::Assign {
+                    self.emit(Opcode::UnboundName, index)?;
+                }
+                self.expression(value)?;
+                if let Some(opcode) = compound_assignment_opcode(op) {
+                    self.emit(opcode, 0)?;
+                }
+                self.emit(Opcode::SetUnboundName, index)?;
+                return Ok(());
+            }
+        }
         let binding = if let Expr::Identifier(name) = target {
             if let Some(slot) = self.resolve(name) {
                 Some(slot)
             } else {
-                if self.bytecode.strict {
-                    return Err(CompileError::Unsupported("implicit global assignment"));
-                }
                 let index = u32::try_from(self.bytecode.constants.len())
                     .map_err(|_| CompileError::ProgramTooLarge)?;
                 self.bytecode
@@ -1796,10 +1821,12 @@ impl Compiler {
     /// the outer assignment pattern keeps its duplicate RHS beneath it.
     fn assign_pattern_target(&mut self, target: &Expr) -> Result<(), CompileError> {
         if let Expr::Identifier(name) = target {
-            let slot = self
-                .resolve(name)
-                .ok_or(CompileError::Unsupported("implicit global assignment"))?;
-            self.emit(Opcode::StoreBinding, slot)?;
+            if let Some(slot) = self.resolve(name) {
+                self.emit(Opcode::StoreBinding, slot)?;
+            } else {
+                let index = self.name_constant(name)?;
+                self.emit(Opcode::SetUnboundName, index)?;
+            }
         } else {
             self.member_reference(target)?;
             self.emit(Opcode::SetDestructureProperty, 0)?;
@@ -1834,6 +1861,13 @@ impl Compiler {
         }
         self.emit(Opcode::ToPropertyKey, 0)?;
         Ok(())
+    }
+
+    fn name_constant(&mut self, name: &str) -> Result<u32, CompileError> {
+        let index = u32::try_from(self.bytecode.constants.len())
+            .map_err(|_| CompileError::ProgramTooLarge)?;
+        self.bytecode.constants.push(Value::String(name.into()));
+        Ok(index)
     }
 
     fn super_property_key(&mut self, property: &Expr, computed: bool) -> Result<(), CompileError> {
