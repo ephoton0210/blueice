@@ -17,11 +17,29 @@ impl Vm {
     }
 
     pub(super) fn lookup_global_name(&mut self, name: &str) -> Result<Option<Value>, RuntimeError> {
+        if self.dynamic_eval_bindings.contains_key(name)
+            || self
+                .dynamic_eval_outer_bindings
+                .iter()
+                .rev()
+                .any(|bindings| bindings.contains_key(name))
+        {
+            return self
+                .dynamic_eval_binding_value(name)?
+                .map(Some)
+                .ok_or_else(|| RuntimeError::ReferenceError(name.into()));
+        }
         if self.global_bindings.contains_key(name) {
             return self
                 .global_binding_value(name)?
                 .map(Some)
                 .ok_or_else(|| RuntimeError::ReferenceError(name.into()));
+        }
+        if let Some(&global) = self.globals.get("globalThis") {
+            // `with` lookup and indirect name access can reach a standard
+            // global without first compiling a direct intrinsic reference.
+            // Materialize such lazy globals before testing the object record.
+            self.materialize_lexical_global(global, name)?;
         }
         if let Some(&id) = self.globals.get(name) {
             return Ok(Some(Value::Object(id)));

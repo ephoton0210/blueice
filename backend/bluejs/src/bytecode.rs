@@ -37,6 +37,8 @@ opcodes! {
     StoreBinding: 5, 0;
     UnboundName: 5, 0;
     SetUnboundName: 5, 0;
+    DeleteUnboundName: 5, 0;
+    DeleteDynamicBinding: 5, 0;
     EnterScope: 5, 0;
     LeaveScope: 5, 0;
     Pop: 1, 0;
@@ -88,6 +90,7 @@ opcodes! {
     Construct: 5, 0;
     Closure: 5, 0;
     This: 1, 0;
+    NewTarget: 1, 0;
     Argument: 5, 0;
     RestArguments: 5, 0;
     ArgumentsObject: 1, 0;
@@ -199,10 +202,21 @@ pub struct Bytecode {
     /// Names declared by top-level function declarations. Global declaration
     /// instantiation treats these differently from `var` declarations.
     pub(crate) global_function_names: Vec<String>,
+    /// Slots introduced by a sloppy direct eval's VariableEnvironment. They
+    /// are backed by the caller frame's dynamic binding table rather than by
+    /// ordinary lexical slots, and remain deletable after eval returns.
+    pub(crate) dynamic_eval_slots: Vec<u32>,
     /// Scope holding a function's VariableEnvironment. Non-simple parameter
     /// lists use a preceding parameter scope, which direct eval must inspect
     /// for lexical conflicts before reaching this scope.
     pub(crate) variable_scope: u32,
+    /// Generator functions execute their parameter/instantiation prefix when
+    /// called, then suspend at this bytecode offset until `.next()` begins
+    /// evaluating the body.
+    pub(crate) generator_entry: u32,
+    pub(crate) generator_initializes_parameters: bool,
+    /// Whether direct eval may read an enclosing function's `new.target`.
+    pub(crate) new_target_allowed: bool,
     pub(crate) functions: Vec<std::rc::Rc<Bytecode>>,
     pub(crate) captures: Vec<u32>,
     /// The immutable name environment binding of a named function expression.
@@ -245,7 +259,11 @@ impl Bytecode {
             bindings: Vec::new(),
             scopes: Vec::new(),
             global_function_names: Vec::new(),
+            dynamic_eval_slots: Vec::new(),
             variable_scope: 0,
+            generator_entry: 0,
+            generator_initializes_parameters: false,
+            new_target_allowed: false,
             functions: Vec::new(),
             captures: Vec::new(),
             self_slot: None,

@@ -164,7 +164,9 @@ pub(crate) enum GeneratorState {
         completion: Value,
         completion_empty: bool,
         active_scopes: Vec<u32>,
+        dynamic_bindings: Vec<(String, ObjectId)>,
         home: Option<ObjectId>,
+        callee: Value,
     },
     Done,
 }
@@ -194,7 +196,9 @@ impl GeneratorState {
                 this,
                 args,
                 completion,
+                dynamic_bindings,
                 home,
+                callee,
                 ..
             } => stack
                 .iter()
@@ -204,7 +208,9 @@ impl GeneratorState {
                 .chain(std::iter::once(completion))
                 .filter_map(Value::object_id)
                 .chain(cells.iter().map(|(_, id)| *id))
+                .chain(dynamic_bindings.iter().map(|(_, id)| *id))
                 .chain(*home)
+                .chain(callee.object_id())
                 .collect(),
             Self::Done => Vec::new(),
         }
@@ -1788,6 +1794,7 @@ mod tests {
         let argument = heap.alloc_object(None).unwrap();
         let completion = heap.alloc_object(None).unwrap();
         let cell = heap.alloc_object(None).unwrap();
+        let dynamic = heap.alloc_object(None).unwrap();
         let home = heap.alloc_object(None).unwrap();
         let state = GeneratorState::Suspended {
             code: Rc::new(Bytecode::empty()),
@@ -1800,10 +1807,14 @@ mod tests {
             completion: Value::Object(completion),
             completion_empty: true,
             active_scopes: Vec::new(),
+            dynamic_bindings: vec![("dynamic".into(), dynamic)],
             home: Some(home),
+            callee: Value::Undefined,
         };
         let references = state.references();
-        for object in [stack, binding, this, argument, completion, cell, home] {
+        for object in [
+            stack, binding, this, argument, completion, cell, dynamic, home,
+        ] {
             assert!(references.contains(&object));
         }
         assert!(heap.contains(prototype));

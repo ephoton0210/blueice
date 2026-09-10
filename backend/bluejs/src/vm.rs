@@ -158,6 +158,7 @@ enum CompletionAction {
 enum InterpreterExit {
     Return(Value),
     Yield { value: Value, pc: usize },
+    Suspend { pc: usize },
 }
 
 /// A realm-level declarative or object-backed global binding. The cell is
@@ -168,6 +169,14 @@ struct GlobalBinding {
     mutable: bool,
     property: bool,
     _root: RootId,
+}
+
+/// A sloppy direct eval declaration installed in an ordinary function's
+/// VariableEnvironment. Unlike global bindings it is neither permanent nor
+/// property-backed: it lives for the frame, may be deleted, and closures keep
+/// its cell alive when they capture it.
+struct DynamicEvalBinding {
+    cell: ObjectId,
 }
 
 /// An isolated execution context with one realm global environment. Ordinary
@@ -197,6 +206,17 @@ pub struct Vm {
     completion_saves: Vec<(Value, bool)>,
     remaining_instructions: u64,
     cells: HashMap<usize, ObjectId>,
+    // Bindings created by sloppy direct eval in the active ordinary-function
+    // VariableEnvironment. They move into a generator's suspended state when
+    // it yields and are rooted at interpreter safepoints.
+    dynamic_eval_bindings: HashMap<String, DynamicEvalBinding>,
+    // Slot-to-name mapping for the direct-eval bytecode currently executing.
+    // It lets EnterScope attach fresh `var` cells to the active frame.
+    eval_dynamic_slots: HashMap<usize, String>,
+    // Active callers' dynamic VariableEnvironments. A nested closure can
+    // resolve an eval-created name in its still-running lexical parent, but
+    // a new direct eval declaration always enters `dynamic_eval_bindings`.
+    dynamic_eval_outer_bindings: Vec<HashMap<String, DynamicEvalBinding>>,
     this: Value,
     arguments: Vec<Value>,
     // The current ordinary function object is needed while materializing its
@@ -223,6 +243,7 @@ pub struct Vm {
     regexp_iterator_prototype: Option<ObjectId>,
     templates: HashMap<u64, ObjectId>,
     new_target: Value,
+    new_target_allowed: bool,
     // The `[[HomeObject]]` of the currently executing method or class
     // constructor. It is runtime frame state because `super` is lexical.
     home_object: Option<ObjectId>,
@@ -277,6 +298,9 @@ impl Vm {
             completion_saves: Vec::new(),
             remaining_instructions: 0,
             cells: HashMap::new(),
+            dynamic_eval_bindings: HashMap::new(),
+            eval_dynamic_slots: HashMap::new(),
+            dynamic_eval_outer_bindings: Vec::new(),
             this: Value::Undefined,
             arguments: Vec::new(),
             callee: Value::Undefined,
@@ -291,6 +315,7 @@ impl Vm {
             regexp_iterator_prototype: None,
             templates: HashMap::new(),
             new_target: Value::Undefined,
+            new_target_allowed: false,
             home_object: None,
             class_constructor: None,
             class_field_initializer_depth: 0,
@@ -339,6 +364,9 @@ impl Vm {
         self.active_scope_slots.clear();
         self.with_objects.clear();
         self.script_global_slots.clear();
+        self.dynamic_eval_bindings.clear();
+        self.eval_dynamic_slots.clear();
+        self.dynamic_eval_outer_bindings.clear();
         if publish_globals {
             self.prepare_global_declarations(code)?;
         }
@@ -360,6 +388,9 @@ impl Vm {
         self.bindings.clear();
         self.binding_metadata.clear();
         self.cells.clear();
+        self.dynamic_eval_bindings.clear();
+        self.eval_dynamic_slots.clear();
+        self.dynamic_eval_outer_bindings.clear();
         self.script_global_slots.clear();
         self.completion = Value::Undefined;
         self.completion_empty = true;
@@ -499,7 +530,12 @@ impl Vm {
         Ok(())
     }
 
-    fn can_declare_global_var(&self, global: ObjectId, name: &str) -> Result<bool, RuntimeError> {
+    fn can_declare_global_var(
+        &mut self,
+        global: ObjectId,
+        name: &str,
+    ) -> Result<bool, RuntimeError> {
+        self.materialize_lexical_global(global, name)?;
         Ok(self
             .heap
             .get_own_property_descriptor(global, name)?
@@ -508,10 +544,11 @@ impl Vm {
     }
 
     fn can_declare_global_function(
-        &self,
+        &mut self,
         global: ObjectId,
         name: &str,
     ) -> Result<bool, RuntimeError> {
+        self.materialize_lexical_global(global, name)?;
         let Some(descriptor) = self.heap.get_own_property_descriptor(global, name)? else {
             return Ok(self.heap.is_extensible(global)?);
         };
@@ -612,6 +649,46 @@ impl Vm {
         }
         self.store_global_cell(cell, value)?;
         Ok(true)
+    }
+
+    fn dynamic_eval_binding_value(&self, name: &str) -> Result<Option<Value>, RuntimeError> {
+        let binding = self.dynamic_eval_bindings.get(name).or_else(|| {
+            self.dynamic_eval_outer_bindings
+                .iter()
+                .rev()
+                .find_map(|bindings| bindings.get(name))
+        });
+        match binding {
+            Some(binding) => self.heap.get_own(binding.cell, "value").map_err(Into::into),
+            None => Ok(None),
+        }
+    }
+
+    fn set_dynamic_eval_binding(&mut self, name: &str, value: Value) -> Result<bool, RuntimeError> {
+        let binding = self.dynamic_eval_bindings.get(name).or_else(|| {
+            self.dynamic_eval_outer_bindings
+                .iter()
+                .rev()
+                .find_map(|bindings| bindings.get(name))
+        });
+        let Some(binding) = binding else {
+            return Ok(false);
+        };
+        self.store_global_cell(binding.cell, value)?;
+        Ok(true)
+    }
+
+    fn delete_dynamic_eval_binding(&mut self, name: &str) -> Result<bool, RuntimeError> {
+        let binding = self.dynamic_eval_bindings.remove(name).or_else(|| {
+            self.dynamic_eval_outer_bindings
+                .iter_mut()
+                .rev()
+                .find_map(|bindings| bindings.remove(name))
+        });
+        let Some(binding) = binding else {
+            return Ok(true);
+        };
+        self.heap.delete(binding.cell, "value").map_err(Into::into)
     }
 
     fn store_global_cell(&mut self, cell: ObjectId, value: Value) -> Result<(), RuntimeError> {
@@ -893,6 +970,14 @@ impl Vm {
             for id in self.cells.values() {
                 roots.push(self.heap.root(*id)?);
             }
+            for binding in self.dynamic_eval_bindings.values() {
+                roots.push(self.heap.root(binding.cell)?);
+            }
+            for bindings in &self.dynamic_eval_outer_bindings {
+                for binding in bindings.values() {
+                    roots.push(self.heap.root(binding.cell)?);
+                }
+            }
             Ok(())
         })();
         let result = registration.and_then(|()| operation(&mut self.heap));
@@ -909,12 +994,13 @@ impl Vm {
         let save_base = self.completion_saves.len();
         let mut iterators = Vec::new();
         let result = self
-            .interpret(code, &mut iterators, 0, None)
+            .interpret(code, &mut iterators, 0, None, None)
             .and_then(|exit| match exit {
                 InterpreterExit::Return(value) => Ok(value),
                 InterpreterExit::Yield { .. } => Err(RuntimeError::TypeError(
                     "yield requires a generator function".into(),
                 )),
+                InterpreterExit::Suspend { .. } => unreachable!("only generator entry suspends"),
             });
         if result.is_err() {
             if let Err(RuntimeError::Thrown(value)) = &result {
@@ -949,6 +1035,7 @@ impl Vm {
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
         let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
         let script_global_slots = std::mem::take(&mut self.script_global_slots);
+        let eval_dynamic_slots = std::mem::take(&mut self.eval_dynamic_slots);
         let completion = std::mem::replace(&mut self.completion, Value::Undefined);
         let completion_empty = std::mem::replace(&mut self.completion_empty, true);
         let active_scopes = std::mem::take(&mut self.active_scopes);
@@ -960,6 +1047,9 @@ impl Vm {
         let result = if global_var_environment {
             self.prepare_eval_global_var_declarations(code)
                 .and_then(|()| self.run(code))
+        } else if !code.strict {
+            self.prepare_eval_dynamic_var_declarations(code)
+                .and_then(|()| self.run(code))
         } else {
             self.run(code)
         };
@@ -967,6 +1057,7 @@ impl Vm {
         self.binding_metadata = binding_metadata;
         self.cells = cells;
         self.script_global_slots = script_global_slots;
+        self.eval_dynamic_slots = eval_dynamic_slots;
         self.completion = completion;
         self.completion_empty = completion_empty;
         self.active_scopes = active_scopes;
@@ -977,6 +1068,32 @@ impl Vm {
         }
         self.stack.truncate(base);
         result
+    }
+
+    /// EvalDeclarationInstantiation's ordinary-function branch. Sloppy
+    /// direct eval extends the caller's VariableEnvironment, so fresh `var`
+    /// and function cells survive eval and can be captured by closures.
+    fn prepare_eval_dynamic_var_declarations(
+        &mut self,
+        code: &Bytecode,
+    ) -> Result<(), RuntimeError> {
+        for &slot in &code.dynamic_eval_slots {
+            let binding = &code.bindings[slot as usize];
+            if !self.dynamic_eval_bindings.contains_key(&binding.name) {
+                let cell = self.with_roots(|heap| heap.alloc_object(None))?;
+                self.dynamic_eval_bindings
+                    .insert(binding.name.clone(), DynamicEvalBinding { cell });
+                if let Err(error) =
+                    self.with_roots(|heap| heap.set(cell, "value", Value::Undefined))
+                {
+                    self.dynamic_eval_bindings.remove(&binding.name);
+                    return Err(error);
+                }
+            }
+            self.eval_dynamic_slots
+                .insert(slot as usize, binding.name.clone());
+        }
+        Ok(())
     }
 
     /// EvalDeclarationInstantiation's global-variable branch. The eval
@@ -1064,6 +1181,7 @@ impl Vm {
         let this = std::mem::replace(&mut self.this, global_this);
         let arguments = std::mem::take(&mut self.arguments);
         let new_target = std::mem::replace(&mut self.new_target, Value::Undefined);
+        let new_target_allowed = std::mem::replace(&mut self.new_target_allowed, false);
         let home_object = std::mem::take(&mut self.home_object);
         let class_constructor = std::mem::take(&mut self.class_constructor);
         let class_field_initializer_depth =
@@ -1084,6 +1202,7 @@ impl Vm {
         self.this = this;
         self.arguments = arguments;
         self.new_target = new_target;
+        self.new_target_allowed = new_target_allowed;
         self.home_object = home_object;
         self.class_constructor = class_constructor;
         self.class_field_initializer_depth = class_field_initializer_depth;
@@ -1143,6 +1262,7 @@ impl Vm {
         iterators: &mut Vec<Value>,
         start_pc: usize,
         resume_value: Option<Value>,
+        suspend_at: Option<usize>,
     ) -> Result<InterpreterExit, RuntimeError> {
         let stack_base = self.stack.len();
         let pending_base = self.pending_completions.len();
@@ -1153,6 +1273,9 @@ impl Vm {
         let mut pc = start_pc;
         let mut handlers = Vec::new();
         loop {
+            if suspend_at == Some(pc) {
+                return Ok(InterpreterExit::Suspend { pc });
+            }
             self.charge_step()?;
             let instruction = code
                 .instruction(pc)
@@ -1542,6 +1665,7 @@ impl Vm {
                         }
                         self.stack.push(self.this.clone());
                     }
+                    Opcode::NewTarget => self.stack.push(self.new_target.clone()),
                     Opcode::Argument => self
                         .stack
                         .push(native::argument(&self.arguments, operand).clone()),
@@ -1665,7 +1789,9 @@ impl Vm {
                         };
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
                         let value = self.stack.last().expect("assignment has a value").clone();
-                        if !self.set_global_binding(&name, value.clone())? {
+                        if !self.set_dynamic_eval_binding(&name, value.clone())?
+                            && !self.set_global_binding(&name, value.clone())?
+                        {
                             let global = self.global("globalThis")?;
                             let global_id = global.object_id().expect("globalThis is an object");
                             let key: PropertyName = name.as_str().into();
@@ -1675,8 +1801,30 @@ impl Vm {
                             self.set_property(&global, &key, &value)?;
                         }
                     }
+                    Opcode::DeleteUnboundName => {
+                        let Value::String(name) = &code.constants[operand] else {
+                            unreachable!("compiler emits a name")
+                        };
+                        let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                        let deleted = self.delete_dynamic_eval_binding(&name)?;
+                        self.stack.push(Value::Bool(deleted));
+                    }
+                    Opcode::DeleteDynamicBinding => {
+                        let name = &code.bindings[operand].name;
+                        let deleted = self.delete_dynamic_eval_binding(name)?;
+                        self.stack.push(Value::Bool(deleted));
+                    }
                     Opcode::EnterScope => {
                         for slot in &code.scopes[operand] {
+                            if let Some(name) = self.eval_dynamic_slots.get(&(*slot as usize)) {
+                                let cell = self
+                                    .dynamic_eval_bindings
+                                    .get(name)
+                                    .expect("prepared dynamic eval binding survives execution")
+                                    .cell;
+                                self.cells.insert(*slot as usize, cell);
+                                continue;
+                            }
                             if let Some(name) = self.script_global_slots.get(&(*slot as usize)) {
                                 let cell = self
                                     .global_bindings
@@ -2730,6 +2878,16 @@ impl Vm {
         self.stack.extend(args.iter().cloned());
         self.stack.push(target.clone());
         let previous_target = std::mem::replace(&mut self.new_target, target);
+        let regular_function = matches!(
+            callee.object_id(),
+            Some(id) if self
+                .heap
+                .closure(id)?
+                .is_some_and(|(code, _, _, _, _)| !code.arrow)
+        );
+        let next_new_target_allowed = (arrow && self.new_target_allowed) || regular_function;
+        let previous_new_target_allowed =
+            std::mem::replace(&mut self.new_target_allowed, next_new_target_allowed);
         self.call_depth += 1;
         let result = self
             .dispatch_call(callee, receiver, args, construct)
@@ -2738,6 +2896,7 @@ impl Vm {
                 Ok(value)
             });
         self.new_target = previous_target;
+        self.new_target_allowed = previous_new_target_allowed;
         self.call_depth -= 1;
         self.stack.truncate(base);
         result
@@ -3339,7 +3498,7 @@ mod tests {
         ];
         vm.remaining_instructions = vm.config.instruction_budget;
         assert!(matches!(
-            vm.interpret(&code, &mut Vec::new(), 0, None),
+            vm.interpret(&code, &mut Vec::new(), 0, None, None),
             Ok(InterpreterExit::Return(Value::Undefined))
         ));
         vm.stack = vec![
@@ -3349,7 +3508,7 @@ mod tests {
         ];
         vm.remaining_instructions = vm.config.instruction_budget;
         assert!(matches!(
-            vm.interpret(&code, &mut Vec::new(), 0, None),
+            vm.interpret(&code, &mut Vec::new(), 0, None, None),
             Ok(InterpreterExit::Return(Value::Undefined))
         ));
 
@@ -3357,13 +3516,13 @@ mod tests {
         vm.stack = vec![Value::Object(target), Value::Object(function)];
         vm.remaining_instructions = vm.config.instruction_budget;
         assert!(matches!(
-            vm.interpret(&code, &mut Vec::new(), 0, None),
+            vm.interpret(&code, &mut Vec::new(), 0, None, None),
             Ok(InterpreterExit::Return(Value::Undefined))
         ));
         vm.stack = vec![Value::Object(target), Value::Undefined];
         vm.remaining_instructions = vm.config.instruction_budget;
         assert!(matches!(
-            vm.interpret(&code, &mut Vec::new(), 0, None),
+            vm.interpret(&code, &mut Vec::new(), 0, None, None),
             Err(RuntimeError::TypeError(_))
         ));
 
@@ -3376,7 +3535,7 @@ mod tests {
         ];
         vm.remaining_instructions = vm.config.instruction_budget;
         assert!(matches!(
-            vm.interpret(&code, &mut Vec::new(), 0, None),
+            vm.interpret(&code, &mut Vec::new(), 0, None, None),
             Ok(InterpreterExit::Return(Value::Undefined))
         ));
         vm.stack = vec![
@@ -3387,7 +3546,7 @@ mod tests {
         ];
         vm.remaining_instructions = vm.config.instruction_budget;
         assert!(matches!(
-            vm.interpret(&code, &mut Vec::new(), 0, None),
+            vm.interpret(&code, &mut Vec::new(), 0, None, None),
             Err(RuntimeError::TypeError(_))
         ));
     }

@@ -160,9 +160,14 @@ impl Vm {
         }
         let visible = self.eval_visible_bindings();
         let lexical_conflicts = self.eval_lexical_conflicts();
-        let code =
-            crate::compiler::compile_eval(&program, &visible, &lexical_conflicts, self.strict)
-                .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+        let code = crate::compiler::compile_eval(
+            &program,
+            &visible,
+            &lexical_conflicts,
+            self.strict,
+            self.new_target_allowed,
+        )
+        .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let captures = code
             .captures
             .iter()
@@ -192,11 +197,17 @@ impl Vm {
         })?;
         let program =
             crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
-        let code = crate::compiler::compile_eval(&program, &[], &[], false)
+        let code = crate::compiler::compile_eval(&program, &[], &[], false, false)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let global_this = self.global("globalThis")?;
         let this = std::mem::replace(&mut self.this, global_this);
+        let dynamic_eval_bindings = std::mem::take(&mut self.dynamic_eval_bindings);
+        let dynamic_eval_outer_bindings = std::mem::take(&mut self.dynamic_eval_outer_bindings);
         let result = self.execute_eval(&code, Vec::new(), !code.strict);
+        debug_assert!(self.dynamic_eval_bindings.is_empty());
+        debug_assert!(self.dynamic_eval_outer_bindings.is_empty());
+        self.dynamic_eval_bindings = dynamic_eval_bindings;
+        self.dynamic_eval_outer_bindings = dynamic_eval_outer_bindings;
         self.this = this;
         result
     }
@@ -613,17 +624,38 @@ impl Vm {
         };
         if code.generator {
             let prototype = self.generator_prototype()?;
-            let state = GeneratorState::Start {
-                code,
-                captures,
-                callee,
-                receiver,
-                args,
-                home,
-            };
-            return Ok(Value::Object(
-                self.with_roots(|heap| heap.alloc_generator(state, prototype))?,
-            ));
+            if !code.generator_initializes_parameters {
+                let state = GeneratorState::Start {
+                    code,
+                    captures,
+                    callee,
+                    receiver,
+                    args,
+                    home,
+                };
+                return Ok(Value::Object(
+                    self.with_roots(|heap| heap.alloc_generator(state, prototype))?,
+                ));
+            }
+            // Install a temporary state first so the generator owns every
+            // captured edge while the entry phase may allocate. The actual
+            // parameter frame replaces it below before the object escapes.
+            let generator = self.with_roots(|heap| {
+                heap.alloc_generator(
+                    GeneratorState::Start {
+                        code: code.clone(),
+                        captures: captures.clone(),
+                        callee: callee.clone(),
+                        receiver: receiver.clone(),
+                        args: args.clone(),
+                        home,
+                    },
+                    prototype,
+                )
+            })?;
+            let state = self.initialize_generator(code, captures, callee, receiver, args, home)?;
+            self.heap.set_generator_state(generator, state)?;
+            return Ok(Value::Object(generator));
         }
         self.stack.push(receiver.clone());
         let base = self.stack.len();
@@ -640,6 +672,11 @@ impl Vm {
         let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
         let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
+        let dynamic_eval_bindings = std::mem::take(&mut self.dynamic_eval_bindings);
+        let mut dynamic_eval_outer_bindings = std::mem::take(&mut self.dynamic_eval_outer_bindings);
+        dynamic_eval_outer_bindings.push(dynamic_eval_bindings);
+        self.dynamic_eval_outer_bindings = dynamic_eval_outer_bindings;
+        let eval_dynamic_slots = std::mem::take(&mut self.eval_dynamic_slots);
         let script_global_slots = std::mem::take(&mut self.script_global_slots);
         let variable_scope = std::mem::replace(&mut self.variable_scope, code.variable_scope);
         let variable_scope_lexicals = std::mem::replace(
@@ -686,6 +723,12 @@ impl Vm {
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;
+        let mut dynamic_eval_outer_bindings = std::mem::take(&mut self.dynamic_eval_outer_bindings);
+        self.dynamic_eval_bindings = dynamic_eval_outer_bindings
+            .pop()
+            .expect("callee inherits its caller dynamic environment");
+        self.dynamic_eval_outer_bindings = dynamic_eval_outer_bindings;
+        self.eval_dynamic_slots = eval_dynamic_slots;
         self.script_global_slots = script_global_slots;
         self.variable_scope = variable_scope;
         self.variable_scope_lexicals = variable_scope_lexicals;
@@ -723,6 +766,122 @@ impl Vm {
         })
     }
 
+    /// Generator function invocation performs parameter initialization now,
+    /// then suspends immediately before body evaluation. This makes a direct
+    /// eval in a default parameter observable (including its early errors)
+    /// at `generatorFunction()` rather than at the first `.next()`.
+    fn initialize_generator(
+        &mut self,
+        code: Rc<Bytecode>,
+        captures: Vec<ObjectId>,
+        callee: Value,
+        receiver: Value,
+        args: Vec<Value>,
+        home: Option<ObjectId>,
+    ) -> Result<GeneratorState, RuntimeError> {
+        self.stack.push(receiver.clone());
+        let base = self.stack.len();
+        self.stack.extend(self.bindings.iter().flatten().cloned());
+        self.stack
+            .extend(self.cells.values().copied().map(Value::Object));
+        self.stack.push(self.completion.clone());
+        self.stack.push(self.this.clone());
+        self.stack.extend(self.arguments.iter().cloned());
+        let frame_base = self.stack.len();
+
+        let mut frame_bindings = vec![None; code.bindings.len()];
+        if let Some(slot) = code.self_slot {
+            frame_bindings[slot as usize] = Some(callee.clone());
+        }
+        let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
+        let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
+        let cells = std::mem::replace(&mut self.cells, captures.into_iter().enumerate().collect());
+        let dynamic_eval_bindings = std::mem::take(&mut self.dynamic_eval_bindings);
+        let dynamic_eval_outer_bindings = std::mem::take(&mut self.dynamic_eval_outer_bindings);
+        let eval_dynamic_slots = std::mem::take(&mut self.eval_dynamic_slots);
+        let script_global_slots = std::mem::take(&mut self.script_global_slots);
+        let this = std::mem::replace(&mut self.this, receiver);
+        let arguments = std::mem::replace(&mut self.arguments, args);
+        let frame_callee = std::mem::replace(&mut self.callee, callee);
+        let completion = std::mem::replace(&mut self.completion, Value::Undefined);
+        let completion_empty = std::mem::replace(&mut self.completion_empty, true);
+        let active_scopes = std::mem::take(&mut self.active_scopes);
+        let active_scope_slots = std::mem::take(&mut self.active_scope_slots);
+        let strict = std::mem::replace(&mut self.strict, code.strict);
+        let home_object = std::mem::replace(&mut self.home_object, home);
+        let variable_scope = std::mem::replace(&mut self.variable_scope, code.variable_scope);
+        let variable_scope_lexicals = std::mem::replace(
+            &mut self.variable_scope_lexicals,
+            code.scopes
+                .get(code.variable_scope as usize)
+                .into_iter()
+                .flat_map(|scope| scope.iter())
+                .filter_map(|slot| {
+                    let binding = &code.bindings[*slot as usize];
+                    binding.lexical.then(|| binding.name.clone())
+                })
+                .collect(),
+        );
+
+        let mut iterators = Vec::new();
+        let outcome = self.interpret(
+            &code,
+            &mut iterators,
+            0,
+            None,
+            Some(code.generator_entry as usize),
+        );
+        let state = match outcome {
+            Ok(InterpreterExit::Suspend { pc }) => {
+                debug_assert_eq!(pc, code.generator_entry as usize);
+                let stack = self.stack.split_off(frame_base);
+                Ok(GeneratorState::Suspended {
+                    code,
+                    pc,
+                    stack,
+                    bindings: std::mem::take(&mut self.bindings),
+                    cells: std::mem::take(&mut self.cells).into_iter().collect(),
+                    this: std::mem::replace(&mut self.this, Value::Undefined),
+                    args: std::mem::take(&mut self.arguments),
+                    completion: std::mem::replace(&mut self.completion, Value::Undefined),
+                    completion_empty: std::mem::replace(&mut self.completion_empty, true),
+                    active_scopes: std::mem::take(&mut self.active_scopes),
+                    dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings)
+                        .into_iter()
+                        .map(|(name, binding)| (name, binding.cell))
+                        .collect(),
+                    home: std::mem::take(&mut self.home_object),
+                    callee: std::mem::replace(&mut self.callee, Value::Undefined),
+                })
+            }
+            Ok(InterpreterExit::Return(_)) | Ok(InterpreterExit::Yield { .. }) => {
+                unreachable!("generator entry contains only instantiation bytecode")
+            }
+            Err(error) => Err(error),
+        };
+
+        self.bindings = bindings;
+        self.binding_metadata = binding_metadata;
+        self.cells = cells;
+        self.dynamic_eval_bindings = dynamic_eval_bindings;
+        self.dynamic_eval_outer_bindings = dynamic_eval_outer_bindings;
+        self.eval_dynamic_slots = eval_dynamic_slots;
+        self.script_global_slots = script_global_slots;
+        self.this = this;
+        self.arguments = arguments;
+        self.callee = frame_callee;
+        self.completion = completion;
+        self.completion_empty = completion_empty;
+        self.active_scopes = active_scopes;
+        self.active_scope_slots = active_scope_slots;
+        self.strict = strict;
+        self.home_object = home_object;
+        self.variable_scope = variable_scope;
+        self.variable_scope_lexicals = variable_scope_lexicals;
+        self.stack.truncate(base - 1);
+        state
+    }
+
     fn generator_next(&mut self, receiver: &Value) -> Result<Value, RuntimeError> {
         let Value::Object(generator) = receiver else {
             return Err(RuntimeError::TypeError(
@@ -746,6 +905,7 @@ impl Vm {
             frame_callee,
             frame_variable_scope,
             frame_variable_scope_lexicals,
+            frame_dynamic_bindings,
         ) = match state {
             GeneratorState::Done => {
                 self.heap
@@ -791,6 +951,7 @@ impl Vm {
                     callee,
                     variable_scope,
                     variable_scope_lexicals,
+                    HashMap::new(),
                 )
             }
             GeneratorState::Suspended {
@@ -804,7 +965,9 @@ impl Vm {
                 completion,
                 completion_empty,
                 active_scopes,
+                dynamic_bindings,
                 home,
+                callee,
             } => {
                 let variable_scope = code.variable_scope;
                 let variable_scope_lexicals = code
@@ -830,9 +993,13 @@ impl Vm {
                     completion_empty,
                     active_scopes,
                     home,
-                    Value::Undefined,
+                    callee,
                     variable_scope,
                     variable_scope_lexicals,
+                    dynamic_bindings
+                        .into_iter()
+                        .map(|(name, cell)| (name, DynamicEvalBinding { cell }))
+                        .collect(),
                 )
             }
         };
@@ -850,6 +1017,10 @@ impl Vm {
         let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
         let cells = std::mem::replace(&mut self.cells, frame_cells);
+        let dynamic_eval_outer_bindings = std::mem::take(&mut self.dynamic_eval_outer_bindings);
+        let dynamic_eval_bindings =
+            std::mem::replace(&mut self.dynamic_eval_bindings, frame_dynamic_bindings);
+        let eval_dynamic_slots = std::mem::take(&mut self.eval_dynamic_slots);
         let this = std::mem::replace(&mut self.this, frame_this);
         let arguments = std::mem::replace(&mut self.arguments, frame_args);
         let completion = std::mem::replace(&mut self.completion, frame_completion);
@@ -872,7 +1043,7 @@ impl Vm {
             frame_variable_scope_lexicals,
         );
         let mut iterators = Vec::new();
-        let outcome = self.interpret(&code, &mut iterators, pc, resume_value);
+        let outcome = self.interpret(&code, &mut iterators, pc, resume_value, None);
 
         let (next_state, result) = match outcome {
             Ok(InterpreterExit::Return(value)) => {
@@ -892,7 +1063,12 @@ impl Vm {
                     completion: std::mem::replace(&mut self.completion, Value::Undefined),
                     completion_empty: std::mem::replace(&mut self.completion_empty, true),
                     active_scopes: std::mem::take(&mut self.active_scopes),
+                    dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings)
+                        .into_iter()
+                        .map(|(name, binding)| (name, binding.cell))
+                        .collect(),
                     home: std::mem::take(&mut self.home_object),
+                    callee: std::mem::replace(&mut self.callee, Value::Undefined),
                 };
                 (state, Ok((value, false)))
             }
@@ -900,11 +1076,17 @@ impl Vm {
                 self.stack.truncate(frame_base);
                 (GeneratorState::Done, Err(error))
             }
+            Ok(InterpreterExit::Suspend { .. }) => {
+                unreachable!("ordinary generator execution has no suspend boundary")
+            }
         };
         self.heap.set_generator_state(*generator, next_state)?;
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;
+        self.dynamic_eval_bindings = dynamic_eval_bindings;
+        self.dynamic_eval_outer_bindings = dynamic_eval_outer_bindings;
+        self.eval_dynamic_slots = eval_dynamic_slots;
         self.this = this;
         self.arguments = arguments;
         self.completion = completion;

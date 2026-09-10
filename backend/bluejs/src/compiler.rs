@@ -96,6 +96,7 @@ pub(crate) fn compile_eval(
     visible: &[(String, Binding, u32)],
     lexical_conflicts: &[String],
     strict: bool,
+    new_target_allowed: bool,
 ) -> Result<Bytecode, CompileError> {
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
@@ -109,6 +110,7 @@ pub(crate) fn compile_eval(
         with_depth: 0,
     };
     compiler.bytecode.strict = strict || strict_body(&program.body);
+    compiler.bytecode.new_target_allowed = new_target_allowed;
     if compiler.bytecode.strict && strict_assignment_to_restricted_name(&program.body) {
         return Err(CompileError::InvalidSyntax(
             "strict code cannot assign to eval or arguments",
@@ -163,6 +165,18 @@ pub(crate) fn compile_eval(
             .collect()
     };
     compiler.enter_scope(lexical, &new_vars, true)?;
+    if !compiler.bytecode.strict {
+        compiler.bytecode.dynamic_eval_slots = new_vars
+            .iter()
+            .filter_map(|name| {
+                compiler
+                    .names
+                    .last()
+                    .and_then(|scope| scope.get(name))
+                    .copied()
+            })
+            .collect();
+    }
     compiler.statements(&program.body)?;
     compiler.emit(Opcode::Halt, 0)?;
     Ok(compiler.bytecode)
@@ -260,6 +274,23 @@ impl Compiler {
             .map(|name| (name.clone(), DeclKind::Var))
             .chain(lexical);
         for (name, kind) in declarations {
+            if self.bytecode.strict
+                && matches!(
+                    name.as_str(),
+                    "implements"
+                        | "interface"
+                        | "package"
+                        | "private"
+                        | "protected"
+                        | "public"
+                        | "static"
+                        | "yield"
+                )
+            {
+                return Err(CompileError::InvalidSyntax(
+                    "strict mode binding uses a reserved word",
+                ));
+            }
             if names.contains_key(&name) || (kind != DeclKind::Var && vars.contains(&name)) {
                 return Err(CompileError::DuplicateBinding(name));
             }
@@ -1302,7 +1333,20 @@ impl Compiler {
                                 "cannot delete a binding in strict mode",
                             ));
                         }
-                        self.constant(Value::Bool(self.resolve(name).is_none()))?;
+                        if let Some(slot) = self.resolve(name) {
+                            if self.bytecode.dynamic_eval_slots.contains(&slot) {
+                                self.emit(Opcode::DeleteDynamicBinding, slot)?;
+                            } else {
+                                self.constant(Value::Bool(false))?;
+                            }
+                        } else {
+                            let index = u32::try_from(self.bytecode.constants.len())
+                                .map_err(|_| CompileError::ProgramTooLarge)?;
+                            self.bytecode
+                                .constants
+                                .push(Value::String(name.clone().into()));
+                            self.emit(Opcode::DeleteUnboundName, index)?;
+                        }
                     } else {
                         self.expression(arg)?;
                         self.emit(Opcode::Pop, 0)?;
@@ -1648,7 +1692,14 @@ impl Compiler {
             Expr::This => {
                 self.emit(Opcode::This, 0)?;
             }
-            Expr::NewTarget => return Err(CompileError::Unsupported("new.target")),
+            Expr::NewTarget => {
+                if !self.bytecode.new_target_allowed {
+                    return Err(CompileError::InvalidSyntax(
+                        "new.target is not valid in this context",
+                    ));
+                }
+                self.emit(Opcode::NewTarget, 0)?;
+            }
             Expr::Function(function) => self.function_expression(function)?,
             Expr::Class(class) => self.class_expression(class, None)?,
             Expr::Yield { value, delegate } => {
@@ -2297,6 +2348,7 @@ impl Compiler {
             !options.class_method && !options.class_constructor,
         )?;
         child.bytecode.arrow = arrow;
+        child.bytecode.new_target_allowed = !arrow;
         child.bytecode.generator = function.generator;
         child.bytecode.async_function = function.is_async;
         child.bytecode.constructible = options.constructible;
@@ -2367,6 +2419,7 @@ impl Compiler {
         // environment even when a destructuring pattern has no computed key
         // or default. The same distinction selects unmapped arguments.
         let parameter_expressions = !simple_parameter_list;
+        child.bytecode.generator_initializes_parameters = parameter_expressions;
         // Arrow functions inherit `arguments`; ordinary functions introduce a
         // fresh binding unless a formal or a function-body lexical declaration
         // already occupies that name.  A `var arguments` declaration shares
@@ -2448,6 +2501,9 @@ impl Compiler {
                     child.names[child.local_scope][name],
                 )?;
             }
+        }
+        if child.bytecode.generator {
+            child.bytecode.generator_entry = child.offset()?;
         }
         if options.default_derived_constructor {
             child.emit(Opcode::SuperCallForward, 0)?;

@@ -47,11 +47,19 @@ fn direct_eval_uses_the_callers_bindings_completion_and_strictness() {
         "eval('this')===globalThis",
         "function strictEvalScope(){var outer=1;eval(\"'use strict';var outer=2;var evalOnly=3\");return outer===1&&typeof evalOnly==='undefined';}strictEvalScope()",
         "function indirectEvalScope(){var local=1;(0,eval)('var local=2;var indirectEvalGlobal=3');return local===1&&indirectEvalGlobal===3&&globalThis.indirectEvalGlobal===3;}indirectEvalScope()",
+        "let caught=false;try{eval('function NaN(){}')}catch(error){caught=error instanceof TypeError;}caught",
         "function localEval(){let eval=function(value){return value+1;};return eval(2)===3;}localEval()",
+        "function withDirectEval(){let object={};with(object){return eval('1')===1;}}withDirectEval()",
+        "function localEvalBindings(){eval('var hidden=1;function localFn(){return hidden;}hidden=2;');return hidden===2&&localFn()===2;}localEvalBindings()",
+        "let f=(value=eval('var dynamic=1'),read=()=>dynamic)=>read();f()===1",
+        "let read;function removableEvalBinding(){eval('var hidden=1;read=()=>hidden;delete hidden;');try{read();return false;}catch(error){return error instanceof ReferenceError;}}removableEvalBinding()",
         "function lowerLexicalConflict(){{let value;try{eval('var value;')}catch(error){return error instanceof SyntaxError;}}}lowerLexicalConflict()",
         "let parameterConflict=false;function parameterEvalConflict(value=eval('var value')){}try{parameterEvalConflict()}catch(error){parameterConflict=error instanceof SyntaxError;}parameterConflict",
+        "function* generatorParameterEvalConflict(value=eval('var value')){}let caught=false;try{generatorParameterEvalConflict()}catch(error){caught=error instanceof SyntaxError;}caught",
         "eval(42)===42",
         "\"use strict\";let caught;try{eval('try{}catch(eval){}')}catch(error){caught=error instanceof SyntaxError;}caught",
+        "let caught=false;try{(function(){'use strict';eval('var public=1;');})()}catch(error){caught=error instanceof SyntaxError;}caught",
+        "let target;function readTarget(){target=eval('new.target');}readTarget();let plain=target===undefined;new readTarget();plain&&target===readTarget",
     ] {
         assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)), "{source}");
     }
@@ -87,6 +95,8 @@ fn generators_suspend_resume_and_close_as_iterators() {
     let mut vm = Vm::default();
     for source in [
         "let iter=(function*(){yield 1;yield 2;})();let first=iter.next();let second=iter.next();let done=iter.next();first.value===1&&!first.done&&second.value===2&&!second.done&&done.done",
+        "function* defaulted(value=3){yield value;}defaulted().next().value===3",
+        "let read;let iter=(function*(){eval('var hidden=1;read=()=>hidden;');yield 0;hidden=2;yield read();})();iter.next().value===0&&iter.next().value===2",
         "let first=0;let second=0;let iter=(function*(){first++;yield;second++;})();let value;try{throw iter}catch([,]){value=first===1&&second===0;}value",
         "let first=0;let second=0;let iter=(function*(){first++;yield;second++;})();let value;try{throw iter}catch([...[,]]){value=first===1&&second===1;}value",
         "let values=[];Array.prototype[Symbol.iterator]=function*(){yield this[0];yield this[1];yield 42;};try{throw [1,2,3]}catch([x,y,z]){values=[x,y,z]}values.join(',')==='1,2,42'",
