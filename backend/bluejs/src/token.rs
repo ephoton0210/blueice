@@ -404,8 +404,8 @@ impl Tokenizer {
             self.advance();
             return self.scan_template();
         }
-        if is_ident_start(c) {
-            return Ok(self.scan_identifier_or_keyword());
+        if is_ident_start(c) || (c == '\\' && self.peek_at(1) == Some('u')) {
+            return self.scan_identifier_or_keyword();
         }
         self.scan_punct()
     }
@@ -628,16 +628,54 @@ impl Tokenizer {
         Err(LexError::new("unterminated or invalid template placeholder"))
     }
 
-    fn scan_identifier_or_keyword(&mut self) -> Token {
-        let start = self.pos;
-        while self.peek().is_some_and(is_ident_continue) {
-            self.advance();
+    fn scan_identifier_or_keyword(&mut self) -> Result<Token, LexError> {
+        let mut text = String::new();
+        loop {
+            let first = text.is_empty();
+            let character = match self.peek() {
+                Some('\\') => self.scan_identifier_escape()?,
+                Some(character) if if first { is_ident_start(character) } else { is_ident_continue(character) } => {
+                    self.advance();
+                    character
+                }
+                _ => break,
+            };
+            if if first { !is_ident_start(character) } else { !is_ident_continue(character) } {
+                return Err(LexError::new("unicode escape does not form a valid identifier character"));
+            }
+            text.push(character);
         }
-        let text: String = self.input[start..self.pos].iter().collect();
         match Keyword::from_str(&text) {
-            Some(kw) => Token::Keyword(kw),
-            None => Token::Identifier(text),
+            Some(kw) => Ok(Token::Keyword(kw)),
+            None => Ok(Token::Identifier(text)),
         }
+    }
+
+    fn scan_identifier_escape(&mut self) -> Result<char, LexError> {
+        debug_assert_eq!(self.peek(), Some('\\'));
+        self.advance();
+        if self.advance() != Some('u') {
+            return Err(LexError::new("identifier escape must use \\u"));
+        }
+        let code = if self.peek() == Some('{') {
+            self.advance();
+            let mut hex = String::new();
+            while self.peek().is_some_and(|character| character != '}') {
+                hex.push(self.advance().unwrap());
+            }
+            self.advance().ok_or_else(|| LexError::new("unterminated \\u{...} identifier escape"))?;
+            let code = Self::hex_escape(&hex, "\\u{...}")?;
+            if code > 0x10ffff {
+                return Err(LexError::new("invalid \\u{...} identifier escape codepoint"));
+            }
+            code
+        } else {
+            let hex: String = (0..4)
+                .map(|_| self.advance().ok_or_else(|| LexError::new("unterminated \\u identifier escape")))
+                .collect::<Result<_, _>>()?;
+            Self::hex_escape(&hex, "\\u")?
+        };
+        char::from_u32(code).ok_or_else(|| LexError::new("identifier escape is not a Unicode scalar value"))
     }
 
     fn scan_punct(&mut self) -> Result<Token, LexError> {
@@ -872,6 +910,8 @@ mod tests {
     #[test]
     fn scans_identifiers_and_keywords() {
         assert_eq!(tokens("foo _bar $baz"), vec![Token::Identifier("foo".to_string()), Token::Identifier("_bar".to_string()), Token::Identifier("$baz".to_string()), Token::Eof]);
+        assert_eq!(tokens(r"\u0065xtends \u{61}sync"), vec![Token::Identifier("extends".to_string()), Token::Identifier("async".to_string()), Token::Eof]);
+        assert!(Tokenizer::new(r"\u0030").next_spanned().is_err());
         assert_eq!(tokens("undefined"), vec![Token::Identifier("undefined".to_string()), Token::Eof]);
         assert_eq!(
             tokens("let x = true"),

@@ -260,7 +260,8 @@ impl Parser {
     }
 
     fn error(&self, message: impl Into<String>) -> ParseError {
-        ParseError { message: format!("{} (found {:?})", message.into(), self.peek()), resource: None, known_syntax: false }
+        let known_syntax = matches!(self.peek(), Token::Invalid(message) if !message.contains("not supported") && !message.contains("unexpected character '#'"));
+        ParseError { message: format!("{} (found {:?})", message.into(), self.peek()), resource: None, known_syntax }
     }
 
     fn syntax_error(&self, message: impl Into<String>) -> ParseError {
@@ -319,6 +320,9 @@ impl Parser {
                 let f = self.parse_function()?;
                 if f.name.is_none() {
                     return Err(self.error("function declarations require a name"));
+                }
+                if self.static_block_function_depths.last() == Some(&self.function_depth) && f.name.as_deref() == Some("await") {
+                    return Err(self.syntax_error("await cannot be bound by a function declaration in a class static block"));
                 }
                 Ok(Stmt::FunctionDecl(f))
             }
@@ -736,10 +740,27 @@ impl Parser {
         while !self.check_punct(Punct::RParen) {
             if self.eat_punct(Punct::Ellipsis) {
                 let pattern = self.parse_binding_pattern()?;
+                if self.eat_punct(Punct::Assign) {
+                    return Err(self.syntax_error("a rest parameter cannot have a default value"));
+                }
                 params.push(Param { pattern, default: None, rest: true });
+                if self.eat_punct(Punct::Comma) {
+                    return Err(self.syntax_error("a rest parameter cannot have a trailing comma"));
+                }
+                break;
             } else {
                 let pattern = self.parse_binding_pattern()?;
-                let default = if self.eat_punct(Punct::Assign) { Some(self.parse_assignment()?) } else { None };
+                let default = if self.eat_punct(Punct::Assign) {
+                    if self.async_depth != 0 && matches!(self.peek(), Token::Identifier(name) if name == "await") {
+                        return Err(self.syntax_error("await is not allowed in an async function parameter initializer"));
+                    }
+                    if self.generator_depth != 0 && matches!(self.peek(), Token::Identifier(name) if name == "yield") {
+                        return Err(self.syntax_error("yield is not allowed in a generator parameter initializer"));
+                    }
+                    Some(self.parse_assignment()?)
+                } else {
+                    None
+                };
                 params.push(Param { pattern, default, rest: false });
             }
             if !self.check_punct(Punct::RParen) {
@@ -760,19 +781,32 @@ impl Parser {
 
     fn parse_function_with_async(&mut self, is_async: bool) -> Result<Function, ParseError> {
         let generator = self.eat_punct(Punct::Star);
+        if matches!(self.peek(), Token::Invalid(message) if message.contains("unexpected character '#'")) {
+            return Err(self.syntax_error("a function cannot have a private name"));
+        }
         let name = if let Token::Identifier(_) = self.peek() { Some(self.expect_identifier_name()?) } else { None };
-        self.parse_method_function(name, generator, is_async)
+        if !self.check_punct(Punct::LParen) {
+            return Err(self.syntax_error("a function parameter list must begin with '('"));
+        }
+        let function = self.parse_method_function(name, generator, is_async)?;
+        if function_contains_super_call_outside_class(&function) || function_contains_super_property_outside_class(&function) {
+            return Err(self.syntax_error("a normal function cannot contain super"));
+        }
+        Ok(function)
     }
 
     fn parse_method_function(&mut self, name: Option<String>, generator: bool, is_async: bool) -> Result<Function, ParseError> {
-        self.async_depth += u32::from(is_async);
+        let outer_async_depth = std::mem::replace(&mut self.async_depth, u32::from(is_async));
+        let outer_generator_depth = std::mem::replace(&mut self.generator_depth, u32::from(generator));
+        // `parse_params` also enters grammar that the subset may not yet
+        // implement. Preserve an unclassified parse failure from that grammar;
+        // explicit parameter early errors mark themselves as known syntax.
         let params = self.parse_params()?;
-        self.generator_depth += u32::from(generator);
         self.function_depth += 1;
         let body = self.parse_block();
         self.function_depth -= 1;
-        self.generator_depth -= u32::from(generator);
-        self.async_depth -= u32::from(is_async);
+        self.generator_depth = outer_generator_depth;
+        self.async_depth = outer_async_depth;
         Ok(Function { name, params, body: body?, generator, is_async })
     }
 

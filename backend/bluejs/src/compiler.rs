@@ -110,11 +110,12 @@ struct FunctionCompileOptions {
     class_constructor: bool,
     derived_constructor: bool,
     default_derived_constructor: bool,
+    class_method: bool,
 }
 
 impl FunctionCompileOptions {
     fn class_method() -> Self {
-        Self { constructible: false, force_strict: true, class_constructor: false, derived_constructor: false, default_derived_constructor: false }
+        Self { constructible: false, force_strict: true, class_constructor: false, derived_constructor: false, default_derived_constructor: false, class_method: true }
     }
 }
 
@@ -714,6 +715,9 @@ impl Compiler {
             Expr::Bool(b) => self.constant(Value::Bool(*b))?,
             Expr::Null => self.constant(Value::Null)?,
             Expr::Identifier(name) => {
+                if self.bytecode.strict && name == "yield" {
+                    return Err(CompileError::InvalidSyntax("yield cannot be used as an identifier in strict code"));
+                }
                 if let Some(slot) = self.resolve(name) {
                     self.emit(Opcode::GetBinding, slot)?;
                 } else if self.with_depth != 0 {
@@ -1331,6 +1335,7 @@ impl Compiler {
                 class_constructor: true,
                 derived_constructor: class.extends.is_some(),
                 default_derived_constructor: class.extends.is_some() && default_constructor,
+                class_method: false,
             },
         )?;
         self.emit(Opcode::SetClassHome, 0)?;
@@ -1425,6 +1430,7 @@ impl Compiler {
                 class_constructor: false,
                 derived_constructor: false,
                 default_derived_constructor: false,
+                class_method: false,
             },
         )
     }
@@ -1453,6 +1459,7 @@ impl Compiler {
             with_depth: 0,
         };
         child.bytecode.strict = options.force_strict || self.bytecode.strict || strict_body(&function.body);
+        validate_function_early_errors(function, child.bytecode.strict, !options.class_method && !options.class_constructor)?;
         child.bytecode.arrow = arrow;
         child.bytecode.generator = function.generator;
         child.bytecode.constructible = options.constructible;
@@ -1512,6 +1519,34 @@ impl Compiler {
 
 fn strict_body(body: &[Stmt]) -> bool {
     body.iter().take_while(|stmt| matches!(stmt, Stmt::Expr(Expr::String(_)))).any(|stmt| matches!(stmt, Stmt::Expr(Expr::String(s)) if s == "use strict"))
+}
+
+fn validate_function_early_errors(function: &Function, strict: bool, name_is_binding: bool) -> Result<(), CompileError> {
+    let simple = function.params.iter().all(|param| !param.rest && param.default.is_none() && matches!(param.pattern, Pattern::Identifier(_)));
+    if strict_body(&function.body) && !simple {
+        return Err(CompileError::InvalidSyntax("a function with non-simple parameters cannot contain a use strict directive"));
+    }
+    let names: Vec<_> = function.params.iter().flat_map(|param| pattern_names(&param.pattern)).collect();
+    if strict || !simple {
+        let mut unique = BTreeSet::new();
+        if names.iter().any(|name| !unique.insert(name)) {
+            return Err(CompileError::InvalidSyntax("duplicate parameter name"));
+        }
+    }
+    if strict
+        && function
+            .name
+            .iter()
+            .filter(|_| name_is_binding)
+            .chain(names.iter())
+            .any(|name| matches!(name.as_str(), "eval" | "arguments" | "yield"))
+    {
+        return Err(CompileError::InvalidSyntax("strict functions cannot bind eval, arguments, or yield"));
+    }
+    if function.generator && names.iter().any(|name| name == "yield") {
+        return Err(CompileError::InvalidSyntax("generator parameters cannot bind yield"));
+    }
+    Ok(())
 }
 
 fn class_property_name(key: &PropertyKey) -> String {

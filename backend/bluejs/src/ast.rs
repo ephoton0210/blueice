@@ -301,13 +301,13 @@ pub enum Expr {
 /// eval context. A nested class establishes its own constructor context, so
 /// its elements do not contribute to this check.
 pub(crate) fn contains_super_call_outside_class(program: &Program) -> bool {
-    program.body.iter().any(stmt_contains_super_call)
+    program.body.iter().any(|statement| stmt_contains_super(statement, SuperSearch::Call))
 }
 
 /// Whether an expression contains a `super()` belonging to its surrounding
 /// class context. Nested classes establish their own context.
 pub(crate) fn expr_contains_super_call_outside_class(expr: &Expr) -> bool {
-    expr_contains_super_call(expr)
+    expr_contains_super(expr, SuperSearch::Call)
 }
 
 /// Whether statements contain a `super()` belonging to their surrounding
@@ -319,158 +319,178 @@ pub(crate) fn statements_contain_super_call_outside_class(statements: &[Stmt]) -
 /// Whether a function's parameters or body contain a `super()` belonging to
 /// its surrounding class context. Nested classes establish their own context.
 pub(crate) fn function_contains_super_call_outside_class(function: &Function) -> bool {
-    function_contains_super_call(function)
+    function_contains_super(function, SuperSearch::Call)
+}
+
+/// Whether a normal function contains a `super` property reference which is
+/// not owned by a nested class or object method.
+pub(crate) fn function_contains_super_property_outside_class(function: &Function) -> bool {
+    function_contains_super(function, SuperSearch::Property)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SuperSearch {
+    Call,
+    Property,
 }
 
 fn stmts_contain_super_call(statements: &[Stmt]) -> bool {
-    statements.iter().any(stmt_contains_super_call)
+    stmts_contain_super(statements, SuperSearch::Call)
 }
 
-fn stmt_contains_super_call(statement: &Stmt) -> bool {
+fn stmts_contain_super(statements: &[Stmt], search: SuperSearch) -> bool {
+    statements.iter().any(|statement| stmt_contains_super(statement, search))
+}
+
+fn stmt_contains_super(statement: &Stmt, search: SuperSearch) -> bool {
     match statement {
         Stmt::Empty | Stmt::Break | Stmt::Continue | Stmt::ClassDecl(_) => false,
-        Stmt::Expr(expr) | Stmt::Throw(expr) => expr_contains_super_call(expr),
-        Stmt::Block(statements) => stmts_contain_super_call(statements),
+        Stmt::Expr(expr) | Stmt::Throw(expr) => expr_contains_super(expr, search),
+        Stmt::Block(statements) => stmts_contain_super(statements, search),
         Stmt::VarDecl(_, declarations) => declarations
             .iter()
-            .any(|declaration| pattern_contains_super_call(&declaration.pattern) || declaration.init.as_ref().is_some_and(expr_contains_super_call)),
+            .any(|declaration| pattern_contains_super(&declaration.pattern, search) || declaration.init.as_ref().is_some_and(|expr| expr_contains_super(expr, search))),
         Stmt::If { test, consequent, alternate } => {
-            expr_contains_super_call(test)
-                || stmt_contains_super_call(consequent)
-                || alternate.as_deref().is_some_and(stmt_contains_super_call)
+            expr_contains_super(test, search)
+                || stmt_contains_super(consequent, search)
+                || alternate.as_deref().is_some_and(|statement| stmt_contains_super(statement, search))
         }
         Stmt::For { init, test, update, body } => {
-            init.as_ref().is_some_and(for_init_contains_super_call)
-                || test.as_ref().is_some_and(expr_contains_super_call)
-                || update.as_ref().is_some_and(expr_contains_super_call)
-                || stmt_contains_super_call(body)
+            init.as_ref().is_some_and(|init| for_init_contains_super(init, search))
+                || test.as_ref().is_some_and(|expr| expr_contains_super(expr, search))
+                || update.as_ref().is_some_and(|expr| expr_contains_super(expr, search))
+                || stmt_contains_super(body, search)
         }
         Stmt::ForIn { left, right, body } | Stmt::ForOf { left, right, body } => {
-            for_head_contains_super_call(left) || expr_contains_super_call(right) || stmt_contains_super_call(body)
+            for_head_contains_super(left, search) || expr_contains_super(right, search) || stmt_contains_super(body, search)
         }
-        Stmt::While { test, body } | Stmt::DoWhile { body, test } => expr_contains_super_call(test) || stmt_contains_super_call(body),
+        Stmt::While { test, body } | Stmt::DoWhile { body, test } => expr_contains_super(test, search) || stmt_contains_super(body, search),
         Stmt::Switch { discriminant, cases } => {
-            expr_contains_super_call(discriminant)
-                || cases.iter().any(|case| case.test.as_ref().is_some_and(expr_contains_super_call) || stmts_contain_super_call(&case.consequent))
+            expr_contains_super(discriminant, search)
+                || cases.iter().any(|case| case.test.as_ref().is_some_and(|expr| expr_contains_super(expr, search)) || stmts_contain_super(&case.consequent, search))
         }
-        Stmt::Return(value) => value.as_ref().is_some_and(expr_contains_super_call),
+        Stmt::Return(value) => value.as_ref().is_some_and(|expr| expr_contains_super(expr, search)),
         Stmt::Try { block, handler, finalizer } => {
-            stmts_contain_super_call(block)
-                || handler.as_ref().is_some_and(|handler| pattern_option_contains_super_call(handler.param.as_ref()) || stmts_contain_super_call(&handler.body))
-                || finalizer.as_deref().is_some_and(stmts_contain_super_call)
+            stmts_contain_super(block, search)
+                || handler.as_ref().is_some_and(|handler| pattern_option_contains_super(handler.param.as_ref(), search) || stmts_contain_super(&handler.body, search))
+                || finalizer.as_deref().is_some_and(|statements| stmts_contain_super(statements, search))
         }
-        Stmt::With { object, body } => expr_contains_super_call(object) || stmt_contains_super_call(body),
-        Stmt::FunctionDecl(function) => function_contains_super_call(function),
-        Stmt::ClassField(statement) => stmt_contains_super_call(statement),
+        Stmt::With { object, body } => expr_contains_super(object, search) || stmt_contains_super(body, search),
+        Stmt::FunctionDecl(function) => function_contains_super(function, search),
+        Stmt::ClassField(statement) => stmt_contains_super(statement, search),
     }
 }
 
-fn for_init_contains_super_call(init: &ForInit) -> bool {
+fn for_init_contains_super(init: &ForInit, search: SuperSearch) -> bool {
     match init {
-        ForInit::Expr(expr) => expr_contains_super_call(expr),
+        ForInit::Expr(expr) => expr_contains_super(expr, search),
         ForInit::VarDecl(_, declarations) => declarations
             .iter()
-            .any(|declaration| pattern_contains_super_call(&declaration.pattern) || declaration.init.as_ref().is_some_and(expr_contains_super_call)),
+            .any(|declaration| pattern_contains_super(&declaration.pattern, search) || declaration.init.as_ref().is_some_and(|expr| expr_contains_super(expr, search))),
     }
 }
 
-fn for_head_contains_super_call(head: &ForHead) -> bool {
+fn for_head_contains_super(head: &ForHead, search: SuperSearch) -> bool {
     match head {
-        ForHead::Decl(_, pattern) | ForHead::Pattern(pattern) => pattern_contains_super_call(pattern),
+        ForHead::Decl(_, pattern) | ForHead::Pattern(pattern) => pattern_contains_super(pattern, search),
     }
 }
 
-fn function_contains_super_call(function: &Function) -> bool {
-    function.params.iter().any(|param| pattern_contains_super_call(&param.pattern) || param.default.as_ref().is_some_and(expr_contains_super_call))
-        || stmts_contain_super_call(&function.body)
+fn function_contains_super(function: &Function, search: SuperSearch) -> bool {
+    function.params.iter().any(|param| pattern_contains_super(&param.pattern, search) || param.default.as_ref().is_some_and(|expr| expr_contains_super(expr, search)))
+        || stmts_contain_super(&function.body, search)
 }
 
-fn pattern_option_contains_super_call(pattern: Option<&Pattern>) -> bool {
-    pattern.is_some_and(pattern_contains_super_call)
+fn pattern_option_contains_super(pattern: Option<&Pattern>, search: SuperSearch) -> bool {
+    pattern.is_some_and(|pattern| pattern_contains_super(pattern, search))
 }
 
-fn pattern_contains_super_call(pattern: &Pattern) -> bool {
+fn pattern_contains_super(pattern: &Pattern, search: SuperSearch) -> bool {
     match pattern {
         Pattern::Identifier(_) => false,
         Pattern::Array(elements) => elements
             .iter()
             .flatten()
-            .any(|element| pattern_contains_super_call(&element.pattern) || element.default.as_ref().is_some_and(expr_contains_super_call)),
+            .any(|element| pattern_contains_super(&element.pattern, search) || element.default.as_ref().is_some_and(|expr| expr_contains_super(expr, search))),
         Pattern::Object(properties) => properties.iter().any(|property| match property {
             ObjectPatternProp::KeyValue { key, value, default } => {
-                property_key_contains_super_call(key) || pattern_contains_super_call(value) || default.as_ref().is_some_and(expr_contains_super_call)
+                property_key_contains_super(key, search) || pattern_contains_super(value, search) || default.as_ref().is_some_and(|expr| expr_contains_super(expr, search))
             }
-            ObjectPatternProp::Rest(pattern) => pattern_contains_super_call(pattern),
+            ObjectPatternProp::Rest(pattern) => pattern_contains_super(pattern, search),
         }),
     }
 }
 
-fn assignment_pattern_contains_super_call(pattern: &AssignmentPattern) -> bool {
+fn assignment_pattern_contains_super(pattern: &AssignmentPattern, search: SuperSearch) -> bool {
     match pattern {
-        AssignmentPattern::Target(expr) => expr_contains_super_call(expr),
+        AssignmentPattern::Target(expr) => expr_contains_super(expr, search),
         AssignmentPattern::Array(elements) => elements
             .iter()
             .flatten()
-            .any(|element| assignment_pattern_contains_super_call(&element.pattern) || element.default.as_ref().is_some_and(expr_contains_super_call)),
+            .any(|element| assignment_pattern_contains_super(&element.pattern, search) || element.default.as_ref().is_some_and(|expr| expr_contains_super(expr, search))),
         AssignmentPattern::Object(properties) => properties.iter().any(|property| match property {
             AssignmentPatternProp::KeyValue { key, value, default } => {
-                property_key_contains_super_call(key) || assignment_pattern_contains_super_call(value) || default.as_ref().is_some_and(expr_contains_super_call)
+                property_key_contains_super(key, search) || assignment_pattern_contains_super(value, search) || default.as_ref().is_some_and(|expr| expr_contains_super(expr, search))
             }
-            AssignmentPatternProp::Rest(pattern) => assignment_pattern_contains_super_call(pattern),
+            AssignmentPatternProp::Rest(pattern) => assignment_pattern_contains_super(pattern, search),
         }),
     }
 }
 
-fn property_key_contains_super_call(key: &PropertyKey) -> bool {
-    matches!(key, PropertyKey::Computed(expr) if expr_contains_super_call(expr))
+fn property_key_contains_super(key: &PropertyKey, search: SuperSearch) -> bool {
+    matches!(key, PropertyKey::Computed(expr) if expr_contains_super(expr, search))
 }
 
-fn expr_contains_super_call(expr: &Expr) -> bool {
+fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
     match expr {
         Expr::Number(_) | Expr::String(_) | Expr::Bool(_) | Expr::Null | Expr::This | Expr::Identifier(_) | Expr::RegExp { .. } | Expr::Super | Expr::NewTarget => false,
-        Expr::Template { expressions, .. } => expressions.iter().any(expr_contains_super_call),
-        Expr::TaggedTemplate { tag, expressions, .. } => expr_contains_super_call(tag) || expressions.iter().any(expr_contains_super_call),
+        Expr::Template { expressions, .. } => expressions.iter().any(|expr| expr_contains_super(expr, search)),
+        Expr::TaggedTemplate { tag, expressions, .. } => expr_contains_super(tag, search) || expressions.iter().any(|expr| expr_contains_super(expr, search)),
         Expr::Array(elements) => elements.iter().flatten().any(|element| match element {
-            ArrayElement::Normal(expr) | ArrayElement::Spread(expr) => expr_contains_super_call(expr),
+            ArrayElement::Normal(expr) | ArrayElement::Spread(expr) => expr_contains_super(expr, search),
         }),
         Expr::Object(properties) => properties.iter().any(|property| match property {
-            ObjectProp::KeyValue { key, value, .. } => property_key_contains_super_call(key) || expr_contains_super_call(value),
-            ObjectProp::Spread(expr) => expr_contains_super_call(expr),
+            ObjectProp::KeyValue { key, value, .. } => property_key_contains_super(key, search) || expr_contains_super(value, search),
+            ObjectProp::Spread(expr) => expr_contains_super(expr, search),
             ObjectProp::Method { key, function } | ObjectProp::Accessor { key, function, .. } => {
-                property_key_contains_super_call(key) || function_contains_super_call(function)
+                property_key_contains_super(key, search) || (search == SuperSearch::Call && function_contains_super(function, search))
             }
         }),
-        Expr::Function(function) => function_contains_super_call(function),
+        Expr::Function(function) => function_contains_super(function, search),
         Expr::Class(_) => false,
-        Expr::Yield { value, .. } => value.as_deref().is_some_and(expr_contains_super_call),
-        Expr::Await(expr) | Expr::Unary { arg: expr, .. } | Expr::Update { arg: expr, .. } => expr_contains_super_call(expr),
+        Expr::Yield { value, .. } => value.as_deref().is_some_and(|expr| expr_contains_super(expr, search)),
+        Expr::Await(expr) | Expr::Unary { arg: expr, .. } | Expr::Update { arg: expr, .. } => expr_contains_super(expr, search),
         Expr::Arrow { params, body, .. } => {
-            params.iter().any(|param| pattern_contains_super_call(&param.pattern) || param.default.as_ref().is_some_and(expr_contains_super_call))
+            params.iter().any(|param| pattern_contains_super(&param.pattern, search) || param.default.as_ref().is_some_and(|expr| expr_contains_super(expr, search)))
                 || match body {
-                    ArrowBody::Expr(expr) => expr_contains_super_call(expr),
-                    ArrowBody::Block(statements) => stmts_contain_super_call(statements),
+                    ArrowBody::Expr(expr) => expr_contains_super(expr, search),
+                    ArrowBody::Block(statements) => stmts_contain_super(statements, search),
                 }
         }
-        Expr::Binary { left, right, .. } | Expr::Logical { left, right, .. } => expr_contains_super_call(left) || expr_contains_super_call(right),
-        Expr::Sequence(expressions) => expressions.iter().any(expr_contains_super_call),
-        Expr::Assign { target, value, .. } => expr_contains_super_call(target) || expr_contains_super_call(value),
-        Expr::DestructureAssign { pattern, value } => assignment_pattern_contains_super_call(pattern) || expr_contains_super_call(value),
+        Expr::Binary { left, right, .. } | Expr::Logical { left, right, .. } => expr_contains_super(left, search) || expr_contains_super(right, search),
+        Expr::Sequence(expressions) => expressions.iter().any(|expr| expr_contains_super(expr, search)),
+        Expr::Assign { target, value, .. } => expr_contains_super(target, search) || expr_contains_super(value, search),
+        Expr::DestructureAssign { pattern, value } => assignment_pattern_contains_super(pattern, search) || expr_contains_super(value, search),
         Expr::Conditional { test, consequent, alternate } => {
-            expr_contains_super_call(test) || expr_contains_super_call(consequent) || expr_contains_super_call(alternate)
+            expr_contains_super(test, search) || expr_contains_super(consequent, search) || expr_contains_super(alternate, search)
         }
         Expr::Call { callee, args } => {
-            matches!(callee.as_ref(), Expr::Super)
-                || expr_contains_super_call(callee)
+            (search == SuperSearch::Call && matches!(callee.as_ref(), Expr::Super))
+                || expr_contains_super(callee, search)
                 || args.iter().any(|argument| match argument {
-                    Argument::Normal(expr) | Argument::Spread(expr) => expr_contains_super_call(expr),
+                    Argument::Normal(expr) | Argument::Spread(expr) => expr_contains_super(expr, search),
                 })
         }
         Expr::New { callee, args } => {
-            expr_contains_super_call(callee)
+            expr_contains_super(callee, search)
                 || args.iter().any(|argument| match argument {
-                    Argument::Normal(expr) | Argument::Spread(expr) => expr_contains_super_call(expr),
+                    Argument::Normal(expr) | Argument::Spread(expr) => expr_contains_super(expr, search),
                 })
         }
-        Expr::Member { object, property, .. } => expr_contains_super_call(object) || expr_contains_super_call(property),
+        Expr::Member { object, property, .. } => {
+            (search == SuperSearch::Property && matches!(object.as_ref(), Expr::Super))
+                || expr_contains_super(object, search)
+                || expr_contains_super(property, search)
+        }
     }
 }

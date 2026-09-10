@@ -41,6 +41,16 @@ Their applicability needs an explicit clause/edition audit, never a silent skip.
 Instruction exhaustion (906 baseline modes) and wall/regex deadlines (19) are
 separate from semantic failures and should be rerun with recorded budgets.
 
+The Test262 adapter maps a parser rejection to a parse-phase `SyntaxError` only
+when the parser marked that production as a recognized early error. Other
+subset-parser rejections remain `unclassified_parse_error` and cannot satisfy a
+negative parse test. In particular, a valid private-name prefix (`#`) remains
+unclassified while private elements are unsupported; a malformed identifier
+escape is classified only when the lexer has established that the escape itself
+is invalid. The adapter and its Python tests therefore keep grammar coverage
+separate from evidence that a negative test's required phase and error type were
+actually met.
+
 ## Dependency order and exit criteria
 
 | Order | Architecture / test items | Dependencies and acceptance criteria |
@@ -240,11 +250,27 @@ simple identifier reads/writes, is unwound with handlers, and is rejected in
 strict code. It does not yet model every `with` interaction with closures,
 `typeof`, updates or implicit global writes.
 
-The current `language/statements/class` slice has **2,126 pass, 4,476 fail and
-2,064 unsupported** of 8,666 scheduled modes. It uses the pinned Test262
-snapshot, eight workers, a two-second case deadline and a 1,000,000-instruction
-budget. This is a focused regression measurement rather than a conformance
-claim; raw output is local at `/tmp/bluejs-test262-class-super-early`.
+Function declarations, expressions and class methods share a parameter parser
+that rejects a rest default or trailing comma, and recognizes the direct
+`await` and `yield` early errors in async and generator parameter initializers.
+The compiler enforces duplicate and non-simple strict parameter restrictions,
+including strict `arguments`, `eval`, and `yield` bindings. Ordinary functions
+reject both `super()` and `super.property`; class methods retain their own home
+object. Identifier escapes are decoded before keyword classification, allowing
+valid escaped `IdentifierName` class members while rejecting malformed escapes.
+
+The current `language/statements/class` slice has **2,314 pass, 4,350 fail and
+2,002 unsupported** of 8,666 scheduled modes. The paired `function` statement
+and expression slices have, respectively, **632 pass, 114 fail, 39 unsupported**
+of 785 modes and **450 pass, 26 fail, 8 unsupported** of 484 modes. These runs
+use the pinned Test262 snapshot, eight workers, a two-second case deadline and
+a 1,000,000-instruction budget. Comparing path/mode pairs with the prior class
+measurement found 142 fail→pass and 46 unsupported→pass transitions, with no
+pass→nonpass transition. This is a focused regression measurement rather than
+a conformance claim; raw output is local at
+`/tmp/bluejs-test262-class-function-inheritance-final-validated`,
+`/tmp/bluejs-test262-function-statements-final-validated`, and
+`/tmp/bluejs-test262-function-expressions-final-validated`.
 
 With `--instruction-budget 5000000` (required because the TCO helpers perform
 100,000 iterations), the filtered `language/statements/try` run now has **398

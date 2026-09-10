@@ -164,6 +164,32 @@ fn class_async_method_syntax_is_classified_as_an_execution_gap() {
 }
 
 #[test]
+fn function_and_inheritance_early_errors_are_classified() {
+    for source in [
+        "function f(){super();}",
+        "function f(){super.value;}",
+        "function f(...rest=[]){}",
+        "function f(...rest,){}",
+        "class C{async method(value=await){}}",
+        "class C{*method(value=yield){}}",
+        "class C{static{function await(){}}}",
+    ] {
+        let error = parse(source).unwrap_err();
+        assert!(error.known_syntax, "{source}: {error:?}");
+    }
+    assert!(parse("class C{\\u0065xtends(){return 1;}}").is_ok());
+    for source in [
+        "function f(a=0,a){}",
+        "function f(a=0){'use strict';}",
+        "'use strict';function f(arguments){}",
+        "'use strict';function*g(){function f(value=yield){unbound=value;}}",
+    ] {
+        let program = parse(source).unwrap();
+        assert!(matches!(compile(&program), Err(blueice_bluejs::CompileError::InvalidSyntax(_))), "{source}");
+    }
+}
+
+#[test]
 fn class_home_metadata_survives_minor_collection_while_a_generator_is_suspended() {
     let mut vm = Vm::new(VmConfig {
         heap: HeapConfig { nursery_capacity: 1, major_threshold_bytes: 256, max_heap_bytes: 512 * 1024 },
