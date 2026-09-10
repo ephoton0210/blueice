@@ -248,6 +248,7 @@ pub enum UnaryOp {
     Neg,
     Plus,
     Not,
+    BitNot,
     Void,
     Typeof,
     Delete,
@@ -266,6 +267,12 @@ pub enum BinaryOp {
     Mul,
     Div,
     Mod,
+    ShiftLeft,
+    ShiftRight,
+    UnsignedShiftRight,
+    BitAnd,
+    BitXor,
+    BitOr,
     Eq,
     NotEq,
     StrictEq,
@@ -293,6 +300,12 @@ pub enum AssignOp {
     MulAssign,
     DivAssign,
     ModAssign,
+    ShiftLeftAssign,
+    ShiftRightAssign,
+    UnsignedShiftRightAssign,
+    BitAndAssign,
+    BitXorAssign,
+    BitOrAssign,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -68,6 +68,55 @@ fn void_evaluates_its_operand_and_returns_undefined() {
 }
 
 #[test]
+fn number_bitwise_operators_coerce_mask_and_preserve_reference_evaluation() {
+    for source in [
+        "(~0)===-1&&(5&3)===1&&(5|2)===7&&(5^3)===6",
+        "(1<<33)===2&&(-8>>1)===-4&&(-1>>>0)===4294967295",
+        "(4294967295&-1)===-1&&('3'&true)===1",
+        "(1|2^3&1)===3",
+        "let value=15;value&=10;value|=1;value^=3;value<<=2;value>>=1;value>>>=0;value===16",
+        "let calls=0;let object={value:1};function target(){calls+=1;return object;}target().value<<=3;calls===1&&object.value===8",
+    ] {
+        assert_eq!(evaluate(source), Value::Bool(true), "{source}");
+    }
+}
+
+#[test]
+fn number_static_constants_have_spec_values_and_attributes() {
+    assert!(matches!(
+        evaluate("Number.NaN"),
+        Value::Number(value) if value.is_nan()
+    ));
+    for (source, expected) in [
+        ("Number.EPSILON", f64::EPSILON),
+        ("Number.MAX_SAFE_INTEGER", 9_007_199_254_740_991.0),
+        ("Number.MIN_SAFE_INTEGER", -9_007_199_254_740_991.0),
+        ("Number.MAX_VALUE", f64::MAX),
+        ("Number.MIN_VALUE", f64::from_bits(1)),
+        ("Number.NEGATIVE_INFINITY", f64::NEG_INFINITY),
+        ("Number.POSITIVE_INFINITY", f64::INFINITY),
+    ] {
+        assert_eq!(evaluate(source), Value::Number(expected), "{source}");
+    }
+    assert_eq!(
+        evaluate(
+            "let d=Object.getOwnPropertyDescriptor(Number,'MAX_VALUE');d.value===Number.MAX_VALUE&&!d.writable&&!d.enumerable&&!d.configurable",
+        ),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn property_is_enumerable_observes_only_own_enumerable_properties() {
+    assert_eq!(
+        evaluate(
+            "let proto={inherited:1};let object={__proto__:proto};object.propertyIsEnumerable('inherited')===false&&object.propertyIsEnumerable('own')===false&&(object.own=1,object.propertyIsEnumerable('own'))",
+        ),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn nested_parentheses_and_ordinary_length_do_not_take_special_paths() {
     assert_eq!(evaluate("(((1+2)*3))"), Value::Number(9.0));
     assert_eq!(

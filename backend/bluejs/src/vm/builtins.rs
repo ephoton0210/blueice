@@ -1297,6 +1297,20 @@ impl Vm {
                         string: false,
                     },
                 )?;
+                if !boolean {
+                    for (property, value) in [
+                        ("EPSILON", f64::EPSILON),
+                        ("MAX_SAFE_INTEGER", 9_007_199_254_740_991.0),
+                        ("MAX_VALUE", f64::MAX),
+                        ("MIN_SAFE_INTEGER", -9_007_199_254_740_991.0),
+                        ("MIN_VALUE", f64::from_bits(1)),
+                        ("NaN", f64::NAN),
+                        ("NEGATIVE_INFINITY", f64::NEG_INFINITY),
+                        ("POSITIVE_INFINITY", f64::INFINITY),
+                    ] {
+                        self.define_data(id, property, Value::Number(value), false, false, false)?;
+                    }
+                }
             } else if name == "globalThis" {
                 self.define_data(id, "String", Value::Object(constructor), true, false, true)?;
                 self.define_data(id, "globalThis", Value::Object(id), true, false, true)?;
@@ -1689,7 +1703,7 @@ impl Vm {
                 }
                 self.coerce_object(first).map(Value::Object)
             }
-            NativeFunction::ObjectMethod(method) => self.object_method(method, &args),
+            NativeFunction::ObjectMethod(method) => self.object_method(method, &receiver, &args),
             NativeFunction::StringIterator => {
                 let string = self.string_receiver(&receiver)?;
                 let prototype = self.string_iterator_prototype()?;
@@ -2180,6 +2194,7 @@ impl Vm {
     fn object_method(
         &mut self,
         method: ObjectMethod,
+        receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
         use ObjectMethod::*;
@@ -2192,7 +2207,9 @@ impl Vm {
                 "operation requires an object".into(),
             ));
         }
-        let object = if method == Create {
+        let object = if method == PropertyIsEnumerable {
+            self.coerce_object(receiver)?
+        } else if method == Create {
             let prototype = match first {
                 Value::Null => None,
                 Value::Object(id) => Some(*id),
@@ -2241,6 +2258,14 @@ impl Vm {
                     }
                 }
                 Ok(Value::Object(result))
+            }
+            PropertyIsEnumerable => {
+                let key = self.coerce_property_key(native::argument(args, 0))?;
+                Ok(Value::Bool(
+                    self.heap
+                        .get_own_property_descriptor(object, key)?
+                        .is_some_and(|descriptor| descriptor.enumerable == Some(true)),
+                ))
             }
             Keys | GetOwnPropertyNames | GetOwnPropertySymbols | OwnKeys => {
                 let keys = self.heap.own_property_keys(object)?;

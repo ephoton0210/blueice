@@ -1241,6 +1241,12 @@ impl Vm {
                     Opcode::Multiply => self.numeric(|a, b| a * b)?,
                     Opcode::Divide => self.numeric(|a, b| a / b)?,
                     Opcode::Remainder => self.numeric(|a, b| a % b)?,
+                    Opcode::ShiftLeft => self.shift(|a, b| a.wrapping_shl(b) as f64)?,
+                    Opcode::ShiftRight => self.shift(|a, b| (a >> b) as f64)?,
+                    Opcode::UnsignedShiftRight => self.shift(|a, b| ((a as u32) >> b) as f64)?,
+                    Opcode::BitAnd => self.bitwise(|a, b| a & b)?,
+                    Opcode::BitXor => self.bitwise(|a, b| a ^ b)?,
+                    Opcode::BitOr => self.bitwise(|a, b| a | b)?,
                     Opcode::StrictEqual => self.binary(|_, a, b| Ok(Value::Bool(a == b)))?,
                     Opcode::StrictNotEqual => self.binary(|_, a, b| Ok(Value::Bool(a != b)))?,
                     Opcode::Equal => {
@@ -1258,6 +1264,7 @@ impl Vm {
                     Opcode::LessEqual => self.relational(|order| order != Ordering::Greater)?,
                     Opcode::GreaterEqual => self.relational(|order| order != Ordering::Less)?,
                     Opcode::Negate
+                    | Opcode::BitNot
                     | Opcode::ToNumber
                     | Opcode::ToString
                     | Opcode::Not
@@ -1265,6 +1272,9 @@ impl Vm {
                         let arg = self.stack.last().unwrap().clone();
                         let value = match instruction.opcode {
                             Opcode::Negate => Value::Number(-self.coerce_number(&arg)?),
+                            Opcode::BitNot => Value::Number(
+                                (!primitive::to_int32(self.coerce_number(&arg)?)) as f64,
+                            ),
                             Opcode::ToNumber => Value::Number(self.coerce_number(&arg)?),
                             Opcode::ToString => Value::String(self.coerce_string(&arg)?),
                             Opcode::Not => Value::Bool(!self.to_boolean(&arg)?),
@@ -1475,6 +1485,9 @@ impl Vm {
                         || *key == PropertyName::from(JsSymbol::well_known("iterator")))
                 {
                     self.string_intrinsics()?;
+                }
+                if key == "propertyIsEnumerable" {
+                    self.property_is_enumerable_intrinsic()?;
                 }
                 self.get_from_prototype(*id, receiver, key)
             }
@@ -2112,6 +2125,24 @@ impl Vm {
         Ok(())
     }
 
+    fn property_is_enumerable_intrinsic(&mut self) -> Result<(), RuntimeError> {
+        if self
+            .heap
+            .get_own_property_descriptor(self.object_prototype, "propertyIsEnumerable")?
+            .is_some()
+        {
+            return Ok(());
+        }
+        let function_prototype = self.string_intrinsics()?.1;
+        self.install_native(
+            self.object_prototype,
+            function_prototype,
+            "propertyIsEnumerable",
+            1,
+            NativeFunction::ObjectMethod(native::ObjectMethod::PropertyIsEnumerable),
+        )
+    }
+
     fn call_native(
         &mut self,
         callee: Value,
@@ -2463,6 +2494,22 @@ impl Vm {
                 vm.coerce_number(&a)?,
                 vm.coerce_number(&b)?,
             )))
+        })
+    }
+
+    fn bitwise(&mut self, operation: fn(i32, i32) -> i32) -> Result<(), RuntimeError> {
+        self.binary(|vm, left, right| {
+            let left = primitive::to_int32(vm.coerce_number(&left)?);
+            let right = primitive::to_int32(vm.coerce_number(&right)?);
+            Ok(Value::Number(operation(left, right) as f64))
+        })
+    }
+
+    fn shift(&mut self, operation: fn(i32, u32) -> f64) -> Result<(), RuntimeError> {
+        self.binary(|vm, left, right| {
+            let left = primitive::to_int32(vm.coerce_number(&left)?);
+            let right = primitive::to_uint32(vm.coerce_number(&right)?) & 0x1f;
+            Ok(Value::Number(operation(left, right)))
         })
     }
 

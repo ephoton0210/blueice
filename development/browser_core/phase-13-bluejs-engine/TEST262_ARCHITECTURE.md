@@ -524,3 +524,50 @@ The resulting fresh run at `target/test262-switch-is-html-async/` reconciles
 observable operations, strict switch matching, feature-gated adapter setup,
 async CaseBlock scope exit, and the explicit async-call boundary. This closes
 the filtered corpus, not P1.3 async execution or general Test262 conformance.
+
+## P0.1 continuation: Number bitwise, shift, and static-property edges
+
+The latest published [ECMAScript 2026 expression grammar and evaluation
+rules](https://tc39.es/ecma262/2026/multipage/ecmascript-language-expressions.html)
+were checked on 2026-09-10. The grammar orders bitwise AND, XOR and OR above
+logical AND, with shift expressions beneath relational expressions; compound
+assignment uses the same binary operations after obtaining the left reference.
+BlueJS now represents `~`, `&`, `^`, `|`, `<<`, `>>`, `>>>` and each matching
+compound assignment in its AST and bytecode. The parser follows the specified
+precedence chain, while the compiler preserves single evaluation of member
+assignment references.
+
+For the implemented Number branch, operands are converted through the existing
+observable primitive/number coercion path. `&`, `^`, `|` and `~` use ToInt32;
+the shift count uses ToUint32 masked to five bits; signed right shift sign-fills
+and unsigned right shift returns a non-negative uint32 result. BigInt remains a
+separate unsupported value and literal workstream, so the mixed-type and
+BigInt-only branches of these operators are deliberately not claimed here.
+
+The same pass exposed Number static-property prerequisites in otherwise
+Number-only shift fixtures. `Number.EPSILON`, safe integers, extrema, `NaN`
+and signed infinities are now non-writable, non-enumerable and
+non-configurable data properties. `Number.MIN_VALUE` is the IEEE-754 smallest
+positive subnormal (`5e-324`), not the smallest normal number. The related
+`Object.prototype.propertyIsEnumerable` implementation consults only an own
+property descriptor, and is initialized through the existing lazy intrinsic
+path before object-property lookup.
+
+The pre-change `language/statements/break` selection had **36 pass, 4 fail**:
+the four sources use bitwise AND in expression statements. The fresh final run
+at `target/test262-break-verified` now has **40 pass, 0 fail, 0 unsupported, 0
+timeout**. The broader `language/expressions/bitwise` run at
+`target/test262-bitwise-verified` has **169 pass, 40 fail**; every remaining
+failure is a BigInt-literal parse case. The precise Number shift selections are
+now `<<`: **76 pass, 12 BigInt failures, 1 unsupported**; `>>`: **60 pass, 12
+BigInt failures, 1 unsupported**; and `>>>`: **76 pass, 12 BigInt failures, 1
+unsupported**. Each unsupported mode is strict implicit-global assignment,
+which belongs to the global-environment P0.2 workstream rather than shift
+semantics. The focused Number static-property selections for `EPSILON`, safe
+integers, `NaN`, extrema and infinities total **40/40** passing modes.
+
+Public regressions first covered coercion, 32-bit truncation/masking,
+precedence and compound-member-reference evaluation; they then covered every
+Number data constant/descriptor and own-only enumerability. This is a
+Number-only language and builtin slice, not BigInt, complete Object.prototype,
+or edition-wide Test262 conformance.

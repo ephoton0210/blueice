@@ -13,9 +13,10 @@
 //! rather than a table-driven Pratt parser): assignment (and arrow
 //! functions, detected here since they share `AssignmentExpression`'s
 //! grammar slot) -> conditional (`?:`) -> nullish (`??`) -> logical OR
-//! -> logical AND -> equality -> relational -> additive ->
-//! multiplicative -> unary -> postfix update (`++`/`--`) -> left-hand-
-//! side (`new`/member/call chains) -> primary. ECMAScript §13.13 keeps
+//! -> logical AND -> bitwise OR -> bitwise XOR -> bitwise AND -> equality
+//! -> relational -> shift -> additive -> multiplicative -> unary -> postfix
+//! update (`++`/`--`) -> left-hand-side (`new`/member/call chains) -> primary.
+//! ECMAScript §13.13 keeps
 //! unparenthesized coalescing and logical AND/OR in separate productions;
 //! grammar-level flags enforce that distinction before parentheses are
 //! discarded from the AST.
@@ -1380,6 +1381,14 @@ impl Parser {
             Token::Punct(Punct::StarAssign) => Some(AssignOp::MulAssign),
             Token::Punct(Punct::SlashAssign) => Some(AssignOp::DivAssign),
             Token::Punct(Punct::PercentAssign) => Some(AssignOp::ModAssign),
+            Token::Punct(Punct::ShiftLeftAssign) => Some(AssignOp::ShiftLeftAssign),
+            Token::Punct(Punct::ShiftRightAssign) => Some(AssignOp::ShiftRightAssign),
+            Token::Punct(Punct::UnsignedShiftRightAssign) => {
+                Some(AssignOp::UnsignedShiftRightAssign)
+            }
+            Token::Punct(Punct::AndAssign) => Some(AssignOp::BitAndAssign),
+            Token::Punct(Punct::XorAssign) => Some(AssignOp::BitXorAssign),
+            Token::Punct(Punct::OrAssign) => Some(AssignOp::BitOrAssign),
             _ => None,
         };
         let Some(op) = op else {
@@ -1585,10 +1594,10 @@ impl Parser {
     }
 
     fn parse_logical_and(&mut self) -> Result<(Expr, bool), ParseError> {
-        let mut left = self.parse_equality()?;
+        let mut left = self.parse_bitwise_or()?;
         let mut logical = false;
         while self.eat_punct(Punct::AndAnd) {
-            let right = self.parse_equality()?;
+            let right = self.parse_bitwise_or()?;
             left = Expr::Logical {
                 op: LogicalOp::And,
                 left: Box::new(left),
@@ -1597,6 +1606,45 @@ impl Parser {
             logical = true;
         }
         Ok((left, logical))
+    }
+
+    fn parse_bitwise_or(&mut self) -> Result<Expr, ParseError> {
+        let mut left = self.parse_bitwise_xor()?;
+        while self.eat_punct(Punct::Or) {
+            let right = self.parse_bitwise_xor()?;
+            left = Expr::Binary {
+                op: BinaryOp::BitOr,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_bitwise_xor(&mut self) -> Result<Expr, ParseError> {
+        let mut left = self.parse_bitwise_and()?;
+        while self.eat_punct(Punct::Xor) {
+            let right = self.parse_bitwise_and()?;
+            left = Expr::Binary {
+                op: BinaryOp::BitXor,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_bitwise_and(&mut self) -> Result<Expr, ParseError> {
+        let mut left = self.parse_equality()?;
+        while self.eat_punct(Punct::And) {
+            let right = self.parse_equality()?;
+            left = Expr::Binary {
+                op: BinaryOp::BitAnd,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
     }
 
     fn parse_equality(&mut self) -> Result<Expr, ParseError> {
@@ -1625,7 +1673,7 @@ impl Parser {
     }
 
     fn parse_relational(&mut self) -> Result<Expr, ParseError> {
-        let mut left = self.parse_additive()?;
+        let mut left = self.parse_shift()?;
         loop {
             let op = if self.check_punct(Punct::Lt) {
                 BinaryOp::Lt
@@ -1639,6 +1687,29 @@ impl Parser {
                 BinaryOp::Instanceof
             } else if self.check_keyword(Keyword::In) && !self.no_in {
                 BinaryOp::In
+            } else {
+                break;
+            };
+            self.advance();
+            let right = self.parse_shift()?;
+            left = Expr::Binary {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_shift(&mut self) -> Result<Expr, ParseError> {
+        let mut left = self.parse_additive()?;
+        loop {
+            let op = if self.check_punct(Punct::ShiftLeft) {
+                BinaryOp::ShiftLeft
+            } else if self.check_punct(Punct::ShiftRight) {
+                BinaryOp::ShiftRight
+            } else if self.check_punct(Punct::UnsignedShiftRight) {
+                BinaryOp::UnsignedShiftRight
             } else {
                 break;
             };
@@ -1713,6 +1784,12 @@ impl Parser {
         if self.eat_punct(Punct::Plus) {
             return Ok(Expr::Unary {
                 op: UnaryOp::Plus,
+                arg: Box::new(self.parse_unary()?),
+            });
+        }
+        if self.eat_punct(Punct::Tilde) {
+            return Ok(Expr::Unary {
+                op: UnaryOp::BitNot,
                 arg: Box::new(self.parse_unary()?),
             });
         }
@@ -3223,8 +3300,32 @@ mod tests {
     }
 
     #[test]
-    fn bitwise_operators_are_rejected_as_out_of_scope_end_to_end() {
-        assert!(parse("let x = a & b;").is_err());
+    fn bitwise_operators_follow_their_grammar_precedence() {
+        assert_eq!(
+            expr("1|2^3&4<<5+6"),
+            Expr::Binary {
+                op: BinaryOp::BitOr,
+                left: Box::new(Expr::Number(1.0)),
+                right: Box::new(Expr::Binary {
+                    op: BinaryOp::BitXor,
+                    left: Box::new(Expr::Number(2.0)),
+                    right: Box::new(Expr::Binary {
+                        op: BinaryOp::BitAnd,
+                        left: Box::new(Expr::Number(3.0)),
+                        right: Box::new(Expr::Binary {
+                            op: BinaryOp::ShiftLeft,
+                            left: Box::new(Expr::Number(4.0)),
+                            right: Box::new(Expr::Binary {
+                                op: BinaryOp::Add,
+                                left: Box::new(Expr::Number(5.0)),
+                                right: Box::new(Expr::Number(6.0)),
+                            }),
+                        }),
+                    }),
+                }),
+            }
+        );
+        assert!(parse("let x=1;x&=2;x|=4;x^=3;x<<=1;x>>=1;x>>>=0").is_ok());
     }
 
     #[test]

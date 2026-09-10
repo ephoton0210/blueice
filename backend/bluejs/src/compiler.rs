@@ -1156,6 +1156,7 @@ impl Compiler {
                     UnaryOp::Neg => Opcode::Negate,
                     UnaryOp::Plus => Opcode::ToNumber,
                     UnaryOp::Not => Opcode::Not,
+                    UnaryOp::BitNot => Opcode::BitNot,
                     UnaryOp::Typeof => Opcode::Typeof,
                     UnaryOp::Delete | UnaryOp::Void => Opcode::DeleteProperty,
                 };
@@ -1664,14 +1665,7 @@ impl Compiler {
                     self.emit(Opcode::SuperGet, 0)?;
                 }
                 self.expression(value)?;
-                if let Some(opcode) = match op {
-                    AssignOp::Assign => None,
-                    AssignOp::AddAssign => Some(Opcode::Add),
-                    AssignOp::SubAssign => Some(Opcode::Subtract),
-                    AssignOp::MulAssign => Some(Opcode::Multiply),
-                    AssignOp::DivAssign => Some(Opcode::Divide),
-                    AssignOp::ModAssign => Some(Opcode::Remainder),
-                } {
+                if let Some(opcode) = compound_assignment_opcode(op) {
                     self.emit(opcode, 0)?;
                 }
                 self.emit(Opcode::SuperSet, 0)?;
@@ -1725,14 +1719,7 @@ impl Compiler {
             }
         }
         self.expression(value)?;
-        if let Some(opcode) = match op {
-            AssignOp::Assign => None,
-            AssignOp::AddAssign => Some(Opcode::Add),
-            AssignOp::SubAssign => Some(Opcode::Subtract),
-            AssignOp::MulAssign => Some(Opcode::Multiply),
-            AssignOp::DivAssign => Some(Opcode::Divide),
-            AssignOp::ModAssign => Some(Opcode::Remainder),
-        } {
+        if let Some(opcode) = compound_assignment_opcode(op) {
             self.emit(opcode, 0)?;
         }
         if let Some(slot) = binding {
@@ -2385,6 +2372,12 @@ fn binary_opcode(op: BinaryOp) -> Result<Opcode, CompileError> {
         BinaryOp::Mul => Opcode::Multiply,
         BinaryOp::Div => Opcode::Divide,
         BinaryOp::Mod => Opcode::Remainder,
+        BinaryOp::ShiftLeft => Opcode::ShiftLeft,
+        BinaryOp::ShiftRight => Opcode::ShiftRight,
+        BinaryOp::UnsignedShiftRight => Opcode::UnsignedShiftRight,
+        BinaryOp::BitAnd => Opcode::BitAnd,
+        BinaryOp::BitXor => Opcode::BitXor,
+        BinaryOp::BitOr => Opcode::BitOr,
         BinaryOp::StrictEq => Opcode::StrictEqual,
         BinaryOp::StrictNotEq => Opcode::StrictNotEqual,
         BinaryOp::Eq => Opcode::Equal,
@@ -2396,6 +2389,23 @@ fn binary_opcode(op: BinaryOp) -> Result<Opcode, CompileError> {
         BinaryOp::Instanceof => Opcode::Instanceof,
         BinaryOp::In => Opcode::In,
     })
+}
+
+fn compound_assignment_opcode(op: AssignOp) -> Option<Opcode> {
+    match op {
+        AssignOp::Assign => None,
+        AssignOp::AddAssign => Some(Opcode::Add),
+        AssignOp::SubAssign => Some(Opcode::Subtract),
+        AssignOp::MulAssign => Some(Opcode::Multiply),
+        AssignOp::DivAssign => Some(Opcode::Divide),
+        AssignOp::ModAssign => Some(Opcode::Remainder),
+        AssignOp::ShiftLeftAssign => Some(Opcode::ShiftLeft),
+        AssignOp::ShiftRightAssign => Some(Opcode::ShiftRight),
+        AssignOp::UnsignedShiftRightAssign => Some(Opcode::UnsignedShiftRight),
+        AssignOp::BitAndAssign => Some(Opcode::BitAnd),
+        AssignOp::BitXorAssign => Some(Opcode::BitXor),
+        AssignOp::BitOrAssign => Some(Opcode::BitOr),
+    }
 }
 
 fn pattern_names(pattern: &Pattern) -> Vec<String> {

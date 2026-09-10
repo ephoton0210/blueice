@@ -44,6 +44,22 @@ pub(crate) fn number(value: &Value) -> Result<f64, RuntimeError> {
     })
 }
 
+/// ECMAScript ToUint32 applied after observable numeric coercion. The finite
+/// result is an integer in `[0, 2^32)`, exactly representable as an `f64`.
+pub(crate) fn to_uint32(number: f64) -> u32 {
+    if number.is_finite() {
+        number.trunc().rem_euclid(4_294_967_296.0) as u32
+    } else {
+        0
+    }
+}
+
+/// ECMAScript ToInt32 uses the same modulo conversion as ToUint32, then views
+/// the resulting bits as a signed two's-complement integer.
+pub(crate) fn to_int32(number: f64) -> i32 {
+    to_uint32(number) as i32
+}
+
 pub(crate) fn string(value: &Value) -> Result<JsString, RuntimeError> {
     Ok(match value {
         Value::Undefined => "undefined".into(),

@@ -134,6 +134,7 @@ pub(crate) enum ObjectMethod {
     Create,
     OwnKeys,
     IsExtensible,
+    PropertyIsEnumerable,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -7,8 +7,8 @@
 //! full ECMAScript lexical grammar. The edition 17 implementation track
 //! now extends that original subset: Number radix literals/separators,
 //! ECMAScript whitespace/line terminators and string continuations are
-//! implemented. Regex literals, bitwise/shift operators, `**`, BigInt,
-//! tagged templates and legacy octal escapes remain to be implemented.
+//! implemented. Regex literals, `**`, BigInt, tagged templates and legacy
+//! octal escapes remain to be implemented.
 //! [`Keyword`] mirrors this: `undefined` is deliberately NOT a keyword
 //! here (unlike `null`/`true`/`false`) because it isn't one in real
 //! ECMAScript either -- it's an ordinary identifier bound to a global
@@ -144,6 +144,12 @@ pub enum Punct {
     StarAssign,
     SlashAssign,
     PercentAssign,
+    ShiftLeftAssign,
+    ShiftRightAssign,
+    UnsignedShiftRightAssign,
+    AndAssign,
+    XorAssign,
+    OrAssign,
     EqEq,
     NotEq,
     EqEqEq,
@@ -152,9 +158,16 @@ pub enum Punct {
     Gt,
     LtEq,
     GtEq,
+    ShiftLeft,
+    ShiftRight,
+    UnsignedShiftRight,
+    And,
+    Xor,
+    Or,
     AndAnd,
     OrOr,
     Bang,
+    Tilde,
     Question,
     QuestionQuestion,
 }
@@ -858,28 +871,64 @@ impl Tokenizer {
                     Punct::Bang
                 }
             }
-            '<' => two!('=', Punct::LtEq, Punct::Lt),
-            '>' => two!('=', Punct::GtEq, Punct::Gt),
+            '<' => {
+                if self.peek() == Some('<') {
+                    self.advance();
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Punct::ShiftLeftAssign
+                    } else {
+                        Punct::ShiftLeft
+                    }
+                } else {
+                    two!('=', Punct::LtEq, Punct::Lt)
+                }
+            }
+            '>' => {
+                if self.peek() == Some('>') {
+                    self.advance();
+                    if self.peek() == Some('>') {
+                        self.advance();
+                        if self.peek() == Some('=') {
+                            self.advance();
+                            Punct::UnsignedShiftRightAssign
+                        } else {
+                            Punct::UnsignedShiftRight
+                        }
+                    } else if self.peek() == Some('=') {
+                        self.advance();
+                        Punct::ShiftRightAssign
+                    } else {
+                        Punct::ShiftRight
+                    }
+                } else {
+                    two!('=', Punct::GtEq, Punct::Gt)
+                }
+            }
             '&' => {
                 if self.peek() == Some('&') {
                     self.advance();
                     Punct::AndAnd
+                } else if self.peek() == Some('=') {
+                    self.advance();
+                    Punct::AndAssign
                 } else {
-                    return Err(LexError::new(
-                        "bitwise '&' is not supported (out of BlueJS's MVP scope)",
-                    ));
+                    Punct::And
                 }
             }
             '|' => {
                 if self.peek() == Some('|') {
                     self.advance();
                     Punct::OrOr
+                } else if self.peek() == Some('=') {
+                    self.advance();
+                    Punct::OrAssign
                 } else {
-                    return Err(LexError::new(
-                        "bitwise '|' is not supported (out of BlueJS's MVP scope)",
-                    ));
+                    Punct::Or
                 }
             }
+            '^' => two!('=', Punct::XorAssign, Punct::Xor),
+            '~' => Punct::Tilde,
             '?' => {
                 if self.peek() == Some('?') {
                     self.advance();
@@ -1267,12 +1316,26 @@ mod tests {
     }
 
     #[test]
-    fn bitwise_and_and_or_are_rejected_as_out_of_scope() {
-        assert!(Tokenizer::new("a & b").next_spanned().is_ok()); // `a` itself is fine
-        let mut t = Tokenizer::new("&");
-        assert!(t.next_spanned().is_err());
-        let mut t = Tokenizer::new("|");
-        assert!(t.next_spanned().is_err());
+    fn scans_bitwise_shift_and_compound_punctuators_longest_first() {
+        assert_eq!(
+            tokens("& &= | |= ^ ^= ~ << <<= >> >>= >>> >>>="),
+            vec![
+                Token::Punct(Punct::And),
+                Token::Punct(Punct::AndAssign),
+                Token::Punct(Punct::Or),
+                Token::Punct(Punct::OrAssign),
+                Token::Punct(Punct::Xor),
+                Token::Punct(Punct::XorAssign),
+                Token::Punct(Punct::Tilde),
+                Token::Punct(Punct::ShiftLeft),
+                Token::Punct(Punct::ShiftLeftAssign),
+                Token::Punct(Punct::ShiftRight),
+                Token::Punct(Punct::ShiftRightAssign),
+                Token::Punct(Punct::UnsignedShiftRight),
+                Token::Punct(Punct::UnsignedShiftRightAssign),
+                Token::Eof,
+            ]
+        );
     }
 
     #[test]

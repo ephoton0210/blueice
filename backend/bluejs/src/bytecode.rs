@@ -46,6 +46,12 @@ opcodes! {
     Multiply: 1, 0;
     Divide: 1, 0;
     Remainder: 1, 0;
+    ShiftLeft: 1, 0;
+    ShiftRight: 1, 0;
+    UnsignedShiftRight: 1, 0;
+    BitAnd: 1, 0;
+    BitXor: 1, 0;
+    BitOr: 1, 0;
     StrictEqual: 1, 0;
     StrictNotEqual: 1, 0;
     Equal: 1, 0;
@@ -55,6 +61,7 @@ opcodes! {
     LessEqual: 1, 0;
     GreaterEqual: 1, 0;
     Negate: 1, 0;
+    BitNot: 1, 0;
     ToNumber: 1, 0;
     ToString: 1, 0;
     Not: 1, 0;
