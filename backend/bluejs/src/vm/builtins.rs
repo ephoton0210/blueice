@@ -146,7 +146,7 @@ impl Vm {
             RuntimeError::SyntaxError("eval source contains an unpaired surrogate".into())
         })?;
         let program =
-            crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+            crate::parse_eval(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
         let derived_constructor = match self.class_constructor {
             Some(constructor) => self.heap.class_base(constructor)?.is_some(),
             None => false,
@@ -158,14 +158,30 @@ impl Vm {
                 "super() is not valid in this eval context".into(),
             ));
         }
+        if crate::ast::contains_super_property_outside_class(&program) && self.home_object.is_none()
+        {
+            return Err(RuntimeError::SyntaxError(
+                "super property is not valid in this eval context".into(),
+            ));
+        }
+        let global_execution = self.callee == Value::Undefined;
         let visible = self.eval_visible_bindings();
-        let lexical_conflicts = self.eval_lexical_conflicts();
+        let mut lexical_conflicts = self.eval_lexical_conflicts();
+        if global_execution {
+            lexical_conflicts.extend(
+                self.global_bindings
+                    .iter()
+                    .filter(|(_, binding)| !binding.property)
+                    .map(|(name, _)| name.clone()),
+            );
+        }
         let code = crate::compiler::compile_eval(
             &program,
             &visible,
             &lexical_conflicts,
             self.strict,
             self.new_target_allowed,
+            self.with_objects.len(),
         )
         .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let captures = code
@@ -178,7 +194,6 @@ impl Vm {
         // execution context. Give eval the global `this` even when the outer
         // script has not observed it yet, and publish `var` bindings there.
         // Strict eval always receives its own VariableEnvironment.
-        let global_execution = self.callee == Value::Undefined;
         if global_execution && self.this == Value::Undefined {
             self.this = self.global("globalThis")?;
         }
@@ -197,7 +212,7 @@ impl Vm {
         })?;
         let program =
             crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
-        let code = crate::compiler::compile_eval(&program, &[], &[], false, false)
+        let code = crate::compiler::compile_eval(&program, &[], &[], false, false, 0)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let global_this = self.global("globalThis")?;
         let this = std::mem::replace(&mut self.this, global_this);
@@ -607,9 +622,7 @@ impl Vm {
                 "arrow function is not a constructor".into(),
             ));
         }
-        if code.async_function {
-            return Err(RuntimeError::Unsupported("async function execution"));
-        }
+        let async_function = code.async_function;
         let receiver = if construct && code.derived_constructor {
             Value::Undefined
         } else if construct {
@@ -751,7 +764,7 @@ impl Vm {
         self.class_constructor = class_constructor;
         self.class_field_initializer_depth = class_field_initializer_depth;
         self.stack.truncate(base - 1);
-        result.and_then(|value| {
+        let result = result.and_then(|value| {
             if construct && !matches!(value, Value::Object(_)) {
                 if matches!(constructed, Value::Object(_)) {
                     Ok(constructed)
@@ -763,7 +776,30 @@ impl Vm {
             } else {
                 Ok(value)
             }
-        })
+        });
+        if !async_function {
+            return result;
+        }
+
+        // The function body is evaluated synchronously until the compiler
+        // gains `await`, but its completion is still exposed through the
+        // Promise capability required by every async function invocation.
+        // Keep a fulfilled object rooted while allocating the promise.
+        if let Ok(value) = &result {
+            self.stack.push(value.clone());
+        }
+        let promise = self.new_promise()?;
+        if result.is_ok() {
+            self.stack.pop();
+        }
+        match result {
+            Ok(value) => self.settle_promise(promise, PromiseStatus::Fulfilled(value))?,
+            Err(error) => {
+                let value = self.error_value(error)?;
+                self.settle_promise(promise, PromiseStatus::Rejected(value))?;
+            }
+        }
+        Ok(Value::Object(promise))
     }
 
     /// Generator function invocation performs parameter initialization now,
@@ -1115,6 +1151,138 @@ impl Vm {
         self.iterator_result(value, true)
     }
 
+    fn promise_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
+        if let Some(prototype) = self.promise_prototype {
+            return Ok(prototype);
+        }
+        let object_prototype = self.object_prototype;
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+        let function_prototype = self.string_intrinsics()?.1;
+        self.install_native(
+            prototype,
+            function_prototype,
+            "then",
+            2,
+            NativeFunction::PromiseThen,
+        )?;
+        self.promise_prototype = Some(prototype);
+        Ok(prototype)
+    }
+
+    fn new_promise(&mut self) -> Result<ObjectId, RuntimeError> {
+        let prototype = self.promise_prototype()?;
+        let promise = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        self.promises.insert(
+            promise,
+            PromiseRecord {
+                status: PromiseStatus::Pending,
+                reactions: Vec::new(),
+            },
+        );
+        Ok(promise)
+    }
+
+    fn settle_promise(
+        &mut self,
+        promise: ObjectId,
+        status: PromiseStatus,
+    ) -> Result<(), RuntimeError> {
+        let record = self
+            .promises
+            .get_mut(&promise)
+            .ok_or(RuntimeError::TypeError("invalid Promise receiver".into()))?;
+        if !matches!(record.status, PromiseStatus::Pending) {
+            return Ok(());
+        }
+        let fulfilled = matches!(status, PromiseStatus::Fulfilled(_));
+        let value = match &status {
+            PromiseStatus::Fulfilled(value) | PromiseStatus::Rejected(value) => value.clone(),
+            PromiseStatus::Pending => unreachable!("Promise settlement is final"),
+        };
+        let reactions = std::mem::take(&mut record.reactions);
+        record.status = status;
+        self.promise_jobs
+            .extend(reactions.into_iter().map(|reaction| PromiseJob {
+                target: reaction.target,
+                handler: if fulfilled {
+                    reaction.on_fulfilled
+                } else {
+                    reaction.on_rejected
+                },
+                value: value.clone(),
+            }));
+        Ok(())
+    }
+
+    fn promise_then(&mut self, receiver: &Value, args: &[Value]) -> Result<Value, RuntimeError> {
+        let promise = receiver
+            .object_id()
+            .filter(|id| self.promises.contains_key(id))
+            .ok_or(RuntimeError::TypeError(
+                "Promise.prototype.then receiver".into(),
+            ))?;
+        let target = self.new_promise()?;
+        let reaction = PromiseReaction {
+            target,
+            on_fulfilled: native::argument(args, 0).clone(),
+            on_rejected: native::argument(args, 1).clone(),
+        };
+        let status = {
+            let record = self.promises.get_mut(&promise).unwrap();
+            match &record.status {
+                PromiseStatus::Pending => {
+                    record.reactions.push(reaction);
+                    return Ok(Value::Object(target));
+                }
+                PromiseStatus::Fulfilled(value) => (true, value.clone()),
+                PromiseStatus::Rejected(value) => (false, value.clone()),
+            }
+        };
+        self.promise_jobs.push_back(PromiseJob {
+            target,
+            handler: if status.0 {
+                reaction.on_fulfilled
+            } else {
+                reaction.on_rejected
+            },
+            value: status.1,
+        });
+        Ok(Value::Object(target))
+    }
+
+    pub fn run_promise_jobs(&mut self) -> Result<(), RuntimeError> {
+        while let Some(job) = self.promise_jobs.pop_front() {
+            let result = if self.is_callable(&job.handler)? {
+                self.call_native(
+                    job.handler,
+                    Value::Undefined,
+                    vec![job.value.clone()],
+                    false,
+                )
+            } else {
+                Ok(job.value.clone())
+            };
+            match result {
+                Ok(value) => self.settle_promise(job.target, PromiseStatus::Fulfilled(value))?,
+                Err(error) => {
+                    let error = self.error_value(error)?;
+                    self.settle_promise(job.target, PromiseStatus::Rejected(error))?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn install_test262_done(&mut self) -> Result<(), RuntimeError> {
+        let global = self.global("globalThis")?.object_id().unwrap();
+        let prototype = self.string_intrinsics()?.1;
+        self.install_native(global, prototype, "$DONE", 1, NativeFunction::Test262Done)
+    }
+
+    pub fn take_test262_done(&mut self) -> Option<Result<(), Value>> {
+        self.test262_done.take()
+    }
+
     pub(super) fn is_callable(&self, value: &Value) -> Result<bool, RuntimeError> {
         Ok(if let Value::Object(id) = value {
             self.heap.native_function(*id)?.is_some()
@@ -1454,11 +1622,9 @@ impl Vm {
                 PropertyDescriptor::data(value, writable, enumerable, configurable),
             )
         })?;
-        assert!(
-            result,
-            "builtin initialization and literal definitions target new or configurable properties"
-        );
-        Ok(())
+        result
+            .then_some(())
+            .ok_or_else(|| RuntimeError::TypeError("cannot define property".into()))
     }
 
     pub(super) fn array_from(&mut self, values: Vec<Value>) -> Result<Value, RuntimeError> {
@@ -1839,6 +2005,15 @@ impl Vm {
             NativeFunction::Error(name) => self.error_constructor(name, &args, construct),
             NativeFunction::ErrorToString => self.error_to_string(&receiver),
             NativeFunction::Test262(name) => self.test262_call(name, &args),
+            NativeFunction::Test262Done => {
+                self.test262_done = Some(if matches!(first, Value::Undefined) {
+                    Ok(())
+                } else {
+                    Err(first.clone())
+                });
+                Ok(Value::Undefined)
+            }
+            NativeFunction::PromiseThen => self.promise_then(&receiver, &args),
             NativeFunction::ToLocaleLowerCase
             | NativeFunction::ToLocaleUpperCase
             | NativeFunction::LocaleCompare => {

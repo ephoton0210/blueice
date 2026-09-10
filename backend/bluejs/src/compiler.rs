@@ -97,6 +97,7 @@ pub(crate) fn compile_eval(
     lexical_conflicts: &[String],
     strict: bool,
     new_target_allowed: bool,
+    with_depth: usize,
 ) -> Result<Bytecode, CompileError> {
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
@@ -107,7 +108,7 @@ pub(crate) fn compile_eval(
         max_bytecode_bytes: u32::MAX,
         function: false,
         local_scope: 1,
-        with_depth: 0,
+        with_depth,
     };
     compiler.bytecode.strict = strict || strict_body(&program.body);
     compiler.bytecode.new_target_allowed = new_target_allowed;
@@ -300,6 +301,7 @@ impl Compiler {
                 name: name.clone(),
                 mutable: kind != DeclKind::Const,
                 lexical: kind != DeclKind::Var,
+                catch_parameter: false,
             });
             names.insert(name, slot);
             slots.push(slot);
@@ -883,10 +885,9 @@ impl Compiler {
             self.enter_scope(parameter_names, &BTreeSet::new(), false)?;
             let mut catch_var_slots = HashMap::new();
             if let Some(Pattern::Identifier(name)) = &catch.param {
-                catch_var_slots.insert(
-                    name.clone(),
-                    self.resolve(name).expect("catch parameter was declared"),
-                );
+                let slot = self.resolve(name).expect("catch parameter was declared");
+                self.bytecode.bindings[slot as usize].catch_parameter = true;
+                catch_var_slots.insert(name.clone(), slot);
             }
             self.catch_var_slots.push(catch_var_slots);
             if let Some(param) = &catch.param {
@@ -1269,15 +1270,15 @@ impl Compiler {
                         "a reserved word cannot be used as an identifier in strict code",
                     ));
                 }
-                if let Some(slot) = self.resolve(name) {
-                    self.emit(Opcode::GetBinding, slot)?;
-                } else if self.with_depth != 0 {
+                if self.with_depth != 0 {
                     let index = u32::try_from(self.bytecode.constants.len())
                         .map_err(|_| CompileError::ProgramTooLarge)?;
                     self.bytecode
                         .constants
                         .push(Value::String(name.clone().into()));
                     self.emit(Opcode::WithGet, index)?;
+                } else if let Some(slot) = self.resolve(name) {
+                    self.emit(Opcode::GetBinding, slot)?;
                 } else {
                     match name.as_str() {
                         "undefined" => self.constant(Value::Undefined)?,
@@ -1474,7 +1475,9 @@ impl Compiler {
                         if let ObjectProp::Accessor { getter, .. } = property {
                             self.emit(Opcode::DefineAccessor, u32::from(!getter))?;
                         } else {
-                            self.emit(Opcode::DefineData, 0)?;
+                            // The operand distinguishes object-literal
+                            // methods (enumerable) from class methods.
+                            self.emit(Opcode::DefineMethod, 1)?;
                         }
                         self.emit(Opcode::Pop, 0)?;
                         continue;
@@ -2321,13 +2324,6 @@ impl Compiler {
         named_expression: bool,
         options: FunctionCompileOptions,
     ) -> Result<(), CompileError> {
-        // Declaration instantiation creates async closures before their body
-        // starts. Preserve that observable lexical behaviour for empty
-        // bodies, while keeping execution-dependent async semantics behind a
-        // deliberate boundary until Promise jobs are available.
-        if function.is_async && !function.body.is_empty() {
-            return Err(CompileError::Unsupported("async functions"));
-        }
         let child_budget = self.max_bytecode_bytes.saturating_sub(self.offset()?);
         let mut child = Compiler {
             bytecode: Bytecode::empty(),
@@ -2390,6 +2386,7 @@ impl Compiler {
                 name,
                 mutable: false,
                 lexical: true,
+                catch_parameter: false,
             });
             child.bytecode.self_slot = Some(slot);
         }

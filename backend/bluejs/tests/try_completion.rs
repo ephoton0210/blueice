@@ -50,8 +50,11 @@ fn direct_eval_uses_the_callers_bindings_completion_and_strictness() {
         "let caught=false;try{eval('function NaN(){}')}catch(error){caught=error instanceof TypeError;}caught",
         "function localEval(){let eval=function(value){return value+1;};return eval(2)===3;}localEval()",
         "function withDirectEval(){let object={};with(object){return eval('1')===1;}}withDirectEval()",
+        "function withDirectEvalLookup(){var value='outer';let object={value:'inner'};with(object){return eval(\"value\")==='inner';}}withDirectEvalLookup()",
+        "let object={method(){return eval('super.value')}};let initial=object.method()===undefined;Object.setPrototypeOf(object,{value:3});initial&&object.method()===3",
         "function localEvalBindings(){eval('var hidden=1;function localFn(){return hidden;}hidden=2;');return hidden===2&&localFn()===2;}localEvalBindings()",
         "let f=(value=eval('var dynamic=1'),read=()=>dynamic)=>read();f()===1",
+        "let count=0;let f=(value=eval(\"var arguments='parameter'\"))=>{let arguments='local';count++;};f();count===1",
         "let read;function removableEvalBinding(){eval('var hidden=1;read=()=>hidden;delete hidden;');try{read();return false;}catch(error){return error instanceof ReferenceError;}}removableEvalBinding()",
         "function lowerLexicalConflict(){{let value;try{eval('var value;')}catch(error){return error instanceof SyntaxError;}}}lowerLexicalConflict()",
         "let parameterConflict=false;function parameterEvalConflict(value=eval('var value')){}try{parameterEvalConflict()}catch(error){parameterConflict=error instanceof SyntaxError;}parameterConflict",
@@ -158,34 +161,32 @@ fn derived_classes_construct_through_super_and_keep_home_object_receivers() {
 }
 
 #[test]
-fn class_async_method_syntax_is_classified_as_an_execution_gap() {
+fn async_methods_compile_without_await_and_classify_await_as_a_gap() {
     let program = parse(
         "class Derived extends Base{async method(){return 1;}static async *items(){yield 2;}}",
     )
     .unwrap();
-    assert!(matches!(
-        compile(&program),
-        Err(blueice_bluejs::CompileError::Unsupported("async functions"))
-    ));
+    assert!(compile(&program).is_ok());
     let program = parse("class Base{async method(){return 1;}}class Derived extends Base{async method(value=super.method()){return await value;}static async *items(){for await(let item of [])yield* await super.method();}}").unwrap();
     assert!(matches!(
         compile(&program),
-        Err(blueice_bluejs::CompileError::Unsupported("async functions"))
+        Err(blueice_bluejs::CompileError::Unsupported(_))
     ));
     let program = parse("async function helper(){return await 1;}").unwrap();
     assert!(matches!(
         compile(&program),
-        Err(blueice_bluejs::CompileError::Unsupported("async functions"))
+        Err(blueice_bluejs::CompileError::Unsupported(
+            "await expressions"
+        ))
     ));
     let program = parse("async function helper(){return new.target;}").unwrap();
-    assert!(matches!(
-        compile(&program),
-        Err(blueice_bluejs::CompileError::Unsupported("async functions"))
-    ));
+    assert!(compile(&program).is_ok());
     let program = parse("let helper=async value=>await value;").unwrap();
     assert!(matches!(
         compile(&program),
-        Err(blueice_bluejs::CompileError::Unsupported("async functions"))
+        Err(blueice_bluejs::CompileError::Unsupported(
+            "await expressions"
+        ))
     ));
     assert!(parse("class C{async constructor(){}}").is_err());
     assert!(parse("class C{async\nmethod(){}}").is_ok());
@@ -236,12 +237,30 @@ fn empty_async_case_declarations_instantiate_before_execution_support() {
             "{source}"
         );
     }
-    for source in ["(async function(){})()", "(async function*(){})()"] {
-        assert_eq!(
-            execute(&mut Vm::default(), source),
-            Err(RuntimeError::Unsupported("async function execution")),
-            "{source}"
-        );
+}
+
+#[test]
+fn async_functions_settle_return_and_errors_through_promise_jobs() {
+    for (source, assertion) in [
+        (
+            "var result='pending';(async function(){return 7;})().then(value=>{result=value;});",
+            "result===7",
+        ),
+        (
+            "var result=false;(async function(){throw 1;})().then(undefined,error=>{result=error===1;});",
+            "result",
+        ),
+        (
+            "var result=false;async function check(value=eval('var value')){}check().then(undefined,error=>{result=error instanceof SyntaxError;});",
+            "result",
+        ),
+    ] {
+        let mut vm = Vm::default();
+        let code = compile(&parse(source).unwrap()).unwrap();
+        vm.execute_script(&code).unwrap();
+        vm.run_promise_jobs().unwrap();
+        let assertion_code = compile(&parse(assertion).unwrap()).unwrap();
+        assert_eq!(vm.execute_script(&assertion_code), Ok(Value::Bool(true)), "{source}");
     }
 }
 

@@ -56,7 +56,7 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
         (json!({"source":"1", "mode":"module"}), "unsupported"),
         (
             json!({"source":"1", "mode":"sloppy", "asynchronous":true}),
-            "unsupported",
+            "timeout",
         ),
         (
             json!({"source":"let x;let x;", "mode":"sloppy", "parse_only":true}),
@@ -197,11 +197,11 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
         ),
         (
             json!({"source":"async function work(){}work()", "mode":"sloppy"}),
-            "unsupported",
+            "ok",
         ),
         (
             json!({"source":"1", "mode":"sloppy", "includes":["helpers.js"], "harness_sources":["async function work(){}work()"]}),
-            "unsupported",
+            "ok",
         ),
     ];
     let requests: Vec<_> = cases.iter().map(|(request, _)| request.clone()).collect();

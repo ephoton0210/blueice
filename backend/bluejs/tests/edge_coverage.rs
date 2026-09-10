@@ -228,20 +228,14 @@ fn inheritance_operations_cover_computed_keys_fields_and_tail_iterator_cleanup()
 }
 
 #[test]
-fn class_compiler_propagates_element_errors_and_class_keys() {
+fn class_compiler_accepts_async_elements_without_await_and_class_keys() {
     for source in [
         "class C{constructor(){return async()=>1;}}",
         "class C{get value(){return async()=>1;}}",
         "class C{static value=async()=>1;}",
         "class C{static{async()=>1;}}",
     ] {
-        assert!(
-            matches!(
-                compile(&parse(source).unwrap()),
-                Err(CompileError::Unsupported("async functions"))
-            ),
-            "{source}"
-        );
+        assert!(compile(&parse(source).unwrap()).is_ok(), "{source}");
     }
     for source in [
         "class C{'constructor'(){}}",

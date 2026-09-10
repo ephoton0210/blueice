@@ -160,6 +160,9 @@ pub(crate) struct Binding {
     pub name: String,
     pub mutable: bool,
     pub lexical: bool,
+    /// Annex B lets a direct eval in the immediately containing catch block
+    /// redeclare a simple catch parameter with `var` or a function.
+    pub catch_parameter: bool,
 }
 
 #[derive(Clone)]

@@ -15,7 +15,7 @@ use crate::{
 };
 use num_bigint::{BigInt, Sign};
 use num_traits::ToPrimitive;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 mod builtins;
 mod errors;
 mod functions;
@@ -179,6 +179,29 @@ struct DynamicEvalBinding {
     cell: ObjectId,
 }
 
+enum PromiseStatus {
+    Pending,
+    Fulfilled(Value),
+    Rejected(Value),
+}
+
+struct PromiseReaction {
+    target: ObjectId,
+    on_fulfilled: Value,
+    on_rejected: Value,
+}
+
+struct PromiseRecord {
+    status: PromiseStatus,
+    reactions: Vec<PromiseReaction>,
+}
+
+struct PromiseJob {
+    target: ObjectId,
+    handler: Value,
+    value: Value,
+}
+
 /// An isolated execution context with one realm global environment. Ordinary
 /// [`Vm::execute`] calls use fresh local bindings; classic scripts additionally
 /// retain their global declarations for later [`Vm::execute_script`] calls.
@@ -258,6 +281,10 @@ pub struct Vm {
     iterator_base: Option<ObjectId>,
     array_iterator_prototype: Option<ObjectId>,
     generator_prototype: Option<ObjectId>,
+    promise_prototype: Option<ObjectId>,
+    promises: HashMap<ObjectId, PromiseRecord>,
+    promise_jobs: VecDeque<PromiseJob>,
+    test262_done: Option<Result<(), Value>>,
     throw_type_error: Option<ObjectId>,
     joining: Vec<ObjectId>,
 }
@@ -322,6 +349,10 @@ impl Vm {
             iterator_base: None,
             array_iterator_prototype: None,
             generator_prototype: None,
+            promise_prototype: None,
+            promises: HashMap::new(),
+            promise_jobs: VecDeque::new(),
+            test262_done: None,
             throw_type_error: None,
             joining: Vec::new(),
         })
@@ -354,7 +385,10 @@ impl Vm {
         if let Some(root) = self.result_root.take() {
             self.heap.unroot(root)?;
         }
-        self.heap.collect_major();
+        self.with_roots(|heap| {
+            heap.collect_major();
+            Ok(())
+        })?;
         self.bindings.resize(code.bindings.len(), None);
         self.binding_metadata = code.bindings.clone();
         self.remaining_instructions = self.config.instruction_budget;
@@ -399,7 +433,10 @@ impl Vm {
         self.with_objects.clear();
         self.pending_completions.clear();
         self.completion_saves.clear();
-        self.heap.collect_major();
+        self.with_roots(|heap| {
+            heap.collect_major();
+            Ok(())
+        })?;
         result
     }
 
@@ -425,7 +462,7 @@ impl Vm {
             let binding = &code.bindings[slot as usize];
             let existing = self.global_bindings.get(&binding.name);
             if binding.lexical {
-                if existing.is_some()
+                if existing.is_some_and(|binding| !binding.property)
                     || self
                         .heap
                         .get_own_property_descriptor(global, binding.name.as_str())?
@@ -978,6 +1015,35 @@ impl Vm {
                     roots.push(self.heap.root(binding.cell)?);
                 }
             }
+            for (&promise, record) in &self.promises {
+                roots.push(self.heap.root(promise)?);
+                let values: Vec<&Value> = match &record.status {
+                    PromiseStatus::Pending => record
+                        .reactions
+                        .iter()
+                        .flat_map(|reaction| [&reaction.on_fulfilled, &reaction.on_rejected])
+                        .collect(),
+                    PromiseStatus::Fulfilled(value) | PromiseStatus::Rejected(value) => {
+                        vec![value]
+                    }
+                };
+                for value in values {
+                    if let Value::Object(id) = value {
+                        roots.push(self.heap.root(*id)?);
+                    }
+                }
+            }
+            for job in &self.promise_jobs {
+                roots.push(self.heap.root(job.target)?);
+                for value in [&job.handler, &job.value] {
+                    if let Value::Object(id) = value {
+                        roots.push(self.heap.root(*id)?);
+                    }
+                }
+            }
+            if let Some(Err(Value::Object(id))) = &self.test262_done {
+                roots.push(self.heap.root(*id)?);
+            }
             Ok(())
         })();
         let result = registration.and_then(|()| operation(&mut self.heap));
@@ -1247,10 +1313,21 @@ impl Vm {
             .flat_map(|slots| slots.iter().copied())
             .filter_map(|slot| {
                 let binding = &self.binding_metadata[slot as usize];
-                binding.lexical.then(|| binding.name.clone())
+                (binding.lexical && !binding.catch_parameter).then(|| binding.name.clone())
             })
             .collect::<std::collections::BTreeSet<_>>();
-        if variable_scope_position.is_none() {
+        // A non-arrow function's parameter expressions retain the separate
+        // body VariableEnvironment boundary. Its body lexical declarations
+        // therefore block a sloppy direct-eval var declaration even before
+        // the body scope is entered. Arrow parameters inherit their outer
+        // VariableEnvironment instead, so their not-yet-entered body lexical
+        // declarations must not be treated as a conflict.
+        let ordinary_function = self
+            .callee
+            .object_id()
+            .and_then(|callee| self.heap.closure(callee).ok().flatten())
+            .is_some_and(|(code, _, _, _, _)| !code.arrow);
+        if variable_scope_position.is_none() && ordinary_function {
             conflicts.extend(self.variable_scope_lexicals.iter().cloned());
         }
         conflicts.into_iter().collect()
@@ -1293,7 +1370,9 @@ impl Vm {
                         let object = receiver.object_id().unwrap();
                         if matches!(
                             instruction.opcode,
-                            Opcode::DefineMethod | Opcode::DefineClassAccessor
+                            Opcode::DefineMethod
+                                | Opcode::DefineAccessor
+                                | Opcode::DefineClassAccessor
                         ) {
                             if let Value::Object(function) = value {
                                 self.with_roots(|heap| heap.set_closure_home(function, object))?;
@@ -1303,7 +1382,7 @@ impl Vm {
                             self.define_data(object, key, value.clone(), true, true, true)?;
                         } else {
                             let descriptor = if instruction.opcode == Opcode::DefineMethod {
-                                PropertyDescriptor::data(value.clone(), true, false, true)
+                                PropertyDescriptor::data(value.clone(), true, operand != 0, true)
                             } else {
                                 PropertyDescriptor {
                                     get: (operand == 0).then(|| value.clone()),
@@ -1704,9 +1783,14 @@ impl Vm {
                         let Value::String(name) = &code.constants[operand] else {
                             unreachable!("compiler emits a name")
                         };
-                        let value = self.with_get(
-                            &name.to_utf8().expect("compiler emits a UTF-8 identifier"),
-                        )?;
+                        let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                        let fallback = code
+                            .bindings
+                            .iter()
+                            .position(|binding| binding.name == name)
+                            .map(|slot| self.binding_value(slot))
+                            .transpose()?;
+                        let value = self.with_get(&name, fallback)?;
                         self.stack.push(value);
                     }
                     Opcode::WithSet => {
@@ -3354,15 +3438,24 @@ impl Vm {
         }
     }
 
-    fn with_get(&mut self, name: &str) -> Result<Value, RuntimeError> {
+    fn with_get(
+        &mut self,
+        name: &str,
+        fallback: Option<Option<Value>>,
+    ) -> Result<Value, RuntimeError> {
         let key = Value::String(name.into());
         for object in self.with_objects.clone().into_iter().rev() {
             if self.property_in(&key, &object)? {
                 return self.get_property(&object, &name.into());
             }
         }
-        self.lookup_global_name(name)?
-            .ok_or_else(|| RuntimeError::ReferenceError(name.into()))
+        match fallback {
+            Some(Some(value)) => Ok(value),
+            Some(None) => Err(RuntimeError::ReferenceError(name.into())),
+            None => self
+                .lookup_global_name(name)?
+                .ok_or_else(|| RuntimeError::ReferenceError(name.into())),
+        }
     }
 
     fn with_set(&mut self, name: &str, value: Value) -> Result<(), RuntimeError> {
@@ -3465,9 +3558,9 @@ mod tests {
         let object = vm.heap.alloc_object(None).unwrap();
         vm.heap.set(object, "value", Value::Number(7.0)).unwrap();
         vm.with_objects.push(Value::Object(object));
-        assert_eq!(vm.with_get("value"), Ok(Value::Number(7.0)));
+        assert_eq!(vm.with_get("value", None), Ok(Value::Number(7.0)));
         assert_eq!(
-            vm.with_get("missing"),
+            vm.with_get("missing", None),
             Err(RuntimeError::ReferenceError("missing".into()))
         );
     }
@@ -3626,6 +3719,7 @@ mod tests {
             name: "captured".into(),
             mutable: true,
             lexical: true,
+            catch_parameter: false,
         });
         vm.cells.insert(0, home);
         assert_eq!(

@@ -54,6 +54,22 @@ impl Vm {
 
     fn install_test262_functions(&mut self) -> Result<(), RuntimeError> {
         let global = self.global("globalThis")?.object_id().unwrap();
+        // BlueJS materializes ordinary intrinsics lazily, but Test262 cases
+        // may make the global object non-extensible before provoking and
+        // catching a language error. Those constructors are standard global
+        // properties, so make the supported error family observable before
+        // test code can freeze the global object.
+        for name in [
+            "Error",
+            "TypeError",
+            "RangeError",
+            "SyntaxError",
+            "ReferenceError",
+            "EvalError",
+            "URIError",
+        ] {
+            self.error_global(name)?;
+        }
         for name in ["isNaN", "isFinite", "parseInt", "parseFloat"] {
             self.global(name)?;
         }

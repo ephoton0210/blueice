@@ -76,6 +76,18 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
     Ok(program)
 }
 
+/// Parses direct-eval source before its caller applies context-sensitive
+/// `super` early errors. At script top level those expressions are invalid,
+/// but a direct eval inherits the calling method's `[[HomeObject]]`.
+pub(crate) fn parse_eval(source: &str) -> Result<Program, ParseError> {
+    let mut parser = Parser::new(source);
+    let mut body = Vec::new();
+    while !parser.at_eof() {
+        body.push(parser.parse_statement()?);
+    }
+    Ok(Program { body })
+}
+
 // Preserve source positions so the parser can select the RegExp lexical goal
 // at PrimaryExpression and rescan the suffix. A speculative division scan may
 // encounter regex-only characters; defer that lexical error until consumed.
@@ -1247,6 +1259,13 @@ impl Parser {
             })
     }
 
+    /// Object literals use the same contextual `async` modifier as class
+    /// methods, but an unmodified `async()` remains an ordinary method name
+    /// and `async: value` remains a data property.
+    fn object_async_method_follows(&self) -> bool {
+        self.class_async_method_follows()
+    }
+
     fn async_arrow_follows(&self) -> bool {
         if !matches!(self.peek(), Token::Identifier(name) if name == "async")
             || self
@@ -2131,8 +2150,16 @@ impl Parser {
             if self.eat_punct(Punct::Ellipsis) {
                 props.push(ObjectProp::Spread(self.parse_assignment()?));
             } else {
+                let is_async = self.object_async_method_follows();
+                if is_async {
+                    self.advance();
+                }
+                let generator = self.eat_punct(Punct::Star);
                 let key = self.parse_property_key()?;
                 if self.eat_punct(Punct::Colon) {
+                    if is_async || generator {
+                        return Err(self.error("invalid object method"));
+                    }
                     let value = self.parse_assignment()?;
                     props.push(ObjectProp::KeyValue {
                         key,
@@ -2140,56 +2167,40 @@ impl Parser {
                         shorthand: false,
                     });
                 } else if self.check_punct(Punct::LParen) {
-                    let params = self.parse_params()?;
-                    let body = self.parse_block()?;
-                    let name = match &key {
-                        PropertyKey::Identifier(name) => name.clone(),
-                        PropertyKey::String(name) => name.to_utf8().unwrap_or_default(),
-                        PropertyKey::Number(number) => number.to_string(),
-                        PropertyKey::Computed(_) => String::new(),
-                    };
+                    let name = class_element_name(&key);
                     props.push(ObjectProp::Method {
                         key,
-                        function: Function {
-                            name: Some(name),
-                            params,
-                            body,
-                            generator: false,
-                            is_async: false,
-                        },
+                        function: self.parse_method_function(Some(name), generator, is_async)?,
                     });
                 } else if matches!(&key, PropertyKey::Identifier(name) if name == "get" || name == "set")
                     && !self.check_punct(Punct::Comma)
                     && !self.check_punct(Punct::RBrace)
                 {
+                    if is_async || generator {
+                        return Err(self.error("invalid object accessor"));
+                    }
                     let getter = matches!(&key, PropertyKey::Identifier(name) if name == "get");
                     let key = self.parse_property_key()?;
-                    let params = self.parse_params()?;
-                    if (getter && !params.is_empty())
-                        || (!getter && (params.len() != 1 || params[0].rest))
+                    let name = class_element_name(&key);
+                    let function = self.parse_method_function(
+                        Some(format!("{} {}", if getter { "get" } else { "set" }, name)),
+                        false,
+                        false,
+                    )?;
+                    if (getter && !function.params.is_empty())
+                        || (!getter && (function.params.len() != 1 || function.params[0].rest))
                     {
                         return Err(self.error("invalid accessor parameter list"));
                     }
-                    let body = self.parse_block()?;
-                    let name = match &key {
-                        PropertyKey::Identifier(name) => name.clone(),
-                        PropertyKey::String(name) => name.to_utf8().unwrap_or_default(),
-                        PropertyKey::Number(number) => number.to_string(),
-                        PropertyKey::Computed(_) => String::new(),
-                    };
-                    let name = format!("{} {}", if getter { "get" } else { "set" }, name);
                     props.push(ObjectProp::Accessor {
                         key,
-                        function: Function {
-                            name: Some(name),
-                            params,
-                            body,
-                            generator: false,
-                            is_async: false,
-                        },
+                        function,
                         getter,
                     });
                 } else {
+                    if is_async || generator {
+                        return Err(self.error("expected object method parameters"));
+                    }
                     let name = match &key {
                         PropertyKey::Identifier(n) => n.clone(),
                         _ => return Err(self.error("expected ':' after object property key")),
@@ -2747,6 +2758,23 @@ mod tests {
                     &properties[..],
                     [ObjectProp::Accessor { function, getter: true, .. }]
                         if function.name.as_deref() == Some("get quoted")
+                )
+        ));
+        assert!(matches!(
+            expr("{* generated(){yield 1},async resolved(){return 2},async * streamed(){yield 3}}"),
+            Expr::Object(properties)
+                if matches!(
+                    &properties[..],
+                    [
+                        ObjectProp::Method { function: generated, .. },
+                        ObjectProp::Method { function: resolved, .. },
+                        ObjectProp::Method { function: streamed, .. },
+                    ] if generated.generator
+                        && !generated.is_async
+                        && !resolved.generator
+                        && resolved.is_async
+                        && streamed.generator
+                        && streamed.is_async
                 )
         ));
     }

@@ -95,9 +95,6 @@ fn evaluate(request: Request) -> Value {
     if request.parse_only {
         return json!({"kind":"ok", "phase":"parse"});
     }
-    if request.asynchronous {
-        return json!({"kind":"unsupported", "reason":"async jobs and $DONE host"});
-    }
     // The native host replaces these core helpers. Other includes execute as
     // separate classic scripts in the same VM realm.
     let unknown: Vec<_> = request
@@ -138,6 +135,11 @@ fn evaluate(request: Request) -> Value {
             return json!({"kind":"harness_error", "message":error.to_string()});
         }
     }
+    if request.asynchronous {
+        if let Err(error) = vm.install_test262_done() {
+            return json!({"kind":"harness_error", "message":error.to_string()});
+        }
+    }
     if request.is_html_dda {
         if let Err(error) = vm.install_test262_is_html_dda() {
             return json!({"kind":"harness_error", "message":error.to_string()});
@@ -166,6 +168,16 @@ fn evaluate(request: Request) -> Value {
         }
     }
     match vm.execute_script(&code) {
+        Ok(_) if request.asynchronous => {
+            if let Err(error) = vm.run_promise_jobs() {
+                return runtime(error);
+            }
+            match vm.take_test262_done() {
+                Some(Ok(())) => json!({"kind":"ok", "phase":"runtime"}),
+                Some(Err(value)) => runtime(RuntimeError::Thrown(value)),
+                None => json!({"kind":"timeout", "message":"async test did not call $DONE"}),
+            }
+        }
         Ok(_) => json!({"kind":"ok", "phase":"runtime"}),
         Err(error) => runtime(error),
     }

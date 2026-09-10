@@ -78,6 +78,31 @@ fn object_prevent_extensions_exposes_the_heap_internal_method() {
 }
 
 #[test]
+fn frozen_test262_global_keeps_error_constructors_available() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = "Object.preventExtensions(globalThis);let caught=false;try{eval('var unavailable')}catch(error){caught=error instanceof TypeError;}caught";
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn sloppy_global_eval_annex_b_function_does_not_block_a_later_lexical() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source =
+        "eval('if(true){function test262Fn(){}}');$262.evalScript('let test262Fn=1');test262Fn===1";
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn global_function_declarations_follow_existing_property_rules() {
     for source in [
         "Object.defineProperty(globalThis,'replaceable',{value:0,configurable:true});Object.preventExtensions(globalThis);$262.evalScript('function replaceable(){}');let descriptor=Object.getOwnPropertyDescriptor(globalThis,'replaceable');typeof replaceable==='function'&&descriptor.writable&&descriptor.enumerable&&!descriptor.configurable",
