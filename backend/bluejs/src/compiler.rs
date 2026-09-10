@@ -264,8 +264,7 @@ impl Compiler {
                 self.emit(Opcode::GetIterator, 0)?;
                 for element in elements {
                     let Some(element) = element else {
-                        self.array_pattern_value()?;
-                        self.emit(Opcode::Pop, 0)?;
+                        self.emit(Opcode::IteratorElision, 0)?;
                         continue;
                     };
                     if element.rest {
@@ -782,8 +781,7 @@ impl Compiler {
                 self.emit(Opcode::GetIterator, 0)?;
                 for element in elements {
                     let Some(element) = element else {
-                        self.array_pattern_value()?;
-                        self.emit(Opcode::Pop, 0)?;
+                        self.emit(Opcode::IteratorElision, 0)?;
                         continue;
                     };
                     if element.rest {

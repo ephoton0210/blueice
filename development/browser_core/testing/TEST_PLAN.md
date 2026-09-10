@@ -4,6 +4,14 @@
 
 What gets tested, how, and where a human can see current status without reading source. This is a living policy, not a one-time checklist — every phase's Definition of Done includes keeping this accurate, not just this document's own author.
 
+The BlueJS [Test262 architecture backlog](../phase-13-bluejs-engine/TEST262_ARCHITECTURE.md)
+records the dependency order and latest full before/after measurement. Its
+analyzer retains all test/mode outcomes and rejects incomplete, duplicated or
+source-mismatched inventories. `backend/bluejs/tests/iterator_completion.rs`
+drives elision/rest/abrupt iterator behavior and allocation-pressure GC through
+the public parse → compile → VM boundary. Run runner/analyzer regressions with
+`python3 -m unittest discover -s backend/bluejs/test262 -v`.
+
 ## Definition of Done
 
 Every phase's checklist in `../phase-*/PLAN.md` carries the following as part of each checklist item — not satisfied by a design being settled or code merely compiling:

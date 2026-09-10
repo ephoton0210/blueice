@@ -34,6 +34,11 @@ Runner tests check metadata modes, negative phase/type matching, rejection of un
 
 ## Actual validation, 2026-09-10
 
+The following figures are the historical validation before the architecture-first
+continuation. The [latest analysis](TEST262_ANALYSIS_REPORT.md) and
+[dependency backlog](TEST262_ARCHITECTURE.md) now accompany the updated checked-in
+summary: 102,578 modes, 16,226 pass, 62,697 fail, 22,736 unsupported and 919 timeout.
+
 - **243 default Rust unit/integration tests and two doc examples pass.** Three Python supervisor/metadata tests pass.
 - The required `cargo llvm-cov -p blueice-bluejs --offline --fail-under-lines 100 --summary-only -- --quiet` gate passes without source exclusions; its report contains 8,437 instrumented lines, 877 functions and 94.04% regions. Coverage is not specification completeness.
 - Node.js v24.19.0: **22,269 isolated scripts pass**, including locale/collation/canonicalization/Locale, Math, declarative and assignment patterns/spread, numeric-global and JSON data-path cases.

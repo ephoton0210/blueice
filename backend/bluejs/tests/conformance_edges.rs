@@ -122,6 +122,11 @@ fn sequence_expressions_preserve_order_and_enable_assignment_patterns() {
     ] {
         assert_eq!(evaluate(source), Value::Bool(true), "{source}");
     }
+    // Expression commas require another operand, unlike a trailing elision
+    // in an array pattern. Unary void also requires an operand.
+    for source in ["1,", "(1,)", "void", "void (1,)", "let [,]=;", "`${1 2}`", "`${1;2}`"] {
+        assert!(parse(source).is_err(), "{source}");
+    }
 }
 
 #[test]
@@ -232,6 +237,9 @@ fn bytecode_budget_is_inclusive_and_preserves_default_output() {
         "String(42)",
         "'abc'.slice(1)",
         "new String('x').valueOf()",
+        "let [,x,...rest]=[1,2,3];x+rest[0]",
+        "let x;[,x]=[1,2];x",
+        "void (1,2)",
     ] {
         let ast = parse(source).unwrap();
         let normal = compile(&ast).unwrap();

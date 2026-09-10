@@ -24,6 +24,11 @@ Full completion requires an audited clause/feature inventory, a pinned Test262 r
 
 This is a workstream inventory, not a complete clause-by-clause audit. The [String implementation and dependency record](STRING_BUILTINS.md) distinguishes the implemented surface and observed protocols from edition-wide conformance and documents native matcher resource limits.
 
+The [Test262 architecture-first backlog](TEST262_ARCHITECTURE.md) supplies the
+current implementation order, per-mode classification contract and acceptance
+criteria: completion/iterator lifetime, environments, references and internal
+object methods precede the remaining syntax, suspension/modules and libraries.
+
 ## Second slice: lossless UTF-16 storage
 
 Official edition 17 clauses fetched and read on 2026-09-09: [§6.1.4 String type](https://262.ecma-international.org/17.0/#sec-ecmascript-language-types-string-type), [§11.1.1 UTF16EncodeCodePoint](https://262.ecma-international.org/17.0/#sec-utf16encodecodepoint), [§12.9.4 string literals](https://262.ecma-international.org/17.0/#sec-literals-string-literals), and [§12.9.6.1 template values](https://262.ecma-international.org/17.0/#sec-static-semantics-tv). Strings are sequences of 16-bit values, without implicit normalization or replacement of lone surrogates. Both four-digit escapes and braced code-point escapes can represent surrogate code units.

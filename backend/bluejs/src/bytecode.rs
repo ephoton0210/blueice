@@ -86,6 +86,7 @@ opcodes! {
     ToPropertyKey: 1, 0;
     GetIterator: 1, 0;
     IteratorStep: 5, 0;
+    IteratorElision: 1, 0;
     IteratorClose: 1, 0;
     IteratorFinish: 1, 0;
     IteratorRest: 1, 0;

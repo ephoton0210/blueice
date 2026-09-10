@@ -1,8 +1,8 @@
 {
-  "adapter_sha256": "f1a7eca2b2526f457286fa123d3946cefeb4fea1cd5ef5131891e816ca60acb1",
+  "adapter_sha256": "d362d653a6caf73197b156be3c010b0fb43641fc0d6378a3cfdb4ac4898e661b",
   "complete_inventory": true,
   "discovered_js": 53683,
-  "elapsed_seconds": 48.997,
+  "elapsed_seconds": 159.595,
   "features": {
     "AggregateError": {
       "fail": 54,
@@ -287,9 +287,9 @@
       "pass": 46
     },
     "Symbol": {
-      "fail": 2064,
-      "pass": 368,
-      "unsupported": 520
+      "fail": 2058,
+      "pass": 372,
+      "unsupported": 522
     },
     "Symbol.asyncIterator": {
       "fail": 1072,
@@ -307,9 +307,9 @@
       "unsupported": 2
     },
     "Symbol.iterator": {
-      "fail": 2970,
-      "pass": 436,
-      "unsupported": 314
+      "fail": 2924,
+      "pass": 480,
+      "unsupported": 316
     },
     "Symbol.match": {
       "fail": 22,
@@ -421,8 +421,8 @@
       "fail": 118
     },
     "arrow-function": {
-      "fail": 1130,
-      "pass": 270,
+      "fail": 1126,
+      "pass": 274,
       "unsupported": 400
     },
     "async-functions": {
@@ -450,8 +450,8 @@
       "unsupported": 72
     },
     "class": {
-      "fail": 7824,
-      "pass": 2,
+      "fail": 7822,
+      "pass": 4,
       "unsupported": 1550
     },
     "class-fields-private": {
@@ -497,8 +497,8 @@
       "unsupported": 69
     },
     "const": {
-      "fail": 26,
-      "pass": 2,
+      "fail": 16,
+      "pass": 12,
       "unsupported": 1
     },
     "cross-realm": {
@@ -509,18 +509,18 @@
       "fail": 48
     },
     "default-parameters": {
-      "fail": 3551,
-      "pass": 555,
-      "unsupported": 410
+      "fail": 3549,
+      "pass": 563,
+      "unsupported": 404
     },
     "destructuring-assignment": {
       "fail": 51,
       "unsupported": 166
     },
     "destructuring-binding": {
-      "fail": 9669,
-      "pass": 2431,
-      "unsupported": 1037
+      "fail": 9530,
+      "pass": 2561,
+      "unsupported": 1046
     },
     "dynamic-import": {
       "fail": 1111,
@@ -628,17 +628,17 @@
       "unsupported": 14
     },
     "let": {
-      "fail": 79,
-      "pass": 18,
-      "unsupported": 34
+      "fail": 51,
+      "pass": 42,
+      "unsupported": 38
     },
     "logical-assignment-operators": {
       "fail": 174,
       "unsupported": 18
     },
     "new.target": {
-      "fail": 96,
-      "unsupported": 29
+      "fail": 94,
+      "unsupported": 31
     },
     "nonextensible-applies-to-private": {
       "fail": 3,
@@ -650,8 +650,8 @@
       "unsupported": 128
     },
     "object-rest": {
-      "fail": 553,
-      "pass": 140,
+      "fail": 545,
+      "pass": 148,
       "unsupported": 14
     },
     "object-spread": {
@@ -706,14 +706,14 @@
     },
     "regexp-unicode-property-escapes": {
       "fail": 122,
-      "pass": 30,
-      "timeout": 884,
+      "pass": 24,
+      "timeout": 890,
       "unsupported": 326
     },
     "regexp-v-flag": {
       "fail": 222,
-      "pass": 48,
-      "timeout": 2,
+      "pass": 42,
+      "timeout": 8,
       "unsupported": 102
     },
     "resizable-arraybuffer": {
@@ -721,8 +721,8 @@
       "unsupported": 646
     },
     "rest-parameters": {
-      "fail": 6,
-      "unsupported": 186
+      "fail": 24,
+      "unsupported": 168
     },
     "set-methods": {
       "fail": 386
@@ -747,8 +747,8 @@
       "pass": 108
     },
     "super": {
-      "fail": 24,
-      "unsupported": 14
+      "fail": 20,
+      "unsupported": 18
     },
     "symbols-as-weakmap-keys": {
       "fail": 57
@@ -789,10 +789,10 @@
       "unsupported": 230
     },
     "built-ins": {
-      "fail": 28157,
-      "pass": 8490,
-      "timeout": 902,
-      "unsupported": 9482
+      "fail": 28031,
+      "pass": 8586,
+      "timeout": 908,
+      "unsupported": 9506
     },
     "harness": {
       "fail": 60,
@@ -805,15 +805,16 @@
       "unsupported": 2952
     },
     "language": {
-      "fail": 28896,
-      "pass": 6187,
-      "unsupported": 9392
+      "fail": 28664,
+      "pass": 6394,
+      "timeout": 5,
+      "unsupported": 9412
     },
     "staging": {
-      "fail": 1810,
-      "pass": 424,
+      "fail": 1811,
+      "pass": 426,
       "timeout": 6,
-      "unsupported": 541
+      "unsupported": 538
     }
   },
   "instruction_budget": 100000,
@@ -825,12 +826,12 @@
     "native overrides for sta.js, assert.js, propertyHelper.js, and isConstructor.js; raw tests receive no harness",
     "each mode has a fixed interpreter instruction budget"
   ],
-  "regex_worker_sha256": "d2190550ce6307b025bfe9d615f31e46416ffa969a7ab678c2bbfca7f981b216",
+  "regex_worker_sha256": "2e25f5dcab5e875327777c041d07f7cb4c786da6bcfb8bbd159676432181d56a",
   "results": {
-    "fail": 63054,
-    "pass": 15921,
-    "timeout": 908,
-    "unsupported": 22695
+    "fail": 62697,
+    "pass": 16226,
+    "timeout": 919,
+    "unsupported": 22736
   },
   "runner_sha256": "9b141ccfc900dee9620b33d731f3efb9db89f638a2a530bad3e5ae77de7cec5f",
   "scheduled_modes": 102578,
@@ -843,5 +844,5 @@
     "selection": "Latest commit before 2026-06-30; proposals and staging are included, not filtered to an ECMA edition."
   },
   "test_files": 53404,
-  "timeout_seconds": 2.0
+  "timeout_seconds": 2
 }

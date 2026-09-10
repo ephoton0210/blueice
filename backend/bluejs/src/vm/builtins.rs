@@ -16,7 +16,7 @@ impl Vm {
         if kind == 2 {
             let record = self.get_iterator(value)?;
             self.stack.push(record.clone());
-            while let Some(value) = self.iterator_step(&record)? {
+            while let Some(value) = self.iterator_step(&record, true)? {
                 self.charge_step()?;
                 self.array_push(array, &value, 0)?;
             }
@@ -176,36 +176,57 @@ impl Vm {
         self.stack.push(Value::Object(record));
         self.with_roots(|heap| heap.set(record, "iterator", iterator))?;
         self.with_roots(|heap| heap.set(record, "next", next))?;
+        self.with_roots(|heap| heap.set(record, "done", Value::Bool(false)))?;
         self.stack.pop();
         self.stack.pop();
         self.stack.pop();
         Ok(Value::Object(record))
     }
 
-    pub(super) fn iterator_step(&mut self, record: &Value) -> Result<Option<Value>, RuntimeError> {
+    /// IteratorStepValue, or IteratorStep without IteratorValue for elisions.
+    /// Iterator-origin errors complete this record before outer unwinding.
+    pub(super) fn iterator_step(&mut self, record: &Value, read_value: bool) -> Result<Option<Value>, RuntimeError> {
         let Value::Object(record) = record else { unreachable!("compiler only emits iterator records") };
         if matches!(self.heap.get_own(*record, "done")?, Some(Value::Bool(true))) {
             return Ok(None);
         }
-        let iterator = self.get_property(&Value::Object(*record), &"iterator".into())?;
-        let next = self.get_property(&Value::Object(*record), &"next".into())?;
-        let result = self.call_native(next, iterator, Vec::new(), false)?;
-        if !matches!(result, Value::Object(_)) {
-            return Err(RuntimeError::TypeError("iterator result must be an object".into()));
+        let outcome = (|| {
+            let iterator = self.get_property(&Value::Object(*record), &"iterator".into())?;
+            let next = self.get_property(&Value::Object(*record), &"next".into())?;
+            let result = self.call_native(next, iterator, Vec::new(), false)?;
+            if !matches!(result, Value::Object(_)) {
+                return Err(RuntimeError::TypeError("iterator result must be an object".into()));
+            }
+            self.stack.push(result.clone());
+            let done = self.get_property(&result, &"done".into())?;
+            let value = if primitive::truthy(&done) {
+                None
+            } else if read_value {
+                Some(self.get_property(&result, &"value".into())?)
+            } else {
+                Some(Value::Undefined)
+            };
+            self.stack.pop();
+            Ok(value)
+        })();
+        if !matches!(&outcome, Ok(Some(_))) {
+            let base = self.stack.len();
+            if let Err(RuntimeError::Thrown(value)) = &outcome {
+                self.stack.push(value.clone());
+            }
+            let marked = self.with_roots(|heap| heap.set(*record, "done", Value::Bool(true)));
+            self.stack.truncate(base);
+            marked?;
         }
-        self.stack.push(result.clone());
-        let done = self.get_property(&result, &"done".into())?;
-        let value = if primitive::truthy(&done) {
-            self.with_roots(|heap| heap.set(*record, "done", Value::Bool(true)))?;
-            None
-        } else {
-            Some(self.get_property(&result, &"value".into())?)
-        };
-        self.stack.pop();
-        Ok(value)
+        outcome
     }
 
     pub(super) fn iterator_close(&mut self, record: &Value) -> Result<(), RuntimeError> {
+        let id = record.object_id().expect("compiler only emits iterator records");
+        if matches!(self.heap.get_own(id, "done")?, Some(Value::Bool(true))) {
+            return Ok(());
+        }
+        self.with_roots(|heap| heap.set(id, "done", Value::Bool(true)))?;
         let iterator = self.get_property(record, &"iterator".into())?;
         let close = self.get_method(&iterator, &"return".into())?;
         if close != Value::Undefined {

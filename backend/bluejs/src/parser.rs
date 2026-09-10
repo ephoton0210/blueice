@@ -2004,6 +2004,7 @@ mod tests {
         assert_eq!(expr("!a"), Expr::Unary { op: UnaryOp::Not, arg: Box::new(Expr::Identifier("a".to_string())) });
         assert_eq!(expr("-a"), Expr::Unary { op: UnaryOp::Neg, arg: Box::new(Expr::Identifier("a".to_string())) });
         assert_eq!(expr("+a"), Expr::Unary { op: UnaryOp::Plus, arg: Box::new(Expr::Identifier("a".to_string())) });
+        assert_eq!(expr("void a"), Expr::Unary { op: UnaryOp::Void, arg: Box::new(Expr::Identifier("a".to_string())) });
     }
 
     #[test]

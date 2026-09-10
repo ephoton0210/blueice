@@ -340,18 +340,26 @@ impl Vm {
                     let value = self.stack.last().unwrap().clone();
                     let iterator = self.get_iterator(&value)?;
                     self.pop();
-                    self.stack.push(iterator);
+                    self.stack.push(iterator.clone());
+                    iterators.push(iterator);
                 }
                 Opcode::IteratorStep => {
                     let record = self.stack.last().unwrap().clone();
                     iterators.retain(|active| active != &record);
-                    let result = self.iterator_step(&record)?;
+                    let result = self.iterator_step(&record, true)?;
                     self.pop();
                     if let Some(value) = result {
                         iterators.push(record);
                         self.stack.push(value);
                     } else {
                         pc = operand;
+                    }
+                }
+                Opcode::IteratorElision => {
+                    let record = self.stack.last().unwrap().clone();
+                    iterators.retain(|active| active != &record);
+                    if self.iterator_step(&record, false)?.is_some() {
+                        iterators.push(record);
                     }
                 }
                 Opcode::IteratorClose => {
@@ -372,20 +380,19 @@ impl Vm {
                 }
                 Opcode::IteratorRest => {
                     let record = self.stack.last().unwrap().clone();
-                    // A rest element owns the iterator until it reaches done.
-                    // Register it even when it is the first element, so an
-                    // abrupt completion during internal draining still closes
-                    // the iterator through `run`'s ordinary cleanup path.
+                    let base = self.stack.len() - 1;
                     iterators.retain(|candidate| candidate != &record);
                     iterators.push(record.clone());
-                    let mut values = Vec::new();
-                    while let Some(value) = self.iterator_step(&record)? {
+                    // Keep accumulated values in a rooted managed array while
+                    // subsequent next/done/value callbacks can trigger GC.
+                    let array = self.array_from(Vec::new())?;
+                    self.stack.push(array.clone());
+                    while let Some(value) = self.iterator_step(&record, true)? {
                         self.charge_step()?;
-                        values.push(value);
+                        self.array_push(&array, &value, 0)?;
                     }
-                    let array = self.array_from(values)?;
                     iterators.retain(|candidate| candidate != &record);
-                    self.pop();
+                    self.stack.truncate(base);
                     self.stack.push(array);
                 }
                 Opcode::RequireObject => {

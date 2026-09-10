@@ -21,3 +21,27 @@ The adapter creates a fresh VM for each case. Raw source is unchanged and receiv
 Each supervising worker owns a process group. A whole-case timeout or adapter crash kills and reaps that group, including a regex child, before the next case creates a replacement. Regex operations additionally have their own engine-level deadline. Transport uses nonblocking bounded IO, so a blocked pipe does not disable the case deadline.
 
 The checked-in [summary](../../../development/browser_core/phase-13-bluejs-engine/test262-summary.json) records the current complete inventory. Full passing conformance, complete host hooks, the remaining ECMA-402 constructors, and unsupported language/API subsystems remain open work.
+
+## Architecture-first triage
+
+Use the [dependency backlog](../../../development/browser_core/phase-13-bluejs-engine/TEST262_ARCHITECTURE.md)
+to choose implementation slices; the [recorded analysis](../../../development/browser_core/phase-13-bluejs-engine/TEST262_ANALYSIS_REPORT.md)
+contains the latest category counts and representative blockers. Classify a completed run with:
+
+```sh
+python3 backend/bluejs/test262/analyze.py --run target/test262 --output target/test262/analysis
+```
+
+The analyzer reconciles all path/mode pairs, source hashes, metadata and summary
+counts before publishing `items.jsonl`, `analysis.json` and `REPORT.md`. Each mode
+retains its raw outcome and gains its specification ID, description, includes,
+target workstream, architectural dependencies and first observed blocker.
+Targets and blockers are independent: an Array test can first fail in a harness
+include or on missing environment support. Heuristic categories are not verified
+root causes. Passed negatives, unsupported modes, timeouts and staging/Annex B/
+Intl/host-dependent items all remain visible.
+
+Use distinct output directories for before/after runs. A filtered run remains
+explicitly partial; missing or duplicate outcomes and changed sources are errors,
+not silently omitted tests. Regression-test both runner and analyzer with
+`python3 -m unittest discover -s backend/bluejs/test262 -v`.

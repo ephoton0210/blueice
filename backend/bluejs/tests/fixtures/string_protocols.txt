@@ -227,3 +227,6 @@ let a=[]; Object.defineProperty(a,'length',{value:'2'}); a.length === 2
 Object.getOwnPropertyNames(String.prototype).length === 52 && Object.getOwnPropertySymbols(String.prototype).length === 1
 let ok=true; for(let k of Reflect.ownKeys(String.prototype)){if(k!=='length' && k!=='constructor'){let d=Object.getOwnPropertyDescriptor(String.prototype,k); ok=ok && typeof d.value === 'function' && d.writable && !d.enumerable && d.configurable;}} ok
 String.prototype.trimLeft === String.prototype.trimStart && String.prototype.trimRight === String.prototype.trimEnd
+# Iterator completion: elisions advance without reading the value getter.
+let steps=0;let closed=0;let source={[Symbol.iterator](){return {next(){steps++;return {done:false,get value(){throw 99;}};},return(){closed++;return {};}};}};let [,]=source;steps===1&&closed===1
+let steps=0;let source={[Symbol.iterator](){return {next(){steps++;return {done:true,get value(){throw 99;}};},return(){throw 88;}};}};let [,,,x,...rest]=source;steps===1&&x===undefined&&rest.length===0

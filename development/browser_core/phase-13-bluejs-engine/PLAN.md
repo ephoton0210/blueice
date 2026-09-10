@@ -6,6 +6,11 @@
 
 ## Objective
 
+**Test262 implementation order (2026-09-10)**: follow the
+[architecture-first backlog](TEST262_ARCHITECTURE.md). Full per-mode analysis
+and completion/iterator, environment, reference and internal-method foundations
+take precedence over adding individual builtin methods.
+
 **Language target expanded (2026-09-09)**: the user requested completion of ECMAScript 2026 (ECMA-262 edition 17). The [edition implementation track](ECMASCRIPT_2026.md) now supersedes the historical MVP cuts as the final language-completion criterion; the existing architecture remains. Full conformance is not yet achieved, and the older slice descriptions below are historical progress records.
 
 Build BlueIce's own JavaScript engine ("BlueJS") from scratch, rather than embedding an existing engine (SpiderMonkey/`mozjs`, V8/`rusty_v8`, or QuickJS/`rquickjs` were the alternatives considered and explicitly declined). Resolves Phase 2's JS-strategy checklist item; this phase is where the engine itself gets built.
