@@ -84,6 +84,8 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
     {
         return Err(parser.syntax_error("super is not valid in script code"));
     }
+    crate::compiler::validate_private_early_errors(&program)
+        .map_err(|error| parser.syntax_error(error.to_string()))?;
     Ok(program)
 }
 
@@ -117,6 +119,8 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
     {
         return Err(parser.syntax_error("super is not valid in module code"));
     }
+    crate::compiler::validate_private_early_errors(&program)
+        .map_err(|error| parser.syntax_error(error.to_string()))?;
     let mut exported_names = std::collections::HashSet::new();
     for export in &exports {
         let name = match export {
@@ -1611,6 +1615,9 @@ impl Parser {
                 self.expect_punct(Punct::RBracket)?;
                 Ok(PropertyKey::Computed(Box::new(expr)))
             }
+            Token::PrivateIdentifier(_) => {
+                Err(self.syntax_error("a private name is not a property key here"))
+            }
             _ => Err(self.error("expected a property key")),
         }
     }
@@ -1618,6 +1625,9 @@ impl Parser {
     fn parse_class_element_key(&mut self) -> Result<PropertyKey, ParseError> {
         if let Token::PrivateIdentifier(name) = self.peek().clone() {
             self.advance();
+            if name == "constructor" {
+                return Err(self.syntax_error("a private name cannot be constructor"));
+            }
             return Ok(PropertyKey::Identifier(format!("#{name}")));
         }
         self.parse_property_key()
@@ -1766,6 +1776,9 @@ impl Parser {
         } else {
             None
         };
+        if self.check_punct(Punct::Arrow) {
+            return Err(self.syntax_error("a class heritage cannot be an arrow function"));
+        }
         self.expect_punct(Punct::LBrace)?;
         let mut elements = Vec::new();
         let mut has_constructor = false;
@@ -1824,7 +1837,23 @@ impl Parser {
                         self.syntax_error("a class field initializer cannot contain super()")
                     );
                 }
-                self.eat_punct(Punct::Semicolon);
+                let terminated = self.eat_punct(Punct::Semicolon);
+                let ends_with_block = self
+                    .tokens
+                    .get(self.pos.saturating_sub(1))
+                    .is_some_and(|token| matches!(token.token, Token::Punct(Punct::RBrace)));
+                if !terminated
+                    && !ends_with_block
+                    && !self.check_punct(Punct::RBrace)
+                    && self
+                        .tokens
+                        .get(self.pos)
+                        .is_some_and(|token| !token.newline_before)
+                {
+                    return Err(
+                        self.syntax_error("class fields on one line require a semicolon separator")
+                    );
+                }
                 elements.push(ClassElement::Field {
                     key,
                     initializer,
@@ -1892,8 +1921,12 @@ impl Parser {
             return false;
         }
         match self.peek_at(1) {
-            Token::Punct(Punct::Star) => true,
-            Token::Identifier(_) | Token::Keyword(_) | Token::String(_) | Token::Number(_) => {
+            Token::Punct(Punct::Star | Punct::LBracket) => true,
+            Token::Identifier(_)
+            | Token::PrivateIdentifier(_)
+            | Token::Keyword(_)
+            | Token::String(_)
+            | Token::Number(_) => {
                 matches!(self.peek_at(2), Token::Punct(Punct::LParen))
             }
             _ => false,
@@ -2414,7 +2447,24 @@ impl Parser {
     }
 
     fn parse_relational(&mut self) -> Result<Expr, ParseError> {
-        let mut left = self.parse_shift()?;
+        // `#name in object` is a distinct relational-expression production:
+        // a private identifier cannot otherwise begin an expression.  Keep
+        // its RHS at ShiftExpression precedence, matching ordinary `in`.
+        let mut left = if !self.no_in
+            && matches!(self.peek(), Token::PrivateIdentifier(_))
+            && matches!(self.peek_at(1), Token::Keyword(Keyword::In))
+        {
+            let Token::PrivateIdentifier(name) = self.advance().clone() else {
+                unreachable!("private identifier was checked above")
+            };
+            self.advance(); // `in`
+            Expr::PrivateIn {
+                name,
+                object: Box::new(self.parse_shift()?),
+            }
+        } else {
+            self.parse_shift()?
+        };
         loop {
             let op = if self.check_punct(Punct::Lt) {
                 BinaryOp::Lt
@@ -2691,6 +2741,9 @@ impl Parser {
                 };
             } else if self.eat_punct(Punct::Dot) {
                 let name = self.expect_member_name()?;
+                if matches!(expr, Expr::Super) && name.starts_with('#') {
+                    return Err(self.syntax_error("super cannot access a private element"));
+                }
                 expr = Expr::Member {
                     object: Box::new(expr),
                     property: Box::new(Expr::Identifier(name)),
@@ -2922,6 +2975,14 @@ impl Parser {
                 if name == "await"
                     && self.async_depth == 0
                     && !self.module_await
+                    // A call/member suffix belongs to the IdentifierReference
+                    // `await`; it is not a second primary expression.
+                    && !matches!(
+                        self.peek_at(1),
+                        Token::Punct(
+                            Punct::LParen | Punct::LBracket | Punct::Dot | Punct::QuestionDot
+                        )
+                    )
                     && self.token_starts_expression(1) =>
             {
                 // In a non-async function, `await` is an IdentifierReference.

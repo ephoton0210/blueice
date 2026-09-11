@@ -301,8 +301,10 @@ pub enum Stmt {
     /// context for direct eval early errors.
     ClassField(Box<Stmt>),
     /// Compiler-internal marker inserted before the instance-element
-    /// initializers of a class that declares private elements.
-    ClassPrivateBrand,
+    /// initializers of a class that declares private elements.  The string
+    /// names the hidden lexical binding that holds the declaring class's
+    /// private-brand owner.
+    ClassPrivateBrand(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -512,6 +514,13 @@ pub enum Expr {
         property: Box<Expr>,
         computed: bool,
     },
+    /// A private-brand check.  The name is source-level (without its `#`);
+    /// compilation resolves it through the enclosing class private-name
+    /// environment just like a private member reference.
+    PrivateIn {
+        name: String,
+        object: Box<Expr>,
+    },
     /// Retained so assignment-target early errors can be established even
     /// before optional-chain execution is implemented.
     OptionalMember {
@@ -664,7 +673,7 @@ fn stmt_contains_super(statement: &Stmt, search: SuperSearch) -> bool {
             function_contains_super(function, search)
         }
         Stmt::ClassField(statement) => stmt_contains_super(statement, search),
-        Stmt::ClassPrivateBrand => false,
+        Stmt::ClassPrivateBrand(_) => false,
     }
 }
 
@@ -881,6 +890,7 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
                 || expr_contains_super(object, search)
                 || expr_contains_super(property, search)
         }
+        Expr::PrivateIn { object, .. } => expr_contains_super(object, search),
         Expr::OptionalMember {
             object, property, ..
         } => expr_contains_super(object, search) || expr_contains_super(property, search),

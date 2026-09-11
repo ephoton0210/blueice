@@ -158,8 +158,37 @@ fn private_slots_keep_class_identity_and_private_reference_semantics() {
         "class A{#value=1;read(){return this.#value}}class B{#value=2;read(){return this.#value}}let a=new A,b=new B;a.read()===1&&b.read()===2",
         "class C{#value=1;read(){return this.#value}}let caught=false;try{C.prototype.read.call({})}catch(error){caught=error instanceof TypeError;}caught",
         "class C{get #value(){return false}assign(){return this.#value&&=(() => {throw new Error})()}}new C().assign()===false",
+        "class C{#value=1;make(){return function(){return this.#value}}}let value=new C;value.make().call(value)===1",
+        "class C{static #value=1;static #method(){return this.#value}static get #access(){return this.#value}static set #access(value){this.#value=value}static run(){let initial=this.#method()+this.#access;this.#access=4;return initial===2&&this.#value===4}}C.run()",
+        "class C{static async #method(){}static getMethod(){return this.#method}}C.getMethod().name==='#method'",
+        "class C{static #method(){return 1}static throughEval(){return eval('this.#method()')}}C.throughEval()===1",
+        "class C{#value;has(value){return #value in value}}let value=new C;value.has(value)&&!value.has({})",
+        "class C{#value=1;readThroughNestedClass(){class Nested{read(value){return value.#value}}return new Nested().read(this)}}new C().readThroughNestedClass()===1",
     ] {
         assert_eq!(evaluate(source), Value::Bool(true), "{source}");
+    }
+}
+
+#[test]
+fn private_name_early_errors_are_reported_before_execution() {
+    for source in [
+        "({}).#missing",
+        "#missing in {}",
+        "class C{#value;#value}",
+        "class C{static #value;#value}",
+        "class C{get #value(){}get #value(){}}",
+        "class C{#value;method(){delete this.#value}}",
+        "class C extends class{x=this.#value}{#value}",
+        "class C{#constructor}",
+        "class C{#value;method(){return super.#value}}",
+    ] {
+        match parse(source) {
+            Err(_) => {}
+            Ok(program) => assert!(
+                matches!(compile(&program), Err(CompileError::InvalidSyntax(_))),
+                "{source}"
+            ),
+        }
     }
 }
 

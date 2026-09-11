@@ -12,13 +12,14 @@ use crate::bytecode::{
     ModuleImport as CompiledModuleImport, ModuleImportName as CompiledModuleImportName,
 };
 use crate::*;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 /// Parser-private binding used to represent an anonymous `export default`
 /// declaration.  It can never be spelled by ECMAScript source, which lets
 /// compilation retain the binding separately from the `"default"` inferred
 /// function/class name required by SetFunctionName.
 const MODULE_DEFAULT_BINDING: &str = "\0bluejs_module_default";
+const PRIVATE_OWNER_BINDING_PREFIX: &str = "\0bluejs_private_owner_";
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,6 +28,408 @@ pub enum CompileError {
     DuplicateBinding(String),
     InvalidSyntax(&'static str),
     ProgramTooLarge,
+}
+
+/// Performs the grammar's lexical PrivateEnvironment checks without lowering
+/// the program.  The parser uses this for parse-only Test262 cases; the
+/// compiler repeats the lookup while assigning hidden owner bindings.
+pub(crate) fn validate_private_early_errors(program: &Program) -> Result<(), CompileError> {
+    validate_private_statements(&program.body, &HashSet::new())
+}
+
+fn missing_private_name() -> CompileError {
+    CompileError::InvalidSyntax("private name is not declared in an enclosing class")
+}
+
+fn validate_private_name(name: &str, names: &HashSet<String>) -> Result<(), CompileError> {
+    names
+        .contains(name)
+        .then_some(())
+        .ok_or_else(missing_private_name)
+}
+
+fn validate_private_statements(
+    statements: &[Stmt],
+    names: &HashSet<String>,
+) -> Result<(), CompileError> {
+    for statement in statements {
+        validate_private_statement(statement, names)?;
+    }
+    Ok(())
+}
+
+fn validate_private_statement(
+    statement: &Stmt,
+    names: &HashSet<String>,
+) -> Result<(), CompileError> {
+    match statement {
+        Stmt::Empty | Stmt::Break(_) | Stmt::Continue(_) | Stmt::ClassPrivateBrand(_) => Ok(()),
+        Stmt::Expr(expr) | Stmt::Throw(expr) => validate_private_expression(expr, names),
+        Stmt::Block(statements) => validate_private_statements(statements, names),
+        Stmt::VarDecl(_, declarations) => {
+            for declaration in declarations {
+                validate_private_pattern(&declaration.pattern, names)?;
+                if let Some(initializer) = &declaration.init {
+                    validate_private_expression(initializer, names)?;
+                }
+            }
+            Ok(())
+        }
+        Stmt::If {
+            test,
+            consequent,
+            alternate,
+        } => {
+            validate_private_expression(test, names)?;
+            validate_private_statement(consequent, names)?;
+            if let Some(alternate) = alternate {
+                validate_private_statement(alternate, names)?;
+            }
+            Ok(())
+        }
+        Stmt::For {
+            init,
+            test,
+            update,
+            body,
+        } => {
+            if let Some(init) = init {
+                validate_private_for_init(init, names)?;
+            }
+            for expression in [test.as_ref(), update.as_ref()].into_iter().flatten() {
+                validate_private_expression(expression, names)?;
+            }
+            validate_private_statement(body, names)
+        }
+        Stmt::ForIn { left, right, body } | Stmt::ForOf { left, right, body } => {
+            validate_private_for_head(left, names)?;
+            validate_private_expression(right, names)?;
+            validate_private_statement(body, names)
+        }
+        Stmt::While { test, body } | Stmt::DoWhile { body, test } => {
+            validate_private_expression(test, names)?;
+            validate_private_statement(body, names)
+        }
+        Stmt::Switch {
+            discriminant,
+            cases,
+        } => {
+            validate_private_expression(discriminant, names)?;
+            for case in cases {
+                if let Some(test) = &case.test {
+                    validate_private_expression(test, names)?;
+                }
+                validate_private_statements(&case.consequent, names)?;
+            }
+            Ok(())
+        }
+        Stmt::Labelled { item, .. } => validate_private_statement(item, names),
+        Stmt::Return(value) => value
+            .as_ref()
+            .map_or(Ok(()), |value| validate_private_expression(value, names)),
+        Stmt::Try {
+            block,
+            handler,
+            finalizer,
+        } => {
+            validate_private_statements(block, names)?;
+            if let Some(handler) = handler {
+                if let Some(param) = &handler.param {
+                    validate_private_pattern(param, names)?;
+                }
+                validate_private_statements(&handler.body, names)?;
+            }
+            if let Some(finalizer) = finalizer {
+                validate_private_statements(finalizer, names)?;
+            }
+            Ok(())
+        }
+        Stmt::With { object, body } => {
+            validate_private_expression(object, names)?;
+            validate_private_statement(body, names)
+        }
+        Stmt::FunctionDecl(function) | Stmt::ModuleDefaultFunction { function, .. } => {
+            validate_private_function(function, names)
+        }
+        Stmt::ClassDecl(class) => validate_private_class(class, names),
+        Stmt::ClassField(statement) => validate_private_statement(statement, names),
+    }
+}
+
+fn validate_private_for_init(init: &ForInit, names: &HashSet<String>) -> Result<(), CompileError> {
+    match init {
+        ForInit::Expr(expression) => validate_private_expression(expression, names),
+        ForInit::VarDecl(_, declarations) => declarations.iter().try_for_each(|declaration| {
+            validate_private_pattern(&declaration.pattern, names)?;
+            declaration.init.as_ref().map_or(Ok(()), |expression| {
+                validate_private_expression(expression, names)
+            })
+        }),
+    }
+}
+
+fn validate_private_for_head(head: &ForHead, names: &HashSet<String>) -> Result<(), CompileError> {
+    match head {
+        ForHead::Decl(_, pattern) | ForHead::Pattern(pattern) => {
+            validate_private_pattern(pattern, names)
+        }
+        ForHead::AnnexBVarInit(pattern, initializer) => {
+            validate_private_pattern(pattern, names)?;
+            validate_private_expression(initializer, names)
+        }
+        ForHead::Expr(expression) => validate_private_expression(expression, names),
+    }
+}
+
+fn validate_private_class(class: &Class, names: &HashSet<String>) -> Result<(), CompileError> {
+    // ClassHeritage is evaluated in the *outer* PrivateEnvironment.  The
+    // class's own names become visible only after this point.
+    if let Some(base) = &class.extends {
+        validate_private_expression(base, names)?;
+    }
+    let declarations = class_private_declarations(class)?;
+    let mut class_names = names.clone();
+    class_names.extend(declarations.into_iter().map(|(name, _)| name));
+    for element in &class.elements {
+        match element {
+            ClassElement::Method { key, function, .. }
+            | ClassElement::Accessor { key, function, .. } => {
+                validate_private_key(key, &class_names)?;
+                validate_private_function(function, &class_names)?;
+            }
+            ClassElement::Field {
+                key, initializer, ..
+            } => {
+                validate_private_key(key, &class_names)?;
+                if let Some(initializer) = initializer {
+                    validate_private_expression(initializer, &class_names)?;
+                }
+            }
+            ClassElement::StaticBlock(statements) => {
+                validate_private_statements(statements, &class_names)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_private_function(
+    function: &Function,
+    names: &HashSet<String>,
+) -> Result<(), CompileError> {
+    for parameter in &function.params {
+        validate_private_pattern(&parameter.pattern, names)?;
+        if let Some(default) = &parameter.default {
+            validate_private_expression(default, names)?;
+        }
+    }
+    validate_private_statements(&function.body, names)
+}
+
+fn validate_private_pattern(
+    pattern: &Pattern,
+    names: &HashSet<String>,
+) -> Result<(), CompileError> {
+    match pattern {
+        Pattern::Identifier(_) => Ok(()),
+        Pattern::Array(elements) => elements.iter().flatten().try_for_each(|element| {
+            validate_private_pattern(&element.pattern, names)?;
+            element.default.as_ref().map_or(Ok(()), |expression| {
+                validate_private_expression(expression, names)
+            })
+        }),
+        Pattern::Object(properties) => properties.iter().try_for_each(|property| match property {
+            ObjectPatternProp::KeyValue {
+                key,
+                value,
+                default,
+            } => {
+                validate_private_key(key, names)?;
+                validate_private_pattern(value, names)?;
+                default.as_ref().map_or(Ok(()), |expression| {
+                    validate_private_expression(expression, names)
+                })
+            }
+            ObjectPatternProp::Rest(pattern) => validate_private_pattern(pattern, names),
+        }),
+    }
+}
+
+fn validate_private_assignment_pattern(
+    pattern: &AssignmentPattern,
+    names: &HashSet<String>,
+) -> Result<(), CompileError> {
+    match pattern {
+        AssignmentPattern::Target(expression) => validate_private_expression(expression, names),
+        AssignmentPattern::Array(elements) => elements.iter().flatten().try_for_each(|element| {
+            validate_private_assignment_pattern(&element.pattern, names)?;
+            element.default.as_ref().map_or(Ok(()), |expression| {
+                validate_private_expression(expression, names)
+            })
+        }),
+        AssignmentPattern::Object(properties) => {
+            properties.iter().try_for_each(|property| match property {
+                AssignmentPatternProp::KeyValue {
+                    key,
+                    value,
+                    default,
+                } => {
+                    validate_private_key(key, names)?;
+                    validate_private_assignment_pattern(value, names)?;
+                    default.as_ref().map_or(Ok(()), |expression| {
+                        validate_private_expression(expression, names)
+                    })
+                }
+                AssignmentPatternProp::Rest(pattern) => {
+                    validate_private_assignment_pattern(pattern, names)
+                }
+            })
+        }
+    }
+}
+
+fn validate_private_key(key: &PropertyKey, names: &HashSet<String>) -> Result<(), CompileError> {
+    if let PropertyKey::Computed(expression) = key {
+        validate_private_expression(expression, names)
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_private_expression(expr: &Expr, names: &HashSet<String>) -> Result<(), CompileError> {
+    match expr {
+        Expr::Number(_)
+        | Expr::BigInt(_)
+        | Expr::String(_)
+        | Expr::Bool(_)
+        | Expr::Null
+        | Expr::This
+        | Expr::Identifier(_)
+        | Expr::RegExp { .. }
+        | Expr::Super
+        | Expr::NewTarget
+        | Expr::ImportMeta => Ok(()),
+        Expr::Parenthesized(expression)
+        | Expr::Await(expression)
+        | Expr::DynamicImport(expression)
+        | Expr::Unary {
+            arg: expression, ..
+        }
+        | Expr::Update {
+            arg: expression, ..
+        } => validate_private_expression(expression, names),
+        Expr::Template { expressions, .. } => expressions
+            .iter()
+            .try_for_each(|expression| validate_private_expression(expression, names)),
+        Expr::TaggedTemplate {
+            tag, expressions, ..
+        } => {
+            validate_private_expression(tag, names)?;
+            expressions
+                .iter()
+                .try_for_each(|expression| validate_private_expression(expression, names))
+        }
+        Expr::Array(elements) => elements
+            .iter()
+            .flatten()
+            .try_for_each(|element| match element {
+                ArrayElement::Normal(expression) | ArrayElement::Spread(expression) => {
+                    validate_private_expression(expression, names)
+                }
+            }),
+        Expr::Object(properties) => properties.iter().try_for_each(|property| match property {
+            ObjectProp::KeyValue { key, value, .. } => {
+                validate_private_key(key, names)?;
+                validate_private_expression(value, names)
+            }
+            ObjectProp::Spread(expression) => validate_private_expression(expression, names),
+            ObjectProp::Method { key, function } | ObjectProp::Accessor { key, function, .. } => {
+                validate_private_key(key, names)?;
+                validate_private_function(function, names)
+            }
+        }),
+        Expr::Function(function) => validate_private_function(function, names),
+        Expr::Class(class) => validate_private_class(class, names),
+        Expr::Yield { value, .. } => value.as_deref().map_or(Ok(()), |expression| {
+            validate_private_expression(expression, names)
+        }),
+        Expr::Arrow { params, body, .. } => {
+            for parameter in params {
+                validate_private_pattern(&parameter.pattern, names)?;
+                if let Some(default) = &parameter.default {
+                    validate_private_expression(default, names)?;
+                }
+            }
+            match body {
+                ArrowBody::Expr(expression) => validate_private_expression(expression, names),
+                ArrowBody::Block(statements) => validate_private_statements(statements, names),
+            }
+        }
+        Expr::Binary { left, right, .. } | Expr::Logical { left, right, .. } => {
+            validate_private_expression(left, names)?;
+            validate_private_expression(right, names)
+        }
+        Expr::Sequence(expressions) => expressions
+            .iter()
+            .try_for_each(|expression| validate_private_expression(expression, names)),
+        Expr::Assign { target, value, .. } => {
+            validate_private_expression(target, names)?;
+            validate_private_expression(value, names)
+        }
+        Expr::DestructureAssign { pattern, value } => {
+            validate_private_assignment_pattern(pattern, names)?;
+            validate_private_expression(value, names)
+        }
+        Expr::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            validate_private_expression(test, names)?;
+            validate_private_expression(consequent, names)?;
+            validate_private_expression(alternate, names)
+        }
+        Expr::Call { callee, args } | Expr::New { callee, args } => {
+            validate_private_expression(callee, names)?;
+            args.iter().try_for_each(|argument| match argument {
+                Argument::Normal(expression) | Argument::Spread(expression) => {
+                    validate_private_expression(expression, names)
+                }
+            })
+        }
+        Expr::Member {
+            object,
+            property,
+            computed,
+        }
+        | Expr::OptionalMember {
+            object,
+            property,
+            computed,
+        } => {
+            validate_private_expression(object, names)?;
+            if *computed {
+                validate_private_expression(property, names)?;
+            }
+            if !*computed {
+                if let Expr::Identifier(name) = property.as_ref() {
+                    if let Some(name) = name.strip_prefix('#') {
+                        if matches!(object.as_ref(), Expr::Super) {
+                            return Err(CompileError::InvalidSyntax(
+                                "super cannot access a private element",
+                            ));
+                        }
+                        validate_private_name(name, names)?;
+                    }
+                }
+            }
+            Ok(())
+        }
+        Expr::PrivateIn { name, object } => {
+            validate_private_expression(object, names)?;
+            validate_private_name(name, names)
+        }
+    }
 }
 
 impl fmt::Display for CompileError {
@@ -95,6 +498,8 @@ fn compile_with_limit_and_mode(
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
         names: Vec::new(),
+        private_scopes: Vec::new(),
+        next_private_scope: 0,
         scopes: Vec::new(),
         loops: Vec::new(),
         catch_var_slots: Vec::new(),
@@ -276,6 +681,8 @@ pub(crate) fn compile_eval(
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
         names: vec![HashMap::new()],
+        private_scopes: vec![HashMap::new()],
+        next_private_scope: 0,
         scopes: Vec::new(),
         loops: Vec::new(),
         catch_var_slots: Vec::new(),
@@ -303,6 +710,22 @@ pub(crate) fn compile_eval(
         let slot = u32::try_from(compiler.bytecode.bindings.len())
             .map_err(|_| CompileError::ProgramTooLarge)?;
         compiler.names[0].insert(name.clone(), slot);
+        if let Some((scope, private_name)) = private_owner_binding_name(name) {
+            // Direct eval inherits lexical private names just as it inherits
+            // ordinary captured bindings.  The innermost live private scope
+            // wins when a nested class shadows a name.
+            let scope_map = compiler
+                .private_scopes
+                .first_mut()
+                .expect("eval has a private scope");
+            let replace = scope_map
+                .get(&private_name)
+                .and_then(|binding| private_owner_binding_name(binding))
+                .is_none_or(|(existing, _)| scope >= existing);
+            if replace {
+                scope_map.insert(private_name, name.clone());
+            }
+        }
         compiler.bytecode.bindings.push(binding.clone());
         compiler.bytecode.captures.push(*caller_slot);
     }
@@ -369,6 +792,12 @@ struct Loop {
 struct Compiler {
     bytecode: Bytecode,
     names: Vec<HashMap<String, u32>>,
+    /// Each lexical class private-name environment maps the source spelling
+    /// (without `#`) to an internal binding holding that name's declaring
+    /// class owner.  The binding is captured like any other lexical value,
+    /// which is the crucial distinction from a function [[HomeObject]].
+    private_scopes: Vec<HashMap<String, String>>,
+    next_private_scope: u32,
     scopes: Vec<u32>,
     loops: Vec<Loop>,
     // Annex B permits a simple catch parameter to be redeclared with `var`
@@ -501,6 +930,20 @@ impl Compiler {
             .iter()
             .rev()
             .find_map(|scope| scope.get(name).copied())
+    }
+
+    fn resolve_private_name(&self, name: &str) -> Result<u32, CompileError> {
+        let binding = self
+            .private_scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name))
+            .ok_or(CompileError::InvalidSyntax(
+                "private name is not declared in an enclosing class",
+            ))?;
+        self.resolve(binding).ok_or(CompileError::InvalidSyntax(
+            "private name binding is not available in this function",
+        ))
     }
 
     /// Annex B creates a var binding in the enclosing variable environment
@@ -636,8 +1079,11 @@ impl Compiler {
                 self.statement(statement, declarations_allowed)?;
                 self.emit(Opcode::LeaveClassFieldInitializer, 0)?;
             }
-            Stmt::ClassPrivateBrand => {
-                self.emit(Opcode::InitializePrivateBrand, 0)?;
+            Stmt::ClassPrivateBrand(binding) => {
+                let slot = self.resolve(binding).ok_or(CompileError::InvalidSyntax(
+                    "private brand binding is not available in this function",
+                ))?;
+                self.emit(Opcode::InitializePrivateBrand, slot)?;
             }
             Stmt::Expr(Expr::Class(class)) => {
                 self.class_expression(class, None)?;
@@ -1472,18 +1918,12 @@ impl Compiler {
             } => {
                 if matches!(&**tag, Expr::Member { .. }) {
                     if private_member_name(tag).is_some() {
-                        self.private_member_reference(tag)?;
+                        let owner = self.private_member_reference(tag)?;
+                        self.emit(Opcode::PrivateGetMethod, owner)?;
                     } else {
                         self.member_reference(tag)?;
+                        self.emit(Opcode::GetMethod, 0)?;
                     }
-                    self.emit(
-                        if private_member_name(tag).is_some() {
-                            Opcode::PrivateGetMethod
-                        } else {
-                            Opcode::GetMethod
-                        },
-                        0,
-                    )?;
                 } else {
                     self.expression(tag)?;
                     self.constant(Value::Undefined)?;
@@ -1576,6 +2016,11 @@ impl Compiler {
                 };
                 if *op == UnaryOp::Delete {
                     if matches!(&**arg, Expr::Member { .. }) {
+                        if private_member_name(arg).is_some() {
+                            return Err(CompileError::InvalidSyntax(
+                                "cannot delete a private element",
+                            ));
+                        }
                         self.member_reference(arg)?;
                         self.emit(opcode, 0)?;
                     } else if let Expr::Identifier(name) = &**arg {
@@ -1627,6 +2072,12 @@ impl Compiler {
                 self.expression(left)?;
                 self.expression(right)?;
                 self.emit(opcode, 0)?;
+            }
+            Expr::PrivateIn { name, object } => {
+                let owner = self.resolve_private_name(name)?;
+                self.expression(object)?;
+                self.constant(Value::String(name.clone().into()))?;
+                self.emit(Opcode::PrivateIn, owner)?;
             }
             Expr::Logical { op, left, right } => {
                 self.expression(left)?;
@@ -1778,8 +2229,8 @@ impl Compiler {
                 self.emit(Opcode::SuperGet, 0)?;
             }
             Expr::Member { .. } if private_member_name(expr).is_some() => {
-                self.private_member_reference(expr)?;
-                self.emit(Opcode::PrivateGet, 0)?;
+                let owner = self.private_member_reference(expr)?;
+                self.emit(Opcode::PrivateGet, owner)?;
             }
             Expr::Member { .. } => {
                 self.member_reference(expr)?;
@@ -1918,18 +2369,12 @@ impl Compiler {
                     self.emit(Opcode::SuperGetMethod, 0)?;
                 } else if !construct && matches!(&**callee, Expr::Member { .. }) {
                     if private_member_name(callee).is_some() {
-                        self.private_member_reference(callee)?;
+                        let owner = self.private_member_reference(callee)?;
+                        self.emit(Opcode::PrivateGetMethod, owner)?;
                     } else {
                         self.member_reference(callee)?;
+                        self.emit(Opcode::GetMethod, 0)?;
                     }
-                    self.emit(
-                        if private_member_name(callee).is_some() {
-                            Opcode::PrivateGetMethod
-                        } else {
-                            Opcode::GetMethod
-                        },
-                        0,
-                    )?;
                 } else {
                     self.expression(callee)?;
                     self.constant(Value::Undefined)?;
@@ -2237,22 +2682,22 @@ impl Compiler {
             }
         }
         if private_member_name(target).is_some() {
-            self.private_member_reference(target)?;
+            let owner = self.private_member_reference(target)?;
             if logical_assignment {
                 self.emit(Opcode::Dup2, 0)?;
-                self.emit(Opcode::PrivateGet, 0)?;
-                self.logical_assignment(op, 2, value, inferred_name, Opcode::PrivateSet, 0)?;
+                self.emit(Opcode::PrivateGet, owner)?;
+                self.logical_assignment(op, 2, value, inferred_name, Opcode::PrivateSet, owner)?;
                 return Ok(());
             }
             if op != AssignOp::Assign {
                 self.emit(Opcode::Dup2, 0)?;
-                self.emit(Opcode::PrivateGet, 0)?;
+                self.emit(Opcode::PrivateGet, owner)?;
             }
             self.expression_with_name(value, inferred_name)?;
             if let Some(opcode) = compound_assignment_opcode(op) {
                 self.emit(opcode, 0)?;
             }
-            self.emit(Opcode::PrivateSet, 0)?;
+            self.emit(Opcode::PrivateSet, owner)?;
             return Ok(());
         }
         if let Expr::Identifier(name) = target {
@@ -2624,7 +3069,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn private_member_reference(&mut self, target: &Expr) -> Result<(), CompileError> {
+    fn private_member_reference(&mut self, target: &Expr) -> Result<u32, CompileError> {
         let Expr::Member {
             object,
             property,
@@ -2639,9 +3084,10 @@ impl Compiler {
         let Some(name) = name.strip_prefix('#') else {
             return Err(CompileError::InvalidSyntax("invalid private member name"));
         };
+        let owner = self.resolve_private_name(name)?;
         self.expression(object)?;
         self.constant(Value::String(name.into()))?;
-        Ok(())
+        Ok(owner)
     }
 
     fn name_constant(&mut self, name: &str) -> Result<u32, CompileError> {
@@ -2713,6 +3159,28 @@ impl Compiler {
         inferred_name: Option<&str>,
         binding: Option<u32>,
     ) -> Result<(), CompileError> {
+        let private_declarations = class_private_declarations(class)?;
+        let private_scope_id = self.next_private_scope;
+        self.next_private_scope = self.next_private_scope.saturating_add(1);
+        let mut private_scope = HashMap::new();
+        let mut private_bindings = Vec::new();
+        for (name, is_static) in &private_declarations {
+            // This cannot collide with source text (U+0000 is not a source
+            // character), while preserving separate lexical environments for
+            // nested classes that reuse a private name.
+            let binding = format!(
+                "{PRIVATE_OWNER_BINDING_PREFIX}{private_scope_id}_{}_{}",
+                if *is_static { "static" } else { "instance" },
+                name
+            );
+            private_scope.insert(name.clone(), binding.clone());
+            private_bindings.push((binding, DeclKind::Const));
+        }
+        let has_private_scope = !private_bindings.is_empty();
+        if has_private_scope {
+            self.enter_scope(private_bindings, &BTreeSet::new(), false)?;
+            self.private_scopes.push(private_scope.clone());
+        }
         let constructor = class.elements.iter().find_map(|element| match element {
             ClassElement::Method {
                 key,
@@ -2744,17 +3212,24 @@ impl Compiler {
                 _ => None,
             })
             .collect();
-        if class
-            .elements
+        if let Some((name, _)) = private_declarations
             .iter()
-            .any(class_has_private_instance_element)
+            .find(|(_, is_static)| !*is_static)
         {
             // Private methods and accessors brand each constructed instance
             // even when the class has no private data field.  The marker is
             // deliberately before all instance field initializers, so an
             // earlier public initializer can access a declared private
             // method just as it can in ECMAScript.
-            fields.insert(0, Stmt::ClassPrivateBrand);
+            fields.insert(
+                0,
+                Stmt::ClassPrivateBrand(
+                    private_scope
+                        .get(name)
+                        .expect("private instance declaration has an owner binding")
+                        .clone(),
+                ),
+            );
         }
         let constructor_body = std::mem::take(&mut constructor.body);
         let body = if class.extends.is_some() {
@@ -2792,6 +3267,21 @@ impl Compiler {
             self.emit(Opcode::Dup, 0)?;
             self.emit(Opcode::InitializeBinding, slot)?;
         }
+        // The class object and its prototype now exist.  Initialize the
+        // hidden owner cells before creating element closures, so every
+        // ordinary nested function can capture the lexical private-name
+        // environment rather than relying on a [[HomeObject]].
+        for (name, is_static) in &private_declarations {
+            self.class_property_target(*is_static)?;
+            let owner = self
+                .resolve(
+                    private_scope
+                        .get(name)
+                        .expect("private declaration has an owner binding"),
+                )
+                .expect("private owner binding is in the active class scope");
+            self.emit(Opcode::InitializeBinding, owner)?;
+        }
         for element in &class.elements {
             match element {
                 ClassElement::Method {
@@ -2818,10 +3308,7 @@ impl Compiler {
                         FunctionCompileOptions::class_method(),
                     )?;
                     if private_class_name(key).is_some() {
-                        if *is_static {
-                            return Err(CompileError::Unsupported("static private elements"));
-                        }
-                        self.emit(Opcode::DefinePrivateMethod, 0)?;
+                        self.emit(Opcode::DefinePrivateMethod, u32::from(*is_static))?;
                     } else {
                         self.emit(Opcode::DefineMethod, 0)?;
                         self.emit(Opcode::Pop, 0)?;
@@ -2847,10 +3334,10 @@ impl Compiler {
                         FunctionCompileOptions::class_method(),
                     )?;
                     if private_class_name(key).is_some() {
-                        if *is_static {
-                            return Err(CompileError::Unsupported("static private elements"));
-                        }
-                        self.emit(Opcode::DefinePrivateAccessor, u32::from(!getter))?;
+                        self.emit(
+                            Opcode::DefinePrivateAccessor,
+                            u32::from(!getter) | (u32::from(*is_static) << 1),
+                        )?;
                     } else {
                         self.emit(Opcode::DefineClassAccessor, u32::from(!getter))?;
                         self.emit(Opcode::Pop, 0)?;
@@ -2861,11 +3348,15 @@ impl Compiler {
                     initializer,
                     is_static: true,
                 } => {
-                    if private_class_name(key).is_some() {
-                        return Err(CompileError::Unsupported("static private elements"));
-                    }
                     self.class_property_target(true)?;
-                    self.property_key(key)?;
+                    if let Some(name) = private_class_name(key) {
+                        self.constant(Value::String(name.into()))?;
+                        self.emit(Opcode::DefinePrivateField, 1)?;
+                        self.class_property_target(true)?;
+                        self.constant(Value::String(name.into()))?;
+                    } else {
+                        self.property_key(key)?;
+                    }
                     let value = initializer.clone().unwrap_or_else(undefined_expression);
                     let initializer = Function {
                         name: None,
@@ -2881,7 +3372,14 @@ impl Compiler {
                         false,
                         FunctionCompileOptions::class_method(),
                     )?;
-                    self.emit(Opcode::DefineClassStaticField, 0)?;
+                    self.emit(
+                        if private_class_name(key).is_some() {
+                            Opcode::DefinePrivateStaticField
+                        } else {
+                            Opcode::DefineClassStaticField
+                        },
+                        0,
+                    )?;
                 }
                 ClassElement::Field {
                     key,
@@ -2916,6 +3414,10 @@ impl Compiler {
                     self.emit(Opcode::CallClassStaticBlock, 0)?;
                 }
             }
+        }
+        if has_private_scope {
+            self.private_scopes.pop();
+            self.leave_scope()?;
         }
         Ok(())
     }
@@ -2964,6 +3466,8 @@ impl Compiler {
         let mut child = Compiler {
             bytecode: Bytecode::empty(),
             names: vec![HashMap::new()],
+            private_scopes: self.private_scopes.clone(),
+            next_private_scope: self.next_private_scope,
             scopes: Vec::new(),
             loops: Vec::new(),
             catch_var_slots: Vec::new(),
@@ -3193,7 +3697,7 @@ fn strict_assignment_in_statement(statement: &Stmt) -> bool {
         | Stmt::FunctionDecl(_)
         | Stmt::ModuleDefaultFunction { .. }
         | Stmt::ClassDecl(_)
-        | Stmt::ClassPrivateBrand => false,
+        | Stmt::ClassPrivateBrand(_) => false,
         Stmt::Expr(expr) | Stmt::Throw(expr) => strict_assignment_in_expression(expr),
         Stmt::Block(statements) => strict_assignment_to_restricted_name(statements),
         Stmt::VarDecl(_, declarations) => declarations.iter().any(|declaration| {
@@ -3461,6 +3965,7 @@ fn strict_assignment_in_expression(expression: &Expr) -> bool {
         Expr::Member {
             object, property, ..
         } => strict_assignment_in_expression(object) || strict_assignment_in_expression(property),
+        Expr::PrivateIn { object, .. } => strict_assignment_in_expression(object),
         Expr::OptionalMember {
             object, property, ..
         } => strict_assignment_in_expression(object) || strict_assignment_in_expression(property),
@@ -3532,15 +4037,72 @@ fn private_class_name(key: &PropertyKey) -> Option<&str> {
     }
 }
 
-fn class_has_private_instance_element(element: &ClassElement) -> bool {
-    match element {
-        ClassElement::Method { key, is_static, .. }
-        | ClassElement::Accessor { key, is_static, .. }
-        | ClassElement::Field { key, is_static, .. } => {
-            !is_static && private_class_name(key).is_some()
+/// Decode a compiler-private owner binding while reconstructing the private
+/// environment for direct eval.  The source name follows an unambiguous
+/// static/instance marker; it may otherwise contain arbitrary identifier
+/// characters (including underscores).
+fn private_owner_binding_name(binding: &str) -> Option<(u32, String)> {
+    let suffix = binding.strip_prefix(PRIVATE_OWNER_BINDING_PREFIX)?;
+    let (scope, name) = suffix
+        .split_once("_static_")
+        .or_else(|| suffix.split_once("_instance_"))?;
+    Some((scope.parse().ok()?, name.to_owned()))
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PrivateDeclarationKind {
+    FieldOrMethod,
+    Accessor { getter: bool },
+}
+
+/// Collect own private names and establish the class-element duplicate early
+/// errors before any bytecode is emitted.  A getter/setter pair is the only
+/// permitted repeated private name, and both halves must have the same
+/// static-ness.
+fn class_private_declarations(class: &Class) -> Result<Vec<(String, bool)>, CompileError> {
+    let mut declarations = Vec::new();
+    let mut seen: HashMap<String, (bool, PrivateDeclarationKind)> = HashMap::new();
+    for element in &class.elements {
+        let (key, is_static, kind) = match element {
+            ClassElement::Method { key, is_static, .. } => {
+                (key, *is_static, PrivateDeclarationKind::FieldOrMethod)
+            }
+            ClassElement::Accessor {
+                key,
+                getter,
+                is_static,
+                ..
+            } => (
+                key,
+                *is_static,
+                PrivateDeclarationKind::Accessor { getter: *getter },
+            ),
+            ClassElement::Field { key, is_static, .. } => {
+                (key, *is_static, PrivateDeclarationKind::FieldOrMethod)
+            }
+            ClassElement::StaticBlock(_) => continue,
+        };
+        let Some(name) = private_class_name(key) else {
+            continue;
+        };
+        let name = name.to_owned();
+        match seen.get(&name).copied() {
+            None => {
+                seen.insert(name.clone(), (is_static, kind));
+                declarations.push((name, is_static));
+            }
+            Some((previous_static, PrivateDeclarationKind::Accessor { getter: previous }))
+                if previous_static == is_static
+                    && matches!(kind, PrivateDeclarationKind::Accessor { getter } if getter != previous) =>
+                {}
+            Some(_) => {
+                return Err(CompileError::InvalidSyntax(
+                    "duplicate private name in class body",
+                ));
+            }
         }
-        ClassElement::StaticBlock(_) => false,
     }
+    Ok(declarations)
 }
 
 fn private_member_name(expr: &Expr) -> Option<&str> {

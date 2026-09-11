@@ -3291,7 +3291,12 @@ impl Vm {
                         let PropertyName::String(name) = name else {
                             unreachable!("compiler emits string private names")
                         };
-                        self.with_roots(|heap| heap.define_private_field(owner, name))?;
+                        self.with_roots(|heap| {
+                            if operand != 0 {
+                                heap.add_private_brand(owner, owner)?;
+                            }
+                            heap.define_private_field(owner, name)
+                        })?;
                     }
                     Opcode::DefinePrivateMethod | Opcode::DefinePrivateAccessor => {
                         let value = self.pop();
@@ -3306,10 +3311,18 @@ impl Vm {
                             self.with_roots(|heap| heap.set_closure_home(function, owner))?;
                         }
                         if instruction.opcode == Opcode::DefinePrivateMethod {
-                            self.with_roots(|heap| heap.define_private_method(owner, name, value))?;
+                            self.with_roots(|heap| {
+                                if operand != 0 {
+                                    heap.add_private_brand(owner, owner)?;
+                                }
+                                heap.define_private_method(owner, name, value)
+                            })?;
                         } else {
                             self.with_roots(|heap| {
-                                heap.define_private_accessor(owner, name, value, operand != 0)
+                                if operand & 2 != 0 {
+                                    heap.add_private_brand(owner, owner)?;
+                                }
+                                heap.define_private_accessor(owner, name, value, operand & 1 != 0)
                             })?;
                         }
                     }
@@ -3409,14 +3422,38 @@ impl Vm {
                         }
                         self.stack.truncate(base + 1);
                     }
+                    Opcode::DefinePrivateStaticField => {
+                        let base = self.stack.len() - 4;
+                        let target = self.stack[base + 1].clone();
+                        let name = match self.stack[base + 2].clone() {
+                            Value::String(name) => name,
+                            _ => unreachable!("compiler emits a private-name string"),
+                        };
+                        let initializer = self.stack[base + 3].clone();
+                        if let (Value::Object(target), Value::Object(function)) =
+                            (&target, &initializer)
+                        {
+                            self.with_roots(|heap| heap.set_closure_home(*function, *target))?;
+                        }
+                        let value =
+                            self.call_native(initializer, target.clone(), Vec::new(), false)?;
+                        let Value::Object(target) = target else {
+                            unreachable!("class fields target the constructor")
+                        };
+                        self.with_roots(|heap| heap.set_private_slot(target, target, name, value))?;
+                        self.stack.truncate(base + 1);
+                    }
                     Opcode::SetClassHome => self.set_class_home()?,
                     Opcode::SetClassHeritage => self.set_class_heritage()?,
                     Opcode::InitializePrivateBrand => {
-                        let owner = self.home_object.ok_or_else(|| {
-                            RuntimeError::TypeError(
-                                "private elements are not available in this function".into(),
-                            )
-                        })?;
+                        let owner = self
+                            .binding_value(operand)?
+                            .and_then(|value| value.object_id())
+                            .ok_or_else(|| {
+                                RuntimeError::TypeError(
+                                    "private elements are not available in this function".into(),
+                                )
+                            })?;
                         let receiver = self.this.object_id().ok_or_else(|| {
                             RuntimeError::TypeError(
                                 "private fields require an object receiver".into(),
@@ -3425,7 +3462,7 @@ impl Vm {
                         self.with_roots(|heap| heap.add_private_brand(receiver, owner))?;
                     }
                     Opcode::PrivateGet | Opcode::PrivateGetMethod => {
-                        let (receiver, owner, name) = self.private_reference()?;
+                        let (receiver, owner, name) = self.private_reference(operand)?;
                         let value = self.private_get(&receiver, owner, &name)?;
                         self.stack.push(value);
                         if instruction.opcode == Opcode::PrivateGetMethod {
@@ -3434,9 +3471,17 @@ impl Vm {
                     }
                     Opcode::PrivateSet => {
                         let value = self.pop();
-                        let (receiver, owner, name) = self.private_reference()?;
+                        let (receiver, owner, name) = self.private_reference(operand)?;
                         self.private_set(&receiver, owner, name, value.clone())?;
                         self.stack.push(value);
+                    }
+                    Opcode::PrivateIn => {
+                        let (receiver, owner, _name) = self.private_reference(operand)?;
+                        let object = receiver.object_id().ok_or_else(|| {
+                            RuntimeError::TypeError("private brand checks require an object".into())
+                        })?;
+                        self.stack
+                            .push(Value::Bool(self.heap.has_private_brand(object, owner)?));
                     }
                     Opcode::SuperGet | Opcode::SuperGetMethod => {
                         let key_value = self.pop();
@@ -4652,18 +4697,26 @@ impl Vm {
     }
 
     /// Extracts the two stack values used to retain a private Reference and
-    /// resolves the declaring class through the executing method's
-    /// [[HomeObject]].  Unlike an ordinary property reference, its name is
-    /// not a PropertyKey and its receiver is never boxed.
-    fn private_reference(&mut self) -> Result<(Value, ObjectId, JsString), RuntimeError> {
+    /// resolves its owner through the compiler-generated lexical private-name
+    /// binding.  Unlike an ordinary property reference, its name is not a
+    /// PropertyKey and its receiver is never boxed.
+    fn private_reference(
+        &mut self,
+        owner_slot: usize,
+    ) -> Result<(Value, ObjectId, JsString), RuntimeError> {
         let name = match self.pop() {
             Value::String(name) => name,
             _ => unreachable!("compiler emits a string private name"),
         };
         let receiver = self.pop();
-        let owner = self.home_object.ok_or_else(|| {
-            RuntimeError::TypeError("private elements are not available in this function".into())
-        })?;
+        let owner = self
+            .binding_value(owner_slot)?
+            .and_then(|value| value.object_id())
+            .ok_or_else(|| {
+                RuntimeError::TypeError(
+                    "private elements are not available in this function".into(),
+                )
+            })?;
         Ok((receiver, owner, name))
     }
 

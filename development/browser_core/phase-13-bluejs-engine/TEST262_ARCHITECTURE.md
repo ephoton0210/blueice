@@ -246,14 +246,20 @@ Async methods, async generators, async functions and async arrows retain
 `await`, `yield*`, `for await`, and lexical `new.target` syntax, then report
 the explicit `async functions` compiler gap: Promise jobs and the `$DONE` host
 are not implemented. The P1.2 private-slot reference slice now accepts private
-identifiers and supports instance private fields, methods and accessors through
-non-enumerable heap slots keyed by their declaring class home object. Instance
-construction installs the private brand before field initializers; direct class
-methods/constructors and lexically inheriting arrows retain that owner for
-private get/set and call operations. Static private elements, general nested
-function private-name capture, duplicate-name early errors, `#name in object`,
-and arbitrary derived-field control flow remain later work. Decorators and async
-execution also remain later work. Sloppy `with` now has a VM-managed object environment for
+identifiers and supports both instance and static private fields, methods and
+accessors through non-enumerable heap slots keyed by their declaring class
+owner. Instance construction installs the private brand before field
+initializers; static elements brand the constructor itself. The compiler
+represents each declared private name with a hidden lexical owner binding.
+Consequently arrow and ordinary nested functions, nested classes, generators,
+and direct eval capture the correct lexical private-name environment rather
+than borrowing a single method `[[HomeObject]]`. `#name in object` performs a
+brand check and rejects a non-object RHS. Parse-time private early errors now
+reject unbound names, duplicate declarations except a matching getter/setter
+pair, `#constructor`, private `super` access, invalid private property-key
+contexts, and a class's use of its own private name in its heritage. Arbitrary
+derived-field control flow, decorators and async execution remain later work.
+Sloppy `with` now has a VM-managed object environment for
 simple identifier reads/writes, is unwound with handlers, and is rejected in
 strict code. It does not yet model every `with` interaction with closures,
 `typeof`, updates or implicit global writes.
@@ -855,11 +861,13 @@ count, strict non-writable bypasses, name inference, BigInt truthiness and
 the nullish-base/key-coercion error order.
 
 The P1.2 private-slot bridge represents a private Reference as its object base
-and private name, then resolves the declaring class through the current class
-method's home object. Heap-private brand, element and slot maps retain their GC
-edges but are absent from ordinary own-property enumeration. Fields are
-writable slots; methods reject `PrivateSet`; accessors call their getter/setter
-with the original receiver and reject a write when no setter exists.
+and private name, with a bytecode operand selecting a compiler-generated,
+captured lexical owner binding. Heap-private brand, element and slot maps
+retain their GC edges but are absent from ordinary own-property enumeration.
+Fields are writable slots; methods reject `PrivateSet`; accessors call their
+getter/setter with the original receiver and reject a write when no setter
+exists. The same owner binding drives `#name in object`, static private
+elements, and the constructor's instance-brand initialization.
 
 A fresh eight-worker run at `target/test262-private-slot-final` records **138 pass,
 0 fail and 0 unsupported** of 138 scheduled
@@ -867,3 +875,13 @@ A fresh eight-worker run at `target/test262-private-slot-final` records **138 pa
 `class-fields-private` modes that had previously rejected `#` during parsing.
 This closes that reference slice only; it is not a full private-name or class
 conformance claim.
+
+The follow-up private-name work was checked on 2026-09-11. Fresh eight-worker
+runs record **44 pass, 0 fail and 0 unsupported** of 44 scheduled
+`language/statements/class/elements/private-static` modes, **30 pass, 0 fail
+and 8 unsupported** of 38 scheduled `language/expressions/in/private-field`
+modes (the eight are async-host gaps), and **40 pass, 0 fail and 0 unsupported**
+of 40 `privatename-not-valid` modes. The wider class-element early-error run
+records 418 pass, 16 fail and 10 unsupported of 444 modes; its remaining
+non-passing cases are general public-class grammar gaps, not private-name
+early errors.
