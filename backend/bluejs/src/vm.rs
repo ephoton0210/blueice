@@ -7,7 +7,7 @@
 //! safepoints. The collector itself additionally protects store inputs.
 
 use crate::bytecode::{Binding, ModuleExport, ModuleImportName};
-use crate::heap::PrivateElement;
+use crate::heap::{GeneratorState, PrivateElement};
 use crate::native::{self, NativeFunction};
 use crate::primitive;
 use crate::{
@@ -279,6 +279,9 @@ struct ModuleContinuation {
 /// module continuation: later async generators and async iteration must be
 /// able to reuse the same frame, rooting, and completion machinery.
 struct AsyncContinuation {
+    /// `Some` makes this an async-generator request frame rather than an
+    /// ordinary async-function frame. The request Promise remains `target`.
+    generator: Option<ObjectId>,
     target: ObjectId,
     code: Rc<Bytecode>,
     pc: usize,
@@ -327,8 +330,19 @@ struct PromiseThenReaction {
 
 enum PromiseReaction {
     Then(PromiseThenReaction),
-    ModuleAwait { continuation: u64 },
-    AsyncAwait { continuation: u64 },
+    ModuleAwait {
+        continuation: u64,
+    },
+    AsyncAwait {
+        continuation: u64,
+    },
+    /// AsyncGeneratorYield awaits its yielded value before resolving the
+    /// outstanding `.next()` capability.
+    AsyncGeneratorYield {
+        generator: ObjectId,
+        target: ObjectId,
+        result: ObjectId,
+    },
 }
 
 struct PromiseRecord {
@@ -372,6 +386,13 @@ enum PromiseJob {
     },
     AsyncAwait {
         continuation: u64,
+        value: Value,
+        fulfilled: bool,
+    },
+    AsyncGeneratorYield {
+        generator: ObjectId,
+        target: ObjectId,
+        result: ObjectId,
         value: Value,
         fulfilled: bool,
     },
@@ -540,6 +561,8 @@ pub struct Vm {
     iterator_base: Option<ObjectId>,
     array_iterator_prototype: Option<ObjectId>,
     generator_prototype: Option<ObjectId>,
+    async_iterator_base: Option<ObjectId>,
+    async_generator_prototype: Option<ObjectId>,
     /// `%AsyncFunction.prototype%`, permanently rooted with the realm once
     /// the first async closure needs it. Its `constructor` property keeps
     /// `%AsyncFunction%` reachable without exposing a global binding.
@@ -636,6 +659,8 @@ impl Vm {
             iterator_base: None,
             array_iterator_prototype: None,
             generator_prototype: None,
+            async_iterator_base: None,
+            async_generator_prototype: None,
             async_function_prototype: None,
             promise_prototype: None,
             map_prototype: None,
@@ -1340,6 +1365,7 @@ impl Vm {
             references.extend(continuation.iterators.iter().filter_map(Value::object_id));
         }
         for continuation in self.async_continuations.values() {
+            references.extend(continuation.generator);
             references.push(continuation.target);
             references.extend(Self::suspended_execution_references(
                 &continuation.execution,
@@ -1722,6 +1748,7 @@ impl Vm {
                     "unknown async await continuation",
                 ))?;
         let AsyncContinuation {
+            generator,
             target,
             code,
             pc,
@@ -1730,6 +1757,12 @@ impl Vm {
             mut handlers,
             call_depth,
         } = continuation;
+        if let Some(generator) = generator {
+            return self.resume_async_generator_await(
+                generator, target, code, pc, execution, iterators, handlers, call_depth, value,
+                fulfilled,
+            );
+        }
         let mut ambient = self.suspend_module_execution();
         let ambient_call_depth = std::mem::replace(&mut self.call_depth, call_depth);
         self.restore_module_execution(execution);
@@ -1771,6 +1804,7 @@ impl Vm {
                 let execution = self.suspend_module_execution();
                 ambient.templates.extend(execution.templates.clone());
                 let state = AsyncContinuation {
+                    generator,
                     target,
                     code,
                     pc,
@@ -1815,6 +1849,135 @@ impl Vm {
             }
         };
         result
+    }
+
+    /// Resume one pending async-generator request. Its frame is identical to
+    /// an ordinary async continuation, but a `yield` settles the request and
+    /// keeps the generator resumable instead of resolving a function call.
+    #[allow(clippy::too_many_arguments)]
+    fn resume_async_generator_await(
+        &mut self,
+        generator: ObjectId,
+        target: ObjectId,
+        code: Rc<Bytecode>,
+        pc: usize,
+        execution: SuspendedModuleExecution,
+        mut iterators: Vec<Value>,
+        mut handlers: Vec<HandlerFrame>,
+        call_depth: usize,
+        value: Value,
+        fulfilled: bool,
+    ) -> Result<(), RuntimeError> {
+        let mut ambient = self.suspend_module_execution();
+        let ambient_call_depth = std::mem::replace(&mut self.call_depth, call_depth);
+        self.restore_module_execution(execution);
+        let outcome = if fulfilled {
+            self.interpret(&code, &mut iterators, pc, Some(value), None, Some(handlers))
+        } else {
+            match self.resolve_completion(
+                &code,
+                &mut handlers,
+                &mut iterators,
+                Completion::Throw(RuntimeError::Thrown(value)),
+            ) {
+                Ok(CompletionAction::Continue) => {
+                    self.interpret(&code, &mut iterators, pc, None, None, Some(handlers))
+                }
+                Ok(CompletionAction::Jump(target)) => {
+                    self.interpret(&code, &mut iterators, target, None, None, Some(handlers))
+                }
+                Ok(CompletionAction::Return(value)) => Ok(InterpreterExit::Return(value)),
+                Ok(CompletionAction::TailRecur(_)) => Err(RuntimeError::TypeError(
+                    "async generator cannot tail recur across await".into(),
+                )),
+                Ok(CompletionAction::Throw(error)) | Err(error) => Err(error),
+            }
+        };
+
+        match outcome {
+            Ok(InterpreterExit::Return(value)) => {
+                self.heap
+                    .set_generator_state(generator, GeneratorState::Done)?;
+                ambient.templates.extend(self.templates.clone());
+                self.restore_module_execution(ambient);
+                self.call_depth = ambient_call_depth;
+                let result = self.iterator_result(value, true)?;
+                self.await_async_generator_yield(generator, target, result)
+            }
+            Ok(InterpreterExit::Yield {
+                value,
+                pc,
+                iterators,
+            }) => {
+                let state = GeneratorState::Suspended {
+                    code,
+                    pc,
+                    stack: std::mem::take(&mut self.stack),
+                    bindings: std::mem::take(&mut self.bindings),
+                    cells: std::mem::take(&mut self.cells).into_iter().collect(),
+                    this: std::mem::replace(&mut self.this, Value::Undefined),
+                    args: std::mem::take(&mut self.arguments),
+                    completion: std::mem::replace(&mut self.completion, Value::Undefined),
+                    completion_empty: std::mem::replace(&mut self.completion_empty, true),
+                    active_scopes: std::mem::take(&mut self.active_scopes),
+                    iterators,
+                    dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings)
+                        .into_iter()
+                        .map(|(name, binding)| (name, binding.cell, binding.shadowed_cells))
+                        .collect(),
+                    home: std::mem::take(&mut self.home_object),
+                    callee: std::mem::replace(&mut self.callee, Value::Undefined),
+                };
+                self.heap.set_generator_state(generator, state)?;
+                ambient.templates.extend(self.templates.clone());
+                self.restore_module_execution(ambient);
+                self.call_depth = ambient_call_depth;
+                let result = self.iterator_result(value, false)?;
+                self.await_async_generator_yield(generator, target, result)
+            }
+            Ok(InterpreterExit::Await {
+                promise,
+                pc,
+                handlers,
+            }) => {
+                let execution = self.suspend_module_execution();
+                ambient.templates.extend(execution.templates.clone());
+                let state = AsyncContinuation {
+                    generator: Some(generator),
+                    target,
+                    code,
+                    pc,
+                    execution,
+                    iterators,
+                    handlers,
+                    call_depth: self.call_depth,
+                };
+                self.restore_module_execution(ambient);
+                self.call_depth = ambient_call_depth;
+                self.suspend_async_await(state, promise)
+            }
+            Ok(InterpreterExit::Suspend { .. }) => {
+                unreachable!("async-generator resumption has no entry suspend")
+            }
+            Err(error) => {
+                let base = self.stack.len();
+                if let RuntimeError::Thrown(value) = &error {
+                    self.stack.push(value.clone());
+                }
+                self.stack.extend(iterators.iter().cloned());
+                for record in iterators.into_iter().rev() {
+                    let _ = self.iterator_close(&record);
+                }
+                self.stack.truncate(base);
+                self.heap
+                    .set_generator_state(generator, GeneratorState::Done)?;
+                ambient.templates.extend(self.templates.clone());
+                self.restore_module_execution(ambient);
+                self.call_depth = ambient_call_depth;
+                let value = self.error_value(error)?;
+                self.settle_promise(target, PromiseStatus::Rejected(value))
+            }
+        }
     }
 
     fn resolve_export(
@@ -3040,6 +3203,20 @@ impl Vm {
             }
             for (&promise, record) in &self.promises {
                 roots.push(self.heap.root(promise)?);
+                if matches!(record.status, PromiseStatus::Pending) {
+                    for reaction in &record.reactions {
+                        if let PromiseReaction::AsyncGeneratorYield {
+                            generator,
+                            target,
+                            result,
+                        } = reaction
+                        {
+                            roots.push(self.heap.root(*generator)?);
+                            roots.push(self.heap.root(*target)?);
+                            roots.push(self.heap.root(*result)?);
+                        }
+                    }
+                }
                 let values: Vec<&Value> = match &record.status {
                     PromiseStatus::Pending => record
                         .reactions
@@ -3049,7 +3226,8 @@ impl Vm {
                                 Some([&reaction.on_fulfilled, &reaction.on_rejected])
                             }
                             PromiseReaction::ModuleAwait { .. }
-                            | PromiseReaction::AsyncAwait { .. } => None,
+                            | PromiseReaction::AsyncAwait { .. }
+                            | PromiseReaction::AsyncGeneratorYield { .. } => None,
                         })
                         .flatten()
                         .collect(),
@@ -3102,6 +3280,20 @@ impl Vm {
                     }
                     PromiseJob::ModuleAwait { value, .. }
                     | PromiseJob::AsyncAwait { value, .. } => {
+                        if let Value::Object(id) = value {
+                            roots.push(self.heap.root(*id)?);
+                        }
+                    }
+                    PromiseJob::AsyncGeneratorYield {
+                        generator,
+                        target,
+                        result,
+                        value,
+                        ..
+                    } => {
+                        roots.push(self.heap.root(*generator)?);
+                        roots.push(self.heap.root(*target)?);
+                        roots.push(self.heap.root(*result)?);
                         if let Value::Object(id) = value {
                             roots.push(self.heap.root(*id)?);
                         }
@@ -3817,6 +4009,13 @@ impl Vm {
                         self.stack.push(iterator.clone());
                         iterators.push(iterator);
                     }
+                    Opcode::GetAsyncIterator => {
+                        let value = self.stack.last().unwrap().clone();
+                        let iterator = self.get_async_iterator(&value)?;
+                        self.pop();
+                        self.stack.push(iterator.clone());
+                        iterators.push(iterator);
+                    }
                     Opcode::ForInKeys => {
                         let source = self.stack.last().expect("for-in has a source").clone();
                         let keys = self.for_in_keys(&source)?;
@@ -3829,6 +4028,25 @@ impl Vm {
                         let result = self.iterator_step(&record, true)?;
                         self.pop();
                         if let Some(value) = result {
+                            iterators.push(record);
+                            self.stack.push(value);
+                        } else {
+                            pc = operand;
+                        }
+                    }
+                    Opcode::AsyncIteratorNext => {
+                        let record = self.stack.last().unwrap().clone();
+                        let promise = self.async_iterator_next(&record)?;
+                        self.stack.push(promise);
+                    }
+                    Opcode::AsyncIteratorStep => {
+                        let base = self.stack.len() - 2;
+                        let record = self.stack[base].clone();
+                        let result = self.stack[base + 1].clone();
+                        iterators.retain(|active| active != &record);
+                        let value = self.async_iterator_step(&record, &result)?;
+                        self.stack.truncate(base);
+                        if let Some(value) = value {
                             iterators.push(record);
                             self.stack.push(value);
                         } else {
@@ -4019,7 +4237,28 @@ impl Vm {
                             false,
                             true,
                         )?;
-                        if child.constructible {
+                        if child.generator {
+                            // Generator function objects are not constructors,
+                            // but each owns the prototype used for iterators it
+                            // creates. The own object inherits the shared
+                            // generator/async-generator prototype and remains
+                            // replaceable by user code.
+                            let base_prototype = if child.async_function {
+                                self.async_generator_prototype()?
+                            } else {
+                                self.generator_prototype()?
+                            };
+                            let prototype =
+                                self.with_roots(|heap| heap.alloc_object(Some(base_prototype)))?;
+                            self.define_data(
+                                id,
+                                "prototype",
+                                Value::Object(prototype),
+                                true,
+                                false,
+                                false,
+                            )?;
+                        } else if child.constructible {
                             let object_prototype = self.object_prototype;
                             let prototype =
                                 self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;

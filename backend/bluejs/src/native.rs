@@ -79,6 +79,9 @@ pub(crate) enum NativeFunction {
     ArrayIteratorNext,
     GeneratorNext,
     GeneratorReturn,
+    AsyncGeneratorNext,
+    AsyncGeneratorReturn,
+    AsyncGeneratorThrow,
     Promise,
     /// One half of a Promise capability. The target identity is carried by
     /// the otherwise ordinary native function, so the resolving functions
@@ -118,6 +121,7 @@ pub(crate) enum NativeFunction {
     StringIterator,
     IteratorNext,
     IteratorSelf,
+    AsyncIteratorSelf,
     Pattern(PatternMethod),
     RegExp,
     RegExpEscape,

@@ -1096,6 +1096,14 @@ impl Parser {
                 self.syntax_error("await cannot be used as a label in a class static block")
             );
         }
+        if label == "yield" && self.generator_depth != 0 {
+            let detail = if identifier_escaped {
+                "the yield keyword cannot contain an escape"
+            } else {
+                "yield cannot be used as a label in a generator function"
+            };
+            return Err(self.syntax_error(detail));
+        }
 
         // In sloppy code, `let` may begin the labelled expression statement
         // `L: let` when ASI follows. It is not a lexical declaration there.
@@ -1219,15 +1227,16 @@ impl Parser {
 
     fn parse_for_stmt(&mut self) -> Result<Stmt, ParseError> {
         self.advance();
-        // Async functions and Module code accept `for await (...)`.  The
-        // implemented iterator record is shared with ordinary for-of for
-        // synchronous iterables; values produced by the expression and body
-        // still use the surrounding await context.
-        if (self.async_depth != 0 || self.module_await)
+        // Preserve `await` in the AST: async iterators await their `.next()`
+        // Promise instead of silently taking the synchronous for-of path.
+        let is_await = if (self.async_depth != 0 || self.module_await)
             && matches!(self.peek(), Token::Identifier(name) if name == "await")
         {
             self.advance();
-        }
+            true
+        } else {
+            false
+        };
         self.expect_punct(Punct::LParen)?;
 
         if self.eat_punct(Punct::Semicolon) {
@@ -1245,6 +1254,9 @@ impl Parser {
             let pattern = self.parse_binding_pattern()?;
 
             if self.eat_keyword(Keyword::In) {
+                if is_await {
+                    return Err(self.syntax_error("for await requires an of clause"));
+                }
                 let right = self.parse_expression()?;
                 self.expect_punct(Punct::RParen)?;
                 let body = Box::new(self.parse_statement()?);
@@ -1263,6 +1275,7 @@ impl Parser {
                     left: ForHead::Decl(decl_kind, pattern),
                     right,
                     body,
+                    is_await,
                 });
             }
 
@@ -1320,6 +1333,9 @@ impl Parser {
         let expr = expr?;
 
         if self.eat_keyword(Keyword::In) {
+            if is_await {
+                return Err(self.syntax_error("for await requires an of clause"));
+            }
             let left = expr_to_for_head(expr).map_err(known_syntax)?;
             let right = self.parse_expression()?;
             self.expect_punct(Punct::RParen)?;
@@ -1332,7 +1348,15 @@ impl Parser {
             let right = self.parse_assignment()?;
             self.expect_punct(Punct::RParen)?;
             let body = Box::new(self.parse_statement()?);
-            return Ok(Stmt::ForOf { left, right, body });
+            return Ok(Stmt::ForOf {
+                left,
+                right,
+                body,
+                is_await,
+            });
+        }
+        if is_await {
+            return Err(self.syntax_error("for await requires an of clause"));
         }
         self.expect_punct(Punct::Semicolon)?;
         self.parse_for_rest(Some(ForInit::Expr(expr)))
@@ -1518,6 +1542,14 @@ impl Parser {
                         "the await keyword cannot contain an escape"
                     } else {
                         "await cannot be used as a binding identifier in an async function or module"
+                    };
+                    return Err(self.syntax_error(detail));
+                }
+                if name == "yield" && self.generator_depth != 0 {
+                    let detail = if self.current_identifier_escaped() {
+                        "the yield keyword cannot contain an escape"
+                    } else {
+                        "yield cannot be used as a binding identifier in a generator function"
                     };
                     return Err(self.syntax_error(detail));
                 }
@@ -1744,6 +1776,9 @@ impl Parser {
         } else {
             None
         };
+        if generator && matches!(name.as_deref(), Some("yield")) {
+            return Err(self.syntax_error("yield cannot be used as a generator function name"));
+        }
         if !self.check_punct(Punct::LParen) {
             return Err(self.syntax_error("a function parameter list must begin with '('"));
         }
@@ -2703,43 +2738,43 @@ impl Parser {
         if self.eat_punct(Punct::Bang) {
             return Ok(Expr::Unary {
                 op: UnaryOp::Not,
-                arg: Box::new(self.parse_unary()?),
+                arg: Box::new(self.parse_unary_operand()?),
             });
         }
         if self.eat_punct(Punct::Minus) {
             return Ok(Expr::Unary {
                 op: UnaryOp::Neg,
-                arg: Box::new(self.parse_unary()?),
+                arg: Box::new(self.parse_unary_operand()?),
             });
         }
         if self.eat_punct(Punct::Plus) {
             return Ok(Expr::Unary {
                 op: UnaryOp::Plus,
-                arg: Box::new(self.parse_unary()?),
+                arg: Box::new(self.parse_unary_operand()?),
             });
         }
         if self.eat_punct(Punct::Tilde) {
             return Ok(Expr::Unary {
                 op: UnaryOp::BitNot,
-                arg: Box::new(self.parse_unary()?),
+                arg: Box::new(self.parse_unary_operand()?),
             });
         }
         if self.eat_keyword(Keyword::Typeof) {
             return Ok(Expr::Unary {
                 op: UnaryOp::Typeof,
-                arg: Box::new(self.parse_unary()?),
+                arg: Box::new(self.parse_unary_operand()?),
             });
         }
         if self.eat_keyword(Keyword::Void) {
             return Ok(Expr::Unary {
                 op: UnaryOp::Void,
-                arg: Box::new(self.parse_unary()?),
+                arg: Box::new(self.parse_unary_operand()?),
             });
         }
         if self.eat_keyword(Keyword::Delete) {
             return Ok(Expr::Unary {
                 op: UnaryOp::Delete,
-                arg: Box::new(self.parse_unary()?),
+                arg: Box::new(self.parse_unary_operand()?),
             });
         }
         if (self.async_depth != 0 || self.module_await)
@@ -2755,9 +2790,21 @@ impl Parser {
             ) {
                 return Err(self.syntax_error("await requires an operand"));
             }
-            return Ok(Expr::Await(Box::new(self.parse_unary()?)));
+            return Ok(Expr::Await(Box::new(self.parse_unary_operand()?)));
         }
         self.parse_update_expression()
+    }
+
+    /// `YieldExpression` occupies the `AssignmentExpression` grammar tier,
+    /// not `UnaryExpression`.  Keeping this check at the unary boundary
+    /// rejects `void yield` while retaining a top-level `yield value` and a
+    /// parenthesized yield expression where the grammar admits one.
+    fn parse_unary_operand(&mut self) -> Result<Expr, ParseError> {
+        let operand = self.parse_unary()?;
+        if self.generator_depth != 0 && matches!(operand, Expr::Yield { .. }) {
+            return Err(self.syntax_error("yield cannot be used as a unary operand"));
+        }
+        Ok(operand)
     }
 
     fn parse_update_expression(&mut self) -> Result<Expr, ParseError> {
@@ -3032,18 +3079,25 @@ impl Parser {
             }
             Token::Identifier(name) if name == "yield" && self.generator_depth != 0 => {
                 self.advance();
+                // YieldExpression forbids a LineTerminator before `*`. It
+                // cannot instead be parsed as a multiplicative expression:
+                // yield is an AssignmentExpression, not a PrimaryExpression.
+                if self.newline_before() && self.check_punct(Punct::Star) {
+                    return Err(self.syntax_error("yield* cannot contain a line terminator"));
+                }
                 let delegate = self.eat_punct(Punct::Star);
                 let value = if !delegate
-                    && matches!(
-                        self.peek(),
-                        Token::Punct(
-                            Punct::Semicolon
-                                | Punct::Comma
-                                | Punct::RBrace
-                                | Punct::RBracket
-                                | Punct::RParen
-                        ) | Token::Eof
-                    ) {
+                    && (self.newline_before()
+                        || matches!(
+                            self.peek(),
+                            Token::Punct(
+                                Punct::Semicolon
+                                    | Punct::Comma
+                                    | Punct::RBrace
+                                    | Punct::RBracket
+                                    | Punct::RParen
+                            ) | Token::Eof
+                        )) {
                     None
                 } else {
                     Some(Box::new(self.parse_assignment()?))
@@ -3111,7 +3165,9 @@ impl Parser {
             }
             Token::Punct(Punct::LBracket) => self.parse_array_literal(),
             Token::Punct(Punct::LBrace) => self.parse_object_literal(),
-            Token::Punct(Punct::Assign) => Err(self.syntax_error("expected an expression")),
+            Token::Punct(Punct::Assign | Punct::Star) => {
+                Err(self.syntax_error("expected an expression"))
+            }
             _ => Err(self.error("expected an expression")),
         }
     }
@@ -4215,7 +4271,8 @@ mod tests {
             Stmt::ForOf {
                 left: ForHead::Decl(DeclKind::Const, Pattern::Identifier("item".to_string())),
                 right: Expr::Identifier("items".to_string()),
-                body: Box::new(Stmt::Block(vec![]))
+                body: Box::new(Stmt::Block(vec![])),
+                is_await: false,
             }
         );
         assert_eq!(
@@ -4223,7 +4280,8 @@ mod tests {
             Stmt::ForOf {
                 left: ForHead::Pattern(Pattern::Identifier("x".to_string())),
                 right: Expr::Identifier("items".to_string()),
-                body: Box::new(Stmt::Block(vec![]))
+                body: Box::new(Stmt::Block(vec![])),
+                is_await: false,
             }
         );
     }

@@ -237,6 +237,14 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
             "ok",
         ),
         (
+            json!({"source":"async function* values(){yield await Promise.resolve(7)}let iterator=values();iterator.next().then(result=>{assert.sameValue(result.value,7);assert.sameValue(result.done,false);return iterator.next()}).then(result=>{assert.sameValue(result.done,true);$DONE()},$DONE)", "mode":"sloppy", "asynchronous":true}),
+            "ok",
+        ),
+        (
+            json!({"source":"async function* values(){yield 2;yield 3}async function total(){let sum=0;for await(let value of values())sum+=value;return sum}total().then(sum=>{assert.sameValue(sum,5);$DONE()},$DONE)", "mode":"sloppy", "asynchronous":true}),
+            "ok",
+        ),
+        (
             json!({"source":"1", "mode":"sloppy", "includes":["helpers.js"], "harness_sources":["async function work(){}work()"]}),
             "ok",
         ),

@@ -313,7 +313,7 @@ impl Vm {
         result
     }
 
-    fn generator_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
+    pub(super) fn generator_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
         if let Some(prototype) = self.generator_prototype {
             return Ok(prototype);
         }
@@ -353,6 +353,84 @@ impl Vm {
             self.generator_prototype = Some(prototype);
         }
         result
+    }
+
+    /// `%AsyncIteratorPrototype%` has no global binding. It is the common
+    /// parent of async-generator iterator prototypes and supplies the
+    /// `@@asyncIterator` identity method used by `for await` later on.
+    fn async_iterator_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
+        if let Some(prototype) = self.async_iterator_base {
+            return Ok(prototype);
+        }
+        let object_prototype = self.object_prototype;
+        let function_prototype = self.function_prototype()?;
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+        let root = self.heap.root(prototype)?;
+        let result = self.install_symbol_native(
+            prototype,
+            function_prototype,
+            "asyncIterator",
+            0,
+            NativeFunction::AsyncIteratorSelf,
+        );
+        if let Err(error) = result {
+            self.heap.unroot(root)?;
+            Err(error)
+        } else {
+            self.async_iterator_base = Some(prototype);
+            Ok(prototype)
+        }
+    }
+
+    /// The shared `%AsyncGeneratorPrototype%`. Individual async-generator
+    /// functions receive their own `.prototype` object above this base, just
+    /// like ordinary generator functions do.
+    pub(super) fn async_generator_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
+        if let Some(prototype) = self.async_generator_prototype {
+            return Ok(prototype);
+        }
+        let base = self.async_iterator_prototype()?;
+        let function_prototype = self.function_prototype()?;
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
+        let root = self.heap.root(prototype)?;
+        let result = (|| {
+            self.install_native(
+                prototype,
+                function_prototype,
+                "next",
+                1,
+                NativeFunction::AsyncGeneratorNext,
+            )?;
+            self.install_native(
+                prototype,
+                function_prototype,
+                "return",
+                1,
+                NativeFunction::AsyncGeneratorReturn,
+            )?;
+            self.install_native(
+                prototype,
+                function_prototype,
+                "throw",
+                1,
+                NativeFunction::AsyncGeneratorThrow,
+            )?;
+            self.define_data(
+                prototype,
+                JsSymbol::well_known("toStringTag"),
+                Value::String("AsyncGenerator".into()),
+                false,
+                false,
+                true,
+            )
+        })();
+        if let Err(error) = result {
+            self.heap.unroot(root)?;
+            Err(error)
+        } else {
+            self.async_generator_prototype = Some(prototype);
+            Ok(prototype)
+        }
     }
 
     /// Lazily creates `%AsyncFunction%` and `%AsyncFunction.prototype%`.
@@ -657,6 +735,79 @@ impl Vm {
         Ok(Value::Object(record))
     }
 
+    /// GetAsyncIterator first observes @@asyncIterator and uses the ordinary
+    /// iterator protocol as an AsyncFromSync fallback. The caller awaits the
+    /// returned `.next()` result, so both paths share one record shape.
+    pub(super) fn get_async_iterator(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        let method = self.get_method(value, &JsSymbol::well_known("asyncIterator").into())?;
+        if method == Value::Undefined {
+            return self.get_iterator(value);
+        }
+        let iterator = self.call_native(method, value.clone(), Vec::new(), false)?;
+        if !matches!(iterator, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "async iterator must be an object".into(),
+            ));
+        }
+        self.stack.push(iterator.clone());
+        let next = self.get_property(&iterator, &"next".into())?;
+        self.stack.push(next.clone());
+        let record = self.with_roots(|heap| heap.alloc_object(None))?;
+        self.stack.push(Value::Object(record));
+        self.with_roots(|heap| heap.set(record, "iterator", iterator))?;
+        self.with_roots(|heap| heap.set(record, "next", next))?;
+        self.with_roots(|heap| heap.set(record, "done", Value::Bool(false)))?;
+        self.stack.pop();
+        self.stack.pop();
+        self.stack.pop();
+        Ok(Value::Object(record))
+    }
+
+    pub(super) fn async_iterator_next(&mut self, record: &Value) -> Result<Value, RuntimeError> {
+        let Value::Object(record) = record else {
+            unreachable!("compiler only emits iterator records")
+        };
+        if matches!(self.heap.get_own(*record, "done")?, Some(Value::Bool(true))) {
+            return self.iterator_result(Value::Undefined, true);
+        }
+        let iterator = self.get_property(&Value::Object(*record), &"iterator".into())?;
+        let next = self.get_property(&Value::Object(*record), &"next".into())?;
+        self.call_native(next, iterator, Vec::new(), false)
+    }
+
+    pub(super) fn async_iterator_step(
+        &mut self,
+        record: &Value,
+        result: &Value,
+    ) -> Result<Option<Value>, RuntimeError> {
+        let Value::Object(record) = record else {
+            unreachable!("compiler only emits iterator records")
+        };
+        let outcome = (|| {
+            if !matches!(result, Value::Object(_)) {
+                return Err(RuntimeError::TypeError(
+                    "async iterator result must be an object".into(),
+                ));
+            }
+            let done = self.get_property(result, &"done".into())?;
+            if self.to_boolean(&done)? {
+                Ok(None)
+            } else {
+                self.get_property(result, &"value".into()).map(Some)
+            }
+        })();
+        if !matches!(&outcome, Ok(Some(_))) {
+            let base = self.stack.len();
+            if let Err(RuntimeError::Thrown(value)) = &outcome {
+                self.stack.push(value.clone());
+            }
+            let marked = self.with_roots(|heap| heap.set(*record, "done", Value::Bool(true)));
+            self.stack.truncate(base);
+            marked?;
+        }
+        outcome
+    }
+
     /// IteratorStepValue, or IteratorStep without IteratorValue for elisions.
     /// Iterator-origin errors complete this record before outer unwinding.
     pub(super) fn iterator_step(
@@ -773,7 +924,10 @@ impl Vm {
                 "arrow function is not a constructor".into(),
             ));
         }
-        let async_function = code.async_function;
+        // Async generator requests own their own Promise capabilities. Do not
+        // allocate an ordinary async-function capability before entering the
+        // generator branch, where it would be unreachable and leak state.
+        let async_function = code.async_function && !code.generator;
         // AsyncFunctionStart creates the promise capability before executing
         // the body.  If the body reaches await, that same promise owns the
         // saved continuation; otherwise its immediate completion settles it.
@@ -791,7 +945,15 @@ impl Vm {
             Value::Object(self.coerce_object(&receiver)?)
         };
         if code.generator {
-            let prototype = self.generator_prototype()?;
+            let default_prototype = if code.async_function {
+                self.async_generator_prototype()?
+            } else {
+                self.generator_prototype()?
+            };
+            let prototype = self
+                .get_property(&callee, &"prototype".into())?
+                .object_id()
+                .unwrap_or(default_prototype);
             if !code.generator_initializes_parameters {
                 let state = GeneratorState::Start {
                     code,
@@ -821,7 +983,21 @@ impl Vm {
                     prototype,
                 )
             })?;
-            let state = self.initialize_generator(code, captures, callee, receiver, args, home)?;
+            let base = self.stack.len();
+            self.stack.push(Value::Object(generator));
+            let state =
+                self.initialize_generator(code, captures, callee.clone(), receiver, args, home);
+            self.stack.truncate(base);
+            let state = state?;
+            // FunctionDeclarationInstantiation is observable to a parameter
+            // initializer. Read `.prototype` again after it completes: a
+            // default such as `(g.prototype = null)` must affect the freshly
+            // created generator object's [[Prototype]].
+            let prototype = self
+                .get_property(&callee, &"prototype".into())?
+                .object_id()
+                .unwrap_or(default_prototype);
+            self.heap.set_prototype(generator, Some(prototype))?;
             self.heap.set_generator_state(generator, state)?;
             return Ok(Value::Object(generator));
         }
@@ -914,6 +1090,7 @@ impl Vm {
                     let templates = execution.templates.clone();
                     self.templates = templates;
                     let state = AsyncContinuation {
+                        generator: None,
                         target: async_promise.expect("async function has a promise"),
                         code: code.clone(),
                         pc,
@@ -1151,7 +1328,12 @@ impl Vm {
         state
     }
 
-    fn generator_next(&mut self, receiver: &Value, value: Value) -> Result<Value, RuntimeError> {
+    fn generator_next(
+        &mut self,
+        receiver: &Value,
+        value: Value,
+        async_target: Option<ObjectId>,
+    ) -> Result<Value, RuntimeError> {
         let Value::Object(generator) = receiver else {
             return Err(RuntimeError::TypeError(
                 "Generator next requires a generator".into(),
@@ -1286,6 +1468,7 @@ impl Vm {
         };
 
         let base = self.stack.len();
+        let remaining_instructions = self.remaining_instructions;
         self.stack.extend(self.bindings.iter().flatten().cloned());
         self.stack
             .extend(self.cells.values().copied().map(Value::Object));
@@ -1325,6 +1508,7 @@ impl Vm {
         );
         let mut iterators = frame_iterators;
         let outcome = self.interpret(&code, &mut iterators, pc, resume_value, None, None);
+        let mut suspended_async = None;
 
         let (next_state, result) = match outcome {
             Ok(InterpreterExit::Return(value)) => {
@@ -1365,8 +1549,41 @@ impl Vm {
             Ok(InterpreterExit::Suspend { .. }) => {
                 unreachable!("ordinary generator execution has no suspend boundary")
             }
-            Ok(InterpreterExit::Await { .. }) => {
-                unreachable!("generator execution cannot contain top-level await")
+            Ok(InterpreterExit::Await {
+                promise,
+                pc,
+                handlers,
+            }) => {
+                if let Some(target) = async_target {
+                    let stack = self.stack.split_off(frame_base);
+                    let mut execution = self.suspend_module_execution();
+                    let parent_stack = std::mem::replace(&mut execution.stack, stack);
+                    self.stack = parent_stack;
+                    let templates = execution.templates.clone();
+                    self.templates = templates;
+                    suspended_async = Some((
+                        AsyncContinuation {
+                            generator: Some(*generator),
+                            target,
+                            code: code.clone(),
+                            pc,
+                            execution,
+                            iterators,
+                            handlers,
+                            call_depth: self.call_depth,
+                        },
+                        promise,
+                    ));
+                    (GeneratorState::Done, Ok((Value::Undefined, true)))
+                } else {
+                    self.stack.truncate(frame_base);
+                    (
+                        GeneratorState::Done,
+                        Err(RuntimeError::TypeError(
+                            "await requires an async generator function".into(),
+                        )),
+                    )
+                }
             }
         };
         self.heap.set_generator_state(*generator, next_state)?;
@@ -1387,7 +1604,12 @@ impl Vm {
         self.callee = callee;
         self.variable_scope = variable_scope;
         self.variable_scope_lexicals = variable_scope_lexicals;
+        self.remaining_instructions = remaining_instructions;
         self.stack.truncate(base);
+        if let Some((state, promise)) = suspended_async {
+            self.suspend_async_await(state, promise)?;
+            return Ok(Value::Undefined);
+        }
         let (value, done) = result?;
         self.iterator_result(value, done)
     }
@@ -1417,6 +1639,167 @@ impl Vm {
         self.stack.truncate(base);
         close?;
         self.iterator_result(value, true)
+    }
+
+    /// Async generator methods always return a Promise. A request may settle
+    /// synchronously at `yield`/`return`, or transfer its target promise and
+    /// frame into a rooted async continuation at `await`. Full FIFO request
+    /// queueing is deliberately deferred until async `yield*` delegation is
+    /// implemented, because delegation can keep more than one request live.
+    fn async_generator_request(
+        &mut self,
+        receiver: &Value,
+        value: Value,
+        kind: NativeFunction,
+    ) -> Result<Value, RuntimeError> {
+        let promise = self.new_promise()?;
+        let generator = receiver.object_id();
+        self.stack
+            .extend([receiver.clone(), Value::Object(promise), value.clone()]);
+        let result = match kind {
+            NativeFunction::AsyncGeneratorNext => {
+                self.generator_next(receiver, value, Some(promise))
+            }
+            NativeFunction::AsyncGeneratorReturn => self.generator_return(receiver, value),
+            NativeFunction::AsyncGeneratorThrow => {
+                let generator = receiver.object_id().ok_or_else(|| {
+                    RuntimeError::TypeError(
+                        "AsyncGenerator throw requires an async generator".into(),
+                    )
+                })?;
+                let state = self.heap.take_generator_state(generator)?;
+                let iterators = match state {
+                    GeneratorState::Suspended { iterators, .. } => iterators,
+                    GeneratorState::Start { .. } | GeneratorState::Done => Vec::new(),
+                };
+                self.heap
+                    .set_generator_state(generator, GeneratorState::Done)?;
+                let base = self.stack.len();
+                self.stack.extend(iterators.iter().cloned());
+                let close = iterators
+                    .iter()
+                    .rev()
+                    .try_for_each(|record| self.iterator_close(record));
+                self.stack.truncate(base);
+                close?;
+                Err(RuntimeError::Thrown(value))
+            }
+            _ => unreachable!("only async generator request kinds reach this helper"),
+        };
+        self.stack.truncate(self.stack.len() - 3);
+        match result {
+            // `generator_next` returns this private sentinel after moving an
+            // async-generator frame into a continuation. The request Promise
+            // is deliberately still pending and will be settled by its
+            // resume job.
+            Ok(Value::Undefined)
+                if matches!(
+                    self.promises
+                        .get(&promise)
+                        .expect("new async-generator request Promise exists")
+                        .status,
+                    PromiseStatus::Pending
+                ) => {}
+            Ok(result) => self.await_async_generator_yield(
+                generator.expect("a successful generator request has an object receiver"),
+                promise,
+                result,
+            )?,
+            Err(error) => {
+                let error = self.error_value(error)?;
+                self.settle_promise(promise, PromiseStatus::Rejected(error))?;
+            }
+        }
+        Ok(Value::Object(promise))
+    }
+
+    /// Implements the Await in AsyncGeneratorYield. The generator is already
+    /// suspended at this point, so only its outstanding request capability
+    /// waits; fulfillment writes the awaited value into its IteratorResult.
+    pub(super) fn await_async_generator_yield(
+        &mut self,
+        generator: ObjectId,
+        target: ObjectId,
+        result: Value,
+    ) -> Result<(), RuntimeError> {
+        let result = result
+            .object_id()
+            .expect("generator resumes always produce an IteratorResult object");
+        let base = self.stack.len();
+        self.stack.extend([
+            Value::Object(generator),
+            Value::Object(target),
+            Value::Object(result),
+        ]);
+        let outcome = (|| {
+            let value = self.get_property(&Value::Object(result), &"value".into())?;
+            self.stack.push(value.clone());
+            let awaited = self.promise_resolve(value)?;
+            let awaited = awaited
+                .object_id()
+                .expect("Promise.resolve always returns a Promise");
+            let status = self
+                .promises
+                .get(&awaited)
+                .expect("Promise.resolve registers its Promise")
+                .status
+                .clone_for_await();
+            match status {
+                PromiseAwaitStatus::Pending => self
+                    .promises
+                    .get_mut(&awaited)
+                    .expect("checked pending Promise exists")
+                    .reactions
+                    .push(PromiseReaction::AsyncGeneratorYield {
+                        generator,
+                        target,
+                        result,
+                    }),
+                PromiseAwaitStatus::Fulfilled(value) => {
+                    self.finish_async_generator_yield(generator, target, result, value, true)?
+                }
+                PromiseAwaitStatus::Rejected(value) => {
+                    self.finish_async_generator_yield(generator, target, result, value, false)?
+                }
+            }
+            Ok(())
+        })();
+        self.stack.truncate(base);
+        outcome
+    }
+
+    fn finish_async_generator_yield(
+        &mut self,
+        generator: ObjectId,
+        target: ObjectId,
+        result: ObjectId,
+        value: Value,
+        fulfilled: bool,
+    ) -> Result<(), RuntimeError> {
+        if !fulfilled {
+            self.close_async_generator(generator)?;
+            return self.settle_promise(target, PromiseStatus::Rejected(value));
+        }
+        self.set_property(&Value::Object(result), &"value".into(), &value)?;
+        self.settle_promise(target, PromiseStatus::Fulfilled(Value::Object(result)))
+    }
+
+    fn close_async_generator(&mut self, generator: ObjectId) -> Result<(), RuntimeError> {
+        let state = self.heap.take_generator_state(generator)?;
+        let iterators = match state {
+            GeneratorState::Suspended { iterators, .. } => iterators,
+            GeneratorState::Start { .. } | GeneratorState::Done => Vec::new(),
+        };
+        self.heap
+            .set_generator_state(generator, GeneratorState::Done)?;
+        let base = self.stack.len();
+        self.stack.extend(iterators.iter().cloned());
+        let result = iterators
+            .iter()
+            .rev()
+            .try_for_each(|record| self.iterator_close(record));
+        self.stack.truncate(base);
+        result
     }
 
     fn promise_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
@@ -1647,6 +2030,17 @@ impl Vm {
                 },
                 PromiseReaction::AsyncAwait { continuation } => PromiseJob::AsyncAwait {
                     continuation,
+                    value: value.clone(),
+                    fulfilled,
+                },
+                PromiseReaction::AsyncGeneratorYield {
+                    generator,
+                    target,
+                    result,
+                } => PromiseJob::AsyncGeneratorYield {
+                    generator,
+                    target,
+                    result,
                     value: value.clone(),
                     fulfilled,
                 },
@@ -2048,6 +2442,13 @@ impl Vm {
                 value,
                 fulfilled,
             } => self.resume_async_await(continuation, value, fulfilled)?,
+            PromiseJob::AsyncGeneratorYield {
+                generator,
+                target,
+                result,
+                value,
+                fulfilled,
+            } => self.finish_async_generator_yield(generator, target, result, value, fulfilled)?,
         }
         Ok(true)
     }
@@ -3034,8 +3435,13 @@ impl Vm {
                 };
                 self.iterator_result(value, done)
             }
-            NativeFunction::GeneratorNext => self.generator_next(&receiver, first.clone()),
+            NativeFunction::GeneratorNext => self.generator_next(&receiver, first.clone(), None),
             NativeFunction::GeneratorReturn => self.generator_return(&receiver, first.clone()),
+            NativeFunction::AsyncGeneratorNext
+            | NativeFunction::AsyncGeneratorReturn
+            | NativeFunction::AsyncGeneratorThrow => {
+                self.async_generator_request(&receiver, first.clone(), function)
+            }
             NativeFunction::Apply => {
                 if !self.is_callable(&receiver)? {
                     return Err(RuntimeError::TypeError("apply requires a callable".into()));
@@ -3284,7 +3690,7 @@ impl Vm {
                 let done = value.is_none();
                 self.iterator_result(value.map_or(Value::Undefined, Value::String), done)
             }
-            NativeFunction::IteratorSelf => Ok(receiver),
+            NativeFunction::IteratorSelf | NativeFunction::AsyncIteratorSelf => Ok(receiver),
             NativeFunction::Pattern(method) => self.string_pattern(method, &receiver, &args),
             NativeFunction::String => {
                 let string = if args.is_empty() {

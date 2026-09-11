@@ -254,6 +254,7 @@ pub enum Stmt {
         left: ForHead,
         right: Expr,
         body: Box<Stmt>,
+        is_await: bool,
     },
     While {
         test: Expr,
@@ -628,7 +629,10 @@ fn stmt_contains_super(statement: &Stmt, search: SuperSearch) -> bool {
                     .is_some_and(|expr| expr_contains_super(expr, search))
                 || stmt_contains_super(body, search)
         }
-        Stmt::ForIn { left, right, body } | Stmt::ForOf { left, right, body } => {
+        Stmt::ForIn { left, right, body }
+        | Stmt::ForOf {
+            left, right, body, ..
+        } => {
             for_head_contains_super(left, search)
                 || expr_contains_super(right, search)
                 || stmt_contains_super(body, search)
@@ -1154,6 +1158,7 @@ mod tests {
                 left: ForHead::Pattern(Pattern::Identifier("value".into())),
                 right: Expr::Array(Vec::new()),
                 body: Box::new(Stmt::Expr(super_call())),
+                is_await: false,
             },
             Stmt::Switch {
                 discriminant: Expr::Number(0.0),

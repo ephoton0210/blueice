@@ -101,7 +101,10 @@ fn validate_private_statement(
             }
             validate_private_statement(body, names)
         }
-        Stmt::ForIn { left, right, body } | Stmt::ForOf { left, right, body } => {
+        Stmt::ForIn { left, right, body }
+        | Stmt::ForOf {
+            left, right, body, ..
+        } => {
             validate_private_for_head(left, names)?;
             validate_private_expression(right, names)?;
             validate_private_statement(body, names)
@@ -1191,7 +1194,12 @@ impl Compiler {
                 Vec::new(),
             )?,
             Stmt::ForIn { left, right, body } => self.for_in(left, right, body, Vec::new())?,
-            Stmt::ForOf { left, right, body } => self.for_of(left, right, body, Vec::new())?,
+            Stmt::ForOf {
+                left,
+                right,
+                body,
+                is_await,
+            } => self.for_of(left, right, body, *is_await, Vec::new())?,
             Stmt::Switch {
                 discriminant,
                 cases,
@@ -1269,7 +1277,12 @@ impl Compiler {
                 labels,
             ),
             Stmt::ForIn { left, right, body } => self.for_in(left, right, body, labels),
-            Stmt::ForOf { left, right, body } => self.for_of(left, right, body, labels),
+            Stmt::ForOf {
+                left,
+                right,
+                body,
+                is_await,
+            } => self.for_of(left, right, body, *is_await, labels),
             Stmt::Switch {
                 discriminant,
                 cases,
@@ -2492,7 +2505,7 @@ impl Compiler {
         body: &Stmt,
         labels: Vec<String>,
     ) -> Result<(), CompileError> {
-        self.for_each(left, right, body, true, labels)
+        self.for_each(left, right, body, true, false, labels)
     }
 
     fn for_of(
@@ -2500,9 +2513,10 @@ impl Compiler {
         left: &ForHead,
         right: &Expr,
         body: &Stmt,
+        is_await: bool,
         labels: Vec<String>,
     ) -> Result<(), CompileError> {
-        self.for_each(left, right, body, false, labels)
+        self.for_each(left, right, body, false, is_await, labels)
     }
 
     fn for_each(
@@ -2511,6 +2525,7 @@ impl Compiler {
         right: &Expr,
         body: &Stmt,
         for_in: bool,
+        is_await: bool,
         labels: Vec<String>,
     ) -> Result<(), CompileError> {
         self.emit(Opcode::ClearCompletion, 0)?;
@@ -2549,11 +2564,24 @@ impl Compiler {
         if for_in {
             self.emit(Opcode::ForInKeys, 0)?;
         }
-        self.emit(Opcode::GetIterator, 0)?;
+        self.emit(
+            if is_await {
+                Opcode::GetAsyncIterator
+            } else {
+                Opcode::GetIterator
+            },
+            0,
+        )?;
         self.emit(Opcode::InitializeBinding, iterator)?;
         let start = self.offset()?;
         self.emit(Opcode::GetBinding, iterator)?;
-        let exit = self.emit(Opcode::IteratorStep, 0)?;
+        let exit = if is_await {
+            self.emit(Opcode::AsyncIteratorNext, 0)?;
+            self.emit(Opcode::Await, 0)?;
+            self.emit(Opcode::AsyncIteratorStep, 0)?
+        } else {
+            self.emit(Opcode::IteratorStep, 0)?
+        };
         self.loops.push(Loop {
             labels,
             breakable: true,
@@ -3735,7 +3763,10 @@ fn strict_assignment_in_statement(statement: &Stmt) -> bool {
                 || update.as_ref().is_some_and(strict_assignment_in_expression)
                 || strict_assignment_in_statement(body)
         }
-        Stmt::ForIn { left, right, body } | Stmt::ForOf { left, right, body } => {
+        Stmt::ForIn { left, right, body }
+        | Stmt::ForOf {
+            left, right, body, ..
+        } => {
             strict_assignment_in_for_head(left)
                 || strict_assignment_in_expression(right)
                 || strict_assignment_in_statement(body)

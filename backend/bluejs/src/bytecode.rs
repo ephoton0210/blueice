@@ -113,8 +113,11 @@ opcodes! {
     ToPropertyKey: 1, 0;
     PreparePropertyReference: 1, MAY_USE_INLINE_CACHE;
     GetIterator: 1, 0;
+    GetAsyncIterator: 1, 0;
     ForInKeys: 1, 0;
     IteratorStep: 5, 0;
+    AsyncIteratorNext: 1, 0;
+    AsyncIteratorStep: 5, 0;
     IteratorStepReference: 5, 0;
     IteratorElision: 1, 0;
     IteratorClose: 1, 0;

@@ -205,3 +205,168 @@ fn async_arrows_share_the_async_function_intrinsic_and_dynamic_constructor() {
         Err(RuntimeError::TypeError(_))
     ));
 }
+
+#[test]
+fn async_generators_expose_promise_requests_and_a_replaceable_instance_prototype() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            async function* sequence() {
+                let input = yield 1;
+                yield input + 1;
+                return 9;
+            }
+            let iterator = sequence();
+            let fallback = Object.getPrototypeOf(sequence.prototype);
+            let prototypeOK = Object.getPrototypeOf(iterator) === sequence.prototype;
+            sequence.prototype = null;
+            prototypeOK = prototypeOK && Object.getPrototypeOf(sequence()) === fallback;
+            globalThis.asyncGeneratorPrototypeOK = prototypeOK;
+            iterator.next().then(first => {
+                globalThis.asyncGeneratorFirst = first.value === 1 && !first.done;
+                iterator.next(4).then(second => {
+                    globalThis.asyncGeneratorSecond = second.value === 5 && !second.done;
+                    iterator.next().then(last => {
+                        globalThis.asyncGeneratorLast = last.value === 9 && last.done;
+                    });
+                });
+            });
+            sequence().throw('expected').then(
+                () => { globalThis.asyncGeneratorThrow = false; },
+                reason => { globalThis.asyncGeneratorThrow = reason === 'expected'; }
+            );
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "asyncGeneratorPrototypeOK && asyncGeneratorFirst && asyncGeneratorSecond && asyncGeneratorLast && asyncGeneratorThrow",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn async_generator_early_errors_and_parameter_initialization_are_observable() {
+    for source in [
+        "(async function*() { yield: 1; });",
+        "(async function* yield() {});",
+        "(async function*() { var yield; });",
+        "(async function*() { void yield; });",
+    ] {
+        assert!(parse(source).is_err(), "{source}");
+    }
+
+    let mut vm = Vm::default();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "var g=async function*(a=(g.prototype=null)){};let old=g.prototype;let it=g();Object.getPrototypeOf(it)!==old",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn async_generator_yields_awaited_values_through_its_public_promise_interface() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            async function* values() {
+                yield Promise.resolve(3);
+                yield { then(resolve) { resolve(4); } };
+                yield Promise.reject('expected');
+            }
+            let iterator = values();
+            iterator.next()
+                .then(first => {
+                    globalThis.firstYield = first.value === 3 && !first.done;
+                    return iterator.next();
+                })
+                .then(second => {
+                    globalThis.secondYield = second.value === 4 && !second.done;
+                    return iterator.next();
+                })
+                .then(
+                    () => { globalThis.rejectionObserved = false; },
+                    reason => {
+                        globalThis.rejectionObserved = reason === 'expected';
+                        return iterator.next();
+                    }
+                )
+                .then(last => {
+                    globalThis.closedAfterRejection = last.done && last.value === undefined;
+                });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "firstYield && secondYield && rejectionObserved && closedAfterRejection",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn async_generator_awaits_suspend_and_resume_its_public_request() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            async function* values() {
+                yield await Promise.resolve(3);
+                return await Promise.resolve(4);
+            }
+            let iterator = values();
+            iterator.next().then(first => {
+                globalThis.awaitFirst = first.value === 3 && !first.done;
+                return iterator.next();
+            }).then(last => {
+                globalThis.awaitLast = last.value === 4 && last.done;
+            });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(&mut vm, "awaitFirst && awaitLast"),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn for_await_consumes_async_generator_next_promises() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            async function* values() { yield 2; yield 3; }
+            async function total() {
+                let sum = 0;
+                for await (let value of values()) sum += value;
+                return sum;
+            }
+            total().then(value => { globalThis.forAwaitTotal = value; });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(&mut vm, "forAwaitTotal === 5"),
+        Ok(Value::Bool(true))
+    );
+    assert!(parse("async function f(){for await (let value in {});}").is_err());
+}
+
+#[test]
+fn async_generator_yield_star_respects_the_no_line_terminator_grammar() {
+    let error = parse("async function* f(){ yield\n* 1; }").unwrap_err();
+    assert!(error.known_syntax);
+}
