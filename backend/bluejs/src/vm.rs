@@ -7,6 +7,7 @@
 //! safepoints. The collector itself additionally protects store inputs.
 
 use crate::bytecode::{Binding, ModuleExport, ModuleImportName};
+use crate::heap::PrivateElement;
 use crate::native::{self, NativeFunction};
 use crate::primitive;
 use crate::{
@@ -3282,6 +3283,36 @@ impl Vm {
                         }
                         self.stack.push(value);
                     }
+                    Opcode::DefinePrivateField => {
+                        let (receiver, name) = self.property_reference()?;
+                        let Value::Object(owner) = receiver else {
+                            unreachable!("private class owner is an object")
+                        };
+                        let PropertyName::String(name) = name else {
+                            unreachable!("compiler emits string private names")
+                        };
+                        self.with_roots(|heap| heap.define_private_field(owner, name))?;
+                    }
+                    Opcode::DefinePrivateMethod | Opcode::DefinePrivateAccessor => {
+                        let value = self.pop();
+                        let (receiver, name) = self.property_reference()?;
+                        let Value::Object(owner) = receiver else {
+                            unreachable!("private class owner is an object")
+                        };
+                        let PropertyName::String(name) = name else {
+                            unreachable!("compiler emits string private names")
+                        };
+                        if let Value::Object(function) = value {
+                            self.with_roots(|heap| heap.set_closure_home(function, owner))?;
+                        }
+                        if instruction.opcode == Opcode::DefinePrivateMethod {
+                            self.with_roots(|heap| heap.define_private_method(owner, name, value))?;
+                        } else {
+                            self.with_roots(|heap| {
+                                heap.define_private_accessor(owner, name, value, operand != 0)
+                            })?;
+                        }
+                    }
                     Opcode::DeleteProperty => {
                         let (receiver, key) = self.property_reference()?;
                         let deleted = match receiver {
@@ -3380,6 +3411,33 @@ impl Vm {
                     }
                     Opcode::SetClassHome => self.set_class_home()?,
                     Opcode::SetClassHeritage => self.set_class_heritage()?,
+                    Opcode::InitializePrivateBrand => {
+                        let owner = self.home_object.ok_or_else(|| {
+                            RuntimeError::TypeError(
+                                "private elements are not available in this function".into(),
+                            )
+                        })?;
+                        let receiver = self.this.object_id().ok_or_else(|| {
+                            RuntimeError::TypeError(
+                                "private fields require an object receiver".into(),
+                            )
+                        })?;
+                        self.with_roots(|heap| heap.add_private_brand(receiver, owner))?;
+                    }
+                    Opcode::PrivateGet | Opcode::PrivateGetMethod => {
+                        let (receiver, owner, name) = self.private_reference()?;
+                        let value = self.private_get(&receiver, owner, &name)?;
+                        self.stack.push(value);
+                        if instruction.opcode == Opcode::PrivateGetMethod {
+                            self.stack.push(receiver);
+                        }
+                    }
+                    Opcode::PrivateSet => {
+                        let value = self.pop();
+                        let (receiver, owner, name) = self.private_reference()?;
+                        self.private_set(&receiver, owner, name, value.clone())?;
+                        self.stack.push(value);
+                    }
                     Opcode::SuperGet | Opcode::SuperGetMethod => {
                         let key_value = self.pop();
                         let key = self.coerce_property_key(&key_value)?;
@@ -4590,6 +4648,92 @@ impl Vm {
                 "cannot access a property of null or undefined".into(),
             )),
             receiver => Ok((receiver, key)),
+        }
+    }
+
+    /// Extracts the two stack values used to retain a private Reference and
+    /// resolves the declaring class through the executing method's
+    /// [[HomeObject]].  Unlike an ordinary property reference, its name is
+    /// not a PropertyKey and its receiver is never boxed.
+    fn private_reference(&mut self) -> Result<(Value, ObjectId, JsString), RuntimeError> {
+        let name = match self.pop() {
+            Value::String(name) => name,
+            _ => unreachable!("compiler emits a string private name"),
+        };
+        let receiver = self.pop();
+        let owner = self.home_object.ok_or_else(|| {
+            RuntimeError::TypeError("private elements are not available in this function".into())
+        })?;
+        Ok((receiver, owner, name))
+    }
+
+    fn private_receiver(
+        &self,
+        receiver: &Value,
+        owner: ObjectId,
+    ) -> Result<ObjectId, RuntimeError> {
+        let object = receiver.object_id().ok_or_else(|| {
+            RuntimeError::TypeError("private fields require an object receiver".into())
+        })?;
+        if !self.heap.has_private_brand(object, owner)? {
+            return Err(RuntimeError::TypeError(
+                "receiver does not have the requested private element".into(),
+            ));
+        }
+        Ok(object)
+    }
+
+    fn private_get(
+        &mut self,
+        receiver: &Value,
+        owner: ObjectId,
+        name: &JsString,
+    ) -> Result<Value, RuntimeError> {
+        let object = self.private_receiver(receiver, owner)?;
+        let element = self.heap.private_element(owner, name)?.ok_or_else(|| {
+            RuntimeError::TypeError("private element is not declared by this class".into())
+        })?;
+        match element {
+            PrivateElement::Field => {
+                self.heap.private_slot(object, owner, name)?.ok_or_else(|| {
+                    RuntimeError::TypeError("private field has not been initialized".into())
+                })
+            }
+            PrivateElement::Method(function) => Ok(function),
+            PrivateElement::Accessor { get: None, .. } => Ok(Value::Undefined),
+            PrivateElement::Accessor {
+                get: Some(getter), ..
+            } => self.call_native(getter, receiver.clone(), Vec::new(), false),
+        }
+    }
+
+    fn private_set(
+        &mut self,
+        receiver: &Value,
+        owner: ObjectId,
+        name: JsString,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
+        let object = self.private_receiver(receiver, owner)?;
+        let element = self.heap.private_element(owner, &name)?.ok_or_else(|| {
+            RuntimeError::TypeError("private element is not declared by this class".into())
+        })?;
+        match element {
+            PrivateElement::Field => {
+                self.with_roots(|heap| heap.set_private_slot(object, owner, name, value))
+            }
+            PrivateElement::Method(_) => Err(RuntimeError::TypeError(
+                "cannot assign to a private method".into(),
+            )),
+            PrivateElement::Accessor { set: None, .. } => Err(RuntimeError::TypeError(
+                "private accessor has no setter".into(),
+            )),
+            PrivateElement::Accessor {
+                set: Some(setter), ..
+            } => {
+                self.call_native(setter, receiver.clone(), vec![value], false)?;
+                Ok(())
+            }
         }
     }
 

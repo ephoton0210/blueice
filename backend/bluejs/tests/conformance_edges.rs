@@ -152,6 +152,18 @@ fn logical_assignments_latch_references_and_short_circuit_the_rhs() {
 }
 
 #[test]
+fn private_slots_keep_class_identity_and_private_reference_semantics() {
+    for source in [
+        "class C{#field=true;#method(){}get #access(){return this.#field}set #access(value){this.#field=value}update(){this.#field&&=false;this.#access||=true;return this.#field}method(){return this.#method}replaceMethod(){this.#method&&=1}}let value=new C;let method=value.method();let caught=false;try{value.replaceMethod()}catch(error){caught=error instanceof TypeError;}value.update()&&method===value.method()&&caught&&Object.keys(value).length===0",
+        "class A{#value=1;read(){return this.#value}}class B{#value=2;read(){return this.#value}}let a=new A,b=new B;a.read()===1&&b.read()===2",
+        "class C{#value=1;read(){return this.#value}}let caught=false;try{C.prototype.read.call({})}catch(error){caught=error instanceof TypeError;}caught",
+        "class C{get #value(){return false}assign(){return this.#value&&=(() => {throw new Error})()}}new C().assign()===false",
+    ] {
+        assert_eq!(evaluate(source), Value::Bool(true), "{source}");
+    }
+}
+
+#[test]
 fn number_static_constants_have_spec_values_and_attributes() {
     assert!(matches!(
         evaluate("Number.NaN"),

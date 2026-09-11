@@ -601,6 +601,14 @@ impl Parser {
         }
     }
 
+    fn expect_member_name(&mut self) -> Result<String, ParseError> {
+        if let Token::PrivateIdentifier(name) = self.peek().clone() {
+            self.advance();
+            return Ok(format!("#{name}"));
+        }
+        self.expect_identifier_name()
+    }
+
     fn expect_binding_identifier(&mut self) -> Result<String, ParseError> {
         match self.peek().clone() {
             Token::Identifier(name) => {
@@ -1607,6 +1615,14 @@ impl Parser {
         }
     }
 
+    fn parse_class_element_key(&mut self) -> Result<PropertyKey, ParseError> {
+        if let Token::PrivateIdentifier(name) = self.peek().clone() {
+            self.advance();
+            return Ok(PropertyKey::Identifier(format!("#{name}")));
+        }
+        self.parse_property_key()
+    }
+
     // ---- Functions ----
 
     fn parse_params(&mut self) -> Result<Vec<Param>, ParseError> {
@@ -1789,7 +1805,7 @@ impl Parser {
                 _ => None,
             };
             let generator = self.eat_punct(Punct::Star);
-            let key = self.parse_property_key()?;
+            let key = self.parse_class_element_key()?;
             let method_name = class_element_name(&key);
             if !self.check_punct(Punct::LParen) {
                 if generator || accessor.is_some() {
@@ -2674,7 +2690,7 @@ impl Parser {
                     computed,
                 };
             } else if self.eat_punct(Punct::Dot) {
-                let name = self.expect_identifier_name()?;
+                let name = self.expect_member_name()?;
                 expr = Expr::Member {
                     object: Box::new(expr),
                     property: Box::new(Expr::Identifier(name)),
@@ -2739,7 +2755,7 @@ impl Parser {
         };
         loop {
             if self.eat_punct(Punct::Dot) {
-                let name = self.expect_identifier_name()?;
+                let name = self.expect_member_name()?;
                 callee = Expr::Member {
                     object: Box::new(callee),
                     property: Box::new(Expr::Identifier(name)),

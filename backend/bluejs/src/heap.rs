@@ -130,6 +130,38 @@ pub(crate) type ClosureState = (
     Option<Value>,
 );
 
+/// The class-declaration side of an ECMAScript private element.  These
+/// entries live on the declaring class's home object, never in ordinary
+/// property storage, so reflection and prototype lookup cannot observe them.
+#[derive(Clone)]
+pub(crate) enum PrivateElement {
+    Field,
+    Method(Value),
+    Accessor {
+        get: Option<Value>,
+        set: Option<Value>,
+    },
+}
+
+impl PrivateElement {
+    fn references(&self) -> impl Iterator<Item = ObjectId> + '_ {
+        match self {
+            Self::Field => Vec::new().into_iter(),
+            Self::Method(value) => value
+                .object_id()
+                .into_iter()
+                .collect::<Vec<_>>()
+                .into_iter(),
+            Self::Accessor { get, set } => get
+                .iter()
+                .chain(set.iter())
+                .filter_map(Value::object_id)
+                .collect::<Vec<_>>()
+                .into_iter(),
+        }
+    }
+}
+
 #[derive(Default)]
 struct ClosureMetadata {
     home: Option<ObjectId>,
@@ -310,6 +342,9 @@ struct Object {
     properties: HashMap<PropertyName, Value>,
     order: Vec<PropertyName>,
     attributes: HashMap<PropertyName, PropertyDescriptor>,
+    /// Lazily allocated private internal slots. Ordinary objects pay no
+    /// fixed-size cost for private-element support.
+    private: Option<Box<PrivateData>>,
     extensible: bool,
     prototype: Option<ObjectId>,
     young: bool,
@@ -341,6 +376,20 @@ impl Object {
                     .chain(d.set.iter())
                     .filter_map(Value::object_id)
             }))
+            .chain(self.private.iter().flat_map(|private| {
+                private
+                    .brands
+                    .iter()
+                    .copied()
+                    .chain(private.slots.keys().map(|(owner, _)| *owner))
+                    .chain(private.slots.values().filter_map(Value::object_id))
+                    .chain(
+                        private
+                            .elements
+                            .values()
+                            .flat_map(PrivateElement::references),
+                    )
+            }))
             .chain(match &self.kind {
                 ObjectKind::Closure { captures, this, .. } => captures
                     .iter()
@@ -367,12 +416,47 @@ impl Object {
     }
 }
 
+/// Sidecar storage for the private internal slots of one object. It is
+/// allocated only for class home objects and branded instances.
+#[derive(Default)]
+struct PrivateData {
+    /// `[[PrivateElements]]` for a class home object. It is distinct from
+    /// public properties and only reachable through private References.
+    elements: HashMap<JsString, PrivateElement>,
+    /// Brand membership for instances (and, later, class constructors with
+    /// static private elements).
+    brands: HashSet<ObjectId>,
+    /// Per-instance private field values, keyed by declaring home object and
+    /// private name so same-spelled names from different class evaluations
+    /// remain distinct.
+    slots: HashMap<(ObjectId, JsString), Value>,
+}
+
 const OBJECT_BYTES: usize = size_of::<Object>();
+const PRIVATE_DATA_BYTES: usize = size_of::<PrivateData>();
 
 fn property_bytes(key: &PropertyName, value: &Value) -> usize {
     // Key storage is duplicated in `properties` and insertion `order`.
     (size_of::<(PropertyName, Value)>() + size_of::<PropertyName>())
         .saturating_add(key.byte_len().saturating_mul(2))
+        .saturating_add(value.payload_bytes())
+}
+
+fn private_element_bytes(name: &JsString, element: &PrivateElement) -> usize {
+    size_of::<(JsString, PrivateElement)>()
+        .saturating_add(name.byte_len())
+        .saturating_add(match element {
+            PrivateElement::Field => 0,
+            PrivateElement::Method(value) => value.payload_bytes(),
+            PrivateElement::Accessor { get, set } => {
+                get.iter().chain(set.iter()).map(Value::payload_bytes).sum()
+            }
+        })
+}
+
+fn private_slot_bytes(name: &JsString, value: &Value) -> usize {
+    size_of::<((ObjectId, JsString), Value)>()
+        .saturating_add(name.byte_len())
         .saturating_add(value.payload_bytes())
 }
 
@@ -465,6 +549,240 @@ impl Heap {
     /// The returned object is unrooted until registered or attached to a root.
     pub fn alloc_object(&mut self, prototype: Option<ObjectId>) -> Result<ObjectId, HeapError> {
         self.alloc(ObjectKind::Ordinary, prototype)
+    }
+
+    fn ensure_private_data(
+        &mut self,
+        object: ObjectId,
+        protected: &[ObjectId],
+    ) -> Result<(), HeapError> {
+        self.object(object)?;
+        if self.objects[&object].private.is_some() {
+            return Ok(());
+        }
+        let protected: Vec<_> = std::iter::once(object)
+            .chain(protected.iter().copied())
+            .collect();
+        self.ensure_room(PRIVATE_DATA_BYTES, &protected)?;
+        let object = self
+            .objects
+            .get_mut(&object)
+            .expect("private owner is protected across collection");
+        object.private = Some(Box::default());
+        object.bytes += PRIVATE_DATA_BYTES;
+        self.managed_bytes += PRIVATE_DATA_BYTES;
+        Ok(())
+    }
+
+    pub(crate) fn define_private_field(
+        &mut self,
+        owner: ObjectId,
+        name: JsString,
+    ) -> Result<(), HeapError> {
+        self.define_private_element(owner, name, PrivateElement::Field)
+    }
+
+    pub(crate) fn define_private_method(
+        &mut self,
+        owner: ObjectId,
+        name: JsString,
+        function: Value,
+    ) -> Result<(), HeapError> {
+        self.define_private_element(owner, name, PrivateElement::Method(function))
+    }
+
+    pub(crate) fn define_private_accessor(
+        &mut self,
+        owner: ObjectId,
+        name: JsString,
+        function: Value,
+        setter: bool,
+    ) -> Result<(), HeapError> {
+        let existing = self
+            .object(owner)?
+            .private
+            .as_ref()
+            .and_then(|private| private.elements.get(&name))
+            .cloned();
+        let element = match existing {
+            None if setter => PrivateElement::Accessor {
+                get: None,
+                set: Some(function),
+            },
+            None => PrivateElement::Accessor {
+                get: Some(function),
+                set: None,
+            },
+            Some(PrivateElement::Accessor { mut get, mut set }) => {
+                if setter {
+                    set = Some(function);
+                } else {
+                    get = Some(function);
+                }
+                PrivateElement::Accessor { get, set }
+            }
+            Some(_) => return Err(HeapError::ReadOnlyProperty),
+        };
+        self.define_private_element(owner, name, element)
+    }
+
+    fn define_private_element(
+        &mut self,
+        owner: ObjectId,
+        name: JsString,
+        element: PrivateElement,
+    ) -> Result<(), HeapError> {
+        self.object(owner)?;
+        let references: Vec<_> = element.references().collect();
+        for reference in &references {
+            self.object(*reference)?;
+        }
+        self.ensure_private_data(owner, &references)?;
+        let old_bytes = self.objects[&owner]
+            .private
+            .as_ref()
+            .expect("private data was installed")
+            .elements
+            .get(&name)
+            .map_or(0, |old| private_element_bytes(&name, old));
+        let new_bytes = private_element_bytes(&name, &element);
+        let protected: Vec<_> = std::iter::once(owner)
+            .chain(references.iter().copied())
+            .collect();
+        self.ensure_room(new_bytes.saturating_sub(old_bytes), &protected)?;
+        let object = self
+            .objects
+            .get_mut(&owner)
+            .expect("private owner is protected across collection");
+        object
+            .private
+            .as_mut()
+            .expect("private data was installed")
+            .elements
+            .insert(name, element);
+        object.bytes = object.bytes - old_bytes + new_bytes;
+        self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
+        for reference in references {
+            self.write_barrier(owner, Some(reference));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn add_private_brand(
+        &mut self,
+        receiver: ObjectId,
+        owner: ObjectId,
+    ) -> Result<(), HeapError> {
+        self.object(receiver)?;
+        self.object(owner)?;
+        if self.objects[&receiver]
+            .private
+            .as_ref()
+            .is_some_and(|private| private.brands.contains(&owner))
+        {
+            return Ok(());
+        }
+        self.ensure_private_data(receiver, &[owner])?;
+        let bytes = size_of::<ObjectId>();
+        self.ensure_room(bytes, &[receiver, owner])?;
+        let receiver_object = self
+            .objects
+            .get_mut(&receiver)
+            .expect("private receiver is protected across collection");
+        receiver_object
+            .private
+            .as_mut()
+            .expect("private data was installed")
+            .brands
+            .insert(owner);
+        receiver_object.bytes += bytes;
+        self.managed_bytes += bytes;
+        self.write_barrier(receiver, Some(owner));
+        Ok(())
+    }
+
+    pub(crate) fn has_private_brand(
+        &self,
+        receiver: ObjectId,
+        owner: ObjectId,
+    ) -> Result<bool, HeapError> {
+        Ok(self
+            .object(receiver)?
+            .private
+            .as_ref()
+            .is_some_and(|private| private.brands.contains(&owner)))
+    }
+
+    pub(crate) fn private_element(
+        &self,
+        owner: ObjectId,
+        name: &JsString,
+    ) -> Result<Option<PrivateElement>, HeapError> {
+        Ok(self
+            .object(owner)?
+            .private
+            .as_ref()
+            .and_then(|private| private.elements.get(name))
+            .cloned())
+    }
+
+    pub(crate) fn private_slot(
+        &self,
+        receiver: ObjectId,
+        owner: ObjectId,
+        name: &JsString,
+    ) -> Result<Option<Value>, HeapError> {
+        Ok(self
+            .object(receiver)?
+            .private
+            .as_ref()
+            .and_then(|private| private.slots.get(&(owner, name.clone())))
+            .cloned())
+    }
+
+    pub(crate) fn set_private_slot(
+        &mut self,
+        receiver: ObjectId,
+        owner: ObjectId,
+        name: JsString,
+        value: Value,
+    ) -> Result<(), HeapError> {
+        self.object(receiver)?;
+        self.object(owner)?;
+        if let Some(reference) = value.object_id() {
+            self.object(reference)?;
+        }
+        let protected: Vec<_> = std::iter::once(owner).chain(value.object_id()).collect();
+        self.ensure_private_data(receiver, &protected)?;
+        let key = (owner, name.clone());
+        let old_bytes = self.objects[&receiver]
+            .private
+            .as_ref()
+            .expect("private data was installed")
+            .slots
+            .get(&key)
+            .map_or(0, |old| private_slot_bytes(&name, old));
+        let new_bytes = private_slot_bytes(&name, &value);
+        let protected: Vec<_> = std::iter::once(receiver)
+            .chain(std::iter::once(owner))
+            .chain(value.object_id())
+            .collect();
+        self.ensure_room(new_bytes.saturating_sub(old_bytes), &protected)?;
+        let receiver_object = self
+            .objects
+            .get_mut(&receiver)
+            .expect("private receiver is protected across collection");
+        receiver_object
+            .private
+            .as_mut()
+            .expect("private data was installed")
+            .slots
+            .insert(key, value.clone());
+        receiver_object.bytes = receiver_object.bytes - old_bytes + new_bytes;
+        self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
+        self.write_barrier(receiver, Some(owner));
+        self.write_barrier(receiver, value.object_id());
+        Ok(())
     }
 
     /// Creates a non-extensible Module Namespace Exotic Object.  Its string
@@ -1429,6 +1747,7 @@ impl Heap {
                 properties: HashMap::new(),
                 order: Vec::new(),
                 attributes: HashMap::new(),
+                private: None,
                 extensible: true,
                 prototype,
                 young: true,
@@ -2114,6 +2433,44 @@ mod tests {
         heap.set_generator_state(generator, GeneratorState::Done)
             .unwrap();
         assert_eq!(heap.stats().managed_bytes, baseline);
+    }
+
+    #[test]
+    fn private_sidecars_trace_brands_slots_and_private_elements() {
+        let mut heap = Heap::default();
+        let owner = heap.alloc_object(None).unwrap();
+        let owner_root = heap.root(owner).unwrap();
+        heap.define_private_field(owner, "field".into()).unwrap();
+
+        let receiver = heap.alloc_object(None).unwrap();
+        let receiver_root = heap.root(receiver).unwrap();
+        heap.add_private_brand(receiver, owner).unwrap();
+        let slot_value = heap.alloc_object(None).unwrap();
+        heap.set_private_slot(receiver, owner, "field".into(), Value::Object(slot_value))
+            .unwrap();
+
+        let method = heap.alloc_object(None).unwrap();
+        heap.define_private_method(owner, "method".into(), Value::Object(method))
+            .unwrap();
+
+        heap.collect_major();
+        assert!(heap.contains(slot_value));
+        assert!(heap.contains(method));
+        assert_eq!(
+            heap.private_slot(receiver, owner, &"field".into()),
+            Ok(Some(Value::Object(slot_value)))
+        );
+        assert_eq!(
+            heap.private_element(owner, &"method".into())
+                .unwrap()
+                .and_then(|element| match element {
+                    PrivateElement::Method(value) => Some(value),
+                    _ => None,
+                }),
+            Some(Value::Object(method))
+        );
+        heap.unroot(receiver_root).unwrap();
+        heap.unroot(owner_root).unwrap();
     }
 
     #[test]

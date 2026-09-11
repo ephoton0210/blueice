@@ -636,6 +636,9 @@ impl Compiler {
                 self.statement(statement, declarations_allowed)?;
                 self.emit(Opcode::LeaveClassFieldInitializer, 0)?;
             }
+            Stmt::ClassPrivateBrand => {
+                self.emit(Opcode::InitializePrivateBrand, 0)?;
+            }
             Stmt::Expr(Expr::Class(class)) => {
                 self.class_expression(class, None)?;
                 self.emit(Opcode::Pop, 0)?;
@@ -1468,8 +1471,19 @@ impl Compiler {
                 expressions,
             } => {
                 if matches!(&**tag, Expr::Member { .. }) {
-                    self.member_reference(tag)?;
-                    self.emit(Opcode::GetMethod, 0)?;
+                    if private_member_name(tag).is_some() {
+                        self.private_member_reference(tag)?;
+                    } else {
+                        self.member_reference(tag)?;
+                    }
+                    self.emit(
+                        if private_member_name(tag).is_some() {
+                            Opcode::PrivateGetMethod
+                        } else {
+                            Opcode::GetMethod
+                        },
+                        0,
+                    )?;
                 } else {
                     self.expression(tag)?;
                     self.constant(Value::Undefined)?;
@@ -1763,6 +1777,10 @@ impl Compiler {
                 self.super_property_key(property, *computed)?;
                 self.emit(Opcode::SuperGet, 0)?;
             }
+            Expr::Member { .. } if private_member_name(expr).is_some() => {
+                self.private_member_reference(expr)?;
+                self.emit(Opcode::PrivateGet, 0)?;
+            }
             Expr::Member { .. } => {
                 self.member_reference(expr)?;
                 self.emit(Opcode::GetProperty, 0)?;
@@ -1899,8 +1917,19 @@ impl Compiler {
                     self.super_property_key(property, *computed)?;
                     self.emit(Opcode::SuperGetMethod, 0)?;
                 } else if !construct && matches!(&**callee, Expr::Member { .. }) {
-                    self.member_reference(callee)?;
-                    self.emit(Opcode::GetMethod, 0)?;
+                    if private_member_name(callee).is_some() {
+                        self.private_member_reference(callee)?;
+                    } else {
+                        self.member_reference(callee)?;
+                    }
+                    self.emit(
+                        if private_member_name(callee).is_some() {
+                            Opcode::PrivateGetMethod
+                        } else {
+                            Opcode::GetMethod
+                        },
+                        0,
+                    )?;
                 } else {
                     self.expression(callee)?;
                     self.constant(Value::Undefined)?;
@@ -2206,6 +2235,25 @@ impl Compiler {
                 self.emit(Opcode::SuperSet, 0)?;
                 return Ok(());
             }
+        }
+        if private_member_name(target).is_some() {
+            self.private_member_reference(target)?;
+            if logical_assignment {
+                self.emit(Opcode::Dup2, 0)?;
+                self.emit(Opcode::PrivateGet, 0)?;
+                self.logical_assignment(op, 2, value, inferred_name, Opcode::PrivateSet, 0)?;
+                return Ok(());
+            }
+            if op != AssignOp::Assign {
+                self.emit(Opcode::Dup2, 0)?;
+                self.emit(Opcode::PrivateGet, 0)?;
+            }
+            self.expression_with_name(value, inferred_name)?;
+            if let Some(opcode) = compound_assignment_opcode(op) {
+                self.emit(opcode, 0)?;
+            }
+            self.emit(Opcode::PrivateSet, 0)?;
+            return Ok(());
         }
         if let Expr::Identifier(name) = target {
             if self.with_depth != 0 {
@@ -2576,6 +2624,26 @@ impl Compiler {
         Ok(())
     }
 
+    fn private_member_reference(&mut self, target: &Expr) -> Result<(), CompileError> {
+        let Expr::Member {
+            object,
+            property,
+            computed: false,
+        } = target
+        else {
+            return Err(CompileError::InvalidSyntax("invalid private member AST"));
+        };
+        let Expr::Identifier(name) = property.as_ref() else {
+            return Err(CompileError::InvalidSyntax("invalid private member name"));
+        };
+        let Some(name) = name.strip_prefix('#') else {
+            return Err(CompileError::InvalidSyntax("invalid private member name"));
+        };
+        self.expression(object)?;
+        self.constant(Value::String(name.into()))?;
+        Ok(())
+    }
+
     fn name_constant(&mut self, name: &str) -> Result<u32, CompileError> {
         let index = u32::try_from(self.bytecode.constants.len())
             .map_err(|_| CompileError::ProgramTooLarge)?;
@@ -2664,7 +2732,7 @@ impl Compiler {
             is_async: false,
         });
         constructor.name = class.name.clone();
-        let fields: Vec<_> = class
+        let mut fields: Vec<_> = class
             .elements
             .iter()
             .filter_map(|element| match element {
@@ -2676,6 +2744,18 @@ impl Compiler {
                 _ => None,
             })
             .collect();
+        if class
+            .elements
+            .iter()
+            .any(class_has_private_instance_element)
+        {
+            // Private methods and accessors brand each constructed instance
+            // even when the class has no private data field.  The marker is
+            // deliberately before all instance field initializers, so an
+            // earlier public initializer can access a declared private
+            // method just as it can in ECMAScript.
+            fields.insert(0, Stmt::ClassPrivateBrand);
+        }
         let constructor_body = std::mem::take(&mut constructor.body);
         let body = if class.extends.is_some() {
             if default_constructor {
@@ -2725,7 +2805,11 @@ impl Compiler {
                         continue;
                     }
                     self.class_property_target(*is_static)?;
-                    self.property_key(key)?;
+                    if let Some(name) = private_class_name(key) {
+                        self.constant(Value::String(name.into()))?;
+                    } else {
+                        self.property_key(key)?;
+                    }
                     self.function_named_with(
                         function,
                         false,
@@ -2733,8 +2817,15 @@ impl Compiler {
                         false,
                         FunctionCompileOptions::class_method(),
                     )?;
-                    self.emit(Opcode::DefineMethod, 0)?;
-                    self.emit(Opcode::Pop, 0)?;
+                    if private_class_name(key).is_some() {
+                        if *is_static {
+                            return Err(CompileError::Unsupported("static private elements"));
+                        }
+                        self.emit(Opcode::DefinePrivateMethod, 0)?;
+                    } else {
+                        self.emit(Opcode::DefineMethod, 0)?;
+                        self.emit(Opcode::Pop, 0)?;
+                    }
                 }
                 ClassElement::Accessor {
                     key,
@@ -2743,7 +2834,11 @@ impl Compiler {
                     is_static,
                 } => {
                     self.class_property_target(*is_static)?;
-                    self.property_key(key)?;
+                    if let Some(name) = private_class_name(key) {
+                        self.constant(Value::String(name.into()))?;
+                    } else {
+                        self.property_key(key)?;
+                    }
                     self.function_named_with(
                         function,
                         false,
@@ -2751,14 +2846,24 @@ impl Compiler {
                         false,
                         FunctionCompileOptions::class_method(),
                     )?;
-                    self.emit(Opcode::DefineClassAccessor, u32::from(!getter))?;
-                    self.emit(Opcode::Pop, 0)?;
+                    if private_class_name(key).is_some() {
+                        if *is_static {
+                            return Err(CompileError::Unsupported("static private elements"));
+                        }
+                        self.emit(Opcode::DefinePrivateAccessor, u32::from(!getter))?;
+                    } else {
+                        self.emit(Opcode::DefineClassAccessor, u32::from(!getter))?;
+                        self.emit(Opcode::Pop, 0)?;
+                    }
                 }
                 ClassElement::Field {
                     key,
                     initializer,
                     is_static: true,
                 } => {
+                    if private_class_name(key).is_some() {
+                        return Err(CompileError::Unsupported("static private elements"));
+                    }
                     self.class_property_target(true)?;
                     self.property_key(key)?;
                     let value = initializer.clone().unwrap_or_else(undefined_expression);
@@ -2779,8 +2884,20 @@ impl Compiler {
                     self.emit(Opcode::DefineClassStaticField, 0)?;
                 }
                 ClassElement::Field {
-                    is_static: false, ..
-                } => {}
+                    key,
+                    is_static: false,
+                    ..
+                } => {
+                    if private_class_name(key).is_some() {
+                        self.class_property_target(false)?;
+                        self.constant(Value::String(
+                            private_class_name(key)
+                                .expect("private field check above")
+                                .into(),
+                        ))?;
+                        self.emit(Opcode::DefinePrivateField, 0)?;
+                    }
+                }
                 ClassElement::StaticBlock(body) => {
                     let block = Function {
                         name: None,
@@ -3075,7 +3192,8 @@ fn strict_assignment_in_statement(statement: &Stmt) -> bool {
         | Stmt::Continue(_)
         | Stmt::FunctionDecl(_)
         | Stmt::ModuleDefaultFunction { .. }
-        | Stmt::ClassDecl(_) => false,
+        | Stmt::ClassDecl(_)
+        | Stmt::ClassPrivateBrand => false,
         Stmt::Expr(expr) | Stmt::Throw(expr) => strict_assignment_in_expression(expr),
         Stmt::Block(statements) => strict_assignment_to_restricted_name(statements),
         Stmt::VarDecl(_, declarations) => declarations.iter().any(|declaration| {
@@ -3405,6 +3523,39 @@ fn class_property_name(key: &PropertyKey) -> Option<String> {
         PropertyKey::Number(number) => Some(number.to_string()),
         PropertyKey::Computed(_) => None,
     }
+}
+
+fn private_class_name(key: &PropertyKey) -> Option<&str> {
+    match key {
+        PropertyKey::Identifier(name) => name.strip_prefix('#'),
+        _ => None,
+    }
+}
+
+fn class_has_private_instance_element(element: &ClassElement) -> bool {
+    match element {
+        ClassElement::Method { key, is_static, .. }
+        | ClassElement::Accessor { key, is_static, .. }
+        | ClassElement::Field { key, is_static, .. } => {
+            !is_static && private_class_name(key).is_some()
+        }
+        ClassElement::StaticBlock(_) => false,
+    }
+}
+
+fn private_member_name(expr: &Expr) -> Option<&str> {
+    let Expr::Member {
+        property,
+        computed: false,
+        ..
+    } = expr
+    else {
+        return None;
+    };
+    let Expr::Identifier(name) = property.as_ref() else {
+        return None;
+    };
+    name.strip_prefix('#')
 }
 
 fn undefined_expression() -> Expr {

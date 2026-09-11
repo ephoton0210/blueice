@@ -143,9 +143,16 @@ opcodes! {
     DefineMethod: 1, 0;
     DefineClassAccessor: 5, 0;
     DefineClassStaticField: 1, 0;
+    DefinePrivateField: 1, 0;
+    DefinePrivateMethod: 1, 0;
+    DefinePrivateAccessor: 5, 0;
     CallClassStaticBlock: 1, 0;
     SetClassHome: 1, 0;
     SetClassHeritage: 1, 0;
+    InitializePrivateBrand: 1, 0;
+    PrivateGet: 1, MAY_USE_INLINE_CACHE;
+    PrivateGetMethod: 1, MAY_USE_INLINE_CACHE;
+    PrivateSet: 1, MAY_USE_INLINE_CACHE;
     SuperGet: 1, MAY_USE_INLINE_CACHE;
     SuperGetMethod: 1, MAY_USE_INLINE_CACHE;
     SuperSet: 1, MAY_USE_INLINE_CACHE;

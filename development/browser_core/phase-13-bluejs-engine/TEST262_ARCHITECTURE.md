@@ -245,8 +245,15 @@ retain an immutable internal name binding for their methods and static blocks.
 Async methods, async generators, async functions and async arrows retain
 `await`, `yield*`, `for await`, and lexical `new.target` syntax, then report
 the explicit `async functions` compiler gap: Promise jobs and the `$DONE` host
-are not implemented. Private elements, decorators, async execution and
-arbitrary derived-field control flow remain later work. Sloppy `with` now has a VM-managed object environment for
+are not implemented. The P1.2 private-slot reference slice now accepts private
+identifiers and supports instance private fields, methods and accessors through
+non-enumerable heap slots keyed by their declaring class home object. Instance
+construction installs the private brand before field initializers; direct class
+methods/constructors and lexically inheriting arrows retain that owner for
+private get/set and call operations. Static private elements, general nested
+function private-name capture, duplicate-name early errors, `#name in object`,
+and arbitrary derived-field control flow remain later work. Decorators and async
+execution also remain later work. Sloppy `with` now has a VM-managed object environment for
 simple identifier reads/writes, is unwound with handlers, and is rejected in
 strict code. It does not yet model every `with` interaction with closures,
 `typeof`, updates or implicit global writes.
@@ -847,9 +854,16 @@ Regression cases cover all three operators, RHS elision, target evaluation
 count, strict non-writable bypasses, name inference, BigInt truthiness and
 the nullish-base/key-coercion error order.
 
-At `target/test262-next-logical-assignment-after-2`, **96 modes pass**. The
-remaining **42 fails** are all generated `class-fields-private` tests using
-private names (every one currently rejects `#` during parsing); they are a
-P1.2 private-slot prerequisite rather than an unclassified logical-assignment
-runtime issue. This is therefore a completed core-reference sub-slice, not a
-claim that the whole `logical-assignment` directory is closed.
+The P1.2 private-slot bridge represents a private Reference as its object base
+and private name, then resolves the declaring class through the current class
+method's home object. Heap-private brand, element and slot maps retain their GC
+edges but are absent from ordinary own-property enumeration. Fields are
+writable slots; methods reject `PrivateSet`; accessors call their getter/setter
+with the original receiver and reject a write when no setter exists.
+
+A fresh eight-worker run at `target/test262-private-slot-final` records **138 pass,
+0 fail and 0 unsupported** of 138 scheduled
+`language/expressions/logical-assignment` modes, including the 42 generated
+`class-fields-private` modes that had previously rejected `#` during parsing.
+This closes that reference slice only; it is not a full private-name or class
+conformance claim.

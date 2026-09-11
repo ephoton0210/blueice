@@ -43,6 +43,9 @@ pub enum Token {
         raw_expressions: Vec<String>,
     },
     Identifier(String),
+    /// A `#`-prefixed identifier. It is admitted only by class-element and
+    /// private-member parser productions.
+    PrivateIdentifier(String),
     Keyword(Keyword),
     Punct(Punct),
     Invalid(String),
@@ -507,6 +510,10 @@ impl Tokenizer {
             self.advance();
             return self.scan_template();
         }
+        if c == '#' {
+            self.advance();
+            return self.scan_private_identifier();
+        }
         if is_ident_start(c) || (c == '\\' && self.peek_at(1) == Some('u')) {
             return self.scan_identifier_or_keyword();
         }
@@ -825,6 +832,44 @@ impl Tokenizer {
             Some(kw) => Ok(Token::Keyword(kw)),
             None => Ok(Token::Identifier(text)),
         }
+    }
+
+    fn scan_private_identifier(&mut self) -> Result<Token, LexError> {
+        let mut text = String::new();
+        loop {
+            let first = text.is_empty();
+            let character = match self.peek() {
+                Some('\\') => {
+                    self.identifier_escaped = true;
+                    self.scan_identifier_escape()?
+                }
+                Some(character)
+                    if if first {
+                        is_ident_start(character)
+                    } else {
+                        is_ident_continue(character)
+                    } =>
+                {
+                    self.advance();
+                    character
+                }
+                _ => break,
+            };
+            if if first {
+                !is_ident_start(character)
+            } else {
+                !is_ident_continue(character)
+            } {
+                return Err(LexError::new(
+                    "unicode escape does not form a valid private identifier character",
+                ));
+            }
+            text.push(character);
+        }
+        if text.is_empty() {
+            return Err(LexError::new("private identifier requires a name"));
+        }
+        Ok(Token::PrivateIdentifier(text))
     }
 
     fn scan_identifier_escape(&mut self) -> Result<char, LexError> {

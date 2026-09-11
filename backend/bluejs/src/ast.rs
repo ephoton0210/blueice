@@ -89,7 +89,8 @@ pub struct Function {
 }
 
 /// A class definition with the executable elements currently supported by the
-/// compiler. Private elements and decorators remain outside this AST subset.
+/// compiler. Private keys share the ordinary key representation with a
+/// `#` prefix; decorators remain outside this AST subset.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Class {
     pub name: Option<String>,
@@ -299,6 +300,9 @@ pub enum Stmt {
     /// constructor body. The VM uses it to retain field-initializer lexical
     /// context for direct eval early errors.
     ClassField(Box<Stmt>),
+    /// Compiler-internal marker inserted before the instance-element
+    /// initializers of a class that declares private elements.
+    ClassPrivateBrand,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -660,6 +664,7 @@ fn stmt_contains_super(statement: &Stmt, search: SuperSearch) -> bool {
             function_contains_super(function, search)
         }
         Stmt::ClassField(statement) => stmt_contains_super(statement, search),
+        Stmt::ClassPrivateBrand => false,
     }
 }
 
