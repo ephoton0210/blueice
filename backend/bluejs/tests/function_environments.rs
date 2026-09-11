@@ -95,6 +95,17 @@ fn parameter_closures_survive_collection_and_tail_frame_reuse() {
 }
 
 #[test]
+fn classic_for_let_creates_a_fresh_binding_for_each_iteration() {
+    let mut vm = Vm::default();
+    for source in [
+        "let first,second,third;for(let i=1;i<=3;i++){if(i===1)first=()=>i;else if(i===2)second=()=>i;else third=()=>i;}first()*100+second()*10+third()===123",
+        "let first,second,third;for(let i=0;i<4;i++){if(i===2)continue;if(i===0)first=()=>i;else if(i===1)second=()=>i;else third=()=>i;}first()*100+second()*10+third()===13",
+    ] {
+        assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)), "{source}");
+    }
+}
+
+#[test]
 fn with_var_declarations_are_hoisted_through_nested_control_flow() {
     let mut vm = Vm::default();
     for source in [

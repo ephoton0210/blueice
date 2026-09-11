@@ -19,12 +19,18 @@ pub(super) struct ClosureCall {
     pub class_base: Option<Value>,
 }
 
-fn math_uint32(value: f64) -> u32 {
-    if value.is_finite() {
-        value.trunc().rem_euclid(4_294_967_296.0) as u32
-    } else {
-        0
-    }
+fn array_index_below_length(key: &PropertyName, length: u64) -> Option<u32> {
+    let PropertyName::String(name) = key else {
+        return None;
+    };
+    let name = name.to_utf8().ok()?;
+    let index = name.parse::<u32>().ok()?;
+    (name == index.to_string() && u64::from(index) < length).then_some(index)
+}
+
+fn same_value_zero(left: &Value, right: &Value) -> bool {
+    left == right
+        || matches!((left, right), (Value::Number(left), Value::Number(right)) if left.is_nan() && right.is_nan())
 }
 
 impl Vm {
@@ -1889,11 +1895,7 @@ impl Vm {
             0
         } else {
             let number = self.coerce_number(radix)?;
-            if number.is_finite() {
-                number.trunc().rem_euclid(4_294_967_296.0) as u32 as i32
-            } else {
-                0
-            }
+            primitive::to_uint32(number) as i32
         };
         if requested != 0 && !(2..=36).contains(&requested) {
             return Ok(Value::Number(f64::NAN));
@@ -3192,28 +3194,47 @@ impl Vm {
         }
         let mut prototype = self.heap.prototype(object)?;
         while let Some(id) = prototype {
-            if self.heap.own_property_keys(id)?.iter().any(
-                |key| matches!(key, PropertyName::String(name) if name.to_utf8().ok().and_then(|name| name.parse::<u32>().ok()).is_some_and(|index| u64::from(index) < length)),
-            ) {
+            if self
+                .heap
+                .own_property_keys(id)?
+                .iter()
+                .any(|key| array_index_below_length(key, length).is_some())
+            {
                 return Ok(None);
             }
             prototype = self.heap.prototype(id)?;
         }
-        let mut indices: Vec<_> = self
-            .heap
-            .own_property_keys(object)?
-            .into_iter()
-            .filter_map(|key| match key {
-                PropertyName::String(name) => name
-                    .to_utf8()
-                    .ok()
-                    .and_then(|name| name.parse::<u32>().ok())
-                    .filter(|index| u64::from(*index) < length),
-                PropertyName::Symbol(_) => None,
-            })
-            .collect();
+        let mut indices = Vec::new();
+        for key in self.heap.own_property_keys(object)? {
+            let Some(index) = array_index_below_length(&key, length) else {
+                continue;
+            };
+            // Accessors can add or remove later indexed properties while the
+            // method scans. Keep the ordinary path for that observable case.
+            if self
+                .heap
+                .get_own_property_descriptor(object, &key)?
+                .is_some_and(|descriptor| descriptor.accessor())
+            {
+                return Ok(None);
+            }
+            indices.push(index);
+        }
         indices.sort_unstable();
         Ok(Some(indices))
+    }
+
+    fn array_start_index(&mut self, from_index: &Value, length: i64) -> Result<i64, RuntimeError> {
+        let from_index = if *from_index == Value::Undefined {
+            0
+        } else {
+            self.coerce_number(from_index)? as i64
+        };
+        Ok(if from_index < 0 {
+            (length + from_index).max(0)
+        } else {
+            from_index.min(length)
+        })
     }
 
     fn array_includes(
@@ -3224,32 +3245,47 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let object = self.coerce_object(receiver)?;
         self.stack.push(Value::Object(object));
-        let length = self.get_property(&Value::Object(object), &"length".into())?;
-        let length = self.coerce_length(&length)? as i64;
-        let from_index = if *from_index == Value::Undefined {
-            0
-        } else {
-            self.coerce_number(from_index)? as i64
-        };
-        let mut index = if from_index < 0 {
-            (length + from_index).max(0)
-        } else {
-            from_index.min(length)
-        };
-        while index < length {
-            self.charge_step()?;
-            let value =
-                self.get_property(&Value::Object(object), &(index as u64).to_string().into())?;
-            if value == *search
-                || matches!((&value, search), (Value::Number(left), Value::Number(right)) if left.is_nan() && right.is_nan())
-            {
-                self.stack.pop();
-                return Ok(Value::Bool(true));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as i64;
+            let start = self.array_start_index(from_index, length)?;
+            if let Some(indices) = self.array_own_indices(object, length as u64)? {
+                let mut index = start as u64;
+                for present in indices
+                    .into_iter()
+                    .filter(|present| i64::from(*present) >= start)
+                {
+                    // With no inherited indexed properties, the first omitted
+                    // element is an observable `undefined` for includes.
+                    if *search == Value::Undefined && index < u64::from(present) {
+                        return Ok(Value::Bool(true));
+                    }
+                    self.charge_step()?;
+                    let value = self.get_property(
+                        &Value::Object(object),
+                        &u64::from(present).to_string().into(),
+                    )?;
+                    if same_value_zero(&value, search) {
+                        return Ok(Value::Bool(true));
+                    }
+                    index = u64::from(present) + 1;
+                }
+                return Ok(Value::Bool(
+                    *search == Value::Undefined && index < length as u64,
+                ));
             }
-            index += 1;
-        }
+            for index in start..length {
+                self.charge_step()?;
+                let value =
+                    self.get_property(&Value::Object(object), &(index as u64).to_string().into())?;
+                if same_value_zero(&value, search) {
+                    return Ok(Value::Bool(true));
+                }
+            }
+            Ok(Value::Bool(false))
+        })();
         self.stack.pop();
-        Ok(Value::Bool(false))
+        result
     }
 
     fn array_index_of(
@@ -3263,16 +3299,21 @@ impl Vm {
         let result = (|| {
             let length = self.get_property(&Value::Object(object), &"length".into())?;
             let length = self.coerce_length(&length)? as i64;
-            let from_index = if *from_index == Value::Undefined {
-                0
-            } else {
-                self.coerce_number(from_index)? as i64
-            };
-            let mut index = if from_index < 0 {
-                (length + from_index).max(0)
-            } else {
-                from_index.min(length)
-            };
+            let start = self.array_start_index(from_index, length)?;
+            if let Some(indices) = self.array_own_indices(object, length as u64)? {
+                for present in indices {
+                    if i64::from(present) < start {
+                        continue;
+                    }
+                    self.charge_step()?;
+                    let key: PropertyName = present.to_string().into();
+                    if self.get_property(&Value::Object(object), &key)? == *search {
+                        return Ok(Value::Number(present as f64));
+                    }
+                }
+                return Ok(Value::Number(-1.0));
+            }
+            let mut index = start;
             while index < length {
                 self.charge_step()?;
                 let key: PropertyName = index.to_string().into();
@@ -3429,11 +3470,11 @@ impl Vm {
                 }
             }
             MathMethod::Imul => {
-                let left = math_uint32(number(first, self)?);
-                let right = math_uint32(number(second, self)?);
+                let left = primitive::to_uint32(number(first, self)?);
+                let right = primitive::to_uint32(number(second, self)?);
                 (left as i32).wrapping_mul(right as i32) as f64
             }
-            MathMethod::Clz32 => math_uint32(number(first, self)?).leading_zeros() as f64,
+            MathMethod::Clz32 => primitive::to_uint32(number(first, self)?).leading_zeros() as f64,
             MathMethod::Atan2 => number(first, self)?.atan2(number(second, self)?),
             MathMethod::Pow => number(first, self)?.powf(number(second, self)?),
             MathMethod::Random => {

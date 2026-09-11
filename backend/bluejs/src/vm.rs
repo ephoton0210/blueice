@@ -2457,6 +2457,28 @@ impl Vm {
         }
     }
 
+    /// Creates the next per-iteration environment for a lexical `for`
+    /// declaration.  The previous cells deliberately stay alive through any
+    /// closures that captured them; this frame starts using fresh cells with
+    /// the values left by the completed loop body, ready for its update
+    /// expression.
+    fn clone_scope(&mut self, code: &Bytecode, scope: u32) -> Result<(), RuntimeError> {
+        let slots = code.scopes[scope as usize].clone();
+        for slot in slots {
+            let slot = slot as usize;
+            let value = self.binding_value(slot)?;
+            let cell = self.with_roots(|heap| heap.alloc_object(None))?;
+            // Insert before the allocation-backed store so the fresh cell is
+            // an interpreter root if the store needs to collect.
+            self.cells.insert(slot, cell);
+            self.bindings[slot] = None;
+            if let Some(value) = value {
+                self.with_roots(|heap| heap.set(cell, "value", value))?;
+            }
+        }
+        Ok(())
+    }
+
     fn leave_scope(&mut self, code: &Bytecode, scope: u32) {
         if self.active_scopes.last() == Some(&scope) {
             self.active_scopes.pop();
@@ -3886,6 +3908,7 @@ impl Vm {
                         self.active_scopes.push(operand as u32);
                         self.active_scope_slots.push(code.scopes[operand].clone());
                     }
+                    Opcode::CloneScope => self.clone_scope(code, operand as u32)?,
                     Opcode::LeaveScope => self.leave_scope(code, operand as u32),
                     Opcode::Pop => {
                         self.pop();
@@ -4399,14 +4422,10 @@ impl Vm {
                         self.call_native(setter, self.this.clone(), vec![value.clone()], false)?;
                         return Ok(());
                     }
-                    return Err(RuntimeError::TypeError(
-                        "super property has no setter".into(),
-                    ));
+                    return self.super_assignment_failed("super property has no setter");
                 }
                 if descriptor.writable == Some(false) {
-                    return Err(RuntimeError::TypeError(
-                        "super property is read-only".into(),
-                    ));
+                    return self.super_assignment_failed("super property is read-only");
                 }
                 break;
             }
@@ -4423,13 +4442,20 @@ impl Vm {
         // an exported-but-uninitialized binding must therefore throw a
         // ReferenceError instead of being collapsed into a read-only result.
         let _ = self.heap.get_own_property_descriptor(receiver, key)?;
-        self.with_roots(|heap| heap.set(receiver, key, value.clone()))
-            .map_err(|error| match error {
-                RuntimeError::Heap(HeapError::ReadOnlyProperty) => {
-                    RuntimeError::TypeError("super property cannot be assigned".into())
-                }
-                error => error,
-            })
+        match self.with_roots(|heap| heap.set(receiver, key, value.clone())) {
+            Err(RuntimeError::Heap(HeapError::ReadOnlyProperty)) => {
+                self.super_assignment_failed("super property cannot be assigned")
+            }
+            result => result,
+        }
+    }
+
+    fn super_assignment_failed(&self, message: &str) -> Result<(), RuntimeError> {
+        if self.strict {
+            Err(RuntimeError::TypeError(message.into()))
+        } else {
+            Ok(())
+        }
     }
 
     fn super_call(&mut self, args: Vec<Value>) -> Result<Value, RuntimeError> {
@@ -5649,6 +5675,7 @@ mod tests {
         vm.heap.prevent_extensions(receiver).unwrap();
         vm.home_object = Some(home);
         vm.this = Value::Object(receiver);
+        vm.strict = true;
         assert_eq!(
             vm.super_set(&"value".into(), &Value::Number(1.0)),
             Err(RuntimeError::TypeError(

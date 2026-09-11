@@ -408,12 +408,13 @@ struct Completion {
 /// which is the wrong outcome for a request that was never going to
 /// reach the network either way.
 ///
-/// A well-formed http(s) URL bumps `tab_id`'s entry in
-/// `pending_nav_seq` and hands the rest of the work (both gatekeeper
-/// stages, the fetch) to a background thread that reports its outcome
-/// over `completion_tx`, tagged with the sequence number just bumped
-/// to -- this is what lets [`apply_completion`] later recognize and
-/// discard a stale/superseded completion.
+/// Every navigation bumps `tab_id`'s entry in `pending_nav_seq` before
+/// choosing its synchronous or asynchronous path. That makes a built-in
+/// page or invalid-URL response supersede an older fetch just as an http(s)
+/// navigation does. A well-formed http(s) URL then hands the rest of the
+/// work (both gatekeeper stages, the fetch) to a background thread tagged
+/// with the sequence number just bumped to -- this is what lets
+/// [`apply_completion`] later recognize and discard a stale completion.
 #[allow(clippy::too_many_arguments)]
 fn begin_gated_navigation<S: Write>(
     page: &mut Page,
@@ -429,6 +430,10 @@ fn begin_gated_navigation<S: Write>(
     completion_tx: &mpsc::Sender<Completion>,
     gatekeeper_socket: &Path,
 ) -> io::Result<()> {
+    let seq = pending_nav_seq.entry(tab_id).or_insert(0);
+    *seq += 1;
+    let this_seq = *seq;
+
     if let Some(html) = crate::page::built_in_page(&url) {
         page.load_html_str(&html, Some(url));
         return reply_success(
@@ -445,10 +450,6 @@ fn begin_gated_navigation<S: Write>(
     if let Err(e) = blueice_net::validate_url_scheme(&url) {
         return write_error(stream, reply_tab, request_id, e.to_string());
     }
-
-    let seq = pending_nav_seq.entry(tab_id).or_insert(0);
-    *seq += 1;
-    let this_seq = *seq;
 
     let tx = completion_tx.clone();
     let socket = gatekeeper_socket.to_path_buf();
@@ -833,6 +834,55 @@ mod tests {
     fn default_page(tabs: &mut TabManager) -> &mut Page {
         let default = tabs.default_tab();
         tabs.get_mut(default).unwrap()
+    }
+
+    #[test]
+    fn synchronous_navigation_paths_supersede_pending_navigation_sequences() {
+        let dir = temp_frame_dir("sync-navigation-supersedes");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut page = Page::new(320.0, 200.0);
+        let mut stream = Vec::new();
+        let mut generation = 0;
+        let tab = TabId::from_u64(7);
+        let mut pending_nav_seq = HashMap::from([(tab, 41)]);
+        let (completion_tx, _completion_rx) = mpsc::channel();
+        let unused_gatekeeper = unique_gatekeeper_socket_path("sync-navigation-supersedes");
+
+        begin_gated_navigation(
+            &mut page,
+            &mut stream,
+            &dir,
+            &mut generation,
+            Some(tab.as_u64()),
+            None,
+            tab,
+            "about:blank".to_string(),
+            PendingKind::Navigate,
+            &mut pending_nav_seq,
+            &completion_tx,
+            &unused_gatekeeper,
+        )
+        .unwrap();
+        assert_eq!(pending_nav_seq[&tab], 42);
+
+        begin_gated_navigation(
+            &mut page,
+            &mut stream,
+            &dir,
+            &mut generation,
+            Some(tab.as_u64()),
+            None,
+            tab,
+            "file:///not-allowed".to_string(),
+            PendingKind::Navigate,
+            &mut pending_nav_seq,
+            &completion_tx,
+            &unused_gatekeeper,
+        )
+        .unwrap();
+        assert_eq!(pending_nav_seq[&tab], 43);
+
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

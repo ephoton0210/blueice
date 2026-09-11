@@ -410,12 +410,7 @@ pub(crate) fn integer(value: &Value) -> Result<f64, RuntimeError> {
 }
 
 pub(crate) fn uint32(value: &Value) -> Result<u32, RuntimeError> {
-    let number = primitive::number(value)?;
-    Ok(if number.is_finite() {
-        number.trunc().rem_euclid(4294967296.0) as u32
-    } else {
-        0
-    })
+    Ok(primitive::to_uint32(primitive::number(value)?))
 }
 
 pub(crate) fn length(value: &Value) -> Result<f64, RuntimeError> {

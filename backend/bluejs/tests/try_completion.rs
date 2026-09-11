@@ -81,6 +81,18 @@ fn direct_eval_uses_the_callers_bindings_completion_and_strictness() {
 }
 
 #[test]
+fn sloppy_super_assignment_uses_ordinary_assignment_failure_rules() {
+    let mut vm = Vm::default();
+    for source in [
+        "let proto={};Object.defineProperty(proto,'value',{value:1,writable:false});let object={__proto__:proto,write(){super.value=2;return this.value;}};object.write()===1&&object.value===1",
+        "let proto={get value(){return 1;}};let object={__proto__:proto,write(){super.value=2;return this.value;}};object.write()===1&&object.value===1",
+        "let proto={value:1};let object={__proto__:proto,write(){super.value=2;return this.value;}};Object.preventExtensions(object);object.write()===1&&object.value===1",
+    ] {
+        assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)), "{source}");
+    }
+}
+
+#[test]
 fn named_function_expressions_bind_their_name_and_reuse_tail_frames() {
     let mut vm = Vm::new(VmConfig {
         instruction_budget: 5_000_000,

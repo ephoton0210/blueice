@@ -204,6 +204,22 @@ fn literals_holes_index_updates_and_length_coercions_execute() {
 }
 
 #[test]
+fn sparse_array_searches_preserve_holes_and_only_visit_present_indices() {
+    assert_eq!(
+        evaluate(
+            "let a=new Array(100000);a[99999]=7;a['01']=9;a.includes(7)&&a.indexOf(7)===99999&&!a.includes(7,100000)&&a.includes(undefined)&&a.indexOf(undefined)===-1&&a.indexOf(9)===-1",
+        ),
+        Ok(Value::Bool(true))
+    );
+    assert_eq!(
+        evaluate(
+            "Array.prototype[50000]=8;let a=new Array(100000);a.includes(8)&&a.indexOf(8)===50000",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
 fn invalid_runtime_lengths_report_range_errors_and_vm_remains_reusable() {
     let mut vm = Vm::default();
     for source in [

@@ -27,6 +27,8 @@ fn disconnected_transport_is_a_worker_failure_not_a_timeout() {
         replies,
         io_thread: None,
         failed: true,
+        pattern: None,
+        input: None,
     };
     assert!(matches!(
         worker.transact(vec![], Duration::from_millis(100)),
@@ -45,6 +47,8 @@ fn closed_request_channel_fails_before_waiting() {
         replies,
         io_thread: None,
         failed: true,
+        pattern: None,
+        input: None,
     };
     assert!(matches!(
         worker.transact(vec![], Duration::from_millis(100)),
@@ -54,24 +58,18 @@ fn closed_request_channel_fails_before_waiting() {
 
 #[test]
 fn timed_out_transport_releases_the_cached_process() {
-    let request = Request {
-        source: "(a+)+$".encode_utf16().collect(),
-        flags: String::new(),
-        input: Some(format!("{}!", "a".repeat(40)).encode_utf16().collect()),
-        start: 0,
-    };
     assert!(matches!(
-        super::request(request, Duration::from_millis(40)),
+        super::find(
+            "(a+)+$".encode_utf16().collect(),
+            String::new(),
+            format!("{}!", "a".repeat(40)).encode_utf16().collect(),
+            0,
+            Duration::from_millis(40),
+        ),
         Err(RuntimeError::RegexTimeout)
     ));
-    let request = Request {
-        source: vec![97],
-        flags: String::new(),
-        input: Some(vec![97]),
-        start: 0,
-    };
     assert!(matches!(
-        super::request(request, DEFAULT_TIMEOUT),
-        Ok(Reply::Found(Some(_)))
+        super::find(vec![97], String::new(), vec![97], 0, DEFAULT_TIMEOUT),
+        Ok(Some(_))
     ));
 }

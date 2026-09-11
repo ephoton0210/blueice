@@ -21,11 +21,29 @@ const MAX_FRAME: usize = 16 * 1024 * 1024;
 const READY: &[u8] = b"bluejs-regexp-worker/1";
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct Request {
-    pub source: Vec<u16>,
-    pub flags: String,
-    pub input: Option<Vec<u16>>,
-    pub start: usize,
+#[serde(untagged)]
+enum Request {
+    // Kept for direct worker clients from protocol version 1. New parent
+    // requests use the cache-aware variants below.
+    Legacy {
+        source: Vec<u16>,
+        flags: String,
+        input: Option<Vec<u16>>,
+        start: usize,
+    },
+    Compile {
+        source: Vec<u16>,
+        flags: String,
+    },
+    Find {
+        // Omitted fields reuse the worker's most recently supplied pattern
+        // or subject. The parent only omits them after this same worker has
+        // acknowledged the corresponding full request.
+        source: Option<Vec<u16>>,
+        flags: Option<String>,
+        input: Option<Vec<u16>>,
+        start: usize,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -103,6 +121,8 @@ struct Worker {
     replies: Receiver<io::Result<Vec<u8>>>,
     io_thread: Option<JoinHandle<()>>,
     failed: bool,
+    pattern: Option<(Vec<u16>, String)>,
+    input: Option<Vec<u16>>,
 }
 
 impl Worker {
@@ -153,6 +173,8 @@ impl Worker {
             replies,
             io_thread: Some(io_thread),
             failed: false,
+            pattern: None,
+            input: None,
         };
         // Process startup is separately bounded; cold executable loading must
         // not consume a short budget intended for a regex operation.
@@ -181,6 +203,77 @@ impl Worker {
             })?
             .map_err(worker_error)
     }
+
+    fn request(
+        &mut self,
+        request: Request,
+        timeout: Duration,
+        input_length: Option<usize>,
+    ) -> Result<Reply, RuntimeError> {
+        let bytes = serde_json::to_vec(&request).map_err(worker_error)?;
+        if bytes.len() > MAX_FRAME {
+            return Err(worker_error("regex request exceeds frame limit"));
+        }
+        let bytes = self.transact(bytes, timeout)?;
+        let reply: Reply = serde_json::from_slice(&bytes).map_err(worker_error)?;
+        if input_length.is_some_and(
+            |length| matches!(&reply, Reply::Found(Some(matched)) if !matched.valid(length)),
+        ) {
+            return Err(worker_error("invalid regex capture range"));
+        }
+        Ok(reply)
+    }
+
+    fn compile(
+        &mut self,
+        source: Vec<u16>,
+        flags: String,
+        timeout: Duration,
+    ) -> Result<Reply, RuntimeError> {
+        let reply = self.request(
+            Request::Compile {
+                source: source.clone(),
+                flags: flags.clone(),
+            },
+            timeout,
+            None,
+        )?;
+        if matches!(reply, Reply::Compiled) {
+            self.pattern = Some((source, flags));
+        }
+        Ok(reply)
+    }
+
+    fn find(
+        &mut self,
+        source: Vec<u16>,
+        flags: String,
+        input: Vec<u16>,
+        start: usize,
+        timeout: Duration,
+    ) -> Result<Option<Match>, RuntimeError> {
+        let include_pattern = !self
+            .pattern
+            .as_ref()
+            .is_some_and(|(old_source, old_flags)| *old_source == source && *old_flags == flags);
+        let include_input = self.input.as_ref() != Some(&input);
+        let reply = self.request(
+            Request::Find {
+                source: include_pattern.then(|| source.clone()),
+                flags: include_pattern.then(|| flags.clone()),
+                input: include_input.then(|| input.clone()),
+                start,
+            },
+            timeout,
+            Some(input.len()),
+        )?;
+        let Reply::Found(matched) = reply else {
+            return Err(RuntimeError::RegexWorker("unexpected match reply".into()));
+        };
+        self.pattern = Some((source, flags));
+        self.input = Some(input);
+        Ok(matched)
+    }
 }
 
 impl Drop for Worker {
@@ -202,29 +295,43 @@ fn worker_error(error: impl std::fmt::Display) -> RuntimeError {
     RuntimeError::RegexWorker(error.to_string())
 }
 
-pub(crate) fn request(request: Request, timeout: Duration) -> Result<Reply, RuntimeError> {
-    let length = request.input.as_ref().map_or(0, Vec::len);
-    let bytes = serde_json::to_vec(&request).map_err(worker_error)?;
-    if bytes.len() > MAX_FRAME {
-        return Err(worker_error("regex request exceeds frame limit"));
+fn cache_pattern(
+    cached: &mut Option<(Vec<u16>, String, regress::Regex)>,
+    source: Vec<u16>,
+    flags: String,
+) -> Result<(), String> {
+    let same = cached
+        .as_ref()
+        .is_some_and(|(old_source, old_flags, _)| *old_source == source && *old_flags == flags);
+    if same {
+        return Ok(());
     }
-    thread_local! { static WORKER: RefCell<Option<Worker>> = const { RefCell::new(None) }; }
+    let unicode = flags.contains(['u', 'v']);
+    let points: Vec<u32> = if unicode {
+        char::decode_utf16(source.iter().copied())
+            .map(|c| c.map_or_else(|e| u32::from(e.unpaired_surrogate()), |c| c as u32))
+            .collect()
+    } else {
+        source.iter().map(|&c| u32::from(c)).collect()
+    };
+    let regex =
+        regress::Regex::from_unicode(points.into_iter(), regress::Flags::from(flags.as_str()))
+            .map_err(|error| error.to_string())?;
+    *cached = Some((source, flags, regex));
+    Ok(())
+}
+
+thread_local! { static WORKER: RefCell<Option<Worker>> = const { RefCell::new(None) }; }
+
+fn with_worker<T>(
+    operation: impl FnOnce(&mut Worker) -> Result<T, RuntimeError>,
+) -> Result<T, RuntimeError> {
     WORKER.with(|slot| {
         let mut slot = slot.borrow_mut();
         if slot.is_none() {
             *slot = Some(Worker::start().map_err(worker_error)?);
         }
-        let result = slot
-            .as_mut()
-            .unwrap()
-            .transact(bytes, timeout)
-            .and_then(|bytes| {
-                let reply: Reply = serde_json::from_slice(&bytes).map_err(worker_error)?;
-                if matches!(&reply, Reply::Found(Some(matched)) if !matched.valid(length)) {
-                    return Err(worker_error("invalid regex capture range"));
-                }
-                Ok(reply)
-            });
+        let result = operation(slot.as_mut().unwrap());
         if result.is_err() {
             let mut worker = slot.take().unwrap();
             worker.failed = true;
@@ -233,12 +340,31 @@ pub(crate) fn request(request: Request, timeout: Duration) -> Result<Reply, Runt
     })
 }
 
+pub(crate) fn compile(
+    source: Vec<u16>,
+    flags: String,
+    timeout: Duration,
+) -> Result<Reply, RuntimeError> {
+    with_worker(|worker| worker.compile(source, flags, timeout))
+}
+
+pub(crate) fn find(
+    source: Vec<u16>,
+    flags: String,
+    input: Vec<u16>,
+    start: usize,
+    timeout: Duration,
+) -> Result<Option<Match>, RuntimeError> {
+    with_worker(|worker| worker.find(source, flags, input, start, timeout))
+}
+
 /// Entry point for the separately installed matcher executable.
 #[doc(hidden)]
 pub fn serve() -> io::Result<()> {
     let (mut input, mut output) = (io::stdin().lock(), io::stdout().lock());
     frame_write(&mut output, READY)?;
     let mut cached: Option<(Vec<u16>, String, regress::Regex)> = None;
+    let mut cached_input = None;
     loop {
         let bytes = match frame_read(&mut input) {
             Ok(bytes) => bytes,
@@ -246,52 +372,81 @@ pub fn serve() -> io::Result<()> {
             Err(error) => return Err(error),
         };
         let request: Request = serde_json::from_slice(&bytes)?;
-        let same = cached
-            .as_ref()
-            .is_some_and(|(source, flags, _)| *source == request.source && *flags == request.flags);
-        if !same {
-            let unicode = request.flags.contains(['u', 'v']);
-            let points: Vec<u32> = if unicode {
-                char::decode_utf16(request.source.iter().copied())
-                    .map(|c| c.map_or_else(|e| u32::from(e.unpaired_surrogate()), |c| c as u32))
-                    .collect()
-            } else {
-                request.source.iter().map(|&c| u32::from(c)).collect()
-            };
-            match regress::Regex::from_unicode(
-                points.into_iter(),
-                regress::Flags::from(request.flags.as_str()),
-            ) {
-                Ok(regex) => cached = Some((request.source, request.flags.clone(), regex)),
-                Err(error) => {
-                    frame_write(
-                        &mut output,
-                        &serde_json::to_vec(&Reply::SyntaxError(error.to_string()))?,
-                    )?;
-                    continue;
+        let request = match request {
+            Request::Legacy {
+                source,
+                flags,
+                input: Some(input),
+                start,
+            } => Request::Find {
+                source: Some(source),
+                flags: Some(flags),
+                input: Some(input),
+                start,
+            },
+            Request::Legacy {
+                source,
+                flags,
+                input: None,
+                ..
+            } => Request::Compile { source, flags },
+            request => request,
+        };
+        let reply = match request {
+            Request::Legacy { .. } => unreachable!("legacy requests are normalized above"),
+            Request::Compile { source, flags } => match cache_pattern(&mut cached, source, flags) {
+                Ok(()) => Reply::Compiled,
+                Err(message) => Reply::SyntaxError(message),
+            },
+            Request::Find {
+                source,
+                flags,
+                input,
+                start,
+            } => {
+                if let Some(source) = source {
+                    let flags = flags.ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidData, "missing regex flags")
+                    })?;
+                    if let Err(message) = cache_pattern(&mut cached, source, flags) {
+                        frame_write(
+                            &mut output,
+                            &serde_json::to_vec(&Reply::SyntaxError(message))?,
+                        )?;
+                        continue;
+                    }
+                } else if flags.is_some() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "regex flags without a pattern",
+                    ));
                 }
+                if let Some(input) = input {
+                    cached_input = Some(input);
+                }
+                let input = cached_input.as_ref().ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "missing regex subject")
+                })?;
+                let (_, flags, regex) = cached.as_ref().ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "missing regex pattern")
+                })?;
+                let found = if start > input.len() {
+                    None
+                } else if flags.contains(['u', 'v']) {
+                    regex.find_from_utf16(input, start).next()
+                } else {
+                    regex.find_from_ucs2(input, start).next()
+                };
+                Reply::Found(found.map(|m| {
+                    Match {
+                        captures: m.groups().collect(),
+                        names: m
+                            .named_groups()
+                            .map(|(name, range)| (name.to_string(), range))
+                            .collect(),
+                    }
+                }))
             }
-        }
-        let reply = if let Some(input) = request.input {
-            let regex = &cached.as_ref().unwrap().2;
-            let found = if request.start > input.len() {
-                None
-            } else if request.flags.contains(['u', 'v']) {
-                regex.find_from_utf16(&input, request.start).next()
-            } else {
-                regex.find_from_ucs2(&input, request.start).next()
-            };
-            Reply::Found(found.map(|m| {
-                Match {
-                    captures: m.groups().collect(),
-                    names: m
-                        .named_groups()
-                        .map(|(name, range)| (name.to_string(), range))
-                        .collect(),
-                }
-            }))
-        } else {
-            Reply::Compiled
         };
         frame_write(&mut output, &serde_json::to_vec(&reply)?)?;
     }

@@ -40,6 +40,7 @@ opcodes! {
     DeleteUnboundName: 5, 0;
     DeleteDynamicBinding: 5, 0;
     EnterScope: 5, 0;
+    CloneScope: 5, 0;
     LeaveScope: 5, 0;
     Pop: 1, 0;
     Dup: 1, 0;

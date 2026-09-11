@@ -1398,6 +1398,17 @@ impl Compiler {
         });
         self.statement(body, false)?;
         let continue_at = self.offset()?;
+        // CreatePerIterationEnvironment happens after the body and before
+        // the update expression.  That leaves closures made by this turn
+        // attached to its old cells while the update writes into the next
+        // iteration's bindings.  `continue` targets this point as well.
+        if own_scope {
+            let scope = *self
+                .scopes
+                .last()
+                .expect("lexical for scope remains active");
+            self.emit(Opcode::CloneScope, scope)?;
+        }
         if let Some(update) = update {
             self.expression(update)?;
             self.emit(Opcode::Pop, 0)?;

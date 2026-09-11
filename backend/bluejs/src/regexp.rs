@@ -37,13 +37,8 @@ impl RegExp {
             .iter()
             .map(|&c| char::from_u32(c as u32).unwrap())
             .collect();
-        let request = crate::regex_worker::Request {
-            source: source.as_code_units().to_vec(),
-            flags: flags.clone(),
-            input: None,
-            start: 0,
-        };
-        match crate::regex_worker::request(request, timeout)? {
+        match crate::regex_worker::compile(source.as_code_units().to_vec(), flags.clone(), timeout)?
+        {
             crate::regex_worker::Reply::Compiled => {}
             crate::regex_worker::Reply::SyntaxError(message) => {
                 return Err(RuntimeError::SyntaxError(message))
@@ -64,16 +59,13 @@ impl RegExp {
         start: usize,
         timeout: std::time::Duration,
     ) -> Result<Option<crate::regex_worker::Match>, RuntimeError> {
-        let request = crate::regex_worker::Request {
-            source: self.source.as_code_units().to_vec(),
-            flags: self.flags.clone(),
-            input: Some(string.as_code_units().to_vec()),
+        crate::regex_worker::find(
+            self.source.as_code_units().to_vec(),
+            self.flags.clone(),
+            string.as_code_units().to_vec(),
             start,
-        };
-        match crate::regex_worker::request(request, timeout)? {
-            crate::regex_worker::Reply::Found(matched) => Ok(matched),
-            _ => Err(RuntimeError::RegexWorker("unexpected match reply".into())),
-        }
+            timeout,
+        )
     }
 }
 

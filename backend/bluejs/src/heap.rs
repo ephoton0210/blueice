@@ -176,6 +176,10 @@ pub(crate) enum GeneratorState {
 }
 
 impl GeneratorState {
+    fn managed_bytes(&self) -> usize {
+        self.references().len() * size_of::<ObjectId>()
+    }
+
     fn references(&self) -> Vec<ObjectId> {
         match self {
             Self::Start {
@@ -257,6 +261,7 @@ enum ObjectKind {
     },
     Generator {
         state: Box<GeneratorState>,
+        state_bytes: usize,
     },
     BoundFunction(BoundFunction),
     StringIterator {
@@ -330,7 +335,7 @@ impl Object {
                     .copied()
                     .chain(this.object_id())
                     .collect::<Vec<_>>(),
-                ObjectKind::Generator { state } => state.references(),
+                ObjectKind::Generator { state, .. } => state.references(),
                 ObjectKind::BoundFunction(bound) => std::iter::once(bound.target)
                     .chain(bound.this.object_id())
                     .chain(bound.args.iter().filter_map(Value::object_id))
@@ -356,6 +361,32 @@ fn property_bytes(key: &PropertyName, value: &Value) -> usize {
     (size_of::<(PropertyName, Value)>() + size_of::<PropertyName>())
         .saturating_add(key.byte_len().saturating_mul(2))
         .saturating_add(value.payload_bytes())
+}
+
+fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<ObjectId> {
+    prototype
+        .into_iter()
+        .chain(match kind {
+            ObjectKind::Closure { captures, this, .. } => captures
+                .iter()
+                .copied()
+                .chain(this.object_id())
+                .collect::<Vec<_>>(),
+            ObjectKind::Generator { state, .. } => state.references(),
+            ObjectKind::BoundFunction(bound) => std::iter::once(bound.target)
+                .chain(bound.this.object_id())
+                .chain(bound.args.iter().filter_map(Value::object_id))
+                .collect(),
+            ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
+            ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
+            ObjectKind::ArrayIterator { object, .. } => vec![*object],
+            ObjectKind::Arguments { parameter_map } => parameter_map.values().copied().collect(),
+            ObjectKind::ModuleNamespace { exports } => {
+                exports.iter().map(|(_, cell)| *cell).collect()
+            }
+            _ => Vec::new(),
+        })
+        .collect()
 }
 
 /// An ordinary-object and sparse-array heap. It owns storage, property writes
@@ -595,9 +626,11 @@ impl Heap {
         state: GeneratorState,
         prototype: ObjectId,
     ) -> Result<ObjectId, HeapError> {
+        let state_bytes = state.managed_bytes();
         self.alloc(
             ObjectKind::Generator {
                 state: Box::new(state),
+                state_bytes,
             },
             Some(prototype),
         )
@@ -611,7 +644,7 @@ impl Heap {
             .objects
             .get_mut(&object)
             .ok_or(HeapError::InvalidObject(object))?;
-        let ObjectKind::Generator { state } = &mut entry.kind else {
+        let ObjectKind::Generator { state, .. } = &mut entry.kind else {
             return Err(HeapError::InvalidObject(object));
         };
         Ok(*std::mem::replace(state, Box::new(GeneratorState::Done)))
@@ -627,16 +660,39 @@ impl Heap {
         // generator object, so this internal-slot write needs the same
         // remembered-set barrier as an ordinary property write.
         let references = state.references();
+        let state_bytes = state.managed_bytes();
+        let old_state_bytes = match &self
+            .objects
+            .get(&object)
+            .ok_or(HeapError::InvalidObject(object))?
+            .kind
+        {
+            ObjectKind::Generator { state_bytes, .. } => *state_bytes,
+            _ => return Err(HeapError::InvalidObject(object)),
+        };
+        // Collection may be needed before a suspended frame is restored.
+        // Keep both the generator and its incoming references alive across it.
+        let protected: Vec<_> = std::iter::once(object)
+            .chain(references.iter().copied())
+            .collect();
+        self.ensure_room(state_bytes.saturating_sub(old_state_bytes), &protected)?;
         {
             let entry = self
                 .objects
                 .get_mut(&object)
                 .ok_or(HeapError::InvalidObject(object))?;
-            let ObjectKind::Generator { state: current } = &mut entry.kind else {
+            let ObjectKind::Generator {
+                state: current,
+                state_bytes: current_bytes,
+            } = &mut entry.kind
+            else {
                 return Err(HeapError::InvalidObject(object));
             };
             **current = state;
+            *current_bytes = state_bytes;
+            entry.bytes = entry.bytes - old_state_bytes + state_bytes;
         }
+        self.managed_bytes = self.managed_bytes - old_state_bytes + state_bytes;
         for reference in references {
             self.write_barrier(object, Some(reference));
         }
@@ -1271,33 +1327,10 @@ impl Heap {
             .next_object
             .checked_add(1)
             .ok_or(HeapError::IdExhausted)?;
-        let protected: Vec<_> = prototype
-            .into_iter()
-            .chain(match &kind {
-                ObjectKind::Closure { captures, this, .. } => captures
-                    .iter()
-                    .copied()
-                    .chain(this.object_id())
-                    .collect::<Vec<_>>(),
-                ObjectKind::Generator { state } => state.references(),
-                ObjectKind::BoundFunction(bound) => std::iter::once(bound.target)
-                    .chain(bound.this.object_id())
-                    .chain(bound.args.iter().filter_map(Value::object_id))
-                    .collect(),
-                ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
-                ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
-                ObjectKind::ArrayIterator { object, .. } => vec![*object],
-                ObjectKind::Arguments { parameter_map } => {
-                    parameter_map.values().copied().collect()
-                }
-                ObjectKind::ModuleNamespace { exports } => {
-                    exports.iter().map(|(_, cell)| *cell).collect()
-                }
-                _ => Vec::new(),
-            })
-            .collect();
+        let mut protected = None;
         if self.nursery.len() >= self.config.nursery_capacity {
-            self.minor_gc(&protected);
+            protected = Some(allocation_references(&kind, prototype));
+            self.minor_gc(protected.as_deref().expect("allocated above"));
         }
         let bytes = OBJECT_BYTES
             + match &kind {
@@ -1320,7 +1353,7 @@ impl Heap {
                 ObjectKind::Closure { captures, this, .. } => {
                     captures.len() * size_of::<ObjectId>() + this.payload_bytes()
                 }
-                ObjectKind::Generator { state } => state.references().len() * size_of::<ObjectId>(),
+                ObjectKind::Generator { state_bytes, .. } => *state_bytes,
                 ObjectKind::BoundFunction(bound) => {
                     bound.this.payload_bytes()
                         + bound.args.len() * size_of::<Value>()
@@ -1335,7 +1368,17 @@ impl Heap {
                     .sum(),
                 _ => 0,
             };
-        self.ensure_room(bytes, &protected)?;
+        if self
+            .managed_bytes
+            .checked_add(bytes)
+            .is_none_or(|total| total >= self.next_major_bytes)
+        {
+            let protected =
+                protected.get_or_insert_with(|| allocation_references(&kind, prototype));
+            self.ensure_room(bytes, protected)?;
+        } else {
+            self.ensure_room(bytes, &[])?;
+        }
         let id = ObjectId {
             heap: self.identity,
             serial: self.next_object,
@@ -2003,6 +2046,71 @@ mod tests {
             assert!(references.contains(&object));
         }
         assert!(GeneratorState::Done.references().is_empty());
+    }
+
+    #[test]
+    fn restoring_generator_state_updates_its_managed_byte_charge() {
+        let mut heap = Heap::default();
+        let prototype = heap.alloc_object(None).unwrap();
+        let generator = heap
+            .alloc_generator(GeneratorState::Done, prototype)
+            .unwrap();
+        let saved = heap.alloc_object(None).unwrap();
+        let baseline = heap.stats().managed_bytes;
+
+        heap.set_generator_state(
+            generator,
+            GeneratorState::Start {
+                code: Rc::new(Bytecode::empty()),
+                captures: vec![saved],
+                callee: Value::Undefined,
+                receiver: Value::Undefined,
+                args: Vec::new(),
+                home: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(heap.stats().managed_bytes, baseline + size_of::<ObjectId>());
+
+        heap.set_generator_state(generator, GeneratorState::Done)
+            .unwrap();
+        assert_eq!(heap.stats().managed_bytes, baseline);
+    }
+
+    #[test]
+    fn restoring_generator_state_respects_the_heap_limit() {
+        let mut heap = Heap::new(HeapConfig {
+            nursery_capacity: 16,
+            major_threshold_bytes: 1_024,
+            max_heap_bytes: 4_096,
+        })
+        .unwrap();
+        let prototype = heap.alloc_object(None).unwrap();
+        let generator = heap
+            .alloc_generator(GeneratorState::Done, prototype)
+            .unwrap();
+        let saved = heap.alloc_object(None).unwrap();
+        let baseline = heap.stats().managed_bytes;
+
+        assert_eq!(
+            heap.set_generator_state(
+                generator,
+                GeneratorState::Start {
+                    code: Rc::new(Bytecode::empty()),
+                    captures: vec![saved; 1_024],
+                    callee: Value::Undefined,
+                    receiver: Value::Undefined,
+                    args: Vec::new(),
+                    home: None,
+                },
+            ),
+            Err(HeapError::HeapLimitExceeded { limit: 4_096 })
+        );
+        assert_eq!(heap.stats().managed_bytes, baseline);
+        assert!(matches!(
+            heap.take_generator_state(generator),
+            Ok(GeneratorState::Done)
+        ));
     }
 
     #[test]
