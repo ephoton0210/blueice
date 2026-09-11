@@ -402,6 +402,7 @@ impl Vm {
             Some(
                 NativeFunction::String
                     | NativeFunction::Array
+                    | NativeFunction::Proxy
                     | NativeFunction::Map
                     | NativeFunction::Set
                     | NativeFunction::Object
@@ -412,6 +413,57 @@ impl Vm {
                     | NativeFunction::PrimitiveConstructor(_)
             )
         ))
+    }
+
+    fn proxy_constructor(
+        &mut self,
+        args: &[Value],
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        if !construct {
+            return Err(RuntimeError::TypeError(
+                "Proxy constructor requires 'new'".into(),
+            ));
+        }
+        let target = native::argument(args, 0)
+            .object_id()
+            .ok_or_else(|| RuntimeError::TypeError("Proxy target must be an object".into()))?;
+        let handler = native::argument(args, 1)
+            .object_id()
+            .ok_or_else(|| RuntimeError::TypeError("Proxy handler must be an object".into()))?;
+        let prototype = self.heap.prototype(target)?;
+        Ok(Value::Object(self.with_roots(|heap| {
+            heap.alloc_proxy(target, handler, prototype)
+        })?))
+    }
+
+    /// Implements Proxy.[[HasProperty]] for a `has` trap. Other proxy
+    /// internal methods deliberately remain unimplemented until their traps
+    /// have compatible receiver and invariant handling.
+    pub(super) fn proxy_has(
+        &mut self,
+        proxy: ObjectId,
+        key: &PropertyName,
+    ) -> Result<bool, RuntimeError> {
+        let Some((target, handler)) = self.heap.proxy(proxy)? else {
+            return self.has_property(proxy, key);
+        };
+        let trap = self.get_property(&Value::Object(handler), &"has".into())?;
+        if trap == Value::Undefined {
+            return self.has_property(target, key);
+        }
+        if !self.is_callable(&trap)? {
+            return Err(RuntimeError::TypeError(
+                "Proxy has trap must be callable".into(),
+            ));
+        }
+        let result = self.call_native(
+            trap,
+            Value::Object(handler),
+            vec![Value::Object(target), key.value()],
+            false,
+        )?;
+        self.to_boolean(&result)
     }
 
     pub(super) fn array_like_values(&mut self, value: &Value) -> Result<Vec<Value>, RuntimeError> {
@@ -900,9 +952,10 @@ impl Vm {
                     completion: std::mem::replace(&mut self.completion, Value::Undefined),
                     completion_empty: std::mem::replace(&mut self.completion_empty, true),
                     active_scopes: std::mem::take(&mut self.active_scopes),
+                    iterators,
                     dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings)
                         .into_iter()
-                        .map(|(name, binding)| (name, binding.cell))
+                        .map(|(name, binding)| (name, binding.cell, binding.shadowed_cells))
                         .collect(),
                     home: std::mem::take(&mut self.home_object),
                     callee: std::mem::replace(&mut self.callee, Value::Undefined),
@@ -939,7 +992,7 @@ impl Vm {
         state
     }
 
-    fn generator_next(&mut self, receiver: &Value) -> Result<Value, RuntimeError> {
+    fn generator_next(&mut self, receiver: &Value, value: Value) -> Result<Value, RuntimeError> {
         let Value::Object(generator) = receiver else {
             return Err(RuntimeError::TypeError(
                 "Generator next requires a generator".into(),
@@ -958,6 +1011,7 @@ impl Vm {
             frame_completion,
             frame_completion_empty,
             frame_scopes,
+            frame_iterators,
             frame_home,
             frame_callee,
             frame_variable_scope,
@@ -1004,6 +1058,7 @@ impl Vm {
                     Value::Undefined,
                     true,
                     Vec::new(),
+                    Vec::new(),
                     home,
                     callee,
                     variable_scope,
@@ -1022,6 +1077,7 @@ impl Vm {
                 completion,
                 completion_empty,
                 active_scopes,
+                iterators,
                 dynamic_bindings,
                 home,
                 callee,
@@ -1040,7 +1096,7 @@ impl Vm {
                 (
                     code,
                     pc,
-                    Some(Value::Undefined),
+                    Some(value),
                     stack,
                     bindings,
                     cells.into_iter().collect(),
@@ -1049,13 +1105,22 @@ impl Vm {
                     completion,
                     completion_empty,
                     active_scopes,
+                    iterators,
                     home,
                     callee,
                     variable_scope,
                     variable_scope_lexicals,
                     dynamic_bindings
                         .into_iter()
-                        .map(|(name, cell)| (name, DynamicEvalBinding { cell }))
+                        .map(|(name, cell, shadowed_cells)| {
+                            (
+                                name,
+                                DynamicEvalBinding {
+                                    cell,
+                                    shadowed_cells,
+                                },
+                            )
+                        })
                         .collect(),
                 )
             }
@@ -1099,7 +1164,7 @@ impl Vm {
             &mut self.variable_scope_lexicals,
             frame_variable_scope_lexicals,
         );
-        let mut iterators = Vec::new();
+        let mut iterators = frame_iterators;
         let outcome = self.interpret(&code, &mut iterators, pc, resume_value, None, None);
 
         let (next_state, result) = match outcome {
@@ -1107,7 +1172,11 @@ impl Vm {
                 self.stack.truncate(frame_base);
                 (GeneratorState::Done, Ok((value, true)))
             }
-            Ok(InterpreterExit::Yield { value, pc }) => {
+            Ok(InterpreterExit::Yield {
+                value,
+                pc,
+                iterators,
+            }) => {
                 let stack = self.stack.split_off(frame_base);
                 let state = GeneratorState::Suspended {
                     code,
@@ -1120,9 +1189,10 @@ impl Vm {
                     completion: std::mem::replace(&mut self.completion, Value::Undefined),
                     completion_empty: std::mem::replace(&mut self.completion_empty, true),
                     active_scopes: std::mem::take(&mut self.active_scopes),
+                    iterators,
                     dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings)
                         .into_iter()
-                        .map(|(name, binding)| (name, binding.cell))
+                        .map(|(name, binding)| (name, binding.cell, binding.shadowed_cells))
                         .collect(),
                     home: std::mem::take(&mut self.home_object),
                     callee: std::mem::replace(&mut self.callee, Value::Undefined),
@@ -1169,9 +1239,24 @@ impl Vm {
                 "Generator return requires a generator".into(),
             ));
         };
-        let _ = self.heap.take_generator_state(*generator)?;
+        let state = self.heap.take_generator_state(*generator)?;
+        let iterators = match state {
+            GeneratorState::Suspended { iterators, .. } => iterators,
+            GeneratorState::Start { .. } | GeneratorState::Done => Vec::new(),
+        };
         self.heap
             .set_generator_state(*generator, GeneratorState::Done)?;
+        // `Generator.prototype.return` resumes an abrupt completion. A
+        // destructuring iterator open at the yield point must receive
+        // IteratorClose before the generator becomes observable as done.
+        let base = self.stack.len();
+        self.stack.extend(iterators.iter().cloned());
+        let close = iterators
+            .iter()
+            .rev()
+            .try_for_each(|record| self.iterator_close(record));
+        self.stack.truncate(base);
+        close?;
         self.iterator_result(value, true)
     }
 
@@ -2224,6 +2309,7 @@ impl Vm {
             "Function" => NativeFunction::Function,
             "Symbol" => NativeFunction::Symbol,
             "Array" => NativeFunction::Array,
+            "Proxy" => NativeFunction::Proxy,
             "Map" => NativeFunction::Map,
             "Set" => NativeFunction::Set,
             "Promise" => NativeFunction::Promise,
@@ -2247,15 +2333,17 @@ impl Vm {
         };
         let root = self.heap.root(id)?;
         let result = (|| {
-            self.define_data(id, "name", Value::String(name.into()), false, false, true)?;
-            self.define_data(
-                id,
-                "length",
-                Value::Number(if name == "Symbol" { 0.0 } else { 1.0 }),
-                false,
-                false,
-                true,
-            )?;
+            if !matches!(name, "Reflect" | "globalThis") {
+                self.define_data(id, "name", Value::String(name.into()), false, false, true)?;
+                self.define_data(
+                    id,
+                    "length",
+                    Value::Number(if name == "Symbol" { 0.0 } else { 1.0 }),
+                    false,
+                    false,
+                    true,
+                )?;
+            }
             if name == "Symbol" {
                 let symbol_prototype =
                     self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
@@ -2696,6 +2784,7 @@ impl Vm {
                 }
                 self.array_from(args)
             }
+            NativeFunction::Proxy => self.proxy_constructor(&args, construct),
             NativeFunction::Map => self.collection_constructor(true, construct),
             NativeFunction::Set => self.collection_constructor(false, construct),
             NativeFunction::ArrayIsArray => Ok(Value::Bool(
@@ -2709,6 +2798,7 @@ impl Vm {
             NativeFunction::ArrayIncludes => {
                 self.array_includes(&receiver, first, native::argument(&args, 1))
             }
+            NativeFunction::ArrayReduce => self.array_reduce(&receiver, &args),
             NativeFunction::ArrayPush => {
                 let object = self.coerce_object(&receiver)?;
                 let array = Value::Object(object);
@@ -2770,7 +2860,7 @@ impl Vm {
                 };
                 self.iterator_result(value, done)
             }
-            NativeFunction::GeneratorNext => self.generator_next(&receiver),
+            NativeFunction::GeneratorNext => self.generator_next(&receiver, first.clone()),
             NativeFunction::GeneratorReturn => self.generator_return(&receiver, first.clone()),
             NativeFunction::Apply => {
                 if !self.is_callable(&receiver)? {
@@ -3179,6 +3269,62 @@ impl Vm {
         }
         self.stack.pop();
         Ok(Value::Undefined)
+    }
+
+    fn array_reduce(&mut self, receiver: &Value, args: &[Value]) -> Result<Value, RuntimeError> {
+        let callback = native::argument(args, 0);
+        if !self.is_callable(callback)? {
+            return Err(RuntimeError::TypeError(
+                "Array.prototype.reduce callback must be callable".into(),
+            ));
+        }
+        let object = self.coerce_object(receiver)?;
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as u64;
+            let mut index = 0;
+            let mut accumulator = if args.len() > 1 {
+                args[1].clone()
+            } else {
+                loop {
+                    if index >= length {
+                        return Err(RuntimeError::TypeError(
+                            "reduce of empty array with no initial value".into(),
+                        ));
+                    }
+                    let key: PropertyName = index.to_string().into();
+                    if self.has_property(object, &key)? {
+                        let value = self.get_property(&Value::Object(object), &key)?;
+                        index += 1;
+                        break value;
+                    }
+                    index += 1;
+                }
+            };
+            while index < length {
+                self.charge_step()?;
+                let key: PropertyName = index.to_string().into();
+                if self.has_property(object, &key)? {
+                    let value = self.get_property(&Value::Object(object), &key)?;
+                    accumulator = self.call_native(
+                        callback.clone(),
+                        Value::Undefined,
+                        vec![
+                            accumulator,
+                            value,
+                            Value::Number(index as f64),
+                            Value::Object(object),
+                        ],
+                        false,
+                    )?;
+                }
+                index += 1;
+            }
+            Ok(accumulator)
+        })();
+        self.stack.pop();
+        result
     }
 
     fn array_own_indices(

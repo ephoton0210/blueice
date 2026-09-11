@@ -147,6 +147,45 @@ fn strict_unresolvable_assignments_fail_at_put_value_after_the_rhs() {
 }
 
 #[test]
+fn destructuring_assignments_infer_names_for_anonymous_default_definitions() {
+    for source in [
+        "var fn;[fn=function(){}]=[];fn.name==='fn'",
+        "var fn;({fn=function(){}}={});fn.name==='fn'",
+        "var fn;[fn=()=>{}]=[];fn.name==='fn'",
+        "var fn;({fn=class{}}={});fn.name==='fn'",
+    ] {
+        assert_eq!(evaluate(source), Value::Bool(true), "{source}");
+    }
+}
+
+#[test]
+fn simple_identifier_assignments_infer_names_for_anonymous_definitions() {
+    for source in [
+        "var fn;fn=function(){};fn.name==='fn'",
+        "var fn;fn=()=>{};fn.name==='fn'",
+        "var fn;fn=class{};fn.name==='fn'",
+        "var fn;fn=function*(){};fn.name==='fn'",
+        "var fn;fn=(function(){});fn.name==='fn'",
+        "var fn;fn=(0,function(){});fn.name!== 'fn'",
+        "var fn;(fn)=function(){};fn.name===''",
+    ] {
+        assert_eq!(evaluate(source), Value::Bool(true), "{source}");
+    }
+}
+
+#[test]
+fn simple_member_assignment_converts_the_computed_key_after_the_rhs() {
+    let source = "function Expected(){};let rhs=false;let key={toString:function(){throw new Expected;}};let caught=false;try{null[key]=(rhs=true)}catch(error){caught=error instanceof Expected;}rhs&&caught";
+    assert_eq!(evaluate(source), Value::Bool(true));
+}
+
+#[test]
+fn global_constant_properties_materialize_before_a_strict_member_assignment() {
+    let source = "'use strict';let caught=false;try{globalThis.Infinity=0}catch(error){caught=error instanceof TypeError;}caught&&globalThis.Infinity===1/0";
+    assert_eq!(evaluate(source), Value::Bool(true));
+}
+
+#[test]
 fn nested_parentheses_and_ordinary_length_do_not_take_special_paths() {
     assert_eq!(evaluate("(((1+2)*3))"), Value::Number(9.0));
     assert_eq!(
@@ -165,6 +204,31 @@ fn nested_parentheses_and_ordinary_length_do_not_take_special_paths() {
         evaluate("let x; typeof x"),
         Value::String("undefined".into())
     );
+}
+
+#[test]
+fn global_length_can_be_bound_by_a_destructuring_assignment() {
+    let source = "var x,length;var vals=[null];var result=[...{0:x,length}]=vals;x===null&&length===1&&result===vals";
+    let code = compile(&parse(source).unwrap()).unwrap();
+    assert_eq!(Vm::default().execute_script(&code), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn array_reduce_preserves_descriptor_and_skips_holes() {
+    assert_eq!(
+        evaluate("Array;typeof [1].reduce"),
+        Value::String("function".into())
+    );
+    assert_eq!(
+        evaluate("Array;[1,,3].reduce(function(sum,value){return sum+value},2)===6"),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn proxy_has_trap_controls_with_environment_lookup() {
+    let source = "let log=[];let env=new Proxy({},{has(target,key){log.push(key);}});with(env){log.push('body');}log.join(',')";
+    assert_eq!(evaluate(source), Value::String("log,body".into()));
 }
 
 #[test]

@@ -124,3 +124,15 @@ fn with_var_declarations_are_hoisted_through_nested_control_flow() {
         Err(CompileError::DuplicateBinding(_))
     ));
 }
+
+#[test]
+fn sloppy_direct_eval_copies_annex_b_block_functions_into_its_var_environment() {
+    let mut vm = Vm::default();
+    for source in [
+        "var initial,current,outer;(function(){eval('{function f(){initial=f;f=123;current=f;return 33;}}outer=f;f();')}());initial()===33&&current===123&&outer()===33",
+        "function outer(){let f=1;return function(){eval('var f=2');return f;};}outer()()===2",
+        "let g=(function*(){eval('var f=2');yield 0;return f;})();g.next();g.next().value===2",
+    ] {
+        assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)), "{source}");
+    }
+}

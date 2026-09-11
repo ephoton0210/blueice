@@ -169,6 +169,7 @@ enum InterpreterExit {
     Yield {
         value: Value,
         pc: usize,
+        iterators: Vec<Value>,
     },
     Suspend {
         pc: usize,
@@ -204,6 +205,12 @@ struct GlobalBinding {
 /// its cell alive when they capture it.
 struct DynamicEvalBinding {
     cell: ObjectId,
+    /// A direct eval can introduce a binding in the active function's
+    /// VariableEnvironment that shadows a statically captured binding from
+    /// an outer function. Track the exact captured cells, rather than only
+    /// the name: an eval-local block function can use the same name while
+    /// remaining an independent lexical binding.
+    shadowed_cells: Vec<ObjectId>,
 }
 
 /// Runtime data that belongs to one member of a transient static module
@@ -2247,6 +2254,26 @@ impl Vm {
         Ok(())
     }
 
+    /// The realm global's intrinsic properties are created lazily. Property
+    /// access must still observe their specified descriptors, even when the
+    /// name did not first occur as an unqualified identifier.
+    fn materialize_global_object_property(
+        &mut self,
+        object: ObjectId,
+        key: &PropertyName,
+    ) -> Result<(), RuntimeError> {
+        if self.globals.get("globalThis") != Some(&object) {
+            return Ok(());
+        }
+        let PropertyName::String(name) = key else {
+            return Ok(());
+        };
+        let Ok(name) = name.to_utf8() else {
+            return Ok(());
+        };
+        self.materialize_lexical_global(object, &name)
+    }
+
     fn can_declare_global_var(
         &mut self,
         global: ObjectId,
@@ -2379,6 +2406,40 @@ impl Vm {
             Some(binding) => self.heap.get_own(binding.cell, "value").map_err(Into::into),
             None => Ok(None),
         }
+    }
+
+    /// Returns the dynamic eval cell that shadows this exact statically
+    /// resolved cell. A name match by itself is insufficient: Annex B block
+    /// functions in the eval can share the name of the eval's var binding
+    /// without being that binding.
+    fn dynamic_eval_shadowing_cell(&self, name: &str, cell: ObjectId) -> Option<ObjectId> {
+        self.dynamic_eval_bindings
+            .get(name)
+            .into_iter()
+            .chain(
+                self.dynamic_eval_outer_bindings
+                    .iter()
+                    .rev()
+                    .filter_map(|bindings| bindings.get(name)),
+            )
+            .find(|binding| binding.shadowed_cells.contains(&cell))
+            .map(|binding| binding.cell)
+    }
+
+    fn store_dynamic_eval_shadowing_binding(
+        &mut self,
+        slot: usize,
+        name: &str,
+        value: Value,
+    ) -> Result<bool, RuntimeError> {
+        let Some(&cell) = self.cells.get(&slot) else {
+            return Ok(false);
+        };
+        let Some(shadowing) = self.dynamic_eval_shadowing_cell(name, cell) else {
+            return Ok(false);
+        };
+        self.store_global_cell(shadowing, value)?;
+        Ok(true)
     }
 
     fn set_dynamic_eval_binding(&mut self, name: &str, value: Value) -> Result<bool, RuntimeError> {
@@ -2903,15 +2964,36 @@ impl Vm {
     ) -> Result<(), RuntimeError> {
         for &slot in &code.dynamic_eval_slots {
             let binding = &code.bindings[slot as usize];
+            let shadowed_cells: Vec<_> = code
+                .captures
+                .iter()
+                .enumerate()
+                .filter_map(|(captured_slot, _)| {
+                    (code.bindings[captured_slot].name == binding.name)
+                        .then(|| self.cells.get(&captured_slot).copied())
+                        .flatten()
+                })
+                .collect();
             if !self.dynamic_eval_bindings.contains_key(&binding.name) {
                 let cell = self.with_roots(|heap| heap.alloc_object(None))?;
-                self.dynamic_eval_bindings
-                    .insert(binding.name.clone(), DynamicEvalBinding { cell });
+                self.dynamic_eval_bindings.insert(
+                    binding.name.clone(),
+                    DynamicEvalBinding {
+                        cell,
+                        shadowed_cells: shadowed_cells.clone(),
+                    },
+                );
                 if let Err(error) =
                     self.with_roots(|heap| heap.set(cell, "value", Value::Undefined))
                 {
                     self.dynamic_eval_bindings.remove(&binding.name);
                     return Err(error);
+                }
+            } else if let Some(dynamic) = self.dynamic_eval_bindings.get_mut(&binding.name) {
+                for cell in shadowed_cells {
+                    if !dynamic.shadowed_cells.contains(&cell) {
+                        dynamic.shadowed_cells.push(cell);
+                    }
                 }
             }
             self.eval_dynamic_slots
@@ -3079,17 +3161,17 @@ impl Vm {
         names.into_iter().collect()
     }
 
-    /// A static captured binding is outside the current function's variable
-    /// environment. A sloppy direct eval declaration in that environment
-    /// shadows it for later reads, while a local binding remains dominant.
+    /// A sloppy direct eval declaration can shadow a static captured binding
+    /// from an outer function. The dynamic binding records the exact cell it
+    /// masks, so an eval-local block binding with the same name stays visible.
     fn eval_aware_binding_value(
         &mut self,
         slot: usize,
         name: &str,
     ) -> Result<Option<Value>, RuntimeError> {
-        if self.cells.contains_key(&slot) {
-            if let Some(value) = self.dynamic_eval_binding_value(name)? {
-                return Ok(Some(value));
+        if let Some(&cell) = self.cells.get(&slot) {
+            if let Some(shadowing) = self.dynamic_eval_shadowing_cell(name, cell) {
+                return self.heap.get_own(shadowing, "value").map_err(Into::into);
             }
         }
         self.binding_value(slot)
@@ -3389,6 +3471,19 @@ impl Vm {
                             pc = operand;
                         }
                     }
+                    Opcode::IteratorStepReference => {
+                        let base = self.stack.len() - 3;
+                        let record = self.stack[base].clone();
+                        iterators.retain(|active| active != &record);
+                        let result = self.iterator_step(&record, true)?;
+                        self.stack.remove(base);
+                        if let Some(value) = result {
+                            iterators.push(record);
+                            self.stack.push(value);
+                        } else {
+                            pc = operand;
+                        }
+                    }
                     Opcode::IteratorElision => {
                         let record = self.stack.last().unwrap().clone();
                         iterators.retain(|active| active != &record);
@@ -3432,6 +3527,20 @@ impl Vm {
                         self.stack.truncate(base);
                         self.stack.push(array);
                     }
+                    Opcode::IteratorRestReference => {
+                        let base = self.stack.len() - 3;
+                        let record = self.stack[base].clone();
+                        iterators.retain(|active| active != &record);
+                        iterators.push(record.clone());
+                        let array = self.array_from(Vec::new())?;
+                        self.stack.push(array.clone());
+                        while let Some(value) = self.iterator_step(&record, true)? {
+                            self.charge_step()?;
+                            self.array_push(&array, &value, 0)?;
+                        }
+                        iterators.retain(|active| active != &record);
+                        self.stack.remove(base);
+                    }
                     Opcode::RequireObject => {
                         let value = self.stack.last().unwrap().clone();
                         self.coerce_object(&value)?;
@@ -3445,6 +3554,25 @@ impl Vm {
                         self.array_push(&excluded, &key.value(), 0)?;
                         self.stack.truncate(base);
                         self.stack.extend([source, excluded, value]);
+                    }
+                    Opcode::DestructurePropertyReference => {
+                        // [..., source, excluded, source-key, source-key,
+                        // target-object, raw-target-key] becomes [...,
+                        // source, excluded, target-object, raw-target-key,
+                        // value].
+                        // The duplicate source key keeps target evaluation
+                        // ahead of GetV without changing excluded-key order.
+                        let base = self.stack.len() - 6;
+                        let source = self.stack[base].clone();
+                        let excluded = self.stack[base + 1].clone();
+                        let source_key = self.coerce_property_key(&self.stack[base + 2].clone())?;
+                        let object = self.stack[base + 4].clone();
+                        let raw_target_key = self.stack[base + 5].clone();
+                        let value = self.get_property(&source, &source_key)?;
+                        self.array_push(&excluded, &source_key.value(), 0)?;
+                        self.stack.truncate(base);
+                        self.stack
+                            .extend([source, excluded, object, raw_target_key, value]);
                     }
                     Opcode::ObjectRest => {
                         let base = self.stack.len() - 2;
@@ -3744,18 +3872,23 @@ impl Vm {
                                     && (slot as usize) < code.bindings.len() =>
                             {
                                 let slot = slot as usize;
-                                if self.binding_value(slot)?.is_none() {
-                                    return Err(RuntimeError::ReferenceError(
-                                        code.bindings[slot].name.clone(),
-                                    ));
+                                let name = &code.bindings[slot].name;
+                                if !self.store_dynamic_eval_shadowing_binding(
+                                    slot,
+                                    name,
+                                    value.clone(),
+                                )? {
+                                    if self.binding_value(slot)?.is_none() {
+                                        return Err(RuntimeError::ReferenceError(name.clone()));
+                                    }
+                                    if !code.bindings[slot].mutable {
+                                        return Err(RuntimeError::TypeError(format!(
+                                            "assignment to constant {}",
+                                            name
+                                        )));
+                                    }
+                                    self.store_binding(slot, value.clone())?;
                                 }
-                                if !code.bindings[slot].mutable {
-                                    return Err(RuntimeError::TypeError(format!(
-                                        "assignment to constant {}",
-                                        code.bindings[slot].name
-                                    )));
-                                }
-                                self.store_binding(slot, value.clone())?;
                             }
                             (Value::Undefined, Value::String(name)) => {
                                 let name =
@@ -3800,6 +3933,37 @@ impl Vm {
                             })?;
                         self.stack.push(value);
                     }
+                    Opcode::ResolveBindingReference => {
+                        let slot = operand;
+                        let dynamic = self.cells.get(&slot).and_then(|cell| {
+                            self.dynamic_eval_shadowing_cell(&code.bindings[slot].name, *cell)
+                        });
+                        // `Number(slot), Null` is a static binding reference;
+                        // replacing Null with a cell records a dynamic eval
+                        // binding that was already visible at resolution.
+                        self.stack.push(Value::Number(slot as f64));
+                        self.stack
+                            .push(dynamic.map(Value::Object).unwrap_or(Value::Null));
+                    }
+                    Opcode::LoadBindingReference => {
+                        let marker = self.pop();
+                        let target = self.pop();
+                        let Value::Number(slot) = target else {
+                            panic!("compiler emits a binding reference: target={target:?}, marker={marker:?}")
+                        };
+                        let slot = slot as usize;
+                        let value = match marker {
+                            Value::Null => self.binding_value(slot)?,
+                            Value::Object(cell) => self.heap.get_own(cell, "value")?,
+                            _ => unreachable!("compiler emits a binding reference marker"),
+                        }
+                        .ok_or_else(|| {
+                            RuntimeError::ReferenceError(code.bindings[slot].name.clone())
+                        })?;
+                        self.stack.push(Value::Number(slot as f64));
+                        self.stack.push(marker);
+                        self.stack.push(value);
+                    }
                     Opcode::InitializeBinding => {
                         let value = self.pop();
                         self.store_binding(operand, value)?;
@@ -3807,21 +3971,71 @@ impl Vm {
                     Opcode::StoreBinding => {
                         // ECMA-262 §9.1.1.1.5: TDZ takes precedence over the
                         // immutable-binding assignment error, including const.
-                        if self.binding_value(operand)?.is_none() {
-                            return Err(RuntimeError::ReferenceError(
-                                code.bindings[operand].name.clone(),
-                            ));
+                        let name = &code.bindings[operand].name;
+                        let value = self.stack.last().expect("store has a value").clone();
+                        if !self.store_dynamic_eval_shadowing_binding(operand, name, value)? {
+                            if self.binding_value(operand)?.is_none() {
+                                return Err(RuntimeError::ReferenceError(name.clone()));
+                            }
+                            if !code.bindings[operand].mutable {
+                                return Err(RuntimeError::TypeError(format!(
+                                    "assignment to constant {}",
+                                    name
+                                )));
+                            }
+                            self.store_binding(
+                                operand,
+                                self.stack.last().expect("store has a value").clone(),
+                            )?;
                         }
-                        if !code.bindings[operand].mutable {
-                            return Err(RuntimeError::TypeError(format!(
-                                "assignment to constant {}",
-                                code.bindings[operand].name
-                            )));
+                    }
+                    Opcode::StoreBindingReference => {
+                        let (target, marker, value, result) = if operand == 0 {
+                            let value = self.pop();
+                            let marker = self.pop();
+                            let target = self.pop();
+                            (target, marker, value.clone(), value)
+                        } else {
+                            // A postfix update leaves its original value
+                            // below the reference's new value.
+                            let base = self.stack.len() - 4;
+                            let target = self.stack[base].clone();
+                            let marker = self.stack[base + 1].clone();
+                            let result = self.stack[base + 2].clone();
+                            let value = self.stack[base + 3].clone();
+                            self.stack.truncate(base);
+                            (target, marker, value, result)
+                        };
+                        let Value::Number(slot) = target else {
+                            unreachable!("compiler emits a binding reference")
+                        };
+                        let slot = slot as usize;
+                        match marker {
+                            Value::Null => {
+                                if self.binding_value(slot)?.is_none() {
+                                    return Err(RuntimeError::ReferenceError(
+                                        code.bindings[slot].name.clone(),
+                                    ));
+                                }
+                                if !code.bindings[slot].mutable {
+                                    return Err(RuntimeError::TypeError(format!(
+                                        "assignment to constant {}",
+                                        code.bindings[slot].name
+                                    )));
+                                }
+                                self.store_binding(slot, value.clone())?;
+                            }
+                            Value::Object(cell) => self.store_global_cell(cell, value.clone())?,
+                            _ => unreachable!("compiler emits a binding reference marker"),
                         }
-                        self.store_binding(
-                            operand,
-                            self.stack.last().expect("store has a value").clone(),
-                        )?;
+                        if operand != 0 {
+                            // The compiler removes the new value first and
+                            // leaves the old value as the postfix result.
+                            self.stack.push(result);
+                            self.stack.push(value);
+                        } else {
+                            self.stack.push(result);
+                        }
                     }
                     Opcode::UnboundName | Opcode::TypeofName => {
                         let Value::String(name) = &code.constants[operand] else {
@@ -4040,6 +4254,17 @@ impl Vm {
                         self.stack.truncate(base);
                         self.stack.push(value);
                     }
+                    Opcode::SetDestructurePropertyReference => {
+                        // IteratorStepReference removed the iterator record,
+                        // leaving object, raw key and element value in order.
+                        let base = self.stack.len() - 3;
+                        let object = self.stack[base].clone();
+                        let key = self.coerce_property_key(&self.stack[base + 1].clone())?;
+                        let value = self.stack[base + 2].clone();
+                        self.set_property(&object, &key, &value)?;
+                        self.stack.truncate(base);
+                        self.stack.push(value);
+                    }
                     Opcode::UpdateProperty => {
                         let (object, key) = self.property_reference()?;
                         self.stack.push(object.clone());
@@ -4122,7 +4347,11 @@ impl Vm {
             }
             if let Some(completion) = completion {
                 if let Completion::Yield(value) = completion {
-                    return Ok(InterpreterExit::Yield { value, pc });
+                    return Ok(InterpreterExit::Yield {
+                        value,
+                        pc,
+                        iterators: std::mem::take(iterators),
+                    });
                 }
                 match self.resolve_completion(code, &mut handlers, iterators, completion)? {
                     CompletionAction::Continue => {}
@@ -4175,6 +4404,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         match receiver {
             Value::Object(id) => {
+                self.materialize_global_object_property(*id, key)?;
                 if let Some(cell) = self.global_property_cell(*id, key) {
                     return self
                         .heap
@@ -4259,6 +4489,7 @@ impl Vm {
         value: &Value,
     ) -> Result<(), RuntimeError> {
         if let Value::Object(object) = receiver {
+            self.materialize_global_object_property(*object, key)?;
             if let Some(cell) = self.global_property_cell(*object, key) {
                 let result = self.with_roots(|heap| heap.set(*object, key.clone(), value.clone()));
                 return match result {
@@ -4806,6 +5037,13 @@ impl Vm {
             self.install_native(
                 self.array_prototype,
                 function_prototype,
+                "reduce",
+                1,
+                NativeFunction::ArrayReduce,
+            )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
                 "push",
                 1,
                 NativeFunction::ArrayPush,
@@ -4843,6 +5081,7 @@ impl Vm {
                     (self.array_prototype, "join".into()),
                     (self.array_prototype, "forEach".into()),
                     (self.array_prototype, "includes".into()),
+                    (self.array_prototype, "reduce".into()),
                     (
                         self.array_prototype,
                         JsSymbol::well_known("iterator").into(),
@@ -5076,6 +5315,7 @@ impl Vm {
                 function,
                 NativeFunction::String
                     | NativeFunction::Array
+                    | NativeFunction::Proxy
                     | NativeFunction::Map
                     | NativeFunction::Set
                     | NativeFunction::Object
@@ -5457,6 +5697,9 @@ impl Vm {
             ));
         };
         let key = self.coerce_property_key(key)?;
+        if self.heap.proxy(*object)?.is_some() {
+            return self.proxy_has(*object, &key);
+        }
         self.has_property(*object, &key)
     }
 

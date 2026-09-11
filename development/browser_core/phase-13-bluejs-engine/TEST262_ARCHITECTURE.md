@@ -749,3 +749,58 @@ at `target/test262-dynamic-import-reuse-final` has **5 pass of 5**, and the
 focused `language/module-code/top-level-await/await-awaits-thenable-not-callable`
 run at `target/test262-tla-basic` has **1 pass of 1**. These are bounded
 acceptance slices, not a claim of complete module or async conformance.
+
+## P0.2/P0.3 follow-up: eval Annex B and assignment references
+
+Sloppy direct eval now records the exact captured cells that a dynamically
+declared `var` or function binding masks. A name-only lookup incorrectly
+treated an eval-local Annex B block-function cell as the outer dynamic binding
+of the same name. The cell-based relation preserves the block function's
+independent mutable lexical binding while still making a dynamically declared
+name shadow a closure capture from an outer function. The relation is retained
+when a generator suspends and resumes.
+
+Destructuring assignment defaults now use `SetFunctionName` inference for an
+anonymous function, class, or arrow when their target is an identifier. Simple
+computed member assignment retains the raw property value until `PutValue`, so
+the RHS runs before observable `ToPropertyKey` coercion. Direct global-object
+access materializes lazy standard globals before a get or set, preserving the
+non-writable descriptors of `undefined`, `NaN`, and `Infinity` in strict code.
+
+Fresh focused runs using the pinned corpus and eight workers record
+**924/924** passing modes for `language/eval-code` at
+`target/test262-current-eval-code-final`, and **1,185 pass, 191 fail,
+112 unsupported** of 1,488 modes for `language/expressions/assignment` at
+`target/test262-current-assignment-final`. The remaining assignment modes are
+principally unsupported grammar/async-generator cases and unrelated
+destructuring iterator paths; these measurements do not close P0.2 or P0.3.
+
+## P0.1–P0.3 continuation: assignment slice closure
+
+The assignment parser now recognizes exponentiation, logical-assignment and
+optional-chain syntax sufficiently to classify all assignment-target early
+errors, while execution of positive grammar outside the implemented runtime
+surface remains explicit. Parenthesized expressions retain their
+AssignmentTargetType: `(name)` is a valid reference but is not an
+IdentifierReference for anonymous function name inference. Strict-mode
+`(eval)` and `(arguments)` assignments continue to fail during early-error
+checking.
+
+Identifier assignment and update bytecode now retain a resolved binding
+reference across RHS execution. This preserves PutValue semantics when a
+sloppy direct eval introduces a same-named `var` while the RHS runs. Generator
+suspension retains active destructuring iterator records, including the
+required close on `.return()`. Keyed object and array destructuring preserve
+the specified target/source-key evaluation order, and computed `super`
+assignment defers `ToPropertyKey` until PutValue.
+
+The intrinsic surface gained `Array.prototype.reduce`, and the realm global
+no longer incorrectly exposes a read-only function `length` property.
+`Proxy` currently implements construction and the `has` trap needed by
+with-environment lookup; its target and handler are heap-traced. Other Proxy
+internal methods remain deliberately outside this bounded slice.
+
+A fresh eight-worker run at `target/test262-current-assignment-complete-3`
+records **1,488 pass, 0 fail and 0 unsupported** of 1,488 scheduled
+`language/expressions/assignment` modes. This closes that focused assignment
+slice only; it is not a claim of complete ECMAScript conformance.

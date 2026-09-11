@@ -1274,9 +1274,15 @@ impl Compiler {
         Ok(())
     }
 
-    /// Replaces an `undefined` binding value with a pattern/parameter
-    /// initializer.  `null` remains a value, as required by ECMA-262.
-    fn pattern_default(&mut self, default: Option<&Expr>) -> Result<(), CompileError> {
+    /// Replaces an `undefined` destructuring-assignment value with its
+    /// initializer. An anonymous function, class, or arrow default receives
+    /// the IdentifierReference target's inferred name; `null` remains a
+    /// value, as required by ECMA-262.
+    fn assignment_pattern_default(
+        &mut self,
+        default: Option<&Expr>,
+        pattern: &AssignmentPattern,
+    ) -> Result<(), CompileError> {
         let Some(default) = default else {
             return Ok(());
         };
@@ -1285,7 +1291,16 @@ impl Compiler {
         self.emit(Opcode::StrictEqual, 0)?;
         let skip = self.emit(Opcode::JumpIfFalse, 0)?;
         self.emit(Opcode::Pop, 0)?;
-        self.expression(default)?;
+        self.expression_with_name(
+            default,
+            match pattern {
+                AssignmentPattern::Target(target) => match &**target {
+                    Expr::Identifier(name) => Some(name.as_str()),
+                    _ => None,
+                },
+                _ => None,
+            },
+        )?;
         self.patch(skip, self.offset()?);
         Ok(())
     }
@@ -1320,6 +1335,7 @@ impl Compiler {
         inferred_name: Option<&str>,
     ) -> Result<(), CompileError> {
         match expression {
+            Expr::Parenthesized(expression) => self.expression_with_name(expression, inferred_name),
             Expr::Function(function) if function.name.is_none() && inferred_name.is_some() => {
                 self.function_named(function, false, inferred_name, false)
             }
@@ -1508,10 +1524,10 @@ impl Compiler {
                             self.emit(Opcode::GlobalString, 0)?;
                         }
                         "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number"
-                        | "Boolean" | "BigInt" | "Array" | "Function" | "globalThis" | "Intl"
-                        | "Promise" | "Error" | "TypeError" | "eval" | "isNaN" | "isFinite"
-                        | "parseInt" | "parseFloat" | "JSON" | "RangeError" | "SyntaxError"
-                        | "ReferenceError" | "EvalError" | "URIError" => {
+                        | "Boolean" | "BigInt" | "Array" | "Function" | "Proxy" | "globalThis"
+                        | "Intl" | "Promise" | "Error" | "TypeError" | "eval" | "isNaN"
+                        | "isFinite" | "parseInt" | "parseFloat" | "JSON" | "RangeError"
+                        | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" => {
                             let index = self.bytecode.constants.len() as u32;
                             self.bytecode
                                 .constants
@@ -1576,7 +1592,7 @@ impl Compiler {
                     return Ok(());
                 }
                 if *op == UnaryOp::Typeof
-                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Function" | "globalThis" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "JSON"))
+                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Function" | "Proxy" | "globalThis" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "JSON"))
                 {
                     let Expr::Identifier(name) = &**arg else {
                         unreachable!()
@@ -1738,6 +1754,7 @@ impl Compiler {
                     "super must be used as a property access or constructor call",
                 ))
             }
+            Expr::ImportMeta => return Err(CompileError::Unsupported("import.meta")),
             Expr::Member {
                 object,
                 property,
@@ -1749,6 +1766,10 @@ impl Compiler {
             Expr::Member { .. } => {
                 self.member_reference(expr)?;
                 self.emit(Opcode::GetProperty, 0)?;
+            }
+            Expr::Parenthesized(expr) => self.expression(expr)?,
+            Expr::OptionalMember { .. } => {
+                return Err(CompileError::Unsupported("optional chaining"))
             }
             Expr::Assign { op, target, value } => self.assignment(*op, target, value)?,
             Expr::DestructureAssign { pattern, value } => {
@@ -1763,7 +1784,8 @@ impl Compiler {
                         None
                     };
                     if let Some(slot) = binding {
-                        self.emit(Opcode::GetBinding, slot)?;
+                        self.emit(Opcode::ResolveBindingReference, slot)?;
+                        self.emit(Opcode::LoadBindingReference, 0)?;
                     } else {
                         self.emit(Opcode::UnboundName, name_index.unwrap())?;
                     }
@@ -1780,8 +1802,10 @@ impl Compiler {
                         },
                         0,
                     )?;
-                    if let Some(slot) = binding {
-                        self.emit(Opcode::StoreBinding, slot)?;
+                    if binding.is_some() {
+                        // Postfix update keeps the previous numeric value on
+                        // the stack as its expression result.
+                        self.emit(Opcode::StoreBindingReference, u32::from(!*prefix))?;
                     } else {
                         self.emit(Opcode::SetUnboundName, name_index.unwrap())?;
                     }
@@ -2128,6 +2152,25 @@ impl Compiler {
         target: &Expr,
         value: &Expr,
     ) -> Result<(), CompileError> {
+        if matches!(
+            op,
+            AssignOp::LogicalAndAssign | AssignOp::LogicalOrAssign | AssignOp::NullishAssign
+        ) {
+            return Err(CompileError::Unsupported("logical assignment"));
+        }
+        // AssignmentExpression gives an anonymous function definition the
+        // syntactic IdentifierReference target's name. Member references and
+        // compound assignments deliberately do not participate.
+        let inferred_name = match (op, target) {
+            (AssignOp::Assign, Expr::Identifier(name)) => Some(name.as_str()),
+            _ => None,
+        };
+        // A CoverParenthesizedExpression can still evaluate to a reference,
+        // but it is not an IdentifierReference for SetFunctionName.
+        let target = match target {
+            Expr::Parenthesized(inner) => inner.as_ref(),
+            target => target,
+        };
         if matches!(target, Expr::Call { .. }) {
             if self.bytecode.strict {
                 return Err(CompileError::InvalidSyntax(
@@ -2152,7 +2195,7 @@ impl Compiler {
                     self.emit(Opcode::Dup, 0)?;
                     self.emit(Opcode::SuperGet, 0)?;
                 }
-                self.expression(value)?;
+                self.expression_with_name(value, inferred_name)?;
                 if let Some(opcode) = compound_assignment_opcode(op) {
                     self.emit(opcode, 0)?;
                 }
@@ -2170,7 +2213,7 @@ impl Compiler {
                 if op != AssignOp::Assign {
                     self.emit(Opcode::LoadWithReference, 0)?;
                 }
-                self.expression(value)?;
+                self.expression_with_name(value, inferred_name)?;
                 if let Some(opcode) = compound_assignment_opcode(op) {
                     self.emit(opcode, 0)?;
                 }
@@ -2184,7 +2227,7 @@ impl Compiler {
                 if op != AssignOp::Assign {
                     self.emit(Opcode::UnboundName, index)?;
                 }
-                self.expression(value)?;
+                self.expression_with_name(value, inferred_name)?;
                 if let Some(opcode) = compound_assignment_opcode(op) {
                     self.emit(opcode, 0)?;
                 }
@@ -2207,23 +2250,38 @@ impl Compiler {
                 None
             }
         } else {
-            self.member_reference(target)?;
+            if op == AssignOp::Assign {
+                // A simple assignment evaluates the computed property
+                // expression with its base first, but ToPropertyKey runs in
+                // PutValue after the RHS. Keep the raw key on the stack for
+                // SetProperty to convert at that later point.
+                self.member_reference_uncoerced(target)?;
+            } else {
+                self.member_reference(target)?;
+            }
             None
         };
+        if let Some(slot) = binding {
+            // Evaluate an IdentifierReference before the RHS, as required by
+            // PutValue. In particular, a sloppy direct eval in the RHS may
+            // introduce a same-named var binding, but it cannot retarget the
+            // reference that was already resolved here.
+            self.emit(Opcode::ResolveBindingReference, slot)?;
+        }
         if op != AssignOp::Assign {
-            if let Some(slot) = binding {
-                self.emit(Opcode::GetBinding, slot)?;
+            if binding.is_some() {
+                self.emit(Opcode::LoadBindingReference, 0)?;
             } else {
                 self.emit(Opcode::Dup2, 0)?;
                 self.emit(Opcode::GetProperty, 0)?;
             }
         }
-        self.expression(value)?;
+        self.expression_with_name(value, inferred_name)?;
         if let Some(opcode) = compound_assignment_opcode(op) {
             self.emit(opcode, 0)?;
         }
-        if let Some(slot) = binding {
-            self.emit(Opcode::StoreBinding, slot)?;
+        if binding.is_some() {
+            self.emit(Opcode::StoreBindingReference, 0)?;
         } else {
             self.emit(Opcode::SetProperty, 0)?;
         }
@@ -2253,13 +2311,47 @@ impl Compiler {
                         continue;
                     };
                     if element.rest {
-                        self.emit(Opcode::IteratorRest, 0)?;
-                        self.assign_pattern(&element.pattern)?;
+                        match &element.pattern {
+                            AssignmentPattern::Target(target)
+                                if matches!(&**target, Expr::Member { .. }) =>
+                            {
+                                self.emit(Opcode::Dup, 0)?;
+                                self.member_reference_uncoerced(target)?;
+                                self.emit(Opcode::IteratorRestReference, 0)?;
+                                self.assign_prepared_pattern_target(target)?;
+                                // IteratorRestReference keeps the original
+                                // record below the prepared reference while
+                                // collecting. Rest exhaustion marks it done,
+                                // so discard that retained record now.
+                                self.emit(Opcode::Pop, 0)?;
+                            }
+                            _ => {
+                                self.emit(Opcode::IteratorRest, 0)?;
+                                self.assign_pattern(&element.pattern)?;
+                            }
+                        }
                         return Ok(());
                     }
-                    self.array_pattern_value()?;
-                    self.pattern_default(element.default.as_ref())?;
-                    self.assign_pattern(&element.pattern)?;
+                    let prepared_member_target = match &element.pattern {
+                        AssignmentPattern::Target(target)
+                            if matches!(&**target, Expr::Member { .. }) =>
+                        {
+                            self.emit(Opcode::Dup, 0)?;
+                            self.member_reference_uncoerced(target)?;
+                            self.array_pattern_reference_value()?;
+                            Some(target.as_ref())
+                        }
+                        _ => {
+                            self.array_pattern_value()?;
+                            None
+                        }
+                    };
+                    self.assignment_pattern_default(element.default.as_ref(), &element.pattern)?;
+                    if let Some(target) = prepared_member_target {
+                        self.assign_prepared_pattern_target(target)?;
+                    } else {
+                        self.assign_pattern(&element.pattern)?;
+                    }
                 }
                 self.emit(Opcode::IteratorFinish, 0)?;
             }
@@ -2274,9 +2366,31 @@ impl Compiler {
                             default,
                         } => {
                             self.property_key(key)?;
-                            self.emit(Opcode::DestructureProperty, 0)?;
-                            self.pattern_default(default.as_ref())?;
-                            self.assign_pattern(value)?;
+                            let prepared_member_target = match value {
+                                AssignmentPattern::Target(target)
+                                    if matches!(&**target, Expr::Member { .. }) =>
+                                {
+                                    // Preserve the already-coerced source
+                                    // key while evaluating the assignment
+                                    // target reference before GetV(source,
+                                    // key), as KeyedDestructuringAssignment
+                                    // Evaluation requires.
+                                    self.emit(Opcode::Dup, 0)?;
+                                    self.member_reference_uncoerced(target)?;
+                                    self.emit(Opcode::DestructurePropertyReference, 0)?;
+                                    Some(target.as_ref())
+                                }
+                                _ => {
+                                    self.emit(Opcode::DestructureProperty, 0)?;
+                                    None
+                                }
+                            };
+                            self.assignment_pattern_default(default.as_ref(), value)?;
+                            if let Some(target) = prepared_member_target {
+                                self.assign_prepared_pattern_target(target)?;
+                            } else {
+                                self.assign_pattern(value)?;
+                            }
                         }
                         AssignmentPatternProp::Rest(pattern) => {
                             self.emit(Opcode::ObjectRest, 0)?;
@@ -2310,7 +2424,44 @@ impl Compiler {
         Ok(())
     }
 
+    /// Completes a member assignment whose object and raw key were evaluated
+    /// before IteratorStep. Destructuring requires that ordering, while
+    /// ToPropertyKey and PutValue happen only after the element is obtained.
+    fn assign_prepared_pattern_target(&mut self, target: &Expr) -> Result<(), CompileError> {
+        if !matches!(target, Expr::Member { .. }) {
+            return Err(CompileError::InvalidSyntax(
+                "prepared destructuring target must be a member reference",
+            ));
+        }
+        self.emit(Opcode::SetDestructurePropertyReference, 0)?;
+        self.emit(Opcode::Pop, 0)?;
+        Ok(())
+    }
+
+    /// Like [`Self::array_pattern_value`], but an already-evaluated member
+    /// reference is above the iterator record on the operand stack.
+    fn array_pattern_reference_value(&mut self) -> Result<(), CompileError> {
+        let exhausted = self.emit(Opcode::IteratorStepReference, 0)?;
+        let joined = self.emit(Opcode::Jump, 0)?;
+        self.patch(exhausted, self.offset()?);
+        self.constant(Value::Undefined)?;
+        self.patch(joined, self.offset()?);
+        Ok(())
+    }
+
     fn member_reference(&mut self, target: &Expr) -> Result<(), CompileError> {
+        self.member_reference_with_key(target, true)
+    }
+
+    fn member_reference_uncoerced(&mut self, target: &Expr) -> Result<(), CompileError> {
+        self.member_reference_with_key(target, false)
+    }
+
+    fn member_reference_with_key(
+        &mut self,
+        target: &Expr,
+        coerce_key: bool,
+    ) -> Result<(), CompileError> {
         let Expr::Member {
             object,
             property,
@@ -2334,7 +2485,9 @@ impl Compiler {
                 "invalid non-computed member AST",
             ));
         }
-        self.emit(Opcode::ToPropertyKey, 0)?;
+        if coerce_key {
+            self.emit(Opcode::ToPropertyKey, 0)?;
+        }
         Ok(())
     }
 
@@ -2355,7 +2508,9 @@ impl Compiler {
                 "invalid non-computed super member AST",
             ));
         }
-        self.emit(Opcode::ToPropertyKey, 0)?;
+        // SuperGet/SuperSet own ToPropertyKey. Keeping the raw computed key
+        // here makes simple `super[key] = rhs` evaluate the RHS before key
+        // conversion, as PutValue requires.
         Ok(())
     }
 
@@ -3001,8 +3156,11 @@ fn strict_assignment_in_property_key(key: &PropertyKey) -> bool {
 }
 
 fn strict_assignment_target(expression: &Expr) -> bool {
-    matches!(expression, Expr::Identifier(name) if restricted_name(name))
-        || strict_assignment_in_expression(expression)
+    match expression {
+        Expr::Identifier(name) => restricted_name(name),
+        Expr::Parenthesized(expression) => strict_assignment_target(expression),
+        expression => strict_assignment_in_expression(expression),
+    }
 }
 
 fn restricted_name(name: &str) -> bool {
@@ -3021,8 +3179,10 @@ fn strict_assignment_in_expression(expression: &Expr) -> bool {
         | Expr::RegExp { .. }
         | Expr::Super
         | Expr::NewTarget
+        | Expr::ImportMeta
         | Expr::Function(_)
         | Expr::Class(_) => false,
+        Expr::Parenthesized(expression) => strict_assignment_in_expression(expression),
         Expr::Template { expressions, .. } => {
             expressions.iter().any(strict_assignment_in_expression)
         }
@@ -3096,6 +3256,9 @@ fn strict_assignment_in_expression(expression: &Expr) -> bool {
                 })
         }
         Expr::Member {
+            object, property, ..
+        } => strict_assignment_in_expression(object) || strict_assignment_in_expression(property),
+        Expr::OptionalMember {
             object, property, ..
         } => strict_assignment_in_expression(object) || strict_assignment_in_expression(property),
     }
@@ -3208,6 +3371,7 @@ fn binary_opcode(op: BinaryOp) -> Result<Opcode, CompileError> {
         BinaryOp::Add => Opcode::Add,
         BinaryOp::Sub => Opcode::Subtract,
         BinaryOp::Mul => Opcode::Multiply,
+        BinaryOp::Exponent => return Err(CompileError::Unsupported("exponentiation")),
         BinaryOp::Div => Opcode::Divide,
         BinaryOp::Mod => Opcode::Remainder,
         BinaryOp::ShiftLeft => Opcode::ShiftLeft,
@@ -3243,6 +3407,7 @@ fn compound_assignment_opcode(op: AssignOp) -> Option<Opcode> {
         AssignOp::BitAndAssign => Some(Opcode::BitAnd),
         AssignOp::BitXorAssign => Some(Opcode::BitXor),
         AssignOp::BitOrAssign => Some(Opcode::BitOr),
+        AssignOp::LogicalAndAssign | AssignOp::LogicalOrAssign | AssignOp::NullishAssign => None,
     }
 }
 

@@ -168,7 +168,11 @@ pub(crate) enum GeneratorState {
         completion: Value,
         completion_empty: bool,
         active_scopes: Vec<u32>,
-        dynamic_bindings: Vec<(String, ObjectId)>,
+        /// Open iterator records from a destructuring operation at the yield
+        /// suspension point. They must survive GC and be closed by a later
+        /// generator return/throw completion.
+        iterators: Vec<Value>,
+        dynamic_bindings: Vec<(String, ObjectId, Vec<ObjectId>)>,
         home: Option<ObjectId>,
         callee: Value,
     },
@@ -204,6 +208,7 @@ impl GeneratorState {
                 this,
                 args,
                 completion,
+                iterators,
                 dynamic_bindings,
                 home,
                 callee,
@@ -214,9 +219,12 @@ impl GeneratorState {
                 .chain(std::iter::once(this))
                 .chain(args.iter())
                 .chain(std::iter::once(completion))
+                .chain(iterators.iter())
                 .filter_map(Value::object_id)
                 .chain(cells.iter().map(|(_, id)| *id))
-                .chain(dynamic_bindings.iter().map(|(_, id)| *id))
+                .chain(dynamic_bindings.iter().flat_map(|(_, id, shadowed_cells)| {
+                    std::iter::once(*id).chain(shadowed_cells.iter().copied())
+                }))
                 .chain(*home)
                 .chain(callee.object_id())
                 .collect(),
@@ -242,6 +250,10 @@ enum ObjectKind {
     IntlLocale(Rc<crate::intl::Locale>),
     Array {
         length: u32,
+    },
+    Proxy {
+        target: ObjectId,
+        handler: ObjectId,
     },
     /// The `[[ParameterMap]]` of a mapped arguments exotic object. Keys not
     /// present here are ordinary own data properties, as are every property
@@ -343,6 +355,7 @@ impl Object {
                 ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
                 ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
                 ObjectKind::ArrayIterator { object, .. } => vec![*object],
+                ObjectKind::Proxy { target, handler } => vec![*target, *handler],
                 ObjectKind::Arguments { parameter_map } => {
                     parameter_map.values().copied().collect()
                 }
@@ -380,6 +393,7 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
             ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
             ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
             ObjectKind::ArrayIterator { object, .. } => vec![*object],
+            ObjectKind::Proxy { target, handler } => vec![*target, *handler],
             ObjectKind::Arguments { parameter_map } => parameter_map.values().copied().collect(),
             ObjectKind::ModuleNamespace { exports } => {
                 exports.iter().map(|(_, cell)| *cell).collect()
@@ -540,6 +554,29 @@ impl Heap {
         prototype: Option<ObjectId>,
     ) -> Result<ObjectId, HeapError> {
         self.alloc(ObjectKind::Array { length }, prototype)
+    }
+
+    /// Allocates a Proxy exotic object. Trap dispatch stays in the VM so it
+    /// can call JavaScript functions while preserving interpreter roots.
+    pub(crate) fn alloc_proxy(
+        &mut self,
+        target: ObjectId,
+        handler: ObjectId,
+        prototype: Option<ObjectId>,
+    ) -> Result<ObjectId, HeapError> {
+        self.object(target)?;
+        self.object(handler)?;
+        self.alloc(ObjectKind::Proxy { target, handler }, prototype)
+    }
+
+    pub(crate) fn proxy(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<(ObjectId, ObjectId)>, HeapError> {
+        Ok(match self.object(object)?.kind {
+            ObjectKind::Proxy { target, handler } => Some((target, handler)),
+            _ => None,
+        })
     }
 
     /// Allocates the storage for an arguments object. A non-empty parameter
@@ -2001,6 +2038,7 @@ mod tests {
         let cell = heap.alloc_object(None).unwrap();
         let dynamic = heap.alloc_object(None).unwrap();
         let home = heap.alloc_object(None).unwrap();
+        let iterator = heap.alloc_object(None).unwrap();
         let state = GeneratorState::Suspended {
             code: Rc::new(Bytecode::empty()),
             pc: 0,
@@ -2012,13 +2050,14 @@ mod tests {
             completion: Value::Object(completion),
             completion_empty: true,
             active_scopes: Vec::new(),
-            dynamic_bindings: vec![("dynamic".into(), dynamic)],
+            dynamic_bindings: vec![("dynamic".into(), dynamic, Vec::new())],
+            iterators: vec![Value::Object(iterator)],
             home: Some(home),
             callee: Value::Undefined,
         };
         let references = state.references();
         for object in [
-            stack, binding, this, argument, completion, cell, dynamic, home,
+            stack, binding, this, argument, completion, cell, dynamic, home, iterator,
         ] {
             assert!(references.contains(&object));
         }

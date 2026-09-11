@@ -323,6 +323,7 @@ pub enum BinaryOp {
     Add,
     Sub,
     Mul,
+    Exponent,
     Div,
     Mod,
     ShiftLeft,
@@ -364,6 +365,9 @@ pub enum AssignOp {
     BitAndAssign,
     BitXorAssign,
     BitOrAssign,
+    LogicalAndAssign,
+    LogicalOrAssign,
+    NullishAssign,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -412,6 +416,10 @@ pub enum Expr {
     Null,
     This,
     Identifier(String),
+    /// Parentheses preserve AssignmentTargetType metadata: `(name)` remains
+    /// a valid assignment target, but it is not an IdentifierReference for
+    /// anonymous function name inference.
+    Parenthesized(Box<Expr>),
     Template {
         quasis: Vec<JsString>,
         expressions: Vec<Expr>,
@@ -441,6 +449,10 @@ pub enum Expr {
     /// The `import()` expression is distinct from the static module-item
     /// grammar and always evaluates to a Promise.
     DynamicImport(Box<Expr>),
+    /// Module-only meta property. Retained independently of host metadata
+    /// support so its invalid assignment-target shape is rejected at parse
+    /// time.
+    ImportMeta,
     Arrow {
         params: Vec<Param>,
         body: ArrowBody,
@@ -491,6 +503,13 @@ pub enum Expr {
         args: Vec<Argument>,
     },
     Member {
+        object: Box<Expr>,
+        property: Box<Expr>,
+        computed: bool,
+    },
+    /// Retained so assignment-target early errors can be established even
+    /// before optional-chain execution is implemented.
+    OptionalMember {
         object: Box<Expr>,
         property: Box<Expr>,
         computed: bool,
@@ -761,7 +780,9 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
         | Expr::Identifier(_)
         | Expr::RegExp { .. }
         | Expr::Super
-        | Expr::NewTarget => false,
+        | Expr::NewTarget
+        | Expr::ImportMeta => false,
+        Expr::Parenthesized(expr) => expr_contains_super(expr, search),
         Expr::Template { expressions, .. } => expressions
             .iter()
             .any(|expr| expr_contains_super(expr, search)),
@@ -854,6 +875,9 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
                 || expr_contains_super(object, search)
                 || expr_contains_super(property, search)
         }
+        Expr::OptionalMember {
+            object, property, ..
+        } => expr_contains_super(object, search) || expr_contains_super(property, search),
     }
 }
 

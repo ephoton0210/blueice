@@ -136,6 +136,7 @@ pub enum Punct {
     Plus,
     Minus,
     Star,
+    StarStar,
     Slash,
     Percent,
     PlusPlus,
@@ -167,11 +168,15 @@ pub enum Punct {
     Xor,
     Or,
     AndAnd,
+    AndAndAssign,
     OrOr,
+    OrOrAssign,
     Bang,
     Tilde,
     Question,
     QuestionQuestion,
+    QuestionQuestionAssign,
+    QuestionDot,
 }
 
 /// One lexical error -- a plain message rather than a structured enum,
@@ -912,7 +917,10 @@ impl Tokenizer {
                 _ => Punct::Minus,
             },
             '*' => {
-                if self.peek() == Some('=') {
+                if self.peek() == Some('*') {
+                    self.advance();
+                    Punct::StarStar
+                } else if self.peek() == Some('=') {
                     self.advance();
                     Punct::StarAssign
                 } else {
@@ -999,7 +1007,12 @@ impl Tokenizer {
             '&' => {
                 if self.peek() == Some('&') {
                     self.advance();
-                    Punct::AndAnd
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Punct::AndAndAssign
+                    } else {
+                        Punct::AndAnd
+                    }
                 } else if self.peek() == Some('=') {
                     self.advance();
                     Punct::AndAssign
@@ -1010,7 +1023,12 @@ impl Tokenizer {
             '|' => {
                 if self.peek() == Some('|') {
                     self.advance();
-                    Punct::OrOr
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Punct::OrOrAssign
+                    } else {
+                        Punct::OrOr
+                    }
                 } else if self.peek() == Some('=') {
                     self.advance();
                     Punct::OrAssign
@@ -1023,7 +1041,15 @@ impl Tokenizer {
             '?' => {
                 if self.peek() == Some('?') {
                     self.advance();
-                    Punct::QuestionQuestion
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Punct::QuestionQuestionAssign
+                    } else {
+                        Punct::QuestionQuestion
+                    }
+                } else if self.peek() == Some('.') {
+                    self.advance();
+                    Punct::QuestionDot
                 } else {
                     Punct::Question
                 }

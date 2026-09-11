@@ -78,6 +78,7 @@ opcodes! {
     GetProperty: 1, MAY_USE_INLINE_CACHE;
     SetProperty: 1, MAY_USE_INLINE_CACHE;
     SetDestructureProperty: 1, MAY_USE_INLINE_CACHE;
+    SetDestructurePropertyReference: 1, MAY_USE_INLINE_CACHE;
     UpdateProperty: 5, MAY_USE_INLINE_CACHE;
     SetLiteralPrototype: 1, 0;
     SetCompletion: 1, 0;
@@ -112,12 +113,15 @@ opcodes! {
     GetIterator: 1, 0;
     ForInKeys: 1, 0;
     IteratorStep: 5, 0;
+    IteratorStepReference: 5, 0;
     IteratorElision: 1, 0;
     IteratorClose: 1, 0;
     IteratorFinish: 1, 0;
     IteratorRest: 1, 0;
+    IteratorRestReference: 1, 0;
     RequireObject: 1, 0;
     DestructureProperty: 1, 0;
+    DestructurePropertyReference: 1, 0;
     ObjectRest: 1, 0;
     CopyDataProperties: 1, 0;
     RegExpLiteral: 1, 0;
@@ -153,6 +157,12 @@ opcodes! {
     Instanceof: 1, 0;
     In: 1, 0;
     TypeofName: 5, 0;
+    // A lexical binding reference is resolved before an assignment's RHS.
+    // Direct eval can add a same-named var binding during that RHS, so the
+    // reference needs to retain its original target until PutValue.
+    ResolveBindingReference: 5, 0;
+    LoadBindingReference: 1, 0;
+    StoreBindingReference: 5, 0;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

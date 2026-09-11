@@ -66,6 +66,37 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
             json!({"source":"let =", "mode":"sloppy", "parse_only":true}),
             "unclassified_parse_error",
         ),
+        // The adapter must distinguish early errors it can establish from a
+        // valid production whose execution is not implemented yet.  These
+        // assignment-target negatives exercise grammar that used to stop at
+        // an arbitrary subset-parser error.
+        (
+            json!({"source":"([...rest, value] = input)", "mode":"sloppy", "parse_only":true}),
+            "SyntaxError",
+        ),
+        (
+            json!({"source":"(x ??= y) = 1", "mode":"sloppy", "parse_only":true}),
+            "SyntaxError",
+        ),
+        (
+            json!({"source":"x?.y = 1", "mode":"sloppy", "parse_only":true}),
+            "SyntaxError",
+        ),
+        (
+            json!({"source":"x ** y = 1", "mode":"sloppy", "parse_only":true}),
+            "SyntaxError",
+        ),
+        (
+            json!({"source":"({ break } = input)", "mode":"sloppy", "parse_only":true}),
+            "SyntaxError",
+        ),
+        (
+            json!({"source":"\"use strict\"; ({ implements } = input)", "mode":"sloppy", "parse_only":true}),
+            "SyntaxError",
+        ),
+        (json!({"source":"x ??= y", "mode":"sloppy"}), "unsupported"),
+        (json!({"source":"x?.y", "mode":"sloppy"}), "unsupported"),
+        (json!({"source":"x ** y", "mode":"sloppy"}), "unsupported"),
         (
             json!({"source":"switch() {}", "mode":"sloppy", "parse_only":true}),
             "SyntaxError",

@@ -64,8 +64,19 @@ impl From<LexError> for ParseError {
 pub fn parse(source: &str) -> Result<Program, ParseError> {
     let mut parser = Parser::new(source);
     let mut body = Vec::new();
+    let mut directive_prologue = true;
     while !parser.at_eof() {
-        body.push(parser.parse_statement()?);
+        let statement = parser.parse_statement()?;
+        if directive_prologue {
+            if let Stmt::Expr(Expr::String(value)) = &statement {
+                if value == "use strict" {
+                    parser.strict = true;
+                }
+            } else {
+                directive_prologue = false;
+            }
+        }
+        body.push(statement);
     }
     let program = Program { body };
     if contains_super_call_outside_class(&program)
@@ -84,11 +95,15 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
     let mut parser = Parser::new(source);
     parser.module_await = true;
     parser.module = true;
+    parser.strict = true;
     let mut body = Vec::new();
     let mut imports = Vec::new();
     let mut exports = Vec::new();
     while !parser.at_eof() {
-        if parser.check_identifier("import") && !parser.check_punct_at(1, Punct::LParen) {
+        if parser.check_identifier("import")
+            && !parser.check_punct_at(1, Punct::LParen)
+            && !parser.check_punct_at(1, Punct::Dot)
+        {
             imports.extend(parser.parse_import_declaration()?);
         } else if parser.check_identifier("export") {
             parser.parse_export_declaration(&mut body, &mut exports)?;
@@ -305,6 +320,40 @@ fn keyword_as_str(k: Keyword) -> &'static str {
 /// and `++`/`--` operand shapes.
 fn is_valid_ref_target(expr: &Expr) -> bool {
     matches!(expr, Expr::Identifier(_) | Expr::Member { .. })
+        || matches!(expr, Expr::Parenthesized(inner) if is_valid_ref_target(inner))
+}
+
+/// Grouping is not generally observable in the executable AST. It is kept
+/// only while parsing an enclosing assignment so that AssignmentTargetType
+/// can distinguish `(name)` from an IdentifierReference for name inference.
+fn unparenthesize(expr: Expr) -> Expr {
+    match expr {
+        Expr::Parenthesized(expr) => unparenthesize(*expr),
+        expr => expr,
+    }
+}
+
+fn is_assignment_operator(token: &Token) -> bool {
+    matches!(
+        token,
+        Token::Punct(
+            Punct::Assign
+                | Punct::PlusAssign
+                | Punct::MinusAssign
+                | Punct::StarAssign
+                | Punct::SlashAssign
+                | Punct::PercentAssign
+                | Punct::ShiftLeftAssign
+                | Punct::ShiftRightAssign
+                | Punct::UnsignedShiftRightAssign
+                | Punct::AndAssign
+                | Punct::XorAssign
+                | Punct::OrAssign
+                | Punct::AndAndAssign
+                | Punct::OrOrAssign
+                | Punct::QuestionQuestionAssign
+        )
+    )
 }
 
 /// Annex B's optional web-compat extension recognizes only CallExpression
@@ -353,6 +402,11 @@ struct Parser {
     /// even where `await` temporarily becomes an IdentifierName. Static
     /// import/export declarations are restricted to the ModuleItem list.
     module: bool,
+    /// Parser contexts where IdentifierReference excludes strict-reserved
+    /// words. This is activated by a script directive prologue or the Module
+    /// goal so parse-only negative tests do not defer a mandated early error
+    /// to the compiler.
+    strict: bool,
     function_depth: u32,
     static_block_function_depths: Vec<u32>,
 }
@@ -371,6 +425,7 @@ impl Parser {
             async_depth: 0,
             module_await: false,
             module: false,
+            strict: false,
             function_depth: 0,
             static_block_function_depths: Vec::new(),
         }
@@ -399,6 +454,45 @@ impl Parser {
 
     fn current_identifier_escaped(&self) -> bool {
         self.tokens[self.pos].identifier_escaped
+    }
+
+    /// `AssignmentProperty : IdentifierReference Initializer_opt` is more
+    /// restrictive than an object literal's PropertyName. In particular a
+    /// keyword is legal as `{ keyword: target }` but cannot be a shorthand
+    /// assignment target. The token retains whether its spelling was escaped
+    /// so a decoded reserved word is rejected too.
+    fn assignment_property_is_identifier_reference(&self) -> bool {
+        let Token::Identifier(name) = self.peek() else {
+            return false;
+        };
+        if name == "enum" {
+            return false;
+        }
+        if matches!(
+            name.as_str(),
+            "class" | "debugger" | "export" | "extends" | "import" | "super" | "with"
+        ) {
+            return false;
+        }
+        if name == "yield" && (self.generator_depth != 0 || self.strict) {
+            return false;
+        }
+        if name == "await" && (self.async_depth != 0 || self.module_await) {
+            return false;
+        }
+        !(self.strict
+            && matches!(
+                name.as_str(),
+                "implements"
+                    | "interface"
+                    | "let"
+                    | "package"
+                    | "private"
+                    | "protected"
+                    | "public"
+                    | "static"
+                    | "yield"
+            ))
     }
 
     fn at_eof(&self) -> bool {
@@ -588,7 +682,9 @@ impl Parser {
         if self.check_punct(Punct::RBrace) || self.at_eof() || self.newline_before() {
             return Ok(());
         }
-        Err(self.error("expected ';'"))
+        // A completed statement expression can only be followed by an ASI
+        // boundary or a semicolon.  This is not an unsupported production.
+        Err(self.syntax_error("expected ';'"))
     }
 
     // ---- Statements ----
@@ -881,7 +977,7 @@ impl Parser {
                 self.advance();
                 let f = self.parse_function()?;
                 if f.name.is_none() {
-                    return Err(self.error("function declarations require a name"));
+                    return Err(self.syntax_error("function declarations require a name"));
                 }
                 if self.static_block_function_depths.last() == Some(&self.function_depth)
                     && f.name.as_deref() == Some("await")
@@ -897,7 +993,7 @@ impl Parser {
                 self.expect_keyword(Keyword::Function)?;
                 let f = self.parse_function_with_async(true)?;
                 if f.name.is_none() {
-                    return Err(self.error("function declarations require a name"));
+                    return Err(self.syntax_error("function declarations require a name"));
                 }
                 Ok(Stmt::FunctionDecl(f))
             }
@@ -905,7 +1001,7 @@ impl Parser {
                 self.advance();
                 let class = self.parse_class()?;
                 if class.name.is_none() {
-                    return Err(self.error("class declarations require a name"));
+                    return Err(self.syntax_error("class declarations require a name"));
                 }
                 Ok(Stmt::ClassDecl(class))
             }
@@ -1922,19 +2018,20 @@ impl Parser {
     }
 
     fn parse_assignment(&mut self) -> Result<Expr, ParseError> {
-        if let Some(arrow) = self.try_parse_arrow_function()? {
-            return Ok(arrow);
-        }
-        if self.destructuring_assignment_ahead() {
-            let pattern = self.parse_assignment_pattern()?;
-            self.expect_punct(Punct::Assign)?;
-            let value = self.parse_assignment()?;
-            return Ok(Expr::DestructureAssign {
-                pattern,
-                value: Box::new(value),
-            });
-        }
-        let left = self.parse_conditional()?;
+        let left = if let Some(arrow) = self.try_parse_arrow_function()? {
+            arrow
+        } else {
+            if self.destructuring_assignment_ahead() {
+                let pattern = self.parse_assignment_pattern()?;
+                self.expect_punct(Punct::Assign)?;
+                let value = self.parse_assignment()?;
+                return Ok(Expr::DestructureAssign {
+                    pattern,
+                    value: Box::new(value),
+                });
+            }
+            self.parse_conditional()?
+        };
         let op = match self.peek() {
             Token::Punct(Punct::Assign) => Some(AssignOp::Assign),
             Token::Punct(Punct::PlusAssign) => Some(AssignOp::AddAssign),
@@ -1950,12 +2047,20 @@ impl Parser {
             Token::Punct(Punct::AndAssign) => Some(AssignOp::BitAndAssign),
             Token::Punct(Punct::XorAssign) => Some(AssignOp::BitXorAssign),
             Token::Punct(Punct::OrAssign) => Some(AssignOp::BitOrAssign),
+            Token::Punct(Punct::AndAndAssign) => Some(AssignOp::LogicalAndAssign),
+            Token::Punct(Punct::OrOrAssign) => Some(AssignOp::LogicalOrAssign),
+            Token::Punct(Punct::QuestionQuestionAssign) => Some(AssignOp::NullishAssign),
             _ => None,
         };
         let Some(op) = op else {
-            return Ok(left);
+            return Ok(unparenthesize(left));
         };
-        if !is_valid_ref_target(&left) && !is_annex_b_call_assignment_target(&left) {
+        let annex_b_call_target = is_annex_b_call_assignment_target(&left)
+            && !matches!(
+                op,
+                AssignOp::LogicalAndAssign | AssignOp::LogicalOrAssign | AssignOp::NullishAssign
+            );
+        if !is_valid_ref_target(&left) && !annex_b_call_target {
             // An AssignmentExpression whose left-hand side was parsed
             // successfully but is not a reference is an ECMAScript early
             // error, rather than an unsupported production.  This notably
@@ -2004,16 +2109,61 @@ impl Parser {
 
     fn parse_assignment_pattern(&mut self) -> Result<AssignmentPattern, ParseError> {
         match self.peek() {
-            Token::Punct(Punct::LBracket) => self.parse_array_assignment_pattern(),
-            Token::Punct(Punct::LBrace) => self.parse_object_assignment_pattern(),
+            Token::Punct(Punct::LBracket | Punct::LBrace)
+                if !self.cover_assignment_target_has_lhs_suffix() =>
+            {
+                if self.check_punct(Punct::LBracket) {
+                    self.parse_array_assignment_pattern()
+                } else {
+                    self.parse_object_assignment_pattern()
+                }
+            }
             _ => {
                 let target = self.parse_lhs_expression()?;
                 if !is_valid_ref_target(&target) {
-                    return Err(self.error("invalid destructuring assignment target"));
+                    return Err(self.syntax_error("invalid destructuring assignment target"));
                 }
                 Ok(AssignmentPattern::Target(Box::new(target)))
             }
         }
+    }
+
+    /// Array/object literals are cover grammar in a destructuring assignment.
+    /// They form a nested pattern unless the closing delimiter is immediately
+    /// followed by a left-hand-side suffix.  For example, `{}[key]` is a
+    /// member target (including after `...`), whereas `{key}` is a nested
+    /// object pattern.  Looking only at the opener used to misparse the
+    /// former as a pattern and reject a valid rest target as non-final.
+    fn cover_assignment_target_has_lhs_suffix(&self) -> bool {
+        let Some(open) = (match self.peek() {
+            Token::Punct(Punct::LBracket) => Some(Punct::RBracket),
+            Token::Punct(Punct::LBrace) => Some(Punct::RBrace),
+            _ => None,
+        }) else {
+            return false;
+        };
+        let mut delimiters = vec![open];
+        let mut index = self.pos + 1;
+        while let Some(token) = self.tokens.get(index) {
+            match token.token {
+                Token::Punct(Punct::LParen) => delimiters.push(Punct::RParen),
+                Token::Punct(Punct::LBracket) => delimiters.push(Punct::RBracket),
+                Token::Punct(Punct::LBrace) => delimiters.push(Punct::RBrace),
+                Token::Punct(punct) if delimiters.last() == Some(&punct) => {
+                    delimiters.pop();
+                    if delimiters.is_empty() {
+                        return matches!(
+                            self.tokens.get(index + 1).map(|token| &token.token),
+                            Some(Token::Punct(Punct::Dot | Punct::LBracket | Punct::LParen))
+                        );
+                    }
+                }
+                Token::Eof => return false,
+                _ => {}
+            }
+            index += 1;
+        }
+        false
     }
 
     fn parse_array_assignment_pattern(&mut self) -> Result<AssignmentPattern, ParseError> {
@@ -2039,12 +2189,12 @@ impl Parser {
                 rest,
             }));
             if rest && !self.check_punct(Punct::RBracket) {
-                return Err(
-                    self.error("a rest element must be last in a destructuring assignment pattern")
-                );
+                return Err(self.syntax_error(
+                    "a rest element must be last in a destructuring assignment pattern",
+                ));
             }
             if !self.check_punct(Punct::RBracket) {
-                self.expect_punct(Punct::Comma)?;
+                self.expect_punct(Punct::Comma).map_err(known_syntax)?;
             }
         }
         self.expect_punct(Punct::RBracket)?;
@@ -2060,11 +2210,13 @@ impl Parser {
                     self.parse_assignment_pattern()?,
                 ));
                 if !self.check_punct(Punct::RBrace) {
-                    return Err(self.error(
+                    return Err(self.syntax_error(
                         "a rest property must be last in a destructuring assignment pattern",
                     ));
                 }
             } else {
+                let shorthand_is_identifier_reference =
+                    self.assignment_property_is_identifier_reference();
                 let key = self.parse_property_key()?;
                 let (value, default) = if self.eat_punct(Punct::Colon) {
                     let value = self.parse_assignment_pattern()?;
@@ -2075,8 +2227,15 @@ impl Parser {
                     };
                     (value, default)
                 } else {
+                    if !shorthand_is_identifier_reference {
+                        return Err(self.syntax_error(
+                            "destructuring assignment shorthand requires an IdentifierReference",
+                        ));
+                    }
                     let PropertyKey::Identifier(name) = &key else {
-                        return Err(self.error("expected ':' in destructuring assignment pattern"));
+                        return Err(
+                            self.syntax_error("expected ':' in destructuring assignment pattern")
+                        );
                     };
                     let default = if self.eat_punct(Punct::Assign) {
                         Some(self.parse_assignment()?)
@@ -2095,7 +2254,7 @@ impl Parser {
                 });
             }
             if !self.check_punct(Punct::RBrace) {
-                self.expect_punct(Punct::Comma)?;
+                self.expect_punct(Punct::Comma).map_err(known_syntax)?;
             }
         }
         self.expect_punct(Punct::RBrace)?;
@@ -2311,7 +2470,7 @@ impl Parser {
     }
 
     fn parse_multiplicative(&mut self) -> Result<Expr, ParseError> {
-        let mut left = self.parse_unary()?;
+        let mut left = self.parse_exponentiation()?;
         loop {
             let op = if self.check_punct(Punct::Star) {
                 BinaryOp::Mul
@@ -2323,7 +2482,7 @@ impl Parser {
                 break;
             };
             self.advance();
-            let right = self.parse_unary()?;
+            let right = self.parse_exponentiation()?;
             left = Expr::Binary {
                 op,
                 left: Box::new(left),
@@ -2331,6 +2490,24 @@ impl Parser {
             };
         }
         Ok(left)
+    }
+
+    /// Retain exponentiation's grammar and assignment-target static
+    /// semantics independently of its execution implementation.  Valid
+    /// exponentiation currently reaches the compiler's explicit
+    /// `Unsupported` result, while `x ** y = z` can correctly be rejected as
+    /// an early error by [`parse_assignment`].
+    fn parse_exponentiation(&mut self) -> Result<Expr, ParseError> {
+        let left = self.parse_unary()?;
+        if !self.eat_punct(Punct::StarStar) {
+            return Ok(left);
+        }
+        let right = self.parse_exponentiation()?;
+        Ok(Expr::Binary {
+            op: BinaryOp::Exponent,
+            left: Box::new(left),
+            right: Box::new(right),
+        })
     }
 
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
@@ -2462,7 +2639,21 @@ impl Parser {
             self.parse_primary()?
         };
         loop {
-            if self.eat_punct(Punct::Dot) {
+            if self.eat_punct(Punct::QuestionDot) {
+                let (property, computed) = if self.eat_punct(Punct::LBracket) {
+                    let property = self.parse_expression()?;
+                    self.expect_punct(Punct::RBracket)?;
+                    (property, true)
+                } else {
+                    let name = self.expect_identifier_name()?;
+                    (Expr::Identifier(name), false)
+                };
+                expr = Expr::OptionalMember {
+                    object: Box::new(expr),
+                    property: Box::new(property),
+                    computed,
+                };
+            } else if self.eat_punct(Punct::Dot) {
                 let name = self.expect_identifier_name()?;
                 expr = Expr::Member {
                     object: Box::new(expr),
@@ -2652,7 +2843,13 @@ impl Parser {
                 let value = if !delegate
                     && matches!(
                         self.peek(),
-                        Token::Punct(Punct::Semicolon | Punct::RBrace) | Token::Eof
+                        Token::Punct(
+                            Punct::Semicolon
+                                | Punct::Comma
+                                | Punct::RBrace
+                                | Punct::RBracket
+                                | Punct::RParen
+                        ) | Token::Eof
                     ) {
                     None
                 } else {
@@ -2665,9 +2862,25 @@ impl Parser {
             {
                 self.advance();
                 self.expect_punct(Punct::LParen)?;
+                if self.check_punct(Punct::RParen) {
+                    return Err(self.syntax_error("import() requires a module specifier"));
+                }
                 let specifier = self.parse_assignment()?;
                 self.expect_punct(Punct::RParen)?;
                 Ok(Expr::DynamicImport(Box::new(specifier)))
+            }
+            Token::Identifier(name)
+                if name == "import"
+                    && self.check_punct_at(1, Punct::Dot)
+                    && self.check_identifier_at(2, "meta") =>
+            {
+                self.advance();
+                self.advance();
+                self.advance();
+                if !self.module {
+                    return Err(self.syntax_error("import.meta is only valid in module code"));
+                }
+                Ok(Expr::ImportMeta)
             }
             Token::Identifier(name)
                 if name == "await"
@@ -2688,11 +2901,16 @@ impl Parser {
             Token::Punct(Punct::LParen) => {
                 self.advance();
                 let expr = self.parse_expression()?;
-                self.expect_punct(Punct::RParen)?;
-                Ok(expr)
+                self.expect_punct(Punct::RParen).map_err(known_syntax)?;
+                if is_assignment_operator(self.peek()) {
+                    Ok(Expr::Parenthesized(Box::new(expr)))
+                } else {
+                    Ok(expr)
+                }
             }
             Token::Punct(Punct::LBracket) => self.parse_array_literal(),
             Token::Punct(Punct::LBrace) => self.parse_object_literal(),
+            Token::Punct(Punct::Assign) => Err(self.syntax_error("expected an expression")),
             _ => Err(self.error("expected an expression")),
         }
     }
@@ -4327,5 +4545,17 @@ mod tests {
                 right: Box::new(Expr::Number(3.0))
             }
         );
+    }
+
+    #[test]
+    fn bare_yield_can_terminate_before_destructuring_delimiters() {
+        assert!(parse("function* g(){[target[yield],] = values;}").is_ok());
+        assert!(parse("function* g(){[target[yield]] = values;}").is_ok());
+    }
+
+    #[test]
+    fn literal_based_member_targets_are_not_nested_destructuring_patterns() {
+        assert!(parse("function* g(){[...{}[yield]] = values;}").is_ok());
+        assert!(parse("[{ get y() {}, set y(value) {} }.y] = values;").is_ok());
     }
 }
