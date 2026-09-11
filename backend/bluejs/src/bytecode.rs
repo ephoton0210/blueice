@@ -48,6 +48,7 @@ opcodes! {
     Add: 1, 0;
     Subtract: 1, 0;
     Multiply: 1, 0;
+    Exponentiate: 1, 0;
     Divide: 1, 0;
     Remainder: 1, 0;
     ShiftLeft: 1, 0;
@@ -110,6 +111,7 @@ opcodes! {
     StoreWithReference: 1, 0;
     Global: 5, 0;
     ToPropertyKey: 1, 0;
+    PreparePropertyReference: 1, MAY_USE_INLINE_CACHE;
     GetIterator: 1, 0;
     ForInKeys: 1, 0;
     IteratorStep: 5, 0;
@@ -163,6 +165,9 @@ opcodes! {
     ResolveBindingReference: 5, 0;
     LoadBindingReference: 1, 0;
     StoreBindingReference: 5, 0;
+    // Drop a retained Reference beneath the assignment's expression value.
+    // The operand gives the number of stack values encoding that Reference.
+    DiscardReference: 5, 0;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

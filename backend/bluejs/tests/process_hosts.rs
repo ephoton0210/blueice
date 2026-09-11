@@ -94,9 +94,15 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
             json!({"source":"\"use strict\"; ({ implements } = input)", "mode":"sloppy", "parse_only":true}),
             "SyntaxError",
         ),
-        (json!({"source":"x ??= y", "mode":"sloppy"}), "unsupported"),
+        (
+            json!({"source":"x ??= y", "mode":"sloppy"}),
+            "ReferenceError",
+        ),
         (json!({"source":"x?.y", "mode":"sloppy"}), "unsupported"),
-        (json!({"source":"x ** y", "mode":"sloppy"}), "unsupported"),
+        (
+            json!({"source":"x ** y", "mode":"sloppy"}),
+            "ReferenceError",
+        ),
         (
             json!({"source":"switch() {}", "mode":"sloppy", "parse_only":true}),
             "SyntaxError",

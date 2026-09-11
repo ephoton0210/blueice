@@ -804,3 +804,52 @@ A fresh eight-worker run at `target/test262-current-assignment-complete-3`
 records **1,488 pass, 0 fail and 0 unsupported** of 1,488 scheduled
 `language/expressions/assignment` modes. This closes that focused assignment
 slice only; it is not a claim of complete ECMAScript conformance.
+
+## P0.3/P1.1 continuation: exponentiation expressions
+
+The [Exponentiation Operator](https://tc39.es/ecma262/2026/multipage/ecmascript-language-expressions.html#sec-exp-operator),
+[Number::exponentiate](https://tc39.es/ecma262/2026/multipage/ecmascript-data-types-and-values.html#sec-number-exponentiate),
+and [BigInt::exponentiate](https://tc39.es/ecma262/2026/multipage/ecmascript-data-types-and-values.html#sec-bigint-exponentiate)
+were checked on 2026-09-11. Exponentiation parses as a right-associative
+operator whose base is an UpdateExpression: an unparenthesized unary base such
+as `-x ** y` is an early SyntaxError, whereas `x ** -y` and prefix/postfix
+updates are valid. Parenthesized unary bases remain valid.
+
+The compiler emits `Exponentiate` for both `**` and `**=`. The VM applies
+ToNumeric to the left operand before the right, rejects mixed Number/BigInt
+values, preserves exact BigInt results and rejects a negative BigInt exponent
+with RangeError. Number execution additionally handles the specified
+`abs(base) === 1` with infinite exponent case as NaN, rather than inheriting
+the host `powf` result of one. Regression coverage locks grammar, association,
+updates, coercion order, signed zero/NaN behavior, BigInt arithmetic and
+error categories.
+
+A fresh eight-worker run at `target/test262-next-exponentiation-complete`
+records **88 pass, 0 fail and 0 unsupported** of 88 scheduled
+`language/expressions/exponentiation` modes. This is a focused reference and
+grammar slice, not a completion claim for all numeric operations.
+
+## P0.3 continuation: logical assignment references
+
+The [logical-assignment evaluation algorithms](https://tc39.es/ecma262/2026/multipage/ecmascript-language-expressions.html#sec-assignment-operators)
+were checked on 2026-09-11. `&&=`, `||=` and `??=` evaluate and read their
+left-hand Reference before deciding whether to evaluate the RHS. Their bypass
+returns the old value and must not call PutValue; the assignment path retains
+that original Reference through RHS evaluation. Anonymous function, class and
+arrow RHS values receive identifier names only on the assignment path.
+
+`DiscardReference` removes a retained binding/property/super Reference beneath
+the bypass result without performing a write. This makes the existing reference
+opcodes support short-circuiting across captured bindings, `with`, members and
+`super`. Computed member References now check a nullish base before observable
+ToPropertyKey conversion, retaining one canonical key for the later write.
+Regression cases cover all three operators, RHS elision, target evaluation
+count, strict non-writable bypasses, name inference, BigInt truthiness and
+the nullish-base/key-coercion error order.
+
+At `target/test262-next-logical-assignment-after-2`, **96 modes pass**. The
+remaining **42 fails** are all generated `class-fields-private` tests using
+private names (every one currently rejects `#` during parsing); they are a
+P1.2 private-slot prerequisite rather than an unclassified logical-assignment
+runtime issue. This is therefore a completed core-reference sub-slice, not a
+claim that the whole `logical-assignment` directory is closed.

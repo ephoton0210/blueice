@@ -357,6 +357,7 @@ pub enum AssignOp {
     AddAssign,
     SubAssign,
     MulAssign,
+    ExponentAssign,
     DivAssign,
     ModAssign,
     ShiftLeftAssign,

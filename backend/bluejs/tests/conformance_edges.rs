@@ -100,6 +100,58 @@ fn bigint_bitwise_operators_preserve_precision_and_reject_mixed_numeric_types() 
 }
 
 #[test]
+fn exponentiation_is_right_associative_and_preserves_numeric_semantics() {
+    for source in [
+        "2**3===8&&2**3**2===512&&3*2**3===24&&2**-2===0.25&&isNaN((-1)**Infinity)&&isNaN(1**-Infinity)",
+        "let base=-3;base**=3;base===-27",
+        "let base=4;(--base)**2===9&&(base++)**2===9&&base===4",
+        "let trace='';let left={valueOf(){trace+='l';return 3}};let right={valueOf(){trace+='r';return 2}};left**right===9&&trace==='lr'",
+        "2n**10n===1024n&&0n**0n===1n&&(-2n)**3n===-8n",
+    ] {
+        assert_eq!(evaluate(source), Value::Bool(true), "{source}");
+    }
+
+    for source in ["-3**2", "+3**2", "!3**2", "typeof 3**2"] {
+        assert!(parse(source).is_err(), "{source}");
+    }
+    for source in ["1n**1", "1**1n"] {
+        let code = compile(&parse(source).unwrap()).unwrap();
+        assert!(matches!(
+            Vm::default().execute(&code),
+            Err(RuntimeError::TypeError(_))
+        ));
+    }
+    for source in ["1n**-1n", "0n**-1n"] {
+        let code = compile(&parse(source).unwrap()).unwrap();
+        assert!(matches!(
+            Vm::default().execute(&code),
+            Err(RuntimeError::RangeError(_))
+        ));
+    }
+}
+
+#[test]
+fn logical_assignments_latch_references_and_short_circuit_the_rhs() {
+    for source in [
+        "let and=1,or=0,nil=null;and&&=2;or||=3;nil??=4;and===2&&or===3&&nil===4",
+        "let calls=0;let and=0,or=1,nil=2;and&&=++calls;or||=++calls;nil??=++calls;calls===0",
+        "let calls=0;let object={value:0};function target(){calls++;return object;}target().value||=7;calls===1&&object.value===7",
+        "let caught=false;try{let key={toString(){throw new Error;}};null[key]&&=1}catch(error){caught=error instanceof TypeError;}caught",
+        "let value=1;value&&=function(){};value.name==='value'",
+        "let value;value??=()=>{};value.name==='value'",
+        "let value=0n;value||=1n;value===1n",
+    ] {
+        assert_eq!(evaluate(source), Value::Bool(true), "{source}");
+    }
+    for source in [
+        "let caught=false;try{missing&&=1}catch(error){caught=error instanceof ReferenceError;}caught",
+        "'use strict';let object={value:0};Object.defineProperty(object,'value',{writable:false});object.value&&=1;object.value===0",
+    ] {
+        assert_eq!(evaluate(source), Value::Bool(true), "{source}");
+    }
+}
+
+#[test]
 fn number_static_constants_have_spec_values_and_attributes() {
     assert!(matches!(
         evaluate("Number.NaN"),

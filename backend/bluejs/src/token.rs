@@ -137,6 +137,7 @@ pub enum Punct {
     Minus,
     Star,
     StarStar,
+    StarStarAssign,
     Slash,
     Percent,
     PlusPlus,
@@ -919,7 +920,12 @@ impl Tokenizer {
             '*' => {
                 if self.peek() == Some('*') {
                     self.advance();
-                    Punct::StarStar
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Punct::StarStarAssign
+                    } else {
+                        Punct::StarStar
+                    }
                 } else if self.peek() == Some('=') {
                     self.advance();
                     Punct::StarAssign
@@ -1409,11 +1415,12 @@ mod tests {
             ]
         );
         assert_eq!(
-            tokens("+= -= *= /= %="),
+            tokens("+= -= *= **= /= %="),
             vec![
                 Token::Punct(Punct::PlusAssign),
                 Token::Punct(Punct::MinusAssign),
                 Token::Punct(Punct::StarAssign),
+                Token::Punct(Punct::StarStarAssign),
                 Token::Punct(Punct::SlashAssign),
                 Token::Punct(Punct::PercentAssign),
                 Token::Eof

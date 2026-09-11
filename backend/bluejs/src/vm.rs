@@ -14,7 +14,7 @@ use crate::{
     PropertyDescriptor, PropertyName, RootId, Value,
 };
 use num_bigint::{BigInt, Sign};
-use num_traits::ToPrimitive;
+use num_traits::{One, ToPrimitive, Zero};
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 mod builtins;
 mod errors;
@@ -3917,6 +3917,16 @@ impl Vm {
                         self.pop();
                         self.stack.push(key.value());
                     }
+                    Opcode::PreparePropertyReference => {
+                        let base = self.stack.len() - 2;
+                        if matches!(self.stack[base], Value::Null | Value::Undefined) {
+                            return Err(RuntimeError::TypeError(
+                                "cannot access a property of null or undefined".into(),
+                            ));
+                        }
+                        let key = self.coerce_property_key(&self.stack[base + 1].clone())?;
+                        self.stack[base + 1] = key.value();
+                    }
                     Opcode::Constant => {
                         self.check_string(&code.constants[operand])?;
                         self.stack.push(code.constants[operand].clone());
@@ -4138,6 +4148,7 @@ impl Vm {
                     Opcode::Add => self.binary(Self::add)?,
                     Opcode::Subtract => self.numeric(|a, b| a - b)?,
                     Opcode::Multiply => self.numeric(|a, b| a * b)?,
+                    Opcode::Exponentiate => self.exponentiate()?,
                     Opcode::Divide => self.numeric(|a, b| a / b)?,
                     Opcode::Remainder => self.numeric(|a, b| a % b)?,
                     Opcode::ShiftLeft | Opcode::ShiftRight | Opcode::UnsignedShiftRight => {
@@ -4235,6 +4246,17 @@ impl Vm {
                         self.check_string(&result)?;
                         self.stack.truncate(base);
                         self.stack.push(result);
+                    }
+                    Opcode::DiscardReference => {
+                        let value = self.pop();
+                        let reference_values = operand;
+                        let reference_start = self
+                            .stack
+                            .len()
+                            .checked_sub(reference_values)
+                            .expect("compiler retains a complete reference");
+                        self.stack.truncate(reference_start);
+                        self.stack.push(value);
                     }
                     Opcode::SetProperty => {
                         let value = self.pop();
@@ -5548,6 +5570,32 @@ impl Vm {
         })
     }
 
+    fn exponentiate(&mut self) -> Result<(), RuntimeError> {
+        self.binary(|vm, left, right| {
+            let left = vm.coerce_numeric(&left)?;
+            let right = vm.coerce_numeric(&right)?;
+            match (left, right) {
+                (primitive::Numeric::Number(left), primitive::Numeric::Number(right)) => {
+                    // libm's powf returns 1 for ±1 raised to ±∞, whereas
+                    // Number::exponentiate explicitly specifies NaN for
+                    // that pair.
+                    let value = if right.is_infinite() && left.abs() == 1.0 {
+                        f64::NAN
+                    } else {
+                        left.powf(right)
+                    };
+                    Ok(Value::Number(value))
+                }
+                (primitive::Numeric::BigInt(left), primitive::Numeric::BigInt(right)) => {
+                    Ok(Value::BigInt(bigint_exponentiate(left, right)?))
+                }
+                _ => Err(RuntimeError::TypeError(
+                    "cannot mix BigInt and other types in an exponentiation operation".into(),
+                )),
+            }
+        })
+    }
+
     fn negate(&mut self, value: &Value) -> Result<Value, RuntimeError> {
         Ok(match self.coerce_numeric(value)? {
             primitive::Numeric::Number(value) => Value::Number(-value),
@@ -5780,6 +5828,33 @@ fn bigint_shift(value: BigInt, count: BigInt, left: bool) -> Result<BigInt, Runt
     } else {
         value >> magnitude
     })
+}
+
+/// BigInt::exponentiate permits only non-negative BigInt exponents.  The
+/// standard result is exact; this interpreter additionally bounds the host
+/// exponent representation before allocating the result.
+fn bigint_exponentiate(base: BigInt, exponent: BigInt) -> Result<BigInt, RuntimeError> {
+    if exponent.sign() == Sign::Minus {
+        return Err(RuntimeError::RangeError(
+            "BigInt exponent must be non-negative".into(),
+        ));
+    }
+    if base.is_zero() {
+        return Ok(if exponent.is_zero() {
+            BigInt::one()
+        } else {
+            BigInt::zero()
+        });
+    }
+    if base == BigInt::one() {
+        return Ok(base);
+    }
+    let Some(exponent) = exponent.to_u32() else {
+        return Err(RuntimeError::RangeError(
+            "BigInt exponent exceeds implementation capacity".into(),
+        ));
+    };
+    Ok(base.pow(exponent))
 }
 
 #[cfg(test)]

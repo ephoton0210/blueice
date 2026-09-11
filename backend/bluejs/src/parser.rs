@@ -2037,6 +2037,7 @@ impl Parser {
             Token::Punct(Punct::PlusAssign) => Some(AssignOp::AddAssign),
             Token::Punct(Punct::MinusAssign) => Some(AssignOp::SubAssign),
             Token::Punct(Punct::StarAssign) => Some(AssignOp::MulAssign),
+            Token::Punct(Punct::StarStarAssign) => Some(AssignOp::ExponentAssign),
             Token::Punct(Punct::SlashAssign) => Some(AssignOp::DivAssign),
             Token::Punct(Punct::PercentAssign) => Some(AssignOp::ModAssign),
             Token::Punct(Punct::ShiftLeftAssign) => Some(AssignOp::ShiftLeftAssign),
@@ -2492,15 +2493,25 @@ impl Parser {
         Ok(left)
     }
 
-    /// Retain exponentiation's grammar and assignment-target static
-    /// semantics independently of its execution implementation.  Valid
-    /// exponentiation currently reaches the compiler's explicit
-    /// `Unsupported` result, while `x ** y = z` can correctly be rejected as
-    /// an early error by [`parse_assignment`].
     fn parse_exponentiation(&mut self) -> Result<Expr, ParseError> {
-        let left = self.parse_unary()?;
+        // Exponentiation's left operand is an UpdateExpression, not a
+        // UnaryExpression. This rejects `-x ** y` while still admitting a
+        // unary expression on the right (`x ** -y`) and update expressions
+        // on either side. Parenthesized unary expressions enter through
+        // parse_update and remain valid bases.
+        let unary_base = self.starts_unary_expression();
+        let left = if unary_base {
+            self.parse_unary()?
+        } else {
+            self.parse_update_expression()?
+        };
         if !self.eat_punct(Punct::StarStar) {
             return Ok(left);
+        }
+        if unary_base {
+            return Err(self.syntax_error(
+                "a unary expression cannot be the unparenthesized base of exponentiation",
+            ));
         }
         let right = self.parse_exponentiation()?;
         Ok(Expr::Binary {
@@ -2508,6 +2519,15 @@ impl Parser {
             left: Box::new(left),
             right: Box::new(right),
         })
+    }
+
+    fn starts_unary_expression(&self) -> bool {
+        matches!(
+            self.peek(),
+            Token::Punct(Punct::Bang | Punct::Minus | Punct::Plus | Punct::Tilde)
+                | Token::Keyword(Keyword::Typeof | Keyword::Void | Keyword::Delete)
+        ) || ((self.async_depth != 0 || self.module_await)
+            && matches!(self.peek(), Token::Identifier(name) if name == "await"))
     }
 
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
@@ -2568,24 +2588,24 @@ impl Parser {
             }
             return Ok(Expr::Await(Box::new(self.parse_unary()?)));
         }
-        if self.eat_punct(Punct::PlusPlus) {
+        self.parse_update_expression()
+    }
+
+    fn parse_update_expression(&mut self) -> Result<Expr, ParseError> {
+        let op = if self.eat_punct(Punct::PlusPlus) {
+            Some(UpdateOp::Inc)
+        } else if self.eat_punct(Punct::MinusMinus) {
+            Some(UpdateOp::Dec)
+        } else {
+            None
+        };
+        if let Some(op) = op {
             let arg = self.parse_unary()?;
             if !is_valid_ref_target(&arg) && !is_annex_b_call_assignment_target(&arg) {
-                return Err(self.error("invalid '++' operand"));
+                return Err(self.error("invalid update operand"));
             }
             return Ok(Expr::Update {
-                op: UpdateOp::Inc,
-                arg: Box::new(arg),
-                prefix: true,
-            });
-        }
-        if self.eat_punct(Punct::MinusMinus) {
-            let arg = self.parse_unary()?;
-            if !is_valid_ref_target(&arg) && !is_annex_b_call_assignment_target(&arg) {
-                return Err(self.error("invalid '--' operand"));
-            }
-            return Ok(Expr::Update {
-                op: UpdateOp::Dec,
+                op,
                 arg: Box::new(arg),
                 prefix: true,
             });

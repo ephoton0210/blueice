@@ -2152,17 +2152,15 @@ impl Compiler {
         target: &Expr,
         value: &Expr,
     ) -> Result<(), CompileError> {
-        if matches!(
-            op,
-            AssignOp::LogicalAndAssign | AssignOp::LogicalOrAssign | AssignOp::NullishAssign
-        ) {
-            return Err(CompileError::Unsupported("logical assignment"));
-        }
+        let logical_assignment = is_logical_assignment(op);
         // AssignmentExpression gives an anonymous function definition the
         // syntactic IdentifierReference target's name. Member references and
         // compound assignments deliberately do not participate.
         let inferred_name = match (op, target) {
-            (AssignOp::Assign, Expr::Identifier(name)) => Some(name.as_str()),
+            (AssignOp::Assign, Expr::Identifier(name)) if !logical_assignment => {
+                Some(name.as_str())
+            }
+            (_, Expr::Identifier(name)) if logical_assignment => Some(name.as_str()),
             _ => None,
         };
         // A CoverParenthesizedExpression can still evaluate to a reference,
@@ -2191,6 +2189,12 @@ impl Compiler {
         {
             if matches!(&**object, Expr::Super) {
                 self.super_property_key(property, *computed)?;
+                if logical_assignment {
+                    self.emit(Opcode::Dup, 0)?;
+                    self.emit(Opcode::SuperGet, 0)?;
+                    self.logical_assignment(op, 1, value, inferred_name, Opcode::SuperSet, 0)?;
+                    return Ok(());
+                }
                 if op != AssignOp::Assign {
                     self.emit(Opcode::Dup, 0)?;
                     self.emit(Opcode::SuperGet, 0)?;
@@ -2210,6 +2214,18 @@ impl Compiler {
                 // the RHS. A deletion or eval in that RHS must not redirect
                 // PutValue to a later binding lookup.
                 self.emit(Opcode::ResolveWithReference, index)?;
+                if logical_assignment {
+                    self.emit(Opcode::LoadWithReference, 0)?;
+                    self.logical_assignment(
+                        op,
+                        2,
+                        value,
+                        inferred_name,
+                        Opcode::StoreWithReference,
+                        0,
+                    )?;
+                    return Ok(());
+                }
                 if op != AssignOp::Assign {
                     self.emit(Opcode::LoadWithReference, 0)?;
                 }
@@ -2224,6 +2240,18 @@ impl Compiler {
         if let Expr::Identifier(name) = target {
             if self.resolve(name).is_none() {
                 let index = self.name_constant(name)?;
+                if logical_assignment {
+                    self.emit(Opcode::UnboundName, index)?;
+                    self.logical_assignment(
+                        op,
+                        0,
+                        value,
+                        inferred_name,
+                        Opcode::SetUnboundName,
+                        index,
+                    )?;
+                    return Ok(());
+                }
                 if op != AssignOp::Assign {
                     self.emit(Opcode::UnboundName, index)?;
                 }
@@ -2268,6 +2296,24 @@ impl Compiler {
             // reference that was already resolved here.
             self.emit(Opcode::ResolveBindingReference, slot)?;
         }
+        if logical_assignment {
+            if binding.is_some() {
+                self.emit(Opcode::LoadBindingReference, 0)?;
+                self.logical_assignment(
+                    op,
+                    2,
+                    value,
+                    inferred_name,
+                    Opcode::StoreBindingReference,
+                    0,
+                )?;
+            } else {
+                self.emit(Opcode::Dup2, 0)?;
+                self.emit(Opcode::GetProperty, 0)?;
+                self.logical_assignment(op, 2, value, inferred_name, Opcode::SetProperty, 0)?;
+            }
+            return Ok(());
+        }
         if op != AssignOp::Assign {
             if binding.is_some() {
                 self.emit(Opcode::LoadBindingReference, 0)?;
@@ -2285,6 +2331,41 @@ impl Compiler {
         } else {
             self.emit(Opcode::SetProperty, 0)?;
         }
+        Ok(())
+    }
+
+    /// The logical-assignment productions retain their original Reference
+    /// across the truthiness/nullish decision. A bypass returns the existing
+    /// value without evaluating the RHS or invoking PutValue; an assignment
+    /// consumes the retained reference with the supplied store opcode.
+    fn logical_assignment(
+        &mut self,
+        op: AssignOp,
+        reference_values: u32,
+        value: &Expr,
+        inferred_name: Option<&str>,
+        store: Opcode,
+        store_operand: u32,
+    ) -> Result<(), CompileError> {
+        self.emit(Opcode::Dup, 0)?;
+        let bypass = self.emit(
+            match op {
+                AssignOp::LogicalAndAssign => Opcode::JumpIfFalse,
+                AssignOp::LogicalOrAssign => Opcode::JumpIfTrue,
+                AssignOp::NullishAssign => Opcode::JumpIfNotNullish,
+                _ => unreachable!("logical assignment helper has a logical operator"),
+            },
+            0,
+        )?;
+        self.emit(Opcode::Pop, 0)?;
+        self.expression_with_name(value, inferred_name)?;
+        self.emit(store, store_operand)?;
+        let done = self.emit(Opcode::Jump, 0)?;
+        self.patch(bypass, self.offset()?);
+        if reference_values != 0 {
+            self.emit(Opcode::DiscardReference, reference_values)?;
+        }
+        self.patch(done, self.offset()?);
         Ok(())
     }
 
@@ -2486,7 +2567,11 @@ impl Compiler {
             ));
         }
         if coerce_key {
-            self.emit(Opcode::ToPropertyKey, 0)?;
+            // Computed-property Reference evaluation requires the base to be
+            // object-coercible before it converts the property key. Keep the
+            // resulting canonical key beside the base so a later PutValue
+            // does not repeat observable ToPropertyKey work.
+            self.emit(Opcode::PreparePropertyReference, 0)?;
         }
         Ok(())
     }
@@ -3371,7 +3456,7 @@ fn binary_opcode(op: BinaryOp) -> Result<Opcode, CompileError> {
         BinaryOp::Add => Opcode::Add,
         BinaryOp::Sub => Opcode::Subtract,
         BinaryOp::Mul => Opcode::Multiply,
-        BinaryOp::Exponent => return Err(CompileError::Unsupported("exponentiation")),
+        BinaryOp::Exponent => Opcode::Exponentiate,
         BinaryOp::Div => Opcode::Divide,
         BinaryOp::Mod => Opcode::Remainder,
         BinaryOp::ShiftLeft => Opcode::ShiftLeft,
@@ -3399,6 +3484,7 @@ fn compound_assignment_opcode(op: AssignOp) -> Option<Opcode> {
         AssignOp::AddAssign => Some(Opcode::Add),
         AssignOp::SubAssign => Some(Opcode::Subtract),
         AssignOp::MulAssign => Some(Opcode::Multiply),
+        AssignOp::ExponentAssign => Some(Opcode::Exponentiate),
         AssignOp::DivAssign => Some(Opcode::Divide),
         AssignOp::ModAssign => Some(Opcode::Remainder),
         AssignOp::ShiftLeftAssign => Some(Opcode::ShiftLeft),
@@ -3409,6 +3495,13 @@ fn compound_assignment_opcode(op: AssignOp) -> Option<Opcode> {
         AssignOp::BitOrAssign => Some(Opcode::BitOr),
         AssignOp::LogicalAndAssign | AssignOp::LogicalOrAssign | AssignOp::NullishAssign => None,
     }
+}
+
+fn is_logical_assignment(op: AssignOp) -> bool {
+    matches!(
+        op,
+        AssignOp::LogicalAndAssign | AssignOp::LogicalOrAssign | AssignOp::NullishAssign
+    )
 }
 
 fn pattern_names(pattern: &Pattern) -> Vec<String> {
