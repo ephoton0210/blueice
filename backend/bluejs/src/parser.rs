@@ -1772,6 +1772,9 @@ impl Parser {
         };
         let extends = if matches!(self.peek(), Token::Identifier(keyword) if keyword == "extends") {
             self.advance();
+            if self.class_heritage_is_parenthesized_arrow() {
+                return Err(self.syntax_error("a class heritage cannot be an arrow function"));
+            }
             Some(Box::new(self.parse_lhs_expression()?))
         } else {
             None
@@ -1872,6 +1875,18 @@ impl Parser {
                 return Err(self.syntax_error("super() is only valid in a derived constructor"));
             }
             if let Some(getter) = accessor {
+                if !is_static
+                    && !matches!(&key, PropertyKey::Computed(_))
+                    && class_element_name(&key) == "constructor"
+                {
+                    return Err(self.syntax_error("constructor cannot be an accessor"));
+                }
+                if is_static
+                    && !matches!(&key, PropertyKey::Computed(_))
+                    && class_element_name(&key) == "prototype"
+                {
+                    return Err(self.syntax_error("static accessor cannot be named prototype"));
+                }
                 if is_async
                     || generator
                     || (getter && !function.params.is_empty())
@@ -1886,9 +1901,15 @@ impl Parser {
                     is_static,
                 });
             } else {
+                if is_static
+                    && !matches!(&key, PropertyKey::Computed(_))
+                    && class_element_name(&key) == "prototype"
+                {
+                    return Err(self.syntax_error("static method cannot be named prototype"));
+                }
                 if constructor {
                     if is_async || generator || has_constructor {
-                        return Err(self.error("invalid class constructor"));
+                        return Err(self.syntax_error("invalid class constructor"));
                     }
                     has_constructor = true;
                 }
@@ -1905,6 +1926,33 @@ impl Parser {
             extends,
             elements,
         })
+    }
+
+    /// A parenthesized arrow cannot be a ClassHeritage (which starts with a
+    /// LeftHandSideExpression), but `parse_lhs_expression` deliberately does
+    /// not parse arrow parameters. Recognize it here so the failure is a
+    /// specified syntax error rather than an unclassified empty-paren error.
+    fn class_heritage_is_parenthesized_arrow(&self) -> bool {
+        if !self.check_punct(Punct::LParen) {
+            return false;
+        }
+        let mut depth = 0usize;
+        for index in self.pos..self.tokens.len() {
+            match self.tokens[index].token {
+                Token::Punct(Punct::LParen) => depth += 1,
+                Token::Punct(Punct::RParen) => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return matches!(
+                            self.tokens.get(index + 1).map(|token| &token.token),
+                            Some(Token::Punct(Punct::Arrow))
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
     }
 
     /// `async` is a contextual class-element modifier only when the next

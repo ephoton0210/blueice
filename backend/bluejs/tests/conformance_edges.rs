@@ -193,6 +193,24 @@ fn private_name_early_errors_are_reported_before_execution() {
 }
 
 #[test]
+fn public_class_element_early_errors_are_classified() {
+    for source in [
+        "class C extends () => {}{}",
+        "class C{constructor(){}constructor(){}}",
+        "class C{get constructor(){}}",
+        "class C{set constructor(value){}}",
+        "class C{async constructor(){}}",
+        "class C{*constructor(){}}",
+        "class C{static prototype(){}}",
+        "class C{static get prototype(){}}",
+        "class C{static async prototype(){}}",
+        "class C{static *prototype(){}}",
+    ] {
+        assert!(parse(source).is_err(), "{source}");
+    }
+}
+
+#[test]
 fn number_static_constants_have_spec_values_and_attributes() {
     assert!(matches!(
         evaluate("Number.NaN"),

@@ -882,6 +882,7 @@ runs record **44 pass, 0 fail and 0 unsupported** of 44 scheduled
 and 8 unsupported** of 38 scheduled `language/expressions/in/private-field`
 modes (the eight are async-host gaps), and **40 pass, 0 fail and 0 unsupported**
 of 40 `privatename-not-valid` modes. The wider class-element early-error run
-records 418 pass, 16 fail and 10 unsupported of 444 modes; its remaining
-non-passing cases are general public-class grammar gaps, not private-name
-early errors.
+now records **444 pass, 0 fail and 0 unsupported** of 444 modes. The public
+class grammar follow-up classifies parenthesized-arrow heritage, duplicate or
+special-form constructors, and static method/accessor `prototype` names as
+specified parse-time errors.
