@@ -136,6 +136,13 @@ fn evaluate(request: Request) -> Value {
             }
             let program = match parse_module(module_source) {
                 Ok(program) => program,
+                Err(error) if error.known_syntax => {
+                    return json!({
+                        "phase":"resolution",
+                        "kind":"SyntaxError",
+                        "message":error.message,
+                    });
+                }
                 Err(error) => return parse_error(error),
             };
             let code = match compile_module_with_limit(
@@ -143,6 +150,20 @@ fn evaluate(request: Request) -> Value {
                 request.bytecode_limit.unwrap_or(u32::MAX),
             ) {
                 Ok(code) => code,
+                Err(CompileError::DuplicateBinding(message)) => {
+                    return json!({
+                        "phase":"resolution",
+                        "kind":"SyntaxError",
+                        "message":message,
+                    });
+                }
+                Err(CompileError::InvalidSyntax(message)) => {
+                    return json!({
+                        "phase":"resolution",
+                        "kind":"SyntaxError",
+                        "message":message,
+                    });
+                }
                 Err(error) => return compile_error(error),
             };
             module_codes.insert(path.clone(), code);

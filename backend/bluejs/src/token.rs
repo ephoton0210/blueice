@@ -194,12 +194,21 @@ pub enum Punct {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LexError {
     pub message: String,
+    pub known_syntax: bool,
 }
 
 impl LexError {
     fn new(message: impl Into<String>) -> LexError {
         LexError {
             message: message.into(),
+            known_syntax: false,
+        }
+    }
+
+    fn syntax(message: impl Into<String>) -> LexError {
+        LexError {
+            message: message.into(),
+            known_syntax: true,
         }
     }
 }
@@ -232,6 +241,7 @@ pub struct Tokenizer {
     /// trivia does not need to rescan prior source text.
     line_start: bool,
     identifier_escaped: bool,
+    html_comments_enabled: bool,
 }
 
 fn is_ident_start(c: char) -> bool {
@@ -370,6 +380,15 @@ impl Tokenizer {
             pos: 0,
             line_start: true,
             identifier_escaped: false,
+            html_comments_enabled: true,
+        }
+    }
+
+    /// Modules exclude Annex B's HTML-like comment extensions.
+    pub fn new_module(input: &str) -> Tokenizer {
+        Tokenizer {
+            html_comments_enabled: false,
+            ..Self::new(input)
         }
     }
 
@@ -422,6 +441,11 @@ impl Tokenizer {
                         && self.peek_at(2) == Some('-')
                         && self.peek_at(3) == Some('-') =>
                 {
+                    if !self.html_comments_enabled {
+                        return Err(LexError::syntax(
+                            "HTML-like comments are not allowed in module code",
+                        ));
+                    }
                     for _ in 0..4 {
                         self.advance();
                     }
@@ -437,6 +461,11 @@ impl Tokenizer {
                         && self.peek_at(1) == Some('-')
                         && self.peek_at(2) == Some('>') =>
                 {
+                    if !self.html_comments_enabled {
+                        return Err(LexError::syntax(
+                            "HTML-like comments are not allowed in module code",
+                        ));
+                    }
                     for _ in 0..3 {
                         self.advance();
                     }

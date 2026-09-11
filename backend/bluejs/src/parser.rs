@@ -56,7 +56,7 @@ impl From<LexError> for ParseError {
         ParseError {
             message: e.message,
             resource: None,
-            known_syntax: false,
+            known_syntax: e.known_syntax,
         }
     }
 }
@@ -94,21 +94,31 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
 /// through [`crate::Vm::execute_module_graph`], but this distinct goal keeps
 /// module strictness and top-level syntax separate from classic scripts.
 pub fn parse_module(source: &str) -> Result<Module, ParseError> {
-    let mut parser = Parser::new(source);
+    let mut parser = Parser::new_module(source);
     parser.module_await = true;
     parser.module = true;
     parser.strict = true;
     let mut body = Vec::new();
     let mut imports = Vec::new();
     let mut exports = Vec::new();
+    let mut requests = Vec::new();
     while !parser.at_eof() {
         if parser.check_identifier("import")
             && !parser.check_punct_at(1, Punct::LParen)
             && !parser.check_punct_at(1, Punct::Dot)
         {
-            imports.extend(parser.parse_import_declaration()?);
+            let declaration = parser.parse_import_declaration()?;
+            if let Some(request) = declaration
+                .first()
+                .filter(|request| !matches!(request.import_name, ImportName::Source))
+            {
+                requests.push(request.module_request.clone());
+            }
+            imports.extend(declaration);
         } else if parser.check_identifier("export") {
-            parser.parse_export_declaration(&mut body, &mut exports)?;
+            if let Some(request) = parser.parse_export_declaration(&mut body, &mut exports)? {
+                requests.push(request);
+            }
         } else {
             body.push(parser.parse_statement()?);
         }
@@ -140,6 +150,7 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
         body,
         imports,
         exports,
+        requests,
     })
 }
 
@@ -417,7 +428,14 @@ struct Parser {
 
 impl Parser {
     fn new(source: &str) -> Parser {
-        let mut tokenizer = Tokenizer::new(source);
+        Self::from_tokenizer(Tokenizer::new(source))
+    }
+
+    fn new_module(source: &str) -> Parser {
+        Self::from_tokenizer(Tokenizer::new_module(source))
+    }
+
+    fn from_tokenizer(mut tokenizer: Tokenizer) -> Parser {
         let (tokens, positions) = tokenize_all(&mut tokenizer);
         Parser {
             tokens,
@@ -808,7 +826,7 @@ impl Parser {
         &mut self,
         body: &mut Vec<Stmt>,
         exports: &mut Vec<ExportEntry>,
-    ) -> Result<(), ParseError> {
+    ) -> Result<Option<String>, ParseError> {
         debug_assert!(self.check_identifier("export"));
         self.advance();
         if self.eat_punct(Punct::Star) {
@@ -823,6 +841,7 @@ impl Parser {
             let module_request = self.expect_module_name()?;
             self.parse_import_attributes()?;
             self.consume_semicolon()?;
+            let request = module_request.clone();
             exports.push(match export_name {
                 Some(export_name) => ExportEntry::Namespace {
                     export_name,
@@ -830,7 +849,7 @@ impl Parser {
                 },
                 None => ExportEntry::Star { module_request },
             });
-            return Ok(());
+            return Ok(Some(request));
         }
         if self.eat_identifier("default") || self.eat_keyword(Keyword::Default) {
             let hidden = "\0bluejs_module_default".to_string();
@@ -874,6 +893,11 @@ impl Parser {
                         (hidden.clone(), false)
                     }
                 }
+                Token::Keyword(Keyword::Var | Keyword::Let | Keyword::Const) => {
+                    return Err(
+                        self.syntax_error("a default export cannot declare a variable binding")
+                    );
+                }
                 _ => {
                     body.push(Stmt::VarDecl(
                         DeclKind::Const,
@@ -885,6 +909,11 @@ impl Parser {
                     (hidden, true)
                 }
             };
+            if !consume_terminator && self.check_punct(Punct::LParen) {
+                return Err(self.syntax_error(
+                    "a default function or class declaration cannot be invoked directly",
+                ));
+            }
             if consume_terminator {
                 self.consume_semicolon()?;
             }
@@ -892,7 +921,7 @@ impl Parser {
                 export_name: "default".to_string(),
                 local_name,
             });
-            return Ok(());
+            return Ok(None);
         }
         if self.eat_punct(Punct::LBrace) {
             let mut specifiers = Vec::new();
@@ -910,7 +939,7 @@ impl Parser {
                 }
             }
             self.expect_punct(Punct::RBrace)?;
-            if self.eat_identifier("from") {
+            let request = if self.eat_identifier("from") {
                 let module_request = self.expect_module_name()?;
                 self.parse_import_attributes()?;
                 for (import_name, export_name, _) in specifiers {
@@ -920,6 +949,7 @@ impl Parser {
                         import_name,
                     });
                 }
+                Some(module_request)
             } else {
                 for (local_name, export_name, local_is_string) in specifiers {
                     if local_is_string {
@@ -932,9 +962,10 @@ impl Parser {
                         local_name,
                     });
                 }
-            }
+                None
+            };
             self.consume_semicolon()?;
-            return Ok(());
+            return Ok(request);
         }
 
         let statement = match self.peek().clone() {
@@ -975,7 +1006,7 @@ impl Parser {
             });
         }
         body.push(statement);
-        Ok(())
+        Ok(None)
     }
 
     fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
@@ -2818,7 +2849,7 @@ impl Parser {
         if let Some(op) = op {
             let arg = self.parse_unary()?;
             if !is_valid_ref_target(&arg) && !is_annex_b_call_assignment_target(&arg) {
-                return Err(self.error("invalid update operand"));
+                return Err(self.syntax_error("invalid update operand"));
             }
             return Ok(Expr::Update {
                 op,
@@ -2836,7 +2867,7 @@ impl Parser {
         if !self.newline_before() {
             if self.check_punct(Punct::PlusPlus) {
                 if !is_valid_ref_target(&expr) && !is_annex_b_call_assignment_target(&expr) {
-                    return Err(self.error("invalid '++' operand"));
+                    return Err(self.syntax_error("invalid '++' operand"));
                 }
                 self.advance();
                 return Ok(Expr::Update {
@@ -2847,7 +2878,7 @@ impl Parser {
             }
             if self.check_punct(Punct::MinusMinus) {
                 if !is_valid_ref_target(&expr) && !is_annex_b_call_assignment_target(&expr) {
-                    return Err(self.error("invalid '--' operand"));
+                    return Err(self.syntax_error("invalid '--' operand"));
                 }
                 self.advance();
                 return Ok(Expr::Update {
@@ -3165,7 +3196,7 @@ impl Parser {
             }
             Token::Punct(Punct::LBracket) => self.parse_array_literal(),
             Token::Punct(Punct::LBrace) => self.parse_object_literal(),
-            Token::Punct(Punct::Assign | Punct::Star) => {
+            Token::Punct(Punct::Assign | Punct::Star | Punct::Question) => {
                 Err(self.syntax_error("expected an expression"))
             }
             _ => Err(self.error("expected an expression")),

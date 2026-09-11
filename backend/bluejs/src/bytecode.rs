@@ -222,6 +222,14 @@ pub(crate) struct ModuleImport {
     pub local_slot: Option<u32>,
 }
 
+/// One executable [[RequestedModules]] entry, in source-text order.
+/// Source-phase records resolve during linking but do not participate in
+/// module evaluation, so they are omitted from this sequence.
+#[derive(Clone)]
+pub(crate) struct ModuleRequest {
+    pub module_request: String,
+}
+
 #[derive(Clone)]
 pub(crate) enum ModuleExport {
     Local {
@@ -335,6 +343,11 @@ pub struct Bytecode {
     pub(crate) templates: Vec<TemplateSite>,
     pub(crate) handlers: Vec<Handler>,
     pub(crate) abrupt_jumps: Vec<AbruptJump>,
+    /// Resume and exit offsets for compiler-emitted async `yield*` loops.
+    /// The VM copies the matching entry into the suspended generator frame,
+    /// so later `.return()` and `.throw()` do not depend on recognizing a
+    /// bytecode instruction pattern.
+    pub(crate) async_yield_delegates: Vec<(u32, u32)>,
     /// This code was compiled with the Module goal.  Its outer scope may be
     /// suspended after declaration instantiation and resumed for evaluation.
     pub(crate) module: bool,
@@ -343,6 +356,7 @@ pub struct Bytecode {
     pub(crate) module_evaluate_entry: Option<u32>,
     pub(crate) module_imports: Vec<ModuleImport>,
     pub(crate) module_exports: Vec<ModuleExport>,
+    pub(crate) module_requests: Vec<ModuleRequest>,
 }
 
 impl Bytecode {
@@ -376,10 +390,12 @@ impl Bytecode {
             templates: Vec::new(),
             handlers: Vec::new(),
             abrupt_jumps: Vec::new(),
+            async_yield_delegates: Vec::new(),
             module: false,
             module_evaluate_entry: None,
             module_imports: Vec::new(),
             module_exports: Vec::new(),
+            module_requests: Vec::new(),
         }
     }
 

@@ -515,6 +515,114 @@ fn async_generator_queues_throw_behind_a_pending_next_request() {
 }
 
 #[test]
+fn async_generator_return_runs_a_suspended_finally_before_completing() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            async function* values() {
+                try {
+                    yield 1;
+                } finally {
+                    yield 2;
+                }
+            }
+            let iterator = values();
+            iterator.next().then(first => {
+                globalThis.firstResult = first;
+                return iterator.return(9);
+            }).then(second => {
+                globalThis.returnResult = second;
+                return iterator.next();
+            }).then(last => {
+                globalThis.lastResult = last;
+            });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "firstResult.value === 1 && !firstResult.done && returnResult.value === 2 && !returnResult.done && lastResult.value === 9 && lastResult.done",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn async_generator_throw_reaches_a_suspended_catch_before_completing() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            async function* values() {
+                try {
+                    yield 1;
+                } catch (error) {
+                    yield error;
+                }
+            }
+            let iterator = values();
+            iterator.next().then(first => {
+                globalThis.firstResult = first;
+                return iterator.throw('expected');
+            }).then(caught => {
+                globalThis.caughtResult = caught;
+                return iterator.next();
+            }).then(last => {
+                globalThis.lastResult = last;
+            });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "firstResult.value === 1 && !firstResult.done && caughtResult.value === 'expected' && !caughtResult.done && lastResult.done",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn async_generator_return_preserves_a_finally_across_await_and_yield() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            async function* values() {
+                try {
+                    yield 1;
+                } finally {
+                    yield await Promise.resolve(2);
+                }
+            }
+            let iterator = values();
+            iterator.next().then(first => {
+                globalThis.firstResult = first;
+                return iterator.return(9);
+            }).then(finallyResult => {
+                globalThis.finallyResult = finallyResult;
+                return iterator.next();
+            }).then(last => {
+                globalThis.lastResult = last;
+            });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "firstResult.value === 1 && !firstResult.done && finallyResult.value === 2 && !finallyResult.done && lastResult.value === 9 && lastResult.done",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
 fn for_await_consumes_async_generator_next_promises() {
     let mut vm = Vm::default();
     execute(
@@ -568,6 +676,205 @@ fn async_generator_yield_star_forwards_next_values_and_returns_the_inner_complet
     vm.run_promise_jobs().unwrap();
     assert_eq!(
         execute(&mut vm, "first && second && last"),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn async_generator_yield_star_return_runs_the_outer_finally() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            async function* inner() { yield 1; }
+            async function* outer() {
+                try {
+                    yield* inner();
+                } finally {
+                    yield 'outer-finally';
+                }
+            }
+            let iterator = outer();
+            iterator.next().then(first => {
+                globalThis.firstResult = first;
+                return iterator.return(9);
+            }).then(finallyResult => {
+                globalThis.finallyResult = finallyResult;
+                return iterator.next();
+            }).then(last => {
+                globalThis.lastResult = last;
+            });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "firstResult.value === 1 && !firstResult.done && finallyResult.value === 'outer-finally' && !finallyResult.done && lastResult.value === 9 && lastResult.done",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn async_generator_yield_star_forwards_throw_and_resumes_the_outer_frame() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            async function* inner() {
+                try {
+                    yield 1;
+                } catch (error) {
+                    yield error;
+                    return 7;
+                }
+            }
+            async function* outer() {
+                let result = yield* inner();
+                return result;
+            }
+            let iterator = outer();
+            iterator.next().then(first => {
+                globalThis.firstResult = first;
+                return iterator.throw('expected');
+            }).then(caught => {
+                globalThis.caughtResult = caught;
+                return iterator.next();
+            }).then(last => {
+                globalThis.lastResult = last;
+            });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "firstResult.value === 1 && !firstResult.done && caughtResult.value === 'expected' && !caughtResult.done && lastResult.value === 7 && lastResult.done",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn async_generator_yield_star_rejects_a_non_object_delegate_return_result() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            globalThis.delegate = {
+                [Symbol.asyncIterator]() { return this; },
+                next() { return Promise.resolve({ value: 1, done: false }); },
+                return() { return 1; },
+            };
+            async function* outer() { yield* delegate; }
+            let iterator = outer();
+            iterator.next().then(() => iterator.return(9)).then(
+                () => { globalThis.rejected = false; },
+                reason => { globalThis.rejected = reason.name === 'TypeError'; },
+            );
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(execute(&mut vm, "rejected"), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn async_generator_yield_star_rejects_a_missing_delegate_throw_method() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            globalThis.delegate = {
+                [Symbol.asyncIterator]() { return this; },
+                next() { return Promise.resolve({ value: 1, done: false }); },
+            };
+            async function* outer() { yield* delegate; }
+            let iterator = outer();
+            iterator.next().then(() => iterator.throw('expected')).then(
+                () => { globalThis.rejected = false; },
+                reason => { globalThis.rejected = reason.name === 'TypeError'; },
+            );
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(execute(&mut vm, "rejected"), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn async_generator_yield_star_forwards_return_to_a_sync_delegate() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            globalThis.delegate = {
+                [Symbol.iterator]() { return this; },
+                next() { return { value: 1, done: false }; },
+                return(value) { return { value, done: true }; },
+            };
+            async function* outer() { yield* delegate; }
+            let iterator = outer();
+            iterator.next().then(first => {
+                globalThis.firstResult = first;
+                return iterator.return(9);
+            }).then(last => {
+                globalThis.lastResult = last;
+            });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "firstResult.value === 1 && !firstResult.done && lastResult.value === 9 && lastResult.done",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn async_generator_yield_star_queues_behind_a_pending_delegate_return() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            globalThis.gate = Promise.withResolvers();
+            async function* inner() {
+                try {
+                    yield 1;
+                } finally {
+                    await gate.promise;
+                }
+            }
+            async function* outer() { yield* inner(); }
+            let iterator = outer();
+            iterator.next().then(first => { globalThis.firstResult = first; });
+            iterator.return(9).then(result => { globalThis.returnResult = result; });
+            iterator.next().then(result => { globalThis.afterReturn = result; });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "firstResult.value === 1 && !firstResult.done && typeof returnResult === 'undefined' && typeof afterReturn === 'undefined'",
+        ),
+        Ok(Value::Bool(true))
+    );
+
+    execute(&mut vm, "gate.resolve(undefined)").unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "returnResult.value === 9 && returnResult.done && afterReturn.done",
+        ),
         Ok(Value::Bool(true))
     );
 }

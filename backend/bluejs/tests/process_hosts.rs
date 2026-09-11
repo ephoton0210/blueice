@@ -258,6 +258,29 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
     assert_eq!(replies[6]["phase"], "parse");
 }
 
+#[test]
+fn adapter_reports_invalid_requested_modules_at_resolution() {
+    for invalid_source in ["0++;", "break;"] {
+        let replies = adapter(
+            &[json!({
+                "source":"import './invalid.js'",
+                "mode":"module",
+                "module_path":"entry.js",
+                "module_sources":{"invalid.js":invalid_source},
+            })],
+            None,
+        );
+        assert_eq!(
+            replies[0]["phase"], "resolution",
+            "{invalid_source}: {replies:?}"
+        );
+        assert_eq!(
+            replies[0]["kind"], "SyntaxError",
+            "{invalid_source}: {replies:?}"
+        );
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn regex_protocol_faults_and_missing_helper_fail_closed() {

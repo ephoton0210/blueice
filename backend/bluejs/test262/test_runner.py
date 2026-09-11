@@ -64,9 +64,13 @@ class RunnerTests(unittest.TestCase):
             dynamic = test / "modules" / "dynamic.js"
             unrelated = test / "modules" / "unrelated.js"
             dependency.parent.mkdir(parents=True)
-            entry.write_text("import { value } from './nested/dependency.js'; import('./dynamic.js'); value;")
+            entry.write_text(
+                "import { 'value' as value } from './nested/dependency.js'; "
+                "export * as 'all' from './reexport.js'; import('./dynamic.js'); value;"
+            )
             dependency.write_text("export { value } from '../entry.js';")
             dynamic.write_text("export const dynamic = true;")
+            (test / "modules" / "reexport.js").write_text("export const reexport = true;")
             unrelated.write_text("export const ignored = true;")
 
             sources = module_sources(entry, test)
@@ -76,6 +80,7 @@ class RunnerTests(unittest.TestCase):
                     "modules/entry.js",
                     "modules/nested/dependency.js",
                     "modules/dynamic.js",
+                    "modules/reexport.js",
                 },
             )
 

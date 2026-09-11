@@ -10,6 +10,7 @@
 use crate::bytecode::{
     AbruptJump, Binding, Handler, ModuleExport as CompiledModuleExport,
     ModuleImport as CompiledModuleImport, ModuleImportName as CompiledModuleImportName,
+    ModuleRequest as CompiledModuleRequest,
 };
 use crate::*;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -470,7 +471,7 @@ pub fn compile_with_limit(
     program: &Program,
     max_bytecode_bytes: u32,
 ) -> Result<Bytecode, CompileError> {
-    compile_with_limit_and_mode(program, max_bytecode_bytes, false, &[], &[])
+    compile_with_limit_and_mode(program, max_bytecode_bytes, false, &[], &[], &[])
 }
 
 /// Like [`compile_module`], with the Test262 adapter's bytecode resource
@@ -488,6 +489,7 @@ pub fn compile_module_with_limit(
         true,
         &module.imports,
         &module.exports,
+        &module.requests,
     )
 }
 
@@ -497,6 +499,7 @@ fn compile_with_limit_and_mode(
     module: bool,
     module_imports: &[ImportEntry],
     module_exports: &[ExportEntry],
+    module_requests: &[String],
 ) -> Result<Bytecode, CompileError> {
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
@@ -665,6 +668,14 @@ fn compile_with_limit_and_mode(
                 }),
             })
             .collect::<Result<Vec<_>, CompileError>>()?;
+        let mut seen = HashSet::new();
+        compiler.bytecode.module_requests = module_requests
+            .iter()
+            .filter(|request| seen.insert(request.as_str()))
+            .map(|module_request| CompiledModuleRequest {
+                module_request: module_request.clone(),
+            })
+            .collect();
     }
     Ok(compiler.bytecode)
 }
@@ -2470,8 +2481,11 @@ impl Compiler {
                     self.emit(Opcode::Await, 0)?;
                     let done = self.emit(Opcode::AsyncIteratorStepValue, 0)?;
                     self.emit(Opcode::Yield, 0)?;
+                    let resume = self.offset()?;
                     self.emit(Opcode::Jump, next)?;
-                    self.patch(done, self.offset()?);
+                    let exit = self.offset()?;
+                    self.patch(done, exit);
+                    self.bytecode.async_yield_delegates.push((resume, exit));
                     return Ok(());
                 }
                 if let Some(value) = value {

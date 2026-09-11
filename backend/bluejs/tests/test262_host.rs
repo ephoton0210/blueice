@@ -89,6 +89,21 @@ fn module_parser_enforces_top_level_lexical_and_export_early_errors() {
         "import value from './dependency.js' with { type: 'json', 'type': 'json' }"
     )
     .is_err());
+
+    for source in [
+        "export default var value = 1;",
+        "export default let value = 1;",
+        "export default const value = 1;",
+        "export default function() {}();",
+        "export default function*() {}();",
+        "?",
+        "0++;",
+        "<!-- a legacy script comment",
+        "\n-->",
+    ] {
+        let error = parse_module(source).unwrap_err();
+        assert!(error.known_syntax, "{source}: {error:?}");
+    }
 }
 
 #[test]
@@ -116,6 +131,66 @@ fn module_graph_links_named_imports_as_live_bindings_before_evaluation() {
         Vm::default().execute_module_graph("module/main.js", &modules),
         Ok(Value::Bool(true))
     );
+}
+
+#[test]
+fn module_graph_evaluates_interleaved_import_and_export_requests_in_source_order() {
+    let sources = [
+        (
+            "order/main.js",
+            "import './one.js';export {} from './two.js';import './three.js';globalThis.order==='123'",
+        ),
+        ("order/one.js", "globalThis.order='1'"),
+        ("order/two.js", "globalThis.order+='2'"),
+        ("order/three.js", "globalThis.order+='3'"),
+    ];
+    let modules: HashMap<_, _> = sources
+        .into_iter()
+        .map(|(name, source)| {
+            (
+                name.to_string(),
+                compile_module(&parse_module(source).unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        Vm::default().execute_module_graph("order/main.js", &modules),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn dynamic_import_observes_existing_static_dfs_evaluation() {
+    let root = "language/module-code/";
+    let modules = [
+        (
+            format!("{root}verify-dfs.js"),
+            include_str!("../../../development/browser_core/reference/test262/test/language/module-code/verify-dfs.js"),
+        ),
+        (
+            format!("{root}verify-dfs-a_FIXTURE.js"),
+            include_str!("../../../development/browser_core/reference/test262/test/language/module-code/verify-dfs-a_FIXTURE.js"),
+        ),
+        (
+            format!("{root}verify-dfs-b_FIXTURE.js"),
+            include_str!("../../../development/browser_core/reference/test262/test/language/module-code/verify-dfs-b_FIXTURE.js"),
+        ),
+    ]
+    .into_iter()
+    .map(|(name, source)| {
+        (
+            name,
+            compile_module(&parse_module(source).unwrap()).unwrap(),
+        )
+    })
+    .collect();
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    vm.install_test262_done().unwrap();
+    vm.execute_module_graph(&format!("{root}verify-dfs.js"), &modules)
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
 }
 
 #[test]
@@ -202,7 +277,7 @@ fn module_namespace_has_exotic_descriptor_symbol_and_integrity_semantics() {
     let sources = [
         (
             "namespace-exotic/main.js",
-            "import * as ns from './dependency.js';let descriptor=Object.getOwnPropertyDescriptor(ns,'z');let names=Object.getOwnPropertyNames(ns);let symbols=Object.getOwnPropertySymbols(ns);let rejected=false;let frozen=false;try{ns.z=0}catch(error){rejected=error instanceof TypeError}try{Object.freeze(ns)}catch(error){frozen=error instanceof TypeError}Object.getPrototypeOf(ns)===null&&!Object.isExtensible(ns)&&Object.preventExtensions(ns)===ns&&Object.isSealed(ns)&&!Object.isFrozen(ns)&&Reflect.defineProperty(ns,'z',{value:3})&&!Reflect.defineProperty(ns,'z',{value:4})&&!Reflect.set(ns,'z',0)&&!Reflect.deleteProperty(ns,'z')&&frozen&&descriptor.value===3&&descriptor.writable&&descriptor.enumerable&&!descriptor.configurable&&names.length===2&&names[0]==='a'&&names[1]==='z'&&symbols.length===1&&Object.prototype.toString.call(ns)==='[object Module]'&&rejected&&ns.z===3",
+            "import * as ns from './dependency.js';let descriptor=Object.getOwnPropertyDescriptor(ns,'z');let names=Object.getOwnPropertyNames(ns);let symbols=Object.getOwnPropertySymbols(ns);let rejected=false;let frozen=false;try{ns.z=0}catch(error){rejected=error instanceof TypeError}try{Object.freeze(ns)}catch(error){frozen=error instanceof TypeError}Object.getPrototypeOf(ns)===null&&!Object.isExtensible(ns)&&Object.preventExtensions(ns)===ns&&Object.isSealed(ns)&&!Object.isFrozen(ns)&&Reflect.defineProperty(ns,'z',{value:3})&&!Reflect.defineProperty(ns,'z',{value:4})&&!Reflect.set(ns,'z',0)&&!Reflect.deleteProperty(ns,'z')&&frozen&&descriptor.value===3&&descriptor.writable&&descriptor.enumerable&&!descriptor.configurable&&names.length===2&&names[0]==='a'&&names[1]==='z'&&symbols.length===1&&Object.prototype.toString.call(ns)==='[object Module]'&&rejected&&Reflect.get(ns,'z')===3&&ns.z===3",
         ),
         (
             "namespace-exotic/dependency.js",

@@ -7,7 +7,10 @@
 //! safepoints. The collector itself additionally protects store inputs.
 
 use crate::bytecode::{Binding, ModuleExport, ModuleImportName};
-use crate::heap::{GeneratorState, PrivateElement};
+use crate::heap::{
+    GeneratorHandlerFrame, GeneratorHandlerState, GeneratorPendingCompletion, GeneratorState,
+    PrivateElement,
+};
 use crate::native::{self, NativeFunction};
 use crate::primitive;
 use crate::{
@@ -140,23 +143,69 @@ enum Completion {
     Halt(Value),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum HandlerState {
-    Try,
-    Catch,
-    Finally,
+impl Completion {
+    /// Convert a catchable completion to the heap-owned representation used
+    /// by a suspended generator.  Every other RuntimeError is a host abort
+    /// and is rejected by the interpreter before it reaches this boundary.
+    fn into_generator_pending(self) -> Result<GeneratorPendingCompletion, RuntimeError> {
+        match self {
+            Self::Throw(RuntimeError::Thrown(value)) => {
+                Ok(GeneratorPendingCompletion::Throw(value))
+            }
+            Self::Throw(RuntimeError::ReferenceError(message)) => {
+                Ok(GeneratorPendingCompletion::ReferenceError(message))
+            }
+            Self::Throw(RuntimeError::TypeError(message)) => {
+                Ok(GeneratorPendingCompletion::TypeError(message))
+            }
+            Self::Throw(RuntimeError::RangeError(message)) => {
+                Ok(GeneratorPendingCompletion::RangeError(message))
+            }
+            Self::Throw(RuntimeError::SyntaxError(message)) => {
+                Ok(GeneratorPendingCompletion::SyntaxError(message))
+            }
+            Self::Throw(RuntimeError::Test262(message)) => {
+                Ok(GeneratorPendingCompletion::Test262(message))
+            }
+            Self::Return(value) => Ok(GeneratorPendingCompletion::Return(value)),
+            Self::TailRecur(values) => Ok(GeneratorPendingCompletion::TailRecur(values)),
+            Self::Jump { cleanup, target } => {
+                Ok(GeneratorPendingCompletion::Jump { cleanup, target })
+            }
+            Self::Throw(error) => Err(error),
+            Self::Yield(_) | Self::Resume(_) | Self::Halt(_) => Err(RuntimeError::Unsupported(
+                "cannot suspend a generator with an internal completion",
+            )),
+        }
+    }
+
+    fn from_generator_pending(completion: GeneratorPendingCompletion) -> Self {
+        match completion {
+            GeneratorPendingCompletion::Throw(value) => Self::Throw(RuntimeError::Thrown(value)),
+            GeneratorPendingCompletion::ReferenceError(message) => {
+                Self::Throw(RuntimeError::ReferenceError(message))
+            }
+            GeneratorPendingCompletion::TypeError(message) => {
+                Self::Throw(RuntimeError::TypeError(message))
+            }
+            GeneratorPendingCompletion::RangeError(message) => {
+                Self::Throw(RuntimeError::RangeError(message))
+            }
+            GeneratorPendingCompletion::SyntaxError(message) => {
+                Self::Throw(RuntimeError::SyntaxError(message))
+            }
+            GeneratorPendingCompletion::Test262(message) => {
+                Self::Throw(RuntimeError::Test262(message))
+            }
+            GeneratorPendingCompletion::Return(value) => Self::Return(value),
+            GeneratorPendingCompletion::TailRecur(values) => Self::TailRecur(values),
+            GeneratorPendingCompletion::Jump { cleanup, target } => Self::Jump { cleanup, target },
+        }
+    }
 }
 
-#[derive(Clone)]
-struct HandlerFrame {
-    metadata: usize,
-    stack_depth: usize,
-    scope_depth: usize,
-    iterator_depth: usize,
-    with_depth: usize,
-    state: HandlerState,
-    pending: Option<usize>,
-}
+type HandlerState = GeneratorHandlerState;
+type HandlerFrame = GeneratorHandlerFrame;
 
 enum CompletionAction {
     Continue,
@@ -172,6 +221,7 @@ enum InterpreterExit {
         value: Value,
         pc: usize,
         iterators: Vec<Value>,
+        handlers: Vec<HandlerFrame>,
     },
     Suspend {
         pc: usize,
@@ -1214,12 +1264,16 @@ impl Vm {
                 return Err(RuntimeError::Thrown(error.clone()));
             }
             if record.evaluated {
-                let namespace = self.module_namespace_cache.get(&entry).copied().ok_or(
-                    RuntimeError::ModuleResolution(format!(
-                        "dynamic import of {entry} did not produce a namespace"
-                    )),
-                )?;
-                return Ok(DynamicImportResult::Fulfilled(Value::Object(namespace)));
+                let modules = self.module_registry.clone();
+                let mut graph = self
+                    .module_graph
+                    .take()
+                    .expect("checked module graph remains installed");
+                let namespace =
+                    self.module_namespace(&entry, &modules, &mut graph.linked, &mut graph.roots);
+                self.module_graph = Some(graph);
+                return namespace
+                    .map(|namespace| DynamicImportResult::Fulfilled(Value::Object(namespace)));
             }
             if record.evaluating || record.suspended {
                 return Ok(DynamicImportResult::Waiting(entry));
@@ -1464,7 +1518,14 @@ impl Vm {
         } = continuation;
         self.restore_module_execution(execution);
         let outcome = if fulfilled {
-            self.interpret(&code, &mut iterators, pc, Some(value), None, Some(handlers))
+            self.interpret(
+                &code,
+                &mut iterators,
+                pc,
+                Some(value),
+                None,
+                Some((handlers, 0)),
+            )
         } else {
             match self.resolve_completion(
                 &code,
@@ -1473,11 +1534,16 @@ impl Vm {
                 Completion::Throw(RuntimeError::Thrown(value)),
             )? {
                 CompletionAction::Continue => {
-                    self.interpret(&code, &mut iterators, pc, None, None, Some(handlers))
+                    self.interpret(&code, &mut iterators, pc, None, None, Some((handlers, 0)))
                 }
-                CompletionAction::Jump(target) => {
-                    self.interpret(&code, &mut iterators, target, None, None, Some(handlers))
-                }
+                CompletionAction::Jump(target) => self.interpret(
+                    &code,
+                    &mut iterators,
+                    target,
+                    None,
+                    None,
+                    Some((handlers, 0)),
+                ),
                 CompletionAction::Return(value) => Ok(InterpreterExit::Return(value)),
                 CompletionAction::TailRecur(_) => Err(RuntimeError::TypeError(
                     "top-level await cannot recur".into(),
@@ -1787,7 +1853,14 @@ impl Vm {
         let ambient_call_depth = std::mem::replace(&mut self.call_depth, call_depth);
         self.restore_module_execution(execution);
         let outcome = if fulfilled {
-            self.interpret(&code, &mut iterators, pc, Some(value), None, Some(handlers))
+            self.interpret(
+                &code,
+                &mut iterators,
+                pc,
+                Some(value),
+                None,
+                Some((handlers, 0)),
+            )
         } else {
             match self.resolve_completion(
                 &code,
@@ -1796,11 +1869,16 @@ impl Vm {
                 Completion::Throw(RuntimeError::Thrown(value)),
             ) {
                 Ok(CompletionAction::Continue) => {
-                    self.interpret(&code, &mut iterators, pc, None, None, Some(handlers))
+                    self.interpret(&code, &mut iterators, pc, None, None, Some((handlers, 0)))
                 }
-                Ok(CompletionAction::Jump(target)) => {
-                    self.interpret(&code, &mut iterators, target, None, None, Some(handlers))
-                }
+                Ok(CompletionAction::Jump(target)) => self.interpret(
+                    &code,
+                    &mut iterators,
+                    target,
+                    None,
+                    None,
+                    Some((handlers, 0)),
+                ),
                 Ok(CompletionAction::Return(value)) => Ok(InterpreterExit::Return(value)),
                 Ok(CompletionAction::TailRecur(_)) => Err(RuntimeError::TypeError(
                     "async function cannot tail recur across await".into(),
@@ -1892,7 +1970,14 @@ impl Vm {
         let ambient_call_depth = std::mem::replace(&mut self.call_depth, call_depth);
         self.restore_module_execution(execution);
         let outcome = if fulfilled {
-            self.interpret(&code, &mut iterators, pc, Some(value), None, Some(handlers))
+            self.interpret(
+                &code,
+                &mut iterators,
+                pc,
+                Some(value),
+                None,
+                Some((handlers, 0)),
+            )
         } else {
             match self.resolve_completion(
                 &code,
@@ -1901,11 +1986,16 @@ impl Vm {
                 Completion::Throw(RuntimeError::Thrown(value)),
             ) {
                 Ok(CompletionAction::Continue) => {
-                    self.interpret(&code, &mut iterators, pc, None, None, Some(handlers))
+                    self.interpret(&code, &mut iterators, pc, None, None, Some((handlers, 0)))
                 }
-                Ok(CompletionAction::Jump(target)) => {
-                    self.interpret(&code, &mut iterators, target, None, None, Some(handlers))
-                }
+                Ok(CompletionAction::Jump(target)) => self.interpret(
+                    &code,
+                    &mut iterators,
+                    target,
+                    None,
+                    None,
+                    Some((handlers, 0)),
+                ),
                 Ok(CompletionAction::Return(value)) => Ok(InterpreterExit::Return(value)),
                 Ok(CompletionAction::TailRecur(_)) => Err(RuntimeError::TypeError(
                     "async generator cannot tail recur across await".into(),
@@ -1928,11 +2018,25 @@ impl Vm {
                 value,
                 pc,
                 iterators,
+                handlers,
             }) => {
+                let stack = std::mem::take(&mut self.stack);
+                let async_delegate =
+                    code.async_yield_delegates
+                        .iter()
+                        .find(|(resume, _)| *resume as usize == pc)
+                        .and_then(|(_, exit_pc)| {
+                            stack.last().cloned().map(|record| {
+                                crate::heap::AsyncGeneratorDelegate {
+                                    record,
+                                    exit_pc: *exit_pc as usize,
+                                }
+                            })
+                        });
                 let state = GeneratorState::Suspended {
                     code,
                     pc,
-                    stack: std::mem::take(&mut self.stack),
+                    stack,
                     bindings: std::mem::take(&mut self.bindings),
                     cells: std::mem::take(&mut self.cells).into_iter().collect(),
                     this: std::mem::replace(&mut self.this, Value::Undefined),
@@ -1941,6 +2045,17 @@ impl Vm {
                     completion_empty: std::mem::replace(&mut self.completion_empty, true),
                     active_scopes: std::mem::take(&mut self.active_scopes),
                     iterators,
+                    handlers,
+                    pending_completions: std::mem::take(&mut self.pending_completions)
+                        .into_iter()
+                        .map(|completion| {
+                            completion
+                                .into_generator_pending()
+                                .expect("only catchable completions can survive a generator yield")
+                        })
+                        .collect(),
+                    completion_saves: std::mem::take(&mut self.completion_saves),
+                    async_delegate,
                     dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings)
                         .into_iter()
                         .map(|(name, binding)| (name, binding.cell, binding.shadowed_cells))
@@ -2263,28 +2378,8 @@ impl Vm {
         let code = modules.get(from).ok_or_else(|| {
             RuntimeError::ModuleResolution(format!("module {from} was not linked"))
         })?;
-        let mut requests: Vec<_> = code
-            .module_imports
-            .iter()
-            .filter_map(|import| {
-                (!matches!(import.import_name, ModuleImportName::Source))
-                    .then_some(import.module_request.as_str())
-            })
-            .collect();
-        requests.extend(
-            code.module_exports
-                .iter()
-                .filter_map(|export| match export {
-                    ModuleExport::Indirect { module_request, .. }
-                    | ModuleExport::Star { module_request }
-                    | ModuleExport::Namespace { module_request, .. } => {
-                        Some(module_request.as_str())
-                    }
-                    ModuleExport::Local { .. } | ModuleExport::Source { .. } => None,
-                }),
-        );
-        for request in requests {
-            let target = Self::resolve_module_request(from, request)?;
+        for request in &code.module_requests {
+            let target = Self::resolve_module_request(from, &request.module_request)?;
             if Self::module_reaches(&target, goal, modules, visited)? {
                 return Ok(true);
             }
@@ -2342,42 +2437,9 @@ impl Vm {
             .evaluating = true;
         let result = (|| {
             let code = modules.get(name).expect("linked module has bytecode");
-            // [[RequestedModules]] includes requests from every import and
-            // indirect, star, or namespace export. Evaluating only imports
-            // leaves cells reached through `export * from` in the TDZ when a
-            // module imports its own re-exported binding.
-            let mut requests: Vec<_> = code
-                .module_imports
-                .iter()
-                .filter_map(|import| {
-                    (!matches!(import.import_name, ModuleImportName::Source))
-                        .then_some(import.module_request.clone())
-                })
-                .collect();
-            requests.extend(
-                code.module_exports
-                    .iter()
-                    .filter_map(|export| match export {
-                        ModuleExport::Indirect { module_request, .. }
-                        | ModuleExport::Star { module_request }
-                        | ModuleExport::Namespace { module_request, .. } => {
-                            Some(module_request.clone())
-                        }
-                        ModuleExport::Local { .. } | ModuleExport::Source { .. } => None,
-                    }),
-            );
-            // InnerModuleEvaluation visits [[RequestedModules]] in source
-            // order. Sorting makes an independent sibling run before an
-            // earlier async dependency has executed its synchronous prefix.
-            let mut ordered_requests = Vec::new();
-            for request in requests {
-                if !ordered_requests.contains(&request) {
-                    ordered_requests.push(request);
-                }
-            }
             let mut pending_dependencies = Vec::new();
-            for request in ordered_requests {
-                let target = Self::resolve_module_request(name, &request)?;
+            for request in &code.module_requests {
+                let target = Self::resolve_module_request(name, &request.module_request)?;
                 self.evaluate_module_record(&target, modules, linked)?;
                 if linked.get(&target).is_some_and(|record| record.suspended) {
                     pending_dependencies
@@ -3717,7 +3779,7 @@ impl Vm {
         start_pc: usize,
         resume_value: Option<Value>,
         suspend_at: Option<usize>,
-        restored_handlers: Option<Vec<HandlerFrame>>,
+        restored_handlers: Option<(Vec<HandlerFrame>, usize)>,
     ) -> Result<InterpreterExit, RuntimeError> {
         let stack_base = self.stack.len();
         let pending_base = self.pending_completions.len();
@@ -3726,7 +3788,15 @@ impl Vm {
             self.stack.push(value);
         }
         let mut pc = start_pc;
-        let mut handlers = restored_handlers.unwrap_or_default();
+        let (mut handlers, handler_stack_base) =
+            restored_handlers.unwrap_or_else(|| (Vec::new(), stack_base));
+        // Suspended frames store stack offsets relative to their saved stack,
+        // while an active interpreter may have an ambient caller frame below
+        // it.  Convert at the boundary so catch/finally cleanup always uses
+        // the current absolute operand-stack offsets.
+        for handler in &mut handlers {
+            handler.stack_depth += handler_stack_base;
+        }
         let mut suspended_await = None;
         loop {
             if suspend_at == Some(pc) {
@@ -4388,7 +4458,7 @@ impl Vm {
                         return Ok(Some(Completion::TailRecur(args)));
                     }
                     Opcode::Yield => {
-                        if !code.generator || !handlers.is_empty() {
+                        if !code.generator {
                             return Err(RuntimeError::TypeError(
                                 "yield is not supported in this execution context".into(),
                             ));
@@ -5034,6 +5104,9 @@ impl Vm {
                 Err(error) => return Err(error),
             };
             if let Some(promise) = suspended_await.take() {
+                for handler in &mut handlers {
+                    handler.stack_depth -= handler_stack_base;
+                }
                 return Ok(InterpreterExit::Await {
                     promise,
                     pc,
@@ -5042,10 +5115,14 @@ impl Vm {
             }
             if let Some(completion) = completion {
                 if let Completion::Yield(value) = completion {
+                    for handler in &mut handlers {
+                        handler.stack_depth -= handler_stack_base;
+                    }
                     return Ok(InterpreterExit::Yield {
                         value,
                         pc,
                         iterators: std::mem::take(iterators),
+                        handlers: std::mem::take(&mut handlers),
                     });
                 }
                 match self.resolve_completion(code, &mut handlers, iterators, completion)? {

@@ -187,6 +187,7 @@ pub(crate) enum ObjectMethod {
     Freeze,
     IsSealed,
     IsFrozen,
+    ReflectGet,
     ReflectDefineProperty,
     ReflectSet,
     ReflectDeleteProperty,

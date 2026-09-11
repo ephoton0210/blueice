@@ -27,6 +27,10 @@ pub struct Module {
     pub body: Vec<Stmt>,
     pub imports: Vec<ImportEntry>,
     pub exports: Vec<ExportEntry>,
+    /// [[RequestedModules]] in source-text order. Import/export entries are
+    /// otherwise stored separately for resolution, which must not change the
+    /// dependency evaluation order.
+    pub requests: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -763,6 +763,57 @@ focused `language/module-code/top-level-await/await-awaits-thenable-not-callable
 run at `target/test262-tla-basic` has **1 pass of 1**. These are bounded
 acceptance slices, not a claim of complete module or async conformance.
 
+### Implementation update: complete `language/module-code` boundary
+
+Implemented 2026-09-11. The final P1.4 gap audit started from **578 pass, 12
+fail and 12 unsupported** modes. The unsupported set was deliberately handled
+first: module-only early syntax errors (`export default var`/lexical
+declarations, direct invocation of anonymous default function declarations,
+invalid updates, lone `?`, and HTML-like comments) are now classified as known
+SyntaxErrors. A syntax or compiler early error in a requested fixture is
+reported at resolution phase, while the entry record remains parse phase.
+This keeps a subset-parser rejection from falsely passing a negative test.
+
+`Module` now preserves executable `[[RequestedModules]]` in source-text order
+and bytecode retains that sequence separately from the import/export tables.
+`Vm::evaluate_module_record` and async-cycle reachability follow it directly.
+This corrects interleaving such as `import A; export {} from B; import C`,
+including the zero-specifier export case that otherwise has no ExportEntry.
+Source-phase imports remain excluded from evaluation while retaining their
+separate linking validation. The Test262 runner also collects fixture edges
+whose import or export names are string literals, so namespace-name tests do
+not accidentally run with an incomplete host registry.
+
+The completion audit found a second suspension defect: handler stack offsets
+were restored relative to the entire saved stack for top-level-await and async
+continuations. That stack is the suspended frame itself, rather than an
+ambient caller frame, and a subsequent `await` could underflow while
+re-serializing a catch/finally handler. Interpreter restoration now records
+the correct base for each boundary: zero for isolated module/async frames and
+the reconstructed frame base for ordinary generators. This removes the crash
+in repeated caught top-level awaits while retaining P1.3 generator-finalizer
+semantics.
+
+Namespace dynamic import now materializes a namespace for an already evaluated
+static dependency when no prior namespace access created it. `Reflect.get` is
+available alongside the other Reflect internal-method adapters, including
+integer-indexed module namespace export names. Public regressions cover
+interleaved import/export dependency ordering, static DFS followed by a
+dynamic import of that dependency, requested-fixture resolution phase, module
+HTML comments, integer namespace keys, and repeated top-level-await catches.
+
+The pinned eight-worker run at `target/test262-module-p14-complete` records
+**602 pass, 0 fail, 0 unsupported and 0 timeout** across 599 files and 602
+scheduled modes (`language/module-code`, two-second deadline, 100,000
+dispatch budget). The analyzer reconciles every mode with blocker `none`. Its
+adapter SHA-256 is
+`ece0d6ccf1becc765520da156ca3d86477435e38d8e15531ca1602bc719049a5` and
+runner SHA-256 is
+`cc2c798f5ccc2bb9a731c9b42c9a652fae2a072ecbfdfbec05518e5c5594106e`.
+This closes the P1.4 `language/module-code` scope for the pinned snapshot; it
+does not imply complete Test262 coverage for unrelated grammar, host loading,
+storage, library, or Intl workstreams.
+
 ## P0.2/P0.3 follow-up: eval Annex B and assignment references
 
 Sloppy direct eval now records the exact captured cells that a dynamically
@@ -1028,16 +1079,16 @@ request. These are one execution-model gap, not independent builtin bugs.
 
 The checked-in 1,212-mode async-generator measurement above is a
 pre-implementation baseline, not a result for the two commits. After the
-queue implementation, the pinned 8-worker filtered run at
-`target/test262-async-generator-queue` records **1,212 pass, 0 fail, 0
-unsupported and 0 timeout** across 623 files, with the 100,000-dispatch budget
-and two-second deadline. Its adapter SHA-256 is
-`8a970e1d1e52b0cc8be50aba06d8b32e3c40fad14ecbc6c0468b502f60b0d4e7` and
-the runner SHA-256 is
-`71f6dae44baeda922f7ea894267eb16cd6f162a761e320f3a79198a3f2d831d0`.
+queue, handler-completion, and delegate-metadata implementation, the pinned
+8-worker filtered run at `target/test262-async-generator-p13-final` records
+**1,212 pass, 0 fail, 0 unsupported and 0 timeout** across 623 files, with the
+100,000-dispatch budget and two-second deadline. Its adapter SHA-256 is
+`ece0d6ccf1becc765520da156ca3d86477435e38d8e15531ca1602bc719049a5` and the
+runner SHA-256 is
+`cc2c798f5ccc2bb9a731c9b42c9a652fae2a072ecbfdfbec05518e5c5594106e`.
 The analyzer reconciles all 1,212 modes with blocker `none`. This focused
-result does not establish the unexercised handler-frame semantics below or
-full Test262 conformance.
+result verifies this P1.3 boundary; it does not establish full Test262
+conformance outside async-generator expressions.
 
 The implementation follows [AsyncGeneratorStart,
 AsyncGeneratorEnqueue, and AsyncGeneratorResumeNext](https://tc39.es/ecma262/2026/multipage/control-abstraction-objects.html#sec-asyncgeneratorstart),
@@ -1124,8 +1175,8 @@ the installed pinned corpus:
 
 ```text
 cargo test -p blueice-bluejs --test function_environments
-python3 backend/bluejs/test262/run.py --filter language/expressions/async-generator --output target/test262-async-generator-queue
-python3 backend/bluejs/test262/analyze.py --run target/test262-async-generator-queue --output target/test262-async-generator-queue/analysis
+python3 backend/bluejs/test262/run.py --filter language/expressions/async-generator --output target/test262-async-generator-p13-final
+python3 backend/bluejs/test262/analyze.py --run target/test262-async-generator-p13-final --output target/test262-async-generator-p13-final/analysis
 ```
 
 Record the scheduled/pass/fail/unsupported/timeout counts, executable hashes,
@@ -1137,12 +1188,12 @@ serialized-request boundary; host-driven module loading, Proxy/object
 internals, typed arrays/shared memory, the remaining builtin families,
 ECMA-402, and the full Test262 inventory remain their existing workstreams.
 
-### Implementation update: queue scheduling boundary
+### Implementation update: complete serialized-request boundary
 
-Implemented 2026-09-11. Async-generator objects now own the request queue in
-their heap record, including queued completion values and target Promises for
-GC tracing and byte accounting. A single scheduler admits only its head while
-the generator is suspended; `await` in the body and `AsyncGeneratorYield` both
+Implemented 2026-09-11. Async-generator objects own the request queue in their
+heap record, including queued completion values and target Promises for GC
+tracing and byte accounting. A single scheduler admits only its head while the
+generator is suspended; `await` in the body and `AsyncGeneratorYield` both
 install an await gate. The latter always completes in a Promise job, including
 an already-fulfilled yielded value. Head completion removes exactly one
 request, settles its target, then drains later completed requests iteratively
@@ -1150,15 +1201,28 @@ or starts the next suspended request. Queued `next`, `return`, and `throw`
 therefore cannot observe the temporary `GeneratorState::Done` used while a
 continuation owns the live frame.
 
-Public regressions prove that a second `next` stays pending while the first
-body await is unresolved, a plain yielded value does not begin the next request
-before its Promise job, queued `return` and `throw` preserve FIFO order, and a
-rejected body await drains later requests as completed. A heap regression
-forces a major collection while the queue holds an object argument and target.
-This update does not yet inject a queued return or throw completion through a
-suspended generator's `catch`/`finally`; that requires preserving active
-handler and pending-completion frames across `yield`. Nor does it yet replace
-the current bytecode-layout detection for an active `yield*` delegate. Those
-are the next P1.3 semantic slices. The fresh pinned focused run above has
-1,212/1,212 passing modes; this is a queue-scheduling result, not an exit
-criterion for those remaining semantics or the full inventory.
+`GeneratorState::Suspended` now carries handler stack offsets relative to its
+saved frame, pending catchable completions, saved normal completions, and
+active async-delegate metadata. Interpreter entry applies the explicit frame
+base when an ordinary generator is rebuilt above an ambient caller stack; an
+isolated module or async continuation uses zero because its saved stack is the
+frame itself. Suspension converts offsets back with that same base. A queued
+return now flows through a paused `finally`, including one that awaits before
+yielding; a queued throw flows through a paused `catch`. These saved values
+and the active delegate record are heap references and contribute to
+managed-byte accounting, so collection cannot discard a live finalizer,
+caught exception, or delegated iterator.
+
+The compiler records the resume and exit offsets of each async `yield*` loop.
+At its public yield boundary the generator saves an explicit delegate record;
+return and throw forwarding consult that record rather than scanning a bytecode
+pattern. A completed delegate return resumes the outer return completion, which
+allows an enclosing outer `finally` to yield before the request completes.
+Regressions cover FIFO requests across a body await, yielded-value job order,
+return/finally and throw/catch injection, finalizer await suspension, sync and
+async delegate forwarding, outer finalizers, pending delegate returns,
+non-object delegate results, missing delegate throws, and heap edges in a
+suspended frame. The focused Test262 result above and its reconciled analysis
+are the completion evidence for this P1.3 slice. Host-driven module loading,
+Proxy/object internals, typed arrays and shared memory, the remaining builtin
+families, ECMA-402, and the full Test262 inventory remain separate workstreams.

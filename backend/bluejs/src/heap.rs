@@ -178,8 +178,92 @@ impl ClosureMetadata {
 
 const CLOSURE_METADATA_BYTES: usize = size_of::<ClosureMetadata>();
 
+/// The interpreter handler state that must remain attached to a suspended
+/// generator frame.  It contains only bytecode and frame offsets, so keeping
+/// it with the heap-owned frame also keeps a `yield` in a catch or finally
+/// block independent of the VM's ambient execution context.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GeneratorHandlerState {
+    Try,
+    Catch,
+    Finally,
+}
+
+#[derive(Clone)]
+pub(crate) struct GeneratorHandlerFrame {
+    pub(crate) metadata: usize,
+    pub(crate) stack_depth: usize,
+    pub(crate) scope_depth: usize,
+    pub(crate) iterator_depth: usize,
+    pub(crate) with_depth: usize,
+    pub(crate) state: GeneratorHandlerState,
+    /// Index into `GeneratorState::Suspended::pending_completions` while a
+    /// finally block is running an abrupt completion.
+    pub(crate) pending: Option<usize>,
+}
+
+/// A catchable completion displaced with a generator frame.  VM-only resource
+/// failures cannot enter this representation: the interpreter propagates
+/// those directly rather than letting JavaScript catch them.
+#[derive(Clone)]
+pub(crate) enum GeneratorPendingCompletion {
+    Throw(Value),
+    ReferenceError(String),
+    TypeError(String),
+    RangeError(String),
+    SyntaxError(String),
+    Test262(String),
+    Return(Value),
+    TailRecur(Vec<Value>),
+    Jump { cleanup: usize, target: usize },
+}
+
+impl GeneratorPendingCompletion {
+    fn references(&self) -> Vec<ObjectId> {
+        match self {
+            Self::Throw(value) | Self::Return(value) => value.object_id().into_iter().collect(),
+            Self::TailRecur(values) => values.iter().filter_map(Value::object_id).collect(),
+            Self::ReferenceError(_)
+            | Self::TypeError(_)
+            | Self::RangeError(_)
+            | Self::SyntaxError(_)
+            | Self::Test262(_)
+            | Self::Jump { .. } => Vec::new(),
+        }
+    }
+
+    fn managed_bytes(&self) -> usize {
+        match self {
+            Self::Throw(value) | Self::Return(value) => value.payload_bytes(),
+            Self::ReferenceError(message)
+            | Self::TypeError(message)
+            | Self::RangeError(message)
+            | Self::SyntaxError(message)
+            | Self::Test262(message) => message.len(),
+            Self::TailRecur(values) => {
+                values.len() * size_of::<Value>()
+                    + values.iter().map(Value::payload_bytes).sum::<usize>()
+            }
+            Self::Jump { .. } => 0,
+        }
+    }
+}
+
+/// The explicit state of an active async `yield*` delegation.  `record` is
+/// the iterator record retained by the compiler's loop; `exit_pc` continues
+/// the outer generator after a forwarded `throw()` produces a final result.
+#[derive(Clone)]
+pub(crate) struct AsyncGeneratorDelegate {
+    pub(crate) record: Value,
+    pub(crate) exit_pc: usize,
+}
+
 /// A generator's suspended execution context. The VM moves this out while
 /// `.next()` runs, then restores it before any subsequent allocation.
+// The suspended frame is intentionally inline: it moves atomically between a
+// generator heap slot and the interpreter, and is already stored behind a
+// `Box<GeneratorState>` in `ObjectKind::Generator`.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum GeneratorState {
     Start {
         code: Rc<Bytecode>,
@@ -204,6 +288,17 @@ pub(crate) enum GeneratorState {
         /// suspension point. They must survive GC and be closed by a later
         /// generator return/throw completion.
         iterators: Vec<Value>,
+        /// Active catch/finally records at the suspension point.  These must
+        /// survive both a normal `.next()` and an injected `.return()` or
+        /// `.throw()` request.
+        handlers: Vec<GeneratorHandlerFrame>,
+        /// Abrupt completions saved while an enclosing finally is running.
+        pending_completions: Vec<GeneratorPendingCompletion>,
+        /// The visible completion saved by a normal finally entry.
+        completion_saves: Vec<(Value, bool)>,
+        /// Set only while a compiler-declared async `yield*` loop is
+        /// suspended at its public yield boundary.
+        async_delegate: Option<AsyncGeneratorDelegate>,
         dynamic_bindings: Vec<(String, ObjectId, Vec<ObjectId>)>,
         home: Option<ObjectId>,
         callee: Value,
@@ -295,7 +390,36 @@ impl AsyncGeneratorControl {
 
 impl GeneratorState {
     fn managed_bytes(&self) -> usize {
-        self.references().len() * size_of::<ObjectId>()
+        let reference_bytes = self.references().len() * size_of::<ObjectId>();
+        match self {
+            Self::Suspended {
+                handlers,
+                pending_completions,
+                completion_saves,
+                async_delegate,
+                ..
+            } => {
+                reference_bytes
+                    + handlers.len() * size_of::<GeneratorHandlerFrame>()
+                    + pending_completions.len() * size_of::<GeneratorPendingCompletion>()
+                    + pending_completions
+                        .iter()
+                        .map(GeneratorPendingCompletion::managed_bytes)
+                        .sum::<usize>()
+                    + completion_saves.len() * size_of::<(Value, bool)>()
+                    + completion_saves
+                        .iter()
+                        .map(|(value, _)| value.payload_bytes())
+                        .sum::<usize>()
+                    + async_delegate.as_ref().map_or(0, |delegate| {
+                        size_of::<AsyncGeneratorDelegate>() + delegate.record.payload_bytes()
+                    })
+            }
+            Self::Start { args, .. } => {
+                reference_bytes + args.iter().map(Value::payload_bytes).sum::<usize>()
+            }
+            Self::Done => reference_bytes,
+        }
     }
 
     fn references(&self) -> Vec<ObjectId> {
@@ -323,25 +447,38 @@ impl GeneratorState {
                 args,
                 completion,
                 iterators,
+                pending_completions,
+                completion_saves,
+                async_delegate,
                 dynamic_bindings,
                 home,
                 callee,
                 ..
-            } => stack
-                .iter()
-                .chain(bindings.iter().flatten())
-                .chain(std::iter::once(this))
-                .chain(args.iter())
-                .chain(std::iter::once(completion))
-                .chain(iterators.iter())
-                .filter_map(Value::object_id)
-                .chain(cells.iter().map(|(_, id)| *id))
-                .chain(dynamic_bindings.iter().flat_map(|(_, id, shadowed_cells)| {
-                    std::iter::once(*id).chain(shadowed_cells.iter().copied())
-                }))
-                .chain(*home)
-                .chain(callee.object_id())
-                .collect(),
+            } => {
+                let mut references = stack
+                    .iter()
+                    .chain(bindings.iter().flatten())
+                    .chain(std::iter::once(this))
+                    .chain(args.iter())
+                    .chain(std::iter::once(completion))
+                    .chain(iterators.iter())
+                    .chain(completion_saves.iter().map(|(value, _)| value))
+                    .chain(async_delegate.iter().map(|delegate| &delegate.record))
+                    .filter_map(Value::object_id)
+                    .chain(cells.iter().map(|(_, id)| *id))
+                    .chain(dynamic_bindings.iter().flat_map(|(_, id, shadowed_cells)| {
+                        std::iter::once(*id).chain(shadowed_cells.iter().copied())
+                    }))
+                    .chain(*home)
+                    .chain(callee.object_id())
+                    .collect::<Vec<_>>();
+                references.extend(
+                    pending_completions
+                        .iter()
+                        .flat_map(GeneratorPendingCompletion::references),
+                );
+                references
+            }
             Self::Done => Vec::new(),
         }
     }
@@ -2560,6 +2697,9 @@ mod tests {
         let dynamic = heap.alloc_object(None).unwrap();
         let home = heap.alloc_object(None).unwrap();
         let iterator = heap.alloc_object(None).unwrap();
+        let pending = heap.alloc_object(None).unwrap();
+        let saved = heap.alloc_object(None).unwrap();
+        let delegate = heap.alloc_object(None).unwrap();
         let state = GeneratorState::Suspended {
             code: Rc::new(Bytecode::empty()),
             pc: 0,
@@ -2573,12 +2713,20 @@ mod tests {
             active_scopes: Vec::new(),
             dynamic_bindings: vec![("dynamic".into(), dynamic, Vec::new())],
             iterators: vec![Value::Object(iterator)],
+            handlers: Vec::new(),
+            pending_completions: vec![GeneratorPendingCompletion::Throw(Value::Object(pending))],
+            completion_saves: vec![(Value::Object(saved), false)],
+            async_delegate: Some(AsyncGeneratorDelegate {
+                record: Value::Object(delegate),
+                exit_pc: 0,
+            }),
             home: Some(home),
             callee: Value::Undefined,
         };
         let references = state.references();
         for object in [
-            stack, binding, this, argument, completion, cell, dynamic, home, iterator,
+            stack, binding, this, argument, completion, cell, dynamic, home, iterator, pending,
+            saved, delegate,
         ] {
             assert!(references.contains(&object));
         }
