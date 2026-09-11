@@ -190,6 +190,11 @@ pub struct Instruction {
 pub(crate) struct Binding {
     pub name: String,
     pub mutable: bool,
+    /// Immutable lexical bindings created by `const` reject every write.
+    /// A named function expression instead has an immutable but non-strict
+    /// binding: sloppy references ignore its writes while strict references
+    /// throw.
+    pub strict_immutable: bool,
     pub lexical: bool,
     /// Annex B lets a direct eval in the immediately containing catch block
     /// redeclare a simple catch parameter with `var` or a function.

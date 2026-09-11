@@ -918,3 +918,34 @@ classified async grammar/early-error gaps; the other nine require unrelated
 function-name, `new.target`, `with`/`Symbol.unscopables` semantics. This is a
 continuation foundation, not a claim of async-generator or complete async
 conformance.
+
+## P1.1/P0.2/P1.3 continuation: async function expression environments
+
+The contextual async grammar, [Function Environment Records](https://tc39.es/ecma262/2026/multipage/executable-code-and-execution-contexts.html#sec-function-environment-records), [Object Environment Record HasBinding](https://tc39.es/ecma262/2026/multipage/executable-code-and-execution-contexts.html#sec-object-environment-records-hasbinding), and [Arrow Function Definitions](https://tc39.es/ecma262/2026/multipage/ecmascript-language-functions-and-classes.html#sec-arrow-function-definitions) were checked on 2026-09-11. An escaped `async` can no longer select an async function or arrow production, and `await` is now rejected as an async-function binding identifier, function name, or label. These are known parse `SyntaxError` results rather than subset-parser accidents.
+
+Immutable bindings now distinguish `const` from the non-strict immutable name
+environment of a named function expression. The latter ignores a sloppy write
+but rejects a strict reference, including a direct `eval` that captures the
+name. The eval visible-binding collection includes initialized bindings that
+are not block-scope entries, so a named function expression's self binding is
+captured as a cell before eval executes. This preserves the binding through
+allocation and keeps direct eval from falling through to a global name.
+
+`with` lookup now implements the `Symbol.unscopables` branch of object
+environment `HasBinding`, with the unscopables object rooted across an
+observable property read. A blocked object property falls back to the innermost
+lexical binding: bytecode captures precede local bindings, so that lookup uses
+the last matching slot rather than accidentally selecting an outer capture.
+Nested arrows inherit their containing function's syntactic `new.target`
+context, while ordinary nested functions establish their own context.
+
+The public parser/compiler/VM regression covers escaped contextual keywords,
+`await` bindings and labels, sloppy and strict named-async-function writes
+(including direct eval), unscopables lookup with a same-named captured outer
+binding, and an async arrow's lexical `new.target`. A fresh pinned Test262 run
+at `target/test262-next-async-functions-environment-final` reconciles **161
+pass, 0 fail and 0 unsupported** of 161 scheduled
+`language/expressions/async-function` modes, up from **134 pass and 27 fail**;
+every previous failure transitioned to pass. This closes that focused ordinary
+async-function-expression selection, not async generators, async iteration,
+thenable assimilation, host-driven loading, or full async conformance.

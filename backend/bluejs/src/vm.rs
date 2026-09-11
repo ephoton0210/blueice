@@ -197,8 +197,29 @@ const MAX_RECURSIVE_CALL_DEPTH: usize = 16;
 struct GlobalBinding {
     cell: ObjectId,
     mutable: bool,
+    strict_immutable: bool,
     property: bool,
     _root: RootId,
+}
+
+/// Declarative Environment Records distinguish an immutable binding created
+/// for `const` from the non-strict immutable binding used for a named function
+/// expression. The latter accepts a sloppy assignment as a no-op, but both
+/// reject a strict reference.
+fn binding_allows_assignment(
+    binding: &Binding,
+    strict_reference: bool,
+) -> Result<bool, RuntimeError> {
+    if binding.mutable {
+        return Ok(true);
+    }
+    if binding.strict_immutable || strict_reference {
+        return Err(RuntimeError::TypeError(format!(
+            "assignment to constant {}",
+            binding.name
+        )));
+    }
+    Ok(false)
 }
 
 /// A sloppy direct eval declaration installed in an ordinary function's
@@ -2574,6 +2595,7 @@ impl Vm {
             GlobalBinding {
                 cell,
                 mutable: binding.mutable,
+                strict_immutable: binding.strict_immutable,
                 property,
                 _root: root,
             },
@@ -2594,13 +2616,17 @@ impl Vm {
         };
         let cell = binding.cell;
         let mutable = binding.mutable;
+        let strict_immutable = binding.strict_immutable;
         if self.heap.get_own(cell, "value")?.is_none() {
             return Err(RuntimeError::ReferenceError(name.into()));
         }
-        if !mutable {
+        if !mutable && strict_immutable {
             return Err(RuntimeError::TypeError(format!(
                 "assignment to constant {name}"
             )));
+        }
+        if !mutable {
+            return Ok(true);
         }
         self.store_global_cell(cell, value)?;
         Ok(true)
@@ -3355,6 +3381,17 @@ impl Vm {
                 .entry(self.binding_metadata[slot].name.clone())
                 .or_insert_with(|| (self.binding_metadata[slot].clone(), slot as u32));
         }
+        // A named function expression's immutable name environment is not a
+        // block scope, so it is neither in `active_scope_slots` nor captured
+        // until a nested closure needs it. Direct eval nevertheless sees that
+        // live binding and must retain its strict/sloppy write behavior.
+        for (slot, value) in self.bindings.iter().enumerate() {
+            if value.is_some() {
+                visible
+                    .entry(self.binding_metadata[slot].name.clone())
+                    .or_insert_with(|| (self.binding_metadata[slot].clone(), slot as u32));
+            }
+        }
         visible
             .into_iter()
             .map(|(name, (binding, slot))| (name, binding, slot))
@@ -4092,7 +4129,10 @@ impl Vm {
                         let fallback = code
                             .bindings
                             .iter()
-                            .position(|binding| binding.name == name)
+                            // Captures precede function-local bindings in
+                            // bytecode. An object-environment miss therefore
+                            // resolves the innermost matching slot.
+                            .rposition(|binding| binding.name == name)
                             .map(|slot| self.eval_aware_binding_value(slot, &name))
                             .transpose()?;
                         let value = self.with_get(&name, fallback)?;
@@ -4112,10 +4152,9 @@ impl Vm {
                             unreachable!("compiler emits a name")
                         };
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let key = Value::String(name.clone().into());
                         let mut object_reference = None;
                         for object in self.with_objects.clone().into_iter().rev() {
-                            if self.property_in(&key, &object)? {
+                            if self.with_has_binding(&object, &name)? {
                                 object_reference = Some(object);
                                 break;
                             }
@@ -4203,13 +4242,10 @@ impl Vm {
                                     if self.binding_value(slot)?.is_none() {
                                         return Err(RuntimeError::ReferenceError(name.clone()));
                                     }
-                                    if !code.bindings[slot].mutable {
-                                        return Err(RuntimeError::TypeError(format!(
-                                            "assignment to constant {}",
-                                            name
-                                        )));
+                                    if binding_allows_assignment(&code.bindings[slot], code.strict)?
+                                    {
+                                        self.store_binding(slot, value.clone())?;
                                     }
-                                    self.store_binding(slot, value.clone())?;
                                 }
                             }
                             (Value::Undefined, Value::String(name)) => {
@@ -4309,16 +4345,12 @@ impl Vm {
                             if self.binding_value(operand)?.is_none() {
                                 return Err(RuntimeError::ReferenceError(name.clone()));
                             }
-                            if !code.bindings[operand].mutable {
-                                return Err(RuntimeError::TypeError(format!(
-                                    "assignment to constant {}",
-                                    name
-                                )));
+                            if binding_allows_assignment(&code.bindings[operand], code.strict)? {
+                                self.store_binding(
+                                    operand,
+                                    self.stack.last().expect("store has a value").clone(),
+                                )?;
                             }
-                            self.store_binding(
-                                operand,
-                                self.stack.last().expect("store has a value").clone(),
-                            )?;
                         }
                     }
                     Opcode::StoreBindingReference => {
@@ -4349,13 +4381,9 @@ impl Vm {
                                         code.bindings[slot].name.clone(),
                                     ));
                                 }
-                                if !code.bindings[slot].mutable {
-                                    return Err(RuntimeError::TypeError(format!(
-                                        "assignment to constant {}",
-                                        code.bindings[slot].name
-                                    )));
+                                if binding_allows_assignment(&code.bindings[slot], code.strict)? {
+                                    self.store_binding(slot, value.clone())?;
                                 }
-                                self.store_binding(slot, value.clone())?;
                             }
                             Value::Object(cell) => self.store_global_cell(cell, value.clone())?,
                             _ => unreachable!("compiler emits a binding reference marker"),
@@ -6167,14 +6195,37 @@ impl Vm {
         self.has_property(*object, &key)
     }
 
+    /// Object Environment Record HasBinding. `with` lookup first observes the
+    /// target object's property chain, then gives an object-valued
+    /// `Symbol.unscopables` a chance to hide that name from lexical lookup.
+    fn with_has_binding(&mut self, object: &Value, name: &str) -> Result<bool, RuntimeError> {
+        let key = Value::String(name.into());
+        if !self.property_in(&key, object)? {
+            return Ok(false);
+        }
+        let unscopables = self.get_property(object, &JsSymbol::well_known("unscopables").into())?;
+        if !matches!(unscopables, Value::Object(_)) {
+            return Ok(true);
+        }
+        // The getter for an unscopables entry can allocate. Keep its receiver
+        // live on the VM stack rather than relying on an unrooted Rust Value.
+        self.stack.push(unscopables);
+        let result = (|| {
+            let unscopables = self.stack.last().expect("unscopables is rooted").clone();
+            let blocked = self.get_property(&unscopables, &name.into())?;
+            Ok(!self.to_boolean(&blocked)?)
+        })();
+        self.stack.pop();
+        result
+    }
+
     fn with_get(
         &mut self,
         name: &str,
         fallback: Option<Option<Value>>,
     ) -> Result<Value, RuntimeError> {
-        let key = Value::String(name.into());
         for object in self.with_objects.clone().into_iter().rev() {
-            if self.property_in(&key, &object)? {
+            if self.with_has_binding(&object, name)? {
                 return self.get_property(&object, &name.into());
             }
         }
@@ -6188,9 +6239,8 @@ impl Vm {
     }
 
     fn with_set(&mut self, name: &str, value: Value) -> Result<(), RuntimeError> {
-        let key = Value::String(name.into());
         for object in self.with_objects.clone().into_iter().rev() {
-            if self.property_in(&key, &object)? {
+            if self.with_has_binding(&object, name)? {
                 return self.set_property(&object, &name.into(), &value);
             }
         }
@@ -6475,6 +6525,7 @@ mod tests {
         vm.binding_metadata.push(Binding {
             name: "captured".into(),
             mutable: true,
+            strict_immutable: false,
             lexical: true,
             catch_parameter: false,
         });

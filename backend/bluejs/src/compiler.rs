@@ -903,6 +903,7 @@ impl Compiler {
             self.bytecode.bindings.push(Binding {
                 name: name.clone(),
                 mutable: kind != DeclKind::Const,
+                strict_immutable: kind == DeclKind::Const,
                 lexical: kind != DeclKind::Var,
                 catch_parameter: false,
             });
@@ -3484,7 +3485,10 @@ impl Compiler {
             !options.class_method && !options.class_constructor,
         )?;
         child.bytecode.arrow = arrow;
-        child.bytecode.new_target_allowed = !arrow;
+        // Arrow functions inherit the containing function's `new.target`
+        // syntactic context. A regular nested function introduces its own
+        // context (whose runtime value may still be `undefined`).
+        child.bytecode.new_target_allowed = !arrow || self.bytecode.new_target_allowed;
         child.bytecode.generator = function.generator;
         child.bytecode.async_function = function.is_async;
         child.bytecode.constructible = options.constructible;
@@ -3525,6 +3529,7 @@ impl Compiler {
             child.bytecode.bindings.push(Binding {
                 name,
                 mutable: false,
+                strict_immutable: false,
                 lexical: true,
                 catch_parameter: false,
             });

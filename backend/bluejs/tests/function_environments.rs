@@ -136,3 +136,40 @@ fn sloppy_direct_eval_copies_annex_b_block_functions_into_its_var_environment() 
         assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)), "{source}");
     }
 }
+
+#[test]
+fn async_function_environments_preserve_contextual_names_and_lexical_contexts() {
+    for source in [
+        "async function(){var await;}",
+        "async function(){await:;}",
+        "async function await(){}",
+        "void \\u0061sync function value(){}",
+    ] {
+        assert!(parse(source).is_err(), "{source}");
+    }
+
+    let mut vm = Vm::default();
+    let setup = "
+        var value=1;
+        globalThis[Symbol.unscopables]={value:true};
+        var ignoredName, strictName, withValue, lexicalTarget;
+        let sloppy=async function named(){named=1;return named;};
+        let strict=async function named(){'use strict';eval('named=1');};
+        let scoped=async function(){var value=2;with(globalThis){return value;}};
+        let target=async function(){return async()=>new.target;};
+        sloppy().then(result=>{ignoredName=result;});
+        strict().then(undefined,error=>{strictName=error instanceof TypeError;});
+        scoped().then(result=>{withValue=result;});
+        target().then(result=>result()).then(result=>{lexicalTarget=result;});
+    ";
+    vm.execute_script(&compile(&parse(setup).unwrap()).unwrap())
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "ignoredName===sloppy&&strictName&&withValue===2&&lexicalTarget===undefined",
+        ),
+        Ok(Value::Bool(true))
+    );
+}

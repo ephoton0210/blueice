@@ -460,6 +460,16 @@ impl Parser {
         self.tokens[self.pos].identifier_escaped
     }
 
+    /// Contextual `async` is a terminal symbol in the async-function and
+    /// async-arrow productions. Its decoded spelling alone is insufficient:
+    /// `\\u0061sync` must not select either production.
+    fn require_unescaped_async(&self) -> Result<(), ParseError> {
+        if self.current_identifier_escaped() {
+            return Err(self.syntax_error("the async keyword cannot contain an escape"));
+        }
+        Ok(())
+    }
+
     /// `AssignmentProperty : IdentifierReference Initializer_opt` is more
     /// restrictive than an object literal's PropertyName. In particular a
     /// keyword is legal as `{ keyword: target }` but cannot be a shorthand
@@ -836,6 +846,7 @@ impl Parser {
                     (binding, false)
                 }
                 Token::Identifier(name) if name == "async" && self.async_function_follows() => {
+                    self.require_unescaped_async()?;
                     self.advance();
                     self.expect_keyword(Keyword::Function)?;
                     let function = self.parse_function_with_async(true)?;
@@ -1001,6 +1012,7 @@ impl Parser {
                 Ok(Stmt::FunctionDecl(f))
             }
             Token::Identifier(name) if name == "async" && self.async_function_follows() => {
+                self.require_unescaped_async()?;
                 self.advance();
                 self.expect_keyword(Keyword::Function)?;
                 let f = self.parse_function_with_async(true)?;
@@ -1066,8 +1078,17 @@ impl Parser {
     }
 
     fn parse_labelled_stmt(&mut self) -> Result<Stmt, ParseError> {
+        let identifier_escaped = self.current_identifier_escaped();
         let label = self.expect_identifier_name()?;
         self.expect_punct(Punct::Colon)?;
+        if label == "await" && (self.async_depth != 0 || self.module_await) {
+            let detail = if identifier_escaped {
+                "the await keyword cannot contain an escape"
+            } else {
+                "await cannot be used as a label in an async function or module"
+            };
+            return Err(self.syntax_error(detail));
+        }
         if label == "await"
             && self.static_block_function_depths.last() == Some(&self.function_depth)
         {
@@ -1492,6 +1513,14 @@ impl Parser {
     fn parse_binding_pattern(&mut self) -> Result<Pattern, ParseError> {
         match self.peek().clone() {
             Token::Identifier(name) => {
+                if name == "await" && (self.async_depth != 0 || self.module_await) {
+                    let detail = if self.current_identifier_escaped() {
+                        "the await keyword cannot contain an escape"
+                    } else {
+                        "await cannot be used as a binding identifier in an async function or module"
+                    };
+                    return Err(self.syntax_error(detail));
+                }
                 self.advance();
                 Ok(Pattern::Identifier(name))
             }
@@ -1702,7 +1731,15 @@ impl Parser {
         {
             return Err(self.syntax_error("a function cannot have a private name"));
         }
-        let name = if let Token::Identifier(_) = self.peek() {
+        let name = if let Token::Identifier(name) = self.peek() {
+            if is_async && name == "await" {
+                let detail = if self.current_identifier_escaped() {
+                    "the await keyword cannot contain an escape"
+                } else {
+                    "await cannot be used as an async function name"
+                };
+                return Err(self.syntax_error(detail));
+            }
             Some(self.expect_identifier_name()?)
         } else {
             None
@@ -2048,6 +2085,7 @@ impl Parser {
     /// front rather than a lazy/streaming lexer.
     fn try_parse_arrow_function(&mut self) -> Result<Option<Expr>, ParseError> {
         if self.async_arrow_follows() {
+            self.require_unescaped_async()?;
             self.advance();
             return self.try_parse_arrow_function_with_async(true);
         }
@@ -2962,6 +3000,7 @@ impl Parser {
                 Ok(Expr::Function(self.parse_function()?))
             }
             Token::Identifier(name) if name == "async" && self.async_function_follows() => {
+                self.require_unescaped_async()?;
                 self.advance();
                 self.expect_keyword(Keyword::Function)?;
                 Ok(Expr::Function(self.parse_function_with_async(true)?))
