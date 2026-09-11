@@ -170,34 +170,40 @@ impl Vm {
     }
 
     fn json_object(&mut self, object: ObjectId) -> Result<JsString, RuntimeError> {
-        let mut text = String::from("{");
-        let mut first = true;
-        for key in self.heap.own_property_keys(object)? {
-            self.charge_step()?;
-            let PropertyName::String(key) = key else {
-                continue;
-            };
-            if self
-                .heap
-                .get_own_property_descriptor(object, &key)?
-                .is_none_or(|descriptor| descriptor.enumerable != Some(true))
-            {
-                continue;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            let mut text = String::from("{");
+            let mut first = true;
+            for key in self.object_own_property_keys(object)? {
+                self.charge_step()?;
+                let PropertyName::String(key) = key else {
+                    continue;
+                };
+                let property = PropertyName::from(&key);
+                if self
+                    .object_get_own_property(object, &property)?
+                    .is_none_or(|descriptor| descriptor.enumerable != Some(true))
+                {
+                    continue;
+                }
+                let value = self.get_property(&Value::Object(object), &property)?;
+                let Some(value) = self.json_serialize(&value)? else {
+                    continue;
+                };
+                if !first {
+                    text.push(',');
+                }
+                first = false;
+                text.push_str(&json_quote(&key));
+                text.push(':');
+                text.push_str(&value.to_utf8().expect("JSON serialization is well-formed"));
             }
-            let value = self.get_property(&Value::Object(object), &PropertyName::from(&key))?;
-            let Some(value) = self.json_serialize(&value)? else {
-                continue;
-            };
-            if !first {
-                text.push(',');
-            }
-            first = false;
-            text.push_str(&json_quote(&key));
-            text.push(':');
-            text.push_str(&value.to_utf8().expect("JSON serialization is well-formed"));
-        }
-        text.push('}');
-        Ok(text.into())
+            text.push('}');
+            Ok(text.into())
+        })();
+        self.stack.truncate(base);
+        result
     }
 }
 

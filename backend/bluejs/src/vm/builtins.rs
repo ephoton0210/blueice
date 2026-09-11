@@ -4,8 +4,8 @@
 
 use super::*;
 use crate::heap::{
-    AsyncGeneratorCompletion, AsyncGeneratorDelegate, AsyncGeneratorRequest, AsyncGeneratorStatus,
-    GeneratorState,
+    same_value, AsyncGeneratorCompletion, AsyncGeneratorDelegate, AsyncGeneratorRequest,
+    AsyncGeneratorStatus, GeneratorState, TypedArrayKind, TypedArrayNumericKey,
 };
 use crate::native::{MathMethod, ObjectMethod, PatternMethod, StringMethod};
 use std::collections::HashMap;
@@ -34,6 +34,164 @@ fn array_index_below_length(key: &PropertyName, length: u64) -> Option<u32> {
 fn same_value_zero(left: &Value, right: &Value) -> bool {
     left == right
         || matches!((left, right), (Value::Number(left), Value::Number(right)) if left.is_nan() && right.is_nan())
+}
+
+/// Validate the non-mutating part of ValidateAndApplyPropertyDescriptor.
+/// Heap::define_own_property performs the corresponding mutation for ordinary
+/// objects; Proxy trap invariants need the same answer before a trap result is
+/// allowed to claim success.
+fn compatible_property_descriptor(
+    extensible: bool,
+    current: Option<&PropertyDescriptor>,
+    descriptor: &PropertyDescriptor,
+) -> bool {
+    let Some(current) = current else {
+        return extensible;
+    };
+    if descriptor.value.is_none()
+        && descriptor.writable.is_none()
+        && descriptor.get.is_none()
+        && descriptor.set.is_none()
+        && descriptor.enumerable.is_none()
+        && descriptor.configurable.is_none()
+    {
+        return true;
+    }
+    if current.configurable == Some(false) {
+        if descriptor.configurable == Some(true)
+            || descriptor
+                .enumerable
+                .is_some_and(|value| Some(value) != current.enumerable)
+        {
+            return false;
+        }
+        let descriptor_is_data = descriptor.value.is_some() || descriptor.writable.is_some();
+        let descriptor_is_accessor = descriptor.accessor();
+        if (descriptor_is_data && current.accessor())
+            || (descriptor_is_accessor && !current.accessor())
+        {
+            return false;
+        }
+        if current.accessor() {
+            if descriptor.get.as_ref().is_some_and(|value| {
+                current
+                    .get
+                    .as_ref()
+                    .is_none_or(|current| !same_value(value, current))
+            }) || descriptor.set.as_ref().is_some_and(|value| {
+                current
+                    .set
+                    .as_ref()
+                    .is_none_or(|current| !same_value(value, current))
+            }) {
+                return false;
+            }
+        } else if current.writable == Some(false)
+            && (descriptor.writable == Some(true)
+                || descriptor.value.as_ref().is_some_and(|value| {
+                    current
+                        .value
+                        .as_ref()
+                        .is_none_or(|current| !same_value(value, current))
+                }))
+        {
+            return false;
+        }
+    }
+    true
+}
+
+/// Proxy [[GetOwnProperty]] completes a trap-provided descriptor before it
+/// validates invariants or exposes it to reflection.  Missing data/accessor
+/// fields are observable as `undefined`/`false`, never as absent own fields
+/// on the descriptor object returned by Object.getOwnPropertyDescriptor.
+fn complete_property_descriptor(mut descriptor: PropertyDescriptor) -> PropertyDescriptor {
+    if descriptor.accessor() {
+        descriptor.get.get_or_insert(Value::Undefined);
+        descriptor.set.get_or_insert(Value::Undefined);
+    } else {
+        descriptor.value.get_or_insert(Value::Undefined);
+        descriptor.writable.get_or_insert(false);
+    }
+    descriptor.enumerable.get_or_insert(false);
+    descriptor.configurable.get_or_insert(false);
+    descriptor
+}
+
+fn typed_array_kind(name: &str) -> Option<TypedArrayKind> {
+    Some(match name {
+        "Int8Array" => TypedArrayKind::Int8,
+        "Uint8Array" => TypedArrayKind::Uint8,
+        "Uint8ClampedArray" => TypedArrayKind::Uint8Clamped,
+        "Int16Array" => TypedArrayKind::Int16,
+        "Uint16Array" => TypedArrayKind::Uint16,
+        "Int32Array" => TypedArrayKind::Int32,
+        "Uint32Array" => TypedArrayKind::Uint32,
+        "Float32Array" => TypedArrayKind::Float32,
+        "Float64Array" => TypedArrayKind::Float64,
+        _ => return None,
+    })
+}
+
+fn data_view_number(bytes: &[u8], signed: bool, floating: bool, little_endian: bool) -> f64 {
+    if floating {
+        return match (bytes.len(), little_endian) {
+            (4, true) => f32::from_le_bytes(bytes.try_into().unwrap()) as f64,
+            (4, false) => f32::from_be_bytes(bytes.try_into().unwrap()) as f64,
+            (8, true) => f64::from_le_bytes(bytes.try_into().unwrap()),
+            (8, false) => f64::from_be_bytes(bytes.try_into().unwrap()),
+            _ => unreachable!("DataView floating-point access is 32 or 64 bits"),
+        };
+    }
+    match (bytes.len(), signed, little_endian) {
+        (1, true, _) => i8::from_ne_bytes([bytes[0]]) as f64,
+        (1, false, _) => bytes[0] as f64,
+        (2, true, true) => i16::from_le_bytes(bytes.try_into().unwrap()) as f64,
+        (2, false, true) => u16::from_le_bytes(bytes.try_into().unwrap()) as f64,
+        (2, true, false) => i16::from_be_bytes(bytes.try_into().unwrap()) as f64,
+        (2, false, false) => u16::from_be_bytes(bytes.try_into().unwrap()) as f64,
+        (4, true, true) => i32::from_le_bytes(bytes.try_into().unwrap()) as f64,
+        (4, false, true) => u32::from_le_bytes(bytes.try_into().unwrap()) as f64,
+        (4, true, false) => i32::from_be_bytes(bytes.try_into().unwrap()) as f64,
+        (4, false, false) => u32::from_be_bytes(bytes.try_into().unwrap()) as f64,
+        _ => unreachable!("DataView only installs fixed integer widths"),
+    }
+}
+
+fn data_view_bytes(
+    value: f64,
+    width: usize,
+    signed: bool,
+    floating: bool,
+    little_endian: bool,
+) -> Vec<u8> {
+    if floating {
+        return match (width, little_endian) {
+            (4, true) => (value as f32).to_le_bytes().to_vec(),
+            (4, false) => (value as f32).to_be_bytes().to_vec(),
+            (8, true) => value.to_le_bytes().to_vec(),
+            (8, false) => value.to_be_bytes().to_vec(),
+            _ => unreachable!("DataView floating-point access is 32 or 64 bits"),
+        };
+    }
+    let integer = (if value.is_finite() {
+        value.trunc()
+    } else {
+        0.0
+    }) as i64;
+    match (width, signed, little_endian) {
+        (1, true, _) => (integer as i8).to_ne_bytes().to_vec(),
+        (1, false, _) => (integer as u8).to_ne_bytes().to_vec(),
+        (2, true, true) => (integer as i16).to_le_bytes().to_vec(),
+        (2, false, true) => (integer as u16).to_le_bytes().to_vec(),
+        (2, true, false) => (integer as i16).to_be_bytes().to_vec(),
+        (2, false, false) => (integer as u16).to_be_bytes().to_vec(),
+        (4, true, true) => (integer as i32).to_le_bytes().to_vec(),
+        (4, false, true) => (integer as u32).to_le_bytes().to_vec(),
+        (4, true, false) => (integer as i32).to_be_bytes().to_vec(),
+        (4, false, false) => (integer as u32).to_be_bytes().to_vec(),
+        _ => unreachable!("DataView only installs fixed integer widths"),
+    }
 }
 
 impl Vm {
@@ -517,6 +675,277 @@ impl Vm {
             }
         }
     }
+    /// [[GetOwnProperty]] dispatch used by descriptor APIs, Proxy invariants,
+    /// and receiver-aware [[Set]].  Ordinary heap records stay below this
+    /// boundary; every Proxy operation re-enters through the VM so its trap
+    /// may call JavaScript while roots remain registered.
+    pub(super) fn object_get_own_property(
+        &mut self,
+        object: ObjectId,
+        key: &PropertyName,
+    ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
+        if self.heap.proxy(object)?.is_some() {
+            return self.proxy_get_own_property(object, key);
+        }
+        self.heap
+            .get_own_property_descriptor(object, key)
+            .map_err(Into::into)
+    }
+
+    pub(super) fn object_define_own_property(
+        &mut self,
+        object: ObjectId,
+        key: PropertyName,
+        descriptor: PropertyDescriptor,
+    ) -> Result<bool, RuntimeError> {
+        if self.heap.proxy(object)?.is_some() {
+            return self.proxy_define_own_property(object, key, descriptor);
+        }
+        if let Some(numeric) = self.heap.typed_array_numeric_key(object, &key)? {
+            return self.typed_array_define_own_property(object, numeric, descriptor);
+        }
+        self.with_roots(|heap| heap.define_own_property(object, key, descriptor))
+    }
+
+    /// IntegerIndexedElementSet and the compatible portion of
+    /// IntegerIndexedObject.[[DefineOwnProperty]].  A canonical numeric key
+    /// never becomes an ordinary property, even when it is invalid or outside
+    /// the fixed view range.
+    fn typed_array_define_own_property(
+        &mut self,
+        object: ObjectId,
+        numeric: TypedArrayNumericKey,
+        descriptor: PropertyDescriptor,
+    ) -> Result<bool, RuntimeError> {
+        let TypedArrayNumericKey::Index(index) = numeric else {
+            return Ok(false);
+        };
+        let (buffer, _, length, _) = self.heap.typed_array_info(object)?;
+        if self.heap.array_buffer_is_detached(buffer)? || index >= length {
+            return Ok(false);
+        }
+        if descriptor.accessor()
+            || descriptor.configurable == Some(false)
+            || descriptor.enumerable == Some(false)
+            || descriptor.writable == Some(false)
+        {
+            return Ok(false);
+        }
+        let Some(value) = descriptor.value else {
+            return Ok(true);
+        };
+        let value = self.coerce_number(&value)?;
+        // IntegerIndexedElementSet converts first. A conversion may detach the
+        // backing buffer; in that case the already-valid DefineOwnProperty
+        // operation still succeeds without writing a byte.
+        if self.heap.array_buffer_is_detached(buffer)? {
+            return Ok(true);
+        }
+        self.with_roots(|heap| heap.typed_array_set_index(object, index, value))
+    }
+
+    pub(super) fn object_delete(
+        &mut self,
+        object: ObjectId,
+        key: &PropertyName,
+    ) -> Result<bool, RuntimeError> {
+        if self.heap.proxy(object)?.is_some() {
+            return self.proxy_delete(object, key);
+        }
+        self.heap.delete(object, key).map_err(Into::into)
+    }
+
+    pub(super) fn object_own_property_keys(
+        &mut self,
+        object: ObjectId,
+    ) -> Result<Vec<PropertyName>, RuntimeError> {
+        if self.heap.proxy(object)?.is_some() {
+            return self.proxy_own_keys(object);
+        }
+        self.heap.own_property_keys(object).map_err(Into::into)
+    }
+
+    pub(super) fn object_is_extensible(&mut self, object: ObjectId) -> Result<bool, RuntimeError> {
+        if self.heap.proxy(object)?.is_some() {
+            return self.proxy_is_extensible(object);
+        }
+        self.heap.is_extensible(object).map_err(Into::into)
+    }
+
+    pub(super) fn object_get_prototype(
+        &mut self,
+        object: ObjectId,
+    ) -> Result<Option<ObjectId>, RuntimeError> {
+        if self.heap.proxy(object)?.is_some() {
+            return self.proxy_get_prototype(object);
+        }
+        self.heap.prototype(object).map_err(Into::into)
+    }
+
+    pub(super) fn object_set_prototype(
+        &mut self,
+        object: ObjectId,
+        prototype: Option<ObjectId>,
+    ) -> Result<bool, RuntimeError> {
+        if self.heap.proxy(object)?.is_some() {
+            return self.proxy_set_prototype(object, prototype);
+        }
+        match self.heap.set_prototype(object, prototype) {
+            Ok(()) => Ok(true),
+            Err(HeapError::ReadOnlyProperty | HeapError::PrototypeCycle) => Ok(false),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    pub(super) fn object_prevent_extensions(
+        &mut self,
+        object: ObjectId,
+    ) -> Result<bool, RuntimeError> {
+        if self.heap.proxy(object)?.is_some() {
+            return self.proxy_prevent_extensions(object);
+        }
+        self.heap.prevent_extensions(object)?;
+        Ok(true)
+    }
+
+    /// OrdinarySet with an explicit receiver.  It is deliberately expressed
+    /// in terms of the object-operation boundary above, so a Proxy can occur
+    /// either as the target or in the prototype chain without being skipped.
+    pub(super) fn ordinary_set_with_receiver(
+        &mut self,
+        target: ObjectId,
+        receiver: &Value,
+        key: &PropertyName,
+        value: &Value,
+    ) -> Result<bool, RuntimeError> {
+        if self.heap.proxy(target)?.is_some() {
+            return self.proxy_set(target, receiver, key, value);
+        }
+        if let Some(numeric) = self.heap.typed_array_numeric_key(target, key)? {
+            let valid = match numeric {
+                TypedArrayNumericKey::Index(index) => {
+                    self.heap.typed_array_index_value(target, index)?.is_some()
+                }
+                TypedArrayNumericKey::Invalid => false,
+            };
+            if receiver == &Value::Object(target) {
+                // TypedArraySetElement performs ToNumber before checking
+                // IsValidIntegerIndex. Thus an own assignment to `"-0"`, a
+                // fractional canonical key, or an out-of-bounds index still
+                // observes a throwing value conversion. A different receiver
+                // has the separate OrdinarySet path below and must *not*
+                // convert an invalid key's value.
+                let value = self.coerce_number(value)?;
+                if valid {
+                    let TypedArrayNumericKey::Index(index) = numeric else {
+                        unreachable!("valid TypedArray index has an integer index")
+                    };
+                    // Conversion can detach the buffer, in which case this
+                    // successful [[Set]] performs no byte write.
+                    let (buffer, _, _, _) = self.heap.typed_array_info(target)?;
+                    if !self.heap.array_buffer_is_detached(buffer)? {
+                        self.with_roots(|heap| heap.typed_array_set_index(target, index, value))?;
+                    }
+                }
+                return Ok(true);
+            }
+            // Invalid canonical numeric indices terminate the exotic [[Set]]
+            // without coercion. A valid index with a distinct Receiver instead
+            // follows OrdinarySet below and stores the original value there.
+            if !valid {
+                return Ok(true);
+            }
+        }
+        let mut current = Some(target);
+        while let Some(object) = current {
+            if self.heap.proxy(object)?.is_some() {
+                return self.proxy_set(object, receiver, key, value);
+            }
+            if object != target {
+                if let Some(numeric) = self.heap.typed_array_numeric_key(object, key)? {
+                    let valid = matches!(numeric, TypedArrayNumericKey::Index(index) if self
+                        .heap
+                        .typed_array_index_value(object, index)?
+                        .is_some());
+                    if receiver == &Value::Object(object) {
+                        // OrdinarySet reached an Integer-Indexed exotic in
+                        // the prototype chain. Its [[Set]] target is this
+                        // `object`, not the initial ordinary receiver. The
+                        // SameValue branch therefore still performs ToNumber
+                        // for any canonical numeric key before validity is
+                        // tested.
+                        let value = self.coerce_number(value)?;
+                        if valid {
+                            let TypedArrayNumericKey::Index(index) = numeric else {
+                                unreachable!("valid TypedArray index has an integer index")
+                            };
+                            let (buffer, _, _, _) = self.heap.typed_array_info(object)?;
+                            if !self.heap.array_buffer_is_detached(buffer)? {
+                                self.with_roots(|heap| {
+                                    heap.typed_array_set_index(object, index, value)
+                                })?;
+                            }
+                        }
+                        return Ok(true);
+                    }
+                    if !valid {
+                        return Ok(true);
+                    }
+                }
+            }
+            if let Some(descriptor) = self.object_get_own_property(object, key)? {
+                if descriptor.accessor() {
+                    let setter = descriptor.set.unwrap_or(Value::Undefined);
+                    if setter == Value::Undefined {
+                        return Ok(false);
+                    }
+                    if !self.is_callable(&setter)? {
+                        return Err(RuntimeError::TypeError(
+                            "property setter is not callable".into(),
+                        ));
+                    }
+                    self.call_native(setter, receiver.clone(), vec![value.clone()], false)?;
+                    return Ok(true);
+                }
+                if descriptor.writable == Some(false) {
+                    return Ok(false);
+                }
+                break;
+            }
+            current = self.object_get_prototype(object)?;
+        }
+        let Value::Object(receiver) = receiver else {
+            return Ok(false);
+        };
+        if self.heap.proxy(*receiver)?.is_some() {
+            return self.proxy_define_own_property(
+                *receiver,
+                key.clone(),
+                PropertyDescriptor::data(value.clone(), true, true, true),
+            );
+        }
+        let own = self.object_get_own_property(*receiver, key)?;
+        if let Some(own) = &own {
+            if own.accessor() || own.writable == Some(false) {
+                return Ok(false);
+            }
+        }
+        let stored = if key == "length" && self.heap.is_array(*receiver)? {
+            self.array_length_value(value)?
+        } else {
+            value.clone()
+        };
+        let descriptor = if own.is_some() {
+            PropertyDescriptor {
+                value: Some(stored),
+                ..Default::default()
+            }
+        } else {
+            PropertyDescriptor::data(stored, true, true, true)
+        };
+        self.object_define_own_property(*receiver, key.clone(), descriptor)
+    }
+
     pub(super) fn get_from_prototype(
         &mut self,
         start: ObjectId,
@@ -525,7 +954,19 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let mut current = Some(start);
         while let Some(object) = current {
-            if let Some(desc) = self.heap.get_own_property_descriptor(object, key)? {
+            if self.heap.proxy(object)?.is_some() {
+                return self.proxy_get(object, receiver, key);
+            }
+            if let Some(numeric) = self.heap.typed_array_numeric_key(object, key)? {
+                return match numeric {
+                    TypedArrayNumericKey::Index(index) => Ok(self
+                        .heap
+                        .typed_array_index_value(object, index)?
+                        .unwrap_or(Value::Undefined)),
+                    TypedArrayNumericKey::Invalid => Ok(Value::Undefined),
+                };
+            }
+            if let Some(desc) = self.object_get_own_property(object, key)? {
                 if desc.accessor() {
                     let getter = desc.get.unwrap_or(Value::Undefined);
                     return if matches!(getter, Value::Undefined) {
@@ -536,7 +977,7 @@ impl Vm {
                 }
                 return Ok(desc.value.unwrap_or(Value::Undefined));
             }
-            current = self.heap.prototype(object)?;
+            current = self.object_get_prototype(object)?;
         }
         Ok(Value::Undefined)
     }
@@ -554,6 +995,9 @@ impl Vm {
         let Value::Object(id) = value else {
             return Ok(false);
         };
+        if let Some((_, constructible)) = self.heap.proxy_capabilities(*id)? {
+            return Ok(constructible);
+        }
         if let Some(bound) = self.heap.bound_function(*id)? {
             return Ok(bound.constructible);
         }
@@ -565,6 +1009,9 @@ impl Vm {
             Some(
                 NativeFunction::String
                     | NativeFunction::Array
+                    | NativeFunction::ArrayBuffer
+                    | NativeFunction::DataView
+                    | NativeFunction::TypedArray(_)
                     | NativeFunction::Proxy
                     | NativeFunction::Map
                     | NativeFunction::Set
@@ -594,15 +1041,117 @@ impl Vm {
         let handler = native::argument(args, 1)
             .object_id()
             .ok_or_else(|| RuntimeError::TypeError("Proxy handler must be an object".into()))?;
-        let prototype = self.heap.prototype(target)?;
+        let callable = self.is_callable(&Value::Object(target))?;
+        let constructible = self.is_constructor(&Value::Object(target))?;
+        // A Proxy's ordinary prototype slot is never consulted by its
+        // internal methods; [[GetPrototypeOf]] delegates to the target.
+        // Using Object.prototype also allows ProxyCreate to wrap an already
+        // revoked Proxy, as required by the specification.
+        let prototype = Some(self.object_prototype);
         Ok(Value::Object(self.with_roots(|heap| {
-            heap.alloc_proxy(target, handler, prototype)
+            heap.alloc_proxy(target, handler, prototype, callable, constructible)
         })?))
     }
 
-    /// Implements Proxy.[[HasProperty]] for a `has` trap. Other proxy
-    /// internal methods deliberately remain unimplemented until their traps
-    /// have compatible receiver and invariant handling.
+    fn proxy_revocable(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let target = native::argument(args, 0)
+            .object_id()
+            .ok_or_else(|| RuntimeError::TypeError("Proxy target must be an object".into()))?;
+        let handler = native::argument(args, 1)
+            .object_id()
+            .ok_or_else(|| RuntimeError::TypeError("Proxy handler must be an object".into()))?;
+        let callable = self.is_callable(&Value::Object(target))?;
+        let constructible = self.is_constructor(&Value::Object(target))?;
+        let proxy_prototype = Some(self.object_prototype);
+        let proxy = self.with_roots(|heap| {
+            heap.alloc_proxy(target, handler, proxy_prototype, callable, constructible)
+        })?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(proxy));
+        let result = (|| {
+            let function_prototype = self.function_prototype()?;
+            let revoke = self.with_roots(|heap| {
+                heap.alloc_native_function(
+                    NativeFunction::ProxyRevoker(proxy),
+                    "",
+                    function_prototype,
+                )
+            })?;
+            self.stack.push(Value::Object(revoke));
+            self.define_data(revoke, "name", Value::String("".into()), false, false, true)?;
+            self.define_data(revoke, "length", Value::Number(0.0), false, false, true)?;
+            let object_prototype = self.object_prototype;
+            let result = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+            self.stack.push(Value::Object(result));
+            self.define_data(result, "proxy", Value::Object(proxy), true, true, true)?;
+            self.define_data(result, "revoke", Value::Object(revoke), true, true, true)?;
+            Ok(Value::Object(result))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// Returns a Proxy trap value, preserving the handler as the call
+    /// receiver.  Proxy objects retain both target and handler as heap edges,
+    /// so the rooted proxy itself keeps the arguments live across this lookup.
+    fn proxy_trap(&mut self, handler: ObjectId, name: &str) -> Result<Value, RuntimeError> {
+        self.get_property(&Value::Object(handler), &name.into())
+    }
+
+    /// Implements Proxy.[[Get]] including the non-configurable-property
+    /// invariants.  `receiver` is deliberately separate from `proxy`: this
+    /// is what makes inherited Proxy properties and Reflect.get faithful.
+    pub(super) fn proxy_get(
+        &mut self,
+        proxy: ObjectId,
+        receiver: &Value,
+        key: &PropertyName,
+    ) -> Result<Value, RuntimeError> {
+        let Some((target, handler)) = self.heap.proxy(proxy)? else {
+            return self.get_object_property(proxy, receiver, key);
+        };
+        let trap = self.proxy_trap(handler, "get")?;
+        if trap == Value::Undefined {
+            return self.get_object_property(target, receiver, key);
+        }
+        if !self.is_callable(&trap)? {
+            return Err(RuntimeError::TypeError(
+                "Proxy get trap must be callable".into(),
+            ));
+        }
+        let result = self.call_native(
+            trap,
+            Value::Object(handler),
+            vec![Value::Object(target), key.value(), receiver.clone()],
+            false,
+        )?;
+        if let Some(descriptor) = self.object_get_own_property(target, key)? {
+            if descriptor.configurable == Some(false) {
+                if descriptor.writable == Some(false)
+                    && descriptor
+                        .value
+                        .as_ref()
+                        .is_some_and(|value| !same_value(value, &result))
+                {
+                    return Err(RuntimeError::TypeError(
+                        "Proxy get trap violated a non-writable property invariant".into(),
+                    ));
+                }
+                if descriptor.accessor()
+                    && descriptor.get == Some(Value::Undefined)
+                    && result != Value::Undefined
+                {
+                    return Err(RuntimeError::TypeError(
+                        "Proxy get trap violated an accessor invariant".into(),
+                    ));
+                }
+            }
+        }
+        Ok(result)
+    }
+
+    /// Implements Proxy.[[HasProperty]] and its non-configurable and
+    /// non-extensible target invariants.
     pub(super) fn proxy_has(
         &mut self,
         proxy: ObjectId,
@@ -611,7 +1160,7 @@ impl Vm {
         let Some((target, handler)) = self.heap.proxy(proxy)? else {
             return self.has_property(proxy, key);
         };
-        let trap = self.get_property(&Value::Object(handler), &"has".into())?;
+        let trap = self.proxy_trap(handler, "has")?;
         if trap == Value::Undefined {
             return self.has_property(target, key);
         }
@@ -626,7 +1175,1259 @@ impl Vm {
             vec![Value::Object(target), key.value()],
             false,
         )?;
-        self.to_boolean(&result)
+        let result = self.to_boolean(&result)?;
+        if !result {
+            if let Some(descriptor) = self.object_get_own_property(target, key)? {
+                if descriptor.configurable == Some(false) || !self.object_is_extensible(target)? {
+                    return Err(RuntimeError::TypeError(
+                        "Proxy has trap hid a required target property".into(),
+                    ));
+                }
+            }
+        }
+        Ok(result)
+    }
+
+    /// Implements Proxy.[[Set]]. The actual data-property write is shared by
+    /// ordinary property assignment and Reflect.set, which keeps the supplied
+    /// receiver visible to prototype accessors and Proxy traps.
+    pub(super) fn proxy_set(
+        &mut self,
+        proxy: ObjectId,
+        receiver: &Value,
+        key: &PropertyName,
+        value: &Value,
+    ) -> Result<bool, RuntimeError> {
+        let Some((target, handler)) = self.heap.proxy(proxy)? else {
+            return self.ordinary_set_with_receiver(proxy, receiver, key, value);
+        };
+        let trap = self.proxy_trap(handler, "set")?;
+        if trap == Value::Undefined {
+            return self.ordinary_set_with_receiver(target, receiver, key, value);
+        }
+        if !self.is_callable(&trap)? {
+            return Err(RuntimeError::TypeError(
+                "Proxy set trap must be callable".into(),
+            ));
+        }
+        let trap_result = self.call_native(
+            trap,
+            Value::Object(handler),
+            vec![
+                Value::Object(target),
+                key.value(),
+                value.clone(),
+                receiver.clone(),
+            ],
+            false,
+        )?;
+        if !self.to_boolean(&trap_result)? {
+            return Ok(false);
+        }
+        if let Some(descriptor) = self.object_get_own_property(target, key)? {
+            if descriptor.configurable == Some(false)
+                && ((descriptor.writable == Some(false)
+                    && descriptor
+                        .value
+                        .as_ref()
+                        .is_some_and(|current| !same_value(current, value)))
+                    || (descriptor.accessor() && descriptor.set == Some(Value::Undefined)))
+            {
+                return Err(RuntimeError::TypeError(
+                    "Proxy set trap violated a target property invariant".into(),
+                ));
+            }
+        }
+        Ok(true)
+    }
+
+    pub(super) fn proxy_delete(
+        &mut self,
+        proxy: ObjectId,
+        key: &PropertyName,
+    ) -> Result<bool, RuntimeError> {
+        let Some((target, handler)) = self.heap.proxy(proxy)? else {
+            return Ok(self.heap.delete(proxy, key)?);
+        };
+        let trap = self.proxy_trap(handler, "deleteProperty")?;
+        if trap == Value::Undefined {
+            return self.object_delete(target, key);
+        }
+        if !self.is_callable(&trap)? {
+            return Err(RuntimeError::TypeError(
+                "Proxy deleteProperty trap must be callable".into(),
+            ));
+        }
+        let trap_result = self.call_native(
+            trap,
+            Value::Object(handler),
+            vec![Value::Object(target), key.value()],
+            false,
+        )?;
+        if !self.to_boolean(&trap_result)? {
+            return Ok(false);
+        }
+        if let Some(descriptor) = self.object_get_own_property(target, key)? {
+            if descriptor.configurable == Some(false) || !self.object_is_extensible(target)? {
+                return Err(RuntimeError::TypeError(
+                    "Proxy deleteProperty trap removed a required target property".into(),
+                ));
+            }
+        }
+        Ok(true)
+    }
+
+    pub(super) fn proxy_own_keys(
+        &mut self,
+        proxy: ObjectId,
+    ) -> Result<Vec<PropertyName>, RuntimeError> {
+        let Some((target, handler)) = self.heap.proxy(proxy)? else {
+            return self.heap.own_property_keys(proxy).map_err(Into::into);
+        };
+        let trap = self.proxy_trap(handler, "ownKeys")?;
+        if trap == Value::Undefined {
+            return self.object_own_property_keys(target);
+        }
+        if !self.is_callable(&trap)? {
+            return Err(RuntimeError::TypeError(
+                "Proxy ownKeys trap must be callable".into(),
+            ));
+        }
+        let result = self.call_native(
+            trap,
+            Value::Object(handler),
+            vec![Value::Object(target)],
+            false,
+        )?;
+        let object = self.coerce_object(&result)?;
+        self.stack.push(Value::Object(object));
+        let length = self.get_property(&Value::Object(object), &"length".into())?;
+        let length = self.coerce_length(&length)? as u64;
+        let mut keys = Vec::new();
+        for index in 0..length {
+            let value = self.get_property(&Value::Object(object), &index.to_string().into())?;
+            let key = match value {
+                Value::String(string) => PropertyName::String(string),
+                Value::Symbol(symbol) => PropertyName::Symbol(symbol),
+                _ => {
+                    self.stack.pop();
+                    return Err(RuntimeError::TypeError(
+                        "Proxy ownKeys trap result contains a non-property key".into(),
+                    ));
+                }
+            };
+            if keys.contains(&key) {
+                self.stack.pop();
+                return Err(RuntimeError::TypeError(
+                    "Proxy ownKeys trap returned a duplicate key".into(),
+                ));
+            }
+            keys.push(key);
+        }
+        self.stack.pop();
+        let target_keys = self.object_own_property_keys(target)?;
+        let mut non_configurable = Vec::new();
+        for key in &target_keys {
+            if self
+                .object_get_own_property(target, key)?
+                .is_some_and(|descriptor| descriptor.configurable == Some(false))
+            {
+                non_configurable.push(key.clone());
+            }
+        }
+        if non_configurable.iter().any(|key| !keys.contains(key)) {
+            return Err(RuntimeError::TypeError(
+                "Proxy ownKeys trap omitted a non-configurable key".into(),
+            ));
+        }
+        if !self.object_is_extensible(target)?
+            && (keys.len() != target_keys.len()
+                || target_keys.iter().any(|key| !keys.contains(key)))
+        {
+            return Err(RuntimeError::TypeError(
+                "Proxy ownKeys trap disagreed with a non-extensible target".into(),
+            ));
+        }
+        Ok(keys)
+    }
+
+    fn descriptor_object(
+        &mut self,
+        descriptor: &PropertyDescriptor,
+    ) -> Result<Value, RuntimeError> {
+        let prototype = self.object_prototype;
+        let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            for (name, value) in [
+                ("value", descriptor.value.clone()),
+                ("writable", descriptor.writable.map(Value::Bool)),
+                ("get", descriptor.get.clone()),
+                ("set", descriptor.set.clone()),
+                ("enumerable", descriptor.enumerable.map(Value::Bool)),
+                ("configurable", descriptor.configurable.map(Value::Bool)),
+            ] {
+                if let Some(value) = value {
+                    self.with_roots(|heap| heap.set(object, name, value))?;
+                }
+            }
+            Ok(Value::Object(object))
+        })();
+        self.stack.pop();
+        result
+    }
+
+    pub(super) fn proxy_get_own_property(
+        &mut self,
+        proxy: ObjectId,
+        key: &PropertyName,
+    ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
+        let Some((target, handler)) = self.heap.proxy(proxy)? else {
+            return self
+                .heap
+                .get_own_property_descriptor(proxy, key)
+                .map_err(Into::into);
+        };
+        let trap = self.proxy_trap(handler, "getOwnPropertyDescriptor")?;
+        if trap == Value::Undefined {
+            return self.object_get_own_property(target, key);
+        }
+        if !self.is_callable(&trap)? {
+            return Err(RuntimeError::TypeError(
+                "Proxy getOwnPropertyDescriptor trap must be callable".into(),
+            ));
+        }
+        let result = self.call_native(
+            trap,
+            Value::Object(handler),
+            vec![Value::Object(target), key.value()],
+            false,
+        )?;
+        let target_descriptor = self.object_get_own_property(target, key)?;
+        let extensible = self.object_is_extensible(target)?;
+        if result == Value::Undefined {
+            if target_descriptor
+                .as_ref()
+                .is_some_and(|descriptor| descriptor.configurable == Some(false))
+                || (!extensible && target_descriptor.is_some())
+            {
+                return Err(RuntimeError::TypeError(
+                    "Proxy getOwnPropertyDescriptor trap hid a required target property".into(),
+                ));
+            }
+            return Ok(None);
+        }
+        let descriptor = complete_property_descriptor(self.read_descriptor(&result)?);
+        if !compatible_property_descriptor(extensible, target_descriptor.as_ref(), &descriptor) {
+            return Err(RuntimeError::TypeError(
+                "Proxy getOwnPropertyDescriptor trap returned an incompatible descriptor".into(),
+            ));
+        }
+        if descriptor.configurable == Some(false)
+            && target_descriptor
+                .as_ref()
+                .is_none_or(|current| current.configurable != Some(false))
+        {
+            return Err(RuntimeError::TypeError(
+                "Proxy getOwnPropertyDescriptor trap reported a new non-configurable property"
+                    .into(),
+            ));
+        }
+        Ok(Some(descriptor))
+    }
+
+    pub(super) fn proxy_define_own_property(
+        &mut self,
+        proxy: ObjectId,
+        key: PropertyName,
+        descriptor: PropertyDescriptor,
+    ) -> Result<bool, RuntimeError> {
+        let Some((target, handler)) = self.heap.proxy(proxy)? else {
+            return self.with_roots(|heap| heap.define_own_property(proxy, key, descriptor));
+        };
+        let trap = self.proxy_trap(handler, "defineProperty")?;
+        if trap == Value::Undefined {
+            return self.object_define_own_property(target, key, descriptor);
+        }
+        if !self.is_callable(&trap)? {
+            return Err(RuntimeError::TypeError(
+                "Proxy defineProperty trap must be callable".into(),
+            ));
+        }
+        let descriptor_value = self.descriptor_object(&descriptor)?;
+        let trap_result = self.call_native(
+            trap,
+            Value::Object(handler),
+            vec![Value::Object(target), key.value(), descriptor_value],
+            false,
+        )?;
+        if !self.to_boolean(&trap_result)? {
+            return Ok(false);
+        }
+        let target_descriptor = self.object_get_own_property(target, &key)?;
+        let extensible = self.object_is_extensible(target)?;
+        if !compatible_property_descriptor(extensible, target_descriptor.as_ref(), &descriptor) {
+            return Err(RuntimeError::TypeError(
+                "Proxy defineProperty trap reported an incompatible property".into(),
+            ));
+        }
+        if descriptor.configurable == Some(false)
+            && target_descriptor
+                .as_ref()
+                .is_none_or(|current| current.configurable != Some(false))
+        {
+            return Err(RuntimeError::TypeError(
+                "Proxy defineProperty trap reported a new non-configurable property".into(),
+            ));
+        }
+        Ok(true)
+    }
+
+    pub(super) fn proxy_is_extensible(&mut self, proxy: ObjectId) -> Result<bool, RuntimeError> {
+        let Some((target, handler)) = self.heap.proxy(proxy)? else {
+            return self.heap.is_extensible(proxy).map_err(Into::into);
+        };
+        let trap = self.proxy_trap(handler, "isExtensible")?;
+        if trap == Value::Undefined {
+            return self.object_is_extensible(target);
+        }
+        if !self.is_callable(&trap)? {
+            return Err(RuntimeError::TypeError(
+                "Proxy isExtensible trap must be callable".into(),
+            ));
+        }
+        let trap_result = self.call_native(
+            trap,
+            Value::Object(handler),
+            vec![Value::Object(target)],
+            false,
+        )?;
+        let result = self.to_boolean(&trap_result)?;
+        if result != self.object_is_extensible(target)? {
+            return Err(RuntimeError::TypeError(
+                "Proxy isExtensible trap disagreed with its target".into(),
+            ));
+        }
+        Ok(result)
+    }
+
+    pub(super) fn proxy_get_prototype(
+        &mut self,
+        proxy: ObjectId,
+    ) -> Result<Option<ObjectId>, RuntimeError> {
+        let Some((target, handler)) = self.heap.proxy(proxy)? else {
+            return self.heap.prototype(proxy).map_err(Into::into);
+        };
+        let trap = self.proxy_trap(handler, "getPrototypeOf")?;
+        if trap == Value::Undefined {
+            return self.object_get_prototype(target);
+        }
+        if !self.is_callable(&trap)? {
+            return Err(RuntimeError::TypeError(
+                "Proxy getPrototypeOf trap must be callable".into(),
+            ));
+        }
+        let result = self.call_native(
+            trap,
+            Value::Object(handler),
+            vec![Value::Object(target)],
+            false,
+        )?;
+        let prototype = match result {
+            Value::Null => None,
+            Value::Object(object) => Some(object),
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "Proxy getPrototypeOf trap must return an object or null".into(),
+                ))
+            }
+        };
+        if !self.object_is_extensible(target)? && prototype != self.object_get_prototype(target)? {
+            return Err(RuntimeError::TypeError(
+                "Proxy getPrototypeOf trap disagreed with a non-extensible target".into(),
+            ));
+        }
+        Ok(prototype)
+    }
+
+    pub(super) fn proxy_set_prototype(
+        &mut self,
+        proxy: ObjectId,
+        prototype: Option<ObjectId>,
+    ) -> Result<bool, RuntimeError> {
+        let Some((target, handler)) = self.heap.proxy(proxy)? else {
+            return match self.heap.set_prototype(proxy, prototype) {
+                Ok(()) => Ok(true),
+                Err(HeapError::ReadOnlyProperty | HeapError::PrototypeCycle) => Ok(false),
+                Err(error) => Err(error.into()),
+            };
+        };
+        let trap = self.proxy_trap(handler, "setPrototypeOf")?;
+        if trap == Value::Undefined {
+            return self.object_set_prototype(target, prototype);
+        }
+        if !self.is_callable(&trap)? {
+            return Err(RuntimeError::TypeError(
+                "Proxy setPrototypeOf trap must be callable".into(),
+            ));
+        }
+        let trap_result = self.call_native(
+            trap,
+            Value::Object(handler),
+            vec![
+                Value::Object(target),
+                prototype.map_or(Value::Null, Value::Object),
+            ],
+            false,
+        )?;
+        if !self.to_boolean(&trap_result)? {
+            return Ok(false);
+        }
+        if !self.object_is_extensible(target)? && prototype != self.object_get_prototype(target)? {
+            return Err(RuntimeError::TypeError(
+                "Proxy setPrototypeOf trap changed a non-extensible target".into(),
+            ));
+        }
+        Ok(true)
+    }
+
+    pub(super) fn proxy_prevent_extensions(
+        &mut self,
+        proxy: ObjectId,
+    ) -> Result<bool, RuntimeError> {
+        let Some((target, handler)) = self.heap.proxy(proxy)? else {
+            self.heap.prevent_extensions(proxy)?;
+            return Ok(true);
+        };
+        let trap = self.proxy_trap(handler, "preventExtensions")?;
+        if trap == Value::Undefined {
+            return self.object_prevent_extensions(target);
+        }
+        if !self.is_callable(&trap)? {
+            return Err(RuntimeError::TypeError(
+                "Proxy preventExtensions trap must be callable".into(),
+            ));
+        }
+        let trap_result = self.call_native(
+            trap,
+            Value::Object(handler),
+            vec![Value::Object(target)],
+            false,
+        )?;
+        if !self.to_boolean(&trap_result)? {
+            return Ok(false);
+        }
+        if self.object_is_extensible(target)? {
+            return Err(RuntimeError::TypeError(
+                "Proxy preventExtensions trap left its target extensible".into(),
+            ));
+        }
+        Ok(true)
+    }
+
+    /// Proxy.[[Call]] and Proxy.[[Construct]].  The outer call frame retains
+    /// the Proxy as `newTarget`, so forwarding a construct without a trap
+    /// preserves the required allocation prototype.
+    pub(super) fn proxy_call(
+        &mut self,
+        proxy: ObjectId,
+        receiver: Value,
+        args: Vec<Value>,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        let Some((target, handler)) = self.heap.proxy(proxy)? else {
+            return Err(RuntimeError::TypeError(
+                "Proxy target is unavailable".into(),
+            ));
+        };
+        let name = if construct { "construct" } else { "apply" };
+        let trap = self.proxy_trap(handler, name)?;
+        if trap == Value::Undefined {
+            return self.dispatch_call(Value::Object(target), receiver, args, construct);
+        }
+        if !self.is_callable(&trap)? {
+            return Err(RuntimeError::TypeError(format!(
+                "Proxy {name} trap must be callable"
+            )));
+        }
+        let arguments = self.array_from(args)?;
+        let values = if construct {
+            vec![Value::Object(target), arguments, self.new_target.clone()]
+        } else {
+            vec![Value::Object(target), receiver, arguments]
+        };
+        let result = self.call_native(trap, Value::Object(handler), values, false)?;
+        if construct && !matches!(result, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "Proxy construct trap must return an object".into(),
+            ));
+        }
+        Ok(result)
+    }
+
+    fn buffer_prototype(&mut self, constructor: &str) -> Result<ObjectId, RuntimeError> {
+        let constructor = self.global(constructor)?;
+        self.get_property(&constructor, &"prototype".into())?
+            .object_id()
+            .ok_or_else(|| RuntimeError::TypeError("buffer prototype is unavailable".into()))
+    }
+
+    /// OrdinaryCreateFromConstructor for the concrete non-shared binary
+    /// constructors. The intrinsic prototype remains the fallback when a
+    /// custom `newTarget.prototype` is not an object.
+    fn constructed_buffer_prototype(
+        &mut self,
+        constructor: &str,
+    ) -> Result<ObjectId, RuntimeError> {
+        let default = self.buffer_prototype(constructor)?;
+        self.constructor_prototype(default)
+    }
+
+    /// Lazily creates the non-global `%TypedArray%` constructor and its shared
+    /// prototype. Concrete typed-array constructors inherit from this function
+    /// and their per-kind prototypes inherit from this object, which is
+    /// observable through `Object.getPrototypeOf(Int8Array)`.
+    fn typed_array_intrinsics(&mut self) -> Result<(ObjectId, ObjectId), RuntimeError> {
+        if let Some(intrinsics) = self.typed_array_intrinsics {
+            return Ok(intrinsics);
+        }
+        let object_prototype = self.object_prototype;
+        let function_prototype = self.function_prototype()?;
+        let typed_prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+        let root = self.heap.root(typed_prototype)?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(typed_prototype));
+        let result = (|| {
+            let constructor = self.with_roots(|heap| {
+                heap.alloc_native_function(
+                    NativeFunction::TypedArrayIntrinsic,
+                    "TypedArray",
+                    function_prototype,
+                )
+            })?;
+            self.stack.push(Value::Object(constructor));
+            self.define_data(
+                constructor,
+                "name",
+                Value::String("TypedArray".into()),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                constructor,
+                "length",
+                Value::Number(0.0),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                constructor,
+                "prototype",
+                Value::Object(typed_prototype),
+                false,
+                false,
+                false,
+            )?;
+            self.define_data(
+                typed_prototype,
+                "constructor",
+                Value::Object(constructor),
+                true,
+                false,
+                true,
+            )?;
+            for (name, native) in [
+                ("buffer", NativeFunction::TypedArrayBuffer),
+                ("byteLength", NativeFunction::TypedArrayByteLength),
+                ("byteOffset", NativeFunction::TypedArrayByteOffset),
+                ("length", NativeFunction::TypedArrayLength),
+            ] {
+                self.install_native_getter(typed_prototype, function_prototype, name, native)?;
+            }
+            self.install_native(
+                typed_prototype,
+                function_prototype,
+                "set",
+                1,
+                NativeFunction::TypedArraySet,
+            )?;
+            self.install_native(
+                typed_prototype,
+                function_prototype,
+                "subarray",
+                2,
+                NativeFunction::TypedArraySubarray,
+            )?;
+            Ok(constructor)
+        })();
+        self.stack.truncate(base);
+        match result {
+            Ok(constructor) => {
+                let intrinsics = (constructor, typed_prototype);
+                self.typed_array_intrinsics = Some(intrinsics);
+                Ok(intrinsics)
+            }
+            Err(error) => {
+                self.heap.unroot(root)?;
+                Err(error)
+            }
+        }
+    }
+
+    fn buffer_index(&mut self, value: &Value) -> Result<usize, RuntimeError> {
+        let number = self.coerce_number(value)?;
+        if number.is_nan() || number == 0.0 {
+            return Ok(0);
+        }
+        if !number.is_finite() {
+            return Err(RuntimeError::RangeError("invalid buffer index".into()));
+        }
+        let integer = number.trunc();
+        // ToIndex applies ToIntegerOrInfinity before rejecting negatives, so
+        // a finite value in (-1, 0) becomes -0 and is accepted as zero.
+        if integer < 0.0 {
+            return Err(RuntimeError::RangeError("invalid buffer index".into()));
+        }
+        if integer > usize::MAX as f64 {
+            return Err(RuntimeError::RangeError("buffer index is too large".into()));
+        }
+        Ok(integer as usize)
+    }
+
+    fn array_buffer_constructor(
+        &mut self,
+        args: &[Value],
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        if !construct {
+            return Err(RuntimeError::TypeError(
+                "ArrayBuffer constructor requires 'new'".into(),
+            ));
+        }
+        let length = if args.is_empty() {
+            0
+        } else {
+            self.buffer_index(native::argument(args, 0))?
+        };
+        let prototype = self.constructed_buffer_prototype("ArrayBuffer")?;
+        Ok(Value::Object(self.with_roots(|heap| {
+            heap.alloc_array_buffer(length, Some(prototype))
+        })?))
+    }
+
+    fn array_buffer_receiver(&self, receiver: &Value) -> Result<ObjectId, RuntimeError> {
+        let object = receiver.object_id().ok_or_else(|| {
+            RuntimeError::TypeError("ArrayBuffer method requires an ArrayBuffer receiver".into())
+        })?;
+        if !self.heap.is_array_buffer(object)? {
+            return Err(RuntimeError::TypeError(
+                "ArrayBuffer method requires an ArrayBuffer receiver".into(),
+            ));
+        }
+        Ok(object)
+    }
+
+    fn array_buffer_species_constructor(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let constructor = self.get_property(receiver, &"constructor".into())?;
+        if constructor == Value::Undefined {
+            return self.global("ArrayBuffer");
+        }
+        if !matches!(constructor, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "ArrayBuffer constructor must be an object".into(),
+            ));
+        }
+        let species = self.get_property(&constructor, &JsSymbol::well_known("species").into())?;
+        if matches!(species, Value::Undefined | Value::Null) {
+            return self.global("ArrayBuffer");
+        }
+        if !self.is_constructor(&species)? {
+            return Err(RuntimeError::TypeError(
+                "ArrayBuffer species must be a constructor".into(),
+            ));
+        }
+        Ok(species)
+    }
+
+    fn array_buffer_slice(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let buffer = self.array_buffer_receiver(receiver)?;
+        let length = self.heap.array_buffer_byte_length(buffer)?;
+        let start = self.relative_buffer_index(native::argument(args, 0), length)?;
+        let end = if args.get(1).is_some_and(|value| *value != Value::Undefined) {
+            self.relative_buffer_index(native::argument(args, 1), length)?
+        } else {
+            length
+        };
+        let width = end.saturating_sub(start);
+        if self.heap.array_buffer_is_detached(buffer)? {
+            return Err(RuntimeError::TypeError("ArrayBuffer is detached".into()));
+        }
+        let constructor = self.array_buffer_species_constructor(receiver)?;
+        let result = self.call_with_target(
+            constructor.clone(),
+            Value::Undefined,
+            vec![Value::Number(width as f64)],
+            true,
+            constructor,
+        )?;
+        let result_buffer = self.array_buffer_receiver(&result)?;
+        if result_buffer == buffer {
+            return Err(RuntimeError::TypeError(
+                "ArrayBuffer species returned the source buffer".into(),
+            ));
+        }
+        if self.heap.array_buffer_is_detached(buffer)?
+            || self.heap.array_buffer_is_detached(result_buffer)?
+        {
+            return Err(RuntimeError::TypeError("ArrayBuffer is detached".into()));
+        }
+        if self.heap.array_buffer_byte_length(result_buffer)? < width {
+            return Err(RuntimeError::TypeError(
+                "ArrayBuffer species result is too small".into(),
+            ));
+        }
+        let bytes = self.heap.array_buffer_copy(buffer, start, width)?;
+        self.with_roots(|heap| heap.array_buffer_write(result_buffer, 0, &bytes))?;
+        Ok(result)
+    }
+
+    fn relative_buffer_index(
+        &mut self,
+        value: &Value,
+        length: usize,
+    ) -> Result<usize, RuntimeError> {
+        if *value == Value::Undefined {
+            return Ok(0);
+        }
+        let number = self.coerce_number(value)?;
+        if number.is_nan() {
+            return Ok(0);
+        }
+        if number == f64::INFINITY {
+            return Ok(length);
+        }
+        if number == f64::NEG_INFINITY {
+            return Ok(0);
+        }
+        let integer = number.trunc();
+        if integer < 0.0 {
+            Ok(length.saturating_sub((-integer) as usize))
+        } else {
+            Ok((integer as usize).min(length))
+        }
+    }
+
+    fn data_view_constructor(
+        &mut self,
+        args: &[Value],
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        if !construct {
+            return Err(RuntimeError::TypeError(
+                "DataView constructor requires 'new'".into(),
+            ));
+        }
+        let buffer = native::argument(args, 0).object_id().ok_or_else(|| {
+            RuntimeError::TypeError("DataView buffer must be an ArrayBuffer".into())
+        })?;
+        if !self.heap.is_array_buffer(buffer)? {
+            return Err(RuntimeError::TypeError(
+                "DataView buffer must be an ArrayBuffer".into(),
+            ));
+        }
+        // ToIndex(byteOffset) is observable and precedes the detached-buffer
+        // check. A valueOf hook can therefore run even for a detached buffer.
+        let offset = if args.len() > 1 {
+            self.buffer_index(native::argument(args, 1))?
+        } else {
+            0
+        };
+        if self.heap.array_buffer_is_detached(buffer)? {
+            return Err(RuntimeError::TypeError(
+                "DataView buffer is detached".into(),
+            ));
+        }
+        let total = self.heap.array_buffer_byte_length(buffer)?;
+        if offset > total {
+            return Err(RuntimeError::RangeError(
+                "DataView offset is outside its buffer".into(),
+            ));
+        }
+        let length = if args.len() > 2 && native::argument(args, 2) != &Value::Undefined {
+            self.buffer_index(native::argument(args, 2))?
+        } else {
+            total - offset
+        };
+        let prototype = self.constructed_buffer_prototype("DataView")?;
+        Ok(Value::Object(self.with_roots(|heap| {
+            heap.alloc_data_view(buffer, offset, length, Some(prototype))
+        })?))
+    }
+
+    fn data_view_receiver(
+        &self,
+        receiver: &Value,
+    ) -> Result<(ObjectId, usize, usize), RuntimeError> {
+        let (buffer, offset, length) = self.data_view_raw_receiver(receiver)?;
+        if self.heap.array_buffer_is_detached(buffer)? {
+            return Err(RuntimeError::TypeError(
+                "ArrayBuffer has been detached".into(),
+            ));
+        }
+        Ok((buffer, offset, length))
+    }
+
+    fn data_view_raw_receiver(
+        &self,
+        receiver: &Value,
+    ) -> Result<(ObjectId, usize, usize), RuntimeError> {
+        let object = receiver.object_id().ok_or_else(|| {
+            RuntimeError::TypeError("DataView method requires a DataView receiver".into())
+        })?;
+        self.heap
+            .data_view_raw_info(object)
+            .map_err(|error| match error {
+                HeapError::InvalidObject(_) | HeapError::InvalidInternalSlot(_) => {
+                    RuntimeError::TypeError("DataView method requires a DataView receiver".into())
+                }
+                error => error.into(),
+            })
+    }
+
+    fn data_view_get(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+        width: usize,
+        signed: bool,
+        floating: bool,
+    ) -> Result<Value, RuntimeError> {
+        let (buffer, offset, length) = self.data_view_raw_receiver(receiver)?;
+        let index = self.buffer_index(native::argument(args, 0))?;
+        if self.heap.array_buffer_is_detached(buffer)? {
+            return Err(RuntimeError::TypeError(
+                "ArrayBuffer has been detached".into(),
+            ));
+        }
+        let end = index.checked_add(width).ok_or_else(|| {
+            RuntimeError::RangeError("DataView access is outside its view".into())
+        })?;
+        if end > length {
+            return Err(RuntimeError::RangeError(
+                "DataView access is outside its view".into(),
+            ));
+        }
+        let little_endian = match args.get(1) {
+            Some(value) => self.to_boolean(value)?,
+            None => false,
+        };
+        let bytes = self.heap.array_buffer_copy(buffer, offset + index, width)?;
+        Ok(Value::Number(data_view_number(
+            &bytes,
+            signed,
+            floating,
+            little_endian,
+        )))
+    }
+
+    fn data_view_set(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+        width: usize,
+        signed: bool,
+        floating: bool,
+    ) -> Result<Value, RuntimeError> {
+        let (buffer, offset, length) = self.data_view_raw_receiver(receiver)?;
+        let index = self.buffer_index(native::argument(args, 0))?;
+        // SetViewValue converts its value before observing detachment or an
+        // out-of-range index. This matters when valueOf throws or detaches.
+        let value = self.coerce_number(native::argument(args, 1))?;
+        if self.heap.array_buffer_is_detached(buffer)? {
+            return Err(RuntimeError::TypeError(
+                "ArrayBuffer has been detached".into(),
+            ));
+        }
+        let end = index.checked_add(width).ok_or_else(|| {
+            RuntimeError::RangeError("DataView access is outside its view".into())
+        })?;
+        if end > length {
+            return Err(RuntimeError::RangeError(
+                "DataView access is outside its view".into(),
+            ));
+        }
+        let little_endian = match args.get(2) {
+            Some(value) => self.to_boolean(value)?,
+            None => false,
+        };
+        let bytes = data_view_bytes(value, width, signed, floating, little_endian);
+        self.with_roots(|heap| heap.array_buffer_write(buffer, offset + index, &bytes))?;
+        Ok(Value::Undefined)
+    }
+
+    fn typed_array_constructor(
+        &mut self,
+        args: &[Value],
+        construct: bool,
+        kind: TypedArrayKind,
+    ) -> Result<Value, RuntimeError> {
+        if !construct {
+            return Err(RuntimeError::TypeError(
+                "TypedArray constructor requires 'new'".into(),
+            ));
+        }
+        let input = native::argument(args, 0);
+        let (buffer, byte_offset, length, initial_values) = if let Value::Object(buffer) = input {
+            if self.heap.is_array_buffer(*buffer)? {
+                if self.heap.array_buffer_is_detached(*buffer)? {
+                    return Err(RuntimeError::TypeError(
+                        "TypedArray buffer is detached".into(),
+                    ));
+                }
+                let bytes = self.heap.array_buffer_byte_length(*buffer)?;
+                let offset = if args.len() > 1 {
+                    self.buffer_index(native::argument(args, 1))?
+                } else {
+                    0
+                };
+                if offset % kind.byte_width() != 0 || offset > bytes {
+                    return Err(RuntimeError::RangeError(
+                        "invalid TypedArray byte offset".into(),
+                    ));
+                }
+                let length = if args.len() > 2 && native::argument(args, 2) != &Value::Undefined {
+                    self.buffer_index(native::argument(args, 2))?
+                } else {
+                    let remaining = bytes - offset;
+                    if remaining % kind.byte_width() != 0 {
+                        return Err(RuntimeError::RangeError(
+                            "invalid TypedArray buffer length".into(),
+                        ));
+                    }
+                    remaining / kind.byte_width()
+                };
+                (*buffer, offset, length, None)
+            } else if self.heap.is_typed_array(*buffer)? {
+                let (source_buffer, _, source_length, _) = self.heap.typed_array_info(*buffer)?;
+                if self.heap.array_buffer_is_detached(source_buffer)? {
+                    return Err(RuntimeError::TypeError(
+                        "TypedArray source is detached".into(),
+                    ));
+                }
+                let values = self.typed_array_values(*buffer, source_length)?;
+                let result = self.new_typed_array_buffer(source_length, kind)?;
+                (result, 0, source_length, Some(values))
+            } else {
+                let source = Value::Object(*buffer);
+                let base = self.stack.len();
+                self.stack.push(source.clone());
+                let values = (|| {
+                    let iterator =
+                        self.get_method(&source, &JsSymbol::well_known("iterator").into())?;
+                    if iterator == Value::Undefined {
+                        self.array_like_numbers(*buffer, kind)
+                    } else {
+                        self.iterable_numbers(&source, iterator, kind)
+                    }
+                })();
+                self.stack.truncate(base);
+                let values = values?;
+                let length = values.len();
+                let result = self.new_typed_array_buffer(length, kind)?;
+                (result, 0, length, Some(values))
+            }
+        } else {
+            let length = if *input == Value::Undefined {
+                0
+            } else {
+                self.buffer_index(input)?
+            };
+            let buffer = self.new_typed_array_buffer(length, kind)?;
+            (buffer, 0, length, None)
+        };
+        let base = self.stack.len();
+        self.stack.push(Value::Object(buffer));
+        let result = (|| {
+            let prototype = self.constructed_buffer_prototype(kind.name())?;
+            let object = self.with_roots(|heap| {
+                heap.alloc_typed_array(buffer, byte_offset, length, kind, Some(prototype))
+            })?;
+            if let Some(values) = initial_values {
+                self.stack.push(Value::Object(object));
+                let writes = values
+                    .into_iter()
+                    .enumerate()
+                    .try_for_each(|(index, value)| {
+                        self.with_roots(|heap| heap.typed_array_set_index(object, index, value))
+                            .map(|_| ())
+                    });
+                self.stack.pop();
+                writes?;
+            }
+            Ok(Value::Object(object))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    fn new_typed_array_buffer(
+        &mut self,
+        length: usize,
+        kind: TypedArrayKind,
+    ) -> Result<ObjectId, RuntimeError> {
+        let bytes = length
+            .checked_mul(kind.byte_width())
+            .ok_or_else(|| RuntimeError::RangeError("TypedArray length is too large".into()))?;
+        if bytes > self.heap.max_array_buffer_byte_length() {
+            return Err(RuntimeError::RangeError(
+                "TypedArray length is too large".into(),
+            ));
+        }
+        let prototype = self.buffer_prototype("ArrayBuffer")?;
+        self.with_roots(|heap| heap.alloc_array_buffer(bytes, Some(prototype)))
+    }
+
+    fn typed_array_values(
+        &mut self,
+        source: ObjectId,
+        length: usize,
+    ) -> Result<Vec<f64>, RuntimeError> {
+        self.stack.push(Value::Object(source));
+        let result = (|| {
+            let mut values = Vec::with_capacity(length);
+            for index in 0..length {
+                let value = self.get_property(&Value::Object(source), &index.to_string().into())?;
+                values.push(self.coerce_number(&value)?);
+            }
+            Ok(values)
+        })();
+        self.stack.pop();
+        result
+    }
+
+    fn array_like_numbers(
+        &mut self,
+        source: ObjectId,
+        kind: TypedArrayKind,
+    ) -> Result<Vec<f64>, RuntimeError> {
+        self.stack.push(Value::Object(source));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(source), &"length".into())?;
+            let length = self.coerce_length(&length)?;
+            if length > (self.heap.max_array_buffer_byte_length() / kind.byte_width()) as f64 {
+                return Err(RuntimeError::RangeError(
+                    "TypedArray length is too large".into(),
+                ));
+            }
+            let mut values = Vec::with_capacity(length as usize);
+            for index in 0..length as usize {
+                let value = self.get_property(&Value::Object(source), &index.to_string().into())?;
+                values.push(self.coerce_number(&value)?);
+            }
+            Ok(values)
+        })();
+        self.stack.pop();
+        result
+    }
+
+    /// Collect an iterable constructor source before allocating the new view.
+    /// The source and iterator record stay on the VM stack for every user-code
+    /// call, so a collection triggered by a getter, `next`, or number coercion
+    /// cannot reclaim either internal object.
+    fn iterable_numbers(
+        &mut self,
+        source: &Value,
+        iterator_method: Value,
+        kind: TypedArrayKind,
+    ) -> Result<Vec<f64>, RuntimeError> {
+        let base = self.stack.len();
+        self.stack.push(source.clone());
+        let result = (|| {
+            let record = self.get_iterator_from_method(source, iterator_method)?;
+            self.stack.push(record.clone());
+            let maximum = self.heap.max_array_buffer_byte_length() / kind.byte_width();
+            let mut values = Vec::new();
+            while let Some(value) = self.iterator_step(&record, true)? {
+                if values.len() == maximum {
+                    return Err(RuntimeError::RangeError(
+                        "TypedArray length is too large".into(),
+                    ));
+                }
+                values.push(self.coerce_number(&value)?);
+            }
+            Ok(values)
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    fn iterable_values(
+        &mut self,
+        source: &Value,
+        iterator_method: Value,
+    ) -> Result<Vec<Value>, RuntimeError> {
+        let base = self.stack.len();
+        self.stack.push(source.clone());
+        let result = (|| {
+            let record = self.get_iterator_from_method(source, iterator_method)?;
+            self.stack.push(record.clone());
+            let mut values = Vec::new();
+            while let Some(value) = self.iterator_step(&record, true)? {
+                if values.len() == u32::MAX as usize {
+                    return Err(RuntimeError::RangeError("Array length is too large".into()));
+                }
+                values.push(value);
+            }
+            Ok(values)
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    fn array_from_method(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let source = native::argument(args, 0).clone();
+        if matches!(source, Value::Null | Value::Undefined) {
+            return Err(RuntimeError::TypeError(
+                "Array.from requires an object".into(),
+            ));
+        }
+        let mapper = native::argument(args, 1).clone();
+        if mapper != Value::Undefined && !self.is_callable(&mapper)? {
+            return Err(RuntimeError::TypeError(
+                "Array.from mapper must be callable".into(),
+            ));
+        }
+        let this_arg = native::argument(args, 2).clone();
+        let base = self.stack.len();
+        self.stack.push(source.clone());
+        if mapper != Value::Undefined {
+            self.stack.push(mapper.clone());
+            self.stack.push(this_arg.clone());
+        }
+        let result = (|| {
+            let iterator = self.get_method(&source, &JsSymbol::well_known("iterator").into())?;
+            let mut values = if iterator == Value::Undefined {
+                let object = self.coerce_object(&source)?;
+                self.stack.push(Value::Object(object));
+                let values = self.array_like_values(&Value::Object(object));
+                self.stack.pop();
+                values?
+            } else {
+                self.iterable_values(&source, iterator)?
+            };
+            if mapper != Value::Undefined {
+                for (index, value) in values.iter_mut().enumerate() {
+                    *value = self.call_native(
+                        mapper.clone(),
+                        this_arg.clone(),
+                        vec![value.clone(), Value::Number(index as f64)],
+                        false,
+                    )?;
+                }
+            }
+            self.array_from(values)
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    fn typed_array_receiver(
+        &self,
+        receiver: &Value,
+    ) -> Result<(ObjectId, usize, usize, TypedArrayKind), RuntimeError> {
+        let object = receiver.object_id().ok_or_else(|| {
+            RuntimeError::TypeError("TypedArray method requires a TypedArray receiver".into())
+        })?;
+        self.heap
+            .typed_array_info(object)
+            .map_err(|error| match error {
+                HeapError::InvalidObject(_) => RuntimeError::TypeError(
+                    "TypedArray method requires a TypedArray receiver".into(),
+                ),
+                error => error.into(),
+            })
+    }
+
+    fn typed_array_set(&mut self, receiver: &Value, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (buffer, _, length, _) = self.typed_array_receiver(receiver)?;
+        if self.heap.array_buffer_is_detached(buffer)? {
+            return Err(RuntimeError::TypeError(
+                "TypedArray buffer is detached".into(),
+            ));
+        }
+        let source = native::argument(args, 0);
+        let target_offset = self.buffer_index(native::argument(args, 1))?;
+        if target_offset > length {
+            return Err(RuntimeError::RangeError(
+                "target offset is outside TypedArray".into(),
+            ));
+        }
+        let source = self.coerce_object(source)?;
+        self.stack.push(Value::Object(source));
+        let result = (|| {
+            let source_length_value =
+                self.get_property(&Value::Object(source), &"length".into())?;
+            let source_length = self.coerce_length(&source_length_value)? as usize;
+            if source_length > length - target_offset {
+                return Err(RuntimeError::RangeError(
+                    "source does not fit in TypedArray".into(),
+                ));
+            }
+            let mut values = Vec::with_capacity(source_length);
+            for index in 0..source_length {
+                let value = self.get_property(&Value::Object(source), &index.to_string().into())?;
+                values.push(self.coerce_number(&value)?);
+            }
+            for (index, value) in values.into_iter().enumerate() {
+                self.with_roots(|heap| {
+                    heap.typed_array_set_index(
+                        receiver.object_id().expect("validated TypedArray receiver"),
+                        target_offset + index,
+                        value,
+                    )
+                })?;
+            }
+            Ok(Value::Undefined)
+        })();
+        self.stack.pop();
+        result
+    }
+
+    fn typed_array_subarray(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let (buffer, byte_offset, length, kind) = self.typed_array_receiver(receiver)?;
+        if self.heap.array_buffer_is_detached(buffer)? {
+            return Err(RuntimeError::TypeError(
+                "TypedArray buffer is detached".into(),
+            ));
+        }
+        let start = self.relative_buffer_index(native::argument(args, 0), length)?;
+        let end = if args.get(1).is_some_and(|value| *value != Value::Undefined) {
+            self.relative_buffer_index(native::argument(args, 1), length)?
+        } else {
+            length
+        };
+        let view_length = end.saturating_sub(start);
+        let view_offset = byte_offset
+            .checked_add(start * kind.byte_width())
+            .ok_or_else(|| RuntimeError::RangeError("TypedArray offset is too large".into()))?;
+        let prototype = self.buffer_prototype(kind.name())?;
+        let object = self.with_roots(|heap| {
+            heap.alloc_typed_array(buffer, view_offset, view_length, kind, Some(prototype))
+        })?;
+        Ok(Value::Object(object))
     }
 
     pub(super) fn array_like_values(&mut self, value: &Value) -> Result<Vec<Value>, RuntimeError> {
@@ -720,6 +2521,14 @@ impl Vm {
     }
     pub(super) fn get_iterator(&mut self, value: &Value) -> Result<Value, RuntimeError> {
         let method = self.get_method(value, &JsSymbol::well_known("iterator").into())?;
+        self.get_iterator_from_method(value, method)
+    }
+
+    fn get_iterator_from_method(
+        &mut self,
+        value: &Value,
+        method: Value,
+    ) -> Result<Value, RuntimeError> {
         let iterator = self.call_native(method, value.clone(), Vec::new(), false)?;
         if !matches!(iterator, Value::Object(_)) {
             return Err(RuntimeError::TypeError("iterator must be an object".into()));
@@ -1616,6 +3425,15 @@ impl Vm {
 
         let (next_state, result) = match outcome {
             Ok(InterpreterExit::Return(value)) => {
+                // An injected generator return skips the compiler's normal
+                // IteratorFinish/IteratorClose instructions. Keep the
+                // completion and every active record rooted while close
+                // callbacks can allocate, then discard the frame as done.
+                let close_base = self.stack.len();
+                self.stack.push(value.clone());
+                self.stack.extend(iterators.iter().cloned());
+                self.close_iterators_to(&mut iterators, 0);
+                self.stack.truncate(close_base);
                 self.stack.truncate(frame_base);
                 (GeneratorState::Done, Ok((value, true)))
             }
@@ -1669,6 +3487,17 @@ impl Vm {
                 (state, Ok((value, false)))
             }
             Err(error) => {
+                // The same applies when a resumed generator completes
+                // abruptly without a remaining handler. In particular, a
+                // return()/throw() request must close a destructuring
+                // iterator that was live at the preceding yield.
+                let close_base = self.stack.len();
+                if let RuntimeError::Thrown(value) = &error {
+                    self.stack.push(value.clone());
+                }
+                self.stack.extend(iterators.iter().cloned());
+                self.close_iterators_to(&mut iterators, 0);
+                self.stack.truncate(close_base);
                 self.stack.truncate(frame_base);
                 (GeneratorState::Done, Err(error))
             }
@@ -2975,9 +4804,13 @@ impl Vm {
 
     pub(super) fn is_callable(&self, value: &Value) -> Result<bool, RuntimeError> {
         Ok(if let Value::Object(id) = value {
-            self.heap.native_function(*id)?.is_some()
-                || self.heap.closure(*id)?.is_some()
-                || self.heap.bound_function(*id)?.is_some()
+            if let Some((callable, _)) = self.heap.proxy_capabilities(*id)? {
+                callable
+            } else {
+                self.heap.native_function(*id)?.is_some()
+                    || self.heap.closure(*id)?.is_some()
+                    || self.heap.bound_function(*id)?.is_some()
+            }
         } else {
             false
         })
@@ -3393,6 +5226,17 @@ impl Vm {
             "Function" => NativeFunction::Function,
             "Symbol" => NativeFunction::Symbol,
             "Array" => NativeFunction::Array,
+            "ArrayBuffer" => NativeFunction::ArrayBuffer,
+            "DataView" => NativeFunction::DataView,
+            "Int8Array" => NativeFunction::TypedArray(TypedArrayKind::Int8),
+            "Uint8Array" => NativeFunction::TypedArray(TypedArrayKind::Uint8),
+            "Uint8ClampedArray" => NativeFunction::TypedArray(TypedArrayKind::Uint8Clamped),
+            "Int16Array" => NativeFunction::TypedArray(TypedArrayKind::Int16),
+            "Uint16Array" => NativeFunction::TypedArray(TypedArrayKind::Uint16),
+            "Int32Array" => NativeFunction::TypedArray(TypedArrayKind::Int32),
+            "Uint32Array" => NativeFunction::TypedArray(TypedArrayKind::Uint32),
+            "Float32Array" => NativeFunction::TypedArray(TypedArrayKind::Float32),
+            "Float64Array" => NativeFunction::TypedArray(TypedArrayKind::Float64),
             "Proxy" => NativeFunction::Proxy,
             "Map" => NativeFunction::Map,
             "Set" => NativeFunction::Set,
@@ -3410,10 +5254,15 @@ impl Vm {
             _ => NativeFunction::Empty,
         };
         let object_prototype = self.object_prototype;
+        let native_prototype = if matches!(native, NativeFunction::TypedArray(_)) {
+            self.typed_array_intrinsics()?.0
+        } else {
+            prototype
+        };
         let id = if matches!(name, "Reflect" | "globalThis") {
             self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?
         } else {
-            self.with_roots(|heap| heap.alloc_native_function(native, name, prototype))?
+            self.with_roots(|heap| heap.alloc_native_function(native, name, native_prototype))?
         };
         let root = self.heap.root(id)?;
         let result = (|| {
@@ -3543,6 +5392,181 @@ impl Vm {
                     true,
                 )?;
                 self.install_native(id, prototype, "isArray", 1, NativeFunction::ArrayIsArray)?;
+                self.install_native(id, prototype, "from", 1, NativeFunction::ArrayFrom)?;
+            } else if name == "ArrayBuffer" {
+                let buffer_prototype =
+                    self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+                self.define_data(
+                    id,
+                    "prototype",
+                    Value::Object(buffer_prototype),
+                    false,
+                    false,
+                    false,
+                )?;
+                self.define_data(
+                    buffer_prototype,
+                    "constructor",
+                    Value::Object(id),
+                    true,
+                    false,
+                    true,
+                )?;
+                self.define_data(
+                    buffer_prototype,
+                    JsSymbol::well_known("toStringTag"),
+                    Value::String("ArrayBuffer".into()),
+                    false,
+                    false,
+                    true,
+                )?;
+                self.install_native_getter(
+                    buffer_prototype,
+                    prototype,
+                    "byteLength",
+                    NativeFunction::ArrayBufferByteLength,
+                )?;
+                self.install_native(
+                    buffer_prototype,
+                    prototype,
+                    "slice",
+                    2,
+                    NativeFunction::ArrayBufferSlice,
+                )?;
+                self.install_native(
+                    id,
+                    prototype,
+                    "isView",
+                    1,
+                    NativeFunction::ArrayBufferIsView,
+                )?;
+                self.install_getter(
+                    id,
+                    prototype,
+                    JsSymbol::well_known("species").into(),
+                    "get [Symbol.species]",
+                    NativeFunction::ArrayBufferSpecies,
+                )?;
+            } else if name == "DataView" {
+                let view_prototype =
+                    self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+                self.define_data(
+                    id,
+                    "prototype",
+                    Value::Object(view_prototype),
+                    false,
+                    false,
+                    false,
+                )?;
+                self.define_data(
+                    view_prototype,
+                    "constructor",
+                    Value::Object(id),
+                    true,
+                    false,
+                    true,
+                )?;
+                self.define_data(
+                    view_prototype,
+                    JsSymbol::well_known("toStringTag"),
+                    Value::String("DataView".into()),
+                    false,
+                    false,
+                    true,
+                )?;
+                for (name, native) in [
+                    ("buffer", NativeFunction::DataViewBuffer),
+                    ("byteLength", NativeFunction::DataViewByteLength),
+                    ("byteOffset", NativeFunction::DataViewByteOffset),
+                ] {
+                    self.install_native_getter(view_prototype, prototype, name, native)?;
+                }
+                for (name, width, signed, floating) in [
+                    ("getUint8", 1, false, false),
+                    ("getInt8", 1, true, false),
+                    ("getUint16", 2, false, false),
+                    ("getInt16", 2, true, false),
+                    ("getUint32", 4, false, false),
+                    ("getInt32", 4, true, false),
+                    ("getFloat32", 4, false, true),
+                    ("getFloat64", 8, false, true),
+                ] {
+                    self.install_native(
+                        view_prototype,
+                        prototype,
+                        name,
+                        1,
+                        NativeFunction::DataViewGet {
+                            width,
+                            signed,
+                            floating,
+                        },
+                    )?;
+                    let set_name = name.replacen("get", "set", 1);
+                    self.install_native(
+                        view_prototype,
+                        prototype,
+                        &set_name,
+                        2,
+                        NativeFunction::DataViewSet {
+                            width,
+                            signed,
+                            floating,
+                        },
+                    )?;
+                }
+            } else if let Some(kind) = typed_array_kind(name) {
+                let typed_array_prototype = self.typed_array_intrinsics()?.1;
+                let typed_prototype =
+                    self.with_roots(|heap| heap.alloc_object(Some(typed_array_prototype)))?;
+                self.define_data(
+                    id,
+                    "prototype",
+                    Value::Object(typed_prototype),
+                    false,
+                    false,
+                    false,
+                )?;
+                self.define_data(
+                    typed_prototype,
+                    "constructor",
+                    Value::Object(id),
+                    true,
+                    false,
+                    true,
+                )?;
+                self.define_data(
+                    typed_prototype,
+                    JsSymbol::well_known("toStringTag"),
+                    Value::String(kind.name().into()),
+                    false,
+                    false,
+                    true,
+                )?;
+                self.define_data(
+                    id,
+                    "BYTES_PER_ELEMENT",
+                    Value::Number(kind.byte_width() as f64),
+                    false,
+                    false,
+                    false,
+                )?;
+                self.define_data(
+                    typed_prototype,
+                    "BYTES_PER_ELEMENT",
+                    Value::Number(kind.byte_width() as f64),
+                    false,
+                    false,
+                    false,
+                )?;
+            } else if name == "Proxy" {
+                self.install_native(
+                    id,
+                    prototype,
+                    "revocable",
+                    2,
+                    NativeFunction::ProxyRevocable,
+                )?;
             } else if matches!(name, "Map" | "Set") {
                 let collection_prototype = self.collection_prototype(name == "Map")?;
                 self.define_data(
@@ -3653,6 +5677,7 @@ impl Vm {
                 self.define_data(id, "String", Value::Object(constructor), true, false, true)?;
                 self.define_data(id, "globalThis", Value::Object(id), true, false, true)?;
             } else if name == "Reflect" {
+                self.install_native(id, prototype, "apply", 3, NativeFunction::ReflectApply)?;
                 self.install_native(
                     id,
                     prototype,
@@ -3669,6 +5694,12 @@ impl Vm {
                 )?;
                 for (name, length, method) in [
                     ("get", 2, ObjectMethod::ReflectGet),
+                    (
+                        "getOwnPropertyDescriptor",
+                        2,
+                        ObjectMethod::ReflectGetOwnPropertyDescriptor,
+                    ),
+                    ("getPrototypeOf", 1, ObjectMethod::ReflectGetPrototypeOf),
                     ("defineProperty", 3, ObjectMethod::ReflectDefineProperty),
                     ("set", 3, ObjectMethod::ReflectSet),
                     ("deleteProperty", 2, ObjectMethod::ReflectDeleteProperty),
@@ -3677,6 +5708,8 @@ impl Vm {
                         1,
                         ObjectMethod::ReflectPreventExtensions,
                     ),
+                    ("setPrototypeOf", 2, ObjectMethod::ReflectSetPrototypeOf),
+                    ("isExtensible", 1, ObjectMethod::ReflectIsExtensible),
                     ("has", 2, ObjectMethod::ReflectHas),
                 ] {
                     self.install_native(
@@ -3687,6 +5720,14 @@ impl Vm {
                         NativeFunction::ObjectMethod(method),
                     )?;
                 }
+                self.define_data(
+                    id,
+                    JsSymbol::well_known("toStringTag"),
+                    Value::String("Reflect".into()),
+                    false,
+                    false,
+                    true,
+                )?;
             } else {
                 self.define_data(
                     id,
@@ -3710,6 +5751,7 @@ impl Vm {
                 for (name, length, method) in [
                     ("getOwnPropertyDescriptor", 2, GetOwnPropertyDescriptor),
                     ("defineProperty", 3, DefineProperty),
+                    ("defineProperties", 2, DefineProperties),
                     ("keys", 1, Keys),
                     ("getOwnPropertyNames", 1, GetOwnPropertyNames),
                     ("getOwnPropertySymbols", 1, GetOwnPropertySymbols),
@@ -3868,7 +5910,101 @@ impl Vm {
                 }
                 self.array_from(args)
             }
+            NativeFunction::ArrayBuffer => self.array_buffer_constructor(&args, construct),
+            NativeFunction::ArrayBufferByteLength => Ok(Value::Number(
+                self.heap
+                    .array_buffer_byte_length(self.array_buffer_receiver(&receiver)?)?
+                    as f64,
+            )),
+            NativeFunction::ArrayBufferSlice => self.array_buffer_slice(&receiver, &args),
+            NativeFunction::ArrayBufferIsView => {
+                Ok(Value::Bool(first.object_id().is_some_and(|object| {
+                    self.heap.is_data_view(object).unwrap_or(false)
+                        || self.heap.is_typed_array(object).unwrap_or(false)
+                })))
+            }
+            NativeFunction::ArrayBufferSpecies => Ok(receiver),
+            NativeFunction::DataView => self.data_view_constructor(&args, construct),
+            NativeFunction::DataViewBuffer => {
+                let object = receiver.object_id().ok_or_else(|| {
+                    RuntimeError::TypeError("DataView method requires a DataView receiver".into())
+                })?;
+                let buffer = self
+                    .heap
+                    .data_view_buffer(object)
+                    .map_err(|error| match error {
+                        HeapError::InvalidInternalSlot(_) | HeapError::InvalidObject(_) => {
+                            RuntimeError::TypeError(
+                                "DataView method requires a DataView receiver".into(),
+                            )
+                        }
+                        error => error.into(),
+                    })?;
+                Ok(Value::Object(buffer))
+            }
+            NativeFunction::DataViewByteLength => {
+                let (_, _, length) = self.data_view_receiver(&receiver)?;
+                Ok(Value::Number(length as f64))
+            }
+            NativeFunction::DataViewByteOffset => {
+                let (_, offset, _) = self.data_view_receiver(&receiver)?;
+                Ok(Value::Number(offset as f64))
+            }
+            NativeFunction::DataViewGet {
+                width,
+                signed,
+                floating,
+            } => self.data_view_get(&receiver, &args, width, signed, floating),
+            NativeFunction::DataViewSet {
+                width,
+                signed,
+                floating,
+            } => self.data_view_set(&receiver, &args, width, signed, floating),
+            NativeFunction::TypedArray(kind) => {
+                self.typed_array_constructor(&args, construct, kind)
+            }
+            NativeFunction::TypedArrayIntrinsic => Err(RuntimeError::TypeError(
+                "%TypedArray% is not directly constructible".into(),
+            )),
+            NativeFunction::TypedArrayBuffer => {
+                let (buffer, _, _, _) = self.typed_array_receiver(&receiver)?;
+                Ok(Value::Object(buffer))
+            }
+            NativeFunction::TypedArrayByteLength => {
+                let (buffer, _, length, kind) = self.typed_array_receiver(&receiver)?;
+                let byte_length = if self.heap.array_buffer_is_detached(buffer)? {
+                    0
+                } else {
+                    length * kind.byte_width()
+                };
+                Ok(Value::Number(byte_length as f64))
+            }
+            NativeFunction::TypedArrayByteOffset => {
+                let (buffer, offset, _, _) = self.typed_array_receiver(&receiver)?;
+                let byte_offset = if self.heap.array_buffer_is_detached(buffer)? {
+                    0
+                } else {
+                    offset
+                };
+                Ok(Value::Number(byte_offset as f64))
+            }
+            NativeFunction::TypedArrayLength => {
+                let (buffer, _, length, _) = self.typed_array_receiver(&receiver)?;
+                let element_length = if self.heap.array_buffer_is_detached(buffer)? {
+                    0
+                } else {
+                    length
+                };
+                Ok(Value::Number(element_length as f64))
+            }
+            NativeFunction::TypedArraySet => self.typed_array_set(&receiver, &args),
+            NativeFunction::TypedArraySubarray => self.typed_array_subarray(&receiver, &args),
             NativeFunction::Proxy => self.proxy_constructor(&args, construct),
+            NativeFunction::ProxyRevocable => self.proxy_revocable(&args),
+            NativeFunction::ProxyRevoker(proxy) => {
+                self.with_roots(|heap| heap.revoke_proxy(proxy))?;
+                Ok(Value::Undefined)
+            }
             NativeFunction::Map => self.collection_constructor(true, construct),
             NativeFunction::Set => self.collection_constructor(false, construct),
             NativeFunction::ArrayIsArray => Ok(Value::Bool(
@@ -3876,6 +6012,7 @@ impl Vm {
                     .object_id()
                     .is_some_and(|id| self.heap.is_array(id).unwrap_or(false)),
             )),
+            NativeFunction::ArrayFrom => self.array_from_method(&args),
             NativeFunction::ArrayForEach => {
                 self.array_for_each(&receiver, first, native::argument(&args, 1))
             }
@@ -3964,6 +6101,20 @@ impl Vm {
                     self.array_like_values(list)?
                 };
                 self.call_native(receiver, first.clone(), values, false)
+            }
+            NativeFunction::ReflectApply => {
+                if !self.is_callable(first)? {
+                    return Err(RuntimeError::TypeError(
+                        "Reflect.apply requires a callable target".into(),
+                    ));
+                }
+                let values = self.array_like_values(native::argument(&args, 2))?;
+                self.call_native(
+                    first.clone(),
+                    native::argument(&args, 1).clone(),
+                    values,
+                    false,
+                )
             }
             NativeFunction::ReflectConstruct => {
                 let new_target = if args.len() > 2 {
@@ -4338,16 +6489,7 @@ impl Vm {
             for index in 0..length {
                 self.charge_step()?;
                 let key: PropertyName = index.to_string().into();
-                let mut current = Some(object);
-                let mut present = false;
-                while let Some(id) = current {
-                    if self.heap.get_own_property_descriptor(id, &key)?.is_some() {
-                        present = true;
-                        break;
-                    }
-                    current = self.heap.prototype(id)?;
-                }
-                if present {
+                if self.has_property(object, &key)? {
                     let value = self.get_property(&Value::Object(object), &key)?;
                     self.call_native(
                         callback.clone(),
@@ -4419,18 +6561,23 @@ impl Vm {
     }
 
     fn array_own_indices(
-        &self,
+        &mut self,
         object: ObjectId,
         length: u64,
     ) -> Result<Option<Vec<u32>>, RuntimeError> {
         // Scanning ordinary arrays preserves properties added by callbacks.  This
         // shortcut is only for the large sparse arrays that would otherwise turn
         // a bounded operation into millions of empty property lookups.
-        if length < 65_536 || !self.heap.is_array(object)? {
+        if length < 65_536 || !self.heap.is_array(object)? || self.heap.proxy(object)?.is_some() {
             return Ok(None);
         }
         let mut prototype = self.heap.prototype(object)?;
         while let Some(id) = prototype {
+            // The optimized path does not invoke [[HasProperty]]. A Proxy
+            // prototype can observe that operation, so retain the normal path.
+            if self.heap.proxy(id)?.is_some() {
+                return Ok(None);
+            }
             if self
                 .heap
                 .own_property_keys(id)?
@@ -4962,12 +7109,17 @@ impl Vm {
         if matches!(
             method,
             DefineProperty
+                | DefineProperties
                 | OwnKeys
                 | ReflectGet
+                | ReflectGetOwnPropertyDescriptor
                 | ReflectDefineProperty
                 | ReflectSet
                 | ReflectDeleteProperty
                 | ReflectPreventExtensions
+                | ReflectGetPrototypeOf
+                | ReflectSetPrototypeOf
+                | ReflectIsExtensible
                 | ReflectHas
         ) && !matches!(first, Value::Object(_))
         {
@@ -4993,11 +7145,37 @@ impl Vm {
         };
         self.stack.push(Value::Object(object));
         match method {
+            DefineProperties => {
+                let properties = self.coerce_object(native::argument(args, 1))?;
+                self.stack.push(Value::Object(properties));
+                let mut descriptors = Vec::new();
+                for key in self.object_own_property_keys(properties)? {
+                    if self
+                        .object_get_own_property(properties, &key)?
+                        .is_none_or(|descriptor| descriptor.enumerable != Some(true))
+                    {
+                        continue;
+                    }
+                    let descriptor_object = self.get_property(&Value::Object(properties), &key)?;
+                    self.stack.push(descriptor_object.clone());
+                    descriptors.push((key, self.read_descriptor(&descriptor_object)?));
+                }
+                for (key, descriptor) in descriptors {
+                    if !self.object_define_own_property(object, key, descriptor)? {
+                        return Err(RuntimeError::TypeError("cannot redefine property".into()));
+                    }
+                }
+                Ok(Value::Object(object))
+            }
             ReflectGet => {
                 let key = self.coerce_property_key(native::argument(args, 1))?;
-                self.get_property(&Value::Object(object), &key)
+                let receiver = args.get(2).cloned().unwrap_or(Value::Object(object));
+                self.get_object_property(object, &receiver, &key)
             }
-            GetOwnPropertyDescriptor | DefineProperty | ReflectDefineProperty => {
+            GetOwnPropertyDescriptor
+            | ReflectGetOwnPropertyDescriptor
+            | DefineProperty
+            | ReflectDefineProperty => {
                 let key = self.coerce_property_key(native::argument(args, 1))?;
                 if matches!(method, DefineProperty | ReflectDefineProperty) {
                     let mut descriptor = self.read_descriptor(native::argument(args, 2))?;
@@ -5006,8 +7184,7 @@ impl Vm {
                             descriptor.value = Some(self.array_length_value(value)?);
                         }
                     }
-                    let defined =
-                        self.with_roots(|heap| heap.define_own_property(object, key, descriptor))?;
+                    let defined = self.object_define_own_property(object, key, descriptor)?;
                     if method == ReflectDefineProperty {
                         return Ok(Value::Bool(defined));
                     }
@@ -5016,7 +7193,7 @@ impl Vm {
                     }
                     return Ok(Value::Object(object));
                 }
-                let Some(descriptor) = self.heap.get_own_property_descriptor(object, key)? else {
+                let Some(descriptor) = self.object_get_own_property(object, &key)? else {
                     return Ok(Value::Undefined);
                 };
                 let prototype = self.object_prototype;
@@ -5053,14 +7230,13 @@ impl Vm {
                 ))
             }
             Keys | GetOwnPropertyNames | GetOwnPropertySymbols | OwnKeys => {
-                let keys = self.heap.own_property_keys(object)?;
+                let keys = self.object_own_property_keys(object)?;
                 let mut values = Vec::new();
                 for key in keys {
                     if method == Keys
                         && (!matches!(key, PropertyName::String(_))
                             || self
-                                .heap
-                                .get_own_property_descriptor(object, &key)?
+                                .object_get_own_property(object, &key)?
                                 .unwrap()
                                 .enumerable
                                 != Some(true))
@@ -5077,11 +7253,10 @@ impl Vm {
                 }
                 self.array_from(values)
             }
-            GetPrototypeOf => Ok(self
-                .heap
-                .prototype(object)?
+            GetPrototypeOf | ReflectGetPrototypeOf => Ok(self
+                .object_get_prototype(object)?
                 .map_or(Value::Null, Value::Object)),
-            SetPrototypeOf => {
+            SetPrototypeOf | ReflectSetPrototypeOf => {
                 let prototype = match native::argument(args, 1) {
                     Value::Null => None,
                     Value::Object(id) => Some(*id),
@@ -5091,13 +7266,14 @@ impl Vm {
                         ))
                     }
                 };
-                match self.heap.set_prototype(object, prototype) {
-                    Err(HeapError::PrototypeCycle | HeapError::ReadOnlyProperty) => {
-                        return Err(RuntimeError::TypeError(
-                            "cannot set object prototype".into(),
-                        ))
-                    }
-                    result => result?,
+                let changed = self.object_set_prototype(object, prototype)?;
+                if method == ReflectSetPrototypeOf {
+                    return Ok(Value::Bool(changed));
+                }
+                if !changed {
+                    return Err(RuntimeError::TypeError(
+                        "cannot set object prototype".into(),
+                    ));
                 }
                 Ok(first.clone())
             }
@@ -5107,10 +7283,9 @@ impl Vm {
                     let properties = self.coerce_object(properties)?;
                     self.stack.push(Value::Object(properties));
                     let mut descriptors = Vec::new();
-                    for key in self.heap.own_property_keys(properties)? {
+                    for key in self.object_own_property_keys(properties)? {
                         if self
-                            .heap
-                            .get_own_property_descriptor(properties, &key)?
+                            .object_get_own_property(properties, &key)?
                             .is_some_and(|d| d.enumerable == Some(true))
                         {
                             let value = self.get_property(&Value::Object(properties), &key)?;
@@ -5119,67 +7294,73 @@ impl Vm {
                         }
                     }
                     for (key, descriptor) in descriptors {
-                        self.with_roots(|heap| heap.define_own_property(object, key, descriptor))?;
+                        if !self.object_define_own_property(object, key, descriptor)? {
+                            return Err(RuntimeError::TypeError("cannot define property".into()));
+                        }
                     }
                 }
                 Ok(Value::Object(object))
             }
-            IsExtensible => Ok(Value::Bool(self.heap.is_extensible(object)?)),
+            IsExtensible | ReflectIsExtensible => {
+                Ok(Value::Bool(self.object_is_extensible(object)?))
+            }
             PreventExtensions => {
-                self.heap.prevent_extensions(object)?;
+                if !self.object_prevent_extensions(object)? {
+                    return Err(RuntimeError::TypeError(
+                        "cannot prevent object extensions".into(),
+                    ));
+                }
                 Ok(Value::Object(object))
             }
-            ReflectPreventExtensions => {
-                self.heap.prevent_extensions(object)?;
-                Ok(Value::Bool(true))
-            }
+            ReflectPreventExtensions => Ok(Value::Bool(self.object_prevent_extensions(object)?)),
             ReflectSet => {
                 let key = self.coerce_property_key(native::argument(args, 1))?;
                 let value = native::argument(args, 2).clone();
-                match self.with_roots(|heap| heap.set(object, key, value)) {
-                    Ok(()) => Ok(Value::Bool(true)),
-                    Err(RuntimeError::Heap(HeapError::ReadOnlyProperty)) => Ok(Value::Bool(false)),
-                    Err(error) => Err(error),
-                }
+                let receiver = args.get(3).cloned().unwrap_or(Value::Object(object));
+                Ok(Value::Bool(self.ordinary_set_with_receiver(
+                    object, &receiver, &key, &value,
+                )?))
             }
             ReflectDeleteProperty => {
                 let key = self.coerce_property_key(native::argument(args, 1))?;
-                Ok(Value::Bool(self.heap.delete(object, key)?))
+                Ok(Value::Bool(self.object_delete(object, &key)?))
             }
             ReflectHas => {
                 let key = self.coerce_property_key(native::argument(args, 1))?;
                 Ok(Value::Bool(self.has_property(object, &key)?))
             }
             Seal | Freeze => {
-                let keys = self.heap.own_property_keys(object)?;
+                let keys = self.object_own_property_keys(object)?;
                 for key in keys {
-                    let current = self
-                        .heap
-                        .get_own_property_descriptor(object, &key)?
-                        .expect("an own key has an own descriptor");
+                    let Some(current) = self.object_get_own_property(object, &key)? else {
+                        continue;
+                    };
                     let descriptor = PropertyDescriptor {
                         configurable: Some(false),
                         writable: (method == Freeze && current.value.is_some()).then_some(false),
                         ..Default::default()
                     };
-                    if !self.with_roots(|heap| heap.define_own_property(object, key, descriptor))? {
+                    if !self.object_define_own_property(object, key, descriptor)? {
                         return Err(RuntimeError::TypeError(
                             "cannot make object non-extensible".into(),
                         ));
                     }
                 }
-                self.heap.prevent_extensions(object)?;
+                if !self.object_prevent_extensions(object)? {
+                    return Err(RuntimeError::TypeError(
+                        "cannot make object non-extensible".into(),
+                    ));
+                }
                 Ok(first.clone())
             }
             IsSealed | IsFrozen => {
-                if self.heap.is_extensible(object)? {
+                if self.object_is_extensible(object)? {
                     return Ok(Value::Bool(false));
                 }
-                for key in self.heap.own_property_keys(object)? {
-                    let descriptor = self
-                        .heap
-                        .get_own_property_descriptor(object, key)?
-                        .expect("an own key has an own descriptor");
+                for key in self.object_own_property_keys(object)? {
+                    let Some(descriptor) = self.object_get_own_property(object, &key)? else {
+                        continue;
+                    };
                     if descriptor.configurable != Some(false)
                         || (method == IsFrozen
                             && descriptor.value.is_some()
@@ -5199,55 +7380,53 @@ impl Vm {
                 "descriptor must be an object".into(),
             ));
         };
-        let mut descriptor = PropertyDescriptor::default();
-        for name in [
-            "enumerable",
-            "configurable",
-            "value",
-            "writable",
-            "get",
-            "set",
-        ] {
-            let mut current = Some(*object);
-            let mut present = false;
-            while let Some(id) = current {
-                if self.heap.get_own_property_descriptor(id, name)?.is_some() {
-                    present = true;
-                    break;
+        let base = self.stack.len();
+        let result = (|| {
+            let mut descriptor = PropertyDescriptor::default();
+            for name in [
+                "enumerable",
+                "configurable",
+                "value",
+                "writable",
+                "get",
+                "set",
+            ] {
+                if !self.has_property(*object, &name.into())? {
+                    continue;
                 }
-                current = self.heap.prototype(id)?;
-            }
-            if !present {
-                continue;
-            }
-            let property = self.get_property(value, &name.into())?;
-            // Later descriptor getters may allocate and collect earlier values.
-            self.stack.push(property.clone());
-            match name {
-                "enumerable" => descriptor.enumerable = Some(self.to_boolean(&property)?),
-                "configurable" => descriptor.configurable = Some(self.to_boolean(&property)?),
-                "writable" => descriptor.writable = Some(self.to_boolean(&property)?),
-                "value" => descriptor.value = Some(property),
-                _ => {
-                    if property != Value::Undefined && !self.is_callable(&property)? {
-                        return Err(RuntimeError::TypeError(
-                            "accessor must be callable or undefined".into(),
-                        ));
-                    }
-                    if name == "get" {
-                        descriptor.get = Some(property);
-                    } else {
-                        descriptor.set = Some(property);
+                let property = self.get_property(value, &name.into())?;
+                // Later descriptor getters may allocate and collect earlier values.
+                self.stack.push(property.clone());
+                match name {
+                    "enumerable" => descriptor.enumerable = Some(self.to_boolean(&property)?),
+                    "configurable" => descriptor.configurable = Some(self.to_boolean(&property)?),
+                    "writable" => descriptor.writable = Some(self.to_boolean(&property)?),
+                    "value" => descriptor.value = Some(property),
+                    _ => {
+                        if property != Value::Undefined && !self.is_callable(&property)? {
+                            return Err(RuntimeError::TypeError(
+                                "accessor must be callable or undefined".into(),
+                            ));
+                        }
+                        if name == "get" {
+                            descriptor.get = Some(property);
+                        } else {
+                            descriptor.set = Some(property);
+                        }
                     }
                 }
             }
-        }
-        if descriptor.accessor() && (descriptor.value.is_some() || descriptor.writable.is_some()) {
-            return Err(RuntimeError::TypeError(
-                "invalid mixed property descriptor".into(),
-            ));
-        }
-        Ok(descriptor)
+            if descriptor.accessor()
+                && (descriptor.value.is_some() || descriptor.writable.is_some())
+            {
+                return Err(RuntimeError::TypeError(
+                    "invalid mixed property descriptor".into(),
+                ));
+            }
+            Ok(descriptor)
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     fn string_iterator_prototype(&mut self) -> Result<ObjectId, RuntimeError> {

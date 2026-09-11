@@ -189,10 +189,7 @@ fn async_methods_compile_and_accept_settled_await_expressions() {
     .unwrap();
     assert!(compile(&program).is_ok());
     let program = parse("class Base{async method(){return 1;}}class Derived extends Base{async method(value=super.method()){return await value;}static async *items(){for await(let item of [])yield* await super.method();}}").unwrap();
-    assert!(matches!(
-        compile(&program),
-        Err(blueice_bluejs::CompileError::Unsupported(_))
-    ));
+    assert!(compile(&program).is_ok());
     let program = parse("async function helper(){return await 1;}").unwrap();
     assert!(compile(&program).is_ok());
     let program = parse("async function helper(){return new.target;}").unwrap();

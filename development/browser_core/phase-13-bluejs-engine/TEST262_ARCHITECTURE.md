@@ -1218,6 +1218,11 @@ At its public yield boundary the generator saves an explicit delegate record;
 return and throw forwarding consult that record rather than scanning a bytecode
 pattern. A completed delegate return resumes the outer return completion, which
 allows an enclosing outer `finally` to yield before the request completes.
+When a synchronous generator finishes from an injected `return` or `throw`,
+its saved destructuring iterator records are closed before the suspended frame
+becomes done; the completion and records remain rooted while close callbacks
+run. This prevents an abrupt generator termination from skipping
+`IteratorClose`.
 Regressions cover FIFO requests across a body await, yielded-value job order,
 return/finally and throw/catch injection, finalizer await suspension, sync and
 async delegate forwarding, outer finalizers, pending delegate returns,
@@ -1226,3 +1231,108 @@ suspended frame. The focused Test262 result above and its reconciled analysis
 are the completion evidence for this P1.3 slice. Host-driven module loading,
 Proxy/object internals, typed arrays and shared memory, the remaining builtin
 families, ECMA-402, and the full Test262 inventory remain separate workstreams.
+
+## P0.4 and P1.5 slice: internal-method boundary and fixed binary data
+
+Implemented 2026-09-12. Ordinary object operations now pass through a VM
+boundary for receiver-aware `[[Get]]` and `[[Set]]`, own-property descriptors,
+own keys, prototype/extensibility changes, and callable/constructor checks.
+This is the same boundary used by Proxy traps rather than a second
+trap-specific object model. Proxy `get`, `has`, `set`, `deleteProperty`,
+`ownKeys`, `getOwnPropertyDescriptor`, `defineProperty`, prototype,
+extensibility, `apply`, and `construct` dispatch use it and enforce their
+applicable target invariants. A revocable Proxy now clears its target and
+handler edges on revocation; a native revoker retains the proxy while live so
+GC cannot discard the internal slot before it is called. Callable and
+constructible capability is retained separately, which keeps `typeof` correct
+for a Proxy whose target was already revoked while calls still throw.
+The ordinary prototype operation rejects a proposed cycle before mutating the
+heap; its public boundary returns `false` through `Reflect.setPrototypeOf` and
+causes `Object.setPrototypeOf` to throw `TypeError`.
+
+The Reflect adapters now cover `apply`, `getOwnPropertyDescriptor`,
+`getPrototypeOf`, `setPrototypeOf`, and `isExtensible` as well as the earlier
+operations. `Reflect.apply` validates the callable target before it reads its
+array-like argument list and preserves the supplied receiver; object-only
+Reflect operations reject primitive targets instead of boxing them.
+`Reflect[Symbol.toStringTag]` is an own non-writable, non-enumerable,
+configurable data property with value `"Reflect"`.
+
+Descriptor conversion roots each observed descriptor value until conversion
+finishes, rejects mixed descriptors, and completes a Proxy
+`getOwnPropertyDescriptor` trap result before invariant checks and reflection.
+`CopyDataProperties`, `Object.create`, `Object.defineProperties`, `for-in`,
+JSON property enumeration, descriptor `HasProperty` checks, sparse-array
+checks, and `super` assignment now use that same boundary, so they cannot
+skip a Proxy's own-key, descriptor, prototype, get, set, or has behavior. The
+regressions cover explicit Reflect receivers, traps and their receivers,
+descriptor completion, revocation including allocation pressure, a revoked
+Proxy target, `freeze`, object spread, JSON, `for-in`, and construct-trap
+arguments/newTarget. The focused Proxy run used four workers, a
+100,000-instruction budget and a two-second case deadline: **468 pass / 139
+fail / 0 unsupported / 0 timeout** of 607 modes under
+`built-ins/Proxy`. It supersedes the prior 397/607 partial boundary result.
+The sibling `built-ins/Reflect` selection is **298 pass / 10 fail** of 308
+modes. Its ten residual modes require Date, `Symbol.for`, primitive-property
+dispatch, or resizable/shared buffer support, which are outside this P0.4
+boundary. Proxy residual failures include cross-realm paths and
+Array/class/newTarget behaviour outside this object-method slice; neither
+selection is a P0.4 or whole-suite completion claim.
+
+The first non-shared binary-data baseline adds fixed-length `ArrayBuffer`
+stores, backing-store accounting and tracing, detach state, `DataView` integer
+and floating-point accessors, and numeric `Int8Array`, `Uint8Array`,
+`Uint8ClampedArray`, `Int16Array`, `Uint16Array`, `Int32Array`, `Uint32Array`,
+`Float32Array`, and `Float64Array`. Views hold their backing buffers as heap
+edges and therefore survive minor and major collection. The implementation
+supports buffer-backed, length, array-like, iterable, and numeric-TypedArray
+copying construction; indexed access; shared backing bytes; `set` with an
+offset; `subarray`; `BYTES_PER_ELEMENT`; `ArrayBuffer.isView`;
+`ArrayBuffer.prototype.slice`; and the `ArrayBuffer[Symbol.species]` accessor.
+`slice` now follows `SpeciesConstructor` and validates the constructed
+non-shared result before copying. ArrayBuffer, DataView, and numeric typed
+arrays create their instances from `newTarget.prototype`, with the intrinsic
+prototype fallback for a non-object value. DataView preserves its `buffer`
+slot after detachment, and performs `ToIndex`/value conversion before the
+detach and range checks at the order required by its getter and setter
+algorithms.
+Concrete typed-array constructors now inherit from the non-global
+`%TypedArray%` constructor, and their per-kind prototypes share its prototype.
+Integer-indexed `[[Get]]`, `[[GetOwnProperty]]`, `[[DefineOwnProperty]]`,
+`[[Set]]`, `[[Delete]]`, `[[HasProperty]]`, and `[[OwnPropertyKeys]]` keep
+canonical numeric keys out of ordinary property lookup. In particular, a
+distinct `Receiver` follows OrdinarySet for a valid typed index without
+coercing its value; invalid canonical indices succeed without coercion. The
+typed-array receiver itself performs `ToNumber` before it discovers that a
+canonical key is `"-0"`, fractional, or out of bounds, including when that
+typed array is reached through a prototype chain. This preserves abrupt
+conversion completion and leaves the indexed result consistent with the
+completed conversion. The conversion uses
+ECMAScript Number-string formatting rather than Rust display formatting, so,
+for example, `"0.0000001"` remains an ordinary property while `"1e-7"` is an
+invalid numeric index. `Object.defineProperties` batches descriptor conversion
+before applying the same definition boundary. Buffer allocation is bounded
+before Rust allocation, and `ToIndex(NaN)` follows the zero-length path.
+
+`$262.detachArrayBuffer` now calls the actual backing-store detachment path.
+DataView access to a detached buffer throws `TypeError`; ArrayBuffer length and
+numeric TypedArray length/byte-length/byte-offset expose their detached zero
+state. Integer-indexed writes preserve `ToNumber` ordering: coercion may detach
+the buffer, after which no byte is written but the completed indexed operation
+still reports success. Resize/grow, SharedArrayBuffer, Atomics, BigInt typed
+arrays and weak references are deliberately not part of this baseline.
+
+Fresh focused evidence used the same runner settings: `built-ins/ArrayBuffer`
+is **166 pass / 276 fail** of 442 modes (the initial missing-global baseline
+was 0/442); `built-ins/DataView` is **804 pass / 318 fail** of 1,122 modes; and
+the broad `built-ins/TypedArrayConstructors/ctors` selection is **160 pass /
+296 fail / 2 timeout** of 458 modes. The integer-indexed
+`built-ins/TypedArrayConstructors/internals` selection is **193 pass / 255
+fail / 6 timeout** of 454 modes. The TypedArray selections intentionally still
+contain SharedArrayBuffer and BigInt constructor cases plus broader Array
+helpers, so they are coverage evidence for the fixed numeric baseline rather
+than a conformance target. Public regressions in `binary_data.rs` cover shared
+backing bytes, views, slices, numeric constructor copying, iterable input,
+Float32/Float64, species, offset copying, common TypedArray prototypes,
+canonical numeric properties, descriptor batches and detached-view behaviour;
+heap tests cover binary-view reachability across both collectors.

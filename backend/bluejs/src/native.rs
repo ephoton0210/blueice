@@ -6,7 +6,7 @@
 //! Heap/receiver dispatch stays in the VM; these operations preserve code
 //! units and bound string growth before allocating the result.
 
-use crate::{primitive, JsString, ObjectId, RuntimeError, Value};
+use crate::{heap::TypedArrayKind, primitive, JsString, ObjectId, RuntimeError, Value};
 use unicode_normalization::UnicodeNormalization;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,10 +17,42 @@ pub(crate) enum NativeFunction {
     AsyncFunction,
     String,
     Array,
+    ArrayBuffer,
+    ArrayBufferByteLength,
+    ArrayBufferSlice,
+    ArrayBufferIsView,
+    ArrayBufferSpecies,
+    DataView,
+    DataViewBuffer,
+    DataViewByteLength,
+    DataViewByteOffset,
+    DataViewGet {
+        width: usize,
+        signed: bool,
+        floating: bool,
+    },
+    DataViewSet {
+        width: usize,
+        signed: bool,
+        floating: bool,
+    },
+    TypedArray(TypedArrayKind),
+    /// The abstract `%TypedArray%` constructor. It exists only as the common
+    /// prototype of concrete typed-array constructors and must not construct.
+    TypedArrayIntrinsic,
+    TypedArrayBuffer,
+    TypedArrayByteLength,
+    TypedArrayByteOffset,
+    TypedArrayLength,
+    TypedArraySet,
+    TypedArraySubarray,
     Proxy,
+    ProxyRevocable,
+    ProxyRevoker(ObjectId),
     Map,
     Set,
     ArrayIsArray,
+    ArrayFrom,
     ArrayForEach,
     ArrayIncludes,
     ArrayReduce,
@@ -66,6 +98,7 @@ pub(crate) enum NativeFunction {
     Apply,
     Bind,
     HasInstance,
+    ReflectApply,
     ReflectConstruct,
     FunctionToString,
     ThrowTypeError,
@@ -131,6 +164,22 @@ pub(crate) enum NativeFunction {
     StringMethod(StringMethod),
 }
 
+impl NativeFunction {
+    /// Native closures can carry heap identities outside ordinary property
+    /// storage.  Keep those identities visible to both allocation protection
+    /// and tracing, just like captured JavaScript closures.
+    pub(crate) fn references(self) -> Vec<ObjectId> {
+        match self {
+            Self::ProxyRevoker(proxy) | Self::Test262RealmEval(proxy) => vec![proxy],
+            Self::PromiseResolvingFunction { promise, .. } => vec![promise],
+            Self::PromiseAllResolve { target, .. } | Self::PromiseAllReject { target } => {
+                vec![target]
+            }
+            _ => Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MathMethod {
     Abs,
@@ -174,6 +223,7 @@ pub(crate) enum MathMethod {
 pub(crate) enum ObjectMethod {
     GetOwnPropertyDescriptor,
     DefineProperty,
+    DefineProperties,
     Keys,
     GetOwnPropertyNames,
     GetOwnPropertySymbols,
@@ -188,10 +238,14 @@ pub(crate) enum ObjectMethod {
     IsSealed,
     IsFrozen,
     ReflectGet,
+    ReflectGetOwnPropertyDescriptor,
+    ReflectGetPrototypeOf,
     ReflectDefineProperty,
     ReflectSet,
     ReflectDeleteProperty,
     ReflectPreventExtensions,
+    ReflectSetPrototypeOf,
+    ReflectIsExtensible,
     ReflectHas,
     HasOwnProperty,
     PropertyIsEnumerable,

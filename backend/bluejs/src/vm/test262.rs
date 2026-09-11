@@ -92,6 +92,13 @@ impl Vm {
             NativeFunction::Test262("createRealm"),
         )?;
         self.install_native(
+            host,
+            prototype,
+            "detachArrayBuffer",
+            1,
+            NativeFunction::Test262("detachArrayBuffer"),
+        )?;
+        self.install_native(
             global,
             prototype,
             "assert",
@@ -303,6 +310,13 @@ impl Vm {
         let second = native::argument(args, 1);
         if name == "createRealm" {
             return self.test262_create_realm();
+        }
+        if name == "detachArrayBuffer" {
+            let buffer = first.object_id().ok_or_else(|| {
+                RuntimeError::TypeError("detachArrayBuffer requires an ArrayBuffer".into())
+            })?;
+            self.with_roots(|heap| heap.detach_array_buffer(buffer))?;
+            return Ok(Value::Undefined);
         }
         if name == "evalScript" {
             return self.test262_eval_script(first);
@@ -616,7 +630,10 @@ impl Vm {
                     return Err(self.test262_failure(name));
                 };
                 let actual = if matches!(name, "verifyWritable" | "verifyNotWritable") {
-                    descriptor.writable
+                    // Accessor descriptors have no [[Writable]] field and
+                    // therefore satisfy the deprecated helper's
+                    // `writable: false` check.
+                    Some(descriptor.writable.unwrap_or(false))
                 } else if matches!(name, "verifyEnumerable" | "verifyNotEnumerable") {
                     descriptor.enumerable
                 } else {

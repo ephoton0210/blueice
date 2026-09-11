@@ -55,12 +55,23 @@ impl Vm {
     }
 
     pub(super) fn has_property(
-        &self,
+        &mut self,
         object: ObjectId,
         key: &PropertyName,
     ) -> Result<bool, RuntimeError> {
         let mut current = Some(object);
         while let Some(id) = current {
+            if self.heap.proxy(id)?.is_some() {
+                return self.proxy_has(id, key);
+            }
+            if let Some(numeric) = self.heap.typed_array_numeric_key(id, key)? {
+                return match numeric {
+                    crate::heap::TypedArrayNumericKey::Index(index) => {
+                        Ok(self.heap.typed_array_index_value(id, index)?.is_some())
+                    }
+                    crate::heap::TypedArrayNumericKey::Invalid => Ok(false),
+                };
+            }
             match self.heap.get_own_property_descriptor(id, key) {
                 Ok(Some(_)) | Err(HeapError::UninitializedModuleExport) => {
                     // A namespace's [[HasProperty]] observes membership in
@@ -72,7 +83,7 @@ impl Vm {
                 Ok(None) => {}
                 Err(error) => return Err(error.into()),
             }
-            current = self.heap.prototype(id)?;
+            current = self.object_get_prototype(id)?;
         }
         Ok(false)
     }

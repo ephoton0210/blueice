@@ -226,16 +226,7 @@ impl Vm {
         for index in 0..length {
             self.charge_step()?;
             let key: PropertyName = index.to_string().into();
-            let mut current = Some(object);
-            let mut present = false;
-            while let Some(id) = current {
-                if self.heap.get_own_property_descriptor(id, &key)?.is_some() {
-                    present = true;
-                    break;
-                }
-                current = self.heap.prototype(id)?;
-            }
-            if !present {
+            if !self.has_property(object, &key)? {
                 continue;
             }
             let value = self.get_property(&Value::Object(object), &key)?;

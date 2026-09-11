@@ -106,6 +106,12 @@ impl From<HeapError> for RuntimeError {
     fn from(error: HeapError) -> Self {
         match error {
             HeapError::InvalidArrayLength => Self::RangeError("invalid array length".into()),
+            HeapError::InvalidBufferRange => {
+                Self::RangeError("invalid ArrayBuffer view range".into())
+            }
+            HeapError::DetachedArrayBuffer
+            | HeapError::InvalidInternalSlot(_)
+            | HeapError::RevokedProxy => Self::TypeError(error.to_string()),
             HeapError::UninitializedModuleExport => {
                 Self::ReferenceError("module export is uninitialized".into())
             }
@@ -528,6 +534,9 @@ pub struct Vm {
     object_prototype: ObjectId,
     array_prototype: ObjectId,
     string_intrinsics: Option<(ObjectId, ObjectId)>,
+    /// `%TypedArray%` and `%TypedArray%.prototype`, kept outside the global
+    /// object but permanently reachable from every concrete constructor.
+    typed_array_intrinsics: Option<(ObjectId, ObjectId)>,
     result_root: Option<RootId>,
     stack: Vec<Value>,
     // None is a lexical binding's uninitialized state, never JS undefined.
@@ -672,6 +681,7 @@ impl Vm {
             object_prototype,
             array_prototype,
             string_intrinsics: None,
+            typed_array_intrinsics: None,
             result_root: None,
             stack: Vec::new(),
             bindings: Vec::new(),
@@ -2718,6 +2728,17 @@ impl Vm {
                 | "Boolean"
                 | "BigInt"
                 | "Array"
+                | "ArrayBuffer"
+                | "DataView"
+                | "Int8Array"
+                | "Uint8Array"
+                | "Uint8ClampedArray"
+                | "Int16Array"
+                | "Uint16Array"
+                | "Int32Array"
+                | "Uint32Array"
+                | "Float32Array"
+                | "Float64Array"
                 | "Map"
                 | "Set"
                 | "Function"
@@ -3897,7 +3918,7 @@ impl Vm {
                     Opcode::DeleteProperty => {
                         let (receiver, key) = self.property_reference()?;
                         let deleted = match receiver {
-                            Value::Object(id) => self.heap.delete(id, key)?,
+                            Value::Object(id) => self.object_delete(id, &key)?,
                             Value::String(s) => {
                                 !matches!(&key, PropertyName::String(key) if s.own_property(key).is_some())
                             }
@@ -5175,45 +5196,7 @@ impl Vm {
         key: &PropertyName,
     ) -> Result<Value, RuntimeError> {
         match receiver {
-            Value::Object(id) => {
-                self.materialize_global_object_property(*id, key)?;
-                if let Some(cell) = self.global_property_cell(*id, key) {
-                    return self
-                        .heap
-                        .get_own(cell, "value")?
-                        .ok_or_else(|| RuntimeError::ReferenceError("global binding".into()));
-                }
-                if self.string_intrinsics.is_none()
-                    && (key == "toString"
-                        || key == "valueOf"
-                        || key == "join"
-                        || key == "forEach"
-                        || key == "includes"
-                        || *key == PropertyName::from(JsSymbol::well_known("iterator")))
-                {
-                    self.string_intrinsics()?;
-                }
-                if key == "propertyIsEnumerable" {
-                    self.property_is_enumerable_intrinsic()?;
-                }
-                if key == "hasOwnProperty" {
-                    self.has_own_property_intrinsic()?;
-                }
-                // `%Object.prototype%` has an initial own constructor
-                // property. Intrinsics otherwise bootstrap lazily, so make
-                // that property available before an ordinary object observes
-                // its inherited `constructor` (including an arguments
-                // object before source has otherwise mentioned Object).
-                if key == "constructor"
-                    && self
-                        .heap
-                        .get_own_property_descriptor(self.object_prototype, "constructor")?
-                        .is_none()
-                {
-                    self.global("Object")?;
-                }
-                self.get_from_prototype(*id, receiver, key)
-            }
+            Value::Object(id) => self.get_object_property(*id, receiver, key),
             Value::String(string) => {
                 if let PropertyName::String(key) = key {
                     if let Some(value) = string.own_property(key) {
@@ -5239,6 +5222,56 @@ impl Vm {
                 self.get_from_prototype(prototype, receiver, key)
             }
         }
+    }
+
+    /// [[Get]] with the lookup target separated from the receiver supplied to
+    /// accessors and Proxy traps.  Ordinary property syntax supplies the same
+    /// object for both arguments; Reflect.get and inherited Proxy operations
+    /// intentionally do not.
+    pub(super) fn get_object_property(
+        &mut self,
+        target: ObjectId,
+        receiver: &Value,
+        key: &PropertyName,
+    ) -> Result<Value, RuntimeError> {
+        self.materialize_global_object_property(target, key)?;
+        if let Some(cell) = self.global_property_cell(target, key) {
+            return self
+                .heap
+                .get_own(cell, "value")?
+                .ok_or_else(|| RuntimeError::ReferenceError("global binding".into()));
+        }
+        if self.string_intrinsics.is_none()
+            && (key == "toString"
+                || key == "valueOf"
+                || key == "join"
+                || key == "forEach"
+                || key == "includes"
+                || *key == PropertyName::from(JsSymbol::well_known("iterator")))
+        {
+            self.string_intrinsics()?;
+        }
+        if key == "propertyIsEnumerable" {
+            self.property_is_enumerable_intrinsic()?;
+        }
+        if key == "hasOwnProperty" {
+            self.has_own_property_intrinsic()?;
+        }
+        // `%Object.prototype%` has an initial own constructor property.
+        // Intrinsics otherwise bootstrap lazily, so make it observable before
+        // an ordinary object performs an inherited lookup.
+        if key == "constructor"
+            && self
+                .heap
+                .get_own_property_descriptor(self.object_prototype, "constructor")?
+                .is_none()
+        {
+            self.global("Object")?;
+        }
+        if self.heap.proxy(target)?.is_some() {
+            return self.proxy_get(target, receiver, key);
+        }
+        self.get_from_prototype(target, receiver, key)
     }
 
     fn set_property(
@@ -5274,61 +5307,20 @@ impl Vm {
                 };
             }
         }
-        // ToObject provides the lookup chain; accessor calls retain the
-        // original primitive receiver. Creating a data property still fails.
+        // ToObject provides the lookup target; accessors retain the original
+        // receiver. `ordinary_set_with_receiver` also routes a Proxy found
+        // anywhere in the prototype chain through its [[Set]] trap.
         let object = self.coerce_object(receiver)?;
         self.stack.push(Value::Object(object));
-        let mut current = Some(object);
-        while let Some(id) = current {
-            if let Some(desc) = self.heap.get_own_property_descriptor(id, key)? {
-                if desc.accessor() {
-                    let setter = desc.set.unwrap_or(Value::Undefined);
-                    if self.is_callable(&setter)? {
-                        self.call_native(setter, receiver.clone(), vec![value.clone()], false)?;
-                        return Ok(());
-                    }
-                    return if self.strict {
-                        Err(RuntimeError::TypeError("property has no setter".into()))
-                    } else {
-                        Ok(())
-                    };
-                }
-                if desc.writable == Some(false) {
-                    return if self.strict {
-                        Err(RuntimeError::TypeError("property is read-only".into()))
-                    } else {
-                        Ok(())
-                    };
-                }
-                break;
-            }
-            current = self.heap.prototype(id)?;
-        }
-        if !matches!(receiver, Value::Object(_)) {
-            return if self.strict {
-                Err(RuntimeError::TypeError(
-                    "cannot assign to primitive property".into(),
-                ))
-            } else {
-                Ok(())
-            };
-        }
-        let stored = if key == "length" && self.heap.is_array(object)? {
-            self.array_length_value(value)?
+        let succeeded = self.ordinary_set_with_receiver(object, receiver, key, value)?;
+        if succeeded {
+            Ok(())
+        } else if self.strict {
+            Err(RuntimeError::TypeError(
+                "property cannot be assigned".into(),
+            ))
         } else {
-            value.clone()
-        };
-        match self.with_roots(|heap| heap.set(object, key, stored)) {
-            Err(RuntimeError::Heap(HeapError::ReadOnlyProperty)) => {
-                if self.strict {
-                    Err(RuntimeError::TypeError(
-                        "property cannot be assigned".into(),
-                    ))
-                } else {
-                    Ok(())
-                }
-            }
-            result => result,
+            Ok(())
         }
     }
 
@@ -5494,12 +5486,11 @@ impl Vm {
         Ok(())
     }
 
-    fn super_base(&self) -> Result<ObjectId, RuntimeError> {
+    fn super_base(&mut self) -> Result<ObjectId, RuntimeError> {
         let home = self.home_object.ok_or_else(|| {
             RuntimeError::TypeError("super is not available in this function".into())
         })?;
-        self.heap
-            .prototype(home)?
+        self.object_get_prototype(home)?
             .ok_or_else(|| RuntimeError::TypeError("superclass is null".into()))
     }
 
@@ -5510,40 +5501,16 @@ impl Vm {
 
     fn super_set(&mut self, key: &PropertyName, value: &Value) -> Result<(), RuntimeError> {
         let base = self.super_base()?;
-        let mut current = Some(base);
-        while let Some(object) = current {
-            if let Some(descriptor) = self.heap.get_own_property_descriptor(object, key)? {
-                if descriptor.accessor() {
-                    let setter = descriptor.set.unwrap_or(Value::Undefined);
-                    if self.is_callable(&setter)? {
-                        self.call_native(setter, self.this.clone(), vec![value.clone()], false)?;
-                        return Ok(());
-                    }
-                    return self.super_assignment_failed("super property has no setter");
-                }
-                if descriptor.writable == Some(false) {
-                    return self.super_assignment_failed("super property is read-only");
-                }
-                break;
-            }
-            current = self.heap.prototype(object)?;
-        }
-        let Value::Object(receiver) = self.this else {
+        let this = self.this.clone();
+        if !matches!(this, Value::Object(_)) {
             return Err(RuntimeError::ReferenceError(
                 "this is uninitialized before super()".into(),
             ));
-        };
-        // OrdinarySetWithOwnDescriptor obtains Receiver's own descriptor
-        // before deciding whether it can create or update a data property.
-        // For Module Namespace Exotic Objects that lookup performs [[Get]];
-        // an exported-but-uninitialized binding must therefore throw a
-        // ReferenceError instead of being collapsed into a read-only result.
-        let _ = self.heap.get_own_property_descriptor(receiver, key)?;
-        match self.with_roots(|heap| heap.set(receiver, key, value.clone())) {
-            Err(RuntimeError::Heap(HeapError::ReadOnlyProperty)) => {
-                self.super_assignment_failed("super property cannot be assigned")
-            }
-            result => result,
+        }
+        if self.ordinary_set_with_receiver(base, &this, key, value)? {
+            Ok(())
+        } else {
+            self.super_assignment_failed("super property cannot be assigned")
         }
     }
 
@@ -5616,26 +5583,31 @@ impl Vm {
         let base = self.stack.len();
         self.stack.push(Value::Object(source_object));
         let result = (|| {
-            for key in self.heap.own_property_keys(source_object)? {
+            for key in self.object_own_property_keys(source_object)? {
                 self.charge_step()?;
                 if excluded.iter().any(|excluded| excluded == &key) {
                     continue;
                 }
-                let descriptor = self
-                    .heap
-                    .get_own_property_descriptor(source_object, &key)?
-                    .expect("own key has an own descriptor");
+                // A Proxy's ownKeys trap is allowed to report a key for which
+                // its getOwnPropertyDescriptor trap returns undefined.  This
+                // is therefore a conditional copy, rather than an assertion
+                // that every reported key still has a descriptor.
+                let Some(descriptor) = self.object_get_own_property(source_object, &key)? else {
+                    continue;
+                };
                 if descriptor.enumerable != Some(true) {
                     continue;
                 }
                 let value = self.get_property(&Value::Object(source_object), &key)?;
-                self.with_roots(|heap| {
-                    heap.define_own_property(
-                        target,
-                        key,
-                        PropertyDescriptor::data(value, true, true, true),
-                    )
-                })?;
+                if !self.object_define_own_property(
+                    target,
+                    key,
+                    PropertyDescriptor::data(value, true, true, true),
+                )? {
+                    return Err(RuntimeError::TypeError(
+                        "cannot define copied property".into(),
+                    ));
+                }
             }
             Ok(())
         })();
@@ -5648,26 +5620,38 @@ impl Vm {
     /// key with the same name; symbols never participate in `for-in`.
     fn for_in_keys(&mut self, source: &Value) -> Result<Value, RuntimeError> {
         let mut current = Some(self.coerce_object(source)?);
+        let base = self.stack.len();
         let mut seen = HashSet::new();
+        let mut visited_objects = HashSet::new();
         let mut keys = Vec::new();
-        while let Some(object) = current {
-            for key in self.heap.own_property_keys(object)? {
-                if !seen.insert(key.clone()) {
-                    continue;
+        let result = (|| {
+            while let Some(object) = current {
+                // Keep each traversed object live while Proxy traps execute.
+                // A proxy is allowed to return a prototype that is not
+                // otherwise reachable from its target or handler.
+                self.stack.push(Value::Object(object));
+                if !visited_objects.insert(object) {
+                    break;
                 }
-                if let PropertyName::String(key) = key {
-                    if self
-                        .heap
-                        .get_own_property_descriptor(object, PropertyName::String(key.clone()))?
-                        .is_some_and(|descriptor| descriptor.enumerable == Some(true))
-                    {
-                        keys.push(Value::String(key));
+                for key in self.object_own_property_keys(object)? {
+                    if !seen.insert(key.clone()) {
+                        continue;
+                    }
+                    if let PropertyName::String(key) = key {
+                        if self
+                            .object_get_own_property(object, &PropertyName::String(key.clone()))?
+                            .is_some_and(|descriptor| descriptor.enumerable == Some(true))
+                        {
+                            keys.push(Value::String(key));
+                        }
                     }
                 }
+                current = self.object_get_prototype(object)?;
             }
-            current = self.heap.prototype(object)?;
-        }
-        self.array_from(keys)
+            self.array_from(keys)
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     fn string_intrinsics(&mut self) -> Result<(ObjectId, ObjectId), RuntimeError> {
@@ -5999,6 +5983,45 @@ impl Vm {
         Ok(())
     }
 
+    fn install_native_getter(
+        &mut self,
+        owner: ObjectId,
+        prototype: ObjectId,
+        name: &str,
+        function: NativeFunction,
+    ) -> Result<(), RuntimeError> {
+        let getter =
+            self.with_roots(|heap| heap.alloc_native_function(function, name, prototype))?;
+        self.stack.push(Value::Object(getter));
+        let result = (|| {
+            self.define_data(
+                getter,
+                "name",
+                Value::String(format!("get {name}").into()),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(getter, "length", Value::Number(0.0), false, false, true)?;
+            self.with_roots(|heap| {
+                heap.define_own_property(
+                    owner,
+                    name,
+                    PropertyDescriptor {
+                        get: Some(Value::Object(getter)),
+                        set: Some(Value::Undefined),
+                        enumerable: Some(false),
+                        configurable: Some(true),
+                        ..Default::default()
+                    },
+                )
+            })?;
+            Ok(())
+        })();
+        self.stack.pop();
+        result
+    }
+
     fn property_is_enumerable_intrinsic(&mut self) -> Result<(), RuntimeError> {
         if self
             .heap
@@ -6154,6 +6177,11 @@ impl Vm {
             args = prefixes.into_iter().rev().flatten().chain(args).collect();
         }
         if let Value::Object(id) = callee {
+            if self.heap.proxy(id)?.is_some() {
+                return self.proxy_call(id, receiver, args, construct);
+            }
+        }
+        if let Value::Object(id) = callee {
             if let Some((code, captures, lexical_this, home, class_base)) = self.heap.closure(id)? {
                 let receiver = if code.arrow { lexical_this } else { receiver };
                 return self.call_closure(builtins::ClosureCall {
@@ -6181,6 +6209,9 @@ impl Vm {
                 function,
                 NativeFunction::String
                     | NativeFunction::Array
+                    | NativeFunction::ArrayBuffer
+                    | NativeFunction::DataView
+                    | NativeFunction::TypedArray(_)
                     | NativeFunction::Proxy
                     | NativeFunction::Map
                     | NativeFunction::Set
