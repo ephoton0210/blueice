@@ -2098,6 +2098,14 @@ impl Parser {
     ) -> Result<Option<Expr>, ParseError> {
         if let Token::Identifier(name) = self.peek().clone() {
             if matches!(self.peek_at(1), Token::Punct(Punct::Arrow)) {
+                if is_async && name == "await" {
+                    let detail = if self.current_identifier_escaped() {
+                        "the await keyword cannot contain an escape"
+                    } else {
+                        "await cannot be used as a binding identifier in an async function"
+                    };
+                    return Err(self.syntax_error(detail));
+                }
                 self.advance();
                 self.advance();
                 let params = vec![Param {
@@ -2119,7 +2127,16 @@ impl Parser {
                     self.tokens.get(close_idx + 1).map(|t| &t.token),
                     Some(Token::Punct(Punct::Arrow))
                 ) {
+                    // Await is a grammar parameter of AsyncArrowBindingIdentifier
+                    // and its parameter initializers. Keep that context active
+                    // while parsing the list, including nested arrow defaults;
+                    // `parse_arrow_body` establishes it separately for the body.
+                    let outer_async_depth = self.async_depth;
+                    if is_async {
+                        self.async_depth += 1;
+                    }
                     let params = self.parse_params()?;
+                    self.async_depth = outer_async_depth;
                     self.expect_punct(Punct::Arrow)?;
                     let body = self.parse_arrow_body(is_async)?;
                     return Ok(Some(Expr::Arrow {

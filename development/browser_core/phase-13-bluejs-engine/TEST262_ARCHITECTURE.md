@@ -949,3 +949,58 @@ pass, 0 fail and 0 unsupported** of 161 scheduled
 every previous failure transitioned to pass. This closes that focused ordinary
 async-function-expression selection, not async generators, async iteration,
 thenable assimilation, host-driven loading, or full async conformance.
+
+## P1.1/P1.3 continuation: async-arrow parameter contexts and intrinsics
+
+The [Async Arrow Function Definitions](https://262.ecma-international.org/17.0/#sec-async-arrow-function-definitions)
+and [AsyncFunctionCreate](https://262.ecma-international.org/17.0/#sec-async-functions-abstract-operations)
+algorithms were checked on 2026-09-11. The parser now keeps the async grammar
+parameter active while it parses an async arrow's formal parameter list. That
+includes defaults containing nested arrows, so `await` cannot silently become
+an identifier in either an outer parameter or a nested arrow parameter. Arrow
+formal parameters are always `UniqueFormalParameters`, including in a sloppy
+surrounding script; this preserves the legacy duplicate-name allowance only
+for the ordinary simple-function form where the specification permits it.
+
+The VM now lazily creates one rooted `%AsyncFunction.prototype%` per realm and
+its non-global `%AsyncFunction%` constructor. Every async closure, including
+an async arrow, inherits from that prototype rather than `%Function.prototype%`.
+The intrinsic has the specified Function constructor/prototype chain, name,
+length, descriptors and `Symbol.toStringTag`. Calling the constructor compiles
+an `async function anonymous` in the realm global environment and therefore
+uses the existing Promise continuation machinery; it remains non-constructible.
+The ordinary and async dynamic-function paths share allocation/root handling,
+without pretending that either generator constructor family is complete.
+
+The pre-change `language/expressions/async-arrow-function` run had **97 pass
+and 13 fail** of 110 scheduled modes. Eleven failures were unrecognized
+`await`/duplicate-parameter early errors and two were the missing
+`%AsyncFunction.prototype%` relationship. The fresh pinned run at
+`target/test262-next-async-arrow-functions-final` has **110 pass, 0 fail and
+0 unsupported**. Public regressions verify the prototype chain, dynamic
+constructor async settlement, no own `prototype` on the resulting closure,
+and rejection of construction. This closes the focused async-arrow selection,
+not async generators or async iteration.
+
+## Next architecture-first slice: async generators and iteration
+
+The most consequential immediately-ready P1.3 gap is async generators. The
+same pinned `language/expressions/async-generator` baseline at
+`target/test262-next-async-generators-baseline` schedules 1,212 modes with
+**376 pass, 594 fail and 242 unsupported**. The repeated first symptom is
+`TypeError: value is not callable`: current `async function*` code reaches the
+ordinary generator path, whose `.next()` returns an immediate iterator-result
+object instead of a Promise. That hides later destructuring, abrupt-close and
+async-iterator assertions; it is not evidence that those individual algorithms
+are all independently broken.
+
+The next implementation must therefore be a new shared runtime boundary, not
+a per-builtin patch: a rooted async-generator state with FIFO `next`/`return`/
+`throw` requests; Promise-returning methods; suspension through both `yield`
+and `await`; completion/iterator-close propagation; and GC tracing of queued
+arguments, Promise capabilities and displaced frames. `for await` and
+`AsyncFromSyncIterator` should consume that same protocol afterward. P0.4's
+remaining receiver-aware object/Proxy internal methods remain the broader
+cross-cutting prerequisite, but this P1.3 slice is now executable directly on
+the already-established continuation and Promise architecture and exposes a
+single shared failure across hundreds of modes.

@@ -12,6 +12,9 @@ use unicode_normalization::UnicodeNormalization;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NativeFunction {
     Function,
+    /// The intrinsic constructor reached through an async function's
+    /// `constructor` property. It is deliberately not installed as a global.
+    AsyncFunction,
     String,
     Array,
     Proxy,

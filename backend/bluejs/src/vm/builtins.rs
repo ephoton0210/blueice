@@ -354,6 +354,88 @@ impl Vm {
         }
         result
     }
+
+    /// Lazily creates `%AsyncFunction%` and `%AsyncFunction.prototype%`.
+    ///
+    /// Async function objects inherit from the latter, which in turn inherits
+    /// from `%Function.prototype%`. `%AsyncFunction%` itself inherits from
+    /// `%Function%`, is reachable through `AsyncFunction.prototype.constructor`,
+    /// and intentionally has no global binding.
+    pub(super) fn async_function_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
+        if let Some(prototype) = self.async_function_prototype {
+            return Ok(prototype);
+        }
+        let function_constructor = self
+            .global("Function")?
+            .object_id()
+            .expect("Function is callable");
+        let function_prototype = self.function_prototype()?;
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(function_prototype)))?;
+        let root = self.heap.root(prototype)?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(prototype));
+        let result: Result<(), RuntimeError> = (|| {
+            let constructor = self.with_roots(|heap| {
+                heap.alloc_native_function(
+                    NativeFunction::AsyncFunction,
+                    "AsyncFunction",
+                    function_constructor,
+                )
+            })?;
+            self.stack.push(Value::Object(constructor));
+            self.define_data(
+                constructor,
+                "name",
+                Value::String("AsyncFunction".into()),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                constructor,
+                "length",
+                Value::Number(1.0),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                constructor,
+                "prototype",
+                Value::Object(prototype),
+                false,
+                false,
+                false,
+            )?;
+            self.define_data(
+                prototype,
+                "constructor",
+                Value::Object(constructor),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                prototype,
+                JsSymbol::well_known("toStringTag"),
+                Value::String("AsyncFunction".into()),
+                false,
+                false,
+                true,
+            )
+        })();
+        self.stack.truncate(base);
+        match result {
+            Ok(()) => {
+                self.async_function_prototype = Some(prototype);
+                Ok(prototype)
+            }
+            Err(error) => {
+                self.heap.unroot(root)?;
+                Err(error)
+            }
+        }
+    }
     pub(super) fn get_from_prototype(
         &mut self,
         start: ObjectId,
@@ -2783,6 +2865,7 @@ impl Vm {
             )),
             NativeFunction::AbstractModuleSourceToStringTag => Ok(Value::Undefined),
             NativeFunction::Function => self.function_constructor(&args),
+            NativeFunction::AsyncFunction => self.async_function_constructor(&args),
             NativeFunction::Error(name) => self.error_constructor(name, &args, construct),
             NativeFunction::ErrorToString => self.error_to_string(&receiver),
             NativeFunction::Test262(name) => self.test262_call(name, &args),
@@ -3778,7 +3861,28 @@ impl Vm {
     /// the realm's global environment rather than inheriting the native
     /// caller's active lexical bindings.
     fn function_constructor(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let mut source = String::from("function anonymous(");
+        self.dynamic_function_constructor(args, false)
+    }
+
+    /// Shared constructor path for `%Function%` and `%AsyncFunction%`. Dynamic
+    /// functions compile against the realm global environment; the async form
+    /// then takes the same Promise/continuation path as a source async
+    /// function. Generators have a separate constructor family and are not
+    /// conflated with this operation.
+    fn async_function_constructor(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        self.dynamic_function_constructor(args, true)
+    }
+
+    fn dynamic_function_constructor(
+        &mut self,
+        args: &[Value],
+        async_function: bool,
+    ) -> Result<Value, RuntimeError> {
+        let mut source = String::from(if async_function {
+            "async function anonymous("
+        } else {
+            "function anonymous("
+        });
         for (index, argument) in args.iter().enumerate() {
             if index != 0 {
                 source.push(',');
@@ -3810,16 +3914,12 @@ impl Vm {
             .cloned()
             .expect("Function wrapper compiles one function declaration");
 
-        let (_, string_prototype) = self.string_intrinsics()?;
-        let function_constructor = self
-            .heap
-            .get(string_prototype, "constructor")?
-            .object_id()
-            .expect("String constructor is an object");
-        let function_prototype = self
-            .heap
-            .prototype(function_constructor)?
-            .expect("Function.prototype exists");
+        debug_assert_eq!(child.async_function, async_function);
+        let function_prototype = if async_function {
+            self.async_function_prototype()?
+        } else {
+            self.function_prototype()?
+        };
         // Compiling the wrapper declaration produces a single capture for
         // its declaration name. It is an implementation detail of using the
         // ordinary compiler, not a capture of the Function caller.
@@ -3853,7 +3953,7 @@ impl Vm {
         self.stack.truncate(stack_base);
         let function = function?;
         self.stack.push(Value::Object(function));
-        let result = (|| {
+        let result: Result<(), RuntimeError> = (|| {
             self.define_data(
                 function,
                 "name",
@@ -3870,24 +3970,28 @@ impl Vm {
                 false,
                 true,
             )?;
-            let object_prototype = self.object_prototype;
-            let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-            self.define_data(
-                function,
-                "prototype",
-                Value::Object(prototype),
-                true,
-                false,
-                false,
-            )?;
-            self.define_data(
-                prototype,
-                "constructor",
-                Value::Object(function),
-                true,
-                false,
-                true,
-            )
+            if child.constructible {
+                let object_prototype = self.object_prototype;
+                let prototype =
+                    self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+                self.define_data(
+                    function,
+                    "prototype",
+                    Value::Object(prototype),
+                    true,
+                    false,
+                    false,
+                )?;
+                self.define_data(
+                    prototype,
+                    "constructor",
+                    Value::Object(function),
+                    true,
+                    false,
+                    true,
+                )?;
+            }
+            Ok(())
         })();
         self.stack.truncate(stack_base);
         result?;

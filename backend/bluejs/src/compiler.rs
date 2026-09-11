@@ -3483,6 +3483,7 @@ impl Compiler {
             function,
             child.bytecode.strict,
             !options.class_method && !options.class_constructor,
+            arrow,
         )?;
         child.bytecode.arrow = arrow;
         // Arrow functions inherit the containing function's `new.target`
@@ -3981,6 +3982,7 @@ fn validate_function_early_errors(
     function: &Function,
     strict: bool,
     name_is_binding: bool,
+    arrow: bool,
 ) -> Result<(), CompileError> {
     let simple = function.params.iter().all(|param| {
         !param.rest && param.default.is_none() && matches!(param.pattern, Pattern::Identifier(_))
@@ -3995,7 +3997,10 @@ fn validate_function_early_errors(
         .iter()
         .flat_map(|param| pattern_names(&param.pattern))
         .collect();
-    if strict || !simple {
+    // Arrow parameter lists are `UniqueFormalParameters` even in a sloppy
+    // surrounding script. Ordinary sloppy functions retain the Annex B
+    // duplicate-name allowance for a simple list.
+    if strict || !simple || arrow {
         let mut unique = BTreeSet::new();
         if names.iter().any(|name| !unique.insert(name)) {
             return Err(CompileError::InvalidSyntax("duplicate parameter name"));

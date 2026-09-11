@@ -540,6 +540,10 @@ pub struct Vm {
     iterator_base: Option<ObjectId>,
     array_iterator_prototype: Option<ObjectId>,
     generator_prototype: Option<ObjectId>,
+    /// `%AsyncFunction.prototype%`, permanently rooted with the realm once
+    /// the first async closure needs it. Its `constructor` property keeps
+    /// `%AsyncFunction%` reachable without exposing a global binding.
+    async_function_prototype: Option<ObjectId>,
     promise_prototype: Option<ObjectId>,
     map_prototype: Option<ObjectId>,
     set_prototype: Option<ObjectId>,
@@ -632,6 +636,7 @@ impl Vm {
             iterator_base: None,
             array_iterator_prototype: None,
             generator_prototype: None,
+            async_function_prototype: None,
             promise_prototype: None,
             map_prototype: None,
             set_prototype: None,
@@ -3952,13 +3957,11 @@ impl Vm {
                     }
                     Opcode::Closure => {
                         let child = code.functions[operand].clone();
-                        let (_, prototype) = self.string_intrinsics()?;
-                        let constructor = self
-                            .heap
-                            .get(prototype, "constructor")?
-                            .object_id()
-                            .unwrap();
-                        let function_prototype = self.heap.prototype(constructor)?.unwrap();
+                        let function_prototype = if child.async_function {
+                            self.async_function_prototype()?
+                        } else {
+                            self.function_prototype()?
+                        };
                         let mut captures = Vec::new();
                         for &slot in &child.captures {
                             captures.push(self.capture(slot as usize)?);

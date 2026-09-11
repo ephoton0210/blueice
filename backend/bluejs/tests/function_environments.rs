@@ -173,3 +173,35 @@ fn async_function_environments_preserve_contextual_names_and_lexical_contexts() 
         Ok(Value::Bool(true))
     );
 }
+
+#[test]
+fn async_arrows_share_the_async_function_intrinsic_and_dynamic_constructor() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            let arrow = async () => 1;
+            let AsyncFunction = Object.getPrototypeOf(arrow).constructor;
+            let dynamic = AsyncFunction('value', 'return await value + 1;');
+            globalThis.asyncPrototypeOK =
+                Object.getPrototypeOf(arrow) === AsyncFunction.prototype &&
+                Object.getPrototypeOf(AsyncFunction) === Function &&
+                AsyncFunction.name === 'AsyncFunction' &&
+                AsyncFunction.length === 1 &&
+                !Object.prototype.hasOwnProperty.call(dynamic, 'prototype');
+            dynamic(Promise.resolve(41)).then(value => {
+                globalThis.asyncDynamicResult = value;
+            });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(&mut vm, "asyncPrototypeOK && asyncDynamicResult === 42",),
+        Ok(Value::Bool(true))
+    );
+    assert!(matches!(
+        execute(&mut vm, "new (async function() {}).constructor()"),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
