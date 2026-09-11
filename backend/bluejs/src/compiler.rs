@@ -2452,7 +2452,27 @@ impl Compiler {
                     ));
                 }
                 if *delegate {
-                    return Err(CompileError::Unsupported("yield*"));
+                    if !self.bytecode.async_function {
+                        return Err(CompileError::Unsupported("synchronous yield*"));
+                    }
+                    // Keep the async iterator record beneath the yielded
+                    // value. A resumed generator receives its next argument
+                    // above that record, which AsyncIteratorNext forwards to
+                    // the delegate on the following loop turn.
+                    let value = value
+                        .as_deref()
+                        .ok_or(CompileError::InvalidSyntax("yield* requires an operand"))?;
+                    self.expression(value)?;
+                    self.emit(Opcode::GetAsyncIterator, 0)?;
+                    self.constant(Value::Undefined)?;
+                    let next = self.offset()?;
+                    self.emit(Opcode::AsyncIteratorNext, 1)?;
+                    self.emit(Opcode::Await, 0)?;
+                    let done = self.emit(Opcode::AsyncIteratorStepValue, 0)?;
+                    self.emit(Opcode::Yield, 0)?;
+                    self.emit(Opcode::Jump, next)?;
+                    self.patch(done, self.offset()?);
+                    return Ok(());
                 }
                 if let Some(value) = value {
                     self.expression(value)?;

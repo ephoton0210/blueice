@@ -519,8 +519,9 @@ impl Vm {
 
     /// Evaluates an indirect `eval` against the foreign realm's script
     /// environment. Primitive completion values and global data properties
-    /// can cross the heap boundary directly; object identity cannot, so that
-    /// wider cross-realm host surface remains explicitly unsupported.
+    /// cross directly. A callable completion is rebuilt from the same
+    /// isolated source in the requesting heap, giving the host a local
+    /// callable facade without leaking a foreign heap handle.
     pub(super) fn test262_realm_eval(
         &mut self,
         global: ObjectId,
@@ -538,11 +539,12 @@ impl Vm {
         let code = crate::compile(&program)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
 
-        let (completion, exports) = {
+        let (completion, exports, callable_completion) = {
             let realm = self.test262_realms.get_mut(&global).ok_or_else(|| {
                 RuntimeError::TypeError("foreign Test262 realm is no longer available".into())
             })?;
             let completion = realm.vm.execute_script(&code)?;
+            let callable_completion = realm.vm.is_callable(&completion)?;
             let global = realm.vm.global("globalThis")?.object_id().unwrap();
             let mut exports = Vec::new();
             for key in realm.vm.heap.own_property_keys(global)? {
@@ -561,12 +563,19 @@ impl Vm {
                     exports.push((name, value));
                 }
             }
-            (completion, exports)
+            (completion, exports, callable_completion)
         };
         for (name, value) in exports {
             self.define_data(global, name, value, true, true, true)?;
         }
         if matches!(completion, Value::Object(_)) {
+            if callable_completion {
+                // The facade is compiled bytecode rather than an object
+                // clone: function calls and `.prototype` mutations remain
+                // entirely within the requesting heap and cannot retain a
+                // foreign ObjectId across collection.
+                return self.execute_nested_script(&code);
+            }
             return Err(RuntimeError::Unsupported(
                 "cross-realm object completion values",
             ));

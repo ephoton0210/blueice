@@ -696,6 +696,18 @@ fn create_realm_detached_eval_uses_an_isolated_global() {
 }
 
 #[test]
+fn create_realm_eval_exposes_a_callable_completion_without_foreign_heap_handles() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = "var other=$262.createRealm().global;var fn=other.eval('(0, async function* () {})');var prototype=Object.getPrototypeOf(fn.prototype);fn.prototype=undefined;Object.getPrototypeOf(fn())===prototype";
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn sloppy_global_eval_annex_b_function_does_not_block_a_later_lexical() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();

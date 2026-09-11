@@ -116,8 +116,9 @@ opcodes! {
     GetAsyncIterator: 1, 0;
     ForInKeys: 1, 0;
     IteratorStep: 5, 0;
-    AsyncIteratorNext: 1, 0;
+    AsyncIteratorNext: 5, 0;
     AsyncIteratorStep: 5, 0;
+    AsyncIteratorStepValue: 5, 0;
     IteratorStepReference: 5, 0;
     IteratorElision: 1, 0;
     IteratorClose: 1, 0;

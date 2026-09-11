@@ -343,6 +343,19 @@ enum PromiseReaction {
         target: ObjectId,
         result: ObjectId,
     },
+    /// A return/throw request is forwarded through an active `yield*`
+    /// delegate and therefore must await the delegate method's result.
+    AsyncGeneratorDelegate {
+        generator: ObjectId,
+        target: ObjectId,
+        kind: AsyncGeneratorDelegateKind,
+    },
+}
+
+#[derive(Clone, Copy)]
+enum AsyncGeneratorDelegateKind {
+    Return,
+    Throw,
 }
 
 struct PromiseRecord {
@@ -393,6 +406,13 @@ enum PromiseJob {
         generator: ObjectId,
         target: ObjectId,
         result: ObjectId,
+        value: Value,
+        fulfilled: bool,
+    },
+    AsyncGeneratorDelegate {
+        generator: ObjectId,
+        target: ObjectId,
+        kind: AsyncGeneratorDelegateKind,
         value: Value,
         fulfilled: bool,
     },
@@ -3215,6 +3235,13 @@ impl Vm {
                             roots.push(self.heap.root(*target)?);
                             roots.push(self.heap.root(*result)?);
                         }
+                        if let PromiseReaction::AsyncGeneratorDelegate {
+                            generator, target, ..
+                        } = reaction
+                        {
+                            roots.push(self.heap.root(*generator)?);
+                            roots.push(self.heap.root(*target)?);
+                        }
                     }
                 }
                 let values: Vec<&Value> = match &record.status {
@@ -3227,7 +3254,8 @@ impl Vm {
                             }
                             PromiseReaction::ModuleAwait { .. }
                             | PromiseReaction::AsyncAwait { .. }
-                            | PromiseReaction::AsyncGeneratorYield { .. } => None,
+                            | PromiseReaction::AsyncGeneratorYield { .. }
+                            | PromiseReaction::AsyncGeneratorDelegate { .. } => None,
                         })
                         .flatten()
                         .collect(),
@@ -3294,6 +3322,18 @@ impl Vm {
                         roots.push(self.heap.root(*generator)?);
                         roots.push(self.heap.root(*target)?);
                         roots.push(self.heap.root(*result)?);
+                        if let Value::Object(id) = value {
+                            roots.push(self.heap.root(*id)?);
+                        }
+                    }
+                    PromiseJob::AsyncGeneratorDelegate {
+                        generator,
+                        target,
+                        value,
+                        ..
+                    } => {
+                        roots.push(self.heap.root(*generator)?);
+                        roots.push(self.heap.root(*target)?);
                         if let Value::Object(id) = value {
                             roots.push(self.heap.root(*id)?);
                         }
@@ -4035,8 +4075,16 @@ impl Vm {
                         }
                     }
                     Opcode::AsyncIteratorNext => {
-                        let record = self.stack.last().unwrap().clone();
-                        let promise = self.async_iterator_next(&record)?;
+                        let (record, argument) = if operand == 0 {
+                            (self.stack.last().unwrap().clone(), None)
+                        } else {
+                            let base = self.stack.len() - 2;
+                            let record = self.stack[base].clone();
+                            let argument = self.stack[base + 1].clone();
+                            self.stack.truncate(base + 1);
+                            (record, Some(argument))
+                        };
+                        let promise = self.async_iterator_next(&record, argument)?;
                         self.stack.push(promise);
                     }
                     Opcode::AsyncIteratorStep => {
@@ -4051,6 +4099,34 @@ impl Vm {
                             self.stack.push(value);
                         } else {
                             pc = operand;
+                        }
+                    }
+                    Opcode::AsyncIteratorStepValue => {
+                        // yield* needs the completed iterator result's value
+                        // as its own expression result, unlike for-await.
+                        let base = self.stack.len() - 2;
+                        let record = self.stack[base].clone();
+                        let result = self.stack[base + 1].clone();
+                        iterators.retain(|active| active != &record);
+                        let Value::Object(record_id) = record else {
+                            unreachable!("compiler only emits iterator records")
+                        };
+                        if !matches!(result, Value::Object(_)) {
+                            return Err(RuntimeError::TypeError(
+                                "async iterator result must be an object".into(),
+                            ));
+                        }
+                        let done = self.get_property(&result, &"done".into())?;
+                        let value = self.get_property(&result, &"value".into())?;
+                        self.stack.truncate(base);
+                        if self.to_boolean(&done)? {
+                            self.with_roots(|heap| heap.set(record_id, "done", Value::Bool(true)))?;
+                            self.stack.push(value);
+                            pc = operand;
+                        } else {
+                            iterators.push(Value::Object(record_id));
+                            self.stack.push(Value::Object(record_id));
+                            self.stack.push(value);
                         }
                     }
                     Opcode::IteratorStepReference => {

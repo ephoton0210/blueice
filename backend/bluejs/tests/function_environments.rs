@@ -370,3 +370,31 @@ fn async_generator_yield_star_respects_the_no_line_terminator_grammar() {
     let error = parse("async function* f(){ yield\n* 1; }").unwrap_err();
     assert!(error.known_syntax);
 }
+
+#[test]
+fn async_generator_yield_star_forwards_next_values_and_returns_the_inner_completion() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            async function* inner() { let received = yield 1; yield received; return 9; }
+            async function* outer() { let result = yield* inner(); return result; }
+            let iterator = outer();
+            iterator.next().then(first => {
+                globalThis.first = first.value === 1 && !first.done;
+                return iterator.next(4);
+            }).then(second => {
+                globalThis.second = second.value === 4 && !second.done;
+                return iterator.next(8);
+            }).then(done => {
+                globalThis.last = done.value === 9 && done.done;
+            });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(&mut vm, "first && second && last"),
+        Ok(Value::Bool(true))
+    );
+}
