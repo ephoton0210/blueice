@@ -17,6 +17,7 @@ use crate::{
 use num_bigint::{BigInt, Sign};
 use num_traits::{One, ToPrimitive, Zero};
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use std::rc::Rc;
 mod builtins;
 mod errors;
 mod functions;
@@ -175,8 +176,8 @@ enum InterpreterExit {
     Suspend {
         pc: usize,
     },
-    /// A Source Text Module reaches an Await expression. Its execution
-    /// context is moved into `ModuleContinuation` before the next job turn
+    /// An async execution context reaches an Await expression. Its execution
+    /// context is moved into a continuation before the next Promise job turn
     /// resumes it.
     Await {
         promise: ObjectId,
@@ -204,6 +205,7 @@ struct GlobalBinding {
 /// VariableEnvironment. Unlike global bindings it is neither permanent nor
 /// property-backed: it lives for the frame, may be deleted, and closures keep
 /// its cell alive when they capture it.
+#[derive(Clone)]
 struct DynamicEvalBinding {
     cell: ObjectId,
     /// A direct eval can introduce a binding in the active function's
@@ -251,6 +253,20 @@ struct ModuleContinuation {
     handlers: Vec<HandlerFrame>,
 }
 
+/// The resumable portion of an ordinary async-function invocation.  This is
+/// intentionally the same complete execution-state shape as a top-level
+/// module continuation: later async generators and async iteration must be
+/// able to reuse the same frame, rooting, and completion machinery.
+struct AsyncContinuation {
+    target: ObjectId,
+    code: Rc<Bytecode>,
+    pc: usize,
+    execution: SuspendedModuleExecution,
+    iterators: Vec<Value>,
+    handlers: Vec<HandlerFrame>,
+    call_depth: usize,
+}
+
 #[derive(Clone, PartialEq, Eq)]
 enum ExportResolution {
     Binding { module: String, slot: usize },
@@ -291,6 +307,7 @@ struct PromiseThenReaction {
 enum PromiseReaction {
     Then(PromiseThenReaction),
     ModuleAwait { continuation: u64 },
+    AsyncAwait { continuation: u64 },
 }
 
 struct PromiseRecord {
@@ -328,6 +345,11 @@ enum PromiseJob {
         specifier: String,
     },
     ModuleAwait {
+        continuation: u64,
+        value: Value,
+        fulfilled: bool,
+    },
+    AsyncAwait {
         continuation: u64,
         value: Value,
         fulfilled: bool,
@@ -433,6 +455,8 @@ pub struct Vm {
     module_graph: Option<ModuleGraphState>,
     module_continuations: HashMap<u64, ModuleContinuation>,
     next_module_continuation: u64,
+    async_continuations: HashMap<u64, AsyncContinuation>,
+    next_async_continuation: u64,
     module_pending_dependencies: HashMap<String, HashSet<String>>,
     module_async_parents: HashMap<String, Vec<String>>,
     module_import_waiters: HashMap<String, Vec<ObjectId>>,
@@ -555,6 +579,8 @@ impl Vm {
             module_graph: None,
             module_continuations: HashMap::new(),
             next_module_continuation: 0,
+            async_continuations: HashMap::new(),
+            next_async_continuation: 0,
             module_pending_dependencies: HashMap::new(),
             module_async_parents: HashMap::new(),
             module_import_waiters: HashMap::new(),
@@ -1219,65 +1245,91 @@ impl Vm {
         self.active_module_name = execution.active_module_name;
     }
 
+    /// Heap edges held only by a displaced interpreter frame.  Keeping this
+    /// independent from the module machinery lets ordinary async functions
+    /// share the same GC contract and prevents continuation state from being
+    /// accidentally treated as Rust-only data.
+    fn suspended_execution_references(execution: &SuspendedModuleExecution) -> Vec<ObjectId> {
+        let mut references = Vec::new();
+        let mut add_value = |value: &Value| {
+            if let Some(id) = value.object_id() {
+                references.push(id);
+            }
+        };
+        for value in execution
+            .stack
+            .iter()
+            .chain(execution.bindings.iter().flatten())
+            .chain(std::iter::once(&execution.completion))
+            .chain(execution.with_objects.iter())
+            .chain(std::iter::once(&execution.this))
+            .chain(execution.arguments.iter())
+            .chain(std::iter::once(&execution.callee))
+            .chain(std::iter::once(&execution.new_target))
+            .chain(execution.completion_saves.iter().map(|(value, _)| value))
+        {
+            add_value(value);
+        }
+        for completion in &execution.pending_completions {
+            match completion {
+                Completion::Return(value)
+                | Completion::Yield(value)
+                | Completion::Throw(RuntimeError::Thrown(value)) => add_value(value),
+                Completion::TailRecur(values) => {
+                    for value in values {
+                        add_value(value);
+                    }
+                }
+                Completion::Throw(_)
+                | Completion::Jump { .. }
+                | Completion::Resume(_)
+                | Completion::Halt(_) => {}
+            }
+        }
+        references.extend(execution.cells.values().copied());
+        for binding in execution.dynamic_eval_bindings.values().chain(
+            execution
+                .dynamic_eval_outer_bindings
+                .iter()
+                .flat_map(|bindings| bindings.values()),
+        ) {
+            references.push(binding.cell);
+            references.extend(binding.shadowed_cells.iter().copied());
+        }
+        references.extend(execution.templates.values().copied());
+        references.extend(
+            [execution.home_object, execution.class_constructor]
+                .into_iter()
+                .flatten(),
+        );
+        references
+    }
+
+    fn continuation_references(&self) -> Vec<ObjectId> {
+        let mut references = Vec::new();
+        for continuation in self.module_continuations.values() {
+            references.extend(Self::suspended_execution_references(
+                &continuation.execution,
+            ));
+            references.extend(continuation.iterators.iter().filter_map(Value::object_id));
+        }
+        for continuation in self.async_continuations.values() {
+            references.push(continuation.target);
+            references.extend(Self::suspended_execution_references(
+                &continuation.execution,
+            ));
+            references.extend(continuation.iterators.iter().filter_map(Value::object_id));
+        }
+        references
+    }
+
     fn root_suspended_module_execution(
         &mut self,
         execution: &SuspendedModuleExecution,
     ) -> Result<Vec<RootId>, RuntimeError> {
         let mut roots = Vec::new();
         let registration: Result<(), HeapError> = (|| {
-            let mut root_value = |value: &Value| -> Result<(), HeapError> {
-                if let Value::Object(id) = value {
-                    roots.push(self.heap.root(*id)?);
-                }
-                Ok(())
-            };
-            for value in execution
-                .stack
-                .iter()
-                .chain(execution.bindings.iter().flatten())
-                .chain(std::iter::once(&execution.completion))
-                .chain(execution.with_objects.iter())
-                .chain(std::iter::once(&execution.this))
-                .chain(execution.arguments.iter())
-                .chain(std::iter::once(&execution.callee))
-                .chain(std::iter::once(&execution.new_target))
-                .chain(execution.completion_saves.iter().map(|(value, _)| value))
-            {
-                root_value(value)?;
-            }
-            for completion in &execution.pending_completions {
-                let values: &[Value] = match completion {
-                    Completion::Return(value)
-                    | Completion::Yield(value)
-                    | Completion::Throw(RuntimeError::Thrown(value)) => std::slice::from_ref(value),
-                    Completion::TailRecur(values) => values,
-                    Completion::Throw(_)
-                    | Completion::Jump { .. }
-                    | Completion::Resume(_)
-                    | Completion::Halt(_) => &[],
-                };
-                for value in values {
-                    root_value(value)?;
-                }
-            }
-            for cell in execution.cells.values() {
-                roots.push(self.heap.root(*cell)?);
-            }
-            for binding in execution.dynamic_eval_bindings.values() {
-                roots.push(self.heap.root(binding.cell)?);
-            }
-            for bindings in &execution.dynamic_eval_outer_bindings {
-                for binding in bindings.values() {
-                    roots.push(self.heap.root(binding.cell)?);
-                }
-            }
-            for id in execution.templates.values().copied() {
-                roots.push(self.heap.root(id)?);
-            }
-            for id in [execution.home_object, execution.class_constructor]
-                .into_iter()
-                .flatten()
-            {
+            for id in Self::suspended_execution_references(execution) {
                 roots.push(self.heap.root(id)?);
             }
             Ok(())
@@ -1579,6 +1631,164 @@ impl Vm {
             }
         }
         Ok(())
+    }
+
+    /// Registers an ordinary async-function frame on the Promise it awaits.
+    /// A fulfilled input still goes through the job queue, preserving the
+    /// required asynchronous boundary before the frame resumes.
+    fn suspend_async_await(
+        &mut self,
+        continuation_state: AsyncContinuation,
+        promise: ObjectId,
+    ) -> Result<(), RuntimeError> {
+        let continuation = self.next_async_continuation;
+        self.next_async_continuation = self
+            .next_async_continuation
+            .checked_add(1)
+            .ok_or(RuntimeError::InstructionLimit)?;
+        self.async_continuations
+            .insert(continuation, continuation_state);
+        let status = self
+            .promises
+            .get(&promise)
+            .ok_or(RuntimeError::TypeError("invalid await Promise".into()))?
+            .status
+            .clone_for_await();
+        match status {
+            PromiseAwaitStatus::Pending => self
+                .promises
+                .get_mut(&promise)
+                .expect("checked await Promise exists")
+                .reactions
+                .push(PromiseReaction::AsyncAwait { continuation }),
+            PromiseAwaitStatus::Fulfilled(value) => {
+                self.promise_jobs.push_back(PromiseJob::AsyncAwait {
+                    continuation,
+                    value,
+                    fulfilled: true,
+                });
+            }
+            PromiseAwaitStatus::Rejected(value) => {
+                self.promise_jobs.push_back(PromiseJob::AsyncAwait {
+                    continuation,
+                    value,
+                    fulfilled: false,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Continues a suspended ordinary async function in its own Promise job
+    /// execution context.  The ambient VM state may itself be a suspended
+    /// module or a reaction handler, so it is displaced before the async
+    /// frame is restored and put back unchanged after this turn.
+    fn resume_async_await(
+        &mut self,
+        continuation: u64,
+        value: Value,
+        fulfilled: bool,
+    ) -> Result<(), RuntimeError> {
+        let continuation =
+            self.async_continuations
+                .remove(&continuation)
+                .ok_or(RuntimeError::Unsupported(
+                    "unknown async await continuation",
+                ))?;
+        let AsyncContinuation {
+            target,
+            code,
+            pc,
+            execution,
+            mut iterators,
+            mut handlers,
+            call_depth,
+        } = continuation;
+        let mut ambient = self.suspend_module_execution();
+        let ambient_call_depth = std::mem::replace(&mut self.call_depth, call_depth);
+        self.restore_module_execution(execution);
+        let outcome = if fulfilled {
+            self.interpret(&code, &mut iterators, pc, Some(value), None, Some(handlers))
+        } else {
+            match self.resolve_completion(
+                &code,
+                &mut handlers,
+                &mut iterators,
+                Completion::Throw(RuntimeError::Thrown(value)),
+            ) {
+                Ok(CompletionAction::Continue) => {
+                    self.interpret(&code, &mut iterators, pc, None, None, Some(handlers))
+                }
+                Ok(CompletionAction::Jump(target)) => {
+                    self.interpret(&code, &mut iterators, target, None, None, Some(handlers))
+                }
+                Ok(CompletionAction::Return(value)) => Ok(InterpreterExit::Return(value)),
+                Ok(CompletionAction::TailRecur(_)) => Err(RuntimeError::TypeError(
+                    "async function cannot tail recur across await".into(),
+                )),
+                Ok(CompletionAction::Throw(error)) | Err(error) => Err(error),
+            }
+        };
+
+        let result = match outcome {
+            Ok(InterpreterExit::Return(value)) => {
+                ambient.templates.extend(self.templates.clone());
+                self.restore_module_execution(ambient);
+                self.call_depth = ambient_call_depth;
+                self.resolve_promise(target, value)
+            }
+            Ok(InterpreterExit::Await {
+                promise,
+                pc,
+                handlers,
+            }) => {
+                let execution = self.suspend_module_execution();
+                ambient.templates.extend(execution.templates.clone());
+                let state = AsyncContinuation {
+                    target,
+                    code,
+                    pc,
+                    execution,
+                    iterators,
+                    handlers,
+                    call_depth: self.call_depth,
+                };
+                self.restore_module_execution(ambient);
+                self.call_depth = ambient_call_depth;
+                self.suspend_async_await(state, promise)
+            }
+            Ok(InterpreterExit::Yield { .. }) => {
+                ambient.templates.extend(self.templates.clone());
+                self.restore_module_execution(ambient);
+                self.call_depth = ambient_call_depth;
+                Err(RuntimeError::TypeError(
+                    "yield requires an async generator function".into(),
+                ))
+            }
+            Ok(InterpreterExit::Suspend { .. }) => {
+                unreachable!("async functions have no entry suspend")
+            }
+            Err(error) => {
+                // Iterator records are part of the suspended frame rather
+                // than ordinary heap properties. Root them while abrupt
+                // cleanup invokes user-provided `return` methods.
+                let base = self.stack.len();
+                if let RuntimeError::Thrown(value) = &error {
+                    self.stack.push(value.clone());
+                }
+                self.stack.extend(iterators.iter().cloned());
+                for record in iterators.into_iter().rev() {
+                    let _ = self.iterator_close(&record);
+                }
+                self.stack.truncate(base);
+                ambient.templates.extend(self.templates.clone());
+                self.restore_module_execution(ambient);
+                self.call_depth = ambient_call_depth;
+                let error = self.error_value(error)?;
+                self.settle_promise(target, PromiseStatus::Rejected(error))
+            }
+        };
+        result
     }
 
     fn resolve_export(
@@ -2790,6 +3000,13 @@ impl Vm {
                     roots.push(self.heap.root(binding.cell)?);
                 }
             }
+            // A continuation lives in a Rust map while it waits for a Promise
+            // job.  Its frame has no ordinary heap owner, so root every edge
+            // before any allocation is allowed to trigger collection.
+            let continuation_references = self.continuation_references();
+            for id in continuation_references {
+                roots.push(self.heap.root(id)?);
+            }
             for (&promise, record) in &self.promises {
                 roots.push(self.heap.root(promise)?);
                 let values: Vec<&Value> = match &record.status {
@@ -2800,7 +3017,8 @@ impl Vm {
                             PromiseReaction::Then(reaction) => {
                                 Some([&reaction.on_fulfilled, &reaction.on_rejected])
                             }
-                            PromiseReaction::ModuleAwait { .. } => None,
+                            PromiseReaction::ModuleAwait { .. }
+                            | PromiseReaction::AsyncAwait { .. } => None,
                         })
                         .flatten()
                         .collect(),
@@ -2851,7 +3069,8 @@ impl Vm {
                     PromiseJob::DynamicImport { target, .. } => {
                         roots.push(self.heap.root(*target)?)
                     }
-                    PromiseJob::ModuleAwait { value, .. } => {
+                    PromiseJob::ModuleAwait { value, .. }
+                    | PromiseJob::AsyncAwait { value, .. } => {
                         if let Value::Object(id) = value {
                             roots.push(self.heap.root(*id)?);
                         }
@@ -3229,7 +3448,7 @@ impl Vm {
         }
         let mut pc = start_pc;
         let mut handlers = restored_handlers.unwrap_or_default();
-        let mut top_level_await = None;
+        let mut suspended_await = None;
         loop {
             if suspend_at == Some(pc) {
                 return Ok(InterpreterExit::Suspend { pc });
@@ -3822,8 +4041,8 @@ impl Vm {
                         // same queued resolution path as Promise values.
                         let awaited_value = self.pop();
                         let awaited = self.promise_resolve(awaited_value)?;
-                        if self.top_level_module && self.call_depth == 0 {
-                            top_level_await = Some(
+                        if code.async_function || (self.top_level_module && self.call_depth == 0) {
+                            suspended_await = Some(
                                 awaited
                                     .object_id()
                                     .expect("PromiseResolve returns a Promise object"),
@@ -4463,7 +4682,7 @@ impl Vm {
                 Err(error) if error.is_catchable() => Some(Completion::Throw(error)),
                 Err(error) => return Err(error),
             };
-            if let Some(promise) = top_level_await.take() {
+            if let Some(promise) = suspended_await.take() {
                 return Ok(InterpreterExit::Await {
                     promise,
                     pc,

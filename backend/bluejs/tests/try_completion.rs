@@ -276,6 +276,79 @@ fn async_functions_settle_return_and_errors_through_promise_jobs() {
 }
 
 #[test]
+fn async_await_suspends_frames_and_resumes_them_through_promise_jobs() {
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 128,
+            major_threshold_bytes: 256,
+            max_heap_bytes: 512 * 1024,
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    let setup = "
+        var resolveLater, rejectLater;
+        var order=[];
+        var resolved='pending';
+        var rejected='pending';
+        var firstTemplate, secondTemplate;
+        function tag(parts){return parts;}
+        async function resolvedFrame(){
+            let captured={base:40};
+            order.push('start');
+            let value=await new Promise(function(resolve){resolveLater=resolve});
+            order.push('resumed');
+            let extra=await 1;
+            return captured.base+value+extra;
+        }
+        async function rejectedFrame(){
+            try { await new Promise(function(resolve,reject){rejectLater=reject}); }
+            catch (error) { return error.code; }
+        }
+        let first=resolvedFrame();
+        let second=rejectedFrame();
+        first.then(function(value){resolved=value});
+        second.then(function(value){rejected=value});
+        async function templateFrame(){await 1;return tag`stable`;}
+        templateFrame().then(function(value){firstTemplate=value});
+        order.push('after-call');
+    ";
+    vm.execute_script(&compile(&parse(setup).unwrap()).unwrap())
+        .unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "order.join(',')==='start,after-call'&&resolved==='pending'&&rejected==='pending'",
+        ),
+        Ok(Value::Bool(true))
+    );
+
+    // No heap object owns the suspended lexical cells.  Independent script
+    // allocations must therefore preserve the async continuation's capture.
+    execute(
+        &mut vm,
+        "for(let index=0;index<80;index++){let garbage={index, nested:{index}}}",
+    )
+    .unwrap();
+    execute(&mut vm, "resolveLater(1);rejectLater({code:'caught'});").unwrap();
+    vm.run_promise_jobs().unwrap();
+    execute(
+        &mut vm,
+        "templateFrame().then(function(value){secondTemplate=value});",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "order.join(',')==='start,after-call,resumed'&&resolved===42&&rejected==='caught'&&firstTemplate===secondTemplate",
+        ),
+        Ok(Value::Bool(true))
+    );
+    assert!(vm.heap().stats().minor_collections > 0);
+}
+
+#[test]
 fn function_and_inheritance_early_errors_are_classified() {
     for source in [
         "function f(){super();}",

@@ -692,6 +692,10 @@ impl Vm {
             ));
         }
         let async_function = code.async_function;
+        // AsyncFunctionStart creates the promise capability before executing
+        // the body.  If the body reaches await, that same promise owns the
+        // saved continuation; otherwise its immediate completion settles it.
+        let async_promise = async_function.then(|| self.new_promise()).transpose()?;
         let receiver = if construct && code.derived_constructor {
             Value::Undefined
         } else if construct {
@@ -747,6 +751,7 @@ impl Vm {
         self.stack.push(self.completion.clone());
         self.stack.push(self.this.clone());
         self.stack.extend(self.arguments.iter().cloned());
+        let frame_base = self.stack.len();
         let mut frame_bindings = vec![None; code.bindings.len()];
         if let Some(slot) = code.self_slot {
             frame_bindings[slot as usize] = Some(callee.clone());
@@ -800,8 +805,84 @@ impl Vm {
                     .expect("class and arrow closures are objects")
             }),
         );
-        let result = self.run(&code);
+        let pending_completions = self.pending_completions.clone();
+        let completion_saves = self.completion_saves.clone();
+        let with_objects = self.with_objects.clone();
+        let frame_dynamic_eval_outer_bindings = self.dynamic_eval_outer_bindings.clone();
+        let top_level_module = self.top_level_module;
+        let remaining_instructions = self.remaining_instructions;
+        let new_target = self.new_target.clone();
+        let new_target_allowed = self.new_target_allowed;
+        let active_module_name = self.active_module_name.clone();
+        let result_root = self.result_root.take();
+        let mut suspended_parent_stack = None;
+        let mut suspended_async = None;
+        let result = if async_function {
+            let mut iterators = Vec::new();
+            match self.interpret(&code, &mut iterators, 0, None, None, None) {
+                Ok(InterpreterExit::Return(value)) => Ok(value),
+                Ok(InterpreterExit::Await {
+                    promise,
+                    pc,
+                    handlers,
+                }) => {
+                    let stack = self.stack.split_off(frame_base);
+                    let mut execution = self.suspend_module_execution();
+                    let parent_stack = std::mem::replace(&mut execution.stack, stack);
+                    let templates = execution.templates.clone();
+                    self.templates = templates;
+                    let state = AsyncContinuation {
+                        target: async_promise.expect("async function has a promise"),
+                        code: code.clone(),
+                        pc,
+                        execution,
+                        iterators,
+                        handlers,
+                        call_depth: self.call_depth,
+                    };
+                    suspended_parent_stack = Some(parent_stack);
+                    suspended_async = Some((state, promise));
+                    Ok(Value::Undefined)
+                }
+                Ok(InterpreterExit::Yield { .. }) => Err(RuntimeError::TypeError(
+                    "yield requires an async generator function".into(),
+                )),
+                Ok(InterpreterExit::Suspend { .. }) => {
+                    unreachable!("ordinary async functions have no entry suspend")
+                }
+                Err(error) => {
+                    let base = self.stack.len();
+                    if let RuntimeError::Thrown(value) = &error {
+                        self.stack.push(value.clone());
+                    }
+                    self.stack.extend(iterators.iter().cloned());
+                    for record in iterators.into_iter().rev() {
+                        let _ = self.iterator_close(&record);
+                    }
+                    self.stack.truncate(base);
+                    Err(error)
+                }
+            }
+        } else {
+            self.run(&code)
+        };
         let constructed = self.this.clone();
+        let suspended = suspended_parent_stack.is_some();
+        if let Some(stack) = suspended_parent_stack {
+            self.stack = stack;
+            self.result_root = result_root;
+            self.pending_completions = pending_completions;
+            self.completion_saves = completion_saves;
+            self.with_objects = with_objects;
+            self.dynamic_eval_outer_bindings = frame_dynamic_eval_outer_bindings;
+            self.top_level_module = top_level_module;
+            self.remaining_instructions = remaining_instructions;
+            self.new_target = new_target;
+            self.new_target_allowed = new_target_allowed;
+            self.active_module_name = active_module_name;
+        } else {
+            self.result_root = result_root;
+        }
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;
@@ -833,6 +914,9 @@ impl Vm {
         self.class_constructor = class_constructor;
         self.class_field_initializer_depth = class_field_initializer_depth;
         self.stack.truncate(base - 1);
+        if let Some((state, awaited)) = suspended_async {
+            self.suspend_async_await(state, awaited)?;
+        }
         let result = result.and_then(|value| {
             if construct && !matches!(value, Value::Object(_)) {
                 if matches!(constructed, Value::Object(_)) {
@@ -850,19 +934,12 @@ impl Vm {
             return result;
         }
 
-        // The function body is evaluated synchronously until the compiler
-        // gains `await`, but its completion is still exposed through the
-        // Promise capability required by every async function invocation.
-        // Keep a fulfilled object rooted while allocating the promise.
-        if let Ok(value) = &result {
-            self.stack.push(value.clone());
-        }
-        let promise = self.new_promise()?;
-        if result.is_ok() {
-            self.stack.pop();
-        }
+        let promise = async_promise.expect("async function has a promise");
         match result {
-            Ok(value) => self.settle_promise(promise, PromiseStatus::Fulfilled(value))?,
+            // `AsyncFunctionStart` resolves rather than directly fulfills so
+            // `return somePromise` adopts its eventual settlement.
+            Ok(value) if !suspended => self.resolve_promise(promise, value)?,
+            Ok(_) => {}
             Err(error) => {
                 let value = self.error_value(error)?;
                 self.settle_promise(promise, PromiseStatus::Rejected(value))?;
@@ -1486,6 +1563,11 @@ impl Vm {
                     value: value.clone(),
                     fulfilled,
                 },
+                PromiseReaction::AsyncAwait { continuation } => PromiseJob::AsyncAwait {
+                    continuation,
+                    value: value.clone(),
+                    fulfilled,
+                },
             }));
         Ok(())
     }
@@ -1494,7 +1576,11 @@ impl Vm {
     /// reactions adopt another BlueJS Promise instead of fulfilling with the
     /// Promise object itself, which is essential for `then`, async functions
     /// and top-level await.
-    fn resolve_promise(&mut self, promise: ObjectId, value: Value) -> Result<(), RuntimeError> {
+    pub(super) fn resolve_promise(
+        &mut self,
+        promise: ObjectId,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
         if value.object_id() == Some(promise) {
             let error = self.error_object("TypeError", "Promise resolved with itself".into())?;
             return self.settle_promise(promise, PromiseStatus::Rejected(error));
@@ -1875,6 +1961,11 @@ impl Vm {
                 value,
                 fulfilled,
             } => self.resume_module_await(continuation, value, fulfilled)?,
+            PromiseJob::AsyncAwait {
+                continuation,
+                value,
+                fulfilled,
+            } => self.resume_async_await(continuation, value, fulfilled)?,
         }
         Ok(true)
     }

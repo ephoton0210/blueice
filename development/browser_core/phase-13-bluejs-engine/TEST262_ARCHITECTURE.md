@@ -886,3 +886,35 @@ now records **444 pass, 0 fail and 0 unsupported** of 444 modes. The public
 class grammar follow-up classifies parenthesized-arrow heritage, duplicate or
 special-form constructors, and static method/accessor `prototype` names as
 specified parse-time errors.
+
+## P1.3 foundation: ordinary async-function continuations
+
+Ordinary `async function` execution now uses the same displaced interpreter
+state model as top-level `await`. Reaching `Await` saves the bytecode program
+counter after the opcode, operand stack, binding cells, completion/handler
+state, active iterators, `this`, arguments, `new.target`, lexical home state
+and call depth in an `AsyncContinuation`. The continuation owns its result
+Promise and is registered on the awaited Promise as a distinct job reaction.
+Both fulfilled and rejected inputs resume only in a later Promise job turn;
+rejection re-enters the preserved completion handlers rather than escaping the
+async call.
+
+`SuspendedModuleExecution` is now a shared full-frame representation instead
+of an implicit module-only GC assumption. The VM enumerates and roots every
+object edge from module and ordinary-async continuations at all allocation
+safepoints, including captured cells, pending abrupt values, iterator records,
+dynamic-eval cells and private frame metadata. This is the reusable P1.3 base
+for async generators and async iteration; those protocols, their request
+queues and host-driven loading remain separate work.
+
+Public regressions cover pending resolution, rejection into `catch`, two
+successive awaits, Promise-return adoption, observable job ordering,
+post-suspension template-object identity, and a captured object surviving
+allocations while the frame is suspended. A fresh eight-worker run at
+`target/test262-next-async-functions` records **134 pass, 27 fail and 0
+unsupported** of 161 scheduled
+`language/expressions/async-function` modes. Eighteen remaining modes are
+classified async grammar/early-error gaps; the other nine require unrelated
+function-name, `new.target`, `with`/`Symbol.unscopables` semantics. This is a
+continuation foundation, not a claim of async-generator or complete async
+conformance.
