@@ -342,6 +342,179 @@ fn async_generator_awaits_suspend_and_resume_its_public_request() {
 }
 
 #[test]
+fn async_generator_queues_a_second_request_while_the_first_awaits() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            globalThis.gate = Promise.withResolvers();
+            async function* values() {
+                yield await globalThis.gate.promise;
+                yield 2;
+            }
+            let iterator = values();
+            let first = iterator.next();
+            let second = iterator.next();
+            first.then(result => { globalThis.firstSettled = result; });
+            second.then(result => { globalThis.secondSettledEarly = result; });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(&mut vm, "typeof secondSettledEarly === 'undefined'"),
+        Ok(Value::Bool(true))
+    );
+
+    execute(&mut vm, "gate.resolve(1)").unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "firstSettled.value === 1 && firstSettled.done === false && secondSettledEarly.value === 2 && secondSettledEarly.done === false",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn async_generator_yield_uses_a_job_before_starting_the_next_request() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            globalThis.trace = [];
+            async function* values() {
+                globalThis.trace.push('first');
+                yield 1;
+                globalThis.trace.push('second');
+                yield 2;
+            }
+            let iterator = values();
+            iterator.next();
+            iterator.next();
+        ",
+    )
+    .unwrap();
+    assert_eq!(
+        execute(&mut vm, "trace.length === 1 && trace[0] === 'first'"),
+        Ok(Value::Bool(true))
+    );
+
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(&mut vm, "trace.length === 2 && trace[1] === 'second'",),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn async_generator_drains_queued_requests_after_an_await_rejection() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            globalThis.gate = Promise.withResolvers();
+            async function* values() { yield await globalThis.gate.promise; }
+            let iterator = values();
+            iterator.next().then(
+                () => { globalThis.firstRejected = false; },
+                reason => { globalThis.firstRejected = reason === 'expected'; },
+            );
+            iterator.next().then(result => { globalThis.afterRejection = result; });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(&mut vm, "typeof afterRejection === 'undefined'"),
+        Ok(Value::Bool(true))
+    );
+
+    execute(&mut vm, "globalThis.gate.reject('expected')").unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "firstRejected && afterRejection.done && afterRejection.value === undefined",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn async_generator_queues_return_behind_a_pending_next_request() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            globalThis.gate = Promise.withResolvers();
+            async function* values() { yield await globalThis.gate.promise; yield 2; }
+            let iterator = values();
+            iterator.next().then(result => { globalThis.firstResult = result; });
+            iterator.return(9).then(result => { globalThis.returnResult = result; });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "typeof firstResult === 'undefined' && typeof returnResult === 'undefined'",
+        ),
+        Ok(Value::Bool(true))
+    );
+
+    execute(&mut vm, "globalThis.gate.resolve(1)").unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "firstResult.value === 1 && !firstResult.done && returnResult.value === 9 && returnResult.done",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn async_generator_queues_throw_behind_a_pending_next_request() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            globalThis.gate = Promise.withResolvers();
+            async function* values() { yield await globalThis.gate.promise; yield 2; }
+            let iterator = values();
+            iterator.next().then(result => { globalThis.firstResult = result; });
+            iterator.throw('expected').then(
+                () => { globalThis.throwResult = false; },
+                reason => { globalThis.throwResult = reason === 'expected'; },
+            );
+            iterator.next().then(result => { globalThis.afterThrow = result; });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "typeof firstResult === 'undefined' && typeof throwResult === 'undefined' && typeof afterThrow === 'undefined'",
+        ),
+        Ok(Value::Bool(true))
+    );
+
+    execute(&mut vm, "globalThis.gate.resolve(1)").unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "firstResult.value === 1 && !firstResult.done && throwResult && afterThrow.done && afterThrow.value === undefined",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
 fn for_await_consumes_async_generator_next_promises() {
     let mut vm = Vm::default();
     execute(

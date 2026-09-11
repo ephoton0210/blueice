@@ -27,7 +27,7 @@
 
 use crate::native::NativeFunction;
 use crate::{Bytecode, JsString, JsSymbol, ObjectId, PropertyDescriptor, PropertyName, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::mem::size_of;
 use std::rc::Rc;
@@ -211,6 +211,88 @@ pub(crate) enum GeneratorState {
     Done,
 }
 
+/// The completion that an async-generator request supplies when it reaches
+/// the head of `[[AsyncGeneratorQueue]]`.
+#[derive(Clone)]
+pub(crate) enum AsyncGeneratorCompletion {
+    Next(Value),
+    Return(Value),
+    Throw(Value),
+}
+
+impl AsyncGeneratorCompletion {
+    fn references(&self) -> impl Iterator<Item = ObjectId> + '_ {
+        match self {
+            Self::Next(value) | Self::Return(value) | Self::Throw(value) => value.object_id(),
+        }
+        .into_iter()
+    }
+}
+
+/// A request is heap-owned by the generator until it is completed. Keeping
+/// the Promise target here, rather than only in a suspended VM continuation,
+/// preserves FIFO ordering and gives the collector one owner for later
+/// queued arguments and capabilities.
+#[derive(Clone)]
+pub(crate) struct AsyncGeneratorRequest {
+    pub(crate) id: u64,
+    pub(crate) completion: AsyncGeneratorCompletion,
+    pub(crate) target: ObjectId,
+}
+
+/// States which prevent `AsyncGeneratorResumeNext` from running a second
+/// request. The frame itself remains in `GeneratorState` when suspended and
+/// in an async continuation while the body awaits.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AsyncGeneratorStatus {
+    SuspendedStart,
+    SuspendedYield,
+    Awaiting,
+    Executing,
+    Completed,
+}
+
+#[derive(Clone)]
+pub(crate) struct AsyncGeneratorControl {
+    pub(crate) status: AsyncGeneratorStatus,
+    pub(crate) requests: VecDeque<AsyncGeneratorRequest>,
+    pub(crate) next_request_id: u64,
+}
+
+impl Default for AsyncGeneratorControl {
+    fn default() -> Self {
+        Self {
+            status: AsyncGeneratorStatus::SuspendedStart,
+            requests: VecDeque::new(),
+            next_request_id: 0,
+        }
+    }
+}
+
+impl AsyncGeneratorControl {
+    fn managed_bytes(&self) -> usize {
+        self.requests.len() * size_of::<AsyncGeneratorRequest>()
+            + self
+                .requests
+                .iter()
+                .map(|request| match &request.completion {
+                    AsyncGeneratorCompletion::Next(value)
+                    | AsyncGeneratorCompletion::Return(value)
+                    | AsyncGeneratorCompletion::Throw(value) => value.payload_bytes(),
+                })
+                .sum::<usize>()
+    }
+
+    fn references(&self) -> Vec<ObjectId> {
+        self.requests
+            .iter()
+            .flat_map(|request| {
+                std::iter::once(request.target).chain(request.completion.references())
+            })
+            .collect()
+    }
+}
+
 impl GeneratorState {
     fn managed_bytes(&self) -> usize {
         self.references().len() * size_of::<ObjectId>()
@@ -306,6 +388,8 @@ enum ObjectKind {
     Generator {
         state: Box<GeneratorState>,
         state_bytes: usize,
+        async_control: Option<AsyncGeneratorControl>,
+        async_control_bytes: usize,
     },
     BoundFunction(BoundFunction),
     StringIterator {
@@ -396,7 +480,19 @@ impl Object {
                     .copied()
                     .chain(this.object_id())
                     .collect::<Vec<_>>(),
-                ObjectKind::Generator { state, .. } => state.references(),
+                ObjectKind::Generator {
+                    state,
+                    async_control,
+                    ..
+                } => state
+                    .references()
+                    .into_iter()
+                    .chain(
+                        async_control
+                            .iter()
+                            .flat_map(AsyncGeneratorControl::references),
+                    )
+                    .collect(),
                 ObjectKind::BoundFunction(bound) => std::iter::once(bound.target)
                     .chain(bound.this.object_id())
                     .chain(bound.args.iter().filter_map(Value::object_id))
@@ -469,7 +565,19 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
                 .copied()
                 .chain(this.object_id())
                 .collect::<Vec<_>>(),
-            ObjectKind::Generator { state, .. } => state.references(),
+            ObjectKind::Generator {
+                state,
+                async_control,
+                ..
+            } => state
+                .references()
+                .into_iter()
+                .chain(
+                    async_control
+                        .iter()
+                        .flat_map(AsyncGeneratorControl::references),
+                )
+                .collect(),
             ObjectKind::BoundFunction(bound) => std::iter::once(bound.target)
                 .chain(bound.this.object_id())
                 .chain(bound.args.iter().filter_map(Value::object_id))
@@ -986,6 +1094,8 @@ impl Heap {
             ObjectKind::Generator {
                 state: Box::new(state),
                 state_bytes,
+                async_control: None,
+                async_control_bytes: 0,
             },
             Some(prototype),
         )
@@ -1003,6 +1113,13 @@ impl Heap {
             return Err(HeapError::InvalidObject(object));
         };
         Ok(*std::mem::replace(state, Box::new(GeneratorState::Done)))
+    }
+
+    pub(crate) fn generator_state_is_done(&self, object: ObjectId) -> Result<bool, HeapError> {
+        let ObjectKind::Generator { state, .. } = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidObject(object));
+        };
+        Ok(matches!(**state, GeneratorState::Done))
     }
 
     pub(crate) fn set_generator_state(
@@ -1039,6 +1156,7 @@ impl Heap {
             let ObjectKind::Generator {
                 state: current,
                 state_bytes: current_bytes,
+                ..
             } = &mut entry.kind
             else {
                 return Err(HeapError::InvalidObject(object));
@@ -1048,6 +1166,90 @@ impl Heap {
             entry.bytes = entry.bytes - old_state_bytes + state_bytes;
         }
         self.managed_bytes = self.managed_bytes - old_state_bytes + state_bytes;
+        for reference in references {
+            self.write_barrier(object, Some(reference));
+        }
+        Ok(())
+    }
+
+    /// Marks a generator object as async before it becomes observable to
+    /// JavaScript. The queue starts empty and therefore cannot allocate or
+    /// create collector edges.
+    pub(crate) fn enable_async_generator(&mut self, object: ObjectId) -> Result<(), HeapError> {
+        let entry = self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?;
+        let ObjectKind::Generator { async_control, .. } = &mut entry.kind else {
+            return Err(HeapError::InvalidObject(object));
+        };
+        if async_control.is_none() {
+            *async_control = Some(AsyncGeneratorControl::default());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn async_generator_control(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<AsyncGeneratorControl>, HeapError> {
+        let ObjectKind::Generator { async_control, .. } = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidObject(object));
+        };
+        Ok(async_control.clone())
+    }
+
+    /// Replaces the async-generator queue and performs the same accounting
+    /// and old-to-young barriers as a suspended frame restoration.
+    pub(crate) fn set_async_generator_control(
+        &mut self,
+        object: ObjectId,
+        control: AsyncGeneratorControl,
+    ) -> Result<(), HeapError> {
+        let references = control.references();
+        let control_bytes = control.managed_bytes();
+        let (old_bytes, old_references) = match &self
+            .objects
+            .get(&object)
+            .ok_or(HeapError::InvalidObject(object))?
+            .kind
+        {
+            ObjectKind::Generator {
+                async_control,
+                async_control_bytes,
+                ..
+            } => (
+                *async_control_bytes,
+                async_control
+                    .iter()
+                    .flat_map(AsyncGeneratorControl::references)
+                    .collect::<Vec<_>>(),
+            ),
+            _ => return Err(HeapError::InvalidObject(object)),
+        };
+        let protected: Vec<_> = std::iter::once(object)
+            .chain(references.iter().copied())
+            .chain(old_references)
+            .collect();
+        self.ensure_room(control_bytes.saturating_sub(old_bytes), &protected)?;
+        {
+            let entry = self
+                .objects
+                .get_mut(&object)
+                .ok_or(HeapError::InvalidObject(object))?;
+            let ObjectKind::Generator {
+                async_control,
+                async_control_bytes,
+                ..
+            } = &mut entry.kind
+            else {
+                return Err(HeapError::InvalidObject(object));
+            };
+            *async_control = Some(control);
+            *async_control_bytes = control_bytes;
+            entry.bytes = entry.bytes - old_bytes + control_bytes;
+        }
+        self.managed_bytes = self.managed_bytes - old_bytes + control_bytes;
         for reference in references {
             self.write_barrier(object, Some(reference));
         }
@@ -2433,6 +2635,39 @@ mod tests {
         heap.set_generator_state(generator, GeneratorState::Done)
             .unwrap();
         assert_eq!(heap.stats().managed_bytes, baseline);
+    }
+
+    #[test]
+    fn async_generator_queue_keeps_request_targets_and_values_alive() {
+        let mut heap = Heap::default();
+        let prototype = heap.alloc_object(None).unwrap();
+        let generator = heap
+            .alloc_generator(GeneratorState::Done, prototype)
+            .unwrap();
+        heap.enable_async_generator(generator).unwrap();
+        let generator_root = heap.root(generator).unwrap();
+        let target = heap.alloc_object(None).unwrap();
+        let value = heap.alloc_object(None).unwrap();
+
+        let mut control = heap.async_generator_control(generator).unwrap().unwrap();
+        control.requests.push_back(AsyncGeneratorRequest {
+            id: 0,
+            completion: AsyncGeneratorCompletion::Next(Value::Object(value)),
+            target,
+        });
+        control.next_request_id = 1;
+        control.status = AsyncGeneratorStatus::Awaiting;
+        heap.set_async_generator_control(generator, control)
+            .unwrap();
+
+        heap.collect_major();
+        assert!(heap.contains(target));
+        assert!(heap.contains(value));
+
+        heap.unroot(generator_root).unwrap();
+        heap.collect_major();
+        assert!(!heap.contains(target));
+        assert!(!heap.contains(value));
     }
 
     #[test]

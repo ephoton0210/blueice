@@ -1004,3 +1004,161 @@ remaining receiver-aware object/Proxy internal methods remain the broader
 cross-cutting prerequisite, but this P1.3 slice is now executable directly on
 the already-established continuation and Promise architecture and exposes a
 single shared failure across hundreds of modes.
+
+## P1.3 continuation: serialized async-generator requests and injected completions
+
+Design continued 2026-09-11 after `38fba2e` and `bbf2334`. Those commits add
+the essential first part of the preceding slice: async-generator prototypes,
+Promise-returning `next`/`return`/`throw`, suspended async frames, basic `for
+await`, and async `yield*` forwarding through sync or async iterators. In
+particular, the latter preserves a delegate's `next` argument and its final
+value, and forwards a direct `return` or `throw` into an active delegate.
+
+They deliberately do not complete the request protocol. Today
+`async_generator_request` starts every request immediately and an
+`AsyncContinuation` owns the request Promise directly. When the first request
+reaches `await`, `generator_next` stores `GeneratorState::Done` while the live
+frame is held by that continuation; a second request can consequently observe
+a completed generator before the first request resumes. After a `yield`, a
+second request can also execute before the first yielded value's asynchronous
+settlement has completed. Outside `yield*`, `return` and `throw` currently
+close the suspended generator directly, so a surrounding `finally` cannot
+yield for a return request and a surrounding `catch` cannot consume a throw
+request. These are one execution-model gap, not independent builtin bugs.
+
+The checked-in 1,212-mode async-generator measurement above is a
+pre-implementation baseline, not a result for the two commits. After the
+queue implementation, the pinned 8-worker filtered run at
+`target/test262-async-generator-queue` records **1,212 pass, 0 fail, 0
+unsupported and 0 timeout** across 623 files, with the 100,000-dispatch budget
+and two-second deadline. Its adapter SHA-256 is
+`8a970e1d1e52b0cc8be50aba06d8b32e3c40fad14ecbc6c0468b502f60b0d4e7` and
+the runner SHA-256 is
+`71f6dae44baeda922f7ea894267eb16cd6f162a761e320f3a79198a3f2d831d0`.
+The analyzer reconciles all 1,212 modes with blocker `none`. This focused
+result does not establish the unexercised handler-frame semantics below or
+full Test262 conformance.
+
+The implementation follows [AsyncGeneratorStart,
+AsyncGeneratorEnqueue, and AsyncGeneratorResumeNext](https://tc39.es/ecma262/2026/multipage/control-abstraction-objects.html#sec-asyncgeneratorstart),
+[AsyncGeneratorYield](https://tc39.es/ecma262/2026/multipage/control-abstraction-objects.html#sec-asyncgeneratoryield),
+and [AsyncGeneratorCompleteStep](https://tc39.es/ecma262/2026/multipage/control-abstraction-objects.html#sec-asyncgeneratorcompletestep).
+It has the following boundaries and invariants.
+
+1. Give every async-generator object heap-owned control data, rather than a
+   VM side map: an execution status (`suspended-start`, `suspended-yield`,
+   `executing`, an await gate, or `completed`), a FIFO `VecDeque` of request
+   records, and an optional explicit active-delegate record. A request records
+   a monotonic request ID, a normal/return/throw completion with its value,
+   and the Promise capability's target. Refactor the current shared
+   `GeneratorState::{Start,Suspended,Done}` storage into a frame plus this
+   async control envelope, so a displaced frame may be absent while its queue
+   and status remain owned by the generator. Do not put this queue in a VM
+   `HashMap`: a discarded generator would otherwise leave its queued promises
+   and argument values rooted or stale outside heap lifetime accounting.
+
+2. Native `next`, `return`, and `throw` must only create a target Promise,
+   append one request, and call one `resume_next` scheduler. The scheduler may
+   begin the first request synchronously, as the abstract operation does, but
+   it must never run a later request while the status is `executing` or behind
+   an await gate. `AsyncContinuation`, `PromiseReaction`, and `PromiseJob`
+   carry the generator and request ID; the head queue record remains the sole
+   owner of the target Promise. A continuation or reaction whose ID is no
+   longer the head is an internal invariant failure, never an opportunity to
+   settle a later request.
+
+3. Resume a normal head request by supplying its value at the saved `yield`
+   continuation. Resume return and throw heads as `Completion::Return` and
+   `Completion::Throw`, routed through the existing completion-handler
+   machinery before interpreting more bytecode. This lets `finally` run and
+   lets `catch` turn a thrown request into another yield. Only a completed
+   frame, an uncaught abrupt completion, or the specified completed/start
+   special cases may call `AsyncGeneratorCompleteStep`; direct
+   `generator_return`/`close_async_generator` remains appropriate only after
+   that completion model has selected closure and iterator cleanup.
+
+4. A `yield` leaves its head record in place while `AsyncGeneratorYield`
+   awaits its value. Fulfilment changes that iterator result's `value`,
+   completes and removes exactly the head, marks the generator
+   `suspended-yield`, then invokes `resume_next` for the following record.
+   Rejection performs the required close/reject path before it advances the
+   queue. Even an already-fulfilled `Promise.resolve(value)` takes a Promise
+   job turn here; directly settling it makes a later request observable before
+   the required await boundary. Awaiting in the body, yielded-value awaiting,
+   and delegate-method awaiting need distinct gate metadata, but share that
+   one head-completion path.
+
+5. Integrate the existing `yield*` paths with the queue instead of passing a
+   free-standing target Promise through them. A queued return or throw may
+   call a delegate method only when it reaches the head. Its fulfilled
+   iterator result either becomes the outer request's yielded result or
+   resumes the outer frame with the final value; rejection, a non-object
+   result, and a missing delegate `throw` complete that same head with the
+   specified error and then advance the queue. Store active delegation as
+   frame metadata rather than inferring it from a bytecode offset pattern, so
+   compiler layout changes cannot alter externally visible request semantics.
+
+6. Extend heap tracing and byte accounting to include every queued completion
+   value, target Promise, active delegate and frame edge. Extend VM roots for
+   continuation/reaction/job records to include the request ID's generator and
+   any result object until that record is removed. Allocation in a queued
+   argument, a delegate getter, a thenable, iterator closing, or a Promise job
+   must not collect either the generator, the first request Promise, or a
+   later queued object. Removing a settled request must release those edges.
+
+The regression-first acceptance set belongs in
+`backend/bluejs/tests/function_environments.rs`, with adapter-facing cases in
+`process_hosts.rs` where `$DONE` ordering is observable. It must cover two and
+three immediate `next` calls, a second request while the first body `await` is
+pending, FIFO mixing of `next`/`return`/`throw`, a return that yields from a
+`finally`, a caught and an uncaught throw, and a request after completion.
+Repeat those cases through `yield*` with sync and async delegates, including a
+missing `throw`, a delegate result that is not an object, and a pending
+delegate method. Force collection between enqueue, await settlement and queue
+drain while values, Promise targets and delegate iterators remain observable.
+Assertions must also establish that the first request's await job settles
+before its successor executes, rather than merely checking final values.
+
+After the public regressions are green, regenerate the focused evidence with
+the installed pinned corpus:
+
+```text
+cargo test -p blueice-bluejs --test function_environments
+python3 backend/bluejs/test262/run.py --filter language/expressions/async-generator --output target/test262-async-generator-queue
+python3 backend/bluejs/test262/analyze.py --run target/test262-async-generator-queue --output target/test262-async-generator-queue/analysis
+```
+
+Record the scheduled/pass/fail/unsupported/timeout counts, executable hashes,
+and path/mode transitions in this file. Remaining failures must then be split
+between parser/early-error work, generator constructor and prototype details,
+full async-iterator/`AsyncFromSyncIterator` closing semantics, and unrelated
+object or builtin prerequisites. A successful filtered run closes only this
+serialized-request boundary; host-driven module loading, Proxy/object
+internals, typed arrays/shared memory, the remaining builtin families,
+ECMA-402, and the full Test262 inventory remain their existing workstreams.
+
+### Implementation update: queue scheduling boundary
+
+Implemented 2026-09-11. Async-generator objects now own the request queue in
+their heap record, including queued completion values and target Promises for
+GC tracing and byte accounting. A single scheduler admits only its head while
+the generator is suspended; `await` in the body and `AsyncGeneratorYield` both
+install an await gate. The latter always completes in a Promise job, including
+an already-fulfilled yielded value. Head completion removes exactly one
+request, settles its target, then drains later completed requests iteratively
+or starts the next suspended request. Queued `next`, `return`, and `throw`
+therefore cannot observe the temporary `GeneratorState::Done` used while a
+continuation owns the live frame.
+
+Public regressions prove that a second `next` stays pending while the first
+body await is unresolved, a plain yielded value does not begin the next request
+before its Promise job, queued `return` and `throw` preserve FIFO order, and a
+rejected body await drains later requests as completed. A heap regression
+forces a major collection while the queue holds an object argument and target.
+This update does not yet inject a queued return or throw completion through a
+suspended generator's `catch`/`finally`; that requires preserving active
+handler and pending-completion frames across `yield`. Nor does it yet replace
+the current bytecode-layout detection for an active `yield*` delegate. Those
+are the next P1.3 semantic slices. The fresh pinned focused run above has
+1,212/1,212 passing modes; this is a queue-scheduling result, not an exit
+criterion for those remaining semantics or the full inventory.

@@ -1995,7 +1995,12 @@ impl Vm {
                 self.restore_module_execution(ambient);
                 self.call_depth = ambient_call_depth;
                 let value = self.error_value(error)?;
-                self.settle_promise(target, PromiseStatus::Rejected(value))
+                self.complete_async_generator_request(
+                    generator,
+                    target,
+                    PromiseStatus::Rejected(value),
+                )?;
+                self.resume_async_generator_next(generator)
             }
         }
     }
