@@ -13,6 +13,7 @@ This research runs in parallel with, and directly feeds, several phases — it i
 - **Phase 9** (extension protocol): `extension-architecture.md` grounds the capability list, manifest model, and WASM-over-native decision.
 - **Phase 10/12** (downloads, MCP server): `multi-process-memory.md` grounds their idle-teardown/on-demand-spawn placement.
 - **Phase 13** (BlueJS): `js-engine-gc.md` and `js-bytecode-eventloop.md` ground the GC algorithm, bytecode format, and event-loop shape.
+- **Phase 17** (automation, DevTools and dynamic networking): `automation-and-dynamic-networking.md` records the public CDP/Playwright/WebDriver/Fetch/SOAP contracts that define its native-adapter, page-debugger and API-workbench boundaries.
 
 ### Organization
 
@@ -29,6 +30,7 @@ One file per subsystem studied, named for the subsystem rather than which phase 
 - [x] `safe-browsing-enforcement.md` — Chromium Safe Browsing and Firefox url-classifier enforcement architecture
 - [x] `frontend-ipc.md` — Chromium Viz and Firefox WebRender cross-process frame delivery
 - [x] `js-bytecode-eventloop.md` — SpiderMonkey bytecode format and Blink/Gecko event-loop/render-pass interleaving (V8/Ignition's own source wasn't available in this checkout — see the note in the file)
+- [x] `automation-and-dynamic-networking.md` — public automation, developer-tooling, Fetch/XHR and SOAP/API-workbench contracts; complements rather than replaces the source-checkout notes above
 - [ ] `servo.md` — Servo's module decomposition (plan §4 names it as the closest existing precedent for a Rust engine; Servo isn't cloned under `../reference/` yet — only Gecko and Chromium are)
 
 Each note should record what was actually found — file paths and function/struct names in the reference checkout, not just prose summary — so a later reader can go back to the source instead of trusting the note blindly.
