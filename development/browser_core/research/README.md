@@ -9,7 +9,7 @@ This research runs in parallel with, and directly feeds, several phases — it i
 - **Phase 3** (engine skeleton): the notes plus the reference checkouts themselves are the direct porting basis once implementation starts.
 - **Phase 4** (frontend): `frontend-ipc.md` grounds the core↔frontend frame-delivery channel decision.
 - **Phase 7** (local AI): `safe-browsing-enforcement.md` grounds the gatekeeper enforcement mechanism; `multi-process-memory.md` grounds resident-vs-idle-teardown decisions for `ai-assistant`.
-- **Phase 8** (hot-swap): `multi-process-memory.md` extends the launcher's role to fleet-wide idle-teardown authority and defines Performance (default), Recommended minimum-memory (per-tab soft minimization), and Extreme memory (fleet/per-tab hard-limit) modes.
+- **Phase 8** (hot-swap): `multi-process-memory.md` extends the launcher's role to fleet-wide idle-teardown authority; defines Performance (default), Recommended minimum-memory (per-tab soft minimization), and Extreme memory (fleet/per-tab hard-limit) modes; and records the tab-group, idle, hibernation, and restart lifecycle.
 - **Phase 9** (extension protocol): `extension-architecture.md` grounds the capability list, manifest model, and WASM-over-native decision.
 - **Phase 10/12** (downloads, MCP server): `multi-process-memory.md` grounds their idle-teardown/on-demand-spawn placement.
 - **Phase 13** (BlueJS): `js-engine-gc.md` and `js-bytecode-eventloop.md` ground the GC algorithm, bytecode format, and event-loop shape.
