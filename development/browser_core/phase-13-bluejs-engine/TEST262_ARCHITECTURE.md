@@ -1556,3 +1556,60 @@ comparison with `target/test262-p02-final` finds **627 fail-to-pass and zero
 pass-to-nonpass** transitions; all 6,985 passing negative modes retain a
 classified expected outcome, and no passing result reports an unclassified
 parse error.
+
+## P1.5 continuation: resizable and shared buffers, Atomics, and TypedArray algorithms
+
+Implemented 2026-09-13. ArrayBuffer backing stores now retain a maximum byte
+length, detached state, and shared flag. `new ArrayBuffer(length,
+{ maxByteLength })` creates a resizable store; `resize`, `resizable`,
+`maxByteLength`, `transfer`, and `transferToFixedLength` follow the real
+backing-store transition rather than a Test262-only facade. A transfer copies
+the bounded prefix only after all conversion and allocation steps succeed,
+then detaches its source. Fixed-length and length-tracking DataView and
+TypedArray views recompute their exposed byte and element lengths as a
+resizable store changes, and reject an out-of-bounds fixed view.
+
+`SharedArrayBuffer` shares that representation without a detach transition.
+Its constructor options, `growable`, `maxByteLength`, `grow`, `slice`, species
+creation, and shared DataView/TypedArray views are installed with their own
+internal-slot receiver checks. The focused SharedArrayBuffer selection is
+**208 pass of 208 modes**. The ArrayBuffer transfer selection is **364 pass /
+78 fail** of 442 modes; its residuals are chiefly ImmutableArrayBuffer and
+transfer edge contracts that require a separate immutable-store design.
+
+Atomics now validates a shared integer TypedArray and implements
+`add`, `and`, `compareExchange`, `exchange`, `load`, `or`, `store`, `sub`,
+`xor`, `isLockFree`, `notify`, `pause`, `wait`, and `waitAsync`, including
+Number/BigInt element domains and wrapping. In the current single-agent VM,
+wait completes the immediately observable `not-equal` or `timed-out` state and
+notify returns zero waiters. A real wait list, agent startup/broadcast and
+asynchronous wake-up remain P1.6 host-scheduler work; they must not be
+simulated by reporting an agent assertion as a passing result. The focused
+Atomics selection is **426 pass / 352 fail** of 778 modes.
+
+The shared `%TypedArray%.prototype%` now has receiver-checked
+`at`, `copyWithin`, `every`, `fill`, `filter`, `find`, `findIndex`,
+`findLast`, `findLastIndex`, `forEach`, `includes`, `indexOf`, `join`,
+`lastIndexOf`, `map`, `reduce`, `reduceRight`, `reverse`, `slice`, `some`,
+`sort`, `toReversed`, `toSorted`, and `with`, plus `entries`, `keys`,
+`values`, `@@iterator`, and the species getter. Copying methods use the
+required same-kind or species-created target; callback and conversion steps
+recheck a view after a resize or detach so a stale fixed view cannot continue
+writing. The focused prototype selection is **1,982 pass / 812 fail** of
+2,794 modes, with zero timeout. `Array.prototype.slice` and `splice` were
+also completed far enough to preserve sparse entries, use ArraySpeciesCreate,
+and apply CreateDataPropertyOrThrow; these shared harness dependencies no
+longer weaken existing Array behavior.
+
+The complete rerun at
+`target/test262-p15-shared-typed-regression-fixed` reconciles all 53,404 files
+and 102,578 modes: **66,731 pass, 35,843 fail, 4 timeout, zero unsupported,
+and zero harness errors**. Against `target/test262-p15-membrane-final`, all
+path/mode keys and source hashes match: **3,274 modes changed from fail to
+pass, zero changed from pass to nonpass, and four changed from fail to
+timeout**. The only timeouts are both modes of
+`staging/sm/TypedArray/sort_modifications.js` (wall deadline) and
+`staging/sm/TypedArray/sort_sorted.js` (instruction budget); they remain
+visible in the checked-in report instead of being classified as supported.
+The refreshed complete triage is
+[TEST262_ANALYSIS_REPORT.md](TEST262_ANALYSIS_REPORT.md).

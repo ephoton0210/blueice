@@ -6,8 +6,53 @@
 //! Heap/receiver dispatch stays in the VM; these operations preserve code
 //! units and bound string growth before allocating the result.
 
-use crate::{heap::TypedArrayKind, primitive, JsString, ObjectId, RuntimeError, Value};
+use crate::{
+    heap::{ArrayIteratorKind, TypedArrayKind},
+    primitive, JsString, ObjectId, RuntimeError, Value,
+};
 use unicode_normalization::UnicodeNormalization;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AtomicOp {
+    Add,
+    And,
+    CompareExchange,
+    Exchange,
+    Load,
+    Or,
+    Store,
+    Sub,
+    Xor,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TypedArrayMethod {
+    At,
+    CopyWithin,
+    Every,
+    Fill,
+    Filter,
+    Find,
+    FindIndex,
+    FindLast,
+    FindLastIndex,
+    Map,
+    LastIndexOf,
+    ForEach,
+    Includes,
+    IndexOf,
+    Join,
+    Reduce,
+    ToString,
+    ReduceRight,
+    Reverse,
+    Slice,
+    Some,
+    Sort,
+    ToReversed,
+    ToSorted,
+    With,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NativeFunction {
@@ -19,9 +64,27 @@ pub(crate) enum NativeFunction {
     Array,
     ArrayBuffer,
     ArrayBufferByteLength,
+    ArrayBufferMaxByteLength,
+    ArrayBufferResizable,
+    ArrayBufferResize,
+    ArrayBufferTransfer,
+    ArrayBufferTransferToFixedLength,
     ArrayBufferSlice,
     ArrayBufferIsView,
     ArrayBufferSpecies,
+    SharedArrayBuffer,
+    SharedArrayBufferByteLength,
+    SharedArrayBufferMaxByteLength,
+    SharedArrayBufferGrowable,
+    SharedArrayBufferGrow,
+    SharedArrayBufferSlice,
+    SharedArrayBufferSpecies,
+    Atomics(AtomicOp),
+    AtomicsIsLockFree,
+    AtomicsNotify,
+    AtomicsPause,
+    AtomicsWait,
+    AtomicsWaitAsync,
     DataView,
     DataViewBuffer,
     DataViewByteLength,
@@ -48,6 +111,9 @@ pub(crate) enum NativeFunction {
     TypedArrayLength,
     TypedArraySet,
     TypedArraySubarray,
+    TypedArraySpecies,
+    TypedArrayIterator(ArrayIteratorKind),
+    TypedArrayMethod(TypedArrayMethod),
     Proxy,
     ProxyRevocable,
     ProxyRevoker(ObjectId),
@@ -60,6 +126,8 @@ pub(crate) enum NativeFunction {
     ArrayReduce,
     ArrayPush,
     ArrayIndexOf,
+    ArraySlice,
+    ArraySplice,
     Eval,
     IsNaN,
     IsFinite,
@@ -121,7 +189,7 @@ pub(crate) enum NativeFunction {
     ArrayToString,
     ArrayConcat,
     ArrayJoin,
-    ArrayIterator,
+    ArrayIterator(ArrayIteratorKind),
     ArrayIteratorNext,
     GeneratorNext,
     GeneratorReturn,
@@ -265,6 +333,8 @@ pub(crate) enum ObjectMethod {
     DefineProperty,
     DefineProperties,
     Keys,
+    Values,
+    Entries,
     GetOwnPropertyNames,
     GetOwnPropertySymbols,
     GetPrototypeOf,

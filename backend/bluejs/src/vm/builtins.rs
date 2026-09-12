@@ -13,11 +13,15 @@ mod math;
 mod native_dispatch;
 mod object;
 mod promises;
+mod typed_arrays;
 use crate::heap::{
-    same_value, AsyncGeneratorCompletion, AsyncGeneratorDelegate, AsyncGeneratorRequest,
-    AsyncGeneratorStatus, GeneratorState, TypedArrayKind, TypedArrayNumericKey,
+    same_value, ArrayIteratorKind, AsyncGeneratorCompletion, AsyncGeneratorDelegate,
+    AsyncGeneratorRequest, AsyncGeneratorStatus, GeneratorState, TypedArrayKind,
+    TypedArrayNumericKey,
 };
-use crate::native::{MathMethod, ObjectMethod, PatternMethod, StringMethod};
+use crate::native::{
+    AtomicOp, MathMethod, ObjectMethod, PatternMethod, StringMethod, TypedArrayMethod,
+};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -1685,11 +1689,11 @@ impl Vm {
                         .is_some(),
                 ))
             }
-            Keys | GetOwnPropertyNames | GetOwnPropertySymbols | OwnKeys => {
+            Keys | Values | Entries | GetOwnPropertyNames | GetOwnPropertySymbols | OwnKeys => {
                 let keys = self.object_own_property_keys(object)?;
                 let mut values = Vec::new();
                 for key in keys {
-                    if method == Keys
+                    if matches!(method, Keys | Values | Entries)
                         && (!matches!(key, PropertyName::String(_))
                             || self
                                 .object_get_own_property(object, &key)?
@@ -1705,7 +1709,14 @@ impl Vm {
                     {
                         continue;
                     }
-                    values.push(key.value());
+                    if method == Values {
+                        values.push(self.get_property(&Value::Object(object), &key)?);
+                    } else if method == Entries {
+                        let value = self.get_property(&Value::Object(object), &key)?;
+                        values.push(self.array_from(vec![key.value(), value])?);
+                    } else {
+                        values.push(key.value());
+                    }
                 }
                 self.array_from(values)
             }

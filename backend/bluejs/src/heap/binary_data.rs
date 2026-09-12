@@ -10,17 +10,46 @@ impl Heap {
         byte_length: usize,
         prototype: Option<ObjectId>,
     ) -> Result<ObjectId, HeapError> {
-        // Reject before asking Rust's allocator for an unbounded data block.
-        // The heap limit is also the currently supported ArrayBuffer limit;
-        // a future resizable-buffer implementation will have a separate
-        // maximum-byte-length contract.
-        if byte_length > self.config.max_heap_bytes.saturating_sub(OBJECT_BYTES) {
+        self.alloc_buffer(byte_length, None, false, prototype)
+    }
+
+    pub(crate) fn alloc_resizable_array_buffer(
+        &mut self,
+        byte_length: usize,
+        max_byte_length: usize,
+        prototype: Option<ObjectId>,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc_buffer(byte_length, Some(max_byte_length), false, prototype)
+    }
+
+    pub(crate) fn alloc_shared_array_buffer(
+        &mut self,
+        byte_length: usize,
+        max_byte_length: Option<usize>,
+        prototype: Option<ObjectId>,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc_buffer(byte_length, max_byte_length, true, prototype)
+    }
+
+    fn alloc_buffer(
+        &mut self,
+        byte_length: usize,
+        max_byte_length: Option<usize>,
+        shared: bool,
+        prototype: Option<ObjectId>,
+    ) -> Result<ObjectId, HeapError> {
+        let capacity = self.max_array_buffer_byte_length();
+        if byte_length > capacity
+            || max_byte_length.is_some_and(|maximum| maximum < byte_length || maximum > capacity)
+        {
             return Err(HeapError::InvalidBufferRange);
         }
         self.alloc(
             ObjectKind::ArrayBuffer {
                 bytes: vec![0; byte_length],
                 detached: false,
+                max_byte_length,
+                shared,
             },
             prototype,
         )
@@ -31,9 +60,10 @@ impl Heap {
         buffer: ObjectId,
         byte_offset: usize,
         byte_length: usize,
+        length_tracking: bool,
         prototype: Option<ObjectId>,
     ) -> Result<ObjectId, HeapError> {
-        let length = self.validate_array_buffer(buffer)?;
+        let length = self.validate_buffer(buffer)?;
         if byte_offset
             .checked_add(byte_length)
             .is_none_or(|end| end > length)
@@ -45,6 +75,7 @@ impl Heap {
                 buffer,
                 byte_offset,
                 byte_length,
+                length_tracking,
             },
             prototype,
         )
@@ -55,13 +86,14 @@ impl Heap {
         buffer: ObjectId,
         byte_offset: usize,
         length: usize,
+        length_tracking: bool,
         kind: TypedArrayKind,
         prototype: Option<ObjectId>,
     ) -> Result<ObjectId, HeapError> {
         let byte_length = length
             .checked_mul(kind.byte_width())
             .ok_or(HeapError::InvalidBufferRange)?;
-        let available = self.validate_array_buffer(buffer)?;
+        let available = self.validate_buffer(buffer)?;
         if byte_offset
             .checked_add(byte_length)
             .is_none_or(|end| end > available)
@@ -73,6 +105,7 @@ impl Heap {
                 buffer,
                 byte_offset,
                 length,
+                length_tracking,
                 kind,
             },
             prototype,
@@ -80,6 +113,20 @@ impl Heap {
     }
 
     pub(crate) fn is_array_buffer(&self, object: ObjectId) -> Result<bool, HeapError> {
+        Ok(matches!(
+            self.object(object)?.kind,
+            ObjectKind::ArrayBuffer { shared: false, .. }
+        ))
+    }
+
+    pub(crate) fn is_shared_array_buffer(&self, object: ObjectId) -> Result<bool, HeapError> {
+        Ok(matches!(
+            self.object(object)?.kind,
+            ObjectKind::ArrayBuffer { shared: true, .. }
+        ))
+    }
+
+    pub(crate) fn is_buffer(&self, object: ObjectId) -> Result<bool, HeapError> {
         Ok(matches!(
             self.object(object)?.kind,
             ObjectKind::ArrayBuffer { .. }
@@ -105,6 +152,13 @@ impl Heap {
     }
 
     pub(crate) fn array_buffer_byte_length(&self, object: ObjectId) -> Result<usize, HeapError> {
+        if !self.is_array_buffer(object)? {
+            return Err(HeapError::InvalidInternalSlot(object));
+        }
+        self.buffer_byte_length(object)
+    }
+
+    pub(crate) fn buffer_byte_length(&self, object: ObjectId) -> Result<usize, HeapError> {
         let ObjectKind::ArrayBuffer { bytes, .. } = &self.object(object)?.kind else {
             return Err(HeapError::InvalidInternalSlot(object));
         };
@@ -112,17 +166,40 @@ impl Heap {
     }
 
     pub(crate) fn array_buffer_is_detached(&self, object: ObjectId) -> Result<bool, HeapError> {
-        let ObjectKind::ArrayBuffer { detached, .. } = &self.object(object)?.kind else {
+        let ObjectKind::ArrayBuffer {
+            detached, shared, ..
+        } = &self.object(object)?.kind
+        else {
             return Err(HeapError::InvalidInternalSlot(object));
         };
+        if *shared {
+            return Err(HeapError::InvalidInternalSlot(object));
+        }
         Ok(*detached)
     }
 
-    fn validate_array_buffer(&self, object: ObjectId) -> Result<usize, HeapError> {
-        if self.array_buffer_is_detached(object)? {
+    pub(crate) fn buffer_is_detached(&self, object: ObjectId) -> Result<bool, HeapError> {
+        let ObjectKind::ArrayBuffer {
+            detached, shared, ..
+        } = &self.object(object)?.kind
+        else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(!*shared && *detached)
+    }
+
+    pub(crate) fn buffer_is_shared(&self, object: ObjectId) -> Result<bool, HeapError> {
+        let ObjectKind::ArrayBuffer { shared, .. } = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(*shared)
+    }
+
+    fn validate_buffer(&self, object: ObjectId) -> Result<usize, HeapError> {
+        if self.buffer_is_detached(object)? {
             return Err(HeapError::DetachedArrayBuffer);
         }
-        self.array_buffer_byte_length(object)
+        self.buffer_byte_length(object)
     }
 
     pub(crate) fn detach_array_buffer(&mut self, object: ObjectId) -> Result<(), HeapError> {
@@ -130,9 +207,18 @@ impl Heap {
             .objects
             .get_mut(&object)
             .ok_or(HeapError::InvalidObject(object))?;
-        let ObjectKind::ArrayBuffer { bytes, detached } = &mut obj.kind else {
+        let ObjectKind::ArrayBuffer {
+            bytes,
+            detached,
+            shared,
+            ..
+        } = &mut obj.kind
+        else {
             return Err(HeapError::InvalidInternalSlot(object));
         };
+        if *shared {
+            return Err(HeapError::InvalidInternalSlot(object));
+        }
         if *detached {
             return Err(HeapError::DetachedArrayBuffer);
         }
@@ -145,13 +231,119 @@ impl Heap {
         Ok(())
     }
 
+    pub(crate) fn buffer_max_byte_length(&self, object: ObjectId) -> Result<usize, HeapError> {
+        let ObjectKind::ArrayBuffer {
+            bytes,
+            detached,
+            max_byte_length,
+            shared,
+        } = &self.object(object)?.kind
+        else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        if !*shared && *detached {
+            return Ok(0);
+        }
+        Ok(max_byte_length.unwrap_or(bytes.len()))
+    }
+
+    pub(crate) fn buffer_resizable(&self, object: ObjectId) -> Result<bool, HeapError> {
+        let ObjectKind::ArrayBuffer {
+            detached,
+            max_byte_length,
+            shared,
+            ..
+        } = &self.object(object)?.kind
+        else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(!*shared && !*detached && max_byte_length.is_some())
+    }
+
+    pub(crate) fn buffer_growable(&self, object: ObjectId) -> Result<bool, HeapError> {
+        let ObjectKind::ArrayBuffer {
+            max_byte_length,
+            shared,
+            ..
+        } = &self.object(object)?.kind
+        else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(*shared && max_byte_length.is_some())
+    }
+
+    pub(crate) fn resize_array_buffer(
+        &mut self,
+        object: ObjectId,
+        byte_length: usize,
+    ) -> Result<(), HeapError> {
+        self.resize_buffer(object, byte_length, false)
+    }
+
+    pub(crate) fn grow_shared_array_buffer(
+        &mut self,
+        object: ObjectId,
+        byte_length: usize,
+    ) -> Result<(), HeapError> {
+        self.resize_buffer(object, byte_length, true)
+    }
+
+    fn resize_buffer(
+        &mut self,
+        object: ObjectId,
+        byte_length: usize,
+        shared_operation: bool,
+    ) -> Result<(), HeapError> {
+        let current = self.buffer_byte_length(object)?;
+        let (detached, shared, maximum) = match &self.object(object)?.kind {
+            ObjectKind::ArrayBuffer {
+                detached,
+                shared,
+                max_byte_length,
+                ..
+            } => (*detached, *shared, *max_byte_length),
+            _ => return Err(HeapError::InvalidInternalSlot(object)),
+        };
+        if shared != shared_operation || (!shared && detached) {
+            return Err(HeapError::InvalidInternalSlot(object));
+        }
+        let Some(maximum) = maximum else {
+            return Err(HeapError::InvalidBufferRange);
+        };
+        if byte_length > maximum || (shared && byte_length < current) {
+            return Err(HeapError::InvalidBufferRange);
+        }
+        let growth = byte_length.saturating_sub(current);
+        if growth
+            > self
+                .config
+                .max_heap_bytes
+                .saturating_sub(self.managed_bytes)
+        {
+            return Err(HeapError::HeapLimitExceeded {
+                limit: self.config.max_heap_bytes,
+            });
+        }
+        let obj = self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?;
+        let ObjectKind::ArrayBuffer { bytes, .. } = &mut obj.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        bytes.resize(byte_length, 0);
+        obj.bytes = obj.bytes - current + byte_length;
+        self.managed_bytes = self.managed_bytes - current + byte_length;
+        Ok(())
+    }
+
     pub(crate) fn array_buffer_copy(
         &self,
         object: ObjectId,
         byte_offset: usize,
         byte_length: usize,
     ) -> Result<Vec<u8>, HeapError> {
-        let bytes = self.array_buffer_bytes(object)?;
+        let bytes = self.buffer_bytes(object)?;
         let end = byte_offset
             .checked_add(byte_length)
             .filter(|end| *end <= bytes.len())
@@ -165,7 +357,7 @@ impl Heap {
         byte_offset: usize,
         values: &[u8],
     ) -> Result<(), HeapError> {
-        let bytes = self.array_buffer_bytes_mut(object)?;
+        let bytes = self.buffer_bytes_mut(object)?;
         let end = byte_offset
             .checked_add(values.len())
             .filter(|end| *end <= bytes.len())
@@ -185,11 +377,42 @@ impl Heap {
             buffer,
             byte_offset,
             byte_length,
+            ..
         } = self.object(object)?.kind
         else {
             return Err(HeapError::InvalidInternalSlot(object));
         };
         Ok((buffer, byte_offset, byte_length))
+    }
+
+    pub(crate) fn data_view_current_info(
+        &self,
+        object: ObjectId,
+    ) -> Result<(ObjectId, usize, usize), HeapError> {
+        let ObjectKind::DataView {
+            buffer,
+            byte_offset,
+            byte_length,
+            length_tracking,
+        } = self.object(object)?.kind
+        else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        if self.buffer_is_detached(buffer)? {
+            return Err(HeapError::DetachedArrayBuffer);
+        }
+        let available = self.buffer_byte_length(buffer)?;
+        if byte_offset > available
+            || (!length_tracking && byte_offset.saturating_add(byte_length) > available)
+        {
+            return Err(HeapError::InvalidInternalSlot(object));
+        }
+        let length = if length_tracking {
+            available - byte_offset
+        } else {
+            byte_length
+        };
+        Ok((buffer, byte_offset, length))
     }
 
     /// Returns the `[[ViewedArrayBuffer]]` slot without validating its current
@@ -208,12 +431,62 @@ impl Heap {
             buffer,
             byte_offset,
             length,
+            length_tracking,
             kind,
         } = self.object(object)?.kind
         else {
             return Err(HeapError::InvalidInternalSlot(object));
         };
+        if self.buffer_is_detached(buffer)? {
+            return Ok((buffer, byte_offset, 0, kind));
+        }
+        let available = self.buffer_byte_length(buffer)?;
+        if byte_offset > available {
+            return Ok((buffer, byte_offset, 0, kind));
+        }
+        let length = if length_tracking {
+            (available - byte_offset) / kind.byte_width()
+        } else if byte_offset.saturating_add(length.saturating_mul(kind.byte_width())) > available {
+            0
+        } else {
+            length
+        };
         Ok((buffer, byte_offset, length, kind))
+    }
+
+    pub(crate) fn typed_array_is_out_of_bounds(&self, object: ObjectId) -> Result<bool, HeapError> {
+        let ObjectKind::TypedArray {
+            buffer,
+            byte_offset,
+            length,
+            length_tracking,
+            kind,
+        } = self.object(object)?.kind
+        else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        if self.buffer_is_detached(buffer)? {
+            return Ok(true);
+        }
+        let available = self.buffer_byte_length(buffer)?;
+        if byte_offset > available {
+            return Ok(true);
+        }
+        Ok(!length_tracking
+            && byte_offset.saturating_add(length.saturating_mul(kind.byte_width())) > available)
+    }
+
+    pub(crate) fn typed_array_is_length_tracking(
+        &self,
+        object: ObjectId,
+    ) -> Result<bool, HeapError> {
+        let ObjectKind::TypedArray {
+            length_tracking, ..
+        } = self.object(object)?.kind
+        else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(length_tracking)
     }
 
     pub(crate) fn typed_array_numeric_key(
@@ -236,13 +509,13 @@ impl Heap {
             return Ok(None);
         }
         let (buffer, byte_offset, length, kind) = self.typed_array_info(object)?;
-        if self.array_buffer_is_detached(buffer)? {
+        if self.buffer_is_detached(buffer)? {
             return Ok(None);
         }
         if index >= length {
             return Ok(None);
         }
-        let bytes = self.array_buffer_bytes(buffer)?;
+        let bytes = self.buffer_bytes(buffer)?;
         let start = byte_offset + index * kind.byte_width();
         Ok(Some(typed_read(kind, &bytes[start..])))
     }
@@ -258,23 +531,40 @@ impl Heap {
             return Ok(false);
         }
         let start = byte_offset + index * kind.byte_width();
-        let bytes = self.array_buffer_bytes_mut(buffer)?;
+        let bytes = self.buffer_bytes_mut(buffer)?;
         typed_write(kind, &mut bytes[start..], value);
         Ok(true)
     }
 
-    fn array_buffer_bytes(&self, object: ObjectId) -> Result<&[u8], HeapError> {
-        let ObjectKind::ArrayBuffer { bytes, detached } = &self.object(object)?.kind else {
+    pub(crate) fn typed_array_normalize_value(&self, kind: TypedArrayKind, value: &Value) -> Value {
+        let mut bytes = vec![0; kind.byte_width()];
+        typed_write(kind, &mut bytes, value);
+        typed_read(kind, &bytes)
+    }
+
+    fn buffer_bytes(&self, object: ObjectId) -> Result<&[u8], HeapError> {
+        let ObjectKind::ArrayBuffer {
+            bytes,
+            detached,
+            shared,
+            ..
+        } = &self.object(object)?.kind
+        else {
             return Err(HeapError::InvalidInternalSlot(object));
         };
-        if *detached {
+        if !*shared && *detached {
             return Err(HeapError::DetachedArrayBuffer);
         }
         Ok(bytes)
     }
 
-    fn array_buffer_bytes_mut(&mut self, object: ObjectId) -> Result<&mut [u8], HeapError> {
-        let ObjectKind::ArrayBuffer { bytes, detached } = &mut self
+    fn buffer_bytes_mut(&mut self, object: ObjectId) -> Result<&mut [u8], HeapError> {
+        let ObjectKind::ArrayBuffer {
+            bytes,
+            detached,
+            shared,
+            ..
+        } = &mut self
             .objects
             .get_mut(&object)
             .ok_or(HeapError::InvalidObject(object))?
@@ -282,7 +572,7 @@ impl Heap {
         else {
             return Err(HeapError::InvalidObject(object));
         };
-        if *detached {
+        if !*shared && *detached {
             return Err(HeapError::DetachedArrayBuffer);
         }
         Ok(bytes)

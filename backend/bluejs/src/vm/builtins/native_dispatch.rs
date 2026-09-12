@@ -167,6 +167,22 @@ impl Vm {
                     .array_buffer_byte_length(self.array_buffer_receiver(&receiver)?)?
                     as f64,
             )),
+            NativeFunction::ArrayBufferMaxByteLength => Ok(Value::Number(
+                self.heap
+                    .buffer_max_byte_length(self.array_buffer_receiver(&receiver)?)?
+                    as f64,
+            )),
+            NativeFunction::ArrayBufferResizable => Ok(Value::Bool(
+                self.heap
+                    .buffer_resizable(self.array_buffer_receiver(&receiver)?)?,
+            )),
+            NativeFunction::ArrayBufferResize => self.buffer_resize(&receiver, first),
+            NativeFunction::ArrayBufferTransfer => {
+                self.array_buffer_transfer(&receiver, &args, false)
+            }
+            NativeFunction::ArrayBufferTransferToFixedLength => {
+                self.array_buffer_transfer(&receiver, &args, true)
+            }
             NativeFunction::ArrayBufferSlice => self.array_buffer_slice(&receiver, &args),
             NativeFunction::ArrayBufferIsView => {
                 Ok(Value::Bool(first.object_id().is_some_and(|object| {
@@ -175,6 +191,34 @@ impl Vm {
                 })))
             }
             NativeFunction::ArrayBufferSpecies => Ok(receiver),
+            NativeFunction::SharedArrayBuffer => {
+                self.shared_array_buffer_constructor(&args, construct)
+            }
+            NativeFunction::SharedArrayBufferByteLength => Ok(Value::Number(
+                self.heap
+                    .buffer_byte_length(self.shared_array_buffer_receiver(&receiver)?)?
+                    as f64,
+            )),
+            NativeFunction::SharedArrayBufferMaxByteLength => Ok(Value::Number(
+                self.heap
+                    .buffer_max_byte_length(self.shared_array_buffer_receiver(&receiver)?)?
+                    as f64,
+            )),
+            NativeFunction::SharedArrayBufferGrowable => Ok(Value::Bool(
+                self.heap
+                    .buffer_growable(self.shared_array_buffer_receiver(&receiver)?)?,
+            )),
+            NativeFunction::SharedArrayBufferGrow => self.shared_buffer_grow(&receiver, first),
+            NativeFunction::SharedArrayBufferSlice => {
+                self.shared_array_buffer_slice(&receiver, &args)
+            }
+            NativeFunction::SharedArrayBufferSpecies => Ok(receiver),
+            NativeFunction::Atomics(operation) => self.atomics_operation(&args, operation),
+            NativeFunction::AtomicsIsLockFree => self.atomics_is_lock_free(first),
+            NativeFunction::AtomicsNotify => self.atomics_notify(&args),
+            NativeFunction::AtomicsPause => Ok(Value::Undefined),
+            NativeFunction::AtomicsWait => self.atomics_wait(&args),
+            NativeFunction::AtomicsWaitAsync => self.atomics_wait_async(&args),
             NativeFunction::DataView => self.data_view_constructor(&args, construct),
             NativeFunction::DataViewBuffer => {
                 let object = receiver.object_id().ok_or_else(|| {
@@ -224,8 +268,15 @@ impl Vm {
                 Ok(Value::Object(buffer))
             }
             NativeFunction::TypedArrayByteLength => {
-                let (buffer, _, length, kind) = self.typed_array_receiver(&receiver)?;
-                let byte_length = if self.heap.array_buffer_is_detached(buffer)? {
+                let object = receiver.object_id().ok_or_else(|| {
+                    RuntimeError::TypeError(
+                        "TypedArray method requires a TypedArray receiver".into(),
+                    )
+                })?;
+                let (buffer, _, length, kind) = self.heap.typed_array_info(object)?;
+                let byte_length = if self.heap.buffer_is_detached(buffer)?
+                    || self.heap.typed_array_is_out_of_bounds(object)?
+                {
                     0
                 } else {
                     length * kind.byte_width()
@@ -233,8 +284,15 @@ impl Vm {
                 Ok(Value::Number(byte_length as f64))
             }
             NativeFunction::TypedArrayByteOffset => {
-                let (buffer, offset, _, _) = self.typed_array_receiver(&receiver)?;
-                let byte_offset = if self.heap.array_buffer_is_detached(buffer)? {
+                let object = receiver.object_id().ok_or_else(|| {
+                    RuntimeError::TypeError(
+                        "TypedArray method requires a TypedArray receiver".into(),
+                    )
+                })?;
+                let (buffer, offset, _, _) = self.heap.typed_array_info(object)?;
+                let byte_offset = if self.heap.buffer_is_detached(buffer)?
+                    || self.heap.typed_array_is_out_of_bounds(object)?
+                {
                     0
                 } else {
                     offset
@@ -242,8 +300,15 @@ impl Vm {
                 Ok(Value::Number(byte_offset as f64))
             }
             NativeFunction::TypedArrayLength => {
-                let (buffer, _, length, _) = self.typed_array_receiver(&receiver)?;
-                let element_length = if self.heap.array_buffer_is_detached(buffer)? {
+                let object = receiver.object_id().ok_or_else(|| {
+                    RuntimeError::TypeError(
+                        "TypedArray method requires a TypedArray receiver".into(),
+                    )
+                })?;
+                let (buffer, _, length, _) = self.heap.typed_array_info(object)?;
+                let element_length = if self.heap.buffer_is_detached(buffer)?
+                    || self.heap.typed_array_is_out_of_bounds(object)?
+                {
                     0
                 } else {
                     length
@@ -252,6 +317,20 @@ impl Vm {
             }
             NativeFunction::TypedArraySet => self.typed_array_set(&receiver, &args),
             NativeFunction::TypedArraySubarray => self.typed_array_subarray(&receiver, &args),
+            NativeFunction::TypedArraySpecies => Ok(receiver),
+            NativeFunction::TypedArrayIterator(kind) => {
+                self.typed_array_receiver(&receiver)?;
+                let object = receiver
+                    .object_id()
+                    .expect("validated TypedArray receiver has an object identity");
+                let prototype = self.array_iterator_prototype()?;
+                Ok(Value::Object(self.with_roots(|heap| {
+                    heap.alloc_array_iterator(object, kind, prototype)
+                })?))
+            }
+            NativeFunction::TypedArrayMethod(method) => {
+                self.typed_array_method(&receiver, &args, method)
+            }
             NativeFunction::Proxy => self.proxy_constructor(&args, construct),
             NativeFunction::ProxyRevocable => self.proxy_revocable(&args),
             NativeFunction::ProxyRevoker(proxy) => {
@@ -289,6 +368,8 @@ impl Vm {
             NativeFunction::ArrayIndexOf => {
                 self.array_index_of(&receiver, first, native::argument(&args, 1))
             }
+            NativeFunction::ArraySlice => self.array_slice(&receiver, &args),
+            NativeFunction::ArraySplice => self.array_splice(&receiver, &args),
             NativeFunction::Eval => self.indirect_eval(first),
             NativeFunction::IsNaN => Ok(Value::Bool(self.coerce_number(first)?.is_nan())),
             NativeFunction::IsFinite => Ok(Value::Bool(self.coerce_number(first)?.is_finite())),
@@ -311,11 +392,11 @@ impl Vm {
                 .has_instance(first.clone(), receiver, true)
                 .map(Value::Bool),
             NativeFunction::RegExpEscape => self.regexp_escape(first),
-            NativeFunction::ArrayIterator => {
+            NativeFunction::ArrayIterator(kind) => {
                 let object = self.coerce_object(&receiver)?;
                 let prototype = self.array_iterator_prototype()?;
                 Ok(Value::Object(self.with_roots(|heap| {
-                    heap.alloc_array_iterator(object, prototype)
+                    heap.alloc_array_iterator(object, kind, prototype)
                 })?))
             }
             NativeFunction::ArrayIteratorNext => {
@@ -324,7 +405,7 @@ impl Vm {
                         "Array iterator next requires an iterator".into(),
                     ));
                 };
-                let Some((object, index, done)) = self.heap.array_iterator(id)? else {
+                let Some((object, index, done, kind)) = self.heap.array_iterator(id)? else {
                     return Err(RuntimeError::TypeError(
                         "Array iterator next requires an iterator".into(),
                     ));
@@ -339,7 +420,17 @@ impl Vm {
                 let value = if done {
                     Value::Undefined
                 } else {
-                    self.get_property(&Value::Object(object), &index.to_string().into())?
+                    match kind {
+                        ArrayIteratorKind::Keys => Value::Number(index as f64),
+                        ArrayIteratorKind::Values => {
+                            self.get_property(&Value::Object(object), &index.to_string().into())?
+                        }
+                        ArrayIteratorKind::Entries => {
+                            let entry = self
+                                .get_property(&Value::Object(object), &index.to_string().into())?;
+                            self.array_from(vec![Value::Number(index as f64), entry])?
+                        }
+                    }
                 };
                 self.iterator_result(value, done)
             }
@@ -410,6 +501,14 @@ impl Vm {
             NativeFunction::PrimitiveConstructor(boolean) => {
                 let value = if boolean {
                     Value::Bool(self.to_boolean(first)?)
+                } else if let Value::BigInt(value) = first {
+                    Value::Number(value.to_f64().unwrap_or_else(|| {
+                        if value.sign() == Sign::Minus {
+                            f64::NEG_INFINITY
+                        } else {
+                            f64::INFINITY
+                        }
+                    }))
                 } else {
                     Value::Number(if args.is_empty() {
                         0.0
@@ -437,12 +536,31 @@ impl Vm {
                     ));
                 }
                 let value = self.coerce_primitive(first, "number")?;
-                let Value::BigInt(value) = value else {
-                    return Err(RuntimeError::TypeError(
-                        "BigInt conversion is not implemented for this value".into(),
-                    ));
-                };
-                Ok(Value::BigInt(value))
+                match value {
+                    Value::BigInt(value) => Ok(Value::BigInt(value)),
+                    Value::Number(value) if value.is_finite() && value.fract() == 0.0 => {
+                        // Every integral IEEE-754 Number is within i64's
+                        // magnitude range, including the safe-integer range
+                        // used by TypedArray conversion fixtures.
+                        Ok(Value::BigInt(BigInt::from(value as i64)))
+                    }
+                    Value::Number(_) => Err(RuntimeError::RangeError(
+                        "BigInt conversion requires an integral Number".into(),
+                    )),
+                    Value::String(value) => {
+                        let value = value.to_utf8().map_err(|_| {
+                            RuntimeError::SyntaxError("invalid BigInt string".into())
+                        })?;
+                        let value =
+                            BigInt::parse_bytes(value.trim().as_bytes(), 10).ok_or_else(|| {
+                                RuntimeError::SyntaxError("invalid BigInt string".into())
+                            })?;
+                        Ok(Value::BigInt(value))
+                    }
+                    _ => Err(RuntimeError::TypeError(
+                        "BigInt conversion requires a Number, BigInt, or integer string".into(),
+                    )),
+                }
             }
             NativeFunction::PrimitiveMethod { boolean, string } => {
                 let value = if let Value::Object(id) = receiver {

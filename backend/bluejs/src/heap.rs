@@ -536,21 +536,26 @@ enum ObjectKind {
     Array {
         length: u32,
     },
-    /// A fixed-length, non-shared ArrayBuffer backing store.  Resizable and
-    /// shared buffers deliberately remain separate P1.5 slices.
+    /// The byte storage shared by ArrayBuffer and SharedArrayBuffer.  The
+    /// `shared` marker is an internal-slot brand: ordinary ArrayBuffers can
+    /// detach and resize, while shared stores cannot detach and can only grow.
     ArrayBuffer {
         bytes: Vec<u8>,
         detached: bool,
+        max_byte_length: Option<usize>,
+        shared: bool,
     },
     DataView {
         buffer: ObjectId,
         byte_offset: usize,
         byte_length: usize,
+        length_tracking: bool,
     },
     TypedArray {
         buffer: ObjectId,
         byte_offset: usize,
         length: usize,
+        length_tracking: bool,
         kind: TypedArrayKind,
     },
     Proxy {
@@ -592,6 +597,7 @@ enum ObjectKind {
         object: ObjectId,
         index: u64,
         done: bool,
+        kind: ArrayIteratorKind,
     },
     RegExpIterator {
         matcher: ObjectId,
@@ -606,6 +612,16 @@ enum ObjectKind {
     ModuleNamespace {
         exports: Vec<(JsString, ObjectId)>,
     },
+}
+
+/// The three observable forms of Array Iterator. TypedArray reuses this
+/// internal iterator because its integer-indexed properties are read through
+/// the ordinary VM property boundary on every `next` call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ArrayIteratorKind {
+    Keys,
+    Values,
+    Entries,
 }
 
 /// Fixed-width element representations supported by the first non-shared
@@ -664,6 +680,24 @@ impl TypedArrayKind {
 
     pub(crate) const fn bigint(self) -> bool {
         matches!(self, Self::BigInt64 | Self::BigUint64)
+    }
+
+    pub(crate) const fn atomic(self) -> bool {
+        matches!(
+            self,
+            Self::Int8
+                | Self::Uint8
+                | Self::Int16
+                | Self::Uint16
+                | Self::Int32
+                | Self::Uint32
+                | Self::BigInt64
+                | Self::BigUint64
+        )
+    }
+
+    pub(crate) const fn waitable(self) -> bool {
+        matches!(self, Self::Int32 | Self::BigInt64)
     }
 }
 
@@ -1660,6 +1694,7 @@ impl Heap {
     pub(crate) fn alloc_array_iterator(
         &mut self,
         object: ObjectId,
+        kind: ArrayIteratorKind,
         prototype: ObjectId,
     ) -> Result<ObjectId, HeapError> {
         self.alloc(
@@ -1667,6 +1702,7 @@ impl Heap {
                 object,
                 index: 0,
                 done: false,
+                kind,
             },
             Some(prototype),
         )
@@ -1674,13 +1710,14 @@ impl Heap {
     pub(crate) fn array_iterator(
         &self,
         id: ObjectId,
-    ) -> Result<Option<(ObjectId, u64, bool)>, HeapError> {
+    ) -> Result<Option<(ObjectId, u64, bool, ArrayIteratorKind)>, HeapError> {
         Ok(match self.object(id)?.kind {
             ObjectKind::ArrayIterator {
                 object,
                 index,
                 done,
-            } => Some((object, index, done)),
+                kind,
+            } => Some((object, index, done, kind)),
             _ => None,
         })
     }

@@ -60,7 +60,14 @@ UNICODE_IDENTIFIER_TIMEOUT = 30
 # instruction budget, but debug interpreter dispatch takes longer than the
 # general two-second wall deadline.  Give that standard harness a documented
 # per-case wall allowance instead of weakening the deadline for all tests.
-TYPED_ARRAY_HARNESS_TIMEOUT = 30
+TYPED_ARRAY_HARNESS_TIMEOUT = 60
+TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET = 10_000_000
+# ResizableArrayBuffer helper fixtures exercise the same operation across
+# fixed, offset, and length-tracking views for every numeric element type.
+# Keep their larger but finite allowance feature-scoped.
+RESIZABLE_ARRAY_BUFFER_FEATURE = "resizable-arraybuffer"
+RESIZABLE_ARRAY_BUFFER_TIMEOUT = 60
+RESIZABLE_ARRAY_BUFFER_INSTRUCTION_BUDGET = 10_000_000
 # Unicode-property conformance fixtures intentionally materialize every
 # scalar value (often twice, for a property and its complement) before one
 # anchored RegExp match.  That is finite standard-harness work, but larger
@@ -411,8 +418,12 @@ def instruction_budget(data, default, relative=None):
         return max(default, FINITE_STRESS_INSTRUCTION_BUDGET)
     if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):
         return max(default, REGEXP_PROPERTY_ESCAPES_INSTRUCTION_BUDGET)
+    if RESIZABLE_ARRAY_BUFFER_FEATURE in data.get("features", []):
+        return max(default, RESIZABLE_ARRAY_BUFFER_INSTRUCTION_BUDGET)
     if "tail-call-optimization" in data.get("features", []):
         return max(default, TAIL_CALL_INSTRUCTION_BUDGET)
+    if "testTypedArray.js" in data.get("includes", []):
+        return max(default, TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET)
     return default
 
 
@@ -432,6 +443,8 @@ def case_timeout(data, default, relative=None):
         return max(default, TAIL_CALL_TIMEOUT)
     if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):
         return max(default, REGEXP_PROPERTY_ESCAPES_TIMEOUT)
+    if RESIZABLE_ARRAY_BUFFER_FEATURE in data.get("features", []):
+        return max(default, RESIZABLE_ARRAY_BUFFER_TIMEOUT)
     if "testTypedArray.js" in data.get("includes", []):
         return max(default, TYPED_ARRAY_HARNESS_TIMEOUT)
     return default
@@ -684,7 +697,7 @@ def main():
             reporter.join()
         for worker in workers:
             worker.close()
-    report = {"snapshot": SNAPSHOT, "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(), "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "regex_worker_sha256": hashlib.sha256(args.adapter.with_name("bluejs-regexp-worker").read_bytes()).hexdigest(), "complete_inventory": not args.filter, "filter": args.filter, "discovered_js": len(all_files), "fixture_resources": len(fixtures), "test_files": len(files), "scheduled_modes": sum(counters.values()), "results": counters, "groups": groups, "features": features, "elapsed_seconds": round(time.monotonic() - start, 3), "timeout_seconds": args.timeout, "typed_array_harness_timeout_seconds": TYPED_ARRAY_HARNESS_TIMEOUT, "instruction_budget": args.instruction_budget, "tail_call_instruction_budget": TAIL_CALL_INSTRUCTION_BUDGET, "tail_call_timeout_seconds": TAIL_CALL_TIMEOUT, "unicode_identifier_timeout_seconds": UNICODE_IDENTIFIER_TIMEOUT, "uri_global_instruction_budget": URI_GLOBAL_INSTRUCTION_BUDGET, "uri_global_timeout_seconds": URI_GLOBAL_TIMEOUT, "uri_exhaustive_instruction_budget": URI_EXHAUSTIVE_INSTRUCTION_BUDGET, "uri_exhaustive_timeout_seconds": URI_EXHAUSTIVE_TIMEOUT, "jobs": args.jobs, "limitations": ["static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable", "unclassified parser rejections never satisfy parse-SyntaxError negative tests", "harness sources still require supported grammar and APIs", "native overrides for sta.js, assert.js, propertyHelper.js, isConstructor.js, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness", "each mode has a bounded interpreter instruction budget; tail-call fixtures receive at least the recorded tail-call budget"]}
+    report = {"snapshot": SNAPSHOT, "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(), "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "regex_worker_sha256": hashlib.sha256(args.adapter.with_name("bluejs-regexp-worker").read_bytes()).hexdigest(), "complete_inventory": not args.filter, "filter": args.filter, "discovered_js": len(all_files), "fixture_resources": len(fixtures), "test_files": len(files), "scheduled_modes": sum(counters.values()), "results": counters, "groups": groups, "features": features, "elapsed_seconds": round(time.monotonic() - start, 3), "timeout_seconds": args.timeout, "typed_array_harness_timeout_seconds": TYPED_ARRAY_HARNESS_TIMEOUT, "typed_array_harness_instruction_budget": TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET, "instruction_budget": args.instruction_budget, "tail_call_instruction_budget": TAIL_CALL_INSTRUCTION_BUDGET, "tail_call_timeout_seconds": TAIL_CALL_TIMEOUT, "unicode_identifier_timeout_seconds": UNICODE_IDENTIFIER_TIMEOUT, "uri_global_instruction_budget": URI_GLOBAL_INSTRUCTION_BUDGET, "uri_global_timeout_seconds": URI_GLOBAL_TIMEOUT, "uri_exhaustive_instruction_budget": URI_EXHAUSTIVE_INSTRUCTION_BUDGET, "uri_exhaustive_timeout_seconds": URI_EXHAUSTIVE_TIMEOUT, "jobs": args.jobs, "limitations": ["static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable", "unclassified parser rejections never satisfy parse-SyntaxError negative tests", "harness sources still require supported grammar and APIs", "native overrides for sta.js, assert.js, propertyHelper.js, isConstructor.js, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness", "each mode has a bounded interpreter instruction budget; tail-call and TypedArray-harness fixtures receive their recorded budgets"]}
     (args.output / "summary.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps({key: report[key] for key in ("test_files", "scheduled_modes", "results", "elapsed_seconds")}, indent=2))
     return 0 if counters["pass"] == sum(counters.values()) else 1

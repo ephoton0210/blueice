@@ -8,8 +8,8 @@
 
 use crate::bytecode::{Binding, ModuleExport, ModuleImportName};
 use crate::heap::{
-    GeneratorHandlerFrame, GeneratorHandlerState, GeneratorPendingCompletion, GeneratorState,
-    PrivateElement,
+    ArrayIteratorKind, GeneratorHandlerFrame, GeneratorHandlerState, GeneratorPendingCompletion,
+    GeneratorState, PrivateElement,
 };
 use crate::native::{self, NativeFunction};
 use crate::primitive;
@@ -1136,12 +1136,26 @@ impl Vm {
                 1,
                 NativeFunction::ArrayIndexOf,
             )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
+                "slice",
+                2,
+                NativeFunction::ArraySlice,
+            )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
+                "splice",
+                2,
+                NativeFunction::ArraySplice,
+            )?;
             self.install_symbol_native(
                 self.array_prototype,
                 function_prototype,
                 "iterator",
                 0,
-                NativeFunction::ArrayIterator,
+                NativeFunction::ArrayIterator(ArrayIteratorKind::Values),
             )?;
             Ok((constructor, prototype))
         })();
@@ -1447,6 +1461,7 @@ impl Vm {
                 NativeFunction::String
                     | NativeFunction::Array
                     | NativeFunction::ArrayBuffer
+                    | NativeFunction::SharedArrayBuffer
                     | NativeFunction::DataView
                     | NativeFunction::TypedArray(_)
                     | NativeFunction::Proxy

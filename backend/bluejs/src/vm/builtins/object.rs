@@ -54,7 +54,7 @@ impl Vm {
             return Ok(false);
         };
         let (buffer, _, length, kind) = self.heap.typed_array_info(object)?;
-        if self.heap.array_buffer_is_detached(buffer)? || index >= length {
+        if self.heap.buffer_is_detached(buffer)? || index >= length {
             return Ok(false);
         }
         if descriptor.accessor()
@@ -71,7 +71,7 @@ impl Vm {
         // IntegerIndexedElementSet converts first. A conversion may detach the
         // backing buffer; in that case the already-valid DefineOwnProperty
         // operation still succeeds without writing a byte.
-        if self.heap.array_buffer_is_detached(buffer)? {
+        if self.heap.buffer_is_detached(buffer)? {
             return Ok(true);
         }
         self.with_roots(|heap| heap.typed_array_set_index(object, index, &value))
@@ -183,7 +183,7 @@ impl Vm {
                     // Conversion can detach the buffer, in which case this
                     // successful [[Set]] performs no byte write.
                     let (buffer, _, _, _) = self.heap.typed_array_info(target)?;
-                    if !self.heap.array_buffer_is_detached(buffer)? {
+                    if !self.heap.buffer_is_detached(buffer)? {
                         self.with_roots(|heap| heap.typed_array_set_index(target, index, &value))?;
                     }
                 }
@@ -221,7 +221,7 @@ impl Vm {
                                 unreachable!("valid TypedArray index has an integer index")
                             };
                             let (buffer, _, _, _) = self.heap.typed_array_info(object)?;
-                            if !self.heap.array_buffer_is_detached(buffer)? {
+                            if !self.heap.buffer_is_detached(buffer)? {
                                 self.with_roots(|heap| {
                                     heap.typed_array_set_index(object, index, &value)
                                 })?;
@@ -343,6 +343,10 @@ impl Vm {
                 Some("Object")
             } else if default == self.function_prototype()? {
                 Some("Function")
+            } else if default == self.buffer_prototype("ArrayBuffer")? {
+                Some("ArrayBuffer")
+            } else if default == self.buffer_prototype("SharedArrayBuffer")? {
+                Some("SharedArrayBuffer")
             } else {
                 None
             };
@@ -410,6 +414,7 @@ impl Vm {
                     | NativeFunction::String
                     | NativeFunction::Array
                     | NativeFunction::ArrayBuffer
+                    | NativeFunction::SharedArrayBuffer
                     | NativeFunction::DataView
                     | NativeFunction::TypedArray(_)
                     | NativeFunction::Proxy

@@ -53,6 +53,7 @@ impl Vm {
             "Symbol" => NativeFunction::Symbol,
             "Array" => NativeFunction::Array,
             "ArrayBuffer" => NativeFunction::ArrayBuffer,
+            "SharedArrayBuffer" => NativeFunction::SharedArrayBuffer,
             "DataView" => NativeFunction::DataView,
             "Int8Array" => NativeFunction::TypedArray(TypedArrayKind::Int8),
             "Uint8Array" => NativeFunction::TypedArray(TypedArrayKind::Uint8),
@@ -91,14 +92,14 @@ impl Vm {
         } else {
             prototype
         };
-        let id = if matches!(name, "Reflect" | "globalThis" | "import") {
+        let id = if matches!(name, "Reflect" | "globalThis" | "import" | "Atomics") {
             self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?
         } else {
             self.with_roots(|heap| heap.alloc_native_function(native, name, native_prototype))?
         };
         let root = self.heap.root(id)?;
         let result = (|| {
-            if !matches!(name, "Reflect" | "globalThis" | "import") {
+            if !matches!(name, "Reflect" | "globalThis" | "import" | "Atomics") {
                 self.define_data(
                     id,
                     "length",
@@ -225,9 +226,10 @@ impl Vm {
                 )?;
                 self.install_native(id, prototype, "isArray", 1, NativeFunction::ArrayIsArray)?;
                 self.install_native(id, prototype, "from", 1, NativeFunction::ArrayFrom)?;
-            } else if name == "ArrayBuffer" {
+            } else if matches!(name, "ArrayBuffer" | "SharedArrayBuffer") {
                 let buffer_prototype =
                     self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+                let shared = name == "SharedArrayBuffer";
                 self.define_data(
                     id,
                     "prototype",
@@ -247,7 +249,7 @@ impl Vm {
                 self.define_data(
                     buffer_prototype,
                     JsSymbol::well_known("toStringTag"),
-                    Value::String("ArrayBuffer".into()),
+                    Value::String(name.into()),
                     false,
                     false,
                     true,
@@ -256,28 +258,89 @@ impl Vm {
                     buffer_prototype,
                     prototype,
                     "byteLength",
-                    NativeFunction::ArrayBufferByteLength,
+                    if shared {
+                        NativeFunction::SharedArrayBufferByteLength
+                    } else {
+                        NativeFunction::ArrayBufferByteLength
+                    },
                 )?;
+                self.install_native_getter(
+                    buffer_prototype,
+                    prototype,
+                    "maxByteLength",
+                    if shared {
+                        NativeFunction::SharedArrayBufferMaxByteLength
+                    } else {
+                        NativeFunction::ArrayBufferMaxByteLength
+                    },
+                )?;
+                self.install_native_getter(
+                    buffer_prototype,
+                    prototype,
+                    if shared { "growable" } else { "resizable" },
+                    if shared {
+                        NativeFunction::SharedArrayBufferGrowable
+                    } else {
+                        NativeFunction::ArrayBufferResizable
+                    },
+                )?;
+                self.install_native(
+                    buffer_prototype,
+                    prototype,
+                    if shared { "grow" } else { "resize" },
+                    1,
+                    if shared {
+                        NativeFunction::SharedArrayBufferGrow
+                    } else {
+                        NativeFunction::ArrayBufferResize
+                    },
+                )?;
+                if !shared {
+                    self.install_native(
+                        buffer_prototype,
+                        prototype,
+                        "transfer",
+                        0,
+                        NativeFunction::ArrayBufferTransfer,
+                    )?;
+                    self.install_native(
+                        buffer_prototype,
+                        prototype,
+                        "transferToFixedLength",
+                        0,
+                        NativeFunction::ArrayBufferTransferToFixedLength,
+                    )?;
+                }
                 self.install_native(
                     buffer_prototype,
                     prototype,
                     "slice",
                     2,
-                    NativeFunction::ArrayBufferSlice,
+                    if shared {
+                        NativeFunction::SharedArrayBufferSlice
+                    } else {
+                        NativeFunction::ArrayBufferSlice
+                    },
                 )?;
-                self.install_native(
-                    id,
-                    prototype,
-                    "isView",
-                    1,
-                    NativeFunction::ArrayBufferIsView,
-                )?;
+                if !shared {
+                    self.install_native(
+                        id,
+                        prototype,
+                        "isView",
+                        1,
+                        NativeFunction::ArrayBufferIsView,
+                    )?;
+                }
                 self.install_getter(
                     id,
                     prototype,
                     JsSymbol::well_known("species").into(),
                     "get [Symbol.species]",
-                    NativeFunction::ArrayBufferSpecies,
+                    if shared {
+                        NativeFunction::SharedArrayBufferSpecies
+                    } else {
+                        NativeFunction::ArrayBufferSpecies
+                    },
                 )?;
             } else if name == "DataView" {
                 let view_prototype =
@@ -586,6 +649,37 @@ impl Vm {
                     false,
                     true,
                 )?;
+            } else if name == "Atomics" {
+                for (name, length, function) in [
+                    ("add", 3, NativeFunction::Atomics(AtomicOp::Add)),
+                    ("and", 3, NativeFunction::Atomics(AtomicOp::And)),
+                    (
+                        "compareExchange",
+                        4,
+                        NativeFunction::Atomics(AtomicOp::CompareExchange),
+                    ),
+                    ("exchange", 3, NativeFunction::Atomics(AtomicOp::Exchange)),
+                    ("load", 2, NativeFunction::Atomics(AtomicOp::Load)),
+                    ("or", 3, NativeFunction::Atomics(AtomicOp::Or)),
+                    ("store", 3, NativeFunction::Atomics(AtomicOp::Store)),
+                    ("sub", 3, NativeFunction::Atomics(AtomicOp::Sub)),
+                    ("xor", 3, NativeFunction::Atomics(AtomicOp::Xor)),
+                    ("isLockFree", 1, NativeFunction::AtomicsIsLockFree),
+                    ("notify", 3, NativeFunction::AtomicsNotify),
+                    ("pause", 0, NativeFunction::AtomicsPause),
+                    ("wait", 4, NativeFunction::AtomicsWait),
+                    ("waitAsync", 4, NativeFunction::AtomicsWaitAsync),
+                ] {
+                    self.install_native(id, prototype, name, length, function)?;
+                }
+                self.define_data(
+                    id,
+                    JsSymbol::well_known("toStringTag"),
+                    Value::String("Atomics".into()),
+                    false,
+                    false,
+                    true,
+                )?;
             } else if name == "Object" {
                 self.define_data(
                     id,
@@ -609,6 +703,8 @@ impl Vm {
                     ("defineProperty", 3, DefineProperty),
                     ("defineProperties", 2, DefineProperties),
                     ("keys", 1, Keys),
+                    ("values", 1, Values),
+                    ("entries", 1, Entries),
                     ("getOwnPropertyNames", 1, GetOwnPropertyNames),
                     ("getOwnPropertySymbols", 1, GetOwnPropertySymbols),
                     ("getPrototypeOf", 1, GetPrototypeOf),

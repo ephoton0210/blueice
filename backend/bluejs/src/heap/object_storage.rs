@@ -608,7 +608,7 @@ impl Heap {
                 return Ok(true);
             };
             let (buffer, _, length, _) = self.typed_array_info(object)?;
-            return Ok(self.array_buffer_is_detached(buffer)? || index >= length);
+            return Ok(self.buffer_is_detached(buffer)? || index >= length);
         }
         if self.module_namespace_export_cell(object, &key)?.is_some() {
             return Ok(false);
@@ -678,9 +678,10 @@ impl Heap {
                 indices.push((index, index.to_string().into()));
             }
         }
-        if let ObjectKind::TypedArray { buffer, length, .. } = &obj.kind {
-            if !self.array_buffer_is_detached(*buffer)? {
-                for index in 0..*length {
+        if let ObjectKind::TypedArray { buffer, .. } = &obj.kind {
+            if !self.buffer_is_detached(*buffer)? {
+                let (_, _, length, _) = self.typed_array_info(object)?;
+                for index in 0..length {
                     indices.push((index, index.to_string().into()));
                 }
             }

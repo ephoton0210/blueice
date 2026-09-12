@@ -131,6 +131,34 @@ fn fixed_length_array_buffers_views_and_typed_indices_share_backing_bytes() {
             "let signed=new BigInt64Array([-1n,9223372036854775808n]);let unsigned=new BigUint64Array(1);unsigned[0]=-1n;let view=new DataView(unsigned.buffer);let typeError=false;try{signed[0]=1}catch(error){typeError=error instanceof TypeError}signed.length===2&&signed[0]===-1n&&signed[1]===-9223372036854775808n&&unsigned[0]===18446744073709551615n&&view.getBigInt64(0,true)===-1n&&view.getBigUint64(0,true)===18446744073709551615n&&BigInt64Array.BYTES_PER_ELEMENT===8&&BigUint64Array.BYTES_PER_ELEMENT===8&&typeError",
             Value::Bool(true),
         ),
+        (
+            "let buffer=new ArrayBuffer(4,{maxByteLength:8});let tracking=new Uint8Array(buffer);let fixed=new Uint8Array(buffer,0,4);let view=new DataView(buffer);tracking[3]=7;buffer.resize(6);let grown=buffer.resizable&&buffer.maxByteLength===8&&buffer.byteLength===6&&tracking.length===6&&tracking[3]===7&&tracking[5]===0&&fixed.length===4&&view.byteLength===6;buffer.resize(2);let rejected=false;try{fixed.set([1])}catch(error){rejected=error instanceof TypeError}grown&&buffer.byteLength===2&&tracking.length===2&&view.byteLength===2&&fixed.length===0&&fixed.byteLength===0&&fixed.byteOffset===0&&fixed[0]===undefined&&rejected",
+            Value::Bool(true),
+        ),
+        (
+            "let buffer=new SharedArrayBuffer(4,{maxByteLength:8});let bytes=new Uint8Array(buffer);let view=new DataView(buffer);bytes[0]=7;buffer.grow(6);let slice=buffer.slice(0,1);let rejected=false;try{ArrayBuffer.prototype.resize.call(buffer,1)}catch(error){rejected=error instanceof TypeError}buffer.growable&&buffer.maxByteLength===8&&buffer.byteLength===6&&bytes.length===6&&bytes[0]===7&&bytes[5]===0&&view.byteLength===6&&slice instanceof SharedArrayBuffer&&new Uint8Array(slice)[0]===7&&rejected",
+            Value::Bool(true),
+        ),
+        (
+            "let buffer=new SharedArrayBuffer(16);let ints=new Int32Array(buffer);let big=new BigInt64Array(buffer);let stored=Atomics.store(ints,0,5)===5;let added=Atomics.add(ints,0,2)===5&&Atomics.load(ints,0)===7;let bits=Atomics.or(ints,0,8)===7&&Atomics.and(ints,0,13)===15&&Atomics.xor(ints,0,3)===13&&Atomics.sub(ints,0,3)===14;let exchanged=Atomics.exchange(ints,0,4)===11&&Atomics.compareExchange(ints,0,4,9)===4&&ints[0]===9;let bigint=Atomics.store(big,1,5n)===5n&&Atomics.add(big,1,2n)===5n&&Atomics.load(big,1)===7n;let waiting=Atomics.wait(ints,0,8,0)==='not-equal'&&Atomics.wait(ints,0,9,0)==='timed-out';let async=Atomics.waitAsync(ints,0,8,0);stored&&added&&bits&&exchanged&&bigint&&waiting&&async.async===false&&async.value==='not-equal'&&Atomics.notify(ints,0)===0&&Atomics.isLockFree(4)&&Atomics.pause()===undefined",
+            Value::Bool(true),
+        ),
+        (
+            "let source=new ArrayBuffer(4,{maxByteLength:8});new Uint8Array(source).set([1,2,3,4]);let moved=source.transfer(6);let preserving=moved.resizable&&moved.maxByteLength===8&&moved.byteLength===6;let fixed=moved.transferToFixedLength(3);let detached=source.byteLength===0&&moved.byteLength===0;preserving&&detached&&moved.resizable===false&&fixed.resizable===false&&fixed.maxByteLength===3&&fixed.byteLength===3&&new Uint8Array(fixed).join()==='1,2,3'",
+            Value::Bool(true),
+        ),
+        (
+            "let typed=new Int16Array([1,2,3,4]);let read=typed.at(-1)===4&&typed.includes(2)&&typed.indexOf(3)===2&&typed.join('-')==='1-2-3-4'&&typed.reduce(function(total,value){return total+value},0)===10&&typed.reduceRight(function(total,value){return total-value},0)===-10;let callback=typed.every(function(value){return value>0})&&typed.some(function(value){return value===3})&&typed.find(function(value){return value>2})===3&&typed.findIndex(function(value){return value===3})===2&&typed.findLast(function(value){return value<4})===3&&typed.findLastIndex(function(value){return value<4})===2;let mapped=typed.map(function(value){return value*2});let filtered=typed.filter(function(value){return value%2===0});typed.copyWithin(1,2);typed.fill(9,3);let altered=typed[0]===1&&typed[1]===3&&typed[2]===4&&typed[3]===9;typed.reverse();read&&callback&&mapped[0]===2&&mapped[3]===8&&filtered.length===2&&filtered[0]===2&&filtered[1]===4&&altered&&typed[0]===9&&typed[3]===1&&typed.values===typed[Symbol.iterator]",
+            Value::Bool(true),
+        ),
+        (
+            "let typed=new Int16Array([3,1,2,1]);let keys=typed.keys();let entries=typed.entries();let iterators=keys.next().value===0&&keys.next().value===1&&entries.next().value[0]===0&&entries.next().value[1]===1;let last=typed.lastIndexOf(1)===3&&typed.lastIndexOf(1,2)===1;let sliced=typed.slice(1,3);let reversed=typed.toReversed();let replaced=typed.with(-1,9);let sorted=typed.toSorted();typed.sort(function(a,b){return b-a});iterators&&last&&sliced.join()==='1,2'&&reversed.join()==='1,2,1,3'&&replaced.join()==='3,1,2,9'&&sorted.join()==='1,1,2,3'&&typed.join()==='3,2,1,1'",
+            Value::Bool(true),
+        ),
+        (
+            "let typed=new Uint8Array([1,2]);let calls=0;let holder={};holder[Symbol.species]=function(length){calls++;return new Int16Array(length)};typed.constructor=holder;let mapped=typed.map(function(value){return value+1});let filtered=typed.filter(function(value){return value>1});let sliced=typed.slice(0,1);calls===3&&mapped instanceof Int16Array&&mapped.join()==='2,3'&&filtered instanceof Int16Array&&filtered[0]===2&&sliced instanceof Int16Array&&sliced[0]===1",
+            Value::Bool(true),
+        ),
     ] {
         let actual = evaluate(source).unwrap_or_else(|error| panic!("{source}: {error}"));
         assert_eq!(actual, expected, "{source}");

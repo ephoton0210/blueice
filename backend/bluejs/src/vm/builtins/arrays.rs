@@ -330,4 +330,213 @@ impl Vm {
         self.stack.pop();
         result
     }
+
+    fn array_species_create(
+        &mut self,
+        original: ObjectId,
+        length: usize,
+    ) -> Result<ObjectId, RuntimeError> {
+        let ordinary_array = |vm: &mut Self| {
+            let length = u32::try_from(length)
+                .map_err(|_| RuntimeError::RangeError("invalid Array length".into()))?;
+            let prototype = vm.array_prototype;
+            vm.with_roots(|heap| heap.alloc_array(length, Some(prototype)))
+        };
+        if !self.heap.is_array(original)? {
+            return ordinary_array(self);
+        }
+        let original = Value::Object(original);
+        let constructor = self.get_property(&original, &"constructor".into())?;
+        if constructor == Value::Undefined {
+            return ordinary_array(self);
+        }
+        if !matches!(constructor, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "Array constructor must be an object".into(),
+            ));
+        }
+        let species = self.get_property(&constructor, &JsSymbol::well_known("species").into())?;
+        if matches!(species, Value::Undefined | Value::Null) {
+            return ordinary_array(self);
+        }
+        if !self.is_constructor(&species)? {
+            return Err(RuntimeError::TypeError(
+                "Array species must be a constructor".into(),
+            ));
+        }
+        self.call_with_target(
+            species.clone(),
+            Value::Undefined,
+            vec![Value::Number(length as f64)],
+            true,
+            species,
+        )?
+        .object_id()
+        .ok_or_else(|| RuntimeError::TypeError("Array species must return an object".into()))
+    }
+
+    fn array_set_or_throw(
+        &mut self,
+        object: ObjectId,
+        key: PropertyName,
+        value: &Value,
+    ) -> Result<(), RuntimeError> {
+        if self.ordinary_set_with_receiver(object, &Value::Object(object), &key, value)? {
+            Ok(())
+        } else {
+            Err(RuntimeError::TypeError(
+                "cannot assign Array property".into(),
+            ))
+        }
+    }
+
+    fn array_create_data_property_or_throw(
+        &mut self,
+        object: ObjectId,
+        key: PropertyName,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
+        if self.object_define_own_property(
+            object,
+            key,
+            PropertyDescriptor::data(value, true, true, true),
+        )? {
+            Ok(())
+        } else {
+            Err(RuntimeError::TypeError(
+                "cannot create Array property".into(),
+            ))
+        }
+    }
+
+    fn array_delete_or_throw(
+        &mut self,
+        object: ObjectId,
+        key: &PropertyName,
+    ) -> Result<(), RuntimeError> {
+        if self.object_delete(object, key)? {
+            Ok(())
+        } else {
+            Err(RuntimeError::TypeError(
+                "cannot delete Array property".into(),
+            ))
+        }
+    }
+
+    /// Array.prototype.slice, including ArraySpeciesCreate and sparse source
+    /// property preservation. TypedArray has its own integer-indexed slice.
+    pub(in super::super) fn array_slice(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as i64;
+            let start = self.array_start_index(native::argument(args, 0), length)?;
+            let end = if args.get(1).is_some_and(|value| *value != Value::Undefined) {
+                self.array_start_index(native::argument(args, 1), length)?
+            } else {
+                length
+            };
+            let count = end.saturating_sub(start) as usize;
+            let target = self.array_species_create(object, count)?;
+            self.stack.push(Value::Object(target));
+            for (result_index, index) in (start..end.max(start)).enumerate() {
+                self.charge_step()?;
+                let key: PropertyName = (index as u64).to_string().into();
+                if self.has_property(object, &key)? {
+                    let value = self.get_property(&Value::Object(object), &key)?;
+                    self.array_create_data_property_or_throw(
+                        target,
+                        result_index.to_string().into(),
+                        value,
+                    )?;
+                }
+            }
+            self.array_set_or_throw(target, "length".into(), &Value::Number(count as f64))?;
+            Ok(Value::Object(target))
+        })();
+        self.stack.pop();
+        result
+    }
+
+    /// Array.prototype.splice, with species result creation and sparse source
+    /// moves expressed through the object internal-method boundary.
+    pub(in super::super) fn array_splice(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as i64;
+            let start = self.array_start_index(native::argument(args, 0), length)?;
+            let delete_count = if args.len() < 2 {
+                length - start
+            } else {
+                self.coerce_length(native::argument(args, 1))? as i64
+            }
+            .clamp(0, length - start);
+            let items = args.get(2..).unwrap_or_default();
+            let new_length = length
+                .checked_add(items.len() as i64)
+                .and_then(|value| value.checked_sub(delete_count))
+                .filter(|value| *value <= 9_007_199_254_740_991)
+                .ok_or_else(|| RuntimeError::TypeError("invalid Array length".into()))?;
+            let target = self.array_species_create(object, delete_count as usize)?;
+            self.stack.push(Value::Object(target));
+            for index in start..start + delete_count {
+                self.charge_step()?;
+                let key: PropertyName = (index as u64).to_string().into();
+                if self.has_property(object, &key)? {
+                    let value = self.get_property(&Value::Object(object), &key)?;
+                    self.array_create_data_property_or_throw(
+                        target,
+                        (index - start).to_string().into(),
+                        value,
+                    )?;
+                }
+            }
+            self.array_set_or_throw(target, "length".into(), &Value::Number(delete_count as f64))?;
+            let delta = items.len() as i64 - delete_count;
+            if delta < 0 {
+                for index in start..length - delete_count {
+                    let from: PropertyName = ((index + delete_count) as u64).to_string().into();
+                    let to: PropertyName = ((index + items.len() as i64) as u64).to_string().into();
+                    if self.has_property(object, &from)? {
+                        let value = self.get_property(&Value::Object(object), &from)?;
+                        self.array_set_or_throw(object, to, &value)?;
+                    } else {
+                        self.array_delete_or_throw(object, &to)?;
+                    }
+                }
+                for index in (length + delta)..length {
+                    self.array_delete_or_throw(object, &(index as u64).to_string().into())?;
+                }
+            } else if delta > 0 {
+                for index in (start..length - delete_count).rev() {
+                    let from: PropertyName = ((index + delete_count) as u64).to_string().into();
+                    let to: PropertyName = ((index + items.len() as i64) as u64).to_string().into();
+                    if self.has_property(object, &from)? {
+                        let value = self.get_property(&Value::Object(object), &from)?;
+                        self.array_set_or_throw(object, to, &value)?;
+                    } else {
+                        self.array_delete_or_throw(object, &to)?;
+                    }
+                }
+            }
+            for (offset, value) in items.iter().enumerate() {
+                self.array_set_or_throw(object, (start + offset as i64).to_string().into(), value)?;
+            }
+            self.array_set_or_throw(object, "length".into(), &Value::Number(new_length as f64))?;
+            Ok(Value::Object(target))
+        })();
+        self.stack.pop();
+        result
+    }
 }

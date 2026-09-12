@@ -49,7 +49,7 @@ fn typed_array_backing_buffer_survives_minor_and_major_collection() {
     .unwrap();
     let buffer = heap.alloc_array_buffer(4, None).unwrap();
     let view = heap
-        .alloc_typed_array(buffer, 0, 4, TypedArrayKind::Uint8, None)
+        .alloc_typed_array(buffer, 0, 4, false, TypedArrayKind::Uint8, None)
         .unwrap();
     let root = heap.root(view).unwrap();
     heap.collect_minor();
