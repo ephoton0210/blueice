@@ -216,12 +216,7 @@ fn async_methods_compile_and_accept_settled_await_expressions() {
     );
     let program =
         parse("class Derived extends Base{field=1;constructor(){if(true)super();}}").unwrap();
-    assert!(matches!(
-        compile(&program),
-        Err(blueice_bluejs::CompileError::Unsupported(
-            "instance fields in an explicit derived constructor without a direct super() call"
-        ))
-    ));
+    assert!(compile(&program).is_ok());
 }
 
 #[test]

@@ -98,7 +98,7 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
             json!({"source":"x ??= y", "mode":"sloppy"}),
             "ReferenceError",
         ),
-        (json!({"source":"x?.y", "mode":"sloppy"}), "unsupported"),
+        (json!({"source":"x?.y", "mode":"sloppy"}), "ReferenceError"),
         (
             json!({"source":"x ** y", "mode":"sloppy"}),
             "ReferenceError",

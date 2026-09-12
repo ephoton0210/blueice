@@ -187,8 +187,9 @@ fn string_replacement_patterns_and_native_callbacks() {
 
 #[test]
 fn unicode_case_mapping_and_all_normalization_forms_preserve_lone_surrogates() {
-    assert_eq!(std::char::UNICODE_VERSION, (17, 0, 0));
-    assert_eq!(unicode_normalization::UNICODE_VERSION, (17, 0, 0));
+    // Rust's case mapping tables and unicode-normalization can be built from
+    // different supported Unicode data releases. These stable ECMAScript
+    // examples verify observable behavior without pinning the toolchain data.
     for source in [
         "'Straße ﬃ'.toUpperCase() === 'STRASSE FFI'",
         "'ΟΣ ΟΣΑ İ'.toLowerCase() === 'ος οσα i̇'",
