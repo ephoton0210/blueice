@@ -1367,3 +1367,28 @@ backing bytes, views, slices, numeric constructor copying, iterable input,
 Float32/Float64, species, offset copying, common TypedArray prototypes,
 canonical numeric properties, descriptor batches and detached-view behaviour;
 heap tests cover binary-view reachability across both collectors.
+
+## Test262 reporting correction: unclassified parse-negative outcomes
+
+Completed 2026-09-12. The adapter deliberately distinguishes a parser failure
+whose grammar/early-error classification is unknown from an observed
+`SyntaxError`. The runner had contradicted that boundary by treating an
+`unclassified_parse_error` as a pass whenever Test262 metadata expected a
+parse-phase `SyntaxError`. This could count a subset-parser rejection as a
+conformance success without demonstrating that BlueJS recognized the required
+production or early error.
+
+`classify` now records every `unclassified_parse_error` as a failure, including
+parse-negative cases. Its regression checks that phase and error type must be
+observed as `SyntaxError`; the runner summary uses the same rule in its stated
+limitations. This changes reporting only, not parser or VM behavior.
+
+The complete rerun at `target/test262-false-pass-fixed` reconciles all 53,404
+test files and 102,578 scheduled modes: **61,477 pass, 41,101 fail, zero
+unsupported, zero timeout, and zero harness errors**. A path/mode comparison
+with `target/test262-unsup-timeout-final-4` found exactly 600 changes, all
+`pass` to `fail`, across 314 files. Each changed mode had expected
+`{ phase: parse, type: SyntaxError }` and actual
+`{ phase: parse, kind: unclassified_parse_error }`; no such result remains in
+the pass count. The full runner exits 1 because semantic failures remain, as
+expected for a non-conformant inventory.

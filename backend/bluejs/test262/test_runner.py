@@ -28,13 +28,13 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 metadata(source)
 
-    def test_negative_errors_require_phase_type_and_accept_a_parser_rejection(self):
+    def test_negative_errors_require_phase_type_and_reject_an_unclassified_parser_error(self):
         expected = {"phase": "parse", "type": "SyntaxError"}
         self.assertEqual(classify({"phase": "parse", "kind": "SyntaxError"}, expected), "pass")
         for reply in [{"phase": "runtime", "kind": "SyntaxError"}, {"phase": "parse", "kind": "TypeError"}, {"kind": "ok"}]:
             self.assertEqual(classify(reply, expected), "fail")
         self.assertEqual(classify({"phase": "parse", "kind": "unsupported"}, expected), "unsupported")
-        self.assertEqual(classify({"phase": "parse", "kind": "unclassified_parse_error"}, expected), "pass")
+        self.assertEqual(classify({"phase": "parse", "kind": "unclassified_parse_error"}, expected), "fail")
         self.assertEqual(classify({"kind": "timeout"}, {"phase": "runtime", "type": "RangeError"}), "timeout")
 
     def test_tail_call_feature_receives_a_budget_large_enough_for_the_standard_harness(self):
