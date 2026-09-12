@@ -196,6 +196,8 @@ impl Vm {
                 | "Map"
                 | "Set"
                 | "Function"
+                | "Proxy"
+                | "Promise"
                 | "Intl"
                 | "Error"
                 | "TypeError"

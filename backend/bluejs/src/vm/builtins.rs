@@ -204,6 +204,107 @@ fn data_view_bytes(
     }
 }
 
+/// Annex B permits HTML-style single-line comments while parsing the formal
+/// parameter text supplied to the dynamic Function constructors.  The parser
+/// intentionally keeps the main grammar strict, so normalize only this
+/// legacy, Script-goal input before compiling the generated wrapper.  Strings,
+/// templates, and ordinary comments retain their source verbatim.
+fn strip_dynamic_function_html_comments(source: &str) -> String {
+    #[derive(Clone, Copy)]
+    enum Mode {
+        Code,
+        SingleQuoted,
+        DoubleQuoted,
+        Template,
+        LineComment,
+        BlockComment,
+        HtmlComment,
+    }
+
+    let source = source.chars().collect::<Vec<_>>();
+    let mut result = String::new();
+    let mut mode = Mode::Code;
+    // Parameter text follows the opening parenthesis in the generated source,
+    // so it is not initially at a line start. `-->` becomes an Annex B HTML
+    // close comment only after a line terminator in that text.
+    let mut line_start = false;
+    let mut escaped = false;
+    let mut index = 0;
+    while index < source.len() {
+        let character = source[index];
+        let next = source.get(index + 1).copied();
+        let follows = |text: &[char]| source[index..].starts_with(text);
+        match mode {
+            Mode::Code if follows(&['<', '!', '-', '-']) => {
+                mode = Mode::HtmlComment;
+                index += 4;
+                continue;
+            }
+            Mode::Code if line_start && follows(&['-', '-', '>']) => {
+                mode = Mode::HtmlComment;
+                index += 3;
+                continue;
+            }
+            Mode::Code if character == '/' && next == Some('/') => {
+                result.push(character);
+                result.push('/');
+                mode = Mode::LineComment;
+                index += 2;
+                continue;
+            }
+            Mode::Code if character == '/' && next == Some('*') => {
+                result.push(character);
+                result.push('*');
+                mode = Mode::BlockComment;
+                index += 2;
+                continue;
+            }
+            Mode::Code if character == '\'' => mode = Mode::SingleQuoted,
+            Mode::Code if character == '"' => mode = Mode::DoubleQuoted,
+            Mode::Code if character == '`' => mode = Mode::Template,
+            Mode::SingleQuoted | Mode::DoubleQuoted | Mode::Template if escaped => {
+                escaped = false;
+            }
+            Mode::SingleQuoted | Mode::DoubleQuoted | Mode::Template if character == '\\' => {
+                escaped = true;
+            }
+            Mode::SingleQuoted if character == '\'' => mode = Mode::Code,
+            Mode::DoubleQuoted if character == '"' => mode = Mode::Code,
+            Mode::Template if character == '`' => mode = Mode::Code,
+            Mode::LineComment if matches!(character, '\n' | '\r') => mode = Mode::Code,
+            Mode::BlockComment if character == '*' && next == Some('/') => {
+                result.push(character);
+                result.push('/');
+                mode = Mode::Code;
+                index += 2;
+                continue;
+            }
+            Mode::HtmlComment if matches!(character, '\n' | '\r') => {
+                mode = Mode::Code;
+                line_start = true;
+                result.push(character);
+                index += 1;
+                continue;
+            }
+            Mode::HtmlComment => {
+                index += 1;
+                continue;
+            }
+            _ => {}
+        }
+        result.push(character);
+        line_start = if matches!(character, '\n' | '\r') {
+            true
+        } else if matches!(mode, Mode::Code) && character.is_whitespace() {
+            line_start
+        } else {
+            false
+        };
+        index += 1;
+    }
+    result
+}
+
 impl Vm {
     /// Materializes the per-invocation arguments binding after the function
     /// environment has entered. Mapped indices point at the same heap cells
@@ -313,6 +414,21 @@ impl Vm {
                 Err(error)
             }
         }
+    }
+
+    /// Annex B legacy own properties on a non-strict ordinary, constructible
+    /// function hide the restricted accessors inherited from
+    /// `%Function.prototype%`. Until call-chain tracking exists, `caller`
+    /// remains `undefined`, which preserves the standard compatibility
+    /// fallback instead of falsely advertising an active caller extension.
+    pub(super) fn install_legacy_function_properties(
+        &mut self,
+        function: ObjectId,
+    ) -> Result<(), RuntimeError> {
+        for (name, value) in [("arguments", Value::Null), ("caller", Value::Undefined)] {
+            self.define_data(function, name, value, false, false, false)?;
+        }
+        Ok(())
     }
 
     pub(super) fn direct_eval(&mut self, value: &Value) -> Result<Value, RuntimeError> {
@@ -1218,25 +1334,28 @@ impl Vm {
         args: &[Value],
         async_function: bool,
     ) -> Result<Value, RuntimeError> {
-        let mut source = String::from(if async_function {
-            "async function anonymous("
-        } else {
-            "function anonymous("
-        });
-        for (index, argument) in args.iter().enumerate() {
+        let mut parameters = String::new();
+        for (index, argument) in args.iter().take(args.len().saturating_sub(1)).enumerate() {
             if index != 0 {
-                source.push(',');
+                parameters.push(',');
             }
-            if index + 1 == args.len() {
-                break;
-            }
-            source.push_str(&self.coerce_string(argument)?.to_utf8().map_err(|_| {
+            parameters.push_str(&self.coerce_string(argument)?.to_utf8().map_err(|_| {
                 RuntimeError::SyntaxError(
                     "Function parameter contains an unpaired surrogate".into(),
                 )
             })?);
         }
-        source.push_str(") {\n");
+        let mut source = String::from(if async_function {
+            "async function anonymous("
+        } else {
+            "function anonymous("
+        });
+        source.push_str(&strip_dynamic_function_html_comments(&parameters));
+        // Dynamic parameter text is parsed as its own grammar production.
+        // Preserve that boundary in the generated wrapper: a trailing
+        // single-line comment belongs to the parameters, not to the closing
+        // parenthesis that follows them.
+        source.push_str("\n) {\n");
         if let Some(body) = args.last() {
             source.push_str(&self.coerce_string(body)?.to_utf8().map_err(|_| {
                 RuntimeError::SyntaxError("Function body contains an unpaired surrogate".into())
@@ -1257,6 +1376,9 @@ impl Vm {
         debug_assert_eq!(child.async_function, async_function);
         let function_prototype = if async_function {
             self.async_function_prototype()?
+        } else if self.new_target != Value::Undefined {
+            let default = self.function_prototype()?;
+            self.constructor_prototype(default)?
         } else {
             self.function_prototype()?
         };
@@ -1310,6 +1432,14 @@ impl Vm {
                 false,
                 true,
             )?;
+            if child.constructible
+                && !child.strict
+                && !child.arrow
+                && !child.generator
+                && !child.async_function
+            {
+                self.install_legacy_function_properties(function)?;
+            }
             if child.constructible {
                 let object_prototype = self.object_prototype;
                 let prototype =

@@ -115,6 +115,7 @@ pub(crate) enum NativeFunction {
     Empty,
     ObjectToString,
     ObjectValueOf,
+    ObjectIsPrototypeOf,
     ArrayToString,
     ArrayConcat,
     ArrayJoin,

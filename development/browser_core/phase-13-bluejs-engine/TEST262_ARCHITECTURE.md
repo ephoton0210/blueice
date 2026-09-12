@@ -1443,3 +1443,64 @@ set `--progress-interval` to adjust the cadence or disable it for automation.
 The runner regression suite checks the formatted current-mode output, and an
 actual one-worker `language/statements/for-in` run confirmed continuous output
 through all 122 files and 210 modes.
+
+## P0.2/P0.4 continuation: Function intrinsic and prototype-chain contracts
+
+Implemented 2026-09-12. `%Function%` is now constructible and links its
+`prototype` to the pre-existing callable `%Function.prototype%`; that
+prototype has its required non-writable `constructor` property and shared
+configurable, non-enumerable `caller` and `arguments` accessors backed by the
+realm's `%ThrowTypeError%`. Reading either restricted name materializes the
+lazy Function global before inherited lookup, so strict function objects never
+observe an incomplete intrinsic graph.
+
+Non-strict, constructible ordinary functions receive their Annex B own
+non-writable, non-configurable `arguments` and `caller` properties. The former
+uses the inactive `null` value; the latter remains `undefined` until the VM
+tracks an active caller, preserving the standard compatibility fallback rather
+than claiming an incomplete extension. Strict, arrow, generator, async, and
+method functions retain the restricted inherited behavior. This keeps legacy
+compatibility separate from the shared Function prototype contract.
+
+The same slice adds `Object.prototype.isPrototypeOf`, including its required
+argument-before-receiver coercion order and Proxy-aware `[[GetPrototypeOf]]`
+walk. This gives Function and all ordinary objects one path for testing their
+prototype relationship.
+
+The continuation also follows `GetPrototypeFromConstructor` through bound
+functions, proxies, and Test262 child realms. A constructor whose `prototype`
+is not an object now receives the default prototype from its own realm; the
+same rule covers `%Object%` construction. Foreign Function constructor calls
+and their thrown errors preserve the callee realm at the host membrane. The
+dynamic Function constructors accept Annex B HTML open/close comments and
+keep a line comment in parameter text from consuming the generated wrapper.
+Class-expression statement completion is preserved, so an `eval` result is no
+longer accidentally reported as a passing value.
+
+Focused evidence: the complete `built-ins/Function` selection moved from
+**755 pass / 150 fail** to **887 pass / 18 fail** over 905 modes: **132
+fail-to-pass and zero pass-to-fail**. The 20-mode
+`built-ins/Object/prototype/isPrototypeOf` selection moved from **4 pass / 16
+fail** to **20 pass**. Its caller/arguments legacy 99-mode sub-selection,
+strict restricted-properties test, and Function descriptor sub-selection all
+pass. Public realm regressions exercise constructor/prototype linkage,
+descriptors, thrower identity, strict versus legacy properties, foreign errors,
+foreign `newTarget` fallback for Function and Object, and `isPrototypeOf`
+coercion ordering.
+
+The remaining 18 Function modes are intentional next-step boundaries, rather
+than unimplemented isolated wrappers: six need object identity to cross the
+Test262 realm membrane; two need resizable ArrayBuffer and BigInt typed-data
+semantics; six need source-text retention for generator, native, and computed
+method `Function.prototype.toString`; and four need Date internal slots plus
+recursive `GetFunctionRealm` for bound targets. The first two groups are
+P1.5/P1.6 prerequisites, while the source-text and Date cases require their
+own parser/function-record and builtin-object designs before they can be
+claimed as supported.
+
+The complete inventory at `target/test262-p02-final` reconciles all 53,404
+files and 102,578 modes: **62,830 pass and 39,748 fail**, with zero
+unsupported, timeout, or harness-error outcomes. Its path/mode comparison
+with `target/test262-for-assignment-full` found **407 fail-to-pass and zero
+pass-to-fail** transitions. No passing result reports
+`unclassified_parse_error`.

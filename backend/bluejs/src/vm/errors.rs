@@ -200,6 +200,13 @@ impl Vm {
             self.heap.unroot(root)?;
         } else {
             self.globals.insert(name.into(), constructor);
+            // Error constructors are lazy globals just like ordinary native
+            // constructors. An unqualified lookup can use `globals`
+            // directly, but property access through a Test262 realm facade
+            // must observe the corresponding own property of globalThis.
+            if let Some(&global) = self.globals.get("globalThis") {
+                self.define_data(global, name, Value::Object(constructor), true, false, true)?;
+            }
         }
         result
     }

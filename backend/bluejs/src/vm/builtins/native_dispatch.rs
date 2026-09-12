@@ -519,6 +519,31 @@ impl Vm {
             )),
             NativeFunction::Empty => Ok(Value::Undefined),
             NativeFunction::ObjectValueOf => self.coerce_object(&receiver).map(Value::Object),
+            NativeFunction::ObjectIsPrototypeOf => {
+                // §20.1.3.6 tests the argument before coercing `this`.  That
+                // ordering keeps primitive arguments observable as `false`,
+                // even when `this` is null or undefined.
+                let Value::Object(mut candidate) = first else {
+                    return Ok(Value::Bool(false));
+                };
+                let object = self.coerce_object(&receiver)?;
+                let base = self.stack.len();
+                self.stack
+                    .extend([Value::Object(object), Value::Object(candidate)]);
+                let result = (|| {
+                    while let Some(prototype) = self.object_get_prototype(candidate)? {
+                        if prototype == object {
+                            return Ok(Value::Bool(true));
+                        }
+                        candidate = prototype;
+                        *self.stack.last_mut().expect("prototype-chain root") =
+                            Value::Object(candidate);
+                    }
+                    Ok(Value::Bool(false))
+                })();
+                self.stack.truncate(base);
+                result
+            }
             NativeFunction::ObjectToString => {
                 let tag = match &receiver {
                     Value::Undefined => "Undefined",
@@ -587,7 +612,11 @@ impl Vm {
             ))),
             NativeFunction::Object => {
                 if matches!(first, Value::Undefined | Value::Null) {
-                    let proto = self.object_prototype;
+                    let proto = if construct {
+                        self.constructor_prototype(self.object_prototype)?
+                    } else {
+                        self.object_prototype
+                    };
                     return Ok(Value::Object(
                         self.with_roots(|heap| heap.alloc_object(Some(proto)))?,
                     ));

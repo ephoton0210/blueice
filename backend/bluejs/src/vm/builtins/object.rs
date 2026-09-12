@@ -112,6 +112,9 @@ impl Vm {
         &mut self,
         object: ObjectId,
     ) -> Result<Option<ObjectId>, RuntimeError> {
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_get_prototype(object);
+        }
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_get_prototype(object);
         }
@@ -324,7 +327,62 @@ impl Vm {
     ) -> Result<ObjectId, RuntimeError> {
         let target = self.new_target.clone();
         let prototype = self.get_property(&target, &"prototype".into())?;
-        Ok(prototype.object_id().unwrap_or(default))
+        if let Some(prototype) = prototype.object_id() {
+            return Ok(prototype);
+        }
+        // GetPrototypeFromConstructor obtains the constructor's realm when
+        // `prototype` is not an object. Besides selecting the fallback
+        // intrinsic, that walk must observe a Proxy revoked by a `prototype`
+        // getter. BlueJS stores same-realm intrinsics in this VM, so the
+        // caller-supplied default is already the correct fallback after the
+        // validation walk completes.
+        if let Some(realm) = self.validate_function_realm(target)? {
+            let intrinsic = if default == self.object_prototype {
+                Some("Object")
+            } else if default == self.function_prototype()? {
+                Some("Function")
+            } else {
+                None
+            };
+            if let Some(intrinsic) = intrinsic {
+                return self.test262_foreign_default_prototype(realm, intrinsic);
+            }
+        }
+        Ok(default)
+    }
+
+    /// The validation portion of GetFunctionRealm for constructors owned by
+    /// this VM. Bound functions and Proxy exotic objects delegate to their
+    /// targets; `Heap::proxy` raises a TypeError when the Proxy has been
+    /// revoked. All remaining callable forms belong to this realm and can use
+    /// the intrinsic supplied by `constructor_prototype`.
+    fn validate_function_realm(
+        &self,
+        mut function: Value,
+    ) -> Result<Option<ObjectId>, RuntimeError> {
+        loop {
+            let object = function
+                .object_id()
+                .ok_or_else(|| RuntimeError::TypeError("constructor must be callable".into()))?;
+            if let Some((realm, _, _, _)) = self.test262_foreign_reference(object) {
+                return Ok(Some(realm));
+            }
+            if let Some(bound) = self.heap.bound_function(object)? {
+                function = Value::Object(bound.target);
+                continue;
+            }
+            if let Some((target, _)) = self.heap.proxy(object)? {
+                function = Value::Object(target);
+                continue;
+            }
+            if self.heap.closure(object)?.is_some() || self.heap.native_function(object)?.is_some()
+            {
+                return Ok(None);
+            }
+            return Err(RuntimeError::TypeError(
+                "constructor must be callable".into(),
+            ));
+        }
     }
 
     pub(in super::super) fn is_constructor(&self, value: &Value) -> Result<bool, RuntimeError> {
@@ -346,7 +404,8 @@ impl Vm {
         Ok(matches!(
             self.heap.native_function(*id)?,
             Some(
-                NativeFunction::String
+                NativeFunction::Function
+                    | NativeFunction::String
                     | NativeFunction::Array
                     | NativeFunction::ArrayBuffer
                     | NativeFunction::DataView

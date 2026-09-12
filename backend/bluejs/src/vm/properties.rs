@@ -87,6 +87,13 @@ impl Vm {
         if key == "hasOwnProperty" {
             self.has_own_property_intrinsic()?;
         }
+        // `%Function.prototype%` is allocated while the first string
+        // intrinsic bootstraps, whereas its restricted own properties are
+        // installed with the `%Function%` global. Materialize that global
+        // before an inherited access can observe the temporary gap.
+        if key == "caller" || key == "arguments" {
+            self.global("Function")?;
+        }
         // `%Object.prototype%` has an initial own constructor property.
         // Intrinsics otherwise bootstrap lazily, so make it observable before
         // an ordinary object performs an inherited lookup.
@@ -123,6 +130,13 @@ impl Vm {
         key: &PropertyName,
         value: &Value,
     ) -> Result<(), RuntimeError> {
+        // `%Function.prototype%` owns the restricted `caller` and
+        // `arguments` accessors.  Globals bootstrap lazily, so an assignment
+        // through a bound function must materialize that prototype before the
+        // ordinary [[Set]] prototype walk observes it.
+        if key == "caller" || key == "arguments" {
+            self.global("Function")?;
+        }
         if let Value::Object(object) = receiver {
             if self.test262_foreign_reference(*object).is_some() {
                 return self.test262_foreign_set(*object, key, value);

@@ -501,6 +501,11 @@ struct Test262ForeignValue {
     target: ObjectId,
     callable: bool,
     constructible: bool,
+    // A result created in one Test262 realm can use a constructor from a
+    // second realm as its `newTarget`.  The child heap cannot retain that
+    // second heap's ObjectId, so retain the observable [[Prototype]] at the
+    // membrane boundary instead.
+    prototype_override: Option<ObjectId>,
     _wrapper_root: RootId,
     _target_root: RootId,
 }
@@ -1054,6 +1059,13 @@ impl Vm {
                 NativeFunction::ObjectValueOf,
             )?;
             self.install_native(
+                object_prototype,
+                function_prototype,
+                "isPrototypeOf",
+                1,
+                NativeFunction::ObjectIsPrototypeOf,
+            )?;
+            self.install_native(
                 self.array_prototype,
                 function_prototype,
                 "toString",
@@ -1129,6 +1141,7 @@ impl Vm {
                 for (owner, key) in [
                     (object_prototype, PropertyName::from("toString")),
                     (object_prototype, "valueOf".into()),
+                    (object_prototype, "isPrototypeOf".into()),
                     (object_prototype, "hasOwnProperty".into()),
                     (self.array_prototype, "toString".into()),
                     (self.array_prototype, "concat".into()),

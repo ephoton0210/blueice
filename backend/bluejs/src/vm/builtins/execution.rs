@@ -420,9 +420,14 @@ impl Vm {
             class_base,
         } = call;
         if code.class_constructor && !construct {
-            return Err(RuntimeError::TypeError(
+            // §10.2.1.1's class-constructor rejection is created in the
+            // function's Realm. Materialize it before a Test262 membrane can
+            // return from this VM, rather than letting the caller allocate a
+            // same-named error in its own Realm.
+            let error = self.error_value(RuntimeError::TypeError(
                 "class constructor cannot be invoked without new".into(),
-            ));
+            ))?;
+            return Err(RuntimeError::Thrown(error));
         }
         if construct && !code.constructible {
             return Err(RuntimeError::TypeError(
@@ -689,6 +694,11 @@ impl Vm {
         }
         let result = result.and_then(|value| {
             if construct && !matches!(value, Value::Object(_)) {
+                if code.derived_constructor && value != Value::Undefined {
+                    return Err(RuntimeError::TypeError(
+                        "derived constructor returned a non-object value".into(),
+                    ));
+                }
                 if matches!(constructed, Value::Object(_)) {
                     Ok(constructed)
                 } else {

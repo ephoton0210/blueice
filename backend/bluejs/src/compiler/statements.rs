@@ -117,7 +117,11 @@ impl Compiler {
             }
             Stmt::Expr(Expr::Class(class)) => {
                 self.class_expression(class, None)?;
-                self.emit(Opcode::Pop, 0)?;
+                // A parenthesized class expression is still an expression
+                // statement. Its value is observable as the completion of
+                // direct and indirect eval, including `$262` foreign-realm
+                // evaluation, so it must not be discarded here.
+                self.emit(Opcode::SetCompletion, 0)?;
             }
             Stmt::Return(value) => {
                 if !self.function {

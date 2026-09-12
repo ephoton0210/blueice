@@ -251,7 +251,7 @@ fn runtime_class_and_with_error_paths_are_catchable() {
         "class Base{}Object.defineProperty(Base.prototype,'value',{value:1,writable:false});class Derived extends Base{write(){super.value=2;}}let caught=false;try{(new Derived).write()}catch(error){caught=error instanceof TypeError;}caught",
         "class Base{}class Derived extends Base{constructor(){super.value=1;}}let caught=false;try{new Derived}catch(error){caught=error instanceof ReferenceError;}caught",
         "class Derived extends null{constructor(){super();}}let caught=false;try{new Derived}catch(error){caught=error instanceof TypeError;}caught",
-        "class Base{}class Derived extends Base{constructor(){return 1;}}let caught=false;try{new Derived}catch(error){caught=error instanceof ReferenceError;}caught",
+        "class Base{}class Derived extends Base{constructor(){return 1;}}let caught=false;try{new Derived}catch(error){caught=error instanceof TypeError;}caught",
         "let proto={value:1};let object=Object.create(proto);object.value=2;let keys='';for(let key in object){keys+=key;}keys==='value'",
         "let symbol=Symbol('value');let object={[symbol]:1,value:2};let keys='';for(let key in object){keys+=key;}keys==='value'",
         "with({}){missing=1}missing===1",

@@ -97,7 +97,6 @@ impl Vm {
         let root = self.heap.root(id)?;
         let result = (|| {
             if !matches!(name, "Reflect" | "globalThis" | "import") {
-                self.define_data(id, "name", Value::String(name.into()), false, false, true)?;
                 self.define_data(
                     id,
                     "length",
@@ -106,6 +105,7 @@ impl Vm {
                     false,
                     true,
                 )?;
+                self.define_data(id, "name", Value::String(name.into()), false, false, true)?;
             }
             if name == "Symbol" {
                 let symbol_prototype =
@@ -424,6 +424,28 @@ impl Vm {
                     false,
                     false,
                 )?;
+                self.define_data(
+                    prototype,
+                    "constructor",
+                    Value::Object(id),
+                    false,
+                    false,
+                    true,
+                )?;
+                let thrower = self.throw_type_error()?;
+                let restricted = PropertyDescriptor {
+                    get: Some(Value::Object(thrower)),
+                    set: Some(Value::Object(thrower)),
+                    enumerable: Some(false),
+                    configurable: Some(true),
+                    ..PropertyDescriptor::default()
+                };
+                for name in ["caller", "arguments"] {
+                    let defined = self.with_roots(|heap| {
+                        heap.define_own_property(prototype, name, restricted.clone())
+                    })?;
+                    assert!(defined, "Function prototype accepts restricted properties");
+                }
             } else if matches!(name, "Number" | "Boolean" | "BigInt") {
                 let boolean = name == "Boolean";
                 let bigint = name == "BigInt";

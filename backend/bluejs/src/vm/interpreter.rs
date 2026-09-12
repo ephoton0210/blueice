@@ -662,6 +662,14 @@ impl Vm {
                             false,
                             true,
                         )?;
+                        if child.constructible
+                            && !child.strict
+                            && !child.arrow
+                            && !child.generator
+                            && !child.async_function
+                        {
+                            self.install_legacy_function_properties(id)?;
+                        }
                         if child.generator {
                             // Generator function objects are not constructors,
                             // but each owns the prototype used for iterators it

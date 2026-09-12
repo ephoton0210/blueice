@@ -1115,6 +1115,7 @@ impl Vm {
                 target,
                 callable,
                 constructible,
+                prototype_override: None,
                 _wrapper_root: wrapper_root,
                 _target_root: target_root,
             },
@@ -1134,6 +1135,59 @@ impl Vm {
             )),
             Err(error) => Err(error),
         }
+    }
+
+    pub(super) fn test262_foreign_get_prototype(
+        &mut self,
+        wrapper: ObjectId,
+    ) -> Result<Option<ObjectId>, RuntimeError> {
+        let (realm_id, target, override_prototype) = {
+            let value = self
+                .test262_foreign_values
+                .get(&wrapper)
+                .expect("foreign prototype has a membrane record");
+            (value.realm, value.target, value.prototype_override)
+        };
+        if override_prototype.is_some() {
+            return Ok(override_prototype);
+        }
+        let prototype = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+            realm.vm.object_get_prototype(target)?
+        };
+        prototype
+            .map(|prototype| self.test262_import_foreign_value(realm_id, Value::Object(prototype)))
+            .transpose()
+            .map(|prototype| prototype.and_then(|prototype| prototype.object_id()))
+    }
+
+    pub(super) fn test262_foreign_default_prototype(
+        &mut self,
+        realm_id: ObjectId,
+        intrinsic: &str,
+    ) -> Result<ObjectId, RuntimeError> {
+        let prototype = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            let constructor = realm.vm.global(intrinsic)?;
+            realm.vm.get_property(&constructor, &"prototype".into())?
+        };
+        self.test262_import_foreign_value(realm_id, prototype)?
+            .object_id()
+            .ok_or_else(|| RuntimeError::TypeError("intrinsic prototype must be an object".into()))
+    }
+
+    fn test262_set_foreign_prototype_override(&mut self, wrapper: ObjectId, prototype: ObjectId) {
+        self.test262_foreign_values
+            .get_mut(&wrapper)
+            .expect("foreign result has a membrane record")
+            .prototype_override = Some(prototype);
     }
 
     fn test262_export_foreign_value(
@@ -1211,6 +1265,55 @@ impl Vm {
         let (realm_id, target, _, _) = self
             .test262_foreign_reference(wrapper)
             .expect("foreign call has a membrane record");
+        // Proxy.revocable does not capture a realm-specific intrinsic in its
+        // result; its proxy must instead retain the supplied target and
+        // handler. Those values belong to the caller VM and cannot be copied
+        // into an isolated Test262 child heap. Create the record locally so
+        // its traps, revocation, callability, and construction all retain the
+        // caller's real objects.
+        let foreign_native = self
+            .test262_realms
+            .get(&realm_id)
+            .expect("foreign realm remains live")
+            .vm
+            .heap
+            .native_function(target)?;
+        if foreign_native == Some(NativeFunction::ProxyRevocable) {
+            return self.proxy_revocable(&args);
+        }
+        // Function.prototype.call forwards its receiver as the `this` value
+        // of the target function.  If that target is this realm's `apply`,
+        // Apply's IsCallable check runs before it can observe the remaining
+        // arguments.  Preserve that ordering at the membrane: a local object
+        // in the unobserved argArray must not block the foreign TypeError.
+        let receiver_is_foreign_apply = receiver
+            .object_id()
+            .and_then(|receiver| self.test262_foreign_reference(receiver))
+            .filter(|(receiver_realm, _, _, _)| *receiver_realm == realm_id)
+            .is_some_and(|(_, receiver, _, _)| {
+                self.test262_realms
+                    .get(&realm_id)
+                    .expect("foreign realm remains live")
+                    .vm
+                    .heap
+                    .native_function(receiver)
+                    .ok()
+                    == Some(Some(NativeFunction::Apply))
+            });
+        if foreign_native == Some(NativeFunction::Call)
+            && receiver_is_foreign_apply
+            && !self.is_callable(args.first().unwrap_or(&Value::Undefined))?
+        {
+            let error = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live")
+                .vm
+                .error_value(RuntimeError::TypeError("apply requires a callable".into()))?;
+            return Err(RuntimeError::Thrown(
+                self.test262_import_foreign_value(realm_id, error)?,
+            ));
+        }
         let receiver = self.test262_export_foreign_value(realm_id, &receiver)?;
         let args = args
             .iter()
@@ -1224,7 +1327,34 @@ impl Vm {
         let result = realm
             .vm
             .call_native(Value::Object(target), receiver, args, construct);
-        self.test262_import_foreign_result(realm_id, result)
+        let result = if foreign_native == Some(NativeFunction::Apply) {
+            match result {
+                Ok(value) => Ok(value),
+                // Function.prototype.apply creates its argument validation
+                // errors in the builtin's Realm.  Preserve the ordinary VM
+                // API's raw RuntimeError boundary, and materialize only when
+                // this Test262 membrane transports that completion outward.
+                Err(error) => match realm.vm.error_value(error) {
+                    Ok(error) => Err(RuntimeError::Thrown(error)),
+                    Err(error) => Err(error),
+                },
+            }
+        } else {
+            result
+        };
+        let result = self.test262_import_foreign_result(realm_id, result)?;
+        if construct && foreign_native == Some(NativeFunction::Function) {
+            // CreateDynamicFunction uses `newTarget` only to select the
+            // function object's [[Prototype]].  Its body and own
+            // `prototype` object remain in the callee realm.  Preserve that
+            // cross-realm edge on the caller-side facade.
+            let default = self.function_prototype()?;
+            let prototype = self.constructor_prototype(default)?;
+            if let Some(wrapper) = result.object_id() {
+                self.test262_set_foreign_prototype_override(wrapper, prototype);
+            }
+        }
+        Ok(result)
     }
 
     pub(super) fn test262_foreign_next(
@@ -1287,6 +1417,7 @@ impl Vm {
                     target: foreign_global,
                     callable: false,
                     constructible: false,
+                    prototype_override: None,
                     _wrapper_root: wrapper_root,
                     _target_root: target_root,
                 },

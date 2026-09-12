@@ -69,56 +69,68 @@ impl Vm {
         mut target: Value,
         mut ordinary: bool,
     ) -> Result<bool, RuntimeError> {
-        loop {
-            self.charge_step()?;
-            if !ordinary {
-                if !matches!(target, Value::Object(_)) {
-                    return Err(RuntimeError::TypeError(
-                        "instanceof target must be an object".into(),
-                    ));
-                }
-                let method =
-                    self.get_method(&target, &JsSymbol::well_known("hasInstance").into())?;
-                if let Value::Object(id) = method {
-                    // The intrinsic can be tail-dispatched here. Custom hooks
-                    // still use normal call rooting, error and depth handling.
-                    if self.heap.native_function(id)? != Some(NativeFunction::HasInstance) {
-                        let result = self.call_native(method, target, vec![value], false)?;
-                        return self.to_boolean(&result);
-                    }
-                } else if !self.is_callable(&target)? {
-                    return Err(RuntimeError::TypeError(
-                        "instanceof target must be callable".into(),
-                    ));
-                }
-            }
-            if !self.is_callable(&target)? {
-                return Ok(false);
-            }
-            if let Some(bound) = self.heap.bound_function(target.object_id().unwrap())? {
-                target = Value::Object(bound.target);
-                ordinary = false;
-                continue;
-            }
-            let Value::Object(mut object) = value else {
-                return Ok(false);
-            };
-            let prototype = self.get_property(&target, &"prototype".into())?;
-            let Value::Object(prototype) = prototype else {
-                return Err(RuntimeError::TypeError(
-                    "instanceof prototype must be an object".into(),
-                ));
-            };
+        // `[[GetPrototypeOf]]` can invoke a Proxy trap.  Retain the value,
+        // target, and constructor prototype while that arbitrary code runs.
+        let base = self.stack.len();
+        self.stack
+            .extend([value.clone(), target.clone(), Value::Undefined]);
+        let result = (|| {
             loop {
                 self.charge_step()?;
-                let Some(parent) = self.heap.prototype(object)? else {
+                if !ordinary {
+                    if !matches!(target, Value::Object(_)) {
+                        return Err(RuntimeError::TypeError(
+                            "instanceof target must be an object".into(),
+                        ));
+                    }
+                    let method =
+                        self.get_method(&target, &JsSymbol::well_known("hasInstance").into())?;
+                    if let Value::Object(id) = method {
+                        // The intrinsic can be tail-dispatched here. Custom hooks
+                        // still use normal call rooting, error and depth handling.
+                        if self.heap.native_function(id)? != Some(NativeFunction::HasInstance) {
+                            let result = self.call_native(method, target, vec![value], false)?;
+                            return self.to_boolean(&result);
+                        }
+                    } else if !self.is_callable(&target)? {
+                        return Err(RuntimeError::TypeError(
+                            "instanceof target must be callable".into(),
+                        ));
+                    }
+                }
+                if !self.is_callable(&target)? {
+                    return Ok(false);
+                }
+                if let Some(bound) = self.heap.bound_function(target.object_id().unwrap())? {
+                    target = Value::Object(bound.target);
+                    self.stack[base + 1] = target.clone();
+                    ordinary = false;
+                    continue;
+                }
+                let Value::Object(mut object) = value else {
                     return Ok(false);
                 };
-                if parent == prototype {
-                    return Ok(true);
+                let prototype = self.get_property(&target, &"prototype".into())?;
+                let Value::Object(prototype) = prototype else {
+                    return Err(RuntimeError::TypeError(
+                        "instanceof prototype must be an object".into(),
+                    ));
+                };
+                self.stack[base + 2] = Value::Object(prototype);
+                loop {
+                    self.charge_step()?;
+                    self.stack[base] = Value::Object(object);
+                    let Some(parent) = self.object_get_prototype(object)? else {
+                        return Ok(false);
+                    };
+                    if parent == prototype {
+                        return Ok(true);
+                    }
+                    object = parent;
                 }
-                object = parent;
             }
-        }
+        })();
+        self.stack.truncate(base);
+        result
     }
 }

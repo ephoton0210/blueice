@@ -985,6 +985,7 @@ fn global_lexicals_shadow_configurable_intrinsic_properties() {
 fn function_constructor_compiles_global_source_without_capturing_caller_bindings() {
     for source in [
         "let hidden=1;let fn=Function('return this;');fn()===globalThis&&Function('a','b','return a+b;')(2,3)===5&&Function('return typeof hidden;')()==='undefined'",
+        "Function('<!--','')()===undefined&&Function('\\n-->','')()===undefined&&Function('a','//','')()===undefined&&(function(){try{Function('-->','');return false}catch(error){return error instanceof SyntaxError}})()",
         "(function(){try{Function('return )');return false;}catch(error){return error instanceof SyntaxError;}})()",
     ] {
         assert_eq!(
@@ -995,6 +996,150 @@ fn function_constructor_compiles_global_source_without_capturing_caller_bindings
             "{source}"
         );
     }
+}
+
+#[test]
+fn function_intrinsic_graph_and_restricted_properties_follow_the_realm_contract() {
+    let source = r#"
+        let caller = Object.getOwnPropertyDescriptor(Function.prototype, 'caller');
+        let arguments = Object.getOwnPropertyDescriptor(Function.prototype, 'arguments');
+        let callerThrows = false;
+        let argumentsThrows = false;
+        try { Function.prototype.caller; } catch (error) { callerThrows = error instanceof TypeError; }
+        try { Function.prototype.arguments = 1; } catch (error) { argumentsThrows = error instanceof TypeError; }
+        let constructed = new Function('return 7;');
+        let strict = Function('"use strict"; return 1;');
+        let AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
+        let dynamicAsync = AsyncFunction('return 1;');
+        let object = { method() {} };
+        let names = Object.getOwnPropertyNames(Function);
+        let lengthIndex = names.indexOf('length');
+        let nameIndex = names.indexOf('name');
+        Object.getPrototypeOf(Function) === Function.prototype &&
+          Function.prototype.constructor === Function &&
+          Function.prototype.isPrototypeOf(Function) &&
+          constructed.constructor === Function && constructed() === 7 &&
+          constructed.caller === undefined && constructed.arguments === null &&
+          !strict.hasOwnProperty('caller') && !strict.hasOwnProperty('arguments') &&
+          !dynamicAsync.hasOwnProperty('caller') && !dynamicAsync.hasOwnProperty('arguments') &&
+          !object.method.hasOwnProperty('caller') && !object.method.hasOwnProperty('arguments') &&
+          caller.get === caller.set && caller.enumerable === false && caller.configurable === true &&
+          arguments.get === caller.get && arguments.set === caller.set &&
+          callerThrows && argumentsThrows &&
+          lengthIndex >= 0 && nameIndex === lengthIndex + 1 &&
+          Object.prototype.isPrototypeOf.call(null, 0) === false
+    "#;
+    assert_eq!(
+        Vm::default()
+            .execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn construct_enforces_derived_return_and_revoked_proxy_realm_contracts() {
+    let source = r#"
+        let derivedReturnThrows = false;
+        let derivedThisThrows = false;
+        let revokedProxyThrows = false;
+        try { new (class extends Object { constructor() { return null; } })(); }
+        catch (error) { derivedReturnThrows = error instanceof TypeError; }
+        try { new (class extends Object { constructor() {} })(); }
+        catch (error) { derivedThisThrows = error instanceof ReferenceError; }
+        let handle;
+        handle = Proxy.revocable(function() {}, { get() { handle.revoke(); } });
+        try { new handle.proxy(); }
+        catch (error) { revokedProxyThrows = error instanceof TypeError; }
+        derivedReturnThrows && derivedThisThrows && revokedProxyThrows
+    "#;
+    assert_eq!(
+        Vm::default()
+            .execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn class_call_error_uses_the_class_realm() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let other = $262.createRealm().global;
+        let C = other.eval('(class {})');
+        let foreignTypeError = other.TypeError;
+        let caught;
+        try { C(); } catch (error) { caught = error; }
+        caught.constructor === foreignTypeError && caught.constructor !== TypeError
+    "#;
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn foreign_function_calls_keep_error_and_constructor_prototype_realms() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let other = $262.createRealm().global;
+        let foreignFunction = new other.Function();
+        let foreignError = false;
+        try { foreignFunction.apply(null, false); }
+        catch (error) { foreignError = error.constructor === other.TypeError; }
+
+        let C = new other.Function();
+        C.prototype = null;
+        let localFunction = Reflect.construct(Function, [], C);
+        let localConstructor = Reflect.construct(function() {}.bind(), [], C);
+        let localObject = Reflect.construct(Object, [], C);
+
+        let realmA = $262.createRealm().global;
+        let realmB = $262.createRealm().global;
+        let newTarget = new realmB.Function();
+        newTarget.prototype = null;
+        let foreignFunctionWithForeignTarget = Reflect.construct(
+          realmA.Function, [''], newTarget
+        );
+
+        foreignError &&
+          Object.getPrototypeOf(foreignFunction) === other.Function.prototype &&
+          Object.getPrototypeOf(localFunction) === other.Function.prototype &&
+          Object.getPrototypeOf(localConstructor) === other.Object.prototype &&
+          Object.getPrototypeOf(localObject) === other.Object.prototype &&
+          Object.getPrototypeOf(foreignFunctionWithForeignTarget) === realmB.Function.prototype &&
+          Object.getPrototypeOf(foreignFunctionWithForeignTarget.prototype) === realmA.Object.prototype
+    "#;
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn foreign_proxy_revocable_retains_caller_realm_target_and_handler() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let other = $262.createRealm().global;
+        let handle;
+        handle = other.Proxy.revocable(function() {}, {
+            get() { handle.revoke(); }
+        });
+        let revoked = false;
+        try { new handle.proxy(); }
+        catch (error) { revoked = error instanceof TypeError; }
+        revoked
+    "#;
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
 }
 
 #[test]
