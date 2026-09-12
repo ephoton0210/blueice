@@ -491,6 +491,21 @@ enum DynamicImportResult {
 struct Test262Realm {
     vm: Box<Vm>,
     wrappers: HashMap<ObjectId, ObjectId>,
+    /// Parent-heap values temporarily represented by an ordinary object in
+    /// this child heap. The reverse map preserves identity when child code
+    /// returns or retains an argument supplied by the parent.
+    imported_sources: HashMap<ObjectId, ObjectId>,
+    imported_values: HashMap<ObjectId, Test262ImportedValue>,
+}
+
+/// The two roots keep an opaque membrane transport value alive in each heap.
+/// Such a value preserves identity across a call boundary. Property forwarding
+/// remains a separate membrane operation; no parent-heap handle is exposed to
+/// child heap storage.
+struct Test262ImportedValue {
+    value: Value,
+    _source_root: RootId,
+    _target_root: RootId,
 }
 
 /// A parent-heap object that stands for an object retained in a Test262 child

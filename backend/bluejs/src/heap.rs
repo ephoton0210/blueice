@@ -623,6 +623,8 @@ pub(crate) enum TypedArrayKind {
     Uint32,
     Float32,
     Float64,
+    BigInt64,
+    BigUint64,
 }
 
 /// CanonicalNumericIndexString classification for integer-indexed exotic
@@ -640,7 +642,7 @@ impl TypedArrayKind {
             Self::Int8 | Self::Uint8 | Self::Uint8Clamped => 1,
             Self::Int16 | Self::Uint16 => 2,
             Self::Int32 | Self::Uint32 | Self::Float32 => 4,
-            Self::Float64 => 8,
+            Self::Float64 | Self::BigInt64 | Self::BigUint64 => 8,
         }
     }
 
@@ -655,7 +657,13 @@ impl TypedArrayKind {
             Self::Uint32 => "Uint32Array",
             Self::Float32 => "Float32Array",
             Self::Float64 => "Float64Array",
+            Self::BigInt64 => "BigInt64Array",
+            Self::BigUint64 => "BigUint64Array",
         }
+    }
+
+    pub(crate) const fn bigint(self) -> bool {
+        matches!(self, Self::BigInt64 | Self::BigUint64)
     }
 }
 

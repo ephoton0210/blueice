@@ -127,6 +127,10 @@ fn fixed_length_array_buffers_views_and_typed_indices_share_backing_bytes() {
             "let TypedArray=Object.getPrototypeOf(Int8Array);let calls=0;Object.defineProperties(TypedArray.prototype,{'0':{configurable:true,get:function(){calls++;return 7}}});let typed=new Uint8Array([3]);let result=typed[0]===3&&Reflect.deleteProperty(typed,'0')===false&&calls===0;delete TypedArray.prototype['0'];result",
             Value::Bool(true),
         ),
+        (
+            "let signed=new BigInt64Array([-1n,9223372036854775808n]);let unsigned=new BigUint64Array(1);unsigned[0]=-1n;let view=new DataView(unsigned.buffer);let typeError=false;try{signed[0]=1}catch(error){typeError=error instanceof TypeError}signed.length===2&&signed[0]===-1n&&signed[1]===-9223372036854775808n&&unsigned[0]===18446744073709551615n&&view.getBigInt64(0,true)===-1n&&view.getBigUint64(0,true)===18446744073709551615n&&BigInt64Array.BYTES_PER_ELEMENT===8&&BigUint64Array.BYTES_PER_ELEMENT===8&&typeError",
+            Value::Bool(true),
+        ),
     ] {
         let actual = evaluate(source).unwrap_or_else(|error| panic!("{source}: {error}"));
         assert_eq!(actual, expected, "{source}");

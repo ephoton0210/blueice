@@ -139,6 +139,8 @@ fn typed_array_kind(name: &str) -> Option<TypedArrayKind> {
         "Uint32Array" => TypedArrayKind::Uint32,
         "Float32Array" => TypedArrayKind::Float32,
         "Float64Array" => TypedArrayKind::Float64,
+        "BigInt64Array" => TypedArrayKind::BigInt64,
+        "BigUint64Array" => TypedArrayKind::BigUint64,
         _ => return None,
     })
 }
@@ -168,13 +170,61 @@ fn data_view_number(bytes: &[u8], signed: bool, floating: bool, little_endian: b
     }
 }
 
+fn data_view_value(
+    bytes: &[u8],
+    signed: bool,
+    floating: bool,
+    little_endian: bool,
+    bigint: bool,
+) -> Value {
+    if bigint {
+        let bytes: [u8; 8] = bytes.try_into().expect("BigInt DataView access is 64 bits");
+        return Value::BigInt(if signed {
+            if little_endian {
+                i64::from_le_bytes(bytes).into()
+            } else {
+                i64::from_be_bytes(bytes).into()
+            }
+        } else if little_endian {
+            u64::from_le_bytes(bytes).into()
+        } else {
+            u64::from_be_bytes(bytes).into()
+        });
+    }
+    Value::Number(data_view_number(bytes, signed, floating, little_endian))
+}
+
 fn data_view_bytes(
-    value: f64,
+    value: &Value,
     width: usize,
     signed: bool,
     floating: bool,
     little_endian: bool,
+    bigint: bool,
 ) -> Vec<u8> {
+    if bigint {
+        let Value::BigInt(value) = value else {
+            unreachable!("BigInt DataView writes receive a BigInt value");
+        };
+        let source = value.to_signed_bytes_le();
+        let fill = if value.sign() == num_bigint::Sign::Minus {
+            0xff
+        } else {
+            0
+        };
+        let mut bytes = [fill; 8];
+        let copied = source.len().min(bytes.len());
+        bytes[..copied].copy_from_slice(&source[..copied]);
+        return if little_endian {
+            bytes.to_vec()
+        } else {
+            bytes.into_iter().rev().collect()
+        };
+    }
+    let Value::Number(value) = value else {
+        unreachable!("numeric DataView writes receive a Number value");
+    };
+    let value = *value;
     if floating {
         return match (width, little_endian) {
             (4, true) => (value as f32).to_le_bytes().to_vec(),

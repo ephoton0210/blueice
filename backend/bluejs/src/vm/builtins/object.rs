@@ -53,7 +53,7 @@ impl Vm {
         let TypedArrayNumericKey::Index(index) = numeric else {
             return Ok(false);
         };
-        let (buffer, _, length, _) = self.heap.typed_array_info(object)?;
+        let (buffer, _, length, kind) = self.heap.typed_array_info(object)?;
         if self.heap.array_buffer_is_detached(buffer)? || index >= length {
             return Ok(false);
         }
@@ -67,14 +67,14 @@ impl Vm {
         let Some(value) = descriptor.value else {
             return Ok(true);
         };
-        let value = self.coerce_number(&value)?;
+        let value = self.typed_array_element_value(kind, &value)?;
         // IntegerIndexedElementSet converts first. A conversion may detach the
         // backing buffer; in that case the already-valid DefineOwnProperty
         // operation still succeeds without writing a byte.
         if self.heap.array_buffer_is_detached(buffer)? {
             return Ok(true);
         }
-        self.with_roots(|heap| heap.typed_array_set_index(object, index, value))
+        self.with_roots(|heap| heap.typed_array_set_index(object, index, &value))
     }
 
     pub(in super::super) fn object_delete(
@@ -174,7 +174,8 @@ impl Vm {
                 // observes a throwing value conversion. A different receiver
                 // has the separate OrdinarySet path below and must *not*
                 // convert an invalid key's value.
-                let value = self.coerce_number(value)?;
+                let (_, _, _, kind) = self.heap.typed_array_info(target)?;
+                let value = self.typed_array_element_value(kind, value)?;
                 if valid {
                     let TypedArrayNumericKey::Index(index) = numeric else {
                         unreachable!("valid TypedArray index has an integer index")
@@ -183,7 +184,7 @@ impl Vm {
                     // successful [[Set]] performs no byte write.
                     let (buffer, _, _, _) = self.heap.typed_array_info(target)?;
                     if !self.heap.array_buffer_is_detached(buffer)? {
-                        self.with_roots(|heap| heap.typed_array_set_index(target, index, value))?;
+                        self.with_roots(|heap| heap.typed_array_set_index(target, index, &value))?;
                     }
                 }
                 return Ok(true);
@@ -213,7 +214,8 @@ impl Vm {
                         // SameValue branch therefore still performs ToNumber
                         // for any canonical numeric key before validity is
                         // tested.
-                        let value = self.coerce_number(value)?;
+                        let (_, _, _, kind) = self.heap.typed_array_info(object)?;
+                        let value = self.typed_array_element_value(kind, value)?;
                         if valid {
                             let TypedArrayNumericKey::Index(index) = numeric else {
                                 unreachable!("valid TypedArray index has an integer index")
@@ -221,7 +223,7 @@ impl Vm {
                             let (buffer, _, _, _) = self.heap.typed_array_info(object)?;
                             if !self.heap.array_buffer_is_detached(buffer)? {
                                 self.with_roots(|heap| {
-                                    heap.typed_array_set_index(object, index, value)
+                                    heap.typed_array_set_index(object, index, &value)
                                 })?;
                             }
                         }

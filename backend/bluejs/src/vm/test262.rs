@@ -1061,6 +1061,13 @@ impl Vm {
         let Value::Object(target) = value else {
             return Ok(value);
         };
+        if let Some(value) = self
+            .test262_realms
+            .get(&realm_id)
+            .and_then(|realm| realm.imported_values.get(&target))
+        {
+            return Ok(value.value.clone());
+        }
         if let Some(wrapper) = self
             .test262_realms
             .get(&realm_id)
@@ -1191,31 +1198,75 @@ impl Vm {
     }
 
     fn test262_export_foreign_value(
-        &self,
+        &mut self,
         realm_id: ObjectId,
         value: &Value,
     ) -> Result<Value, RuntimeError> {
-        let Value::Object(wrapper) = value else {
+        let Value::Object(source) = value else {
             return Ok(value.clone());
         };
-        let mut wrapper = *wrapper;
-        let (value_realm, target) = loop {
-            if let Some((value_realm, target, _, _)) = self.test262_foreign_reference(wrapper) {
-                break (value_realm, target);
+        let mut candidate = *source;
+        loop {
+            if let Some((value_realm, target, _, _)) = self.test262_foreign_reference(candidate) {
+                if value_realm == realm_id {
+                    return Ok(Value::Object(target));
+                }
+                break;
             }
-            let Some((target, _)) = self.heap.proxy(wrapper)? else {
-                return Err(RuntimeError::TypeError(
-                    "cannot pass a local object into a foreign Test262 realm".into(),
-                ));
+            let Some((target, _)) = self.heap.proxy(candidate)? else {
+                break;
             };
-            wrapper = target;
-        };
-        if value_realm != realm_id {
-            return Err(RuntimeError::TypeError(
-                "cannot pass an object between foreign Test262 realms".into(),
-            ));
+            candidate = target;
         }
-        Ok(Value::Object(target))
+        self.test262_transport_value(realm_id, value.clone())
+    }
+
+    /// Creates an identity-preserving, child-heap stand-in for a parent value.
+    /// The stand-in is deliberately an ordinary object: property forwarding
+    /// needs a resumable cross-VM operation and is not implied by passing an
+    /// otherwise opaque argument through a foreign call. Returning the
+    /// stand-in restores the exact original parent value.
+    fn test262_transport_value(
+        &mut self,
+        realm_id: ObjectId,
+        value: Value,
+    ) -> Result<Value, RuntimeError> {
+        let source = value
+            .object_id()
+            .expect("only objects require Test262 membrane transport");
+        if let Some(target) = self
+            .test262_realms
+            .get(&realm_id)
+            .and_then(|realm| realm.imported_sources.get(&source))
+        {
+            return Ok(Value::Object(*target));
+        }
+        let source_root = self.heap.root(source)?;
+        let result = (|| {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            let prototype = realm.vm.object_prototype;
+            let target = realm
+                .vm
+                .with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+            let target_root = realm.vm.heap.root(target)?;
+            realm.imported_sources.insert(source, target);
+            realm.imported_values.insert(
+                target,
+                Test262ImportedValue {
+                    value,
+                    _source_root: source_root,
+                    _target_root: target_root,
+                },
+            );
+            Ok(Value::Object(target))
+        })();
+        if result.is_err() {
+            self.heap.unroot(source_root)?;
+        }
+        result
     }
 
     pub(super) fn test262_foreign_get(
@@ -1278,8 +1329,43 @@ impl Vm {
             .vm
             .heap
             .native_function(target)?;
+        // `%Object%` has no child-heap internal slots beyond the ordinary
+        // result it creates. Running its construct path in the parent keeps
+        // the caller's real `newTarget`, including a bound function whose
+        // target lives in a third Test262 realm. `constructor_prototype`
+        // then selects that target realm's `%Object.prototype%` normally.
+        if construct && foreign_native == Some(NativeFunction::Object) {
+            return self.native_call(NativeFunction::Object, receiver, args, true);
+        }
         if foreign_native == Some(NativeFunction::ProxyRevocable) {
             return self.proxy_revocable(&args);
+        }
+        // `Function.prototype.bind.call(foreignTarget, ...)` creates a bound
+        // function whose [[BoundTargetFunction]] keeps the target's Realm.
+        // Keeping that record in the parent VM lets the normal bound-function
+        // and GetFunctionRealm paths retain a foreign facade, instead of
+        // placing an opaque child stand-in in a second child heap.
+        let receiver_foreign_native = receiver
+            .object_id()
+            .and_then(|receiver| self.test262_foreign_reference(receiver))
+            .filter(|(receiver_realm, _, _, _)| *receiver_realm == realm_id)
+            .and_then(|(_, receiver, _, _)| {
+                self.test262_realms
+                    .get(&realm_id)
+                    .expect("foreign realm remains live")
+                    .vm
+                    .heap
+                    .native_function(receiver)
+                    .ok()
+                    .flatten()
+            });
+        if foreign_native == Some(NativeFunction::Call)
+            && receiver_foreign_native == Some(NativeFunction::Bind)
+        {
+            return self.bind_function(
+                args.first().cloned().unwrap_or(Value::Undefined),
+                args.get(1..).unwrap_or_default(),
+            );
         }
         // Function.prototype.call forwards its receiver as the `this` value
         // of the target function.  If that target is this realm's `apply`,
@@ -1408,6 +1494,8 @@ impl Vm {
                 Test262Realm {
                     vm: realm,
                     wrappers: HashMap::from([(foreign_global, global)]),
+                    imported_sources: HashMap::new(),
+                    imported_values: HashMap::new(),
                 },
             );
             self.test262_foreign_values.insert(

@@ -30,11 +30,13 @@ pub(crate) enum NativeFunction {
         width: usize,
         signed: bool,
         floating: bool,
+        bigint: bool,
     },
     DataViewSet {
         width: usize,
         signed: bool,
         floating: bool,
+        bigint: bool,
     },
     TypedArray(TypedArrayKind),
     /// The abstract `%TypedArray%` constructor. It exists only as the common

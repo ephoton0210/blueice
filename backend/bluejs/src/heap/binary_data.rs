@@ -244,14 +244,14 @@ impl Heap {
         }
         let bytes = self.array_buffer_bytes(buffer)?;
         let start = byte_offset + index * kind.byte_width();
-        Ok(Some(Value::Number(typed_read(kind, &bytes[start..]))))
+        Ok(Some(typed_read(kind, &bytes[start..])))
     }
 
     pub(crate) fn typed_array_set_index(
         &mut self,
         object: ObjectId,
         index: usize,
-        value: f64,
+        value: &Value,
     ) -> Result<bool, HeapError> {
         let (buffer, byte_offset, length, kind) = self.typed_array_info(object)?;
         if index >= length {
@@ -397,8 +397,8 @@ pub(super) fn integer_for_typed_array(value: f64) -> f64 {
     }
 }
 
-pub(super) fn typed_read(kind: TypedArrayKind, bytes: &[u8]) -> f64 {
-    match kind {
+pub(super) fn typed_read(kind: TypedArrayKind, bytes: &[u8]) -> Value {
+    Value::Number(match kind {
         TypedArrayKind::Int8 => i8::from_le_bytes([bytes[0]]) as f64,
         TypedArrayKind::Uint8 | TypedArrayKind::Uint8Clamped => bytes[0] as f64,
         TypedArrayKind::Int16 => i16::from_le_bytes(bytes[..2].try_into().unwrap()) as f64,
@@ -407,10 +407,36 @@ pub(super) fn typed_read(kind: TypedArrayKind, bytes: &[u8]) -> f64 {
         TypedArrayKind::Uint32 => u32::from_le_bytes(bytes[..4].try_into().unwrap()) as f64,
         TypedArrayKind::Float32 => f32::from_le_bytes(bytes[..4].try_into().unwrap()) as f64,
         TypedArrayKind::Float64 => f64::from_le_bytes(bytes[..8].try_into().unwrap()),
-    }
+        TypedArrayKind::BigInt64 => {
+            return Value::BigInt(i64::from_le_bytes(bytes[..8].try_into().unwrap()).into());
+        }
+        TypedArrayKind::BigUint64 => {
+            return Value::BigInt(u64::from_le_bytes(bytes[..8].try_into().unwrap()).into());
+        }
+    })
 }
 
-pub(super) fn typed_write(kind: TypedArrayKind, bytes: &mut [u8], value: f64) {
+pub(super) fn typed_write(kind: TypedArrayKind, bytes: &mut [u8], value: &Value) {
+    if matches!(kind, TypedArrayKind::BigInt64 | TypedArrayKind::BigUint64) {
+        let Value::BigInt(value) = value else {
+            unreachable!("BigInt typed arrays receive a BigInt element value");
+        };
+        let source = value.to_signed_bytes_le();
+        let fill = if value.sign() == num_bigint::Sign::Minus {
+            0xff
+        } else {
+            0
+        };
+        let mut result = [fill; 8];
+        let copied = source.len().min(result.len());
+        result[..copied].copy_from_slice(&source[..copied]);
+        bytes[..8].copy_from_slice(&result);
+        return;
+    }
+    let Value::Number(value) = value else {
+        unreachable!("numeric typed arrays receive a Number element value");
+    };
+    let value = *value;
     let integer = integer_for_typed_array(value);
     match kind {
         TypedArrayKind::Int8 => bytes[..1].copy_from_slice(&(integer as i64 as i8).to_le_bytes()),
@@ -441,5 +467,8 @@ pub(super) fn typed_write(kind: TypedArrayKind, bytes: &mut [u8], value: f64) {
         }
         TypedArrayKind::Float32 => bytes[..4].copy_from_slice(&(value as f32).to_le_bytes()),
         TypedArrayKind::Float64 => bytes[..8].copy_from_slice(&value.to_le_bytes()),
+        TypedArrayKind::BigInt64 | TypedArrayKind::BigUint64 => {
+            unreachable!("BigInt typed arrays return before numeric coercion")
+        }
     }
 }

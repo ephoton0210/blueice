@@ -54,7 +54,10 @@ fn typed_array_backing_buffer_survives_minor_and_major_collection() {
     let root = heap.root(view).unwrap();
     heap.collect_minor();
     heap.collect_major();
-    assert_eq!(heap.typed_array_set_index(view, 0, 9.0), Ok(true));
+    assert_eq!(
+        heap.typed_array_set_index(view, 0, &Value::Number(9.0)),
+        Ok(true)
+    );
     assert_eq!(
         heap.typed_array_index_value(view, 0),
         Ok(Some(Value::Number(9.0)))

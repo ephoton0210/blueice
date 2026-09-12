@@ -63,6 +63,8 @@ impl Vm {
             "Uint32Array" => NativeFunction::TypedArray(TypedArrayKind::Uint32),
             "Float32Array" => NativeFunction::TypedArray(TypedArrayKind::Float32),
             "Float64Array" => NativeFunction::TypedArray(TypedArrayKind::Float64),
+            "BigInt64Array" => NativeFunction::TypedArray(TypedArrayKind::BigInt64),
+            "BigUint64Array" => NativeFunction::TypedArray(TypedArrayKind::BigUint64),
             "Proxy" => NativeFunction::Proxy,
             "Map" => NativeFunction::Map,
             "Set" => NativeFunction::Set,
@@ -311,15 +313,17 @@ impl Vm {
                 ] {
                     self.install_native_getter(view_prototype, prototype, name, native)?;
                 }
-                for (name, width, signed, floating) in [
-                    ("getUint8", 1, false, false),
-                    ("getInt8", 1, true, false),
-                    ("getUint16", 2, false, false),
-                    ("getInt16", 2, true, false),
-                    ("getUint32", 4, false, false),
-                    ("getInt32", 4, true, false),
-                    ("getFloat32", 4, false, true),
-                    ("getFloat64", 8, false, true),
+                for (name, width, signed, floating, bigint) in [
+                    ("getUint8", 1, false, false, false),
+                    ("getInt8", 1, true, false, false),
+                    ("getUint16", 2, false, false, false),
+                    ("getInt16", 2, true, false, false),
+                    ("getUint32", 4, false, false, false),
+                    ("getInt32", 4, true, false, false),
+                    ("getFloat32", 4, false, true, false),
+                    ("getFloat64", 8, false, true, false),
+                    ("getBigUint64", 8, false, false, true),
+                    ("getBigInt64", 8, true, false, true),
                 ] {
                     self.install_native(
                         view_prototype,
@@ -330,6 +334,7 @@ impl Vm {
                             width,
                             signed,
                             floating,
+                            bigint,
                         },
                     )?;
                     let set_name = name.replacen("get", "set", 1);
@@ -342,6 +347,7 @@ impl Vm {
                             width,
                             signed,
                             floating,
+                            bigint,
                         },
                     )?;
                 }

@@ -1488,7 +1488,7 @@ descriptors, thrower identity, strict versus legacy properties, foreign errors,
 foreign `newTarget` fallback for Function and Object, and `isPrototypeOf`
 coercion ordering.
 
-The remaining 18 Function modes are intentional next-step boundaries, rather
+At that point, the remaining 18 Function modes were intentional next-step boundaries, rather
 than unimplemented isolated wrappers: six need object identity to cross the
 Test262 realm membrane; two need resizable ArrayBuffer and BigInt typed-data
 semantics; six need source-text retention for generator, native, and computed
@@ -1504,3 +1504,55 @@ unsupported, timeout, or harness-error outcomes. Its path/mode comparison
 with `target/test262-for-assignment-full` found **407 fail-to-pass and zero
 pass-to-fail** transitions. No passing result reports
 `unclassified_parse_error`.
+
+## P1.5/P1.6 continuation: BigInt binary data and realm identity membrane
+
+Implemented 2026-09-13. The fixed-length, non-shared binary-data baseline now
+also includes `BigInt64Array` and `BigUint64Array`, along with DataView's
+`getBigInt64`, `getBigUint64`, `setBigInt64`, and `setBigUint64` accessors.
+BigInt element reads produce BigInt values; writes perform observable
+`ToPrimitive(value, number)` and then accept only BigInt. Numeric typed-array
+writes retain Number conversion and reject BigInt. The two paths share the
+same indexed-property, backing-store, detach, view-liveness, and GC-edge
+contracts as the numeric arrays. BigInt bytes retain the low 64 bits in
+two's-complement form, and DataView honours the requested endianness.
+
+This remains the fixed-length P1.5 baseline: resizable buffers, growable
+SharedArrayBuffer, Atomics, and higher-order TypedArray prototype algorithms
+are still separate work. `$262.detachArrayBuffer` continues to detach the
+real backing store; it is not a Test262-only simulation.
+
+Test262 child realms now have an identity membrane for values passed as
+foreign-call receivers or arguments. A parent object, including a facade from
+another child realm, receives one stable ordinary stand-in in the target heap.
+Both endpoints are rooted while the child realm is live, and returning that
+stand-in restores the exact original parent value. This supports repeated
+argument aliases and a return trip through two foreign realms without placing
+a parent-heap handle in child storage. Property forwarding on opaque stand-ins
+is deliberately a separate resumable cross-VM operation and is not claimed by
+this identity transport.
+
+The membrane also keeps a foreign bound target in the parent function record
+when `Function.prototype.bind.call` is invoked through a child realm. Foreign
+`%Object%` construction follows the parent construct path, so a bound target
+from a third realm still selects that target realm's `%Object.prototype%`.
+The public realm regression covers local and child-to-child identity round
+trips, argument aliasing, a foreign bound target, and the selected constructor
+prototype; `binary_data.rs` covers signed/unsigned wrapping, DataView BigInt
+values, element width, and Number-to-BigInt rejection.
+
+Focused runs against the P0.2 snapshot show `built-ins/DataView` moving from
+**806 pass / 316 fail** to **896 pass / 226 fail**; the complete
+`built-ins/TypedArrayConstructors` selection moves from **627 / 821** to
+**1,062 / 386**; `built-ins/TypedArray/` moves from **338 / 2,538** to
+**402 / 2,474**. `built-ins/Function` moves from **887 / 18** to
+**891 / 14**. The remaining Function modes comprise two resizable-buffer
+cases, six source-text-retention cases, and six Date-internal-slot cases.
+
+The complete inventory at `target/test262-p15-membrane-final` reconciles all
+53,404 files and 102,578 modes: **63,457 pass and 39,121 fail**, with zero
+unsupported, timeout, and harness-error outcomes. Its path/mode/source-hash
+comparison with `target/test262-p02-final` finds **627 fail-to-pass and zero
+pass-to-nonpass** transitions; all 6,985 passing negative modes retain a
+classified expected outcome, and no passing result reports an unclassified
+parse error.

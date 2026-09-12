@@ -136,6 +136,26 @@ impl Vm {
         Ok(integer as usize)
     }
 
+    /// Integer-indexed writes use ToNumber for numeric typed arrays and
+    /// ToBigInt for the two BigInt element kinds. Both start with the same
+    /// observable ToPrimitive(value, number) step.
+    pub(super) fn typed_array_element_value(
+        &mut self,
+        kind: TypedArrayKind,
+        value: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let value = self.coerce_primitive(value, "number")?;
+        if kind.bigint() {
+            return match value {
+                Value::BigInt(_) => Ok(value),
+                _ => Err(RuntimeError::TypeError(
+                    "BigInt typed arrays require a BigInt element value".into(),
+                )),
+            };
+        }
+        Ok(Value::Number(primitive::number(&value)?))
+    }
+
     pub(super) fn array_buffer_constructor(
         &mut self,
         args: &[Value],
@@ -350,6 +370,7 @@ impl Vm {
         width: usize,
         signed: bool,
         floating: bool,
+        bigint: bool,
     ) -> Result<Value, RuntimeError> {
         let (buffer, offset, length) = self.data_view_raw_receiver(receiver)?;
         let index = self.buffer_index(native::argument(args, 0))?;
@@ -371,12 +392,13 @@ impl Vm {
             None => false,
         };
         let bytes = self.heap.array_buffer_copy(buffer, offset + index, width)?;
-        Ok(Value::Number(data_view_number(
+        Ok(data_view_value(
             &bytes,
             signed,
             floating,
             little_endian,
-        )))
+            bigint,
+        ))
     }
 
     pub(super) fn data_view_set(
@@ -386,12 +408,22 @@ impl Vm {
         width: usize,
         signed: bool,
         floating: bool,
+        bigint: bool,
     ) -> Result<Value, RuntimeError> {
         let (buffer, offset, length) = self.data_view_raw_receiver(receiver)?;
         let index = self.buffer_index(native::argument(args, 0))?;
         // SetViewValue converts its value before observing detachment or an
         // out-of-range index. This matters when valueOf throws or detaches.
-        let value = self.coerce_number(native::argument(args, 1))?;
+        let kind = if bigint {
+            if signed {
+                TypedArrayKind::BigInt64
+            } else {
+                TypedArrayKind::BigUint64
+            }
+        } else {
+            TypedArrayKind::Float64
+        };
+        let value = self.typed_array_element_value(kind, native::argument(args, 1))?;
         if self.heap.array_buffer_is_detached(buffer)? {
             return Err(RuntimeError::TypeError(
                 "ArrayBuffer has been detached".into(),
@@ -409,7 +441,7 @@ impl Vm {
             Some(value) => self.to_boolean(value)?,
             None => false,
         };
-        let bytes = data_view_bytes(value, width, signed, floating, little_endian);
+        let bytes = data_view_bytes(&value, width, signed, floating, little_endian, bigint);
         self.with_roots(|heap| heap.array_buffer_write(buffer, offset + index, &bytes))?;
         Ok(Value::Undefined)
     }
@@ -507,7 +539,8 @@ impl Vm {
                     .into_iter()
                     .enumerate()
                     .try_for_each(|(index, value)| {
-                        self.with_roots(|heap| heap.typed_array_set_index(object, index, value))
+                        let value = self.typed_array_element_value(kind, &value)?;
+                        self.with_roots(|heap| heap.typed_array_set_index(object, index, &value))
                             .map(|_| ())
                     });
                 self.stack.pop();
@@ -540,13 +573,13 @@ impl Vm {
         &mut self,
         source: ObjectId,
         length: usize,
-    ) -> Result<Vec<f64>, RuntimeError> {
+    ) -> Result<Vec<Value>, RuntimeError> {
         self.stack.push(Value::Object(source));
         let result = (|| {
             let mut values = Vec::with_capacity(length);
             for index in 0..length {
                 let value = self.get_property(&Value::Object(source), &index.to_string().into())?;
-                values.push(self.coerce_number(&value)?);
+                values.push(value);
             }
             Ok(values)
         })();
@@ -558,7 +591,7 @@ impl Vm {
         &mut self,
         source: ObjectId,
         kind: TypedArrayKind,
-    ) -> Result<Vec<f64>, RuntimeError> {
+    ) -> Result<Vec<Value>, RuntimeError> {
         self.stack.push(Value::Object(source));
         let result = (|| {
             let length = self.get_property(&Value::Object(source), &"length".into())?;
@@ -571,7 +604,7 @@ impl Vm {
             let mut values = Vec::with_capacity(length as usize);
             for index in 0..length as usize {
                 let value = self.get_property(&Value::Object(source), &index.to_string().into())?;
-                values.push(self.coerce_number(&value)?);
+                values.push(self.typed_array_element_value(kind, &value)?);
             }
             Ok(values)
         })();
@@ -588,7 +621,7 @@ impl Vm {
         source: &Value,
         iterator_method: Value,
         kind: TypedArrayKind,
-    ) -> Result<Vec<f64>, RuntimeError> {
+    ) -> Result<Vec<Value>, RuntimeError> {
         let base = self.stack.len();
         self.stack.push(source.clone());
         let result = (|| {
@@ -602,7 +635,7 @@ impl Vm {
                         "TypedArray length is too large".into(),
                     ));
                 }
-                values.push(self.coerce_number(&value)?);
+                values.push(self.typed_array_element_value(kind, &value)?);
             }
             Ok(values)
         })();
@@ -632,7 +665,7 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        let (buffer, _, length, _) = self.typed_array_receiver(receiver)?;
+        let (buffer, _, length, kind) = self.typed_array_receiver(receiver)?;
         if self.heap.array_buffer_is_detached(buffer)? {
             return Err(RuntimeError::TypeError(
                 "TypedArray buffer is detached".into(),
@@ -659,14 +692,14 @@ impl Vm {
             let mut values = Vec::with_capacity(source_length);
             for index in 0..source_length {
                 let value = self.get_property(&Value::Object(source), &index.to_string().into())?;
-                values.push(self.coerce_number(&value)?);
+                values.push(self.typed_array_element_value(kind, &value)?);
             }
             for (index, value) in values.into_iter().enumerate() {
                 self.with_roots(|heap| {
                     heap.typed_array_set_index(
                         receiver.object_id().expect("validated TypedArray receiver"),
                         target_offset + index,
-                        value,
+                        &value,
                     )
                 })?;
             }

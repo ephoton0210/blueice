@@ -205,12 +205,14 @@ impl Vm {
                 width,
                 signed,
                 floating,
-            } => self.data_view_get(&receiver, &args, width, signed, floating),
+                bigint,
+            } => self.data_view_get(&receiver, &args, width, signed, floating, bigint),
             NativeFunction::DataViewSet {
                 width,
                 signed,
                 floating,
-            } => self.data_view_set(&receiver, &args, width, signed, floating),
+                bigint,
+            } => self.data_view_set(&receiver, &args, width, signed, floating, bigint),
             NativeFunction::TypedArray(kind) => {
                 self.typed_array_constructor(&args, construct, kind)
             }

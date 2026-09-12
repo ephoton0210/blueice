@@ -1096,6 +1096,13 @@ fn foreign_function_calls_keep_error_and_constructor_prototype_realms() {
         let localFunction = Reflect.construct(Function, [], C);
         let localConstructor = Reflect.construct(function() {}.bind(), [], C);
         let localObject = Reflect.construct(Object, [], C);
+        let localIdentity = {};
+        let echo = new other.Function('return this;');
+        let transportedIdentity = echo.call(localIdentity) === localIdentity;
+        let compareTransported = new other.Function(
+          'return arguments[0] === arguments[1];'
+        );
+        let transportedAlias = compareTransported(localIdentity, localIdentity);
 
         let realmA = $262.createRealm().global;
         let realmB = $262.createRealm().global;
@@ -1104,14 +1111,24 @@ fn foreign_function_calls_keep_error_and_constructor_prototype_realms() {
         let foreignFunctionWithForeignTarget = Reflect.construct(
           realmA.Function, [''], newTarget
         );
+        let boundForeignTarget = realmA.Function.prototype.bind.call(newTarget);
+        let boundForeignObject = Reflect.construct(realmA.Object, [], boundForeignTarget);
+        let realmAObject = new realmA.Function('return {};')();
+        let realmBIdentity = new realmB.Function('return this;');
+        let crossRealmTransportedIdentity =
+          realmBIdentity.call(realmAObject) === realmAObject;
 
         foreignError &&
           Object.getPrototypeOf(foreignFunction) === other.Function.prototype &&
           Object.getPrototypeOf(localFunction) === other.Function.prototype &&
           Object.getPrototypeOf(localConstructor) === other.Object.prototype &&
           Object.getPrototypeOf(localObject) === other.Object.prototype &&
+          transportedIdentity &&
+          transportedAlias &&
           Object.getPrototypeOf(foreignFunctionWithForeignTarget) === realmB.Function.prototype &&
-          Object.getPrototypeOf(foreignFunctionWithForeignTarget.prototype) === realmA.Object.prototype
+          Object.getPrototypeOf(foreignFunctionWithForeignTarget.prototype) === realmA.Object.prototype &&
+          Object.getPrototypeOf(boundForeignObject) === realmB.Object.prototype &&
+          crossRealmTransportedIdentity
     "#;
     assert_eq!(
         vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
