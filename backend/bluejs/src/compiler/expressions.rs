@@ -896,7 +896,7 @@ impl Compiler {
                 }
                 (Some(pattern), Some(DeclKind::Var), Some(initializer))
             }
-            ForHead::Pattern(pattern) => (Some(pattern), None, None),
+            ForHead::Assignment(_) => (None, None, None),
             ForHead::Expr(_) => (None, None, None),
         };
         let lexical = kind.is_some_and(|kind| kind != DeclKind::Var);
@@ -960,22 +960,7 @@ impl Compiler {
         match left {
             ForHead::Decl(kind, pattern) => self.bind_pattern(pattern, *kind)?,
             ForHead::AnnexBVarInit(pattern, _) => self.bind_pattern(pattern, DeclKind::Var)?,
-            ForHead::Pattern(pattern) => {
-                let Pattern::Identifier(name) = pattern else {
-                    return Err(CompileError::Unsupported(if for_in {
-                        "a destructuring for-in assignment target"
-                    } else {
-                        "a destructuring for-of assignment target"
-                    }));
-                };
-                if let Some(slot) = self.resolve(name) {
-                    self.emit(Opcode::StoreBinding, slot)?;
-                } else {
-                    let index = self.name_constant(name)?;
-                    self.emit(Opcode::SetUnboundName, index)?;
-                }
-                self.emit(Opcode::Pop, 0)?;
-            }
+            ForHead::Assignment(pattern) => self.assign_pattern(pattern)?,
             ForHead::Expr(target) => {
                 if self.bytecode.strict {
                     return Err(CompileError::InvalidSyntax(

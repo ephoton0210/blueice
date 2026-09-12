@@ -11,6 +11,7 @@ from run import (
     case_timeout,
     classify,
     execution_source,
+    format_progress,
     instruction_budget,
     metadata,
     modes,
@@ -20,6 +21,25 @@ from run import (
 
 
 class RunnerTests(unittest.TestCase):
+    def test_progress_reports_completed_counts_and_current_modes(self):
+        report = format_progress(
+            3,
+            10,
+            {"pass": 4, "fail": 1},
+            [
+                ("language/current.js", "strict", 8.0),
+                ("language/older.js", "sloppy", 5.0),
+            ],
+            10.0,
+        )
+        self.assertIn("progress 3/10 files (30.0%)", report)
+        self.assertIn("results {'pass': 4, 'fail': 1}", report)
+        self.assertIn("language/older.js [sloppy, 5.0s]", report)
+        self.assertIn("language/current.js [strict, 2.0s]", report)
+        self.assertTrue(
+            format_progress(0, 1, {}, [], 0, checkpoint=True).startswith("checkpoint")
+        )
+
     def test_metadata_and_modes(self):
         self.assertEqual(modes(metadata("/*---\nflags: [async]\n---*/")), ["sloppy", "strict"])
         for flag, expected in [("raw", "raw"), ("module", "module"), ("onlyStrict", "strict"), ("noStrict", "sloppy")]:

@@ -147,13 +147,12 @@ fn validate_private_for_init(init: &ForInit, names: &HashSet<String>) -> Result<
 
 fn validate_private_for_head(head: &ForHead, names: &HashSet<String>) -> Result<(), CompileError> {
     match head {
-        ForHead::Decl(_, pattern) | ForHead::Pattern(pattern) => {
-            validate_private_pattern(pattern, names)
-        }
+        ForHead::Decl(_, pattern) => validate_private_pattern(pattern, names),
         ForHead::AnnexBVarInit(pattern, initializer) => {
             validate_private_pattern(pattern, names)?;
             validate_private_expression(initializer, names)
         }
+        ForHead::Assignment(pattern) => validate_private_assignment_pattern(pattern, names),
         ForHead::Expr(expression) => validate_private_expression(expression, names),
     }
 }

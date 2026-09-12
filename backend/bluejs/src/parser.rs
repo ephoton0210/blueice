@@ -257,20 +257,24 @@ fn is_annex_b_call_assignment_target(expr: &Expr) -> bool {
     matches!(expr, Expr::Call { .. })
 }
 
-/// Converts an already-parsed expression into a `for-in`/`for-of` head. The
-/// ordinary no-declaration form remains restricted to a bare identifier, but
-/// Annex B preserves a CallExpression target so its observable call happens
-/// before the web-compat runtime ReferenceError.
+/// Converts an already-parsed expression into a `for-in`/`for-of` head.
+/// Assignment references use the same target form as destructuring
+/// assignments. Annex B preserves a CallExpression target so its observable
+/// call happens before the web-compat runtime ReferenceError.
 fn expr_to_for_head(expr: Expr) -> Result<ForHead, ParseError> {
-    match expr {
-        Expr::Identifier(name) => Ok(ForHead::Pattern(Pattern::Identifier(name))),
-        expr if is_annex_b_call_assignment_target(&expr) => Ok(ForHead::Expr(expr)),
-        _ => Err(ParseError {
-            message: "only a plain identifier is supported as a for-in/for-of target when no declaration keyword precedes it".to_string(),
-            resource: None,
-            known_syntax: false,
-        }),
+    if is_valid_ref_target(&expr) {
+        return Ok(ForHead::Assignment(AssignmentPattern::Target(Box::new(
+            expr,
+        ))));
     }
+    if is_annex_b_call_assignment_target(&expr) {
+        return Ok(ForHead::Expr(expr));
+    }
+    Err(ParseError {
+        message: "invalid for-in/for-of assignment target".to_string(),
+        resource: None,
+        known_syntax: false,
+    })
 }
 
 fn known_syntax(mut error: ParseError) -> ParseError {

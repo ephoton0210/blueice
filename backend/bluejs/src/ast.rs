@@ -211,8 +211,9 @@ pub struct CatchClause {
     pub body: Vec<Stmt>,
 }
 
-/// A `for`-loop head. Most non-declaration heads use a [`Pattern`], such as
-/// `for (x of values)`. The `Expr` form retains the Annex B web-compat
+/// A `for`-loop head. Non-declaration heads use an [`AssignmentPattern`],
+/// such as `for (x of values)` or `for ({x: target.value} of values)`. The
+/// `Expr` form retains the Annex B web-compat
 /// CallExpression target so execution can evaluate its call and then report
 /// the required runtime ReferenceError, rather than rejecting the source
 /// before the observable call takes place.
@@ -222,7 +223,7 @@ pub enum ForHead {
     /// Annex B permits a `var` initializer in a sloppy for-in head. The
     /// initializer is evaluated once before the RHS expression.
     AnnexBVarInit(Pattern, Expr),
-    Pattern(Pattern),
+    Assignment(AssignmentPattern),
     Expr(Expr),
 }
 
@@ -707,12 +708,11 @@ fn for_init_contains_super(init: &ForInit, search: SuperSearch) -> bool {
 
 fn for_head_contains_super(head: &ForHead, search: SuperSearch) -> bool {
     match head {
-        ForHead::Decl(_, pattern) | ForHead::Pattern(pattern) => {
-            pattern_contains_super(pattern, search)
-        }
+        ForHead::Decl(_, pattern) => pattern_contains_super(pattern, search),
         ForHead::AnnexBVarInit(pattern, initializer) => {
             pattern_contains_super(pattern, search) || expr_contains_super(initializer, search)
         }
+        ForHead::Assignment(pattern) => assignment_pattern_contains_super(pattern, search),
         ForHead::Expr(expr) => expr_contains_super(expr, search),
     }
 }
@@ -1060,7 +1060,7 @@ mod tests {
             rest: false,
         })]);
         assert!(for_head_contains_super(
-            &ForHead::Pattern(binding.clone()),
+            &ForHead::Decl(DeclKind::Let, binding.clone()),
             SuperSearch::Call
         ));
         assert!(pattern_option_contains_super(
@@ -1161,12 +1161,16 @@ mod tests {
                 body: Box::new(Stmt::Empty),
             },
             Stmt::ForIn {
-                left: ForHead::Pattern(Pattern::Identifier("value".into())),
+                left: ForHead::Assignment(AssignmentPattern::Target(Box::new(Expr::Identifier(
+                    "value".into(),
+                )))),
                 right: super_call(),
                 body: Box::new(Stmt::Empty),
             },
             Stmt::ForOf {
-                left: ForHead::Pattern(Pattern::Identifier("value".into())),
+                left: ForHead::Assignment(AssignmentPattern::Target(Box::new(Expr::Identifier(
+                    "value".into(),
+                )))),
                 right: Expr::Array(Vec::new()),
                 body: Box::new(Stmt::Expr(super_call())),
                 is_await: false,

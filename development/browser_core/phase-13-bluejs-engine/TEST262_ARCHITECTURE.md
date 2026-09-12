@@ -1392,3 +1392,54 @@ with `target/test262-unsup-timeout-final-4` found exactly 600 changes, all
 `{ phase: parse, kind: unclassified_parse_error }`; no such result remains in
 the pass count. The full runner exits 1 because semantic failures remain, as
 expected for a non-conformant inventory.
+
+## P0.1/P0.3 continuation: undeclared iteration assignment heads
+
+Implemented 2026-09-12. `for-in`, `for-of`, and `for await...of` heads that
+do not declare `var`, `let`, or `const` now use `ForHead::Assignment` with an
+`AssignmentPattern`. This separates names introduced by a declaration from
+existing bindings and member references that receive every iterated value.
+It routes identifier, member, array, and object heads through the existing
+assignment-pattern evaluator, preserving defaults, rest elements, member
+reference ordering, strict `eval`/`arguments` early errors, and iterator close
+on an abrupt assignment.
+
+The parser recognizes an array or object as a pattern only when its matching
+delimiter is immediately followed by the `in` or contextual `of` separator.
+Ordinary classic `for` initializers consequently retain their expression
+grammar, including `for ({ value: 1 };;)`. The Annex B CallExpression target
+remains a separate AST form: sloppy code evaluates it before the required
+runtime error, while strict code rejects it during static semantics.
+
+The focused command
+`python3 backend/bluejs/test262/run.py --filter language/statements/for- --output target/test262-for-assignment`
+reconciles 2,109 files and 4,087 modes: **3,876 pass and 211 fail**, with no
+unsupported, timeout, or harness-error outcomes. Comparing every mode with
+the preceding complete inventory found **944 fail-to-pass transitions and zero
+pass-to-nonpass transitions**. All 384 passing parse-negative modes in the
+filtered result observed parse-phase `SyntaxError`, rather than relying on an
+unclassified parser rejection. The residual 211 modes are now principally
+callable/internal-method behavior, remaining grammar classification, and
+TypedArray availability; they no longer fail because an undeclared iteration
+head was limited to a plain identifier.
+
+Public parse/compile/execute regressions cover simple and destructuring heads,
+defaults, rest, member writes, `for-in`, strict restricted-name errors,
+ordinary `for` cover grammar, invalid targets, and close-on-assignment-error.
+
+The complete rerun at `target/test262-for-assignment-full` reconciles all
+53,404 files and 102,578 modes: **62,423 pass and 40,155 fail**, with zero
+unsupported, timeout, and harness-error outcomes. Against
+`target/test262-false-pass-fixed`, every path/mode pair and source hash
+matches; **946 modes changed from fail to pass and none changed from pass to
+nonpass**. All 6,985 passing negative modes observed their exact expected
+phase and error type, and no passing mode reports
+`unclassified_parse_error`. The refreshed complete architecture report is
+checked in as [TEST262_ANALYSIS_REPORT.md](TEST262_ANALYSIS_REPORT.md).
+
+The Test262 runner now emits a live report every five seconds with completed
+file count, outcome totals, and every active `path [mode, elapsed]`; users can
+set `--progress-interval` to adjust the cadence or disable it for automation.
+The runner regression suite checks the formatted current-mode output, and an
+actual one-worker `language/statements/for-in` run confirmed continuous output
+through all 122 files and 210 modes.

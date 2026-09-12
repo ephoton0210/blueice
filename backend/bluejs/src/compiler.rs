@@ -715,9 +715,7 @@ fn strict_assignment_in_for_head(head: &ForHead) -> bool {
         ForHead::AnnexBVarInit(pattern, initializer) => {
             strict_assignment_in_pattern(pattern) || strict_assignment_in_expression(initializer)
         }
-        ForHead::Pattern(pattern) => pattern_names(pattern)
-            .iter()
-            .any(|name| restricted_name(name)),
+        ForHead::Assignment(pattern) => strict_assignment_in_assignment_pattern(pattern),
         ForHead::Expr(expression) => strict_assignment_in_expression(expression),
     }
 }

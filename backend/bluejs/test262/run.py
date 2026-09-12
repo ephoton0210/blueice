@@ -387,6 +387,20 @@ def classify(reply, negative):
     return "pass" if kind == "ok" else "fail"
 
 
+def format_progress(completed, total, counts, active, now, checkpoint=False):
+    """Format live runner status with every current path and execution mode."""
+    current = sorted(active, key=lambda case: case[2])
+    current_text = "; ".join(
+        f"{path} [{mode}, {now - started:.1f}s]"
+        for path, mode, started in current
+    ) or "waiting for workers"
+    label = "checkpoint" if checkpoint else "progress"
+    return (
+        f"{label} {completed}/{total} files ({completed / total:.1%}); "
+        f"results {dict(counts)}; current: {current_text}"
+    )
+
+
 def instruction_budget(data, default, relative=None):
     """Keep standard tail-call conformance probes within a bounded budget."""
     if relative in URI_EXHAUSTIVE_FIXTURES:
@@ -503,6 +517,12 @@ def main():
     parser.add_argument("--timeout", type=float, default=2)
     parser.add_argument("--instruction-budget", type=int, default=100_000)
     parser.add_argument("--filter", default="", help="path substring; reports clearly identify partial runs")
+    parser.add_argument(
+        "--progress-interval",
+        type=float,
+        default=5,
+        help="seconds between live progress reports; zero disables periodic reports",
+    )
     parser.add_argument("--fetch", action="store_true")
     args = parser.parse_args()
     if args.fetch:
@@ -521,8 +541,14 @@ def main():
     extras = {path.relative_to(args.corpus).as_posix() for path in (args.corpus / "test").rglob("*.js")} - manifest.keys()
     if extras:
         parser.error(f"untracked test files in corpus: {sorted(extras)}")
-    if not args.adapter.is_file() or args.jobs < 1 or args.timeout <= 0 or args.instruction_budget < 1:
-        parser.error("build the adapter and provide positive jobs, timeout, and instruction budget")
+    if (
+        not args.adapter.is_file()
+        or args.jobs < 1
+        or args.timeout <= 0
+        or args.instruction_budget < 1
+        or args.progress_interval < 0
+    ):
+        parser.error("build the adapter and provide positive jobs, timeout, instruction budget, and progress interval")
     args.output.mkdir(parents=True, exist_ok=True)
     all_files = sorted((args.corpus / "test").rglob("*.js"))
     fixtures = [path for path in all_files if "_FIXTURE" in path.name]
@@ -536,89 +562,126 @@ def main():
     workers = []
     local = threading.local()
     lock = threading.Lock()
+    active_cases = {}
+    completed_files = 0
     start = time.monotonic()
 
     def run_file(path):
         relative = path.relative_to(args.corpus / "test").as_posix()
-        source = path.read_bytes().decode("utf-8")
-        source_for_execution = execution_source(relative, source)
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        try:
-            data = metadata(source)
-            for include in data.get("includes", []):
-                if Path(include).is_absolute() or ".." in Path(include).parts or not (args.corpus / "harness" / include).is_file():
-                    raise ValueError(f"missing/invalid harness include {include}")
-        except (ValueError, yaml.YAMLError) as error:
-            return [{"path": relative, "mode": "metadata", "status": "harness_error", "message": str(error), "sha256": digest}]
-        if not hasattr(local, "worker"):
-            local.worker = Worker(args.adapter.resolve(), args.timeout)
+        thread_id = threading.get_ident()
+
+        def report_case(mode):
             with lock:
-                workers.append(local.worker)
-        results = []
-        harness_sources = [
-            (args.corpus / "harness" / include).read_text(encoding="utf-8")
-            for include in data.get("includes", [])
-            if include not in NATIVE_INCLUDES
-            and not (
-                include == "regExpUtils.js"
+                active_cases[thread_id] = (relative, mode, time.monotonic())
+
+        report_case("metadata")
+        try:
+            source = path.read_bytes().decode("utf-8")
+            source_for_execution = execution_source(relative, source)
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            try:
+                data = metadata(source)
+                for include in data.get("includes", []):
+                    if Path(include).is_absolute() or ".." in Path(include).parts or not (args.corpus / "harness" / include).is_file():
+                        raise ValueError(f"missing/invalid harness include {include}")
+            except (ValueError, yaml.YAMLError) as error:
+                return [{"path": relative, "mode": "metadata", "status": "harness_error", "message": str(error), "sha256": digest}]
+            if not hasattr(local, "worker"):
+                local.worker = Worker(args.adapter.resolve(), args.timeout)
+                with lock:
+                    workers.append(local.worker)
+            results = []
+            harness_sources = [
+                (args.corpus / "harness" / include).read_text(encoding="utf-8")
+                for include in data.get("includes", [])
+                if include not in NATIVE_INCLUDES
+                and not (
+                    include == "regExpUtils.js"
+                    and (
+                        REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", [])
+                        or relative in REGEXP_CLASS_ESCAPE_FIXTURES
+                    )
+                )
+            ]
+            if (
+                "regExpUtils.js" in data.get("includes", [])
                 and (
                     REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", [])
                     or relative in REGEXP_CLASS_ESCAPE_FIXTURES
                 )
-            )
-        ]
-        if (
-            "regExpUtils.js" in data.get("includes", [])
-            and (
-                REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", [])
-                or relative in REGEXP_CLASS_ESCAPE_FIXTURES
-            )
-        ):
-            # The adapter checks that a non-native include has a persistent
-            # harness context. The comment keeps that contract explicit while
-            # buildString/testPropertyEscapes come from install_test262_harness.
-            harness_sources.append("/* native Test262 RegExp utilities */")
-        for mode in modes(data):
-            negative = data.get("negative")
-            request = {"source": source_for_execution, "mode": mode, "includes": data.get("includes", []), "harness_sources": harness_sources, "asynchronous": "async" in data.get("flags", []), "parse_only": bool(negative and negative["phase"] == "parse"), "is_html_dda": "IsHTMLDDA" in data.get("features", []), "instruction_budget": instruction_budget(data, args.instruction_budget, relative)}
-            if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):
-                request["string_limit"] = REGEXP_PROPERTY_ESCAPES_STRING_LIMIT
-                request["regex_timeout_ms"] = REGEXP_PROPERTY_ESCAPES_REGEX_TIMEOUT_MS
-            elif relative in REGEXP_CLASS_ESCAPE_FIXTURES:
-                request["string_limit"] = REGEXP_CLASS_ESCAPE_STRING_LIMIT
-            if mode == "module" or DYNAMIC_IMPORT_EXPRESSION.search(source_for_execution):
-                sources = module_sources(
-                    path,
-                    args.corpus / "test",
-                    include_dynamic_string_roots=bool(DYNAMIC_IMPORT_EXPRESSION.search(source_for_execution)),
-                )
-                request["module_path"] = relative
-                request["module_sources"] = sources
-                request["module_source_requests"] = sorted(
-                    {
-                        match.group(1)
-                        for module_source in sources.values()
-                        for match in SOURCE_PHASE_IMPORT_REQUEST.finditer(module_source)
-                        if match.group(1) == "<module source>"
-                    }
-                )
-            reply = local.worker.run(request, case_timeout(data, args.timeout, relative))
-            results.append({"path": relative, "mode": mode, "status": classify(reply, negative), "expected": negative, "actual": reply, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
-        return results
+            ):
+                # The adapter checks that a non-native include has a persistent
+                # harness context. The comment keeps that contract explicit while
+                # buildString/testPropertyEscapes come from install_test262_harness.
+                harness_sources.append("/* native Test262 RegExp utilities */")
+            for mode in modes(data):
+                report_case(mode)
+                negative = data.get("negative")
+                request = {"source": source_for_execution, "mode": mode, "includes": data.get("includes", []), "harness_sources": harness_sources, "asynchronous": "async" in data.get("flags", []), "parse_only": bool(negative and negative["phase"] == "parse"), "is_html_dda": "IsHTMLDDA" in data.get("features", []), "instruction_budget": instruction_budget(data, args.instruction_budget, relative)}
+                if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):
+                    request["string_limit"] = REGEXP_PROPERTY_ESCAPES_STRING_LIMIT
+                    request["regex_timeout_ms"] = REGEXP_PROPERTY_ESCAPES_REGEX_TIMEOUT_MS
+                elif relative in REGEXP_CLASS_ESCAPE_FIXTURES:
+                    request["string_limit"] = REGEXP_CLASS_ESCAPE_STRING_LIMIT
+                if mode == "module" or DYNAMIC_IMPORT_EXPRESSION.search(source_for_execution):
+                    sources = module_sources(
+                        path,
+                        args.corpus / "test",
+                        include_dynamic_string_roots=bool(DYNAMIC_IMPORT_EXPRESSION.search(source_for_execution)),
+                    )
+                    request["module_path"] = relative
+                    request["module_sources"] = sources
+                    request["module_source_requests"] = sorted(
+                        {
+                            match.group(1)
+                            for module_source in sources.values()
+                            for match in SOURCE_PHASE_IMPORT_REQUEST.finditer(module_source)
+                            if match.group(1) == "<module source>"
+                        }
+                    )
+                reply = local.worker.run(request, case_timeout(data, args.timeout, relative))
+                results.append({"path": relative, "mode": mode, "status": classify(reply, negative), "expected": negative, "actual": reply, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
+            return results
+        finally:
+            with lock:
+                active_cases.pop(thread_id, None)
+
+    def progress_line(now, checkpoint=False):
+        with lock:
+            completed = completed_files
+            counts = dict(counters)
+            active = list(active_cases.values())
+        return format_progress(completed, len(files), counts, active, now, checkpoint)
+
+    stop_progress = threading.Event()
+
+    def report_progress():
+        while not stop_progress.wait(args.progress_interval):
+            print(progress_line(time.monotonic()), flush=True)
+
+    reporter = None
+    if args.progress_interval:
+        reporter = threading.Thread(target=report_progress, name="test262-progress", daemon=True)
+        reporter.start()
 
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool, (args.output / "results.jsonl").open("w") as output:
             for index, results in enumerate(pool.map(run_file, files), 1):
-                for result in results:
-                    output.write(json.dumps(result, ensure_ascii=True) + "\n")
-                    counters[result["status"]] += 1
-                    for feature in result.get("features", []):
-                        features[feature][result["status"]] += 1
-                    groups[result["path"].split("/")[0]][result["status"]] += 1
+                with lock:
+                    for result in results:
+                        output.write(json.dumps(result, ensure_ascii=True) + "\n")
+                        counters[result["status"]] += 1
+                        for feature in result.get("features", []):
+                            features[feature][result["status"]] += 1
+                        groups[result["path"].split("/")[0]][result["status"]] += 1
+                    completed_files = index
                 if index % 1000 == 0:
                     output.flush()
-                    print(f"{index}/{len(files)} files: {dict(counters)}", flush=True)
+                    print(progress_line(time.monotonic(), checkpoint=True), flush=True)
     finally:
+        stop_progress.set()
+        if reporter:
+            reporter.join()
         for worker in workers:
             worker.close()
     report = {"snapshot": SNAPSHOT, "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(), "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "regex_worker_sha256": hashlib.sha256(args.adapter.with_name("bluejs-regexp-worker").read_bytes()).hexdigest(), "complete_inventory": not args.filter, "filter": args.filter, "discovered_js": len(all_files), "fixture_resources": len(fixtures), "test_files": len(files), "scheduled_modes": sum(counters.values()), "results": counters, "groups": groups, "features": features, "elapsed_seconds": round(time.monotonic() - start, 3), "timeout_seconds": args.timeout, "typed_array_harness_timeout_seconds": TYPED_ARRAY_HARNESS_TIMEOUT, "instruction_budget": args.instruction_budget, "tail_call_instruction_budget": TAIL_CALL_INSTRUCTION_BUDGET, "tail_call_timeout_seconds": TAIL_CALL_TIMEOUT, "unicode_identifier_timeout_seconds": UNICODE_IDENTIFIER_TIMEOUT, "uri_global_instruction_budget": URI_GLOBAL_INSTRUCTION_BUDGET, "uri_global_timeout_seconds": URI_GLOBAL_TIMEOUT, "uri_exhaustive_instruction_budget": URI_EXHAUSTIVE_INSTRUCTION_BUDGET, "uri_exhaustive_timeout_seconds": URI_EXHAUSTIVE_TIMEOUT, "jobs": args.jobs, "limitations": ["static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable", "unclassified parser rejections never satisfy parse-SyntaxError negative tests", "harness sources still require supported grammar and APIs", "native overrides for sta.js, assert.js, propertyHelper.js, isConstructor.js, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness", "each mode has a bounded interpreter instruction budget; tail-call fixtures receive at least the recorded tail-call budget"]}

@@ -263,6 +263,23 @@ fn strict_unresolvable_assignments_fail_at_put_value_after_the_rhs() {
 }
 
 #[test]
+fn strict_for_assignment_heads_apply_restricted_name_early_errors() {
+    for source in [
+        "'use strict';for(eval of []){}",
+        "'use strict';for([arguments] of []){}",
+        "'use strict';for({value:eval} of []){}",
+    ] {
+        assert!(
+            matches!(
+                compile(&parse(source).unwrap()),
+                Err(CompileError::InvalidSyntax(_))
+            ),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn destructuring_assignments_infer_names_for_anonymous_default_definitions() {
     for source in [
         "var fn;[fn=function(){}]=[];fn.name==='fn'",

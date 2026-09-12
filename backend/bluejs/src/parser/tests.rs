@@ -963,7 +963,9 @@ fn parses_for_in_and_for_of() {
     assert_eq!(
         only_stmt("for (x of items) {}"),
         Stmt::ForOf {
-            left: ForHead::Pattern(Pattern::Identifier("x".to_string())),
+            left: ForHead::Assignment(AssignmentPattern::Target(Box::new(Expr::Identifier(
+                "x".to_string(),
+            )))),
             right: Expr::Identifier("items".to_string()),
             body: Box::new(Stmt::Block(vec![])),
             is_await: false,
@@ -1200,9 +1202,54 @@ fn member_access_with_a_non_identifier_property_name_is_an_error() {
 }
 
 #[test]
-fn for_of_target_that_is_not_a_plain_identifier_is_an_error_without_a_declaration_keyword() {
-    assert!(parse("for (a.b of items) {}").is_err());
-    assert!(parse("for (a.b in obj) {}").is_err());
+fn for_of_and_for_in_assignment_targets_are_parsed_without_a_declaration_keyword() {
+    assert_eq!(
+        only_stmt("for (target.value of items) {}"),
+        Stmt::ForOf {
+            left: ForHead::Assignment(AssignmentPattern::Target(Box::new(Expr::Member {
+                object: Box::new(Expr::Identifier("target".to_string())),
+                property: Box::new(Expr::Identifier("value".to_string())),
+                computed: false,
+            }))),
+            right: Expr::Identifier("items".to_string()),
+            body: Box::new(Stmt::Block(vec![])),
+            is_await: false,
+        }
+    );
+    assert_eq!(
+        only_stmt("for ([first, {value: target.value}] in object) {}"),
+        Stmt::ForIn {
+            left: ForHead::Assignment(AssignmentPattern::Array(vec![
+                Some(AssignmentPatternElement {
+                    pattern: AssignmentPattern::Target(Box::new(Expr::Identifier(
+                        "first".to_string(),
+                    ))),
+                    default: None,
+                    rest: false,
+                }),
+                Some(AssignmentPatternElement {
+                    pattern: AssignmentPattern::Object(vec![AssignmentPatternProp::KeyValue {
+                        key: PropertyKey::Identifier("value".to_string()),
+                        value: AssignmentPattern::Target(Box::new(Expr::Member {
+                            object: Box::new(Expr::Identifier("target".to_string())),
+                            property: Box::new(Expr::Identifier("value".to_string())),
+                            computed: false,
+                        })),
+                        default: None,
+                    }]),
+                    default: None,
+                    rest: false,
+                }),
+            ])),
+            right: Expr::Identifier("object".to_string()),
+            body: Box::new(Stmt::Block(vec![])),
+        }
+    );
+    assert!(parse("for ({value:1};;) {}").is_ok());
+    assert!(parse("for ([value] of items) {}").is_ok());
+    assert!(parse("for ({value=1} of items) {}").is_ok());
+    assert!(parse("for (1 of items) {}").is_err());
+    assert!(parse("for ([1] of items) {}").is_err());
 }
 
 #[test]
@@ -1457,7 +1504,9 @@ fn for_in_without_a_declaration_keyword_uses_the_existing_variable() {
     assert_eq!(
         only_stmt("for (k in obj) {}"),
         Stmt::ForIn {
-            left: ForHead::Pattern(Pattern::Identifier("k".to_string())),
+            left: ForHead::Assignment(AssignmentPattern::Target(Box::new(Expr::Identifier(
+                "k".to_string(),
+            )))),
             right: Expr::Identifier("obj".to_string()),
             body: Box::new(Stmt::Block(vec![]))
         }

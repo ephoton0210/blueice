@@ -38,6 +38,32 @@ fn elisions_step_without_reading_values_and_stop_after_done() {
 }
 
 #[test]
+fn undeclared_for_heads_use_assignment_patterns_and_close_on_abrupt_assignment() {
+    for source in [
+        "let first=0;let second=0;let rest;for([first,second=3,...rest] of [[1,undefined,4,5]]){}first===1&&second===3&&rest.length===2&&rest[0]===4&&rest[1]===5",
+        "let target={};for({value:target.value,missing=3,...target.rest} of [{value:7,extra:9}]){}target.value===7&&target.missing===undefined&&target.rest.extra===9",
+        "let target={};for(target.value of [1,2,3]){}target.value===3",
+        "let initial='';for([initial] in {alpha:1}){}initial==='a'",
+        "let value=0;for(value of [2,4]){}value===4",
+    ] {
+        assert_eq!(
+            execute(&mut Vm::default(), source),
+            Ok(Value::Bool(true)),
+            "{source}"
+        );
+    }
+
+    let source = "globalThis.closed=0;let values={[Symbol.iterator](){return {
+        next(){return {value:null};},return(){globalThis.closed++;return {};}};}};
+        try{for({value:target} of values){}}catch(error){}globalThis.closed===1";
+    assert_eq!(
+        execute(&mut Vm::default(), source),
+        Ok(Value::Bool(true)),
+        "{source}"
+    );
+}
+
+#[test]
 fn iterator_origin_errors_do_not_close_rest_iterators() {
     for next in [
         "throw 17;",

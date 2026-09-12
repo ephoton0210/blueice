@@ -358,15 +358,33 @@ impl Parser {
         }
 
         self.no_in = true;
-        let expr = self.parse_expression();
+        // Array and object heads are cover grammar. If their matching
+        // delimiter is followed immediately by an iteration separator, parse
+        // the assignment-pattern production directly so defaults, rest
+        // elements, and member references retain their assignment semantics.
+        // Otherwise keep the ordinary expression path for classic `for`
+        // initializers such as `for ({ value: 1 };;)`.
+        let pattern = if self.destructuring_for_head_ahead() {
+            Some(self.parse_assignment_pattern()?)
+        } else {
+            None
+        };
+        let expr = if pattern.is_some() {
+            None
+        } else {
+            Some(self.parse_expression()?)
+        };
         self.no_in = false;
-        let expr = expr?;
 
         if self.eat_keyword(Keyword::In) {
             if is_await {
                 return Err(self.syntax_error("for await requires an of clause"));
             }
-            let left = expr_to_for_head(expr).map_err(known_syntax)?;
+            let left = match (pattern, expr) {
+                (Some(pattern), None) => ForHead::Assignment(pattern),
+                (None, Some(expr)) => expr_to_for_head(expr).map_err(known_syntax)?,
+                _ => unreachable!("for head is parsed as exactly one form"),
+            };
             let right = self.parse_expression()?;
             self.expect_punct(Punct::RParen)?;
             let body = Box::new(self.parse_statement()?);
@@ -374,7 +392,11 @@ impl Parser {
         }
         if self.is_contextual_of() {
             self.advance();
-            let left = expr_to_for_head(expr).map_err(known_syntax)?;
+            let left = match (pattern, expr) {
+                (Some(pattern), None) => ForHead::Assignment(pattern),
+                (None, Some(expr)) => expr_to_for_head(expr).map_err(known_syntax)?,
+                _ => unreachable!("for head is parsed as exactly one form"),
+            };
             let right = self.parse_assignment()?;
             self.expect_punct(Punct::RParen)?;
             let body = Box::new(self.parse_statement()?);
@@ -389,7 +411,42 @@ impl Parser {
             return Err(self.syntax_error("for await requires an of clause"));
         }
         self.expect_punct(Punct::Semicolon)?;
+        let expr = expr.expect("classic for heads are expressions");
         self.parse_for_rest(Some(ForInit::Expr(expr)))
+    }
+
+    /// Returns whether the current array/object cover grammar is a `for-in`
+    /// or `for-of` assignment pattern. This lets the parser retain defaults
+    /// and rest elements, which are not valid array/object literal syntax.
+    pub(super) fn destructuring_for_head_ahead(&self) -> bool {
+        let Some(close) = (match self.peek() {
+            Token::Punct(Punct::LBracket) => Some(Punct::RBracket),
+            Token::Punct(Punct::LBrace) => Some(Punct::RBrace),
+            _ => None,
+        }) else {
+            return false;
+        };
+        let mut delimiters = vec![close];
+        let mut index = self.pos + 1;
+        while let Some(token) = self.tokens.get(index) {
+            match token.token {
+                Token::Punct(Punct::LParen) => delimiters.push(Punct::RParen),
+                Token::Punct(Punct::LBracket) => delimiters.push(Punct::RBracket),
+                Token::Punct(Punct::LBrace) => delimiters.push(Punct::RBrace),
+                Token::Punct(punct) if delimiters.last() == Some(&punct) => {
+                    delimiters.pop();
+                    if delimiters.is_empty() {
+                        let next = self.tokens.get(index + 1).map(|token| &token.token);
+                        return matches!(next, Some(Token::Keyword(Keyword::In)))
+                            || matches!(next, Some(Token::Identifier(name)) if name == "of");
+                    }
+                }
+                Token::Eof => return false,
+                _ => {}
+            }
+            index += 1;
+        }
+        false
     }
 
     /// `= <assignment expr>` with `in` disabled, or nothing -- shared by
