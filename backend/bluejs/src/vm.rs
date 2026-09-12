@@ -479,12 +479,25 @@ enum DynamicImportResult {
     Waiting(String),
 }
 
-/// A Test262 realm owns a complete VM, while its public global is a facade
-/// in the requesting VM. The facade keeps the host boundary explicit: values
-/// that can cross heaps are copied after evaluation rather than leaking an
-/// object identity from the nested heap.
+/// A Test262 realm owns a complete VM. Foreign objects are represented by a
+/// rooted membrane object in the requesting VM, preserving their identity and
+/// internal slots without ever leaking a child-heap `ObjectId` into a parent
+/// value.
 struct Test262Realm {
     vm: Box<Vm>,
+    wrappers: HashMap<ObjectId, ObjectId>,
+}
+
+/// A parent-heap object that stands for an object retained in a Test262 child
+/// realm. The two roots keep both endpoints alive while the membrane identity
+/// is observable; the child object is never stored in the parent heap.
+struct Test262ForeignValue {
+    realm: ObjectId,
+    target: ObjectId,
+    callable: bool,
+    constructible: bool,
+    _wrapper_root: RootId,
+    _target_root: RootId,
 }
 
 /// Runtime state displaced while a pending top-level await drives jobs. The
@@ -563,6 +576,11 @@ pub struct Vm {
     module_source_registry: HashSet<String>,
     module_source_cache: HashMap<String, ObjectId>,
     module_source_roots: HashMap<String, RootId>,
+    /// The host-created [[ImportMeta]] value for each source-text module.
+    /// The root gives module records stable identity across nested closure
+    /// calls and later graph evaluations.
+    module_import_meta: HashMap<String, ObjectId>,
+    module_import_meta_roots: HashMap<String, RootId>,
     abstract_module_source_prototype: Option<ObjectId>,
     /// Retains the entry namespace until a dynamic-import job has handed it
     /// to its promise.  The next graph evaluation replaces this cache.
@@ -654,6 +672,7 @@ pub struct Vm {
     promise_jobs: VecDeque<PromiseJob>,
     test262_done: Option<Result<(), Value>>,
     test262_realms: HashMap<ObjectId, Test262Realm>,
+    test262_foreign_values: HashMap<ObjectId, Test262ForeignValue>,
     throw_type_error: Option<ObjectId>,
     joining: Vec<ObjectId>,
 }
@@ -699,6 +718,8 @@ impl Vm {
             module_source_registry: HashSet::new(),
             module_source_cache: HashMap::new(),
             module_source_roots: HashMap::new(),
+            module_import_meta: HashMap::new(),
+            module_import_meta_roots: HashMap::new(),
             abstract_module_source_prototype: None,
             last_module_namespace: None,
             last_module_namespace_root: None,
@@ -750,6 +771,7 @@ impl Vm {
             promise_jobs: VecDeque::new(),
             test262_done: None,
             test262_realms: HashMap::new(),
+            test262_foreign_values: HashMap::new(),
             throw_type_error: None,
             joining: Vec::new(),
         })
@@ -1227,6 +1249,24 @@ impl Vm {
         Ok(source)
     }
 
+    /// Return the per-Source-Text-Module ImportMeta object. The host supplies
+    /// no URL-like fields in this embedding, but the required null prototype
+    /// and module-local identity are observable and must be stable.
+    fn import_meta(&mut self) -> Result<Value, RuntimeError> {
+        let module = self
+            .active_module_name
+            .clone()
+            .unwrap_or_else(|| "<module>".to_string());
+        if let Some(meta) = self.module_import_meta.get(&module) {
+            return Ok(Value::Object(*meta));
+        }
+        let meta = self.with_roots(|heap| heap.alloc_object(None))?;
+        let root = self.heap.root(meta)?;
+        self.module_import_meta.insert(module.clone(), meta);
+        self.module_import_meta_roots.insert(module, root);
+        Ok(Value::Object(meta))
+    }
+
     /// Dynamic `import()` first creates a Promise capability, then defers all
     /// resolution, linking and evaluation to the realm job queue.  The host
     /// registry is deliberately the same finite registry used for static
@@ -1251,6 +1291,40 @@ impl Vm {
                     specifier,
                 });
             }
+            Err(error) => {
+                let error = self.error_value(error)?;
+                self.settle_promise(promise, PromiseStatus::Rejected(error))?;
+            }
+        }
+        Ok(Value::Object(promise))
+    }
+
+    /// Source-phase dynamic import has the same promise and ToString boundary
+    /// as ordinary import(), but asks the host for a Module Source object.
+    /// A source-text module therefore rejects with SyntaxError instead of
+    /// linking or evaluating it as an ordinary dynamic import would.
+    fn dynamic_import_source(&mut self, specifier: Value) -> Result<Value, RuntimeError> {
+        let promise = self.new_promise()?;
+        let result = (|| {
+            let specifier = self.coerce_string(&specifier)?.to_utf8().map_err(|_| {
+                RuntimeError::TypeError("module specifier is not a Unicode string".into())
+            })?;
+            let referrer = self
+                .active_module_name
+                .clone()
+                .unwrap_or_else(|| "<script>".to_string());
+            let entry = Self::resolve_module_request(&referrer, &specifier)?;
+            let modules = self.module_registry.clone();
+            if modules.contains_key(&entry) {
+                return Err(RuntimeError::SyntaxError(
+                    "a Source Text Module has no source-phase representation".into(),
+                ));
+            }
+            let source = self.module_source_object(&entry, &modules)?;
+            Ok(Value::Object(source))
+        })();
+        match result {
+            Ok(value) => self.settle_promise(promise, PromiseStatus::Fulfilled(value))?,
             Err(error) => {
                 let error = self.error_value(error)?;
                 self.settle_promise(promise, PromiseStatus::Rejected(error))?;
@@ -2066,6 +2140,7 @@ impl Vm {
                         .collect(),
                     completion_saves: std::mem::take(&mut self.completion_saves),
                     async_delegate,
+                    delegate: None,
                     dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings)
                         .into_iter()
                         .map(|(name, binding)| (name, binding.cell, binding.shadowed_cells))
@@ -2755,6 +2830,10 @@ impl Vm {
                 | "isFinite"
                 | "parseInt"
                 | "parseFloat"
+                | "encodeURI"
+                | "encodeURIComponent"
+                | "decodeURI"
+                | "decodeURIComponent"
                 | "JSON"
         ) {
             self.global(name)?;
@@ -3223,6 +3302,12 @@ impl Vm {
                         .expect("handler was inspected above")
                         .state = HandlerState::Catch;
                     self.stack.push(value);
+                    // `value` is now a stack root owned by the catch entry.
+                    // The temporary completion root protected the original
+                    // throw while Error construction and scope cleanup could
+                    // allocate; retaining it would keep every caught error
+                    // alive until the enclosing script returns.
+                    self.pending_completions.pop();
                     return Ok(CompletionAction::Jump(target as usize));
                 }
             }
@@ -4145,6 +4230,47 @@ impl Vm {
                         self.stack.push(iterator.clone());
                         iterators.push(iterator);
                     }
+                    Opcode::IteratorNext => {
+                        let (record, argument) = if operand == 0 {
+                            (self.stack.last().unwrap().clone(), None)
+                        } else {
+                            let base = self.stack.len() - 2;
+                            let record = self.stack[base].clone();
+                            let argument = self.stack[base + 1].clone();
+                            self.stack.truncate(base + 1);
+                            (record, Some(argument))
+                        };
+                        let result = self.iterator_next(&record, argument)?;
+                        self.stack.push(result);
+                    }
+                    Opcode::IteratorStepValue => {
+                        // Synchronous yield* needs the completed iterator
+                        // result's value as its own expression result.
+                        let base = self.stack.len() - 2;
+                        let record = self.stack[base].clone();
+                        let result = self.stack[base + 1].clone();
+                        iterators.retain(|active| active != &record);
+                        let Value::Object(record_id) = record else {
+                            unreachable!("compiler only emits iterator records")
+                        };
+                        if !matches!(result, Value::Object(_)) {
+                            return Err(RuntimeError::TypeError(
+                                "iterator result must be an object".into(),
+                            ));
+                        }
+                        let done = self.get_property(&result, &"done".into())?;
+                        let value = self.get_property(&result, &"value".into())?;
+                        self.stack.truncate(base);
+                        if self.to_boolean(&done)? {
+                            self.with_roots(|heap| heap.set(record_id, "done", Value::Bool(true)))?;
+                            self.stack.push(value);
+                            pc = operand;
+                        } else {
+                            iterators.push(Value::Object(record_id));
+                            self.stack.push(Value::Object(record_id));
+                            self.stack.push(value);
+                        }
+                    }
                     Opcode::GetAsyncIterator => {
                         let value = self.stack.last().unwrap().clone();
                         let iterator = self.get_async_iterator(&value)?;
@@ -4454,6 +4580,15 @@ impl Vm {
                     }
                     Opcode::This => {
                         if self.this == Value::Undefined
+                            && self.class_constructor.is_some_and(|constructor| {
+                                self.heap.class_base(constructor).ok().flatten().is_some()
+                            })
+                        {
+                            return Err(RuntimeError::ReferenceError(
+                                "this is uninitialized before super()".into(),
+                            ));
+                        }
+                        if self.this == Value::Undefined
                             && self.call_depth == 0
                             && !self.top_level_module
                         {
@@ -4524,6 +4659,10 @@ impl Vm {
                         let specifier = self.pop();
                         let promise = self.dynamic_import(specifier)?;
                         self.stack.push(promise);
+                    }
+                    Opcode::ImportMeta => {
+                        let meta = self.import_meta()?;
+                        self.stack.push(meta);
                     }
                     Opcode::EnterWith => {
                         let object = self.pop();
@@ -4909,6 +5048,10 @@ impl Vm {
                         self.stack.push(self.stack[index].clone());
                         self.stack.push(self.stack[index + 1].clone());
                     }
+                    Opcode::Swap => {
+                        let index = self.stack.len() - 2;
+                        self.stack.swap(index, index + 1);
+                    }
                     Opcode::Add => self.binary(Self::add)?,
                     Opcode::Subtract => self.numeric(|a, b| a - b)?,
                     Opcode::Multiply => self.numeric(|a, b| a * b)?,
@@ -5234,6 +5377,9 @@ impl Vm {
         receiver: &Value,
         key: &PropertyName,
     ) -> Result<Value, RuntimeError> {
+        if self.test262_foreign_reference(target).is_some() {
+            return self.test262_foreign_get(target, receiver, key);
+        }
         self.materialize_global_object_property(target, key)?;
         if let Some(cell) = self.global_property_cell(target, key) {
             return self
@@ -5294,6 +5440,9 @@ impl Vm {
         value: &Value,
     ) -> Result<(), RuntimeError> {
         if let Value::Object(object) = receiver {
+            if self.test262_foreign_reference(*object).is_some() {
+                return self.test262_foreign_set(*object, key, value);
+            }
             self.materialize_global_object_property(*object, key)?;
             if let Some(cell) = self.global_property_cell(*object, key) {
                 let result = self.with_roots(|heap| heap.set(*object, key.clone(), value.clone()));
@@ -6175,6 +6324,11 @@ impl Vm {
             // Concatenate once, starting at the innermost wrapper, to avoid
             // repeatedly copying the accumulated arguments of long chains.
             args = prefixes.into_iter().rev().flatten().chain(args).collect();
+        }
+        if let Value::Object(id) = callee {
+            if self.test262_foreign_reference(id).is_some() {
+                return self.test262_foreign_call(id, receiver, args, construct);
+            }
         }
         if let Value::Object(id) = callee {
             if self.heap.proxy(id)?.is_some() {

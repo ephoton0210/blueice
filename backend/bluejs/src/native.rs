@@ -63,6 +63,17 @@ pub(crate) enum NativeFunction {
     IsFinite,
     ParseInt,
     ParseFloat,
+    EncodeUri {
+        component: bool,
+    },
+    DecodeUri {
+        component: bool,
+    },
+    /// The source/defer variants of dynamic import. They remain separate from
+    /// ordinary `import()` because their host phase is observable.
+    DynamicImport {
+        source: bool,
+    },
     JsonParse,
     JsonStringify,
     Math(MathMethod),
@@ -72,7 +83,6 @@ pub(crate) enum NativeFunction {
     AbstractModuleSource,
     AbstractModuleSourceToStringTag,
     Test262(&'static str),
-    Test262RealmEval(ObjectId),
     ToLocaleLowerCase,
     ToLocaleUpperCase,
     LocaleCompare,
@@ -112,6 +122,7 @@ pub(crate) enum NativeFunction {
     ArrayIteratorNext,
     GeneratorNext,
     GeneratorReturn,
+    GeneratorThrow,
     AsyncGeneratorNext,
     AsyncGeneratorReturn,
     AsyncGeneratorThrow,
@@ -122,6 +133,20 @@ pub(crate) enum NativeFunction {
     PromiseResolvingFunction {
         promise: ObjectId,
         fulfill: bool,
+    },
+    /// The executor supplied while `NewPromiseCapability(C)` invokes a
+    /// user-provided constructor. The storage object keeps its resolve/reject
+    /// pair alive and observable for the enclosing static Promise method.
+    PromiseCapabilityExecutor {
+        storage: ObjectId,
+    },
+    AsyncFromSyncFulfill {
+        target: ObjectId,
+        done: bool,
+    },
+    AsyncFromSyncReject {
+        target: ObjectId,
+        record: ObjectId,
     },
     PromiseThen,
     PromiseCatch,
@@ -164,14 +189,26 @@ pub(crate) enum NativeFunction {
     StringMethod(StringMethod),
 }
 
+/// Failures particular to the URI encode/decode abstract operations.  The VM
+/// turns malformed input into the realm's `URIError` object, while preserving
+/// its normal resource-limit reporting for an oversized result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UriCodingError {
+    Malformed,
+    StringLimit { limit: usize },
+}
+
 impl NativeFunction {
     /// Native closures can carry heap identities outside ordinary property
     /// storage.  Keep those identities visible to both allocation protection
     /// and tracing, just like captured JavaScript closures.
     pub(crate) fn references(self) -> Vec<ObjectId> {
         match self {
-            Self::ProxyRevoker(proxy) | Self::Test262RealmEval(proxy) => vec![proxy],
+            Self::ProxyRevoker(proxy) => vec![proxy],
             Self::PromiseResolvingFunction { promise, .. } => vec![promise],
+            Self::PromiseCapabilityExecutor { storage } => vec![storage],
+            Self::AsyncFromSyncFulfill { target, .. } => vec![target],
+            Self::AsyncFromSyncReject { target, record } => vec![target, record],
             Self::PromiseAllResolve { target, .. } | Self::PromiseAllReject { target } => {
                 vec![target]
             }
@@ -520,6 +557,174 @@ pub(crate) fn from_codes(
         append(&mut result, &part, limit)?;
     }
     Ok(Value::String(result))
+}
+
+fn uri_append(output: &mut Vec<u16>, units: &[u16], limit: usize) -> Result<(), UriCodingError> {
+    let length = output
+        .len()
+        .checked_add(units.len())
+        .ok_or(UriCodingError::StringLimit { limit })?;
+    if length
+        .checked_mul(std::mem::size_of::<u16>())
+        .is_none_or(|bytes| bytes > limit)
+    {
+        return Err(UriCodingError::StringLimit { limit });
+    }
+    output.extend_from_slice(units);
+    Ok(())
+}
+
+fn uri_hex(unit: u16) -> Option<u8> {
+    match unit {
+        0x30..=0x39 => Some((unit - 0x30) as u8),
+        0x61..=0x66 => Some((unit - 0x61 + 10) as u8),
+        0x41..=0x46 => Some((unit - 0x41 + 10) as u8),
+        _ => None,
+    }
+}
+
+fn uri_percent_byte(units: &[u16], index: usize) -> Result<u8, UriCodingError> {
+    if units.get(index) != Some(&u16::from(b'%')) {
+        return Err(UriCodingError::Malformed);
+    }
+    let high = units
+        .get(index + 1)
+        .and_then(|unit| uri_hex(*unit))
+        .ok_or(UriCodingError::Malformed)?;
+    let low = units
+        .get(index + 2)
+        .and_then(|unit| uri_hex(*unit))
+        .ok_or(UriCodingError::Malformed)?;
+    Ok((high << 4) | low)
+}
+
+fn uri_unescaped(code_point: u32, component: bool) -> bool {
+    matches!(code_point, 0x41..=0x5a | 0x61..=0x7a | 0x30..=0x39)
+        || matches!(
+            code_point,
+            0x2d | 0x5f | 0x2e | 0x21 | 0x7e | 0x2a | 0x27 | 0x28 | 0x29
+        )
+        || (!component
+            && matches!(
+                code_point,
+                0x3b | 0x2f | 0x3f | 0x3a | 0x40 | 0x26 | 0x3d | 0x2b | 0x24 | 0x2c | 0x23
+            ))
+}
+
+fn uri_reserved(byte: u8) -> bool {
+    matches!(
+        byte,
+        b';' | b'/' | b'?' | b':' | b'@' | b'&' | b'=' | b'+' | b'$' | b',' | b'#'
+    )
+}
+
+/// ECMA-262 §19.2.6.6 / §19.2.6.7 Encode.
+pub(crate) fn encode_uri(
+    string: &JsString,
+    component: bool,
+    limit: usize,
+) -> Result<JsString, UriCodingError> {
+    let units = string.as_code_units();
+    let mut output = Vec::with_capacity(units.len());
+    let mut index = 0;
+    while let Some(&unit) = units.get(index) {
+        let (code_point, width) = match unit {
+            0xd800..=0xdbff => {
+                let Some(&low) = units.get(index + 1) else {
+                    return Err(UriCodingError::Malformed);
+                };
+                if !(0xdc00..=0xdfff).contains(&low) {
+                    return Err(UriCodingError::Malformed);
+                }
+                (
+                    0x10000 + ((u32::from(unit) - 0xd800) << 10) + (u32::from(low) - 0xdc00),
+                    2,
+                )
+            }
+            0xdc00..=0xdfff => return Err(UriCodingError::Malformed),
+            _ => (u32::from(unit), 1),
+        };
+        if uri_unescaped(code_point, component) {
+            uri_append(&mut output, &units[index..index + width], limit)?;
+        } else {
+            let scalar = char::from_u32(code_point).expect("URI code point is a Unicode scalar");
+            let mut buffer = [0; 4];
+            for byte in scalar.encode_utf8(&mut buffer).bytes() {
+                const HEX: &[u8; 16] = b"0123456789ABCDEF";
+                uri_append(
+                    &mut output,
+                    &[
+                        u16::from(b'%'),
+                        u16::from(HEX[(byte >> 4) as usize]),
+                        u16::from(HEX[(byte & 0x0f) as usize]),
+                    ],
+                    limit,
+                )?;
+            }
+        }
+        index += width;
+    }
+    Ok(JsString::from_code_units(output))
+}
+
+/// ECMA-262 §19.2.6.4 / §19.2.6.5 Decode.  This deliberately performs
+/// strict UTF-8 validation instead of accepting Rust's replacement-character
+/// conversion, because malformed percent octets must throw `URIError`.
+pub(crate) fn decode_uri(
+    string: &JsString,
+    component: bool,
+    limit: usize,
+) -> Result<JsString, UriCodingError> {
+    let units = string.as_code_units();
+    let mut output = Vec::with_capacity(units.len());
+    let mut index = 0;
+    while let Some(&unit) = units.get(index) {
+        if unit != u16::from(b'%') {
+            uri_append(&mut output, &[unit], limit)?;
+            index += 1;
+            continue;
+        }
+
+        let start = index;
+        let first = uri_percent_byte(units, start)?;
+        if first < 0x80 {
+            index += 3;
+            if !component && uri_reserved(first) {
+                uri_append(&mut output, &units[start..index], limit)?;
+            } else {
+                uri_append(&mut output, &[u16::from(first)], limit)?;
+            }
+            continue;
+        }
+
+        let octets = match first {
+            0xc2..=0xdf => 2,
+            0xe0..=0xef => 3,
+            0xf0..=0xf4 => 4,
+            _ => return Err(UriCodingError::Malformed),
+        };
+        let mut bytes = [0; 4];
+        bytes[0] = first;
+        for (offset, slot) in bytes.iter_mut().enumerate().take(octets).skip(1) {
+            let byte = uri_percent_byte(units, start + offset * 3)?;
+            if !(0x80..=0xbf).contains(&byte) {
+                return Err(UriCodingError::Malformed);
+            }
+            *slot = byte;
+        }
+        let decoded =
+            std::str::from_utf8(&bytes[..octets]).map_err(|_| UriCodingError::Malformed)?;
+        let mut encoded = [0; 2];
+        let utf16_width = decoded
+            .chars()
+            .next()
+            .expect("a valid non-empty UTF-8 sequence has a character")
+            .encode_utf16(&mut encoded)
+            .len();
+        uri_append(&mut output, &encoded[..utf16_width], limit)?;
+        index = start + octets * 3;
+    }
+    Ok(JsString::from_code_units(output))
 }
 
 pub(crate) fn substitution(

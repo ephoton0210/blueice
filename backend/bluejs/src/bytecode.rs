@@ -45,6 +45,7 @@ opcodes! {
     Pop: 1, 0;
     Dup: 1, 0;
     Dup2: 1, 0;
+    Swap: 1, 0;
     Add: 1, 0;
     Subtract: 1, 0;
     Multiply: 1, 0;
@@ -102,6 +103,7 @@ opcodes! {
     Yield: 1, 0;
     Await: 1, 0;
     DynamicImport: 1, 0;
+    ImportMeta: 1, 0;
     EnterWith: 1, 0;
     LeaveWith: 1, 0;
     WithGet: 5, 0;
@@ -113,6 +115,8 @@ opcodes! {
     ToPropertyKey: 1, 0;
     PreparePropertyReference: 1, MAY_USE_INLINE_CACHE;
     GetIterator: 1, 0;
+    IteratorNext: 5, 0;
+    IteratorStepValue: 5, 0;
     GetAsyncIterator: 1, 0;
     ForInKeys: 1, 0;
     IteratorStep: 5, 0;
@@ -311,6 +315,9 @@ pub struct Bytecode {
     pub(crate) generator_initializes_parameters: bool,
     /// Whether direct eval may read an enclosing function's `new.target`.
     pub(crate) new_target_allowed: bool,
+    /// Whether this code was parsed under the Module goal, including a nested
+    /// function whose own bytecode is not a module record.
+    pub(crate) import_meta_allowed: bool,
     pub(crate) functions: Vec<std::rc::Rc<Bytecode>>,
     pub(crate) captures: Vec<u32>,
     /// The immutable name environment binding of a named function expression.
@@ -348,6 +355,10 @@ pub struct Bytecode {
     /// so later `.return()` and `.throw()` do not depend on recognizing a
     /// bytecode instruction pattern.
     pub(crate) async_yield_delegates: Vec<(u32, u32)>,
+    /// Resume and exit offsets for compiler-emitted synchronous `yield*`
+    /// loops. The suspended frame carries the matching record so public
+    /// `throw()` and `return()` can forward into the delegate.
+    pub(crate) yield_delegates: Vec<(u32, u32)>,
     /// This code was compiled with the Module goal.  Its outer scope may be
     /// suspended after declaration instantiation and resumed for evaluation.
     pub(crate) module: bool,
@@ -372,6 +383,7 @@ impl Bytecode {
             generator_entry: 0,
             generator_initializes_parameters: false,
             new_target_allowed: false,
+            import_meta_allowed: false,
             functions: Vec::new(),
             captures: Vec::new(),
             self_slot: None,
@@ -391,6 +403,7 @@ impl Bytecode {
             handlers: Vec::new(),
             abrupt_jumps: Vec::new(),
             async_yield_delegates: Vec::new(),
+            yield_delegates: Vec::new(),
             module: false,
             module_evaluate_entry: None,
             module_imports: Vec::new(),

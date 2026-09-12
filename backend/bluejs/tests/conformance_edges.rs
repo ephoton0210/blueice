@@ -4,7 +4,7 @@
 
 //! Public-interface regressions from the coverage/conformance review.
 use blueice_bluejs::{
-    compile, compile_with_limit, parse, CompileError, RuntimeError, Value, Vm, VmConfig,
+    compile, compile_with_limit, parse, CompileError, HeapConfig, RuntimeError, Value, Vm, VmConfig,
 };
 
 fn evaluate(source: &str) -> Value {
@@ -164,9 +164,14 @@ fn private_slots_keep_class_identity_and_private_reference_semantics() {
         "class C{static #method(){return 1}static throughEval(){return eval('this.#method()')}}C.throughEval()===1",
         "class C{#value;has(value){return #value in value}}let value=new C;value.has(value)&&!value.has({})",
         "class C{#value=1;readThroughNestedClass(){class Nested{read(value){return value.#value}}return new Nested().read(this)}}new C().readThroughNestedClass()===1",
+        "class C extends class{}{#field;constructor(){var init=()=>super();var object={get a(){init();}};({a:this.#field}=object)}}let caught=false;try{new C}catch(error){caught=error instanceof ReferenceError}caught",
     ] {
         assert_eq!(evaluate(source), Value::Bool(true), "{source}");
     }
+
+    let fields: String = (0..512).map(|index| format!("#field{index};")).collect();
+    let source = format!("let value=new class {{{fields}}};Object.keys(value).length===0");
+    assert_eq!(evaluate(&source), Value::Bool(true));
 }
 
 #[test]
@@ -464,6 +469,42 @@ fn global_numeric_conversion_functions_scan_ecmascript_prefixes() {
     ] {
         assert_eq!(evaluate(source), Value::Bool(true), "{source}");
     }
+}
+
+#[test]
+fn uri_globals_encode_decode_utf8_and_throw_uri_error_for_malformed_escapes() {
+    for source in [
+        "encodeURI(';/?:@&=+$,#-_.!~*\\'() A')===\";/?:@&=+$,#-_.!~*'()%20A\"",
+        "encodeURIComponent(';/?:@&=+$,#-_.!~*\\'() A')===\"%3B%2F%3F%3A%40%26%3D%2B%24%2C%23-_.!~*'()%20A\"",
+        "encodeURIComponent('\\uD83D\\uDE00')==='%F0%9F%98%80'&&decodeURIComponent('%F0%9F%98%80')==='\\uD83D\\uDE00'",
+        "decodeURI('%3b%2f%F0%9F%98%80')==='%3b%2f\\uD83D\\uDE00'&&decodeURIComponent('%3b%2f')===';/'",
+        "let threw=false;try{decodeURIComponent('%C0%AF')}catch(error){threw=error instanceof URIError}threw",
+        "let threw=false;try{encodeURI('\\uD800')}catch(error){threw=error instanceof URIError}threw",
+        "encodeURI===globalThis.encodeURI&&encodeURIComponent===globalThis.encodeURIComponent&&decodeURI===globalThis.decodeURI&&decodeURIComponent===globalThis.decodeURIComponent",
+    ] {
+        assert_eq!(evaluate(source), Value::Bool(true), "{source}");
+    }
+
+    // A caught native error has no surviving JS reference.  Error construction
+    // may root it while its own properties are initialized, but must release
+    // that temporary stack root before the catch body proceeds.
+    let churn = compile(
+        &parse(
+            "var count=0;for(var index=0;index<4096;index++){try{decodeURIComponent('%')}catch(error){if(error instanceof URIError)count++}}count",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 8,
+            major_threshold_bytes: 128 * 1024,
+            max_heap_bytes: 256 * 1024,
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    assert_eq!(vm.execute(&churn), Ok(Value::Number(4096.0)));
 }
 
 #[test]

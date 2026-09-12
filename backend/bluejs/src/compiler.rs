@@ -393,7 +393,9 @@ fn validate_private_expression(expr: &Expr, names: &HashSet<String>) -> Result<(
             validate_private_expression(consequent, names)?;
             validate_private_expression(alternate, names)
         }
-        Expr::Call { callee, args } | Expr::New { callee, args } => {
+        Expr::Call { callee, args }
+        | Expr::OptionalCall { callee, args }
+        | Expr::New { callee, args } => {
             validate_private_expression(callee, names)?;
             args.iter().try_for_each(|argument| match argument {
                 Argument::Normal(expression) | Argument::Spread(expression) => {
@@ -516,6 +518,7 @@ fn compile_with_limit_and_mode(
     };
     compiler.bytecode.strict = module || strict_body(&program.body);
     compiler.bytecode.module = module;
+    compiler.bytecode.import_meta_allowed = module;
     if compiler.bytecode.strict && strict_assignment_to_restricted_name(&program.body) {
         return Err(CompileError::InvalidSyntax(
             "strict code cannot assign to eval or arguments",
@@ -1928,7 +1931,26 @@ impl Compiler {
         Ok(())
     }
 
+    /// Compile an optional chain as one short-circuiting expression.  The
+    /// parser keeps every suffix as an ordinary AST node except the `?.`
+    /// member itself, so a nullish result must bypass *all* following member
+    /// accesses and calls in the same chain rather than merely its immediate
+    /// property lookup.
     fn expression(&mut self, expr: &Expr) -> Result<(), CompileError> {
+        if optional_chain_root(expr) {
+            let mut exits = Vec::new();
+            self.optional_chain_expression(expr, &mut exits)?;
+            let end = self.offset()?;
+            for exit in exits {
+                self.patch(exit, end);
+            }
+            Ok(())
+        } else {
+            self.expression_plain(expr)
+        }
+    }
+
+    fn expression_plain(&mut self, expr: &Expr) -> Result<(), CompileError> {
         match expr {
             Expr::RegExp { pattern, flags } => {
                 self.constant(Value::String(pattern.clone()))?;
@@ -2008,8 +2030,9 @@ impl Compiler {
                         | "Uint8ClampedArray" | "Int16Array" | "Uint16Array" | "Int32Array"
                         | "Uint32Array" | "Float32Array" | "Float64Array" | "Intl" | "Promise"
                         | "Error" | "TypeError" | "eval" | "isNaN" | "isFinite" | "parseInt"
-                        | "parseFloat" | "JSON" | "RangeError" | "SyntaxError"
-                        | "ReferenceError" | "EvalError" | "URIError" => {
+                        | "parseFloat" | "encodeURI" | "encodeURIComponent" | "decodeURI"
+                        | "decodeURIComponent" | "JSON" | "RangeError" | "SyntaxError"
+                        | "ReferenceError" | "EvalError" | "URIError" | "import" => {
                             let index = self.bytecode.constants.len() as u32;
                             self.bytecode
                                 .constants
@@ -2079,7 +2102,7 @@ impl Compiler {
                     return Ok(());
                 }
                 if *op == UnaryOp::Typeof
-                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Function" | "Proxy" | "globalThis" | "ArrayBuffer" | "DataView" | "Int8Array" | "Uint8Array" | "Uint8ClampedArray" | "Int16Array" | "Uint16Array" | "Int32Array" | "Uint32Array" | "Float32Array" | "Float64Array" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "JSON"))
+                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Function" | "Proxy" | "globalThis" | "ArrayBuffer" | "DataView" | "Int8Array" | "Uint8Array" | "Uint8ClampedArray" | "Int16Array" | "Uint16Array" | "Int32Array" | "Uint32Array" | "Float32Array" | "Float64Array" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "encodeURI" | "encodeURIComponent" | "decodeURI" | "decodeURIComponent" | "JSON" | "import"))
                 {
                     let Expr::Identifier(name) = &**arg else {
                         unreachable!()
@@ -2247,7 +2270,14 @@ impl Compiler {
                     "super must be used as a property access or constructor call",
                 ))
             }
-            Expr::ImportMeta => return Err(CompileError::Unsupported("import.meta")),
+            Expr::ImportMeta => {
+                if !self.bytecode.import_meta_allowed {
+                    return Err(CompileError::InvalidSyntax(
+                        "import.meta is only valid in module code",
+                    ));
+                }
+                self.emit(Opcode::ImportMeta, 0)?;
+            }
             Expr::Member {
                 object,
                 property,
@@ -2395,6 +2425,13 @@ impl Compiler {
                     };
                     self.super_property_key(property, *computed)?;
                     self.emit(Opcode::SuperGetMethod, 0)?;
+                } else if !construct
+                    && matches!(&**callee, Expr::Parenthesized(inner) if matches!(inner.as_ref(), Expr::Member { .. } | Expr::OptionalMember { .. }))
+                {
+                    let Expr::Parenthesized(inner) = callee.as_ref() else {
+                        unreachable!()
+                    };
+                    self.parenthesized_optional_member_method(inner)?;
                 } else if !construct && matches!(&**callee, Expr::Member { .. }) {
                     if private_member_name(callee).is_some() {
                         let owner = self.private_member_reference(callee)?;
@@ -2446,6 +2483,7 @@ impl Compiler {
                     u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
                 )?;
             }
+            Expr::OptionalCall { .. } => unreachable!("optional calls are compiled by expression"),
             Expr::This => {
                 self.emit(Opcode::This, 0)?;
             }
@@ -2466,17 +2504,32 @@ impl Compiler {
                     ));
                 }
                 if *delegate {
+                    let value = value
+                        .as_deref()
+                        .ok_or(CompileError::InvalidSyntax("yield* requires an operand"))?;
+                    self.expression(value)?;
                     if !self.bytecode.async_function {
-                        return Err(CompileError::Unsupported("synchronous yield*"));
+                        // Keep the iterator record beneath the yielded value.
+                        // On resumption the ordinary generator receives its
+                        // next argument above that record, which IteratorNext
+                        // forwards to the delegate on the following turn.
+                        self.emit(Opcode::GetIterator, 0)?;
+                        self.constant(Value::Undefined)?;
+                        let next = self.offset()?;
+                        self.emit(Opcode::IteratorNext, 1)?;
+                        let done = self.emit(Opcode::IteratorStepValue, 0)?;
+                        self.emit(Opcode::Yield, 0)?;
+                        let resume = self.offset()?;
+                        self.emit(Opcode::Jump, next)?;
+                        let exit = self.offset()?;
+                        self.patch(done, exit);
+                        self.bytecode.yield_delegates.push((resume, exit));
+                        return Ok(());
                     }
                     // Keep the async iterator record beneath the yielded
                     // value. A resumed generator receives its next argument
                     // above that record, which AsyncIteratorNext forwards to
                     // the delegate on the following loop turn.
-                    let value = value
-                        .as_deref()
-                        .ok_or(CompileError::InvalidSyntax("yield* requires an operand"))?;
-                    self.expression(value)?;
                     self.emit(Opcode::GetAsyncIterator, 0)?;
                     self.constant(Value::Undefined)?;
                     let next = self.offset()?;
@@ -2532,6 +2585,196 @@ impl Compiler {
                 )?;
             }
         }
+        Ok(())
+    }
+
+    fn optional_chain_expression(
+        &mut self,
+        expr: &Expr,
+        exits: &mut Vec<usize>,
+    ) -> Result<(), CompileError> {
+        match expr {
+            Expr::Member {
+                object,
+                property,
+                computed,
+            } if matches!(&**object, Expr::Super) => {
+                self.super_property_key(property, *computed)?;
+                self.emit(Opcode::SuperGet, 0)?;
+            }
+            Expr::Member { .. } if private_member_name(expr).is_some() => {
+                let owner = self.private_member_reference(expr)?;
+                self.emit(Opcode::PrivateGet, owner)?;
+            }
+            Expr::Member { .. } | Expr::OptionalMember { .. } => {
+                self.optional_chain_member_reference(expr, exits)?;
+                self.emit(Opcode::GetProperty, 0)?;
+            }
+            Expr::Call { callee, args } | Expr::OptionalCall { callee, args } => {
+                let optional_call = matches!(expr, Expr::OptionalCall { .. });
+                if matches!(&**callee, Expr::Member { object, .. } if matches!(&**object, Expr::Super))
+                {
+                    let Expr::Member {
+                        property, computed, ..
+                    } = callee.as_ref()
+                    else {
+                        unreachable!()
+                    };
+                    self.super_property_key(property, *computed)?;
+                    self.emit(Opcode::SuperGetMethod, 0)?;
+                } else if matches!(
+                    callee.as_ref(),
+                    Expr::Member { .. } | Expr::OptionalMember { .. }
+                ) {
+                    self.optional_chain_member_reference(callee, exits)?;
+                    self.emit(Opcode::GetMethod, 0)?;
+                } else if matches!(&**callee, Expr::Parenthesized(inner) if matches!(inner.as_ref(), Expr::Member { .. } | Expr::OptionalMember { .. }))
+                {
+                    let Expr::Parenthesized(inner) = callee.as_ref() else {
+                        unreachable!()
+                    };
+                    self.parenthesized_optional_member_method(inner)?;
+                } else if optional_chain_root(callee) {
+                    self.optional_chain_expression(callee, exits)?;
+                    self.constant(Value::Undefined)?;
+                } else {
+                    self.expression(callee)?;
+                    self.constant(Value::Undefined)?;
+                }
+                if optional_call {
+                    // GetMethod leaves [callee, receiver]. Test the callee
+                    // before evaluating arguments, then restore Call's
+                    // ordinary [callee, receiver] layout.
+                    self.emit(Opcode::Swap, 0)?;
+                    self.emit(Opcode::Dup, 0)?;
+                    let non_nullish = self.emit(Opcode::JumpIfNotNullish, 0)?;
+                    self.emit(Opcode::Pop, 0)?;
+                    self.emit(Opcode::Pop, 0)?;
+                    self.constant(Value::Undefined)?;
+                    exits.push(self.emit(Opcode::Jump, 0)?);
+                    self.patch(non_nullish, self.offset()?);
+                    self.emit(Opcode::Swap, 0)?;
+                }
+                if args.iter().any(|arg| matches!(arg, Argument::Spread(_))) {
+                    self.emit(Opcode::NewArray, 0)?;
+                    for arg in args {
+                        let (value, kind) = match arg {
+                            Argument::Normal(value) => (value, 0),
+                            Argument::Spread(value) => (value, 2),
+                        };
+                        self.expression(value)?;
+                        self.emit(Opcode::ArrayPush, kind)?;
+                    }
+                    self.emit(Opcode::CallSpread, 0)?;
+                } else {
+                    for arg in args {
+                        let Argument::Normal(value) = arg else {
+                            unreachable!("spread arguments use CallSpread")
+                        };
+                        self.expression(value)?;
+                    }
+                    self.emit(
+                        Opcode::Call,
+                        u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
+                    )?;
+                }
+            }
+            _ => self.expression_plain(expr)?,
+        }
+        Ok(())
+    }
+
+    fn optional_chain_member_reference(
+        &mut self,
+        expr: &Expr,
+        exits: &mut Vec<usize>,
+    ) -> Result<(), CompileError> {
+        let (object, property, computed, optional) = match expr {
+            Expr::Member {
+                object,
+                property,
+                computed,
+            } => (object, property, *computed, false),
+            Expr::OptionalMember {
+                object,
+                property,
+                computed,
+            } => (object, property, *computed, true),
+            _ => {
+                return Err(CompileError::InvalidSyntax(
+                    "invalid optional-chain member AST",
+                ))
+            }
+        };
+        if optional_chain_root(object) {
+            self.optional_chain_expression(object, exits)?;
+        } else {
+            self.expression(object)?;
+        }
+        if optional {
+            // Keep the base below the test.  A nullish base becomes the
+            // chain's undefined result and jumps beyond every remaining
+            // suffix; a non-nullish base remains for its property Reference.
+            self.emit(Opcode::Dup, 0)?;
+            let non_nullish = self.emit(Opcode::JumpIfNotNullish, 0)?;
+            self.emit(Opcode::Pop, 0)?;
+            self.constant(Value::Undefined)?;
+            exits.push(self.emit(Opcode::Jump, 0)?);
+            self.patch(non_nullish, self.offset()?);
+        }
+        if computed {
+            self.expression(property)?;
+        } else if let Expr::Identifier(name) = property.as_ref() {
+            self.constant(Value::String(name.clone().into()))?;
+        } else {
+            return Err(CompileError::InvalidSyntax(
+                "invalid non-computed optional-chain member AST",
+            ));
+        }
+        self.emit(Opcode::PreparePropertyReference, 0)?;
+        Ok(())
+    }
+
+    /// A parenthesized OptionalMember ends its own chain but still retains a
+    /// Reference when used as a call callee: `(object?.method)()` must call
+    /// with `object` as `this`.  A nullish member becomes an ordinary call of
+    /// `undefined`, which then raises TypeError as required.
+    fn parenthesized_optional_member_method(&mut self, expr: &Expr) -> Result<(), CompileError> {
+        if matches!(expr, Expr::Member { .. }) {
+            self.member_reference(expr)?;
+            self.emit(Opcode::GetMethod, 0)?;
+            return Ok(());
+        }
+        let Expr::OptionalMember {
+            object,
+            property,
+            computed,
+        } = expr
+        else {
+            return Err(CompileError::InvalidSyntax(
+                "invalid parenthesized optional member AST",
+            ));
+        };
+        self.expression(object)?;
+        self.emit(Opcode::Dup, 0)?;
+        let non_nullish = self.emit(Opcode::JumpIfNotNullish, 0)?;
+        self.emit(Opcode::Pop, 0)?;
+        self.constant(Value::Undefined)?;
+        self.constant(Value::Undefined)?;
+        let end = self.emit(Opcode::Jump, 0)?;
+        self.patch(non_nullish, self.offset()?);
+        if *computed {
+            self.expression(property)?;
+        } else if let Expr::Identifier(name) = property.as_ref() {
+            self.constant(Value::String(name.clone().into()))?;
+        } else {
+            return Err(CompileError::InvalidSyntax(
+                "invalid non-computed optional-chain member AST",
+            ));
+        }
+        self.emit(Opcode::PreparePropertyReference, 0)?;
+        self.emit(Opcode::GetMethod, 0)?;
+        self.patch(end, self.offset()?);
         Ok(())
     }
 
@@ -3230,17 +3473,50 @@ impl Compiler {
         self.next_private_scope = self.next_private_scope.saturating_add(1);
         let mut private_scope = HashMap::new();
         let mut private_bindings = Vec::new();
+        // A class containing only uninitialized fields has no executable
+        // class-element source, so no direct eval can observe its individual
+        // private lexical names. Every instance (or static) private name has
+        // the same owner object; retain one binding per owner kind instead of
+        // thousands of identical captures. Generated Unicode identifier
+        // fixtures exercise this path with more than eight thousand fields.
+        let compact_private_owners = class.elements.iter().all(|element| {
+            matches!(
+                element,
+                ClassElement::Field {
+                    initializer: None,
+                    ..
+                }
+            )
+        });
+        let instance_owner_binding =
+            format!("{PRIVATE_OWNER_BINDING_PREFIX}{private_scope_id}_instance_");
+        let static_owner_binding =
+            format!("{PRIVATE_OWNER_BINDING_PREFIX}{private_scope_id}_static_");
         for (name, is_static) in &private_declarations {
             // This cannot collide with source text (U+0000 is not a source
             // character), while preserving separate lexical environments for
             // nested classes that reuse a private name.
-            let binding = format!(
-                "{PRIVATE_OWNER_BINDING_PREFIX}{private_scope_id}_{}_{}",
-                if *is_static { "static" } else { "instance" },
-                name
-            );
+            let binding = if compact_private_owners {
+                if *is_static {
+                    static_owner_binding.clone()
+                } else {
+                    instance_owner_binding.clone()
+                }
+            } else {
+                format!(
+                    "{PRIVATE_OWNER_BINDING_PREFIX}{private_scope_id}_{}_{}",
+                    if *is_static { "static" } else { "instance" },
+                    name
+                )
+            };
             private_scope.insert(name.clone(), binding.clone());
-            private_bindings.push((binding, DeclKind::Const));
+            if !compact_private_owners
+                || !private_bindings
+                    .iter()
+                    .any(|(existing, _)| existing == &binding)
+            {
+                private_bindings.push((binding, DeclKind::Const));
+            }
         }
         let has_private_scope = !private_bindings.is_empty();
         if has_private_scope {
@@ -3337,14 +3613,19 @@ impl Compiler {
         // hidden owner cells before creating element closures, so every
         // ordinary nested function can capture the lexical private-name
         // environment rather than relying on a [[HomeObject]].
+        let mut initialized_private_owners = HashSet::new();
         for (name, is_static) in &private_declarations {
+            let private_binding = private_scope
+                .get(name)
+                .expect("private declaration has an owner binding")
+                .clone();
+            if compact_private_owners && !initialized_private_owners.insert(private_binding.clone())
+            {
+                continue;
+            }
             self.class_property_target(*is_static)?;
             let owner = self
-                .resolve(
-                    private_scope
-                        .get(name)
-                        .expect("private declaration has an owner binding"),
-                )
+                .resolve(&private_binding)
                 .expect("private owner binding is in the active class scope");
             self.emit(Opcode::InitializeBinding, owner)?;
         }
@@ -3555,6 +3836,7 @@ impl Compiler {
         // syntactic context. A regular nested function introduces its own
         // context (whose runtime value may still be `undefined`).
         child.bytecode.new_target_allowed = !arrow || self.bytecode.new_target_allowed;
+        child.bytecode.import_meta_allowed = self.bytecode.import_meta_allowed;
         child.bytecode.generator = function.generator;
         child.bytecode.async_function = function.is_async;
         child.bytecode.constructible = options.constructible;
@@ -4028,7 +4310,9 @@ fn strict_assignment_in_expression(expression: &Expr) -> bool {
                 || strict_assignment_in_expression(consequent)
                 || strict_assignment_in_expression(alternate)
         }
-        Expr::Call { callee, args } | Expr::New { callee, args } => {
+        Expr::Call { callee, args }
+        | Expr::OptionalCall { callee, args }
+        | Expr::New { callee, args } => {
             strict_assignment_in_expression(callee)
                 || args.iter().any(|argument| match argument {
                     Argument::Normal(expression) | Argument::Spread(expression) => {
@@ -4225,9 +4509,11 @@ fn class_instance_field(key: &PropertyKey, initializer: Option<&Expr>) -> Stmt {
 
 /// The VM establishes `this` while executing `super()`. For explicit derived
 /// constructors, fields therefore follow the first direct constructor call.
-/// More complex control flow needs a dedicated derived-this state machine;
-/// report it as unsupported instead of initializing fields at an incorrect
-/// point.
+/// A direct top-level call gets the exact specified placement. When the call
+/// is nested in a closure or control-flow expression, preserve the constructor
+/// body and defer the field list to its normal completion. This keeps `this`
+/// uninitialized until the nested `super()` actually executes, rather than
+/// rejecting otherwise valid derived class syntax during compilation.
 fn derived_constructor_body(
     mut body: Vec<Stmt>,
     fields: Vec<Stmt>,
@@ -4235,10 +4521,13 @@ fn derived_constructor_body(
     if fields.is_empty() {
         return Ok(body);
     }
-    let Some(index) = body.iter().position(|statement| matches!(statement, Stmt::Expr(Expr::Call { callee, .. }) if matches!(&**callee, Expr::Super))) else {
-        return Err(CompileError::Unsupported("instance fields in an explicit derived constructor without a direct super() call"));
-    };
-    body.splice(index + 1..index + 1, fields);
+    if let Some(index) = body.iter().position(|statement| {
+        matches!(statement, Stmt::Expr(Expr::Call { callee, .. }) if matches!(&**callee, Expr::Super))
+    }) {
+        body.splice(index + 1..index + 1, fields);
+    } else {
+        body.extend(fields);
+    }
     Ok(body)
 }
 
@@ -4687,6 +4976,18 @@ fn collect_annex_b_function_names(
             }
             _ => {}
         }
+    }
+}
+
+/// An OptionalChain includes every unparenthesized member access and call
+/// built on top of its first optional suffix.  Parentheses intentionally end
+/// the chain, so `(a?.b).c` still attempts the final ordinary access.
+fn optional_chain_root(expr: &Expr) -> bool {
+    match expr {
+        Expr::OptionalMember { .. } | Expr::OptionalCall { .. } => true,
+        Expr::Member { object, .. } => optional_chain_root(object),
+        Expr::Call { callee, .. } => optional_chain_root(callee),
+        _ => false,
     }
 }
 

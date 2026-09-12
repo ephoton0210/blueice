@@ -647,6 +647,40 @@ fn for_await_consumes_async_generator_next_promises() {
 }
 
 #[test]
+fn for_await_closes_a_sync_iterator_when_its_yielded_promise_rejects() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            let returnCount = 0;
+            const source = {
+                [Symbol.iterator]() {
+                    return {
+                        next() { return { value: Promise.reject('expected'), done: false }; },
+                        return() { returnCount++; },
+                    };
+                },
+            };
+            async function consume() {
+                try {
+                    for await (let value of source) { throw value; }
+                } catch (error) {
+                    globalThis.rejectedValue = error;
+                }
+                globalThis.returnCount = returnCount;
+            }
+            consume();
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(&mut vm, "rejectedValue === 'expected' && returnCount === 1",),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
 fn async_generator_yield_star_respects_the_no_line_terminator_grammar() {
     let error = parse("async function* f(){ yield\n* 1; }").unwrap_err();
     assert!(error.known_syntax);
@@ -874,6 +908,111 @@ fn async_generator_yield_star_queues_behind_a_pending_delegate_return() {
         execute(
             &mut vm,
             "returnResult.value === 9 && returnResult.done && afterReturn.done",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn async_generator_yield_star_sync_delegate_throw_closes_then_serves_next_request() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            globalThis.delegate = {
+                [Symbol.iterator]() { return this; },
+                next() { return { value: 1, done: false }; },
+                get throw() { return null; },
+            };
+            async function* outer() { yield* delegate; }
+            let iterator = outer();
+            globalThis.rejectionHandler = false;
+            iterator.next()
+                .then(() => iterator.throw('expected'))
+                .then(undefined, () => {
+                    globalThis.rejectionHandler = true;
+                    return iterator.next();
+                })
+                .then(result => { globalThis.afterThrow = result; });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(execute(&mut vm, "rejectionHandler"), Ok(Value::Bool(true)));
+    assert_eq!(
+        execute(&mut vm, "afterThrow.done && afterThrow.value === undefined"),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn generators_delegate_yield_star_and_forward_next_values() {
+    let mut vm = Vm::default();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "
+                function* inner() { let sent = yield 1; yield sent; return 9; }
+                function* outer() { let result = yield* inner(); return result; }
+                let iterator = outer();
+                let first = iterator.next();
+                let second = iterator.next(4);
+                let last = iterator.next(8);
+                first.value === 1 && !first.done && second.value === 4 && !second.done && last.value === 9 && last.done
+            ",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn generators_delegate_yield_star_forwards_throw_and_closes_a_missing_throw_method() {
+    let mut vm = Vm::default();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "
+                let closed = 0;
+                let delegate = {
+                    [Symbol.iterator]() { return this; },
+                    next() { return { value: 1, done: false }; },
+                    return() { closed++; return { done: true }; },
+                };
+                function* outer() { yield* delegate; }
+                let iterator = outer();
+                iterator.next();
+                let threw = false;
+                try { iterator.throw('expected'); } catch (error) { threw = error.name === 'TypeError'; }
+                let done = iterator.next();
+                threw && closed === 1 && done.done && done.value === undefined
+            ",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn generators_delegate_yield_star_return_runs_outer_finally_before_completing() {
+    let mut vm = Vm::default();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "
+                let delegate = {
+                    [Symbol.iterator]() { return this; },
+                    next() { return { value: 1, done: false }; },
+                    return(value) { return { value: 'delegate:' + value, done: true }; },
+                };
+                function* outer() {
+                    try { yield* delegate; }
+                    finally { yield 'outer-finally'; }
+                }
+                let iterator = outer();
+                let first = iterator.next();
+                let duringFinally = iterator.return(9);
+                let complete = iterator.next();
+                first.value === 1 && !first.done && duringFinally.value === 'outer-finally' && !duringFinally.done && complete.value === 9 && complete.done
+            ",
         ),
         Ok(Value::Bool(true))
     );

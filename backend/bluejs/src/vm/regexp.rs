@@ -182,15 +182,18 @@ impl Vm {
         flags: &Value,
     ) -> Result<Value, RuntimeError> {
         let existing = if let Value::Object(id) = pattern {
-            self.heap.regexp(*id)?
+            self.heap
+                .regexp(*id)?
+                .map(|regexp| (regexp.source.clone(), regexp.flags.clone()))
+                .or(self.test262_foreign_regexp_data(*id)?)
         } else {
             None
         };
-        let (source, flags) = if let Some(regexp) = existing {
+        let (source, flags) = if let Some((source, existing_flags)) = existing {
             (
-                regexp.source.clone(),
+                source,
                 if *flags == Value::Undefined {
-                    regexp.flags.clone().into()
+                    existing_flags.into()
                 } else {
                     self.coerce_string(flags)?
                 },
@@ -254,6 +257,9 @@ impl Vm {
                 "RegExp getter requires an object".into(),
             ));
         };
+        if self.test262_foreign_reference(*id).is_some() {
+            return self.test262_foreign_get(*id, receiver, &name.into());
+        }
         if name == "flags" {
             let mut flags = String::new();
             for (property, flag) in [

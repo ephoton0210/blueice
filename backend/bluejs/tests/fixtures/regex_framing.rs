@@ -73,3 +73,36 @@ fn timed_out_transport_releases_the_cached_process() {
         Ok(Some(_))
     ));
 }
+
+#[test]
+fn cached_find_with_a_replaced_pattern_is_not_decoded_as_compile() {
+    let subject: Vec<u16> = "abc".encode_utf16().collect();
+    let first: Vec<u16> = "a".encode_utf16().collect();
+    let second: Vec<u16> = "b".encode_utf16().collect();
+
+    assert!(matches!(
+        super::compile(first.clone(), String::new(), DEFAULT_TIMEOUT),
+        Ok(Reply::Compiled)
+    ));
+    assert!(matches!(
+        super::find(
+            first.clone(),
+            String::new(),
+            subject.clone(),
+            0,
+            DEFAULT_TIMEOUT
+        ),
+        Ok(Some(_))
+    ));
+    assert!(matches!(
+        super::compile(second, String::new(), DEFAULT_TIMEOUT),
+        Ok(Reply::Compiled)
+    ));
+
+    // This reuses the parent-side cached subject while replacing the pattern.
+    // The request must still be interpreted as Find by the worker.
+    assert!(matches!(
+        super::find(first, String::new(), subject, 0, DEFAULT_TIMEOUT),
+        Ok(Some(_))
+    ));
+}

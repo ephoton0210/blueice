@@ -268,6 +268,15 @@ pub(crate) struct AsyncGeneratorDelegate {
     pub(crate) exit_pc: usize,
 }
 
+/// Explicit state for a synchronous generator `yield*` suspension. Public
+/// `throw()` and `return()` must forward into the delegate without relying on
+/// an incidental bytecode layout.
+#[derive(Clone)]
+pub(crate) struct GeneratorDelegate {
+    pub(crate) record: Value,
+    pub(crate) exit_pc: usize,
+}
+
 /// A generator's suspended execution context. The VM moves this out while
 /// `.next()` runs, then restores it before any subsequent allocation.
 // The suspended frame is intentionally inline: it moves atomically between a
@@ -309,6 +318,9 @@ pub(crate) enum GeneratorState {
         /// Set only while a compiler-declared async `yield*` loop is
         /// suspended at its public yield boundary.
         async_delegate: Option<AsyncGeneratorDelegate>,
+        /// Set only while a compiler-declared ordinary `yield*` loop is
+        /// suspended at its public yield boundary.
+        delegate: Option<GeneratorDelegate>,
         dynamic_bindings: Vec<(String, ObjectId, Vec<ObjectId>)>,
         home: Option<ObjectId>,
         callee: Value,
@@ -407,6 +419,7 @@ impl GeneratorState {
                 pending_completions,
                 completion_saves,
                 async_delegate,
+                delegate,
                 ..
             } => {
                 reference_bytes
@@ -423,6 +436,9 @@ impl GeneratorState {
                         .sum::<usize>()
                     + async_delegate.as_ref().map_or(0, |delegate| {
                         size_of::<AsyncGeneratorDelegate>() + delegate.record.payload_bytes()
+                    })
+                    + delegate.as_ref().map_or(0, |delegate| {
+                        size_of::<GeneratorDelegate>() + delegate.record.payload_bytes()
                     })
             }
             Self::Start { args, .. } => {
@@ -460,6 +476,7 @@ impl GeneratorState {
                 pending_completions,
                 completion_saves,
                 async_delegate,
+                delegate,
                 dynamic_bindings,
                 home,
                 callee,
@@ -474,6 +491,7 @@ impl GeneratorState {
                     .chain(iterators.iter())
                     .chain(completion_saves.iter().map(|(value, _)| value))
                     .chain(async_delegate.iter().map(|delegate| &delegate.record))
+                    .chain(delegate.iter().map(|delegate| &delegate.record))
                     .filter_map(Value::object_id)
                     .chain(cells.iter().map(|(_, id)| *id))
                     .chain(dynamic_bindings.iter().flat_map(|(_, id, shadowed_cells)| {
@@ -3370,6 +3388,10 @@ mod tests {
             pending_completions: vec![GeneratorPendingCompletion::Throw(Value::Object(pending))],
             completion_saves: vec![(Value::Object(saved), false)],
             async_delegate: Some(AsyncGeneratorDelegate {
+                record: Value::Object(delegate),
+                exit_pc: 0,
+            }),
+            delegate: Some(GeneratorDelegate {
                 record: Value::Object(delegate),
                 exit_pc: 0,
             }),

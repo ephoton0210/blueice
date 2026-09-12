@@ -59,6 +59,9 @@ impl RegExp {
         start: usize,
         timeout: std::time::Duration,
     ) -> Result<Option<crate::regex_worker::Match>, RuntimeError> {
+        if let Some(found) = class_escape_find(&self.source, &self.flags, string, start) {
+            return Ok(found);
+        }
         crate::regex_worker::find(
             self.source.as_code_units().to_vec(),
             self.flags.clone(),
@@ -67,6 +70,136 @@ impl RegExp {
             timeout,
         )
     }
+}
+
+#[derive(Clone, Copy)]
+enum CharacterClassEscape {
+    Digit,
+    NonDigit,
+    Whitespace,
+    NonWhitespace,
+    Word,
+    NonWord,
+}
+
+impl CharacterClassEscape {
+    fn from_unit(unit: u16) -> Option<Self> {
+        Some(match unit {
+            0x64 => Self::Digit,
+            0x44 => Self::NonDigit,
+            0x73 => Self::Whitespace,
+            0x53 => Self::NonWhitespace,
+            0x77 => Self::Word,
+            0x57 => Self::NonWord,
+            _ => return None,
+        })
+    }
+
+    fn matches(self, point: u32) -> bool {
+        let digit = (u32::from(b'0')..=u32::from(b'9')).contains(&point);
+        let whitespace = matches!(
+            point,
+            0x0009..=0x000d
+                | 0x0020
+                | 0x00a0
+                | 0x1680
+                | 0x2000..=0x200a
+                | 0x2028
+                | 0x2029
+                | 0x202f
+                | 0x205f
+                | 0x3000
+                | 0xfeff
+        );
+        let word = digit
+            || (u32::from(b'A')..=u32::from(b'Z')).contains(&point)
+            || (u32::from(b'a')..=u32::from(b'z')).contains(&point)
+            || point == u32::from(b'_');
+        match self {
+            Self::Digit => digit,
+            Self::NonDigit => !digit,
+            Self::Whitespace => whitespace,
+            Self::NonWhitespace => !whitespace,
+            Self::Word => word,
+            Self::NonWord => !word,
+        }
+    }
+}
+
+/// Fast path for the unadorned CharacterClassEscape patterns emitted by the
+/// generated Test262 suite. The general matcher is correct but needlessly
+/// expensive when it scans a million code points with a one-token pattern.
+/// Keep this deliberately narrow: no captures, assertions other than the
+/// complete-string `^escape+$` form, or flags with case folding are accepted.
+fn class_escape_find(
+    source: &JsString,
+    flags: &str,
+    string: &JsString,
+    start: usize,
+) -> Option<Option<crate::regex_worker::Match>> {
+    if flags.contains(['i', 'm', 'y']) {
+        return None;
+    }
+    let units = source.as_code_units();
+    let (escape, anchored, repeated) = match units {
+        [0x5c, escape] => (CharacterClassEscape::from_unit(*escape)?, false, false),
+        [0x5c, escape, 0x2b] => (CharacterClassEscape::from_unit(*escape)?, false, true),
+        [0x5e, 0x5c, escape, 0x2b, 0x24] => (CharacterClassEscape::from_unit(*escape)?, true, true),
+        _ => return None,
+    };
+    let unicode = flags.contains(['u', 'v']);
+    let units = string.as_code_units();
+    if anchored {
+        if start != 0 || units.is_empty() {
+            return Some(None);
+        }
+        let mut index = 0;
+        while index < units.len() {
+            let (point, width) = class_escape_code_point(units, index, unicode);
+            if !escape.matches(point) {
+                return Some(None);
+            }
+            index += width;
+        }
+        return Some(Some(crate::regex_worker::Match::whole(0..units.len())));
+    }
+    let mut index = start;
+    while index < units.len() {
+        let (point, width) = class_escape_code_point(units, index, unicode);
+        if escape.matches(point) {
+            let end = if repeated {
+                let mut end = index + width;
+                while end < units.len() {
+                    let (point, width) = class_escape_code_point(units, end, unicode);
+                    if !escape.matches(point) {
+                        break;
+                    }
+                    end += width;
+                }
+                end
+            } else {
+                index + width
+            };
+            return Some(Some(crate::regex_worker::Match::whole(index..end)));
+        }
+        index += width;
+    }
+    Some(None)
+}
+
+fn class_escape_code_point(units: &[u16], index: usize, unicode: bool) -> (u32, usize) {
+    let first = units[index];
+    if unicode && (0xd800..=0xdbff).contains(&first) {
+        if let Some(&second) = units.get(index + 1) {
+            if (0xdc00..=0xdfff).contains(&second) {
+                return (
+                    0x10000 + ((u32::from(first) - 0xd800) << 10) + (u32::from(second) - 0xdc00),
+                    2,
+                );
+            }
+        }
+    }
+    (u32::from(first), 1)
 }
 
 // The matcher exposes named values but not their capture numbers. Retain that

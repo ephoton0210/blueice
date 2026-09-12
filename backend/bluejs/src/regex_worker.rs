@@ -21,16 +21,8 @@ const MAX_FRAME: usize = 16 * 1024 * 1024;
 const READY: &[u8] = b"bluejs-regexp-worker/1";
 
 #[derive(Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(tag = "operation", rename_all = "snake_case")]
 enum Request {
-    // Kept for direct worker clients from protocol version 1. New parent
-    // requests use the cache-aware variants below.
-    Legacy {
-        source: Vec<u16>,
-        flags: String,
-        input: Option<Vec<u16>>,
-        start: usize,
-    },
     Compile {
         source: Vec<u16>,
         flags: String,
@@ -44,12 +36,36 @@ enum Request {
         input: Option<Vec<u16>>,
         start: usize,
     },
+    Validate {
+        patterns: Vec<(Vec<u16>, String)>,
+    },
+}
+
+// Keep accepting the original untagged wire format for direct version-one
+// clients. `deny_unknown_fields` is essential here: without it, a cached
+// `Find` whose subject is omitted also satisfies the old `Compile` shape and
+// the worker replies `Compiled` to a match request.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyRequest {
+    source: Vec<u16>,
+    flags: String,
+    input: Option<Vec<u16>>,
+    start: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum IncomingRequest {
+    Current(Request),
+    Legacy(LegacyRequest),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) enum Reply {
     Compiled,
     Found(Option<Match>),
+    Validated(Vec<bool>),
     SyntaxError(String),
 }
 
@@ -60,6 +76,13 @@ pub(crate) struct Match {
 }
 
 impl Match {
+    pub(crate) fn whole(range: Range<usize>) -> Self {
+        Self {
+            captures: vec![Some(range)],
+            names: Vec::new(),
+        }
+    }
+
     pub fn start(&self) -> usize {
         self.captures[0].as_ref().unwrap().start
     }
@@ -274,6 +297,22 @@ impl Worker {
         self.input = Some(input);
         Ok(matched)
     }
+
+    fn validate(
+        &mut self,
+        patterns: Vec<(Vec<u16>, String)>,
+        timeout: Duration,
+    ) -> Result<Vec<bool>, RuntimeError> {
+        let reply = self.request(Request::Validate { patterns }, timeout, None)?;
+        let Reply::Validated(valid) = reply else {
+            return Err(RuntimeError::RegexWorker(
+                "unexpected validation reply".into(),
+            ));
+        };
+        self.pattern = None;
+        self.input = None;
+        Ok(valid)
+    }
 }
 
 impl Drop for Worker {
@@ -358,6 +397,13 @@ pub(crate) fn find(
     with_worker(|worker| worker.find(source, flags, input, start, timeout))
 }
 
+pub(crate) fn validate(
+    patterns: Vec<(Vec<u16>, String)>,
+    timeout: Duration,
+) -> Result<Vec<bool>, RuntimeError> {
+    with_worker(|worker| worker.validate(patterns, timeout))
+}
+
 /// Entry point for the separately installed matcher executable.
 #[doc(hidden)]
 pub fn serve() -> io::Result<()> {
@@ -371,29 +417,28 @@ pub fn serve() -> io::Result<()> {
             Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
             Err(error) => return Err(error),
         };
-        let request: Request = serde_json::from_slice(&bytes)?;
+        let request: IncomingRequest = serde_json::from_slice(&bytes)?;
         let request = match request {
-            Request::Legacy {
+            IncomingRequest::Current(request) => request,
+            IncomingRequest::Legacy(LegacyRequest {
                 source,
                 flags,
                 input: Some(input),
                 start,
-            } => Request::Find {
+            }) => Request::Find {
                 source: Some(source),
                 flags: Some(flags),
                 input: Some(input),
                 start,
             },
-            Request::Legacy {
+            IncomingRequest::Legacy(LegacyRequest {
                 source,
                 flags,
                 input: None,
                 ..
-            } => Request::Compile { source, flags },
-            request => request,
+            }) => Request::Compile { source, flags },
         };
         let reply = match request {
-            Request::Legacy { .. } => unreachable!("legacy requests are normalized above"),
             Request::Compile { source, flags } => match cache_pattern(&mut cached, source, flags) {
                 Ok(()) => Reply::Compiled,
                 Err(message) => Reply::SyntaxError(message),
@@ -447,6 +492,12 @@ pub fn serve() -> io::Result<()> {
                     }
                 }))
             }
+            Request::Validate { patterns } => Reply::Validated(
+                patterns
+                    .into_iter()
+                    .map(|(source, flags)| cache_pattern(&mut cached, source, flags).is_ok())
+                    .collect(),
+            ),
         };
         frame_write(&mut output, &serde_json::to_vec(&reply)?)?;
     }

@@ -510,6 +510,13 @@ pub enum Expr {
         callee: Box<Expr>,
         args: Vec<Argument>,
     },
+    /// A call whose callee is tested for nullishness before its arguments are
+    /// evaluated.  This remains distinct from an ordinary Call built on an
+    /// OptionalMember: `fn?.()` and `fn?.method()` have different guards.
+    OptionalCall {
+        callee: Box<Expr>,
+        args: Vec<Argument>,
+    },
     New {
         callee: Box<Expr>,
         args: Vec<Argument>,
@@ -874,7 +881,7 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
                 || expr_contains_super(consequent, search)
                 || expr_contains_super(alternate, search)
         }
-        Expr::Call { callee, args } => {
+        Expr::Call { callee, args } | Expr::OptionalCall { callee, args } => {
             (search == SuperSearch::Call && matches!(callee.as_ref(), Expr::Super))
                 || expr_contains_super(callee, search)
                 || args.iter().any(|argument| match argument {

@@ -338,6 +338,19 @@ fn is_valid_ref_target(expr: &Expr) -> bool {
         || matches!(expr, Expr::Parenthesized(inner) if is_valid_ref_target(inner))
 }
 
+/// Parentheses are normally erased from the executable AST, but they end an
+/// OptionalChain.  Keep them around an optional suffix so the compiler can
+/// distinguish `base?.value.more` from `(base?.value).more`.
+fn optional_chain_expression(expr: &Expr) -> bool {
+    match expr {
+        Expr::OptionalMember { .. } | Expr::OptionalCall { .. } => true,
+        Expr::Member { object, .. } | Expr::Call { callee: object, .. } => {
+            optional_chain_expression(object)
+        }
+        _ => false,
+    }
+}
+
 /// Grouping is not generally observable in the executable AST. It is kept
 /// only while parsing an enclosing assignment so that AssignmentTargetType
 /// can distinguish `(name)` from an IdentifierReference for name inference.
@@ -2907,6 +2920,19 @@ impl Parser {
         };
         loop {
             if self.eat_punct(Punct::QuestionDot) {
+                if self.check_punct(Punct::LParen) {
+                    let args = self.parse_arguments()?;
+                    expr = Expr::OptionalCall {
+                        callee: Box::new(expr),
+                        args,
+                    };
+                    continue;
+                }
+                if self.tokenizer.at_template(self.positions[self.pos]) {
+                    return Err(known_syntax(self.syntax_error(
+                        "an optional chain cannot be used as a template tag",
+                    )));
+                }
                 let (property, computed) = if self.eat_punct(Punct::LBracket) {
                     let property = self.parse_expression()?;
                     self.expect_punct(Punct::RBracket)?;
@@ -2945,6 +2971,11 @@ impl Parser {
                     args,
                 };
             } else if self.tokenizer.at_template(self.positions[self.pos]) {
+                if optional_chain_expression(&expr) {
+                    return Err(known_syntax(self.syntax_error(
+                        "an optional chain cannot be used as a template tag",
+                    )));
+                }
                 let (raw, cooked, sources) = self
                     .tokenizer
                     .tagged_template_at(self.positions[self.pos])?;
@@ -3188,7 +3219,7 @@ impl Parser {
                 self.advance();
                 let expr = self.parse_expression()?;
                 self.expect_punct(Punct::RParen).map_err(known_syntax)?;
-                if is_assignment_operator(self.peek()) {
+                if is_assignment_operator(self.peek()) || optional_chain_expression(&expr) {
                     Ok(Expr::Parenthesized(Box::new(expr)))
                 } else {
                     Ok(expr)

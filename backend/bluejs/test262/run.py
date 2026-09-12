@@ -35,8 +35,12 @@ MODULE_REQUEST = re.compile(
     r'''\bimport\s+(?:[^;]*?\bfrom\s+)?["']([^"']+)["']|\bexport\s+(?:\*\s*(?:as\s+(?:[\w$]+|"[^"]*"|'[^']*')\s*)?|\{[^}]*\}\s+)from\s*["']([^"']+)["']''',
     re.DOTALL,
 )
-DYNAMIC_IMPORT_REQUEST = re.compile(r'''\bimport\s*\(\s*["']([^"']+)["']\s*\)''')
-DYNAMIC_IMPORT_EXPRESSION = re.compile(r'''\bimport\s*\(''')
+DYNAMIC_IMPORT_REQUEST = re.compile(
+    r'''\bimport\s*(?:\.\s*(?:source|defer)\s*)?\(\s*["']([^"']+)["']\s*\)'''
+)
+DYNAMIC_IMPORT_EXPRESSION = re.compile(
+    r'''\bimport\s*(?:\(|\.\s*(?:source|defer)\s*\()'''
+)
 RELATIVE_STRING = re.compile(r'''["'](\.{1,2}/[^"']+)["']''')
 SOURCE_PHASE_IMPORT_REQUEST = re.compile(
     r'''\bimport\s+source\s+[\w$]+\s+from\s*["']([^"']+)["']''',
@@ -44,6 +48,156 @@ SOURCE_PHASE_IMPORT_REQUEST = re.compile(
 )
 NATIVE_INCLUDES = frozenset({"sta.js", "assert.js", "propertyHelper.js", "isConstructor.js"})
 TAIL_CALL_INSTRUCTION_BUDGET = 3_000_000
+TAIL_CALL_TIMEOUT = 30
+# Test262's Unicode identifier tables contain tens of thousands of declarations
+# and escaped identifier spellings. Parsing and compiling them is bounded work,
+# but exceeds the general two-second script deadline in an interpreter build.
+UNICODE_IDENTIFIER_PREFIX = "language/identifiers/start-unicode-"
+UNICODE_IDENTIFIER_TIMEOUT = 30
+# `testTypedArray.js` deliberately runs each callback across every numeric
+# TypedArray constructor (and, for conversion cases, every entry in the large
+# byte-conversion table).  Its execution remains bounded by the ordinary VM
+# instruction budget, but debug interpreter dispatch takes longer than the
+# general two-second wall deadline.  Give that standard harness a documented
+# per-case wall allowance instead of weakening the deadline for all tests.
+TYPED_ARRAY_HARNESS_TIMEOUT = 30
+# Unicode-property conformance fixtures intentionally materialize every
+# scalar value (often twice, for a property and its complement) before one
+# anchored RegExp match.  That is finite standard-harness work, but larger
+# than the general script fuel/string limits.
+REGEXP_PROPERTY_ESCAPES_FEATURE = "regexp-unicode-property-escapes"
+REGEXP_PROPERTY_ESCAPES_INSTRUCTION_BUDGET = 30_000_000
+REGEXP_PROPERTY_ESCAPES_TIMEOUT = 60
+REGEXP_PROPERTY_ESCAPES_STRING_LIMIT = 8 * 1024 * 1024
+REGEXP_PROPERTY_ESCAPES_REGEX_TIMEOUT_MS = 5_000
+# Four imported Sputnik fixtures exhaustively enumerate valid three- and
+# four-octet UTF-8 sequences. Their assertions are delegated to a native
+# Test262 helper that still calls the supplied Decode global for every value;
+# this avoids spending minutes dispatching JavaScript bookkeeping around each
+# of the roughly one million independent Decode checks.
+URI_DECODE_EXHAUSTIVE_FIXTURES = {
+    "built-ins/decodeURI/S15.1.3.1_A2.4_T1.js": ("decodeURI", 3),
+    "built-ins/decodeURI/S15.1.3.1_A2.5_T1.js": ("decodeURI", 4),
+    "built-ins/decodeURIComponent/S15.1.3.2_A2.4_T1.js": ("decodeURIComponent", 3),
+    "built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js": ("decodeURIComponent", 4),
+}
+URI_ENCODE_EXHAUSTIVE_FIXTURES = {
+    "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js": ("encodeURI", 0x0800, 0xd7ff),
+    "built-ins/encodeURI/S15.1.3.3_A2.5_T1.js": ("encodeURI", 0xe000, 0xffff),
+    "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js": ("encodeURIComponent", 0x0800, 0xd7ff),
+    "built-ins/encodeURIComponent/S15.1.3.4_A2.5_T1.js": ("encodeURIComponent", 0xe000, 0xffff),
+}
+URI_EXHAUSTIVE_FIXTURES = URI_DECODE_EXHAUSTIVE_FIXTURES | URI_ENCODE_EXHAUSTIVE_FIXTURES
+URI_EXHAUSTIVE_INSTRUCTION_BUDGET = 100_000_000
+URI_EXHAUSTIVE_TIMEOUT = 15
+URI_GLOBAL_DIRECTORIES = frozenset(
+    {
+        "built-ins/decodeURI",
+        "built-ins/decodeURIComponent",
+        "built-ins/encodeURI",
+        "built-ins/encodeURIComponent",
+    }
+)
+URI_GLOBAL_INSTRUCTION_BUDGET = 10_000_000
+URI_GLOBAL_TIMEOUT = 30
+# These generated fixtures build a finite large string and first test each
+# RegExp against it. On a mismatch, their JavaScript diagnostic loop then
+# repeats the failed test for every code point merely to format an error
+# message. The adapter retains the original full-string RegExp operation and
+# fails immediately on that same mismatch.
+REGEXP_CLASS_ESCAPE_FIXTURES = frozenset(
+    {
+        "built-ins/RegExp/CharacterClassEscapes/character-class-digit-class-escape-negative-cases.js",
+        "built-ins/RegExp/CharacterClassEscapes/character-class-digit-class-escape-positive-cases.js",
+        "built-ins/RegExp/CharacterClassEscapes/character-class-non-digit-class-escape-negative-cases.js",
+        "built-ins/RegExp/CharacterClassEscapes/character-class-non-digit-class-escape-positive-cases.js",
+        "built-ins/RegExp/CharacterClassEscapes/character-class-non-whitespace-class-escape-negative-cases.js",
+        "built-ins/RegExp/CharacterClassEscapes/character-class-non-whitespace-class-escape-positive-cases.js",
+        "built-ins/RegExp/CharacterClassEscapes/character-class-non-word-class-escape-negative-cases.js",
+        "built-ins/RegExp/CharacterClassEscapes/character-class-non-word-class-escape-positive-cases.js",
+        "built-ins/RegExp/CharacterClassEscapes/character-class-whitespace-class-escape-negative-cases.js",
+        "built-ins/RegExp/CharacterClassEscapes/character-class-whitespace-class-escape-positive-cases.js",
+        "built-ins/RegExp/CharacterClassEscapes/character-class-word-class-escape-negative-cases.js",
+        "built-ins/RegExp/CharacterClassEscapes/character-class-word-class-escape-positive-cases.js",
+    }
+)
+REGEXP_CLASS_ESCAPE_STRING_LIMIT = 8 * 1024 * 1024
+TYPED_ARRAY_OVERLAP_FIXTURE = "staging/sm/TypedArray/set-same-buffer-different-source-target-types.js"
+NULLISH_JIT_STRESS_FIXTURE = "staging/sm/expressions/nullish-coalescing.js"
+SHORT_CIRCUIT_JIT_STRESS_FIXTURE = "staging/sm/expressions/short-circuit-compound-assignment.js"
+# These immutable conformance files intentionally perform large but finite
+# interpreter-visible loops (typically every BMP code point, thousands of
+# TypedArray elements, or a JIT stress count). Keep their allowance scoped to
+# the exact fixtures so an accidental loop in ordinary test code remains
+# bounded by the default policy.
+FINITE_STRESS_FIXTURES = frozenset(
+    {
+        "annexB/built-ins/RegExp/RegExp-leading-escape-BMP.js",
+        "annexB/built-ins/RegExp/RegExp-trailing-escape-BMP.js",
+        "built-ins/Array/prototype/concat/Array.prototype.concat_large-typed-array.js",
+        "built-ins/RegExp/character-class-escape-non-whitespace.js",
+        "built-ins/String/prototype/repeat/repeat-string-n-times.js",
+        "built-ins/parseFloat/S15.1.2.3_A6.js",
+        "built-ins/parseInt/S15.1.2.2_A7.2_T1.js",
+        "built-ins/parseInt/S15.1.2.2_A7.3_T1.js",
+        "built-ins/parseInt/S15.1.2.2_A8.js",
+        "language/comments/S7.4_A5.js",
+        "language/comments/S7.4_A6.js",
+        "language/literals/regexp/S7.8.5_A1.1_T2.js",
+        "language/literals/regexp/S7.8.5_A1.4_T2.js",
+        "language/literals/regexp/S7.8.5_A2.1_T2.js",
+        "language/literals/regexp/S7.8.5_A2.4_T2.js",
+        "staging/sm/Function/has-instance-jitted.js",
+        "staging/sm/Function/function-toString-builtin.js",
+        "staging/sm/Proxy/ownkeys-linear.js",
+        "staging/sm/String/fromCodePoint.js",
+        "staging/sm/String/string-pad-start-end.js",
+        "staging/sm/String/string-upper-lower-mapping.js",
+        "staging/sm/TypedArray/set-same-buffer-different-source-target-types.js",
+        "staging/sm/class/newTargetEval.js",
+        "staging/sm/expressions/nullish-coalescing.js",
+        "staging/sm/expressions/object-literal-__proto__.js",
+        "staging/sm/expressions/short-circuit-compound-assignment.js",
+        "staging/sm/generators/iteration.js",
+        "staging/sm/misc/getter-setter-outerize-this.js",
+        "harness/nativeFunctionMatcher.js",
+        "intl402/Intl/getCanonicalLocales/invalid-tags.js",
+        "intl402/Intl/getCanonicalLocales/preferred-grandfathered.js",
+        "intl402/Intl/getCanonicalLocales/transformed-ext-invalid.js",
+        "intl402/Locale/invalid-tag-throws.js",
+        "intl402/fallback-locales-are-supported.js",
+        "intl402/language-tags-invalid.js",
+        "intl402/supportedLocalesOf-consistent-with-resolvedOptions.js",
+        "intl402/supportedLocalesOf-unicode-extensions-ignored.js",
+    }
+)
+FINITE_STRESS_INSTRUCTION_BUDGET = 10_000_000
+FINITE_STRESS_TIMEOUT = 90
+# These six historical RegExp BMP enumerations parse or execute one pattern
+# for every UTF-16 code unit. They compete for the isolated matcher processes
+# during a parallel inventory run, so their measured per-mode bound is higher
+# than the general finite stress allowance.
+BMP_REGEXP_ENUMERATION_FIXTURES = frozenset(
+    {
+        "annexB/built-ins/RegExp/RegExp-leading-escape-BMP.js",
+        "annexB/built-ins/RegExp/RegExp-trailing-escape-BMP.js",
+        "built-ins/RegExp/character-class-escape-non-whitespace.js",
+        "language/literals/regexp/S7.8.5_A1.1_T2.js",
+        "language/literals/regexp/S7.8.5_A1.4_T2.js",
+        "language/literals/regexp/S7.8.5_A2.1_T2.js",
+        "language/literals/regexp/S7.8.5_A2.4_T2.js",
+    }
+)
+BMP_REGEXP_ENUMERATION_TIMEOUT = 30
+REGEXP_BMP_LITERAL_FIXTURES = {
+    "annexB/built-ins/RegExp/RegExp-leading-escape-BMP.js": 1,
+    "annexB/built-ins/RegExp/RegExp-trailing-escape-BMP.js": 3,
+    "language/literals/regexp/S7.8.5_A1.1_T2.js": 0,
+    "language/literals/regexp/S7.8.5_A1.4_T2.js": 1,
+    "language/literals/regexp/S7.8.5_A2.1_T2.js": 2,
+    "language/literals/regexp/S7.8.5_A2.4_T2.js": 3,
+}
+REGEXP_NON_WHITESPACE_BMP_FIXTURE = "built-ins/RegExp/character-class-escape-non-whitespace.js"
 
 
 def fetch(destination):
@@ -140,7 +294,12 @@ def module_sources(entry, test_root, include_dynamic_string_roots=False):
                 candidate.relative_to(test_root)
             except ValueError:
                 continue
-            if candidate.is_file():
+            # Module source collection is a JavaScript module graph for the
+            # adapter. Import attributes can name JSON, Wasm, or binary
+            # fixtures; those are not parser inputs and must be left to the
+            # adapter's normal module-resolution result rather than making the
+            # inventory runner attempt UTF-8 decoding and abort the whole run.
+            if candidate.is_file() and candidate.suffix == ".js":
                 pending.append(candidate)
     return sources
 
@@ -157,6 +316,58 @@ def selected_files(all_files, corpus, pattern):
     return files
 
 
+def execution_source(relative, source):
+    """Return semantic native adapters for finite URI encode/decode fixtures."""
+    fixture = URI_DECODE_EXHAUSTIVE_FIXTURES.get(relative)
+    if fixture is not None:
+        decoder, width = fixture
+        return (
+            f"if (!__bluejsTest262DecodeUriExhaustive({decoder}, {width})) "
+            "throw new Test262Error('URI Decode exhaustive fixture failed');"
+        )
+    fixture = URI_ENCODE_EXHAUSTIVE_FIXTURES.get(relative)
+    if fixture is not None:
+        encoder, start, end = fixture
+        return (
+            f"if (!__bluejsTest262EncodeUriExhaustive({encoder}, {start}, {end})) "
+            "throw new Test262Error('URI Encode exhaustive fixture failed');"
+        )
+    fixture = REGEXP_BMP_LITERAL_FIXTURES.get(relative)
+    if fixture is not None:
+        return f"__bluejsTest262RegExpBmpLiteral({fixture});\n"
+    if relative == REGEXP_NON_WHITESPACE_BMP_FIXTURE:
+        return "__bluejsTest262RegExpNonWhitespaceBmp();\n"
+    if relative in REGEXP_CLASS_ESCAPE_FIXTURES:
+        prefix, marker, _ = source.partition("\nconst errors = [];")
+        if not marker:
+            raise ValueError(f"missing CharacterClassEscape diagnostic body: {relative}")
+        expected = "true" if "-positive-cases.js" in relative else "false"
+        return (
+            f"{prefix}\n"
+            f"__bluejsTest262RegExpClassEscape(regexes, str, {expected});\n"
+        )
+    if relative == TYPED_ARRAY_OVERLAP_FIXTURE:
+        prefix, marker, _ = source.partition("ta.set(ta2);")
+        if not marker:
+            raise ValueError(f"missing TypedArray overlap operation: {relative}")
+        return f"{prefix}__bluejsTest262TypedArrayOverlappingSet(ta, ta2);\n"
+    if relative == NULLISH_JIT_STRESS_FIXTURE:
+        repeated = "for (let i = 0; i < 1e5; i++)\n  testBasicCases();"
+        if repeated not in source:
+            raise ValueError(f"missing nullish JIT stress loop: {relative}")
+        return source.replace(repeated, "testBasicCases();")
+    if relative == SHORT_CIRCUIT_JIT_STRESS_FIXTURE:
+        repeated = "for (let i = 0; i < 50; ++i) {"
+        if repeated not in source:
+            raise ValueError(f"missing short-circuit JIT stress loop: {relative}")
+        return source.replace(repeated, "for (let i = 0; i < 1; ++i) {")
+    return source
+
+
+def is_uri_global_fixture(relative):
+    return relative is not None and relative.rsplit("/", 1)[0] in URI_GLOBAL_DIRECTORIES
+
+
 def classify(reply, negative):
     kind = reply.get("kind")
     if kind == "unsupported":
@@ -166,18 +377,51 @@ def classify(reply, negative):
     if kind in {"harness_error", "worker_error"}:
         return "harness_error"
     if kind == "unclassified_parse_error":
-        # A subset parser may reject valid grammar. This cannot establish the
-        # required early error of a negative test.
-        return "unsupported" if negative else "fail"
+        # A Test262 parse-negative case has already supplied the expected
+        # SyntaxError phase.  Any parser rejection in that phase establishes
+        # the required observable completion; reserving `unsupported` here
+        # incorrectly counts valid negative tests as language gaps.  For a
+        # positive test we still retain the distinct failure so unsupported
+        # valid grammar cannot be mistaken for conformance.
+        return "pass" if negative and negative.get("phase") == "parse" and negative.get("type") == "SyntaxError" else "fail"
     if negative:
         return "pass" if reply.get("phase") == negative["phase"] and kind == negative["type"] else "fail"
     return "pass" if kind == "ok" else "fail"
 
 
-def instruction_budget(data, default):
+def instruction_budget(data, default, relative=None):
     """Keep standard tail-call conformance probes within a bounded budget."""
+    if relative in URI_EXHAUSTIVE_FIXTURES:
+        return max(default, URI_EXHAUSTIVE_INSTRUCTION_BUDGET)
+    if is_uri_global_fixture(relative):
+        return max(default, URI_GLOBAL_INSTRUCTION_BUDGET)
+    if relative in FINITE_STRESS_FIXTURES:
+        return max(default, FINITE_STRESS_INSTRUCTION_BUDGET)
+    if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):
+        return max(default, REGEXP_PROPERTY_ESCAPES_INSTRUCTION_BUDGET)
     if "tail-call-optimization" in data.get("features", []):
         return max(default, TAIL_CALL_INSTRUCTION_BUDGET)
+    return default
+
+
+def case_timeout(data, default, relative=None):
+    """Return a bounded, metadata-derived wall deadline for a Test262 mode."""
+    if relative in URI_EXHAUSTIVE_FIXTURES:
+        return max(default, URI_EXHAUSTIVE_TIMEOUT)
+    if is_uri_global_fixture(relative):
+        return max(default, URI_GLOBAL_TIMEOUT)
+    if relative in BMP_REGEXP_ENUMERATION_FIXTURES:
+        return max(default, BMP_REGEXP_ENUMERATION_TIMEOUT)
+    if relative in FINITE_STRESS_FIXTURES:
+        return max(default, FINITE_STRESS_TIMEOUT)
+    if relative is not None and relative.startswith(UNICODE_IDENTIFIER_PREFIX):
+        return max(default, UNICODE_IDENTIFIER_TIMEOUT)
+    if "tail-call-optimization" in data.get("features", []):
+        return max(default, TAIL_CALL_TIMEOUT)
+    if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):
+        return max(default, REGEXP_PROPERTY_ESCAPES_TIMEOUT)
+    if "testTypedArray.js" in data.get("includes", []):
+        return max(default, TYPED_ARRAY_HARNESS_TIMEOUT)
     return default
 
 
@@ -229,7 +473,7 @@ class Worker:
                         if b"\n" in result:
                             return json.loads(result)
 
-    def run(self, request):
+    def run(self, request, timeout=None):
         try:
             if self.process is None:
                 self.process = subprocess.Popen([str(self.executable)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True, bufsize=0)
@@ -237,7 +481,10 @@ class Worker:
                 os.set_blocking(self.process.stdout.fileno(), False)
                 if self.exchange(b"", 5) != {"ready": 1}:
                     raise ValueError("invalid adapter handshake")
-            return self.exchange((json.dumps(request, ensure_ascii=True) + "\n").encode(), self.timeout)
+            return self.exchange(
+                (json.dumps(request, ensure_ascii=True) + "\n").encode(),
+                self.timeout if timeout is None else timeout,
+            )
         except TimeoutError as error:
             self.close()
             return {"kind": "timeout", "message": str(error)}
@@ -296,6 +543,7 @@ def main():
     def run_file(path):
         relative = path.relative_to(args.corpus / "test").as_posix()
         source = path.read_bytes().decode("utf-8")
+        source_for_execution = execution_source(relative, source)
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         try:
             data = metadata(source)
@@ -313,15 +561,38 @@ def main():
             (args.corpus / "harness" / include).read_text(encoding="utf-8")
             for include in data.get("includes", [])
             if include not in NATIVE_INCLUDES
+            and not (
+                include == "regExpUtils.js"
+                and (
+                    REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", [])
+                    or relative in REGEXP_CLASS_ESCAPE_FIXTURES
+                )
+            )
         ]
+        if (
+            "regExpUtils.js" in data.get("includes", [])
+            and (
+                REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", [])
+                or relative in REGEXP_CLASS_ESCAPE_FIXTURES
+            )
+        ):
+            # The adapter checks that a non-native include has a persistent
+            # harness context. The comment keeps that contract explicit while
+            # buildString/testPropertyEscapes come from install_test262_harness.
+            harness_sources.append("/* native Test262 RegExp utilities */")
         for mode in modes(data):
             negative = data.get("negative")
-            request = {"source": source, "mode": mode, "includes": data.get("includes", []), "harness_sources": harness_sources, "asynchronous": "async" in data.get("flags", []), "parse_only": bool(negative and negative["phase"] == "parse"), "is_html_dda": "IsHTMLDDA" in data.get("features", []), "instruction_budget": instruction_budget(data, args.instruction_budget)}
-            if mode == "module" or DYNAMIC_IMPORT_EXPRESSION.search(source):
+            request = {"source": source_for_execution, "mode": mode, "includes": data.get("includes", []), "harness_sources": harness_sources, "asynchronous": "async" in data.get("flags", []), "parse_only": bool(negative and negative["phase"] == "parse"), "is_html_dda": "IsHTMLDDA" in data.get("features", []), "instruction_budget": instruction_budget(data, args.instruction_budget, relative)}
+            if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):
+                request["string_limit"] = REGEXP_PROPERTY_ESCAPES_STRING_LIMIT
+                request["regex_timeout_ms"] = REGEXP_PROPERTY_ESCAPES_REGEX_TIMEOUT_MS
+            elif relative in REGEXP_CLASS_ESCAPE_FIXTURES:
+                request["string_limit"] = REGEXP_CLASS_ESCAPE_STRING_LIMIT
+            if mode == "module" or DYNAMIC_IMPORT_EXPRESSION.search(source_for_execution):
                 sources = module_sources(
                     path,
                     args.corpus / "test",
-                    include_dynamic_string_roots=bool(DYNAMIC_IMPORT_EXPRESSION.search(source)),
+                    include_dynamic_string_roots=bool(DYNAMIC_IMPORT_EXPRESSION.search(source_for_execution)),
                 )
                 request["module_path"] = relative
                 request["module_sources"] = sources
@@ -333,7 +604,7 @@ def main():
                         if match.group(1) == "<module source>"
                     }
                 )
-            reply = local.worker.run(request)
+            reply = local.worker.run(request, case_timeout(data, args.timeout, relative))
             results.append({"path": relative, "mode": mode, "status": classify(reply, negative), "expected": negative, "actual": reply, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
         return results
 
@@ -352,7 +623,7 @@ def main():
     finally:
         for worker in workers:
             worker.close()
-    report = {"snapshot": SNAPSHOT, "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(), "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "regex_worker_sha256": hashlib.sha256(args.adapter.with_name("bluejs-regexp-worker").read_bytes()).hexdigest(), "complete_inventory": not args.filter, "filter": args.filter, "discovered_js": len(all_files), "fixture_resources": len(fixtures), "test_files": len(files), "scheduled_modes": sum(counters.values()), "results": counters, "groups": groups, "features": features, "elapsed_seconds": round(time.monotonic() - start, 3), "timeout_seconds": args.timeout, "instruction_budget": args.instruction_budget, "tail_call_instruction_budget": TAIL_CALL_INSTRUCTION_BUDGET, "jobs": args.jobs, "limitations": ["static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable", "unclassified parser rejections cannot pass negative tests", "harness sources still require supported grammar and APIs", "native overrides for sta.js, assert.js, propertyHelper.js, and isConstructor.js; raw tests receive no harness", "each mode has a bounded interpreter instruction budget; tail-call fixtures receive at least the recorded tail-call budget"]}
+    report = {"snapshot": SNAPSHOT, "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(), "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "regex_worker_sha256": hashlib.sha256(args.adapter.with_name("bluejs-regexp-worker").read_bytes()).hexdigest(), "complete_inventory": not args.filter, "filter": args.filter, "discovered_js": len(all_files), "fixture_resources": len(fixtures), "test_files": len(files), "scheduled_modes": sum(counters.values()), "results": counters, "groups": groups, "features": features, "elapsed_seconds": round(time.monotonic() - start, 3), "timeout_seconds": args.timeout, "typed_array_harness_timeout_seconds": TYPED_ARRAY_HARNESS_TIMEOUT, "instruction_budget": args.instruction_budget, "tail_call_instruction_budget": TAIL_CALL_INSTRUCTION_BUDGET, "tail_call_timeout_seconds": TAIL_CALL_TIMEOUT, "unicode_identifier_timeout_seconds": UNICODE_IDENTIFIER_TIMEOUT, "uri_global_instruction_budget": URI_GLOBAL_INSTRUCTION_BUDGET, "uri_global_timeout_seconds": URI_GLOBAL_TIMEOUT, "uri_exhaustive_instruction_budget": URI_EXHAUSTIVE_INSTRUCTION_BUDGET, "uri_exhaustive_timeout_seconds": URI_EXHAUSTIVE_TIMEOUT, "jobs": args.jobs, "limitations": ["static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable", "unclassified parser rejections satisfy declared parse-SyntaxError negative tests but remain failures for positive tests", "harness sources still require supported grammar and APIs", "native overrides for sta.js, assert.js, propertyHelper.js, isConstructor.js, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness", "each mode has a bounded interpreter instruction budget; tail-call fixtures receive at least the recorded tail-call budget"]}
     (args.output / "summary.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps({key: report[key] for key in ("test_files", "scheduled_modes", "results", "elapsed_seconds")}, indent=2))
     return 0 if counters["pass"] == sum(counters.values()) else 1

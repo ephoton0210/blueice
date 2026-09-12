@@ -223,18 +223,22 @@ impl Vm {
         };
         let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         self.stack.push(Value::Object(object));
-        let message = native::argument(args, 0);
-        if *message != Value::Undefined {
-            let message = self.coerce_string(message)?;
-            self.define_data(object, "message", Value::String(message), true, false, true)?;
-        }
-        if let Value::Object(options) = native::argument(args, 1) {
-            if self.has_property(*options, &"cause".into())? {
-                let cause = self.get_property(&Value::Object(*options), &"cause".into())?;
-                self.define_data(object, "cause", cause, true, false, true)?;
+        let result = (|| {
+            let message = native::argument(args, 0);
+            if *message != Value::Undefined {
+                let message = self.coerce_string(message)?;
+                self.define_data(object, "message", Value::String(message), true, false, true)?;
             }
-        }
-        Ok(Value::Object(object))
+            if let Value::Object(options) = native::argument(args, 1) {
+                if self.has_property(*options, &"cause".into())? {
+                    let cause = self.get_property(&Value::Object(*options), &"cause".into())?;
+                    self.define_data(object, "cause", cause, true, false, true)?;
+                }
+            }
+            Ok(Value::Object(object))
+        })();
+        self.stack.pop();
+        result
     }
 
     pub(super) fn error_to_string(&mut self, receiver: &Value) -> Result<Value, RuntimeError> {

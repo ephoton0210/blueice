@@ -11,6 +11,7 @@ fn harness_assertions_fail_closed() {
     vm.install_test262_harness().unwrap();
     for source in [
         "assert(true)",
+        "assert.sameValue(print('diagnostic'),undefined)",
         "assert.sameValue(NaN,NaN)",
         "assert.notSameValue(0,-0)",
         "assert.throws(TypeError,()=>''.repeat.call(null))",
@@ -46,6 +47,41 @@ fn harness_assertions_fail_closed() {
         Vm::default().execute(&compile(&parse("assert(true)").unwrap()).unwrap()),
         Err(RuntimeError::ReferenceError(_))
     ));
+}
+
+#[test]
+fn generated_regexp_class_escape_helper_preserves_regexp_verdicts() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    for source in [
+        "__bluejsTest262RegExpClassEscape([/^a+$/, /^a+$/], 'aaa', true)",
+        "__bluejsTest262RegExpClassEscape([/b/, /c/], 'aaa', false)",
+        "__bluejsTest262RegExpClassEscape([/^\\D+$/, /^\\D+$/u, /^\\D+$/v], String.fromCodePoint(0x10000, 0x10001), true)",
+    ] {
+        assert_eq!(
+            vm.execute(&compile(&parse(source).unwrap()).unwrap()),
+            Ok(Value::Bool(true)),
+            "{source}"
+        );
+    }
+    assert!(matches!(
+        vm.execute(
+            &compile(&parse("__bluejsTest262RegExpClassEscape([/a/], 'aaa', false)").unwrap())
+                .unwrap()
+        ),
+        Err(RuntimeError::Test262(_))
+    ));
+}
+
+#[test]
+fn typed_array_overlap_helper_uses_the_real_set_operation() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = "let bytes=new Uint8Array(32);let doubles=new Float64Array(bytes.buffer,0,4);__bluejsTest262TypedArrayOverlappingSet(bytes,doubles)";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap()),
+        Ok(Value::Bool(true))
+    );
 }
 
 #[test]
@@ -375,6 +411,24 @@ fn promise_constructor_invokes_its_executor_and_settles_once() {
 }
 
 #[test]
+fn promise_static_methods_observe_constructor_resolve_and_then_failures() {
+    for source in [
+        "Promise.resolve(1).then(function(value){if(value===1)$DONE();else $DONE(new Test262Error('wrong fulfillment'))},$DONE)",
+        "let resolve;let reject;let promise=new Promise(function(r,j){resolve=r;reject=j});let P=function(executor){executor(resolve,reject);return promise};Promise.resolve.call(P,promise).then(function(){$DONE(new Test262Error('fulfilled'))},function(error){if(error.constructor===TypeError)$DONE();else $DONE(error)})",
+        "let error=new Test262Error('resolve getter');Object.defineProperty(Promise,'resolve',{get:function(){throw error}});Promise.all([new Promise(function(){})]).then(function(){$DONE(new Test262Error('fulfilled'))},function(reason){if(reason===error)$DONE();else $DONE(reason)})",
+        "let promise=new Promise(function(){});let error=new Test262Error('then method');Object.defineProperty(promise,'then',{value:function(){throw error}});Promise.all([promise]).then(function(){$DONE(new Test262Error('fulfilled'))},function(reason){if(reason===error)$DONE();else $DONE(reason)})",
+    ] {
+        let mut vm = Vm::default();
+        vm.install_test262_harness().unwrap();
+        vm.install_test262_done().unwrap();
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap();
+        vm.run_promise_jobs().unwrap();
+        assert_eq!(vm.take_test262_done(), Some(Ok(())), "{source}");
+    }
+}
+
+#[test]
 fn async_test_style_chain_handles_a_rejected_dynamic_import() {
     let modules = HashMap::from([(
         "async-import/broken.js".to_string(),
@@ -392,6 +446,26 @@ fn async_test_style_chain_handles_a_rejected_dynamic_import() {
         .unwrap();
     vm.run_promise_jobs().unwrap();
     assert_eq!(vm.take_test262_done(), Some(Ok(())));
+}
+
+#[test]
+fn source_and_defer_dynamic_imports_reject_through_the_promise_path() {
+    let modules = HashMap::from([(
+        "source-dynamic/empty.js".to_string(),
+        compile_module(&parse_module("export {};").unwrap()).unwrap(),
+    )]);
+    for source in [
+        "import.source('./empty.js').then(()=>{$DONE(new Error())},error=>{if(error instanceof SyntaxError)$DONE();else $DONE(error)})",
+        "import.defer({toString(){throw 'expected'}}).then(()=>{$DONE(new Error())},error=>{if(error==='expected')$DONE();else $DONE(error)})",
+    ] {
+        let mut vm = Vm::default();
+        vm.install_test262_done().unwrap();
+        vm.set_module_loader_context("source-dynamic/main.js", modules.clone());
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap();
+        vm.run_promise_jobs().unwrap();
+        assert_eq!(vm.take_test262_done(), Some(Ok(())), "{source}");
+    }
 }
 
 #[test]
@@ -771,6 +845,18 @@ fn create_realm_detached_eval_uses_an_isolated_global() {
 }
 
 #[test]
+fn create_realm_membrane_preserves_foreign_object_identity_and_internal_slots() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = "var other=$262.createRealm().global;var value=other.eval('var state=0;({get value(){state++;return state}})');var regexp=other.eval('/a/g');value.value===1&&other.eval('state')===1&&RegExp(regexp)!==regexp&&RegExp(regexp).toString()==='/a/g'";
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn create_realm_eval_exposes_a_callable_completion_without_foreign_heap_handles() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();
@@ -990,6 +1076,24 @@ fn harness_compares_arrays_and_propagates_resource_errors() {
         vm.execute(&compile(&parse("Error.prototype.toString.call(1)").unwrap()).unwrap()),
         Err(RuntimeError::TypeError(_))
     ));
+}
+
+#[test]
+fn native_uri_decode_fixture_helper_exhaustively_checks_the_shared_decode_operation() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    for source in [
+        "__bluejsTest262DecodeUriExhaustive(decodeURI,3)",
+        "__bluejsTest262DecodeUriExhaustive(decodeURIComponent,3)",
+        "assert.throws(TypeError,()=>__bluejsTest262DecodeUriExhaustive(decodeURI,2));true",
+    ] {
+        assert_eq!(
+            vm.execute(&compile(&parse(source).unwrap()).unwrap())
+                .unwrap(),
+            Value::Bool(true),
+            "{source}"
+        );
+    }
 }
 
 #[test]

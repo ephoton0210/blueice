@@ -220,6 +220,16 @@ fn sparse_array_searches_preserve_holes_and_only_visit_present_indices() {
 }
 
 #[test]
+fn array_from_maps_iterables_lazily_and_closes_on_a_mapper_throw() {
+    assert_eq!(
+        evaluate(
+            "let closed=0;let marker={};let source={};source[Symbol.iterator]=function(){return {next:function(){return {value:1,done:false}},return:function(){closed++;return {done:true}}}};let thrown;try{Array.from(source,function(){throw marker})}catch(error){thrown=error===marker}thrown&&closed===1",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
 fn invalid_runtime_lengths_report_range_errors_and_vm_remains_reusable() {
     let mut vm = Vm::default();
     for source in [

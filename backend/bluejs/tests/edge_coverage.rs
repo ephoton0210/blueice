@@ -161,10 +161,7 @@ fn compiler_reports_public_ast_boundaries_without_panicking() {
         ))
     ));
     assert!(compile(&parse("with({}){missing+=1}").unwrap()).is_ok());
-    assert!(matches!(
-        compile(&parse("function*g(){yield* []}").unwrap()),
-        Err(CompileError::Unsupported("synchronous yield*"))
-    ));
+    assert!(compile(&parse("function*g(){yield* []}").unwrap()).is_ok());
     let member_update = Expr::Update {
         op: UpdateOp::Inc,
         arg: Box::new(Expr::Member {

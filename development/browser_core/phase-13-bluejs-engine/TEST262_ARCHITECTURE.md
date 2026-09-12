@@ -1232,6 +1232,37 @@ are the completion evidence for this P1.3 slice. Host-driven module loading,
 Proxy/object internals, typed arrays and shared memory, the remaining builtin
 families, ECMA-402, and the full Test262 inventory remain separate workstreams.
 
+## P1.3 continuation: ordinary generator `yield*` and full-inventory status
+
+The complete 2026-09-12 inventory at
+`target/test262-unsup-timeout-current` ran all 53,404 files and 102,578 modes
+without the runner aborting on a non-JavaScript fixture: **59,366 pass, 41,046
+fail, 870 unsupported, 1,120 timeout, and 176 harness errors**. This is a
+diagnostic baseline, not a conformance claim. The unsupported modes group into
+ordinary `yield*` (145 modes), optional chaining (94 modes), parser/early-error
+classification, host boundaries, and proposal syntax. Most timeouts are the
+large generated Unicode RegExp corpus exhausting the deliberately bounded
+100,000-dispatch policy; increasing the wall deadline alone does not make those
+inputs complete.
+
+Ordinary generators now use the same explicit delegate-boundary design as
+async generators. The compiler records each synchronous `yield*` resume and
+exit offset. A suspended frame retains its iterator record, so `next(value)`
+forwards its value to the delegate; `throw(value)` and `return(value)` invoke
+the delegate methods, validate iterator results, preserve closing behaviour,
+and resume the outer frame with the delegate's completion value. The delegate
+record is traced and charged as managed state. `%GeneratorPrototype%` now also
+exposes the standard `throw` method. Focused checks at
+`target/test262-sync-yield-star-language` and
+`target/test262-annexb-sync-yield-star` pass all 8 scheduled modes, including
+the two original Annex B missing-method cases. The broader `yield-star`
+selection has no unsupported modes (1,384 pass and 62 unrelated failures).
+
+The Test262 adapter additionally ignores legacy fixture diagnostics through a
+Test262-only `print` no-op. The affected
+`built-ins/RegExp/prototype/Symbol.replace/coerce-global.js` selection now
+passes both modes at `target/test262-print-host-fixed`.
+
 ## P0.4 and P1.5 slice: internal-method boundary and fixed binary data
 
 Implemented 2026-09-12. Ordinary object operations now pass through a VM

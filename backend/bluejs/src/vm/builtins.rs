@@ -498,6 +498,13 @@ impl Vm {
                 1,
                 NativeFunction::GeneratorReturn,
             )?;
+            self.install_native(
+                prototype,
+                function_prototype,
+                "throw",
+                1,
+                NativeFunction::GeneratorThrow,
+            )?;
             self.define_data(
                 prototype,
                 JsSymbol::well_known("toStringTag"),
@@ -684,6 +691,9 @@ impl Vm {
         object: ObjectId,
         key: &PropertyName,
     ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
+        // Intrinsic globals are lazily initialized, but reflective descriptor
+        // operations must observe the same own properties as ordinary Get.
+        self.materialize_global_object_property(object, key)?;
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_get_own_property(object, key);
         }
@@ -995,6 +1005,9 @@ impl Vm {
         let Value::Object(id) = value else {
             return Ok(false);
         };
+        if let Some((_, _, _, constructible)) = self.test262_foreign_reference(*id) {
+            return Ok(constructible);
+        }
         if let Some((_, constructible)) = self.heap.proxy_capabilities(*id)? {
             return Ok(constructible);
         }
@@ -1015,6 +1028,7 @@ impl Vm {
                     | NativeFunction::Proxy
                     | NativeFunction::Map
                     | NativeFunction::Set
+                    | NativeFunction::Promise
                     | NativeFunction::Object
                     | NativeFunction::RegExp
                     | NativeFunction::Collator
@@ -2270,29 +2284,6 @@ impl Vm {
         result
     }
 
-    fn iterable_values(
-        &mut self,
-        source: &Value,
-        iterator_method: Value,
-    ) -> Result<Vec<Value>, RuntimeError> {
-        let base = self.stack.len();
-        self.stack.push(source.clone());
-        let result = (|| {
-            let record = self.get_iterator_from_method(source, iterator_method)?;
-            self.stack.push(record.clone());
-            let mut values = Vec::new();
-            while let Some(value) = self.iterator_step(&record, true)? {
-                if values.len() == u32::MAX as usize {
-                    return Err(RuntimeError::RangeError("Array length is too large".into()));
-                }
-                values.push(value);
-            }
-            Ok(values)
-        })();
-        self.stack.truncate(base);
-        result
-    }
-
     fn array_from_method(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let source = native::argument(args, 0).clone();
         if matches!(source, Value::Null | Value::Undefined) {
@@ -2315,26 +2306,61 @@ impl Vm {
         }
         let result = (|| {
             let iterator = self.get_method(&source, &JsSymbol::well_known("iterator").into())?;
-            let mut values = if iterator == Value::Undefined {
+            if iterator == Value::Undefined {
                 let object = self.coerce_object(&source)?;
                 self.stack.push(Value::Object(object));
                 let values = self.array_like_values(&Value::Object(object));
                 self.stack.pop();
-                values?
-            } else {
-                self.iterable_values(&source, iterator)?
-            };
-            if mapper != Value::Undefined {
-                for (index, value) in values.iter_mut().enumerate() {
-                    *value = self.call_native(
-                        mapper.clone(),
-                        this_arg.clone(),
-                        vec![value.clone(), Value::Number(index as f64)],
-                        false,
-                    )?;
+                let mut values = values?;
+                if mapper != Value::Undefined {
+                    for (index, value) in values.iter_mut().enumerate() {
+                        *value = self.call_native(
+                            mapper.clone(),
+                            this_arg.clone(),
+                            vec![value.clone(), Value::Number(index as f64)],
+                            false,
+                        )?;
+                    }
                 }
+                return self.array_from(values);
             }
-            self.array_from(values)
+
+            // Array.from maps one iterator value at a time. Collecting the
+            // iterator first makes an infinite source consume its resource
+            // budget before an abrupt mapper can close it, which is both
+            // observably wrong and turns finite conformance checks into
+            // timeouts.
+            let record = self.get_iterator_from_method(&source, iterator)?;
+            self.stack.push(record.clone());
+            let array = self.array_from(Vec::new())?;
+            self.stack.push(array.clone());
+            let outcome = (|| {
+                let mut index = 0usize;
+                while let Some(value) = self.iterator_step(&record, true)? {
+                    let value = if mapper == Value::Undefined {
+                        value
+                    } else {
+                        self.call_native(
+                            mapper.clone(),
+                            this_arg.clone(),
+                            vec![value, Value::Number(index as f64)],
+                            false,
+                        )?
+                    };
+                    self.array_push(&array, &value, 0)?;
+                    index = index.checked_add(1).ok_or(RuntimeError::RangeError(
+                        "Array.from result length is too large".into(),
+                    ))?;
+                }
+                Ok(array)
+            })();
+            if outcome.is_err() {
+                // IteratorClose retains an existing abrupt completion. The
+                // original mapper/iterator error must win over a return()
+                // failure, so close only for its required side effect here.
+                let _ = self.iterator_close(&record);
+            }
+            outcome
         })();
         self.stack.truncate(base);
         result
@@ -2553,7 +2579,16 @@ impl Vm {
     pub(super) fn get_async_iterator(&mut self, value: &Value) -> Result<Value, RuntimeError> {
         let method = self.get_method(value, &JsSymbol::well_known("asyncIterator").into())?;
         if method == Value::Undefined {
-            return self.get_iterator(value);
+            let record = self.get_iterator(value)?;
+            let Value::Object(record_id) = record else {
+                unreachable!("GetIterator creates an iterator record")
+            };
+            self.stack.push(Value::Object(record_id));
+            let result =
+                self.with_roots(|heap| heap.set(record_id, "asyncFromSync", Value::Bool(true)));
+            self.stack.pop();
+            result?;
+            return Ok(Value::Object(record_id));
         }
         let iterator = self.call_native(method, value.clone(), Vec::new(), false)?;
         if !matches!(iterator, Value::Object(_)) {
@@ -2576,6 +2611,92 @@ impl Vm {
     }
 
     pub(super) fn async_iterator_next(
+        &mut self,
+        record: &Value,
+        argument: Option<Value>,
+    ) -> Result<Value, RuntimeError> {
+        let Value::Object(record) = record else {
+            unreachable!("compiler only emits iterator records")
+        };
+        if matches!(self.heap.get_own(*record, "done")?, Some(Value::Bool(true))) {
+            return self.iterator_result(Value::Undefined, true);
+        }
+        let iterator = self.get_property(&Value::Object(*record), &"iterator".into())?;
+        let next = self.get_property(&Value::Object(*record), &"next".into())?;
+        let result = self.call_native(next, iterator, argument.into_iter().collect(), false);
+        if !matches!(
+            self.heap.get_own(*record, "asyncFromSync")?,
+            Some(Value::Bool(true))
+        ) {
+            return result;
+        }
+        match result {
+            Ok(result) => self.async_from_sync_continue(*record, result),
+            Err(error) => {
+                let error = self.error_value(error)?;
+                self.promise_reject(error)
+            }
+        }
+    }
+
+    fn async_from_sync_handler(&mut self, function: NativeFunction) -> Result<Value, RuntimeError> {
+        let prototype = self.function_prototype()?;
+        let id = self.with_roots(|heap| heap.alloc_native_function(function, "", prototype))?;
+        self.stack.push(Value::Object(id));
+        let result = (|| {
+            self.define_data(id, "name", Value::String("".into()), false, false, true)?;
+            self.define_data(id, "length", Value::Number(1.0), false, false, true)?;
+            Ok(Value::Object(id))
+        })();
+        self.stack.pop();
+        result
+    }
+
+    /// AsyncFromSyncIteratorContinuation. A synchronous iterator result's
+    /// `value` is adopted through PromiseResolve before a for-await loop sees
+    /// it; rejection closes the original iterator and rejects the public
+    /// `next()` capability.
+    fn async_from_sync_continue(
+        &mut self,
+        record: ObjectId,
+        result: Value,
+    ) -> Result<Value, RuntimeError> {
+        let base = self.stack.len();
+        let outcome = (|| {
+            if !matches!(result, Value::Object(_)) {
+                return Err(RuntimeError::TypeError(
+                    "iterator result must be an object".into(),
+                ));
+            }
+            let done = self.get_property(&result, &"done".into())?;
+            let value = self.get_property(&result, &"value".into())?;
+            let value_wrapper = self.promise_resolve(value)?;
+            let target = self.new_promise()?;
+            self.stack
+                .extend([value_wrapper.clone(), Value::Object(target)]);
+            let fulfilled = self.async_from_sync_handler(NativeFunction::AsyncFromSyncFulfill {
+                target,
+                done: self.to_boolean(&done)?,
+            })?;
+            let rejected = self
+                .async_from_sync_handler(NativeFunction::AsyncFromSyncReject { target, record })?;
+            self.promise_then(&value_wrapper, &[fulfilled, rejected])?;
+            Ok(Value::Object(target))
+        })();
+        self.stack.truncate(base);
+        match outcome {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                let error = self.error_value(error)?;
+                self.promise_reject(error)
+            }
+        }
+    }
+
+    /// Invoke an ordinary iterator's `next` method while retaining the raw
+    /// iterator result for synchronous `yield*`. The following bytecode
+    /// instruction validates `done`/`value`, matching the split async path.
+    pub(super) fn iterator_next(
         &mut self,
         record: &Value,
         argument: Option<Value>,
@@ -3115,6 +3236,7 @@ impl Vm {
                     pending_completions: Vec::new(),
                     completion_saves: Vec::new(),
                     async_delegate: None,
+                    delegate: None,
                     dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings)
                         .into_iter()
                         .map(|(name, binding)| (name, binding.cell, binding.shadowed_cells))
@@ -3275,6 +3397,7 @@ impl Vm {
                 pending_completions,
                 completion_saves,
                 async_delegate: _,
+                delegate: _,
                 dynamic_bindings,
                 home,
                 callee,
@@ -3454,6 +3577,19 @@ impl Vm {
                             exit_pc: *exit_pc as usize,
                         })
                     });
+                let delegate = code
+                    .yield_delegates
+                    .iter()
+                    .find(|(resume, _)| *resume as usize == pc)
+                    .and_then(|(_, exit_pc)| {
+                        stack
+                            .last()
+                            .cloned()
+                            .map(|record| crate::heap::GeneratorDelegate {
+                                record,
+                                exit_pc: *exit_pc as usize,
+                            })
+                    });
                 let state = GeneratorState::Suspended {
                     code,
                     pc,
@@ -3477,6 +3613,7 @@ impl Vm {
                         .collect(),
                     completion_saves: std::mem::take(&mut self.completion_saves),
                     async_delegate,
+                    delegate,
                     dynamic_bindings: std::mem::take(&mut self.dynamic_eval_bindings)
                         .into_iter()
                         .map(|(name, binding)| (name, binding.cell, binding.shadowed_cells))
@@ -3572,7 +3709,141 @@ impl Vm {
     }
 
     fn generator_return(&mut self, receiver: &Value, value: Value) -> Result<Value, RuntimeError> {
+        if let Some(result) = self.generator_delegate_return(receiver, value.clone())? {
+            return result;
+        }
         self.generator_resume(receiver, None, None, Some(Completion::Return(value)))
+    }
+
+    /// Returns the compiler-declared synchronous `yield*` state at the public
+    /// yield boundary. The iterator record lives in the saved operand stack.
+    fn sync_yield_star_delegate(state: &GeneratorState) -> Option<(Value, usize)> {
+        let GeneratorState::Suspended {
+            delegate: Some(delegate),
+            ..
+        } = state
+        else {
+            return None;
+        };
+        Some((delegate.record.clone(), delegate.exit_pc))
+    }
+
+    /// Finish a delegate method that returned an iterator result. A live
+    /// result is exposed directly; a completed result resumes the outer frame
+    /// after its compiler-recorded `yield*` loop.
+    fn finish_sync_generator_delegate(
+        &mut self,
+        receiver: &Value,
+        result: Value,
+        return_completion: Option<Value>,
+    ) -> Result<Value, RuntimeError> {
+        let Value::Object(generator) = receiver else {
+            return Err(RuntimeError::TypeError(
+                "Generator request requires a generator".into(),
+            ));
+        };
+        if !matches!(result, Value::Object(_)) {
+            let error =
+                RuntimeError::TypeError("yield* delegate method must return an object".into());
+            return self.generator_resume(receiver, None, None, Some(Completion::Throw(error)));
+        }
+        let done = self.get_property(&result, &"done".into())?;
+        let value = self.get_property(&result, &"value".into())?;
+        if !self.to_boolean(&done)? {
+            return self.iterator_result(value, false);
+        }
+        let mut state = self.heap.take_generator_state(*generator)?;
+        let Some((_, exit)) = Self::sync_yield_star_delegate(&state) else {
+            self.heap.set_generator_state(*generator, state)?;
+            return Err(RuntimeError::Unsupported(
+                "lost synchronous yield* delegation state",
+            ));
+        };
+        let GeneratorState::Suspended {
+            pc,
+            stack,
+            delegate,
+            ..
+        } = &mut state
+        else {
+            unreachable!("yield* delegation is always suspended")
+        };
+        *pc = exit;
+        *delegate = None;
+        *stack
+            .last_mut()
+            .expect("yield* delegation keeps its iterator record") = value;
+        self.heap.set_generator_state(*generator, state)?;
+        if let Some(value) = return_completion {
+            self.generator_resume(receiver, None, None, Some(Completion::Return(value)))
+        } else {
+            self.generator_next(receiver, None, None)
+        }
+    }
+
+    /// Forward an ordinary generator's `return()` through a suspended `yield*`
+    /// delegate. `None` means that this is an ordinary yield boundary.
+    fn generator_delegate_return(
+        &mut self,
+        receiver: &Value,
+        value: Value,
+    ) -> Result<Option<Result<Value, RuntimeError>>, RuntimeError> {
+        let generator = receiver.object_id().ok_or_else(|| {
+            RuntimeError::TypeError("Generator return requires a generator".into())
+        })?;
+        let state = self.heap.take_generator_state(generator)?;
+        let Some((record, _)) = Self::sync_yield_star_delegate(&state) else {
+            self.heap.set_generator_state(generator, state)?;
+            return Ok(None);
+        };
+        self.heap.set_generator_state(generator, state)?;
+        let iterator = self.get_property(&record, &"iterator".into())?;
+        let method = self.get_method(&iterator, &"return".into())?;
+        if method == Value::Undefined {
+            return Ok(None);
+        }
+        let result = self.call_native(method, iterator, vec![value.clone()], false);
+        Ok(Some(match result {
+            Ok(result) => self.finish_sync_generator_delegate(receiver, result, Some(value)),
+            Err(error) => {
+                self.generator_resume(receiver, None, None, Some(Completion::Throw(error)))
+            }
+        }))
+    }
+
+    fn generator_throw(&mut self, receiver: &Value, value: Value) -> Result<Value, RuntimeError> {
+        let generator = receiver.object_id().ok_or_else(|| {
+            RuntimeError::TypeError("Generator throw requires a generator".into())
+        })?;
+        let state = self.heap.take_generator_state(generator)?;
+        let Some((record, _)) = Self::sync_yield_star_delegate(&state) else {
+            self.heap.set_generator_state(generator, state)?;
+            return self.generator_resume(
+                receiver,
+                None,
+                None,
+                Some(Completion::Throw(RuntimeError::Thrown(value))),
+            );
+        };
+        self.heap.set_generator_state(generator, state)?;
+        let iterator = self.get_property(&record, &"iterator".into())?;
+        let method = self.get_method(&iterator, &"throw".into())?;
+        if method == Value::Undefined {
+            return self.generator_resume(
+                receiver,
+                None,
+                None,
+                Some(Completion::Throw(RuntimeError::TypeError(
+                    "yield* iterator does not provide a throw method".into(),
+                ))),
+            );
+        }
+        match self.call_native(method, iterator, vec![value], false) {
+            Ok(result) => self.finish_sync_generator_delegate(receiver, result, None),
+            Err(error) => {
+                self.generator_resume(receiver, None, None, Some(Completion::Throw(error)))
+            }
+        }
     }
 
     /// Returns the explicit delegation record installed when the compiler's
@@ -3774,31 +4045,32 @@ impl Vm {
                         request.target,
                         AsyncGeneratorDelegateKind::Return,
                         value.clone(),
-                    )? {
-                        Some(result) => Ok(result),
-                        None => self.generator_resume(
+                    ) {
+                        Ok(Some(result)) => Ok(result),
+                        Ok(None) => self.generator_resume(
                             &receiver,
                             None,
                             Some(request.target),
                             Some(Completion::Return(value)),
                         ),
+                        Err(error) => Err(error),
                     }
                 }
                 AsyncGeneratorCompletion::Throw(value) => {
-                    if let Some(result) = self.async_generator_delegate_request(
+                    match self.async_generator_delegate_request(
                         generator,
                         request.target,
                         AsyncGeneratorDelegateKind::Throw,
                         value.clone(),
-                    )? {
-                        Ok(result)
-                    } else {
-                        self.generator_resume(
+                    ) {
+                        Ok(Some(result)) => Ok(result),
+                        Ok(None) => self.generator_resume(
                             &receiver,
                             None,
                             Some(request.target),
                             Some(Completion::Throw(RuntimeError::Thrown(value))),
-                        )
+                        ),
+                        Err(error) => Err(error),
                     }
                 }
             };
@@ -4248,6 +4520,88 @@ impl Vm {
         result
     }
 
+    /// Execute `NewPromiseCapability(C)` for a constructor supplied to a
+    /// static Promise method. The executor's captured resolve/reject pair is
+    /// stored in a heap object because a user constructor receives it through
+    /// normal JavaScript invocation rather than a private VM call path.
+    fn new_promise_capability(
+        &mut self,
+        constructor: &Value,
+    ) -> Result<(Value, Value, Value), RuntimeError> {
+        if !self.is_constructor(constructor)? {
+            return Err(RuntimeError::TypeError(
+                "Promise constructor must be a constructor".into(),
+            ));
+        }
+        let base = self.stack.len();
+        let storage = self.with_roots(|heap| heap.alloc_object(None))?;
+        self.stack.push(Value::Object(storage));
+        let result = (|| {
+            let prototype = self.function_prototype()?;
+            let executor = self.with_roots(|heap| {
+                heap.alloc_native_function(
+                    NativeFunction::PromiseCapabilityExecutor { storage },
+                    "",
+                    prototype,
+                )
+            })?;
+            self.stack.push(Value::Object(executor));
+            self.define_data(
+                executor,
+                "name",
+                Value::String("".into()),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(executor, "length", Value::Number(2.0), false, false, true)?;
+            let promise = self.call_native(
+                constructor.clone(),
+                Value::Undefined,
+                vec![Value::Object(executor)],
+                true,
+            )?;
+            let Value::Object(_) = promise else {
+                return Err(RuntimeError::TypeError(
+                    "Promise constructor must return an object".into(),
+                ));
+            };
+            self.stack.push(promise.clone());
+            let resolve = self.get_property(&Value::Object(storage), &"resolve".into())?;
+            let reject = self.get_property(&Value::Object(storage), &"reject".into())?;
+            if !self.is_callable(&resolve)? || !self.is_callable(&reject)? {
+                return Err(RuntimeError::TypeError(
+                    "Promise constructor did not provide resolving functions".into(),
+                ));
+            }
+            Ok((promise, resolve, reject))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    fn promise_resolve_constructor(
+        &mut self,
+        constructor: &Value,
+        value: Value,
+    ) -> Result<Value, RuntimeError> {
+        if value
+            .object_id()
+            .is_some_and(|promise| self.promises.contains_key(&promise))
+            && self.get_property(&value, &"constructor".into())? == *constructor
+        {
+            return Ok(value);
+        }
+        let (promise, resolve, _) = self.new_promise_capability(constructor)?;
+        let base = self.stack.len();
+        self.stack
+            .extend([promise.clone(), resolve.clone(), value.clone()]);
+        let result = self.call_native(resolve, Value::Undefined, vec![value], false);
+        self.stack.truncate(base);
+        result?;
+        Ok(promise)
+    }
+
     fn promise_constructor(
         &mut self,
         executor: Value,
@@ -4609,67 +4963,56 @@ impl Vm {
         Ok(())
     }
 
-    fn promise_all(&mut self, values: &Value) -> Result<Value, RuntimeError> {
+    fn promise_all(&mut self, constructor: &Value, values: &Value) -> Result<Value, RuntimeError> {
         let values = self.array_like_values(values)?;
         let promise = self.new_promise()?;
-        if values.is_empty() {
-            let values = self.array_from(Vec::new())?;
-            self.settle_promise(promise, PromiseStatus::Fulfilled(values))?;
-            return Ok(Value::Object(promise));
-        }
-        self.promise_all.insert(
-            promise,
-            PromiseAllState {
-                values: vec![None; values.len()],
-                remaining: values.len(),
-            },
-        );
-        for (index, value) in values.into_iter().enumerate() {
-            let input = self.promise_resolve(value)?;
-            let Value::Object(input) = input else {
-                unreachable!("Promise.resolve always returns a promise")
-            };
-            let fulfilled = self.promise_all_handler(promise, Some(index as u32))?;
-            let rejected = self.promise_all_handler(promise, None)?;
-            // Promise reactions require a target capability even though the
-            // aggregate handlers ignore their own continuation. The dummy
-            // Promise remains an ordinary resolved Promise after execution.
-            let continuation = self.new_promise()?;
-            let reaction = PromiseThenReaction {
-                target: continuation,
-                on_fulfilled: fulfilled,
-                on_rejected: rejected,
-            };
-            let status = match &self
-                .promises
-                .get(&input)
-                .expect("Promise.resolve registered its result")
-                .status
-            {
-                PromiseStatus::Pending => None,
-                PromiseStatus::Fulfilled(value) => Some((true, value.clone())),
-                PromiseStatus::Rejected(value) => Some((false, value.clone())),
-            };
-            if let Some((fulfilled, value)) = status {
-                self.promise_jobs.push_back(PromiseJob::Reaction {
-                    target: continuation,
-                    handler: if fulfilled {
-                        reaction.on_fulfilled
-                    } else {
-                        reaction.on_rejected
-                    },
-                    value,
-                    fulfilled,
-                });
-            } else {
-                self.promises
-                    .get_mut(&input)
-                    .expect("checked pending promise exists")
-                    .reactions
-                    .push(PromiseReaction::Then(reaction));
+        let base = self.stack.len();
+        self.stack.push(Value::Object(promise));
+        let outcome = (|| {
+            // PerformPromiseAll observes `C.resolve` once before consuming
+            // inputs. Calling the internal resolver here used to hide a
+            // getter throw and leave the returned aggregate pending forever.
+            let resolve = self.get_property(constructor, &"resolve".into())?;
+            if !self.is_callable(&resolve)? {
+                return Err(RuntimeError::TypeError(
+                    "Promise.all resolve must be callable".into(),
+                ));
+            }
+            if values.is_empty() {
+                let values = self.array_from(Vec::new())?;
+                self.settle_promise(promise, PromiseStatus::Fulfilled(values))?;
+                return Ok(Value::Object(promise));
+            }
+            self.promise_all.insert(
+                promise,
+                PromiseAllState {
+                    values: vec![None; values.len()],
+                    remaining: values.len(),
+                },
+            );
+            for (index, value) in values.into_iter().enumerate() {
+                let input =
+                    self.call_native(resolve.clone(), constructor.clone(), vec![value], false)?;
+                let fulfilled = self.promise_all_handler(promise, Some(index as u32))?;
+                let rejected = self.promise_all_handler(promise, None)?;
+                // Invoke rather than internally attaching a reaction: an
+                // own `then` getter/method on the resolved value is part of
+                // Promise.all's observable error surface.
+                let then = self.get_property(&input, &"then".into())?;
+                self.call_native(then, input, vec![fulfilled, rejected], false)?;
+            }
+            Ok(Value::Object(promise))
+        })();
+        self.stack.truncate(base);
+        match outcome {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                self.promise_all.remove(&promise);
+                let value = self.error_value(error)?;
+                self.settle_promise(promise, PromiseStatus::Rejected(value))?;
+                Ok(Value::Object(promise))
             }
         }
-        Ok(Value::Object(promise))
     }
 
     pub fn run_promise_jobs(&mut self) -> Result<(), RuntimeError> {
@@ -4804,7 +5147,9 @@ impl Vm {
 
     pub(super) fn is_callable(&self, value: &Value) -> Result<bool, RuntimeError> {
         Ok(if let Value::Object(id) = value {
-            if let Some((callable, _)) = self.heap.proxy_capabilities(*id)? {
+            if let Some((_, _, callable, _)) = self.test262_foreign_reference(*id) {
+                callable
+            } else if let Some((callable, _)) = self.heap.proxy_capabilities(*id)? {
                 callable
             } else {
                 self.heap.native_function(*id)?.is_some()
@@ -4982,6 +5327,33 @@ impl Vm {
             }
         }
         Ok(Value::Number(input[..index].parse().unwrap_or(f64::NAN)))
+    }
+
+    fn uri_coding_error<T>(&mut self, error: native::UriCodingError) -> Result<T, RuntimeError> {
+        match error {
+            native::UriCodingError::Malformed => Err(RuntimeError::Thrown(
+                self.error_object("URIError", "malformed URI".into())?,
+            )),
+            native::UriCodingError::StringLimit { limit } => {
+                Err(RuntimeError::StringLimit { limit })
+            }
+        }
+    }
+
+    fn encode_uri(&mut self, value: &Value, component: bool) -> Result<Value, RuntimeError> {
+        let string = self.coerce_string(value)?;
+        match native::encode_uri(&string, component, self.config.max_string_bytes) {
+            Ok(result) => Ok(Value::String(result)),
+            Err(error) => self.uri_coding_error(error),
+        }
+    }
+
+    fn decode_uri(&mut self, value: &Value, component: bool) -> Result<Value, RuntimeError> {
+        let string = self.coerce_string(value)?;
+        match native::decode_uri(&string, component, self.config.max_string_bytes) {
+            Ok(result) => Ok(Value::String(result)),
+            Err(error) => self.uri_coding_error(error),
+        }
     }
 
     pub(super) fn array_length_value(&mut self, value: &Value) -> Result<Value, RuntimeError> {
@@ -5250,6 +5622,10 @@ impl Vm {
             "isFinite" => NativeFunction::IsFinite,
             "parseInt" => NativeFunction::ParseInt,
             "parseFloat" => NativeFunction::ParseFloat,
+            "encodeURI" => NativeFunction::EncodeUri { component: false },
+            "encodeURIComponent" => NativeFunction::EncodeUri { component: true },
+            "decodeURI" => NativeFunction::DecodeUri { component: false },
+            "decodeURIComponent" => NativeFunction::DecodeUri { component: true },
             // The remaining compiler-recognized globals are namespace objects.
             _ => NativeFunction::Empty,
         };
@@ -5259,14 +5635,14 @@ impl Vm {
         } else {
             prototype
         };
-        let id = if matches!(name, "Reflect" | "globalThis") {
+        let id = if matches!(name, "Reflect" | "globalThis" | "import") {
             self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?
         } else {
             self.with_roots(|heap| heap.alloc_native_function(native, name, native_prototype))?
         };
         let root = self.heap.root(id)?;
         let result = (|| {
-            if !matches!(name, "Reflect" | "globalThis") {
+            if !matches!(name, "Reflect" | "globalThis" | "import") {
                 self.define_data(id, "name", Value::String(name.into()), false, false, true)?;
                 self.define_data(
                     id,
@@ -5728,7 +6104,7 @@ impl Vm {
                     false,
                     true,
                 )?;
-            } else {
+            } else if name == "Object" {
                 self.define_data(
                     id,
                     "prototype",
@@ -5737,16 +6113,14 @@ impl Vm {
                     false,
                     false,
                 )?;
-                if name == "Object" {
-                    self.define_data(
-                        self.object_prototype,
-                        "constructor",
-                        Value::Object(id),
-                        true,
-                        false,
-                        true,
-                    )?;
-                }
+                self.define_data(
+                    self.object_prototype,
+                    "constructor",
+                    Value::Object(id),
+                    true,
+                    false,
+                    true,
+                )?;
                 use ObjectMethod::*;
                 for (name, length, method) in [
                     ("getOwnPropertyDescriptor", 2, GetOwnPropertyDescriptor),
@@ -5773,6 +6147,21 @@ impl Vm {
                         NativeFunction::ObjectMethod(method),
                     )?;
                 }
+            } else if name == "import" {
+                self.install_native(
+                    id,
+                    prototype,
+                    "source",
+                    1,
+                    NativeFunction::DynamicImport { source: true },
+                )?;
+                self.install_native(
+                    id,
+                    prototype,
+                    "defer",
+                    1,
+                    NativeFunction::DynamicImport { source: false },
+                )?;
             }
             Ok(Value::Object(id))
         })();
@@ -5801,6 +6190,18 @@ impl Vm {
         args: Vec<Value>,
         construct: bool,
     ) -> Result<Value, RuntimeError> {
+        if receiver
+            .object_id()
+            .is_some_and(|id| self.test262_foreign_reference(id).is_some())
+            && matches!(
+                function,
+                NativeFunction::ArrayIteratorNext
+                    | NativeFunction::IteratorNext
+                    | NativeFunction::RegExpIteratorNext
+            )
+        {
+            return self.test262_foreign_next(&receiver, &args);
+        }
         let first = native::argument(&args, 0);
         match function {
             NativeFunction::Promise => self.promise_constructor(first.clone(), construct),
@@ -5812,6 +6213,33 @@ impl Vm {
                 }
                 Ok(Value::Undefined)
             }
+            NativeFunction::PromiseCapabilityExecutor { storage } => {
+                let resolve = native::argument(&args, 0).clone();
+                let reject = native::argument(&args, 1).clone();
+                self.with_roots(|heap| heap.set(storage, "resolve", resolve))?;
+                self.with_roots(|heap| heap.set(storage, "reject", reject))?;
+                Ok(Value::Undefined)
+            }
+            NativeFunction::AsyncFromSyncFulfill { target, done } => {
+                let result = self.iterator_result(first.clone(), done);
+                match result {
+                    Ok(result) => self.settle_promise(target, PromiseStatus::Fulfilled(result))?,
+                    Err(error) => {
+                        let error = self.error_value(error)?;
+                        self.settle_promise(target, PromiseStatus::Rejected(error))?;
+                    }
+                }
+                Ok(Value::Undefined)
+            }
+            NativeFunction::AsyncFromSyncReject { target, record } => {
+                // AsyncFromSyncIteratorContinuation closes with an existing
+                // throw completion. IteratorClose must retain that original
+                // rejection even when the delegate's return method fails or
+                // returns a non-object.
+                let _ = self.iterator_close(&Value::Object(record));
+                self.settle_promise(target, PromiseStatus::Rejected(first.clone()))?;
+                Ok(Value::Undefined)
+            }
             NativeFunction::AbstractModuleSource => Err(RuntimeError::TypeError(
                 "AbstractModuleSource is an abstract constructor".into(),
             )),
@@ -5821,7 +6249,6 @@ impl Vm {
             NativeFunction::Error(name) => self.error_constructor(name, &args, construct),
             NativeFunction::ErrorToString => self.error_to_string(&receiver),
             NativeFunction::Test262(name) => self.test262_call(name, &args),
-            NativeFunction::Test262RealmEval(realm) => self.test262_realm_eval(realm, &args),
             NativeFunction::Test262Done => {
                 self.test262_done = Some(if matches!(first, Value::Undefined) {
                     Ok(())
@@ -5833,9 +6260,11 @@ impl Vm {
             NativeFunction::PromiseThen => self.promise_then(&receiver, &args),
             NativeFunction::PromiseCatch => self.promise_catch(&receiver, first),
             NativeFunction::PromiseFinally => self.promise_finally(&receiver, first),
-            NativeFunction::PromiseResolve => self.promise_resolve(first.clone()),
+            NativeFunction::PromiseResolve => {
+                self.promise_resolve_constructor(&receiver, first.clone())
+            }
             NativeFunction::PromiseReject => self.promise_reject(first.clone()),
-            NativeFunction::PromiseAll => self.promise_all(first),
+            NativeFunction::PromiseAll => self.promise_all(&receiver, first),
             NativeFunction::PromiseAllResolve { target, index } => {
                 self.promise_all_settled(target, index, first.clone())?;
                 Ok(Value::Undefined)
@@ -6041,6 +6470,15 @@ impl Vm {
             NativeFunction::IsFinite => Ok(Value::Bool(self.coerce_number(first)?.is_finite())),
             NativeFunction::ParseInt => self.parse_int(first, native::argument(&args, 1)),
             NativeFunction::ParseFloat => self.parse_float(first),
+            NativeFunction::EncodeUri { component } => self.encode_uri(first, component),
+            NativeFunction::DecodeUri { component } => self.decode_uri(first, component),
+            NativeFunction::DynamicImport { source } => {
+                if source {
+                    self.dynamic_import_source(first.clone())
+                } else {
+                    self.dynamic_import(first.clone())
+                }
+            }
             NativeFunction::JsonParse => self.json_parse(first),
             NativeFunction::JsonStringify => self.json_stringify(first),
             NativeFunction::Math(method) => self.math_method(method, &args),
@@ -6085,6 +6523,7 @@ impl Vm {
                 self.generator_next(&receiver, Some(first.clone()), None)
             }
             NativeFunction::GeneratorReturn => self.generator_return(&receiver, first.clone()),
+            NativeFunction::GeneratorThrow => self.generator_throw(&receiver, first.clone()),
             NativeFunction::AsyncGeneratorNext
             | NativeFunction::AsyncGeneratorReturn
             | NativeFunction::AsyncGeneratorThrow => {
@@ -6203,7 +6642,10 @@ impl Vm {
             }
             NativeFunction::SymbolToString | NativeFunction::SymbolValueOf => {
                 let value = if let Value::Object(id) = receiver {
-                    self.heap.boxed_primitive(id)?.unwrap_or(Value::Undefined)
+                    self.heap
+                        .boxed_primitive(id)?
+                        .or(self.test262_foreign_boxed_primitive(id)?)
+                        .unwrap_or(Value::Undefined)
                 } else {
                     receiver
                 };

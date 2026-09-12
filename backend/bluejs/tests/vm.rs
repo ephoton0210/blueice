@@ -55,6 +55,30 @@ fn compilation_emits_a_stack_program_with_fixed_width_operands() {
 }
 
 #[test]
+fn optional_chains_short_circuit_remaining_suffixes_and_preserve_method_receivers() {
+    assert_eq!(
+        evaluate(
+            "let calls=0; let absent=null; let result=absent?.[calls++].value(calls++); result===undefined&&calls===0",
+        ),
+        Ok(Value::Bool(true))
+    );
+    assert_eq!(
+        evaluate(
+            "let object={inner:{value:42,method(){return this.value}}}; object?.inner.method()===42",
+        ),
+        Ok(Value::Bool(true))
+    );
+    assert_eq!(
+        evaluate("let calls=0; let fn=null; fn?.(calls++); calls===0",),
+        Ok(Value::Bool(true))
+    );
+    assert!(matches!(
+        evaluate("let absent=null; (absent?.value).next"),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
 fn numeric_strings_use_js_grammar_whitespace_and_single_rounding() {
     for (input, expected) in [
         (".5", 0.5),
