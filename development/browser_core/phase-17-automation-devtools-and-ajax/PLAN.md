@@ -56,7 +56,7 @@ Build a Sources-style debugger for page scripts, backed by BlueJS rather than si
 - pause-on-caught/uncaught exception, event-listener and Fetch/XHR URL breakpoints; logpoints follow as a non-pausing convenience feature;
 - `paused`/`resumed`/`scriptParsed`/`scriptFailedToParse` events containing pause reason, call stack, lexical/global scope snapshots and async causal parent where available;
 - resume, pause-next-statement, step into/over/out, and evaluate on a paused call frame; every frame/object handle is generation-bound and released when execution resumes;
-- Sources UI: source tree/editor, breakpoint list, call stack, scopes, watches and console. Source maps, local-workspace file overrides, live-edit and heap profiling are later work.
+- Sources UI: source tree/editor, breakpoint list, call stack, scopes, watches and console. Source maps are required when [Phase 18 BlueTS](../phase-18-bluets/PLAN.md) supplies TypeScript source-level debugging; generic source-map import, local-workspace file overrides, live-edit and heap profiling are later work.
 
 Pausing freezes only the target tab's JavaScript realm. Its already-received network bodies may be buffered within quotas, but its callbacks and further script tasks do not execute until resume; other tabs, frame presentation and automation observers remain live. A non-debug automation mutation for the paused tab is rejected or explicitly queued, never interleaved invisibly with a paused stack. Debugger control and paused-frame evaluation require the controller lease, bounded fuel/time and an observer-visible audit event.
 
