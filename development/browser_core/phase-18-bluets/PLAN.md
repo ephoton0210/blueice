@@ -75,6 +75,11 @@ dependency before introducing any page-runtime coupling:
   exposing a BlueJS VM or page state.
 - Generic aliases, interfaces and direct function calls retain their
   declarations' type parameters, including through local type-only imports.
+  An interface may extend one or more named interfaces, including a generic
+  instantiation; inherited fields participate in bounded structural checking,
+  property lookup, declaration emission and reifiable contract conjunction.
+  Its exported type-only surface carries inherited local declaration fields so
+  an authorized consumer need not import private parent declarations.
   Direct local calls may either infer or explicitly supply their type arguments.
   They instantiate bounded structural checks, enforce `extends` constraints,
   and resolve trailing default type arguments (including in declaration

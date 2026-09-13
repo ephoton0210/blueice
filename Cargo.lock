@@ -145,6 +145,7 @@ dependencies = [
 name = "blueice-bluejs"
 version = "0.1.0"
 dependencies = [
+ "blueice-ecma402",
  "icu_casemap",
  "icu_collator",
  "icu_locale",
@@ -178,6 +179,15 @@ dependencies = [
 [[package]]
 name = "blueice-dom"
 version = "0.1.0"
+
+[[package]]
+name = "blueice-ecma402"
+version = "0.1.0"
+dependencies = [
+ "icu_collator",
+ "icu_locale",
+ "icu_locale_core",
+]
 
 [[package]]
 name = "blueice-engine"
