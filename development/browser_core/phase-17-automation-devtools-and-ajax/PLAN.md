@@ -119,7 +119,7 @@ Required semantics are delivered in stages, but the finished compatibility targe
 - Security: same-origin policy, CORS response filtering and preflight, credentials/cookie policy, mixed-content policy once secure-context support exists, size/time/resource limits, cancellation and redirects. A same-origin implementation that silently reads cross-origin bodies is not an acceptable first release.
 - Fetch: Promise-returning `fetch(input, init)`, `Request`, `Response`, `Headers`, `AbortController`, cache/referrer/integrity/keepalive/redirect modes, CORS filtering and a one-consumer body model; resolve the promise at headers, then expose body completion asynchronously. Streaming upload/download, cloning/teeing, `Blob`/`FormData` and all standard body readers share bounded backpressure and cancellation semantics.
 - XHR: `open`, `setRequestHeader`, `send`, `abort`, timeout, `readyState`, status/response headers, upload progress and all standard `loadstart`/`progress`/`load`/`error`/`abort`/`timeout`/`loadend` event ordering. Implement `""`/`text`, `json`, `arraybuffer`, `blob` and `document` response types, MIME override, `responseXML`, CORS and the standard synchronous-XHR restrictions. A synchronous request blocks only its owning realm/event loop according to the platform contract; it never blocks `core`, other tabs, frame presentation or the network service, and its timeout/policy/resource result remains observable.
-- Live transports: Server-Sent Events is a follow-up sharing the streaming path; WebSocket/WebTransport are separate protocol work and are not blocked behind nor substituted for AJAX.
+- Live transports: Server-Sent Events is a follow-up sharing the streaming path. WebSocket and WebTransport are separate protocol work, owned by Phase 20's browser-platform profile rather than substituted for AJAX; all three use the same origin/CSP/permission/resource/event-accounting boundary.
 
 The existing navigation path uses this same request service with `destination = document`, but retains its own page-commit semantics. A Fetch/XHR response never replaces the document unless page JavaScript explicitly mutates it.
 
@@ -184,7 +184,7 @@ The default external endpoint is a per-user Unix socket protected by filesystem 
 - Universal Chrome DevTools frontend/CDP compatibility, or copying Google's branded frontend.
 - Speaking Playwright's private browser-server protocol or claiming all upstream Playwright Test features work unchanged.
 - A generic external HTTP endpoint that bypasses page policy or Phase 7 review. The controller-authorized `ApiWorkspace` is a distinct human/API-client context, not a page-CORS bypass.
-- Service Workers, WebSocket/WebTransport, HTTP/3-specific APIs, HAR/video fidelity or a complete performance profiler.
+- Service Workers, HTTP/3-specific APIs, HAR/video fidelity or a complete performance profiler. WebSocket/WebTransport are deferred to Phase 20 rather than permanently excluded.
 - Unapproved or unpinned WSDL/XSD dependency fetching, generated executable SOAP client code, automatic request execution after import, or silently ignoring an unsupported SOAP/WS-* policy assertion.
 - Persisting full response bodies, credentials or sensitive headers without explicit bounded capture policy.
 

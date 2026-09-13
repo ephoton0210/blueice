@@ -8,7 +8,7 @@
 
 Give an AI MCP client a complete, capability-negotiated way to inspect, diagnose, validate, test and—only with the relevant operator authority—control the AJAX, PJAX, SOAP and structured-document facilities planned in Phases 17 and 19. “Complete” means every native capability BlueIce advertises has a versioned MCP representation or an explicit `Unsupported` result. It does not mean MCP receives a second HTTP client, an XML/YAML/JSON parser, a schema engine, an unrestricted URL fetcher, or authority to turn data into instructions.
 
-The native ownership boundary is fixed:
+The native ownership boundary is fixed; Phase 20 extends the page network owner with EventSource/WebSocket/WebTransport while retaining this same boundary:
 
 ```text
 AI MCP client
@@ -31,7 +31,7 @@ Every operation names a generation-bound target; no tool guesses a current tab, 
 
 | Target / artifact | Owner | Meaning |
 | --- | --- | --- |
-| `NetworkTargetId` / `RequestId` | `core` | One page/browser-context network stream and one Fetch/XHR/navigation request, including initiator and document generation. |
+| `NetworkTargetId` / `RequestId` / `LiveTransportId` | `core` | One page/browser-context network stream and one Fetch/XHR/navigation request or EventSource/WebSocket/WebTransport connection, including initiator and document generation. |
 | `PjaxNavigationId` | `core` | One causally linked script request, history transition, DOM replacement and frame sequence. |
 | `ApiWorkspaceId` / `ApiRequestId` | Phase 17 API workspace | An operator-registered HTTP/SOAP profile and one explicit user/AI-authorized invocation. |
 | `DocumentId` | Phase 19 | Immutable registered HTML, XHTML, XML, XSD, JSON or YAML revision. |
@@ -50,6 +50,7 @@ Large request bodies, SOAP attachments, DOM/XML trees, schemas, diagnostics and 
 | `network_get_body` | Returns a bounded, policy-authorized response/request-body segment or resource; no implicit decompression, parsing or secret disclosure beyond the target policy. |
 | `network_wait_for` | Waits for an explicit lifecycle predicate (request URL/method/status, Fetch/XHR completion, network idle, abort or resource failure) with deadline and cursor; never guesses an idle state. |
 | `network_subscribe`, `network_next_events` | Delivers sequence-numbered request, route, body-retention and PJAX events through notifications with a required polling fallback. |
+| `network_list_live_transports`, `network_get_live_transport`, `network_get_live_messages` | Inspects a bounded/redacted EventSource/WebSocket/WebTransport connection, negotiated protocol/stream state, lifecycle and message preview; never exposes a raw socket/stream. |
 | `network_set_route`, `network_clear_route` | Controller-lease and `network:control`-protected native interception/block/fulfil/continue rules. Rules are ordered, origin/policy constrained, audited and time/byte limited. |
 | `network_list_pjax`, `network_get_pjax_trace`, `network_wait_for_pjax` | Read or await the native causal `PjaxNavigation` trace: request, history entry, old/new DOM generation, scroll/focus outcome, cancellation/race result and rendered frame generation. |
 
