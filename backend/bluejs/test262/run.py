@@ -165,13 +165,14 @@ FINITE_STRESS_FIXTURES = frozenset(
         "built-ins/parseInt/S15.1.2.2_A7.2_T1.js",
         "built-ins/parseInt/S15.1.2.2_A7.3_T1.js",
         "built-ins/parseInt/S15.1.2.2_A8.js",
-        # These fixtures perform finite but interpreter-heavy validation: four
+        # These fixtures perform finite but interpreter-heavy validation: five
         # iterate locale-tag data through the Test262 Intl helper, three drive
         # multi-module top-level-await graphs, and the sparse-array test scans
         # several thousand holes. Keep their resource envelope explicit.
         "intl402/Intl/getCanonicalLocales/canonicalized-tags.js",
         "intl402/Intl/getCanonicalLocales/complex-region-subtag-replacement.js",
         "intl402/Intl/getCanonicalLocales/transformed-ext-valid.js",
+        "intl402/Intl/getCanonicalLocales/unicode-ext-canonicalize-yes-to-true.js",
         "intl402/language-tags-canonicalized.js",
         "language/comments/S7.4_A5.js",
         "language/comments/S7.4_A6.js",

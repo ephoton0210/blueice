@@ -257,6 +257,10 @@ pub(crate) enum NativeFunction {
     ToLocaleUpperCase,
     LocaleCompare,
     Collator,
+    /// The common construction/call boundary of the mandatory ECMA-402
+    /// number and date-time services. Formatting algorithms are installed by
+    /// their owning implementation slice.
+    IntlService(IntlService),
     Locale,
     CanonicalLocales,
     SupportedLocales,
@@ -523,6 +527,12 @@ pub(crate) enum LocaleInfo {
     TextInfo,
     TimeZones,
     WeekInfo,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IntlService {
+    NumberFormat,
+    DateTimeFormat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

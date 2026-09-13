@@ -1261,7 +1261,17 @@ impl Vm {
                 .test262_realms
                 .get_mut(&realm_id)
                 .expect("foreign realm remains live");
-            let constructor = realm.vm.global(intrinsic)?;
+            let constructor = match intrinsic {
+                "Intl.Collator" => {
+                    realm.vm.intl_global()?;
+                    Value::Object(realm.vm.globals["%Intl.Collator%"])
+                }
+                "Intl.Locale" => {
+                    realm.vm.intl_global()?;
+                    Value::Object(realm.vm.globals["%Intl.Locale%"])
+                }
+                _ => realm.vm.global(intrinsic)?,
+            };
             realm.vm.get_property(&constructor, &"prototype".into())?
         };
         self.test262_import_foreign_value(realm_id, prototype)?

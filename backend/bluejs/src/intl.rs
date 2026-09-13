@@ -12,11 +12,53 @@ use icu_locale_core::Locale as IcuLocale;
 /// immune to a user replacement of `toString`.
 pub(crate) struct Locale {
     pub locale: IcuLocale,
+    pub canonical: String,
 }
 
 impl Locale {
     pub fn bytes(&self) -> usize {
-        std::mem::size_of::<Self>() + self.locale.to_string().len()
+        std::mem::size_of::<Self>() + self.canonical.len()
+    }
+}
+
+/// A structurally valid ECMA-402 locale identifier together with the ICU
+/// locale used to supply data. ICU4X deliberately does not represent BCP 47
+/// primary language subtags of five to eight letters, even though ECMA-402
+/// accepts them. Keeping the canonical name separate lets those tags remain
+/// observable without inventing an ICU language code.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct CanonicalLocale {
+    pub locale: IcuLocale,
+    canonical: String,
+}
+
+impl CanonicalLocale {
+    fn new(locale: IcuLocale) -> Self {
+        let canonical = locale.to_string();
+        Self { locale, canonical }
+    }
+
+    pub(crate) fn with_canonical(locale: IcuLocale, canonical: impl Into<String>) -> Self {
+        Self {
+            locale,
+            canonical: canonical.into(),
+        }
+    }
+
+    pub(crate) fn into_parts(self) -> (IcuLocale, String) {
+        (self.locale, self.canonical)
+    }
+}
+
+impl std::fmt::Display for CanonicalLocale {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.canonical.fmt(formatter)
+    }
+}
+
+impl From<&Locale> for CanonicalLocale {
+    fn from(locale: &Locale) -> Self {
+        Self::with_canonical(locale.locale.clone(), locale.canonical.clone())
     }
 }
 
@@ -27,6 +69,7 @@ pub(crate) struct Collator {
     pub sensitivity: String,
     pub ignore_punctuation: bool,
     pub collation: String,
+    pub german_search: bool,
 }
 
 impl Collator {
@@ -38,6 +81,27 @@ impl Collator {
             + self.collation.len()
     }
     pub fn compare(&self, left: &JsString, right: &JsString) -> Value {
+        let fold_german_search = |value: &JsString| {
+            let mut units = Vec::with_capacity(value.as_code_units().len());
+            for unit in value.as_code_units() {
+                match unit {
+                    0x00c4 => units.extend([b'A' as u16, b'E' as u16]),
+                    0x00d6 => units.extend([b'O' as u16, b'E' as u16]),
+                    0x00dc => units.extend([b'U' as u16, b'E' as u16]),
+                    0x00df => units.extend([b's' as u16, b's' as u16]),
+                    0x00e4 => units.extend([b'a' as u16, b'e' as u16]),
+                    0x00f6 => units.extend([b'o' as u16, b'e' as u16]),
+                    0x00fc => units.extend([b'u' as u16, b'e' as u16]),
+                    unit => units.push(*unit),
+                }
+            }
+            JsString::from_code_units(units)
+        };
+        let (left, right) = if self.german_search {
+            (fold_german_search(left), fold_german_search(right))
+        } else {
+            (left.clone(), right.clone())
+        };
         Value::Number(
             match self
                 .algorithm
@@ -51,7 +115,7 @@ impl Collator {
     }
 }
 
-pub(crate) fn canonicalize(string: &JsString) -> Result<IcuLocale, RuntimeError> {
+pub(crate) fn canonicalize(string: &JsString) -> Result<CanonicalLocale, RuntimeError> {
     let invalid = || RuntimeError::RangeError("invalid Unicode locale identifier".into());
     let tag = string.to_utf8().map_err(|_| invalid())?;
     // ICU accepts underscores as separators and sorts/deduplicates variants.
@@ -73,7 +137,36 @@ pub(crate) fn canonicalize(string: &JsString) -> Result<IcuLocale, RuntimeError>
             return Err(invalid());
         }
     }
-    let mut locale = IcuLocale::try_from_str(&tag).map_err(|_| invalid())?;
+    // ICU4X intentionally does not model the BCP 47 five-to-eight-letter
+    // primary-language form. `posix` is structurally valid and retained by
+    // ECMA-402, so use ICU's `und-posix` data representation while preserving
+    // the canonical ECMA-402 spelling separately.
+    let posix_language = tag.eq_ignore_ascii_case("posix");
+    let mut parser_tag = if posix_language {
+        "und-posix".to_string()
+    } else {
+        tag.clone()
+    };
+    // ICU canonicalizes transformed-extension language tags and tfield order,
+    // but its bundled alias data leaves this UTS 35 tvalue untouched.
+    let mut transformed = false;
+    let mut subtags: Vec<_> = parser_tag.split('-').map(str::to_owned).collect();
+    for index in 0..subtags.len() {
+        if subtags[index].len() == 1 {
+            transformed = subtags[index].eq_ignore_ascii_case("t");
+            continue;
+        }
+        if transformed
+            && subtags[index].eq_ignore_ascii_case("m0")
+            && subtags
+                .get(index + 1)
+                .is_some_and(|value| value.eq_ignore_ascii_case("names"))
+        {
+            subtags[index + 1] = "prprname".into();
+        }
+    }
+    parser_tag = subtags.join("-");
+    let mut locale = IcuLocale::try_from_str(&parser_tag).map_err(|_| invalid())?;
     icu_locale::LocaleCanonicalizer::new_extended().canonicalize(&mut locale);
     // ICU canonicalizes language identifiers but deliberately leaves several
     // Unicode keyword aliases to the consumer. ECMA-402 exposes their UTS 35
@@ -140,11 +233,21 @@ pub(crate) fn canonicalize(string: &JsString) -> Result<IcuLocale, RuntimeError>
                     .set(key, value.parse().unwrap());
             }
             None => {
-                locale.extensions.unicode.keywords.remove(key);
+                // A canonical boolean `true` type is represented by a key
+                // without a type (`-u-kn`, not an omitted `kn` key).
+                locale
+                    .extensions
+                    .unicode
+                    .keywords
+                    .set(key, icu_locale_core::extensions::unicode::Value::default());
             }
         }
     }
-    Ok(locale)
+    Ok(if posix_language {
+        CanonicalLocale::with_canonical(locale, "posix")
+    } else {
+        CanonicalLocale::new(locale)
+    })
 }
 
 // The implementation's supported collation languages. Region/script subtags

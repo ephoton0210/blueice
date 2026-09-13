@@ -1784,6 +1784,7 @@ impl Vm {
                     | NativeFunction::Object
                     | NativeFunction::RegExp
                     | NativeFunction::Collator
+                    | NativeFunction::IntlService(_)
                     | NativeFunction::Locale
                     | NativeFunction::Error(_)
                     | NativeFunction::Promise

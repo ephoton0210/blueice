@@ -83,6 +83,7 @@ class RunnerTests(unittest.TestCase):
             "intl402/Intl/getCanonicalLocales/canonicalized-tags.js",
             "intl402/Intl/getCanonicalLocales/complex-region-subtag-replacement.js",
             "intl402/Intl/getCanonicalLocales/transformed-ext-valid.js",
+            "intl402/Intl/getCanonicalLocales/unicode-ext-canonicalize-yes-to-true.js",
             "intl402/language-tags-canonicalized.js",
             "language/module-code/top-level-await/fulfillment-order.js",
             "language/module-code/top-level-await/rejection-order.js",

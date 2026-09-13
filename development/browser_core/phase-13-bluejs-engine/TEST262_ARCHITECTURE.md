@@ -2092,18 +2092,29 @@ Module Namespace Exotic `[[Set]]` now always returns false, including a
 same-value assignment to an existing export and symbol-key writes; strict
 assignment consequently throws. The public regression covers direct,
 renamed, indirect, default, `Symbol.toStringTag`, and arbitrary-symbol keys.
-The current combined P1/P2 rerun records `language/module-code` at **599 / 602
-pass**. Its three remaining modes are the explicit top-level-await dependency
-ordering/resource cases (`fulfillment-order`, `rejection-order`, and
-`unobservable-global-async-evaluation-count-reset`), not namespace writes.
+Every Promise job now resets the interpreter fuel for its own ECMAScript
+execution context. This prevents a top-level-await continuation from leaving
+the next dynamic-import reaction with zero fuel. The three dependency-order
+regressions (`fulfillment-order`, `rejection-order`, and
+`unobservable-global-async-evaluation-count-reset`) pass independently, and
+the complete `language/module-code` slice is **602 / 602 pass** at
+`/private/tmp/bluejs-p1-module-final`.
 
-ECMA-402 canonicalization now maps the observed Unicode extension aliases
-(`ks`, `ms`, `tz`) and removes canonical boolean `yes` values for the relevant
-keys. The existing Collator/Locale/getCanonicalLocales acceptance filter is
-**492 / 510 pass**; its 18 remaining modes require cross-realm Collator
-construction or additional non-IANA/transformed locale canonicalization.
-The combined evidence is at
-`/private/tmp/bluejs-p1-grammar-module-intl-final`.
+ECMA-402 canonicalization now preserves ECMA-402 canonical names separately
+from ICU's locale-data key, which supports structurally valid `posix` without
+inventing an ICU language code. It also retains canonical boolean Unicode keys
+without a type, canonicalizes the `m0-names` transformed tvalue, and retains
+the prior Unicode aliases. Collator's bound `compare` defines `length` before
+`name`, German search uses its expected equivalence tailoring, and
+GetPrototypeFromConstructor selects a foreign Realm's Collator or Locale
+prototype. The mandatory NumberFormat and DateTimeFormat constructors now have
+their shared callable/constructible service boundary; their formatting
+algorithms remain separate ECMA-402 work. The complete existing
+Collator/Locale/getCanonicalLocales acceptance filter is **510 / 510 pass** at
+`/private/tmp/bluejs-intl-p1-final`. The one boolean-key fixture receives the
+existing finite-stress resource envelope because its twenty complete
+`testIntl.js` structural validations are bounded but exceed the ordinary
+one-turn interpreter budget.
 
 The standard-library iterator entry point is now exposed as the abstract
 `Iterator` constructor, sharing the existing `%Iterator.prototype%` with

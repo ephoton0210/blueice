@@ -429,6 +429,16 @@ impl Vm {
                 .get_property(&number, &"prototype".into())?
                 .object_id()
                 .expect("Number.prototype is an object");
+            let intl_collator_prototype = self
+                .globals
+                .get("%Intl.Collator%")
+                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
+                .and_then(|value| value.object_id());
+            let intl_locale_prototype = self
+                .globals
+                .get("%Intl.Locale%")
+                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
+                .and_then(|value| value.object_id());
             let intrinsic = if default == self.object_prototype {
                 Some("Object")
             } else if default == self.function_prototype()? {
@@ -439,6 +449,10 @@ impl Vm {
                 Some("Boolean")
             } else if default == number_prototype {
                 Some("Number")
+            } else if intl_collator_prototype == Some(default) {
+                Some("Intl.Collator")
+            } else if intl_locale_prototype == Some(default) {
+                Some("Intl.Locale")
             } else if default == self.buffer_prototype("ArrayBuffer")? {
                 Some("ArrayBuffer")
             } else if default == self.buffer_prototype("SharedArrayBuffer")? {

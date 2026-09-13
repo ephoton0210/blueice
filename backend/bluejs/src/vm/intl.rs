@@ -97,6 +97,46 @@ impl Vm {
                 NativeFunction::CollatorCompareGetter,
             )?;
             self.globals.insert("%Intl.Collator%".into(), constructor);
+            // NumberFormat and DateTimeFormat are mandatory service
+            // constructors. Their formatting algorithms remain separate, but
+            // their shared callable/constructible allocation boundary is
+            // observable by the Collator legacy-call tests and must exist.
+            for (name, service) in [
+                ("NumberFormat", native::IntlService::NumberFormat),
+                ("DateTimeFormat", native::IntlService::DateTimeFormat),
+            ] {
+                self.install_native(
+                    namespace,
+                    function_prototype,
+                    name,
+                    0,
+                    NativeFunction::IntlService(service),
+                )?;
+                let constructor = self.heap.get(namespace, name)?.object_id().unwrap();
+                let prototype =
+                    self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+                self.stack.push(Value::Object(prototype));
+                let result = (|| {
+                    self.define_data(
+                        constructor,
+                        "prototype",
+                        Value::Object(prototype),
+                        false,
+                        false,
+                        false,
+                    )?;
+                    self.define_data(
+                        prototype,
+                        "constructor",
+                        Value::Object(constructor),
+                        true,
+                        false,
+                        true,
+                    )
+                })();
+                self.stack.pop();
+                result?;
+            }
             self.install_native(
                 namespace,
                 function_prototype,
@@ -214,7 +254,7 @@ impl Vm {
     pub(super) fn canonical_locales(
         &mut self,
         locales: &Value,
-    ) -> Result<Vec<Locale>, RuntimeError> {
+    ) -> Result<Vec<intl::CanonicalLocale>, RuntimeError> {
         if *locales == Value::Undefined {
             return Ok(Vec::new());
         }
@@ -223,7 +263,7 @@ impl Vm {
         }
         if let Value::Object(id) = locales {
             if let Some(locale) = self.heap.intl_locale(*id)? {
-                return Ok(vec![locale.locale.clone()]);
+                return Ok(vec![intl::CanonicalLocale::from(locale.as_ref())]);
             }
         }
         let object = self.coerce_object(locales)?;
@@ -245,7 +285,7 @@ impl Vm {
             }
             let locale = if let Value::Object(id) = value {
                 if let Some(locale) = self.heap.intl_locale(id)? {
-                    locale.locale.clone()
+                    intl::CanonicalLocale::from(locale.as_ref())
                 } else {
                     intl::canonicalize(&self.coerce_string(&Value::Object(id))?)?
                 }
@@ -297,7 +337,7 @@ impl Vm {
         self.array_from(
             locales
                 .iter()
-                .filter(|l| intl::supported(l))
+                .filter(|locale| intl::supported(&locale.locale))
                 .map(|l| Value::String(l.to_string().into()))
                 .collect(),
         )
@@ -331,7 +371,8 @@ impl Vm {
         let case_first = self.string_option(&options, "caseFirst", &["upper", "lower", "false"])?;
         let selected = locales
             .into_iter()
-            .find(intl::supported)
+            .find(|locale| intl::supported(&locale.locale))
+            .map(|locale| locale.locale)
             .unwrap_or(locale!("en-US"));
         let mut resolved = Locale::from(selected.id.clone());
         let mut algorithm_locale = resolved.clone();
@@ -413,6 +454,7 @@ impl Vm {
         // is a broken build invariant, not a user locale RangeError.
         let algorithm = icu_collator::Collator::try_new(preferences, options)
             .expect("bundled ICU collation data includes validated preferences");
+        let german_search = usage == "search" && selected.id.language.as_str() == "de";
         Ok(Rc::new(intl::Collator {
             algorithm,
             locale: resolved.to_string(),
@@ -420,6 +462,7 @@ impl Vm {
             sensitivity,
             ignore_punctuation,
             collation: selected_collation,
+            german_search,
         }))
     }
 
@@ -443,6 +486,32 @@ impl Vm {
         self.stack.push(Value::Object(prototype));
         let data = self.resolve_collator(native::argument(args, 0), native::argument(args, 1))?;
         self.with_roots(|heap| heap.alloc_collator(data, prototype))
+            .map(Value::Object)
+    }
+
+    pub(super) fn create_intl_service(
+        &mut self,
+        service: native::IntlService,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        self.intl_global()?;
+        let name = match service {
+            native::IntlService::NumberFormat => "NumberFormat",
+            native::IntlService::DateTimeFormat => "DateTimeFormat",
+        };
+        let namespace = self.globals["Intl"];
+        let constructor = self.heap.get(namespace, name)?.object_id().unwrap();
+        let default = self
+            .heap
+            .get(constructor, "prototype")?
+            .object_id()
+            .expect("Intl service prototype is an object");
+        let prototype = if construct {
+            self.constructor_prototype(default)?
+        } else {
+            default
+        };
+        self.with_roots(|heap| heap.alloc_object(Some(prototype)))
             .map(Value::Object)
     }
 
@@ -479,6 +548,7 @@ impl Vm {
         };
         let function = self.with_roots(|heap| heap.alloc_bound_function(bound, Some(prototype)))?;
         self.stack.push(Value::Object(function));
+        self.define_data(function, "length", Value::Number(2.0), false, false, true)?;
         self.define_data(
             function,
             "name",
@@ -487,7 +557,6 @@ impl Vm {
             false,
             true,
         )?;
-        self.define_data(function, "length", Value::Number(2.0), false, false, true)?;
         self.heap.set_collator_compare(id, function);
         Ok(Value::Object(function))
     }
@@ -599,11 +668,14 @@ impl Vm {
 
     fn locale_instance(
         &mut self,
-        locale: Locale,
+        locale: intl::CanonicalLocale,
         prototype: ObjectId,
     ) -> Result<Value, RuntimeError> {
-        self.with_roots(|heap| heap.alloc_intl_locale(Rc::new(intl::Locale { locale }), prototype))
-            .map(Value::Object)
+        let (locale, canonical) = locale.into_parts();
+        self.with_roots(|heap| {
+            heap.alloc_intl_locale(Rc::new(intl::Locale { locale, canonical }), prototype)
+        })
+        .map(Value::Object)
     }
 
     pub(super) fn create_locale(
@@ -618,11 +690,11 @@ impl Vm {
         }
         self.intl_global()?;
         let tag = native::argument(args, 0);
-        let mut locale = match tag {
+        let initial_locale = match tag {
             Value::String(string) => intl::canonicalize(string)?,
             Value::Object(id) => {
                 if let Some(locale) = self.heap.intl_locale(*id)? {
-                    locale.locale.clone()
+                    intl::CanonicalLocale::from(locale.as_ref())
                 } else {
                     intl::canonicalize(&self.coerce_string(tag)?)?
                 }
@@ -633,6 +705,7 @@ impl Vm {
                 ))
             }
         };
+        let (mut locale, initial_name) = initial_locale.into_parts();
         let options = self.intl_options(native::argument(args, 1))?;
 
         if let Some(language) = self.string_option(&options, "language", &[])? {
@@ -715,7 +788,12 @@ impl Vm {
         // ApplyOptionsToTag canonicalizes once after language-id updates and
         // once after Unicode keyword insertion, so aliases in either source
         // have the same observable result.
-        locale = intl::canonicalize(&JsString::from(locale.to_string()))?;
+        let serialized = locale.to_string();
+        let locale = if initial_name == "posix" && serialized == "und-posix" {
+            intl::CanonicalLocale::with_canonical(locale, initial_name)
+        } else {
+            intl::canonicalize(&JsString::from(serialized))?
+        };
         let constructor = self.globals["%Intl.Locale%"];
         let default = self
             .heap
@@ -740,7 +818,7 @@ impl Vm {
 
     pub(super) fn locale_to_string(&self, receiver: &Value) -> Result<Value, RuntimeError> {
         Ok(Value::String(
-            self.locale_data(receiver)?.locale.to_string().into(),
+            self.locale_data(receiver)?.canonical.as_str().into(),
         ))
     }
 
@@ -749,7 +827,18 @@ impl Vm {
         receiver: &Value,
         maximize: bool,
     ) -> Result<Value, RuntimeError> {
-        let mut locale = self.locale_data(receiver)?.locale.clone();
+        let data = self.locale_data(receiver)?;
+        if data.canonical == "posix" {
+            self.intl_global()?;
+            let constructor = self.globals["%Intl.Locale%"];
+            let prototype = self
+                .heap
+                .get(constructor, "prototype")?
+                .object_id()
+                .unwrap();
+            return self.locale_instance(intl::CanonicalLocale::from(data.as_ref()), prototype);
+        }
+        let mut locale = data.locale.clone();
         let expander = icu_locale::LocaleExpander::new_extended();
         if maximize {
             expander.maximize(&mut locale.id);
@@ -763,7 +852,10 @@ impl Vm {
             .get(constructor, "prototype")?
             .object_id()
             .unwrap();
-        self.locale_instance(locale, prototype)
+        self.locale_instance(
+            intl::canonicalize(&JsString::from(locale.to_string()))?,
+            prototype,
+        )
     }
 
     pub(super) fn locale_getter(

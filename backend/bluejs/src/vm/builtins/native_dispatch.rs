@@ -864,7 +864,7 @@ impl Vm {
                     let locales = self.canonical_locales(first)?;
                     let locale = locales
                         .first()
-                        .cloned()
+                        .map(|locale| locale.locale.clone())
                         .unwrap_or(icu_locale_core::locale!("en-US"));
                     crate::intl::case_map(
                         &string,
@@ -876,6 +876,7 @@ impl Vm {
                 }
             }
             NativeFunction::Collator => self.create_collator(&args, construct),
+            NativeFunction::IntlService(service) => self.create_intl_service(service, construct),
             NativeFunction::Locale => self.create_locale(&args, construct),
             NativeFunction::CanonicalLocales => {
                 let locales = self.canonical_locales(first)?;

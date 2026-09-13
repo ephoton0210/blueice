@@ -1261,6 +1261,11 @@ impl Vm {
         let Some(job) = self.promise_jobs.pop_front() else {
             return Ok(false);
         };
+        // Promise jobs always execute in a new ECMAScript execution context.
+        // A preceding top-level-await continuation can leave the ambient
+        // interpreter with no fuel, but that must not turn the next queued
+        // reaction into an instruction-limit failure.
+        self.remaining_instructions = self.config.instruction_budget;
         match job {
             PromiseJob::Reaction {
                 target,

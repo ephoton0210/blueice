@@ -1536,6 +1536,26 @@ fn foreign_function_calls_keep_error_and_constructor_prototype_realms() {
 }
 
 #[test]
+fn intl_constructors_select_foreign_new_target_intrinsics() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let other = $262.createRealm().global;
+        let newTarget = new other.Function();
+        newTarget.prototype = undefined;
+        let collator = Reflect.construct(Intl.Collator, [], newTarget);
+        let locale = Reflect.construct(Intl.Locale, ['de'], newTarget);
+        Object.getPrototypeOf(collator) === other.Intl.Collator.prototype &&
+          Object.getPrototypeOf(locale) === other.Intl.Locale.prototype
+    "#;
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn foreign_proxy_revocable_retains_caller_realm_target_and_handler() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();

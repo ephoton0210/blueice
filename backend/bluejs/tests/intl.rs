@@ -23,7 +23,10 @@ fn locale_casing_and_canonicalization() {
         "Intl.getCanonicalLocales('und-u-ks-tertiary')[0] === 'und-u-ks-level3'",
         "Intl.getCanonicalLocales('und-u-ms-imperial')[0] === 'und-u-ms-uksystem'",
         "Intl.getCanonicalLocales('und-u-tz-eire')[0] === 'und-u-tz-iedub'",
-        "Intl.getCanonicalLocales('und-u-kn-yes')[0] === 'und'",
+        "Intl.getCanonicalLocales('und-u-kn-yes')[0] === 'und-u-kn'",
+        "Intl.getCanonicalLocales('posix')[0] === 'posix' && new Intl.Locale('posix').maximize().toString() === 'posix'",
+        "Intl.getCanonicalLocales('und-Latn-t-und-hani-m0-names')[0] === 'und-Latn-t-und-hani-m0-prprname'",
+        "Intl.getCanonicalLocales('und-u-kb-yes,und-u-kc-yes'.split(','))[0] === 'und-u-kb' && Intl.getCanonicalLocales('und-u-kc-yes')[0] === 'und-u-kc'",
     ] {
         assert_eq!(evaluate(source).unwrap(), Value::Bool(true), "{source}");
     }
@@ -163,11 +166,14 @@ fn collator_options_and_bound_comparison() {
         "'é'.localeCompare('e','en',{sensitivity:'base'}) === 0",
         "'a-b'.localeCompare('ab','en',{ignorePunctuation:true}) === 0",
         "let c=new Intl.Collator('en'); c.compare === c.compare && c.compare.name === '' && c.compare.length === 2 && c.compare.prototype === undefined",
+        "Object.getOwnPropertyNames(new Intl.Collator().compare).join() === 'length,name'",
         "let c=Intl.Collator('tr'); let f=c.compare; f('ı','I') < 0 && f.call({},'a','b') < 0 && c instanceof Intl.Collator",
+        "['AE','Ä'].sort(new Intl.Collator('de',{usage:'search'}).compare).join() === 'AE,Ä'",
         "let r=new Intl.Collator('en-u-kn-kf-upper').resolvedOptions(); r.numeric && r.caseFirst === 'upper' && r.locale === 'en-u-kf-upper-kn'",
         "let r=new Intl.Collator('en-u-kn',{numeric:false}).resolvedOptions(); !r.numeric && r.locale === 'en'",
         "Intl.Collator.supportedLocalesOf(['en','zz','sv']).join(',') === 'en,sv'",
         "Object.prototype.toString.call(new Intl.Collator()) === '[object Intl.Collator]'",
+        "let n=new Intl.NumberFormat();let d=Intl.DateTimeFormat();n!==d && n instanceof Intl.NumberFormat && d instanceof Intl.DateTimeFormat && Intl.Collator.call(n)!==n",
     ] {
         assert_eq!(evaluate(source).unwrap(), Value::Bool(true), "{source}");
     }
