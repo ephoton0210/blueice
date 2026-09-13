@@ -2009,3 +2009,28 @@ The same rebuilt adapter reran the P2 acceptance filters:
 `/private/tmp/bluejs-p2-groupby-rerun`, and
 `built-ins/Object/getOwnPropertyDescriptor` is **656 / 656 pass** at
 `/private/tmp/bluejs-p2-prototype-descriptors-rerun`.
+
+## P1.5 closure: resizable and variable-length TypedArray integrity levels
+
+TypedArray `[[PreventExtensions]]` now rejects a view when its indexed
+property set can change: every view over a resizable ArrayBuffer, and each
+length-tracking view over a growable SharedArrayBuffer. A fixed-length view
+over a growable SharedArrayBuffer remains eligible. `Object.seal` and
+`Object.freeze` now follow `SetIntegrityLevel`'s required order by making the
+object non-extensible before attempting descriptor changes. Consequently a
+fixed non-empty view still rejects the incompatible non-configurable indexed
+property definition, while a fixed zero-length shared view can be sealed.
+
+The original P1.5 Test262 acceptance files all pass after rebuilding the
+adapter:
+
+| Surface | Filter | Result | Evidence |
+| --- | --- | ---: | --- |
+| Resizable TypedArray freeze | `built-ins/Object/freeze/typedarray-backed-by-resizable-buffer` | **2 / 2 pass** | `/private/tmp/bluejs-p15-object-freeze-final` |
+| Variable-length preventExtensions | `staging/built-ins/Object/preventExtensions/preventExtensions-variable-length-typed-arrays` | **2 / 2 pass** | `/private/tmp/bluejs-p15-object-prevent-extensions-final` |
+| Variable-length seal | `staging/built-ins/Object/seal/seal-variable-length-typed-arrays` | **2 / 2 pass** | `/private/tmp/bluejs-p15-object-seal-final` |
+| Object regression inventory | `built-ins/Object` | **6,808 / 6,808 pass** | `/private/tmp/bluejs-p15-object-final` |
+| Related Reflect inventory | `built-ins/Reflect` | **308 / 308 pass** | `/private/tmp/bluejs-p15-reflect-final` |
+
+This closes the six Object and two Reflect P1.5 modes previously attributed to
+resizable or variable-length TypedArray integrity behavior.

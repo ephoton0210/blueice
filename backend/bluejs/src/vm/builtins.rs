@@ -2304,6 +2304,17 @@ impl Vm {
                 Ok(Value::Bool(self.has_property(object, &key)?))
             }
             Seal | Freeze => {
+                // SetIntegrityLevel makes the object non-extensible before
+                // attempting its per-property descriptor changes. This is
+                // observable for integer-indexed exotics: a resizable or
+                // length-tracking TypedArray rejects the first step, while a
+                // fixed non-empty view becomes non-extensible and then
+                // rejects redefining its indexed properties.
+                if !self.object_prevent_extensions(object)? {
+                    return Err(RuntimeError::TypeError(
+                        "cannot make object non-extensible".into(),
+                    ));
+                }
                 let keys = self.object_own_property_keys(object)?;
                 for key in keys {
                     let Some(current) = self.object_get_own_property(object, &key)? else {
@@ -2319,11 +2330,6 @@ impl Vm {
                             "cannot make object non-extensible".into(),
                         ));
                     }
-                }
-                if !self.object_prevent_extensions(object)? {
-                    return Err(RuntimeError::TypeError(
-                        "cannot make object non-extensible".into(),
-                    ));
                 }
                 Ok(first.clone())
             }

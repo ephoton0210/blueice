@@ -572,6 +572,26 @@ impl Heap {
         Ok(length_tracking)
     }
 
+    /// Integer-indexed exotic objects may be made non-extensible only when
+    /// their indexed-property set is fixed. A resizable ArrayBuffer can
+    /// invalidate and later restore even a fixed-length view, while a
+    /// growable SharedArrayBuffer leaves a length-tracking view open to new
+    /// indices. Fixed views over a growable shared buffer remain eligible.
+    pub(crate) fn typed_array_prevent_extensions_allowed(
+        &self,
+        object: ObjectId,
+    ) -> Result<bool, HeapError> {
+        let ObjectKind::TypedArray {
+            buffer,
+            length_tracking,
+            ..
+        } = self.object(object)?.kind
+        else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(!(self.buffer_resizable(buffer)? || length_tracking && self.buffer_growable(buffer)?))
+    }
+
     pub(crate) fn typed_array_numeric_key(
         &self,
         object: ObjectId,

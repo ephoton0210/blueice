@@ -209,6 +209,11 @@ impl Vm {
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_prevent_extensions(object);
         }
+        if self.heap.is_typed_array(object)?
+            && !self.heap.typed_array_prevent_extensions_allowed(object)?
+        {
+            return Ok(false);
+        }
         self.heap.prevent_extensions(object)?;
         Ok(true)
     }

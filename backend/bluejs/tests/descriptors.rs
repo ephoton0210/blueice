@@ -370,6 +370,17 @@ fn object_group_by_uses_iterator_keys_and_closes_on_an_abrupt_callback() {
 }
 
 #[test]
+fn typed_array_integrity_levels_respect_resizable_and_length_tracking_views() {
+    assert_eq!(
+        evaluate(
+            "function typeError(action){try{action();return false}catch(error){return error instanceof TypeError}}let rab=new ArrayBuffer(4,{maxByteLength:8});let rabFixed=new Uint8Array(rab,0,0);let rabTracking=new Uint8Array(rab);let rabPrevent=typeError(()=>Object.preventExtensions(rabFixed))&&typeError(()=>Object.preventExtensions(rabTracking));let rabIntegrity=typeError(()=>Object.seal(new Uint8Array(rab,0,0)))&&typeError(()=>Object.freeze(new Uint8Array(rab,0,0)));let gsab=new SharedArrayBuffer(4,{maxByteLength:8});let fixed=new Uint8Array(gsab,0,4);let fixedPrevent=Object.preventExtensions(fixed)===fixed&&!Object.isExtensible(fixed);let fixedSeal=typeError(()=>Object.seal(new Uint8Array(gsab,0,4)));let tracking=new Uint8Array(gsab);let trackingRejects=typeError(()=>Object.preventExtensions(tracking))&&typeError(()=>Object.seal(tracking));let emptyShared=new SharedArrayBuffer(0,{maxByteLength:8});let fixedEmpty=new Uint8Array(emptyShared,0,0);let trackingEmpty=new Uint8Array(emptyShared);rabPrevent&&rabIntegrity&&fixedPrevent&&fixedSeal&&trackingRejects&&Object.seal(fixedEmpty)===fixedEmpty&&Object.isSealed(fixedEmpty)&&typeError(()=>Object.seal(trackingEmpty))",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn object_brands_cover_promise_collections_iterators_and_aggregate_errors() {
     assert_eq!(
         evaluate(
@@ -674,7 +685,7 @@ fn reflect_and_proxy_operations_keep_the_explicit_receiver_and_trap_contract() {
     );
     assert_eq!(
         evaluate(
-            "let target={};let proxy=new Proxy(target,{ownKeys(){return ['transient']},getOwnPropertyDescriptor(){return undefined},preventExtensions(target){Object.preventExtensions(target);return true}});Object.freeze(proxy)===proxy&&!Object.isExtensible(proxy)"
+            "let log=[];let target={};let proxy=new Proxy(target,{ownKeys(){log.push('keys');return []},preventExtensions(target){log.push('prevent');Object.preventExtensions(target);return true}});Object.freeze(proxy)===proxy&&!Object.isExtensible(proxy)&&log.join(',')==='prevent,keys'"
         )
         .unwrap(),
         Value::Bool(true)
