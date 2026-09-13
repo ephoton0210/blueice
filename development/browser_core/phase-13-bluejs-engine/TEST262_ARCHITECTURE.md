@@ -1989,3 +1989,23 @@ prototype descriptor modes; and the 24 `Object.groupBy` modes. The six
 remaining Object failures are exclusively P1.5 resizable or variable-length
 TypedArray integrity semantics: two modes each in `Object.freeze`,
 `Object.preventExtensions`, and `Object.seal`.
+
+### Reverification after interrupted progress record
+
+The adapter was rebuilt and the P1 acceptance files were rerun individually
+after the interrupted progress record. This provides direct evidence for all
+14 P1 modes, rather than inferring them from the broader Object filter:
+
+| P1 surface | Test262 files/modes | Result | Evidence |
+| --- | ---: | ---: | --- |
+| Promise, Map, Set `Symbol.toStringTag` | 3 / 6 | **6 / 6 pass** | `/private/tmp/bluejs-p1-tags-rerun` |
+| `AggregateError` sealing | 1 / 2 | **2 / 2 pass** | `/private/tmp/bluejs-p1-aggregateerror-rerun` |
+| Async arrow constructor sealing | 1 / 2 | **2 / 2 pass** | `/private/tmp/bluejs-p1-async-arrow-rerun` |
+| Async function constructor sealing | 1 / 2 | **2 / 2 pass** | `/private/tmp/bluejs-p1-async-function-rerun` |
+| Async generator constructor sealing | 1 / 2 | **2 / 2 pass** | `/private/tmp/bluejs-p1-async-generator-rerun` |
+
+The same rebuilt adapter reran the P2 acceptance filters:
+`built-ins/Object/groupBy` is **28 / 28 pass** at
+`/private/tmp/bluejs-p2-groupby-rerun`, and
+`built-ins/Object/getOwnPropertyDescriptor` is **656 / 656 pass** at
+`/private/tmp/bluejs-p2-prototype-descriptors-rerun`.

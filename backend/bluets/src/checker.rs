@@ -514,6 +514,7 @@ impl<'a> ModuleChecker<'a> {
         if variable.initializer.is_empty() || variable.declared {
             return;
         }
+        self.check_function_call(&variable.initializer, scope, &variable.span);
         let inferred = self.infer_expression(&variable.initializer, scope);
         if !is_assignable(&inferred, annotation, &self.types, &mut HashSet::new()) {
             self.type_error(
@@ -554,6 +555,7 @@ impl<'a> ModuleChecker<'a> {
                 if returned.is_empty() {
                     continue;
                 }
+                self.check_function_call(returned, &scope, &function.span);
                 let actual = self.infer_expression(returned, &scope);
                 if !is_assignable(&actual, return_type, &self.types, &mut HashSet::new()) {
                     self.type_error(
@@ -636,6 +638,15 @@ impl<'a> ModuleChecker<'a> {
             "[" => infer_array(tokens, scope),
             "{" => infer_record(tokens, scope),
             _ if first.kind == TokenKind::Identifier => {
+                if tokens.get(1).is_some_and(|token| token.is("."))
+                    && tokens
+                        .get(2)
+                        .is_some_and(|token| token.kind == TokenKind::Identifier)
+                {
+                    let base = scope.get(&first.text).cloned().unwrap_or(Type::Unknown);
+                    return property_type(&base, &tokens[2].text, &self.types, &mut HashSet::new())
+                        .unwrap_or(Type::Unknown);
+                }
                 if tokens.get(1).is_some_and(|token| token.is("(")) {
                     if let Some(signature) = self.functions.get(&first.text) {
                         return self.infer_function_call(signature, &tokens[2..], scope);
@@ -657,24 +668,107 @@ impl<'a> ModuleChecker<'a> {
         let Some(arguments) = split_call_arguments(tokens) else {
             return Type::Unknown;
         };
-        if arguments.len() != signature.parameters.len() {
+        let required = signature
+            .parameters
+            .iter()
+            .filter(|parameter| !parameter.optional)
+            .count();
+        if arguments.len() < required || arguments.len() > signature.parameters.len() {
             return Type::Unknown;
         }
-        let mut substitutions = BTreeMap::new();
-        let type_parameters = signature
-            .type_parameters
+        let actuals = arguments
             .iter()
-            .cloned()
-            .collect::<BTreeSet<_>>();
-        for (parameter, argument) in signature.parameters.iter().zip(arguments) {
+            .map(|argument| self.infer_expression(argument, scope))
+            .collect::<Vec<_>>();
+        let substitutions = infer_call_substitutions(signature, &actuals);
+        substitute_type(&signature.return_type, &substitutions)
+    }
+
+    fn check_function_call(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        let Some(first) = tokens.first() else {
+            return;
+        };
+        if first.kind != TokenKind::Identifier || !tokens.get(1).is_some_and(|token| token.is("("))
+        {
+            return;
+        }
+        let Some(signature) = self.functions.get(&first.text).cloned() else {
+            return;
+        };
+        let Some(arguments) = split_call_arguments(&tokens[2..]) else {
+            return;
+        };
+        let required = signature
+            .parameters
+            .iter()
+            .filter(|parameter| !parameter.optional)
+            .count();
+        if arguments.len() < required || arguments.len() > signature.parameters.len() {
+            self.type_error(
+                span,
+                format!(
+                    "function `{}` expects {} to {} argument(s), got {}",
+                    first.text,
+                    required,
+                    signature.parameters.len(),
+                    arguments.len()
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+            return;
+        }
+        let actuals = arguments
+            .iter()
+            .map(|argument| self.infer_expression(argument, scope))
+            .collect::<Vec<_>>();
+        let substitutions = infer_call_substitutions(&signature, &actuals);
+        for (index, (parameter, actual)) in signature.parameters.iter().zip(actuals).enumerate() {
             let Some(annotation) = &parameter.annotation else {
                 continue;
             };
-            let actual = self.infer_expression(argument, scope);
-            infer_type_arguments(annotation, &actual, &type_parameters, &mut substitutions);
+            let expected = substitute_type(annotation, &substitutions);
+            if !is_assignable(&actual, &expected, &self.types, &mut HashSet::new()) {
+                self.type_error(
+                    span,
+                    format!(
+                        "argument {} has type `{}`, which is not assignable to parameter `{}` of type `{}`",
+                        index + 1,
+                        type_label(&actual),
+                        parameter.name,
+                        type_label(&expected)
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
         }
-        substitute_type(&signature.return_type, &substitutions)
     }
+}
+
+fn infer_call_substitutions(
+    signature: &FunctionSignature,
+    actuals: &[Type],
+) -> BTreeMap<String, Type> {
+    let mut substitutions = BTreeMap::new();
+    let type_parameters = signature
+        .type_parameters
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    for (parameter, actual) in signature.parameters.iter().zip(actuals) {
+        let Some(annotation) = &parameter.annotation else {
+            continue;
+        };
+        infer_type_arguments(annotation, actual, &type_parameters, &mut substitutions);
+    }
+    for parameter in type_parameters {
+        substitutions.entry(parameter).or_insert(Type::Unknown);
+    }
+    substitutions
 }
 
 fn split_call_arguments(tokens: &[Token]) -> Option<Vec<&[Token]>> {
@@ -742,6 +836,29 @@ fn infer_type_arguments(
             }
         }
         _ => {}
+    }
+}
+
+fn property_type(
+    value: &Type,
+    property: &str,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+) -> Option<Type> {
+    match value {
+        Type::Record(fields) => fields
+            .iter()
+            .find(|field| field.name == property)
+            .map(|field| {
+                if field.optional {
+                    Type::Union(vec![field.value.clone(), Type::Undefined])
+                } else {
+                    field.value.clone()
+                }
+            }),
+        Type::Named { .. } => instantiate_named(value, aliases, visited, "property")
+            .and_then(|value| property_type(&value, property, aliases, visited)),
+        _ => None,
     }
 }
 
@@ -1184,5 +1301,77 @@ mod tests {
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch));
+    }
+
+    #[test]
+    fn checks_arguments_of_known_function_calls() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "function takesNumber(value: number): number { return value; }\nconst accepted: number = takesNumber(1);\nconst rejected: number = takesNumber('wrong');",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert_eq!(
+            result
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn retains_a_known_return_type_when_optional_arguments_are_omitted() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "function count(value?: number): number { return 1; }\nconst invalid: string = count();",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert_eq!(
+            result
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn treats_defaulted_parameters_as_omittable_at_call_sites() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "function count(value: number = 1): number { return value; }\nconst invalid: string = count();",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert!(result.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::TypeMismatch
+                && diagnostic.message.contains("initializer has type `number`")
+        }));
+    }
+
+    #[test]
+    fn infers_named_interface_properties_in_function_returns() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "interface Account { id: string }\nfunction label(value: Account): string { return value.id; }",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(!result.has_errors(), "{:#?}", result.diagnostics);
     }
 }

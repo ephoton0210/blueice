@@ -30,8 +30,8 @@ fn pinned_typescript_oracle_agrees_on_supported_erasure_and_type_errors() {
     let temporary = TestDirectory::new();
     let source = r#"interface Account { id: string }
 function identity<T>(value: T): T { return value; }
-const name: string = identity('Ada');
-const account: Account = { id: name };
+const accountName: string = identity('Ada');
+const account: Account = { id: accountName };
 function label(value: Account): string { return value.id; }
 console.log(label(account));
 "#;

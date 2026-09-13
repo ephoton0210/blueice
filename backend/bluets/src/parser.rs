@@ -615,7 +615,7 @@ impl Parser {
             let parameter_start = self.current().start;
             self.consume("...");
             let parameter_name = self.require_identifier("expected a parameter name");
-            let optional = self.consume("?");
+            let mut optional = self.consume("?");
             let annotation_start = self.current().start;
             let annotation = if self.consume(":") {
                 let value = self.parse_type_until(&["=", ",", ")"]);
@@ -630,6 +630,9 @@ impl Parser {
                 None
             };
             if self.consume("=") {
+                // A default initializer makes a parameter omittable at a call
+                // site just like `?`; the emitter preserves the initializer.
+                optional = true;
                 self.skip_until(&[",", ")"]);
             }
             let parameter_end = self.previous().end;

@@ -86,6 +86,16 @@ dependency before introducing any page-runtime coupling:
   stable `UnsupportedSyntax` path.
 - Legacy CommonJS-oriented `import =` and `export =` forms are likewise
   rejected as `UnsupportedSyntax`, rather than being emitted as invalid ESM.
+- For a direct call to a locally declared function, the checker verifies the
+  accepted argument count and each annotated parameter after bounded generic
+  substitution. Optional and default-initialized parameters are omittable
+  while preserving a known return type. This intentionally does not claim
+  overload resolution, method calls, callback analysis, or general expression
+  inference.
+- Direct property access on an inferred record or a local/interface type alias
+  is resolved to the declared field type (including a generic instantiation).
+  Optional fields produce `T | undefined`; chained/member-call analysis and
+  arbitrary JavaScript property semantics remain outside this static subset.
 - The standalone `ContractPlan` validator accepts per-boundary
   `ValidationLimits` for depth, collection entries, visited-node fuel and
   string bytes. These checks remain pure data validation; host-boundary
