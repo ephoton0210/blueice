@@ -117,6 +117,11 @@ dependency before introducing any page-runtime coupling:
 - The public [BlueTS ↔ BlueJS integration contract](INTEGRATION_CONTRACT.md)
   freezes the proposed v1 AST/IR hand-off, safe-point map and generated host
   typings/version policy without adding a BlueJS dependency to BlueTS.
+- [`bluets-test-interface`](TEST_INTERFACE.md) now exposes the same persistent
+  JSON-lines ready/request/reply transport as BlueJS's test adapter. It is
+  intentionally compile-only, with stable BlueTS diagnostic codes/spans and
+  caller-controlled compiler limits; Test262 runtime execution remains a
+  future bridge concern rather than a hidden BlueJS dependency.
 
 This is deliberately not a claim of general `tsc` compatibility. Control-flow
 narrowing, overload resolution, generic constraints/defaults, decorators,
