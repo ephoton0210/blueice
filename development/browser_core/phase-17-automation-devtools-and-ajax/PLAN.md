@@ -6,7 +6,7 @@
 
 ## Objective
 
-Give BlueIce the capabilities users expect from Chrome DevTools, Playwright and Selenium, plus a Postman-like HTTP/SOAP workbench and a page JavaScript debugger, while preserving its central invariant: every human, AI and automation client observes and acts on the same `core`, `Page`, script realm and render pass. Add standards-based AJAX so pages can dynamically receive, decode and send data without full-document navigation.
+Give BlueIce the capabilities users expect from Chrome DevTools, Playwright and Selenium, plus a Postman-like HTTP/SOAP workbench and a page JavaScript debugger, while preserving its central invariant: every human, AI and automation client observes and acts on the same `core`, `Page`, script realm and render pass. Add complete standards-profiled AJAX (`fetch` and `XMLHttpRequest`), PJAX-compatible history/document-update semantics, and a declared complete SOAP interoperability profile so pages and API operators can dynamically receive, validate and send data without full-document navigation.
 
 This phase is feature-equivalence work, not a claim of immediate drop-in protocol compatibility with every version of those projects. The [research note](../research/automation-and-dynamic-networking.md) records the evidence and the compatibility boundary.
 
@@ -60,7 +60,7 @@ Build a Sources-style debugger for page scripts, backed by BlueJS rather than si
 
 Pausing freezes only the target tab's JavaScript realm. Its already-received network bodies may be buffered within quotas, but its callbacks and further script tasks do not execute until resume; other tabs, frame presentation and automation observers remain live. A non-debug automation mutation for the paused tab is rejected or explicitly queued, never interleaved invisibly with a paused stack. Debugger control and paused-frame evaluation require the controller lease, bounded fuel/time and an observer-visible audit event.
 
-This supplies the native backing for the advertised CDP `Debugger`/`Runtime` subset and the AI-facing MCP debug environment; adapters come after breakpoint, step and scope semantics are proven through the native interface. [Phase 12's MCP debug contract](../phase-12-mcp-server/DEBUG_ENVIRONMENT.md) maps target discovery, resources/tools/events, handle generations, authorization and bounded AI-facing serialization onto these same operations rather than introducing a parallel debugger.
+This supplies the native backing for the advertised CDP `Debugger`/`Runtime` subset and the AI-facing MCP debug environment; adapters come after breakpoint, step and scope semantics are proven through the native interface. [Phase 12's MCP debug contract](../phase-12-mcp-server/DEBUG_ENVIRONMENT.md) maps target discovery, resources/tools/events, handle generations, authorization and bounded AI-facing serialization onto these same operations rather than introducing a parallel debugger. [Phase 19's Development Workbench](../phase-19-development-workbench/PLAN.md) consumes these target handles when a frontend candidate needs live page/BlueJS/BlueTS diagnosis; it does not duplicate the page debugger.
 
 ### Playwright-shaped workflow
 
@@ -89,7 +89,11 @@ The same session can advertise a WebDriver BiDi WebSocket URL. Implement `sessio
 
 Build a first-party API workspace with the focused manual-testing flow users expect from Postman: collections/folders, environments with variable interpolation, request history, request/response examples and generated `curl` snippets. Its request editor supports URL/method/query/headers, raw text/JSON/XML/binary bodies, URL-encoded and multipart forms, Basic/Bearer/API-key authentication, timeout/redirect policy and a distinct selected cookie jar. Secrets reside in the OS-backed secret store or an encrypted local store, are masked in UI/logs/traces by default and never appear in an AI/MCP result without an explicit privileged export.
 
-SOAP is a first-class editor mode, not merely syntax highlighting. It provides SOAP 1.1 and 1.2 envelope templates, raw XML editing/formatting/validation, `text/xml` or `application/soap+xml` content-type helpers, optional `SOAPAction`, response-header/timing display, namespace-aware XML tree/text views and clear SOAP Fault rendering. Importing a WSDL 1.1 or 2.0 document creates reviewable operation/request templates; it never automatically executes an imported endpoint or recursively fetches unapproved remote WSDL/XSD dependencies. XML parsing has external entities and entity expansion disabled, and enforces depth, node and byte limits.
+SOAP is a first-class editor mode, not merely syntax highlighting. “Complete SOAP support” is a versioned, testable interoperability commitment, not an unbounded promise to execute every proprietary `WS-*` extension. The shipping profile implements SOAP 1.1 and 1.2 envelope, fault, HTTP binding and encoding rules; XML 1.0 plus Namespaces; WSDL 1.1 and 2.0; XSD 1.0 and 1.1 message validation; `SOAPAction` and `application/soap+xml` action handling; MTOM/XOP multipart attachments; WS-Addressing 1.0; and WS-Security 1.1 username-token, timestamp, X.509 signature and encryption flows. It also understands WS-Policy assertions needed to negotiate those declared features and reports the exact selected binding, policy assertions and capability version with every operation.
+
+The workbench provides raw XML editing/formatting/validation, generated-but-reviewable request templates, namespace-aware XML tree/text views, attachment inspection, response-header/timing display and clear SOAP Fault rendering. A WSDL/XSD import is first resolved into a content-addressed dependency bundle: each `import`/`include`/`redefine` location is presented to the operator, fetched only under the API-workspace network policy, pinned by URI and hash, and made reviewable before parsing. There is therefore complete support for dependency graphs without an unapproved document silently sending traffic or changing on a later fetch. Operation invocation remains explicit; importing a service must never call it or generate executable client code behind the operator's back.
+
+The SOAP profile is implemented over the canonical hardened XML/XSD layer shared by the workbench and page XML APIs. The API-workspace SOAP mode disables all DTD processing, external entities, entity expansion, external schemas and stylesheet transforms even though the document engine can inspect bounded internal DTD declarations in its separately selected XML mode; XML depth, attribute, node, attachment, decompressed-byte and validation-work budgets are enforced. WS-Security keys live only in the selected secret store, canonicalization/signature/encryption failures are surfaced without exposing key material, and all generated or received XML stays untrusted data in DevTools/MCP. Other WS-* specifications can be added only as separately versioned, capability-negotiated modules with their normative semantics and test corpus; an unsupported assertion fails before a request is sent rather than being ignored.
 
 `ApiWorkspace` is a consciously privileged, operator-created client context, separate from a tab's browser context. It can send an arbitrary user-authored HTTP/SOAP request and therefore is **not** subject to page CORS, but it is not a generic unauthenticated remote automation escape hatch: send requires a controller lease plus `api:send` authorization, records the initiator and policy decision, and follows the same URL/TLS/proxy/resource/gatekeeper policy as other network requests. It never silently shares a page's cookies, credentials or CORS authority. It reuses `blueice-net`'s transport, decoding, cancellation and event model with `initiator = api-workspace`; there is no separate unsafe HTTP stack.
 
@@ -108,26 +112,36 @@ RequestStart { url, method, headers, body, initiator, mode, credentials, redirec
 
 `core` owns actual network I/O, redirects, cookies/cache as they arrive, policy checks and event emission. The out-of-process BlueJS host asks for start/abort/body-read operations through a dedicated `blueice_ipc::network` module; it never gets direct sockets or a way around the gatekeeper. A request is bound to its initiating document, origin and browser context.
 
-Required semantics, delivered in stages rather than as a text-only GET shortcut:
+Required semantics are delivered in stages, but the finished compatibility target is the relevant [Fetch](https://fetch.spec.whatwg.org/) and [XMLHttpRequest](https://xhr.spec.whatwg.org/) standards rather than a text-only `GET` shortcut:
 
 - Request construction: relative URL resolution, method, headers, body bytes, URL-encoded forms, `FormData`/multipart when form upload lands, and streamed upload where the host runtime supports it. Forbidden headers, referrer/credentials mode and redirect behavior are enforced at the browser boundary.
-- Receiving and decoding: incremental response bytes; HTTP transfer/content decoding delegated to a maintained HTTP/TLS stack; MIME/charset parsing with BOM/declared charset fallback; `text()`, `json()`, `arrayBuffer()` and binary response handling. JSON is parsed only on explicit `json()`/`responseType = "json"`, so invalid JSON becomes a normal observable parse error rather than corrupting transport state.
+- Receiving and decoding: incremental response bytes; HTTP transfer/content decoding delegated to a maintained HTTP/TLS stack; MIME/charset parsing with BOM/declared charset fallback; `text()`, `json()`, `blob()`, `arrayBuffer()`, `formData()` and binary response handling. JSON is parsed only on explicit `json()`/`responseType = "json"`, so invalid JSON becomes a normal observable parse error rather than corrupting transport state. XML `responseXML`, XHR `responseType = "document"`, `DOMParser` and `XMLSerializer` use the same hardened XML layer as SOAP and expose parser errors without entity/network side effects.
 - Security: same-origin policy, CORS response filtering and preflight, credentials/cookie policy, mixed-content policy once secure-context support exists, size/time/resource limits, cancellation and redirects. A same-origin implementation that silently reads cross-origin bodies is not an acceptable first release.
-- Fetch: Promise-returning `fetch(input, init)`, `Request`, `Response`, `Headers`, `AbortController` and a one-consumer body model; resolve the promise at headers, then expose body completion asynchronously.
-- XHR: `open`, `setRequestHeader`, `send`, `abort`, timeout, `readyState`, status/response headers and `loadstart`/`progress`/`load`/`error`/`abort`/`timeout`/`loadend`. Support `""`/`text`, `json` and `arraybuffer` response types first; `document` response and synchronous XHR are explicitly out of scope.
+- Fetch: Promise-returning `fetch(input, init)`, `Request`, `Response`, `Headers`, `AbortController`, cache/referrer/integrity/keepalive/redirect modes, CORS filtering and a one-consumer body model; resolve the promise at headers, then expose body completion asynchronously. Streaming upload/download, cloning/teeing, `Blob`/`FormData` and all standard body readers share bounded backpressure and cancellation semantics.
+- XHR: `open`, `setRequestHeader`, `send`, `abort`, timeout, `readyState`, status/response headers, upload progress and all standard `loadstart`/`progress`/`load`/`error`/`abort`/`timeout`/`loadend` event ordering. Implement `""`/`text`, `json`, `arraybuffer`, `blob` and `document` response types, MIME override, `responseXML`, CORS and the standard synchronous-XHR restrictions. A synchronous request blocks only its owning realm/event loop according to the platform contract; it never blocks `core`, other tabs, frame presentation or the network service, and its timeout/policy/resource result remains observable.
 - Live transports: Server-Sent Events is a follow-up sharing the streaming path; WebSocket/WebTransport are separate protocol work and are not blocked behind nor substituted for AJAX.
 
 The existing navigation path uses this same request service with `destination = document`, but retains its own page-commit semantics. A Fetch/XHR response never replaces the document unless page JavaScript explicitly mutates it.
 
+### PJAX is first-class dynamic-navigation compatibility
+
+PJAX is an application convention rather than a web-platform standard, so BlueIce must not invent a proprietary `pjax()` API and call that compatibility. A site using jquery-pjax, Turbolinks/Turbo-style navigation or its own equivalent works when the standard building blocks work together: Fetch/XHR, URL and encoding APIs, DOM parsing/mutation, `History.pushState`/`replaceState`, `popstate`/`hashchange`, scroll restoration, focus, title/base-URL updates, lifecycle events, cancellation and cache revalidation. These capabilities belong to the same page realm and document generation model, not a secondary PJAX renderer.
+
+`core` therefore records a causal `PjaxNavigation` trace when a script-initiated request is followed by a history entry and document-subtree replacement. This is an observation and debugging model, not a new page API: the trace links request, response, source script/event, old/new DOM nodes, history entry, scroll/focus outcome and rendered frame generation. A failed or cancelled request cannot partially commit a history entry; back/forward restores the entry's URL/state and dispatches the correct events before a new request is allowed to win. Full-document navigation continues to use its normal commit path, so DevTools, MCP, automation and the Development Workbench can distinguish navigation, AJAX-only mutation and PJAX without guessing from a URL change.
+
+PJAX compatibility tests use deterministic local fixtures representing fragment responses, redirects, cache validators, concurrent navigation races, back/forward, hash-only transitions, preserved/permanent nodes, focus/scroll restoration, malformed fragments and aborts. The same fixture must produce equivalent visible DOM, history and request/event ordering in BlueIce and a reference browser; framework packages are test inputs, not privileged host integrations.
+
 ### Event ordering, resource budgets, and access control
 
-One `AutomationEvent` stream carries navigation, DOM-document generation, render, console, exception and network events. It is ordered per browser context by a monotonic sequence number; event payloads contain stable IDs and causal parent IDs (`request_id`, initiator script/event) when known. Subscriptions declare metadata-only vs. body-preview access. Body capture is opt-in, redacted for sensitive headers by default, bounded by per-request and per-context byte limits, and emits an explicit `BodyEvicted`/`EventsDropped` marker on eviction or backpressure.
+One `AutomationEvent` stream carries navigation, DOM-document generation, render, console, exception, network and `PjaxNavigation` lifecycle events. It is ordered per browser context by a monotonic sequence number; event payloads contain stable IDs and causal parent IDs (`request_id`, initiator script/event) when known. Subscriptions declare metadata-only vs. body-preview access. Body capture is opt-in, redacted for sensitive headers by default, bounded by per-request and per-context byte limits, and emits an explicit `BodyEvicted`/`EventsDropped` marker on eviction or backpressure.
 
 **Memory-mode interaction (Phase 8):** Performance mode adds no artificial automation/DevTools cap. Recommended minimum-memory mode creates screenshots, trace buffers, DevTools/API response previews, SOAP XML trees, and `waitFor*` retention with low-retention/streaming settings, but does not evict an inactive tab’s retained state before its longer timeout; timeout hibernation releases it. Extreme memory mode reserves these artifacts to the initiating tab (or the separate API-workspace account) before capture, gives active-tab work priority, and can reject optional capture or the allocating operation once the tab/fleet hard budget is exhausted; it considers an inactive tab’s artifacts only when room is needed. Event streams must state an eviction/resource result rather than silently losing observable state. The shared [Phase 8 policy](../phase-8-live-core-hotswap/PLAN.md#user-selectable-memory-modes-design-resolved-not-implemented) governs the limits and reclaim order.
 
 Automation and DevTools can list a Hibernated/Dormant tab’s bounded session metadata, group, residency state and restore reason, but there is no DOM, screenshot, script realm, request history, or debugger target to inspect. A read that needs live page state returns `TabNotResident`; activation/reload is an explicit controller-authorized operation and emits the new runtime `TabId` mapping for a post-restart session key. This prevents a background catalog from quietly allocating memory just because an observer lists or inspects it.
 
 The default external endpoint is a per-user Unix socket protected by filesystem permissions plus a generated capability token. TCP is disabled by default; loopback requires explicit opt-in and non-loopback requires TLS plus operator authentication. Read-only inspector sessions can coexist. Mutating commands, script evaluation, request routing/interception, debugger pause and `ApiWorkspace` sends require an exclusive controller lease plus the narrow capability appropriate to that action, surfaced to all observers as an event. Phase 7 determines the gatekeeper policy for navigation, script-originated network requests, interception and API-workspace sends; losing its required clearance fails closed before I/O.
+
+[Phase 12's network-and-data MCP contract](../phase-12-mcp-server/NETWORK_DATA_ENVIRONMENT.md) maps this one native request/PJAX/API-workspace service and Phase 19's XML/XSD/XHTML/JSON/YAML document services to target-bound AI tools, resources and events. It adds no alternate request client, parser, schema engine or authority: `network_*` observes/controls the native page path, `api_*` invokes only registered API-workspace operations, and `dev_*` validates immutable registered documents.
 
 ## Delivery order and acceptance
 
@@ -138,10 +152,10 @@ The default external endpoint is a per-user Unix socket protected by filesystem 
 3. Add an internal automation service in `core`, then the local-token `blueice-automation` adapter process. Prove two observers see the same frame/DOM generation and a controller action is reflected to both.
 4. Ship DOM/AX/style/layout inspection, screenshot, navigation, locator resolution, basic waiting and input. Add the initial Elements/Accessibility DevTools panels and the TypeScript browser/context/page/locator client surface.
 
-### Slice 2 — API/SOAP workbench and page debugger
+### Slice 2 — complete API/SOAP workbench and page debugger
 
 1. Build `ApiWorkspace` on the common request service: collections/environments/secrets, HTTP request editor, response/timing/history display and a public local-socket UI/API test.
-2. Add safe SOAP 1.1/1.2 XML envelope/fault handling and WSDL 1.1/2.0 operation-template import. Test a local SOAP service for `SOAPAction`, content type, namespaces, normal and Fault responses, malformed XML, blocked external entities and secret redaction.
+2. Add the declared SOAP interoperability profile: safe XML/XSD 1.0/1.1 processing, SOAP 1.1/1.2, WSDL 1.1/2.0 dependency bundles, MTOM/XOP, WS-Addressing, WS-Policy and WS-Security. Test local services for `SOAPAction`, content type, namespaces, normal/Fault responses, import graphs, XSD 1.1 types/assertions, attachments, signatures/encryption, unsupported policy assertions, malformed XML, blocked external entities and secret redaction.
 3. Add BlueJS source metadata and instruction-boundary debugger hooks. Test script parsing, line breakpoints, scopes, exception breakpoints, pause/resume, each stepping mode, call-frame evaluation limits, task blocking while paused and other-tab liveness.
 4. Deliver the DevTools Sources panel and native `Debugger`/`Runtime` commands before exposing their explicitly supported CDP counterparts.
 
@@ -151,12 +165,13 @@ The default external endpoint is a per-user Unix socket protected by filesystem 
 2. Add BiDi session/subscription, browsing-context, log, input and script modules; prove reconnect, unsubscribe, stale-element and multi-context isolation behavior.
 3. Implement the documented CDP subset only after each underlying capability exists, with discovery/capabilities tests. Do not make CDP a prerequisite for the native service.
 
-### Slice 4 — Fetch and XHR transport
+### Slice 4 — complete Fetch/XHR transport and PJAX primitives
 
-1. Build `blueice-net`'s asynchronous request state machine with local HTTP fixtures for redirects, status errors, chunked bodies, compressed payloads, malformed charset/JSON, cancellation, timeout and upload body integrity.
-2. Add the BlueJS/core network IPC and event-loop integration. First implement `fetch` with same-origin GET/POST, streamed response, text/JSON/bytes decoding and abort; then CORS/preflight/credentials and cache/cookie integration.
-3. Implement XHR as a compatibility facade over the same handles, testing state/event ordering and progress against deterministic local servers.
-4. Feed the same request lifecycle into DevTools, Playwright-shaped `waitForResponse`/routing and BiDi network subscriptions. There is no second network implementation in any adapter.
+1. Build `blueice-net`'s asynchronous request state machine with local HTTP fixtures for redirects, status errors, chunked bodies, compressed payloads, malformed charset/JSON/XML, cancellation, timeout, upload body integrity, cache/revalidation and CORS/preflight.
+2. Add the BlueJS/core network IPC and event-loop integration for the full Fetch surface, including streamed bodies/uploads, standard body consumers, abort/backpressure, credentials/cookies/cache and CORS.
+3. Implement all advertised XHR semantics as a compatibility facade over those handles, including `document`/XML responses, synchronous-XHR restrictions, upload/download progress and state/event ordering against deterministic local servers.
+4. Implement the History/URL/DOM/event primitives and the native causal `PjaxNavigation` trace. Validate reference-browser PJAX fixtures, race/cancellation behavior and history/scroll/focus restoration.
+5. Feed the same request/PJAX lifecycle into DevTools, Playwright-shaped `waitForResponse`/routing and BiDi network subscriptions. There is no second network implementation in any adapter.
 
 ### Slice 5 — advanced tooling and regression testing
 
@@ -169,8 +184,8 @@ The default external endpoint is a per-user Unix socket protected by filesystem 
 - Universal Chrome DevTools frontend/CDP compatibility, or copying Google's branded frontend.
 - Speaking Playwright's private browser-server protocol or claiming all upstream Playwright Test features work unchanged.
 - A generic external HTTP endpoint that bypasses page policy or Phase 7 review. The controller-authorized `ApiWorkspace` is a distinct human/API-client context, not a page-CORS bypass.
-- Synchronous XHR, response `document` parsing, Service Workers, WebSocket/WebTransport, HTTP/3-specific APIs, HAR/video fidelity or a complete performance profiler.
-- WS-Security, MTOM/XOP attachments, arbitrary remote WSDL/XSD dependency fetching, generated SOAP client code, or automatic import/execution of a third-party API collection.
+- Service Workers, WebSocket/WebTransport, HTTP/3-specific APIs, HAR/video fidelity or a complete performance profiler.
+- Unapproved or unpinned WSDL/XSD dependency fetching, generated executable SOAP client code, automatic request execution after import, or silently ignoring an unsupported SOAP/WS-* policy assertion.
 - Persisting full response bodies, credentials or sensitive headers without explicit bounded capture policy.
 
 ## Checklist
@@ -184,13 +199,14 @@ The default external endpoint is a per-user Unix socket protected by filesystem 
 - [ ] Build the local, authenticated automation adapter and inspection/locator/input slice
 - [ ] Build the first-party DevTools Elements, Accessibility, Console, Network and Sources panels
 - [ ] Build the controller-authorized API workspace, request collections/environments/secret handling and common request-event integration
-- [ ] Implement the safe SOAP 1.1/1.2 editor/fault display and WSDL 1.1/2.0 operation-template import
+- [ ] Implement the declared SOAP 1.1/1.2, XML/XSD 1.0/1.1, WSDL 1.1/2.0, MTOM/XOP, WS-Addressing/Policy/Security interoperability profile and its safe dependency resolver
 - [ ] Add BlueJS source metadata and executable source locations at compile time, then native page-debugger breakpoints, pause/step/stack/scope semantics
 - [ ] Publish and test the `@blueice/automation` browser/context/page/locator client library
 - [ ] Implement the W3C WebDriver baseline and real Selenium integration tests
 - [ ] Implement WebDriver BiDi subscriptions, log/script/input/network modules
 - [ ] Implement the explicitly advertised CDP subset and discovery tests
 - [ ] Replace `blueice-net`'s synchronous text GET with the asynchronous request state machine
-- [ ] Wire Fetch, Promise/event-loop integration, origin/CORS/credentials policy and cancellation through BlueJS/core IPC
-- [ ] Implement XHR over the same request handles and validate state/event ordering
-- [ ] Extend Chromium differential testing with dynamic-page/network fixtures and add scoped conformance coverage to CI
+- [ ] Wire the full Fetch surface, Promise/event-loop integration, origin/CORS/credentials/cache policy and cancellation through BlueJS/core IPC
+- [ ] Implement full XHR over the same request handles, including XML/document and standard synchronous restrictions, and validate event ordering
+- [ ] Implement PJAX-compatible History/DOM/event semantics plus causal dynamic-navigation tracing
+- [ ] Extend Chromium differential testing with AJAX/PJAX/SOAP dynamic-page/network fixtures and add scoped conformance coverage to CI
