@@ -73,13 +73,13 @@ dependency before introducing any page-runtime coupling:
   keeps only a successful cache entry and refuses reuse when the entry or any
   compiler option differs; its work-selection result is observable without
   exposing a BlueJS VM or page state.
-- Generic aliases and interfaces retain their declarations' type parameters,
-  including through local type-only imports, and instantiate them for bounded
-  structural assignment checks. Generic function calls infer substitutions
-  from their annotated parameters for an erasable return type. A declaration's
-  type parameter never leaks into surrounding module scope; overloads,
-  constraints, defaults and general expression inference remain outside this
-  narrow initial rule.
+- Generic aliases, interfaces and direct function calls retain their
+  declarations' type parameters, including through local type-only imports.
+  They instantiate bounded structural checks, enforce `extends` constraints,
+  and resolve trailing default type arguments (including in declaration
+  modules). A declaration's type parameter never leaks into surrounding module
+  scope; overload resolution and general expression inference remain outside
+  this narrow initial rule.
 - The parser rejects a `.tsx` module at its source-identity boundary, even if
   it has not yet reached a JSX tag. This prevents a TSX project from being
   treated as ordinary erasable TypeScript; tagged JSX is rejected by the same
@@ -103,8 +103,9 @@ dependency before introducing any page-runtime coupling:
 - `backend/bluets/tests/typescript_oracle.rs` is an opt-in compatibility job.
   It requires `BLUEICE_TSC` to name a TypeScript 5.9.3 compiler, verifies that
   pin before executing, and runs a fixture matrix covering generic properties,
-  optional/default parameters, generic local `.d.ts` imports, rejected
-  assignment/call arguments, Source Map v3 shape and accepted Node output.
+  constraints/defaults, generic local `.d.ts` imports, optional/default
+  parameters, rejected assignment/call arguments, Source Map v3 shape and
+  accepted Node output.
   The `typescript-oracle` CI job runs only from `workflow_dispatch` when its
   `run_typescript_oracle` input is selected. Node and `tsc` are test tools
   only; neither is linked, spawned, or discovered by the BlueTS compiler or
@@ -124,9 +125,9 @@ dependency before introducing any page-runtime coupling:
   future bridge concern rather than a hidden BlueJS dependency.
 
 This is deliberately not a claim of general `tsc` compatibility. Control-flow
-narrowing, overload resolution, generic constraints/defaults, decorators,
-enums, classes, TSX, namespace emission, parameter properties, and arbitrary
-JavaScript expression typing remain pending. A construct outside the
+narrowing, overload resolution, decorators, enums, classes, TSX, namespace
+emission, parameter properties, and arbitrary JavaScript expression typing
+remain pending. A construct outside the
 implemented matrix must be added with a parser/checker/emitter test and a
 precise compatibility entry; it must not be advertised merely because its
 tokens happen to be erasable.

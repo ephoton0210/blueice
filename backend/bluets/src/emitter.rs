@@ -7,7 +7,7 @@
 use crate::checker::CheckedProject;
 use crate::compiler::{fingerprint, is_declaration_module, CompilerOptions, Project};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
-use crate::parser::{Declaration, Module, TextEdit, Type};
+use crate::parser::{Declaration, Module, TextEdit, Type, TypeParameter};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -330,10 +330,23 @@ fn emit_declaration(module: &Module) -> String {
     output
 }
 
-fn emit_type_parameters(output: &mut String, parameters: &[String]) {
+fn emit_type_parameters(output: &mut String, parameters: &[TypeParameter]) {
     if !parameters.is_empty() {
         output.push('<');
-        output.push_str(&parameters.join(", "));
+        for (index, parameter) in parameters.iter().enumerate() {
+            if index > 0 {
+                output.push_str(", ");
+            }
+            output.push_str(&parameter.name);
+            if let Some(constraint) = &parameter.constraint {
+                output.push_str(" extends ");
+                output.push_str(&type_to_ts(constraint));
+            }
+            if let Some(default) = &parameter.default {
+                output.push_str(" = ");
+                output.push_str(&type_to_ts(default));
+            }
+        }
         output.push('>');
     }
 }
@@ -714,6 +727,39 @@ mod tests {
         let javascript = &output.artifacts["memory:///generic.ts"].javascript;
         assert!(javascript.contains("function identity(value)"));
         assert!(!javascript.contains("<T>"));
+    }
+
+    #[test]
+    fn retains_generic_constraints_and_defaults_in_declaration_output_only() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///generic.ts",
+            "export interface Box<T extends string = string> { value: T }\n\
+             export function echo<T extends string = string>(value?: T): T { return value; }",
+        )]);
+        let output = compile(
+            "memory:///generic.ts",
+            &loader,
+            CompilerOptions {
+                declaration: true,
+                ..CompilerOptions::default()
+            },
+        )
+        .output
+        .unwrap();
+        let artifact = &output.artifacts["memory:///generic.ts"];
+        assert!(
+            artifact.javascript.contains("function echo(value)"),
+            "{}",
+            artifact.javascript
+        );
+        assert!(!artifact.javascript.contains("extends string"));
+        assert_eq!(
+            artifact.declaration.as_deref(),
+            Some(
+                "export interface Box<T extends string = string> {\n  value: T;\n}\n\
+                 export declare function echo<T extends string = string>(value?: T): T;\n"
+            )
+        );
     }
 
     #[test]

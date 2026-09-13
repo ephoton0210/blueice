@@ -59,6 +59,24 @@ const CASES: &[OracleCase] = &[
         expected_stdout: Some("Ada\n"),
     },
     OracleCase {
+        name: "generic-constraint-default-declaration-module",
+        modules: &[
+            (
+                "memory:///main.ts",
+                include_str!(
+                    "fixtures/typescript_oracle/generic-constraint-default-declaration-module/main.ts"
+                ),
+            ),
+            (
+                "memory:///types/envelope.d.ts",
+                include_str!(
+                    "fixtures/typescript_oracle/generic-constraint-default-declaration-module/types/envelope.d.ts"
+                ),
+            ),
+        ],
+        expected_stdout: Some("Ada\n"),
+    },
+    OracleCase {
         name: "assignment-error",
         modules: &[(
             "memory:///main.ts",
@@ -71,6 +89,14 @@ const CASES: &[OracleCase] = &[
         modules: &[(
             "memory:///main.ts",
             include_str!("fixtures/typescript_oracle/call-argument-error/main.ts"),
+        )],
+        expected_stdout: None,
+    },
+    OracleCase {
+        name: "generic-constraint-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/generic-constraint-error/main.ts"),
         )],
         expected_stdout: None,
     },

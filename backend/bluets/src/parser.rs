@@ -89,7 +89,7 @@ pub struct TypeExportDeclaration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeAliasDeclaration {
     pub name: String,
-    pub type_parameters: Vec<String>,
+    pub type_parameters: Vec<TypeParameter>,
     pub value: Type,
     pub exported: bool,
     pub span: SourceSpan,
@@ -98,7 +98,7 @@ pub struct TypeAliasDeclaration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InterfaceDeclaration {
     pub name: String,
-    pub type_parameters: Vec<String>,
+    pub type_parameters: Vec<TypeParameter>,
     pub fields: Vec<TypeField>,
     pub exported: bool,
     pub span: SourceSpan,
@@ -125,7 +125,7 @@ pub struct VariableDeclaration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionDeclaration {
     pub name: String,
-    pub type_parameters: Vec<String>,
+    pub type_parameters: Vec<TypeParameter>,
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,
     pub returns: Vec<Vec<Token>>,
@@ -140,6 +140,17 @@ pub struct Parameter {
     pub name: String,
     pub optional: bool,
     pub annotation: Option<Type>,
+    pub span: SourceSpan,
+}
+
+/// A generic parameter's static-only declaration. Constraints and defaults
+/// participate in BlueTS type checking and declaration output, but are erased
+/// from emitted JavaScript together with the parameter list itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeParameter {
+    pub name: String,
+    pub constraint: Option<Type>,
+    pub default: Option<Type>,
     pub span: SourceSpan,
 }
 
@@ -861,20 +872,27 @@ impl Parser {
             .push(Declaration::Raw(SourceSpan::new(&self.id, start, end)));
     }
 
-    fn parse_type_parameters(&mut self) -> Vec<String> {
+    fn parse_type_parameters(&mut self) -> Vec<TypeParameter> {
         if !self.consume("<") {
             return Vec::new();
         }
         let mut parameters = Vec::new();
         while !self.at_eof() && !self.consume(">") {
+            let start = self.current().start;
             let name = self.require_identifier("expected a type parameter name");
-            parameters.push(name);
-            if self.consume("extends") {
-                self.parse_type_until(&["=", ",", ">"]);
-            }
-            if self.consume("=") {
-                self.parse_type_until(&[",", ">"]);
-            }
+            let constraint = self
+                .consume("extends")
+                .then(|| self.parse_type_until(&["=", ",", ">"]));
+            let default = self
+                .consume("=")
+                .then(|| self.parse_type_until(&[",", ">"]));
+            let end = self.previous().end;
+            parameters.push(TypeParameter {
+                name,
+                constraint,
+                default,
+                span: SourceSpan::new(&self.id, start, end),
+            });
             if !self.consume(",") {
                 self.expect(">");
                 break;
@@ -1235,5 +1253,21 @@ mod tests {
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == DiagnosticCode::ResourceLimit));
+    }
+
+    #[test]
+    fn retains_generic_constraints_and_defaults_for_checker_and_declarations() {
+        let module = parse_module(
+            "memory:///generic.ts",
+            "export interface Box<T extends string = string> { value: T }",
+        )
+        .unwrap();
+        let Declaration::Interface(interface) = &module.declarations[0] else {
+            panic!("expected interface declaration");
+        };
+        assert_eq!(interface.type_parameters.len(), 1);
+        assert_eq!(interface.type_parameters[0].name, "T");
+        assert_eq!(interface.type_parameters[0].constraint, Some(Type::String));
+        assert_eq!(interface.type_parameters[0].default, Some(Type::String));
     }
 }

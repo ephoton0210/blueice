@@ -6,7 +6,9 @@
 
 use crate::compiler::{is_declaration_module, Project};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
-use crate::parser::{Declaration, FunctionDeclaration, Module, Parameter, TypeField};
+use crate::parser::{
+    Declaration, FunctionDeclaration, Module, Parameter, TypeField, TypeParameter,
+};
 use crate::syntax::{Token, TokenKind};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
@@ -50,14 +52,14 @@ pub struct CheckedProject {
 /// declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TypeDefinition {
-    parameters: Vec<String>,
+    parameters: Vec<TypeParameter>,
     value: Type,
 }
 
 #[derive(Debug, Clone)]
 struct FunctionSignature {
     parameters: Vec<Parameter>,
-    type_parameters: Vec<String>,
+    type_parameters: Vec<TypeParameter>,
     return_type: Type,
 }
 
@@ -523,10 +525,10 @@ impl<'a> ModuleChecker<'a> {
         &mut self,
         value: &Type,
         span: &SourceSpan,
-        parameters: &[String],
+        parameters: &[TypeParameter],
     ) {
         let previous_parameters = self.type_parameters.clone();
-        self.type_parameters.extend(parameters.iter().cloned());
+        self.check_type_parameters(parameters);
         self.check_type(value, span);
         self.type_parameters = previous_parameters;
     }
@@ -567,8 +569,7 @@ impl<'a> ModuleChecker<'a> {
     fn check_function(&mut self, function: &FunctionDeclaration) {
         let mut scope = self.values.clone();
         let previous_parameters = self.type_parameters.clone();
-        self.type_parameters
-            .extend(function.type_parameters.iter().cloned());
+        self.check_type_parameters(&function.type_parameters);
         for parameter in &function.parameters {
             if let Some(annotation) = &parameter.annotation {
                 self.check_type(annotation, &parameter.span);
@@ -612,27 +613,14 @@ impl<'a> ModuleChecker<'a> {
     fn check_type(&mut self, value: &Type, span: &SourceSpan) {
         match value {
             Type::Named { name, arguments } => {
-                if let Some(definition) = self.types.get(name) {
-                    if definition.parameters.len() != arguments.len() {
-                        self.type_error(
-                            span,
-                            format!(
-                                "type `{name}` requires {} type argument(s), got {}",
-                                definition.parameters.len(),
-                                arguments.len()
-                            ),
-                            DiagnosticCode::TypeMismatch,
-                        );
-                    }
+                if let Some(definition) = self.types.get(name).cloned() {
+                    self.check_type_arguments(name, arguments, &definition, span);
                 } else if !self.type_parameters.contains(name) {
                     self.type_error(
                         span,
                         format!("cannot find type `{name}`"),
                         DiagnosticCode::UnknownType,
                     );
-                }
-                for argument in arguments {
-                    self.check_type(argument, span);
                 }
             }
             Type::Array(value) => self.check_type(value, span),
@@ -647,6 +635,110 @@ impl<'a> ModuleChecker<'a> {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn check_type_parameters(&mut self, parameters: &[TypeParameter]) {
+        let mut saw_default = false;
+        for parameter in parameters {
+            if !self.type_parameters.insert(parameter.name.clone()) {
+                self.type_error(
+                    &parameter.span,
+                    format!("duplicate type parameter `{}`", parameter.name),
+                    DiagnosticCode::DuplicateDeclaration,
+                );
+            }
+            if saw_default && parameter.default.is_none() {
+                self.type_error(
+                    &parameter.span,
+                    format!(
+                        "required type parameter `{}` cannot follow a defaulted type parameter",
+                        parameter.name
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
+            if parameter.default.is_some() {
+                saw_default = true;
+            }
+            if let Some(constraint) = &parameter.constraint {
+                self.check_type(constraint, &parameter.span);
+            }
+            if let Some(default) = &parameter.default {
+                self.check_type(default, &parameter.span);
+                if let Some(constraint) = &parameter.constraint {
+                    if !self.is_assignable_bounded(default, constraint, &parameter.span) {
+                        self.type_error(
+                            &parameter.span,
+                            format!(
+                                "default type `{}` does not satisfy constraint `{}` for `{}`",
+                                type_label(default),
+                                type_label(constraint),
+                                parameter.name,
+                            ),
+                            DiagnosticCode::TypeMismatch,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    fn check_type_arguments(
+        &mut self,
+        name: &str,
+        arguments: &[Type],
+        definition: &TypeDefinition,
+        span: &SourceSpan,
+    ) {
+        let required = definition
+            .parameters
+            .iter()
+            .filter(|parameter| parameter.default.is_none())
+            .count();
+        if arguments.len() < required || arguments.len() > definition.parameters.len() {
+            self.type_error(
+                span,
+                format!(
+                    "type `{name}` requires {required} to {} type argument(s), got {}",
+                    definition.parameters.len(),
+                    arguments.len(),
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+        }
+        for argument in arguments {
+            self.check_type(argument, span);
+        }
+        let Some(arguments) = complete_type_arguments(&definition.parameters, arguments) else {
+            return;
+        };
+        let substitutions = definition
+            .parameters
+            .iter()
+            .map(|parameter| parameter.name.clone())
+            .zip(arguments)
+            .collect::<BTreeMap<_, _>>();
+        for parameter in &definition.parameters {
+            let Some(constraint) = &parameter.constraint else {
+                continue;
+            };
+            let actual = substitutions
+                .get(&parameter.name)
+                .expect("completed generic arguments contain every parameter");
+            let expected = substitute_type(constraint, &substitutions);
+            if !self.is_assignable_bounded(actual, &expected, span) {
+                self.type_error(
+                    span,
+                    format!(
+                        "type argument `{}` does not satisfy constraint `{}` for `{}`",
+                        type_label(actual),
+                        type_label(&expected),
+                        parameter.name,
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
         }
     }
 
@@ -777,6 +869,7 @@ impl<'a> ModuleChecker<'a> {
             })
             .collect::<Vec<_>>();
         let substitutions = infer_call_substitutions(&signature, &actuals);
+        self.check_call_type_parameter_constraints(&signature, &substitutions, span);
         for (index, (parameter, actual)) in signature.parameters.iter().zip(actuals).enumerate() {
             let Some(annotation) = &parameter.annotation else {
                 continue;
@@ -819,6 +912,35 @@ impl<'a> ModuleChecker<'a> {
             true
         } else {
             assignable
+        }
+    }
+
+    fn check_call_type_parameter_constraints(
+        &mut self,
+        signature: &FunctionSignature,
+        substitutions: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        for parameter in &signature.type_parameters {
+            let Some(constraint) = &parameter.constraint else {
+                continue;
+            };
+            let actual = substitutions
+                .get(&parameter.name)
+                .expect("function substitutions contain every type parameter");
+            let expected = substitute_type(constraint, substitutions);
+            if !self.is_assignable_bounded(actual, &expected, span) {
+                self.type_error(
+                    span,
+                    format!(
+                        "inferred type `{}` does not satisfy constraint `{}` for `{}`",
+                        type_label(actual),
+                        type_label(&expected),
+                        parameter.name,
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
         }
     }
 
@@ -876,7 +998,7 @@ fn infer_call_substitutions(
     let type_parameters = signature
         .type_parameters
         .iter()
-        .cloned()
+        .map(|parameter| parameter.name.clone())
         .collect::<BTreeSet<_>>();
     for (parameter, actual) in signature.parameters.iter().zip(actuals) {
         let Some(annotation) = &parameter.annotation else {
@@ -884,8 +1006,15 @@ fn infer_call_substitutions(
         };
         infer_type_arguments(annotation, actual, &type_parameters, &mut substitutions);
     }
-    for parameter in type_parameters {
-        substitutions.entry(parameter).or_insert(Type::Unknown);
+    for parameter in &signature.type_parameters {
+        let default = parameter
+            .default
+            .as_ref()
+            .map(|value| substitute_type(value, &substitutions))
+            .unwrap_or(Type::Unknown);
+        substitutions
+            .entry(parameter.name.clone())
+            .or_insert(default);
     }
     substitutions
 }
@@ -1148,9 +1277,7 @@ fn instantiate_named(
         return None;
     };
     let definition = aliases.get(name)?;
-    if definition.parameters.len() != arguments.len() {
-        return None;
-    }
+    let arguments = complete_type_arguments(&definition.parameters, arguments)?;
     let key = format!("{side}:{}", type_identity(value));
     if !visited.insert(key) {
         return None;
@@ -1161,10 +1288,33 @@ fn instantiate_named(
     let substitutions = definition
         .parameters
         .iter()
-        .cloned()
-        .zip(arguments.iter().cloned())
+        .map(|parameter| parameter.name.clone())
+        .zip(arguments)
         .collect();
     Some(substitute_type(&definition.value, &substitutions))
+}
+
+/// Resolves omitted trailing generic arguments through their declaration-site
+/// defaults. The parser/checker reports invalid argument counts and constraint
+/// violations separately; this helper is also used by structural expansion,
+/// where `None` simply means the named type cannot be expanded safely.
+fn complete_type_arguments(parameters: &[TypeParameter], supplied: &[Type]) -> Option<Vec<Type>> {
+    if supplied.len() > parameters.len() {
+        return None;
+    }
+    let mut substitutions = BTreeMap::new();
+    let mut arguments = Vec::with_capacity(parameters.len());
+    for (index, parameter) in parameters.iter().enumerate() {
+        let value = supplied.get(index).cloned().or_else(|| {
+            parameter
+                .default
+                .as_ref()
+                .map(|value| substitute_type(value, &substitutions))
+        })?;
+        substitutions.insert(parameter.name.clone(), value.clone());
+        arguments.push(value);
+    }
+    Some(arguments)
 }
 
 fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Type>) -> Type {
@@ -1581,6 +1731,66 @@ mod tests {
             "{:#?}",
             result.diagnostics
         );
+    }
+
+    #[test]
+    fn applies_generic_defaults_and_rejects_constraint_violations() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "type Box<T extends string = string> = { value: T };\n\
+                 const defaulted: Box = { value: 'ok' };\n\
+                 const rejected: Box<number> = { value: 1 };",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert_eq!(
+            result
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+                .count(),
+            1,
+            "{:#?}",
+            result.diagnostics
+        );
+        assert!(result.diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .message
+                .contains("does not satisfy constraint `string`")
+        }));
+    }
+
+    #[test]
+    fn uses_defaulted_function_type_parameters_and_checks_inferred_constraints() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "function echo<T extends string = string>(value?: T): T { return value; }\n\
+                 const defaulted: string = echo();\n\
+                 const constrained: unknown = echo(1);",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert_eq!(
+            result
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+                .count(),
+            1,
+            "{:#?}",
+            result.diagnostics
+        );
+        assert!(result.diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .message
+                .contains("inferred type `number` does not satisfy constraint `string`")
+        }));
     }
 
     #[test]

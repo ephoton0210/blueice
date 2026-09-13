@@ -174,12 +174,12 @@ fn build_uses_root_confined_declaration_modules_without_emitting_runtime_artifac
     fs::create_dir_all(&types).unwrap();
     fs::write(
         types.join("account.d.ts"),
-        "export interface Account<T> { id: T }\n",
+        "export interface Account<T extends string = string> { id: T }\n",
     )
     .unwrap();
     fs::write(
         source.join("main.ts"),
-        "import type { Account } from '@local/account';\nexport const account: Account<string> = { id: 'ada' };\n",
+        "import type { Account } from '@local/account';\nexport const account: Account = { id: 'ada' };\n",
     )
     .unwrap();
     let config = root.join("bluetsc.json");
@@ -211,11 +211,11 @@ fn build_uses_root_confined_declaration_modules_without_emitting_runtime_artifac
     assert!(!output.join("types/account.d.js").exists());
     assert_eq!(
         fs::read_to_string(output.join("types/account.d.ts")).unwrap(),
-        "export interface Account<T> { id: T }\n"
+        "export interface Account<T extends string = string> { id: T }\n"
     );
     let main_declaration = fs::read_to_string(output.join("src/main.d.ts")).unwrap();
     assert!(main_declaration.contains("import type { Account } from '@local/account';"));
-    assert!(main_declaration.contains("Account<string>"));
+    assert!(main_declaration.contains("Account;"));
     let manifest = fs::read_to_string(output.join("bluetsc.manifest.json")).unwrap();
     assert!(manifest.contains("\"types/account.d.ts\""));
     let import_map = fs::read_to_string(output.join("bluetsc.importmap.json")).unwrap();
@@ -233,12 +233,12 @@ fn repeated_config_builds_publish_byte_identical_artifacts() {
     fs::create_dir_all(&types).unwrap();
     fs::write(
         types.join("model.d.ts"),
-        "export interface Model<T> { id: T }\n",
+        "export interface Model<T extends string = string> { id: T }\n",
     )
     .unwrap();
     fs::write(
         source.join("main.ts"),
-        "import type { Model } from '@local/model';\nexport const model: Model<string> = { id: 'stable' };\n",
+        "import type { Model } from '@local/model';\nexport const model: Model = { id: 'stable' };\n",
     )
     .unwrap();
     let config = root.join("bluetsc.json");
