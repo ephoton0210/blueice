@@ -8,6 +8,7 @@ use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::syntax::{
     lex, lex_with_limits, string_contents, Token, TokenKind, MAX_SOURCE_BYTES, MAX_TOKENS,
 };
+use std::collections::BTreeMap;
 
 /// Parser work bounds. Hosts may lower these for a constrained compile slot;
 /// the values are included in [`crate::CompilerLimits`] fingerprints.
@@ -34,6 +35,10 @@ pub struct Module {
     pub source: String,
     pub declarations: Vec<Declaration>,
     pub(crate) edits: Vec<TextEdit>,
+    /// Explicit type arguments on direct identifier calls, keyed by the
+    /// callee token's source-byte offset. They are static-only and erased from
+    /// JavaScript, but retained for the checker to validate a local call.
+    pub(crate) generic_call_type_arguments: BTreeMap<usize, Vec<Type>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -213,6 +218,7 @@ struct Parser {
     index: usize,
     declarations: Vec<Declaration>,
     edits: Vec<TextEdit>,
+    generic_call_type_arguments: BTreeMap<usize, Vec<Type>>,
     diagnostics: Vec<Diagnostic>,
     max_type_depth: usize,
     type_depth: usize,
@@ -227,6 +233,7 @@ impl Parser {
             index: 0,
             declarations: Vec::new(),
             edits: Vec::new(),
+            generic_call_type_arguments: BTreeMap::new(),
             diagnostics: Vec::new(),
             max_type_depth,
             type_depth: 0,
@@ -338,6 +345,7 @@ impl Parser {
                 source: self.source,
                 declarations: self.declarations,
                 edits: self.edits,
+                generic_call_type_arguments: self.generic_call_type_arguments,
             })
         } else {
             Err(self.diagnostics)
@@ -803,6 +811,31 @@ impl Parser {
     fn collect_expression_type_edits(&mut self, start: usize, end: usize) {
         let mut index = start;
         while index < end {
+            if self.tokens[index].kind == TokenKind::Identifier
+                && self
+                    .tokens
+                    .get(index + 1)
+                    .is_some_and(|token| token.is("<"))
+            {
+                if let Some(close) = matching_angle_bracket(&self.tokens, index + 1, end) {
+                    if self
+                        .tokens
+                        .get(close + 1)
+                        .is_some_and(|token| token.is("("))
+                    {
+                        let type_arguments = self.parse_call_type_arguments(index + 2, close);
+                        self.edits.push(TextEdit {
+                            start: self.tokens[index + 1].start,
+                            end: self.tokens[close].end,
+                            replacement: String::new(),
+                        });
+                        self.generic_call_type_arguments
+                            .insert(self.tokens[index].start, type_arguments);
+                        index = close + 1;
+                        continue;
+                    }
+                }
+            }
             if self.tokens[index].is("as") || self.tokens[index].is("satisfies") {
                 index = self.erase_assertion(index, end);
                 continue;
@@ -830,6 +863,41 @@ impl Parser {
         }
     }
 
+    fn parse_call_type_arguments(&mut self, start: usize, end: usize) -> Vec<Type> {
+        if start == end {
+            return Vec::new();
+        }
+        let eof = self.tokens[end - 1].end;
+        let mut tokens = self.tokens[start..end].to_vec();
+        tokens.push(Token {
+            kind: TokenKind::Eof,
+            text: String::new(),
+            start: eof,
+            end: eof,
+        });
+        let mut parser = Parser::new(self.id.clone(), String::new(), tokens, self.max_type_depth);
+        let mut values = Vec::new();
+        while !parser.at_eof() {
+            let before = parser.index;
+            values.push(parser.parse_type_until(&[","]));
+            if parser.index == before {
+                parser.error_here(DiagnosticCode::ParseError, "expected a type argument");
+                break;
+            }
+            if !parser.consume(",") {
+                break;
+            }
+        }
+        if !parser.at_eof() {
+            parser.error_here(
+                DiagnosticCode::ParseError,
+                "expected a comma between type arguments",
+            );
+        }
+        self.diagnostics.append(&mut parser.diagnostics);
+        values
+    }
+
     fn erase_assertion(&mut self, index: usize, end: usize) -> usize {
         let edit_start = self.tokens[index].start;
         let type_start = index + 1;
@@ -851,6 +919,7 @@ impl Parser {
         let raw_start = self.index;
         let end_index =
             find_balanced_delimiter(&self.tokens, self.index, self.tokens.len() - 1, &[";"]);
+        self.collect_expression_type_edits(raw_start, end_index);
         let assertions = self.tokens[raw_start..end_index]
             .iter()
             .filter(|token| token.is("as") || token.is("satisfies"))
@@ -1198,6 +1267,24 @@ fn find_balanced_delimiter(
     limit
 }
 
+fn matching_angle_bracket(tokens: &[Token], start: usize, limit: usize) -> Option<usize> {
+    debug_assert!(tokens.get(start).is_some_and(|token| token.is("<")));
+    let mut depth = 0usize;
+    for (index, token) in tokens.iter().enumerate().take(limit).skip(start) {
+        match token.text.as_str() {
+            "<" => depth += 1,
+            ">" => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1269,5 +1356,20 @@ mod tests {
         assert_eq!(interface.type_parameters[0].name, "T");
         assert_eq!(interface.type_parameters[0].constraint, Some(Type::String));
         assert_eq!(interface.type_parameters[0].default, Some(Type::String));
+    }
+
+    #[test]
+    fn records_and_erases_explicit_direct_call_type_arguments() {
+        let source = "function identity<T>(value: T): T { return value; }\n\
+                      const result: string = identity<string>('Ada');";
+        let module = parse_module("memory:///generic-call.ts", source).unwrap();
+        let call_start = source.rfind("identity<string>").unwrap();
+        assert_eq!(
+            module.generic_call_type_arguments.get(&call_start),
+            Some(&vec![Type::String])
+        );
+        assert!(module.edits.iter().any(|edit| {
+            &source[edit.start..edit.end] == "<string>" && edit.replacement.is_empty()
+        }));
     }
 }

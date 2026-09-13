@@ -786,9 +786,21 @@ impl<'a> ModuleChecker<'a> {
                         | PropertyType::Exhausted => Type::Unknown,
                     };
                 }
-                if tokens.get(1).is_some_and(|token| token.is("(")) {
-                    if let Some(signature) = self.functions.get(&first.text) {
-                        return self.infer_function_call(signature, &tokens[2..], scope);
+                if let Some(call) = direct_call_parts(tokens) {
+                    if let Some(signature) = self.functions.get(&call.callee.text) {
+                        let explicit = call.generic.then(|| {
+                            self.module
+                                .generic_call_type_arguments
+                                .get(&call.callee.start)
+                                .expect("parsed generic call has recorded type arguments")
+                                .as_slice()
+                        });
+                        return self.infer_function_call(
+                            signature,
+                            call.arguments,
+                            scope,
+                            explicit,
+                        );
                     }
                     return scope.get(&first.text).cloned().unwrap_or(Type::Unknown);
                 }
@@ -803,6 +815,7 @@ impl<'a> ModuleChecker<'a> {
         signature: &FunctionSignature,
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
+        explicit_type_arguments: Option<&[Type]>,
     ) -> Type {
         let Some(arguments) = split_call_arguments(tokens) else {
             return Type::Unknown;
@@ -819,7 +832,15 @@ impl<'a> ModuleChecker<'a> {
             .iter()
             .map(|argument| self.infer_expression(argument, scope))
             .collect::<Vec<_>>();
-        let substitutions = infer_call_substitutions(signature, &actuals);
+        let substitutions = if let Some(arguments) = explicit_type_arguments {
+            let Some(arguments) = complete_type_arguments(&signature.type_parameters, arguments)
+            else {
+                return Type::Unknown;
+            };
+            type_parameter_substitutions(&signature.type_parameters, arguments)
+        } else {
+            infer_call_substitutions(signature, &actuals)
+        };
         substitute_type(&signature.return_type, &substitutions)
     }
 
@@ -829,17 +850,13 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) {
-        let Some(first) = tokens.first() else {
+        let Some(call) = direct_call_parts(tokens) else {
             return;
         };
-        if first.kind != TokenKind::Identifier || !tokens.get(1).is_some_and(|token| token.is("("))
-        {
-            return;
-        }
-        let Some(signature) = self.functions.get(&first.text).cloned() else {
+        let Some(signature) = self.functions.get(&call.callee.text).cloned() else {
             return;
         };
-        let Some(arguments) = split_call_arguments(&tokens[2..]) else {
+        let Some(arguments) = split_call_arguments(call.arguments) else {
             return;
         };
         let required = signature
@@ -852,7 +869,7 @@ impl<'a> ModuleChecker<'a> {
                 span,
                 format!(
                     "function `{}` expects {} to {} argument(s), got {}",
-                    first.text,
+                    call.callee.text,
                     required,
                     signature.parameters.len(),
                     arguments.len()
@@ -868,8 +885,28 @@ impl<'a> ModuleChecker<'a> {
                 self.infer_expression(argument, scope)
             })
             .collect::<Vec<_>>();
-        let substitutions = infer_call_substitutions(&signature, &actuals);
-        self.check_call_type_parameter_constraints(&signature, &substitutions, span);
+        let substitutions = if call.generic {
+            let explicit = self
+                .module
+                .generic_call_type_arguments
+                .get(&call.callee.start)
+                .expect("parsed generic call has recorded type arguments");
+            let Some(substitutions) =
+                self.check_explicit_function_type_arguments(&signature, explicit, span)
+            else {
+                return;
+            };
+            substitutions
+        } else {
+            let substitutions = infer_call_substitutions(&signature, &actuals);
+            self.check_call_type_parameter_constraints(
+                &signature,
+                &substitutions,
+                span,
+                "inferred type",
+            );
+            substitutions
+        };
         for (index, (parameter, actual)) in signature.parameters.iter().zip(actuals).enumerate() {
             let Some(annotation) = &parameter.annotation else {
                 continue;
@@ -920,6 +957,7 @@ impl<'a> ModuleChecker<'a> {
         signature: &FunctionSignature,
         substitutions: &BTreeMap<String, Type>,
         span: &SourceSpan,
+        actual_description: &str,
     ) {
         for parameter in &signature.type_parameters {
             let Some(constraint) = &parameter.constraint else {
@@ -933,7 +971,7 @@ impl<'a> ModuleChecker<'a> {
                 self.type_error(
                     span,
                     format!(
-                        "inferred type `{}` does not satisfy constraint `{}` for `{}`",
+                        "{actual_description} `{}` does not satisfy constraint `{}` for `{}`",
                         type_label(actual),
                         type_label(&expected),
                         parameter.name,
@@ -942,6 +980,43 @@ impl<'a> ModuleChecker<'a> {
                 );
             }
         }
+    }
+
+    fn check_explicit_function_type_arguments(
+        &mut self,
+        signature: &FunctionSignature,
+        arguments: &[Type],
+        span: &SourceSpan,
+    ) -> Option<BTreeMap<String, Type>> {
+        let required = signature
+            .type_parameters
+            .iter()
+            .filter(|parameter| parameter.default.is_none())
+            .count();
+        if arguments.len() < required || arguments.len() > signature.type_parameters.len() {
+            self.type_error(
+                span,
+                format!(
+                    "function type arguments require {required} to {} argument(s), got {}",
+                    signature.type_parameters.len(),
+                    arguments.len(),
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+            return None;
+        }
+        for argument in arguments {
+            self.check_type(argument, span);
+        }
+        let completed = complete_type_arguments(&signature.type_parameters, arguments)?;
+        let substitutions = type_parameter_substitutions(&signature.type_parameters, completed);
+        self.check_call_type_parameter_constraints(
+            signature,
+            &substitutions,
+            span,
+            "type argument",
+        );
+        Some(substitutions)
     }
 
     fn check_direct_property_access(
@@ -1017,6 +1092,66 @@ fn infer_call_substitutions(
             .or_insert(default);
     }
     substitutions
+}
+
+fn type_parameter_substitutions(
+    parameters: &[TypeParameter],
+    arguments: Vec<Type>,
+) -> BTreeMap<String, Type> {
+    parameters
+        .iter()
+        .map(|parameter| parameter.name.clone())
+        .zip(arguments)
+        .collect()
+}
+
+struct DirectCall<'a> {
+    callee: &'a Token,
+    arguments: &'a [Token],
+    generic: bool,
+}
+
+fn direct_call_parts(tokens: &[Token]) -> Option<DirectCall<'_>> {
+    let callee = tokens.first()?;
+    if callee.kind != TokenKind::Identifier {
+        return None;
+    }
+    if tokens.get(1).is_some_and(|token| token.is("(")) {
+        return Some(DirectCall {
+            callee,
+            arguments: &tokens[2..],
+            generic: false,
+        });
+    }
+    if !tokens.get(1).is_some_and(|token| token.is("<")) {
+        return None;
+    }
+    let close = matching_call_angle_bracket(tokens, 1)?;
+    if !tokens.get(close + 1).is_some_and(|token| token.is("(")) {
+        return None;
+    }
+    Some(DirectCall {
+        callee,
+        arguments: &tokens[close + 2..],
+        generic: true,
+    })
+}
+
+fn matching_call_angle_bracket(tokens: &[Token], start: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    for (index, token) in tokens.iter().enumerate().skip(start) {
+        match token.text.as_str() {
+            "<" => depth += 1,
+            ">" => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn split_call_arguments(tokens: &[Token]) -> Option<Vec<&[Token]>> {
@@ -1614,6 +1749,31 @@ mod tests {
                 .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
                 .count(),
             1
+        );
+    }
+
+    #[test]
+    fn checks_explicit_direct_function_type_arguments() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "function identity<T extends string = string>(value: T): T { return value; }\n\
+                 const accepted: string = identity<string>('Ada');\n\
+                 const invalid_argument: string = identity<string>(1);\n\
+                 const invalid_constraint: unknown = identity<number>(1);\n\
+                 const too_many: unknown = identity<string, number>('Ada');",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert_eq!(
+            result
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+                .count(),
+            3
         );
     }
 

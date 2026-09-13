@@ -77,6 +77,14 @@ const CASES: &[OracleCase] = &[
         expected_stdout: Some("Ada\n"),
     },
     OracleCase {
+        name: "explicit-generic-call",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/explicit-generic-call/main.ts"),
+        )],
+        expected_stdout: Some("Ada\n"),
+    },
+    OracleCase {
         name: "assignment-error",
         modules: &[(
             "memory:///main.ts",
@@ -97,6 +105,14 @@ const CASES: &[OracleCase] = &[
         modules: &[ (
             "memory:///main.ts",
             include_str!("fixtures/typescript_oracle/generic-constraint-error/main.ts"),
+        )],
+        expected_stdout: None,
+    },
+    OracleCase {
+        name: "explicit-generic-constraint-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/explicit-generic-constraint-error/main.ts"),
         )],
         expected_stdout: None,
     },

@@ -75,6 +75,7 @@ dependency before introducing any page-runtime coupling:
   exposing a BlueJS VM or page state.
 - Generic aliases, interfaces and direct function calls retain their
   declarations' type parameters, including through local type-only imports.
+  Direct local calls may either infer or explicitly supply their type arguments.
   They instantiate bounded structural checks, enforce `extends` constraints,
   and resolve trailing default type arguments (including in declaration
   modules). A declaration's type parameter never leaks into surrounding module
@@ -88,10 +89,10 @@ dependency before introducing any page-runtime coupling:
   rejected as `UnsupportedSyntax`, rather than being emitted as invalid ESM.
 - For a direct call to a locally declared function, the checker verifies the
   accepted argument count and each annotated parameter after bounded generic
-  substitution. Optional and default-initialized parameters are omittable
-  while preserving a known return type. This intentionally does not claim
-  overload resolution, method calls, callback analysis, or general expression
-  inference.
+  substitution, whether type arguments are inferred or explicitly supplied.
+  Optional and default-initialized parameters are omittable while preserving a
+  known return type. This intentionally does not claim overload resolution,
+  method calls, callback analysis, or general expression inference.
 - Direct property access on an inferred record or a local/interface type alias
   is resolved to the declared field type (including a generic instantiation).
   Optional fields produce `T | undefined`; chained/member-call analysis and
@@ -103,7 +104,8 @@ dependency before introducing any page-runtime coupling:
 - `backend/bluets/tests/typescript_oracle.rs` is an opt-in compatibility job.
   It requires `BLUEICE_TSC` to name a TypeScript 5.9.3 compiler, verifies that
   pin before executing, and runs a fixture matrix covering generic properties,
-  constraints/defaults, generic local `.d.ts` imports, optional/default
+  constraints/defaults and explicit direct-call type arguments, generic local
+  `.d.ts` imports, optional/default
   parameters, rejected assignment/call arguments, Source Map v3 shape and
   accepted Node output.
   The `typescript-oracle` CI job runs only from `workflow_dispatch` when its

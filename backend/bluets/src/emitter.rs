@@ -730,6 +730,25 @@ mod tests {
     }
 
     #[test]
+    fn erases_explicit_generic_arguments_from_direct_calls() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///generic-call.ts",
+            "function identity<T extends string>(value: T): T { return value; }\n\
+             console.log(identity<string>('Ada'));",
+        )]);
+        let output = compile(
+            "memory:///generic-call.ts",
+            &loader,
+            CompilerOptions::default(),
+        )
+        .output
+        .unwrap();
+        let javascript = &output.artifacts["memory:///generic-call.ts"].javascript;
+        assert!(javascript.contains("identity('Ada')"), "{javascript}");
+        assert!(!javascript.contains("identity<string>"), "{javascript}");
+    }
+
+    #[test]
     fn retains_generic_constraints_and_defaults_in_declaration_output_only() {
         let loader = MapLoader::from([ModuleSource::new(
             "memory:///generic.ts",
