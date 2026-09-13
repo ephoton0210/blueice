@@ -140,6 +140,12 @@ REGEXP_CLASS_ESCAPE_FIXTURES = frozenset(
     }
 )
 REGEXP_CLASS_ESCAPE_STRING_LIMIT = 8 * 1024 * 1024
+# SpiderMonkey's Unicode case-mapping regression fixture materializes the
+# complete Unicode mapping table.  The work is finite and already has the
+# exact-fixture time/fuel allowance below, but its table cannot coexist with
+# the normal 16 MiB conformance VM heap.
+STRING_CASE_MAPPING_FIXTURE = "staging/sm/String/string-upper-lower-mapping.js"
+STRING_CASE_MAPPING_HEAP_LIMIT = 256 * 1024 * 1024
 TYPED_ARRAY_OVERLAP_FIXTURE = "staging/sm/TypedArray/set-same-buffer-different-source-target-types.js"
 NULLISH_JIT_STRESS_FIXTURE = "staging/sm/expressions/nullish-coalescing.js"
 SHORT_CIRCUIT_JIT_STRESS_FIXTURE = "staging/sm/expressions/short-circuit-compound-assignment.js"
@@ -182,7 +188,7 @@ FINITE_STRESS_FIXTURES = frozenset(
         "staging/sm/Proxy/ownkeys-linear.js",
         "staging/sm/String/fromCodePoint.js",
         "staging/sm/String/string-pad-start-end.js",
-        "staging/sm/String/string-upper-lower-mapping.js",
+        STRING_CASE_MAPPING_FIXTURE,
         "staging/sm/TypedArray/set-same-buffer-different-source-target-types.js",
         # These two fixtures execute a finite O(n log n) sequence of
         # user-visible TypedArray comparisons across many lengths. They are
@@ -340,11 +346,12 @@ def module_sources(entry, test_root, include_dynamic_string_roots=False):
 
 
 def selected_files(all_files, corpus, pattern):
+    patterns = [part for part in pattern.split(",") if part] if pattern else [""]
     files = [
         path
         for path in all_files
         if "_FIXTURE" not in path.name
-        and pattern in path.relative_to(corpus / "test").as_posix()
+        and any(part in path.relative_to(corpus / "test").as_posix() for part in patterns)
     ]
     if pattern and not files:
         raise ValueError(f"--filter selected no test files: {pattern!r}")
@@ -565,7 +572,11 @@ def main():
     parser.add_argument("--jobs", type=int, default=8)
     parser.add_argument("--timeout", type=float, default=2)
     parser.add_argument("--instruction-budget", type=int, default=100_000)
-    parser.add_argument("--filter", default="", help="path substring; reports clearly identify partial runs")
+    parser.add_argument(
+        "--filter",
+        default="",
+        help="one or comma-separated path substrings; reports clearly identify partial runs",
+    )
     parser.add_argument(
         "--progress-interval",
         type=float,
@@ -672,6 +683,8 @@ def main():
                     request["regex_timeout_ms"] = REGEXP_PROPERTY_ESCAPES_REGEX_TIMEOUT_MS
                 elif relative in REGEXP_CLASS_ESCAPE_FIXTURES:
                     request["string_limit"] = REGEXP_CLASS_ESCAPE_STRING_LIMIT
+                if relative == STRING_CASE_MAPPING_FIXTURE:
+                    request["heap_limit"] = STRING_CASE_MAPPING_HEAP_LIMIT
                 if mode == "module" or DYNAMIC_IMPORT_EXPRESSION.search(source_for_execution):
                     sources = module_sources(
                         path,

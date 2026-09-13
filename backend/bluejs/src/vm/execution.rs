@@ -188,6 +188,7 @@ impl Vm {
                 | "Number"
                 | "Boolean"
                 | "BigInt"
+                | "import"
                 | "Atomics"
                 | "Array"
                 | "ArrayBuffer"

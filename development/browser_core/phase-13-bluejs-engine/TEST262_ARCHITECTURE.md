@@ -2034,3 +2034,46 @@ adapter:
 
 This closes the six Object and two Reflect P1.5 modes previously attributed to
 resizable or variable-length TypedArray integrity behavior.
+
+## Test repair and timeout closure
+
+Script execution now materializes the existing lazy `import` global before a
+lexical global read. This is required for `import.source` and `import.defer`:
+their member access is parsed as an ordinary read of the `import` namespace,
+and previously failed with `ReferenceError` despite the namespace and both
+methods already being installed. The direct host regression
+`source_and_defer_dynamic_imports_reject_through_the_promise_path` now passes.
+
+The low-heap String regression retains a split array containing 128 live
+one-code-unit strings as well as the lazily materialized String surface. Its
+256 KiB fixture heap remains deliberately pressure-heavy (`nursery_capacity`
+is one and the major threshold is 256 bytes), while allowing that valid live
+object graph to fit. The former 128 KiB ceiling rejected the live result rather
+than revealing a collection or rooting defect.
+
+The Test262 runner keeps the general resource limits unchanged. It gives only
+`staging/sm/String/string-upper-lower-mapping.js` a 256 MiB managed-heap cap;
+that immutable Unicode mapping table exceeds the normal 16 MiB VM cap and
+already receives the exact-fixture finite-work fuel and wall-time policy. Its
+two modes now pass. `--filter` also accepts comma-separated path substrings so
+a saved timeout manifest can be rerun without broadening a partial inventory.
+
+The prior `target/test262/results.jsonl` timeout manifest contained 908 unique
+`(path, mode)` entries. Rebuilt-adapter reruns matched all 908 keys and every
+one passed:
+
+| Former timeout family | Modes | Result | Evidence |
+| --- | ---: | ---: | --- |
+| RegExp `Script_Extensions` property escapes | 350 | **350 / 350 pass** | `/private/tmp/bluejs-timeout-script-extensions-final` |
+| RegExp `Script` property escapes | 350 | **350 / 350 pass** | `/private/tmp/bluejs-timeout-script-final` |
+| RegExp `General_Category` property escapes | 76 | **76 / 76 pass** | `/private/tmp/bluejs-timeout-general-category-final` |
+| Remaining RegExp property escapes | 108 | **108 / 108 pass** | `/private/tmp/bluejs-timeout-property-other-final` |
+| Character-class, repeat, parseInt, and SpiderMonkey function/accessor fixtures | 22 | **22 / 22 pass** | `/private/tmp/bluejs-timeout-non-property-final` |
+| Unicode String case mapping | 2 | **2 / 2 pass** | `/private/tmp/bluejs-timeout-string-case-final` |
+
+The property-escape and CharacterClass evidence directories contain a few
+additional neighboring modes selected by their path filters; the manifest
+join uses unique `(path, mode)` keys, yielding exactly **908 / 908 pass**.
+The focused Rust regressions and every BlueJS test target reached by the
+workspace rerun passed; the existing Node-dependent differential test remains
+explicitly ignored.

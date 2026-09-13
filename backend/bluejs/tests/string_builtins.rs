@@ -323,7 +323,11 @@ fn native_call_inputs_and_split_results_survive_gc_and_errors() {
         heap: HeapConfig {
             nursery_capacity: 1,
             major_threshold_bytes: 256,
-            max_heap_bytes: 128 * 1024,
+            // The retained split result owns 128 one-code-unit strings in
+            // addition to the lazily materialized String surface. Keep this
+            // deliberately small enough to collect on every allocation, but
+            // large enough for the live conformance value itself.
+            max_heap_bytes: 256 * 1024,
         },
         ..VmConfig::default()
     })
