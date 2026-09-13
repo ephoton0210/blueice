@@ -570,14 +570,39 @@ impl Vm {
     }
 
     pub(super) fn close_iterators_to(&mut self, iterators: &mut Vec<Value>, depth: usize) {
+        let _ = self.close_iterators_to_first_error(iterators, depth);
+    }
+
+    /// Closes the records being left and returns the first close error after
+    /// still giving every outer record its own cleanup opportunity.
+    fn close_iterators_to_first_error(
+        &mut self,
+        iterators: &mut Vec<Value>,
+        depth: usize,
+    ) -> Option<RuntimeError> {
         // A compiler-emitted `break` can close its target for-of iterator
         // before a surrounding handler starts finalizer cleanup.
         let active = iterators.split_off(depth.min(iterators.len()));
+        let mut first_error = None;
         for record in active.into_iter().rev() {
-            // This is cleanup for an already-selected abrupt completion. The
-            // original completion wins over a return() failure.
-            let _ = self.iterator_close(&record);
+            // Scope teardown may already have released the binding that held
+            // this record. Keep it on the VM stack while user-defined
+            // `return()` can allocate or collect.
+            self.stack.push(record);
+            let record = self
+                .stack
+                .last()
+                .expect("iterator record is rooted")
+                .clone();
+            let result = self.iterator_close(&record);
+            self.stack.pop();
+            if let Err(error) = result {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
         }
+        first_error
     }
 
     /// Closes active iterators while completing an ordinary `return`.
@@ -734,7 +759,23 @@ impl Vm {
             if unwind {
                 self.stack.truncate(stack_depth);
                 self.unwind_scopes(code, scope_depth);
-                self.close_iterators_to(iterators, iterator_depth);
+                if let Some(error) = self.close_iterators_to_first_error(iterators, iterator_depth)
+                {
+                    // IteratorClose preserves a pre-existing throw, but a
+                    // return/break/continue is replaced by its first close
+                    // failure. A host resource abort must remain outside the
+                    // JavaScript completion path.
+                    if !matches!(completion, Completion::Throw(_)) {
+                        if !error.is_catchable() {
+                            return Err(error);
+                        }
+                        completion = Completion::Throw(error);
+                        *self
+                            .pending_completions
+                            .last_mut()
+                            .expect("completion remains rooted") = completion.clone();
+                    }
+                }
                 self.unwind_with(with_depth);
             }
 
@@ -1286,6 +1327,29 @@ impl Vm {
             }
         }
         self.binding_value(slot)
+    }
+
+    /// Finds the innermost currently-active lexical or captured binding for
+    /// an object-environment lookup. Bytecode can contain several slots with
+    /// the same source name (notably catch parameters), so the last matching
+    /// slot is not necessarily live.
+    pub(super) fn active_binding_slot(&self, name: &str) -> Option<usize> {
+        self.active_scope_slots
+            .iter()
+            .rev()
+            .find_map(|slots| {
+                slots.iter().rev().find_map(|slot| {
+                    let slot = *slot as usize;
+                    (self.binding_metadata[slot].name == name).then_some(slot)
+                })
+            })
+            .or_else(|| {
+                self.cells
+                    .keys()
+                    .copied()
+                    .filter(|slot| self.binding_metadata[*slot].name == name)
+                    .max()
+            })
     }
 
     /// Lexical names between a direct eval site and the active function's

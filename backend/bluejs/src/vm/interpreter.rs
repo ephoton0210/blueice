@@ -504,6 +504,26 @@ impl Vm {
                         self.iterator_close(&record)?;
                         self.pop();
                     }
+                    Opcode::CloseIteratorBinding => {
+                        if let Some(record) = self.binding_value(operand)? {
+                            // `return()` is user code and can allocate, so
+                            // the record must be stack-rooted just as it is
+                            // for the ordinary IteratorClose opcode.
+                            self.stack.push(record);
+                            let record = self
+                                .stack
+                                .last()
+                                .expect("iterator record is rooted")
+                                .clone();
+                            iterators.retain(|active| active != &record);
+                            let result = self.iterator_close(&record);
+                            self.stack.pop();
+                            result?;
+                        }
+                        // Otherwise a crossed handler already closed this
+                        // iterator before its finalizer and reset the private
+                        // loop scope that stored the record.
+                    }
                     Opcode::IteratorFinish => {
                         let record = self.stack.last().unwrap().clone();
                         let Value::Object(id) = record else {
@@ -814,13 +834,8 @@ impl Vm {
                             unreachable!("compiler emits a name")
                         };
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let fallback = code
-                            .bindings
-                            .iter()
-                            // Captures precede function-local bindings in
-                            // bytecode. An object-environment miss therefore
-                            // resolves the innermost matching slot.
-                            .rposition(|binding| binding.name == name)
+                        let fallback = self
+                            .active_binding_slot(&name)
                             .map(|slot| self.eval_aware_binding_value(slot, &name))
                             .transpose()?;
                         let value = self.with_get(&name, fallback)?;
@@ -854,11 +869,7 @@ impl Vm {
                             // ordinary member-reference pair.
                             self.stack.push(object);
                             self.stack.push(Value::String(name.into()));
-                        } else if let Some(slot) = code
-                            .bindings
-                            .iter()
-                            .rposition(|binding| binding.name == name)
-                        {
+                        } else if let Some(slot) = self.active_binding_slot(&name) {
                             // `Null` tags an internal binding reference; the
                             // slot is safe because it is compiler-owned and is
                             // consumed only by StoreWithReference.

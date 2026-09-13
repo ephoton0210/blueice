@@ -114,6 +114,7 @@ fn compile_with_limit_and_mode(
         function: false,
         local_scope: 0,
         with_depth: 0,
+        with_scope_depths: Vec::new(),
     };
     compiler.bytecode.strict = module || strict_body(&program.body);
     compiler.bytecode.module = module;
@@ -306,6 +307,10 @@ pub(crate) fn compile_eval(
         function: false,
         local_scope: 1,
         with_depth,
+        // Captured bindings form the outer lexical environment of direct
+        // eval. Any inherited `with` environments occur after it, while the
+        // eval's own declaration scope is entered below.
+        with_scope_depths: vec![1; with_depth],
     };
     compiler.bytecode.strict = strict || strict_body(&program.body);
     compiler.bytecode.new_target_allowed = new_target_allowed;
@@ -423,6 +428,10 @@ struct Compiler {
     function: bool,
     local_scope: usize,
     with_depth: usize,
+    /// The static lexical-scope depth at which each active `with`
+    /// environment was inserted. A binding declared after the innermost
+    /// entry wins before that object environment during name resolution.
+    with_scope_depths: Vec<usize>,
 }
 
 #[derive(Clone, Copy)]
@@ -547,6 +556,22 @@ impl Compiler {
             .iter()
             .rev()
             .find_map(|scope| scope.get(name).copied())
+    }
+
+    /// Returns an active lexical binding that is inside the innermost `with`
+    /// environment. Such a binding has priority over the object environment,
+    /// e.g. a catch parameter inside `with (object) { try {} catch (e) {} }`.
+    fn resolve_inside_innermost_with(&self, name: &str) -> Option<u32> {
+        let with_scope_depth = *self.with_scope_depths.last()?;
+        self.names
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(scope_depth, scope)| {
+                (scope_depth >= with_scope_depth)
+                    .then(|| scope.get(name).copied())
+                    .flatten()
+            })
     }
 
     fn resolve_private_name(&self, name: &str) -> Result<u32, CompileError> {

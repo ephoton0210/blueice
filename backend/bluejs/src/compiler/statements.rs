@@ -92,7 +92,11 @@ impl Compiler {
                 self.expression(object)?;
                 self.emit(Opcode::EnterWith, 0)?;
                 self.with_depth += 1;
+                self.with_scope_depths.push(self.names.len());
                 let result = self.statement(body, false);
+                self.with_scope_depths
+                    .pop()
+                    .expect("compiler balances with scopes");
                 self.with_depth -= 1;
                 result?;
                 self.emit(Opcode::LeaveWith, 0)?;
@@ -417,8 +421,12 @@ impl Compiler {
         let cleanup = self.offset()?;
         self.bytecode.abrupt_jumps[control].cleanup = cleanup;
         for iterator in iterators {
-            self.emit(Opcode::GetBinding, iterator)?;
-            self.emit(Opcode::IteratorClose, 0)?;
+            // A handler crossed on the way to this cleanup gateway closes
+            // iterators inside it before it runs `finally`, then unwinds the
+            // corresponding lexical scope. This operation closes an iterator
+            // that is still live, while making that already-cleaned path a
+            // no-op instead of reading an inactive `*iterator*` binding.
+            self.emit(Opcode::CloseIteratorBinding, iterator)?;
         }
         for scope in scopes {
             self.emit(Opcode::LeaveScope, scope)?;

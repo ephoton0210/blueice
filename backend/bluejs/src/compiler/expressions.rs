@@ -76,7 +76,9 @@ impl Compiler {
                         "a reserved word cannot be used as an identifier in strict code",
                     ));
                 }
-                if self.with_depth != 0 {
+                if let Some(slot) = self.resolve_inside_innermost_with(name) {
+                    self.emit(Opcode::GetBinding, slot)?;
+                } else if self.with_depth != 0 {
                     let index = u32::try_from(self.bytecode.constants.len())
                         .map_err(|_| CompileError::ProgramTooLarge)?;
                     self.bytecode
@@ -1074,7 +1076,7 @@ impl Compiler {
             return Ok(());
         }
         if let Expr::Identifier(name) = target {
-            if self.with_depth != 0 {
+            if self.with_depth != 0 && self.resolve_inside_innermost_with(name).is_none() {
                 let index = self.name_constant(name)?;
                 // Resolve the object-environment binding before evaluating
                 // the RHS. A deletion or eval in that RHS must not redirect

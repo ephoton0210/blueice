@@ -129,9 +129,10 @@ file is rustfmt-clean. No workspace coverage claim is made by the BlueJS gate.
 
 The iterator completion state and rest-rooting subtask is complete. The next
 subtask, general Completion records plus `catch`/`finally`, is implemented in
-the limited executable subset described below. P0.1 is still open: labels,
-`switch`, all grammar/early-error work and the remaining control-flow coverage
-must precede P0.2 and P0.3. No P0 workstream or builtin family is fully complete.
+the limited executable subset described below. P0.1 is still open: remaining
+labels/`switch` control-flow coverage, all grammar/early-error work and the
+remaining control-flow coverage must precede P0.2 and P0.3. No P0 workstream or
+builtin family is fully complete.
 
 ## Second P0.1 slice: Completion records and `try` handlers
 
@@ -1688,6 +1689,29 @@ pass-to-nonpass** transitions. Its remaining results are scoped grammar,
 resource-management, Array/Map/Set, or TypedArray work rather than this
 completion/reference slice; this does not close P0.1–P0.3 as whole
 workstreams.
+
+## P0.1 completion/rooting boundary repair
+
+The next completion slice covers a labelled transfer which leaves nested
+`for-of` loops through a `switch` and a `finally`. The handler correctly closes
+the inner iterator before entering the finalizer, but its scope unwind had made
+the compiler cleanup gateway read an inactive private `*iterator*` binding.
+`CloseIteratorBinding` now closes a still-live record with the normal
+iterator-close error behavior, while treating a binding already closed and
+unwound by a crossed handler as a no-op. Its record is stack-rooted while a
+user-defined `return()` runs. The public regression requires the observable
+order `inner-close`, `finally`, `outer-close`; a close failure replaces the
+labelled break only after that outer iterator has also been closed.
+
+`with` lookup also now records the lexical-scope depth at which each object
+environment is compiled. A catch parameter introduced inside that environment
+therefore resolves before the object property, rather than choosing an
+inactive same-named catch slot later in bytecode. The complete Test262
+`language/statements/try/S12.14_A14.js` fixture is a public pipeline
+regression. On 2026-09-13, the rebuilt adapter's focused
+`language/statements/try` shard recorded **398 pass / 0 fail** (206 files).
+Tiny-nursery public cases additionally retain thrown and returned objects
+across `switch`/`finally` allocation pressure.
 
 ## Test262 process-host completion liveness
 

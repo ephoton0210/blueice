@@ -398,6 +398,7 @@ impl Compiler {
             function: true,
             local_scope: 1,
             with_depth: 0,
+            with_scope_depths: Vec::new(),
         };
         child.bytecode.strict =
             options.force_strict || self.bytecode.strict || strict_body(&function.body);

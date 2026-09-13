@@ -402,6 +402,45 @@ fn with_scopes_resolve_properties_and_unwind_at_handlers() {
         ),
         Ok(Value::Bool(true))
     );
+    assert_eq!(
+        execute(
+            &mut vm,
+            "let object={value:'inner'};let caught;try{with(object){throw value;}}catch(error){if(error!=='inner')throw 1;caught=error;}caught==='inner'",
+        ),
+        Ok(Value::Bool(true))
+    );
+    assert_eq!(
+        execute(
+            &mut vm,
+            "let object={error:'with'};let caught;with(object){try{throw 'thrown';}catch(error){error='catch';caught=error;}}caught==='catch'&&object.error==='with'",
+        ),
+        Ok(Value::Bool(true)),
+        "a catch binding is inside, rather than shadowed by, its surrounding with environment",
+    );
+    assert_eq!(
+        execute(
+            &mut vm,
+            "let outer='lexical';let result;with({}){result=outer;}result==='lexical'",
+        ),
+        Ok(Value::Bool(true)),
+        "with falls back to the currently active lexical binding rather than an inactive same-named slot",
+    );
+    assert_eq!(
+        execute(
+            &mut vm,
+            "function make(value){return function(){let result;with({}){result=value;}return result;}}make('captured')()==='captured'",
+        ),
+        Ok(Value::Bool(true)),
+        "with fallback retains an active captured binding",
+    );
+    assert_eq!(
+        execute(
+            &mut vm,
+            include_str!("../../../development/browser_core/reference/test262/test/language/statements/try/S12.14_A14.js"),
+        ),
+        Ok(Value::Undefined),
+        "the complete Test262 with/try/catch/finally fixture must not lose the catch binding",
+    );
     assert!(compile(&parse("'use strict';with({}){} ").unwrap()).is_err());
 }
 
@@ -447,6 +486,10 @@ fn caught_values_stay_rooted_and_host_limits_do_not_enter_catch() {
     })
     .unwrap();
     let source = "let result;try{throw {answer:42};}catch(error){for(let i=0;i<20;i++){let garbage={i};}result=error;}result.answer";
+    assert_eq!(execute(&mut vm, source), Ok(Value::Number(42.0)));
+    let source = "let result;try{try{switch(1){case 1:throw {answer:42};}}finally{for(let i=0;i<20;i++){let garbage={i};}}}catch(error){result=error;}result.answer";
+    assert_eq!(execute(&mut vm, source), Ok(Value::Number(42.0)));
+    let source = "let result=(function(){let value={answer:42};try{return value;}finally{for(let i=0;i<20;i++){let garbage={i};}}})();result.answer";
     assert_eq!(execute(&mut vm, source), Ok(Value::Number(42.0)));
     let mut limited = Vm::new(VmConfig {
         instruction_budget: 200,

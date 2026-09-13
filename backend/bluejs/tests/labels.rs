@@ -28,6 +28,18 @@ fn labelled_breaks_close_the_iterators_they_leave() {
 }
 
 #[test]
+fn labelled_breaks_cross_switch_finally_and_nested_iterator_cleanup_in_order() {
+    let source = "let trace=[];let outerIterator={next(){return {value:1,done:false};},return(){trace.push('outer-close');return {done:true};}};let innerIterator={next(){return {value:1,done:false};},return(){trace.push('inner-close');return {done:true};}};let outerIterable={[Symbol.iterator](){return outerIterator;}};let innerIterable={[Symbol.iterator](){return innerIterator;}};outer:for(let outerValue of outerIterable){try{switch(1){case 1:for(let innerValue of innerIterable){break outer;}}}finally{trace.push('finally');}}trace.join(',')==='inner-close,finally,outer-close'";
+    assert_eq!(evaluate(source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn labelled_break_close_error_replaces_the_break_after_finally() {
+    let source = "let trace=[];let outerIterator={next(){return {value:1,done:false};},return(){trace.push('outer-close');return {done:true};}};let innerIterator={next(){return {value:1,done:false};},return(){trace.push('inner-close');throw 'inner-error';}};let outerIterable={[Symbol.iterator](){return outerIterator;}};let innerIterable={[Symbol.iterator](){return innerIterator;}};let error;try{outer:for(let outerValue of outerIterable){try{for(let innerValue of innerIterable){break outer;}}finally{trace.push('finally');}}}catch(caught){error=caught;}trace.join(',')==='inner-close,finally,outer-close'&&error==='inner-error'";
+    assert_eq!(evaluate(source), Ok(Value::Bool(true)));
+}
+
+#[test]
 fn labelled_early_errors_and_sloppy_let_asi_are_classified() {
     for source in [
         "label: let value=1",

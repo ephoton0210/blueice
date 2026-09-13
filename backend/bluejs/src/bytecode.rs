@@ -126,6 +126,9 @@ opcodes! {
     IteratorStepReference: 5, 0;
     IteratorElision: 1, 0;
     IteratorClose: 1, 0;
+    // Control-transfer cleanup may resume after a handler already closed the
+    // iterator and unwound the scope that held this compiler-private slot.
+    CloseIteratorBinding: 5, 0;
     IteratorFinish: 1, 0;
     IteratorRest: 1, 0;
     IteratorRestReference: 1, 0;
