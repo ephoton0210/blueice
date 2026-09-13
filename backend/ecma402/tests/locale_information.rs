@@ -232,6 +232,26 @@ fn locale_option_errors_aliases_and_information_fallbacks_are_explicit() {
             .as_str(),
         "posix"
     );
+    let rebuilt = canonicalize("fr-CA").unwrap();
+    let (data_locale, canonical) = rebuilt.into_parts();
+    assert_eq!(canonical, "fr-CA");
+    assert_eq!(data_locale.to_string(), "fr-CA");
+    let applied = apply_locale_options(
+        &canonicalize("en").unwrap(),
+        &LocaleOptions {
+            hour_cycle: Some("h11".into()),
+            case_first: Some("false".into()),
+            numeric: Some(false),
+            first_day_of_week: Some("7".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(applied.as_str(), "en-u-fw-sun-hc-h11-kf-false-kn-false");
+    assert_eq!(
+        canonicalize("en-u-tz-est").unwrap().as_str(),
+        "en-u-tz-papty"
+    );
 
     for (tag, first_day, time_zone, direction) in [
         ("en-u-fw-tue", 2, None, TextDirection::LeftToRight),
@@ -248,6 +268,7 @@ fn locale_option_errors_aliases_and_information_fallbacks_are_explicit() {
         ("ja-JP", 7, Some("Asia/Tokyo"), TextDirection::LeftToRight),
         ("de-DE", 1, Some("Etc/UTC"), TextDirection::LeftToRight),
         ("en-Arab", 1, None, TextDirection::RightToLeft),
+        ("ar", 1, None, TextDirection::RightToLeft),
     ] {
         let information = locale_information(&canonicalize(tag).unwrap());
         assert_eq!(information.week_info.first_day, first_day, "{tag}");

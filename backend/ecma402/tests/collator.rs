@@ -151,6 +151,30 @@ fn exposes_supported_tailorings_option_paths_and_utf16_search_folding() {
     assert!(punctuation.resolved_options().ignore_punctuation);
     assert!(punctuation.bytes() > std::mem::size_of::<Collator>());
 
+    let tailored = Collator::try_new(
+        &[canonicalize("de").unwrap()],
+        CollatorOptions {
+            collation: Some("phonebk".into()),
+            case_first: Some(CaseFirst::Upper),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(tailored.resolved_options().collation, "phonebk");
+    assert_eq!(tailored.resolved_options().case_first, CaseFirst::Upper);
+    let false_case_first = Collator::try_new(
+        &[canonicalize("en").unwrap()],
+        CollatorOptions {
+            case_first: Some(CaseFirst::False),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        false_case_first.resolved_options().case_first,
+        CaseFirst::False
+    );
+
     let german = Collator::try_new(
         &[canonicalize("de").unwrap()],
         CollatorOptions {

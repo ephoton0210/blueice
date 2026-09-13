@@ -254,3 +254,103 @@ fn covers_relative_time_locale_fallback_number_parts_and_errors() {
         ]
     );
 }
+
+#[test]
+fn formats_every_polish_unit_style_and_plural_category() {
+    let number = |value: f64| {
+        if value.fract() == 0.0 {
+            format!("{value:.0}")
+        } else {
+            value.to_string().replace('.', ",")
+        }
+    };
+    let assert_labels = |style, labels: &[(RelativeTimeUnit, f64, &str)]| {
+        let formatter = RelativeTimeFormat::try_new(
+            &[canonicalize("pl").unwrap()],
+            RelativeTimeFormatOptions {
+                style,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        for &(unit, value, label) in labels {
+            assert_eq!(
+                formatter.format(value, unit).unwrap(),
+                format!("za {} {label}", number(value)),
+                "{style:?} {unit:?} {value}"
+            );
+        }
+    };
+
+    assert_labels(
+        RelativeTimeStyle::Long,
+        &[
+            (RelativeTimeUnit::Second, 1.0, "sekundę"),
+            (RelativeTimeUnit::Second, 2.0, "sekundy"),
+            (RelativeTimeUnit::Second, 5.0, "sekund"),
+            (RelativeTimeUnit::Minute, 1.0, "minutę"),
+            (RelativeTimeUnit::Minute, 2.0, "minuty"),
+            (RelativeTimeUnit::Minute, 5.0, "minut"),
+            (RelativeTimeUnit::Hour, 1.0, "godzinę"),
+            (RelativeTimeUnit::Hour, 2.0, "godziny"),
+            (RelativeTimeUnit::Hour, 5.0, "godzin"),
+            (RelativeTimeUnit::Day, 1.0, "dzień"),
+            (RelativeTimeUnit::Day, 2.0, "dni"),
+            (RelativeTimeUnit::Day, 1.5, "dnia"),
+            (RelativeTimeUnit::Week, 1.0, "tydzień"),
+            (RelativeTimeUnit::Week, 2.0, "tygodnie"),
+            (RelativeTimeUnit::Week, 5.0, "tygodni"),
+            (RelativeTimeUnit::Week, 1.5, "tygodnia"),
+            (RelativeTimeUnit::Month, 1.0, "miesiąc"),
+            (RelativeTimeUnit::Month, 2.0, "miesiące"),
+            (RelativeTimeUnit::Month, 5.0, "miesięcy"),
+            (RelativeTimeUnit::Month, 1.5, "miesiąca"),
+            (RelativeTimeUnit::Quarter, 1.0, "kwartał"),
+            (RelativeTimeUnit::Quarter, 2.0, "kwartały"),
+            (RelativeTimeUnit::Quarter, 5.0, "kwartałów"),
+            (RelativeTimeUnit::Quarter, 1.5, "kwartału"),
+            (RelativeTimeUnit::Year, 1.0, "rok"),
+            (RelativeTimeUnit::Year, 2.0, "lata"),
+            (RelativeTimeUnit::Year, 5.0, "lat"),
+            (RelativeTimeUnit::Year, 1.5, "roku"),
+        ],
+    );
+    assert_labels(
+        RelativeTimeStyle::Short,
+        &[
+            (RelativeTimeUnit::Second, 2.0, "sek."),
+            (RelativeTimeUnit::Minute, 2.0, "min"),
+            (RelativeTimeUnit::Hour, 2.0, "godz."),
+            (RelativeTimeUnit::Day, 1.0, "dzień"),
+            (RelativeTimeUnit::Day, 2.0, "dni"),
+            (RelativeTimeUnit::Day, 1.5, "dnia"),
+            (RelativeTimeUnit::Week, 1.0, "tydz."),
+            (RelativeTimeUnit::Week, 2.0, "tyg."),
+            (RelativeTimeUnit::Month, 2.0, "mies."),
+            (RelativeTimeUnit::Quarter, 2.0, "kw."),
+            (RelativeTimeUnit::Year, 1.0, "rok"),
+            (RelativeTimeUnit::Year, 2.0, "lata"),
+            (RelativeTimeUnit::Year, 5.0, "lat"),
+            (RelativeTimeUnit::Year, 1.5, "roku"),
+        ],
+    );
+    assert_labels(
+        RelativeTimeStyle::Narrow,
+        &[
+            (RelativeTimeUnit::Second, 2.0, "s"),
+            (RelativeTimeUnit::Minute, 2.0, "min"),
+            (RelativeTimeUnit::Hour, 2.0, "g."),
+            (RelativeTimeUnit::Day, 1.0, "dzień"),
+            (RelativeTimeUnit::Day, 2.0, "dni"),
+            (RelativeTimeUnit::Day, 1.5, "dnia"),
+            (RelativeTimeUnit::Week, 1.0, "tydz."),
+            (RelativeTimeUnit::Week, 2.0, "tyg."),
+            (RelativeTimeUnit::Month, 2.0, "mies."),
+            (RelativeTimeUnit::Quarter, 2.0, "kw."),
+            (RelativeTimeUnit::Year, 1.0, "rok"),
+            (RelativeTimeUnit::Year, 2.0, "lata"),
+            (RelativeTimeUnit::Year, 5.0, "lat"),
+            (RelativeTimeUnit::Year, 1.5, "roku"),
+        ],
+    );
+}

@@ -125,6 +125,15 @@ fn covers_list_locale_filters_widths_empty_values_and_error_text() {
             .collect::<Vec<_>>(),
         ["fr"]
     );
+    let trace = blueice_ecma402::negotiate_list_format_locale(&requested, LocaleMatcher::BestFit);
+    assert_eq!(
+        trace
+            .candidates()
+            .iter()
+            .map(|candidate| candidate.requested().as_str())
+            .collect::<Vec<_>>(),
+        ["zz", "fr"]
+    );
     let narrow = ListFormat::try_new(
         &[canonicalize("en").unwrap()],
         ListFormatOptions {

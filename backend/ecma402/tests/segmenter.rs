@@ -158,6 +158,10 @@ fn covers_segmenter_locale_filters_defaults_and_host_storage() {
             .collect::<Vec<_>>(),
         [false]
     );
+    assert_eq!(
+        graphemes.negotiation().candidates()[0].requested().as_str(),
+        "zz"
+    );
     assert!(graphemes.bytes() > std::mem::size_of::<Segmenter>());
     assert_eq!(
         SegmenterError::DataUnavailable.to_string(),

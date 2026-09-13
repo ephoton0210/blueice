@@ -124,6 +124,17 @@ fn exposes_plural_locale_filters_errors_and_remaining_supplemental_paths() {
             .collect::<Vec<_>>(),
         ["ar"]
     );
+    let trace = PluralRules::try_new(&requested, Default::default()).unwrap();
+    assert_eq!(trace.negotiation().matcher(), Default::default());
+    assert_eq!(
+        trace
+            .negotiation()
+            .candidates()
+            .iter()
+            .map(|candidate| candidate.requested().as_str())
+            .collect::<Vec<_>>(),
+        ["zz", "ar"]
+    );
 
     let arabic = PluralRules::try_new(&[canonicalize("ar").unwrap()], Default::default()).unwrap();
     assert_eq!(arabic.select_f64(0.0).unwrap(), PluralCategory::Zero);

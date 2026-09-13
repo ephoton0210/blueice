@@ -3347,4 +3347,77 @@ mod tests {
         let unsupported = canonicalize("zz").unwrap();
         assert!(!supports_collation_locale(unsupported.locale()));
     }
+
+    #[test]
+    fn internal_host_helpers_preserve_their_publicly_observable_records() {
+        assert!(is_unicode_language_id("qaa-Latn-419-1abc-abcde"));
+        assert!(!is_unicode_language_id(""));
+        assert!(!is_unicode_language_id("en-a"));
+        assert_eq!(
+            canonical_unicode_language_id("QAA-lAtN-419-1ABC-ABCDE"),
+            "qaa-Latn-419-1abc-abcde"
+        );
+
+        for (value, expected) in [
+            ("+1", PluralCategory::One),
+            ("2", PluralCategory::Two),
+            ("20", PluralCategory::Few),
+            ("13", PluralCategory::Other),
+            ("1.0", PluralCategory::Many),
+        ] {
+            assert_eq!(SupplementalPluralRules::Manx.select(value), expected);
+        }
+
+        let input = "ab".encode_utf16().collect::<Vec<_>>();
+        assert_eq!(
+            segmenter_segments(&input, [(0, None), (1, Some(true)), (2, Some(false))]),
+            vec![
+                SegmenterSegment {
+                    segment: "a".into(),
+                    index_utf16: 0,
+                    is_word_like: Some(true),
+                },
+                SegmenterSegment {
+                    segment: "b".into(),
+                    index_utf16: 1,
+                    is_word_like: Some(false),
+                },
+            ]
+        );
+
+        use std::fmt::Write as _;
+        let mut collector = ListPartCollector::default();
+        collector.write_str("").unwrap();
+        collector.write_str("before ").unwrap();
+        collector
+            .with_part(icu_list::parts::ELEMENT, |writer| writer.write_str("A"))
+            .unwrap();
+        collector
+            .with_part(icu_list::parts::LITERAL, |writer| writer.write_str(", "))
+            .unwrap();
+        collector
+            .with_part(icu_list::parts::ELEMENT, |writer| writer.write_str("B"))
+            .unwrap();
+        assert_eq!(
+            collector.parts,
+            vec![
+                ListPart {
+                    kind: ListPartKind::Literal,
+                    value: "before ".into(),
+                },
+                ListPart {
+                    kind: ListPartKind::Element,
+                    value: "A".into(),
+                },
+                ListPart {
+                    kind: ListPartKind::Literal,
+                    value: ", ".into(),
+                },
+                ListPart {
+                    kind: ListPartKind::Element,
+                    value: "B".into(),
+                },
+            ]
+        );
+    }
 }

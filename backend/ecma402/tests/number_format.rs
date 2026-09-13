@@ -157,6 +157,17 @@ fn exposes_every_decimal_error_grouping_policy_and_locale_selection_path() {
             .collect::<Vec<_>>(),
         ["en-GB"]
     );
+    let traced = NumberFormat::try_new(&requested, Default::default()).unwrap();
+    assert_eq!(traced.negotiation().matcher(), Default::default());
+    assert_eq!(
+        traced
+            .negotiation()
+            .candidates()
+            .iter()
+            .map(|candidate| candidate.requested().as_str())
+            .collect::<Vec<_>>(),
+        ["zz", "en-GB"]
+    );
 
     let always = NumberFormat::try_new(
         &[canonicalize("en").unwrap()],
