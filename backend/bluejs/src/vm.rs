@@ -1449,13 +1449,13 @@ impl Vm {
             args = prefixes.into_iter().rev().flatten().chain(args).collect();
         }
         if let Value::Object(id) = callee {
-            if self.test262_foreign_reference(id).is_some() {
-                return self.test262_foreign_call(id, receiver, args, construct);
+            if self.heap.proxy(id)?.is_some() {
+                return self.proxy_call(id, receiver, args, construct);
             }
         }
         if let Value::Object(id) = callee {
-            if self.heap.proxy(id)?.is_some() {
-                return self.proxy_call(id, receiver, args, construct);
+            if self.test262_foreign_reference(id).is_some() {
+                return self.test262_foreign_call(id, receiver, args, construct);
             }
         }
         if let Value::Object(id) = callee {

@@ -62,6 +62,20 @@ impl Vm {
         receiver: &Value,
         key: &PropertyName,
     ) -> Result<Value, RuntimeError> {
+        if key == "constructor" && self.heap.is_array(target)? {
+            // Array instances inherit this property from `%Array.prototype%`.
+            // The intrinsic constructor is otherwise lazy, but the inherited
+            // lookup may occur before a global `Array` reference in the same
+            // expression. Materialize it first so `[].constructor` is not
+            // observably absent.
+            self.global("Array")?;
+        }
+        // Imported live Proxies have both a membrane record and a local
+        // Proxy exotic record.  The latter owns the current execution
+        // context, so it must dispatch before ordinary foreign forwarding.
+        if self.heap.proxy(target)?.is_some() {
+            return self.proxy_get(target, receiver, key);
+        }
         if self.test262_foreign_reference(target).is_some() {
             return self.test262_foreign_get(target, receiver, key);
         }
@@ -106,9 +120,6 @@ impl Vm {
         {
             self.global("Object")?;
         }
-        if self.heap.proxy(target)?.is_some() {
-            return self.proxy_get(target, receiver, key);
-        }
         self.get_from_prototype(target, receiver, key)
     }
 
@@ -139,7 +150,9 @@ impl Vm {
             self.global("Function")?;
         }
         if let Value::Object(object) = receiver {
-            if self.test262_foreign_reference(*object).is_some() {
+            if self.heap.proxy(*object)?.is_none()
+                && self.test262_foreign_reference(*object).is_some()
+            {
                 return self.test262_foreign_set(*object, key, value);
             }
             self.materialize_global_object_property(*object, key)?;

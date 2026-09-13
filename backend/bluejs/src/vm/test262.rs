@@ -1107,18 +1107,45 @@ impl Vm {
         {
             return Ok(Value::Object(*wrapper));
         }
-        let (callable, constructible, target_root) = {
+        let (callable, constructible, proxy_parts, target_root) = {
             let realm = self.test262_realms.get_mut(&realm_id).ok_or_else(|| {
                 RuntimeError::TypeError("foreign Test262 realm is no longer available".into())
             })?;
             let value = Value::Object(target);
             let callable = realm.vm.is_callable(&value)?;
             let constructible = realm.vm.is_constructor(&value)?;
+            // A live foreign Proxy needs a local exotic facade, rather than
+            // the ordinary wrapper used for other foreign values. Its
+            // internal methods create argument and descriptor objects in the
+            // *current* Realm before calling a possibly foreign trap. An
+            // ordinary facade would instead run the complete Proxy operation
+            // in the child Realm, leaking that Realm through those objects.
+            // A revoked proxy remains an ordinary foreign facade: observing
+            // it immediately throws and there are no live slots to mirror.
+            let proxy_parts = realm.vm.heap.proxy(target).ok().flatten();
             let root = realm.vm.heap.root(target)?;
-            (callable, constructible, root)
+            (callable, constructible, proxy_parts, root)
         };
         let prototype = self.object_prototype;
-        let wrapper = match self.with_roots(|heap| heap.alloc_object(Some(prototype))) {
+        let wrapper = match (|| {
+            if let Some((target, handler)) = proxy_parts {
+                let target = self
+                    .test262_import_foreign_value(realm_id, Value::Object(target))?
+                    .object_id()
+                    .expect("foreign proxy target is an object");
+                let handler = self
+                    .test262_import_foreign_value(realm_id, Value::Object(handler))?
+                    .object_id()
+                    .expect("foreign proxy handler is an object");
+                self.with_roots(|heap| {
+                    heap.alloc_proxy(target, handler, Some(prototype), callable, constructible)
+                })
+                .map_err(Into::into)
+            } else {
+                self.with_roots(|heap| heap.alloc_object(Some(prototype)))
+                    .map_err(Into::into)
+            }
+        })() {
             Ok(wrapper) => wrapper,
             Err(error) => {
                 self.test262_realms
@@ -1368,6 +1395,16 @@ impl Vm {
         // then selects that target realm's `%Object.prototype%` normally.
         if construct && foreign_native == Some(NativeFunction::Object) {
             return self.native_call(NativeFunction::Object, receiver, args, true);
+        }
+        // `%Proxy%` stores its supplied target and handler in the new proxy's
+        // internal slots.  Transporting either object into the child VM would
+        // replace it with an opaque stand-in, so later traps would lose both
+        // identity and the caller Realm in which they execute.  ProxyCreate
+        // itself does not capture the constructor's Realm; create the proxy
+        // locally with the original objects and let normal proxy dispatch
+        // choose the target function's Realm where required.
+        if foreign_native == Some(NativeFunction::Proxy) {
+            return self.proxy_constructor(&args, construct);
         }
         if foreign_native == Some(NativeFunction::ProxyRevocable) {
             return self.proxy_revocable(&args);

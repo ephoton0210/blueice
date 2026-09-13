@@ -112,11 +112,11 @@ impl Vm {
         &mut self,
         object: ObjectId,
     ) -> Result<Option<ObjectId>, RuntimeError> {
-        if self.test262_foreign_reference(object).is_some() {
-            return self.test262_foreign_get_prototype(object);
-        }
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_get_prototype(object);
+        }
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_get_prototype(object);
         }
         self.heap.prototype(object).map_err(Into::into)
     }
@@ -370,9 +370,6 @@ impl Vm {
             let object = function
                 .object_id()
                 .ok_or_else(|| RuntimeError::TypeError("constructor must be callable".into()))?;
-            if let Some((realm, _, _, _)) = self.test262_foreign_reference(object) {
-                return Ok(Some(realm));
-            }
             if let Some(bound) = self.heap.bound_function(object)? {
                 function = Value::Object(bound.target);
                 continue;
@@ -380,6 +377,9 @@ impl Vm {
             if let Some((target, _)) = self.heap.proxy(object)? {
                 function = Value::Object(target);
                 continue;
+            }
+            if let Some((realm, _, _, _)) = self.test262_foreign_reference(object) {
+                return Ok(Some(realm));
             }
             if self.heap.closure(object)?.is_some() || self.heap.native_function(object)?.is_some()
             {
@@ -852,6 +852,21 @@ impl Vm {
             return Err(RuntimeError::TypeError(
                 "Proxy getOwnPropertyDescriptor trap reported a new non-configurable property"
                     .into(),
+            ));
+        }
+        // Proxy.[[GetOwnProperty]] has one stricter invariant than ordinary
+        // ValidateAndApplyPropertyDescriptor: a trap may not report a
+        // non-configurable target's writable data property as non-writable.
+        // The general compatibility predicate correctly permits the ordinary
+        // transition, so enforce this Proxy-specific observation separately.
+        if descriptor.configurable == Some(false)
+            && descriptor.writable == Some(false)
+            && target_descriptor.as_ref().is_some_and(|current| {
+                current.configurable == Some(false) && current.writable == Some(true)
+            })
+        {
+            return Err(RuntimeError::TypeError(
+                "Proxy getOwnPropertyDescriptor trap made a target property non-writable".into(),
             ));
         }
         Ok(Some(descriptor))
