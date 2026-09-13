@@ -1543,10 +1543,18 @@ fn intl_constructors_select_foreign_new_target_intrinsics() {
         let newTarget = new other.Function();
         newTarget.prototype = undefined;
         let collator = Reflect.construct(Intl.Collator, [], newTarget);
+        let displayNames = Reflect.construct(Intl.DisplayNames, ['en', {type: 'language'}], newTarget);
         let list = Reflect.construct(Intl.ListFormat, [], newTarget);
+        let plural = Reflect.construct(Intl.PluralRules, [], newTarget);
+        let relativeTime = Reflect.construct(Intl.RelativeTimeFormat, [], newTarget);
+        let segmenter = Reflect.construct(Intl.Segmenter, [], newTarget);
         let locale = Reflect.construct(Intl.Locale, ['de'], newTarget);
         Object.getPrototypeOf(collator) === other.Intl.Collator.prototype &&
+          Object.getPrototypeOf(displayNames) === other.Intl.DisplayNames.prototype &&
           Object.getPrototypeOf(list) === other.Intl.ListFormat.prototype &&
+          Object.getPrototypeOf(plural) === other.Intl.PluralRules.prototype &&
+          Object.getPrototypeOf(relativeTime) === other.Intl.RelativeTimeFormat.prototype &&
+          Object.getPrototypeOf(segmenter) === other.Intl.Segmenter.prototype &&
           Object.getPrototypeOf(locale) === other.Intl.Locale.prototype
     "#;
     assert_eq!(

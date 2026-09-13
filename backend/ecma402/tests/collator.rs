@@ -7,8 +7,8 @@
 use std::cmp::Ordering;
 
 use blueice_ecma402::{
-    canonicalize, CaseFirst, Collator, CollatorOptions, CollatorUsage, ResolvedCollatorOptions,
-    Sensitivity,
+    canonicalize, supports_collation, CaseFirst, Collator, CollatorError, CollatorOptions,
+    CollatorUsage, ResolvedCollatorOptions, Sensitivity,
 };
 
 #[test]
@@ -93,5 +93,92 @@ fn search_tailoring_and_unpaired_utf16_are_service_concerns() {
     assert_eq!(
         collator.compare_utf16(&[0xd800], &[0xd800]),
         Ordering::Equal
+    );
+}
+
+#[test]
+fn exposes_supported_tailorings_option_paths_and_utf16_search_folding() {
+    for (locale, collation) in [
+        ("en", "emoji"),
+        ("en", "eor"),
+        ("de", "phonebk"),
+        ("es", "trad"),
+        ("zh", "pinyin"),
+        ("zh", "stroke"),
+        ("zh", "unihan"),
+        ("zh", "zhuyin"),
+        ("ja", "unihan"),
+        ("ko", "searchjl"),
+        ("si", "dict"),
+        ("ar", "compat"),
+    ] {
+        let locale = canonicalize(locale).unwrap();
+        assert!(
+            supports_collation(locale.locale(), collation),
+            "{collation}"
+        );
+    }
+    assert!(!supports_collation(
+        canonicalize("en").unwrap().locale(),
+        "phonebk"
+    ));
+
+    for (sensitivity, left, right, expected) in [
+        (Sensitivity::Base, "a", "A", Ordering::Equal),
+        (Sensitivity::Accent, "e", "é", Ordering::Less),
+        (Sensitivity::Case, "a", "A", Ordering::Less),
+        (Sensitivity::Variant, "a", "A", Ordering::Less),
+    ] {
+        let collator = Collator::try_new(
+            &[canonicalize("en").unwrap()],
+            CollatorOptions {
+                sensitivity,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            collator.compare_utf16(
+                &left.encode_utf16().collect::<Vec<_>>(),
+                &right.encode_utf16().collect::<Vec<_>>()
+            ),
+            expected
+        );
+    }
+
+    let punctuation =
+        Collator::try_new(&[canonicalize("th").unwrap()], CollatorOptions::default()).unwrap();
+    assert!(punctuation.resolved_options().ignore_punctuation);
+    assert!(punctuation.bytes() > std::mem::size_of::<Collator>());
+
+    let german = Collator::try_new(
+        &[canonicalize("de").unwrap()],
+        CollatorOptions {
+            usage: CollatorUsage::Search,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    for (source, folded) in [
+        ("Ä", "AE"),
+        ("Ö", "OE"),
+        ("Ü", "UE"),
+        ("ß", "ss"),
+        ("ä", "ae"),
+        ("ö", "oe"),
+        ("ü", "ue"),
+    ] {
+        assert_eq!(
+            german.compare_utf16(
+                &source.encode_utf16().collect::<Vec<_>>(),
+                &folded.encode_utf16().collect::<Vec<_>>()
+            ),
+            Ordering::Equal,
+            "{source}"
+        );
+    }
+    assert_eq!(
+        CollatorError::DataUnavailable.to_string(),
+        "collation data is unavailable"
     );
 }

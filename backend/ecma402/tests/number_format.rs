@@ -5,8 +5,9 @@
 //! Public, host-neutral decimal `Intl.NumberFormat` coverage.
 
 use blueice_ecma402::{
-    canonicalize, unicode_keyword, NumberFormat, NumberFormatError, NumberFormatOptions,
-    NumberGrouping, ResolvedNumberFormatOptions,
+    canonicalize, resolve_number_format_locale, supported_number_format_locales, unicode_keyword,
+    NumberFormat, NumberFormatError, NumberFormatOptions, NumberGrouping,
+    ResolvedNumberFormatOptions,
 };
 
 #[test]
@@ -140,4 +141,59 @@ fn rejects_incompatible_or_out_of_range_fraction_options() {
         ),
         Err(NumberFormatError::FractionDigitsOutOfRange)
     ));
+}
+
+#[test]
+fn exposes_every_decimal_error_grouping_policy_and_locale_selection_path() {
+    let requested = [canonicalize("zz").unwrap(), canonicalize("en-GB").unwrap()];
+    assert_eq!(
+        resolve_number_format_locale(&requested, Default::default()).as_str(),
+        "en-GB"
+    );
+    assert_eq!(
+        supported_number_format_locales(&requested, Default::default())
+            .iter()
+            .map(|locale| locale.as_str())
+            .collect::<Vec<_>>(),
+        ["en-GB"]
+    );
+
+    let always = NumberFormat::try_new(
+        &[canonicalize("en").unwrap()],
+        NumberFormatOptions {
+            use_grouping: NumberGrouping::Always,
+            minimum_fraction_digits: Some(4),
+            maximum_fraction_digits: None,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(always.format_decimal("1000.5").unwrap(), "1,000.5000");
+    assert_eq!(always.resolved_options().maximum_fraction_digits, 4);
+    assert!(always.bytes() > std::mem::size_of::<NumberFormat>());
+    assert_eq!(
+        always.format_decimal("not a decimal"),
+        Err(NumberFormatError::InvalidDecimal)
+    );
+    for (error, message) in [
+        (
+            NumberFormatError::DataUnavailable,
+            "decimal data is unavailable",
+        ),
+        (
+            NumberFormatError::FractionDigitsOutOfRange,
+            "fraction digits must be in the range 0 through 100",
+        ),
+        (
+            NumberFormatError::IncompatibleFractionDigits,
+            "minimum fraction digits exceed maximum fraction digits",
+        ),
+        (
+            NumberFormatError::InvalidDecimal,
+            "invalid finite decimal input",
+        ),
+        (NumberFormatError::NonFiniteNumber, "number must be finite"),
+    ] {
+        assert_eq!(error.to_string(), message);
+    }
 }

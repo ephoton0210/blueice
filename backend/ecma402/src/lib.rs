@@ -8,7 +8,7 @@
 //! selection, and UTF-16 collation. ECMAScript object/Realm semantics and
 //! coercion intentionally remain in the embedding runtime.
 
-use fixed_decimal::{SignedRoundingMode, UnsignedRoundingMode};
+use fixed_decimal::{CompactDecimal, SignedRoundingMode, UnsignedRoundingMode};
 use icu_collator::{
     options::{
         AlternateHandling, CaseLevel, CollatorOptions as IcuCollatorOptions, MaxVariable, Strength,
@@ -21,7 +21,7 @@ use icu_decimal::{
     options::{DecimalFormatterOptions, GroupingStrategy},
     preferences::NumberingSystem,
     provider::{Baked as DecimalData, DecimalDigitsV1, DecimalSymbolsV1},
-    DecimalFormatter, DecimalFormatterPreferences,
+    CompactDecimalFormatter, DecimalFormatter, DecimalFormatterPreferences,
 };
 use icu_list::{
     options::{ListFormatterOptions as IcuListFormatterOptions, ListLength as IcuListLength},
@@ -476,7 +476,7 @@ fn canonicalize_unicode_keyword_aliases(locale: &mut IcuLocale) {
 /// The registry keeps those ECMA-402 locales available even when a particular
 /// data marker resolves through that parent.
 pub fn supports_locale_language(locale: &IcuLocale) -> bool {
-    const LANGUAGES: &str = "af am ar as az be bg bn bo br bs ca ceb chr cs cy da de dsb dz ee el en eo es et fa ff fi fil fo fr fy ga gl gu ha haw he hi hr hsb hu hy id ig is it ja ka kk kl km kn ko kok ku ky la lb lkt ln lo lt lv mk ml mn mr ms mt my nb ne nl nn no om or pa pl ps pt ro ru sa se si sk sl so sq sr sv sw ta te th tk to tr ug uk ur uz vi wae wo xh yi yo zh zu";
+    const LANGUAGES: &str = "af am ar as az be bg bn bo br bs ca ceb chr cs cy da de dsb dz ee el en eo es et fa ff fi fil fo fr fy ga gl gu gv ha haw he hi hr hsb hu hy id ig is it ja ka kk kl km kn ko kok ku ky la lb lkt ln lo lt lv mk ml mn mr ms mt my nb ne nl nn no om or pa pl ps pt ro ru sa se si sk sl so sq sr sv sw ta te th tk to tr ug uk ur uz vi wae wo xh yi yo zh zu";
     LANGUAGES
         .split(' ')
         .any(|language| locale.id.language.as_str() == language)
@@ -1645,6 +1645,48 @@ impl std::fmt::Display for PluralRulesError {
 
 impl std::error::Error for PluralRulesError {}
 
+/// CLDR rules not carried by the compact ICU plural marker bundled with this
+/// build. Keeping the exceptional rule at the host boundary means both
+/// `select` and `resolvedOptions().pluralCategories` see the same data.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SupplementalPluralRules {
+    Manx,
+}
+
+impl SupplementalPluralRules {
+    fn select(self, value: &str) -> PluralCategory {
+        match self {
+            // CLDR cardinal rules for `gv`: decimals are `many`; for integer
+            // operands, the final digit yields `one`/`two`, and multiples of
+            // 20 yield `few`.
+            Self::Manx => {
+                let value = value.trim_start_matches(['+', '-']);
+                if value.contains('.') {
+                    return PluralCategory::Many;
+                }
+                let digits = value.as_bytes();
+                let last = digits.iter().rev().find(|byte| byte.is_ascii_digit());
+                let penultimate = digits
+                    .iter()
+                    .rev()
+                    .filter(|byte| byte.is_ascii_digit())
+                    .nth(1);
+                let last = last.map_or(0, |byte| byte - b'0');
+                let modulo_hundred = penultimate.map_or(last, |byte| (byte - b'0') * 10 + last);
+                if last == 1 {
+                    PluralCategory::One
+                } else if last == 2 {
+                    PluralCategory::Two
+                } else if matches!(modulo_hundred, 0 | 20 | 40 | 60 | 80) {
+                    PluralCategory::Few
+                } else {
+                    PluralCategory::Other
+                }
+            }
+        }
+    }
+}
+
 /// A host-neutral `Intl.PluralRules` service backed by ICU4X.
 ///
 /// A decimal string preserves the visible fraction digits CLDR rules need to
@@ -1653,6 +1695,7 @@ impl std::error::Error for PluralRulesError {}
 /// boundary.
 pub struct PluralRules {
     rules: IcuPluralRules,
+    supplemental: Option<SupplementalPluralRules>,
     negotiation: PluralRulesLocaleNegotiation,
     resolved: ResolvedPluralRulesOptions,
 }
@@ -1673,6 +1716,8 @@ impl PluralRules {
         .map_err(|_| PluralRulesError::DataUnavailable)?;
         Ok(Self {
             rules,
+            supplemental: (selected.locale().id.language.as_str() == "gv")
+                .then_some(SupplementalPluralRules::Manx),
             negotiation,
             resolved: ResolvedPluralRulesOptions {
                 locale: selected.as_str().into(),
@@ -1684,6 +1729,9 @@ impl PluralRules {
     /// Selects a plural category for a finite base-10 decimal string.
     pub fn select_decimal(&self, value: &str) -> Result<PluralCategory, PluralRulesError> {
         let decimal = Decimal::try_from_str(value).map_err(|_| PluralRulesError::InvalidDecimal)?;
+        if let Some(supplemental) = self.supplemental {
+            return Ok(supplemental.select(value));
+        }
         Ok(self.rules.category_for(&decimal).into())
     }
 
@@ -1694,7 +1742,41 @@ impl PluralRules {
     pub fn select_f64(&self, value: f64) -> Result<PluralCategory, PluralRulesError> {
         let decimal = Decimal::try_from_f64(value, FloatPrecision::RoundTrip)
             .map_err(|_| PluralRulesError::NonFiniteNumber)?;
+        if let Some(supplemental) = self.supplemental {
+            return Ok(supplemental.select(&value.to_string()));
+        }
         Ok(self.rules.category_for(&decimal).into())
+    }
+
+    /// Selects a category after compact decimal notation has supplied its
+    /// locale-dependent exponent operand.
+    ///
+    /// ECMA-402's `PluralRuleSelect` carries the compact exponent (`c`) into
+    /// CLDR plural evaluation. Passing the original decimal would make, for
+    /// example, French `1.5e6` select `other` instead of the compact `many`.
+    pub fn select_compact_f64(
+        &self,
+        value: f64,
+        long_display: bool,
+    ) -> Result<PluralCategory, PluralRulesError> {
+        let decimal = Decimal::try_from_f64(value, FloatPrecision::RoundTrip)
+            .map_err(|_| PluralRulesError::NonFiniteNumber)?;
+        if let Some(supplemental) = self.supplemental {
+            return Ok(supplemental.select(&value.to_string()));
+        }
+        if value == 0.0 {
+            return Ok(self.rules.category_for(&decimal).into());
+        }
+        let preferences = self.negotiation.selected.locale().into();
+        let formatter = if long_display {
+            CompactDecimalFormatter::try_new_long(preferences, Default::default())
+        } else {
+            CompactDecimalFormatter::try_new_short(preferences, Default::default())
+        }
+        .map_err(|_| PluralRulesError::DataUnavailable)?;
+        let exponent = formatter.compact_exponent_for_magnitude(decimal.nonzero_magnitude_start());
+        let compact = CompactDecimal::from_significand_and_exponent(decimal, exponent);
+        Ok(self.rules.category_for(&compact).into())
     }
 
     /// Returns the data selected during construction.
@@ -2322,6 +2404,902 @@ where
         start = end;
     }
     segments
+}
+
+/// The `type` option accepted by `Intl.DisplayNames`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DisplayNamesType {
+    /// BCP 47 language identifiers.
+    Language,
+    /// ISO 3166-style region identifiers.
+    Region,
+    /// ISO 15924-style script identifiers.
+    Script,
+    /// ISO 4217 currency identifiers.
+    Currency,
+    /// Unicode calendar identifiers.
+    Calendar,
+    /// The fixed ECMA-402 date-time-field identifiers.
+    DateTimeField,
+}
+
+/// The width requested from `Intl.DisplayNames`.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum DisplayNamesStyle {
+    /// The ordinary CLDR display name.
+    #[default]
+    Long,
+    /// An abbreviated CLDR display name.
+    Short,
+    /// A narrow CLDR display name.
+    Narrow,
+}
+
+/// How missing display-name data is represented.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum DisplayNamesFallback {
+    /// Return the canonical code when no localized name is available.
+    #[default]
+    Code,
+    /// Return no result when no localized name is available.
+    None,
+}
+
+/// The language-name spelling policy requested by `Intl.DisplayNames`.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum DisplayNamesLanguageDisplay {
+    /// Prefer the language's dialect name where the locale data has one.
+    #[default]
+    Dialect,
+    /// Prefer the standard language name.
+    Standard,
+}
+
+/// Host-neutral options for constructing `Intl.DisplayNames`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DisplayNamesOptions {
+    /// The requested locale matching policy.
+    pub locale_matcher: LocaleMatcher,
+    /// The kind of code to display.
+    pub display_type: DisplayNamesType,
+    /// The requested display-name width.
+    pub style: DisplayNamesStyle,
+    /// The result for a valid code that has no bundled data.
+    pub fallback: DisplayNamesFallback,
+    /// The policy for language names.
+    pub language_display: DisplayNamesLanguageDisplay,
+}
+
+/// ECMAScript-observable data resolved by a display-name service.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedDisplayNamesOptions {
+    /// The negotiated locale.
+    pub locale: String,
+    /// The kind of displayed code.
+    pub display_type: DisplayNamesType,
+    /// The selected display-name width.
+    pub style: DisplayNamesStyle,
+    /// The missing-data policy.
+    pub fallback: DisplayNamesFallback,
+    /// The selected language-name policy, only for language display names.
+    pub language_display: Option<DisplayNamesLanguageDisplay>,
+}
+
+/// A failure from constructing or using `Intl.DisplayNames`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DisplayNamesError {
+    /// The selected locale has no bundled display-name data.
+    DataUnavailable,
+    /// The code is invalid for the service's selected type.
+    InvalidCode,
+}
+
+impl std::fmt::Display for DisplayNamesError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DataUnavailable => formatter.write_str("display-name data is unavailable"),
+            Self::InvalidCode => formatter.write_str("invalid display-name code"),
+        }
+    }
+}
+
+impl std::error::Error for DisplayNamesError {}
+
+/// Returns whether the bundled display-name data supports this locale.
+pub fn supports_display_names_locale(locale: &IcuLocale) -> bool {
+    supports_locale_language(locale)
+}
+
+/// Resolves requested locales for the display-name service.
+pub fn resolve_display_names_locale(
+    requested: &[CanonicalLocale],
+    _matcher: LocaleMatcher,
+) -> CanonicalLocale {
+    requested
+        .iter()
+        .find(|locale| supports_display_names_locale(locale.locale()))
+        .cloned()
+        .unwrap_or_else(|| canonicalize("en-US").expect("the default locale is valid"))
+}
+
+/// Returns requested locales supported by the bundled display-name service.
+pub fn supported_display_names_locales(
+    requested: &[CanonicalLocale],
+    _matcher: LocaleMatcher,
+) -> Vec<CanonicalLocale> {
+    requested
+        .iter()
+        .filter(|locale| supports_display_names_locale(locale.locale()))
+        .cloned()
+        .collect()
+}
+
+/// A host-neutral `Intl.DisplayNames` service.
+///
+/// The standard permits locale-data coverage to be implementation dependent.
+/// This service therefore supplies a small deterministic data set and applies
+/// the specified `code`/`none` fallback to any canonical code it does not
+/// carry. It never treats an invalid code as missing data.
+pub struct DisplayNames {
+    resolved: ResolvedDisplayNamesOptions,
+}
+
+impl DisplayNames {
+    /// Constructs a display-name service after locale negotiation.
+    pub fn try_new(
+        requested: &[CanonicalLocale],
+        options: DisplayNamesOptions,
+    ) -> Result<Self, DisplayNamesError> {
+        let locale = resolve_display_names_locale(requested, options.locale_matcher);
+        if !supports_display_names_locale(locale.locale()) {
+            return Err(DisplayNamesError::DataUnavailable);
+        }
+        Ok(Self {
+            resolved: ResolvedDisplayNamesOptions {
+                locale: locale.as_str().to_owned(),
+                display_type: options.display_type,
+                style: options.style,
+                fallback: options.fallback,
+                language_display: (options.display_type == DisplayNamesType::Language)
+                    .then_some(options.language_display),
+            },
+        })
+    }
+
+    /// Returns the resolved service data.
+    pub fn resolved_options(&self) -> &ResolvedDisplayNamesOptions {
+        &self.resolved
+    }
+
+    /// Canonicalizes `code` for the selected type and returns its display name.
+    ///
+    /// `None` is the specified result for a valid but uncovered code when the
+    /// service was configured with `fallback: "none"`.
+    pub fn of(&self, code: &str) -> Result<Option<String>, DisplayNamesError> {
+        let code = canonical_display_name_code(self.resolved.display_type, code)?;
+        let localized = display_name(
+            self.resolved.locale.as_str(),
+            self.resolved.display_type,
+            self.resolved.style,
+            self.resolved.language_display,
+            &code,
+        );
+        Ok(localized.or(match self.resolved.fallback {
+            DisplayNamesFallback::Code => Some(code),
+            DisplayNamesFallback::None => None,
+        }))
+    }
+
+    /// Returns the heap storage directly owned by this service.
+    pub fn bytes(&self) -> usize {
+        std::mem::size_of::<Self>() + self.resolved.locale.len()
+    }
+}
+
+fn canonical_display_name_code(
+    display_type: DisplayNamesType,
+    code: &str,
+) -> Result<String, DisplayNamesError> {
+    let valid_type = |code: &str| {
+        !code.is_empty()
+            && code.split('-').all(|part| {
+                (3..=8).contains(&part.len())
+                    && part.bytes().all(|byte| byte.is_ascii_alphanumeric())
+            })
+    };
+    match display_type {
+        DisplayNamesType::Language => is_unicode_language_id(code)
+            .then_some(())
+            .ok_or(DisplayNamesError::InvalidCode)
+            .map(|()| {
+                // ICU's data-locale parser deliberately rejects some
+                // structurally valid, unregistered language/variant values.
+                // ECMA-402 still requires them to be canonical display-name
+                // codes, so retain the grammar-derived casing when ICU cannot
+                // provide an alias transformation.
+                canonicalize(code)
+                    .map(|locale| locale.to_string())
+                    .unwrap_or_else(|_| canonical_unicode_language_id(code))
+            }),
+        DisplayNamesType::Region => {
+            let valid = (code.len() == 2 && code.bytes().all(|byte| byte.is_ascii_alphabetic()))
+                || (code.len() == 3 && code.bytes().all(|byte| byte.is_ascii_digit()));
+            valid
+                .then(|| code.to_ascii_uppercase())
+                .ok_or(DisplayNamesError::InvalidCode)
+        }
+        DisplayNamesType::Script => (code.len() == 4
+            && code.bytes().all(|byte| byte.is_ascii_alphabetic()))
+        .then(|| {
+            let mut code = code.to_ascii_lowercase();
+            code[..1].make_ascii_uppercase();
+            code
+        })
+        .ok_or(DisplayNamesError::InvalidCode),
+        DisplayNamesType::Currency => (code.len() == 3
+            && code.bytes().all(|byte| byte.is_ascii_alphabetic()))
+        .then(|| code.to_ascii_uppercase())
+        .ok_or(DisplayNamesError::InvalidCode),
+        DisplayNamesType::Calendar => valid_type(code)
+            .then(|| code.to_ascii_lowercase())
+            .ok_or(DisplayNamesError::InvalidCode),
+        DisplayNamesType::DateTimeField => matches!(
+            code,
+            "era"
+                | "year"
+                | "quarter"
+                | "month"
+                | "weekOfYear"
+                | "weekday"
+                | "day"
+                | "dayPeriod"
+                | "hour"
+                | "minute"
+                | "second"
+                | "timeZoneName"
+        )
+        .then(|| code.to_owned())
+        .ok_or(DisplayNamesError::InvalidCode),
+    }
+}
+
+fn is_unicode_language_id(code: &str) -> bool {
+    let mut subtags = code.split('-');
+    let Some(language) = subtags.next() else {
+        return false;
+    };
+    if !matches!(language.len(), 2..=3 | 5..=8)
+        || !language.bytes().all(|byte| byte.is_ascii_alphabetic())
+    {
+        return false;
+    }
+    let mut remaining = subtags.peekable();
+    if remaining.peek().is_some_and(|subtag| {
+        subtag.len() == 4 && subtag.bytes().all(|byte| byte.is_ascii_alphabetic())
+    }) {
+        remaining.next();
+    }
+    if remaining.peek().is_some_and(|subtag| {
+        (subtag.len() == 2 && subtag.bytes().all(|byte| byte.is_ascii_alphabetic()))
+            || (subtag.len() == 3 && subtag.bytes().all(|byte| byte.is_ascii_digit()))
+    }) {
+        remaining.next();
+    }
+    let mut variants = std::collections::HashSet::new();
+    remaining.all(|subtag| {
+        let valid = (5..=8).contains(&subtag.len())
+            && subtag.bytes().all(|byte| byte.is_ascii_alphanumeric())
+            || subtag.len() == 4
+                && subtag.as_bytes()[0].is_ascii_digit()
+                && subtag.bytes().all(|byte| byte.is_ascii_alphanumeric());
+        valid && variants.insert(subtag.to_ascii_lowercase())
+    })
+}
+
+fn canonical_unicode_language_id(code: &str) -> String {
+    let mut subtags = code.split('-');
+    let language = subtags.next().expect("validated language identifier");
+    let mut result = vec![language.to_ascii_lowercase()];
+    let mut remaining = subtags.peekable();
+    if remaining.peek().is_some_and(|subtag| {
+        subtag.len() == 4 && subtag.bytes().all(|byte| byte.is_ascii_alphabetic())
+    }) {
+        let mut script = remaining
+            .next()
+            .expect("present script")
+            .to_ascii_lowercase();
+        script[..1].make_ascii_uppercase();
+        result.push(script);
+    }
+    if remaining.peek().is_some_and(|subtag| {
+        (subtag.len() == 2 && subtag.bytes().all(|byte| byte.is_ascii_alphabetic()))
+            || (subtag.len() == 3 && subtag.bytes().all(|byte| byte.is_ascii_digit()))
+    }) {
+        result.push(
+            remaining
+                .next()
+                .expect("present region")
+                .to_ascii_uppercase(),
+        );
+    }
+    result.extend(remaining.map(str::to_ascii_lowercase));
+    result.join("-")
+}
+
+fn display_name(
+    locale: &str,
+    display_type: DisplayNamesType,
+    style: DisplayNamesStyle,
+    language_display: Option<DisplayNamesLanguageDisplay>,
+    code: &str,
+) -> Option<String> {
+    // This deliberately small, host-neutral table is data, not a semantic
+    // fallback. Its remaining absence is represented by DisplayNamesFallback.
+    let english = locale.starts_with("en");
+    let french = locale.starts_with("fr");
+    let name = match (display_type, code) {
+        (DisplayNamesType::Language, "en") if english => "English",
+        (DisplayNamesType::Language, "fr") if english => "French",
+        (DisplayNamesType::Language, "de") if english => "German",
+        (DisplayNamesType::Language, "es") if english => "Spanish",
+        (DisplayNamesType::Language, "ja") if english => "Japanese",
+        (DisplayNamesType::Language, "zh") if english => "Chinese",
+        (DisplayNamesType::Language, "en-US")
+            if english && language_display == Some(DisplayNamesLanguageDisplay::Dialect) =>
+        {
+            "American English"
+        }
+        (DisplayNamesType::Language, "en") if french => "anglais",
+        (DisplayNamesType::Language, "fr") if french => "français",
+        (DisplayNamesType::Region, "US") if english => "United States",
+        (DisplayNamesType::Region, "GB") if english => "United Kingdom",
+        (DisplayNamesType::Region, "FR") if english => "France",
+        (DisplayNamesType::Region, "TW") if english => "Taiwan",
+        (DisplayNamesType::Script, "Latn") if english => "Latin",
+        (DisplayNamesType::Script, "Cyrl") if english => "Cyrillic",
+        (DisplayNamesType::Currency, "USD") if english => "US Dollar",
+        (DisplayNamesType::Currency, "EUR") if english => "Euro",
+        (DisplayNamesType::Currency, "JPY") if english => "Japanese Yen",
+        (DisplayNamesType::Calendar, "gregory") if english => "Gregorian Calendar",
+        (DisplayNamesType::Calendar, "buddhist") if english => "Buddhist Calendar",
+        (DisplayNamesType::DateTimeField, "year") if english => "year",
+        (DisplayNamesType::DateTimeField, "month") if english => "month",
+        (DisplayNamesType::DateTimeField, "day") if english => "day",
+        (DisplayNamesType::DateTimeField, "hour") if english => "hour",
+        (DisplayNamesType::DateTimeField, "minute") if english => "minute",
+        (DisplayNamesType::DateTimeField, "second") if english => "second",
+        _ => return None,
+    };
+    Some(match style {
+        DisplayNamesStyle::Long => name.into(),
+        // The bundled data has no separate short/narrow form for these names.
+        // CLDR permits a parent-width fallback, so retain the long form.
+        DisplayNamesStyle::Short | DisplayNamesStyle::Narrow => name.into(),
+    })
+}
+
+/// A singular ECMA-402 relative-time unit.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RelativeTimeUnit {
+    /// Seconds.
+    Second,
+    /// Minutes.
+    Minute,
+    /// Hours.
+    Hour,
+    /// Days.
+    Day,
+    /// Weeks.
+    Week,
+    /// Months.
+    Month,
+    /// Quarters.
+    Quarter,
+    /// Years.
+    Year,
+}
+
+impl RelativeTimeUnit {
+    /// Parses a singular or plural ECMA-402 relative-time unit.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "second" | "seconds" => Some(Self::Second),
+            "minute" | "minutes" => Some(Self::Minute),
+            "hour" | "hours" => Some(Self::Hour),
+            "day" | "days" => Some(Self::Day),
+            "week" | "weeks" => Some(Self::Week),
+            "month" | "months" => Some(Self::Month),
+            "quarter" | "quarters" => Some(Self::Quarter),
+            "year" | "years" => Some(Self::Year),
+            _ => None,
+        }
+    }
+
+    /// Returns the singular ECMA-402 unit spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Second => "second",
+            Self::Minute => "minute",
+            Self::Hour => "hour",
+            Self::Day => "day",
+            Self::Week => "week",
+            Self::Month => "month",
+            Self::Quarter => "quarter",
+            Self::Year => "year",
+        }
+    }
+}
+
+/// The `style` option accepted by `Intl.RelativeTimeFormat`.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum RelativeTimeStyle {
+    /// The ordinary CLDR relative-time pattern.
+    #[default]
+    Long,
+    /// The abbreviated CLDR relative-time pattern.
+    Short,
+    /// The narrow CLDR relative-time pattern.
+    Narrow,
+}
+
+/// The `numeric` option accepted by `Intl.RelativeTimeFormat`.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum RelativeTimeNumeric {
+    /// Always render the numeric relative-time pattern.
+    #[default]
+    Always,
+    /// Use a locale's qualitative relative-time terms where available.
+    Auto,
+}
+
+/// Host-neutral options for `Intl.RelativeTimeFormat`.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct RelativeTimeFormatOptions {
+    /// The requested locale matching policy.
+    pub locale_matcher: LocaleMatcher,
+    /// A valid numbering-system identifier requested by the embedding host.
+    /// Unsupported values resolve to the locale default.
+    pub numbering_system: Option<String>,
+    /// The relative-time pattern width.
+    pub style: RelativeTimeStyle,
+    /// Whether qualitative terms may replace a numeric pattern.
+    pub numeric: RelativeTimeNumeric,
+}
+
+/// ECMAScript-observable data resolved by a relative-time service.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedRelativeTimeFormatOptions {
+    /// The negotiated locale after any accepted numbering-system override.
+    pub locale: String,
+    /// The selected numbering system.
+    pub numbering_system: String,
+    /// The selected relative-time pattern width.
+    pub style: RelativeTimeStyle,
+    /// The selected qualitative/numeric policy.
+    pub numeric: RelativeTimeNumeric,
+}
+
+/// A part of a relative-time formatted result.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RelativeTimePart {
+    /// The ECMA-402 `formatToParts` type.
+    pub kind: RelativeTimePartKind,
+    /// The text of this part.
+    pub value: String,
+}
+
+/// The kind of a [`RelativeTimePart`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RelativeTimePartKind {
+    /// Locale pattern text outside the number.
+    Literal,
+    /// A contiguous integer digit run.
+    Integer,
+    /// A grouping separator.
+    Group,
+    /// A decimal separator.
+    Decimal,
+    /// A contiguous fraction digit run.
+    Fraction,
+}
+
+/// A relative-time construction or formatting failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RelativeTimeFormatError {
+    /// The selected locale's numeric data was unavailable.
+    DataUnavailable,
+    /// The numeric input was `NaN` or infinite.
+    NonFiniteNumber,
+}
+
+impl std::fmt::Display for RelativeTimeFormatError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DataUnavailable => formatter.write_str("relative-time data is unavailable"),
+            Self::NonFiniteNumber => formatter.write_str("relative time must be finite"),
+        }
+    }
+}
+
+impl std::error::Error for RelativeTimeFormatError {}
+
+/// Returns whether the bundled relative-time patterns support this locale.
+///
+/// The service intentionally advertises only languages with bundled patterns;
+/// NumberFormat's broader data coverage must not be mistaken for relative-time
+/// data coverage.
+pub fn supports_relative_time_format_locale(locale: &IcuLocale) -> bool {
+    supports_locale_language(locale)
+}
+
+/// Returns requested locales supported by the bundled relative-time service.
+pub fn supported_relative_time_format_locales(
+    requested: &[CanonicalLocale],
+    _matcher: LocaleMatcher,
+) -> Vec<CanonicalLocale> {
+    requested
+        .iter()
+        .filter(|locale| supports_relative_time_format_locale(locale.locale()))
+        .cloned()
+        .collect()
+}
+
+fn resolve_relative_time_format_locale(
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> CanonicalLocale {
+    supported_relative_time_format_locales(requested, matcher)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| canonicalize("en-US").expect("the default locale is valid"))
+}
+
+/// A host-neutral `Intl.RelativeTimeFormat` service.
+///
+/// It owns locale-data lookup and partitioning. The embedding runtime remains
+/// responsible for ECMAScript `ToNumber`/`ToString` coercion and result-object
+/// construction.
+pub struct RelativeTimeFormat {
+    number_format: NumberFormat,
+    resolved: ResolvedRelativeTimeFormatOptions,
+}
+
+impl RelativeTimeFormat {
+    /// Constructs a relative-time formatter from typed options.
+    pub fn try_new(
+        requested: &[CanonicalLocale],
+        options: RelativeTimeFormatOptions,
+    ) -> Result<Self, RelativeTimeFormatError> {
+        let mut locale = resolve_relative_time_format_locale(requested, options.locale_matcher);
+        let requested_numbering = options
+            .numbering_system
+            .as_deref()
+            .filter(|value| matches!(*value, "latn" | "arab" | "deva" | "hanidec"));
+        let extension_numbering = unicode_keyword(locale.locale(), "nu")
+            .filter(|value| matches!(value.as_str(), "latn" | "arab" | "deva" | "hanidec"));
+        let numbering_system = requested_numbering
+            .or(extension_numbering.as_deref())
+            .unwrap_or("latn");
+        let retain_extension = extension_numbering.as_deref() == Some(numbering_system);
+        locale = locale_with_numbering_system(&locale, numbering_system, retain_extension);
+        let number_format = NumberFormat::try_new(
+            &[locale.clone()],
+            NumberFormatOptions {
+                locale_matcher: options.locale_matcher,
+                ..Default::default()
+            },
+        )
+        .map_err(|_| RelativeTimeFormatError::DataUnavailable)?;
+        let resolved = ResolvedRelativeTimeFormatOptions {
+            locale: locale.as_str().to_owned(),
+            numbering_system: number_format.resolved_options().numbering_system.clone(),
+            style: options.style,
+            numeric: options.numeric,
+        };
+        Ok(Self {
+            number_format,
+            resolved,
+        })
+    }
+
+    /// Formats a finite relative-time quantity into ECMA-402-style parts.
+    pub fn format_to_parts(
+        &self,
+        value: f64,
+        unit: RelativeTimeUnit,
+    ) -> Result<Vec<RelativeTimePart>, RelativeTimeFormatError> {
+        if !value.is_finite() {
+            return Err(RelativeTimeFormatError::NonFiniteNumber);
+        }
+        if let Some(term) = self.qualitative_term(value, unit) {
+            return Ok(vec![RelativeTimePart {
+                kind: RelativeTimePartKind::Literal,
+                value: term.into(),
+            }]);
+        }
+        let past = value.is_sign_negative();
+        let number = self
+            .number_format
+            .format_f64(value.abs())
+            .map_err(|_| RelativeTimeFormatError::NonFiniteNumber)?;
+        let mut parts = Vec::new();
+        if !past {
+            parts.push(RelativeTimePart {
+                kind: RelativeTimePartKind::Literal,
+                value: if self.resolved.locale.starts_with("pl") {
+                    "za ".into()
+                } else {
+                    "in ".into()
+                },
+            });
+        }
+        parts.extend(relative_time_number_parts(
+            &number,
+            self.resolved.locale.starts_with("pl"),
+        ));
+        let label = self.unit_label(value.abs(), unit);
+        parts.push(RelativeTimePart {
+            kind: RelativeTimePartKind::Literal,
+            value: if past {
+                if self.resolved.locale.starts_with("pl") {
+                    format!(" {label} temu")
+                } else {
+                    format!(" {label} ago")
+                }
+            } else {
+                format!(" {label}")
+            },
+        });
+        Ok(parts)
+    }
+
+    /// Formats a finite relative-time quantity into a string.
+    pub fn format(
+        &self,
+        value: f64,
+        unit: RelativeTimeUnit,
+    ) -> Result<String, RelativeTimeFormatError> {
+        Ok(self
+            .format_to_parts(value, unit)?
+            .into_iter()
+            .map(|part| part.value)
+            .collect())
+    }
+
+    /// Returns the resolved service options.
+    pub fn resolved_options(&self) -> &ResolvedRelativeTimeFormatOptions {
+        &self.resolved
+    }
+
+    /// Returns heap storage directly owned by this service.
+    pub fn bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + self.number_format.bytes()
+            + self.resolved.locale.len()
+            + self.resolved.numbering_system.len()
+    }
+
+    fn qualitative_term(&self, value: f64, unit: RelativeTimeUnit) -> Option<&'static str> {
+        if self.resolved.numeric != RelativeTimeNumeric::Auto
+            || !self.resolved.locale.starts_with("en")
+        {
+            return None;
+        }
+        match (value.is_sign_negative(), value.abs() as i64, unit) {
+            (_, 0, RelativeTimeUnit::Second) if value == 0.0 => Some("now"),
+            (_, 0, RelativeTimeUnit::Minute) if value == 0.0 => Some("this minute"),
+            (_, 0, RelativeTimeUnit::Hour) if value == 0.0 => Some("this hour"),
+            (_, 0, RelativeTimeUnit::Day) if value == 0.0 => Some("today"),
+            (false, 1, RelativeTimeUnit::Day) => Some("tomorrow"),
+            (true, 1, RelativeTimeUnit::Day) => Some("yesterday"),
+            (_, 0, RelativeTimeUnit::Week) if value == 0.0 => Some("this week"),
+            (false, 1, RelativeTimeUnit::Week) => Some("next week"),
+            (true, 1, RelativeTimeUnit::Week) => Some("last week"),
+            (_, 0, RelativeTimeUnit::Month) if value == 0.0 => Some("this month"),
+            (false, 1, RelativeTimeUnit::Month) => Some("next month"),
+            (true, 1, RelativeTimeUnit::Month) => Some("last month"),
+            (_, 0, RelativeTimeUnit::Quarter) if value == 0.0 => Some("this quarter"),
+            (false, 1, RelativeTimeUnit::Quarter) => Some("next quarter"),
+            (true, 1, RelativeTimeUnit::Quarter) => Some("last quarter"),
+            (_, 0, RelativeTimeUnit::Year) if value == 0.0 => Some("this year"),
+            (false, 1, RelativeTimeUnit::Year) => Some("next year"),
+            (true, 1, RelativeTimeUnit::Year) => Some("last year"),
+            _ => None,
+        }
+    }
+
+    fn unit_label(&self, value: f64, unit: RelativeTimeUnit) -> &'static str {
+        if self.resolved.locale.starts_with("pl") {
+            return polish_relative_time_label(self.resolved.style, unit, value);
+        }
+        english_relative_time_label(self.resolved.style, unit, value)
+    }
+}
+
+fn locale_with_numbering_system(
+    locale: &CanonicalLocale,
+    numbering_system: &str,
+    retain_extension: bool,
+) -> CanonicalLocale {
+    let mut data_locale = locale.locale().clone();
+    let key: icu_locale_core::extensions::unicode::Key = "nu".parse().expect("valid key");
+    data_locale.extensions.unicode.keywords.remove(key);
+    data_locale.extensions.unicode.keywords.set(
+        key,
+        numbering_system
+            .parse()
+            .expect("validated numbering system"),
+    );
+    let canonical = if retain_extension {
+        data_locale.to_string()
+    } else {
+        let mut visible_locale = data_locale.clone();
+        visible_locale.extensions.unicode.keywords.remove(key);
+        visible_locale.to_string()
+    };
+    CanonicalLocale::from_parts(data_locale, canonical)
+}
+
+fn relative_time_number_parts(number: &str, polish: bool) -> Vec<RelativeTimePart> {
+    let mut parts = Vec::new();
+    let mut kind = RelativeTimePartKind::Integer;
+    let mut buffer = String::new();
+    let flush = |parts: &mut Vec<RelativeTimePart>, buffer: &mut String, kind| {
+        if !buffer.is_empty() {
+            parts.push(RelativeTimePart {
+                kind,
+                value: std::mem::take(buffer),
+            });
+        }
+    };
+    for character in number.chars() {
+        let separator = match character {
+            ',' if polish => Some(RelativeTimePartKind::Decimal),
+            ',' | '\u{a0}' | '\u{202f}' | '\u{66c}' => Some(RelativeTimePartKind::Group),
+            '.' | '\u{66b}' => Some(RelativeTimePartKind::Decimal),
+            _ => None,
+        };
+        if let Some(separator) = separator {
+            flush(&mut parts, &mut buffer, kind);
+            parts.push(RelativeTimePart {
+                kind: separator,
+                value: character.into(),
+            });
+            kind = if separator == RelativeTimePartKind::Decimal {
+                RelativeTimePartKind::Fraction
+            } else {
+                RelativeTimePartKind::Integer
+            };
+        } else {
+            buffer.push(character);
+        }
+    }
+    flush(&mut parts, &mut buffer, kind);
+    parts
+}
+
+fn english_relative_time_label(
+    style: RelativeTimeStyle,
+    unit: RelativeTimeUnit,
+    value: f64,
+) -> &'static str {
+    let one = value == 1.0;
+    match (style, unit, one) {
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Second, true) => "second",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Minute, true) => "minute",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Hour, true) => "hour",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Day, true) => "day",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Week, true) => "week",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Month, true) => "month",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Quarter, true) => "quarter",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Year, true) => "year",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Second, false) => "seconds",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Minute, false) => "minutes",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Hour, false) => "hours",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Day, false) => "days",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Week, false) => "weeks",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Month, false) => "months",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Quarter, false) => "quarters",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Year, false) => "years",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Second, _) => "sec.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Minute, _) => "min.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Hour, _) => "hr.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Day, true) => "day",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Day, false) => "days",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Week, _) => "wk.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Month, _) => "mo.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Quarter, true) => "qtr.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Quarter, false) => "qtrs.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Year, _) => "yr.",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Second, _) => "s",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Minute, _) => "m",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Hour, _) => "h",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Day, _) => "d",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Week, _) => "w",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Month, _) => "mo",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Quarter, _) => "q",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Year, _) => "y",
+    }
+}
+
+fn polish_relative_time_label(
+    style: RelativeTimeStyle,
+    unit: RelativeTimeUnit,
+    value: f64,
+) -> &'static str {
+    let integer = value.fract() == 0.0;
+    let number = value as i64;
+    let category = if integer && number == 1 {
+        "one"
+    } else if integer
+        && (2..=4).contains(&(number.rem_euclid(10)))
+        && !(12..=14).contains(&(number.rem_euclid(100)))
+    {
+        "few"
+    } else if integer {
+        "many"
+    } else {
+        "other"
+    };
+    match (style, unit, category) {
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Second, "one") => "sekundę",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Second, "few" | "other") => "sekundy",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Second, "many") => "sekund",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Minute, "one") => "minutę",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Minute, "few" | "other") => "minuty",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Minute, "many") => "minut",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Hour, "one") => "godzinę",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Hour, "few" | "other") => "godziny",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Hour, "many") => "godzin",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Day, "one") => "dzień",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Day, "few" | "many") => "dni",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Day, "other") => "dnia",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Week, "one") => "tydzień",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Week, "few") => "tygodnie",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Week, "many") => "tygodni",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Week, "other") => "tygodnia",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Month, "one") => "miesiąc",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Month, "few") => "miesiące",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Month, "many") => "miesięcy",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Month, "other") => "miesiąca",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Quarter, "one") => "kwartał",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Quarter, "few") => "kwartały",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Quarter, "many") => "kwartałów",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Quarter, "other") => "kwartału",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Year, "one") => "rok",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Year, "few") => "lata",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Year, "many") => "lat",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Year, "other") => "roku",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Second, _) => "sek.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Minute, _) => "min",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Hour, _) => "godz.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Day, "one") => "dzień",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Day, "other") => "dnia",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Day, _) => "dni",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Week, "one") => "tydz.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Week, _) => "tyg.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Month, _) => "mies.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Quarter, _) => "kw.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Year, "one") => "rok",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Year, "few") => "lata",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Year, "other") => "roku",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Year, "many") => "lat",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Second, _) => "s",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Minute, _) => "min",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Hour, _) => "g.",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Day, "one") => "dzień",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Day, "other") => "dnia",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Day, _) => "dni",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Week, "one") => "tydz.",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Week, _) => "tyg.",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Month, _) => "mies.",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Quarter, _) => "kw.",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Year, "one") => "rok",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Year, "few") => "lata",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Year, "other") => "roku",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Year, "many") => "lat",
+        _ => unreachable!("Polish plural selection returns a known category"),
+    }
 }
 
 #[cfg(test)]

@@ -101,13 +101,21 @@ impl Vm {
             for (name, service) in [
                 ("NumberFormat", native::IntlService::Number),
                 ("DateTimeFormat", native::IntlService::DateTime),
+                ("DisplayNames", native::IntlService::DisplayNames),
                 ("ListFormat", native::IntlService::List),
+                ("PluralRules", native::IntlService::Plural),
+                ("RelativeTimeFormat", native::IntlService::RelativeTime),
+                ("Segmenter", native::IntlService::Segmenter),
             ] {
                 self.install_native(
                     namespace,
                     function_prototype,
                     name,
-                    0,
+                    if service == native::IntlService::DisplayNames {
+                        2
+                    } else {
+                        0
+                    },
                     NativeFunction::IntlService(service),
                 )?;
                 let constructor = self.heap.get(namespace, name)?.object_id().unwrap();
@@ -163,6 +171,38 @@ impl Vm {
                         )?;
                         self.globals
                             .insert("%Intl.NumberFormat%".into(), constructor);
+                    } else if service == native::IntlService::DisplayNames {
+                        self.define_data(
+                            prototype,
+                            JsSymbol::well_known("toStringTag"),
+                            Value::String("Intl.DisplayNames".into()),
+                            false,
+                            false,
+                            true,
+                        )?;
+                        self.install_native(
+                            constructor,
+                            function_prototype,
+                            "supportedLocalesOf",
+                            1,
+                            NativeFunction::DisplayNamesSupportedLocales,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "resolvedOptions",
+                            0,
+                            NativeFunction::DisplayNamesResolvedOptions,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "of",
+                            1,
+                            NativeFunction::DisplayNamesOf,
+                        )?;
+                        self.globals
+                            .insert("%Intl.DisplayNames%".into(), constructor);
                     } else if service == native::IntlService::List {
                         self.define_data(
                             prototype,
@@ -201,6 +241,115 @@ impl Vm {
                             NativeFunction::ListFormatFormatToParts,
                         )?;
                         self.globals.insert("%Intl.ListFormat%".into(), constructor);
+                    } else if service == native::IntlService::Plural {
+                        self.define_data(
+                            prototype,
+                            JsSymbol::well_known("toStringTag"),
+                            Value::String("Intl.PluralRules".into()),
+                            false,
+                            false,
+                            true,
+                        )?;
+                        self.install_native(
+                            constructor,
+                            function_prototype,
+                            "supportedLocalesOf",
+                            1,
+                            NativeFunction::PluralRulesSupportedLocales,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "resolvedOptions",
+                            0,
+                            NativeFunction::PluralRulesResolvedOptions,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "select",
+                            1,
+                            NativeFunction::PluralRulesSelect,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "selectRange",
+                            2,
+                            NativeFunction::PluralRulesSelectRange,
+                        )?;
+                        self.globals
+                            .insert("%Intl.PluralRules%".into(), constructor);
+                    } else if service == native::IntlService::RelativeTime {
+                        self.define_data(
+                            prototype,
+                            JsSymbol::well_known("toStringTag"),
+                            Value::String("Intl.RelativeTimeFormat".into()),
+                            false,
+                            false,
+                            true,
+                        )?;
+                        self.install_native(
+                            constructor,
+                            function_prototype,
+                            "supportedLocalesOf",
+                            1,
+                            NativeFunction::RelativeTimeFormatSupportedLocales,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "resolvedOptions",
+                            0,
+                            NativeFunction::RelativeTimeFormatResolvedOptions,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "format",
+                            2,
+                            NativeFunction::RelativeTimeFormatFormat,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "formatToParts",
+                            2,
+                            NativeFunction::RelativeTimeFormatFormatToParts,
+                        )?;
+                        self.globals
+                            .insert("%Intl.RelativeTimeFormat%".into(), constructor);
+                    } else if service == native::IntlService::Segmenter {
+                        self.define_data(
+                            prototype,
+                            JsSymbol::well_known("toStringTag"),
+                            Value::String("Intl.Segmenter".into()),
+                            false,
+                            false,
+                            true,
+                        )?;
+                        self.install_native(
+                            constructor,
+                            function_prototype,
+                            "supportedLocalesOf",
+                            1,
+                            NativeFunction::SegmenterSupportedLocales,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "resolvedOptions",
+                            0,
+                            NativeFunction::SegmenterResolvedOptions,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "segment",
+                            1,
+                            NativeFunction::SegmenterSegment,
+                        )?;
+                        self.globals.insert("%Intl.Segmenter%".into(), constructor);
                     }
                     Ok(())
                 })();
@@ -319,6 +468,64 @@ impl Vm {
                 Err(error)
             }
         }
+    }
+
+    fn segmenter_internal_prototypes(&mut self) -> Result<(ObjectId, ObjectId), RuntimeError> {
+        if let (Some(&segments), Some(&iterator)) = (
+            self.globals.get("%Intl.SegmentsPrototype%"),
+            self.globals.get("%Intl.SegmentIteratorPrototype%"),
+        ) {
+            return Ok((segments, iterator));
+        }
+        let string = self.string_intrinsics()?.0;
+        let function_prototype = self.heap.prototype(string)?.unwrap();
+        let object_prototype = self.object_prototype;
+        let segments = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+        let segments_root = self.heap.root(segments)?;
+        let iterator_base = self.base_iterator_prototype()?;
+        let iterator = self.with_roots(|heap| heap.alloc_object(Some(iterator_base)))?;
+        let iterator_root = self.heap.root(iterator)?;
+        let result = (|| {
+            self.install_native(
+                segments,
+                function_prototype,
+                "containing",
+                1,
+                NativeFunction::SegmentsContaining,
+            )?;
+            self.install_symbol_native(
+                segments,
+                function_prototype,
+                "iterator",
+                0,
+                NativeFunction::SegmentsIterator,
+            )?;
+            self.install_native(
+                iterator,
+                function_prototype,
+                "next",
+                0,
+                NativeFunction::SegmentIteratorNext,
+            )?;
+            self.define_data(
+                iterator,
+                JsSymbol::well_known("toStringTag"),
+                Value::String("Segmenter String Iterator".into()),
+                false,
+                false,
+                true,
+            )?;
+            self.globals
+                .insert("%Intl.SegmentsPrototype%".into(), segments);
+            self.globals
+                .insert("%Intl.SegmentIteratorPrototype%".into(), iterator);
+            Ok((segments, iterator))
+        })();
+        if result.is_err() {
+            self.heap.unroot(segments_root)?;
+            self.heap.unroot(iterator_root)?;
+        }
+        result
     }
 
     pub(super) fn canonical_locales(
@@ -552,11 +759,27 @@ impl Vm {
         if service == native::IntlService::List {
             return self.create_list_format(args, construct);
         }
+        if service == native::IntlService::Plural {
+            return self.create_plural_rules(args, construct);
+        }
+        if service == native::IntlService::DisplayNames {
+            return self.create_display_names(args, construct);
+        }
+        if service == native::IntlService::RelativeTime {
+            return self.create_relative_time_format(args, construct);
+        }
+        if service == native::IntlService::Segmenter {
+            return self.create_segmenter(args, construct);
+        }
         self.intl_global()?;
         let name = match service {
             native::IntlService::Number => "NumberFormat",
             native::IntlService::DateTime => "DateTimeFormat",
+            native::IntlService::DisplayNames => "DisplayNames",
             native::IntlService::List => "ListFormat",
+            native::IntlService::Plural => "PluralRules",
+            native::IntlService::RelativeTime => "RelativeTimeFormat",
+            native::IntlService::Segmenter => "Segmenter",
         };
         let namespace = self.globals["Intl"];
         let constructor = self.heap.get(namespace, name)?.object_id().unwrap();
@@ -572,6 +795,459 @@ impl Vm {
         };
         self.with_roots(|heap| heap.alloc_object(Some(prototype)))
             .map(Value::Object)
+    }
+
+    fn resolve_display_names(
+        &mut self,
+        locales: &Value,
+        options: &Value,
+    ) -> Result<Rc<intl::DisplayNames>, RuntimeError> {
+        let locales = self.canonical_locales(locales)?;
+        let options = self.intl_constructor_options(options)?;
+        let locale_matcher = self.locale_matcher(&options)?;
+        let style = match self
+            .string_option(&options, "style", &["narrow", "short", "long"])?
+            .as_deref()
+        {
+            None | Some("long") => blueice_ecma402::DisplayNamesStyle::Long,
+            Some("short") => blueice_ecma402::DisplayNamesStyle::Short,
+            Some("narrow") => blueice_ecma402::DisplayNamesStyle::Narrow,
+            Some(_) => unreachable!("string_option validates DisplayNames style"),
+        };
+        let display_type = match self
+            .string_option(
+                &options,
+                "type",
+                &[
+                    "language",
+                    "region",
+                    "script",
+                    "currency",
+                    "calendar",
+                    "dateTimeField",
+                ],
+            )?
+            .as_deref()
+        {
+            Some("language") => blueice_ecma402::DisplayNamesType::Language,
+            Some("region") => blueice_ecma402::DisplayNamesType::Region,
+            Some("script") => blueice_ecma402::DisplayNamesType::Script,
+            Some("currency") => blueice_ecma402::DisplayNamesType::Currency,
+            Some("calendar") => blueice_ecma402::DisplayNamesType::Calendar,
+            Some("dateTimeField") => blueice_ecma402::DisplayNamesType::DateTimeField,
+            None => {
+                return Err(RuntimeError::TypeError(
+                    "Intl.DisplayNames requires a type option".into(),
+                ));
+            }
+            Some(_) => unreachable!("string_option validates DisplayNames type"),
+        };
+        let fallback = match self
+            .string_option(&options, "fallback", &["code", "none"])?
+            .as_deref()
+        {
+            None | Some("code") => blueice_ecma402::DisplayNamesFallback::Code,
+            Some("none") => blueice_ecma402::DisplayNamesFallback::None,
+            Some(_) => unreachable!("string_option validates DisplayNames fallback"),
+        };
+        let language_display = match self
+            .string_option(&options, "languageDisplay", &["dialect", "standard"])?
+            .as_deref()
+        {
+            None | Some("dialect") => blueice_ecma402::DisplayNamesLanguageDisplay::Dialect,
+            Some("standard") => blueice_ecma402::DisplayNamesLanguageDisplay::Standard,
+            Some(_) => unreachable!("string_option validates DisplayNames languageDisplay"),
+        };
+        blueice_ecma402::DisplayNames::try_new(
+            &locales,
+            blueice_ecma402::DisplayNamesOptions {
+                locale_matcher,
+                display_type,
+                style,
+                fallback,
+                language_display,
+            },
+        )
+        .map(Rc::new)
+        .map_err(|error| RuntimeError::RangeError(error.to_string()))
+    }
+
+    fn create_display_names(
+        &mut self,
+        args: &[Value],
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        if !construct {
+            return Err(RuntimeError::TypeError(
+                "Intl.DisplayNames must be called with new".into(),
+            ));
+        }
+        self.intl_global()?;
+        let constructor = self.globals["%Intl.DisplayNames%"];
+        let default = self
+            .heap
+            .get(constructor, "prototype")?
+            .object_id()
+            .expect("Intl.DisplayNames.prototype is an object");
+        let prototype = self.constructor_prototype(default)?;
+        self.stack.push(Value::Object(prototype));
+        let data =
+            self.resolve_display_names(native::argument(args, 0), native::argument(args, 1))?;
+        self.with_roots(|heap| heap.alloc_display_names(data, prototype))
+            .map(Value::Object)
+    }
+
+    pub(super) fn display_names_supported_locales(
+        &mut self,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let locales = self.canonical_locales(native::argument(args, 0))?;
+        let options = self.intl_options(native::argument(args, 1))?;
+        let matcher = self.locale_matcher(&options)?;
+        let locales = blueice_ecma402::supported_display_names_locales(&locales, matcher);
+        self.array_from(
+            locales
+                .iter()
+                .map(|locale| Value::String(locale.to_string().into()))
+                .collect(),
+        )
+    }
+
+    fn display_names_data(&self, value: &Value) -> Result<Rc<intl::DisplayNames>, RuntimeError> {
+        if let Value::Object(id) = value {
+            if let Some(data) = self.heap.display_names(*id)? {
+                return Ok(data);
+            }
+        }
+        Err(RuntimeError::TypeError(
+            "receiver is not an Intl.DisplayNames".into(),
+        ))
+    }
+
+    pub(super) fn display_names_of(
+        &mut self,
+        receiver: &Value,
+        code: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.display_names_data(receiver)?;
+        let code = self.coerce_string(code)?;
+        let code = code
+            .to_utf8()
+            .map_err(|_| RuntimeError::RangeError("invalid display-name code".into()))?;
+        data.of(&code)
+            .map(|name| name.map_or(Value::Undefined, |name| Value::String(name.into())))
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+    }
+
+    pub(super) fn display_names_resolved_options(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.display_names_data(receiver)?;
+        let resolved = data.resolved_options();
+        let prototype = self.object_prototype;
+        let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        self.stack.push(Value::Object(result));
+        let style = match resolved.style {
+            blueice_ecma402::DisplayNamesStyle::Long => "long",
+            blueice_ecma402::DisplayNamesStyle::Short => "short",
+            blueice_ecma402::DisplayNamesStyle::Narrow => "narrow",
+        };
+        let display_type = match resolved.display_type {
+            blueice_ecma402::DisplayNamesType::Language => "language",
+            blueice_ecma402::DisplayNamesType::Region => "region",
+            blueice_ecma402::DisplayNamesType::Script => "script",
+            blueice_ecma402::DisplayNamesType::Currency => "currency",
+            blueice_ecma402::DisplayNamesType::Calendar => "calendar",
+            blueice_ecma402::DisplayNamesType::DateTimeField => "dateTimeField",
+        };
+        let fallback = match resolved.fallback {
+            blueice_ecma402::DisplayNamesFallback::Code => "code",
+            blueice_ecma402::DisplayNamesFallback::None => "none",
+        };
+        for (key, value) in [
+            ("locale", Value::String(resolved.locale.clone().into())),
+            ("style", Value::String(style.into())),
+            ("type", Value::String(display_type.into())),
+            ("fallback", Value::String(fallback.into())),
+        ] {
+            self.define_data(result, key, value, true, true, true)?;
+        }
+        if let Some(language_display) = resolved.language_display {
+            self.define_data(
+                result,
+                "languageDisplay",
+                Value::String(
+                    match language_display {
+                        blueice_ecma402::DisplayNamesLanguageDisplay::Dialect => "dialect",
+                        blueice_ecma402::DisplayNamesLanguageDisplay::Standard => "standard",
+                    }
+                    .into(),
+                ),
+                true,
+                true,
+                true,
+            )?;
+        }
+        Ok(Value::Object(result))
+    }
+
+    fn relative_time_numbering_system(
+        &mut self,
+        options: &Value,
+    ) -> Result<Option<String>, RuntimeError> {
+        let value = self.string_option(options, "numberingSystem", &[])?;
+        if value.as_ref().is_some_and(|value| {
+            value.split('-').any(|part| {
+                !(3..=8).contains(&part.len())
+                    || !part.bytes().all(|byte| byte.is_ascii_alphanumeric())
+            })
+        }) {
+            return Err(RuntimeError::RangeError(
+                "invalid numberingSystem option".into(),
+            ));
+        }
+        Ok(value.map(|value| value.to_ascii_lowercase()))
+    }
+
+    fn relative_time_style(
+        &mut self,
+        options: &Value,
+    ) -> Result<blueice_ecma402::RelativeTimeStyle, RuntimeError> {
+        match self
+            .string_option(options, "style", &["long", "short", "narrow"])?
+            .as_deref()
+        {
+            None | Some("long") => Ok(blueice_ecma402::RelativeTimeStyle::Long),
+            Some("short") => Ok(blueice_ecma402::RelativeTimeStyle::Short),
+            Some("narrow") => Ok(blueice_ecma402::RelativeTimeStyle::Narrow),
+            Some(_) => unreachable!("string_option validates RelativeTimeFormat style"),
+        }
+    }
+
+    fn relative_time_numeric(
+        &mut self,
+        options: &Value,
+    ) -> Result<blueice_ecma402::RelativeTimeNumeric, RuntimeError> {
+        match self
+            .string_option(options, "numeric", &["always", "auto"])?
+            .as_deref()
+        {
+            None | Some("always") => Ok(blueice_ecma402::RelativeTimeNumeric::Always),
+            Some("auto") => Ok(blueice_ecma402::RelativeTimeNumeric::Auto),
+            Some(_) => unreachable!("string_option validates RelativeTimeFormat numeric"),
+        }
+    }
+
+    fn resolve_relative_time_format(
+        &mut self,
+        locales: &Value,
+        options: &Value,
+    ) -> Result<Rc<intl::RelativeTimeFormat>, RuntimeError> {
+        let locales = self.canonical_locales(locales)?;
+        // RelativeTimeFormat's Edition 13 ResolveOptions route starts from
+        // CoerceOptionsToObject, unlike the newer GetOptionsObject service
+        // constructors. Primitive options therefore expose inherited values.
+        let options = self.intl_options(options)?;
+        // Edition 13's ResolveOptions reads these properties in this exact
+        // order; keep each conversion beside its lookup.
+        let locale_matcher = self.locale_matcher(&options)?;
+        let numbering_system = self.relative_time_numbering_system(&options)?;
+        let style = self.relative_time_style(&options)?;
+        let numeric = self.relative_time_numeric(&options)?;
+        blueice_ecma402::RelativeTimeFormat::try_new(
+            &locales,
+            blueice_ecma402::RelativeTimeFormatOptions {
+                locale_matcher,
+                numbering_system,
+                style,
+                numeric,
+            },
+        )
+        .map(Rc::new)
+        .map_err(|error| RuntimeError::RangeError(error.to_string()))
+    }
+
+    fn create_relative_time_format(
+        &mut self,
+        args: &[Value],
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        if !construct {
+            return Err(RuntimeError::TypeError(
+                "Intl.RelativeTimeFormat must be called with new".into(),
+            ));
+        }
+        self.intl_global()?;
+        let constructor = self.globals["%Intl.RelativeTimeFormat%"];
+        let default = self
+            .heap
+            .get(constructor, "prototype")?
+            .object_id()
+            .expect("Intl.RelativeTimeFormat.prototype is an object");
+        let prototype = self.constructor_prototype(default)?;
+        self.stack.push(Value::Object(prototype));
+        let data = self
+            .resolve_relative_time_format(native::argument(args, 0), native::argument(args, 1))?;
+        self.with_roots(|heap| heap.alloc_relative_time_format(data, prototype))
+            .map(Value::Object)
+    }
+
+    pub(super) fn relative_time_format_supported_locales(
+        &mut self,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let locales = self.canonical_locales(native::argument(args, 0))?;
+        let options = self.intl_options(native::argument(args, 1))?;
+        let matcher = self.locale_matcher(&options)?;
+        let locales = blueice_ecma402::supported_relative_time_format_locales(&locales, matcher);
+        self.array_from(
+            locales
+                .into_iter()
+                .map(|locale| Value::String(locale.to_string().into()))
+                .collect(),
+        )
+    }
+
+    fn relative_time_format_data(
+        &self,
+        value: &Value,
+    ) -> Result<Rc<intl::RelativeTimeFormat>, RuntimeError> {
+        if let Value::Object(id) = value {
+            if let Some(data) = self.heap.relative_time_format(*id)? {
+                return Ok(data);
+            }
+        }
+        Err(RuntimeError::TypeError(
+            "receiver is not an Intl.RelativeTimeFormat".into(),
+        ))
+    }
+
+    fn relative_time_unit(
+        &mut self,
+        value: &Value,
+    ) -> Result<blueice_ecma402::RelativeTimeUnit, RuntimeError> {
+        let value = self.coerce_string(value)?;
+        let value = value
+            .to_utf8()
+            .map_err(|_| RuntimeError::RangeError("invalid relative-time unit".into()))?;
+        blueice_ecma402::RelativeTimeUnit::parse(&value)
+            .ok_or_else(|| RuntimeError::RangeError("invalid relative-time unit".into()))
+    }
+
+    fn relative_time_parts(
+        &mut self,
+        receiver: &Value,
+        value: &Value,
+        unit: &Value,
+    ) -> Result<(Vec<blueice_ecma402::RelativeTimePart>, &'static str), RuntimeError> {
+        let data = self.relative_time_format_data(receiver)?;
+        let value = self.coerce_number(value)?;
+        let unit = self.relative_time_unit(unit)?;
+        let parts = data
+            .format_to_parts(value, unit)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        Ok((parts, unit.as_str()))
+    }
+
+    pub(super) fn relative_time_format_format(
+        &mut self,
+        receiver: &Value,
+        value: &Value,
+        unit: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.relative_time_format_data(receiver)?;
+        let value = self.coerce_number(value)?;
+        let unit = self.relative_time_unit(unit)?;
+        let parts = data
+            .format_to_parts(value, unit)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        Ok(Value::String(
+            parts
+                .into_iter()
+                .map(|part| part.value)
+                .collect::<String>()
+                .into(),
+        ))
+    }
+
+    pub(super) fn relative_time_format_to_parts(
+        &mut self,
+        receiver: &Value,
+        value: &Value,
+        unit: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let (parts, unit) = self.relative_time_parts(receiver, value, unit)?;
+        let base = self.stack.len();
+        let prototype = self.object_prototype;
+        for part in parts {
+            let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+            self.stack.push(Value::Object(object));
+            let kind = match part.kind {
+                blueice_ecma402::RelativeTimePartKind::Literal => "literal",
+                blueice_ecma402::RelativeTimePartKind::Integer => "integer",
+                blueice_ecma402::RelativeTimePartKind::Group => "group",
+                blueice_ecma402::RelativeTimePartKind::Decimal => "decimal",
+                blueice_ecma402::RelativeTimePartKind::Fraction => "fraction",
+            };
+            self.define_data(object, "type", Value::String(kind.into()), true, true, true)?;
+            self.define_data(
+                object,
+                "value",
+                Value::String(part.value.into()),
+                true,
+                true,
+                true,
+            )?;
+            if part.kind != blueice_ecma402::RelativeTimePartKind::Literal {
+                self.define_data(object, "unit", Value::String(unit.into()), true, true, true)?;
+            }
+        }
+        let result = self.array_from(self.stack[base..].to_vec());
+        self.stack.truncate(base);
+        result
+    }
+
+    pub(super) fn relative_time_format_resolved_options(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.relative_time_format_data(receiver)?;
+        let resolved = data.resolved_options();
+        let prototype = self.object_prototype;
+        let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        self.stack.push(Value::Object(object));
+        for (key, value) in [
+            ("locale", Value::String(resolved.locale.clone().into())),
+            (
+                "style",
+                Value::String(
+                    match resolved.style {
+                        blueice_ecma402::RelativeTimeStyle::Long => "long",
+                        blueice_ecma402::RelativeTimeStyle::Short => "short",
+                        blueice_ecma402::RelativeTimeStyle::Narrow => "narrow",
+                    }
+                    .into(),
+                ),
+            ),
+            (
+                "numeric",
+                Value::String(
+                    match resolved.numeric {
+                        blueice_ecma402::RelativeTimeNumeric::Always => "always",
+                        blueice_ecma402::RelativeTimeNumeric::Auto => "auto",
+                    }
+                    .into(),
+                ),
+            ),
+            (
+                "numberingSystem",
+                Value::String(resolved.numbering_system.clone().into()),
+            ),
+        ] {
+            self.define_data(object, key, value, true, true, true)?;
+        }
+        Ok(Value::Object(object))
     }
 
     fn number_grouping(
@@ -933,6 +1609,627 @@ impl Vm {
                         blueice_ecma402::ListStyle::Wide => "long",
                         blueice_ecma402::ListStyle::Short => "short",
                         blueice_ecma402::ListStyle::Narrow => "narrow",
+                    }
+                    .into(),
+                ),
+            ),
+        ] {
+            self.define_data(result, key, value, true, true, true)?;
+        }
+        Ok(Value::Object(result))
+    }
+
+    fn plural_rules_integer_option(
+        &mut self,
+        options: &Value,
+        name: &str,
+        minimum: u8,
+        maximum: u8,
+    ) -> Result<Option<u8>, RuntimeError> {
+        let value = self.get_property(options, &name.into())?;
+        if value == Value::Undefined {
+            return Ok(None);
+        }
+        let value = self.coerce_number(&value)?;
+        if !value.is_finite()
+            || value.floor() != value
+            || !(f64::from(minimum)..=f64::from(maximum)).contains(&value)
+        {
+            return Err(RuntimeError::RangeError(format!("invalid {name} option")));
+        }
+        Ok(Some(value as u8))
+    }
+
+    fn plural_rules_rounding_increment(&mut self, options: &Value) -> Result<u16, RuntimeError> {
+        let value = self.get_property(options, &"roundingIncrement".into())?;
+        if value == Value::Undefined {
+            return Ok(1);
+        }
+        let value = self.coerce_number(&value)?;
+        const INCREMENTS: &[u16] = &[
+            1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000,
+        ];
+        if !value.is_finite() || value.floor() != value || !INCREMENTS.contains(&(value as u16)) {
+            return Err(RuntimeError::RangeError(
+                "invalid roundingIncrement option".into(),
+            ));
+        }
+        Ok(value as u16)
+    }
+
+    fn resolve_plural_rules(
+        &mut self,
+        locales: &Value,
+        options: &Value,
+    ) -> Result<Rc<intl::PluralRules>, RuntimeError> {
+        let locales = self.canonical_locales(locales)?;
+        let options = self.intl_constructor_options(options)?;
+
+        // ECMA-402's observable GetOption order is intentional. Keep this
+        // sequence adjacent to the corresponding Edition 13 initialization
+        // steps; property getters may throw or record every access.
+        let locale_matcher = self.locale_matcher(&options)?;
+        let rule_type = self
+            .string_option(&options, "type", &["cardinal", "ordinal"])?
+            .unwrap_or_else(|| "cardinal".into());
+        let notation = self
+            .string_option(
+                &options,
+                "notation",
+                &["standard", "compact", "scientific", "engineering"],
+            )?
+            .unwrap_or_else(|| "standard".into());
+        let compact_display = self.string_option(&options, "compactDisplay", &["short", "long"])?;
+        let minimum_integer_digits = self
+            .plural_rules_integer_option(&options, "minimumIntegerDigits", 1, 21)?
+            .unwrap_or(1);
+        let minimum_fraction_digits =
+            self.plural_rules_integer_option(&options, "minimumFractionDigits", 0, 20)?;
+        let maximum_fraction_digits =
+            self.plural_rules_integer_option(&options, "maximumFractionDigits", 0, 20)?;
+        let minimum_significant_digits =
+            self.plural_rules_integer_option(&options, "minimumSignificantDigits", 1, 21)?;
+        let maximum_significant_digits =
+            self.plural_rules_integer_option(&options, "maximumSignificantDigits", 1, 21)?;
+        let rounding_increment = self.plural_rules_rounding_increment(&options)?;
+        let rounding_mode = self
+            .string_option(
+                &options,
+                "roundingMode",
+                &[
+                    "ceil",
+                    "floor",
+                    "expand",
+                    "trunc",
+                    "halfCeil",
+                    "halfFloor",
+                    "halfExpand",
+                    "halfTrunc",
+                    "halfEven",
+                ],
+            )?
+            .unwrap_or_else(|| "halfExpand".into());
+        let rounding_priority = self
+            .string_option(
+                &options,
+                "roundingPriority",
+                &["auto", "morePrecision", "lessPrecision"],
+            )?
+            .unwrap_or_else(|| "auto".into());
+        let trailing_zero_display = self
+            .string_option(&options, "trailingZeroDisplay", &["auto", "stripIfInteger"])?
+            .unwrap_or_else(|| "auto".into());
+
+        let minimum_fraction_digits = minimum_fraction_digits.unwrap_or(0);
+        let maximum_fraction_digits = maximum_fraction_digits.unwrap_or(3);
+        if minimum_fraction_digits > maximum_fraction_digits {
+            return Err(RuntimeError::RangeError(
+                "minimumFractionDigits exceeds maximumFractionDigits".into(),
+            ));
+        }
+        let (minimum_significant_digits, maximum_significant_digits) =
+            match (minimum_significant_digits, maximum_significant_digits) {
+                (None, None) => (None, None),
+                (minimum, maximum) => {
+                    let minimum = minimum.unwrap_or(1);
+                    let maximum = maximum.unwrap_or(21);
+                    if minimum > maximum {
+                        return Err(RuntimeError::RangeError(
+                            "minimumSignificantDigits exceeds maximumSignificantDigits".into(),
+                        ));
+                    }
+                    (Some(minimum), Some(maximum))
+                }
+            };
+        let compact_display =
+            (notation == "compact").then(|| compact_display.unwrap_or_else(|| "short".into()));
+        let rule_type = match rule_type.as_str() {
+            "cardinal" => blueice_ecma402::PluralRuleType::Cardinal,
+            "ordinal" => blueice_ecma402::PluralRuleType::Ordinal,
+            _ => unreachable!("string_option validates PluralRules type"),
+        };
+        let data = blueice_ecma402::PluralRules::try_new(
+            &locales,
+            blueice_ecma402::PluralRulesOptions {
+                locale_matcher,
+                rule_type,
+            },
+        )
+        .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        Ok(Rc::new(intl::PluralRules {
+            data,
+            rule_type,
+            notation,
+            compact_display,
+            minimum_integer_digits,
+            minimum_fraction_digits,
+            maximum_fraction_digits,
+            minimum_significant_digits,
+            maximum_significant_digits,
+            rounding_increment,
+            rounding_mode,
+            rounding_priority,
+            trailing_zero_display,
+        }))
+    }
+
+    pub(super) fn plural_rules_supported_locales(
+        &mut self,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let locales = self.canonical_locales(native::argument(args, 0))?;
+        let options = self.intl_options(native::argument(args, 1))?;
+        let matcher = self.locale_matcher(&options)?;
+        let locales = blueice_ecma402::supported_plural_rules_locales(&locales, matcher);
+        self.array_from(
+            locales
+                .iter()
+                .map(|locale| Value::String(locale.to_string().into()))
+                .collect(),
+        )
+    }
+
+    fn create_plural_rules(
+        &mut self,
+        args: &[Value],
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        if !construct {
+            return Err(RuntimeError::TypeError(
+                "Intl.PluralRules must be called with new".into(),
+            ));
+        }
+        self.intl_global()?;
+        let constructor = self.globals["%Intl.PluralRules%"];
+        let default = self
+            .heap
+            .get(constructor, "prototype")?
+            .object_id()
+            .expect("Intl.PluralRules.prototype is an object");
+        let prototype = self.constructor_prototype(default)?;
+        self.stack.push(Value::Object(prototype));
+        let data =
+            self.resolve_plural_rules(native::argument(args, 0), native::argument(args, 1))?;
+        self.with_roots(|heap| heap.alloc_plural_rules(data, prototype))
+            .map(Value::Object)
+    }
+
+    pub(super) fn plural_rules_data(
+        &self,
+        value: &Value,
+    ) -> Result<Rc<intl::PluralRules>, RuntimeError> {
+        if let Value::Object(id) = value {
+            if let Some(data) = self.heap.plural_rules(*id)? {
+                return Ok(data);
+            }
+        }
+        Err(RuntimeError::TypeError(
+            "receiver is not an Intl.PluralRules".into(),
+        ))
+    }
+
+    fn plural_category_name(category: blueice_ecma402::PluralCategory) -> &'static str {
+        match category {
+            blueice_ecma402::PluralCategory::Zero => "zero",
+            blueice_ecma402::PluralCategory::One => "one",
+            blueice_ecma402::PluralCategory::Two => "two",
+            blueice_ecma402::PluralCategory::Few => "few",
+            blueice_ecma402::PluralCategory::Many => "many",
+            blueice_ecma402::PluralCategory::Other => "other",
+        }
+    }
+
+    fn plural_rules_categories(&self, data: &intl::PluralRules) -> Vec<Value> {
+        let mut seen = [false; 6];
+        let mut record = |value: f64| {
+            if let Ok(category) = data.data.select_f64(value) {
+                let index = match category {
+                    blueice_ecma402::PluralCategory::Zero => 0,
+                    blueice_ecma402::PluralCategory::One => 1,
+                    blueice_ecma402::PluralCategory::Two => 2,
+                    blueice_ecma402::PluralCategory::Few => 3,
+                    blueice_ecma402::PluralCategory::Many => 4,
+                    blueice_ecma402::PluralCategory::Other => 5,
+                };
+                seen[index] = true;
+            }
+        };
+        for value in 0..=10_000 {
+            record(f64::from(value));
+        }
+        for value in [0.1, 0.2, 0.5, 1.1, 1.5, 2.1, 10.1, 1_000_000.0] {
+            record(value);
+        }
+        ["zero", "one", "two", "few", "many", "other"]
+            .into_iter()
+            .enumerate()
+            .filter(|&(index, _)| seen[index])
+            .map(|(_, name)| Value::String(name.into()))
+            .collect()
+    }
+
+    pub(super) fn plural_rules_select(
+        &mut self,
+        receiver: &Value,
+        value: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.plural_rules_data(receiver)?;
+        let value = self.coerce_number(value)?;
+        if !value.is_finite() {
+            return Ok(Value::String("other".into()));
+        }
+        let category = if data.notation == "compact" {
+            data.data
+                .select_compact_f64(value, data.compact_display.as_deref() == Some("long"))
+        } else {
+            data.data.select_f64(value)
+        };
+        category
+            .map(Self::plural_category_name)
+            .map(|category| Value::String(category.into()))
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+    }
+
+    pub(super) fn plural_rules_select_range(
+        &mut self,
+        receiver: &Value,
+        start: &Value,
+        end: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.plural_rules_data(receiver)?;
+        if *start == Value::Undefined || *end == Value::Undefined {
+            return Err(RuntimeError::TypeError(
+                "Intl.PluralRules selectRange arguments must not be undefined".into(),
+            ));
+        }
+        let start = self.coerce_number(start)?;
+        let end = self.coerce_number(end)?;
+        if !start.is_finite() || !end.is_finite() {
+            return Err(RuntimeError::RangeError(
+                "Intl.PluralRules selectRange arguments must be finite".into(),
+            ));
+        }
+        // The host service does not yet expose CLDR plural-range tables. The
+        // identity range is exact; the non-identity fallback is the required
+        // default for English and remains tracked as a host-service gap.
+        if start == end {
+            let category = if data.notation == "compact" {
+                data.data
+                    .select_compact_f64(start, data.compact_display.as_deref() == Some("long"))
+            } else {
+                data.data.select_f64(start)
+            };
+            return category
+                .map(Self::plural_category_name)
+                .map(|category| Value::String(category.into()))
+                .map_err(|error| RuntimeError::RangeError(error.to_string()));
+        }
+        Ok(Value::String("other".into()))
+    }
+
+    pub(super) fn plural_rules_resolved_options(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.plural_rules_data(receiver)?;
+        let prototype = self.object_prototype;
+        let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        self.stack.push(Value::Object(result));
+        let resolved = data.data.resolved_options();
+        let mut properties = vec![
+            ("locale", Value::String(resolved.locale.clone().into())),
+            (
+                "type",
+                Value::String(
+                    match data.rule_type {
+                        blueice_ecma402::PluralRuleType::Cardinal => "cardinal",
+                        blueice_ecma402::PluralRuleType::Ordinal => "ordinal",
+                    }
+                    .into(),
+                ),
+            ),
+            ("notation", Value::String(data.notation.clone().into())),
+        ];
+        if let Some(compact_display) = &data.compact_display {
+            properties.push((
+                "compactDisplay",
+                Value::String(compact_display.clone().into()),
+            ));
+        }
+        properties.extend([
+            (
+                "minimumIntegerDigits",
+                Value::Number(f64::from(data.minimum_integer_digits)),
+            ),
+            (
+                "minimumFractionDigits",
+                Value::Number(f64::from(data.minimum_fraction_digits)),
+            ),
+            (
+                "maximumFractionDigits",
+                Value::Number(f64::from(data.maximum_fraction_digits)),
+            ),
+        ]);
+        if let (Some(minimum), Some(maximum)) = (
+            data.minimum_significant_digits,
+            data.maximum_significant_digits,
+        ) {
+            properties.extend([
+                (
+                    "minimumSignificantDigits",
+                    Value::Number(f64::from(minimum)),
+                ),
+                (
+                    "maximumSignificantDigits",
+                    Value::Number(f64::from(maximum)),
+                ),
+            ]);
+        }
+        for (key, value) in properties {
+            self.define_data(result, key, value, true, true, true)?;
+        }
+        let categories = self.array_from(self.plural_rules_categories(&data))?;
+        self.define_data(result, "pluralCategories", categories, true, true, true)?;
+        for (key, value) in [
+            (
+                "roundingIncrement",
+                Value::Number(f64::from(data.rounding_increment)),
+            ),
+            (
+                "roundingMode",
+                Value::String(data.rounding_mode.clone().into()),
+            ),
+            (
+                "roundingPriority",
+                Value::String(data.rounding_priority.clone().into()),
+            ),
+            (
+                "trailingZeroDisplay",
+                Value::String(data.trailing_zero_display.clone().into()),
+            ),
+        ] {
+            self.define_data(result, key, value, true, true, true)?;
+        }
+        Ok(Value::Object(result))
+    }
+
+    fn segmenter_granularity(
+        &mut self,
+        options: &Value,
+    ) -> Result<blueice_ecma402::SegmenterGranularity, RuntimeError> {
+        match self
+            .string_option(options, "granularity", &["grapheme", "word", "sentence"])?
+            .as_deref()
+        {
+            None | Some("grapheme") => Ok(blueice_ecma402::SegmenterGranularity::Grapheme),
+            Some("word") => Ok(blueice_ecma402::SegmenterGranularity::Word),
+            Some("sentence") => Ok(blueice_ecma402::SegmenterGranularity::Sentence),
+            Some(_) => unreachable!("string_option validates Segmenter granularity"),
+        }
+    }
+
+    fn resolve_segmenter(
+        &mut self,
+        locales: &Value,
+        options: &Value,
+    ) -> Result<Rc<intl::Segmenter>, RuntimeError> {
+        let locales = self.canonical_locales(locales)?;
+        let options = self.intl_constructor_options(options)?;
+        let data = blueice_ecma402::Segmenter::try_new(
+            &locales,
+            blueice_ecma402::SegmenterOptions {
+                locale_matcher: self.locale_matcher(&options)?,
+                granularity: self.segmenter_granularity(&options)?,
+            },
+        )
+        .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        Ok(Rc::new(data))
+    }
+
+    pub(super) fn segmenter_supported_locales(
+        &mut self,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let locales = self.canonical_locales(native::argument(args, 0))?;
+        let options = self.intl_options(native::argument(args, 1))?;
+        let matcher = self.locale_matcher(&options)?;
+        let locales = blueice_ecma402::supported_segmenter_locales(&locales, matcher);
+        self.array_from(
+            locales
+                .iter()
+                .map(|locale| Value::String(locale.to_string().into()))
+                .collect(),
+        )
+    }
+
+    fn create_segmenter(&mut self, args: &[Value], construct: bool) -> Result<Value, RuntimeError> {
+        if !construct {
+            return Err(RuntimeError::TypeError(
+                "Intl.Segmenter must be called with new".into(),
+            ));
+        }
+        self.intl_global()?;
+        let constructor = self.globals["%Intl.Segmenter%"];
+        let default = self
+            .heap
+            .get(constructor, "prototype")?
+            .object_id()
+            .expect("Intl.Segmenter.prototype is an object");
+        let prototype = self.constructor_prototype(default)?;
+        self.stack.push(Value::Object(prototype));
+        let data = self.resolve_segmenter(native::argument(args, 0), native::argument(args, 1))?;
+        self.with_roots(|heap| heap.alloc_segmenter(data, prototype))
+            .map(Value::Object)
+    }
+
+    pub(super) fn segmenter_data(
+        &self,
+        value: &Value,
+    ) -> Result<Rc<intl::Segmenter>, RuntimeError> {
+        if let Value::Object(id) = value {
+            if let Some(data) = self.heap.segmenter(*id)? {
+                return Ok(data);
+            }
+        }
+        Err(RuntimeError::TypeError(
+            "receiver is not an Intl.Segmenter".into(),
+        ))
+    }
+
+    pub(super) fn segmenter_segment(
+        &mut self,
+        receiver: &Value,
+        input: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let segmenter = self.segmenter_data(receiver)?;
+        let input = self.coerce_string(input)?;
+        let (prototype, _) = self.segmenter_internal_prototypes()?;
+        let data = Rc::new(intl::Segments::from_segmenter(&segmenter, input));
+        self.with_roots(|heap| heap.alloc_segments(data, prototype))
+            .map(Value::Object)
+    }
+
+    fn segments_data(&self, value: &Value) -> Result<Rc<intl::Segments>, RuntimeError> {
+        if let Value::Object(id) = value {
+            if let Some(data) = self.heap.segments(*id)? {
+                return Ok(data);
+            }
+        }
+        Err(RuntimeError::TypeError(
+            "receiver is not an Intl.Segmenter Segments object".into(),
+        ))
+    }
+
+    fn segment_record(
+        &mut self,
+        data: &intl::Segments,
+        index: usize,
+    ) -> Result<Value, RuntimeError> {
+        let (segment, start, is_word_like) = data
+            .record(index)
+            .expect("segment iterator index is bounded by its data");
+        let prototype = self.object_prototype;
+        let record = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        self.stack.push(Value::Object(record));
+        let result = (|| {
+            self.define_data(record, "segment", Value::String(segment), true, true, true)?;
+            self.define_data(
+                record,
+                "index",
+                Value::Number(start as f64),
+                true,
+                true,
+                true,
+            )?;
+            self.define_data(
+                record,
+                "input",
+                Value::String(data.input.clone()),
+                true,
+                true,
+                true,
+            )?;
+            if let Some(is_word_like) = is_word_like {
+                self.define_data(
+                    record,
+                    "isWordLike",
+                    Value::Bool(is_word_like),
+                    true,
+                    true,
+                    true,
+                )?;
+            }
+            Ok(Value::Object(record))
+        })();
+        self.stack.pop();
+        result
+    }
+
+    pub(super) fn segments_containing(
+        &mut self,
+        receiver: &Value,
+        index: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.segments_data(receiver)?;
+        let index = self.coerce_number(index)?;
+        let index = if index.is_nan() { 0.0 } else { index.trunc() };
+        if !index.is_finite() || index < 0.0 || index >= data.input.as_code_units().len() as f64 {
+            return Ok(Value::Undefined);
+        }
+        data.containing(index as usize)
+            .map(|record| self.segment_record(&data, record))
+            .transpose()?
+            .map_or(Ok(Value::Undefined), Ok)
+    }
+
+    pub(super) fn segments_iterator(&mut self, receiver: &Value) -> Result<Value, RuntimeError> {
+        let data = self.segments_data(receiver)?;
+        let (_, prototype) = self.segmenter_internal_prototypes()?;
+        self.with_roots(|heap| heap.alloc_segment_iterator(data, prototype))
+            .map(Value::Object)
+    }
+
+    pub(super) fn segment_iterator_next(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let Value::Object(iterator) = receiver else {
+            return Err(RuntimeError::TypeError(
+                "Segmenter iterator next requires an iterator".into(),
+            ));
+        };
+        let next = self.heap.segment_iterator_next(*iterator)?;
+        if next.is_none() && !self.heap.is_segment_iterator(*iterator)? {
+            return Err(RuntimeError::TypeError(
+                "Segmenter iterator next requires a Segmenter iterator".into(),
+            ));
+        }
+        match next {
+            Some((data, index)) => self
+                .segment_record(&data, index)
+                .and_then(|value| self.iterator_result(value, false)),
+            None => self.iterator_result(Value::Undefined, true),
+        }
+    }
+
+    pub(super) fn segmenter_resolved_options(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.segmenter_data(receiver)?;
+        let resolved = data.resolved_options();
+        let prototype = self.object_prototype;
+        let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        self.stack.push(Value::Object(result));
+        for (key, value) in [
+            ("locale", Value::String(resolved.locale.clone().into())),
+            (
+                "granularity",
+                Value::String(
+                    match resolved.granularity {
+                        blueice_ecma402::SegmenterGranularity::Grapheme => "grapheme",
+                        blueice_ecma402::SegmenterGranularity::Word => "word",
+                        blueice_ecma402::SegmenterGranularity::Sentence => "sentence",
                     }
                     .into(),
                 ),

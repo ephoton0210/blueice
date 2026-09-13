@@ -6,7 +6,7 @@
 
 use blueice_ecma402::{
     apply_locale_options, canonicalize, locale_information, maximize_locale, minimize_locale,
-    LocaleOptionError, LocaleOptions, TextDirection,
+    LocaleError, LocaleOptionError, LocaleOptions, TextDirection,
 };
 
 fn strings(values: &[&str]) -> Vec<String> {
@@ -115,4 +115,151 @@ fn locale_options_are_applied_and_canonicalized_without_a_realm() {
         ),
         Err(LocaleOptionError::InvalidFirstDayOfWeek)
     );
+}
+
+#[test]
+fn locale_option_errors_aliases_and_information_fallbacks_are_explicit() {
+    assert_eq!(
+        canonicalize("en_US").unwrap_err().to_string(),
+        "invalid Unicode locale identifier"
+    );
+    assert_eq!(
+        LocaleError::InvalidLanguageTag.to_string(),
+        "invalid Unicode locale identifier"
+    );
+
+    let base = canonicalize("en").unwrap();
+    for (options, expected) in [
+        (
+            LocaleOptions {
+                script: Some("Lat".into()),
+                ..Default::default()
+            },
+            LocaleOptionError::InvalidScript,
+        ),
+        (
+            LocaleOptions {
+                region: Some("U".into()),
+                ..Default::default()
+            },
+            LocaleOptionError::InvalidRegion,
+        ),
+        (
+            LocaleOptions {
+                variants: Some("".into()),
+                ..Default::default()
+            },
+            LocaleOptionError::InvalidVariants,
+        ),
+        (
+            LocaleOptions {
+                variants: Some("fonipa-fonipa".into()),
+                ..Default::default()
+            },
+            LocaleOptionError::InvalidVariants,
+        ),
+        (
+            LocaleOptions {
+                calendar: Some("ab".into()),
+                ..Default::default()
+            },
+            LocaleOptionError::InvalidCalendar,
+        ),
+        (
+            LocaleOptions {
+                collation: Some("ab".into()),
+                ..Default::default()
+            },
+            LocaleOptionError::InvalidCollation,
+        ),
+        (
+            LocaleOptions {
+                hour_cycle: Some("h25".into()),
+                ..Default::default()
+            },
+            LocaleOptionError::InvalidHourCycle,
+        ),
+        (
+            LocaleOptions {
+                case_first: Some("mixed".into()),
+                ..Default::default()
+            },
+            LocaleOptionError::InvalidCaseFirst,
+        ),
+        (
+            LocaleOptions {
+                numbering_system: Some("ab".into()),
+                ..Default::default()
+            },
+            LocaleOptionError::InvalidNumberingSystem,
+        ),
+        (
+            LocaleOptions {
+                first_day_of_week: Some("mo".into()),
+                ..Default::default()
+            },
+            LocaleOptionError::InvalidFirstDayOfWeek,
+        ),
+    ] {
+        assert_eq!(apply_locale_options(&base, &options), Err(expected));
+        assert_eq!(
+            expected.to_string(),
+            format!(
+                "invalid {} option",
+                match expected {
+                    LocaleOptionError::InvalidLanguage => "language",
+                    LocaleOptionError::InvalidScript => "script",
+                    LocaleOptionError::InvalidRegion => "region",
+                    LocaleOptionError::InvalidVariants => "variants",
+                    LocaleOptionError::InvalidCalendar => "calendar",
+                    LocaleOptionError::InvalidCollation => "collation",
+                    LocaleOptionError::InvalidHourCycle => "hourCycle",
+                    LocaleOptionError::InvalidCaseFirst => "caseFirst",
+                    LocaleOptionError::InvalidNumberingSystem => "numberingSystem",
+                    LocaleOptionError::InvalidFirstDayOfWeek => "firstDayOfWeek",
+                }
+            )
+        );
+    }
+
+    let aliases = canonicalize("en-u-ks-tertiary-ms-imperial-tz-eire").unwrap();
+    assert_eq!(aliases.as_str(), "en-u-ks-level3-ms-uksystem-tz-iedub");
+    let boolean = canonicalize("en-u-kn-yes").unwrap();
+    assert_eq!(boolean.as_str(), "en-u-kn");
+    assert_eq!(
+        apply_locale_options(&canonicalize("posix").unwrap(), &LocaleOptions::default())
+            .unwrap()
+            .as_str(),
+        "posix"
+    );
+
+    for (tag, first_day, time_zone, direction) in [
+        ("en-u-fw-tue", 2, None, TextDirection::LeftToRight),
+        ("en-u-fw-wed", 3, None, TextDirection::LeftToRight),
+        ("en-u-fw-thu", 4, None, TextDirection::LeftToRight),
+        ("en-u-fw-fri", 5, None, TextDirection::LeftToRight),
+        ("en-u-fw-sat", 6, None, TextDirection::LeftToRight),
+        (
+            "en-GB",
+            1,
+            Some("Europe/London"),
+            TextDirection::LeftToRight,
+        ),
+        ("ja-JP", 7, Some("Asia/Tokyo"), TextDirection::LeftToRight),
+        ("de-DE", 1, Some("Etc/UTC"), TextDirection::LeftToRight),
+        ("en-Arab", 1, None, TextDirection::RightToLeft),
+    ] {
+        let information = locale_information(&canonicalize(tag).unwrap());
+        assert_eq!(information.week_info.first_day, first_day, "{tag}");
+        assert_eq!(
+            information
+                .time_zones
+                .as_ref()
+                .and_then(|zones| zones.first())
+                .map(String::as_str),
+            time_zone,
+            "{tag}"
+        );
+        assert_eq!(information.text_direction, direction, "{tag}");
+    }
 }

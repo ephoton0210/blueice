@@ -7,7 +7,7 @@ license.workspace = true
 [dependencies]
 fixed_decimal = { version = "=0.7.2", features = ["ryu"] }
 icu_collator = "=2.2.0"
-icu_decimal = { version = "=2.2.0", features = ["ryu"] }
+icu_decimal = { version = "=2.2.0", features = ["ryu", "unstable"] }
 icu_datetime = "=2.2.0"
 icu_list = "=2.2.0"
 icu_locale = "=2.2.0"

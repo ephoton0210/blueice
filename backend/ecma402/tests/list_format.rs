@@ -5,7 +5,8 @@
 //! Public, host-neutral `Intl.ListFormat` coverage.
 
 use blueice_ecma402::{
-    canonicalize, ListFormat, ListFormatOptions, ListPart, ListPartKind, ListStyle, ListType,
+    canonicalize, resolve_list_format_locale, supported_list_format_locales, ListFormat,
+    ListFormatError, ListFormatOptions, ListPart, ListPartKind, ListStyle, ListType, LocaleMatcher,
     ResolvedListFormatOptions,
 };
 
@@ -107,5 +108,42 @@ fn exposes_locale_literals_and_input_elements_as_parts() {
                 value: "C".into(),
             },
         ]
+    );
+}
+
+#[test]
+fn covers_list_locale_filters_widths_empty_values_and_error_text() {
+    let requested = [canonicalize("zz").unwrap(), canonicalize("fr").unwrap()];
+    assert_eq!(
+        resolve_list_format_locale(&requested, LocaleMatcher::BestFit).as_str(),
+        "fr"
+    );
+    assert_eq!(
+        supported_list_format_locales(&requested, LocaleMatcher::BestFit)
+            .iter()
+            .map(|locale| locale.as_str())
+            .collect::<Vec<_>>(),
+        ["fr"]
+    );
+    let narrow = ListFormat::try_new(
+        &[canonicalize("en").unwrap()],
+        ListFormatOptions {
+            locale_matcher: LocaleMatcher::BestFit,
+            list_type: ListType::Conjunction,
+            style: ListStyle::Narrow,
+        },
+    )
+    .unwrap();
+    assert_eq!(narrow.negotiation().matcher(), LocaleMatcher::BestFit);
+    assert_eq!(narrow.format(std::iter::empty::<&str>()), "");
+    assert_eq!(narrow.format(["only"]), "only");
+    assert!(narrow.bytes() > std::mem::size_of::<ListFormat>());
+    assert_eq!(
+        ListFormatError::DataUnavailable.to_string(),
+        "list-pattern data is unavailable"
+    );
+    assert_eq!(
+        ListFormatError::FormattingFailed.to_string(),
+        "could not collect list-format parts"
     );
 }

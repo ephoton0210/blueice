@@ -439,9 +439,29 @@ impl Vm {
                 .get("%Intl.Locale%")
                 .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
                 .and_then(|value| value.object_id());
+            let intl_display_names_prototype = self
+                .globals
+                .get("%Intl.DisplayNames%")
+                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
+                .and_then(|value| value.object_id());
             let intl_list_format_prototype = self
                 .globals
                 .get("%Intl.ListFormat%")
+                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
+                .and_then(|value| value.object_id());
+            let intl_plural_rules_prototype = self
+                .globals
+                .get("%Intl.PluralRules%")
+                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
+                .and_then(|value| value.object_id());
+            let intl_relative_time_format_prototype = self
+                .globals
+                .get("%Intl.RelativeTimeFormat%")
+                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
+                .and_then(|value| value.object_id());
+            let intl_segmenter_prototype = self
+                .globals
+                .get("%Intl.Segmenter%")
                 .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
                 .and_then(|value| value.object_id());
             let intrinsic = if default == self.object_prototype {
@@ -458,8 +478,16 @@ impl Vm {
                 Some("Intl.Collator")
             } else if intl_locale_prototype == Some(default) {
                 Some("Intl.Locale")
+            } else if intl_display_names_prototype == Some(default) {
+                Some("Intl.DisplayNames")
             } else if intl_list_format_prototype == Some(default) {
                 Some("Intl.ListFormat")
+            } else if intl_plural_rules_prototype == Some(default) {
+                Some("Intl.PluralRules")
+            } else if intl_relative_time_format_prototype == Some(default) {
+                Some("Intl.RelativeTimeFormat")
+            } else if intl_segmenter_prototype == Some(default) {
+                Some("Intl.Segmenter")
             } else if default == self.buffer_prototype("ArrayBuffer")? {
                 Some("ArrayBuffer")
             } else if default == self.buffer_prototype("SharedArrayBuffer")? {

@@ -540,7 +540,16 @@ enum ObjectKind {
         data: Rc<crate::intl::NumberFormat>,
         format: Option<ObjectId>,
     },
+    DisplayNames(Rc<crate::intl::DisplayNames>),
     ListFormat(Rc<crate::intl::ListFormat>),
+    PluralRules(Rc<crate::intl::PluralRules>),
+    RelativeTimeFormat(Rc<crate::intl::RelativeTimeFormat>),
+    Segmenter(Rc<crate::intl::Segmenter>),
+    Segments(Rc<crate::intl::Segments>),
+    SegmentIterator {
+        data: Rc<crate::intl::Segments>,
+        next: usize,
+    },
     IntlLocale(Rc<crate::intl::Locale>),
     Array {
         length: u32,
@@ -1014,7 +1023,13 @@ impl Object {
                 ObjectKind::NativeFunction { function, .. } => function.references(),
                 ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
                 ObjectKind::NumberFormat { format, .. } => format.iter().copied().collect(),
+                ObjectKind::DisplayNames(_) => Vec::new(),
                 ObjectKind::ListFormat(_) => Vec::new(),
+                ObjectKind::PluralRules(_) => Vec::new(),
+                ObjectKind::RelativeTimeFormat(_) => Vec::new(),
+                ObjectKind::Segmenter(_)
+                | ObjectKind::Segments(_)
+                | ObjectKind::SegmentIterator { .. } => Vec::new(),
                 ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
                 ObjectKind::ArrayIterator { object, .. } => vec![*object],
                 ObjectKind::IteratorWrapper { iterator, next } => {
@@ -1118,7 +1133,13 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
             ObjectKind::NativeFunction { function, .. } => function.references(),
             ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
             ObjectKind::NumberFormat { format, .. } => format.iter().copied().collect(),
+            ObjectKind::DisplayNames(_) => Vec::new(),
             ObjectKind::ListFormat(_) => Vec::new(),
+            ObjectKind::PluralRules(_) => Vec::new(),
+            ObjectKind::RelativeTimeFormat(_) => Vec::new(),
+            ObjectKind::Segmenter(_)
+            | ObjectKind::Segments(_)
+            | ObjectKind::SegmentIterator { .. } => Vec::new(),
             ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
             ObjectKind::ArrayIterator { object, .. } => vec![*object],
             ObjectKind::IteratorWrapper { iterator, next } => {
@@ -2169,6 +2190,24 @@ impl Heap {
         self.write_barrier(object, Some(function));
     }
 
+    pub(crate) fn alloc_display_names(
+        &mut self,
+        data: Rc<crate::intl::DisplayNames>,
+        prototype: ObjectId,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::DisplayNames(data), Some(prototype))
+    }
+
+    pub(crate) fn display_names(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<Rc<crate::intl::DisplayNames>>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::DisplayNames(data) => Some(data.clone()),
+            _ => None,
+        })
+    }
+
     pub(crate) fn alloc_list_format(
         &mut self,
         data: Rc<crate::intl::ListFormat>,
@@ -2185,6 +2224,111 @@ impl Heap {
             ObjectKind::ListFormat(data) => Some(data.clone()),
             _ => None,
         })
+    }
+
+    pub(crate) fn alloc_plural_rules(
+        &mut self,
+        data: Rc<crate::intl::PluralRules>,
+        prototype: ObjectId,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::PluralRules(data), Some(prototype))
+    }
+
+    pub(crate) fn plural_rules(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<Rc<crate::intl::PluralRules>>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::PluralRules(data) => Some(data.clone()),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn alloc_relative_time_format(
+        &mut self,
+        data: Rc<crate::intl::RelativeTimeFormat>,
+        prototype: ObjectId,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::RelativeTimeFormat(data), Some(prototype))
+    }
+
+    pub(crate) fn relative_time_format(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<Rc<crate::intl::RelativeTimeFormat>>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::RelativeTimeFormat(data) => Some(data.clone()),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn alloc_segmenter(
+        &mut self,
+        data: Rc<crate::intl::Segmenter>,
+        prototype: ObjectId,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::Segmenter(data), Some(prototype))
+    }
+
+    pub(crate) fn segmenter(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<Rc<crate::intl::Segmenter>>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::Segmenter(data) => Some(data.clone()),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn alloc_segments(
+        &mut self,
+        data: Rc<crate::intl::Segments>,
+        prototype: ObjectId,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::Segments(data), Some(prototype))
+    }
+
+    pub(crate) fn segments(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<Rc<crate::intl::Segments>>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::Segments(data) => Some(data.clone()),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn alloc_segment_iterator(
+        &mut self,
+        data: Rc<crate::intl::Segments>,
+        prototype: ObjectId,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(
+            ObjectKind::SegmentIterator { data, next: 0 },
+            Some(prototype),
+        )
+    }
+
+    pub(crate) fn segment_iterator_next(
+        &mut self,
+        object: ObjectId,
+    ) -> Result<Option<(Rc<crate::intl::Segments>, usize)>, HeapError> {
+        let Some(entry) = self.objects.get_mut(&object) else {
+            return Err(HeapError::InvalidObject(object));
+        };
+        let ObjectKind::SegmentIterator { data, next } = &mut entry.kind else {
+            return Ok(None);
+        };
+        let index = *next;
+        *next += 1;
+        Ok((index < data.records.len()).then(|| (data.clone(), index)))
+    }
+
+    pub(crate) fn is_segment_iterator(&self, object: ObjectId) -> Result<bool, HeapError> {
+        Ok(matches!(
+            self.object(object)?.kind,
+            ObjectKind::SegmentIterator { .. }
+        ))
     }
 
     pub(crate) fn alloc_intl_locale(

@@ -350,7 +350,13 @@ impl Heap {
                 }
                 ObjectKind::Collator { data, .. } => data.bytes(),
                 ObjectKind::NumberFormat { data, .. } => data.bytes(),
+                ObjectKind::DisplayNames(data) => data.bytes(),
                 ObjectKind::ListFormat(data) => data.bytes(),
+                ObjectKind::PluralRules(data) => data.bytes(),
+                ObjectKind::RelativeTimeFormat(data) => data.bytes(),
+                ObjectKind::Segmenter(data) => data.bytes(),
+                ObjectKind::Segments(data) => data.bytes(),
+                ObjectKind::SegmentIterator { .. } => 0,
                 ObjectKind::IntlLocale(data) => data.bytes(),
                 ObjectKind::BoxedPrimitive(value) => value.payload_bytes(),
                 ObjectKind::NativeFunction { initial_name, .. } => initial_name.byte_len(),

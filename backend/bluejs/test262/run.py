@@ -173,6 +173,9 @@ FINITE_STRESS_FIXTURES = frozenset(
         "intl402/Intl/getCanonicalLocales/complex-region-subtag-replacement.js",
         "intl402/Intl/getCanonicalLocales/transformed-ext-valid.js",
         "intl402/Intl/getCanonicalLocales/unicode-ext-canonicalize-yes-to-true.js",
+        # This verifies every valid combination of language, script, region
+        # and variants. Its nested finite loops exceed the normal VM fuel.
+        "intl402/DisplayNames/prototype/of/type-language-valid.js",
         "intl402/language-tags-canonicalized.js",
         "language/comments/S7.4_A5.js",
         "language/comments/S7.4_A6.js",
@@ -209,6 +212,13 @@ FINITE_STRESS_FIXTURES = frozenset(
         "intl402/Locale/invalid-tag-throws.js",
         "intl402/fallback-locales-are-supported.js",
         "intl402/language-tags-invalid.js",
+        # These Segmenter conformance fixtures traverse every UTF-16 index of
+        # multilingual paragraph samples (and one additionally materializes
+        # every grapheme record). They are finite specification checks, but
+        # exceed the ordinary interpreter fuel budget.
+        "intl402/Segmenter/prototype/segment/containing/iswordlike.js",
+        "intl402/Segmenter/prototype/segment/containing/word-iswordlike.js",
+        "intl402/Segmenter/prototype/segment/segment-grapheme-iterable.js",
         "intl402/supportedLocalesOf-consistent-with-resolvedOptions.js",
         "intl402/supportedLocalesOf-unicode-extensions-ignored.js",
     }

@@ -5,10 +5,11 @@
 **Status**: In progress — `blueice-ecma402` is now an independent workspace
 crate. BlueJS consumes its locale canonicalization, collation negotiation and
 UTF-16 Collator service. Host-neutral `NumberFormat`, `PluralRules`,
-`ListFormat` and `Segmenter` services also have direct test boundaries. The
-finite-decimal `NumberFormat` and `ListFormat` slices are additionally wired
-through BlueJS and its JSON-lines Test262 interface. The remaining adapters
-and ECMA-402 services are intentionally not claimed done.
+`ListFormat`, `DisplayNames`, `RelativeTimeFormat` and `Segmenter` services
+have direct test boundaries, and their JavaScript adapters are integrated with
+the JSON-lines Test262 interface. This is not a completion claim: the current
+Edition 13 ledger records DateTimeFormat, DurationFormat, full NumberFormat,
+the shared data registry and the no-exclusion 100% host coverage gate as open.
 
 The normative target and completion gates are edition-locked in the
 [ECMA-402 Edition 13 conformance matrix](CONFORMANCE.md). In particular, the
@@ -92,17 +93,18 @@ crate coverage gate, not a two-target proxy.
    iterable `format`/`formatToParts`, `resolvedOptions` and
    `supportedLocalesOf`; the other adapter migration and service data remain
    to be moved.
-5. [ ] Implement `DateTimeFormat`, `RelativeTimeFormat`, `DisplayNames` and
-   `DurationFormat` as independent service algorithms before exposing each JS
-   constructor.
+5. [ ] Implement `DateTimeFormat` and `DurationFormat` as independent service
+   algorithms before exposing their JS formatting methods. `DisplayNames` and
+   `RelativeTimeFormat` are now host-neutral services with BlueJS adapters,
+   but remain partial until their data and phase-wide coverage gates are met.
 6. [ ] Add ECMA-402 Test262 coverage by constructor/service and run it both
    through BlueJS and directly at the host-neutral crate boundary where a
    JavaScript Realm is unnecessary. Collator, decimal NumberFormat,
    PluralRules, ListFormat and Segmenter service boundaries now have standalone
-   `backend/ecma402/tests/` coverage. The decimal NumberFormat and ListFormat
-   slices also have direct-VM and JSON-lines Test262-interface regression
-   tests; Test262-derived service coverage and the broader BlueJS integration
-   gate remain pending.
+   `backend/ecma402/tests/` coverage. DisplayNames and RelativeTimeFormat now
+   also have direct-host, direct-VM, process-interface and foreign-Realm
+   regressions; Test262-derived service coverage and the broader BlueJS
+   integration gate remain pending.
 
 ## Current acceptance boundary
 
@@ -169,12 +171,24 @@ separately scoped Phase 12 adapter.
 
 ## Latest verification
 
+On 2026-09-14, the Test262 pin was advanced from the June snapshot to public
+`main` revision `72faf8ec1445c55149615e8b35187830783aba1a` (2026-09-10). The
+archive and every unpacked file are SHA-256 verified by
+`backend/bluejs/test262/run.py`; the fixed hashes are in its `snapshot.json`.
+The full `intl402/` inventory scheduled 6,714 modes: 1,486 pass, 5,224 fail
+and 4 timeout. Excluding the 4,058 currently blocked Temporal modes leaves
+1,486 pass, 1,166 fail and 4 timeout. DisplayNames (114), RelativeTimeFormat
+(160), Collator (130), ListFormat (162), PluralRules (106) and Segmenter (158)
+are individually clean in this snapshot. `cargo llvm-cov -p blueice-ecma402
+--fail-under-lines 100 --summary-only` measured 1,622 / 2,277 lines (71.23%),
+so the real 100% gate is intentionally still failing rather than mocked.
+
 On 2026-09-14, the ListFormat adapter's direct BlueJS regression test covered
 locale/type/style resolution, array-iterator input, `formatToParts`,
 `supportedLocalesOf`, `Symbol.toStringTag`, custom `Reflect.construct`
 prototypes, invalid receivers/options/items and `IteratorClose` on an abrupt
-element. It also passed every ListFormat case from the pinned official Test262
-revision `6eec1ac9ee144dafd8f344d73a21f36bfc9f6755`: **81 files, 162 scheduled
+element. It also passed every ListFormat case from the current pinned official
+Test262 revision `72faf8ec1445c55149615e8b35187830783aba1a`: **81 files, 162 scheduled
 strict/sloppy modes, 162 passes, zero failures**. This includes constructor
 primitive-option rejection, ToObject coercion for `supportedLocalesOf`, string
 and `undefined` `StringListFromIterable` inputs, GC-safe `formatToParts` result

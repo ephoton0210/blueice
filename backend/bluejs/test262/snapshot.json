@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/tc39/test262",
-  "revision": "6eec1ac9ee144dafd8f344d73a21f36bfc9f6755",
-  "committed_at": "2026-06-29T14:09:27Z",
-  "archive_sha256": "c34e69891b908add2dff3d683c878be50c8d26c947041ab7967f7a89d0975d88",
-  "selection": "Latest commit before 2026-06-30; proposals and staging are included, not filtered to an ECMA edition.",
-  "manifest_sha256": "5b85250963fe74ce1f903040d589f4c6ccecf9c08e7606533620ffb106a31d25"
+  "revision": "72faf8ec1445c55149615e8b35187830783aba1a",
+  "committed_at": "2026-09-10T00:32:43Z",
+  "archive_sha256": "a5d51e56c81269314852f5c7de76d4837493086cc804a36603a459623449e9c2",
+  "selection": "Current Test262 main as of 2026-09-14; proposals and staging are included, not filtered to an ECMA edition.",
+  "manifest_sha256": "8abd6392abcdde3aa17326391ed008a0336a253364c1676caa1af31b8a5bffd8"
 }

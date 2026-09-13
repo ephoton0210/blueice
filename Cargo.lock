@@ -1135,6 +1135,7 @@ dependencies = [
  "icu_decimal_data",
  "icu_locale",
  "icu_locale_core",
+ "icu_pattern",
  "icu_plurals",
  "icu_provider",
  "writeable",

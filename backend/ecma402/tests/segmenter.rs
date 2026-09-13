@@ -5,7 +5,8 @@
 //! Public, host-neutral `Intl.Segmenter` coverage.
 
 use blueice_ecma402::{
-    canonicalize, Segmenter, SegmenterGranularity, SegmenterOptions, SegmenterSegment,
+    canonicalize, resolve_segmenter_locale, supported_segmenter_locales, LocaleMatcher, Segmenter,
+    SegmenterError, SegmenterGranularity, SegmenterOptions, SegmenterSegment,
 };
 
 #[test]
@@ -116,5 +117,50 @@ fn applies_selected_locale_and_sentence_boundaries() {
                 is_word_like: None,
             },
         ]
+    );
+}
+
+#[test]
+fn covers_segmenter_locale_filters_defaults_and_host_storage() {
+    let requested = [canonicalize("zz").unwrap(), canonicalize("ja").unwrap()];
+    assert_eq!(
+        resolve_segmenter_locale(&requested, LocaleMatcher::BestFit).as_str(),
+        "ja"
+    );
+    assert_eq!(
+        supported_segmenter_locales(&requested, LocaleMatcher::BestFit)
+            .iter()
+            .map(|locale| locale.as_str())
+            .collect::<Vec<_>>(),
+        ["ja"]
+    );
+    let graphemes = Segmenter::try_new(
+        &[canonicalize("zz").unwrap()],
+        SegmenterOptions {
+            locale_matcher: LocaleMatcher::BestFit,
+            granularity: SegmenterGranularity::Grapheme,
+        },
+    )
+    .unwrap();
+    assert_eq!(graphemes.resolved_options().locale, "en-US");
+    assert_eq!(
+        graphemes.resolved_options().granularity,
+        SegmenterGranularity::Grapheme
+    );
+    assert_eq!(graphemes.negotiation().matcher(), LocaleMatcher::BestFit);
+    assert!(graphemes.negotiation().used_default());
+    assert_eq!(
+        graphemes
+            .negotiation()
+            .candidates()
+            .iter()
+            .map(|candidate| candidate.is_supported())
+            .collect::<Vec<_>>(),
+        [false]
+    );
+    assert!(graphemes.bytes() > std::mem::size_of::<Segmenter>());
+    assert_eq!(
+        SegmenterError::DataUnavailable.to_string(),
+        "segmentation data is unavailable"
     );
 }

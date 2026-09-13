@@ -1270,9 +1270,25 @@ impl Vm {
                     realm.vm.intl_global()?;
                     Value::Object(realm.vm.globals["%Intl.Locale%"])
                 }
+                "Intl.DisplayNames" => {
+                    realm.vm.intl_global()?;
+                    Value::Object(realm.vm.globals["%Intl.DisplayNames%"])
+                }
                 "Intl.ListFormat" => {
                     realm.vm.intl_global()?;
                     Value::Object(realm.vm.globals["%Intl.ListFormat%"])
+                }
+                "Intl.PluralRules" => {
+                    realm.vm.intl_global()?;
+                    Value::Object(realm.vm.globals["%Intl.PluralRules%"])
+                }
+                "Intl.RelativeTimeFormat" => {
+                    realm.vm.intl_global()?;
+                    Value::Object(realm.vm.globals["%Intl.RelativeTimeFormat%"])
+                }
+                "Intl.Segmenter" => {
+                    realm.vm.intl_global()?;
+                    Value::Object(realm.vm.globals["%Intl.Segmenter%"])
                 }
                 _ => realm.vm.global(intrinsic)?,
             };

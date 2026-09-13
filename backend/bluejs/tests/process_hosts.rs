@@ -308,6 +308,54 @@ fn adapter_executes_list_format_through_the_json_lines_interface() {
     assert_eq!(replies, vec![json!({"kind":"ok", "phase":"runtime"})]);
 }
 
+#[test]
+fn adapter_executes_plural_rules_through_the_json_lines_interface() {
+    let replies = adapter(
+        &[json!({
+            "source": "let p=new Intl.PluralRules('en',{type:'ordinal'});assert.sameValue(p.select(2),'two');assert.sameValue(p.selectRange(1,2),'other');assert.sameValue(p.resolvedOptions().type,'ordinal');assert.sameValue(Intl.PluralRules.supportedLocalesOf(['zz','en']).join(','),'en')",
+            "mode": "sloppy",
+        })],
+        None,
+    );
+    assert_eq!(replies, vec![json!({"kind":"ok", "phase":"runtime"})]);
+}
+
+#[test]
+fn adapter_executes_segmenter_through_the_json_lines_interface() {
+    let replies = adapter(
+        &[json!({
+            "source": "let s=new Intl.Segmenter('en',{granularity:'word'});let values=[];for(let item of s.segment('A 2'))values.push(item.segment+':'+item.isWordLike);assert.sameValue(values.join('|'),'A:true| :false|2:true');assert.sameValue(s.segment('A').containing(0).index,0);assert.sameValue(Intl.Segmenter.supportedLocalesOf(['zz','en']).join(','),'en')",
+            "mode": "sloppy",
+        })],
+        None,
+    );
+    assert_eq!(replies, vec![json!({"kind":"ok", "phase":"runtime"})]);
+}
+
+#[test]
+fn adapter_executes_display_names_through_the_json_lines_interface() {
+    let replies = adapter(
+        &[json!({
+            "source": "let d=new Intl.DisplayNames('en',{type:'language'});assert.sameValue(d.of('fr'),'French');assert.sameValue(d.of('cde-ab-abcde'),'cde-AB-abcde');assert.sameValue(d.resolvedOptions().type,'language');assert.sameValue(Intl.DisplayNames.supportedLocalesOf(['zz','en']).join(','),'en')",
+            "mode": "sloppy",
+        })],
+        None,
+    );
+    assert_eq!(replies, vec![json!({"kind":"ok", "phase":"runtime"})]);
+}
+
+#[test]
+fn adapter_executes_relative_time_format_through_the_json_lines_interface() {
+    let replies = adapter(
+        &[json!({
+            "source": "let r=new Intl.RelativeTimeFormat('en',{numeric:'auto'});assert.sameValue(r.format(-0,'day'),'today');assert.sameValue(r.formatToParts(2,'hours')[1].unit,'hour');assert.sameValue(r.resolvedOptions().numeric,'auto');assert.sameValue(Intl.RelativeTimeFormat.supportedLocalesOf(['zz','en']).join(','),'en')",
+            "mode": "sloppy",
+        })],
+        None,
+    );
+    assert_eq!(replies, vec![json!({"kind":"ok", "phase":"runtime"})]);
+}
+
 #[cfg(unix)]
 #[test]
 fn regex_protocol_faults_and_missing_helper_fail_closed() {

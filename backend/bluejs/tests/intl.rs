@@ -287,6 +287,151 @@ fn list_format_delegates_iterables_and_parts_to_the_host_neutral_service() {
 }
 
 #[test]
+fn plural_rules_delegates_selection_and_resolved_options_to_the_host_service() {
+    for source in [
+        "let p=new Intl.PluralRules('en'); let r=p.resolvedOptions(); p.select(1) === 'one' && p.select(2) === 'other' && p.select(NaN) === 'other' && r.locale === 'en' && r.type === 'cardinal' && r.notation === 'standard' && r.minimumIntegerDigits === 1 && r.minimumFractionDigits === 0 && r.maximumFractionDigits === 3 && r.pluralCategories.join() === 'one,other'",
+        "let p=new Intl.PluralRules('en',{type:'ordinal'}); p.select(1) === 'one' && p.select(2) === 'two' && p.select(3) === 'few' && p.select(11) === 'other'",
+        "let r=new Intl.PluralRules('en',{notation:'compact',compactDisplay:'long'}).resolvedOptions(); r.notation === 'compact' && r.compactDisplay === 'long' && new Intl.PluralRules('en',{compactDisplay:'long'}).resolvedOptions().compactDisplay === undefined",
+        "Intl.PluralRules.supportedLocalesOf(['en','zz','pl-PL']).join() === 'en,pl-PL' && Object.prototype.toString.call(new Intl.PluralRules()) === '[object Intl.PluralRules]'",
+        "function F(){} let p=Reflect.construct(Intl.PluralRules,['en'],F); Object.getPrototypeOf(p) === F.prototype && Intl.PluralRules.prototype.select.call(p,1) === 'one'",
+        "new Intl.PluralRules('en').selectRange(102,201) === 'other' && new Intl.PluralRules('en').selectRange(1,1) === 'one'",
+        "let log='';let o={get localeMatcher(){log+='l';return 'lookup'},get type(){log+='t';return 'cardinal'},get notation(){log+='n';return 'standard'},get compactDisplay(){log+='c';return 'short'},get minimumIntegerDigits(){log+='i';return 1},get minimumFractionDigits(){log+='f';return 0},get maximumFractionDigits(){log+='F';return 3},get minimumSignificantDigits(){log+='s';return undefined},get maximumSignificantDigits(){log+='S';return undefined},get roundingIncrement(){log+='r';return 1},get roundingMode(){log+='m';return 'halfExpand'},get roundingPriority(){log+='p';return 'auto'},get trailingZeroDisplay(){log+='z';return 'auto'}};new Intl.PluralRules('en',o);log === 'ltncifFsSrmpz'",
+    ] {
+        match evaluate(source) {
+            Ok(value) => assert_eq!(value, Value::Bool(true), "{source}"),
+            Err(error) => panic!("{source}: {error}"),
+        }
+    }
+    for source in [
+        "Intl.PluralRules('en')",
+        "new Intl.PluralRules('en',null)",
+        "new Intl.PluralRules('en',{type:'invalid'})",
+        "new Intl.PluralRules('en',{notation:'invalid'})",
+        "new Intl.PluralRules('en',{roundingMode:'invalid'})",
+        "Intl.PluralRules.prototype.select.call({},1)",
+        "Intl.PluralRules.prototype.selectRange.call({},1,2)",
+        "Intl.PluralRules.prototype.resolvedOptions.call({})",
+        "new Intl.PluralRules().selectRange(NaN,1)",
+    ] {
+        assert!(
+            matches!(
+                evaluate(source),
+                Err(RuntimeError::TypeError(_) | RuntimeError::RangeError(_))
+            ),
+            "{source}"
+        );
+    }
+    assert_eq!(
+        evaluate(
+            "['ar','en','fa','fr','gv','ko','sl'].map(locale=>new Intl.PluralRules(locale).resolvedOptions().pluralCategories.join()).join('|')",
+        ),
+        Ok(Value::String(
+            "zero,one,two,few,many,other|one,other|one,other|one,many,other|one,two,few,many,other|other|one,two,few,other".into(),
+        ))
+    );
+}
+
+#[test]
+fn segmenter_preserves_utf16_segments_and_exposes_the_segments_protocol() {
+    for source in [
+        "let s=new Intl.Segmenter('en',{granularity:'word'});let r=s.resolvedOptions();let values=[];for(let item of s.segment('A 2!'))values.push(item.segment+':'+item.isWordLike);values.join('|') === 'A:true| :false|2:true|!:false' && r.locale === 'en' && r.granularity === 'word'",
+        "let segments=new Intl.Segmenter().segment('\\ud800A');let first=segments.containing(0);first.segment === '\\ud800' && first.index === 0 && first.input === '\\ud800A' && !Object.hasOwn(first,'isWordLike') && segments.containing(99) === undefined",
+        "let iterator=new Intl.Segmenter().segment('ab')[Symbol.iterator]();let a=iterator.next();let b=iterator.next();let done=iterator.next();a.value.segment === 'a' && b.value.segment === 'b' && done.done && Object.prototype.toString.call(iterator) === '[object Segmenter String Iterator]'",
+        "Intl.Segmenter.supportedLocalesOf(['en','zz','ja-JP']).join() === 'en,ja-JP' && Object.prototype.toString.call(new Intl.Segmenter()) === '[object Intl.Segmenter]'",
+        "function F(){}let s=Reflect.construct(Intl.Segmenter,['en'],F);Object.getPrototypeOf(s) === F.prototype && Intl.Segmenter.prototype.segment.call(s,'A').containing(0).segment === 'A'",
+    ] {
+        match evaluate(source) {
+            Ok(value) => assert_eq!(value, Value::Bool(true), "{source}"),
+            Err(error) => panic!("{source}: {error}"),
+        }
+    }
+    for source in [
+        "Intl.Segmenter('en')",
+        "new Intl.Segmenter('en',null)",
+        "new Intl.Segmenter('en',{granularity:'invalid'})",
+        "Intl.Segmenter.prototype.segment.call({},'A')",
+        "Intl.Segmenter.prototype.resolvedOptions.call({})",
+        "let segments=new Intl.Segmenter().segment('A');Object.getPrototypeOf(segments).containing.call({},0)",
+        "let iterator=new Intl.Segmenter().segment('A')[Symbol.iterator]();Object.getPrototypeOf(iterator).next.call({})",
+    ] {
+        assert!(
+            matches!(
+                evaluate(source),
+                Err(RuntimeError::TypeError(_) | RuntimeError::RangeError(_))
+            ),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn display_names_uses_host_data_and_preserves_its_ecma402_boundary() {
+    for source in [
+        "let d=new Intl.DisplayNames('en',{type:'language'});d.of('fr') === 'French' && d.of('cde-ab-abcde') === 'cde-AB-abcde' && d.resolvedOptions().languageDisplay === 'dialect'",
+        "let d=new Intl.DisplayNames('en',{type:'region',fallback:'none'});d.of('US') === 'United States' && d.of('ZZ') === undefined && Intl.DisplayNames.supportedLocalesOf(['zz','en']).join() === 'en'",
+        "Object.prototype.toString.call(new Intl.DisplayNames('en',{type:'currency'})) === '[object Intl.DisplayNames]' && Intl.DisplayNames.length === 2",
+        "function F(){}let d=Reflect.construct(Intl.DisplayNames,['en',{type:'script'}],F);Object.getPrototypeOf(d) === F.prototype && Intl.DisplayNames.prototype.of.call(d,'latn') === 'Latin'",
+    ] {
+        match evaluate(source) {
+            Ok(value) => assert_eq!(value, Value::Bool(true), "{source}"),
+            Err(error) => panic!("{source}: {error}"),
+        }
+    }
+    for source in [
+        "Intl.DisplayNames('en',{type:'language'})",
+        "new Intl.DisplayNames('en',null)",
+        "new Intl.DisplayNames('en',{})",
+        "new Intl.DisplayNames('en',{type:'unknown'})",
+        "Intl.DisplayNames.prototype.of.call({},'en')",
+        "Intl.DisplayNames.prototype.resolvedOptions.call({})",
+        "new Intl.DisplayNames('en',{type:'region'}).of('U')",
+    ] {
+        assert!(
+            matches!(
+                evaluate(source),
+                Err(RuntimeError::TypeError(_) | RuntimeError::RangeError(_))
+            ),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn relative_time_format_delegates_patterns_and_parts_to_the_host_service() {
+    for source in [
+        "let r=new Intl.RelativeTimeFormat('en',{numeric:'auto'});r.format(-0,'day') === 'today' && r.format(-1,'day') === 'yesterday' && r.format(2,'hour') === 'in 2 hours'",
+        "let r=new Intl.RelativeTimeFormat('pl',{style:'short'});r.format(-2,'years') === '2 lata temu' && r.formatToParts(123456.78,'second').map(p=>p.type+':'+p.value).join('|') === 'literal:za |integer:123|group: |integer:456|decimal:,|fraction:78|literal: sek.'",
+        "let r=new Intl.RelativeTimeFormat('en-u-nu-latn',{numberingSystem:'arab'});r.resolvedOptions().locale === 'en' && r.resolvedOptions().numberingSystem === 'arab' && r.format(12,'second').includes('١٢')",
+        "Intl.RelativeTimeFormat.supportedLocalesOf(['zz','pl','en']).join() === 'pl,en' && Object.prototype.toString.call(new Intl.RelativeTimeFormat()) === '[object Intl.RelativeTimeFormat]'",
+        "function F(){}let r=Reflect.construct(Intl.RelativeTimeFormat,['en'],F);Object.getPrototypeOf(r) === F.prototype && Intl.RelativeTimeFormat.prototype.format.call(r,1,'day') === 'in 1 day'",
+    ] {
+        match evaluate(source) {
+            Ok(value) => assert_eq!(value, Value::Bool(true), "{source}"),
+            Err(error) => panic!("{source}: {error}"),
+        }
+    }
+    for source in [
+        "Intl.RelativeTimeFormat('en')",
+        "new Intl.RelativeTimeFormat('en',null)",
+        "new Intl.RelativeTimeFormat('en',{style:'unknown'})",
+        "new Intl.RelativeTimeFormat('en',{numberingSystem:'ab'})",
+        "Intl.RelativeTimeFormat.prototype.format.call({},1,'day')",
+        "Intl.RelativeTimeFormat.prototype.formatToParts.call({},1,'day')",
+        "Intl.RelativeTimeFormat.prototype.resolvedOptions.call({})",
+        "new Intl.RelativeTimeFormat().format(Infinity,'day')",
+        "new Intl.RelativeTimeFormat().format(0,'century')",
+    ] {
+        assert!(
+            matches!(
+                evaluate(source),
+                Err(RuntimeError::TypeError(_) | RuntimeError::RangeError(_))
+            ),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn locale_conversions_are_observable_and_ordered() {
     assert_eq!(evaluate("let log=''; let o={get usage(){log+='u';},get localeMatcher(){log+='l';},get collation(){log+='c';},get numeric(){log+='n';},get caseFirst(){log+='f';},get sensitivity(){log+='s';},get ignorePunctuation(){log+='p';}}; new Intl.Collator('en',o); log").unwrap(), Value::String("ulcnfsp".into()));
     assert_eq!(
@@ -342,7 +487,11 @@ fn collator_compare_cycles_survive_collection_and_are_reclaimed() {
         heap: HeapConfig {
             nursery_capacity: 1,
             major_threshold_bytes: 256,
-            max_heap_bytes: 256 * 1024,
+            // The mandatory Intl namespace now owns all ECMA-402 service
+            // constructors.  Keep the intentionally tiny nursery and major
+            // threshold (which exercise collection) while leaving enough
+            // room for that normative global surface.
+            max_heap_bytes: 512 * 1024,
         },
         ..Default::default()
     })
@@ -383,7 +532,8 @@ fn number_format_bound_format_cycles_survive_collection_and_are_reclaimed() {
         heap: HeapConfig {
             nursery_capacity: 1,
             major_threshold_bytes: 256,
-            max_heap_bytes: 256 * 1024,
+            // See the corresponding Collator collection test above.
+            max_heap_bytes: 512 * 1024,
         },
         ..Default::default()
     })

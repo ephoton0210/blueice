@@ -28,8 +28,102 @@ impl From<&Locale> for CanonicalLocale {
 }
 
 pub(crate) type Collator = blueice_ecma402::Collator;
+pub(crate) type DisplayNames = blueice_ecma402::DisplayNames;
 pub(crate) type ListFormat = blueice_ecma402::ListFormat;
 pub(crate) type NumberFormat = blueice_ecma402::NumberFormat;
+pub(crate) type RelativeTimeFormat = blueice_ecma402::RelativeTimeFormat;
+pub(crate) type Segmenter = blueice_ecma402::Segmenter;
+
+/// ECMAScript-visible state that augments the ICU-backed plural-rule engine.
+///
+/// ICU selects categories, while the VM owns `GetOption` coercion and the
+/// resolved option data prescribed by ECMA-402. Keeping those concerns here
+/// ensures that the host service remains usable by non-JavaScript embedders.
+pub(crate) struct PluralRules {
+    pub data: blueice_ecma402::PluralRules,
+    pub rule_type: blueice_ecma402::PluralRuleType,
+    pub notation: String,
+    pub compact_display: Option<String>,
+    pub minimum_integer_digits: u8,
+    pub minimum_fraction_digits: u8,
+    pub maximum_fraction_digits: u8,
+    pub minimum_significant_digits: Option<u8>,
+    pub maximum_significant_digits: Option<u8>,
+    pub rounding_increment: u16,
+    pub rounding_mode: String,
+    pub rounding_priority: String,
+    pub trailing_zero_display: String,
+}
+
+impl PluralRules {
+    pub fn bytes(&self) -> usize {
+        self.data.bytes()
+            + self.notation.len()
+            + self.compact_display.as_ref().map_or(0, String::len)
+            + self.rounding_mode.len()
+            + self.rounding_priority.len()
+            + self.trailing_zero_display.len()
+    }
+}
+
+/// A materialized `%Segments%` result. ICU4X operates on scalar strings, but
+/// the retained source uses original ECMAScript UTF-16 code units so records
+/// expose lone surrogates without replacement.
+pub(crate) struct Segments {
+    pub input: JsString,
+    pub records: Vec<SegmentRecord>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct SegmentRecord {
+    pub start: usize,
+    pub end: usize,
+    pub is_word_like: Option<bool>,
+}
+
+impl Segments {
+    pub fn from_segmenter(segmenter: &Segmenter, input: JsString) -> Self {
+        let projected = char::decode_utf16(input.as_code_units().iter().copied())
+            .map(|scalar| scalar.unwrap_or(char::REPLACEMENT_CHARACTER))
+            .collect::<String>();
+        let segments = segmenter.segment(&projected);
+        let mut records = Vec::with_capacity(segments.len());
+        for (index, segment) in segments.iter().enumerate() {
+            let end = segments
+                .get(index + 1)
+                .map_or(input.as_code_units().len(), |next| next.index_utf16);
+            records.push(SegmentRecord {
+                start: segment.index_utf16,
+                end,
+                is_word_like: segment.is_word_like,
+            });
+        }
+        Self { input, records }
+    }
+
+    pub fn record(&self, index: usize) -> Option<(JsString, usize, Option<bool>)> {
+        let record = self.records.get(index)?;
+        Some((
+            JsString::from_code_units(
+                self.input.as_code_units()[record.start..record.end].to_vec(),
+            ),
+            record.start,
+            record.is_word_like,
+        ))
+    }
+
+    pub fn containing(&self, index: usize) -> Option<usize> {
+        self.records
+            .iter()
+            .position(|record| record.start <= index && index < record.end)
+    }
+
+    pub fn bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + self.input.byte_len()
+            + self.records.len() * std::mem::size_of::<SegmentRecord>()
+    }
+}
 
 pub(crate) fn canonicalize(string: &JsString) -> Result<CanonicalLocale, RuntimeError> {
     let invalid = || RuntimeError::RangeError("invalid Unicode locale identifier".into());

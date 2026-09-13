@@ -898,6 +898,13 @@ impl Vm {
                 Ok(crate::intl::collate(&collator, &left, &right))
             }
             NativeFunction::CollatorResolvedOptions => self.collator_resolved_options(&receiver),
+            NativeFunction::DisplayNamesSupportedLocales => {
+                self.display_names_supported_locales(&args)
+            }
+            NativeFunction::DisplayNamesOf => self.display_names_of(&receiver, first),
+            NativeFunction::DisplayNamesResolvedOptions => {
+                self.display_names_resolved_options(&receiver)
+            }
             NativeFunction::NumberFormatSupportedLocales => {
                 self.number_format_supported_locales(&args)
             }
@@ -920,6 +927,34 @@ impl Vm {
             }
             NativeFunction::ListFormatResolvedOptions => {
                 self.list_format_resolved_options(&receiver)
+            }
+            NativeFunction::PluralRulesSupportedLocales => {
+                self.plural_rules_supported_locales(&args)
+            }
+            NativeFunction::PluralRulesSelect => self.plural_rules_select(&receiver, first),
+            NativeFunction::PluralRulesSelectRange => {
+                self.plural_rules_select_range(&receiver, first, native::argument(&args, 1))
+            }
+            NativeFunction::PluralRulesResolvedOptions => {
+                self.plural_rules_resolved_options(&receiver)
+            }
+            NativeFunction::SegmenterSupportedLocales => self.segmenter_supported_locales(&args),
+            NativeFunction::SegmenterResolvedOptions => self.segmenter_resolved_options(&receiver),
+            NativeFunction::SegmenterSegment => self.segmenter_segment(&receiver, first),
+            NativeFunction::SegmentsContaining => self.segments_containing(&receiver, first),
+            NativeFunction::SegmentsIterator => self.segments_iterator(&receiver),
+            NativeFunction::SegmentIteratorNext => self.segment_iterator_next(&receiver),
+            NativeFunction::RelativeTimeFormatSupportedLocales => {
+                self.relative_time_format_supported_locales(&args)
+            }
+            NativeFunction::RelativeTimeFormatFormat => {
+                self.relative_time_format_format(&receiver, first, native::argument(&args, 1))
+            }
+            NativeFunction::RelativeTimeFormatFormatToParts => {
+                self.relative_time_format_to_parts(&receiver, first, native::argument(&args, 1))
+            }
+            NativeFunction::RelativeTimeFormatResolvedOptions => {
+                self.relative_time_format_resolved_options(&receiver)
             }
             NativeFunction::LocaleToString => self.locale_to_string(&receiver),
             NativeFunction::LocaleMaximize => self.locale_transform(&receiver, true),
