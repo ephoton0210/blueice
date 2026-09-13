@@ -5,7 +5,7 @@
 //! ESM, declaration, and source-map emission from the shared checked graph.
 
 use crate::checker::CheckedProject;
-use crate::compiler::{fingerprint, CompilerOptions, Project};
+use crate::compiler::{fingerprint, is_declaration_module, CompilerOptions, Project};
 use crate::parser::{Declaration, Module, TextEdit, Type};
 use std::collections::BTreeMap;
 
@@ -13,6 +13,9 @@ use std::collections::BTreeMap;
 pub struct BuildOutput {
     pub fingerprint: String,
     pub artifacts: BTreeMap<String, BuildArtifact>,
+    /// Root-relative declaration modules preserved for declaration-consuming
+    /// builds. They are never JavaScript artifacts.
+    pub declaration_modules: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,6 +67,7 @@ pub(crate) fn emit(
     let artifacts = checked
         .modules
         .iter()
+        .filter(|(id, _)| !is_declaration_module(id))
         .map(|(id, checked_module)| {
             let javascript = emit_javascript(&checked_module.module);
             let source_map = options
@@ -84,9 +88,22 @@ pub(crate) fn emit(
             )
         })
         .collect();
+    let declaration_modules = if options.declaration {
+        {
+            checked
+                .modules
+                .iter()
+                .filter(|(id, _)| is_declaration_module(id))
+                .map(|(id, checked_module)| (id.clone(), checked_module.module.source.clone()))
+                .collect()
+        }
+    } else {
+        BTreeMap::new()
+    };
     BuildOutput {
         fingerprint: build_fingerprint,
         artifacts,
+        declaration_modules,
     }
 }
 
@@ -159,6 +176,12 @@ fn emit_declaration(module: &Module) -> String {
     let mut output = String::new();
     for declaration in &module.declarations {
         match declaration {
+            Declaration::Import(import) if import.type_only => {
+                output.push_str(&module.source[import.span.start..import.span.end]);
+                if !output.ends_with('\n') {
+                    output.push('\n');
+                }
+            }
             Declaration::TypeAlias(alias) if alias.exported => {
                 output.push_str("export type ");
                 output.push_str(&alias.name);

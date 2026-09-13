@@ -36,6 +36,15 @@ dependency before introducing any page-runtime coupling:
   an import target, entry or output path that escapes the declared root is
   rejected before compilation. This is the standalone compiler's closed-world
   resolver, not a page/network loader or an arbitrary package-manager hook.
+- A project-root-confined relative import or exact `imports` mapping may target
+  a local `.d.ts` declaration module. Declaration modules are parsed, checked,
+  hashed and retained in VM-independent debug metadata, but are type-only:
+  they never emit JavaScript or a runtime import-map target. BlueTSC rejects a
+  `.d.ts` entry, a value import resolving to one, or runtime content within
+  one. When declaration output is selected, BlueTSC preserves the authorized
+  `.d.ts` source root-relatively and retains consuming `import type` clauses;
+  it does not acquire ambient, remote, package-manager, or arbitrary
+  `lib.dom.d.ts` declarations.
 - Every successful build stages a root-relative `bluetsc.manifest.json` with
   language version, project fingerprint, target, runtime policy, requested
   output modes and emitted entries. A configured `imports` map also emits
@@ -59,6 +68,10 @@ dependency before introducing any page-runtime coupling:
   keeps only a successful cache entry and refuses reuse when the entry or any
   compiler option differs; its work-selection result is observable without
   exposing a BlueJS VM or page state.
+- The standalone `ContractPlan` validator accepts per-boundary
+  `ValidationLimits` for depth, collection entries, visited-node fuel and
+  string bytes. These checks remain pure data validation; host-boundary
+  discovery and enforcement are still deliberately separate work.
 
 This is deliberately not a claim of general `tsc` compatibility. Control-flow
 narrowing, overload resolution, generic substitution, decorators, enums,
@@ -240,7 +253,7 @@ Acceptance: malformed JSON cannot enter a `User`-typed value; the validation err
 
 ### Slice 4 — incremental projects and compatibility growth
 
-1. Implement dependency-aware incremental checker/cache invalidation and trusted local declaration files. The standalone parser/checker cache is complete; trusted local declaration files remain pending.
+1. Implement dependency-aware incremental checker/cache invalidation and trusted local declaration files. Both are complete in the standalone front end; opt-in external-oracle coverage remains pending.
 2. Expand the supported TypeScript feature matrix only alongside its BlueJS lowering/runtime, source mapping, contract and oracle evidence.
 3. Add opt-in comparison against a pinned TypeScript compiler for accepted syntax/diagnostics and Node/BlueJS behavioral differential tests for the lowered output.
 4. Expose carefully redacted project/type metadata to Phase 17 DevTools and the documented, capability-scoped Phase 12 MCP debug interface.
@@ -288,5 +301,7 @@ Acceptance: editing one module invalidates only its dependents; a cache entry ch
 - [ ] Expose TypeScript diagnostics, symbols, types, contracts, lowering provenance and BlueTSC check/build through Phase 12's negotiated MCP debug interface
 - [x] Implement the pure runtime-contract IR and bounded JSON-like validator; host-boundary discovery, JSON Schema delegation and page enforcement remain pending
 - [x] Implement host-neutral dependency-aware incremental parser/checker cache invalidation; cache reuse is refused across compiler-policy changes and failed compilations preserve the last successful entry
-- [ ] Add trusted local declaration files and opt-in external-oracle jobs
+- [x] Support root-confined, type-only local `.d.ts` modules without runtime emission or package/remote declaration acquisition
+- [x] Bound the pure contract validator's depth, collection, node-fuel and string-byte work with caller-visible limits
+- [ ] Add opt-in external-oracle jobs
 - [ ] Add real-process page, debugger, contract, resource, policy and multi-tab regression coverage

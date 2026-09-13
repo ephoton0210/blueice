@@ -118,12 +118,18 @@ fn main() -> ExitCode {
         .out_dir
         .as_deref()
         .expect("build argument parsing requires an output directory");
-    match publish_build(&invocation.root, out_dir, &summary.artifacts, &metadata) {
+    match publish_build(
+        &invocation.root,
+        out_dir,
+        &summary.artifacts,
+        &summary.declaration_modules,
+        &metadata,
+    ) {
         Ok(()) => {
             println!(
                 "built {} entry point(s), {} module(s), fingerprint {}",
                 invocation.entries.len(),
-                summary.artifacts.len(),
+                summary.artifacts.len() + summary.declaration_modules.len(),
                 summary.fingerprint,
             );
             ExitCode::SUCCESS
@@ -226,6 +232,7 @@ fn usage() -> &'static str {
 #[derive(Debug)]
 struct CompileSummary {
     artifacts: BTreeMap<String, BuildArtifact>,
+    declaration_modules: BTreeMap<String, String>,
     fingerprint: String,
     module_count: usize,
     has_errors: bool,
@@ -241,7 +248,10 @@ struct BuildMetadata {
     source_map: bool,
     declaration: bool,
     entries: Vec<String>,
+    declaration_modules: Vec<String>,
     imports: BTreeMap<String, String>,
+    #[serde(skip)]
+    has_configured_imports: bool,
 }
 
 fn compile_entries(
@@ -251,6 +261,7 @@ fn compile_entries(
     options: CompilerOptions,
 ) -> CompileSummary {
     let mut artifacts = BTreeMap::new();
+    let mut declaration_modules = BTreeMap::new();
     let mut modules = BTreeSet::new();
     let mut fingerprints = Vec::new();
     let mut has_errors = false;
@@ -273,11 +284,15 @@ fn compile_entries(
             for (module_id, artifact) in output.artifacts {
                 artifacts.entry(module_id).or_insert(artifact);
             }
+            for (module_id, source) in output.declaration_modules {
+                declaration_modules.entry(module_id).or_insert(source);
+            }
         }
     }
     fingerprints.sort();
     CompileSummary {
         artifacts,
+        declaration_modules,
         fingerprint: fingerprint_entries(&fingerprints),
         module_count: modules.len(),
         has_errors,
@@ -293,6 +308,7 @@ fn build_metadata(invocation: &Invocation, summary: &CompileSummary) -> BuildMet
     let imports = invocation
         .imports
         .iter()
+        .filter(|(_, target)| !is_declaration_path(target))
         .map(|(specifier, target)| {
             let relative = target
                 .strip_prefix(&invocation.root)
@@ -305,6 +321,7 @@ fn build_metadata(invocation: &Invocation, summary: &CompileSummary) -> BuildMet
             (specifier.clone(), format!("./{emitted}"))
         })
         .collect();
+    let declaration_modules = summary.declaration_modules.keys().cloned().collect();
     BuildMetadata {
         language_version: blueice_bluets::LANGUAGE_VERSION,
         fingerprint: summary.fingerprint.clone(),
@@ -313,7 +330,9 @@ fn build_metadata(invocation: &Invocation, summary: &CompileSummary) -> BuildMet
         source_map: invocation.options.source_map,
         declaration: invocation.options.declaration,
         entries,
+        declaration_modules,
         imports,
+        has_configured_imports: !invocation.imports.is_empty(),
     }
 }
 
@@ -364,6 +383,7 @@ fn resolve_explicit_invocation(
         ));
     }
     ensure_within(&entry, &root, "entry")?;
+    ensure_not_declaration_entry(&entry, "entry")?;
     Ok(Invocation {
         root,
         entries: vec![entry],
@@ -418,6 +438,7 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         let entry = absolute_existing_path(&root.join(entry))
             .map_err(|error| format!("cannot read configured entry: {error}"))?;
         ensure_within(&entry, &root, "configured entry")?;
+        ensure_not_declaration_entry(&entry, "configured entry")?;
         entries.push(entry);
     }
     entries.sort();
@@ -514,6 +535,23 @@ fn ensure_within(path: &Path, root: &Path, label: &str) -> Result<(), String> {
     }
 }
 
+fn ensure_not_declaration_entry(path: &Path, label: &str) -> Result<(), String> {
+    if is_declaration_path(path) {
+        Err(format!(
+            "{label} {} is a .d.ts declaration module, not an executable entry",
+            path.display()
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn is_declaration_path(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".d.ts"))
+}
+
 fn fingerprint_entries(fingerprints: &[String]) -> String {
     let mut hash = 0xcbf29ce484222325u64;
     for fingerprint in fingerprints {
@@ -558,7 +596,7 @@ impl ModuleLoader for FileLoader {
             Some("ts" | "tsx")
         ) {
             return Err(format!(
-                "module `{module_id}` is not a supported .ts source file"
+                "module `{module_id}` is not a supported .ts, .tsx, or .d.ts source file"
             ));
         }
         let text = fs::read_to_string(&path).map_err(|error| error.to_string())?;
@@ -644,6 +682,7 @@ fn publish_build(
     root: &Path,
     out_dir: &Path,
     artifacts: &std::collections::BTreeMap<String, blueice_bluets::BuildArtifact>,
+    declaration_modules: &std::collections::BTreeMap<String, String>,
     metadata: &BuildMetadata,
 ) -> io::Result<()> {
     let output = absolute_path(out_dir)?;
@@ -690,9 +729,25 @@ fn publish_build(
                 fs::write(js_path.with_extension("d.ts"), declaration)?;
             }
         }
+        for (module_id, source) in declaration_modules {
+            let module_path = Path::new(module_id);
+            let relative = artifact_relative_path(root, module_path, module_id)?;
+            if !is_declaration_path(&relative) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("declaration module `{module_id}` does not end in .d.ts"),
+                ));
+            }
+            let declaration_path = stage.join(relative);
+            let declaration_parent = declaration_path
+                .parent()
+                .ok_or_else(|| io::Error::other("declaration path has no parent"))?;
+            fs::create_dir_all(declaration_parent)?;
+            fs::write(declaration_path, source)?;
+        }
         let manifest = serde_json::to_vec_pretty(metadata).map_err(io::Error::other)?;
         fs::write(stage.join("bluetsc.manifest.json"), manifest)?;
-        if !metadata.imports.is_empty() {
+        if metadata.has_configured_imports {
             let import_map = serde_json::json!({ "imports": &metadata.imports });
             let import_map = serde_json::to_vec_pretty(&import_map).map_err(io::Error::other)?;
             fs::write(stage.join("bluetsc.importmap.json"), import_map)?;
@@ -822,6 +877,12 @@ mod tests {
     }
 
     #[test]
+    fn declaration_modules_cannot_be_executable_entries() {
+        assert!(ensure_not_declaration_entry(Path::new("types/api.d.ts"), "entry").is_err());
+        assert!(ensure_not_declaration_entry(Path::new("src/main.ts"), "entry").is_ok());
+    }
+
+    #[test]
     fn resolver_fingerprint_is_project_root_relative() {
         let first_root = Path::new("/first/project");
         let second_root = Path::new("/second/project");
@@ -869,7 +930,9 @@ mod tests {
             source_map: true,
             declaration: true,
             entries: vec!["src/main.js".to_string()],
+            declaration_modules: Vec::new(),
             imports: BTreeMap::new(),
+            has_configured_imports: false,
         }
     }
 
@@ -898,7 +961,14 @@ mod tests {
             },
         )]);
 
-        publish_build(&root, &output, &artifacts, &test_metadata()).unwrap();
+        publish_build(
+            &root,
+            &output,
+            &artifacts,
+            &BTreeMap::new(),
+            &test_metadata(),
+        )
+        .unwrap();
 
         assert_eq!(
             fs::read_to_string(output.join("src/main.js")).unwrap(),
@@ -932,7 +1002,14 @@ mod tests {
             },
         )]);
 
-        assert!(publish_build(&root, &output, &artifacts, &test_metadata()).is_err());
+        assert!(publish_build(
+            &root,
+            &output,
+            &artifacts,
+            &BTreeMap::new(),
+            &test_metadata(),
+        )
+        .is_err());
         assert_eq!(
             fs::read_to_string(output.join("preserved.js")).unwrap(),
             "previous artifact"

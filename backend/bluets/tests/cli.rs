@@ -7,7 +7,10 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+static TEST_DIRECTORY_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[test]
 fn check_and_build_use_the_same_closed_project_and_preserve_output_on_error() {
@@ -160,13 +163,75 @@ fn config_builds_multiple_entries_and_resolves_only_declared_imports() {
     fs::remove_dir_all(temporary).unwrap();
 }
 
+#[test]
+fn build_uses_root_confined_declaration_modules_without_emitting_runtime_artifacts() {
+    let temporary = unique_test_directory();
+    let root = temporary.join("project");
+    let source = root.join("src");
+    let types = root.join("types");
+    fs::create_dir_all(&source).unwrap();
+    fs::create_dir_all(&types).unwrap();
+    fs::write(
+        types.join("account.d.ts"),
+        "export interface Account { id: string }\n",
+    )
+    .unwrap();
+    fs::write(
+        source.join("main.ts"),
+        "import type { Account } from '@local/account';\nexport const account: Account = { id: 'ada' };\n",
+    )
+    .unwrap();
+    let config = root.join("bluetsc.json");
+    fs::write(
+        &config,
+        r#"{
+  "entries": ["src/main.ts"],
+  "outDir": "dist",
+  "declaration": true,
+  "imports": { "@local/account": "types/account.d.ts" }
+}"#,
+    )
+    .unwrap();
+
+    let checked = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .args(["check", "--config", config.to_str().unwrap()])
+        .status()
+        .unwrap();
+    assert!(checked.success());
+    let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .args(["build", "--config", config.to_str().unwrap()])
+        .status()
+        .unwrap();
+    assert!(built.success());
+
+    let output = root.join("dist");
+    assert!(output.join("src/main.js").is_file());
+    assert!(output.join("src/main.d.ts").is_file());
+    assert!(!output.join("types/account.d.js").exists());
+    assert_eq!(
+        fs::read_to_string(output.join("types/account.d.ts")).unwrap(),
+        "export interface Account { id: string }\n"
+    );
+    assert!(fs::read_to_string(output.join("src/main.d.ts"))
+        .unwrap()
+        .contains("import type { Account } from '@local/account';"));
+    let manifest = fs::read_to_string(output.join("bluetsc.manifest.json")).unwrap();
+    assert!(manifest.contains("\"types/account.d.ts\""));
+    let import_map = fs::read_to_string(output.join("bluetsc.importmap.json")).unwrap();
+    assert!(!import_map.contains("@local/account"));
+    fs::remove_dir_all(temporary).unwrap();
+}
+
 fn unique_test_directory() -> PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let path =
-        std::env::temp_dir().join(format!("blueice-bluets-cli-{}-{nonce}", std::process::id()));
+    let sequence = TEST_DIRECTORY_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "blueice-bluets-cli-{}-{nonce}-{sequence}",
+        std::process::id()
+    ));
     fs::create_dir(&path).unwrap();
     path
 }

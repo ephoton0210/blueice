@@ -31,7 +31,9 @@ pub use compiler::{
     compile, CompilerOptions, EcmaTarget, IncrementalCompiler, IncrementalResult, MapLoader,
     ModuleLoader, ModuleSource, Project, RuntimePolicy,
 };
-pub use contracts::{Contract, ContractError, ContractPlan, ContractValue, ValidationError};
+pub use contracts::{
+    Contract, ContractError, ContractPlan, ContractValue, ValidationError, ValidationLimits,
+};
 pub use debug_info::{BlueTsDebugInfo, DebugSource, DebugSymbol, DebugType, SymbolId, TypeId};
 pub use diagnostic::{Diagnostic, DiagnosticCode, Severity, SourceSpan};
 pub use emitter::{BuildArtifact, BuildOutput, SourceMap};

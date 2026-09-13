@@ -125,6 +125,13 @@ impl ModuleLoader for MapLoader {
     }
 }
 
+/// Returns whether a source identity is a TypeScript declaration module. A
+/// host is still responsible for authorizing that source identity before it
+/// reaches BlueTS; this helper only controls static-only compiler behavior.
+pub(crate) fn is_declaration_module(module_id: &str) -> bool {
+    module_id.ends_with(".d.ts")
+}
+
 /// The source graph after parsing and host-controlled resolution.  It contains
 /// no JavaScript-runtime dependency and is reusable by check-only and build
 /// callers alike.
@@ -658,6 +665,85 @@ mod tests {
         .unwrap()
         .fingerprint;
         assert_ne!(default, mapped);
+    }
+
+    #[test]
+    fn treats_declaration_modules_as_type_only_dependencies() {
+        let loader = MapLoader::from([
+            ModuleSource::new(
+                "memory:///src/main.ts",
+                "import type { User } from './types.d.ts'; export const user: User = { id: 'ada' };",
+            ),
+            ModuleSource::new(
+                "memory:///src/types.d.ts",
+                "export interface User { id: string }",
+            ),
+        ]);
+        let compilation = compile(
+            "memory:///src/main.ts",
+            &loader,
+            CompilerOptions {
+                declaration: true,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(!compilation.has_errors(), "{:?}", compilation.diagnostics);
+        let output = compilation.output.unwrap();
+        assert!(output.artifacts.contains_key("memory:///src/main.ts"));
+        assert!(!output.artifacts.contains_key("memory:///src/types.d.ts"));
+        assert_eq!(
+            output.declaration_modules.get("memory:///src/types.d.ts"),
+            Some(&"export interface User { id: string }".to_string())
+        );
+        assert!(compilation
+            .debug_info
+            .unwrap()
+            .sources
+            .iter()
+            .any(|source| source.module == "memory:///src/types.d.ts"));
+    }
+
+    #[test]
+    fn rejects_runtime_use_or_runtime_content_in_a_declaration_module() {
+        let value_import = MapLoader::from([
+            ModuleSource::new(
+                "memory:///src/main.ts",
+                "import { createUser } from './types.d.ts'; createUser();",
+            ),
+            ModuleSource::new(
+                "memory:///src/types.d.ts",
+                "export declare function createUser(): string;",
+            ),
+        ]);
+        let imported = compile(
+            "memory:///src/main.ts",
+            &value_import,
+            CompilerOptions::default(),
+        );
+        assert!(imported.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::InvalidDeclarationFile
+                && diagnostic.message.contains("type-only")
+        }));
+
+        let runtime_content = MapLoader::from([
+            ModuleSource::new(
+                "memory:///src/main.ts",
+                "import type { User } from './types.d.ts'; const user: User = { id: 'ada' };",
+            ),
+            ModuleSource::new(
+                "memory:///src/types.d.ts",
+                "export const unexpected: number = 1; export interface User { id: string }",
+            ),
+        ]);
+        let declared = compile(
+            "memory:///src/main.ts",
+            &runtime_content,
+            CompilerOptions::default(),
+        );
+        assert!(declared.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::InvalidDeclarationFile
+                && diagnostic.message.contains("runtime declaration")
+        }));
     }
 
     #[test]

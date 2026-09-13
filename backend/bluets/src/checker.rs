@@ -4,7 +4,7 @@
 
 //! Name binding and deterministic, deliberately bounded type checking.
 
-use crate::compiler::Project;
+use crate::compiler::{is_declaration_module, Project};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{Declaration, FunctionDeclaration, Module, TypeField};
 use crate::syntax::{Token, TokenKind};
@@ -54,7 +54,7 @@ pub(crate) fn check_incremental(
     previous: Option<&CheckedProject>,
     rechecked: &BTreeSet<String>,
 ) -> (CheckedProject, Vec<Diagnostic>) {
-    let mut diagnostics = Vec::new();
+    let mut diagnostics = declaration_module_diagnostics(project);
     let exported_types = exported_types(project);
     let mut checked_modules = BTreeMap::new();
 
@@ -85,6 +85,53 @@ pub(crate) fn check_incremental(
         },
         diagnostics,
     )
+}
+
+fn declaration_module_diagnostics(project: &Project) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    for (module_id, module) in &project.modules {
+        for declaration in &module.declarations {
+            if let Declaration::Import(import) = declaration {
+                if !import.type_only
+                    && project
+                        .resolutions
+                        .get(&(module_id.clone(), import.specifier.clone()))
+                        .is_some_and(|resolved| is_declaration_module(resolved))
+                {
+                    diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::InvalidDeclarationFile,
+                        import.span.clone(),
+                        format!(
+                            "value import `{}` resolves to declaration module; declaration modules are type-only",
+                            import.specifier
+                        ),
+                    ));
+                }
+            }
+        }
+        if !is_declaration_module(module_id) {
+            continue;
+        }
+        for declaration in &module.declarations {
+            let runtime_declaration = match declaration {
+                Declaration::Import(import) => !import.type_only,
+                Declaration::Variable(variable) => !variable.declared,
+                Declaration::Function(function) => !function.declared,
+                Declaration::Raw(_) => true,
+                Declaration::TypeExport(_)
+                | Declaration::TypeAlias(_)
+                | Declaration::Interface(_) => false,
+            };
+            if runtime_declaration {
+                diagnostics.push(Diagnostic::error(
+                    DiagnosticCode::InvalidDeclarationFile,
+                    declaration.span().clone(),
+                    "declaration module contains a runtime declaration",
+                ));
+            }
+        }
+    }
+    diagnostics
 }
 
 fn exported_types(project: &Project) -> BTreeMap<String, BTreeMap<String, Type>> {

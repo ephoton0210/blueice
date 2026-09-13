@@ -87,6 +87,31 @@ pub struct ValidationError {
     pub observed: String,
 }
 
+/// Explicit resource limits for pure contract validation. These limits apply
+/// before a value is accepted by a contract and never invoke user code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ValidationLimits {
+    /// Maximum number of contract edges between the root and a visited value.
+    pub max_depth: usize,
+    /// Maximum number of values in any one array or object.
+    pub max_collection_entries: usize,
+    /// Maximum number of values visited across the entire validation attempt.
+    pub max_nodes: usize,
+    /// Maximum UTF-8 byte length of a string value.
+    pub max_string_bytes: usize,
+}
+
+impl Default for ValidationLimits {
+    fn default() -> Self {
+        Self {
+            max_depth: 128,
+            max_collection_entries: 10_000,
+            max_nodes: 100_000,
+            max_string_bytes: 1_048_576,
+        }
+    }
+}
+
 impl ContractPlan {
     /// Lowers a supported static type into a pure runtime plan.  Callers supply
     /// the checker-approved named type table; unresolved or erased types are
@@ -108,14 +133,87 @@ impl ContractPlan {
         })
     }
 
-    /// Validates a JSON-like value without invoking user code.  Validation is
-    /// bounded by a fixed recursion depth and reports a compact data path.
+    /// Validates a JSON-like value without invoking user code under the
+    /// default resource limits.
     pub fn validate(&self, value: &ContractValue) -> Result<(), ValidationError> {
-        validate_contract(&self.root, value, &self.definitions, "$", 0)
+        self.validate_with_limits(value, ValidationLimits::default())
+    }
+
+    /// Validates a JSON-like value without invoking user code. The caller can
+    /// set explicit depth, collection, fuel, and string-byte bounds for a
+    /// particular trust boundary.
+    pub fn validate_with_limits(
+        &self,
+        value: &ContractValue,
+        limits: ValidationLimits,
+    ) -> Result<(), ValidationError> {
+        let mut state = ValidationState {
+            limits,
+            visited_nodes: 0,
+        };
+        validate_contract(&self.root, value, &self.definitions, "$", 0, &mut state)
     }
 }
 
-const MAX_VALIDATION_DEPTH: usize = 128;
+struct ValidationState {
+    limits: ValidationLimits,
+    visited_nodes: usize,
+}
+
+impl ValidationState {
+    fn observe(
+        &mut self,
+        value: &ContractValue,
+        path: &str,
+        depth: usize,
+    ) -> Result<(), ValidationError> {
+        if depth > self.limits.max_depth {
+            return Err(limit_error(
+                path,
+                format!("a contract value within depth {}", self.limits.max_depth),
+                value.category(),
+            ));
+        }
+        if self.visited_nodes >= self.limits.max_nodes {
+            return Err(limit_error(
+                path,
+                format!("a contract value within fuel {}", self.limits.max_nodes),
+                value.category(),
+            ));
+        }
+        self.visited_nodes += 1;
+        match value {
+            ContractValue::String(value) if value.len() > self.limits.max_string_bytes => {
+                Err(limit_error(
+                    path,
+                    format!("string within {} bytes", self.limits.max_string_bytes),
+                    format!("string of {} bytes", value.len()),
+                ))
+            }
+            ContractValue::Array(values) if values.len() > self.limits.max_collection_entries => {
+                Err(limit_error(
+                    path,
+                    format!(
+                        "array within {} entries",
+                        self.limits.max_collection_entries
+                    ),
+                    format!("array of {} entries", values.len()),
+                ))
+            }
+            ContractValue::Object(values) if values.len() > self.limits.max_collection_entries => {
+                Err(limit_error(
+                    path,
+                    format!(
+                        "object within {} entries",
+                        self.limits.max_collection_entries
+                    ),
+                    format!("object of {} entries", values.len()),
+                ))
+            }
+            _ => Ok(()),
+        }
+    }
+}
 
 fn lower(
     value: &Type,
@@ -203,14 +301,9 @@ fn validate_contract(
     definitions: &BTreeMap<String, Contract>,
     path: &str,
     depth: usize,
+    state: &mut ValidationState,
 ) -> Result<(), ValidationError> {
-    if depth > MAX_VALIDATION_DEPTH {
-        return Err(ValidationError {
-            path: path.to_string(),
-            expected: "a contract value within the recursion limit".to_string(),
-            observed: value.category().to_string(),
-        });
-    }
+    state.observe(value, path, depth)?;
     match contract {
         Contract::Null if matches!(value, ContractValue::Null) => Ok(()),
         Contract::Undefined if matches!(value, ContractValue::Undefined) => Ok(()),
@@ -229,6 +322,7 @@ fn validate_contract(
                     definitions,
                     &format!("{path}[{index}]"),
                     depth + 1,
+                    state,
                 )?;
             }
             Ok(())
@@ -251,6 +345,7 @@ fn validate_contract(
                     definitions,
                     &format!("{path}[{index}]"),
                     depth + 1,
+                    state,
                 )?;
             }
             Ok(())
@@ -267,6 +362,7 @@ fn validate_contract(
                         definitions,
                         &format!("{path}.{}", field.name),
                         depth + 1,
+                        state,
                     )?,
                     None if field.optional => {}
                     None => {
@@ -281,17 +377,16 @@ fn validate_contract(
             Ok(())
         }
         Contract::Union(options) => {
-            if options.iter().any(|option| {
-                validate_contract(option, value, definitions, path, depth + 1).is_ok()
-            }) {
-                Ok(())
-            } else {
-                Err(ValidationError {
-                    path: path.to_string(),
-                    expected: "a member of the declared union".to_string(),
-                    observed: value.category().to_string(),
-                })
+            for option in options {
+                if validate_contract(option, value, definitions, path, depth + 1, state).is_ok() {
+                    return Ok(());
+                }
             }
+            Err(ValidationError {
+                path: path.to_string(),
+                expected: "a member of the declared union".to_string(),
+                observed: value.category().to_string(),
+            })
         }
         Contract::Reference(name) => {
             let Some(target) = definitions.get(name) else {
@@ -301,9 +396,21 @@ fn validate_contract(
                     observed: value.category().to_string(),
                 });
             };
-            validate_contract(target, value, definitions, path, depth + 1)
+            validate_contract(target, value, definitions, path, depth + 1, state)
         }
         _ => mismatch(path, contract_label(contract), value),
+    }
+}
+
+fn limit_error(
+    path: &str,
+    expected: impl Into<String>,
+    observed: impl Into<String>,
+) -> ValidationError {
+    ValidationError {
+        path: path.to_string(),
+        expected: expected.into(),
+        observed: observed.into(),
     }
 }
 
@@ -394,5 +501,53 @@ mod tests {
     fn rejects_unreifiable_any() {
         let error = ContractPlan::from_type("unsafe", &Type::Any, &BTreeMap::new()).unwrap_err();
         assert!(error.message.contains("not automatic"));
+    }
+
+    #[test]
+    fn validates_with_explicit_string_collection_and_fuel_limits() {
+        let string_plan = ContractPlan::from_type("Text", &Type::String, &BTreeMap::new()).unwrap();
+        let string_error = string_plan
+            .validate_with_limits(
+                &ContractValue::String("abc".to_string()),
+                ValidationLimits {
+                    max_string_bytes: 2,
+                    ..ValidationLimits::default()
+                },
+            )
+            .unwrap_err();
+        assert_eq!(string_error.path, "$");
+        assert!(string_error.expected.contains("2 bytes"));
+
+        let array_plan = ContractPlan::from_type(
+            "Names",
+            &Type::Array(Box::new(Type::String)),
+            &BTreeMap::new(),
+        )
+        .unwrap();
+        let collection_error = array_plan
+            .validate_with_limits(
+                &ContractValue::Array(vec![
+                    ContractValue::String("a".to_string()),
+                    ContractValue::String("b".to_string()),
+                ]),
+                ValidationLimits {
+                    max_collection_entries: 1,
+                    ..ValidationLimits::default()
+                },
+            )
+            .unwrap_err();
+        assert!(collection_error.expected.contains("1 entries"));
+
+        let fuel_error = array_plan
+            .validate_with_limits(
+                &ContractValue::Array(vec![ContractValue::String("a".to_string())]),
+                ValidationLimits {
+                    max_nodes: 1,
+                    ..ValidationLimits::default()
+                },
+            )
+            .unwrap_err();
+        assert_eq!(fuel_error.path, "$[0]");
+        assert!(fuel_error.expected.contains("fuel 1"));
     }
 }
