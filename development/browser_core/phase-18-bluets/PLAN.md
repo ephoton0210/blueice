@@ -103,7 +103,7 @@ Type erasure at the VM boundary does not justify discarding compiler knowledge. 
 
 Phase 17's debugger maps breakpoints, stepping, stack frames and exceptions back to TypeScript locations. A scope/watch display shows the runtime BlueJS value separately from its static TypeScript type; it must never claim that a static `TypeId` is a runtime proof. Watch/evaluate expressions are parsed and checked in the paused source scope before BlueJS compilation, with the same fuel, controller-lease and audit requirements as ordinary debugger evaluation. A generic type's displayed instantiation is the checker result at that source site, not invented runtime reification.
 
-For a BlueTS script, source maps are therefore a release prerequisite rather than a deferred DevTools nicety. Debug metadata is retained according to the script/debugger memory policy, released with its tab realm, and redacted from unprivileged automation clients just as source text and scopes are.
+For a BlueTS script, source maps are therefore a release prerequisite rather than a deferred DevTools nicety. Debug metadata is retained according to the script/debugger memory policy, released with its tab realm, and redacted from unprivileged automation clients just as source text and scopes are. The same metadata backs the target-aware AI MCP debugger: [Phase 12's debug-environment contract](../phase-12-mcp-server/DEBUG_ENVIRONMENT.md) exposes it only through generation-bound, paged, capability-scoped source/type/symbol/contract resources and tools.
 
 ### Performance and cache contract
 
@@ -151,7 +151,7 @@ Acceptance: a JavaScript fixture executes through the page loader and debugger w
 1. Build the TypeScript tokenizer/parser, binder, URL-module resolver and checker for the initial boundary.
 2. Lower supported typed syntax straight to BlueJS AST/bytecode input, without JavaScript-text round trips.
 3. Reject type/resolution/lowering errors atomically and expose structured diagnostics through the script, debugger and automation APIs.
-4. Emit `BlueTsDebugInfo`; prove TS source breakpoints, stepping, stack traces, scopes, symbol navigation and static-type displays map to the executing bytecode.
+4. Emit `BlueTsDebugInfo`; prove TS source breakpoints, stepping, stack traces, scopes, symbol navigation and static-type displays map to the executing bytecode and to the Phase 12 AI MCP debug interface.
 
 Acceptance: a local typed classic script and module execute with no generated `.js` file; a deliberate type error runs neither the entry nor dependent module; a breakpoint and exception point at original `.ts` lines; a debugger shows a static type and the separate runtime value.
 
@@ -178,7 +178,7 @@ Acceptance: malformed JSON cannot enter a `User`-typed value; the validation err
 1. Implement dependency-aware incremental checker/cache invalidation and trusted local declaration files.
 2. Expand the supported TypeScript feature matrix only alongside its BlueJS lowering/runtime, source mapping, contract and oracle evidence.
 3. Add opt-in comparison against a pinned TypeScript compiler for accepted syntax/diagnostics and Node/BlueJS behavioral differential tests for the lowered output.
-4. Expose carefully redacted project/type metadata to Phase 17 DevTools and a documented automation subset.
+4. Expose carefully redacted project/type metadata to Phase 17 DevTools and the documented, capability-scoped Phase 12 MCP debug interface.
 
 Acceptance: editing one module invalidates only its dependents; a cache entry checked under another policy is refused; every supported compatibility feature has parser/checker/lowering/debug/contract expectations and an independently checked fixture.
 
@@ -219,6 +219,7 @@ Acceptance: editing one module invalidates only its dependents; a cache entry ch
 - [ ] Implement initial parser/binder/resolver/checker/lowerer with atomic failures
 - [ ] Implement `bluetsc check`/`build`, ESM/source-map/declaration emission and reproducible artifact fingerprints
 - [ ] Implement `BlueTsDebugInfo`, source-level debugger mapping and controlled metadata retention
+- [ ] Expose TypeScript diagnostics, symbols, types, contracts, lowering provenance and BlueTSC check/build through Phase 12's negotiated MCP debug interface
 - [ ] Implement the pure runtime-contract IR and supported boundary validators
 - [ ] Implement incremental project/cache invalidation and opt-in external-oracle jobs
 - [ ] Add real-process page, debugger, contract, resource, policy and multi-tab regression coverage

@@ -6,7 +6,7 @@
 
 ## Objective
 
-Expose BlueIce's capabilities — browsing/rendering (Phase 1/5's AI-facing API), downloads (Phase 10), file transfer (Phase 11), and whatever else applies — through a standard MCP server, so Claude Code or any other MCP-compatible AI agent can drive BlueIce using the standard protocol instead of a bespoke one.
+Expose BlueIce's capabilities — browsing/rendering (Phase 1/5's AI-facing API), downloads (Phase 10), file transfer (Phase 11), and whatever else applies — through a standard MCP server, so Claude Code or any other MCP-compatible AI agent can drive BlueIce using the standard protocol instead of a bespoke one. This includes the complete, negotiated BlueJS/BlueTS debugging environment defined in [the MCP debug-interface contract](DEBUG_ENVIRONMENT.md), not merely one-off code-run tools.
 
 ## Foundation built early
 
@@ -27,7 +27,7 @@ Raised while Phase 5 was fresh, not while working through the numbered sequence:
 
 **Process design**: `backend/mcp-server/` as a thin adapter process — speaks MCP (JSON-RPC based, per the MCP spec) on one side, and BlueIce's own internal IPC protocol on the other. It translates incoming MCP `tools/call` requests into internal IPC requests against `core`/`downloads`/etc., and (where the MCP transport in use supports it) surfaces internal state changes back out as MCP notifications — it does not implement any browsing/download/transfer logic itself, only the translation. Being a stateless adapter, [`research/multi-process-memory.md`](../research/multi-process-memory.md) flags it as the clearest on-demand-spawn candidate in the whole process fleet — no reason for it to run at all when no MCP client is connected, unlike `core`/`ai-gatekeeper` which need to stay resident.
 
-**Tool sketch** (signatures will firm up once the wrapped APIs are real, but the shape — one MCP tool per capability, thin pass-through to internal IPC — is reasonably stable regardless of exactly how Phase 5/10/11 end up looking in detail):
+**Non-debug tool sketch** (signatures will firm up once the wrapped APIs are real, but the shape — one MCP tool per capability, thin pass-through to internal IPC — is reasonably stable regardless of exactly how Phase 5/10/11 end up looking in detail):
 
 - `navigate(url)`
 - `get_page_representation()` — wraps the Phase 1/5 AI-facing representation
@@ -36,11 +36,14 @@ Raised while Phase 5 was fresh, not while working through the numbered sequence:
 - `ftp_connect(...)` / `sftp_connect(...)` — wraps Phase 11
 - `bluejs_run(code)` — wraps the Phase 13 `bluejs` shell's batch mode, so an MCP client can execute/test a JS snippet directly
 - `bluejs_analyze(code)` — wraps Phase 13's AI-facing parse/analysis output (AST plus the capability summary the Phase 7 gatekeeper also consumes), so an MCP client can ask "what does this script do" without executing it
+- `debug_*` / `bluetsc_*` — the target-aware BlueJS/BlueTS debugger and compiler surface in [`DEBUG_ENVIRONMENT.md`](DEBUG_ENVIRONMENT.md): discovery/attach, source and artifact inspection, breakpoint/pause/step, scopes and bounded evaluation, diagnostics/types/contracts, subscriptions, and registered-project BlueTSC check/build. Each wraps its native debugger/compiler IPC capability rather than executing an MCP-specific implementation.
+
+The debug surface is intentionally specified now because every one of its tools maps to the single native debugger/compiler capability layer; its exact implementation state is discovered through `debug_capabilities`, never inferred from the existence of a similarly named external-browser feature.
 
 ## Open questions
 
 - **MCP should be an adapter, not a fourth protocol.** Plan §1 already establishes `core` exposing one IPC surface shared by `extension`, `frontend`, and the AI-facing API (Phase 5) — introducing MCP as a separately-designed channel would fragment that "one source of truth" principle. The default assumption going in should be: an MCP server process translates MCP tool calls into calls against the existing internal IPC protocol, rather than `core` growing a second, parallel API surface. Confirm this holds once the IPC protocol (Phase 9's wire-protocol work) actually exists — don't assume it without checking.
-- **Which capabilities become MCP tools, and their shape** — genuinely can't be fully specified until the subsystems being wrapped (Phase 5 at minimum; Phase 10/11 for file-transfer tools) have real APIs. Speccing MCP tool signatures against not-yet-existing APIs would just need redoing.
+- **Which non-debug capabilities become MCP tools, and their shape** — Phase 5 at minimum and Phase 10/11 file-transfer tools cannot be fully specified until their wrapped APIs are real. The BlueJS/BlueTS debug surface is separately fixed in `DEBUG_ENVIRONMENT.md` because it has one native debugger/compiler source of truth.
 - **Scope of "all of it"**: the user's ask was that all 6 new components be callable via MCP — confirm whether that includes Phase 7 (local AI) and Phase 9 (extensions) as MCP-controllable too, or just the browsing/download/transfer capabilities.
 
 ## Checklist
@@ -49,6 +52,9 @@ Raised while Phase 5 was fresh, not while working through the numbered sequence:
 - [x] Design and build MCP tool definitions for the capabilities that are real today (Phase 5's API) — see "Foundation built early" above
 - [ ] Confirm which of Phase 7/9/10/11's capabilities (once they exist) are in scope for MCP exposure, beyond the Phase 5 API already covered
 - [ ] Extend the tool set as Phase 10/11/13 land (`download_file`/`list_transfers`, `ftp_connect`/`sftp_connect`, `bluejs_run`/`bluejs_analyze`)
+- [x] Define the complete target-aware MCP debug environment for BlueJS/BlueTS/BlueTSC — [`DEBUG_ENVIRONMENT.md`](DEBUG_ENVIRONMENT.md): native-debugger adapter boundary, resources/tools/events, handle generations, runtime/type/contract inspection, build controls, authorization, limits and acceptance coverage
+- [ ] Implement the negotiated BlueJS MCP debug adapter (`debug_*`, `bluejs_run`, `bluejs_analyze`) over Phase 17's native debugger and validate it through a real AI MCP client
+- [ ] Implement the BlueTS/BlueTSC debugger/compiler adapter (`debug_get_type`/`debug_get_contract`/`bluetsc_check`/`bluetsc_build`) after Phase 18's native interfaces exist
 - [x] Connect to Phase 8's rendezvous socket first, falling back to today's unconditional private `CoreProcess::spawn` only if nothing is listening there — the *shared-instance* half of this item (architecture-wide risk survey finding: today, `mcp-server` and `frontend` can never observe the same `core`/`Page` at all, the same dual-track split plan §1's core goal rejects). Built per `phase-8-live-core-hotswap/PLAN.md`'s "Minimal first slice": `CoreProcess::connect` tries the rendezvous socket first; `BlueIceMcpServer::spawn` now calls it instead of the unconditional-spawn `CoreProcess::spawn`. Existing tests (including the real-subprocess `tests/core_process.rs`) keep exercising the private-spawn fallback path unchanged, since none of them run a launcher alongside.
 - [ ] Switch `mcp-server` itself to on-demand process spawning (spawn on first inbound MCP connection, idle-teardown with zero connected clients) — the *spawn-timing* half of the original item, unrelated to the shared-instance half above (`mcp-server` remaining a separate on-demand-spawned adapter process either way; only whether it privately spawns its own `core` or attaches to a shared one changes), per `research/multi-process-memory.md`
 - [x] Implement the `protocol_version` handshake Phase 1/5 deferred, once a genuinely independent client makes protocol drift a real risk — done, per `phase-8-live-core-hotswap/PLAN.md`'s minimal-slice checklist: `CoreConnection::handshake` (`blueice_ipc::client_handshake`), called from both `CoreProcess::spawn` and `connect_to`

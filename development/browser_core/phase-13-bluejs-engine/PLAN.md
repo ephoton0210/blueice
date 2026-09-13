@@ -60,7 +60,7 @@ This directly strengthens the conformance-test question below: running a Test262
 - **Phase 7's gatekeeper**, which needs to judge a script's risk before/while it runs — the capability summary is what it reviews, giving the enforcement architecture question in Phase 7 an actual mechanism to call rather than an unspecified "the gatekeeper looks at the script somehow."
 - **Phase 12's MCP server**, which can expose this as an `bluejs_analyze(code)` tool (alongside `bluejs_run(code)` for straight execution) so an external AI agent can ask "what does this script do" without executing it — useful for the same safety reasoning a human reviewer would want, and for the Phase 7 assistant's summarization capability applied to scripts specifically.
 
-**`bluejs` reachable via MCP**: per Phase 12's own principle (MCP as an adapter over the internal IPC protocol, not a parallel channel), the `bluejs` shell doesn't grow a bespoke MCP-speaking mode of its own — it's invoked the same way any other capability is, through `backend/mcp-server/` translating `bluejs_run`/`bluejs_analyze` tool calls into calls against `bluejs`'s existing batch-mode/analysis interface.
+**`bluejs` reachable and debuggable via MCP**: per Phase 12's own principle (MCP as an adapter over the internal IPC protocol, not a parallel channel), the `bluejs` shell does not grow a bespoke MCP-speaking mode of its own. `backend/mcp-server/` translates `bluejs_run`/`bluejs_analyze` and the complete target-aware debugger surface—source/artifact inspection, breakpoints, pause/step, scopes, bounded evaluation, events and resource stats—into the same native debugger/compiler interfaces used by Phase 17. [`Phase 12's MCP debug-environment contract`](../phase-12-mcp-server/DEBUG_ENVIRONMENT.md) defines the negotiated tool/resource/event schema, capability scopes, generations, limits and acceptance tests.
 
 ## Wiring design (resolved 2026-09-08)
 
@@ -181,6 +181,7 @@ The next hardening pass targets `cargo llvm-cov -p blueice-bluejs --fail-under-l
 - [ ] Design the Phase 7 gatekeeper's script-level hook points against that summary, with Phase 7
 - [ ] Build the `bluejs` shell (REPL mode + batch-file mode, minimal host bindings)
 - [ ] Expose `bluejs_run`/`bluejs_analyze` as MCP tools, with Phase 12
+- [ ] Expose BlueJS's negotiated MCP debug target/interface (source/artifacts, breakpoint/pause/step, scope/value handles, bounded evaluation, subscriptions and resource stats) through Phase 12's adapter—not a second debugger protocol
 - [x] Build an opt-in library-level differential test against Node.js for the first executable subset, including exact primitive completion and error-category comparison
 - [ ] Build the full shell differential test harness (run corpus through `node` and `bluejs`, diff stdout/exit codes with non-determinism normalization; library-level foundation above is built)
 - [ ] Curate the initial differential test corpus (Test262 subset scoped to the MVP feature set)

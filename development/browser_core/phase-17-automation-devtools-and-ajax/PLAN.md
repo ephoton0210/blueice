@@ -60,7 +60,7 @@ Build a Sources-style debugger for page scripts, backed by BlueJS rather than si
 
 Pausing freezes only the target tab's JavaScript realm. Its already-received network bodies may be buffered within quotas, but its callbacks and further script tasks do not execute until resume; other tabs, frame presentation and automation observers remain live. A non-debug automation mutation for the paused tab is rejected or explicitly queued, never interleaved invisibly with a paused stack. Debugger control and paused-frame evaluation require the controller lease, bounded fuel/time and an observer-visible audit event.
 
-This supplies the native backing for the advertised CDP `Debugger`/`Runtime` subset; the adapter comes after breakpoint, step and scope semantics are proven through the native interface.
+This supplies the native backing for the advertised CDP `Debugger`/`Runtime` subset and the AI-facing MCP debug environment; adapters come after breakpoint, step and scope semantics are proven through the native interface. [Phase 12's MCP debug contract](../phase-12-mcp-server/DEBUG_ENVIRONMENT.md) maps target discovery, resources/tools/events, handle generations, authorization and bounded AI-facing serialization onto these same operations rather than introducing a parallel debugger.
 
 ### Playwright-shaped workflow
 
