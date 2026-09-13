@@ -1,0 +1,90 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! End-to-end coverage for the standalone `bluetsc` process boundary.
+
+use std::fs;
+use std::path::PathBuf;
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[test]
+fn check_and_build_use_the_same_closed_project_and_preserve_output_on_error() {
+    let temporary = unique_test_directory();
+    let root = temporary.join("project");
+    let source = root.join("src");
+    let output = temporary.join("output");
+    fs::create_dir_all(&source).unwrap();
+    fs::write(
+        source.join("model.ts"),
+        "export interface User { id: string }\n",
+    )
+    .unwrap();
+    let entry = source.join("main.ts");
+    fs::write(
+        &entry,
+        "import type { User } from './model.ts';\nexport function label(_user: User): string { const name: string = 'Ada'; return name; }\n",
+    )
+    .unwrap();
+
+    let checked = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .args([
+            "check",
+            entry.to_str().unwrap(),
+            "--project-root",
+            root.to_str().unwrap(),
+        ])
+        .status()
+        .unwrap();
+    assert!(checked.success());
+
+    let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .args([
+            "build",
+            entry.to_str().unwrap(),
+            "--project-root",
+            root.to_str().unwrap(),
+            "--out-dir",
+            output.to_str().unwrap(),
+            "--source-map",
+            "--declaration",
+        ])
+        .status()
+        .unwrap();
+    assert!(built.success());
+    let javascript = fs::read_to_string(output.join("src/main.js")).unwrap();
+    assert!(javascript.contains("function label(_user)"));
+    assert!(output.join("src/main.js.map").is_file());
+    assert!(output.join("src/main.d.ts").is_file());
+
+    fs::write(&entry, "export const broken: number = 'wrong';\n").unwrap();
+    let failed = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .args([
+            "build",
+            entry.to_str().unwrap(),
+            "--project-root",
+            root.to_str().unwrap(),
+            "--out-dir",
+            output.to_str().unwrap(),
+        ])
+        .status()
+        .unwrap();
+    assert!(!failed.success());
+    assert_eq!(
+        fs::read_to_string(output.join("src/main.js")).unwrap(),
+        javascript
+    );
+    fs::remove_dir_all(temporary).unwrap();
+}
+
+fn unique_test_directory() -> PathBuf {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let path =
+        std::env::temp_dir().join(format!("blueice-bluets-cli-{}-{nonce}", std::process::id()));
+    fs::create_dir(&path).unwrap();
+    path
+}

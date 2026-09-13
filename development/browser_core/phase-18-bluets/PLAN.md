@@ -2,11 +2,46 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: Proposed — design only. Nothing in BlueIce currently parses TypeScript, type-checks a page, emits TypeScript-derived bytecode, retains TypeScript debugger metadata, or validates a TypeScript type at runtime.
+**Status**: In progress. `backend/bluets` now provides a standalone, host-neutral BlueTS front end and `bluetsc` command for an explicitly bounded initial language matrix. It does **not** yet execute a TypeScript page: the BlueJS public AST/IR hand-off, page-script host, bytecode safe-point map, debugger IPC and MCP project-registration boundary remain prerequisites.
 
 ## Objective
 
 Let a BlueIce page opt in to TypeScript source without a build-time `.js` artifact, while also providing BlueTSC for projects that need to compile TypeScript to portable JavaScript. Both paths preserve the reasons to author code in TypeScript: deterministic static diagnostics, source-level debugging, and—where data crosses a trust boundary—runtime validation of an explicit, reifiable contract.
+
+## Independent implementation status
+
+The first implementation intentionally completes the work that has no BlueJS
+dependency before introducing any page-runtime coupling:
+
+- `blueice-bluets` accepts only caller-supplied `ModuleLoader` records. The
+  library itself does not read files, URLs, DOM state or host capabilities.
+  `bluetsc` is the separate, project-root-confined filesystem adapter.
+- Its pinned `blue-ts-0.1` matrix parses/binds typed variable and function
+  declarations, interfaces, aliases, type-only imports/exports, primitive and
+  literal types, records, arrays, tuples, unions, intersections and the
+  corresponding erasable annotations/assertions. It resolves a closed relative
+  module graph, produces stable diagnostics for parse/unsupported syntax,
+  resolution, duplicate names, unknown types and the implemented assignment /
+  return checks, and never emits on an error.
+- `bluetsc check` uses that shared pipeline without writes. `bluetsc build`
+  stages ESM `.js`, optional line source maps and public `.d.ts` files, then
+  replaces the selected output directory only after every artifact has been
+  staged. Its fingerprint includes source content, the pinned language version,
+  target, source-map/declaration modes and runtime-policy label.
+- The standalone compiler emits the VM-independent portion of
+  `BlueTsDebugInfo`: source-content hashes, static types, symbols and spans.
+  It also contains a bounded, pure contract IR/validator for reifiable
+  JSON-like values. Neither artifact claims a runtime type tag or validates a
+  live page boundary yet.
+
+This is deliberately not a claim of general `tsc` compatibility. Control-flow
+narrowing, overload resolution, generic substitution, decorators, enums,
+classes, TSX, namespace emission, parameter properties, arbitrary JavaScript
+expression typing, incremental caching, import maps/config files and a full
+source-map column/provenance model remain pending. A construct outside the
+implemented matrix must be added with a parser/checker/emitter test and a
+precise compatibility entry; it must not be advertised merely because its
+tokens happen to be erasable.
 
 BlueTS is a Rust front end feeding the existing BlueJS bytecode compiler and VM. It is **not** a second JavaScript/TypeScript VM, an embedded `tsc` process, or a type-tagged replacement for BlueJS values. TypeScript's ordinary type system is compile-time only: the checker uses it to accept or reject a program, while BlueJS executes ordinary ECMAScript values. The [official TypeScript documentation](https://www.typescriptlang.org/docs/handbook/typescript-from-scratch) calls this "erased types" and states that types do not change JavaScript runtime behavior. BlueTS follows that compatibility rule for ordinary TypeScript, then adds an explicit BlueIce contract mode at foreign-data boundaries rather than silently making every local operation dynamically typed.
 
@@ -218,12 +253,13 @@ Acceptance: editing one module invalidates only its dependents; a cache entry ch
 - [x] Define the initial reifiable-contract boundary and explicit non-reifiable failures
 - [x] Define cache keys, resource accounting, debugger metadata and gatekeeper visibility requirements
 - [ ] Complete Phase 13 page-script host and Phase 17 source-map prerequisites
-- [ ] Create `blueice-bluets`, public AST/IR hand-off and a pinned compatibility matrix
+- [x] Create the standalone `blueice-bluets` crate and pin the initial `blue-ts-0.1` compatibility matrix
+- [ ] Define the public BlueJS AST/IR hand-off (without emitted-source reparsing) and its compatibility matrix
 - [ ] Generate and test `lib.blueice.d.ts` from actual host bindings
-- [ ] Implement initial parser/binder/resolver/checker/lowerer with atomic failures
-- [ ] Implement `bluetsc check`/`build`, ESM/source-map/declaration emission and reproducible artifact fingerprints
-- [ ] Implement `BlueTsDebugInfo`, source-level debugger mapping and controlled metadata retention
+- [x] Implement the independent initial parser/binder/closed-module resolver/checker/type-erasure ESM emitter with atomic compile failures
+- [x] Implement `bluetsc check`/staged `build`, ESM/line-source-map/declaration emission and reproducible artifact fingerprints for the initial matrix
+- [x] Implement VM-independent `BlueTsDebugInfo` (source hashes, symbols, static types and spans); bytecode source mapping and controlled debugger retention remain pending
 - [ ] Expose TypeScript diagnostics, symbols, types, contracts, lowering provenance and BlueTSC check/build through Phase 12's negotiated MCP debug interface
-- [ ] Implement the pure runtime-contract IR and supported boundary validators
+- [x] Implement the pure runtime-contract IR and bounded JSON-like validator; host-boundary discovery, JSON Schema delegation and page enforcement remain pending
 - [ ] Implement incremental project/cache invalidation and opt-in external-oracle jobs
 - [ ] Add real-process page, debugger, contract, resource, policy and multi-tab regression coverage
