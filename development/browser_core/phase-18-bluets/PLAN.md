@@ -109,8 +109,8 @@ dependency before introducing any page-runtime coupling:
 - `backend/bluets/tests/typescript_oracle.rs` is an opt-in compatibility job.
   It requires `BLUEICE_TSC` to name a TypeScript 5.9.3 compiler, verifies that
   pin before executing, and runs a fixture matrix covering generic properties,
-  constraints/defaults and explicit direct-call type arguments, generic local
-  `.d.ts` imports, optional/default
+  constraints/defaults, explicit direct-call type arguments and generic
+  interface heritage (including local `.d.ts` parents), optional/default
   parameters, rejected assignment/call arguments, Source Map v3 shape and
   accepted Node output.
   The `typescript-oracle` CI job runs only from `workflow_dispatch` when its

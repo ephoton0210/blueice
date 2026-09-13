@@ -85,6 +85,32 @@ const CASES: &[OracleCase] = &[
         expected_stdout: Some("Ada\n"),
     },
     OracleCase {
+        name: "generic-interface-heritage",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/generic-interface-heritage/main.ts"),
+        )],
+        expected_stdout: Some("Ada:user:account\n"),
+    },
+    OracleCase {
+        name: "generic-interface-heritage-declaration-module",
+        modules: &[
+            (
+                "memory:///main.ts",
+                include_str!(
+                    "fixtures/typescript_oracle/generic-interface-heritage-declaration-module/main.ts"
+                ),
+            ),
+            (
+                "memory:///types/model.d.ts",
+                include_str!(
+                    "fixtures/typescript_oracle/generic-interface-heritage-declaration-module/types/model.d.ts"
+                ),
+            ),
+        ],
+        expected_stdout: Some("Ada:user:account\n"),
+    },
+    OracleCase {
         name: "assignment-error",
         modules: &[(
             "memory:///main.ts",
@@ -113,6 +139,14 @@ const CASES: &[OracleCase] = &[
         modules: &[ (
             "memory:///main.ts",
             include_str!("fixtures/typescript_oracle/explicit-generic-constraint-error/main.ts"),
+        )],
+        expected_stdout: None,
+    },
+    OracleCase {
+        name: "generic-interface-heritage-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/generic-interface-heritage-error/main.ts"),
         )],
         expected_stdout: None,
     },

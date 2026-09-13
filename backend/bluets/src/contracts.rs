@@ -47,6 +47,9 @@ pub enum Contract {
     Tuple(Vec<Contract>),
     Record(Vec<ContractField>),
     Union(Vec<Contract>),
+    /// Every component must validate. This keeps inherited record contracts
+    /// pure and data-only while preserving TypeScript interface heritage.
+    Intersection(Vec<Contract>),
     Reference(String),
 }
 
@@ -247,6 +250,11 @@ fn lower(
             .map(|value| lower(value, named_types, definitions, active))
             .collect::<Result<Vec<_>, _>>()
             .map(Contract::Union),
+        Type::Intersection(values) => values
+            .iter()
+            .map(|value| lower(value, named_types, definitions, active))
+            .collect::<Result<Vec<_>, _>>()
+            .map(Contract::Intersection),
         Type::Named { name, arguments } if arguments.is_empty() => {
             if definitions.contains_key(name) || active.contains(name) {
                 return Ok(Contract::Reference(name.clone()));
@@ -270,9 +278,6 @@ fn lower(
         }),
         Type::Named { name, .. } => Err(ContractError {
             message: format!("generic type `{name}` needs an explicit reifiable contract"),
-        }),
-        Type::Intersection(_) => Err(ContractError {
-            message: "intersections need a developer-supplied runtime contract".to_string(),
         }),
     }
 }
@@ -388,6 +393,12 @@ fn validate_contract(
                 observed: value.category().to_string(),
             })
         }
+        Contract::Intersection(parts) => {
+            for part in parts {
+                validate_contract(part, value, definitions, path, depth + 1, state)?;
+            }
+            Ok(())
+        }
         Contract::Reference(name) => {
             let Some(target) = definitions.get(name) else {
                 return Err(ValidationError {
@@ -454,6 +465,7 @@ fn contract_label(contract: &Contract) -> String {
         Contract::Tuple(_) => "tuple",
         Contract::Record(_) => "object",
         Contract::Union(_) => "union",
+        Contract::Intersection(_) => "intersection",
         Contract::Reference(name) => name,
     }
     .to_string()
@@ -501,6 +513,45 @@ mod tests {
     fn rejects_unreifiable_any() {
         let error = ContractPlan::from_type("unsafe", &Type::Any, &BTreeMap::new()).unwrap_err();
         assert!(error.message.contains("not automatic"));
+    }
+
+    #[test]
+    fn validates_an_inherited_record_as_a_reifiable_intersection() {
+        let field = |name: &str, value: Type| TypeField {
+            name: name.to_string(),
+            optional: false,
+            value,
+            span: crate::diagnostic::SourceSpan::new("test", 0, 0),
+        };
+        let named = BTreeMap::from([(
+            "Labeled".to_string(),
+            Type::Intersection(vec![
+                Type::Record(vec![field("id", Type::String)]),
+                Type::Record(vec![field("label", Type::String)]),
+            ]),
+        )]);
+        let plan = ContractPlan::from_type(
+            "Labeled",
+            &Type::Named {
+                name: "Labeled".to_string(),
+                arguments: Vec::new(),
+            },
+            &named,
+        )
+        .unwrap();
+        let valid = ContractValue::Object(BTreeMap::from([
+            ("id".to_string(), ContractValue::String("ada".to_string())),
+            (
+                "label".to_string(),
+                ContractValue::String("user".to_string()),
+            ),
+        ]));
+        assert!(plan.validate(&valid).is_ok());
+        let missing = ContractValue::Object(BTreeMap::from([(
+            "id".to_string(),
+            ContractValue::String("ada".to_string()),
+        )]));
+        assert_eq!(plan.validate(&missing).unwrap_err().path, "$.label");
     }
 
     #[test]

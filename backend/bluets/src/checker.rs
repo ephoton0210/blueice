@@ -7,7 +7,8 @@
 use crate::compiler::{is_declaration_module, Project};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{
-    Declaration, FunctionDeclaration, Module, Parameter, TypeField, TypeParameter,
+    Declaration, FunctionDeclaration, InterfaceDeclaration, Module, Parameter, TypeField,
+    TypeParameter,
 };
 use crate::syntax::{Token, TokenKind};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -52,8 +53,15 @@ pub struct CheckedProject {
 /// declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TypeDefinition {
+    kind: TypeDefinitionKind,
     parameters: Vec<TypeParameter>,
     value: Type,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TypeDefinitionKind {
+    Alias,
+    Interface,
 }
 
 #[derive(Debug, Clone)]
@@ -187,6 +195,10 @@ fn declaration_module_diagnostics(project: &Project) -> Vec<Diagnostic> {
 fn exported_types(project: &Project) -> BTreeMap<String, BTreeMap<String, TypeDefinition>> {
     let mut modules = BTreeMap::new();
     for (id, module) in &project.modules {
+        // An exported interface can inherit a private, local parent. Its
+        // exported definition must therefore carry the inherited shape rather
+        // than make consumers resolve an unimportable implementation detail.
+        let declared = local_type_definitions(module);
         let mut values = BTreeMap::new();
         for declaration in &module.declarations {
             match declaration {
@@ -194,6 +206,7 @@ fn exported_types(project: &Project) -> BTreeMap<String, BTreeMap<String, TypeDe
                     values.insert(
                         alias.name.clone(),
                         TypeDefinition {
+                            kind: TypeDefinitionKind::Alias,
                             parameters: alias.type_parameters.clone(),
                             value: alias.value.clone(),
                         },
@@ -203,8 +216,9 @@ fn exported_types(project: &Project) -> BTreeMap<String, BTreeMap<String, TypeDe
                     values.insert(
                         interface.name.clone(),
                         TypeDefinition {
+                            kind: TypeDefinitionKind::Interface,
                             parameters: interface.type_parameters.clone(),
-                            value: Type::Record(interface.fields.clone()),
+                            value: exported_interface_value(interface, &declared),
                         },
                     );
                 }
@@ -267,6 +281,78 @@ fn exported_types(project: &Project) -> BTreeMap<String, BTreeMap<String, TypeDe
     modules
 }
 
+fn local_type_definitions(module: &Module) -> BTreeMap<String, TypeDefinition> {
+    module
+        .declarations
+        .iter()
+        .filter_map(|declaration| match declaration {
+            Declaration::TypeAlias(alias) => Some((
+                alias.name.clone(),
+                TypeDefinition {
+                    kind: TypeDefinitionKind::Alias,
+                    parameters: alias.type_parameters.clone(),
+                    value: alias.value.clone(),
+                },
+            )),
+            Declaration::Interface(interface) => Some((
+                interface.name.clone(),
+                TypeDefinition {
+                    kind: TypeDefinitionKind::Interface,
+                    parameters: interface.type_parameters.clone(),
+                    value: interface_value(interface),
+                },
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+fn exported_interface_value(
+    interface: &InterfaceDeclaration,
+    declared: &BTreeMap<String, TypeDefinition>,
+) -> Type {
+    let mut active = HashSet::new();
+    let heritage = interface
+        .heritage
+        .iter()
+        .map(|parent| expand_exported_heritage(parent, declared, &mut active))
+        .collect::<Vec<_>>();
+    interface_value_with_heritage(&heritage, &interface.fields)
+}
+
+fn expand_exported_heritage(
+    value: &Type,
+    declared: &BTreeMap<String, TypeDefinition>,
+    active: &mut HashSet<String>,
+) -> Type {
+    match value {
+        Type::Named { name, arguments } => {
+            let Some(definition) = declared.get(name) else {
+                return value.clone();
+            };
+            let Some(arguments) = complete_type_arguments(&definition.parameters, arguments) else {
+                return value.clone();
+            };
+            let key = format!("heritage:{}", type_identity(value));
+            if !active.insert(key.clone()) {
+                return value.clone();
+            }
+            let substitutions = type_parameter_substitutions(&definition.parameters, arguments);
+            let expanded = substitute_type(&definition.value, &substitutions);
+            let result = expand_exported_heritage(&expanded, declared, active);
+            active.remove(&key);
+            result
+        }
+        Type::Intersection(parts) => Type::Intersection(
+            parts
+                .iter()
+                .map(|part| expand_exported_heritage(part, declared, active))
+                .collect(),
+        ),
+        _ => value.clone(),
+    }
+}
+
 struct ModuleChecker<'a> {
     project: &'a Project,
     module: &'a Module,
@@ -313,6 +399,7 @@ impl<'a> ModuleChecker<'a> {
                     self.insert_type(
                         &alias.name,
                         TypeDefinition {
+                            kind: TypeDefinitionKind::Alias,
                             parameters: alias.type_parameters.clone(),
                             value: alias.value.clone(),
                         },
@@ -325,8 +412,9 @@ impl<'a> ModuleChecker<'a> {
                     self.insert_type(
                         &interface.name,
                         TypeDefinition {
+                            kind: TypeDefinitionKind::Interface,
                             parameters: interface.type_parameters.clone(),
-                            value: Type::Record(interface.fields.clone()),
+                            value: interface_value(interface),
                         },
                         interface.span.clone(),
                         SymbolKind::Interface,
@@ -506,6 +594,13 @@ impl<'a> ModuleChecker<'a> {
                     );
                 }
                 Declaration::Interface(interface) => {
+                    for parent in &interface.heritage {
+                        self.check_interface_heritage(
+                            parent,
+                            &interface.span,
+                            &interface.type_parameters,
+                        );
+                    }
                     for field in &interface.fields {
                         self.check_type_with_parameters(
                             &field.value,
@@ -530,6 +625,37 @@ impl<'a> ModuleChecker<'a> {
         let previous_parameters = self.type_parameters.clone();
         self.check_type_parameters(parameters);
         self.check_type(value, span);
+        self.type_parameters = previous_parameters;
+    }
+
+    fn check_interface_heritage(
+        &mut self,
+        parent: &Type,
+        span: &SourceSpan,
+        parameters: &[TypeParameter],
+    ) {
+        let previous_parameters = self.type_parameters.clone();
+        self.check_type_parameters(parameters);
+        self.check_type(parent, span);
+        if let Type::Named { name, .. } = parent {
+            match self.types.get(name) {
+                Some(TypeDefinition {
+                    kind: TypeDefinitionKind::Interface,
+                    ..
+                }) => {}
+                Some(_) => self.type_error(
+                    span,
+                    format!("interface heritage {name} must name an interface declaration"),
+                    DiagnosticCode::UnsupportedSyntax,
+                ),
+                None if self.type_parameters.contains(name) => self.type_error(
+                    span,
+                    format!("interface heritage {name} must name an interface declaration"),
+                    DiagnosticCode::UnsupportedSyntax,
+                ),
+                None => {}
+            }
+        }
         self.type_parameters = previous_parameters;
     }
 
@@ -1065,6 +1191,25 @@ impl<'a> ModuleChecker<'a> {
     }
 }
 
+fn interface_value(interface: &InterfaceDeclaration) -> Type {
+    interface_value_with_heritage(&interface.heritage, &interface.fields)
+}
+
+fn interface_value_with_heritage(heritage: &[Type], fields: &[TypeField]) -> Type {
+    if heritage.is_empty() {
+        return Type::Record(fields.to_vec());
+    }
+    let mut parts = heritage.to_vec();
+    if !fields.is_empty() {
+        parts.push(Type::Record(fields.to_vec()));
+    }
+    if parts.len() == 1 {
+        parts.pop().expect("one inherited interface type")
+    } else {
+        Type::Intersection(parts)
+    }
+}
+
 fn infer_call_substitutions(
     signature: &FunctionSignature,
     actuals: &[Type],
@@ -1258,6 +1403,22 @@ fn property_type(
                 None => PropertyType::Indeterminate,
             }
         }
+        Type::Intersection(parts) => {
+            let mut indeterminate = false;
+            for part in parts {
+                match property_type(part, property, aliases, visited, budget) {
+                    PropertyType::Found(value) => return PropertyType::Found(value),
+                    PropertyType::Missing => {}
+                    PropertyType::Indeterminate => indeterminate = true,
+                    PropertyType::Exhausted => return PropertyType::Exhausted,
+                }
+            }
+            if indeterminate {
+                PropertyType::Indeterminate
+            } else {
+                PropertyType::Missing
+            }
+        }
         Type::Any | Type::Unknown => PropertyType::Indeterminate,
         _ => PropertyType::Missing,
     }
@@ -1369,6 +1530,27 @@ fn is_assignable(
         return parts
             .iter()
             .all(|part| is_assignable(actual, part, aliases, &mut visited.clone(), budget));
+    }
+    if let (Type::Intersection(_), Type::Record(expected_fields)) = (actual, expected) {
+        return expected_fields.iter().all(|expected_field| {
+            match property_type(actual, &expected_field.name, aliases, visited, budget) {
+                PropertyType::Found(actual) => is_assignable(
+                    &actual,
+                    &expected_field.value,
+                    aliases,
+                    &mut visited.clone(),
+                    budget,
+                ),
+                PropertyType::Missing => expected_field.optional,
+                PropertyType::Indeterminate => true,
+                PropertyType::Exhausted => false,
+            }
+        });
+    }
+    if let Type::Intersection(parts) = actual {
+        return parts
+            .iter()
+            .any(|part| is_assignable(part, expected, aliases, &mut visited.clone(), budget));
     }
     match (actual, expected) {
         (Type::Literal(value), Type::String) => value.starts_with('\'') || value.starts_with('\"'),
@@ -1592,6 +1774,84 @@ mod tests {
         )]);
         let result = crate::compile("memory:///app.ts", &loader, CompilerOptions::default());
         assert!(!result.has_errors(), "{:?}", result.diagnostics);
+    }
+
+    #[test]
+    fn checks_generic_interface_heritage_structurally() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "interface Envelope<T> { payload: T }\n\
+                 interface Tagged { tag: string }\n\
+                 interface Labeled<T extends string = string> extends Envelope<T>, Tagged { label: T }\n\
+                 const valid: Labeled = { payload: 'Ada', tag: 'account', label: 'user' };\n\
+                 const parent: Envelope<string> = valid;\n\
+                 const property: string = valid.payload;\n\
+                 const tag: string = valid.tag;\n\
+                 const invalid: Labeled = { payload: 1, tag: 'account', label: 'user' };",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert_eq!(
+            result
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn rejects_a_type_alias_as_interface_heritage() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "type Scalar = number; interface Invalid extends Scalar { label: string }",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert!(result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
+    }
+
+    #[test]
+    fn instantiates_inherited_declaration_interfaces_across_type_imports() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([
+                ModuleSource::new(
+                    "memory:///main.ts",
+                    "import type { Labeled } from './types/model.d.ts';\n\
+                     const valid: Labeled = { payload: 'Ada', tag: 'account', label: 'user' };\n\
+                     const payload: string = valid.payload;\n\
+                     const tag: string = valid.tag;\n\
+                     const invalid: Labeled = { payload: 1, tag: 'account', label: 'user' };",
+                ),
+                ModuleSource::new(
+                    "memory:///types/model.d.ts",
+                    "interface Envelope<T> { payload: T }\n\
+                     interface Tagged { tag: string }\n\
+                     export interface Labeled<T extends string = string> extends Envelope<T>, Tagged { label: T }",
+                ),
+            ]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert_eq!(
+            result
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+                .count(),
+            1
+        );
     }
 
     #[test]

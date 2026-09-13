@@ -104,6 +104,10 @@ pub struct TypeAliasDeclaration {
 pub struct InterfaceDeclaration {
     pub name: String,
     pub type_parameters: Vec<TypeParameter>,
+    /// Named parent interfaces inherited by this static-only declaration.
+    /// Their fields participate in checker and contract expansion, while the
+    /// entire interface remains erased from JavaScript.
+    pub heritage: Vec<Type>,
     pub fields: Vec<TypeField>,
     pub exported: bool,
     pub span: SourceSpan,
@@ -551,12 +555,22 @@ impl Parser {
     fn parse_interface(&mut self, start: usize, exported: bool) {
         let name = self.require_identifier("expected an interface name");
         let type_parameters = self.parse_type_parameters();
+        let mut heritage = Vec::new();
         if self.consume("extends") {
-            self.unsupported(
-                self.previous().span(&self.id),
-                "interface extends is not in the initial BlueTS matrix",
-            );
-            self.skip_until(&["{"]);
+            loop {
+                let parent_start = self.current().start;
+                let parent = self.parse_type_until(&[",", "{"]);
+                if !matches!(&parent, Type::Named { .. }) {
+                    self.unsupported(
+                        SourceSpan::new(&self.id, parent_start, self.previous().end),
+                        "interface heritage supports only named interface types",
+                    );
+                }
+                heritage.push(parent);
+                if !self.consume(",") {
+                    break;
+                }
+            }
         }
         self.expect("{");
         let mut fields = Vec::new();
@@ -590,6 +604,7 @@ impl Parser {
             .push(Declaration::Interface(InterfaceDeclaration {
                 name,
                 type_parameters,
+                heritage,
                 fields,
                 exported,
                 span: SourceSpan::new(&self.id, start, end),
@@ -1356,6 +1371,48 @@ mod tests {
         assert_eq!(interface.type_parameters[0].name, "T");
         assert_eq!(interface.type_parameters[0].constraint, Some(Type::String));
         assert_eq!(interface.type_parameters[0].default, Some(Type::String));
+    }
+
+    #[test]
+    fn retains_named_generic_interface_heritage() {
+        let module = parse_module(
+            "memory:///inheritance.ts",
+            "interface Envelope<T> { payload: T }\n\
+             interface Tagged { tag: string }\n\
+             interface Labeled<T extends string = string> extends Envelope<T>, Tagged { label: T }",
+        )
+        .unwrap();
+        let Declaration::Interface(interface) = &module.declarations[2] else {
+            panic!("expected inherited interface declaration");
+        };
+        assert_eq!(
+            interface.heritage,
+            vec![
+                Type::Named {
+                    name: "Envelope".to_string(),
+                    arguments: vec![Type::Named {
+                        name: "T".to_string(),
+                        arguments: Vec::new(),
+                    }],
+                },
+                Type::Named {
+                    name: "Tagged".to_string(),
+                    arguments: Vec::new(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_non_named_interface_heritage() {
+        let diagnostics = parse_module(
+            "memory:///invalid.ts",
+            "interface Invalid extends string {}",
+        )
+        .unwrap_err();
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
     }
 
     #[test]

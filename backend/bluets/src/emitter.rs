@@ -251,6 +251,17 @@ fn emit_declaration(module: &Module) -> String {
                 output.push_str("export interface ");
                 output.push_str(&interface.name);
                 emit_type_parameters(&mut output, &interface.type_parameters);
+                if !interface.heritage.is_empty() {
+                    output.push_str(" extends ");
+                    output.push_str(
+                        &interface
+                            .heritage
+                            .iter()
+                            .map(type_to_ts)
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    );
+                }
                 output.push_str(" {\n");
                 for field in &interface.fields {
                     output.push_str("  ");
@@ -777,6 +788,36 @@ mod tests {
             Some(
                 "export interface Box<T extends string = string> {\n  value: T;\n}\n\
                  export declare function echo<T extends string = string>(value?: T): T;\n"
+            )
+        );
+    }
+
+    #[test]
+    fn retains_interface_heritage_in_declaration_output_only() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///inheritance.ts",
+            "export interface Envelope<T> { payload: T }\n\
+             export interface Tagged { tag: string }\n\
+             export interface Labeled<T extends string = string> extends Envelope<T>, Tagged { label: T }",
+        )]);
+        let output = compile(
+            "memory:///inheritance.ts",
+            &loader,
+            CompilerOptions {
+                declaration: true,
+                ..CompilerOptions::default()
+            },
+        )
+        .output
+        .unwrap();
+        let artifact = &output.artifacts["memory:///inheritance.ts"];
+        assert!(!artifact.javascript.contains("interface"));
+        assert_eq!(
+            artifact.declaration.as_deref(),
+            Some(
+                "export interface Envelope<T> {\n  payload: T;\n}\n\
+                 export interface Tagged {\n  tag: string;\n}\n\
+                 export interface Labeled<T extends string = string> extends Envelope<T>, Tagged {\n  label: T;\n}\n"
             )
         );
     }
