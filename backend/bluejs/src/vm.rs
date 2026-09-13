@@ -1079,6 +1079,13 @@ impl Vm {
             self.install_native(
                 object_prototype,
                 function_prototype,
+                "toLocaleString",
+                0,
+                NativeFunction::ObjectToLocaleString,
+            )?;
+            self.install_native(
+                object_prototype,
+                function_prototype,
                 "valueOf",
                 0,
                 NativeFunction::ObjectValueOf,
@@ -1089,6 +1096,37 @@ impl Vm {
                 "isPrototypeOf",
                 1,
                 NativeFunction::ObjectIsPrototypeOf,
+            )?;
+            for (name, length, function) in [
+                (
+                    "__defineGetter__",
+                    2,
+                    NativeFunction::ObjectDefineAccessor { getter: true },
+                ),
+                (
+                    "__defineSetter__",
+                    2,
+                    NativeFunction::ObjectDefineAccessor { getter: false },
+                ),
+                (
+                    "__lookupGetter__",
+                    1,
+                    NativeFunction::ObjectLookupAccessor { getter: true },
+                ),
+                (
+                    "__lookupSetter__",
+                    1,
+                    NativeFunction::ObjectLookupAccessor { getter: false },
+                ),
+            ] {
+                self.install_native(object_prototype, function_prototype, name, length, function)?;
+            }
+            self.install_native_accessor(
+                object_prototype,
+                function_prototype,
+                "__proto__",
+                NativeFunction::ObjectPrototypeGetter,
+                NativeFunction::ObjectPrototypeSetter,
             )?;
             self.install_native(
                 self.array_prototype,
@@ -1193,8 +1231,14 @@ impl Vm {
                 // these two empty prototypes. Roll back published edges too.
                 for (owner, key) in [
                     (object_prototype, PropertyName::from("toString")),
+                    (object_prototype, "toLocaleString".into()),
                     (object_prototype, "valueOf".into()),
                     (object_prototype, "isPrototypeOf".into()),
+                    (object_prototype, "__defineGetter__".into()),
+                    (object_prototype, "__defineSetter__".into()),
+                    (object_prototype, "__lookupGetter__".into()),
+                    (object_prototype, "__lookupSetter__".into()),
+                    (object_prototype, "__proto__".into()),
                     (object_prototype, "hasOwnProperty".into()),
                     (self.array_prototype, "toString".into()),
                     (self.array_prototype, "concat".into()),
@@ -1291,6 +1335,70 @@ impl Vm {
             Ok(())
         })();
         self.stack.pop();
+        result
+    }
+
+    fn install_native_accessor(
+        &mut self,
+        owner: ObjectId,
+        prototype: ObjectId,
+        name: &str,
+        getter_native: NativeFunction,
+        setter_native: NativeFunction,
+    ) -> Result<(), RuntimeError> {
+        let getter_name = format!("get {name}");
+        let setter_name = format!("set {name}");
+        let base = self.stack.len();
+        let getter = self.with_roots(|heap| {
+            heap.alloc_native_function(getter_native, &getter_name, prototype)
+        })?;
+        // Allocating the setter can collect immediately under a one-object
+        // nursery. Keep the getter live before that second allocation.
+        self.stack.push(Value::Object(getter));
+        let setter = self.with_roots(|heap| {
+            heap.alloc_native_function(setter_native, &setter_name, prototype)
+        })?;
+        self.stack.push(Value::Object(setter));
+        let result = (|| {
+            self.define_data(getter, "length", Value::Number(0.0), false, false, true)?;
+            self.define_data(
+                getter,
+                "name",
+                Value::String(getter_name.into()),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(setter, "length", Value::Number(1.0), false, false, true)?;
+            self.define_data(
+                setter,
+                "name",
+                Value::String(setter_name.into()),
+                false,
+                false,
+                true,
+            )?;
+            let defined = self.with_roots(|heap| {
+                heap.define_own_property(
+                    owner,
+                    name,
+                    PropertyDescriptor {
+                        get: Some(Value::Object(getter)),
+                        set: Some(Value::Object(setter)),
+                        enumerable: Some(false),
+                        configurable: Some(true),
+                        ..PropertyDescriptor::default()
+                    },
+                )
+            })?;
+            if !defined {
+                return Err(RuntimeError::TypeError(
+                    "cannot install native accessor".into(),
+                ));
+            }
+            Ok(())
+        })();
+        self.stack.truncate(base);
         result
     }
 
@@ -1486,6 +1594,7 @@ impl Vm {
                 function,
                 NativeFunction::String
                     | NativeFunction::Array
+                    | NativeFunction::Date
                     | NativeFunction::ArrayBuffer
                     | NativeFunction::SharedArrayBuffer
                     | NativeFunction::DataView

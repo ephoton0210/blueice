@@ -637,21 +637,18 @@ fn syntax_metadata_and_remaining_protocol_boundaries() {
 }
 
 #[test]
-fn array_length_descriptors_coerce_twice_and_reject_invalid_lengths() {
+fn array_length_descriptors_coerce_once_and_reject_invalid_lengths() {
     check(&[
-        "let n=0; let a=[]; a.length={valueOf(){n++;return 2;}}; a.length === 2 && n === 2",
-        "let n=0; let a=[]; Object.defineProperty(a,'length',{value:{valueOf(){n++;return 2;}}}); a.length === 2 && n === 2",
+        "let n=0; let a=[]; a.length={valueOf(){n++;return 2;}}; a.length === 2 && n === 1",
+        "let n=0; let a=[]; Object.defineProperty(a,'length',{value:{valueOf(){n++;return 2;}}}); a.length === 2 && n === 1",
         "let a=[]; Object.defineProperty(a,'length',{value:'2'}); a.length === 2",
+        "let n=0;let range=false;try{Object.defineProperty([],'length',{value:{valueOf(){n++;return 1.5}}})}catch(error){range=error instanceof RangeError}range&&n===1",
     ]);
-    for source in [
-        "Object.defineProperty([],'length',{value:1.5})",
-        "let n=0; Object.defineProperty([],'length',{value:{valueOf(){return n++;}}})",
-    ] {
-        assert!(
-            matches!(evaluate(source), Err(RuntimeError::RangeError(_))),
-            "{source}"
-        );
-    }
+    let source = "Object.defineProperty([],'length',{value:1.5})";
+    assert!(
+        matches!(evaluate(source), Err(RuntimeError::RangeError(_))),
+        "{source}"
+    );
     assert!(matches!(
         evaluate("let o={}; Object.setPrototypeOf(o,o)"),
         Err(RuntimeError::TypeError(_))

@@ -240,10 +240,13 @@ impl Heap {
             self.managed_bytes - old_property - old_attributes + new_property + new_attributes;
         if !length_failed {
             if let Some(cell) = mapped_cell {
+                if !descriptor_is_accessor {
+                    if let Some(value) = descriptor_value {
+                        self.set(cell, "value", value)?;
+                    }
+                }
                 if descriptor_is_accessor || descriptor_non_writable {
                     self.unmap_arguments_property(object, &key)?;
-                } else if let Some(value) = descriptor_value {
-                    self.set(cell, "value", value)?;
                 }
             }
         }

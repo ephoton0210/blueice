@@ -129,6 +129,13 @@ impl Vm {
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_set_prototype(object, prototype);
         }
+        // %Object.prototype% is the Immutable Prototype Exotic Object.  Its
+        // current null prototype is accepted as a no-op, but no distinct
+        // value may replace it even though the record is otherwise
+        // extensible.
+        if object == self.object_prototype {
+            return Ok(prototype == self.heap.prototype(object)?);
+        }
         match self.heap.set_prototype(object, prototype) {
             Ok(()) => Ok(true),
             Err(HeapError::ReadOnlyProperty | HeapError::PrototypeCycle) => Ok(false),

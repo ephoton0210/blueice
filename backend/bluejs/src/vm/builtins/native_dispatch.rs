@@ -692,6 +692,119 @@ impl Vm {
                 self.stack.truncate(base);
                 result
             }
+            NativeFunction::ObjectDefineAccessor { getter } => {
+                // Annex B.2.2.2/B.2.2.3: establish that the receiver and
+                // accessor are usable before observing a coercible key. The
+                // roots remain live while ToPropertyKey and a Proxy's
+                // [[DefineOwnProperty]] trap can re-enter JavaScript.
+                let object = self.coerce_object(&receiver)?;
+                let key_value = native::argument(&args, 0).clone();
+                let accessor = native::argument(&args, 1).clone();
+                let base = self.stack.len();
+                self.stack
+                    .extend([Value::Object(object), key_value.clone(), accessor.clone()]);
+                let result = (|| {
+                    if !self.is_callable(&accessor)? {
+                        return Err(RuntimeError::TypeError(
+                            "legacy accessor must be callable".into(),
+                        ));
+                    }
+                    let key = self.coerce_property_key(&key_value)?;
+                    let descriptor = if getter {
+                        PropertyDescriptor {
+                            get: Some(accessor),
+                            enumerable: Some(true),
+                            configurable: Some(true),
+                            ..PropertyDescriptor::default()
+                        }
+                    } else {
+                        PropertyDescriptor {
+                            set: Some(accessor),
+                            enumerable: Some(true),
+                            configurable: Some(true),
+                            ..PropertyDescriptor::default()
+                        }
+                    };
+                    if !self.object_define_own_property(object, key, descriptor)? {
+                        return Err(RuntimeError::TypeError(
+                            "cannot define legacy accessor".into(),
+                        ));
+                    }
+                    Ok(Value::Undefined)
+                })();
+                self.stack.truncate(base);
+                result
+            }
+            NativeFunction::ObjectLookupAccessor { getter } => {
+                // Annex B.2.2.4/B.2.2.5 deliberately use [[GetOwnProperty]]
+                // and [[GetPrototypeOf]], so Proxy traps and their abrupt
+                // completions cannot be skipped by an ordinary heap walk.
+                let object = self.coerce_object(&receiver)?;
+                let key_value = native::argument(&args, 0).clone();
+                let base = self.stack.len();
+                self.stack
+                    .extend([Value::Object(object), key_value.clone()]);
+                let result = (|| {
+                    let key = self.coerce_property_key(&key_value)?;
+                    let mut current = object;
+                    loop {
+                        if let Some(descriptor) = self.object_get_own_property(current, &key)? {
+                            return Ok(if getter {
+                                descriptor.get.unwrap_or(Value::Undefined)
+                            } else {
+                                descriptor.set.unwrap_or(Value::Undefined)
+                            });
+                        }
+                        let Some(prototype) = self.object_get_prototype(current)? else {
+                            return Ok(Value::Undefined);
+                        };
+                        current = prototype;
+                        self.stack[base] = Value::Object(current);
+                    }
+                })();
+                self.stack.truncate(base);
+                result
+            }
+            NativeFunction::ObjectPrototypeGetter => {
+                let object = self.coerce_object(&receiver)?;
+                let base = self.stack.len();
+                self.stack.push(Value::Object(object));
+                let result = self
+                    .object_get_prototype(object)
+                    .map(|prototype| prototype.map_or(Value::Null, Value::Object));
+                self.stack.truncate(base);
+                result
+            }
+            NativeFunction::ObjectPrototypeSetter => {
+                if matches!(receiver, Value::Null | Value::Undefined) {
+                    return Err(RuntimeError::TypeError(
+                        "cannot convert null or undefined to Object".into(),
+                    ));
+                }
+                let prototype = match native::argument(&args, 0) {
+                    Value::Object(prototype) => Some(*prototype),
+                    Value::Null => None,
+                    _ => return Ok(Value::Undefined),
+                };
+                let Value::Object(object) = receiver else {
+                    return Ok(Value::Undefined);
+                };
+                let base = self.stack.len();
+                self.stack.push(Value::Object(object));
+                if let Some(prototype) = prototype {
+                    self.stack.push(Value::Object(prototype));
+                }
+                let result = (|| {
+                    if !self.object_set_prototype(object, prototype)? {
+                        return Err(RuntimeError::TypeError(
+                            "cannot set object prototype".into(),
+                        ));
+                    }
+                    Ok(Value::Undefined)
+                })();
+                self.stack.truncate(base);
+                result
+            }
             NativeFunction::ObjectToString => {
                 let tag = match &receiver {
                     Value::Undefined => "Undefined",
@@ -738,6 +851,27 @@ impl Vm {
                 });
                 result.push_str(&"]".into());
                 Ok(Value::String(result))
+            }
+            NativeFunction::ObjectToLocaleString => {
+                if matches!(receiver, Value::Null | Value::Undefined) {
+                    return Err(RuntimeError::TypeError(
+                        "cannot convert null or undefined to Object".into(),
+                    ));
+                }
+                let base = self.stack.len();
+                self.stack.push(receiver.clone());
+                let result = (|| {
+                    let to_string = self.get_property(&receiver, &"toString".into())?;
+                    self.stack.push(to_string.clone());
+                    if !self.is_callable(&to_string)? {
+                        return Err(RuntimeError::TypeError(
+                            "toString property is not callable".into(),
+                        ));
+                    }
+                    self.call_native(to_string, receiver, vec![], false)
+                })();
+                self.stack.truncate(base);
+                result
             }
             NativeFunction::ArrayToString => {
                 let object = Value::Object(self.coerce_object(&receiver)?);

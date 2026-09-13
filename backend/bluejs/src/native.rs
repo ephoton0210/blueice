@@ -188,8 +188,18 @@ pub(crate) enum NativeFunction {
     ThrowTypeError,
     Empty,
     ObjectToString,
+    ObjectToLocaleString,
     ObjectValueOf,
     ObjectIsPrototypeOf,
+    /// Annex B legacy accessor helpers on `%Object.prototype%`.
+    ObjectDefineAccessor {
+        getter: bool,
+    },
+    ObjectLookupAccessor {
+        getter: bool,
+    },
+    ObjectPrototypeGetter,
+    ObjectPrototypeSetter,
     ArrayToString,
     ArrayConcat,
     ArrayJoin,
@@ -333,6 +343,10 @@ pub(crate) enum MathMethod {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ObjectMethod {
+    Assign,
+    FromEntries,
+    HasOwn,
+    Is,
     GetOwnPropertyDescriptor,
     DefineProperty,
     DefineProperties,

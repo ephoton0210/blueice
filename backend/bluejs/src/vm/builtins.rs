@@ -865,6 +865,59 @@ impl Vm {
 }
 
 impl Vm {
+    fn object_from_entries_method(&mut self, source: &Value) -> Result<Value, RuntimeError> {
+        let base = self.stack.len();
+        self.stack.push(source.clone());
+        let result = (|| {
+            let record = self.get_iterator(source)?;
+            self.stack.push(record.clone());
+            let prototype = self.object_prototype;
+            let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+            self.stack.push(Value::Object(object));
+            let outcome = (|| {
+                while let Some(entry) = self.iterator_step(&record, true)? {
+                    let Value::Object(entry) = entry else {
+                        return Err(RuntimeError::TypeError(
+                            "Object.fromEntries entry must be an object".into(),
+                        ));
+                    };
+                    let entry_base = self.stack.len();
+                    self.stack.push(Value::Object(entry));
+                    let key_value = self.get_property(&Value::Object(entry), &"0".into())?;
+                    self.stack.push(key_value.clone());
+                    let value = self.get_property(&Value::Object(entry), &"1".into())?;
+                    self.stack.push(value.clone());
+                    let key = self.coerce_property_key(&key_value)?;
+                    let defined = self.object_define_own_property(
+                        object,
+                        key,
+                        PropertyDescriptor::data(value, true, true, true),
+                    )?;
+                    self.stack.truncate(entry_base);
+                    if !defined {
+                        return Err(RuntimeError::TypeError(
+                            "cannot define Object.fromEntries property".into(),
+                        ));
+                    }
+                }
+                Ok(Value::Object(object))
+            })();
+            if outcome.is_err() {
+                let error_base = self.stack.len();
+                if let Err(RuntimeError::Thrown(value)) = &outcome {
+                    self.stack.push(value.clone());
+                }
+                // IteratorClose is required for the side effect, but an
+                // existing abrupt completion wins over a close failure.
+                let _ = self.iterator_close(&record);
+                self.stack.truncate(error_base);
+            }
+            outcome
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
     fn array_from_method(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let source = native::argument(args, 0).clone();
         if matches!(source, Value::Null | Value::Undefined) {
@@ -1172,8 +1225,9 @@ impl Vm {
 
     pub(super) fn array_length_value(&mut self, value: &Value) -> Result<Value, RuntimeError> {
         // ArraySetLength performs ToUint32 followed by a separate ToNumber.
-        let length = native::uint32(&Value::Number(self.coerce_number(value)?))?;
-        if f64::from(length) != self.coerce_number(value)? {
+        let number = self.coerce_number(value)?;
+        let length = native::uint32(&Value::Number(number))?;
+        if f64::from(length) != number {
             return Err(RuntimeError::RangeError("invalid array length".into()));
         }
         Ok(Value::Number(f64::from(length)))
@@ -1597,6 +1651,24 @@ impl Vm {
                 "operation requires an object".into(),
             ));
         }
+        // Object.prototype.hasOwnProperty and propertyIsEnumerable perform
+        // ToPropertyKey before ToObject(this).  The conversion may call
+        // user code, so its abrupt completion must win over a nullish
+        // receiver error.
+        let property_query_key = if matches!(method, PropertyIsEnumerable | HasOwnProperty) {
+            Some(self.coerce_property_key(first)?)
+        } else {
+            None
+        };
+        if method == Is {
+            return Ok(Value::Bool(same_value(
+                native::argument(args, 0),
+                native::argument(args, 1),
+            )));
+        }
+        if method == FromEntries {
+            return self.object_from_entries_method(first);
+        }
         let object = if matches!(method, PropertyIsEnumerable | HasOwnProperty) {
             self.coerce_object(receiver)?
         } else if method == Create {
@@ -1615,6 +1687,52 @@ impl Vm {
         };
         self.stack.push(Value::Object(object));
         match method {
+            Is => unreachable!("Object.is returns before object coercion"),
+            FromEntries => unreachable!("Object.fromEntries creates its result before coercion"),
+            Assign => {
+                let base = self.stack.len();
+                let result = (|| {
+                    for source in args.iter().skip(1) {
+                        if matches!(source, Value::Undefined | Value::Null) {
+                            continue;
+                        }
+                        let source = self.coerce_object(source)?;
+                        self.stack.push(Value::Object(source));
+                        for key in self.object_own_property_keys(source)? {
+                            let Some(descriptor) = self.object_get_own_property(source, &key)?
+                            else {
+                                continue;
+                            };
+                            if descriptor.enumerable != Some(true) {
+                                continue;
+                            }
+                            let value = self.get_property(&Value::Object(source), &key)?;
+                            self.stack.push(value.clone());
+                            if !self.ordinary_set_with_receiver(
+                                object,
+                                &Value::Object(object),
+                                &key,
+                                &value,
+                            )? {
+                                return Err(RuntimeError::TypeError(
+                                    "cannot assign property".into(),
+                                ));
+                            }
+                            self.stack.pop();
+                        }
+                        self.stack.pop();
+                    }
+                    Ok(Value::Object(object))
+                })();
+                self.stack.truncate(base);
+                result
+            }
+            HasOwn => {
+                let key = self.coerce_property_key(native::argument(args, 1))?;
+                Ok(Value::Bool(
+                    self.object_get_own_property(object, &key)?.is_some(),
+                ))
+            }
             DefineProperties => {
                 let properties = self.coerce_object(native::argument(args, 1))?;
                 self.stack.push(Value::Object(properties));
@@ -1630,7 +1748,12 @@ impl Vm {
                     self.stack.push(descriptor_object.clone());
                     descriptors.push((key, self.read_descriptor(&descriptor_object)?));
                 }
-                for (key, descriptor) in descriptors {
+                for (key, mut descriptor) in descriptors {
+                    if key == "length" && self.heap.is_array(object)? {
+                        if let Some(value) = &descriptor.value {
+                            descriptor.value = Some(self.array_length_value(value)?);
+                        }
+                    }
                     if !self.object_define_own_property(object, key, descriptor)? {
                         return Err(RuntimeError::TypeError("cannot redefine property".into()));
                     }
@@ -1684,7 +1807,7 @@ impl Vm {
                 Ok(Value::Object(result))
             }
             PropertyIsEnumerable => {
-                let key = self.coerce_property_key(native::argument(args, 0))?;
+                let key = property_query_key.expect("property query key was coerced");
                 Ok(Value::Bool(
                     self.heap
                         .get_own_property_descriptor(object, key)?
@@ -1692,7 +1815,7 @@ impl Vm {
                 ))
             }
             HasOwnProperty => {
-                let key = self.coerce_property_key(native::argument(args, 0))?;
+                let key = property_query_key.expect("property query key was coerced");
                 Ok(Value::Bool(
                     self.heap
                         .get_own_property_descriptor(object, key)?

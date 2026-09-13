@@ -88,10 +88,16 @@ impl Vm {
         }
         if self.string_intrinsics.is_none()
             && (key == "toString"
+                || key == "toLocaleString"
                 || key == "valueOf"
                 || key == "join"
                 || key == "forEach"
                 || key == "includes"
+                || key == "__defineGetter__"
+                || key == "__defineSetter__"
+                || key == "__lookupGetter__"
+                || key == "__lookupSetter__"
+                || key == "__proto__"
                 || *key == PropertyName::from(JsSymbol::well_known("iterator")))
         {
             self.string_intrinsics()?;
@@ -108,6 +114,9 @@ impl Vm {
         // before an inherited access can observe the temporary gap.
         if key == "caller" || key == "arguments" {
             self.global("Function")?;
+        }
+        if key == "__proto__" && self.string_intrinsics.is_none() {
+            self.string_intrinsics()?;
         }
         // `%Object.prototype%` has an initial own constructor property.
         // Intrinsics otherwise bootstrap lazily, so make it observable before

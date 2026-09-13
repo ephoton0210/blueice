@@ -1688,6 +1688,65 @@ separately classified Date, Weak collection, resizable TypedArray, and
 unimplemented Object-library work, so this is a P0.4 internal-method/
 conformance-host repair, not a claim that P0.4 as a whole is closed.
 
+## P0.2–P0.4 continuation: Object internal-method and legacy-accessor closure
+
+The native `%Date%` function was already marked constructible and had a
+construct path, but the VM's call dispatcher omitted it from the construct
+allow-list. `new Date(...)` therefore failed before descriptor coercion could
+run. The dispatcher now retains its actual `newTarget`, including through
+`Reflect.construct`. `Object.defineProperties` now normalizes an Array
+`length` value at the same point as `Object.defineProperty`, after collecting
+all descriptors and before applying each one. `ArraySetLength` also performs
+one observable `ToNumber`, rather than coercing a side-effecting value twice.
+
+Mapped sloppy `arguments` now synchronizes a descriptor's value into its
+formal-parameter cell before a non-writable/accessor descriptor unmaps that
+index. This preserves the required final parameter value without allowing a
+subsequent descriptor update to re-establish the mapping. `hasOwnProperty`
+and `propertyIsEnumerable` now perform `ToPropertyKey` before `ToObject(this)`,
+so a key-conversion abrupt completion wins over a nullish receiver error.
+
+The static `Object.hasOwn` and `Object.is` entry points now share the
+`[[GetOwnProperty]]` and SameValue boundaries. `Object.assign` obtains each
+source's own keys and descriptors through the internal-method dispatch, gets
+only enumerable values, and performs a receiver-aware strict `[[Set]]` on the
+target. Consequently source or target Proxies retain their observable trap
+order, and the target, source, and value stay rooted across those calls.
+
+`Object.fromEntries` now consumes iterator records one entry at a time. An
+entry must already be an object; it reads keys `0` and `1` before converting
+the key, creates an enumerable/writable/configurable data property, and closes
+the iterator on every abrupt entry operation. A thrown JavaScript value is
+stack-rooted while the user-defined `return()` close callback runs, so the
+original abrupt completion remains both live and dominant over a close error.
+
+The four Annex B `%Object.prototype%` legacy accessor helpers
+(`__defineGetter__`, `__defineSetter__`, `__lookupGetter__`, and
+`__lookupSetter__`) are native functions with their standard descriptor,
+arity, coercion, and callable-validation order. They route definition through
+`[[DefineOwnProperty]]`, and lookup through each `[[GetOwnProperty]]` and
+`[[GetPrototypeOf]]`, preserving Proxy traps, abrupt completions, and GC roots.
+While bootstrapping the native `__proto__` accessor, the VM stack-roots the
+getter before allocating the setter, so a pressure collection cannot leave the
+shared accessor descriptor with a stale getter handle.
+The `__proto__` accessor has matching native getter/setter functions; the
+setter distinguishes nullish, primitive, and object inputs, while
+`%Object.prototype%` now observes the Immutable Prototype Exotic contract:
+its null prototype is a no-op and every distinct replacement is rejected.
+`Object.prototype.toLocaleString` likewise retains its original receiver for
+both `Get` and `Call`, including primitive receivers.
+
+Focused Test262 results are `__proto__` **30/30**,
+`toLocaleString` **22/22**, `hasOwnProperty` **126/126**, static `hasOwn`
+**124/124**, static `is` slice **306/306**, static `assign` **76/76**,
+static `fromEntries` **50/50**, and immutable `%Object.prototype%` **4/4**.
+The final complete `built-ins/Object` run at
+`target/test262-p04-object-internal-methods-final-2` records **6,536 pass /
+272 fail** of 6,808 modes: **273 fail-to-pass and zero pass-to-fail** versus
+the prior **6,263 / 545** result. The remaining largest Object groups are
+Date/Weak/Array and other library surface, rather than these P0.2–P0.4
+internal-method boundaries.
+
 ## P0.1 continuation: generator-return iterator closing and PromiseResolve observation
 
 The published ECMAScript 2026 [IteratorClose](https://tc39.es/ecma262/2026/multipage/abstract-operations.html#sec-iteratorclose),

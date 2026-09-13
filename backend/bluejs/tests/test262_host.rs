@@ -99,6 +99,26 @@ fn property_helper_observes_writes_and_receiver_setters() {
 }
 
 #[test]
+fn date_constructor_uses_its_new_target_prototype() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let prototype = {};
+        function NewTarget() {}
+        NewTarget.prototype = prototype;
+        let direct = new Date(0);
+        let reflected = Reflect.construct(Date, [], NewTarget);
+        Object.getPrototypeOf(direct) === Date.prototype &&
+          Object.getPrototypeOf(reflected) === prototype &&
+          direct instanceof Date && reflected instanceof NewTarget
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap()),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
 fn test262_agents_share_bytes_wait_and_report_in_notify_order() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();

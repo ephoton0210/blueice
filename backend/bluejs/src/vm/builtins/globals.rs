@@ -725,6 +725,10 @@ impl Vm {
                 )?;
                 use ObjectMethod::*;
                 for (name, length, method) in [
+                    ("assign", 2, Assign),
+                    ("fromEntries", 1, FromEntries),
+                    ("hasOwn", 2, HasOwn),
+                    ("is", 2, Is),
                     ("getOwnPropertyDescriptor", 2, GetOwnPropertyDescriptor),
                     ("defineProperty", 3, DefineProperty),
                     ("defineProperties", 2, DefineProperties),

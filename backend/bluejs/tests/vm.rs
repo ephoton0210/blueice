@@ -510,6 +510,8 @@ fn function_frames_create_mapped_and_unmapped_arguments_objects() {
     for source in [
         "function mapped(a,b){let copy=arguments;a=3;copy[1]=4;return copy.length===2&&copy[0]===3&&b===4&&copy.callee===mapped;}mapped(1,2)",
         "function disconnected(a){delete arguments[0];a=7;return arguments[0]===undefined;}disconnected(1)",
+        "function defineAndDisconnect(a){Object.defineProperty(arguments,'0',{value:10,writable:false});Object.defineProperty(arguments,'0',{value:20});return a===10&&arguments[0]===20;}defineAndDisconnect(0)",
+        "function lockAndDisconnect(a){Object.defineProperty(arguments,'0',{value:10,writable:false,enumerable:false,configurable:false});let rejected=false;try{Object.defineProperty(arguments,'0',{value:20})}catch(error){rejected=error instanceof TypeError}return rejected&&a===10&&arguments[0]===10;}lockAndDisconnect(0)",
         "function unmapped(a=1){a=2;return arguments[0]===1;}unmapped(1)",
         "function outer(a){return (()=>arguments[0])()===7;}outer(7)",
         "function* generated(a){return arguments.callee===generated&&arguments[0]===a;}generated(3).next().value",

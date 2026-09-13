@@ -216,6 +216,136 @@ fn array_truncation_stops_at_nonconfigurable_elements() {
 }
 
 #[test]
+fn define_properties_coerces_array_length_after_collecting_descriptors() {
+    assert_eq!(
+        evaluate(
+            "let log=[];let length={valueOf:function(){log.push('valueOf');return 2}};let array=[0,1,2];Object.defineProperties(array,{first:{value:1},length:{value:length}});array.length===2&&array[0]===0&&array[1]===1&&array[2]===undefined&&log.join(',')==='valueOf'",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate(
+            "let array=[0,1];Object.defineProperties(array,{length:{value:null}});array.length"
+        )
+        .unwrap(),
+        Value::Number(0.0)
+    );
+    assert!(matches!(
+        evaluate(
+            "let length={valueOf:function(){return {}},toString:function(){return {}}};Object.defineProperties([],{length:{value:length}})"
+        ),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
+fn legacy_accessor_helpers_share_descriptor_and_proxy_boundaries() {
+    assert_eq!(
+        evaluate(
+            "let getter=function(){return this.value};let setter=function(value){this.seen=value};let subject={value:1};subject.__defineGetter__('access',getter);subject.__defineSetter__('access',setter);subject.access=5;let inherited=Object.create(subject);let data=Object.create(subject);Object.defineProperty(data,'access',{value:0});let calls=[];let proxy=new Proxy(Object.create(subject),{getOwnPropertyDescriptor:function(target,key){calls.push('own');return Object.getOwnPropertyDescriptor(target,key)},getPrototypeOf:function(target){calls.push('prototype');return Object.getPrototypeOf(target)}});let marker={};let abrupt=false;try{new Proxy({}, {defineProperty:function(){throw marker}}).__defineGetter__('blocked',getter)}catch(error){abrupt=error===marker}let conversions=0;let key={toString:function(){conversions++;return 'access'}};let nonCallable=false;try{subject.__defineGetter__(key,0)}catch(error){nonCallable=error instanceof TypeError}subject.access===1&&subject.seen===5&&subject.__lookupGetter__('access')===getter&&inherited.__lookupSetter__('access')===setter&&data.__lookupGetter__('access')===undefined&&proxy.__lookupGetter__('access')===getter&&calls.join(',')==='own,prototype'&&abrupt&&nonCallable&&conversions===0&&Object.prototype.__defineGetter__.length===2&&Object.prototype.__lookupSetter__.length===1",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn legacy_proto_accessor_uses_object_internal_methods() {
+    assert_eq!(
+        evaluate(
+            "let descriptor=Object.getOwnPropertyDescriptor(Object.prototype,'__proto__');let getter=descriptor.get;let setter=descriptor.set;let prototype={};let subject={};setter.call(subject,prototype);let ignored=setter.call(subject,1)===undefined&&setter.call(1,prototype)===undefined&&getter.call(subject)===prototype;let marker={};let getAbrupt=false;try{getter.call(new Proxy({}, {getPrototypeOf:function(){throw marker}}))}catch(error){getAbrupt=error===marker}let setAbrupt=false;try{setter.call(new Proxy({}, {setPrototypeOf:function(){throw marker}}),prototype)}catch(error){setAbrupt=error===marker}let cycleRoot={};let cycleLeaf=Object.create(cycleRoot);let cycle=false;try{setter.call(cycleRoot,cycleLeaf)}catch(error){cycle=error instanceof TypeError}let nullReceiver=false;try{setter.call(null,prototype)}catch(error){nullReceiver=error instanceof TypeError}descriptor.enumerable===false&&descriptor.configurable===true&&getter.name==='get __proto__'&&setter.name==='set __proto__'&&getter.length===0&&setter.length===1&&ignored&&getAbrupt&&setAbrupt&&cycle&&getter.call(cycleRoot)===Object.prototype&&nullReceiver",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn object_to_locale_string_uses_the_receiver_to_string_method() {
+    assert_eq!(
+        evaluate(
+            "'use strict';let received;let subject={toString:function(){received=this;return 'subject'}};let proxy=new Proxy({toString:function(){return 'proxy'}},{get:function(target,key,receiver){if(key!=='toString')throw new Error('unexpected key');return target[key]}});let nonCallable=false;try{Object.prototype.toLocaleString.call({toString:0})}catch(error){nonCallable=error instanceof TypeError}let nullReceiver=false;try{Object.prototype.toLocaleString.call(null)}catch(error){nullReceiver=error instanceof TypeError}Boolean.prototype.toString=function(){return typeof this};Object.prototype.toLocaleString.call(subject)==='subject'&&received===subject&&Object.prototype.toLocaleString.call(proxy)==='proxy'&&true.toLocaleString()==='boolean'&&nonCallable&&nullReceiver&&Object.prototype.toLocaleString.length===0",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn object_property_queries_coerce_keys_before_the_receiver() {
+    assert_eq!(
+        evaluate(
+            "let marker={};let key={toString:function(){throw marker}};let own=false;try{Object.prototype.hasOwnProperty.call(null,key)}catch(error){own=error===marker}let enumerable=false;try{Object.prototype.propertyIsEnumerable.call(undefined,key)}catch(error){enumerable=error===marker}own&&enumerable",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn object_static_has_own_and_is_use_internal_property_and_same_value_contracts() {
+    assert_eq!(
+        evaluate(
+            "let log=[];let key={toString:function(){log.push('key');return 'present'}};let proxy=new Proxy({present:1},{getOwnPropertyDescriptor:function(target,name){log.push('descriptor:'+name);return Object.getOwnPropertyDescriptor(target,name)}});let nullish=false;try{Object.hasOwn(null,key)}catch(error){nullish=error instanceof TypeError}Object.hasOwn(proxy,key)&&!Object.hasOwn(proxy,'missing')&&nullish&&log.join(',')==='key,descriptor:present,descriptor:missing'",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate(
+            "Object.is(NaN,NaN)&&!Object.is(0,-0)&&Object.is(-0,-0)&&Object.is.length===2&&Object.hasOwn.length===2",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn object_assign_uses_enumerable_own_keys_and_proxy_internal_methods() {
+    assert_eq!(
+        evaluate(
+            "let symbol=Symbol('symbol');let log=[];let source=new Proxy({visible:1,hidden:2,[symbol]:3},{ownKeys:function(target){log.push('keys');return Reflect.ownKeys(target)},getOwnPropertyDescriptor:function(target,key){log.push('descriptor:'+String(key));return Object.getOwnPropertyDescriptor(target,key)},get:function(target,key,receiver){log.push('get:'+String(key));return Reflect.get(target,key,receiver)}});Object.defineProperty(source,'hidden',{enumerable:false});let target={};let returned=Object.assign(target,null,undefined,source);returned===target&&target.visible===1&&target.hidden===undefined&&target[symbol]===3&&log.join(',')==='keys,descriptor:visible,get:visible,descriptor:hidden,descriptor:Symbol(symbol),get:Symbol(symbol)'",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    assert!(matches!(
+        evaluate("Object.assign(Object.freeze({}),{value:1})"),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
+fn object_from_entries_defines_entries_and_closes_on_an_abrupt_entry() {
+    assert_eq!(
+        evaluate(
+            "let symbol=Symbol('entry');let result=Object.fromEntries([['first',1],[symbol,2]]);result.first===1&&result[symbol]===2&&Object.getPrototypeOf(result)===Object.prototype",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate(
+            "let closed=false;let iterable={};iterable[Symbol.iterator]=function(){return {next:function(){return {value:null,done:false}},return:function(){closed=true;return {done:true}}}};let abrupt=false;try{Object.fromEntries(iterable)}catch(error){abrupt=error instanceof TypeError}abrupt&&closed",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn object_prototype_rejects_distinct_prototypes() {
+    assert_eq!(
+        evaluate(
+            "let root=Object.prototype;let replacement=Object.create(null);let threw=false;try{Object.setPrototypeOf(root,replacement)}catch(error){threw=error instanceof TypeError}Reflect.setPrototypeOf(root,null)&&!Reflect.setPrototypeOf(root,replacement)&&Object.getPrototypeOf(root)===null&&threw",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn reflect_and_proxy_operations_keep_the_explicit_receiver_and_trap_contract() {
     assert_eq!(
         evaluate(
