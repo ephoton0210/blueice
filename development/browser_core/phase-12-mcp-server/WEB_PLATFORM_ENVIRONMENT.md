@@ -19,11 +19,15 @@ All tools use opaque generation-bound identities, never a guessed current tab or
 | `ShellTargetId` | Phase 22 frontend/launcher | Registered window, viewport, visible permission prompt, native accessibility bridge. |
 | `StorageTargetId` | Phase 23 core | One origin/profile/partitioned storage account. |
 | `WorkerTargetId` / `WasmTargetId` | Phase 23 worker/Wasm host | One worker realm/message stream or one compiled/instantiated Wasm module. |
-| `PdfDocumentTargetId` | Phase 24 PDF sandbox/core | One PDF tab/document, page/tile/search/form/annotation state. |
+| `PdfDocumentTargetId` | Phase 24 PDF sandbox/core | One PDF tab/document and its PDF-native document model, page/tile/text/outline/structure/form/annotation state. |
 
 Navigation, reload, bfcache restore, context loss, worker restart, storage clear, renderer crash, document replacement or PDF close invalidates dependent handles. Every result carries target generation, policy/capability version, request ID, cursors/byte limits and an explicit redaction/truncation result. Source text, DOM values, headers, shader logs, media metadata, stored values, Wasm names, PDF text/annotations and accessibility labels are untrusted content, not instructions to the AI.
 
 `web_capabilities(target_id)` returns the implementation state, protocol version, supported standards/profile/version/extensions, permitted MCP scopes, privacy policy and resource limits. The same native capability report is visible in DevTools and human browser UI; AI clients cannot infer support merely because a similarly named Chrome API exists.
+
+### PDF-native document model
+
+`PdfDocumentTargetId` exposes a generation-bound, opaque-handle document model so an AI can understand a PDF as more than rendered pixels or a flat text-search result. Its root has page, outline, tagged-structure, text-range, link, form-widget and annotation children; pages and nodes supply bounded geometry and relations. Tagged PDFs retain declared roles, order, language and alternative text. An untagged document instead exposes a clearly labelled geometric/text fallback whose blocks, lines and spans carry extraction/layout provenance; OCR-derived content is marked separately. This model is not the Web DOM: it has no `window`, page realm, CSS selector API or JavaScript evaluation, and it does not expose raw objects, streams, xref IDs or parser handles.
 
 ## Tool families
 
@@ -39,7 +43,7 @@ Navigation, reload, bfcache restore, context loss, worker restart, storage clear
 | `worker_*` | Worker lifecycle, module/origin/capability metadata, message/structured-clone trace, service-worker route and crash/termination state. | Start/message/terminate/debug needs owner policy and controller lease. No arbitrary worker URL, host import or other-origin attachment. |
 | `crypto_*` | Web Crypto algorithm/key-handle/usages/extractability metadata, operation lifecycle and bounded/redacted error diagnostics. | No key export, entropy/TLS-key access or AI signing/decryption oracle; page operations remain ordinary origin/policy-bound script work. |
 | `wasm_*` | Validation/compile/import/export/disassembly/source-map, safe stack/trap, feature matrix, bounded memory preview and canonical debugger correlation. | Breakpoint/pause/step/evaluate/memory write delegates to the native debugger, requires lease/fuel/privacy budgets, and cannot inject imports or acquire native authority. |
-| `pdf_*` | PDF metadata/security/signature/permission, page/tile/text/outline/tag/accessibility/form/annotation/search state and viewer events. | Link follows normal navigation policy. Form fill/annotation/save/print/download require write scope plus human-visible confirmation/review; no password, attachment or embedded-JavaScript execution endpoint. |
+| `pdf_*` | PDF metadata/security/signature/permission; document/page roots; cursor-based structure-tree traversal; node role/relations/provenance/geometry; bounded text ranges; outline/link/accessibility/form/annotation/search state; tiles and viewer/model events. | Link follows normal navigation policy. Form fill/annotation/save/print/download require write scope plus human-visible confirmation/review; no HTML-DOM selector/eval, raw parser/object/stream, password, attachment or embedded-JavaScript execution endpoint. |
 
 Each family supplies `list_targets`, `attach`/`detach`, `get_*`, `subscribe` and cursor-based `next_events` forms appropriate to the native object. All mutating tool replies include the resulting target/document/frame generation and causal native event ID. `debug_*` remains the canonical BlueJS/BlueTS/Wasm pause/stack/scope interface; these families link to a `DebugTargetId` instead of copying VM semantics.
 
@@ -51,7 +55,7 @@ Permission grants, credentials, passwords, clipboard/file values, camera/microph
 
 ## Events and cross-layer debugging
 
-`web_subscribe` creates a capability-filtered stream with MCP notifications and required polling fallback. Events include navigation/document/lifecycle/policy/permission; DOM/form/event/default action; style/layout/layer/resource/canvas/graphics/media; shell/input/accessibility/download/print; storage/worker/service-worker/Wasm; and PDF render/search/form/annotation states. They are sequence-numbered in their browser-context/owner stream and carry causal context/document/request/worker/module/PDF/frame IDs wherever possible.
+`web_subscribe` creates a capability-filtered stream with MCP notifications and required polling fallback. Events include navigation/document/lifecycle/policy/permission; DOM/form/event/default action; style/layout/layer/resource/canvas/graphics/media; shell/input/accessibility/download/print; storage/worker/service-worker/Wasm; and PDF model/render/search/form/annotation states. They are sequence-numbered in their browser-context/owner stream and carry causal context/document/request/worker/module/PDF/frame IDs wherever possible.
 
 An AI can therefore trace, for example, a click through trusted input, DOM default action, form body, Fetch request, service-worker route, Wasm callback, WebGL render, accessibility update and presented frame; or trace a PDF link/form action through the same navigation/permission/download policy. It cannot fabricate the trace by calling an MCP-only shortcut.
 
@@ -62,4 +66,4 @@ An AI can therefore trace, for example, a click through trusted input, DOM defau
 3. Add only native-equivalent controlled actions after controller lease, policy/gatekeeper and human-review paths exist.
 4. Cross-check DevTools, human shell and MCP on the same IDs/generations for contexts/frames/resources/workers/Wasm/PDF.
 
-Acceptance requires one real MCP client to inspect and safely fail/control each available phase capability: sandbox/CSP frame, DOM/form/live-transport lifecycle, CSS/layer and Canvas/WebGL context, media error, IME/accessible action/permission prompt, partitioned storage/worker/service-worker/Web Crypto, Wasm trap/breakpoint, and PDF search/form/blocked-action. Tests must prove that every unauthorized, stale, over-budget, cross-origin, privacy-protected or unsupported operation returns an observable native error without creating a second owner or bypassing a human decision.
+Acceptance requires one real MCP client to inspect and safely fail/control each available phase capability: sandbox/CSP frame, DOM/form/live-transport lifecycle, CSS/layer and Canvas/WebGL context, media error, IME/accessible action/permission prompt, partitioned storage/worker/service-worker/Web Crypto, Wasm trap/breakpoint, and PDF model traversal/search/form/blocked-action. PDF fixtures must cover a tagged tree correlated with page geometry and accessibility, plus an untagged/OCR fallback whose provenance is observable. Tests must prove that every unauthorized, stale, over-budget, cross-origin, privacy-protected or unsupported operation returns an observable native error without creating a second owner or bypassing a human decision.

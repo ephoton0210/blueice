@@ -16,11 +16,13 @@ When Phase 20's loader identifies a permitted PDF response or download-open requ
 
 The viewer declares PDF version/features, encryption state, page count, signatures, document permissions, attachments, forms, annotations, tagged structure and accessibility status. Password entry is a visible human-only shell operation; passwords are never returned through DevTools/MCP. Malformed, encrypted, oversized, recursive, decompression-heavy or unsupported PDF content yields an error target without leaving partial privileged state in the tab.
 
+`PdfDocumentTarget` owns a generation-bound **PDF-native document model** for DevTools and MCP. It is a first-class, navigable representation of the document, not an emulated HTML DOM and not an exposed raw PDF object graph. The model has opaque document, page, outline, structure-node, text-range, link, form-widget and annotation handles. Tagged PDFs retain their declared role, parent/child/sibling order, language, alternative text and reading-order information; every text range and interactive object links to bounded page geometry. The model never exposes xref/object IDs, streams, parser internals or attachment bytes, and all extracted text and labels remain untrusted, policy-redacted content.
+
 ### Rendering, text and accessibility
 
 Render pages incrementally into generation-bound tiles with zoom/rotation/color-management/print profiles, text selection/search/copy geometry, outline/destination navigation, links, tagged-PDF semantic tree, reading order, alternative text and annotations. A document-level resource budget covers page count, objects, stream/decompression bytes, nesting, font/image glyph/cache memory, tile cache, search index and per-page CPU. Fonts/images follow the same decoder isolation principles as Phase 21.
 
-The accessibility bridge maps tagged PDF structure, text ranges, headings, tables, links, forms and annotations into Phase 22's platform accessibility abstraction. Untagged PDF gets a clearly labelled geometric/text fallback, never fabricated semantics. OCR is opt-in, resource-bounded and labels generated text/provenance distinctly from embedded PDF text.
+The accessibility bridge maps tagged PDF structure, text ranges, headings, tables, links, forms and annotations into Phase 22's platform accessibility abstraction. Untagged PDF gets a clearly labelled geometric/text fallback: text blocks, lines, spans and interactive geometry can be navigated, but must identify their extraction/layout provenance and never fabricate heading, table or other semantic roles. OCR is opt-in, resource-bounded and labels generated text/provenance distinctly from embedded PDF text.
 
 ### Forms, annotations, links and safety
 
@@ -30,7 +32,7 @@ PDF JavaScript is not executed as BlueJS and never gains page DOM/network/storag
 
 ### AI MCP integration
 
-Phase 12 exposes `pdf_*` targets/resources/tools: list/attach documents; inspect redacted metadata, signatures/permissions, page/outline/tag/annotation/form structure; render bounded page/region tiles; search/select bounded text ranges; inspect accessibility mapping; follow a link through normal navigation policy; and observe viewer/render/search/form/annotation events. `pdf_fill_form`, `pdf_add_annotation`, `pdf_save` and print/download actions require an appropriate controller/write scope plus the same visible human confirmation or workspace review policy as the human viewer. AI cannot obtain a password, arbitrary attachment bytes, unredacted protected text, a raw PDF parser handle or PDF-JavaScript execution.
+Phase 12 exposes `pdf_*` targets/resources/tools over that native model: list/attach documents; get the document/page roots; enumerate opaque children with cursors; inspect a node's declared or fallback role, relations, provenance and bounded geometry; read/search/select bounded text ranges; inspect redacted metadata, signatures/permissions, outlines, links, forms, annotations and accessibility mapping; render bounded page/region tiles; follow a link through normal navigation policy; and observe viewer/model/render/search/form/annotation events. This makes the same PDF structure available to a human viewer, DevTools and AI MCP client instead of leaving the document as a screenshot or text-extraction black box. The interface does not offer HTML DOM selectors, page-realm evaluation, arbitrary PDF-object traversal or PDF-JavaScript execution. `pdf_fill_form`, `pdf_add_annotation`, `pdf_save` and print/download actions require an appropriate controller/write scope plus the same visible human confirmation or workspace review policy as the human viewer. AI cannot obtain a password, arbitrary attachment bytes, unredacted protected text or a raw PDF parser handle.
 
 ## Delivery and acceptance
 
@@ -39,7 +41,7 @@ Phase 12 exposes `pdf_*` targets/resources/tools: list/attach documents; inspect
 3. Add encrypted-document prompt flow, signatures/permissions display, bounded OCR and the complete `pdf_*` MCP adapter.
 4. Run adversarial corpus/fuzzing, memory/time/decompression limits, process-crash recovery and human/AI same-target tests before enabling general PDF viewing.
 
-Acceptance requires a tagged accessible PDF, untagged fallback, complex fonts/images, outline/link navigation, search/selection, AcroForm, annotation, encrypted/password-denial, malformed/object-stream bomb, blocked JavaScript/attachment action, print/download review and an MCP client that observes the identical page/tile/text/form generation as the human viewer.
+Acceptance requires a tagged accessible PDF, untagged fallback, complex fonts/images, outline/link navigation, search/selection, AcroForm, annotation, encrypted/password-denial, malformed/object-stream bomb, blocked JavaScript/attachment action, print/download review and an MCP client that observes the identical page/tile/text/form generation as the human viewer. Tagged-document tests must prove that the MCP client can traverse the PDF-native structure tree and correlate semantic nodes with text geometry and the accessibility tree; untagged/OCR tests must prove that fallback or generated content is distinctly labelled rather than represented as authored semantics.
 
 ## Explicit non-goals
 
