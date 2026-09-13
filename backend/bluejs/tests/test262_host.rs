@@ -479,8 +479,7 @@ fn single_modules_are_strict_and_do_not_publish_classic_globals() {
             .unwrap();
     assert_eq!(vm.execute_script(&lookup), Ok(Value::Bool(true)));
 
-    let strict_with = parse_module("with({}){}").unwrap();
-    assert!(compile_module(&strict_with).is_err());
+    assert!(parse_module("with({}){}").is_err());
 }
 
 #[test]

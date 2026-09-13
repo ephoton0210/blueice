@@ -23,6 +23,19 @@ Raised while Phase 5 was fresh, not while working through the numbered sequence:
 
 **Deliberately not done in this early pass** (real Phase 12 work, not skipped by oversight): Phase 10/11 tools (don't exist yet), `bluejs_run`/`bluejs_analyze` (Phase 13 doesn't exist yet), on-demand process *spawn-timing* (`blueice-mcp-server` still spawns unconditionally on startup, though it now shares an already-running `core` via Phase 8's launcher when one exists — see below), and validation against a real MCP client such as Claude Code (only tested against a fake `core` responder and the real `blueice-core` subprocess directly — not yet through an actual MCP client speaking the wire protocol end to end). The `protocol_version` handshake Phase 1/5 originally deferred is no longer on this list — see the checklist below.
 
+Six deliberately narrow diagnostic exceptions are now available:
+`debug_collator` calls the pure, host-neutral `blueice-ecma402` service and
+returns a bounded locale-negotiation/UTF-16 comparison trace;
+`debug_number_format` reports decimal locale negotiation, resolved digits and
+fraction options, and optional finite-decimal output; `debug_plural_rules`
+reports cardinal/ordinal selection with exact decimal operands;
+`debug_list_format` reports CLDR type/style pattern selection, formatted input
+items and `formatToParts` element/literal boundaries; `debug_locale` reports
+canonical locale-information data; `debug_segmenter` reports bounded
+UTF-16-indexed grapheme, word or sentence boundaries. None can attach to a
+Realm, run code, read or mutate a page, or acquire browser authority, so they
+are not a substitute for the future IPC-backed BlueJS debugger described below.
+
 ## Design sketch
 
 **Process design**: `backend/mcp-server/` as a thin adapter process — speaks MCP (JSON-RPC based, per the MCP spec) on one side, and BlueIce's own internal IPC protocol on the other. It translates incoming MCP `tools/call` requests into internal IPC requests against `core`/`downloads`/etc., and (where the MCP transport in use supports it) surfaces internal state changes back out as MCP notifications — it does not implement any browsing/download/transfer logic itself, only the translation. Being a stateless adapter, [`research/multi-process-memory.md`](../research/multi-process-memory.md) flags it as the clearest on-demand-spawn candidate in the whole process fleet — no reason for it to run at all when no MCP client is connected, unlike `core`/`ai-gatekeeper` which need to stay resident.
@@ -56,6 +69,12 @@ The debug surface is intentionally specified now because every one of its tools 
 - [x] Design and build MCP tool definitions for the capabilities that are real today (Phase 5's API) — see "Foundation built early" above
 - [ ] Confirm which of Phase 7/9/10/11's capabilities (once they exist) are in scope for MCP exposure, beyond the Phase 5 API already covered
 - [ ] Extend the tool set as Phase 10/11/13 land (`download_file`/`list_transfers`, `ftp_connect`/`sftp_connect`, `bluejs_run`/`bluejs_analyze`)
+- [x] Expose host-neutral ECMA-402 diagnostics through the bounded, read-only
+  `debug_collator`, `debug_number_format`, `debug_plural_rules`,
+  `debug_list_format`, `debug_segmenter` and `debug_locale` tools. They report
+  canonical input, candidate support/fallback, resolved options, locale data,
+  optional exact UTF-16 comparison, finite-decimal formatting, plural-category
+  selection and bounded Unicode segmentation.
 - [x] Define the complete target-aware MCP debug environment for BlueJS/BlueTS/BlueTSC — [`DEBUG_ENVIRONMENT.md`](DEBUG_ENVIRONMENT.md): native-debugger adapter boundary, resources/tools/events, handle generations, runtime/type/contract inspection, build controls, authorization, limits and acceptance coverage
 - [x] Define the complete target-aware MCP network/data environment for AJAX/PJAX/SOAP and HTML/XHTML/XML/XSD/JSON/YAML/schema services — [`NETWORK_DATA_ENVIRONMENT.md`](NETWORK_DATA_ENVIRONMENT.md): native adapter boundaries, target identities, tools/resources/events, authorization, safe parser/schema handling, limits and acceptance coverage
 - [x] Define the complete target-aware MCP Web Platform environment for Phases 20–24 — [`WEB_PLATFORM_ENVIRONMENT.md`](WEB_PLATFORM_ENVIRONMENT.md): browser/context and security policy, rendering/WebGL/media, shell/accessibility, storage/workers/WebAssembly, PDF Viewer, common identity/event/authorization/limit rules and acceptance coverage

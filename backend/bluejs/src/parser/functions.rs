@@ -151,11 +151,48 @@ impl Parser {
     }
 
     pub(super) fn parse_class(&mut self) -> Result<Class, ParseError> {
-        let name = if matches!(self.peek(), Token::Identifier(name) if name != "extends") {
-            Some(self.expect_identifier_name()?)
-        } else {
-            None
+        // Every part of a ClassDefinition, including the heritage expression,
+        // is parsed in strict mode. Preserve the caller's grammar context so
+        // a nested class does not leak strictness into its surrounding script.
+        let outer_strict = std::mem::replace(&mut self.strict, true);
+        let class = self.parse_class_definition();
+        self.strict = outer_strict;
+        class
+    }
+
+    fn parse_class_definition(&mut self) -> Result<Class, ParseError> {
+        let name = match self.peek() {
+            Token::Identifier(name) if name != "extends" => {
+                let name = self.expect_identifier_name()?;
+                if matches!(
+                    name.as_str(),
+                    "implements"
+                        | "interface"
+                        | "let"
+                        | "package"
+                        | "private"
+                        | "protected"
+                        | "public"
+                        | "static"
+                        | "yield"
+                ) || (self.module && name == "await")
+                {
+                    return Err(self.syntax_error("invalid class binding identifier"));
+                }
+                Some(name)
+            }
+            Token::Keyword(_) => {
+                return Err(self.syntax_error("class declarations require a binding identifier"));
+            }
+            _ => None,
         };
+        if name.as_deref() == Some("await")
+            && self.static_block_function_depths.last() == Some(&self.function_depth)
+        {
+            return Err(self.syntax_error(
+                "await cannot be bound by a class declaration in a class static block",
+            ));
+        }
         let extends = if matches!(self.peek(), Token::Identifier(keyword) if keyword == "extends") {
             self.advance();
             if self.class_heritage_is_parenthesized_arrow() {
@@ -176,7 +213,11 @@ impl Parser {
                 continue;
             }
             let is_static = matches!(self.peek(), Token::Identifier(static_keyword) if static_keyword == "static")
-                && !matches!(self.peek_at(1), Token::Punct(Punct::LParen));
+                && !self.current_identifier_escaped()
+                && !matches!(
+                    self.peek_at(1),
+                    Token::Punct(Punct::LParen | Punct::Semicolon | Punct::Assign | Punct::RBrace)
+                );
             if is_static {
                 self.advance();
             }
@@ -185,6 +226,11 @@ impl Parser {
                 let body = self.parse_block();
                 self.static_block_function_depths.pop();
                 let body = body?;
+                if statements_contain_arguments(&body) {
+                    return Err(self.syntax_error(
+                        "a class static block cannot contain a lexical arguments reference",
+                    ));
+                }
                 if statements_contain_super_call_outside_class(&body) {
                     return Err(self.syntax_error("a static block cannot contain super()"));
                 }
@@ -213,11 +259,23 @@ impl Parser {
                 if generator || accessor.is_some() {
                     return Err(self.error("expected class method parameters"));
                 }
+                if !matches!(&key, PropertyKey::Computed(_))
+                    && ((!is_static && method_name == "constructor")
+                        || (is_static
+                            && matches!(method_name.as_str(), "constructor" | "prototype")))
+                {
+                    return Err(self.syntax_error("invalid public class field name"));
+                }
                 let initializer = if self.eat_punct(Punct::Assign) {
                     Some(self.parse_assignment()?)
                 } else {
                     None
                 };
+                if initializer.as_ref().is_some_and(expr_contains_arguments) {
+                    return Err(self.syntax_error(
+                        "a class field initializer cannot contain a lexical arguments reference",
+                    ));
+                }
                 if initializer
                     .as_ref()
                     .is_some_and(expr_contains_super_call_outside_class)
@@ -227,12 +285,7 @@ impl Parser {
                     );
                 }
                 let terminated = self.eat_punct(Punct::Semicolon);
-                let ends_with_block = self
-                    .tokens
-                    .get(self.pos.saturating_sub(1))
-                    .is_some_and(|token| matches!(token.token, Token::Punct(Punct::RBrace)));
                 if !terminated
-                    && !ends_with_block
                     && !self.check_punct(Punct::RBrace)
                     && self
                         .tokens

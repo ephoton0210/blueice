@@ -43,6 +43,14 @@ const CASES: &[OracleCase] = &[
         expected_stdout: Some("2\n"),
     },
     OracleCase {
+        name: "optional-record",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/optional-record/main.ts"),
+        )],
+        expected_stdout: Some("missing\n"),
+    },
+    OracleCase {
         name: "generic-declaration-module",
         modules: &[
             (
@@ -119,6 +127,14 @@ const CASES: &[OracleCase] = &[
         expected_stdout: Some("Ada:2\n"),
     },
     OracleCase {
+        name: "generic-function-overload",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/generic-function-overload/main.ts"),
+        )],
+        expected_stdout: Some("Ada\n"),
+    },
+    OracleCase {
         name: "assignment-error",
         modules: &[(
             "memory:///main.ts",
@@ -131,6 +147,14 @@ const CASES: &[OracleCase] = &[
         modules: &[(
             "memory:///main.ts",
             include_str!("fixtures/typescript_oracle/call-argument-error/main.ts"),
+        )],
+        expected_stdout: None,
+    },
+    OracleCase {
+        name: "optional-record-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/optional-record-error/main.ts"),
         )],
         expected_stdout: None,
     },
@@ -155,6 +179,14 @@ const CASES: &[OracleCase] = &[
         modules: &[ (
             "memory:///main.ts",
             include_str!("fixtures/typescript_oracle/generic-interface-heritage-error/main.ts"),
+        )],
+        expected_stdout: None,
+    },
+    OracleCase {
+        name: "interface-heritage-override-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/interface-heritage-override-error/main.ts"),
         )],
         expected_stdout: None,
     },

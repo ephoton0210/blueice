@@ -6,7 +6,6 @@ license.workspace = true
 
 [dependencies]
 blueice-ecma402 = { path = "../ecma402" }
-icu_collator = "=2.2.0"
 regress = { version = "=0.12.0", features = ["utf16"] }
 unicode-normalization = "=0.1.25"
 serde = { version = "=1.0.229", features = ["derive"] }

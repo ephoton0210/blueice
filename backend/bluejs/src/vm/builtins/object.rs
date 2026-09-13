@@ -555,6 +555,7 @@ impl Vm {
                     | NativeFunction::Iterator
                     | NativeFunction::RegExp
                     | NativeFunction::Collator
+                    | NativeFunction::IntlService(_)
                     | NativeFunction::Locale
                     | NativeFunction::Error(_)
                     | NativeFunction::PrimitiveConstructor(_)

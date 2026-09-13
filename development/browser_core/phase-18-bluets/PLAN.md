@@ -34,8 +34,11 @@ dependency before introducing any page-runtime coupling:
   `sourceMap`, `declaration`, `target`, `runtimePolicy`, and exact/prefix
   `imports` mappings. Config flags cannot be mixed with client-side overrides;
   an import target, entry or output path that escapes the declared root is
-  rejected before compilation. This is the standalone compiler's closed-world
-  resolver, not a page/network loader or an arbitrary package-manager hook.
+  rejected before compilation, including a syntactically local `outDir` whose
+  existing ancestor is a symlink outside that root. An atomic output directory
+  also cannot contain an input source module, so it cannot replace `src/`.
+  This is the standalone compiler's closed-world resolver, not a page/network
+  loader or an arbitrary package-manager hook.
 - A project-root-confined relative import or exact `imports` mapping may target
   a local `.d.ts` declaration module. Declaration modules are parsed, checked,
   hashed and retained in VM-independent debug metadata, but are type-only:
@@ -84,8 +87,8 @@ dependency before introducing any page-runtime coupling:
   They instantiate bounded structural checks, enforce `extends` constraints,
   and resolve trailing default type arguments (including in declaration
   modules). A declaration's type parameter never leaks into surrounding module
-  scope; overload resolution and general expression inference remain outside
-  this narrow initial rule.
+  scope; method/callback overload resolution and general expression inference
+  remain outside this narrow initial rule.
 - The parser rejects a `.tsx` module at its source-identity boundary, even if
   it has not yet reached a JSX tag. This prevents a TSX project from being
   treated as ordinary erasable TypeScript; tagged JSX is rejected by the same
@@ -113,8 +116,10 @@ dependency before introducing any page-runtime coupling:
   It requires `BLUEICE_TSC` to name a TypeScript 5.9.3 compiler, verifies that
   pin before executing, and runs a fixture matrix covering generic properties,
   constraints/defaults, explicit direct-call type arguments and generic
-  interface heritage (including local `.d.ts` parents), optional/default
-  parameters, local function overloads, rejected assignment/call arguments,
+  interface heritage (including local `.d.ts` parents and rejected conflicting
+  inherited fields), optional record fields and default/explicit-`undefined`
+  parameters, local constrained generic
+  function overloads, rejected assignment/call arguments,
   Source Map v3 shape and
   accepted Node output.
   The `typescript-oracle` CI job runs only from `workflow_dispatch` when its
@@ -131,9 +136,10 @@ dependency before introducing any page-runtime coupling:
   typings/version policy without adding a BlueJS dependency to BlueTS.
 - [`bluets-test-interface`](TEST_INTERFACE.md) now exposes the same persistent
   JSON-lines ready/request/reply transport as BlueJS's test adapter. It is
-  intentionally compile-only, with stable BlueTS diagnostic codes/spans and
-  caller-controlled compiler limits; Test262 runtime execution remains a
-  future bridge concern rather than a hidden BlueJS dependency.
+  intentionally compile-only, accepts BlueJS's `sloppy` mode as a `raw` alias,
+  and has stable BlueTS diagnostic codes/spans and caller-controlled compiler
+  limits; Test262 runtime execution remains a future bridge concern rather
+  than a hidden BlueJS dependency.
 
 This is deliberately not a claim of general `tsc` compatibility. Control-flow
 narrowing, overload resolution, decorators, enums, classes, TSX, namespace

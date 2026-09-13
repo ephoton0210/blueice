@@ -4,7 +4,8 @@
 
 //! Public-interface regressions from the coverage/conformance review.
 use blueice_bluejs::{
-    compile, compile_with_limit, parse, CompileError, HeapConfig, RuntimeError, Value, Vm, VmConfig,
+    compile, compile_with_limit, parse, parse_module, CompileError, HeapConfig, RuntimeError,
+    Value, Vm, VmConfig,
 };
 
 fn evaluate(source: &str) -> Value {
@@ -215,6 +216,104 @@ fn public_class_element_early_errors_are_classified() {
     ] {
         assert!(parse(source).is_err(), "{source}");
     }
+}
+
+#[test]
+fn class_field_and_static_block_lexical_arguments_are_parse_errors() {
+    for source in [
+        "class C{field=arguments}",
+        "class C{field=()=>arguments}",
+        "class C{static #field=()=>{let nested=()=>arguments}}",
+        "class C{field=class extends arguments{}}",
+        "class C{static{arguments}}",
+        "class C{static{class Nested extends arguments{}}}",
+    ] {
+        assert!(parse(source).is_err(), "{source}");
+    }
+    for source in [
+        "class C{field=function(){return arguments}}",
+        "class C{static{function read(){return arguments}}}",
+    ] {
+        assert!(parse(source).is_ok(), "{source}");
+    }
+}
+
+#[test]
+fn class_field_requires_a_separator_after_a_block_initializer() {
+    for source in [
+        "class C{x=()=>{}==arguments;}",
+        "class C{x=()=>{}y=1}",
+        "class C{x=class{}==arguments;}",
+        "class C{x=class{}y=1}",
+    ] {
+        let error = parse(source).unwrap_err();
+        assert!(error.known_syntax, "{source}: {error:?}");
+    }
+    for source in ["class C{x=()=>{}\ny=1}", "class C{x=class{}\ny=1}"] {
+        assert!(parse(source).is_ok(), "{source}");
+    }
+}
+
+#[test]
+fn public_class_field_names_and_static_disambiguation_follow_early_errors() {
+    for source in [
+        "class C{constructor;}",
+        "class C{'constructor';}",
+        "class C{static constructor;}",
+        "class C{static 'constructor';}",
+        "class C{static prototype;}",
+        "class C{static 'prototype';}",
+        "class C{st\\u0061tic method(){}}",
+    ] {
+        let error = parse(source).unwrap_err();
+        assert!(error.known_syntax, "{source}: {error:?}");
+    }
+    assert_eq!(
+        evaluate("class C{static;static='value'}let c=new C;c.static==='value'"),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn class_static_blocks_reject_return_and_await_class_bindings() {
+    for source in [
+        "function outer(){class C{static{return}}}",
+        "function outer(){class C{static{class await{}}}}",
+    ] {
+        let error = parse(source).unwrap_err();
+        assert!(error.known_syntax, "{source}: {error:?}");
+    }
+    for source in [
+        "function outer(){class C{static{function nested(){return}}}}",
+        "function outer(){class C{static{function nested(){class await{}}}}}",
+    ] {
+        assert!(parse(source).is_ok(), "{source}");
+    }
+}
+
+#[test]
+fn class_definitions_apply_strict_mode_through_their_heritage() {
+    let error = parse("class C extends (function B(){with({});return B}()){}").unwrap_err();
+    assert!(error.known_syntax, "{error:?}");
+    assert!(parse("with({value:1})value").is_ok());
+}
+
+#[test]
+fn class_names_reject_strict_reserved_words_and_module_await() {
+    for source in [
+        "class let{}",
+        "class l\\u0065t{}",
+        "class static{}",
+        "class st\\u0061tic{}",
+        "class yield{}",
+        "class \\u0079ield{}",
+    ] {
+        let error = parse(source).unwrap_err();
+        assert!(error.known_syntax, "{source}: {error:?}");
+    }
+    assert!(parse("class await{}").is_ok());
+    let error = parse_module("class await{}").unwrap_err();
+    assert!(error.known_syntax, "{error:?}");
 }
 
 #[test]

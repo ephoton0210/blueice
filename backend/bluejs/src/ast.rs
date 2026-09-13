@@ -586,10 +586,25 @@ pub(crate) fn function_contains_super_property_outside_class(function: &Function
     function_contains_super(function, SuperSearch::Property)
 }
 
+/// Whether an expression contains the lexical `arguments` reference forbidden
+/// by class field initializers. Ordinary functions establish their own
+/// `arguments` binding; arrows deliberately do not.
+pub(crate) fn expr_contains_arguments(expr: &Expr) -> bool {
+    expr_contains_super(expr, SuperSearch::Arguments)
+}
+
+/// Whether statements contain the lexical `arguments` reference forbidden by
+/// a class static block. Ordinary functions establish their own `arguments`
+/// binding, so their bodies are not traversed.
+pub(crate) fn statements_contain_arguments(statements: &[Stmt]) -> bool {
+    stmts_contain_super(statements, SuperSearch::Arguments)
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SuperSearch {
     Call,
     Property,
+    Arguments,
 }
 
 fn stmts_contain_super_call(statements: &[Stmt]) -> bool {
@@ -604,7 +619,7 @@ fn stmts_contain_super(statements: &[Stmt], search: SuperSearch) -> bool {
 
 fn stmt_contains_super(statement: &Stmt, search: SuperSearch) -> bool {
     match statement {
-        Stmt::Empty | Stmt::Break(_) | Stmt::Continue(_) | Stmt::ClassDecl(_) => false,
+        Stmt::Empty | Stmt::Break(_) | Stmt::Continue(_) => false,
         Stmt::Expr(expr) | Stmt::Throw(expr) => expr_contains_super(expr, search),
         Stmt::Block(statements) => stmts_contain_super(statements, search),
         Stmt::VarDecl(_, declarations) => declarations.iter().any(|declaration| {
@@ -686,7 +701,10 @@ fn stmt_contains_super(statement: &Stmt, search: SuperSearch) -> bool {
         }
         Stmt::Labelled { item, .. } => stmt_contains_super(item, search),
         Stmt::FunctionDecl(function) | Stmt::ModuleDefaultFunction { function, .. } => {
-            function_contains_super(function, search)
+            search != SuperSearch::Arguments && function_contains_super(function, search)
+        }
+        Stmt::ClassDecl(class) => {
+            search == SuperSearch::Arguments && class_contains_arguments(class)
         }
         Stmt::ClassField(statement) => stmt_contains_super(statement, search),
         Stmt::ClassPrivateBrand(_) => false,
@@ -718,6 +736,9 @@ fn for_head_contains_super(head: &ForHead, search: SuperSearch) -> bool {
 }
 
 fn function_contains_super(function: &Function, search: SuperSearch) -> bool {
+    if search == SuperSearch::Arguments {
+        return false;
+    }
     function.params.iter().any(|param| {
         pattern_contains_super(&param.pattern, search)
             || param
@@ -807,11 +828,11 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
         | Expr::Bool(_)
         | Expr::Null
         | Expr::This
-        | Expr::Identifier(_)
         | Expr::RegExp { .. }
         | Expr::Super
         | Expr::NewTarget
         | Expr::ImportMeta => false,
+        Expr::Identifier(name) => search == SuperSearch::Arguments && name == "arguments",
         Expr::Parenthesized(expr) => expr_contains_super(expr, search),
         Expr::Template { expressions, .. } => expressions
             .iter()
@@ -840,7 +861,7 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
             }
         }),
         Expr::Function(function) => function_contains_super(function, search),
-        Expr::Class(_) => false,
+        Expr::Class(class) => search == SuperSearch::Arguments && class_contains_arguments(class),
         Expr::Yield { value, .. } => value
             .as_deref()
             .is_some_and(|expr| expr_contains_super(expr, search)),
@@ -910,6 +931,21 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
             object, property, ..
         } => expr_contains_super(object, search) || expr_contains_super(property, search),
     }
+}
+
+fn class_contains_arguments(class: &Class) -> bool {
+    class
+        .extends
+        .as_deref()
+        .is_some_and(expr_contains_arguments)
+        || class.elements.iter().any(|element| match element {
+            ClassElement::Method { key, .. }
+            | ClassElement::Accessor { key, .. }
+            | ClassElement::Field { key, .. } => {
+                matches!(key, PropertyKey::Computed(expr) if expr_contains_arguments(expr))
+            }
+            ClassElement::StaticBlock(_) => false,
+        })
 }
 
 #[cfg(test)]

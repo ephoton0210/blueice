@@ -1,0 +1,120 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Public, host-neutral `Intl.Segmenter` coverage.
+
+use blueice_ecma402::{
+    canonicalize, Segmenter, SegmenterGranularity, SegmenterOptions, SegmenterSegment,
+};
+
+#[test]
+fn segments_extended_graphemes_at_utf16_indices() {
+    let segmenter = Segmenter::try_new(&[], Default::default()).unwrap();
+
+    assert_eq!(
+        segmenter.segment("a🇹🇼e\u{301}"),
+        vec![
+            SegmenterSegment {
+                segment: "a".into(),
+                index_utf16: 0,
+                is_word_like: None,
+            },
+            SegmenterSegment {
+                segment: "🇹🇼".into(),
+                index_utf16: 1,
+                is_word_like: None,
+            },
+            SegmenterSegment {
+                segment: "e\u{301}".into(),
+                index_utf16: 5,
+                is_word_like: None,
+            },
+        ]
+    );
+    assert_eq!(segmenter.resolved_options().locale, "en-US");
+}
+
+#[test]
+fn distinguishes_words_from_punctuation_and_whitespace() {
+    let english = canonicalize("en").unwrap();
+    let segmenter = Segmenter::try_new(
+        &[english],
+        SegmenterOptions {
+            granularity: SegmenterGranularity::Word,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        segmenter.segment("Hello, 42!"),
+        vec![
+            SegmenterSegment {
+                segment: "Hello".into(),
+                index_utf16: 0,
+                is_word_like: Some(true),
+            },
+            SegmenterSegment {
+                segment: ",".into(),
+                index_utf16: 5,
+                is_word_like: Some(false),
+            },
+            SegmenterSegment {
+                segment: " ".into(),
+                index_utf16: 6,
+                is_word_like: Some(false),
+            },
+            SegmenterSegment {
+                segment: "42".into(),
+                index_utf16: 7,
+                is_word_like: Some(true),
+            },
+            SegmenterSegment {
+                segment: "!".into(),
+                index_utf16: 9,
+                is_word_like: Some(false),
+            },
+        ]
+    );
+}
+
+#[test]
+fn applies_selected_locale_and_sentence_boundaries() {
+    let unavailable = canonicalize("zz").unwrap();
+    let finnish = canonicalize("fi").unwrap();
+    let words = Segmenter::try_new(
+        &[unavailable, finnish],
+        SegmenterOptions {
+            granularity: SegmenterGranularity::Word,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(words.negotiation().selected().as_str(), "fi");
+    assert_eq!(words.segment("EU:ssa")[0].segment, "EU:ssa");
+
+    let sentences = Segmenter::try_new(
+        &[canonicalize("en").unwrap()],
+        SegmenterOptions {
+            granularity: SegmenterGranularity::Sentence,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        sentences.segment("One. Two!"),
+        vec![
+            SegmenterSegment {
+                segment: "One. ".into(),
+                index_utf16: 0,
+                is_word_like: None,
+            },
+            SegmenterSegment {
+                segment: "Two!".into(),
+                index_utf16: 5,
+                is_word_like: None,
+            },
+        ]
+    );
+}

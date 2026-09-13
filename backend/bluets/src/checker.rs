@@ -683,6 +683,11 @@ impl<'a> ModuleChecker<'a> {
                             &interface.span,
                             &interface.type_parameters,
                         );
+                        self.check_inherited_field_compatibility(
+                            parent,
+                            &interface.fields,
+                            &interface.span,
+                        );
                     }
                     for field in &interface.fields {
                         self.check_type_with_parameters(
@@ -740,6 +745,40 @@ impl<'a> ModuleChecker<'a> {
             }
         }
         self.type_parameters = previous_parameters;
+    }
+
+    fn check_inherited_field_compatibility(
+        &mut self,
+        parent: &Type,
+        fields: &[TypeField],
+        span: &SourceSpan,
+    ) {
+        for field in fields {
+            let inherited = {
+                let mut visited = HashSet::new();
+                let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                property_type(parent, &field.name, &self.types, &mut visited, &mut budget)
+            };
+            let PropertyType::Found(inherited) = inherited else {
+                continue;
+            };
+            let declared = if field.optional {
+                Type::Union(vec![field.value.clone(), Type::Undefined])
+            } else {
+                field.value.clone()
+            };
+            if !self.is_assignable_bounded(&declared, &inherited, span) {
+                self.type_error(
+                    span,
+                    format!(
+                        "property `{}` is not compatible with the inherited type `{}`",
+                        field.name,
+                        type_label(&inherited)
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
+        }
     }
 
     fn check_variable(&mut self, variable: &crate::parser::VariableDeclaration) {
@@ -1127,10 +1166,7 @@ impl<'a> ModuleChecker<'a> {
             substitutions
         };
         for (index, (parameter, actual)) in signature.parameters.iter().zip(actuals).enumerate() {
-            let Some(annotation) = &parameter.annotation else {
-                continue;
-            };
-            let expected = substitute_type(annotation, &substitutions);
+            let expected = parameter_expected_type(parameter, &substitutions);
             if !self.is_assignable_bounded(&actual, &expected, span) {
                 self.type_error(
                     span,
@@ -1397,10 +1433,7 @@ fn function_signature_matches(
         }
     }
     for (parameter, actual) in signature.parameters.iter().zip(actuals) {
-        let Some(annotation) = &parameter.annotation else {
-            continue;
-        };
-        let expected = substitute_type(annotation, &substitutions);
+        let expected = parameter_expected_type(parameter, &substitutions);
         if !is_assignable(actual, &expected, aliases, &mut HashSet::new(), &mut budget)
             && !budget.exhausted
         {
@@ -1431,30 +1464,69 @@ fn overload_is_compatible_with_implementation(
     {
         return false;
     }
+    let overload_substitutions = type_parameter_constraint_substitutions(&overload.type_parameters);
+    let implementation_substitutions =
+        type_parameter_constraint_substitutions(&implementation.type_parameters);
     let mut budget = TypeExpansionBudget::new(max_type_expansions);
     for (overload_parameter, implementation_parameter) in
         overload.parameters.iter().zip(&implementation.parameters)
     {
-        let actual = overload_parameter
-            .annotation
-            .as_ref()
-            .unwrap_or(&Type::Unknown);
-        let expected = implementation_parameter
-            .annotation
-            .as_ref()
-            .unwrap_or(&Type::Unknown);
-        if !is_assignable(actual, expected, aliases, &mut HashSet::new(), &mut budget)
-            && !budget.exhausted
+        let actual = parameter_expected_type(overload_parameter, &overload_substitutions);
+        let expected =
+            parameter_expected_type(implementation_parameter, &implementation_substitutions);
+        if !is_assignable(
+            &actual,
+            &expected,
+            aliases,
+            &mut HashSet::new(),
+            &mut budget,
+        ) && !budget.exhausted
         {
             return false;
         }
     }
-    let actual = overload.return_type.as_ref().unwrap_or(&Type::Unknown);
+    let actual = overload
+        .return_type
+        .as_ref()
+        .map(|value| substitute_type(value, &overload_substitutions))
+        .unwrap_or(Type::Unknown);
     let expected = implementation
         .return_type
         .as_ref()
-        .unwrap_or(&Type::Unknown);
-    is_assignable(actual, expected, aliases, &mut HashSet::new(), &mut budget) || budget.exhausted
+        .map(|value| substitute_type(value, &implementation_substitutions))
+        .unwrap_or(Type::Unknown);
+    is_assignable(
+        &actual,
+        &expected,
+        aliases,
+        &mut HashSet::new(),
+        &mut budget,
+    ) || budget.exhausted
+}
+
+fn parameter_expected_type(parameter: &Parameter, substitutions: &BTreeMap<String, Type>) -> Type {
+    let value = parameter
+        .annotation
+        .as_ref()
+        .map(|annotation| substitute_type(annotation, substitutions))
+        .unwrap_or(Type::Unknown);
+    if parameter.optional {
+        Type::Union(vec![value, Type::Undefined])
+    } else {
+        value
+    }
+}
+
+fn type_parameter_constraint_substitutions(parameters: &[TypeParameter]) -> BTreeMap<String, Type> {
+    parameters
+        .iter()
+        .map(|parameter| {
+            (
+                parameter.name.clone(),
+                parameter.constraint.clone().unwrap_or(Type::Unknown),
+            )
+        })
+        .collect()
 }
 
 fn type_parameter_substitutions(
@@ -1739,6 +1811,11 @@ fn is_assignable(
     if let Some(expanded) = instantiate_named(expected, aliases, visited, budget, "expected") {
         return is_assignable(actual, &expanded, aliases, visited, budget);
     }
+    if let Type::Union(options) = actual {
+        return options
+            .iter()
+            .all(|option| is_assignable(option, expected, aliases, &mut visited.clone(), budget));
+    }
     if let Type::Union(options) = expected {
         return options
             .iter()
@@ -1787,13 +1864,14 @@ fn is_assignable(
                 .iter()
                 .find(|actual_field| actual_field.name == expected_field.name)
                 .map(|actual_field| {
-                    is_assignable(
-                        &actual_field.value,
-                        &expected_field.value,
-                        aliases,
-                        &mut visited.clone(),
-                        budget,
-                    )
+                    (actual_field.optional == expected_field.optional || expected_field.optional)
+                        && is_assignable(
+                            &actual_field.value,
+                            &expected_field.value,
+                            aliases,
+                            &mut visited.clone(),
+                            budget,
+                        )
                 })
                 .unwrap_or(expected_field.optional)
         }),
@@ -2040,6 +2118,25 @@ mod tests {
     }
 
     #[test]
+    fn rejects_an_interface_property_that_conflicts_with_heritage() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "interface Base { id: string }\ninterface Invalid extends Base { id: number }",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert!(result.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::TypeMismatch
+                && diagnostic
+                    .message
+                    .contains("property `id` is not compatible")
+        }));
+    }
+
+    #[test]
     fn instantiates_inherited_declaration_interfaces_across_type_imports() {
         let result = crate::compile(
             "memory:///main.ts",
@@ -2266,7 +2363,9 @@ mod tests {
                 "function missing(value: string): string;\n\
                  function describe(value: string): string;\n\
                  function describe(value: number): number;\n\
-                 function describe(value: string): string { return value; }",
+                 function describe(value: string): string { return value; }\n\
+                 function optional(value?: string): string;\n\
+                 function optional(value: string): string { return value; }",
             )]),
             CompilerOptions::default(),
         );
@@ -2277,7 +2376,7 @@ mod tests {
                 .iter()
                 .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
                 .count(),
-            2
+            3
         );
     }
 
@@ -2394,6 +2493,52 @@ mod tests {
                 .message
                 .contains("property `missing` does not exist")
         }));
+    }
+
+    #[test]
+    fn checks_optional_fields_and_explicit_undefined_arguments() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "interface OptionalName { name?: string }\n\
+                 interface RequiredName { name: string }\n\
+                 const optional: OptionalName = {};\n\
+                 const wider: string | number | undefined = optional.name;\n\
+                 const required: string = optional.name;\n\
+                 const incompatible: RequiredName = optional;\n\
+                 function count(value: number = 1): number { return value; }\n\
+                 const defaulted: number = count(undefined);\n\
+                 const invalid: number = count('wrong');",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert_eq!(
+            result
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+                .count(),
+            3,
+            "{:#?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn accepts_a_constrained_generic_overload_with_a_concrete_implementation() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "function label<T extends string>(value: T): T;\n\
+                 function label(value: string): string { return value; }\n\
+                 const result: string = label('Ada');",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(!result.has_errors(), "{:#?}", result.diagnostics);
     }
 
     #[test]

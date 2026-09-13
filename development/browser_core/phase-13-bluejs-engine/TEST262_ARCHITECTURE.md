@@ -121,10 +121,10 @@ consumers, nested close order, original thrown-object identity and rest GC
 reachability. The independent Node oracle passes 22,271 isolated scripts.
 
 The historical slice's test details are retained above as implementation
-evidence. The current Rust 1.95 no-exclusion BlueJS coverage measurement is
-**30,342 / 34,330 lines (88.38%)**, 2,148 / 2,384 functions (90.10%), and
-84.78% regions; CI enforces an 88% line floor. It is the current coverage
-baseline and must not be represented as 100%.
+evidence. The current Rust 1.95 no-exclusion BlueJS coverage measurement
+(2026-09-14) is **31,655 / 35,794 lines (88.44%)**, 2,247 / 2,486 functions
+(90.39%), and 84.89% regions; CI enforces an 88% line floor. It is the current
+coverage baseline and must not be represented as 100%.
 
 The iterator completion state and rest-rooting subtask is complete. The next
 subtask, general Completion records plus `catch`/`finally`, is implemented in
@@ -937,6 +937,39 @@ now records **444 pass, 0 fail and 0 unsupported** of 444 modes. The public
 class grammar follow-up classifies parenthesized-arrow heritage, duplicate or
 special-form constructors, and static method/accessor `prototype` names as
 specified parse-time errors.
+
+## P1.1/P1.2 follow-up: class fields, static blocks and strict grammar
+
+Completed 2026-09-13. Class-field initializers and class static blocks now run
+the required lexical `ContainsArguments` check at parse time. The shared AST
+walk crosses arrows, nested class heritage, and computed names, but stops at
+ordinary functions because they establish their own `arguments` binding.
+Public fields reject `constructor`; static public fields additionally reject
+`constructor` and `prototype`, for both identifier and string property names.
+The `static` contextual keyword is recognized as a modifier only when its next
+token selects a static element, so `static;` and `static = value` remain valid
+instance fields and an escaped spelling cannot select the modifier.
+
+The class parser now keeps strict mode active for the entire ClassDefinition,
+including its heritage expression, and restores the caller context on exit.
+Consequently strict-reserved class names (including escaped spellings), module
+`await` bindings, and a `with` inside a heritage function are known parse
+`SyntaxError`s. Class static blocks separately reject a lexical `return` or an
+`await` class binding without rejecting the same forms inside a nested ordinary
+function. Field initializers ending in an arrow or class block require either a
+semicolon, line terminator, or the enclosing class `}` before another token;
+this prevents the former unclassified `() => {} == arguments` parse path.
+
+The eight-worker `language/statements/class` run (8,666 modes, two-second case
+deadline, 100,000 instruction budget) is now **8,464 pass / 202 fail**, up from
+**8,367 pass / 299 fail** before this follow-up. A `(path, mode)` join finds
+**97 fail-to-pass and zero pass-to-nonpass** transitions. The new public
+pipeline regressions cover the prohibited and allowed lexical-arguments scopes,
+field termination, public field-name early errors, `static` disambiguation,
+static-block boundaries, class strictness, and module-only `await`. This is a
+class-parser progress measurement, not a complete P1.1 or P1.2 conformance
+claim; decorators, direct-eval class semantics, remaining private-field error
+paths, and wider class execution semantics remain separately tracked.
 
 ## P1.3 foundation: ordinary async-function continuations
 

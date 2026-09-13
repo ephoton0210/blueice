@@ -56,7 +56,10 @@ fn default_mode() -> String {
 }
 
 fn evaluate(request: Request) -> Value {
-    if !matches!(request.mode.as_str(), "raw" | "strict" | "module") {
+    if !matches!(
+        request.mode.as_str(),
+        "raw" | "sloppy" | "strict" | "module"
+    ) {
         return json!({
             "kind": "harness_error",
             "message": format!("unsupported test-interface mode `{}`", request.mode),

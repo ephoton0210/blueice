@@ -172,6 +172,8 @@ fn collator_options_and_bound_comparison() {
         "let r=new Intl.Collator('en-u-kn-kf-upper').resolvedOptions(); r.numeric && r.caseFirst === 'upper' && r.locale === 'en-u-kf-upper-kn'",
         "let r=new Intl.Collator('en-u-kn',{numeric:false}).resolvedOptions(); !r.numeric && r.locale === 'en'",
         "Intl.Collator.supportedLocalesOf(['en','zz','sv']).join(',') === 'en,sv'",
+        "Intl.Collator.supportedLocalesOf(['zz','de-AT-u-co-phonebk','en'],{localeMatcher:'best fit'}).join(',') === 'de-AT-u-co-phonebk,en'",
+        "new Intl.Collator(['zz','de-AT-u-co-phonebk']).resolvedOptions().locale === 'de-AT-u-co-phonebk'",
         "Object.prototype.toString.call(new Intl.Collator()) === '[object Intl.Collator]'",
         "let n=new Intl.NumberFormat();let d=Intl.DateTimeFormat();n!==d && n instanceof Intl.NumberFormat && d instanceof Intl.DateTimeFormat && Intl.Collator.call(n)!==n",
     ] {
@@ -204,6 +206,43 @@ fn collator_options_and_bound_comparison() {
     ] {
         assert!(
             matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn number_format_delegates_to_the_host_neutral_decimal_service() {
+    for source in [
+        "let n=new Intl.NumberFormat('de',{useGrouping:false,minimumFractionDigits:2,maximumFractionDigits:2}); n.format(1007.5) === '1007,50'",
+        "let n=new Intl.NumberFormat('th-u-nu-thai',{useGrouping:false,minimumFractionDigits:2,maximumFractionDigits:2}); let r=n.resolvedOptions(); n.format(1007.5) === '๑๐๐๗.๕๐' && r.locale === 'th-u-nu-thai' && r.numberingSystem === 'thai' && r.style === 'decimal' && r.useGrouping === 'false' && r.minimumFractionDigits === 2 && r.maximumFractionDigits === 2",
+        "let n=new Intl.NumberFormat('en',{useGrouping:'min2'}); n.format(1000) === '1000' && n.format(10000) === '10,000'",
+        "let r=new Intl.NumberFormat('en',{minimumFractionDigits:1.9,maximumFractionDigits:2.9}).resolvedOptions(); r.minimumFractionDigits === 1 && r.maximumFractionDigits === 2",
+        "let n=new Intl.NumberFormat('en'); n.format === n.format && n.format.name === '' && n.format.length === 1 && n.format.prototype === undefined",
+        "let n=Intl.NumberFormat('en'); let f=n.format; f(1000) === '1,000' && f.call({},1000) === '1,000' && n instanceof Intl.NumberFormat",
+        "Intl.NumberFormat.supportedLocalesOf(['en','zz','de-AT-u-nu-thai']).join(',') === 'en,de-AT-u-nu-thai'",
+        "Object.prototype.toString.call(new Intl.NumberFormat()) === '[object Intl.NumberFormat]'",
+        "function F(){} let n=Reflect.construct(Intl.NumberFormat,['de'],F); let f=Object.getOwnPropertyDescriptor(Intl.NumberFormat.prototype,'format').get.call(n); Object.getPrototypeOf(n) === F.prototype && f(5) === '5'",
+    ] {
+        match evaluate(source) {
+            Ok(value) => assert_eq!(value, Value::Bool(true), "{source}"),
+            Err(error) => panic!("{source}: {error}"),
+        }
+    }
+    for source in [
+        "Intl.NumberFormat.prototype.format",
+        "Intl.NumberFormat.prototype.resolvedOptions.call({})",
+        "new Intl.NumberFormat('en',null)",
+        "new Intl.NumberFormat('en',{useGrouping:'invalid'})",
+        "new Intl.NumberFormat('en',{minimumFractionDigits:4,maximumFractionDigits:2})",
+        "new Intl.NumberFormat('en',{minimumFractionDigits:101})",
+        "new Intl.NumberFormat('en').format(NaN)",
+    ] {
+        assert!(
+            matches!(
+                evaluate(source),
+                Err(RuntimeError::TypeError(_) | RuntimeError::RangeError(_))
+            ),
             "{source}"
         );
     }
@@ -296,6 +335,47 @@ fn collator_compare_cycles_survive_collection_and_are_reclaimed() {
     );
     run(&mut vm, "delete globalThis.f; 0");
     assert!(!vm.heap().contains(collator));
+    assert_eq!(vm.heap().stats().managed_bytes, baseline);
+}
+
+#[test]
+fn number_format_bound_format_cycles_survive_collection_and_are_reclaimed() {
+    use blueice_bluejs::{HeapConfig, VmConfig};
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 256,
+            max_heap_bytes: 256 * 1024,
+        },
+        ..Default::default()
+    })
+    .unwrap();
+    let run = |vm: &mut Vm, source| {
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap()
+    };
+    run(&mut vm, "Intl; globalThis; 0");
+    let baseline = vm.heap().stats().managed_bytes;
+    let Value::Object(formatter) = run(
+        &mut vm,
+        "globalThis.n=new Intl.NumberFormat('de',{minimumFractionDigits:2}); globalThis.n",
+    ) else {
+        panic!("expected NumberFormat")
+    };
+    run(
+        &mut vm,
+        "globalThis.f=globalThis.n.format; delete globalThis.n; 0",
+    );
+    assert!(vm.heap().contains(formatter));
+    assert_eq!(
+        run(
+            &mut vm,
+            "for(let i=0;i<30;i++){let x={};} globalThis.f(7) === '7,00'"
+        ),
+        Value::Bool(true)
+    );
+    run(&mut vm, "delete globalThis.f; 0");
+    assert!(!vm.heap().contains(formatter));
     assert_eq!(vm.heap().stats().managed_bytes, baseline);
 }
 

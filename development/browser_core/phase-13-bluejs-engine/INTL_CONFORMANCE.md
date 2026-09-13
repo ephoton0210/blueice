@@ -8,7 +8,7 @@ Run the standalone regress algorithm in a sibling `bluejs-regexp-worker` process
 
 ## Internationalization
 
-Target published ECMA-402 edition 13 (June 2026), verified at the [official publication page](https://ecma-international.org/publications-and-standards/standards/ecma-402/), rather than the living 2027 draft. ICU supplies locale/case/collation algorithms and data; BlueJS implements observable argument conversions, option order, builtin objects/descriptors and exceptions. Scope follows the preceding String task: Intl.Collator, Intl.getCanonicalLocales, Intl.Locale, its Locale-info query methods and the three locale-sensitive String methods. This is not the entire ECMA-402 library; NumberFormat, DateTimeFormat, DisplayNames, DurationFormat, ListFormat, PluralRules, RelativeTimeFormat, Segmenter and supportedValuesOf remain unimplemented.
+Target published ECMA-402 edition 13 (June 2026), verified at the [official publication page](https://ecma-international.org/publications-and-standards/standards/ecma-402/), rather than the living 2027 draft. ICU supplies locale/case/collation algorithms and data; BlueJS implements observable argument conversions, option order, builtin objects/descriptors and exceptions. Scope follows the preceding String task: Intl.Collator, Intl.getCanonicalLocales, Intl.Locale, its Locale-info query methods and the three locale-sensitive String methods. A deliberately bounded finite-decimal `Intl.NumberFormat` adapter now delegates to the host-neutral Phase 25 service for `format`, `resolvedOptions` and `supportedLocalesOf`; it is not full NumberFormat. DateTimeFormat, DisplayNames, DurationFormat, ListFormat, PluralRules, RelativeTimeFormat, Segmenter and supportedValuesOf remain unimplemented in BlueJS.
 
 ## Test262
 

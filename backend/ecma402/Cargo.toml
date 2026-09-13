@@ -5,6 +5,14 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+fixed_decimal = { version = "=0.7.2", features = ["ryu"] }
 icu_collator = "=2.2.0"
+icu_decimal = { version = "=2.2.0", features = ["ryu"] }
+icu_datetime = "=2.2.0"
+icu_list = "=2.2.0"
 icu_locale = "=2.2.0"
 icu_locale_core = "=2.3.0"
+icu_plurals = "=2.2.0"
+icu_provider = "=2.3.1"
+icu_segmenter = "=2.2.0"
+writeable = "=0.6.4"

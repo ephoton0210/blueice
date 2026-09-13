@@ -448,6 +448,9 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         .out_dir
         .map(|path| configured_output_path(&root, &path))
         .transpose()?;
+    if let Some(out_dir) = &out_dir {
+        ensure_existing_ancestor_within(out_dir, &root, "config outDir")?;
+    }
     let mut imports = BTreeMap::new();
     for (specifier, target) in config.imports {
         if specifier.is_empty() || specifier.starts_with('.') || specifier.starts_with('/') {
@@ -535,6 +538,26 @@ fn ensure_within(path: &Path, root: &Path, label: &str) -> Result<(), String> {
             root.display()
         ))
     }
+}
+
+/// Checks the existing portion of a future path after resolving symlinks. A
+/// syntactically root-relative output such as `linked/dist` must not acquire
+/// authority outside the project through an already-existing `linked`
+/// symlink.
+fn ensure_existing_ancestor_within(path: &Path, root: &Path, label: &str) -> Result<(), String> {
+    let mut ancestor = path;
+    while !ancestor.exists() {
+        ancestor = ancestor
+            .parent()
+            .ok_or_else(|| format!("{label} {} has no existing ancestor", path.display()))?;
+    }
+    let canonical = fs::canonicalize(ancestor).map_err(|error| {
+        format!(
+            "cannot resolve existing ancestor {} for {label}: {error}",
+            ancestor.display()
+        )
+    })?;
+    ensure_within(&canonical, root, label)
 }
 
 fn ensure_not_declaration_entry(path: &Path, label: &str) -> Result<(), String> {
@@ -694,6 +717,7 @@ fn publish_build(
             "output directory must not replace the project root",
         ));
     }
+    ensure_output_does_not_contain_sources(&output, root, artifacts, declaration_modules)?;
     let parent = output
         .parent()
         .ok_or_else(|| io::Error::other("output directory has no parent"))?;
@@ -777,6 +801,35 @@ fn publish_build(
         return Err(error);
     }
     fs::remove_dir_all(backup)
+}
+
+/// An atomic publish replaces the selected output directory. Reject an output
+/// directory that contains an input module before staging anything, so a
+/// configuration such as `outDir: "src"` cannot replace source files.
+fn ensure_output_does_not_contain_sources(
+    output: &Path,
+    root: &Path,
+    artifacts: &std::collections::BTreeMap<String, blueice_bluets::BuildArtifact>,
+    declaration_modules: &std::collections::BTreeMap<String, String>,
+) -> io::Result<()> {
+    for module_id in artifacts.keys().chain(declaration_modules.keys()) {
+        let module_path = Path::new(module_id);
+        let source = if module_path.is_absolute() {
+            module_path.to_path_buf()
+        } else {
+            root.join(module_path)
+        };
+        if source.starts_with(output) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "output directory {} would replace source module {module_id}",
+                    output.display()
+                ),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn absolute_existing_path(path: &Path) -> io::Result<PathBuf> {

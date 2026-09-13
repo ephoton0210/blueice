@@ -4,11 +4,8 @@
 
 use super::*;
 use crate::intl;
-use icu_collator::options::{AlternateHandling, CaseLevel, CollatorOptions, MaxVariable, Strength};
-use icu_collator::preferences::{CollationCaseFirst, CollationNumericOrdering};
 use icu_locale_core::{
     extensions::unicode::Value as UnicodeValue,
-    locale,
     subtags::{Language, Region, Script, Variant, Variants},
     Locale,
 };
@@ -98,9 +95,9 @@ impl Vm {
             )?;
             self.globals.insert("%Intl.Collator%".into(), constructor);
             // NumberFormat and DateTimeFormat are mandatory service
-            // constructors. Their formatting algorithms remain separate, but
-            // their shared callable/constructible allocation boundary is
-            // observable by the Collator legacy-call tests and must exist.
+            // constructors. NumberFormat delegates its finite decimal slice to
+            // blueice-ecma402; DateTimeFormat retains its allocation-only
+            // boundary until its own host-neutral formatter is complete.
             for (name, service) in [
                 ("NumberFormat", native::IntlService::NumberFormat),
                 ("DateTimeFormat", native::IntlService::DateTimeFormat),
@@ -116,7 +113,7 @@ impl Vm {
                 let prototype =
                     self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
                 self.stack.push(Value::Object(prototype));
-                let result = (|| {
+                let result: Result<(), RuntimeError> = (|| {
                     self.define_data(
                         constructor,
                         "prototype",
@@ -132,7 +129,41 @@ impl Vm {
                         true,
                         false,
                         true,
-                    )
+                    )?;
+                    if service == native::IntlService::NumberFormat {
+                        self.define_data(
+                            prototype,
+                            JsSymbol::well_known("toStringTag"),
+                            Value::String("Intl.NumberFormat".into()),
+                            false,
+                            false,
+                            true,
+                        )?;
+                        self.install_native(
+                            constructor,
+                            function_prototype,
+                            "supportedLocalesOf",
+                            1,
+                            NativeFunction::NumberFormatSupportedLocales,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "resolvedOptions",
+                            0,
+                            NativeFunction::NumberFormatResolvedOptions,
+                        )?;
+                        self.install_getter(
+                            prototype,
+                            function_prototype,
+                            "format".into(),
+                            "get format",
+                            NativeFunction::NumberFormatFormatGetter,
+                        )?;
+                        self.globals
+                            .insert("%Intl.NumberFormat%".into(), constructor);
+                    }
+                    Ok(())
                 })();
                 self.stack.pop();
                 result?;
@@ -333,13 +364,29 @@ impl Vm {
     pub(super) fn supported_locales(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let locales = self.canonical_locales(native::argument(args, 0))?;
         let options = self.intl_options(native::argument(args, 1))?;
-        self.string_option(&options, "localeMatcher", &["lookup", "best fit"])?;
+        let matcher = self.locale_matcher(&options)?;
+        let locales = blueice_ecma402::supported_collation_locales(&locales, matcher);
         self.array_from(
             locales
                 .iter()
-                .filter(|locale| intl::supported(&locale.locale))
                 .map(|l| Value::String(l.to_string().into()))
                 .collect(),
+        )
+    }
+
+    fn locale_matcher(
+        &mut self,
+        options: &Value,
+    ) -> Result<blueice_ecma402::LocaleMatcher, RuntimeError> {
+        Ok(
+            match self
+                .string_option(options, "localeMatcher", &["lookup", "best fit"])?
+                .as_deref()
+            {
+                Some("best fit") => blueice_ecma402::LocaleMatcher::BestFit,
+                Some("lookup") | None => blueice_ecma402::LocaleMatcher::Lookup,
+                Some(_) => unreachable!("string_option validates localeMatcher"),
+            },
         )
     }
 
@@ -353,7 +400,7 @@ impl Vm {
         let usage = self
             .string_option(&options, "usage", &["sort", "search"])?
             .unwrap_or_else(|| "sort".into());
-        self.string_option(&options, "localeMatcher", &["lookup", "best fit"])?;
+        let locale_matcher = self.locale_matcher(&options)?;
         let collation = self.string_option(&options, "collation", &[])?;
         if let Some(collation) = &collation {
             if !collation.split('-').all(|part| {
@@ -369,56 +416,6 @@ impl Vm {
             Some(self.to_boolean(&numeric)?)
         };
         let case_first = self.string_option(&options, "caseFirst", &["upper", "lower", "false"])?;
-        let selected = locales
-            .into_iter()
-            .find(|locale| intl::supported(&locale.locale))
-            .map(|locale| locale.locale)
-            .unwrap_or(locale!("en-US"));
-        let mut resolved = Locale::from(selected.id.clone());
-        let mut algorithm_locale = resolved.clone();
-        let mut selected_collation = "default".to_string();
-        // Retain a supported extension only when an option does not override it.
-        for (key, option) in [
-            ("co", collation.map(|s| s.to_ascii_lowercase())),
-            ("kf", case_first),
-            ("kn", numeric.map(|b| b.to_string())),
-        ] {
-            let extension = intl::keyword(&selected, key).map(|s| {
-                if key == "kn" && s.is_empty() {
-                    "true".into()
-                } else {
-                    s
-                }
-            });
-            let valid = |value: &str| match key {
-                "co" => usage == "sort" && intl::supports_collation(&selected, value),
-                "kf" => ["upper", "lower", "false"].contains(&value),
-                _ => ["true", "false"].contains(&value),
-            };
-            let extension = extension.filter(|s| valid(s));
-            let choice = option.filter(|s| valid(s)).or_else(|| extension.clone());
-            if let Some(value) = choice {
-                if extension.as_ref() == Some(&value) {
-                    resolved
-                        .extensions
-                        .unicode
-                        .keywords
-                        .set(key.parse().unwrap(), value.parse().unwrap());
-                }
-                algorithm_locale
-                    .extensions
-                    .unicode
-                    .keywords
-                    .set(key.parse().unwrap(), value.parse().unwrap());
-                if key == "co" {
-                    selected_collation = value;
-                }
-            }
-        }
-        let mut preferences = intl::preferences(&algorithm_locale);
-        if usage == "search" {
-            preferences.collation_type = Some(icu_collator::preferences::CollationType::Search);
-        }
         let sensitivity = self
             .string_option(
                 &options,
@@ -428,42 +425,37 @@ impl Vm {
             .unwrap_or_else(|| "variant".into());
         let punctuation = self.get_property(&options, &"ignorePunctuation".into())?;
         let ignore_punctuation = if punctuation == Value::Undefined {
-            selected.id.language.as_str() == "th"
+            None
         } else {
-            self.to_boolean(&punctuation)?
+            Some(self.to_boolean(&punctuation)?)
         };
-        let mut options = CollatorOptions::default();
-        options.strength = Some(match sensitivity.as_str() {
-            "base" | "case" => Strength::Primary,
-            "accent" => Strength::Secondary,
-            _ => Strength::Tertiary,
-        });
-        options.case_level = Some(if sensitivity == "case" {
-            CaseLevel::On
-        } else {
-            CaseLevel::Off
-        });
-        options.alternate_handling = Some(if ignore_punctuation {
-            AlternateHandling::Shifted
-        } else {
-            AlternateHandling::NonIgnorable
-        });
-        options.max_variable = Some(MaxVariable::Punctuation);
-        // All preferences are validated above; the bundled provider includes
-        // root fallback plus every advertised tailoring. Missing data here
-        // is a broken build invariant, not a user locale RangeError.
-        let algorithm = icu_collator::Collator::try_new(preferences, options)
-            .expect("bundled ICU collation data includes validated preferences");
-        let german_search = usage == "search" && selected.id.language.as_str() == "de";
-        Ok(Rc::new(intl::Collator {
-            algorithm,
-            locale: resolved.to_string(),
-            usage,
-            sensitivity,
+        let options = blueice_ecma402::CollatorOptions {
+            locale_matcher,
+            usage: match usage.as_str() {
+                "sort" => blueice_ecma402::CollatorUsage::Sort,
+                "search" => blueice_ecma402::CollatorUsage::Search,
+                _ => unreachable!("string_option validates usage"),
+            },
+            collation,
+            numeric,
+            case_first: case_first.map(|value| match value.as_str() {
+                "upper" => blueice_ecma402::CaseFirst::Upper,
+                "lower" => blueice_ecma402::CaseFirst::Lower,
+                "false" => blueice_ecma402::CaseFirst::False,
+                _ => unreachable!("string_option validates caseFirst"),
+            }),
+            sensitivity: match sensitivity.as_str() {
+                "base" => blueice_ecma402::Sensitivity::Base,
+                "accent" => blueice_ecma402::Sensitivity::Accent,
+                "case" => blueice_ecma402::Sensitivity::Case,
+                "variant" => blueice_ecma402::Sensitivity::Variant,
+                _ => unreachable!("string_option validates sensitivity"),
+            },
             ignore_punctuation,
-            collation: selected_collation,
-            german_search,
-        }))
+        };
+        blueice_ecma402::Collator::try_new(&locales, options)
+            .map(Rc::new)
+            .map_err(|_| RuntimeError::Unsupported("unavailable ICU collation data"))
     }
 
     pub(super) fn create_collator(
@@ -492,8 +484,12 @@ impl Vm {
     pub(super) fn create_intl_service(
         &mut self,
         service: native::IntlService,
+        args: &[Value],
         construct: bool,
     ) -> Result<Value, RuntimeError> {
+        if service == native::IntlService::NumberFormat {
+            return self.create_number_format(args, construct);
+        }
         self.intl_global()?;
         let name = match service {
             native::IntlService::NumberFormat => "NumberFormat",
@@ -513,6 +509,199 @@ impl Vm {
         };
         self.with_roots(|heap| heap.alloc_object(Some(prototype)))
             .map(Value::Object)
+    }
+
+    fn number_grouping(
+        &mut self,
+        options: &Value,
+    ) -> Result<blueice_ecma402::NumberGrouping, RuntimeError> {
+        let value = self.get_property(options, &"useGrouping".into())?;
+        match value {
+            Value::Undefined => Ok(blueice_ecma402::NumberGrouping::Auto),
+            Value::Bool(true) => Ok(blueice_ecma402::NumberGrouping::Always),
+            Value::Bool(false) => Ok(blueice_ecma402::NumberGrouping::Never),
+            value => match self
+                .coerce_string(&value)?
+                .to_utf8()
+                .map_err(|_| RuntimeError::RangeError("invalid useGrouping option".into()))?
+                .as_str()
+            {
+                "auto" => Ok(blueice_ecma402::NumberGrouping::Auto),
+                "always" => Ok(blueice_ecma402::NumberGrouping::Always),
+                "min2" => Ok(blueice_ecma402::NumberGrouping::Min2),
+                "false" | "never" => Ok(blueice_ecma402::NumberGrouping::Never),
+                _ => Err(RuntimeError::RangeError(
+                    "invalid useGrouping option".into(),
+                )),
+            },
+        }
+    }
+
+    fn number_fraction_digits_option(
+        &mut self,
+        options: &Value,
+        name: &str,
+    ) -> Result<Option<u8>, RuntimeError> {
+        let value = self.get_property(options, &name.into())?;
+        if value == Value::Undefined {
+            return Ok(None);
+        }
+        let number = self.coerce_number(&value)?;
+        if !number.is_finite() || !(0.0..=100.0).contains(&number) {
+            return Err(RuntimeError::RangeError(format!("invalid {name} option")));
+        }
+        Ok(Some(number.floor() as u8))
+    }
+
+    fn resolve_number_format(
+        &mut self,
+        locales: &Value,
+        options: &Value,
+    ) -> Result<Rc<intl::NumberFormat>, RuntimeError> {
+        let locales = self.canonical_locales(locales)?;
+        let options = self.intl_options(options)?;
+        let options = blueice_ecma402::NumberFormatOptions {
+            locale_matcher: self.locale_matcher(&options)?,
+            use_grouping: self.number_grouping(&options)?,
+            minimum_fraction_digits: self
+                .number_fraction_digits_option(&options, "minimumFractionDigits")?,
+            maximum_fraction_digits: self
+                .number_fraction_digits_option(&options, "maximumFractionDigits")?,
+        };
+        blueice_ecma402::NumberFormat::try_new(&locales, options)
+            .map(Rc::new)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+    }
+
+    pub(super) fn number_format_supported_locales(
+        &mut self,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let locales = self.canonical_locales(native::argument(args, 0))?;
+        let options = self.intl_options(native::argument(args, 1))?;
+        let matcher = self.locale_matcher(&options)?;
+        let locales = blueice_ecma402::supported_number_format_locales(&locales, matcher);
+        self.array_from(
+            locales
+                .iter()
+                .map(|locale| Value::String(locale.to_string().into()))
+                .collect(),
+        )
+    }
+
+    fn create_number_format(
+        &mut self,
+        args: &[Value],
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        self.intl_global()?;
+        let constructor = self.globals["%Intl.NumberFormat%"];
+        let default = self
+            .heap
+            .get(constructor, "prototype")?
+            .object_id()
+            .expect("Intl.NumberFormat.prototype is an object");
+        let prototype = if construct {
+            self.constructor_prototype(default)?
+        } else {
+            default
+        };
+        self.stack.push(Value::Object(prototype));
+        let data =
+            self.resolve_number_format(native::argument(args, 0), native::argument(args, 1))?;
+        self.with_roots(|heap| heap.alloc_number_format(data, prototype))
+            .map(Value::Object)
+    }
+
+    pub(super) fn number_format_data(
+        &self,
+        value: &Value,
+    ) -> Result<Rc<intl::NumberFormat>, RuntimeError> {
+        if let Value::Object(id) = value {
+            if let Some(data) = self.heap.number_format(*id)? {
+                return Ok(data);
+            }
+        }
+        Err(RuntimeError::TypeError(
+            "receiver is not an Intl.NumberFormat".into(),
+        ))
+    }
+
+    pub(super) fn number_format_format_getter(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        self.number_format_data(receiver)?;
+        let id = receiver.object_id().unwrap();
+        if let Some(function) = self.heap.number_format_format(id) {
+            return Ok(Value::Object(function));
+        }
+        let constructor = self.string_intrinsics()?.0;
+        let prototype = self.heap.prototype(constructor)?.unwrap();
+        let target = self.with_roots(|heap| {
+            heap.alloc_native_function(NativeFunction::NumberFormatFormat, "", prototype)
+        })?;
+        let bound = crate::heap::BoundFunction {
+            target,
+            this: receiver.clone(),
+            args: vec![],
+            constructible: false,
+        };
+        let function = self.with_roots(|heap| heap.alloc_bound_function(bound, Some(prototype)))?;
+        self.stack.push(Value::Object(function));
+        self.define_data(function, "length", Value::Number(1.0), false, false, true)?;
+        self.define_data(
+            function,
+            "name",
+            Value::String("".into()),
+            false,
+            false,
+            true,
+        )?;
+        self.heap.set_number_format_format(id, function);
+        Ok(Value::Object(function))
+    }
+
+    pub(super) fn number_format_resolved_options(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.number_format_data(receiver)?;
+        let resolved = data.resolved_options();
+        let prototype = self.object_prototype;
+        let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        self.stack.push(Value::Object(result));
+        for (key, value) in [
+            ("locale", Value::String(resolved.locale.as_str().into())),
+            (
+                "numberingSystem",
+                Value::String(resolved.numbering_system.as_str().into()),
+            ),
+            ("style", Value::String("decimal".into())),
+            (
+                "useGrouping",
+                Value::String(
+                    match resolved.use_grouping {
+                        blueice_ecma402::NumberGrouping::Auto => "auto",
+                        blueice_ecma402::NumberGrouping::Never => "false",
+                        blueice_ecma402::NumberGrouping::Always => "always",
+                        blueice_ecma402::NumberGrouping::Min2 => "min2",
+                    }
+                    .into(),
+                ),
+            ),
+            (
+                "minimumFractionDigits",
+                Value::Number(resolved.minimum_fraction_digits.into()),
+            ),
+            (
+                "maximumFractionDigits",
+                Value::Number(resolved.maximum_fraction_digits.into()),
+            ),
+        ] {
+            self.define_data(result, key, value, true, true, true)?;
+        }
+        Ok(Value::Object(result))
     }
 
     pub(super) fn collator_data(&self, value: &Value) -> Result<Rc<intl::Collator>, RuntimeError> {
@@ -566,30 +755,50 @@ impl Vm {
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
         let data = self.collator_data(receiver)?;
-        let resolved = data.algorithm.resolved_options();
+        let resolved = data.resolved_options();
         let prototype = self.object_prototype;
         let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         self.stack.push(Value::Object(result));
         for (key, value) in [
-            ("locale", Value::String(data.locale.as_str().into())),
-            ("usage", Value::String(data.usage.as_str().into())),
+            ("locale", Value::String(resolved.locale.as_str().into())),
+            (
+                "usage",
+                Value::String(
+                    match resolved.usage {
+                        blueice_ecma402::CollatorUsage::Sort => "sort",
+                        blueice_ecma402::CollatorUsage::Search => "search",
+                    }
+                    .into(),
+                ),
+            ),
             (
                 "sensitivity",
-                Value::String(data.sensitivity.as_str().into()),
+                Value::String(
+                    match resolved.sensitivity {
+                        blueice_ecma402::Sensitivity::Base => "base",
+                        blueice_ecma402::Sensitivity::Accent => "accent",
+                        blueice_ecma402::Sensitivity::Case => "case",
+                        blueice_ecma402::Sensitivity::Variant => "variant",
+                    }
+                    .into(),
+                ),
             ),
-            ("ignorePunctuation", Value::Bool(data.ignore_punctuation)),
-            ("collation", Value::String(data.collation.as_str().into())),
             (
-                "numeric",
-                Value::Bool(resolved.numeric == CollationNumericOrdering::True),
+                "ignorePunctuation",
+                Value::Bool(resolved.ignore_punctuation),
             ),
+            (
+                "collation",
+                Value::String(resolved.collation.as_str().into()),
+            ),
+            ("numeric", Value::Bool(resolved.numeric)),
             (
                 "caseFirst",
                 Value::String(
                     match resolved.case_first {
-                        CollationCaseFirst::Upper => "upper",
-                        CollationCaseFirst::Lower => "lower",
-                        _ => "false",
+                        blueice_ecma402::CaseFirst::Upper => "upper",
+                        blueice_ecma402::CaseFirst::Lower => "lower",
+                        blueice_ecma402::CaseFirst::False => "false",
                     }
                     .into(),
                 ),
@@ -671,11 +880,8 @@ impl Vm {
         locale: intl::CanonicalLocale,
         prototype: ObjectId,
     ) -> Result<Value, RuntimeError> {
-        let (locale, canonical) = locale.into_parts();
-        self.with_roots(|heap| {
-            heap.alloc_intl_locale(Rc::new(intl::Locale { locale, canonical }), prototype)
-        })
-        .map(Value::Object)
+        self.with_roots(|heap| heap.alloc_intl_locale(Rc::new(intl::Locale { locale }), prototype))
+            .map(Value::Object)
     }
 
     pub(super) fn create_locale(
@@ -790,7 +996,7 @@ impl Vm {
         // have the same observable result.
         let serialized = locale.to_string();
         let locale = if initial_name == "posix" && serialized == "und-posix" {
-            intl::CanonicalLocale::with_canonical(locale, initial_name)
+            intl::CanonicalLocale::from_parts(locale, initial_name)
         } else {
             intl::canonicalize(&JsString::from(serialized))?
         };
@@ -818,7 +1024,7 @@ impl Vm {
 
     pub(super) fn locale_to_string(&self, receiver: &Value) -> Result<Value, RuntimeError> {
         Ok(Value::String(
-            self.locale_data(receiver)?.canonical.as_str().into(),
+            self.locale_data(receiver)?.locale.as_str().into(),
         ))
     }
 
@@ -828,7 +1034,7 @@ impl Vm {
         maximize: bool,
     ) -> Result<Value, RuntimeError> {
         let data = self.locale_data(receiver)?;
-        if data.canonical == "posix" {
+        if data.locale.as_str() == "posix" {
             self.intl_global()?;
             let constructor = self.globals["%Intl.Locale%"];
             let prototype = self
@@ -838,7 +1044,7 @@ impl Vm {
                 .unwrap();
             return self.locale_instance(intl::CanonicalLocale::from(data.as_ref()), prototype);
         }
-        let mut locale = data.locale.clone();
+        let mut locale = data.locale.locale().clone();
         let expander = icu_locale::LocaleExpander::new_extended();
         if maximize {
             expander.maximize(&mut locale.id);
@@ -863,7 +1069,8 @@ impl Vm {
         receiver: &Value,
         name: native::LocaleGetter,
     ) -> Result<Value, RuntimeError> {
-        let locale = &self.locale_data(receiver)?.locale;
+        let data = self.locale_data(receiver)?;
+        let locale = data.locale.locale();
         let value = match name {
             native::LocaleGetter::BaseName => Value::String(locale.id.to_string().into()),
             native::LocaleGetter::Language => Value::String(locale.id.language.to_string().into()),
@@ -924,7 +1131,7 @@ impl Vm {
         receiver: &Value,
         operation: native::LocaleInfo,
     ) -> Result<Value, RuntimeError> {
-        let locale = self.locale_data(receiver)?.locale.clone();
+        let locale = self.locale_data(receiver)?.locale.locale().clone();
         match operation {
             native::LocaleInfo::Calendars => {
                 let calendar = intl::keyword(&locale, "ca").unwrap_or_else(|| "gregory".into());

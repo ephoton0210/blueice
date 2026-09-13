@@ -284,6 +284,18 @@ fn adapter_reports_invalid_requested_modules_at_resolution() {
     }
 }
 
+#[test]
+fn adapter_executes_number_format_through_the_json_lines_interface() {
+    let replies = adapter(
+        &[json!({
+            "source": "let n=new Intl.NumberFormat('th-u-nu-thai',{useGrouping:false,minimumFractionDigits:2,maximumFractionDigits:2});assert.sameValue(n.format(1007.5),'๑๐๐๗.๕๐');assert.sameValue(n.resolvedOptions().numberingSystem,'thai');assert.sameValue(Intl.NumberFormat.supportedLocalesOf(['zz','th-u-nu-thai']).join(','),'th-u-nu-thai')",
+            "mode": "sloppy",
+        })],
+        None,
+    );
+    assert_eq!(replies, vec![json!({"kind":"ok", "phase":"runtime"})]);
+}
+
 #[cfg(unix)]
 #[test]
 fn regex_protocol_faults_and_missing_helper_fail_closed() {

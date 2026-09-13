@@ -349,6 +349,7 @@ impl Heap {
                             .sum::<usize>()
                 }
                 ObjectKind::Collator { data, .. } => data.bytes(),
+                ObjectKind::NumberFormat { data, .. } => data.bytes(),
                 ObjectKind::IntlLocale(data) => data.bytes(),
                 ObjectKind::BoxedPrimitive(value) => value.payload_bytes(),
                 ObjectKind::NativeFunction { initial_name, .. } => initial_name.byte_len(),

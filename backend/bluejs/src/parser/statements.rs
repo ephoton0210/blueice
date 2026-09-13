@@ -534,6 +534,9 @@ impl Parser {
     }
 
     pub(super) fn parse_return_stmt(&mut self) -> Result<Stmt, ParseError> {
+        if self.static_block_function_depths.last() == Some(&self.function_depth) {
+            return Err(self.syntax_error("return is not valid in a class static block"));
+        }
         self.advance();
         if self.check_punct(Punct::Semicolon)
             || self.check_punct(Punct::RBrace)
@@ -608,6 +611,9 @@ impl Parser {
     }
 
     pub(super) fn parse_with_stmt(&mut self) -> Result<Stmt, ParseError> {
+        if self.strict {
+            return Err(self.syntax_error("with statements are not valid in strict mode"));
+        }
         self.advance();
         self.expect_punct(Punct::LParen)?;
         let object = self.parse_expression()?;

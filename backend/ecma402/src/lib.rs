@@ -4,12 +4,41 @@
 
 //! The data-facing, host-neutral core of ECMA-402 internationalization.
 //!
-//! This crate owns locale identifier canonicalization and ICU-backed locale
-//! data selection. ECMAScript object/Realm semantics, coercion, and UTF-16
-//! handling intentionally remain in the embedding runtime.
+//! This crate owns locale identifier canonicalization, ICU-backed locale data
+//! selection, and UTF-16 collation. ECMAScript object/Realm semantics and
+//! coercion intentionally remain in the embedding runtime.
 
-use icu_collator::CollatorPreferences;
+use fixed_decimal::{SignedRoundingMode, UnsignedRoundingMode};
+use icu_collator::{
+    options::{
+        AlternateHandling, CaseLevel, CollatorOptions as IcuCollatorOptions, MaxVariable, Strength,
+    },
+    preferences::{CollationCaseFirst, CollationNumericOrdering, CollationType},
+    CollatorBorrowed, CollatorPreferences,
+};
+use icu_decimal::{
+    input::{Decimal, FloatPrecision},
+    options::{DecimalFormatterOptions, GroupingStrategy},
+    preferences::NumberingSystem,
+    provider::{Baked as DecimalData, DecimalDigitsV1, DecimalSymbolsV1},
+    DecimalFormatter, DecimalFormatterPreferences,
+};
+use icu_list::{
+    options::{ListFormatterOptions as IcuListFormatterOptions, ListLength as IcuListLength},
+    ListFormatter as IcuListFormatter, ListFormatterPreferences,
+};
 use icu_locale_core::Locale as IcuLocale;
+use icu_plurals::{
+    PluralCategory as IcuPluralCategory, PluralRuleType as IcuPluralRuleType,
+    PluralRules as IcuPluralRules, PluralRulesOptions as IcuPluralRulesOptions,
+};
+use icu_provider::{DataIdentifierBorrowed, DataMarker, DataProvider, DataRequest};
+use icu_segmenter::{
+    options::{SentenceBreakOptions, WordBreakOptions},
+    GraphemeClusterSegmenter, GraphemeClusterSegmenterBorrowed, SentenceSegmenter, WordSegmenter,
+};
+use std::{any::TypeId, cell::RefCell, cmp::Ordering};
+use writeable::{Part, PartsWrite, Writeable};
 
 /// An error from structurally validating and canonicalizing an ECMA-402
 /// Unicode locale identifier.
@@ -47,7 +76,12 @@ impl CanonicalLocale {
         Self { locale, canonical }
     }
 
-    fn with_canonical(locale: IcuLocale, canonical: impl Into<String>) -> Self {
+    /// Builds a canonical locale from its ICU data locale and ECMA-402 name.
+    ///
+    /// This is primarily useful to hosts that apply locale options to an
+    /// already-canonicalized tag. Hosts should prefer [`canonicalize`] for
+    /// untrusted locale input.
+    pub fn from_parts(locale: IcuLocale, canonical: impl Into<String>) -> Self {
         Self {
             locale,
             canonical: canonical.into(),
@@ -132,10 +166,230 @@ pub fn canonicalize(tag: &str) -> Result<CanonicalLocale, LocaleError> {
     canonicalize_unicode_keyword_aliases(&mut locale);
 
     Ok(if posix_language {
-        CanonicalLocale::with_canonical(locale, "posix")
+        CanonicalLocale::from_parts(locale, "posix")
     } else {
         CanonicalLocale::new(locale)
     })
+}
+
+/// Typed, host-neutral options for applying `Intl.Locale` changes to a tag.
+///
+/// An embedding host performs observable input coercion and option-property
+/// ordering before it creates this value. This service owns structural
+/// validation, subtag application and final canonicalization.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct LocaleOptions {
+    /// Replaces the language subtag.
+    pub language: Option<String>,
+    /// Replaces the script subtag.
+    pub script: Option<String>,
+    /// Replaces the region subtag.
+    pub region: Option<String>,
+    /// Replaces the hyphen-separated variant list.
+    pub variants: Option<String>,
+    /// Sets Unicode key `ca`.
+    pub calendar: Option<String>,
+    /// Sets Unicode key `co`.
+    pub collation: Option<String>,
+    /// Sets Unicode key `hc`.
+    pub hour_cycle: Option<String>,
+    /// Sets Unicode key `kf`.
+    pub case_first: Option<String>,
+    /// Sets Unicode key `kn`.
+    pub numeric: Option<bool>,
+    /// Sets Unicode key `nu`.
+    pub numbering_system: Option<String>,
+    /// Sets Unicode key `fw`; numeric weekday forms are accepted.
+    pub first_day_of_week: Option<String>,
+}
+
+/// A structurally invalid [`LocaleOptions`] field.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LocaleOptionError {
+    /// The `language` option was not a language subtag.
+    InvalidLanguage,
+    /// The `script` option was not a script subtag.
+    InvalidScript,
+    /// The `region` option was not a region subtag.
+    InvalidRegion,
+    /// The `variants` option was malformed or duplicated a variant.
+    InvalidVariants,
+    /// The `calendar` option was not a Unicode type.
+    InvalidCalendar,
+    /// The `collation` option was not a Unicode type.
+    InvalidCollation,
+    /// The `hourCycle` option was unsupported.
+    InvalidHourCycle,
+    /// The `caseFirst` option was unsupported.
+    InvalidCaseFirst,
+    /// The `numberingSystem` option was not a Unicode type.
+    InvalidNumberingSystem,
+    /// The `firstDayOfWeek` option was not a Unicode type.
+    InvalidFirstDayOfWeek,
+}
+
+impl std::fmt::Display for LocaleOptionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let option = match self {
+            Self::InvalidLanguage => "language",
+            Self::InvalidScript => "script",
+            Self::InvalidRegion => "region",
+            Self::InvalidVariants => "variants",
+            Self::InvalidCalendar => "calendar",
+            Self::InvalidCollation => "collation",
+            Self::InvalidHourCycle => "hourCycle",
+            Self::InvalidCaseFirst => "caseFirst",
+            Self::InvalidNumberingSystem => "numberingSystem",
+            Self::InvalidFirstDayOfWeek => "firstDayOfWeek",
+        };
+        write!(formatter, "invalid {option} option")
+    }
+}
+
+impl std::error::Error for LocaleOptionError {}
+
+/// Applies typed locale options and returns the fully canonicalized result.
+pub fn apply_locale_options(
+    initial: &CanonicalLocale,
+    options: &LocaleOptions,
+) -> Result<CanonicalLocale, LocaleOptionError> {
+    let initial_name = initial.as_str();
+    let mut locale = initial.locale().clone();
+    if let Some(language) = &options.language {
+        locale.id.language = language
+            .parse::<icu_locale_core::subtags::Language>()
+            .map_err(|_| LocaleOptionError::InvalidLanguage)?;
+    }
+    if let Some(script) = &options.script {
+        locale.id.script = Some(
+            script
+                .parse::<icu_locale_core::subtags::Script>()
+                .map_err(|_| LocaleOptionError::InvalidScript)?,
+        );
+    }
+    if let Some(region) = &options.region {
+        locale.id.region = Some(
+            region
+                .parse::<icu_locale_core::subtags::Region>()
+                .map_err(|_| LocaleOptionError::InvalidRegion)?,
+        );
+    }
+    if let Some(variants) = &options.variants {
+        if variants.is_empty() {
+            return Err(LocaleOptionError::InvalidVariants);
+        }
+        let mut values = variants
+            .split('-')
+            .map(|variant| {
+                variant
+                    .parse::<icu_locale_core::subtags::Variant>()
+                    .map_err(|_| LocaleOptionError::InvalidVariants)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        values.sort();
+        if values.windows(2).any(|values| values[0] == values[1]) {
+            return Err(LocaleOptionError::InvalidVariants);
+        }
+        locale.id.variants = icu_locale_core::subtags::Variants::from_vec_unchecked(values);
+    }
+    set_locale_keyword(
+        &mut locale,
+        "ca",
+        options.calendar.as_deref(),
+        LocaleOptionError::InvalidCalendar,
+    )?;
+    set_locale_keyword(
+        &mut locale,
+        "co",
+        options.collation.as_deref(),
+        LocaleOptionError::InvalidCollation,
+    )?;
+    if let Some(hour_cycle) = &options.hour_cycle {
+        if !matches!(hour_cycle.as_str(), "h11" | "h12" | "h23" | "h24") {
+            return Err(LocaleOptionError::InvalidHourCycle);
+        }
+        set_locale_keyword(
+            &mut locale,
+            "hc",
+            Some(hour_cycle),
+            LocaleOptionError::InvalidHourCycle,
+        )?;
+    }
+    if let Some(case_first) = &options.case_first {
+        if !matches!(case_first.as_str(), "upper" | "lower" | "false") {
+            return Err(LocaleOptionError::InvalidCaseFirst);
+        }
+        set_locale_keyword(
+            &mut locale,
+            "kf",
+            Some(case_first),
+            LocaleOptionError::InvalidCaseFirst,
+        )?;
+    }
+    if let Some(numeric) = options.numeric {
+        let key = "kn".parse().expect("kn is a Unicode locale key");
+        let value = if numeric {
+            icu_locale_core::extensions::unicode::Value::default()
+        } else {
+            "false".parse().expect("false is a Unicode locale value")
+        };
+        locale.extensions.unicode.keywords.set(key, value);
+    }
+    set_locale_keyword(
+        &mut locale,
+        "nu",
+        options.numbering_system.as_deref(),
+        LocaleOptionError::InvalidNumberingSystem,
+    )?;
+    if let Some(first_day) = &options.first_day_of_week {
+        let first_day = match first_day.as_str() {
+            "0" | "7" => "sun",
+            "1" => "mon",
+            "2" => "tue",
+            "3" => "wed",
+            "4" => "thu",
+            "5" => "fri",
+            "6" => "sat",
+            value => value,
+        };
+        set_locale_keyword(
+            &mut locale,
+            "fw",
+            Some(first_day),
+            LocaleOptionError::InvalidFirstDayOfWeek,
+        )?;
+    }
+
+    let serialized = locale.to_string();
+    if initial_name == "posix" && serialized == "und-posix" {
+        Ok(CanonicalLocale::from_parts(locale, initial_name))
+    } else {
+        Ok(canonicalize(&serialized).expect("applied options produce a structurally valid locale"))
+    }
+}
+
+fn set_locale_keyword(
+    locale: &mut IcuLocale,
+    key: &str,
+    value: Option<&str>,
+    error: LocaleOptionError,
+) -> Result<(), LocaleOptionError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    if value.is_empty()
+        || !value.split('-').all(|part| {
+            (3..=8).contains(&part.len()) && part.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        })
+    {
+        return Err(error);
+    }
+    let value = value.parse().map_err(|_| error)?;
+    locale.extensions.unicode.keywords.set(
+        key.parse().expect("the supplied key is static and valid"),
+        value,
+    );
+    Ok(())
 }
 
 fn canonicalize_unicode_keyword_aliases(locale: &mut IcuLocale) {
@@ -216,12 +470,21 @@ fn canonicalize_unicode_keyword_aliases(locale: &mut IcuLocale) {
     }
 }
 
-/// Whether the bundled collation data supports the locale's language.
-pub fn supports_collation_locale(locale: &IcuLocale) -> bool {
+/// Whether the bundled ECMA-402 data has coverage for the locale's language.
+///
+/// ICU4X compacts locale data whose values are identical to a parent locale.
+/// The registry keeps those ECMA-402 locales available even when a particular
+/// data marker resolves through that parent.
+pub fn supports_locale_language(locale: &IcuLocale) -> bool {
     const LANGUAGES: &str = "af am ar as az be bg bn bo br bs ca ceb chr cs cy da de dsb dz ee el en eo es et fa ff fi fil fo fr fy ga gl gu ha haw he hi hr hsb hu hy id ig is it ja ka kk kl km kn ko kok ku ky la lb lkt ln lo lt lv mk ml mn mr ms mt my nb ne nl nn no om or pa pl ps pt ro ru sa se si sk sl so sq sr sv sw ta te th tk to tr ug uk ur uz vi wae wo xh yi yo zh zu";
     LANGUAGES
         .split(' ')
         .any(|language| locale.id.language.as_str() == language)
+}
+
+/// Whether the bundled collation data supports the locale's language.
+pub fn supports_collation_locale(locale: &IcuLocale) -> bool {
+    supports_locale_language(locale)
 }
 
 /// Returns a Unicode extension keyword's canonical ICU value, if present.
@@ -235,9 +498,180 @@ pub fn unicode_keyword(locale: &IcuLocale, name: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
-/// Produces the ICU collation preferences represented by Unicode extensions.
-pub fn collator_preferences(locale: &IcuLocale) -> CollatorPreferences {
-    locale.into()
+/// The writing direction reported by locale information.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextDirection {
+    /// Text is laid out from left to right.
+    LeftToRight,
+    /// Text is laid out from right to left.
+    RightToLeft,
+}
+
+/// Week data selected for a locale.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WeekInfo {
+    /// ISO-like weekday number: Monday is 1 and Sunday is 7.
+    pub first_day: u8,
+    /// The locale's weekend weekday numbers.
+    pub weekend: Vec<u8>,
+}
+
+/// Host-neutral data returned by the `Intl.Locale` information methods.
+///
+/// This is intentionally a small deterministic dataset rather than a claim to
+/// expose all CLDR records. It centralizes the service data BlueJS currently
+/// advertises so another host can make the same choices without a Realm.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocaleInformation {
+    /// Calendars, with a requested `ca` extension taking precedence.
+    pub calendars: Vec<String>,
+    /// Collations, with a requested `co` extension taking precedence.
+    pub collations: Vec<String>,
+    /// Hour cycles, with a requested `hc` extension taking precedence.
+    pub hour_cycles: Vec<String>,
+    /// Numbering systems, with a requested `nu` extension taking precedence.
+    pub numbering_systems: Vec<String>,
+    /// The writing direction inferred from language and script.
+    pub text_direction: TextDirection,
+    /// Region-specific time zones, or `None` when the locale has no region.
+    pub time_zones: Option<Vec<String>>,
+    /// The locale's first weekday and weekend.
+    pub week_info: WeekInfo,
+}
+
+/// Returns the deterministic locale-information dataset for a canonical tag.
+pub fn locale_information(locale: &CanonicalLocale) -> LocaleInformation {
+    let locale = locale.locale();
+    let language = locale.id.language.as_str();
+    let calendars = vec![unicode_keyword(locale, "ca").unwrap_or_else(|| "gregory".into())];
+    let collations = vec![unicode_keyword(locale, "co")
+        .filter(|value| value != "standard" && value != "search")
+        .unwrap_or_else(|| "emoji".into())];
+    let hour_cycles = vec![unicode_keyword(locale, "hc").unwrap_or_else(|| {
+        if language == "en" {
+            "h12".into()
+        } else {
+            "h23".into()
+        }
+    })];
+    let numbering_systems = vec![unicode_keyword(locale, "nu").unwrap_or_else(|| {
+        if language == "ar" {
+            "arab".into()
+        } else {
+            "latn".into()
+        }
+    })];
+    let script = locale.id.script.map(|script| script.to_string());
+    let text_direction = if script.as_deref().is_some_and(|script| {
+        matches!(
+            script,
+            "Arab" | "Hebr" | "Syrc" | "Thaa" | "Nkoo" | "Adlm" | "Rohg"
+        )
+    }) || matches!(
+        language,
+        "ar" | "arc"
+            | "ckb"
+            | "dv"
+            | "fa"
+            | "he"
+            | "ks"
+            | "ku"
+            | "nqo"
+            | "ps"
+            | "sd"
+            | "syr"
+            | "ug"
+            | "ur"
+            | "yi"
+    ) {
+        TextDirection::RightToLeft
+    } else {
+        TextDirection::LeftToRight
+    };
+    let time_zones = locale.id.region.map(|region| {
+        match region.as_str() {
+            "US" => vec![
+                "America/Adak",
+                "America/Anchorage",
+                "America/Boise",
+                "America/Chicago",
+                "America/Denver",
+                "America/Detroit",
+                "America/Indiana/Indianapolis",
+                "America/Los_Angeles",
+                "America/New_York",
+                "Pacific/Honolulu",
+            ],
+            "GB" => vec!["Europe/London"],
+            "JP" => vec!["Asia/Tokyo"],
+            "TW" => vec!["Asia/Taipei"],
+            _ => vec!["Etc/UTC"],
+        }
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
+    });
+    let first_day = match unicode_keyword(locale, "fw").as_deref() {
+        Some("mon") => 1,
+        Some("tue") => 2,
+        Some("wed") => 3,
+        Some("thu") => 4,
+        Some("fri") => 5,
+        Some("sat") => 6,
+        Some("sun") => 7,
+        _ if locale
+            .id
+            .region
+            .as_ref()
+            .is_some_and(|region| matches!(region.as_str(), "US" | "CA" | "JP")) =>
+        {
+            7
+        }
+        _ => 1,
+    };
+    LocaleInformation {
+        calendars,
+        collations,
+        hour_cycles,
+        numbering_systems,
+        text_direction,
+        time_zones,
+        week_info: WeekInfo {
+            first_day,
+            weekend: vec![6, 7],
+        },
+    }
+}
+
+/// Applies CLDR likely-subtag maximization to a canonical locale.
+///
+/// Unicode extensions remain intact. The ECMA-402-valid `posix` primary
+/// language is represented specially because ICU4X does not model it as a
+/// language identifier, so it is returned unchanged.
+pub fn maximize_locale(locale: &CanonicalLocale) -> CanonicalLocale {
+    transform_locale(locale, true)
+}
+
+/// Applies CLDR likely-subtag minimization to a canonical locale.
+///
+/// Unicode extensions remain intact. See [`maximize_locale`] for the `posix`
+/// representation detail.
+pub fn minimize_locale(locale: &CanonicalLocale) -> CanonicalLocale {
+    transform_locale(locale, false)
+}
+
+fn transform_locale(locale: &CanonicalLocale, maximize: bool) -> CanonicalLocale {
+    if locale.as_str() == "posix" {
+        return locale.clone();
+    }
+    let mut transformed = locale.locale().clone();
+    let expander = icu_locale::LocaleExpander::new_extended();
+    if maximize {
+        expander.maximize(&mut transformed.id);
+    } else {
+        expander.minimize(&mut transformed.id);
+    }
+    canonicalize(&transformed.to_string()).expect("a transformed canonical locale remains valid")
 }
 
 /// Whether a collation is available for an already-selected locale.
@@ -254,6 +688,1640 @@ pub fn supports_collation(locale: &IcuLocale, collation: &str) -> bool {
                 | ("si", "dict")
                 | ("ar", "compat")
         )
+}
+
+/// The locale matching algorithm selected by an ECMA-402 service.
+///
+/// The bundled collation data advertises language-level support, so best-fit
+/// currently has the same deterministic result as lookup. Keeping it explicit
+/// lets hosts share the selection boundary when the available data grows.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LocaleMatcher {
+    /// The RFC 4647 lookup-style matching policy.
+    #[default]
+    Lookup,
+    /// The ECMA-402 best-fit matching policy.
+    BestFit,
+}
+
+/// One canonical locale considered during collation negotiation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CollationLocaleCandidate {
+    requested: CanonicalLocale,
+    supported: bool,
+}
+
+impl CollationLocaleCandidate {
+    /// Returns the canonical locale supplied by the host.
+    pub fn requested(&self) -> &CanonicalLocale {
+        &self.requested
+    }
+
+    /// Returns whether the bundled collation data supports this request.
+    pub fn is_supported(&self) -> bool {
+        self.supported
+    }
+}
+
+/// A deterministic trace of collation locale negotiation.
+///
+/// This value is deliberately host-neutral and read-only. It lets a debugger
+/// explain fallback and data support without exposing ICU4X implementation
+/// types or constructing a JavaScript Realm.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CollationLocaleNegotiation {
+    matcher: LocaleMatcher,
+    candidates: Vec<CollationLocaleCandidate>,
+    selected: CanonicalLocale,
+    used_default: bool,
+}
+
+impl CollationLocaleNegotiation {
+    /// Returns the matcher used for this negotiation.
+    pub fn matcher(&self) -> LocaleMatcher {
+        self.matcher
+    }
+
+    /// Returns every requested locale and its data-support decision.
+    pub fn candidates(&self) -> &[CollationLocaleCandidate] {
+        &self.candidates
+    }
+
+    /// Returns the locale selected for the collation service.
+    pub fn selected(&self) -> &CanonicalLocale {
+        &self.selected
+    }
+
+    /// Returns whether the stable `en-US` service default was selected.
+    pub fn used_default(&self) -> bool {
+        self.used_default
+    }
+}
+
+/// Negotiates a requested locale list against the bundled collation service.
+///
+/// Region and script subtags remain attached to a supported request so ICU4X
+/// can select its CLDR fallback data. Unicode extensions are retained for
+/// later service-option resolution. If no request is supported, the stable
+/// service default is `en-US`.
+pub fn negotiate_collation_locale(
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> CollationLocaleNegotiation {
+    let candidates = requested
+        .iter()
+        .cloned()
+        .map(|requested| CollationLocaleCandidate {
+            supported: supports_collation_locale(requested.locale()),
+            requested,
+        })
+        .collect::<Vec<_>>();
+    let selected = candidates
+        .iter()
+        .find(|candidate| candidate.supported)
+        .map(|candidate| candidate.requested.clone());
+    let used_default = selected.is_none();
+    CollationLocaleNegotiation {
+        matcher,
+        candidates,
+        selected: selected
+            .unwrap_or_else(|| canonicalize("en-US").expect("the default locale is valid")),
+        used_default,
+    }
+}
+
+/// Resolves one requested locale against the bundled collation service.
+///
+/// Region and script subtags remain attached to a supported request so ICU4X
+/// can select its CLDR fallback data. Unicode extensions are retained here for
+/// later service-option resolution. If no request is supported, the stable
+/// service default is `en-US`.
+pub fn resolve_collation_locale(
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> CanonicalLocale {
+    negotiate_collation_locale(requested, matcher)
+        .selected
+        .clone()
+}
+
+/// Returns the requested locales supported by the bundled collation service.
+///
+/// The returned values preserve canonical request spelling, as required by
+/// `Intl.Collator.supportedLocalesOf`; negotiation only decides support and
+/// does not replace a request with the service default.
+pub fn supported_collation_locales(
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> Vec<CanonicalLocale> {
+    negotiate_collation_locale(requested, matcher)
+        .candidates
+        .into_iter()
+        .filter(|candidate| candidate.supported)
+        .map(|candidate| candidate.requested)
+        .collect()
+}
+
+/// The `usage` option of an ECMA-402 collator.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum CollatorUsage {
+    /// A sorting collator.
+    #[default]
+    Sort,
+    /// A text-search collator.
+    Search,
+}
+
+/// The `caseFirst` option of an ECMA-402 collator.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CaseFirst {
+    /// Sort uppercase before lowercase where the tailoring supports it.
+    Upper,
+    /// Sort lowercase before uppercase where the tailoring supports it.
+    Lower,
+    /// Use the locale default case ordering.
+    False,
+}
+
+/// The `sensitivity` option of an ECMA-402 collator.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Sensitivity {
+    /// Compare base characters only.
+    Base,
+    /// Compare base characters and accents.
+    Accent,
+    /// Compare base characters and case.
+    Case,
+    /// Compare all supported collation distinctions.
+    #[default]
+    Variant,
+}
+
+/// Host-neutral input for constructing a collation service.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CollatorOptions {
+    /// The desired locale matching policy.
+    pub locale_matcher: LocaleMatcher,
+    /// Whether the collator is used for sorting or searching.
+    pub usage: CollatorUsage,
+    /// An optional UTS 35 collation type. Unsupported values resolve to the
+    /// locale default, per ECMA-402.
+    pub collation: Option<String>,
+    /// Overrides the locale's `kn` extension when present.
+    pub numeric: Option<bool>,
+    /// Overrides the locale's `kf` extension when present.
+    pub case_first: Option<CaseFirst>,
+    /// Controls collation strength and case level.
+    pub sensitivity: Sensitivity,
+    /// Overrides the locale default punctuation handling when present.
+    pub ignore_punctuation: Option<bool>,
+}
+
+/// ECMAScript-observable data resolved by a collation service.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedCollatorOptions {
+    /// The negotiated locale with only supported, non-overridden Unicode keys.
+    pub locale: String,
+    /// The selected usage.
+    pub usage: CollatorUsage,
+    /// The selected sensitivity.
+    pub sensitivity: Sensitivity,
+    /// Whether punctuation is ignored.
+    pub ignore_punctuation: bool,
+    /// The selected collation type, or `default`.
+    pub collation: String,
+    /// Whether numeric collation is enabled.
+    pub numeric: bool,
+    /// The selected case ordering.
+    pub case_first: CaseFirst,
+}
+
+/// A failure while constructing a collator from the bundled ICU4X data.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CollatorError {
+    /// The selected built-in collation data was unavailable.
+    DataUnavailable,
+}
+
+impl std::fmt::Display for CollatorError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DataUnavailable => formatter.write_str("collation data is unavailable"),
+        }
+    }
+}
+
+impl std::error::Error for CollatorError {}
+
+/// A host-neutral UTF-16 collation service backed by ICU4X.
+///
+/// The service accepts and compares UTF-16 code units directly. Embedders are
+/// responsible only for their own input coercion and error presentation.
+pub struct Collator {
+    algorithm: CollatorBorrowed<'static>,
+    negotiation: CollationLocaleNegotiation,
+    resolved: ResolvedCollatorOptions,
+    german_search: bool,
+}
+
+impl Collator {
+    /// Constructs a collator after locale negotiation and option resolution.
+    pub fn try_new(
+        requested: &[CanonicalLocale],
+        options: CollatorOptions,
+    ) -> Result<Self, CollatorError> {
+        let negotiation = negotiate_collation_locale(requested, options.locale_matcher);
+        let selected = negotiation.selected.clone();
+        let selected_locale = selected.locale();
+        let mut resolved_locale = IcuLocale::from(selected_locale.id.clone());
+        let mut algorithm_locale = resolved_locale.clone();
+        let mut selected_collation = "default".to_owned();
+
+        for (key, option) in [
+            (
+                "co",
+                options.collation.as_deref().map(str::to_ascii_lowercase),
+            ),
+            (
+                "kf",
+                options.case_first.map(|value| match value {
+                    CaseFirst::Upper => "upper".to_owned(),
+                    CaseFirst::Lower => "lower".to_owned(),
+                    CaseFirst::False => "false".to_owned(),
+                }),
+            ),
+            ("kn", options.numeric.map(|value| value.to_string())),
+        ] {
+            let extension = unicode_keyword(selected_locale, key).map(|value| {
+                if key == "kn" && value.is_empty() {
+                    "true".to_owned()
+                } else {
+                    value
+                }
+            });
+            let valid = |value: &str| match key {
+                "co" => {
+                    options.usage == CollatorUsage::Sort
+                        && supports_collation(selected_locale, value)
+                }
+                "kf" => matches!(value, "upper" | "lower" | "false"),
+                "kn" => matches!(value, "true" | "false"),
+                _ => unreachable!("the Collator key list is fixed"),
+            };
+            let extension = extension.filter(|value| valid(value));
+            let choice = option
+                .filter(|value| valid(value))
+                .or_else(|| extension.clone());
+            if let Some(value) = choice {
+                if extension.as_ref() == Some(&value) {
+                    resolved_locale
+                        .extensions
+                        .unicode
+                        .keywords
+                        .set(key.parse().unwrap(), value.parse().unwrap());
+                }
+                algorithm_locale
+                    .extensions
+                    .unicode
+                    .keywords
+                    .set(key.parse().unwrap(), value.parse().unwrap());
+                if key == "co" {
+                    selected_collation = value;
+                }
+            }
+        }
+
+        let mut preferences: CollatorPreferences = (&algorithm_locale).into();
+        if options.usage == CollatorUsage::Search {
+            preferences.collation_type = Some(CollationType::Search);
+        }
+        let mut icu_options = IcuCollatorOptions::default();
+        icu_options.strength = Some(match options.sensitivity {
+            Sensitivity::Base | Sensitivity::Case => Strength::Primary,
+            Sensitivity::Accent => Strength::Secondary,
+            Sensitivity::Variant => Strength::Tertiary,
+        });
+        icu_options.case_level = Some(if options.sensitivity == Sensitivity::Case {
+            CaseLevel::On
+        } else {
+            CaseLevel::Off
+        });
+        let ignore_punctuation = options
+            .ignore_punctuation
+            .unwrap_or_else(|| selected_locale.id.language.as_str() == "th");
+        icu_options.alternate_handling = Some(if ignore_punctuation {
+            AlternateHandling::Shifted
+        } else {
+            AlternateHandling::NonIgnorable
+        });
+        icu_options.max_variable = Some(MaxVariable::Punctuation);
+        let algorithm = CollatorBorrowed::try_new(preferences, icu_options)
+            .map_err(|_| CollatorError::DataUnavailable)?;
+        let icu_resolved = algorithm.resolved_options();
+        let resolved = ResolvedCollatorOptions {
+            locale: resolved_locale.to_string(),
+            usage: options.usage,
+            sensitivity: options.sensitivity,
+            ignore_punctuation,
+            collation: selected_collation,
+            numeric: icu_resolved.numeric == CollationNumericOrdering::True,
+            case_first: match icu_resolved.case_first {
+                CollationCaseFirst::Upper => CaseFirst::Upper,
+                CollationCaseFirst::Lower => CaseFirst::Lower,
+                _ => CaseFirst::False,
+            },
+        };
+        let german_search =
+            options.usage == CollatorUsage::Search && selected_locale.id.language.as_str() == "de";
+        Ok(Self {
+            algorithm,
+            negotiation,
+            resolved,
+            german_search,
+        })
+    }
+
+    /// Compares two UTF-16 strings according to the resolved collation.
+    pub fn compare_utf16(&self, left: &[u16], right: &[u16]) -> Ordering {
+        if self.german_search {
+            let left = german_search_fold(left);
+            let right = german_search_fold(right);
+            self.algorithm.compare_utf16(&left, &right)
+        } else {
+            self.algorithm.compare_utf16(left, right)
+        }
+    }
+
+    /// Returns the data selected during construction.
+    pub fn resolved_options(&self) -> &ResolvedCollatorOptions {
+        &self.resolved
+    }
+
+    /// Returns the locale-negotiation trace produced during construction.
+    pub fn negotiation(&self) -> &CollationLocaleNegotiation {
+        &self.negotiation
+    }
+
+    /// Returns the heap storage directly owned by this service.
+    pub fn bytes(&self) -> usize {
+        std::mem::size_of::<Self>() + self.resolved.locale.len() + self.resolved.collation.len()
+    }
+}
+
+fn german_search_fold(value: &[u16]) -> Vec<u16> {
+    let mut units = Vec::with_capacity(value.len());
+    for unit in value {
+        match unit {
+            0x00c4 => units.extend([b'A' as u16, b'E' as u16]),
+            0x00d6 => units.extend([b'O' as u16, b'E' as u16]),
+            0x00dc => units.extend([b'U' as u16, b'E' as u16]),
+            0x00df => units.extend([b's' as u16, b's' as u16]),
+            0x00e4 => units.extend([b'a' as u16, b'e' as u16]),
+            0x00f6 => units.extend([b'o' as u16, b'e' as u16]),
+            0x00fc => units.extend([b'u' as u16, b'e' as u16]),
+            unit => units.push(*unit),
+        }
+    }
+    units
+}
+
+/// Whether the bundled decimal data has a locale-specific fallback for a
+/// locale.
+///
+/// ICU4X falls all unknown languages back to `und`; that fallback is useful
+/// for internal data loading but is not an ECMA-402 available-locale match.
+/// A language is therefore supported when the decimal-symbol data resolves to
+/// the same primary language (possibly after dropping region or script).
+pub fn supports_number_format_locale(locale: &IcuLocale) -> bool {
+    if supports_locale_language(locale) {
+        return true;
+    }
+    let requested = icu_provider::DataLocale::from(locale);
+    let response = <DecimalData as DataProvider<DecimalSymbolsV1>>::load(
+        &DecimalData,
+        DataRequest {
+            id: DataIdentifierBorrowed::for_locale(&requested),
+            metadata: Default::default(),
+        },
+    );
+    match response {
+        Ok(response) => response
+            .metadata
+            .locale
+            .is_none_or(|resolved| resolved.language == requested.language),
+        Err(_) => false,
+    }
+}
+
+/// One canonical locale considered during decimal number-format negotiation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NumberFormatLocaleCandidate {
+    requested: CanonicalLocale,
+    supported: bool,
+}
+
+impl NumberFormatLocaleCandidate {
+    /// Returns the canonical locale supplied by the host.
+    pub fn requested(&self) -> &CanonicalLocale {
+        &self.requested
+    }
+
+    /// Returns whether the bundled decimal data supports this request.
+    pub fn is_supported(&self) -> bool {
+        self.supported
+    }
+}
+
+/// A deterministic trace of decimal number-format locale negotiation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NumberFormatLocaleNegotiation {
+    matcher: LocaleMatcher,
+    candidates: Vec<NumberFormatLocaleCandidate>,
+    selected: CanonicalLocale,
+    used_default: bool,
+}
+
+impl NumberFormatLocaleNegotiation {
+    /// Returns the matcher used for this negotiation.
+    pub fn matcher(&self) -> LocaleMatcher {
+        self.matcher
+    }
+
+    /// Returns every requested locale and its data-support decision.
+    pub fn candidates(&self) -> &[NumberFormatLocaleCandidate] {
+        &self.candidates
+    }
+
+    /// Returns the locale selected for decimal formatting.
+    pub fn selected(&self) -> &CanonicalLocale {
+        &self.selected
+    }
+
+    /// Returns whether the stable `en-US` service default was selected.
+    pub fn used_default(&self) -> bool {
+        self.used_default
+    }
+}
+
+/// Negotiates a requested locale list against bundled decimal-format data.
+///
+/// Region and script subtags remain attached to a supported request so ICU4X
+/// can select CLDR data. Unicode extensions are likewise retained for the
+/// formatter's option resolution. If no requested locale is supported, the
+/// stable service default is `en-US`.
+pub fn negotiate_number_format_locale(
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> NumberFormatLocaleNegotiation {
+    let candidates = requested
+        .iter()
+        .cloned()
+        .map(|requested| NumberFormatLocaleCandidate {
+            supported: supports_number_format_locale(requested.locale()),
+            requested,
+        })
+        .collect::<Vec<_>>();
+    let selected = candidates
+        .iter()
+        .find(|candidate| candidate.supported)
+        .map(|candidate| candidate.requested.clone());
+    let used_default = selected.is_none();
+    NumberFormatLocaleNegotiation {
+        matcher,
+        candidates,
+        selected: selected
+            .unwrap_or_else(|| canonicalize("en-US").expect("the default locale is valid")),
+        used_default,
+    }
+}
+
+/// Resolves one requested locale against bundled decimal-format data.
+pub fn resolve_number_format_locale(
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> CanonicalLocale {
+    negotiate_number_format_locale(requested, matcher)
+        .selected
+        .clone()
+}
+
+/// Returns the requested locales supported by the bundled decimal service.
+pub fn supported_number_format_locales(
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> Vec<CanonicalLocale> {
+    negotiate_number_format_locale(requested, matcher)
+        .candidates
+        .into_iter()
+        .filter(|candidate| candidate.supported)
+        .map(|candidate| candidate.requested)
+        .collect()
+}
+
+/// The decimal grouping policy selected by `Intl.NumberFormat`.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum NumberGrouping {
+    /// Apply the locale's ordinary grouping policy.
+    #[default]
+    Auto,
+    /// Suppress grouping separators.
+    Never,
+    /// Apply grouping whenever the locale data permits it.
+    Always,
+    /// Group only when at least two digits precede the last grouping separator.
+    Min2,
+}
+
+impl From<NumberGrouping> for GroupingStrategy {
+    fn from(value: NumberGrouping) -> Self {
+        match value {
+            NumberGrouping::Auto => Self::Auto,
+            NumberGrouping::Never => Self::Never,
+            NumberGrouping::Always => Self::Always,
+            NumberGrouping::Min2 => Self::Min2,
+        }
+    }
+}
+
+/// Host-neutral options for the decimal-style finite-number subset of
+/// `Intl.NumberFormat`.
+///
+/// Currency, unit, compact/scientific notation, range formatting and
+/// non-finite-number symbols are separate service slices and are deliberately
+/// not represented by this initial decimal formatter.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct NumberFormatOptions {
+    /// The requested locale matching policy.
+    pub locale_matcher: LocaleMatcher,
+    /// When locale-specific grouping separators are rendered.
+    pub use_grouping: NumberGrouping,
+    /// The minimum number of fractional digits after rounding.
+    pub minimum_fraction_digits: Option<u8>,
+    /// The maximum number of fractional digits after rounding.
+    pub maximum_fraction_digits: Option<u8>,
+}
+
+/// ECMAScript-observable data resolved by the decimal number formatter.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedNumberFormatOptions {
+    /// The negotiated locale, including its supported Unicode extensions.
+    pub locale: String,
+    /// The actual ICU4X decimal numbering system.
+    pub numbering_system: String,
+    /// The selected grouping policy.
+    pub use_grouping: NumberGrouping,
+    /// The resolved minimum number of fraction digits.
+    pub minimum_fraction_digits: u8,
+    /// The resolved maximum number of fraction digits.
+    pub maximum_fraction_digits: u8,
+}
+
+/// A failure while constructing or using a decimal number formatter.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NumberFormatError {
+    /// The selected decimal data was unavailable.
+    DataUnavailable,
+    /// A fraction-digit option exceeded ECMA-402's supported range of 0–100.
+    FractionDigitsOutOfRange,
+    /// The requested minimum fraction digits exceeded the maximum.
+    IncompatibleFractionDigits,
+    /// A decimal input was not a finite, base-10 decimal string.
+    InvalidDecimal,
+    /// An IEEE-754 input was `NaN` or infinite.
+    NonFiniteNumber,
+}
+
+impl std::fmt::Display for NumberFormatError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DataUnavailable => formatter.write_str("decimal data is unavailable"),
+            Self::FractionDigitsOutOfRange => {
+                formatter.write_str("fraction digits must be in the range 0 through 100")
+            }
+            Self::IncompatibleFractionDigits => {
+                formatter.write_str("minimum fraction digits exceed maximum fraction digits")
+            }
+            Self::InvalidDecimal => formatter.write_str("invalid finite decimal input"),
+            Self::NonFiniteNumber => formatter.write_str("number must be finite"),
+        }
+    }
+}
+
+impl std::error::Error for NumberFormatError {}
+
+/// A host-neutral, locale-sensitive decimal formatter.
+///
+/// Embedders retain ECMAScript coercion, `NaN`/infinity handling and object
+/// semantics. Finite decimal formatting, option resolution and all ICU4X data
+/// selection occur here.
+pub struct NumberFormat {
+    formatter: DecimalFormatter,
+    negotiation: NumberFormatLocaleNegotiation,
+    resolved: ResolvedNumberFormatOptions,
+}
+
+impl NumberFormat {
+    /// Constructs a decimal formatter after locale negotiation and option
+    /// resolution.
+    pub fn try_new(
+        requested: &[CanonicalLocale],
+        options: NumberFormatOptions,
+    ) -> Result<Self, NumberFormatError> {
+        let (minimum_fraction_digits, maximum_fraction_digits) = resolve_fraction_digits(options)?;
+        let negotiation = negotiate_number_format_locale(requested, options.locale_matcher);
+        let selected = negotiation.selected.clone();
+        let provider = NumberingSystemInspectionProvider::default();
+        let mut formatter_options = DecimalFormatterOptions::default();
+        formatter_options.grouping_strategy = Some(options.use_grouping.into());
+        let mut preferences: DecimalFormatterPreferences = selected.locale().into();
+        if let Some(numbering_system) = unicode_keyword(selected.locale(), "nu") {
+            let value = numbering_system
+                .parse::<icu_locale_core::extensions::unicode::Value>()
+                .map_err(|_| NumberFormatError::DataUnavailable)?;
+            preferences.numbering_system = Some(
+                NumberingSystem::try_from(value).map_err(|_| NumberFormatError::DataUnavailable)?,
+            );
+        }
+        let formatter =
+            DecimalFormatter::try_new_unstable(&provider, preferences, formatter_options)
+                .map_err(|_| NumberFormatError::DataUnavailable)?;
+        let numbering_system = provider
+            .numbering_system
+            .into_inner()
+            .unwrap_or_else(|| "latn".into());
+        let resolved = ResolvedNumberFormatOptions {
+            locale: selected.as_str().into(),
+            numbering_system,
+            use_grouping: options.use_grouping,
+            minimum_fraction_digits,
+            maximum_fraction_digits,
+        };
+        Ok(Self {
+            formatter,
+            negotiation,
+            resolved,
+        })
+    }
+
+    /// Formats a finite base-10 decimal string.
+    ///
+    /// The string uses an optional ASCII sign, ASCII digits and an optional
+    /// decimal point. It is a host-neutral boundary that does not expose an
+    /// ICU4X decimal type to callers.
+    pub fn format_decimal(&self, value: &str) -> Result<String, NumberFormatError> {
+        let decimal =
+            Decimal::try_from_str(value).map_err(|_| NumberFormatError::InvalidDecimal)?;
+        Ok(self.format_decimal_value(decimal))
+    }
+
+    /// Formats a finite IEEE-754 number using its shortest round-trippable
+    /// decimal representation before applying ECMA-402 fraction-digit rules.
+    pub fn format_f64(&self, value: f64) -> Result<String, NumberFormatError> {
+        let decimal = Decimal::try_from_f64(value, FloatPrecision::RoundTrip)
+            .map_err(|_| NumberFormatError::NonFiniteNumber)?;
+        Ok(self.format_decimal_value(decimal))
+    }
+
+    fn format_decimal_value(&self, mut value: Decimal) -> String {
+        value.round_with_mode(
+            -(self.resolved.maximum_fraction_digits as i16),
+            SignedRoundingMode::Unsigned(UnsignedRoundingMode::HalfExpand),
+        );
+        value.pad_end(-(self.resolved.minimum_fraction_digits as i16));
+        self.formatter.format(&value).to_string()
+    }
+
+    /// Returns the data selected during construction.
+    pub fn resolved_options(&self) -> &ResolvedNumberFormatOptions {
+        &self.resolved
+    }
+
+    /// Returns the locale-negotiation trace produced during construction.
+    pub fn negotiation(&self) -> &NumberFormatLocaleNegotiation {
+        &self.negotiation
+    }
+
+    /// Returns the heap storage directly owned by this service.
+    pub fn bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + self.resolved.locale.len()
+            + self.resolved.numbering_system.len()
+    }
+}
+
+fn resolve_fraction_digits(options: NumberFormatOptions) -> Result<(u8, u8), NumberFormatError> {
+    let minimum = options.minimum_fraction_digits.unwrap_or(0);
+    let maximum = options
+        .maximum_fraction_digits
+        .unwrap_or_else(|| minimum.max(3));
+    if minimum > 100 || maximum > 100 {
+        return Err(NumberFormatError::FractionDigitsOutOfRange);
+    }
+    if minimum > maximum {
+        return Err(NumberFormatError::IncompatibleFractionDigits);
+    }
+    Ok((minimum, maximum))
+}
+
+/// Captures the exact numbering system selected by ICU4X during construction.
+///
+/// `DecimalFormatter` deliberately hides its data-provider internals. The
+/// provider protocol nevertheless defines the final `DecimalDigitsV1` request
+/// as the resolved numbering system, so this transparent wrapper makes the
+/// resolved ECMA-402 value observable without exposing ICU4X types to callers.
+#[derive(Default)]
+struct NumberingSystemInspectionProvider {
+    numbering_system: RefCell<Option<String>>,
+}
+
+impl<M> DataProvider<M> for NumberingSystemInspectionProvider
+where
+    M: DataMarker,
+    DecimalData: DataProvider<M>,
+{
+    fn load(
+        &self,
+        request: DataRequest,
+    ) -> Result<icu_provider::DataResponse<M>, icu_provider::DataError> {
+        if TypeId::of::<M>() == TypeId::of::<DecimalDigitsV1>() {
+            self.numbering_system
+                .replace(Some(request.id.marker_attributes.as_str().into()));
+        }
+        DecimalData.load(request)
+    }
+}
+
+/// The CLDR plural-rule family selected by `Intl.PluralRules`.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum PluralRuleType {
+    /// Select a category for an ordinary quantity.
+    #[default]
+    Cardinal,
+    /// Select a category for an ordinal position.
+    Ordinal,
+}
+
+impl From<PluralRuleType> for IcuPluralRuleType {
+    fn from(value: PluralRuleType) -> Self {
+        match value {
+            PluralRuleType::Cardinal => Self::Cardinal,
+            PluralRuleType::Ordinal => Self::Ordinal,
+        }
+    }
+}
+
+/// A CLDR plural category returned by `Intl.PluralRules`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PluralCategory {
+    /// The `zero` category.
+    Zero,
+    /// The `one` category.
+    One,
+    /// The `two` category.
+    Two,
+    /// The `few` category.
+    Few,
+    /// The `many` category.
+    Many,
+    /// The `other` catch-all category.
+    Other,
+}
+
+impl From<IcuPluralCategory> for PluralCategory {
+    fn from(value: IcuPluralCategory) -> Self {
+        match value {
+            IcuPluralCategory::Zero => Self::Zero,
+            IcuPluralCategory::One => Self::One,
+            IcuPluralCategory::Two => Self::Two,
+            IcuPluralCategory::Few => Self::Few,
+            IcuPluralCategory::Many => Self::Many,
+            IcuPluralCategory::Other => Self::Other,
+        }
+    }
+}
+
+/// One canonical locale considered during plural-rule negotiation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PluralRulesLocaleCandidate {
+    requested: CanonicalLocale,
+    supported: bool,
+}
+
+impl PluralRulesLocaleCandidate {
+    /// Returns the canonical locale supplied by the host.
+    pub fn requested(&self) -> &CanonicalLocale {
+        &self.requested
+    }
+
+    /// Returns whether the bundled plural-rule data supports this request.
+    pub fn is_supported(&self) -> bool {
+        self.supported
+    }
+}
+
+/// A deterministic trace of plural-rule locale negotiation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PluralRulesLocaleNegotiation {
+    matcher: LocaleMatcher,
+    candidates: Vec<PluralRulesLocaleCandidate>,
+    selected: CanonicalLocale,
+    used_default: bool,
+}
+
+impl PluralRulesLocaleNegotiation {
+    /// Returns the matcher used for this negotiation.
+    pub fn matcher(&self) -> LocaleMatcher {
+        self.matcher
+    }
+
+    /// Returns every requested locale and its data-support decision.
+    pub fn candidates(&self) -> &[PluralRulesLocaleCandidate] {
+        &self.candidates
+    }
+
+    /// Returns the locale selected for plural-rule evaluation.
+    pub fn selected(&self) -> &CanonicalLocale {
+        &self.selected
+    }
+
+    /// Returns whether the stable `en-US` service default was selected.
+    pub fn used_default(&self) -> bool {
+        self.used_default
+    }
+}
+
+/// Negotiates a requested locale list against bundled plural-rule data.
+///
+/// Plural data follows the shared compiled-language registry. Script and
+/// region subtags remain attached to the selected locale for future data
+/// tailoring; if none match, the stable service default is `en-US`.
+pub fn negotiate_plural_rules_locale(
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> PluralRulesLocaleNegotiation {
+    let candidates = requested
+        .iter()
+        .cloned()
+        .map(|requested| PluralRulesLocaleCandidate {
+            supported: supports_locale_language(requested.locale()),
+            requested,
+        })
+        .collect::<Vec<_>>();
+    let selected = candidates
+        .iter()
+        .find(|candidate| candidate.supported)
+        .map(|candidate| candidate.requested.clone());
+    let used_default = selected.is_none();
+    PluralRulesLocaleNegotiation {
+        matcher,
+        candidates,
+        selected: selected
+            .unwrap_or_else(|| canonicalize("en-US").expect("the default locale is valid")),
+        used_default,
+    }
+}
+
+/// Resolves one requested locale against bundled plural-rule data.
+pub fn resolve_plural_rules_locale(
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> CanonicalLocale {
+    negotiate_plural_rules_locale(requested, matcher)
+        .selected
+        .clone()
+}
+
+/// Returns the requested locales supported by the bundled plural-rule service.
+pub fn supported_plural_rules_locales(
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> Vec<CanonicalLocale> {
+    negotiate_plural_rules_locale(requested, matcher)
+        .candidates
+        .into_iter()
+        .filter(|candidate| candidate.supported)
+        .map(|candidate| candidate.requested)
+        .collect()
+}
+
+/// Host-neutral options for constructing an `Intl.PluralRules` service.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct PluralRulesOptions {
+    /// The requested locale matching policy.
+    pub locale_matcher: LocaleMatcher,
+    /// Whether to evaluate cardinal or ordinal rules.
+    pub rule_type: PluralRuleType,
+}
+
+/// ECMAScript-observable data resolved by a plural-rule service.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedPluralRulesOptions {
+    /// The negotiated locale.
+    pub locale: String,
+    /// The selected plural-rule family.
+    pub rule_type: PluralRuleType,
+}
+
+/// A failure while constructing or evaluating plural rules.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PluralRulesError {
+    /// The selected plural-rule data was unavailable.
+    DataUnavailable,
+    /// A decimal input was not a finite, base-10 decimal string.
+    InvalidDecimal,
+    /// An IEEE-754 input was `NaN` or infinite.
+    NonFiniteNumber,
+}
+
+impl std::fmt::Display for PluralRulesError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DataUnavailable => formatter.write_str("plural-rule data is unavailable"),
+            Self::InvalidDecimal => formatter.write_str("invalid finite decimal input"),
+            Self::NonFiniteNumber => formatter.write_str("number must be finite"),
+        }
+    }
+}
+
+impl std::error::Error for PluralRulesError {}
+
+/// A host-neutral `Intl.PluralRules` service backed by ICU4X.
+///
+/// A decimal string preserves the visible fraction digits CLDR rules need to
+/// distinguish values such as `1` and `1.0`. Embedders retain ECMAScript
+/// coercion and later digit-option rounding semantics at their public
+/// boundary.
+pub struct PluralRules {
+    rules: IcuPluralRules,
+    negotiation: PluralRulesLocaleNegotiation,
+    resolved: ResolvedPluralRulesOptions,
+}
+
+impl PluralRules {
+    /// Constructs plural rules after locale negotiation and option resolution.
+    pub fn try_new(
+        requested: &[CanonicalLocale],
+        options: PluralRulesOptions,
+    ) -> Result<Self, PluralRulesError> {
+        let negotiation = negotiate_plural_rules_locale(requested, options.locale_matcher);
+        let selected = negotiation.selected.clone();
+        let preferences = selected.locale().into();
+        let rules = IcuPluralRules::try_new(
+            preferences,
+            IcuPluralRulesOptions::from(IcuPluralRuleType::from(options.rule_type)),
+        )
+        .map_err(|_| PluralRulesError::DataUnavailable)?;
+        Ok(Self {
+            rules,
+            negotiation,
+            resolved: ResolvedPluralRulesOptions {
+                locale: selected.as_str().into(),
+                rule_type: options.rule_type,
+            },
+        })
+    }
+
+    /// Selects a plural category for a finite base-10 decimal string.
+    pub fn select_decimal(&self, value: &str) -> Result<PluralCategory, PluralRulesError> {
+        let decimal = Decimal::try_from_str(value).map_err(|_| PluralRulesError::InvalidDecimal)?;
+        Ok(self.rules.category_for(&decimal).into())
+    }
+
+    /// Selects a plural category for a finite IEEE-754 number.
+    ///
+    /// This representation intentionally has no visible trailing fraction
+    /// zeros; callers that need those operands should use [`select_decimal`](Self::select_decimal).
+    pub fn select_f64(&self, value: f64) -> Result<PluralCategory, PluralRulesError> {
+        let decimal = Decimal::try_from_f64(value, FloatPrecision::RoundTrip)
+            .map_err(|_| PluralRulesError::NonFiniteNumber)?;
+        Ok(self.rules.category_for(&decimal).into())
+    }
+
+    /// Returns the data selected during construction.
+    pub fn resolved_options(&self) -> &ResolvedPluralRulesOptions {
+        &self.resolved
+    }
+
+    /// Returns the locale-negotiation trace produced during construction.
+    pub fn negotiation(&self) -> &PluralRulesLocaleNegotiation {
+        &self.negotiation
+    }
+
+    /// Returns the heap storage directly owned by this service.
+    pub fn bytes(&self) -> usize {
+        std::mem::size_of::<Self>() + self.resolved.locale.len()
+    }
+}
+
+/// The kind of relation joined by an `Intl.ListFormat` service.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ListType {
+    /// Join alternatives with a localized equivalent of "and".
+    #[default]
+    Conjunction,
+    /// Join alternatives with a localized equivalent of "or".
+    Disjunction,
+    /// Join units without a conjunction.
+    Unit,
+}
+
+/// The CLDR list-pattern width selected by `Intl.ListFormat`.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ListStyle {
+    /// The normal full-width list pattern.
+    #[default]
+    Wide,
+    /// A compact list pattern.
+    Short,
+    /// The narrowest list pattern.
+    Narrow,
+}
+
+impl From<ListStyle> for IcuListLength {
+    fn from(value: ListStyle) -> Self {
+        match value {
+            ListStyle::Wide => Self::Wide,
+            ListStyle::Short => Self::Short,
+            ListStyle::Narrow => Self::Narrow,
+        }
+    }
+}
+
+/// One canonical locale considered during list-format negotiation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ListFormatLocaleCandidate {
+    requested: CanonicalLocale,
+    supported: bool,
+}
+
+impl ListFormatLocaleCandidate {
+    /// Returns the canonical locale supplied by the host.
+    pub fn requested(&self) -> &CanonicalLocale {
+        &self.requested
+    }
+
+    /// Returns whether the bundled list-pattern data supports this request.
+    pub fn is_supported(&self) -> bool {
+        self.supported
+    }
+}
+
+/// A deterministic trace of list-format locale negotiation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ListFormatLocaleNegotiation {
+    matcher: LocaleMatcher,
+    candidates: Vec<ListFormatLocaleCandidate>,
+    selected: CanonicalLocale,
+    used_default: bool,
+}
+
+impl ListFormatLocaleNegotiation {
+    /// Returns the matcher used for this negotiation.
+    pub fn matcher(&self) -> LocaleMatcher {
+        self.matcher
+    }
+
+    /// Returns every requested locale and its data-support decision.
+    pub fn candidates(&self) -> &[ListFormatLocaleCandidate] {
+        &self.candidates
+    }
+
+    /// Returns the locale selected for list formatting.
+    pub fn selected(&self) -> &CanonicalLocale {
+        &self.selected
+    }
+
+    /// Returns whether the stable `en-US` service default was selected.
+    pub fn used_default(&self) -> bool {
+        self.used_default
+    }
+}
+
+/// Negotiates a requested locale list against bundled list-pattern data.
+pub fn negotiate_list_format_locale(
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> ListFormatLocaleNegotiation {
+    let candidates = requested
+        .iter()
+        .cloned()
+        .map(|requested| ListFormatLocaleCandidate {
+            supported: supports_locale_language(requested.locale()),
+            requested,
+        })
+        .collect::<Vec<_>>();
+    let selected = candidates
+        .iter()
+        .find(|candidate| candidate.supported)
+        .map(|candidate| candidate.requested.clone());
+    let used_default = selected.is_none();
+    ListFormatLocaleNegotiation {
+        matcher,
+        candidates,
+        selected: selected
+            .unwrap_or_else(|| canonicalize("en-US").expect("the default locale is valid")),
+        used_default,
+    }
+}
+
+/// Resolves one requested locale against bundled list-pattern data.
+pub fn resolve_list_format_locale(
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> CanonicalLocale {
+    negotiate_list_format_locale(requested, matcher)
+        .selected
+        .clone()
+}
+
+/// Returns the requested locales supported by the bundled list service.
+pub fn supported_list_format_locales(
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> Vec<CanonicalLocale> {
+    negotiate_list_format_locale(requested, matcher)
+        .candidates
+        .into_iter()
+        .filter(|candidate| candidate.supported)
+        .map(|candidate| candidate.requested)
+        .collect()
+}
+
+/// Host-neutral options for constructing an `Intl.ListFormat` service.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ListFormatOptions {
+    /// The requested locale matching policy.
+    pub locale_matcher: LocaleMatcher,
+    /// The relation joined by the list patterns.
+    pub list_type: ListType,
+    /// The requested CLDR list-pattern width.
+    pub style: ListStyle,
+}
+
+/// ECMAScript-observable data resolved by a list-format service.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedListFormatOptions {
+    /// The negotiated locale.
+    pub locale: String,
+    /// The selected list type.
+    pub list_type: ListType,
+    /// The selected list style.
+    pub style: ListStyle,
+}
+
+/// The `type` field of one `Intl.ListFormat.prototype.formatToParts` result.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ListPartKind {
+    /// An input list element.
+    Element,
+    /// A locale-provided list literal such as a comma or conjunction.
+    Literal,
+}
+
+/// One host-neutral `Intl.ListFormat.prototype.formatToParts` result.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ListPart {
+    /// Whether this is an input element or a locale-provided literal.
+    pub kind: ListPartKind,
+    /// The corresponding UTF-8 string segment.
+    pub value: String,
+}
+
+/// A failure while constructing a list formatter.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ListFormatError {
+    /// The selected list-pattern data was unavailable.
+    DataUnavailable,
+    /// ICU4X could not write the formatted list to the host-neutral collector.
+    FormattingFailed,
+}
+
+impl std::fmt::Display for ListFormatError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DataUnavailable => formatter.write_str("list-pattern data is unavailable"),
+            Self::FormattingFailed => formatter.write_str("could not collect list-format parts"),
+        }
+    }
+}
+
+impl std::error::Error for ListFormatError {}
+
+/// A host-neutral `Intl.ListFormat` service backed by ICU4X.
+///
+/// Input item coercion remains an embedding concern. The service formats the
+/// resulting strings using the negotiated CLDR list patterns and exposes their
+/// literal/element boundaries without needing a JavaScript Realm.
+pub struct ListFormat {
+    formatter: IcuListFormatter,
+    negotiation: ListFormatLocaleNegotiation,
+    resolved: ResolvedListFormatOptions,
+}
+
+impl ListFormat {
+    /// Constructs a list formatter after locale negotiation and option
+    /// resolution.
+    pub fn try_new(
+        requested: &[CanonicalLocale],
+        options: ListFormatOptions,
+    ) -> Result<Self, ListFormatError> {
+        let negotiation = negotiate_list_format_locale(requested, options.locale_matcher);
+        let selected = negotiation.selected.clone();
+        let preferences: ListFormatterPreferences = selected.locale().into();
+        let formatter_options =
+            IcuListFormatterOptions::default().with_length(options.style.into());
+        let formatter = match options.list_type {
+            ListType::Conjunction => IcuListFormatter::try_new_and(preferences, formatter_options),
+            ListType::Disjunction => IcuListFormatter::try_new_or(preferences, formatter_options),
+            ListType::Unit => IcuListFormatter::try_new_unit(preferences, formatter_options),
+        }
+        .map_err(|_| ListFormatError::DataUnavailable)?;
+        Ok(Self {
+            formatter,
+            negotiation,
+            resolved: ResolvedListFormatOptions {
+                locale: selected.as_str().into(),
+                list_type: options.list_type,
+                style: options.style,
+            },
+        })
+    }
+
+    /// Formats a sequence of already-coerced string items.
+    pub fn format<I, S>(&self, values: I) -> String
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let values = values
+            .into_iter()
+            .map(|value| value.as_ref().to_owned())
+            .collect::<Vec<_>>();
+        self.formatter
+            .format(values.iter().map(String::as_str))
+            .to_string()
+    }
+
+    /// Formats a sequence of already-coerced string items into ECMA-402 parts.
+    pub fn format_to_parts<I, S>(&self, values: I) -> Result<Vec<ListPart>, ListFormatError>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let values = values
+            .into_iter()
+            .map(|value| value.as_ref().to_owned())
+            .collect::<Vec<_>>();
+        let mut collector = ListPartCollector::default();
+        self.formatter
+            .format(values.iter().map(String::as_str))
+            .write_to_parts(&mut collector)
+            .map_err(|_| ListFormatError::FormattingFailed)?;
+        Ok(collector.parts)
+    }
+
+    /// Returns the data selected during construction.
+    pub fn resolved_options(&self) -> &ResolvedListFormatOptions {
+        &self.resolved
+    }
+
+    /// Returns the locale-negotiation trace produced during construction.
+    pub fn negotiation(&self) -> &ListFormatLocaleNegotiation {
+        &self.negotiation
+    }
+
+    /// Returns the heap storage directly owned by this service.
+    pub fn bytes(&self) -> usize {
+        std::mem::size_of::<Self>() + self.resolved.locale.len()
+    }
+}
+
+#[derive(Default)]
+struct ListPartCollector {
+    parts: Vec<ListPart>,
+    stack: Vec<ListPartKind>,
+}
+
+impl std::fmt::Write for ListPartCollector {
+    fn write_str(&mut self, value: &str) -> std::fmt::Result {
+        if value.is_empty() {
+            return Ok(());
+        }
+        let kind = self.stack.last().copied().unwrap_or(ListPartKind::Literal);
+        if let Some(part) = self.parts.last_mut().filter(|part| part.kind == kind) {
+            part.value.push_str(value);
+        } else {
+            self.parts.push(ListPart {
+                kind,
+                value: value.into(),
+            });
+        }
+        Ok(())
+    }
+}
+
+impl PartsWrite for ListPartCollector {
+    type SubPartsWrite = Self;
+
+    fn with_part(
+        &mut self,
+        part: Part,
+        mut write: impl FnMut(&mut Self::SubPartsWrite) -> std::fmt::Result,
+    ) -> std::fmt::Result {
+        let kind = if part == icu_list::parts::ELEMENT {
+            ListPartKind::Element
+        } else {
+            ListPartKind::Literal
+        };
+        self.stack.push(kind);
+        let result = write(self);
+        self.stack.pop();
+        result
+    }
+}
+
+/// The ECMA-402 segmentation granularity to use.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum SegmenterGranularity {
+    /// Extended grapheme-cluster boundaries.
+    #[default]
+    Grapheme,
+    /// Word boundaries, including non-word-like punctuation and whitespace.
+    Word,
+    /// Sentence boundaries.
+    Sentence,
+}
+
+/// One canonical locale considered during segmenter negotiation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SegmenterLocaleCandidate {
+    requested: CanonicalLocale,
+    supported: bool,
+}
+
+impl SegmenterLocaleCandidate {
+    /// Returns the canonical locale supplied by the host.
+    pub fn requested(&self) -> &CanonicalLocale {
+        &self.requested
+    }
+
+    /// Returns whether the bundled segmentation data supports this request.
+    pub fn is_supported(&self) -> bool {
+        self.supported
+    }
+}
+
+/// A deterministic trace of segmenter locale negotiation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SegmenterLocaleNegotiation {
+    matcher: LocaleMatcher,
+    candidates: Vec<SegmenterLocaleCandidate>,
+    selected: CanonicalLocale,
+    used_default: bool,
+}
+
+impl SegmenterLocaleNegotiation {
+    /// Returns the matcher used for this negotiation.
+    pub fn matcher(&self) -> LocaleMatcher {
+        self.matcher
+    }
+
+    /// Returns every requested locale and its data-support decision.
+    pub fn candidates(&self) -> &[SegmenterLocaleCandidate] {
+        &self.candidates
+    }
+
+    /// Returns the locale selected for the segmenter service.
+    pub fn selected(&self) -> &CanonicalLocale {
+        &self.selected
+    }
+
+    /// Returns whether the stable `en-US` service default was selected.
+    pub fn used_default(&self) -> bool {
+        self.used_default
+    }
+}
+
+/// Returns whether the bundled segmentation data supports this locale.
+pub fn supports_segmenter_locale(locale: &IcuLocale) -> bool {
+    supports_locale_language(locale)
+}
+
+/// Negotiates requested locales against the bundled segmenter service.
+pub fn negotiate_segmenter_locale(
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> SegmenterLocaleNegotiation {
+    let candidates = requested
+        .iter()
+        .cloned()
+        .map(|requested| SegmenterLocaleCandidate {
+            supported: supports_segmenter_locale(requested.locale()),
+            requested,
+        })
+        .collect::<Vec<_>>();
+    let selected = candidates
+        .iter()
+        .find(|candidate| candidate.supported)
+        .map(|candidate| candidate.requested.clone());
+    let used_default = selected.is_none();
+    SegmenterLocaleNegotiation {
+        matcher,
+        candidates,
+        selected: selected
+            .unwrap_or_else(|| canonicalize("en-US").expect("the default locale is valid")),
+        used_default,
+    }
+}
+
+/// Resolves one requested locale against the bundled segmenter service.
+pub fn resolve_segmenter_locale(
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> CanonicalLocale {
+    negotiate_segmenter_locale(requested, matcher)
+        .selected
+        .clone()
+}
+
+/// Returns requested locales supported by the bundled segmenter service.
+pub fn supported_segmenter_locales(
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> Vec<CanonicalLocale> {
+    negotiate_segmenter_locale(requested, matcher)
+        .candidates
+        .into_iter()
+        .filter(|candidate| candidate.supported)
+        .map(|candidate| candidate.requested)
+        .collect()
+}
+
+/// Host-neutral options for constructing an `Intl.Segmenter` service.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SegmenterOptions {
+    /// The requested locale matching policy.
+    pub locale_matcher: LocaleMatcher,
+    /// The requested segmentation granularity.
+    pub granularity: SegmenterGranularity,
+}
+
+/// ECMAScript-observable data resolved by a segmenter service.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedSegmenterOptions {
+    /// The negotiated locale.
+    pub locale: String,
+    /// The selected segmentation granularity.
+    pub granularity: SegmenterGranularity,
+}
+
+/// One host-neutral `Intl.Segmenter` segment result.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SegmenterSegment {
+    /// The corresponding input substring.
+    pub segment: String,
+    /// Its index in the original input, counted in UTF-16 code units.
+    pub index_utf16: usize,
+    /// Whether this is word-like. It is only meaningful for word granularity.
+    pub is_word_like: Option<bool>,
+}
+
+/// A failure while constructing a segmenter.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SegmenterError {
+    /// The selected locale's segmentation data was unavailable.
+    DataUnavailable,
+}
+
+impl std::fmt::Display for SegmenterError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DataUnavailable => formatter.write_str("segmentation data is unavailable"),
+        }
+    }
+}
+
+impl std::error::Error for SegmenterError {}
+
+/// A host-neutral `Intl.Segmenter` service backed by ICU4X.
+///
+/// Input coercion and iterator-object mechanics remain embedding concerns. The
+/// service returns fully materialized segments so a host can map them directly
+/// into ECMA-402 `Segments` iterator results without retaining its input.
+pub struct Segmenter {
+    backend: SegmenterBackend,
+    negotiation: SegmenterLocaleNegotiation,
+    resolved: ResolvedSegmenterOptions,
+}
+
+enum SegmenterBackend {
+    Grapheme(GraphemeClusterSegmenterBorrowed<'static>),
+    Word(Box<WordSegmenter>),
+    Sentence(Box<SentenceSegmenter>),
+}
+
+impl Segmenter {
+    /// Constructs a segmenter after locale negotiation and option resolution.
+    pub fn try_new(
+        requested: &[CanonicalLocale],
+        options: SegmenterOptions,
+    ) -> Result<Self, SegmenterError> {
+        let negotiation = negotiate_segmenter_locale(requested, options.locale_matcher);
+        let selected = negotiation.selected.clone();
+        let backend = match options.granularity {
+            SegmenterGranularity::Grapheme => {
+                SegmenterBackend::Grapheme(GraphemeClusterSegmenter::new())
+            }
+            SegmenterGranularity::Word => {
+                let language = selected.locale().id.clone();
+                let mut word_options = WordBreakOptions::default();
+                word_options.content_locale = Some(&language);
+                SegmenterBackend::Word(Box::new(
+                    WordSegmenter::try_new_auto(word_options)
+                        .map_err(|_| SegmenterError::DataUnavailable)?,
+                ))
+            }
+            SegmenterGranularity::Sentence => {
+                let language = selected.locale().id.clone();
+                let mut sentence_options = SentenceBreakOptions::default();
+                sentence_options.content_locale = Some(&language);
+                SegmenterBackend::Sentence(Box::new(
+                    SentenceSegmenter::try_new(sentence_options)
+                        .map_err(|_| SegmenterError::DataUnavailable)?,
+                ))
+            }
+        };
+        Ok(Self {
+            backend,
+            negotiation,
+            resolved: ResolvedSegmenterOptions {
+                locale: selected.as_str().into(),
+                granularity: options.granularity,
+            },
+        })
+    }
+
+    /// Segments an already-coerced string at the selected granularity.
+    pub fn segment(&self, input: &str) -> Vec<SegmenterSegment> {
+        let input_utf16 = input.encode_utf16().collect::<Vec<_>>();
+        match &self.backend {
+            SegmenterBackend::Grapheme(segmenter) => segmenter_segments(
+                &input_utf16,
+                segmenter.segment_utf16(&input_utf16).map(|end| (end, None)),
+            ),
+            SegmenterBackend::Word(segmenter) => segmenter_segments(
+                &input_utf16,
+                segmenter
+                    .as_borrowed()
+                    .segment_utf16(&input_utf16)
+                    .iter_with_word_type()
+                    .map(|(end, word_type)| (end, Some(word_type.is_word_like()))),
+            ),
+            SegmenterBackend::Sentence(segmenter) => segmenter_segments(
+                &input_utf16,
+                segmenter
+                    .as_borrowed()
+                    .segment_utf16(&input_utf16)
+                    .map(|end| (end, None)),
+            ),
+        }
+    }
+
+    /// Returns the data selected during construction.
+    pub fn resolved_options(&self) -> &ResolvedSegmenterOptions {
+        &self.resolved
+    }
+
+    /// Returns the locale-negotiation trace produced during construction.
+    pub fn negotiation(&self) -> &SegmenterLocaleNegotiation {
+        &self.negotiation
+    }
+
+    /// Returns the heap storage directly owned by this service.
+    pub fn bytes(&self) -> usize {
+        std::mem::size_of::<Self>() + self.resolved.locale.len()
+    }
+}
+
+fn segmenter_segments<I>(input_utf16: &[u16], boundaries: I) -> Vec<SegmenterSegment>
+where
+    I: IntoIterator<Item = (usize, Option<bool>)>,
+{
+    let mut start = 0;
+    let mut segments = Vec::new();
+    for (end, is_word_like) in boundaries {
+        if end == start {
+            continue;
+        }
+        segments.push(SegmenterSegment {
+            segment: String::from_utf16(&input_utf16[start..end])
+                .expect("ICU4X boundaries preserve valid UTF-16"),
+            index_utf16: start,
+            is_word_like,
+        });
+        start = end;
+    }
+    segments
 }
 
 #[cfg(test)]

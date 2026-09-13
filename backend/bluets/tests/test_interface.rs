@@ -11,6 +11,14 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 #[test]
 fn interface_uses_the_bluejs_ready_and_json_lines_contract() {
     let mut adapter = Adapter::start();
+    let sloppy_parse_only = adapter.request(json!({
+        "source": "const answer: number = 1;",
+        "mode": "sloppy",
+        "parse_only": true,
+    }));
+    assert_eq!(sloppy_parse_only["kind"], "ok");
+    assert_eq!(sloppy_parse_only["phase"], "parse");
+
     let compiled = adapter.request(json!({
         "source": "import type { Envelope } from '../types/envelope.d.ts';\nconst envelope: Envelope<string> = { payload: 'Ada' };",
         "mode": "module",
@@ -46,6 +54,18 @@ fn interface_uses_the_bluejs_ready_and_json_lines_contract() {
 
     let malformed = adapter.raw_request("{");
     assert_eq!(malformed["kind"], "harness_error");
+
+    let invalid_policy = adapter.request(json!({
+        "source": "const answer: number = 1;",
+        "runtime_policy": "unknown-policy",
+    }));
+    assert_eq!(invalid_policy["kind"], "harness_error");
+
+    let after_error = adapter.request(json!({
+        "source": "const answer: number = 1;",
+        "mode": "raw",
+    }));
+    assert_eq!(after_error["kind"], "ok");
 }
 
 struct Adapter {

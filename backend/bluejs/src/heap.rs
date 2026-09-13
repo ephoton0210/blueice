@@ -536,6 +536,10 @@ enum ObjectKind {
         data: Rc<crate::intl::Collator>,
         compare: Option<ObjectId>,
     },
+    NumberFormat {
+        data: Rc<crate::intl::NumberFormat>,
+        format: Option<ObjectId>,
+    },
     IntlLocale(Rc<crate::intl::Locale>),
     Array {
         length: u32,
@@ -1008,6 +1012,7 @@ impl Object {
                     .collect(),
                 ObjectKind::NativeFunction { function, .. } => function.references(),
                 ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
+                ObjectKind::NumberFormat { format, .. } => format.iter().copied().collect(),
                 ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
                 ObjectKind::ArrayIterator { object, .. } => vec![*object],
                 ObjectKind::IteratorWrapper { iterator, next } => {
@@ -1110,6 +1115,7 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
                 .collect(),
             ObjectKind::NativeFunction { function, .. } => function.references(),
             ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
+            ObjectKind::NumberFormat { format, .. } => format.iter().copied().collect(),
             ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
             ObjectKind::ArrayIterator { object, .. } => vec![*object],
             ObjectKind::IteratorWrapper { iterator, next } => {
@@ -2118,6 +2124,44 @@ impl Heap {
             &mut self.objects.get_mut(&object).unwrap().kind
         {
             *compare = Some(function);
+        }
+        self.write_barrier(object, Some(function));
+    }
+
+    pub(crate) fn alloc_number_format(
+        &mut self,
+        data: Rc<crate::intl::NumberFormat>,
+        prototype: ObjectId,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(
+            ObjectKind::NumberFormat { data, format: None },
+            Some(prototype),
+        )
+    }
+
+    pub(crate) fn number_format(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<Rc<crate::intl::NumberFormat>>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::NumberFormat { data, .. } => Some(data.clone()),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn number_format_format(&self, object: ObjectId) -> Option<ObjectId> {
+        let ObjectKind::NumberFormat { format, .. } = &self.objects.get(&object).unwrap().kind
+        else {
+            unreachable!("VM checks the NumberFormat brand")
+        };
+        *format
+    }
+
+    pub(crate) fn set_number_format_format(&mut self, object: ObjectId, function: ObjectId) {
+        if let ObjectKind::NumberFormat { format, .. } =
+            &mut self.objects.get_mut(&object).unwrap().kind
+        {
+            *format = Some(function);
         }
         self.write_barrier(object, Some(function));
     }

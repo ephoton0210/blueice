@@ -2,6 +2,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-function count(value: number = 2, multiplier?: number): number { return value; }
-const explicitUndefined: number = count(undefined);
-console.log(explicitUndefined);
+function label<T extends string>(value: T): T;
+function label(value: string): string { return value; }
+console.log(label("Ada"));

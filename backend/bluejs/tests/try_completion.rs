@@ -152,14 +152,18 @@ fn classes_construct_instances_install_methods_and_keep_static_block_early_error
         "class C{static{this.answer=41;this.answer++;}}C.answer===42",
         "class C{static{this.self=C;}}C.self===C",
         "class C{first=1;second=this.first+1;static first=3;static second=this.first+1;}let value=new C;value.first===1&&value.second===2&&C.first===3&&C.second===4&&Object.keys(value).length===2",
-        "let rejected=false;try{class C{static prototype=1;}}catch(error){rejected=error instanceof TypeError;}rejected",
         "let C=class Inner{static{this.self=Inner;}value(){return Inner;}};let value=new C;C.self===C&&value.value()===C&&typeof Inner==='undefined'",
         "let C=class Inner{replace(){Inner=1;}};let rejected=false;try{(new C).replace()}catch(error){rejected=error instanceof TypeError;}rejected",
     ] {
         assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)), "{source}");
     }
-    let invalid = parse("class C{static{try{}catch(await){}}}").unwrap_err();
-    assert!(invalid.known_syntax);
+    for source in [
+        "class C{static{try{}catch(await){}}}",
+        "class C{static prototype=1;}",
+    ] {
+        let invalid = parse(source).unwrap_err();
+        assert!(invalid.known_syntax, "{source}: {invalid:?}");
+    }
 }
 
 #[test]
@@ -172,7 +176,7 @@ fn derived_classes_construct_through_super_and_keep_home_object_receivers() {
         "class Base{constructor(value){this.value=value;}}class Derived extends Base{copy=this.value;constructor(value){super(value);this.observed=this.copy;}}(new Derived(3)).observed===3",
         "class Base{constructor(value){this.value=value;}}class Derived extends Base{constructor(value){(()=>super(value+1))();this.observed=this.value;}}(new Derived(3)).observed===4",
         "let executed=false;class Base{}class Derived extends Base{field=eval('executed=true;()=>super();')}let syntax=false;try{new Derived}catch(error){syntax=error instanceof SyntaxError;}syntax&&!executed",
-        "class C{write=()=>{super.value=7;}static writeStatic=()=>{super.value=11;}}let value=new C;value.write();C.writeStatic();value.value===7&&C.value===11",
+        "class C{write=()=>{super.value=7;};static writeStatic=()=>{super.value=11;}}let value=new C;value.write();C.writeStatic();value.value===7&&C.value===11",
         "class Base{static get answer(){return this.value;}static set answer(value){this.value=value;}}class Derived extends Base{}Derived.answer=42;Derived.answer===42&&Base.value===undefined",
         "class Base{constructor(){this._count=1;}get count(){return this._count;}set count(value){this._count=value;}*items(){yield this.count;}}class Derived extends Base{constructor(){super();}*items(){yield super.items().next().value;yield super.count++;}}let value=new Derived;let iter=value.items();iter.next().value===1&&iter.next().value===1&&iter.next().done&&value.count===2",
         "class Base{method(){return this.value;}static method(){return this.value;}}class Derived extends Base{constructor(){super();this.value=7;}method(){return (()=>super.method())();}static method(){this.value=11;return (()=>super.method())();}}let value=new Derived;value.method()===7&&Derived.method()===11",
@@ -441,7 +445,8 @@ fn with_scopes_resolve_properties_and_unwind_at_handlers() {
         Ok(Value::Undefined),
         "the complete Test262 with/try/catch/finally fixture must not lose the catch binding",
     );
-    assert!(compile(&parse("'use strict';with({}){} ").unwrap()).is_err());
+    let strict_with = parse("'use strict';with({}){} ").unwrap_err();
+    assert!(strict_with.known_syntax);
 }
 
 #[test]

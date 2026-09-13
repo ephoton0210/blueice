@@ -27,7 +27,7 @@ The shared fields are compatible with the BlueJS adapter:
 ```json
 {
   "source": "const value: number = 1;",
-  "mode": "raw | strict | module",
+  "mode": "raw | sloppy | strict | module",
   "module_path": "src/main.ts",
   "module_sources": {
     "types/model.d.ts": "export interface Model { id: string }"
@@ -50,10 +50,11 @@ The shared fields are compatible with the BlueJS adapter:
 }
 ```
 
-`source` is required. `mode` defaults to `raw`; the three accepted mode names
-match BlueJS's interface even though BlueTS only compiles them. `module_path`
-and `module_sources` are canonicalized into the in-memory `memory:///` module
-namespace. The entry source always wins if it is also present in
+`source` is required. `mode` defaults to `raw`; `sloppy` is accepted as the
+BlueJS/Test262-compatible alias for `raw`, while `strict` and `module` retain
+their shared transport names even though BlueTS only compiles them.
+`module_path` and `module_sources` are canonicalized into the in-memory
+`memory:///` module namespace. The entry source always wins if it is also present in
 `module_sources`. All module data is caller-supplied; the adapter performs no
 filesystem or network I/O.
 

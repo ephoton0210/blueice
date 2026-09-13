@@ -859,12 +859,12 @@ impl Vm {
                     let other = self.coerce_string(first)?;
                     let collator = self
                         .resolve_collator(native::argument(&args, 1), native::argument(&args, 2))?;
-                    Ok(collator.compare(&string, &other))
+                    Ok(crate::intl::collate(&collator, &string, &other))
                 } else {
                     let locales = self.canonical_locales(first)?;
                     let locale = locales
                         .first()
-                        .map(|locale| locale.locale.clone())
+                        .map(|locale| locale.locale().clone())
                         .unwrap_or(icu_locale_core::locale!("en-US"));
                     crate::intl::case_map(
                         &string,
@@ -876,7 +876,9 @@ impl Vm {
                 }
             }
             NativeFunction::Collator => self.create_collator(&args, construct),
-            NativeFunction::IntlService(service) => self.create_intl_service(service, construct),
+            NativeFunction::IntlService(service) => {
+                self.create_intl_service(service, &args, construct)
+            }
             NativeFunction::Locale => self.create_locale(&args, construct),
             NativeFunction::CanonicalLocales => {
                 let locales = self.canonical_locales(first)?;
@@ -893,9 +895,24 @@ impl Vm {
                 let collator = self.collator_data(&receiver)?;
                 let left = self.coerce_string(first)?;
                 let right = self.coerce_string(native::argument(&args, 1))?;
-                Ok(collator.compare(&left, &right))
+                Ok(crate::intl::collate(&collator, &left, &right))
             }
             NativeFunction::CollatorResolvedOptions => self.collator_resolved_options(&receiver),
+            NativeFunction::NumberFormatSupportedLocales => {
+                self.number_format_supported_locales(&args)
+            }
+            NativeFunction::NumberFormatFormatGetter => self.number_format_format_getter(&receiver),
+            NativeFunction::NumberFormatFormat => {
+                let formatter = self.number_format_data(&receiver)?;
+                let value = self.coerce_number(first)?;
+                formatter
+                    .format_f64(value)
+                    .map(|formatted| Value::String(formatted.into()))
+                    .map_err(|error| RuntimeError::RangeError(error.to_string()))
+            }
+            NativeFunction::NumberFormatResolvedOptions => {
+                self.number_format_resolved_options(&receiver)
+            }
             NativeFunction::LocaleToString => self.locale_to_string(&receiver),
             NativeFunction::LocaleMaximize => self.locale_transform(&receiver, true),
             NativeFunction::LocaleMinimize => self.locale_transform(&receiver, false),

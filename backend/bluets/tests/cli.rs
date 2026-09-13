@@ -6,6 +6,8 @@
 
 use std::collections::BTreeMap;
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -275,6 +277,65 @@ fn repeated_config_builds_publish_byte_identical_artifacts() {
             assert_eq!(current, previous);
         }
     }
+    fs::remove_dir_all(temporary).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn config_build_rejects_an_output_directory_with_a_symlinked_parent_outside_the_root() {
+    let temporary = unique_test_directory();
+    let root = temporary.join("project");
+    let source = root.join("src");
+    let outside = temporary.join("outside");
+    fs::create_dir_all(&source).unwrap();
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(source.join("main.ts"), "export const answer: number = 1;\n").unwrap();
+    symlink(&outside, root.join("linked")).unwrap();
+    let config = root.join("bluetsc.json");
+    fs::write(
+        &config,
+        r#"{
+  "entries": ["src/main.ts"],
+  "outDir": "linked/dist"
+}"#,
+    )
+    .unwrap();
+
+    let status = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .args(["build", "--config", config.to_str().unwrap()])
+        .status()
+        .unwrap();
+    assert!(!status.success());
+    assert!(!outside.join("dist").exists());
+    fs::remove_dir_all(temporary).unwrap();
+}
+
+#[test]
+fn config_build_rejects_an_output_directory_that_contains_source_modules() {
+    let temporary = unique_test_directory();
+    let root = temporary.join("project");
+    let source = root.join("src");
+    fs::create_dir_all(&source).unwrap();
+    let entry = source.join("main.ts");
+    let original = "export const answer: number = 1;\n";
+    fs::write(&entry, original).unwrap();
+    let config = root.join("bluetsc.json");
+    fs::write(
+        &config,
+        r#"{
+  "entries": ["src/main.ts"],
+  "outDir": "src"
+}"#,
+    )
+    .unwrap();
+
+    let status = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .args(["build", "--config", config.to_str().unwrap()])
+        .status()
+        .unwrap();
+    assert!(!status.success());
+    assert_eq!(fs::read_to_string(entry).unwrap(), original);
+    assert!(!source.join("main.js").exists());
     fs::remove_dir_all(temporary).unwrap();
 }
 
