@@ -6,9 +6,15 @@
 crate. BlueJS consumes its locale canonicalization, collation negotiation and
 UTF-16 Collator service. Host-neutral `NumberFormat`, `PluralRules`,
 `ListFormat` and `Segmenter` services also have direct test boundaries. The
-finite-decimal `NumberFormat` slice is additionally wired through BlueJS and
-its JSON-lines Test262 interface; the other adapters and remaining ECMA-402
-services are intentionally not claimed done.
+finite-decimal `NumberFormat` and `ListFormat` slices are additionally wired
+through BlueJS and its JSON-lines Test262 interface. The remaining adapters
+and ECMA-402 services are intentionally not claimed done.
+
+The normative target and completion gates are edition-locked in the
+[ECMA-402 Edition 13 conformance matrix](CONFORMANCE.md). In particular, the
+Phase is not complete merely because a host service compiles or reaches a line
+coverage threshold: every Edition 13 surface needs its host-boundary and
+JavaScript-observable Test262 evidence.
 
 ## Objective
 
@@ -61,10 +67,11 @@ cargo llvm-cov -p blueice-bluejs --fail-under-lines 88 --summary-only
 ```
 
 It executes every default BlueJS unit and integration test, including the
-direct `Intl.NumberFormat` VM boundary and the `bluejs-test262` JSON-lines
-process interface. The measured result was **31,659 / 35,794 lines (88.45%)**,
-2,247 / 2,486 functions (90.39%), and 84.90% regions, exceeding the 88% line
-floor. This is the real crate coverage gate, not a two-target proxy.
+direct `Intl.NumberFormat` VM boundary, the ListFormat adapter and the
+`bluejs-test262` JSON-lines process interface. The measured result on
+2026-09-14 was **36,107 / 40,259 lines (88.50%)**, 2,274 / 2,518 functions
+(90.31%), and 84.95% regions, exceeding the 88% line floor. This is the real
+crate coverage gate, not a two-target proxy.
 
 ## Delivery order
 
@@ -81,6 +88,8 @@ floor. This is the real crate coverage gate, not a two-target proxy.
    now has typed option application, likely-subtag transforms and deterministic
    information data. BlueJS adapts the finite-decimal NumberFormat service
    through an internal slot, `format`, `resolvedOptions` and
+   `supportedLocalesOf`, and adapts ListFormat through its own internal slot,
+   iterable `format`/`formatToParts`, `resolvedOptions` and
    `supportedLocalesOf`; the other adapter migration and service data remain
    to be moved.
 5. [ ] Implement `DateTimeFormat`, `RelativeTimeFormat`, `DisplayNames` and
@@ -90,9 +99,10 @@ floor. This is the real crate coverage gate, not a two-target proxy.
    through BlueJS and directly at the host-neutral crate boundary where a
    JavaScript Realm is unnecessary. Collator, decimal NumberFormat,
    PluralRules, ListFormat and Segmenter service boundaries now have standalone
-   `backend/ecma402/tests/` coverage. The decimal NumberFormat slice also has
-   direct-VM and JSON-lines Test262-interface regression tests; Test262-derived
-   service coverage and the broader BlueJS integration gate remain pending.
+   `backend/ecma402/tests/` coverage. The decimal NumberFormat and ListFormat
+   slices also have direct-VM and JSON-lines Test262-interface regression
+   tests; Test262-derived service coverage and the broader BlueJS integration
+   gate remain pending.
 
 ## Current acceptance boundary
 
@@ -131,7 +141,13 @@ BlueJS adapter supplies ECMAScript Number coercion and digit-option rounding.
 The independent ListFormat slice formats already-coerced strings with CLDR
 conjunction, disjunction and unit patterns at wide, short and narrow widths.
 It includes locale negotiation, resolved option data and host-neutral
-`formatToParts` element/literal output before any BlueJS adapter migration.
+`formatToParts` element/literal output. BlueJS now exposes the service through
+the required constructor/prototype boundary, validates that each iterable item
+is a String, preserves original UTF-16 element code units while ICU4X selects
+the literals, closes a live iterator on an abrupt item failure, and returns
+ordinary `{ type, value }` part records. This remains a partial service until
+the Edition 13 matrix's phase-wide 100% host-coverage and full-service gates
+pass. Its own pinned-upstream ListFormat inventory is now clean.
 
 The independent Segmenter slice returns grapheme, word and sentence boundaries
 for already-coerced Unicode strings. Every boundary is exposed as a UTF-16
@@ -150,3 +166,19 @@ investigating lone surrogates), `debug_number_format`, `debug_plural_rules`,
 `debug_list_format`, `debug_segmenter` and `debug_locale`. They have no Realm,
 page, IPC or browser-state authority; the later BlueJS debugger remains the
 separately scoped Phase 12 adapter.
+
+## Latest verification
+
+On 2026-09-14, the ListFormat adapter's direct BlueJS regression test covered
+locale/type/style resolution, array-iterator input, `formatToParts`,
+`supportedLocalesOf`, `Symbol.toStringTag`, custom `Reflect.construct`
+prototypes, invalid receivers/options/items and `IteratorClose` on an abrupt
+element. It also passed every ListFormat case from the pinned official Test262
+revision `6eec1ac9ee144dafd8f344d73a21f36bfc9f6755`: **81 files, 162 scheduled
+strict/sloppy modes, 162 passes, zero failures**. This includes constructor
+primitive-option rejection, ToObject coercion for `supportedLocalesOf`, string
+and `undefined` `StringListFromIterable` inputs, GC-safe `formatToParts` result
+construction and foreign-Realm fallback prototypes. `cargo test -p
+blueice-bluejs --quiet` passed its complete default suite after this change.
+This confirms the implemented ListFormat slice only; it does not change the
+Edition 13 completion status recorded in [CONFORMANCE.md](CONFORMANCE.md).

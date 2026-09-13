@@ -296,6 +296,18 @@ fn adapter_executes_number_format_through_the_json_lines_interface() {
     assert_eq!(replies, vec![json!({"kind":"ok", "phase":"runtime"})]);
 }
 
+#[test]
+fn adapter_executes_list_format_through_the_json_lines_interface() {
+    let replies = adapter(
+        &[json!({
+            "source": "let f=new Intl.ListFormat('es',{type:'conjunction',style:'long'});assert.sameValue(f.format(['España','Suiza','Italia']),'España, Suiza e Italia');let p=f.formatToParts(['A','B']);assert.sameValue(p.length,3);assert.sameValue(p[0].type,'element');assert.sameValue(p[1].type,'literal');assert.sameValue(Intl.ListFormat.supportedLocalesOf(['zz','es']).join(','),'es')",
+            "mode": "sloppy",
+        })],
+        None,
+    );
+    assert_eq!(replies, vec![json!({"kind":"ok", "phase":"runtime"})]);
+}
+
 #[cfg(unix)]
 #[test]
 fn regex_protocol_faults_and_missing_helper_fail_closed() {

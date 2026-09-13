@@ -913,6 +913,14 @@ impl Vm {
             NativeFunction::NumberFormatResolvedOptions => {
                 self.number_format_resolved_options(&receiver)
             }
+            NativeFunction::ListFormatSupportedLocales => self.list_format_supported_locales(&args),
+            NativeFunction::ListFormatFormat => self.list_format_format(&receiver, first),
+            NativeFunction::ListFormatFormatToParts => {
+                self.list_format_format_to_parts(&receiver, first)
+            }
+            NativeFunction::ListFormatResolvedOptions => {
+                self.list_format_resolved_options(&receiver)
+            }
             NativeFunction::LocaleToString => self.locale_to_string(&receiver),
             NativeFunction::LocaleMaximize => self.locale_transform(&receiver, true),
             NativeFunction::LocaleMinimize => self.locale_transform(&receiver, false),

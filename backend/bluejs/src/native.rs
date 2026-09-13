@@ -271,6 +271,10 @@ pub(crate) enum NativeFunction {
     NumberFormatFormatGetter,
     NumberFormatFormat,
     NumberFormatResolvedOptions,
+    ListFormatSupportedLocales,
+    ListFormatFormat,
+    ListFormatFormatToParts,
+    ListFormatResolvedOptions,
     LocaleToString,
     LocaleMaximize,
     LocaleMinimize,
@@ -535,8 +539,9 @@ pub(crate) enum LocaleInfo {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum IntlService {
-    NumberFormat,
-    DateTimeFormat,
+    Number,
+    DateTime,
+    List,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

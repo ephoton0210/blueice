@@ -28,6 +28,7 @@ impl From<&Locale> for CanonicalLocale {
 }
 
 pub(crate) type Collator = blueice_ecma402::Collator;
+pub(crate) type ListFormat = blueice_ecma402::ListFormat;
 pub(crate) type NumberFormat = blueice_ecma402::NumberFormat;
 
 pub(crate) fn canonicalize(string: &JsString) -> Result<CanonicalLocale, RuntimeError> {

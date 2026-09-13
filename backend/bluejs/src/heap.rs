@@ -540,6 +540,7 @@ enum ObjectKind {
         data: Rc<crate::intl::NumberFormat>,
         format: Option<ObjectId>,
     },
+    ListFormat(Rc<crate::intl::ListFormat>),
     IntlLocale(Rc<crate::intl::Locale>),
     Array {
         length: u32,
@@ -1013,6 +1014,7 @@ impl Object {
                 ObjectKind::NativeFunction { function, .. } => function.references(),
                 ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
                 ObjectKind::NumberFormat { format, .. } => format.iter().copied().collect(),
+                ObjectKind::ListFormat(_) => Vec::new(),
                 ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
                 ObjectKind::ArrayIterator { object, .. } => vec![*object],
                 ObjectKind::IteratorWrapper { iterator, next } => {
@@ -1116,6 +1118,7 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
             ObjectKind::NativeFunction { function, .. } => function.references(),
             ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
             ObjectKind::NumberFormat { format, .. } => format.iter().copied().collect(),
+            ObjectKind::ListFormat(_) => Vec::new(),
             ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
             ObjectKind::ArrayIterator { object, .. } => vec![*object],
             ObjectKind::IteratorWrapper { iterator, next } => {
@@ -2164,6 +2167,24 @@ impl Heap {
             *format = Some(function);
         }
         self.write_barrier(object, Some(function));
+    }
+
+    pub(crate) fn alloc_list_format(
+        &mut self,
+        data: Rc<crate::intl::ListFormat>,
+        prototype: ObjectId,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::ListFormat(data), Some(prototype))
+    }
+
+    pub(crate) fn list_format(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<Rc<crate::intl::ListFormat>>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::ListFormat(data) => Some(data.clone()),
+            _ => None,
+        })
     }
 
     pub(crate) fn alloc_intl_locale(

@@ -439,6 +439,11 @@ impl Vm {
                 .get("%Intl.Locale%")
                 .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
                 .and_then(|value| value.object_id());
+            let intl_list_format_prototype = self
+                .globals
+                .get("%Intl.ListFormat%")
+                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
+                .and_then(|value| value.object_id());
             let intrinsic = if default == self.object_prototype {
                 Some("Object")
             } else if default == self.function_prototype()? {
@@ -453,6 +458,8 @@ impl Vm {
                 Some("Intl.Collator")
             } else if intl_locale_prototype == Some(default) {
                 Some("Intl.Locale")
+            } else if intl_list_format_prototype == Some(default) {
+                Some("Intl.ListFormat")
             } else if default == self.buffer_prototype("ArrayBuffer")? {
                 Some("ArrayBuffer")
             } else if default == self.buffer_prototype("SharedArrayBuffer")? {

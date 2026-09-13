@@ -122,8 +122,8 @@ reachability. The independent Node oracle passes 22,271 isolated scripts.
 
 The historical slice's test details are retained above as implementation
 evidence. The current Rust 1.95 no-exclusion BlueJS coverage measurement
-(2026-09-14) is **31,659 / 35,794 lines (88.45%)**, 2,247 / 2,486 functions
-(90.39%), and 84.90% regions; CI enforces an 88% line floor. It is the current
+(2026-09-14) is **36,107 / 40,259 lines (88.50%)**, 2,274 / 2,518 functions
+(90.31%), and 84.95% regions; CI enforces an 88% line floor. It is the current
 coverage baseline and must not be represented as 100%.
 
 The iterator completion state and rest-rooting subtask is complete. The next

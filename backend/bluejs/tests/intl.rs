@@ -252,6 +252,41 @@ fn number_format_delegates_to_the_host_neutral_decimal_service() {
 }
 
 #[test]
+fn list_format_delegates_iterables_and_parts_to_the_host_neutral_service() {
+    for source in [
+        "let f=new Intl.ListFormat('en',{type:'disjunction',style:'short'}); let r=f.resolvedOptions(); f.format(['A','B','C']) === 'A, B, or C' && r.locale === 'en' && r.type === 'disjunction' && r.style === 'short'",
+        "let f=new Intl.ListFormat('en'); f.format() === '' && f.format('foo') === 'f, o, and o'",
+        "new Intl.ListFormat('es').format(['España','Suiza','Italia'].values()) === 'España, Suiza e Italia'",
+        "let p=new Intl.ListFormat('en').formatToParts(['A','B','C']); p.map(x=>x.type+':'+x.value).join('|') === 'element:A|literal:, |element:B|literal:, and |element:C'",
+        "Intl.ListFormat.supportedLocalesOf(['en','zz','es-AR']).join(',') === 'en,es-AR' && Object.prototype.toString.call(new Intl.ListFormat()) === '[object Intl.ListFormat]'",
+        "function F(){} let f=Reflect.construct(Intl.ListFormat,['en'],F); Object.getPrototypeOf(f) === F.prototype && Intl.ListFormat.prototype.format.call(f,['A','B']) === 'A and B'",
+        "let closed=false; let list={ [Symbol.iterator](){return { next(){return {done:false,value:{toString(){throw 1}}}}, return(){closed=true;return {}}}}}; try { new Intl.ListFormat().format(list) } catch (_) {} closed",
+    ] {
+        match evaluate(source) {
+            Ok(value) => assert_eq!(value, Value::Bool(true), "{source}"),
+            Err(error) => panic!("{source}: {error}"),
+        }
+    }
+    for source in [
+        "Intl.ListFormat.prototype.format.call({},[])",
+        "Intl.ListFormat.prototype.formatToParts.call({},[])",
+        "Intl.ListFormat.prototype.resolvedOptions.call({})",
+        "new Intl.ListFormat('en',null)",
+        "new Intl.ListFormat('en',{type:'invalid'})",
+        "new Intl.ListFormat('en',{style:'invalid'})",
+        "new Intl.ListFormat().format([1])",
+    ] {
+        assert!(
+            matches!(
+                evaluate(source),
+                Err(RuntimeError::TypeError(_) | RuntimeError::RangeError(_))
+            ),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn locale_conversions_are_observable_and_ordered() {
     assert_eq!(evaluate("let log=''; let o={get usage(){log+='u';},get localeMatcher(){log+='l';},get collation(){log+='c';},get numeric(){log+='n';},get caseFirst(){log+='f';},get sensitivity(){log+='s';},get ignorePunctuation(){log+='p';}}; new Intl.Collator('en',o); log").unwrap(), Value::String("ulcnfsp".into()));
     assert_eq!(

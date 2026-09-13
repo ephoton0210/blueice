@@ -1270,6 +1270,10 @@ impl Vm {
                     realm.vm.intl_global()?;
                     Value::Object(realm.vm.globals["%Intl.Locale%"])
                 }
+                "Intl.ListFormat" => {
+                    realm.vm.intl_global()?;
+                    Value::Object(realm.vm.globals["%Intl.ListFormat%"])
+                }
                 _ => realm.vm.global(intrinsic)?,
             };
             realm.vm.get_property(&constructor, &"prototype".into())?

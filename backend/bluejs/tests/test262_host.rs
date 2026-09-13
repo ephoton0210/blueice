@@ -1543,8 +1543,10 @@ fn intl_constructors_select_foreign_new_target_intrinsics() {
         let newTarget = new other.Function();
         newTarget.prototype = undefined;
         let collator = Reflect.construct(Intl.Collator, [], newTarget);
+        let list = Reflect.construct(Intl.ListFormat, [], newTarget);
         let locale = Reflect.construct(Intl.Locale, ['de'], newTarget);
         Object.getPrototypeOf(collator) === other.Intl.Collator.prototype &&
+          Object.getPrototypeOf(list) === other.Intl.ListFormat.prototype &&
           Object.getPrototypeOf(locale) === other.Intl.Locale.prototype
     "#;
     assert_eq!(
