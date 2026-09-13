@@ -1653,3 +1653,56 @@ algorithms remain library work.
 Focused validation: `built-ins/Proxy` **607/607**, `built-ins/Proxy/construct`
 **60/60**, `built-ins/Reflect/construct` **20/20**, and the public
 `conformance_edges` suite **37/37**.
+
+## P0.1 continuation: generator-return iterator closing and PromiseResolve observation
+
+The published ECMAScript 2026 [IteratorClose](https://tc39.es/ecma262/2026/multipage/abstract-operations.html#sec-iteratorclose),
+[IteratorCloseAll](https://tc39.es/ecma262/2026/multipage/abstract-operations.html#sec-iteratorcloseall),
+[PromiseResolve](https://tc39.es/ecma262/2026/multipage/control-abstraction-objects.html#sec-promise-resolve-functions),
+and [GeneratorResumeAbrupt](https://tc39.es/ecma262/2026/multipage/control-abstraction-objects.html#sec-generatorresumeabrupt)
+algorithms were checked on 2026-09-13 before this continuation.
+
+An injected `Generator.prototype.return()` supplies a **return** completion to
+the suspended frame. If a live destructuring iterator's `return` getter/call
+throws, or its call returns a non-object, `IteratorCloseAll` changes that
+return completion into the first close failure; only a pre-existing **throw**
+completion wins over close failures. The old generator teardown reused the
+throw-cleanup path and discarded all close errors. `close_iterators_for_return`
+now keeps the first error, closes remaining outer iterators in reverse order,
+and roots a thrown JavaScript value while later close callbacks can allocate.
+
+The internal `PromiseResolve(%Promise%, value)` fast path also incorrectly
+returned a native Promise before reading its observable `constructor`
+property. It now materializes the intrinsic `%Promise%`, roots `value`, reads
+the property before the identity shortcut, and propagates a getter failure as
+the rejection consumed by `AsyncFromSyncIteratorContinuation`.
+
+Two public parse → compile → execute regressions were red before their
+respective implementations: a suspended generator's `.return()` now exposes
+both an iterator `return` throw and a non-object return as the final error; a
+`for await` loop over a synchronous iterator now catches a native Promise's
+throwing `constructor` getter. The current eight-worker
+`language/statements/for-` run records **3,940 pass / 147 fail** of 4,087
+modes, up from **3,916 pass / 171 fail**, with **24 fail-to-pass and zero
+pass-to-nonpass** transitions. Its remaining results are scoped grammar,
+resource-management, Array/Map/Set, or TypedArray work rather than this
+completion/reference slice; this does not close P0.1–P0.3 as whole
+workstreams.
+
+## Test262 process-host completion liveness
+
+The JSON-lines adapter must answer every accepted request independently. Its
+async completion loop previously slept indefinitely after all Promise jobs and
+host events had drained, so an async request that omitted `$DONE` blocked the
+resident adapter and every later request on the same stream. `Test262AsyncWaits`
+now tracks host timers and `Atomics.waitAsync` completions from registration
+until dispatch. The loop returns the adapter's existing `timeout` result only
+when it is quiescent; registered host work remains pending for the runner's
+wall-clock supervisor.
+
+`process_hosts` now completes its five integration tests, including the
+no-`$DONE` request followed by later requests in the same child process. The
+adapter also classifies deterministic interpreter fuel exhaustion as
+`resource_error`; only its wall-clock and RegExp worker deadlines are
+`timeout` results. Direct VM regressions cover both quiescence and a pending
+host timer.

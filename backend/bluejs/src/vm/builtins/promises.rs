@@ -481,32 +481,45 @@ impl Vm {
         &mut self,
         value: Value,
     ) -> Result<Value, RuntimeError> {
-        if value
-            .object_id()
-            .is_some_and(|promise| self.promises.contains_key(&promise))
-        {
-            return Ok(value);
-        }
-        let promise = self.new_promise()?;
-        let then = match &value {
-            Value::Object(_) => self.get_property(&value, &"then".into()),
-            _ => Ok(Value::Undefined),
-        };
-        match then {
-            Ok(then) if self.is_callable(&then)? => {
-                self.promise_jobs.push_back(PromiseJob::Thenable {
-                    target: promise,
-                    thenable: value,
-                    then,
-                });
+        // PromiseResolve(%Promise%, value) may return a native Promise only
+        // after it observes `value.constructor`. That lookup is observable
+        // (and may throw), including through AsyncFromSyncIteratorContinuation.
+        // Keep `value` rooted while lazy intrinsic initialization or thenable
+        // lookup can allocate.
+        let base = self.stack.len();
+        self.stack.push(value.clone());
+        let outcome = (|| {
+            let constructor = self.global("Promise")?;
+            if value
+                .object_id()
+                .is_some_and(|promise| self.promises.contains_key(&promise))
+                && self.get_property(&value, &"constructor".into())? == constructor
+            {
+                return Ok(value);
             }
-            Ok(_) => self.settle_promise(promise, PromiseStatus::Fulfilled(value))?,
-            Err(error) => {
-                let error = self.error_value(error)?;
-                self.settle_promise(promise, PromiseStatus::Rejected(error))?;
+            let promise = self.new_promise()?;
+            let then = match &value {
+                Value::Object(_) => self.get_property(&value, &"then".into()),
+                _ => Ok(Value::Undefined),
+            };
+            match then {
+                Ok(then) if self.is_callable(&then)? => {
+                    self.promise_jobs.push_back(PromiseJob::Thenable {
+                        target: promise,
+                        thenable: value,
+                        then,
+                    });
+                }
+                Ok(_) => self.settle_promise(promise, PromiseStatus::Fulfilled(value))?,
+                Err(error) => {
+                    let error = self.error_value(error)?;
+                    self.settle_promise(promise, PromiseStatus::Rejected(error))?;
+                }
             }
-        }
-        Ok(Value::Object(promise))
+            Ok(Value::Object(promise))
+        })();
+        self.stack.truncate(base);
+        outcome
     }
 
     pub(in super::super) fn promise_reject(&mut self, value: Value) -> Result<Value, RuntimeError> {

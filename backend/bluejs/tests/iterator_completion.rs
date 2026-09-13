@@ -141,6 +141,47 @@ fn nested_abrupt_completions_close_only_active_iterators_in_reverse_order() {
 }
 
 #[test]
+fn generator_return_propagates_iterator_close_errors_from_suspended_destructuring() {
+    for close in ["throw marker;", "return null;"] {
+        let source = format!(
+            "let closed=0;let marker={{}};let iterator={{next(){{return {{value:undefined,done:false}};}},return(){{closed++;{close}}}}};
+            let iterable={{[Symbol.iterator](){{return iterator;}}}};
+            function* values(){{let target;[target=yield]=iterable;}}
+            let valuesIterator=values();valuesIterator.next();
+            let caught=false;try{{valuesIterator.return();}}catch(error){{caught={caught};}}
+            caught&&closed===1",
+            caught = if close == "throw marker;" {
+                "error===marker"
+            } else {
+                "error.name==='TypeError'"
+            },
+        );
+        assert_eq!(
+            execute(&mut Vm::default(), &source),
+            Ok(Value::Bool(true)),
+            "{source}"
+        );
+    }
+
+    let source = "
+        let closes=[];let marker={};
+        let inner={next(){return {value:undefined,done:false}},return(){closes.push('inner');throw marker;}};
+        let innerIterable={[Symbol.iterator](){return inner;}};
+        let outer={next(){return {value:innerIterable,done:false}},return(){closes.push('outer');return {};}};
+        let outerIterable={[Symbol.iterator](){return outer;}};
+        function* values(){let target;[[target=yield]]=outerIterable;}
+        let valuesIterator=values();valuesIterator.next();
+        let caught=false;try{valuesIterator.return();}catch(error){caught=error===marker;}
+        caught&&closes.join(',')==='inner,outer'
+    ";
+    assert_eq!(
+        execute(&mut Vm::default(), source),
+        Ok(Value::Bool(true)),
+        "{source}"
+    );
+}
+
+#[test]
 fn rest_values_survive_collection_during_subsequent_steps() {
     let mut vm = Vm::new(VmConfig {
         heap: HeapConfig {

@@ -241,6 +241,27 @@ fn atomics_wait_async_returns_a_promise_and_settles_on_the_vm_thread() {
 }
 
 #[test]
+fn async_completion_returns_timeout_after_the_event_loop_becomes_quiescent() {
+    let mut vm = Vm::default();
+    vm.install_test262_done().unwrap();
+    vm.execute_script(&compile(&parse("1").unwrap()).unwrap())
+        .unwrap();
+
+    assert_eq!(vm.run_test262_async_until_done(), Ok(None));
+}
+
+#[test]
+fn async_completion_waits_for_a_registered_host_timer() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    vm.install_test262_done().unwrap();
+    vm.execute_script(&compile(&parse("setTimeout($DONE, 1)").unwrap()).unwrap())
+        .unwrap();
+
+    assert_eq!(vm.run_test262_async_until_done(), Ok(Some(Ok(()))));
+}
+
+#[test]
 fn test262_agents_wait_async_registers_two_waiters_before_notify() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();

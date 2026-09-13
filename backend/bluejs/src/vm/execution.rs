@@ -580,6 +580,38 @@ impl Vm {
         }
     }
 
+    /// Closes active iterators while completing an ordinary `return`.
+    ///
+    /// `IteratorCloseAll` changes the completion to the first close failure,
+    /// then retains that throw while it closes outer iterators. This differs
+    /// from cleanup for a pre-existing throw, where the original throw wins
+    /// over every close failure.
+    pub(super) fn close_iterators_for_return(
+        &mut self,
+        iterators: &mut Vec<Value>,
+        depth: usize,
+    ) -> Result<(), RuntimeError> {
+        let active = iterators.split_off(depth.min(iterators.len()));
+        let mut completion = None;
+        for record in active.into_iter().rev() {
+            // A close callback can allocate while an earlier close error is
+            // the selected completion. Keep a thrown JavaScript value rooted
+            // until every outer iterator has received its close notification.
+            let base = self.stack.len();
+            if let Some(RuntimeError::Thrown(value)) = &completion {
+                self.stack.push(value.clone());
+            }
+            let result = self.iterator_close(&record);
+            self.stack.truncate(base);
+            if completion.is_none() {
+                if let Err(error) = result {
+                    completion = Some(error);
+                }
+            }
+        }
+        completion.map_or(Ok(()), Err)
+    }
+
     pub(super) fn error_value(&mut self, error: RuntimeError) -> Result<Value, RuntimeError> {
         match error {
             RuntimeError::Thrown(value) => Ok(value),

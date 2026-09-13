@@ -410,10 +410,10 @@ impl Vm {
                 let close_base = self.stack.len();
                 self.stack.push(value.clone());
                 self.stack.extend(iterators.iter().cloned());
-                self.close_iterators_to(&mut iterators, 0);
+                let close = self.close_iterators_for_return(&mut iterators, 0);
                 self.stack.truncate(close_base);
                 self.stack.truncate(frame_base);
-                (GeneratorState::Done, Ok((value, true)))
+                (GeneratorState::Done, close.map(|()| (value, true)))
             }
             Ok(InterpreterExit::Yield {
                 value,

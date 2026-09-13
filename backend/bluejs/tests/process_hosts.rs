@@ -188,9 +188,12 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
         (json!({"source":"throw 1", "mode":"sloppy"}), "ThrownValue"),
         (
             json!({"source":"1", "mode":"sloppy", "instruction_budget":0}),
-            "timeout",
+            "resource_error",
         ),
-        (json!({"source":"for(;;){}", "mode":"sloppy"}), "timeout"),
+        (
+            json!({"source":"for(;;){}", "mode":"sloppy"}),
+            "resource_error",
+        ),
         (
             json!({"source":"'abc'.repeat(20)", "mode":"sloppy", "string_limit":100}),
             "resource_error",

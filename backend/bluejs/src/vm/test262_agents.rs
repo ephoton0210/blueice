@@ -10,7 +10,7 @@ use super::*;
 use crate::heap::{RootId, SharedBuffer};
 use crate::{compile, parse};
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -37,6 +37,11 @@ pub(super) struct Test262AgentControl {
 pub(super) struct Test262AsyncWaits {
     events: Mutex<VecDeque<AsyncHostEvent>>,
     ready: Condvar,
+    /// Work registered by the VM but not yet removed from `events`. This
+    /// distinguishes a genuinely quiescent async test from one that is still
+    /// waiting for a timer or an Atomics.waitAsync host thread to enqueue its
+    /// completion.
+    pending: AtomicUsize,
 }
 
 enum AsyncHostEvent {
@@ -55,7 +60,12 @@ impl Test262AsyncWaits {
         Self {
             events: Mutex::new(VecDeque::new()),
             ready: Condvar::new(),
+            pending: AtomicUsize::new(0),
         }
+    }
+
+    fn register_pending(&self) {
+        self.pending.fetch_add(1, Ordering::Release);
     }
 
     fn push(&self, event: AsyncHostEvent) {
@@ -67,11 +77,21 @@ impl Test262AsyncWaits {
     }
 
     fn take_all(&self) -> Vec<AsyncHostEvent> {
-        self.events
+        let events: Vec<_> = self
+            .events
             .lock()
             .expect("Test262 async-wait queue lock poisoned")
             .drain(..)
-            .collect()
+            .collect();
+        if !events.is_empty() {
+            let previous = self.pending.fetch_sub(events.len(), Ordering::AcqRel);
+            debug_assert!(previous >= events.len());
+        }
+        events
+    }
+
+    fn has_pending(&self) -> bool {
+        self.pending.load(Ordering::Acquire) != 0
     }
 }
 
@@ -466,6 +486,7 @@ impl Vm {
     ) {
         let waiter = backing.register_waiter(byte_offset);
         let queue = Arc::clone(&self.test262_async_waits);
+        queue.register_pending();
         thread::spawn(move || {
             let result = backing.wait_for(waiter, timeout);
             queue.push(AsyncHostEvent::Wait { promise, result });
@@ -485,6 +506,7 @@ impl Vm {
         // loop has invoked it.
         let root = self.heap.root(callback)?;
         let queue = Arc::clone(&self.test262_async_waits);
+        queue.register_pending();
         thread::spawn(move || {
             thread::sleep(delay);
             queue.push(AsyncHostEvent::Timer { callback, root });
@@ -526,9 +548,11 @@ impl Vm {
         Ok(woke)
     }
 
-    /// Drive Test262's asynchronous host work until `$DONE` settles. The
-    /// external JSON-lines supervisor owns the wall-clock deadline, so this
-    /// loop never turns a valid long host wait into a VM instruction failure.
+    /// Drive Test262's asynchronous host work until `$DONE` settles. A
+    /// quiescent event loop returns `None`, allowing the JSON-lines adapter to
+    /// report that an async test omitted `$DONE`; a timer or waitAsync already
+    /// registered with the host remains eligible for the external
+    /// supervisor's wall-clock deadline.
     pub fn run_test262_async_until_done(
         &mut self,
     ) -> Result<Option<Result<(), Value>>, RuntimeError> {
@@ -539,6 +563,9 @@ impl Vm {
             let woke = self.process_test262_async_wait_events()?;
             let ran_job = self.run_next_promise_job()?;
             if !woke && !ran_job {
+                if !self.test262_async_waits.has_pending() {
+                    return Ok(None);
+                }
                 thread::sleep(Duration::from_millis(1));
             }
         }

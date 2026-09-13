@@ -681,6 +681,63 @@ fn for_await_closes_a_sync_iterator_when_its_yielded_promise_rejects() {
 }
 
 #[test]
+fn for_await_observes_a_native_promise_constructor_before_adopting_a_sync_value() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            globalThis.constructorMarker = {};
+            let value = Promise.resolve(0);
+            Object.defineProperty(value, 'constructor', {
+                get() { throw globalThis.constructorMarker; },
+            });
+            async function consume() {
+                try {
+                    for await (let entry of [value]) {}
+                } catch (error) {
+                    globalThis.constructorError = error === globalThis.constructorMarker;
+                }
+            }
+            consume();
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(&mut vm, "constructorError === true"),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn for_await_rejects_when_sync_value_then_lookup_throws() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            globalThis.thenMarker = {};
+            let value = Object.defineProperty({}, 'then', {
+                get() { throw globalThis.thenMarker; },
+            });
+            async function consume() {
+                try {
+                    for await (let entry of [value]) {}
+                } catch (error) {
+                    globalThis.thenError = error === globalThis.thenMarker;
+                }
+            }
+            consume();
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(&mut vm, "thenError === true"),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
 fn async_generator_yield_star_respects_the_no_line_terminator_grammar() {
     let error = parse("async function* f(){ yield\n* 1; }").unwrap_err();
     assert!(error.known_syntax);
