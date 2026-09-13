@@ -62,8 +62,8 @@ cargo llvm-cov -p blueice-bluejs --fail-under-lines 88 --summary-only
 
 It executes every default BlueJS unit and integration test, including the
 direct `Intl.NumberFormat` VM boundary and the `bluejs-test262` JSON-lines
-process interface. The measured result was **31,655 / 35,794 lines (88.44%)**,
-2,247 / 2,486 functions (90.39%), and 84.89% regions, exceeding the 88% line
+process interface. The measured result was **31,659 / 35,794 lines (88.45%)**,
+2,247 / 2,486 functions (90.39%), and 84.90% regions, exceeding the 88% line
 floor. This is the real crate coverage gate, not a two-target proxy.
 
 ## Delivery order

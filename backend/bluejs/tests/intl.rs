@@ -217,6 +217,7 @@ fn number_format_delegates_to_the_host_neutral_decimal_service() {
         "let n=new Intl.NumberFormat('de',{useGrouping:false,minimumFractionDigits:2,maximumFractionDigits:2}); n.format(1007.5) === '1007,50'",
         "let n=new Intl.NumberFormat('th-u-nu-thai',{useGrouping:false,minimumFractionDigits:2,maximumFractionDigits:2}); let r=n.resolvedOptions(); n.format(1007.5) === '๑๐๐๗.๕๐' && r.locale === 'th-u-nu-thai' && r.numberingSystem === 'thai' && r.style === 'decimal' && r.useGrouping === 'false' && r.minimumFractionDigits === 2 && r.maximumFractionDigits === 2",
         "let n=new Intl.NumberFormat('en',{useGrouping:'min2'}); n.format(1000) === '1000' && n.format(10000) === '10,000'",
+        "let always=new Intl.NumberFormat('en',{useGrouping:true}).resolvedOptions(); let min2=new Intl.NumberFormat('en',{useGrouping:'min2'}).resolvedOptions(); let never=new Intl.NumberFormat('en',{useGrouping:'false'}).resolvedOptions(); always.useGrouping === 'always' && min2.useGrouping === 'min2' && never.useGrouping === 'false'",
         "let r=new Intl.NumberFormat('en',{minimumFractionDigits:1.9,maximumFractionDigits:2.9}).resolvedOptions(); r.minimumFractionDigits === 1 && r.maximumFractionDigits === 2",
         "let n=new Intl.NumberFormat('en'); n.format === n.format && n.format.name === '' && n.format.length === 1 && n.format.prototype === undefined",
         "let n=Intl.NumberFormat('en'); let f=n.format; f(1000) === '1,000' && f.call({},1000) === '1,000' && n instanceof Intl.NumberFormat",
@@ -232,10 +233,12 @@ fn number_format_delegates_to_the_host_neutral_decimal_service() {
     for source in [
         "Intl.NumberFormat.prototype.format",
         "Intl.NumberFormat.prototype.resolvedOptions.call({})",
+        "Intl.NumberFormat.prototype.resolvedOptions.call(1)",
         "new Intl.NumberFormat('en',null)",
         "new Intl.NumberFormat('en',{useGrouping:'invalid'})",
         "new Intl.NumberFormat('en',{minimumFractionDigits:4,maximumFractionDigits:2})",
         "new Intl.NumberFormat('en',{minimumFractionDigits:101})",
+        "new Intl.NumberFormat('en',{minimumFractionDigits:-1})",
         "new Intl.NumberFormat('en').format(NaN)",
     ] {
         assert!(
