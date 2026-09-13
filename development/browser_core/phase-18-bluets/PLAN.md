@@ -96,8 +96,11 @@ dependency before introducing any page-runtime coupling:
   accepted argument count and each annotated parameter after bounded generic
   substitution, whether type arguments are inferred or explicitly supplied.
   Optional and default-initialized parameters are omittable while preserving a
-  known return type. This intentionally does not claim overload resolution,
-  method calls, callback analysis, or general expression inference.
+  known return type. Signature-only local overload declarations are resolved
+  in declaration order for direct calls and erased from JavaScript; a
+  non-declaration signature must have a compatible local implementation. This
+  intentionally does not claim method calls, callback analysis, constructors,
+  or general expression inference.
 - Direct property access on an inferred record or a local/interface type alias
   is resolved to the declared field type (including a generic instantiation).
   Optional fields produce `T | undefined`; chained/member-call analysis and
@@ -111,7 +114,8 @@ dependency before introducing any page-runtime coupling:
   pin before executing, and runs a fixture matrix covering generic properties,
   constraints/defaults, explicit direct-call type arguments and generic
   interface heritage (including local `.d.ts` parents), optional/default
-  parameters, rejected assignment/call arguments, Source Map v3 shape and
+  parameters, local function overloads, rejected assignment/call arguments,
+  Source Map v3 shape and
   accepted Node output.
   The `typescript-oracle` CI job runs only from `workflow_dispatch` when its
   `run_typescript_oracle` input is selected. Node and `tsc` are test tools

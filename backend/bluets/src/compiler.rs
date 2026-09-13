@@ -951,6 +951,27 @@ mod tests {
     }
 
     #[test]
+    fn accepts_signature_only_functions_in_a_declaration_module() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([
+                ModuleSource::new(
+                    "memory:///main.ts",
+                    "import type { Result } from './types/functions.d.ts';\n\
+                     const value: Result = 'ok';",
+                ),
+                ModuleSource::new(
+                    "memory:///types/functions.d.ts",
+                    "export type Result = string;\n\
+                     export function describe(value: string): string;",
+                ),
+            ]),
+            CompilerOptions::default(),
+        );
+        assert!(!result.has_errors(), "{:#?}", result.diagnostics);
+    }
+
+    #[test]
     fn incremental_compiler_rechecks_only_a_changed_module_and_its_dependents() {
         let loader = MutableLoader::from([
             ModuleSource::new(

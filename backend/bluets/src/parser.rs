@@ -141,6 +141,10 @@ pub struct FunctionDeclaration {
     pub locals: Vec<VariableDeclaration>,
     pub exported: bool,
     pub declared: bool,
+    /// A signature-only function declaration preceding an implementation.
+    /// It is static-only and is erased from JavaScript, but remains a direct
+    /// call candidate and public declaration signature.
+    pub overload: bool,
     pub span: SourceSpan,
 }
 
@@ -742,16 +746,21 @@ impl Parser {
 
         let mut returns = Vec::new();
         let mut locals = Vec::new();
-        if self.consume("{") {
+        let overload = if self.consume("{") {
             let body_start = self.previous().start;
             self.parse_function_body(body_start, &mut returns, &mut locals);
+            false
+        } else if self.consume(";") {
+            !declared
         } else if !declared {
             self.error_here(DiagnosticCode::ParseError, "expected a function body");
+            false
         } else {
-            self.consume(";");
-        }
+            self.expect(";");
+            false
+        };
         let end = self.previous().end;
-        if declared {
+        if declared || overload {
             self.edits.push(TextEdit {
                 start,
                 end,
@@ -768,6 +777,7 @@ impl Parser {
                 locals,
                 exported,
                 declared,
+                overload,
                 span: SourceSpan::new(&self.id, start, end),
             }));
     }
@@ -1413,6 +1423,25 @@ mod tests {
         assert!(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == DiagnosticCode::UnsupportedSyntax));
+    }
+
+    #[test]
+    fn parses_and_erases_signature_only_function_overloads() {
+        let source = "function describe(value: string): string;\n\
+                      function describe(value: number): number;\n\
+                      function describe(value: string | number): string | number { return value; }";
+        let module = parse_module("memory:///overload.ts", source).unwrap();
+        let Declaration::Function(first) = &module.declarations[0] else {
+            panic!("expected first overload declaration");
+        };
+        let Declaration::Function(implementation) = &module.declarations[2] else {
+            panic!("expected implementation declaration");
+        };
+        assert!(first.overload);
+        assert!(!implementation.overload);
+        assert!(module.edits.iter().any(|edit| {
+            &source[edit.start..edit.end] == "function describe(value: string): string;"
+        }));
     }
 
     #[test]

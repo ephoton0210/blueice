@@ -288,7 +288,17 @@ fn emit_declaration(module: &Module) -> String {
                 );
                 output.push_str(";\n");
             }
-            Declaration::Function(function) if function.exported && !function.declared => {
+            Declaration::Function(function)
+                if function.exported
+                    && (function.overload
+                        || !module.declarations.iter().any(|declaration| {
+                            matches!(
+                                declaration,
+                                Declaration::Function(other)
+                                    if other.name == function.name && other.overload
+                            )
+                        })) =>
+            {
                 output.push_str("export declare function ");
                 output.push_str(&function.name);
                 emit_type_parameters(&mut output, &function.type_parameters);
@@ -818,6 +828,35 @@ mod tests {
                 "export interface Envelope<T> {\n  payload: T;\n}\n\
                  export interface Tagged {\n  tag: string;\n}\n\
                  export interface Labeled<T extends string = string> extends Envelope<T>, Tagged {\n  label: T;\n}\n"
+            )
+        );
+    }
+
+    #[test]
+    fn erases_overload_signatures_and_retains_them_in_declarations() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///overload.ts",
+            "export function describe(value: string): string;\n\
+             export function describe(value: number): number;\n\
+             export function describe(value: string | number): string | number { return value; }",
+        )]);
+        let output = compile(
+            "memory:///overload.ts",
+            &loader,
+            CompilerOptions {
+                declaration: true,
+                ..CompilerOptions::default()
+            },
+        )
+        .output
+        .unwrap();
+        let artifact = &output.artifacts["memory:///overload.ts"];
+        assert_eq!(artifact.javascript.matches("function describe").count(), 1);
+        assert_eq!(
+            artifact.declaration.as_deref(),
+            Some(
+                "export declare function describe(value: string): string;\n\
+                 export declare function describe(value: number): number;\n"
             )
         );
     }

@@ -111,6 +111,14 @@ const CASES: &[OracleCase] = &[
         expected_stdout: Some("Ada:user:account\n"),
     },
     OracleCase {
+        name: "function-overload",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/function-overload/main.ts"),
+        )],
+        expected_stdout: Some("Ada:2\n"),
+    },
+    OracleCase {
         name: "assignment-error",
         modules: &[(
             "memory:///main.ts",
@@ -147,6 +155,14 @@ const CASES: &[OracleCase] = &[
         modules: &[ (
             "memory:///main.ts",
             include_str!("fixtures/typescript_oracle/generic-interface-heritage-error/main.ts"),
+        )],
+        expected_stdout: None,
+    },
+    OracleCase {
+        name: "function-overload-error",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/function-overload-error/main.ts"),
         )],
         expected_stdout: None,
     },

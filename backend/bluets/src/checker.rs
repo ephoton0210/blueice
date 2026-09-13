@@ -174,7 +174,7 @@ fn declaration_module_diagnostics(project: &Project) -> Vec<Diagnostic> {
             let runtime_declaration = match declaration {
                 Declaration::Import(import) => !import.type_only,
                 Declaration::Variable(variable) => !variable.declared,
-                Declaration::Function(function) => !function.declared,
+                Declaration::Function(function) => !function.declared && !function.overload,
                 Declaration::Raw(_) => true,
                 Declaration::TypeExport(_)
                 | Declaration::TypeAlias(_)
@@ -362,7 +362,8 @@ struct ModuleChecker<'a> {
     symbols: Vec<Symbol>,
     types: BTreeMap<String, TypeDefinition>,
     values: BTreeMap<String, Type>,
-    functions: BTreeMap<String, FunctionSignature>,
+    functions: BTreeMap<String, Vec<FunctionSignature>>,
+    function_implementations: BTreeSet<String>,
     type_parameters: BTreeSet<String>,
     max_type_expansions: usize,
 }
@@ -385,6 +386,7 @@ impl<'a> ModuleChecker<'a> {
             types: BTreeMap::new(),
             values: BTreeMap::new(),
             functions: BTreeMap::new(),
+            function_implementations: BTreeSet::new(),
             type_parameters: BTreeSet::new(),
             max_type_expansions,
         }
@@ -433,26 +435,107 @@ impl<'a> ModuleChecker<'a> {
                 }
                 Declaration::Function(function) => {
                     let value_type = function.return_type.clone().unwrap_or(Type::Unknown);
-                    let is_new = !self.values.contains_key(&function.name);
-                    self.insert_value(
-                        &function.name,
-                        value_type,
-                        function.span.clone(),
-                        SymbolKind::Function,
-                        function.exported,
-                    );
-                    if is_new {
-                        self.functions.insert(
-                            function.name.clone(),
-                            FunctionSignature {
-                                parameters: function.parameters.clone(),
-                                type_parameters: function.type_parameters.clone(),
-                                return_type: function.return_type.clone().unwrap_or(Type::Unknown),
-                            },
+                    let signature = FunctionSignature {
+                        parameters: function.parameters.clone(),
+                        type_parameters: function.type_parameters.clone(),
+                        return_type: function.return_type.clone().unwrap_or(Type::Unknown),
+                    };
+                    if !self.values.contains_key(&function.name) {
+                        self.insert_value(
+                            &function.name,
+                            value_type,
+                            function.span.clone(),
+                            SymbolKind::Function,
+                            function.exported,
                         );
+                    } else if !self.functions.contains_key(&function.name) {
+                        self.duplicate(&function.name, function.span.clone());
+                        continue;
+                    }
+                    if function.overload || function.declared {
+                        if self.function_implementations.contains(&function.name) {
+                            self.type_error(
+                                &function.span,
+                                format!(
+                                    "overload signature for {} must precede its implementation",
+                                    function.name
+                                ),
+                                DiagnosticCode::TypeMismatch,
+                            );
+                        } else {
+                            self.functions
+                                .entry(function.name.clone())
+                                .or_default()
+                                .push(signature);
+                        }
+                    } else if !self.function_implementations.insert(function.name.clone()) {
+                        self.duplicate(&function.name, function.span.clone());
+                    } else if self.functions.get(&function.name).is_none_or(Vec::is_empty) {
+                        self.functions
+                            .entry(function.name.clone())
+                            .or_default()
+                            .push(signature);
                     }
                 }
                 Declaration::Raw(_) => {}
+            }
+        }
+        self.validate_function_overloads();
+    }
+
+    fn validate_function_overloads(&mut self) {
+        let overloads = self
+            .module
+            .declarations
+            .iter()
+            .filter_map(|declaration| match declaration {
+                Declaration::Function(function) if function.overload => Some(function),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for overload in overloads {
+            let implementations = self
+                .module
+                .declarations
+                .iter()
+                .filter_map(|declaration| match declaration {
+                    Declaration::Function(function)
+                        if function.name == overload.name
+                            && !function.overload
+                            && !function.declared =>
+                    {
+                        Some(function)
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            let Some(implementation) = implementations.first() else {
+                if !is_declaration_module(&self.module.id) {
+                    self.type_error(
+                        &overload.span,
+                        format!(
+                            "overload signature for {} requires an implementation",
+                            overload.name
+                        ),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                }
+                continue;
+            };
+            if !overload_is_compatible_with_implementation(
+                overload,
+                implementation,
+                &self.types,
+                self.max_type_expansions,
+            ) {
+                self.type_error(
+                    &overload.span,
+                    format!(
+                        "overload signature for {} is incompatible with its implementation",
+                        overload.name
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
             }
         }
     }
@@ -913,7 +996,7 @@ impl<'a> ModuleChecker<'a> {
                     };
                 }
                 if let Some(call) = direct_call_parts(tokens) {
-                    if let Some(signature) = self.functions.get(&call.callee.text) {
+                    if let Some(signatures) = self.functions.get(&call.callee.text) {
                         let explicit = call.generic.then(|| {
                             self.module
                                 .generic_call_type_arguments
@@ -922,7 +1005,7 @@ impl<'a> ModuleChecker<'a> {
                                 .as_slice()
                         });
                         return self.infer_function_call(
-                            signature,
+                            signatures,
                             call.arguments,
                             scope,
                             explicit,
@@ -938,7 +1021,7 @@ impl<'a> ModuleChecker<'a> {
 
     fn infer_function_call(
         &self,
-        signature: &FunctionSignature,
+        signatures: &[FunctionSignature],
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
         explicit_type_arguments: Option<&[Type]>,
@@ -946,27 +1029,18 @@ impl<'a> ModuleChecker<'a> {
         let Some(arguments) = split_call_arguments(tokens) else {
             return Type::Unknown;
         };
-        let required = signature
-            .parameters
-            .iter()
-            .filter(|parameter| !parameter.optional)
-            .count();
-        if arguments.len() < required || arguments.len() > signature.parameters.len() {
-            return Type::Unknown;
-        }
         let actuals = arguments
             .iter()
             .map(|argument| self.infer_expression(argument, scope))
             .collect::<Vec<_>>();
-        let substitutions = if let Some(arguments) = explicit_type_arguments {
-            let Some(arguments) = complete_type_arguments(&signature.type_parameters, arguments)
-            else {
-                return Type::Unknown;
-            };
-            type_parameter_substitutions(&signature.type_parameters, arguments)
-        } else {
-            infer_call_substitutions(signature, &actuals)
+        let Some(signature) =
+            self.select_function_signature(signatures, &actuals, explicit_type_arguments)
+        else {
+            return Type::Unknown;
         };
+        let substitutions =
+            function_call_substitutions(signature, &actuals, explicit_type_arguments)
+                .expect("selected function signature has valid substitutions");
         substitute_type(&signature.return_type, &substitutions)
     }
 
@@ -979,10 +1053,41 @@ impl<'a> ModuleChecker<'a> {
         let Some(call) = direct_call_parts(tokens) else {
             return;
         };
-        let Some(signature) = self.functions.get(&call.callee.text).cloned() else {
+        let Some(signatures) = self.functions.get(&call.callee.text).cloned() else {
             return;
         };
         let Some(arguments) = split_call_arguments(call.arguments) else {
+            return;
+        };
+        let actuals = arguments
+            .iter()
+            .map(|argument| {
+                self.check_direct_property_access(argument, scope, span);
+                self.infer_expression(argument, scope)
+            })
+            .collect::<Vec<_>>();
+        let explicit = call.generic.then(|| {
+            self.module
+                .generic_call_type_arguments
+                .get(&call.callee.start)
+                .expect("parsed generic call has recorded type arguments")
+                .as_slice()
+        });
+        let selected = self
+            .select_function_signature(&signatures, &actuals, explicit)
+            .cloned();
+        if signatures.len() > 1 && selected.is_none() {
+            self.type_error(
+                span,
+                format!(
+                    "no overload of function {} accepts the supplied argument types",
+                    call.callee.text
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+            return;
+        }
+        let Some(signature) = selected.or_else(|| signatures.first().cloned()) else {
             return;
         };
         let required = signature
@@ -994,7 +1099,7 @@ impl<'a> ModuleChecker<'a> {
             self.type_error(
                 span,
                 format!(
-                    "function `{}` expects {} to {} argument(s), got {}",
+                    "function {} expects {} to {} argument(s), got {}",
                     call.callee.text,
                     required,
                     signature.parameters.len(),
@@ -1004,19 +1109,7 @@ impl<'a> ModuleChecker<'a> {
             );
             return;
         }
-        let actuals = arguments
-            .iter()
-            .map(|argument| {
-                self.check_direct_property_access(argument, scope, span);
-                self.infer_expression(argument, scope)
-            })
-            .collect::<Vec<_>>();
-        let substitutions = if call.generic {
-            let explicit = self
-                .module
-                .generic_call_type_arguments
-                .get(&call.callee.start)
-                .expect("parsed generic call has recorded type arguments");
+        let substitutions = if let Some(explicit) = explicit {
             let Some(substitutions) =
                 self.check_explicit_function_type_arguments(&signature, explicit, span)
             else {
@@ -1052,6 +1145,23 @@ impl<'a> ModuleChecker<'a> {
                 );
             }
         }
+    }
+
+    fn select_function_signature<'b>(
+        &self,
+        signatures: &'b [FunctionSignature],
+        actuals: &[Type],
+        explicit_type_arguments: Option<&[Type]>,
+    ) -> Option<&'b FunctionSignature> {
+        signatures.iter().find(|signature| {
+            function_signature_matches(
+                signature,
+                actuals,
+                explicit_type_arguments,
+                &self.types,
+                self.max_type_expansions,
+            )
+        })
     }
 
     fn is_assignable_bounded(&mut self, actual: &Type, expected: &Type, span: &SourceSpan) -> bool {
@@ -1237,6 +1347,114 @@ fn infer_call_substitutions(
             .or_insert(default);
     }
     substitutions
+}
+
+fn function_call_substitutions(
+    signature: &FunctionSignature,
+    actuals: &[Type],
+    explicit_type_arguments: Option<&[Type]>,
+) -> Option<BTreeMap<String, Type>> {
+    match explicit_type_arguments {
+        Some(arguments) => complete_type_arguments(&signature.type_parameters, arguments)
+            .map(|arguments| type_parameter_substitutions(&signature.type_parameters, arguments)),
+        None => Some(infer_call_substitutions(signature, actuals)),
+    }
+}
+
+fn function_signature_matches(
+    signature: &FunctionSignature,
+    actuals: &[Type],
+    explicit_type_arguments: Option<&[Type]>,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    max_type_expansions: usize,
+) -> bool {
+    let required = signature
+        .parameters
+        .iter()
+        .filter(|parameter| !parameter.optional)
+        .count();
+    if actuals.len() < required || actuals.len() > signature.parameters.len() {
+        return false;
+    }
+    let Some(substitutions) =
+        function_call_substitutions(signature, actuals, explicit_type_arguments)
+    else {
+        return false;
+    };
+    let mut budget = TypeExpansionBudget::new(max_type_expansions);
+    for parameter in &signature.type_parameters {
+        let Some(constraint) = &parameter.constraint else {
+            continue;
+        };
+        let actual = substitutions
+            .get(&parameter.name)
+            .expect("function substitutions contain every type parameter");
+        let expected = substitute_type(constraint, &substitutions);
+        if !is_assignable(actual, &expected, aliases, &mut HashSet::new(), &mut budget)
+            && !budget.exhausted
+        {
+            return false;
+        }
+    }
+    for (parameter, actual) in signature.parameters.iter().zip(actuals) {
+        let Some(annotation) = &parameter.annotation else {
+            continue;
+        };
+        let expected = substitute_type(annotation, &substitutions);
+        if !is_assignable(actual, &expected, aliases, &mut HashSet::new(), &mut budget)
+            && !budget.exhausted
+        {
+            return false;
+        }
+    }
+    true
+}
+
+fn overload_is_compatible_with_implementation(
+    overload: &FunctionDeclaration,
+    implementation: &FunctionDeclaration,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    max_type_expansions: usize,
+) -> bool {
+    let overload_required = overload
+        .parameters
+        .iter()
+        .filter(|parameter| !parameter.optional)
+        .count();
+    let implementation_required = implementation
+        .parameters
+        .iter()
+        .filter(|parameter| !parameter.optional)
+        .count();
+    if overload_required < implementation_required
+        || overload.parameters.len() > implementation.parameters.len()
+    {
+        return false;
+    }
+    let mut budget = TypeExpansionBudget::new(max_type_expansions);
+    for (overload_parameter, implementation_parameter) in
+        overload.parameters.iter().zip(&implementation.parameters)
+    {
+        let actual = overload_parameter
+            .annotation
+            .as_ref()
+            .unwrap_or(&Type::Unknown);
+        let expected = implementation_parameter
+            .annotation
+            .as_ref()
+            .unwrap_or(&Type::Unknown);
+        if !is_assignable(actual, expected, aliases, &mut HashSet::new(), &mut budget)
+            && !budget.exhausted
+        {
+            return false;
+        }
+    }
+    let actual = overload.return_type.as_ref().unwrap_or(&Type::Unknown);
+    let expected = implementation
+        .return_type
+        .as_ref()
+        .unwrap_or(&Type::Unknown);
+    is_assignable(actual, expected, aliases, &mut HashSet::new(), &mut budget) || budget.exhausted
 }
 
 fn type_parameter_substitutions(
@@ -2009,6 +2227,57 @@ mod tests {
                 .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
                 .count(),
             1
+        );
+    }
+
+    #[test]
+    fn resolves_local_function_overloads_for_direct_calls() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "function describe(value: string): string;\n\
+                 function describe(value: number): number;\n\
+                 function describe(value: string | number): string | number { return value; }\n\
+                 const label: string = describe('Ada');\n\
+                 const count: number = describe(1);\n\
+                 const mismatch: string = describe(1);\n\
+                 const invalid: unknown = describe(true);",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert_eq!(
+            result
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn rejects_overloads_without_a_compatible_implementation() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "function missing(value: string): string;\n\
+                 function describe(value: string): string;\n\
+                 function describe(value: number): number;\n\
+                 function describe(value: string): string { return value; }",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert_eq!(
+            result
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+                .count(),
+            2
         );
     }
 
