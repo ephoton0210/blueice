@@ -258,13 +258,10 @@ impl Vm {
         let Value::Object(receiver) = receiver else {
             return Ok(false);
         };
-        if self.heap.proxy(*receiver)?.is_some() {
-            return self.proxy_define_own_property(
-                *receiver,
-                key.clone(),
-                PropertyDescriptor::data(value.clone(), true, true, true),
-            );
-        }
+        // OrdinarySetWithOwnDescriptor must first observe Receiver's
+        // [[GetOwnProperty]] even when the receiver is a Proxy.  Defining
+        // directly skipped that trap and broke descriptor-sensitive proxy
+        // forwarding.  Use the shared boundary before choosing the update.
         let own = self.object_get_own_property(*receiver, key)?;
         if let Some(own) = &own {
             if own.accessor() || own.writable == Some(false) {
@@ -284,6 +281,9 @@ impl Vm {
         } else {
             PropertyDescriptor::data(stored, true, true, true)
         };
+        if self.heap.proxy(*receiver)?.is_some() {
+            return self.proxy_define_own_property(*receiver, key.clone(), descriptor);
+        }
         self.object_define_own_property(*receiver, key.clone(), descriptor)
     }
 
@@ -508,7 +508,15 @@ impl Vm {
         handler: ObjectId,
         name: &str,
     ) -> Result<Value, RuntimeError> {
-        self.get_property(&Value::Object(handler), &name.into())
+        // GetMethod treats both `undefined` and `null` as absent. All Proxy
+        // internal methods share this lookup, so this is the single forwarding
+        // boundary for null-valued traps.
+        let trap = self.get_property(&Value::Object(handler), &name.into())?;
+        Ok(if trap == Value::Null {
+            Value::Undefined
+        } else {
+            trap
+        })
     }
 
     /// Implements Proxy.[[Get]] including the non-configurable-property

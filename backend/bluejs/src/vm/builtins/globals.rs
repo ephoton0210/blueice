@@ -103,7 +103,11 @@ impl Vm {
                 self.define_data(
                     id,
                     "length",
-                    Value::Number(if name == "Symbol" { 0.0 } else { 1.0 }),
+                    Value::Number(match name {
+                        "Symbol" => 0.0,
+                        "Proxy" => 2.0,
+                        _ => 1.0,
+                    }),
                     false,
                     false,
                     true,
