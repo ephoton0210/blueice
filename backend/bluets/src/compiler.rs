@@ -10,7 +10,7 @@ use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::emitter;
 use crate::parser::{parse_module, Module};
 use crate::{Compilation, LANGUAGE_VERSION};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 const MAX_MODULES: usize = 4_096;
 
@@ -135,6 +135,76 @@ pub struct Project {
     pub(crate) resolutions: BTreeMap<(String, String), String>,
 }
 
+/// The result of one [`IncrementalCompiler`] invocation. The sets describe
+/// work selected by the host-neutral front end, making cache behavior
+/// observable to a future page host without exposing any runtime state.
+#[derive(Debug, Clone)]
+pub struct IncrementalResult {
+    pub compilation: Compilation,
+    /// True when an unchanged successful graph was returned directly from the
+    /// session cache.
+    pub cache_hit: bool,
+    /// Modules tokenized and parsed during this invocation.
+    pub parsed_modules: BTreeSet<String>,
+    /// Modules whose parsed syntax was reused after their loaded source bytes
+    /// matched the last successful compilation.
+    pub reused_parsed_modules: BTreeSet<String>,
+    /// Modules bound and type-checked during this invocation.
+    pub rechecked_modules: BTreeSet<String>,
+    /// Modules whose checked bindings and diagnostics were reused.
+    pub reused_checked_modules: BTreeSet<String>,
+}
+
+/// A single-entry, dependency-aware compiler session for development hosts.
+///
+/// The session has no I/O or runtime authority: every invocation still asks
+/// its caller-supplied [`ModuleLoader`] for the closed module graph. It reuses
+/// parsing for byte-identical modules and rechecks only changed modules and
+/// their reverse dependencies. A cache entry is replaced only after a
+/// successful compilation, and an entry is never reused when the entry ID or
+/// any [`CompilerOptions`] differ.
+#[derive(Debug, Default)]
+pub struct IncrementalCompiler {
+    cached: Option<CachedCompilation>,
+}
+
+#[derive(Debug, Clone)]
+struct CachedCompilation {
+    entry: String,
+    options: CompilerOptions,
+    compilation: Compilation,
+}
+
+impl IncrementalCompiler {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Compiles one entry through this session. Failed compilations leave the
+    /// last successful cache entry intact, so a transient editor error cannot
+    /// poison a later successful incremental build.
+    pub fn compile(
+        &mut self,
+        entry: &str,
+        loader: &dyn ModuleLoader,
+        options: CompilerOptions,
+    ) -> IncrementalResult {
+        let cached = self
+            .cached
+            .as_ref()
+            .filter(|cached| cached.entry == entry && cached.options == options);
+        let result = compile_with_cache(entry, loader, options.clone(), cached);
+        if !result.compilation.has_errors() {
+            self.cached = Some(CachedCompilation {
+                entry: entry.to_string(),
+                options,
+                compilation: result.compilation.clone(),
+            });
+        }
+        result
+    }
+}
+
 impl Project {
     fn empty(entry: impl Into<String>) -> Self {
         Self {
@@ -149,14 +219,52 @@ impl Project {
 /// A failure at any stage leaves `output` absent, providing the library half of
 /// BlueTSC's no-emit-on-error guarantee.
 pub fn compile(entry: &str, loader: &dyn ModuleLoader, options: CompilerOptions) -> Compilation {
-    let mut builder = ProjectBuilder::new(loader);
-    builder.visit(entry);
-    let project = builder.project;
-    let mut diagnostics = builder.diagnostics;
+    compile_with_cache(entry, loader, options, None).compilation
+}
 
-    let (checked, checker_diagnostics) = checker::check(
+fn compile_with_cache(
+    entry: &str,
+    loader: &dyn ModuleLoader,
+    options: CompilerOptions,
+    cached: Option<&CachedCompilation>,
+) -> IncrementalResult {
+    let previous_project = cached.map(|cached| &cached.compilation.project);
+    let mut builder = ProjectBuilder::new(loader, previous_project);
+    builder.visit(entry);
+    let ProjectBuilder {
+        project,
+        mut diagnostics,
+        parsed_modules,
+        reused_parsed_modules,
+        ..
+    } = builder;
+
+    let changed_modules = previous_project
+        .map(|previous| changed_modules(previous, &project))
+        .unwrap_or_else(|| project.modules.keys().cloned().collect());
+    let all_modules = project.modules.keys().cloned().collect::<BTreeSet<_>>();
+
+    if let Some(cached) = cached.filter(|_| changed_modules.is_empty()) {
+        return IncrementalResult {
+            compilation: cached.compilation.clone(),
+            cache_hit: true,
+            parsed_modules,
+            reused_parsed_modules,
+            rechecked_modules: BTreeSet::new(),
+            reused_checked_modules: all_modules,
+        };
+    }
+
+    let rechecked_modules = previous_project
+        .map(|previous| affected_modules(previous, &project, &changed_modules))
+        .unwrap_or_else(|| all_modules.clone());
+    let previous_checked = cached.and_then(|cached| cached.compilation.checked.as_ref());
+
+    let (checked, checker_diagnostics) = checker::check_incremental(
         &project,
         !matches!(options.runtime_policy, RuntimePolicy::TranspileOnly),
+        previous_checked,
+        &rechecked_modules,
     );
     diagnostics.extend(checker_diagnostics);
     diagnostics.sort_by(|left, right| {
@@ -171,20 +279,87 @@ pub fn compile(entry: &str, loader: &dyn ModuleLoader, options: CompilerOptions)
         .any(|diagnostic| diagnostic.severity == crate::diagnostic::Severity::Error);
     let output = (!has_errors).then(|| emitter::emit(&checked, &project, &options));
     let debug_info = (!has_errors).then(|| debug_info::build(&checked, &options));
-    Compilation {
-        project,
-        checked: Some(checked),
-        debug_info,
-        diagnostics,
-        output,
+    IncrementalResult {
+        compilation: Compilation {
+            project,
+            checked: Some(checked),
+            debug_info,
+            diagnostics,
+            output,
+        },
+        cache_hit: false,
+        parsed_modules,
+        reused_parsed_modules,
+        reused_checked_modules: all_modules
+            .difference(&rechecked_modules)
+            .cloned()
+            .collect(),
+        rechecked_modules,
     }
+}
+
+fn changed_modules(previous: &Project, current: &Project) -> BTreeSet<String> {
+    let mut changed = BTreeSet::new();
+    for module_id in previous.modules.keys().chain(current.modules.keys()) {
+        if previous.modules.get(module_id).map(|module| &module.source)
+            != current.modules.get(module_id).map(|module| &module.source)
+        {
+            changed.insert(module_id.clone());
+        }
+    }
+    for (module_id, specifier) in previous
+        .resolutions
+        .keys()
+        .chain(current.resolutions.keys())
+    {
+        let key = (module_id.clone(), specifier.clone());
+        if previous.resolutions.get(&key) != current.resolutions.get(&key) {
+            changed.insert(module_id.clone());
+        }
+    }
+    changed
+}
+
+fn affected_modules(
+    previous: &Project,
+    current: &Project,
+    changed: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    let mut reverse_dependencies = BTreeMap::<String, BTreeSet<String>>::new();
+    for ((module_id, _), dependency) in previous
+        .resolutions
+        .iter()
+        .chain(current.resolutions.iter())
+    {
+        reverse_dependencies
+            .entry(dependency.clone())
+            .or_default()
+            .insert(module_id.clone());
+    }
+
+    let mut affected = changed.clone();
+    let mut pending = changed.iter().cloned().collect::<VecDeque<_>>();
+    while let Some(module_id) = pending.pop_front() {
+        for dependent in reverse_dependencies.get(&module_id).into_iter().flatten() {
+            if affected.insert(dependent.clone()) {
+                pending.push_back(dependent.clone());
+            }
+        }
+    }
+    affected
+        .into_iter()
+        .filter(|module_id| current.modules.contains_key(module_id))
+        .collect()
 }
 
 struct ProjectBuilder<'a> {
     loader: &'a dyn ModuleLoader,
+    previous: Option<&'a Project>,
     project: Project,
     diagnostics: Vec<Diagnostic>,
     state: HashMap<String, VisitState>,
+    parsed_modules: BTreeSet<String>,
+    reused_parsed_modules: BTreeSet<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -194,12 +369,15 @@ enum VisitState {
 }
 
 impl<'a> ProjectBuilder<'a> {
-    fn new(loader: &'a dyn ModuleLoader) -> Self {
+    fn new(loader: &'a dyn ModuleLoader, previous: Option<&'a Project>) -> Self {
         Self {
             loader,
+            previous,
             project: Project::empty(""),
             diagnostics: Vec::new(),
             state: HashMap::new(),
+            parsed_modules: BTreeSet::new(),
+            reused_parsed_modules: BTreeSet::new(),
         }
     }
 
@@ -253,12 +431,22 @@ impl<'a> ProjectBuilder<'a> {
             self.state.insert(module_id.to_string(), VisitState::Done);
             return;
         }
-        let module = match parse_module(source.id.clone(), source.text) {
-            Ok(module) => module,
-            Err(mut parse_diagnostics) => {
-                self.diagnostics.append(&mut parse_diagnostics);
-                self.state.insert(module_id.to_string(), VisitState::Done);
-                return;
+        let module = if let Some(module) = self
+            .previous
+            .and_then(|previous| previous.modules.get(module_id))
+            .filter(|module| module.source == source.text)
+        {
+            self.reused_parsed_modules.insert(module_id.to_string());
+            module.clone()
+        } else {
+            self.parsed_modules.insert(module_id.to_string());
+            match parse_module(source.id.clone(), source.text) {
+                Ok(module) => module,
+                Err(mut parse_diagnostics) => {
+                    self.diagnostics.append(&mut parse_diagnostics);
+                    self.state.insert(module_id.to_string(), VisitState::Done);
+                    return;
+                }
             }
         };
         for declaration in &module.declarations {
@@ -369,6 +557,57 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
+
+    #[derive(Default)]
+    struct MutableLoader {
+        modules: RefCell<BTreeMap<String, ModuleSource>>,
+        resolutions: RefCell<BTreeMap<(String, String), String>>,
+    }
+
+    impl MutableLoader {
+        fn from(sources: impl IntoIterator<Item = ModuleSource>) -> Self {
+            Self {
+                modules: RefCell::new(
+                    sources
+                        .into_iter()
+                        .map(|source| (source.id.clone(), source))
+                        .collect(),
+                ),
+                resolutions: RefCell::new(BTreeMap::new()),
+            }
+        }
+
+        fn replace(&self, source: ModuleSource) {
+            self.modules.borrow_mut().insert(source.id.clone(), source);
+        }
+
+        fn remap(&self, from_module: &str, specifier: &str, module_id: &str) {
+            self.resolutions.borrow_mut().insert(
+                (from_module.to_string(), specifier.to_string()),
+                module_id.to_string(),
+            );
+        }
+    }
+
+    impl ModuleLoader for MutableLoader {
+        fn load(&self, module_id: &str) -> Result<ModuleSource, String> {
+            self.modules
+                .borrow()
+                .get(module_id)
+                .cloned()
+                .ok_or_else(|| format!("module `{module_id}` is not present in this loader"))
+        }
+
+        fn resolve(&self, from_module: &str, specifier: &str) -> Result<String, String> {
+            self.resolutions
+                .borrow()
+                .get(&(from_module.to_string(), specifier.to_string()))
+                .cloned()
+                .map(Ok)
+                .unwrap_or_else(|| resolve_relative_module(from_module, specifier))
+        }
+    }
 
     #[test]
     fn resolves_a_relative_url_module_without_filesystem_access() {
@@ -419,5 +658,150 @@ mod tests {
         .unwrap()
         .fingerprint;
         assert_ne!(default, mapped);
+    }
+
+    #[test]
+    fn incremental_compiler_rechecks_only_a_changed_module_and_its_dependents() {
+        let loader = MutableLoader::from([
+            ModuleSource::new(
+                "memory:///src/main.ts",
+                "import type { Left } from './left.ts';\nimport type { Right } from './right.ts';\nexport const left: Left = { id: 'left' };\nexport const right: Right = { id: 'right' };",
+            ),
+            ModuleSource::new(
+                "memory:///src/left.ts",
+                "export interface Left { id: string }",
+            ),
+            ModuleSource::new(
+                "memory:///src/right.ts",
+                "export interface Right { id: string }",
+            ),
+        ]);
+        let mut compiler = IncrementalCompiler::new();
+
+        let first = compiler.compile("memory:///src/main.ts", &loader, CompilerOptions::default());
+        assert!(
+            !first.compilation.has_errors(),
+            "{:?}",
+            first.compilation.diagnostics
+        );
+        assert_eq!(first.parsed_modules.len(), 3);
+        assert_eq!(first.rechecked_modules.len(), 3);
+
+        loader.replace(ModuleSource::new(
+            "memory:///src/left.ts",
+            "export interface Left { id: string; revision?: number }",
+        ));
+        let second = compiler.compile("memory:///src/main.ts", &loader, CompilerOptions::default());
+        assert!(
+            !second.compilation.has_errors(),
+            "{:?}",
+            second.compilation.diagnostics
+        );
+        assert_eq!(
+            second.parsed_modules,
+            BTreeSet::from(["memory:///src/left.ts".to_string()])
+        );
+        assert_eq!(
+            second.rechecked_modules,
+            BTreeSet::from([
+                "memory:///src/left.ts".to_string(),
+                "memory:///src/main.ts".to_string(),
+            ])
+        );
+        assert_eq!(
+            second.reused_checked_modules,
+            BTreeSet::from(["memory:///src/right.ts".to_string()])
+        );
+        assert!(second.compilation.output.is_some());
+
+        let third = compiler.compile("memory:///src/main.ts", &loader, CompilerOptions::default());
+        assert!(third.cache_hit);
+        assert!(third.rechecked_modules.is_empty());
+        assert_eq!(third.reused_checked_modules.len(), 3);
+    }
+
+    #[test]
+    fn incremental_compiler_refuses_a_cache_entry_from_another_policy() {
+        let loader = MutableLoader::from([ModuleSource::new(
+            "memory:///src/main.ts",
+            "export const answer: number = 42;",
+        )]);
+        let mut compiler = IncrementalCompiler::new();
+        let _ = compiler.compile("memory:///src/main.ts", &loader, CompilerOptions::default());
+
+        let result = compiler.compile(
+            "memory:///src/main.ts",
+            &loader,
+            CompilerOptions {
+                runtime_policy: RuntimePolicy::StrictRuntime,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(!result.cache_hit);
+        assert_eq!(result.parsed_modules.len(), 1);
+        assert_eq!(result.rechecked_modules.len(), 1);
+    }
+
+    #[test]
+    fn incremental_compiler_invalidates_an_importer_when_resolution_changes() {
+        let loader = MutableLoader::from([
+            ModuleSource::new(
+                "memory:///src/main.ts",
+                "import type { Model } from '@model'; export const model: Model = { id: 'model' };",
+            ),
+            ModuleSource::new(
+                "memory:///src/first.ts",
+                "export interface Model { id: string }",
+            ),
+            ModuleSource::new(
+                "memory:///src/second.ts",
+                "export interface Model { id: string; version?: number }",
+            ),
+        ]);
+        loader.remap("memory:///src/main.ts", "@model", "memory:///src/first.ts");
+        let mut compiler = IncrementalCompiler::new();
+        let _ = compiler.compile("memory:///src/main.ts", &loader, CompilerOptions::default());
+
+        loader.remap("memory:///src/main.ts", "@model", "memory:///src/second.ts");
+        let result = compiler.compile("memory:///src/main.ts", &loader, CompilerOptions::default());
+        assert!(
+            !result.compilation.has_errors(),
+            "{:?}",
+            result.compilation.diagnostics
+        );
+        assert_eq!(
+            result.rechecked_modules,
+            BTreeSet::from([
+                "memory:///src/main.ts".to_string(),
+                "memory:///src/second.ts".to_string(),
+            ])
+        );
+    }
+
+    #[test]
+    fn incremental_compiler_keeps_the_last_success_after_an_error() {
+        let loader = MutableLoader::from([ModuleSource::new(
+            "memory:///src/main.ts",
+            "export const answer: number = 42;",
+        )]);
+        let mut compiler = IncrementalCompiler::new();
+        let _ = compiler.compile("memory:///src/main.ts", &loader, CompilerOptions::default());
+
+        loader.replace(ModuleSource::new(
+            "memory:///src/main.ts",
+            "export const answer: number = 'wrong';",
+        ));
+        let failed = compiler.compile("memory:///src/main.ts", &loader, CompilerOptions::default());
+        assert!(failed.compilation.has_errors());
+        assert!(failed.compilation.output.is_none());
+
+        loader.replace(ModuleSource::new(
+            "memory:///src/main.ts",
+            "export const answer: number = 42;",
+        ));
+        let recovered =
+            compiler.compile("memory:///src/main.ts", &loader, CompilerOptions::default());
+        assert!(recovered.cache_hit);
+        assert!(recovered.compilation.output.is_some());
     }
 }

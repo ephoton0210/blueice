@@ -44,12 +44,27 @@ pub struct CheckedProject {
     pub modules: BTreeMap<String, CheckedModule>,
 }
 
-pub(crate) fn check(project: &Project, enforce_types: bool) -> (CheckedProject, Vec<Diagnostic>) {
+/// Rechecks the requested modules while retaining checker output for modules
+/// that the incremental project graph proved unaffected. The caller must only
+/// supply a previous project checked under the same compiler policy and must
+/// include every reverse dependency of a changed module in `rechecked`.
+pub(crate) fn check_incremental(
+    project: &Project,
+    enforce_types: bool,
+    previous: Option<&CheckedProject>,
+    rechecked: &BTreeSet<String>,
+) -> (CheckedProject, Vec<Diagnostic>) {
     let mut diagnostics = Vec::new();
     let exported_types = exported_types(project);
     let mut checked_modules = BTreeMap::new();
 
     for (module_id, module) in &project.modules {
+        if !rechecked.contains(module_id) {
+            if let Some(previous) = previous.and_then(|previous| previous.modules.get(module_id)) {
+                checked_modules.insert(module_id.clone(), previous.clone());
+                continue;
+            }
+        }
         let mut checker = ModuleChecker::new(project, module, &exported_types, enforce_types);
         checker.bind();
         if enforce_types {

@@ -28,8 +28,8 @@ mod syntax;
 
 pub use checker::{CheckedModule, CheckedProject, Symbol, SymbolKind, Type};
 pub use compiler::{
-    compile, CompilerOptions, EcmaTarget, MapLoader, ModuleLoader, ModuleSource, Project,
-    RuntimePolicy,
+    compile, CompilerOptions, EcmaTarget, IncrementalCompiler, IncrementalResult, MapLoader,
+    ModuleLoader, ModuleSource, Project, RuntimePolicy,
 };
 pub use contracts::{Contract, ContractError, ContractPlan, ContractValue, ValidationError};
 pub use debug_info::{BlueTsDebugInfo, DebugSource, DebugSymbol, DebugType, SymbolId, TypeId};

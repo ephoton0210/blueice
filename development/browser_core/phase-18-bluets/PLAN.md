@@ -52,6 +52,13 @@ dependency before introducing any page-runtime coupling:
   It also contains a bounded, pure contract IR/validator for reifiable
   JSON-like values. Neither artifact claims a runtime type tag or validates a
   live page boundary yet.
+- `IncrementalCompiler` is a reusable, host-neutral single-entry session for
+  development hosts. It reloads the caller-authorized graph to detect changed
+  source or resolution edges, reuses parsed modules with identical bytes, and
+  rebinds/rechecks only changed modules plus their reverse dependencies. It
+  keeps only a successful cache entry and refuses reuse when the entry or any
+  compiler option differs; its work-selection result is observable without
+  exposing a BlueJS VM or page state.
 
 This is deliberately not a claim of general `tsc` compatibility. Control-flow
 narrowing, overload resolution, generic substitution, decorators, enums,
@@ -233,7 +240,7 @@ Acceptance: malformed JSON cannot enter a `User`-typed value; the validation err
 
 ### Slice 4 — incremental projects and compatibility growth
 
-1. Implement dependency-aware incremental checker/cache invalidation and trusted local declaration files.
+1. Implement dependency-aware incremental checker/cache invalidation and trusted local declaration files. The standalone parser/checker cache is complete; trusted local declaration files remain pending.
 2. Expand the supported TypeScript feature matrix only alongside its BlueJS lowering/runtime, source mapping, contract and oracle evidence.
 3. Add opt-in comparison against a pinned TypeScript compiler for accepted syntax/diagnostics and Node/BlueJS behavioral differential tests for the lowered output.
 4. Expose carefully redacted project/type metadata to Phase 17 DevTools and the documented, capability-scoped Phase 12 MCP debug interface.
@@ -280,5 +287,6 @@ Acceptance: editing one module invalidates only its dependents; a cache entry ch
 - [x] Implement VM-independent `BlueTsDebugInfo` (source hashes, symbols, static types and spans); bytecode source mapping and controlled debugger retention remain pending
 - [ ] Expose TypeScript diagnostics, symbols, types, contracts, lowering provenance and BlueTSC check/build through Phase 12's negotiated MCP debug interface
 - [x] Implement the pure runtime-contract IR and bounded JSON-like validator; host-boundary discovery, JSON Schema delegation and page enforcement remain pending
-- [ ] Implement incremental project/cache invalidation and opt-in external-oracle jobs
+- [x] Implement host-neutral dependency-aware incremental parser/checker cache invalidation; cache reuse is refused across compiler-policy changes and failed compilations preserve the last successful entry
+- [ ] Add trusted local declaration files and opt-in external-oracle jobs
 - [ ] Add real-process page, debugger, contract, resource, policy and multi-tab regression coverage
