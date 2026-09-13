@@ -656,6 +656,195 @@ impl Vm {
         result
     }
 
+    pub(in super::super) fn array_pop(&mut self, receiver: &Value) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as u64;
+            if length == 0 {
+                self.array_set_or_throw(object, "length".into(), &Value::Number(0.0))?;
+                return Ok(Value::Undefined);
+            }
+            let key: PropertyName = (length - 1).to_string().into();
+            let value = self.get_property(&Value::Object(object), &key)?;
+            self.stack.push(value.clone());
+            self.array_delete_or_throw(object, &key)?;
+            self.array_set_or_throw(object, "length".into(), &Value::Number((length - 1) as f64))?;
+            Ok(value)
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    pub(in super::super) fn array_shift(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as u64;
+            if length == 0 {
+                self.array_set_or_throw(object, "length".into(), &Value::Number(0.0))?;
+                return Ok(Value::Undefined);
+            }
+            let first = self.get_property(&Value::Object(object), &"0".into())?;
+            self.stack.push(first.clone());
+            for index in 1..length {
+                self.charge_step()?;
+                let from: PropertyName = index.to_string().into();
+                let to: PropertyName = (index - 1).to_string().into();
+                if self.has_property(object, &from)? {
+                    let value = self.get_property(&Value::Object(object), &from)?;
+                    self.stack.push(value.clone());
+                    self.array_set_or_throw(object, to, &value)?;
+                    self.stack.pop();
+                } else {
+                    self.array_delete_or_throw(object, &to)?;
+                }
+            }
+            self.array_delete_or_throw(object, &(length - 1).to_string().into())?;
+            self.array_set_or_throw(object, "length".into(), &Value::Number((length - 1) as f64))?;
+            Ok(first)
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    pub(in super::super) fn array_unshift(
+        &mut self,
+        receiver: &Value,
+        items: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(object));
+        self.stack.extend(items.iter().cloned());
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as u64;
+            let new_length = length
+                .checked_add(items.len() as u64)
+                .filter(|length| *length <= 9_007_199_254_740_991)
+                .ok_or_else(|| RuntimeError::TypeError("invalid Array length".into()))?;
+            for index in (0..length).rev() {
+                self.charge_step()?;
+                let from: PropertyName = index.to_string().into();
+                let to: PropertyName = (index + items.len() as u64).to_string().into();
+                if self.has_property(object, &from)? {
+                    let value = self.get_property(&Value::Object(object), &from)?;
+                    self.stack.push(value.clone());
+                    self.array_set_or_throw(object, to, &value)?;
+                    self.stack.pop();
+                } else {
+                    self.array_delete_or_throw(object, &to)?;
+                }
+            }
+            for (index, value) in items.iter().enumerate() {
+                self.array_set_or_throw(object, index.to_string().into(), value)?;
+            }
+            self.array_set_or_throw(object, "length".into(), &Value::Number(new_length as f64))?;
+            Ok(Value::Number(new_length as f64))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    pub(in super::super) fn array_reverse(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as u64;
+            for lower_index in 0..length / 2 {
+                self.charge_step()?;
+                let upper_index = length - lower_index - 1;
+                let lower: PropertyName = lower_index.to_string().into();
+                let upper: PropertyName = upper_index.to_string().into();
+                let step_base = self.stack.len();
+                let lower_value = if self.has_property(object, &lower)? {
+                    let value = self.get_property(&Value::Object(object), &lower)?;
+                    self.stack.push(value.clone());
+                    Some(value)
+                } else {
+                    None
+                };
+                let upper_value = if self.has_property(object, &upper)? {
+                    let value = self.get_property(&Value::Object(object), &upper)?;
+                    self.stack.push(value.clone());
+                    Some(value)
+                } else {
+                    None
+                };
+                let swapped: Result<(), RuntimeError> = (|| {
+                    if let Some(value) = &upper_value {
+                        self.array_set_or_throw(object, lower.clone(), value)?;
+                    } else {
+                        self.array_delete_or_throw(object, &lower)?;
+                    }
+                    if let Some(value) = &lower_value {
+                        self.array_set_or_throw(object, upper.clone(), value)?;
+                    } else {
+                        self.array_delete_or_throw(object, &upper)?;
+                    }
+                    Ok(())
+                })();
+                self.stack.truncate(step_base);
+                swapped?;
+            }
+            Ok(receiver.clone())
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    pub(in super::super) fn array_to_locale_string(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as u64;
+            let mut output = JsString::default();
+            for index in 0..length {
+                self.charge_step()?;
+                if index != 0 {
+                    native::append(&mut output, &",".into(), self.config.max_string_bytes)?;
+                }
+                let value = self.get_property(&Value::Object(object), &index.to_string().into())?;
+                if matches!(value, Value::Null | Value::Undefined) {
+                    continue;
+                }
+                self.stack.push(value.clone());
+                let method = self.get_property(&value, &"toLocaleString".into())?;
+                self.stack.push(method.clone());
+                if !self.is_callable(&method)? {
+                    return Err(RuntimeError::TypeError(
+                        "Array element toLocaleString is not callable".into(),
+                    ));
+                }
+                let string = self.call_native(method, value, Vec::new(), false)?;
+                let string = self.coerce_string(&string)?;
+                native::append(&mut output, &string, self.config.max_string_bytes)?;
+                self.stack.truncate(base + 1);
+            }
+            Ok(Value::String(output))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
     pub(in super::super) fn array_last_index_of(
         &mut self,
         receiver: &Value,

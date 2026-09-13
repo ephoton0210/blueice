@@ -1173,6 +1173,10 @@ impl Vm {
                 self.stack.pop();
                 result
             }
+            NativeFunction::ArrayPop => self.array_pop(&receiver),
+            NativeFunction::ArrayShift => self.array_shift(&receiver),
+            NativeFunction::ArrayUnshift => self.array_unshift(&receiver, &args),
+            NativeFunction::ArrayReverse => self.array_reverse(&receiver),
             NativeFunction::ArrayIndexOf => {
                 self.array_index_of(&receiver, first, native::argument(&args, 1))
             }
@@ -1180,6 +1184,8 @@ impl Vm {
             NativeFunction::ArraySlice => self.array_slice(&receiver, &args),
             NativeFunction::ArraySplice => self.array_splice(&receiver, &args),
             NativeFunction::ArraySort => self.array_sort(&receiver, first),
+            NativeFunction::ArrayToLocaleString => self.array_to_locale_string(&receiver),
+            NativeFunction::NumberMethod(method) => self.number_method(&receiver, &args, method),
             NativeFunction::Eval => self.indirect_eval(first),
             NativeFunction::IsNaN => Ok(Value::Bool(self.coerce_number(first)?.is_nan())),
             NativeFunction::IsFinite => Ok(Value::Bool(self.coerce_number(first)?.is_finite())),
@@ -1244,6 +1250,8 @@ impl Vm {
                 };
                 self.iterator_result(value, done)
             }
+            NativeFunction::CollectionIterator { map } => self.collection_iterator(map, &receiver),
+            NativeFunction::CollectionIteratorNext => self.iterator_result(Value::Undefined, true),
             NativeFunction::GeneratorNext => {
                 self.generator_next(&receiver, Some(first.clone()), None)
             }

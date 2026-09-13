@@ -40,6 +40,45 @@ fn sparse_arrays_distinguish_holes_and_length_from_ordinary_properties() {
 }
 
 #[test]
+fn mutating_and_locale_array_methods_preserve_generic_property_semantics() {
+    assert_eq!(
+        evaluate("let values=[1,2,3];let popped=values.pop();popped===3&&values.length===2",)
+            .unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate("let values=[1,2,3];let shifted=values.shift();shifted===1&&values.length===2")
+            .unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate("let values=[1,2,3];values.unshift(7,8)===5&&values[0]===7&&values[4]===3")
+            .unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate("let values=[1,2,3];values.reverse()===values&&values.join(',')==='3,2,1'")
+            .unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate("let sparse=[,2];sparse.reverse();sparse[0]===2&&!(1 in sparse)").unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate("[1,null,{toLocaleString:function(){return 'custom'}}].toLocaleString()").unwrap(),
+        Value::String("1,,custom".into())
+    );
+    assert_eq!(
+        evaluate(
+            "(3.5).toFixed(1)==='3.5'&&(12).toExponential(1)==='1.2e+1'&&(12).toPrecision(3)==='12.0'&&(12).toLocaleString()==='12'",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn canonical_index_boundaries_grow_length_without_dense_allocation() {
     let mut heap = Heap::default();
     let array = heap.alloc_array(0, None).unwrap();

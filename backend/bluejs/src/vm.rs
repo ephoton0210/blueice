@@ -687,6 +687,8 @@ pub struct Vm {
     class_field_initializer_depth: u32,
     iterator_base: Option<ObjectId>,
     array_iterator_prototype: Option<ObjectId>,
+    map_iterator_prototype: Option<ObjectId>,
+    set_iterator_prototype: Option<ObjectId>,
     generator_function_prototype: Option<ObjectId>,
     generator_prototype: Option<ObjectId>,
     async_iterator_base: Option<ObjectId>,
@@ -806,6 +808,8 @@ impl Vm {
             class_field_initializer_depth: 0,
             iterator_base: None,
             array_iterator_prototype: None,
+            map_iterator_prototype: None,
+            set_iterator_prototype: None,
             generator_function_prototype: None,
             generator_prototype: None,
             async_iterator_base: None,
@@ -1191,6 +1195,13 @@ impl Vm {
             self.install_native(
                 self.array_prototype,
                 function_prototype,
+                "toLocaleString",
+                0,
+                NativeFunction::ArrayToLocaleString,
+            )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
                 "concat",
                 1,
                 NativeFunction::ArrayConcat,
@@ -1273,6 +1284,20 @@ impl Vm {
                 1,
                 NativeFunction::ArrayPush,
             )?;
+            for (name, length, function) in [
+                ("pop", 0, NativeFunction::ArrayPop),
+                ("shift", 0, NativeFunction::ArrayShift),
+                ("unshift", 1, NativeFunction::ArrayUnshift),
+                ("reverse", 0, NativeFunction::ArrayReverse),
+            ] {
+                self.install_native(
+                    self.array_prototype,
+                    function_prototype,
+                    name,
+                    length,
+                    function,
+                )?;
+            }
             self.install_native(
                 self.array_prototype,
                 function_prototype,
@@ -1759,6 +1784,7 @@ impl Vm {
                     | NativeFunction::Error(_)
                     | NativeFunction::Promise
                     | NativeFunction::Function
+                    | NativeFunction::AsyncFunction
                     | NativeFunction::PrimitiveConstructor(_)
             )
         {

@@ -20,8 +20,8 @@ use crate::heap::{
     TypedArrayNumericKey,
 };
 use crate::native::{
-    AtomicOp, MathMethod, ObjectMethod, PatternMethod, StringMethod, TypedArrayMethod,
-    WeakCollectionMethod,
+    AtomicOp, MathMethod, NumberMethod, ObjectMethod, PatternMethod, StringMethod,
+    TypedArrayMethod, WeakCollectionMethod,
 };
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -944,6 +944,92 @@ impl Vm {
 }
 
 impl Vm {
+    /// Object.groupBy consumes its source as an iterator, rather than using
+    /// array-like indexing. The callback result is converted to a property
+    /// key before a group is created, and every callback/key/append abrupt
+    /// completion closes the still-live iterator while preserving that
+    /// original completion.
+    fn object_group_by_method(
+        &mut self,
+        items: &Value,
+        callback: &Value,
+    ) -> Result<Value, RuntimeError> {
+        if !self.is_callable(callback)? {
+            return Err(RuntimeError::TypeError(
+                "Object.groupBy callback must be callable".into(),
+            ));
+        }
+        let base = self.stack.len();
+        self.stack.extend([items.clone(), callback.clone()]);
+        let result = (|| {
+            let record = self.get_iterator(items)?;
+            self.stack.push(record.clone());
+            let groups = self.with_roots(|heap| heap.alloc_object(None))?;
+            self.stack.push(Value::Object(groups));
+            let outcome = (|| {
+                let mut index = 0u64;
+                while let Some(value) = self.iterator_step(&record, true)? {
+                    if index >= 9_007_199_254_740_991 {
+                        return Err(RuntimeError::TypeError(
+                            "Object.groupBy iterator is too large".into(),
+                        ));
+                    }
+                    let item_base = self.stack.len();
+                    self.stack.push(value.clone());
+                    let key_value = self.call_native(
+                        callback.clone(),
+                        Value::Undefined,
+                        vec![value, Value::Number(index as f64)],
+                        false,
+                    )?;
+                    self.stack.push(key_value.clone());
+                    let key = self.coerce_property_key(&key_value)?;
+                    let group =
+                        if let Some(descriptor) = self.object_get_own_property(groups, &key)? {
+                            descriptor.value.ok_or_else(|| {
+                                RuntimeError::TypeError("Object.groupBy group is not data".into())
+                            })?
+                        } else {
+                            let group = self.array_from(Vec::new())?;
+                            self.stack.push(group.clone());
+                            let defined = self.object_define_own_property(
+                                groups,
+                                key,
+                                PropertyDescriptor::data(group.clone(), true, true, true),
+                            )?;
+                            self.stack.pop();
+                            if !defined {
+                                return Err(RuntimeError::TypeError(
+                                    "cannot create Object.groupBy group".into(),
+                                ));
+                            }
+                            group
+                        };
+                    self.stack.push(group.clone());
+                    let value = self.stack[item_base].clone();
+                    self.array_push(&group, &value, 0)?;
+                    self.stack.truncate(item_base);
+                    index += 1;
+                }
+                Ok(Value::Object(groups))
+            })();
+            if outcome.is_err() {
+                let error_base = self.stack.len();
+                if let Err(RuntimeError::Thrown(value)) = &outcome {
+                    self.stack.push(value.clone());
+                }
+                // An IteratorStep abrupt completion has already marked the
+                // record done; IteratorClose consequently becomes a no-op in
+                // that case and preserves its original error.
+                let _ = self.iterator_close(&record);
+                self.stack.truncate(error_base);
+            }
+            outcome
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
     fn object_from_entries_method(&mut self, source: &Value) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
         self.stack.push(source.clone());
@@ -1109,6 +1195,121 @@ impl Vm {
         })();
         self.stack.truncate(base);
         result
+    }
+}
+
+fn normalized_exponential(number: f64, fraction_digits: Option<usize>) -> String {
+    let rendered = if let Some(fraction_digits) = fraction_digits {
+        format!("{number:.fraction_digits$e}")
+    } else {
+        format!("{number:e}")
+    };
+    let (mantissa, exponent) = rendered
+        .split_once('e')
+        .expect("Rust lower-exponential formatting includes an exponent");
+    let exponent = exponent
+        .parse::<i32>()
+        .expect("Rust lower-exponential formatting has an integer exponent");
+    format!(
+        "{mantissa}e{}{exponent}",
+        if exponent >= 0 { "+" } else { "" }
+    )
+}
+
+impl Vm {
+    fn number_receiver(&mut self, receiver: &Value) -> Result<f64, RuntimeError> {
+        let value = if let Value::Object(object) = receiver {
+            self.heap
+                .boxed_primitive(*object)?
+                .unwrap_or(Value::Undefined)
+        } else {
+            receiver.clone()
+        };
+        let Value::Number(number) = value else {
+            return Err(RuntimeError::TypeError(
+                "Number method requires a Number receiver".into(),
+            ));
+        };
+        Ok(number)
+    }
+
+    fn number_precision_argument(
+        &mut self,
+        value: &Value,
+        method: &str,
+    ) -> Result<usize, RuntimeError> {
+        let value = self.coerce_number(value)?;
+        let value = if value.is_nan() { 0.0 } else { value.trunc() };
+        if !value.is_finite() || !(0.0..=100.0).contains(&value) {
+            return Err(RuntimeError::RangeError(format!(
+                "{method} precision must be between 0 and 100"
+            )));
+        }
+        Ok(value as usize)
+    }
+
+    pub(in super::super) fn number_method(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+        method: NumberMethod,
+    ) -> Result<Value, RuntimeError> {
+        let mut number = self.number_receiver(receiver)?;
+        // Number formatting canonicalizes -0 before producing a string.
+        if number == 0.0 {
+            number = 0.0;
+        }
+        let source_string = || primitive::string(&Value::Number(number));
+        match method {
+            NumberMethod::LocaleString => Ok(Value::String(source_string()?)),
+            NumberMethod::Fixed => {
+                let digits =
+                    self.number_precision_argument(native::argument(args, 0), "toFixed")?;
+                if !number.is_finite() || number.abs() >= 1e21 {
+                    return Ok(Value::String(source_string()?));
+                }
+                Ok(Value::String(format!("{number:.digits$}").into()))
+            }
+            NumberMethod::Exponential => {
+                if native::argument(args, 0) == &Value::Undefined {
+                    if !number.is_finite() {
+                        return Ok(Value::String(source_string()?));
+                    }
+                    return Ok(Value::String(normalized_exponential(number, None).into()));
+                }
+                let digits =
+                    self.number_precision_argument(native::argument(args, 0), "toExponential")?;
+                if !number.is_finite() {
+                    return Ok(Value::String(source_string()?));
+                }
+                Ok(Value::String(
+                    normalized_exponential(number, Some(digits)).into(),
+                ))
+            }
+            NumberMethod::Precision => {
+                if native::argument(args, 0) == &Value::Undefined {
+                    return Ok(Value::String(source_string()?));
+                }
+                let precision =
+                    self.number_precision_argument(native::argument(args, 0), "toPrecision")?;
+                if !number.is_finite() {
+                    return Ok(Value::String(source_string()?));
+                }
+                let exponent = if number == 0.0 {
+                    0
+                } else {
+                    number.abs().log10().floor() as i32
+                };
+                if exponent >= precision as i32 || exponent < -6 {
+                    Ok(Value::String(
+                        normalized_exponential(number, Some(precision - 1)).into(),
+                    ))
+                } else {
+                    let fraction_digits = (precision as i32 - exponent - 1).max(0) as usize;
+                    Ok(Value::String(format!("{number:.fraction_digits$}").into()))
+                }
+            }
+        }
     }
 }
 
@@ -1780,6 +1981,9 @@ impl Vm {
         if method == FromEntries {
             return self.object_from_entries_method(first);
         }
+        if method == GroupBy {
+            return self.object_group_by_method(first, native::argument(args, 1));
+        }
         let object = if matches!(method, PropertyIsEnumerable | HasOwnProperty) {
             self.coerce_object(receiver)?
         } else if method == Create {
@@ -1800,6 +2004,7 @@ impl Vm {
         match method {
             Is => unreachable!("Object.is returns before object coercion"),
             FromEntries => unreachable!("Object.fromEntries creates its result before coercion"),
+            GroupBy => unreachable!("Object.groupBy creates its result before object coercion"),
             Assign => {
                 let base = self.stack.len();
                 let result = (|| {

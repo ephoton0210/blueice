@@ -55,6 +55,14 @@ pub(crate) enum TypedArrayMethod {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NumberMethod {
+    LocaleString,
+    Fixed,
+    Exponential,
+    Precision,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WeakCollectionMethod {
     Add,
     Delete,
@@ -209,11 +217,17 @@ pub(crate) enum NativeFunction {
     ArrayReduce,
     ArrayReduceRight,
     ArrayPush,
+    ArrayPop,
+    ArrayShift,
+    ArrayUnshift,
+    ArrayReverse,
     ArrayIndexOf,
     ArrayLastIndexOf,
     ArraySlice,
     ArraySplice,
     ArraySort,
+    ArrayToLocaleString,
+    NumberMethod(NumberMethod),
     Eval,
     IsNaN,
     IsFinite,
@@ -287,6 +301,10 @@ pub(crate) enum NativeFunction {
     ArrayJoin,
     ArrayIterator(ArrayIteratorKind),
     ArrayIteratorNext,
+    CollectionIterator {
+        map: bool,
+    },
+    CollectionIteratorNext,
     GeneratorNext,
     GeneratorReturn,
     GeneratorThrow,
@@ -429,6 +447,7 @@ pub(crate) enum MathMethod {
 pub(crate) enum ObjectMethod {
     Assign,
     FromEntries,
+    GroupBy,
     HasOwn,
     Is,
     GetOwnPropertyDescriptor,

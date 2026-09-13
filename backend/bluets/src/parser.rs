@@ -186,6 +186,13 @@ impl Parser {
     }
 
     fn parse_module(mut self) -> Result<Module, Vec<Diagnostic>> {
+        if self.id.ends_with(".tsx") {
+            self.unsupported(
+                SourceSpan::new(&self.id, 0, self.source.len()),
+                "TSX/JSX is not in the initial BlueTS matrix",
+            );
+            return Err(self.diagnostics);
+        }
         while !self.at_eof() {
             if self.consume(";") {
                 continue;
@@ -196,6 +203,14 @@ impl Parser {
                 self.unsupported(
                     self.previous().span(&self.id),
                     "default exports are not in the initial BlueTS matrix",
+                );
+                self.skip_statement();
+                continue;
+            }
+            if exported && self.peek("=") {
+                self.unsupported(
+                    self.current().span(&self.id),
+                    "`export =` is not in the initial BlueTS matrix",
                 );
                 self.skip_statement();
                 continue;
@@ -284,6 +299,20 @@ impl Parser {
     fn parse_import(&mut self, start: usize) {
         self.expect("import");
         let type_only = self.consume("type");
+        if !type_only
+            && self.current().kind == TokenKind::Identifier
+            && self
+                .tokens
+                .get(self.index + 1)
+                .is_some_and(|token| token.is("="))
+        {
+            self.unsupported(
+                self.current().span(&self.id),
+                "`import =` is not in the initial BlueTS matrix",
+            );
+            self.skip_statement();
+            return;
+        }
         let mut bindings = Vec::new();
         let mut specifier = None;
         let mut specifier_span = None;
@@ -1097,5 +1126,24 @@ mod tests {
     fn rejects_runtime_enums_explicitly() {
         let diagnostics = parse_module("memory:///app.ts", "enum Colour { Red }").unwrap_err();
         assert_eq!(diagnostics[0].code, DiagnosticCode::UnsupportedSyntax);
+    }
+
+    #[test]
+    fn rejects_tsx_modules_even_when_they_contain_no_tag_tokens() {
+        let diagnostics =
+            parse_module("memory:///view.tsx", "const label: string = 'BlueIce';").unwrap_err();
+        assert_eq!(diagnostics[0].code, DiagnosticCode::UnsupportedSyntax);
+        assert!(diagnostics[0].message.contains("TSX/JSX"));
+    }
+
+    #[test]
+    fn rejects_legacy_commonjs_module_assignment_forms_explicitly() {
+        for source in [
+            "import Legacy = require('./legacy.ts');",
+            "export = Legacy;",
+        ] {
+            let diagnostics = parse_module("memory:///app.ts", source).unwrap_err();
+            assert_eq!(diagnostics[0].code, DiagnosticCode::UnsupportedSyntax);
+        }
     }
 }

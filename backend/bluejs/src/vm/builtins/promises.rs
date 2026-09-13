@@ -33,6 +33,14 @@ impl Vm {
             1,
             NativeFunction::PromiseFinally,
         )?;
+        self.define_data(
+            prototype,
+            JsSymbol::well_known("toStringTag"),
+            Value::String("Promise".into()),
+            false,
+            false,
+            true,
+        )?;
         self.promise_prototype = Some(prototype);
         Ok(prototype)
     }
@@ -54,15 +62,25 @@ impl Vm {
         }
         let object_prototype = self.object_prototype;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+        let function_prototype = self.function_prototype()?;
         self.stack.push(Value::Object(prototype));
-        let result = self.define_data(
-            prototype,
-            JsSymbol::well_known("toStringTag"),
-            Value::String(if map { "Map" } else { "Set" }.into()),
-            false,
-            false,
-            true,
-        );
+        let result = (|| {
+            self.define_data(
+                prototype,
+                JsSymbol::well_known("toStringTag"),
+                Value::String(if map { "Map" } else { "Set" }.into()),
+                false,
+                false,
+                true,
+            )?;
+            self.install_symbol_native(
+                prototype,
+                function_prototype,
+                "iterator",
+                0,
+                NativeFunction::CollectionIterator { map },
+            )
+        })();
         self.stack.pop();
         result?;
         if map {
@@ -71,6 +89,69 @@ impl Vm {
             self.set_prototype = Some(prototype);
         }
         Ok(prototype)
+    }
+
+    fn collection_iterator_prototype(&mut self, map: bool) -> Result<ObjectId, RuntimeError> {
+        let cached = if map {
+            self.map_iterator_prototype
+        } else {
+            self.set_iterator_prototype
+        };
+        if let Some(prototype) = cached {
+            return Ok(prototype);
+        }
+        let base = self.base_iterator_prototype()?;
+        let function_prototype = self.function_prototype()?;
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
+        let root = self.heap.root(prototype)?;
+        let result = (|| {
+            self.install_native(
+                prototype,
+                function_prototype,
+                "next",
+                0,
+                NativeFunction::CollectionIteratorNext,
+            )?;
+            self.define_data(
+                prototype,
+                JsSymbol::well_known("toStringTag"),
+                Value::String(if map { "Map Iterator" } else { "Set Iterator" }.into()),
+                false,
+                false,
+                true,
+            )?;
+            Ok(prototype)
+        })();
+        match result {
+            Ok(prototype) => {
+                if map {
+                    self.map_iterator_prototype = Some(prototype);
+                } else {
+                    self.set_iterator_prototype = Some(prototype);
+                }
+                Ok(prototype)
+            }
+            Err(error) => {
+                self.heap.unroot(root)?;
+                Err(error)
+            }
+        }
+    }
+
+    pub(in super::super) fn collection_iterator(
+        &mut self,
+        map: bool,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        if !matches!(receiver, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "collection iterator requires an object receiver".into(),
+            ));
+        }
+        let prototype = self.collection_iterator_prototype(map)?;
+        Ok(Value::Object(
+            self.with_roots(|heap| heap.alloc_object(Some(prototype)))?,
+        ))
     }
 
     pub(in super::super) fn collection_constructor(

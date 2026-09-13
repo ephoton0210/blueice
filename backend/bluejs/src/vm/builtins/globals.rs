@@ -28,6 +28,7 @@ impl Vm {
                 | "ReferenceError"
                 | "EvalError"
                 | "URIError"
+                | "AggregateError"
         ) {
             return self.error_global(name);
         }
@@ -800,6 +801,20 @@ impl Vm {
                     )?;
                 }
                 if name == "Number" {
+                    for (property, length, method) in [
+                        ("toLocaleString", 0, native::NumberMethod::LocaleString),
+                        ("toFixed", 1, native::NumberMethod::Fixed),
+                        ("toExponential", 1, native::NumberMethod::Exponential),
+                        ("toPrecision", 1, native::NumberMethod::Precision),
+                    ] {
+                        self.install_native(
+                            boxed_prototype,
+                            prototype,
+                            property,
+                            length,
+                            NativeFunction::NumberMethod(method),
+                        )?;
+                    }
                     for (property, value) in [
                         ("EPSILON", f64::EPSILON),
                         ("MAX_SAFE_INTEGER", 9_007_199_254_740_991.0),
@@ -926,6 +941,7 @@ impl Vm {
                 for (name, length, method) in [
                     ("assign", 2, Assign),
                     ("fromEntries", 1, FromEntries),
+                    ("groupBy", 2, GroupBy),
                     ("hasOwn", 2, HasOwn),
                     ("is", 2, Is),
                     ("getOwnPropertyDescriptor", 2, GetOwnPropertyDescriptor),

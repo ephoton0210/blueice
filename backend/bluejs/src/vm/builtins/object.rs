@@ -522,6 +522,7 @@ impl Vm {
                     | NativeFunction::WeakRef
                     | NativeFunction::FinalizationRegistry
                     | NativeFunction::Promise
+                    | NativeFunction::AsyncFunction
                     | NativeFunction::Object
                     | NativeFunction::RegExp
                     | NativeFunction::Collator

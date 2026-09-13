@@ -109,6 +109,7 @@ impl Vm {
             "ReferenceError" => "ReferenceError",
             "EvalError" => "EvalError",
             "URIError" => "URIError",
+            "AggregateError" => "AggregateError",
             "Test262Error" => "Test262Error",
             _ => "Error",
         };

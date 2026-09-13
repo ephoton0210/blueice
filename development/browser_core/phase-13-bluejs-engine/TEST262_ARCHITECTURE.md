@@ -1947,3 +1947,45 @@ or async-function behavior (P1); 18 descriptor checks require missing
 `Object.groupBy` (P2). No remaining failure in these closure filters is
 attributed to a P0.1–P0.4 contract. This closes the listed P0 acceptance
 slices, not full Test262 conformance or the later-phase libraries they expose.
+
+## P1/P2 continuation: Object library and brand closure
+
+`Object.groupBy` now consumes its input through the iterator protocol, invokes
+the callback with the item and its safe-integer index, converts returned keys
+with `ToPropertyKey`, creates a null-prototype result, and closes a live input
+iterator when callback, key conversion, property creation, or array append
+abruptly completes. The implementation roots the iterator, result, and live
+group arrays across observable calls.
+
+The descriptor-facing library surface now supplies generic
+`Array.prototype.pop`, `shift`, `unshift`, `reverse`, and `toLocaleString`,
+plus `Number.prototype.toLocaleString`, `toFixed`, `toExponential`, and
+`toPrecision`. These use ordinary property operations so sparse and
+array-like receivers retain their getter, setter, deletion, and length
+semantics.
+
+The P1 Object brand paths materialize the standard `Symbol.toStringTag` data
+properties for Promise, Map, Set, and their iterator prototypes. Map/Set
+`@@iterator` returns an object based on the corresponding iterator prototype;
+its empty-collection `next` result is observable without exposing a synthetic
+collection representation. `AggregateError` is a lazy Error subclass global,
+and `%AsyncFunction%` is constructible through both the general
+`IsConstructor` path and native construct dispatch.
+
+Focused runs use the pinned Test262 snapshot, eight workers, the ordinary
+100,000-instruction budget, and the two-second per-case deadline:
+
+| Workstream | Filter | Result | Evidence |
+| --- | --- | ---: | --- |
+| P2 | `built-ins/Object/groupBy` | **28 / 28 pass** | `/private/tmp/bluejs-p2-object-groupby` |
+| P2 | `built-ins/Object/getOwnPropertyDescriptor` | **656 / 656 pass** | `/private/tmp/bluejs-p2-object-descriptor-methods` |
+| P1 | `built-ins/Object/prototype/toString/symbol-tag` | **32 / 32 pass** | `/private/tmp/bluejs-p1-object-tags` |
+| P1 | `built-ins/Object/seal` | **186 pass / 2 P1.5 failures** of 188 | `/private/tmp/bluejs-p1-object-seal-final` |
+| Combined | `built-ins/Object` | **6,802 pass / 6 P1.5 failures** of 6,808 | `/private/tmp/bluejs-p1-p2-object-final` |
+
+This removes all **56** specified P1/P2 Object modes: the 14 Promise,
+collection, async-function, and AggregateError modes; the 18 Array/Number
+prototype descriptor modes; and the 24 `Object.groupBy` modes. The six
+remaining Object failures are exclusively P1.5 resizable or variable-length
+TypedArray integrity semantics: two modes each in `Object.freeze`,
+`Object.preventExtensions`, and `Object.seal`.

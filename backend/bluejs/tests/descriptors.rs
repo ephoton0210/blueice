@@ -359,6 +359,28 @@ fn reflective_own_keys_materialize_the_p0_global_realm_surface() {
 }
 
 #[test]
+fn object_group_by_uses_iterator_keys_and_closes_on_an_abrupt_callback() {
+    assert_eq!(
+        evaluate(
+            "let calls=[];let iterable={i:0,next:function(){return this.i<3?{value:++this.i,done:false}:{done:true}},return:function(){calls.push('closed');return {done:true}},[Symbol.iterator]:function(){return this}};let groups=Object.groupBy(iterable,function(value,index){calls.push(index+':'+value);return value%2?'odd':'even'});let closed=false;try{Object.groupBy({[Symbol.iterator]:function(){return {next:function(){return {value:1,done:false}},return:function(){closed=true;return {done:true}}}}},function(){throw 1})}catch(error){}Object.getPrototypeOf(groups)===null&&groups.odd.join(',')==='1,3'&&groups.even.join(',')==='2'&&calls.join(',')==='0:1,1:2,2:3'&&closed",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn object_brands_cover_promise_collections_iterators_and_aggregate_errors() {
+    assert_eq!(
+        evaluate(
+            "let tag=Object.prototype.toString;let promise=Promise.resolve(1);let map=new Map();let set=new Set();let mapIterator=map[Symbol.iterator]();let setIterator=set[Symbol.iterator]();let tagged=tag.call(promise)==='[object Promise]'&&tag.call(map)==='[object Map]'&&tag.call(set)==='[object Set]'&&tag.call(mapIterator)==='[object Map Iterator]'&&tag.call(setIterator)==='[object Set Iterator]'&&mapIterator.next().done&&setIterator.next().done;delete Promise.prototype[Symbol.toStringTag];delete Map.prototype[Symbol.toStringTag];delete Set.prototype[Symbol.toStringTag];let untagged=tag.call(promise)==='[object Object]'&&tag.call(map)==='[object Object]'&&tag.call(set)==='[object Object]';let aggregate=new AggregateError([], 'aggregate');let aggregateOK=aggregate instanceof Error&&aggregate.name==='AggregateError'&&Object.seal(aggregate)===aggregate;let arrowConstructor=Object.getPrototypeOf(async()=>{}).constructor;let functionConstructor=Object.getPrototypeOf(async function(){}).constructor;let generatorConstructor=Object.getPrototypeOf(async function*(){}).constructor;function seals(Constructor){let value=new Constructor();return Object.seal(value)===value}tagged&&untagged&&aggregateOK&&seals(arrowConstructor)&&seals(functionConstructor)&&seals(generatorConstructor)",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn object_get_own_property_descriptors_uses_internal_key_and_descriptor_methods() {
     assert_eq!(
         evaluate(

@@ -221,6 +221,7 @@ impl Vm {
                 | "ReferenceError"
                 | "EvalError"
                 | "URIError"
+                | "AggregateError"
                 | "eval"
                 | "isNaN"
                 | "isFinite"

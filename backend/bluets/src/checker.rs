@@ -6,7 +6,7 @@
 
 use crate::compiler::{is_declaration_module, Project};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
-use crate::parser::{Declaration, FunctionDeclaration, Module, TypeField};
+use crate::parser::{Declaration, FunctionDeclaration, Module, Parameter, TypeField};
 use crate::syntax::{Token, TokenKind};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
@@ -42,6 +42,23 @@ pub struct CheckedModule {
 #[derive(Debug, Clone)]
 pub struct CheckedProject {
     pub modules: BTreeMap<String, CheckedModule>,
+}
+
+/// A locally bound type declaration.  Keeping its parameters alongside its
+/// body lets the checker instantiate erased generic aliases and interfaces at
+/// their use sites without making a type parameter visible outside its own
+/// declaration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TypeDefinition {
+    parameters: Vec<String>,
+    value: Type,
+}
+
+#[derive(Debug, Clone)]
+struct FunctionSignature {
+    parameters: Vec<Parameter>,
+    type_parameters: Vec<String>,
+    return_type: Type,
 }
 
 /// Rechecks the requested modules while retaining checker output for modules
@@ -134,19 +151,28 @@ fn declaration_module_diagnostics(project: &Project) -> Vec<Diagnostic> {
     diagnostics
 }
 
-fn exported_types(project: &Project) -> BTreeMap<String, BTreeMap<String, Type>> {
+fn exported_types(project: &Project) -> BTreeMap<String, BTreeMap<String, TypeDefinition>> {
     let mut modules = BTreeMap::new();
     for (id, module) in &project.modules {
         let mut values = BTreeMap::new();
         for declaration in &module.declarations {
             match declaration {
                 Declaration::TypeAlias(alias) if alias.exported => {
-                    values.insert(alias.name.clone(), alias.value.clone());
+                    values.insert(
+                        alias.name.clone(),
+                        TypeDefinition {
+                            parameters: alias.type_parameters.clone(),
+                            value: alias.value.clone(),
+                        },
+                    );
                 }
                 Declaration::Interface(interface) if interface.exported => {
                     values.insert(
                         interface.name.clone(),
-                        Type::Record(interface.fields.clone()),
+                        TypeDefinition {
+                            parameters: interface.type_parameters.clone(),
+                            value: Type::Record(interface.fields.clone()),
+                        },
                     );
                 }
                 _ => {}
@@ -211,12 +237,13 @@ fn exported_types(project: &Project) -> BTreeMap<String, BTreeMap<String, Type>>
 struct ModuleChecker<'a> {
     project: &'a Project,
     module: &'a Module,
-    exported_types: &'a BTreeMap<String, BTreeMap<String, Type>>,
+    exported_types: &'a BTreeMap<String, BTreeMap<String, TypeDefinition>>,
     enforce_types: bool,
     diagnostics: Vec<Diagnostic>,
     symbols: Vec<Symbol>,
-    types: BTreeMap<String, Type>,
+    types: BTreeMap<String, TypeDefinition>,
     values: BTreeMap<String, Type>,
+    functions: BTreeMap<String, FunctionSignature>,
     type_parameters: BTreeSet<String>,
 }
 
@@ -224,7 +251,7 @@ impl<'a> ModuleChecker<'a> {
     fn new(
         project: &'a Project,
         module: &'a Module,
-        exported_types: &'a BTreeMap<String, BTreeMap<String, Type>>,
+        exported_types: &'a BTreeMap<String, BTreeMap<String, TypeDefinition>>,
         enforce_types: bool,
     ) -> Self {
         Self {
@@ -236,6 +263,7 @@ impl<'a> ModuleChecker<'a> {
             symbols: Vec::new(),
             types: BTreeMap::new(),
             values: BTreeMap::new(),
+            functions: BTreeMap::new(),
             type_parameters: BTreeSet::new(),
         }
     }
@@ -246,22 +274,24 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::Import(import) => self.bind_import(import),
                 Declaration::TypeExport(export) => self.bind_type_export(export),
                 Declaration::TypeAlias(alias) => {
-                    self.type_parameters
-                        .extend(alias.type_parameters.iter().cloned());
                     self.insert_type(
                         &alias.name,
-                        alias.value.clone(),
+                        TypeDefinition {
+                            parameters: alias.type_parameters.clone(),
+                            value: alias.value.clone(),
+                        },
                         alias.span.clone(),
                         SymbolKind::TypeAlias,
                         alias.exported,
                     );
                 }
                 Declaration::Interface(interface) => {
-                    self.type_parameters
-                        .extend(interface.type_parameters.iter().cloned());
                     self.insert_type(
                         &interface.name,
-                        Type::Record(interface.fields.clone()),
+                        TypeDefinition {
+                            parameters: interface.type_parameters.clone(),
+                            value: Type::Record(interface.fields.clone()),
+                        },
                         interface.span.clone(),
                         SymbolKind::Interface,
                         interface.exported,
@@ -279,6 +309,7 @@ impl<'a> ModuleChecker<'a> {
                 }
                 Declaration::Function(function) => {
                     let value_type = function.return_type.clone().unwrap_or(Type::Unknown);
+                    let is_new = !self.values.contains_key(&function.name);
                     self.insert_value(
                         &function.name,
                         value_type,
@@ -286,6 +317,16 @@ impl<'a> ModuleChecker<'a> {
                         SymbolKind::Function,
                         function.exported,
                     );
+                    if is_new {
+                        self.functions.insert(
+                            function.name.clone(),
+                            FunctionSignature {
+                                parameters: function.parameters.clone(),
+                                type_parameters: function.type_parameters.clone(),
+                                return_type: function.return_type.clone().unwrap_or(Type::Unknown),
+                            },
+                        );
+                    }
                 }
                 Declaration::Raw(_) => {}
             }
@@ -361,14 +402,14 @@ impl<'a> ModuleChecker<'a> {
     fn insert_type(
         &mut self,
         name: &str,
-        value_type: Type,
+        definition: TypeDefinition,
         span: SourceSpan,
         kind: SymbolKind,
         exported: bool,
     ) {
         if self
             .types
-            .insert(name.to_string(), value_type.clone())
+            .insert(name.to_string(), definition.clone())
             .is_some()
         {
             self.duplicate(name, span);
@@ -380,7 +421,7 @@ impl<'a> ModuleChecker<'a> {
             module: self.module.id.clone(),
             span,
             exported,
-            value_type: Some(value_type),
+            value_type: Some(definition.value),
         });
     }
 
@@ -421,10 +462,20 @@ impl<'a> ModuleChecker<'a> {
     fn check_types(&mut self) {
         for declaration in &self.module.declarations {
             match declaration {
-                Declaration::TypeAlias(alias) => self.check_type(&alias.value, &alias.span),
+                Declaration::TypeAlias(alias) => {
+                    self.check_type_with_parameters(
+                        &alias.value,
+                        &alias.span,
+                        &alias.type_parameters,
+                    );
+                }
                 Declaration::Interface(interface) => {
                     for field in &interface.fields {
-                        self.check_type(&field.value, &field.span);
+                        self.check_type_with_parameters(
+                            &field.value,
+                            &field.span,
+                            &interface.type_parameters,
+                        );
                     }
                 }
                 Declaration::Variable(variable) => self.check_variable(variable),
@@ -432,6 +483,18 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::Import(_) | Declaration::TypeExport(_) | Declaration::Raw(_) => {}
             }
         }
+    }
+
+    fn check_type_with_parameters(
+        &mut self,
+        value: &Type,
+        span: &SourceSpan,
+        parameters: &[String],
+    ) {
+        let previous_parameters = self.type_parameters.clone();
+        self.type_parameters.extend(parameters.iter().cloned());
+        self.check_type(value, span);
+        self.type_parameters = previous_parameters;
     }
 
     fn check_variable(&mut self, variable: &crate::parser::VariableDeclaration) {
@@ -511,7 +574,19 @@ impl<'a> ModuleChecker<'a> {
     fn check_type(&mut self, value: &Type, span: &SourceSpan) {
         match value {
             Type::Named { name, arguments } => {
-                if !self.types.contains_key(name) && !self.type_parameters.contains(name) {
+                if let Some(definition) = self.types.get(name) {
+                    if definition.parameters.len() != arguments.len() {
+                        self.type_error(
+                            span,
+                            format!(
+                                "type `{name}` requires {} type argument(s), got {}",
+                                definition.parameters.len(),
+                                arguments.len()
+                            ),
+                            DiagnosticCode::TypeMismatch,
+                        );
+                    }
+                } else if !self.type_parameters.contains(name) {
                     self.type_error(
                         span,
                         format!("cannot find type `{name}`"),
@@ -562,12 +637,111 @@ impl<'a> ModuleChecker<'a> {
             "{" => infer_record(tokens, scope),
             _ if first.kind == TokenKind::Identifier => {
                 if tokens.get(1).is_some_and(|token| token.is("(")) {
+                    if let Some(signature) = self.functions.get(&first.text) {
+                        return self.infer_function_call(signature, &tokens[2..], scope);
+                    }
                     return scope.get(&first.text).cloned().unwrap_or(Type::Unknown);
                 }
                 scope.get(&first.text).cloned().unwrap_or(Type::Unknown)
             }
             _ => Type::Unknown,
         }
+    }
+
+    fn infer_function_call(
+        &self,
+        signature: &FunctionSignature,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+    ) -> Type {
+        let Some(arguments) = split_call_arguments(tokens) else {
+            return Type::Unknown;
+        };
+        if arguments.len() != signature.parameters.len() {
+            return Type::Unknown;
+        }
+        let mut substitutions = BTreeMap::new();
+        let type_parameters = signature
+            .type_parameters
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        for (parameter, argument) in signature.parameters.iter().zip(arguments) {
+            let Some(annotation) = &parameter.annotation else {
+                continue;
+            };
+            let actual = self.infer_expression(argument, scope);
+            infer_type_arguments(annotation, &actual, &type_parameters, &mut substitutions);
+        }
+        substitute_type(&signature.return_type, &substitutions)
+    }
+}
+
+fn split_call_arguments(tokens: &[Token]) -> Option<Vec<&[Token]>> {
+    let close = tokens.iter().position(|token| token.is(")"))?;
+    if close + 1 != tokens.len() {
+        return None;
+    }
+    if close == 0 {
+        return Some(Vec::new());
+    }
+    let mut arguments = Vec::new();
+    let mut start = 0usize;
+    let mut depth = 0usize;
+    for (index, token) in tokens[..close].iter().enumerate() {
+        match token.text.as_str() {
+            "(" | "[" | "{" => depth += 1,
+            ")" | "]" | "}" if depth > 0 => depth -= 1,
+            "," if depth == 0 => {
+                arguments.push(&tokens[start..index]);
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    arguments.push(&tokens[start..close]);
+    Some(arguments)
+}
+
+fn infer_type_arguments(
+    template: &Type,
+    actual: &Type,
+    type_parameters: &BTreeSet<String>,
+    substitutions: &mut BTreeMap<String, Type>,
+) {
+    match (template, actual) {
+        (Type::Named { name, arguments }, actual)
+            if arguments.is_empty() && type_parameters.contains(name) =>
+        {
+            if let Some(previous) = substitutions.get(name) {
+                if previous != actual {
+                    substitutions.insert(name.clone(), Type::Unknown);
+                }
+            } else {
+                substitutions.insert(name.clone(), actual.clone());
+            }
+        }
+        (Type::Array(template), Type::Array(actual)) => {
+            infer_type_arguments(template, actual, type_parameters, substitutions);
+        }
+        (Type::Tuple(templates), Type::Tuple(actuals)) if templates.len() == actuals.len() => {
+            for (template, actual) in templates.iter().zip(actuals) {
+                infer_type_arguments(template, actual, type_parameters, substitutions);
+            }
+        }
+        (Type::Record(templates), Type::Record(actuals)) => {
+            for template in templates {
+                if let Some(actual) = actuals.iter().find(|actual| actual.name == template.name) {
+                    infer_type_arguments(
+                        &template.value,
+                        &actual.value,
+                        type_parameters,
+                        substitutions,
+                    );
+                }
+            }
+        }
+        _ => {}
     }
 }
 
@@ -651,23 +825,21 @@ fn infer_simple(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
 fn is_assignable(
     actual: &Type,
     expected: &Type,
-    aliases: &BTreeMap<String, Type>,
+    aliases: &BTreeMap<String, TypeDefinition>,
     visited: &mut HashSet<String>,
 ) -> bool {
     if matches!(actual, Type::Any | Type::Unknown) || matches!(expected, Type::Any | Type::Unknown)
     {
         return true;
     }
-    if let Type::Named { name, .. } = expected {
-        if actual == expected {
-            return true;
-        }
-        if !visited.insert(name.clone()) {
-            return true;
-        }
-        return aliases
-            .get(name)
-            .is_some_and(|alias| is_assignable(actual, alias, aliases, visited));
+    if actual == expected {
+        return true;
+    }
+    if let Some(expanded) = instantiate_named(actual, aliases, visited, "actual") {
+        return is_assignable(&expanded, expected, aliases, visited);
+    }
+    if let Some(expanded) = instantiate_named(expected, aliases, visited, "expected") {
+        return is_assignable(actual, &expanded, aliases, visited);
     }
     if let Type::Union(options) = expected {
         return options
@@ -706,6 +878,113 @@ fn is_assignable(
                 .unwrap_or(expected_field.optional)
         }),
         _ => actual == expected,
+    }
+}
+
+fn instantiate_named(
+    value: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    side: &str,
+) -> Option<Type> {
+    let Type::Named { name, arguments } = value else {
+        return None;
+    };
+    let definition = aliases.get(name)?;
+    if definition.parameters.len() != arguments.len() {
+        return None;
+    }
+    let key = format!("{side}:{}", type_identity(value));
+    if !visited.insert(key) {
+        return None;
+    }
+    let substitutions = definition
+        .parameters
+        .iter()
+        .cloned()
+        .zip(arguments.iter().cloned())
+        .collect();
+    Some(substitute_type(&definition.value, &substitutions))
+}
+
+fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Type>) -> Type {
+    match value {
+        Type::Named { name, arguments } if arguments.is_empty() => substitutions
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| value.clone()),
+        Type::Named { name, arguments } => Type::Named {
+            name: name.clone(),
+            arguments: arguments
+                .iter()
+                .map(|argument| substitute_type(argument, substitutions))
+                .collect(),
+        },
+        Type::Array(value) => Type::Array(Box::new(substitute_type(value, substitutions))),
+        Type::Tuple(values) => Type::Tuple(
+            values
+                .iter()
+                .map(|value| substitute_type(value, substitutions))
+                .collect(),
+        ),
+        Type::Record(fields) => Type::Record(
+            fields
+                .iter()
+                .map(|field| TypeField {
+                    name: field.name.clone(),
+                    optional: field.optional,
+                    value: substitute_type(&field.value, substitutions),
+                    span: field.span.clone(),
+                })
+                .collect(),
+        ),
+        Type::Union(values) => Type::Union(
+            values
+                .iter()
+                .map(|value| substitute_type(value, substitutions))
+                .collect(),
+        ),
+        Type::Intersection(values) => Type::Intersection(
+            values
+                .iter()
+                .map(|value| substitute_type(value, substitutions))
+                .collect(),
+        ),
+        _ => value.clone(),
+    }
+}
+
+fn type_identity(value: &Type) -> String {
+    match value {
+        Type::Named { name, arguments } => format!(
+            "{name}<{}>",
+            arguments
+                .iter()
+                .map(type_identity)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        Type::Array(value) => format!("{}[]", type_identity(value)),
+        Type::Tuple(values) => format!(
+            "[{}]",
+            values
+                .iter()
+                .map(type_identity)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        Type::Record(_) => "record".to_string(),
+        Type::Union(values) => values
+            .iter()
+            .map(type_identity)
+            .collect::<Vec<_>>()
+            .join("|"),
+        Type::Intersection(values) => values
+            .iter()
+            .map(type_identity)
+            .collect::<Vec<_>>()
+            .join("&"),
+        _ => type_label(value),
     }
 }
 
@@ -802,5 +1081,108 @@ mod tests {
         ]);
         let result = crate::compile("memory:///main.ts", &loader, CompilerOptions::default());
         assert!(!result.has_errors(), "{:?}", result.diagnostics);
+    }
+
+    #[test]
+    fn instantiates_generic_aliases_for_structural_assignability() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "type Box<T> = { value: T };\nconst valid: Box<number> = { value: 1 };\nconst invalid: Box<number> = { value: 'wrong' };",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert_eq!(
+            result
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn instantiates_generic_declaration_interfaces_across_type_imports() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([
+                ModuleSource::new(
+                    "memory:///types/envelope.d.ts",
+                    "export interface Envelope<T> { payload: T }",
+                ),
+                ModuleSource::new(
+                    "memory:///main.ts",
+                    "import type { Envelope } from './types/envelope.d.ts';\nconst valid: Envelope<string> = { payload: 'ok' };\nconst invalid: Envelope<string> = { payload: 1 };",
+                ),
+            ]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert_eq!(
+            result
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn infers_a_generic_function_return_from_its_argument() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "function identity<T>(value: T): T { return value; }\nconst valid: string = identity('ok');\nconst invalid: number = identity('wrong');",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert_eq!(
+            result
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn does_not_leak_declaration_type_parameters_into_module_scope() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "type Box<T> = { value: T };\nconst leaked: T = 'wrong';",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert!(result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == DiagnosticCode::UnknownType));
+    }
+
+    #[test]
+    fn rejects_the_wrong_number_of_generic_arguments() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "type Box<T> = { value: T };\nconst invalid: Box = { value: 1 };",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert!(result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch));
     }
 }

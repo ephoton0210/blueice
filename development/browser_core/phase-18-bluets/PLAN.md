@@ -73,6 +73,19 @@ dependency before introducing any page-runtime coupling:
   keeps only a successful cache entry and refuses reuse when the entry or any
   compiler option differs; its work-selection result is observable without
   exposing a BlueJS VM or page state.
+- Generic aliases and interfaces retain their declarations' type parameters,
+  including through local type-only imports, and instantiate them for bounded
+  structural assignment checks. Generic function calls infer substitutions
+  from their annotated parameters for an erasable return type. A declaration's
+  type parameter never leaks into surrounding module scope; overloads,
+  constraints, defaults and general expression inference remain outside this
+  narrow initial rule.
+- The parser rejects a `.tsx` module at its source-identity boundary, even if
+  it has not yet reached a JSX tag. This prevents a TSX project from being
+  treated as ordinary erasable TypeScript; tagged JSX is rejected by the same
+  stable `UnsupportedSyntax` path.
+- Legacy CommonJS-oriented `import =` and `export =` forms are likewise
+  rejected as `UnsupportedSyntax`, rather than being emitted as invalid ESM.
 - The standalone `ContractPlan` validator accepts per-boundary
   `ValidationLimits` for depth, collection entries, visited-node fuel and
   string bytes. These checks remain pure data validation; host-boundary
@@ -84,9 +97,9 @@ dependency before introducing any page-runtime coupling:
   neither is linked, spawned, or discovered by the BlueTS compiler or CLI.
 
 This is deliberately not a claim of general `tsc` compatibility. Control-flow
-narrowing, overload resolution, generic substitution, decorators, enums,
-classes, TSX, namespace emission, parameter properties, and arbitrary JavaScript
-expression typing remain pending. A construct outside the
+narrowing, overload resolution, generic constraints/defaults, decorators,
+enums, classes, TSX, namespace emission, parameter properties, and arbitrary
+JavaScript expression typing remain pending. A construct outside the
 implemented matrix must be added with a parser/checker/emitter test and a
 precise compatibility entry; it must not be advertised merely because its
 tokens happen to be erasable.
@@ -262,7 +275,7 @@ Acceptance: malformed JSON cannot enter a `User`-typed value; the validation err
 
 ### Slice 4 — incremental projects and compatibility growth
 
-1. Implement dependency-aware incremental checker/cache invalidation and trusted local declaration files. Both are complete in the standalone front end; opt-in external-oracle coverage remains pending.
+1. Implement dependency-aware incremental checker/cache invalidation and trusted local declaration files. Both, plus the opt-in external-oracle coverage and bounded erasable generic substitution, are complete in the standalone front end.
 2. Expand the supported TypeScript feature matrix only alongside its BlueJS lowering/runtime, source mapping, contract and oracle evidence.
 3. Add opt-in comparison against a pinned TypeScript compiler for accepted syntax/diagnostics and Node/BlueJS behavioral differential tests for the lowered output.
 4. Expose carefully redacted project/type metadata to Phase 17 DevTools and the documented, capability-scoped Phase 12 MCP debug interface.

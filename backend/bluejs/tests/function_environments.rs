@@ -202,7 +202,7 @@ fn async_arrows_share_the_async_function_intrinsic_and_dynamic_constructor() {
     );
     assert!(matches!(
         execute(&mut vm, "new (async function() {}).constructor()"),
-        Err(RuntimeError::TypeError(_))
+        Ok(Value::Object(_))
     ));
 }
 
