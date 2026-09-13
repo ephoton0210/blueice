@@ -70,6 +70,9 @@ impl Vm {
             "Proxy" => NativeFunction::Proxy,
             "Map" => NativeFunction::Map,
             "Set" => NativeFunction::Set,
+            "WeakMap" => NativeFunction::WeakMap,
+            "WeakSet" => NativeFunction::WeakSet,
+            "WeakRef" => NativeFunction::WeakRef,
             "Promise" => NativeFunction::Promise,
             "eval" => NativeFunction::Eval,
             "Object" => NativeFunction::Object,
@@ -108,6 +111,7 @@ impl Vm {
                         "Symbol" => 0.0,
                         "Proxy" => 2.0,
                         "Date" => 7.0,
+                        "WeakMap" | "WeakSet" => 0.0,
                         _ => 1.0,
                     }),
                     false,
@@ -175,6 +179,8 @@ impl Vm {
                     false,
                     true,
                 )?;
+                self.install_native(id, prototype, "for", 1, NativeFunction::SymbolFor)?;
+                self.install_native(id, prototype, "keyFor", 1, NativeFunction::SymbolKeyFor)?;
                 for &name in crate::property::WELL_KNOWN {
                     self.define_data(
                         id,
@@ -252,6 +258,15 @@ impl Vm {
                     true,
                 )?;
                 self.install_native(id, prototype, "now", 0, NativeFunction::DateNow)?;
+                self.install_native(id, prototype, "UTC", 7, NativeFunction::DateUtc)?;
+                self.define_data(
+                    date_prototype,
+                    JsSymbol::well_known("toStringTag"),
+                    Value::String("Date".into()),
+                    false,
+                    false,
+                    true,
+                )?;
             } else if matches!(name, "ArrayBuffer" | "SharedArrayBuffer") {
                 let buffer_prototype =
                     self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
@@ -504,6 +519,42 @@ impl Vm {
                 )?;
                 self.define_data(
                     collection_prototype,
+                    "constructor",
+                    Value::Object(id),
+                    true,
+                    false,
+                    true,
+                )?;
+            } else if matches!(name, "WeakMap" | "WeakSet") {
+                let collection_prototype = self.weak_collection_prototype(name == "WeakMap")?;
+                self.define_data(
+                    id,
+                    "prototype",
+                    Value::Object(collection_prototype),
+                    false,
+                    false,
+                    false,
+                )?;
+                self.define_data(
+                    collection_prototype,
+                    "constructor",
+                    Value::Object(id),
+                    true,
+                    false,
+                    true,
+                )?;
+            } else if name == "WeakRef" {
+                let weak_ref_prototype = self.weak_ref_prototype()?;
+                self.define_data(
+                    id,
+                    "prototype",
+                    Value::Object(weak_ref_prototype),
+                    false,
+                    false,
+                    false,
+                )?;
+                self.define_data(
+                    weak_ref_prototype,
                     "constructor",
                     Value::Object(id),
                     true,

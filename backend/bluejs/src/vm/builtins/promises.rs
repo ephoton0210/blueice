@@ -98,6 +98,369 @@ impl Vm {
         Ok(Value::Object(collection))
     }
 
+    pub(in super::super) fn weak_ref_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
+        if let Some(prototype) = self.weak_ref_prototype {
+            return Ok(prototype);
+        }
+        let object_prototype = self.object_prototype;
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+        let function_prototype = self.function_prototype()?;
+        self.stack.push(Value::Object(prototype));
+        let result: Result<(), RuntimeError> = (|| {
+            self.define_data(
+                prototype,
+                JsSymbol::well_known("toStringTag"),
+                Value::String("WeakRef".into()),
+                false,
+                false,
+                true,
+            )?;
+            self.install_native(
+                prototype,
+                function_prototype,
+                "deref",
+                0,
+                NativeFunction::WeakRefDeref,
+            )?;
+            Ok(())
+        })();
+        self.stack.pop();
+        result?;
+        self.weak_ref_prototype = Some(prototype);
+        Ok(prototype)
+    }
+
+    pub(in super::super) fn weak_ref_constructor(
+        &mut self,
+        target: Value,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        if !construct {
+            return Err(RuntimeError::TypeError(
+                "WeakRef constructor must be called with new".into(),
+            ));
+        }
+        if !self.can_hold_weakly(&target) {
+            return Err(RuntimeError::TypeError(
+                "WeakRef target cannot be held weakly".into(),
+            ));
+        }
+        // `constructor_prototype` can invoke a user getter. Root the target
+        // before that observable step, then keep it through this entire job
+        // once construction has succeeded.
+        let base = self.stack.len();
+        self.stack.push(target.clone());
+        let result = (|| {
+            let default = self.weak_ref_prototype()?;
+            let prototype = self.constructor_prototype(default)?;
+            let weak_ref =
+                self.with_roots(|heap| heap.alloc_weak_ref(target.clone(), Some(prototype)))?;
+            self.keep_weak_target(&target);
+            Ok(Value::Object(weak_ref))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    pub(in super::super) fn weak_ref_deref(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let Some(weak_ref) = receiver.object_id() else {
+            return Err(RuntimeError::TypeError(
+                "WeakRef deref requires a WeakRef receiver".into(),
+            ));
+        };
+        let target = self.heap.weak_ref_target(weak_ref).map_err(|_| {
+            RuntimeError::TypeError("WeakRef deref requires a WeakRef receiver".into())
+        })?;
+        if let Some(target) = &target {
+            self.keep_weak_target(target);
+        }
+        Ok(target.unwrap_or(Value::Undefined))
+    }
+
+    pub(in super::super) fn weak_collection_prototype(
+        &mut self,
+        map: bool,
+    ) -> Result<ObjectId, RuntimeError> {
+        let cached = if map {
+            self.weak_map_prototype
+        } else {
+            self.weak_set_prototype
+        };
+        if let Some(prototype) = cached {
+            return Ok(prototype);
+        }
+        let object_prototype = self.object_prototype;
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+        let function_prototype = self.function_prototype()?;
+        self.stack.push(Value::Object(prototype));
+        let result: Result<(), RuntimeError> = (|| {
+            self.define_data(
+                prototype,
+                JsSymbol::well_known("toStringTag"),
+                Value::String(if map { "WeakMap" } else { "WeakSet" }.into()),
+                false,
+                false,
+                true,
+            )?;
+            let methods: &[(&str, u32, WeakCollectionMethod)] = if map {
+                &[
+                    ("delete", 1, WeakCollectionMethod::Delete),
+                    ("get", 1, WeakCollectionMethod::Get),
+                    ("getOrInsert", 2, WeakCollectionMethod::GetOrInsert),
+                    (
+                        "getOrInsertComputed",
+                        2,
+                        WeakCollectionMethod::GetOrInsertComputed,
+                    ),
+                    ("has", 1, WeakCollectionMethod::Has),
+                    ("set", 2, WeakCollectionMethod::Set),
+                ]
+            } else {
+                &[
+                    ("add", 1, WeakCollectionMethod::Add),
+                    ("delete", 1, WeakCollectionMethod::Delete),
+                    ("has", 1, WeakCollectionMethod::Has),
+                ]
+            };
+            for &(name, length, method) in methods {
+                self.install_native(
+                    prototype,
+                    function_prototype,
+                    name,
+                    length,
+                    NativeFunction::WeakCollectionMethod { map, method },
+                )?;
+            }
+            Ok(())
+        })();
+        self.stack.pop();
+        result?;
+        if map {
+            self.weak_map_prototype = Some(prototype);
+        } else {
+            self.weak_set_prototype = Some(prototype);
+        }
+        Ok(prototype)
+    }
+
+    pub(in super::super) fn weak_collection_constructor(
+        &mut self,
+        map: bool,
+        args: &[Value],
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        if !construct {
+            return Err(RuntimeError::TypeError(
+                if map {
+                    "WeakMap constructor must be called with new"
+                } else {
+                    "WeakSet constructor must be called with new"
+                }
+                .into(),
+            ));
+        }
+        let default = self.weak_collection_prototype(map)?;
+        let prototype = self.constructor_prototype(default)?;
+        let collection =
+            self.with_roots(|heap| heap.alloc_weak_collection(map, Some(prototype)))?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(collection));
+        let result = (|| {
+            let source = native::argument(args, 0).clone();
+            if matches!(source, Value::Undefined | Value::Null) {
+                return Ok(Value::Object(collection));
+            }
+            // The adder is observable: the constructor must obtain it once
+            // from the freshly created collection, then call that exact
+            // function for every iterator item. This preserves overridden
+            // `set`/`add` methods and their abrupt-completion behaviour.
+            let adder = self.get_property(
+                &Value::Object(collection),
+                &(if map { "set" } else { "add" }).into(),
+            )?;
+            self.stack.push(adder.clone());
+            if !self.is_callable(&adder)? {
+                return Err(RuntimeError::TypeError(
+                    "weak collection adder must be callable".into(),
+                ));
+            }
+            self.stack.push(source.clone());
+            let record = self.get_iterator(&source)?;
+            self.stack.push(record.clone());
+            let outcome = (|| {
+                while let Some(entry) = self.iterator_step(&record, true)? {
+                    let entry_base = self.stack.len();
+                    let call_args = if map {
+                        let Value::Object(entry) = entry else {
+                            return Err(RuntimeError::TypeError(
+                                "weak collection entry must be an object".into(),
+                            ));
+                        };
+                        let entry = Value::Object(entry);
+                        self.stack.push(entry.clone());
+                        let key = self.get_property(&entry, &"0".into())?;
+                        self.stack.push(key.clone());
+                        let value = self.get_property(&entry, &"1".into())?;
+                        self.stack.push(value.clone());
+                        vec![key, value]
+                    } else {
+                        self.stack.push(entry.clone());
+                        vec![entry]
+                    };
+                    self.call_native(adder.clone(), Value::Object(collection), call_args, false)?;
+                    self.stack.truncate(entry_base);
+                }
+                Ok(Value::Object(collection))
+            })();
+            if outcome.is_err() {
+                let error_base = self.stack.len();
+                if let Err(RuntimeError::Thrown(value)) = &outcome {
+                    self.stack.push(value.clone());
+                }
+                let _ = self.iterator_close(&record);
+                self.stack.truncate(error_base);
+            }
+            outcome
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    fn can_hold_weakly(&self, key: &Value) -> bool {
+        match key {
+            Value::Object(_) => true,
+            Value::Symbol(symbol) => !self
+                .symbol_registry
+                .values()
+                .any(|registered| registered == symbol),
+            _ => false,
+        }
+    }
+
+    fn keep_weak_target(&mut self, target: &Value) {
+        if let Some(target) = target.object_id() {
+            if !self.kept_weak_objects.contains(&target) {
+                self.kept_weak_objects.push(target);
+            }
+        }
+    }
+
+    pub(in super::super) fn weak_collection_method(
+        &mut self,
+        map: bool,
+        method: WeakCollectionMethod,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let Some(collection) = receiver.object_id() else {
+            return Err(RuntimeError::TypeError(
+                "Weak collection method requires a Weak collection receiver".into(),
+            ));
+        };
+        if !self.heap.is_weak_collection(collection, map)? {
+            return Err(RuntimeError::TypeError(
+                "Weak collection method requires a matching receiver".into(),
+            ));
+        }
+        let key = native::argument(args, 0);
+        match method {
+            WeakCollectionMethod::Set | WeakCollectionMethod::Add => {
+                if !self.can_hold_weakly(key) {
+                    return Err(RuntimeError::TypeError(
+                        "Weak collection key cannot be held weakly".into(),
+                    ));
+                }
+                let value = if map {
+                    native::argument(args, 1).clone()
+                } else {
+                    Value::Undefined
+                };
+                self.with_roots(|heap| heap.weak_collection_set(collection, key.clone(), value))?;
+                Ok(Value::Object(collection))
+            }
+            WeakCollectionMethod::Get => {
+                if !self.can_hold_weakly(key) {
+                    return Ok(Value::Undefined);
+                }
+                Ok(self
+                    .heap
+                    .weak_collection_get(collection, key)?
+                    .unwrap_or(Value::Undefined))
+            }
+            WeakCollectionMethod::GetOrInsert => {
+                if !self.can_hold_weakly(key) {
+                    return Err(RuntimeError::TypeError(
+                        "Weak collection key cannot be held weakly".into(),
+                    ));
+                }
+                if let Some(value) = self.heap.weak_collection_get(collection, key)? {
+                    return Ok(value);
+                }
+                let value = native::argument(args, 1).clone();
+                self.with_roots(|heap| {
+                    heap.weak_collection_set(collection, key.clone(), value.clone())
+                })?;
+                Ok(value)
+            }
+            WeakCollectionMethod::GetOrInsertComputed => {
+                let callback = native::argument(args, 1).clone();
+                if !self.is_callable(&callback)? {
+                    return Err(RuntimeError::TypeError(
+                        "WeakMap getOrInsertComputed callback must be callable".into(),
+                    ));
+                }
+                if !self.can_hold_weakly(key) {
+                    return Err(RuntimeError::TypeError(
+                        "Weak collection key cannot be held weakly".into(),
+                    ));
+                }
+                if let Some(value) = self.heap.weak_collection_get(collection, key)? {
+                    return Ok(value);
+                }
+                // The callback may allocate or mutate this very map. Keep
+                // every observable input rooted, then overwrite a mutation
+                // made for the same key as required by the upsert algorithm.
+                let base = self.stack.len();
+                self.stack.push(Value::Object(collection));
+                self.stack.push(key.clone());
+                self.stack.push(callback.clone());
+                let value = self.call_native(callback, Value::Undefined, vec![key.clone()], false);
+                let value = match value {
+                    Ok(value) => value,
+                    Err(error) => {
+                        self.stack.truncate(base);
+                        return Err(error);
+                    }
+                };
+                let stored = self.with_roots(|heap| {
+                    heap.weak_collection_set(collection, key.clone(), value.clone())
+                });
+                self.stack.truncate(base);
+                stored?;
+                Ok(value)
+            }
+            WeakCollectionMethod::Has => {
+                if !self.can_hold_weakly(key) {
+                    return Ok(Value::Bool(false));
+                }
+                Ok(Value::Bool(
+                    self.heap.weak_collection_get(collection, key)?.is_some(),
+                ))
+            }
+            WeakCollectionMethod::Delete => {
+                if !self.can_hold_weakly(key) {
+                    return Ok(Value::Bool(false));
+                }
+                Ok(Value::Bool(
+                    self.heap.weak_collection_delete(collection, key)?,
+                ))
+            }
+        }
+    }
+
     pub(in super::super) fn new_promise(&mut self) -> Result<ObjectId, RuntimeError> {
         let prototype = self.promise_prototype()?;
         let promise = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;

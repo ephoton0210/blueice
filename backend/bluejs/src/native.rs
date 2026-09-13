@@ -55,6 +55,17 @@ pub(crate) enum TypedArrayMethod {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WeakCollectionMethod {
+    Add,
+    Delete,
+    Get,
+    GetOrInsert,
+    GetOrInsertComputed,
+    Has,
+    Set,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NativeFunction {
     Function,
     /// The intrinsic constructor reached through an async function's
@@ -64,6 +75,7 @@ pub(crate) enum NativeFunction {
     Array,
     Date,
     DateNow,
+    DateUtc,
     ArrayBuffer,
     ArrayBufferByteLength,
     ArrayBufferMaxByteLength,
@@ -121,14 +133,27 @@ pub(crate) enum NativeFunction {
     ProxyRevoker(ObjectId),
     Map,
     Set,
+    WeakMap,
+    WeakSet,
+    WeakRef,
+    WeakRefDeref,
+    WeakCollectionMethod {
+        map: bool,
+        method: WeakCollectionMethod,
+    },
     ArrayIsArray,
     ArrayFrom,
     ArrayForEach,
     ArrayFilter,
+    ArrayMap,
+    ArrayEvery,
+    ArraySome,
     ArrayIncludes,
     ArrayReduce,
+    ArrayReduceRight,
     ArrayPush,
     ArrayIndexOf,
+    ArrayLastIndexOf,
     ArraySlice,
     ArraySplice,
     ArraySort,
@@ -249,6 +274,8 @@ pub(crate) enum NativeFunction {
     PromiseWithResolvers,
     Test262Done,
     Symbol,
+    SymbolFor,
+    SymbolKeyFor,
     SymbolToString,
     SymbolValueOf,
     BigInt,

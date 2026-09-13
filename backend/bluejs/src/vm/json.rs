@@ -32,6 +32,14 @@ impl Vm {
                 3,
                 NativeFunction::JsonStringify,
             )?;
+            self.define_data(
+                id,
+                JsSymbol::well_known("toStringTag"),
+                Value::String("JSON".into()),
+                false,
+                false,
+                true,
+            )?;
             Ok(Value::Object(id))
         })();
         match result {

@@ -1822,3 +1822,44 @@ adapter also classifies deterministic interpreter fuel exhaustion as
 `resource_error`; only its wall-clock and RegExp worker deadlines are
 `timeout` results. Direct VM regressions cover both quiescence and a pending
 host timer.
+
+## P0.4 continuation: weak collections and weak references
+
+The heap now represents `WeakMap` and `WeakSet` entries as ephemerons, rather
+than as ordinary strong object edges. During marking, a live table exposes an
+object-keyed value only after that key is independently live; the collector
+iterates this rule to a fixed point. Minor and major collection then remove
+dead object-keyed entries. Non-registered Symbols are valid weak keys, while
+registered `Symbol.for` keys are rejected by `CanBeHeldWeakly`.
+
+`WeakRef` stores an opaque weak target, not a tracing edge. Collection clears
+a dead target, and the VM retains a dereferenced object only for the current
+job's `KeepDuringJob` lifetime. The collection constructors use their
+observable prototype/adder paths, and `WeakRef` uses its observable prototype
+path, so subclassing, iterable construction, and cross-Realm `newTarget`
+behavior use the same internal-method and membrane boundaries as the other
+collection constructors.
+
+The focused runs against Test262 snapshot
+`6eec1ac9ee144dafd8f344d73a21f36bfc9f6755` used eight workers, a 100,000
+instruction budget, and a two-second case deadline:
+
+| Filter | Result | Evidence |
+| --- | ---: | --- |
+| `built-ins/WeakMap/` | **281 / 281 pass** | `target/test262-p04-weak-map-final` |
+| `built-ins/WeakSet/` | **170 / 170 pass** | `target/test262-p04-weak-set-final` |
+| `built-ins/WeakRef/` | **56 pass / 2 fail** of 58 modes | `target/test262-p04-weak-ref-after-implementation` |
+
+Both WeakRef failures are the sloppy and strict modes of
+`built-ins/WeakRef/prototype/deref/this-does-not-have-internal-target-throws.js`.
+That fixture constructs a `FinalizationRegistry` before it calls `deref` with
+the wrong receiver, so it currently stops at a `ReferenceError` because the
+global is absent. It is not evidence of a remaining `WeakRef.prototype.deref`
+brand-check defect. A placeholder `FinalizationRegistry` must not be added to
+turn these modes green: correct support needs registry cells, holdings,
+unregistration, collection observation, and cleanup-job scheduling. It remains
+separate P1.5/P1.6 weak-GC and host-scheduler work.
+
+These are focused filters, not a replacement for the checked-in complete
+inventory. The full-inventory totals and generated `test262-summary.json`
+remain unchanged until a complete reconciliation is rerun.

@@ -16,6 +16,10 @@ impl Vm {
         if let Some(root) = self.result_root.take() {
             self.heap.unroot(root)?;
         }
+        // ClearKeptObjects runs at the end of the preceding ECMAScript job.
+        // The next job's initial collection must not retain its WeakRef
+        // targets merely because a prior job touched them.
+        self.kept_weak_objects.clear();
         self.with_roots(|heap| {
             heap.collect_major();
             Ok(())
@@ -66,6 +70,9 @@ impl Vm {
         self.top_level_module = false;
         self.pending_completions.clear();
         self.completion_saves.clear();
+        // WeakRef's KeepDuringJob guarantee ends only after the complete
+        // script/module job (including abrupt completion cleanup) has run.
+        self.kept_weak_objects.clear();
         self.with_roots(|heap| {
             heap.collect_major();
             Ok(())
@@ -199,6 +206,9 @@ impl Vm {
                 | "BigUint64Array"
                 | "Map"
                 | "Set"
+                | "WeakMap"
+                | "WeakSet"
+                | "WeakRef"
                 | "Function"
                 | "Proxy"
                 | "Promise"
@@ -860,6 +870,9 @@ impl Vm {
                     // counter. Partial registrations must be released too.
                     roots.push(self.heap.root(*id)?);
                 }
+            }
+            for object in &self.kept_weak_objects {
+                roots.push(self.heap.root(*object)?);
             }
             for id in self.cells.values() {
                 roots.push(self.heap.root(*id)?);

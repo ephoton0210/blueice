@@ -99,3 +99,20 @@ The final targeted realm and Proxy audit records **607/607** passing modes for
 `Date.now` exist as a callable, non-constructor; the Date baseline supplies
 that contract without claiming complete Date object support. The public
 `conformance_edges` regression suite passes **37/37**.
+
+## Focused P0.4 weak-collection follow-up
+
+The P0.4 weak-collection implementation was checked with focused filters on
+the same Test262 snapshot: `built-ins/WeakMap/` is **281/281 pass** and
+`built-ins/WeakSet/` is **170/170 pass**. `built-ins/WeakRef/` is **56 pass /
+2 fail** of 58 modes. The two failures are the sloppy and strict modes of
+`built-ins/WeakRef/prototype/deref/this-does-not-have-internal-target-throws.js`:
+the fixture constructs a `FinalizationRegistry` before exercising the wrong
+receiver, and therefore stops at `ReferenceError: FinalizationRegistry is not
+defined`. They do not identify a WeakRef dereference failure.
+
+These focused results do not revise the complete-inventory table, observed
+blocker counts, or generated summary above. Completing `FinalizationRegistry`
+requires weak cells, holdings, unregistration, collection observation, and
+cleanup-job dispatch; it remains separate weak-GC/host work rather than a
+placeholder API added to satisfy this one fixture.

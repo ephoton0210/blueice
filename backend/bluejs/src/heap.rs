@@ -82,6 +82,7 @@ impl Default for HeapConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeapError {
     InvalidConfig,
+    InvalidWeakTarget,
     InvalidObject(ObjectId),
     InvalidInternalSlot(ObjectId),
     RevokedProxy,
@@ -100,6 +101,7 @@ impl fmt::Display for HeapError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidConfig => write!(f, "invalid BlueJS heap configuration"),
+            Self::InvalidWeakTarget => write!(f, "value cannot be used as a weak target"),
             Self::InvalidObject(id) => write!(f, "unknown or collected BlueJS object: {id:?}"),
             Self::InvalidInternalSlot(id) => {
                 write!(f, "BlueJS object lacks the required internal slot: {id:?}")
@@ -538,6 +540,18 @@ enum ObjectKind {
     Array {
         length: u32,
     },
+    /// An ephemeron table. Keys do not become ordinary tracing edges; GC
+    /// marks a value only after its key has independently become live.
+    WeakCollection {
+        map: bool,
+        entries: HashMap<WeakCollectionKey, Value>,
+    },
+    /// A weak target is intentionally omitted from ordinary tracing. A live
+    /// WeakRef does not keep its target alive; collection clears the slot
+    /// before reclaiming a dead object target.
+    WeakRef {
+        target: Option<WeakCollectionKey>,
+    },
     /// The byte storage shared by ArrayBuffer and SharedArrayBuffer.  The
     /// `shared` marker is an internal-slot brand: ordinary ArrayBuffers can
     /// detach and resize, while shared stores cannot detach and can only grow.
@@ -618,6 +632,22 @@ enum ObjectKind {
     ModuleNamespace {
         exports: Vec<(JsString, ObjectId)>,
     },
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum WeakCollectionKey {
+    Object(ObjectId),
+    Symbol(JsSymbol),
+}
+
+impl WeakCollectionKey {
+    fn from_value(value: &Value) -> Option<Self> {
+        match value {
+            Value::Object(object) => Some(Self::Object(*object)),
+            Value::Symbol(symbol) => Some(Self::Symbol(symbol.clone())),
+            _ => None,
+        }
+    }
 }
 
 /// Thread-safe backing bytes for a SharedArrayBuffer. The ordinary heap keeps
@@ -1115,6 +1145,112 @@ impl Heap {
     /// The returned object is unrooted until registered or attached to a root.
     pub fn alloc_object(&mut self, prototype: Option<ObjectId>) -> Result<ObjectId, HeapError> {
         self.alloc(ObjectKind::Ordinary, prototype)
+    }
+
+    pub(crate) fn alloc_weak_collection(
+        &mut self,
+        map: bool,
+        prototype: Option<ObjectId>,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(
+            ObjectKind::WeakCollection {
+                map,
+                entries: HashMap::new(),
+            },
+            prototype,
+        )
+    }
+
+    pub(crate) fn alloc_weak_ref(
+        &mut self,
+        target: Value,
+        prototype: Option<ObjectId>,
+    ) -> Result<ObjectId, HeapError> {
+        let target = WeakCollectionKey::from_value(&target).ok_or(HeapError::InvalidWeakTarget)?;
+        if let WeakCollectionKey::Object(object) = &target {
+            self.object(*object)?;
+        }
+        self.alloc(
+            ObjectKind::WeakRef {
+                target: Some(target),
+            },
+            prototype,
+        )
+    }
+
+    pub(crate) fn weak_ref_target(&self, object: ObjectId) -> Result<Option<Value>, HeapError> {
+        let ObjectKind::WeakRef { target } = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(match target {
+            Some(WeakCollectionKey::Object(target)) if self.objects.contains_key(target) => {
+                Some(Value::Object(*target))
+            }
+            Some(WeakCollectionKey::Symbol(target)) => Some(Value::Symbol(target.clone())),
+            Some(WeakCollectionKey::Object(_)) | None => None,
+        })
+    }
+
+    pub(crate) fn is_weak_collection(
+        &self,
+        object: ObjectId,
+        map: bool,
+    ) -> Result<bool, HeapError> {
+        Ok(matches!(
+            self.object(object)?.kind,
+            ObjectKind::WeakCollection { map: actual, .. } if actual == map
+        ))
+    }
+
+    pub(crate) fn weak_collection_get(
+        &self,
+        object: ObjectId,
+        key: &Value,
+    ) -> Result<Option<Value>, HeapError> {
+        let ObjectKind::WeakCollection { entries, .. } = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(WeakCollectionKey::from_value(key).and_then(|key| entries.get(&key).cloned()))
+    }
+
+    pub(crate) fn weak_collection_set(
+        &mut self,
+        object: ObjectId,
+        key: Value,
+        value: Value,
+    ) -> Result<(), HeapError> {
+        let key =
+            WeakCollectionKey::from_value(&key).ok_or(HeapError::InvalidInternalSlot(object))?;
+        if let WeakCollectionKey::Object(key) = &key {
+            self.object(*key)?;
+        }
+        let ObjectKind::WeakCollection { entries, .. } = &mut self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?
+            .kind
+        else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        entries.insert(key, value);
+        self.remembered.insert(object);
+        Ok(())
+    }
+
+    pub(crate) fn weak_collection_delete(
+        &mut self,
+        object: ObjectId,
+        key: &Value,
+    ) -> Result<bool, HeapError> {
+        let ObjectKind::WeakCollection { entries, .. } = &mut self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?
+            .kind
+        else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(WeakCollectionKey::from_value(key).is_some_and(|key| entries.remove(&key).is_some()))
     }
 
     fn ensure_private_data(

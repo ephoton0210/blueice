@@ -116,6 +116,7 @@ impl From<HeapError> for RuntimeError {
                 Self::RangeError("invalid ArrayBuffer view range".into())
             }
             HeapError::DetachedArrayBuffer
+            | HeapError::InvalidWeakTarget
             | HeapError::InvalidInternalSlot(_)
             | HeapError::RevokedProxy => Self::TypeError(error.to_string()),
             HeapError::UninitializedModuleExport => {
@@ -653,6 +654,9 @@ pub struct Vm {
     top_level_module: bool,
     globals: HashMap<String, ObjectId>,
     global_bindings: HashMap<String, GlobalBinding>,
+    /// `Symbol.for` has per-realm identity. Registered symbols are not valid
+    /// WeakMap/WeakSet keys, whereas ordinary and well-known symbols are.
+    symbol_registry: HashMap<JsString, JsSymbol>,
     // Slots in the currently executing classic script's outer scope. Nested
     // function/eval frames temporarily replace this map because slot indices
     // are local to their own bytecode.
@@ -693,6 +697,13 @@ pub struct Vm {
     promise_prototype: Option<ObjectId>,
     map_prototype: Option<ObjectId>,
     set_prototype: Option<ObjectId>,
+    weak_map_prototype: Option<ObjectId>,
+    weak_set_prototype: Option<ObjectId>,
+    weak_ref_prototype: Option<ObjectId>,
+    /// Targets passed to WeakRef or returned by `deref` must survive the
+    /// current ECMAScript job. The list is cleared at the outer execution
+    /// boundary and registered by every allocation safepoint.
+    kept_weak_objects: Vec<ObjectId>,
     promises: HashMap<ObjectId, PromiseRecord>,
     promise_all: HashMap<ObjectId, PromiseAllState>,
     promise_jobs: VecDeque<PromiseJob>,
@@ -778,6 +789,7 @@ impl Vm {
             top_level_module: false,
             globals: HashMap::new(),
             global_bindings: HashMap::new(),
+            symbol_registry: HashMap::new(),
             script_global_slots: HashMap::new(),
             variable_scope: 0,
             variable_scope_lexicals: Vec::new(),
@@ -798,6 +810,10 @@ impl Vm {
             promise_prototype: None,
             map_prototype: None,
             set_prototype: None,
+            weak_map_prototype: None,
+            weak_set_prototype: None,
+            weak_ref_prototype: None,
+            kept_weak_objects: Vec::new(),
             promises: HashMap::new(),
             promise_all: HashMap::new(),
             promise_jobs: VecDeque::new(),
@@ -1166,6 +1182,27 @@ impl Vm {
             self.install_native(
                 self.array_prototype,
                 function_prototype,
+                "map",
+                1,
+                NativeFunction::ArrayMap,
+            )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
+                "every",
+                1,
+                NativeFunction::ArrayEvery,
+            )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
+                "some",
+                1,
+                NativeFunction::ArraySome,
+            )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
                 "includes",
                 1,
                 NativeFunction::ArrayIncludes,
@@ -1180,6 +1217,13 @@ impl Vm {
             self.install_native(
                 self.array_prototype,
                 function_prototype,
+                "reduceRight",
+                1,
+                NativeFunction::ArrayReduceRight,
+            )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
                 "push",
                 1,
                 NativeFunction::ArrayPush,
@@ -1190,6 +1234,13 @@ impl Vm {
                 "indexOf",
                 1,
                 NativeFunction::ArrayIndexOf,
+            )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
+                "lastIndexOf",
+                1,
+                NativeFunction::ArrayLastIndexOf,
             )?;
             self.install_native(
                 self.array_prototype,
@@ -1245,8 +1296,17 @@ impl Vm {
                     (self.array_prototype, "join".into()),
                     (self.array_prototype, "forEach".into()),
                     (self.array_prototype, "filter".into()),
+                    (self.array_prototype, "map".into()),
+                    (self.array_prototype, "every".into()),
+                    (self.array_prototype, "some".into()),
                     (self.array_prototype, "includes".into()),
                     (self.array_prototype, "reduce".into()),
+                    (self.array_prototype, "reduceRight".into()),
+                    (self.array_prototype, "push".into()),
+                    (self.array_prototype, "indexOf".into()),
+                    (self.array_prototype, "lastIndexOf".into()),
+                    (self.array_prototype, "slice".into()),
+                    (self.array_prototype, "splice".into()),
                     (self.array_prototype, "sort".into()),
                     (
                         self.array_prototype,
@@ -1602,6 +1662,9 @@ impl Vm {
                     | NativeFunction::Proxy
                     | NativeFunction::Map
                     | NativeFunction::Set
+                    | NativeFunction::WeakMap
+                    | NativeFunction::WeakSet
+                    | NativeFunction::WeakRef
                     | NativeFunction::Object
                     | NativeFunction::RegExp
                     | NativeFunction::Collator

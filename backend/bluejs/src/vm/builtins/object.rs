@@ -370,6 +370,16 @@ impl Vm {
                 Some("ArrayBuffer")
             } else if default == self.buffer_prototype("SharedArrayBuffer")? {
                 Some("SharedArrayBuffer")
+            } else if default == self.collection_prototype(true)? {
+                Some("Map")
+            } else if default == self.collection_prototype(false)? {
+                Some("Set")
+            } else if default == self.weak_collection_prototype(true)? {
+                Some("WeakMap")
+            } else if default == self.weak_collection_prototype(false)? {
+                Some("WeakSet")
+            } else if default == self.weak_ref_prototype()? {
+                Some("WeakRef")
             } else {
                 None
             };
@@ -444,6 +454,9 @@ impl Vm {
                     | NativeFunction::Proxy
                     | NativeFunction::Map
                     | NativeFunction::Set
+                    | NativeFunction::WeakMap
+                    | NativeFunction::WeakSet
+                    | NativeFunction::WeakRef
                     | NativeFunction::Promise
                     | NativeFunction::Object
                     | NativeFunction::RegExp

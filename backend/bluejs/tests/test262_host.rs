@@ -119,6 +119,25 @@ fn date_constructor_uses_its_new_target_prototype() {
 }
 
 #[test]
+fn weak_collection_constructors_use_a_foreign_new_target_realm_prototype() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        var other = $262.createRealm().global;
+        var C = new other.Function();
+        C.prototype = null;
+        var map = Reflect.construct(WeakMap, [], C);
+        var set = Reflect.construct(WeakSet, [], C);
+        Object.getPrototypeOf(map) === other.WeakMap.prototype &&
+        Object.getPrototypeOf(set) === other.WeakSet.prototype;
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap()),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
 fn test262_agents_share_bytes_wait_and_report_in_notify_order() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();

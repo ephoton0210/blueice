@@ -346,6 +346,66 @@ fn object_prototype_rejects_distinct_prototypes() {
 }
 
 #[test]
+fn date_utc_normalizes_components_and_exposes_the_date_tag() {
+    assert_eq!(
+        evaluate("Date.UTC(1970,0,1,80063993375,29,1,-288230376151711740)").unwrap(),
+        Value::Number(29312.0)
+    );
+    assert_eq!(
+        evaluate("Date.UTC(1970,0,213503982336,0,0,0,-18446744073709552000)").unwrap(),
+        Value::Number(34447360.0)
+    );
+    assert_eq!(
+        evaluate(
+            "Date.UTC(1970,0,1)===0&&Date.UTC(99,0,1)===Date.UTC(1999,0,1)&&Date.UTC(2000,1,29)===951782400000&&Date.UTC()!==Date.UTC()&&Date.UTC.length===7&&Object.prototype.toString.call(new Date())==='[object Date]'",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn weak_collections_accept_object_keys_and_reject_primitive_insertions() {
+    assert_eq!(
+        evaluate("typeof globalThis.WeakMap").unwrap(),
+        Value::String("function".into())
+    );
+    assert_eq!(
+        evaluate("let prepared=0;typeof WeakMap").unwrap(),
+        Value::String("function".into())
+    );
+    assert_eq!(
+        evaluate(
+            "let key={};let value={};let map=new WeakMap([[key,value]]);let set=new WeakSet([key]);let mapInsert=false;let setInsert=false;try{map.set(1,value)}catch(error){mapInsert=error instanceof TypeError}try{set.add(1)}catch(error){setInsert=error instanceof TypeError}map.get(key)===value&&map.has(key)&&map.delete(key)&&!map.has(key)&&set.has(key)&&set.delete(key)&&!set.has(key)&&mapInsert&&setInsert&&Object.prototype.toString.call(map)==='[object WeakMap]'&&Object.prototype.toString.call(set)==='[object WeakSet]'",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn weak_map_upserts_preserve_symbol_identity_and_callback_order() {
+    assert_eq!(
+        evaluate(
+            "let symbol=Symbol('key');let registered=Symbol.for('registered');let map=new WeakMap();let first=map.getOrInsert(symbol,1);let second=map.getOrInsert(symbol,2);let computedKey={};let calls=0;let computed=map.getOrInsertComputed(computedKey,function(key){calls+=key===computedKey?1:100;map.set(key,'intermediate');return 'final'});let existing=map.getOrInsertComputed(computedKey,function(){calls+=100;return 'wrong'});let invalidCallback=false;try{map.getOrInsertComputed(symbol,0)}catch(error){invalidCallback=error instanceof TypeError}let registeredRejected=false;try{map.set(registered,1)}catch(error){registeredRejected=error instanceof TypeError}let set=new WeakSet([symbol]);first===1&&second===1&&computed==='final'&&existing==='final'&&calls===1&&invalidCallback&&registeredRejected&&map.get(registered)===undefined&&!map.has(registered)&&set.has(symbol)&&Symbol.keyFor(registered)==='registered'",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn weak_ref_exposes_weak_targets_and_rejects_non_weakly_held_values() {
+    assert_eq!(
+        evaluate(
+            "let object={};let symbol=Symbol('target');let reference=new WeakRef(object);let symbolReference=new WeakRef(symbol);let rejected=false;let registeredRejected=false;try{new WeakRef(1)}catch(error){rejected=error instanceof TypeError}try{new WeakRef(Symbol.for('registered'))}catch(error){registeredRejected=error instanceof TypeError}typeof WeakRef==='function'&&WeakRef.length===1&&reference.deref()===object&&symbolReference.deref()===symbol&&rejected&&registeredRejected&&WeakRef.prototype.deref.length===0&&Object.prototype.toString.call(reference)==='[object WeakRef]'",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn reflect_and_proxy_operations_keep_the_explicit_receiver_and_trap_contract() {
     assert_eq!(
         evaluate(

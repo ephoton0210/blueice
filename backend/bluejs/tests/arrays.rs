@@ -204,6 +204,24 @@ fn literals_holes_index_updates_and_length_coercions_execute() {
 }
 
 #[test]
+fn callback_and_reverse_search_array_methods_preserve_holes_order_and_length() {
+    assert_eq!(
+        evaluate(
+            "typeof [].map==='function'&&typeof [].every==='function'&&typeof [].some==='function'&&typeof [].reduceRight==='function'&&typeof [].lastIndexOf==='function'&&Object.prototype.toString.call(JSON)==='[object JSON]'",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate(
+            "let source=[,2,,4];let calls=[];let mapped=source.map(function(value,index,array){calls.push(index);return value*2});let every=source.every(function(value){return value%2===0});let some=source.some(function(value){return value===4});let reduced=source.reduceRight(function(left,value){return left+value},'');let found=[1,2,1,2].lastIndexOf(1,-2);let ordered=false;let arrayLike={};Object.defineProperty(arrayLike,'length',{get:function(){ordered=true;return 0}});try{Array.prototype.some.call(arrayLike,null)}catch(error){}mapped.length===4&&mapped[0]===undefined&&mapped[1]===4&&mapped[2]===undefined&&mapped[3]===8&&calls.join(',')==='1,3'&&every&&some&&reduced==='42'&&found===2&&[1,2,1].lastIndexOf(1,undefined)===0&&ordered",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn sparse_array_searches_preserve_holes_and_only_visit_present_indices() {
     assert_eq!(
         evaluate(
@@ -476,10 +494,7 @@ fn new_array_encoding_and_runtime_error_boundaries_are_observable() {
         1
     );
     assert_eq!(evaluate("let [a]=[1];a"), Ok(Value::Number(1.0)));
-    assert!(matches!(
-        evaluate("[].push(1)"),
-        Err(RuntimeError::TypeError(_))
-    ));
+    assert_eq!(evaluate("[].push(1)"), Ok(Value::Number(1.0)));
     assert_eq!(evaluate("new Array(2).length"), Ok(Value::Number(2.0)));
     let error = evaluate("let a=[];a.length=-1").unwrap_err();
     assert!(error.to_string().starts_with("RangeError:"));

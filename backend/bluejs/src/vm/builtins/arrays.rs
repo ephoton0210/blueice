@@ -194,6 +194,131 @@ impl Vm {
         result
     }
 
+    pub(in super::super) fn array_map(
+        &mut self,
+        receiver: &Value,
+        callback: &Value,
+        this_arg: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as u64;
+            if !self.is_callable(callback)? {
+                return Err(RuntimeError::TypeError(
+                    "Array.prototype.map callback must be callable".into(),
+                ));
+            }
+            // ArraySpeciesCreate is still intentionally outside this compact
+            // Array core. The ordinary result must nevertheless preserve the
+            // source length and holes via CreateDataProperty semantics.
+            let target = self.array_from(Vec::new())?;
+            let target_id = target.object_id().expect("array result is an object");
+            self.stack.push(target.clone());
+            let outcome = (|| {
+                for index in 0..length {
+                    self.charge_step()?;
+                    let key: PropertyName = index.to_string().into();
+                    if !self.has_property(object, &key)? {
+                        continue;
+                    }
+                    let value = self.get_property(&Value::Object(object), &key)?;
+                    let mapped = self.call_native(
+                        callback.clone(),
+                        this_arg.clone(),
+                        vec![value, Value::Number(index as f64), Value::Object(object)],
+                        false,
+                    )?;
+                    if !self.object_define_own_property(
+                        target_id,
+                        key,
+                        PropertyDescriptor::data(mapped, true, true, true),
+                    )? {
+                        return Err(RuntimeError::TypeError(
+                            "cannot define mapped array element".into(),
+                        ));
+                    }
+                }
+                if !self.object_define_own_property(
+                    target_id,
+                    "length".into(),
+                    PropertyDescriptor {
+                        value: Some(Value::Number(length as f64)),
+                        ..PropertyDescriptor::default()
+                    },
+                )? {
+                    return Err(RuntimeError::TypeError(
+                        "cannot define mapped array length".into(),
+                    ));
+                }
+                Ok(target)
+            })();
+            self.stack.pop();
+            outcome
+        })();
+        self.stack.pop();
+        result
+    }
+
+    fn array_predicate(
+        &mut self,
+        receiver: &Value,
+        callback: &Value,
+        this_arg: &Value,
+        some: bool,
+    ) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as u64;
+            if !self.is_callable(callback)? {
+                return Err(RuntimeError::TypeError(
+                    "Array predicate callback must be callable".into(),
+                ));
+            }
+            for index in 0..length {
+                self.charge_step()?;
+                let key: PropertyName = index.to_string().into();
+                if !self.has_property(object, &key)? {
+                    continue;
+                }
+                let value = self.get_property(&Value::Object(object), &key)?;
+                let selected = self.call_native(
+                    callback.clone(),
+                    this_arg.clone(),
+                    vec![value, Value::Number(index as f64), Value::Object(object)],
+                    false,
+                )?;
+                if self.to_boolean(&selected)? == some {
+                    return Ok(Value::Bool(some));
+                }
+            }
+            Ok(Value::Bool(!some))
+        })();
+        self.stack.pop();
+        result
+    }
+
+    pub(in super::super) fn array_every(
+        &mut self,
+        receiver: &Value,
+        callback: &Value,
+        this_arg: &Value,
+    ) -> Result<Value, RuntimeError> {
+        self.array_predicate(receiver, callback, this_arg, false)
+    }
+
+    pub(in super::super) fn array_some(
+        &mut self,
+        receiver: &Value,
+        callback: &Value,
+        this_arg: &Value,
+    ) -> Result<Value, RuntimeError> {
+        self.array_predicate(receiver, callback, this_arg, true)
+    }
+
     pub(in super::super) fn array_reduce(
         &mut self,
         receiver: &Value,
@@ -247,6 +372,63 @@ impl Vm {
                     )?;
                 }
                 index += 1;
+            }
+            Ok(accumulator)
+        })();
+        self.stack.pop();
+        result
+    }
+
+    pub(in super::super) fn array_reduce_right(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let callback = native::argument(args, 0);
+        let object = self.coerce_object(receiver)?;
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let mut index = self.coerce_length(&length)? as u64;
+            if !self.is_callable(callback)? {
+                return Err(RuntimeError::TypeError(
+                    "Array.prototype.reduceRight callback must be callable".into(),
+                ));
+            }
+            let mut accumulator = if args.len() > 1 {
+                args[1].clone()
+            } else {
+                loop {
+                    if index == 0 {
+                        return Err(RuntimeError::TypeError(
+                            "reduceRight of empty array with no initial value".into(),
+                        ));
+                    }
+                    index -= 1;
+                    let key: PropertyName = index.to_string().into();
+                    if self.has_property(object, &key)? {
+                        break self.get_property(&Value::Object(object), &key)?;
+                    }
+                }
+            };
+            while index > 0 {
+                index -= 1;
+                self.charge_step()?;
+                let key: PropertyName = index.to_string().into();
+                if self.has_property(object, &key)? {
+                    let value = self.get_property(&Value::Object(object), &key)?;
+                    accumulator = self.call_native(
+                        callback.clone(),
+                        Value::Undefined,
+                        vec![
+                            accumulator,
+                            value,
+                            Value::Number(index as f64),
+                            Value::Object(object),
+                        ],
+                        false,
+                    )?;
+                }
             }
             Ok(accumulator)
         })();
@@ -405,6 +587,58 @@ impl Vm {
                     return Ok(Value::Number(index as f64));
                 }
                 index += 1;
+            }
+            Ok(Value::Number(-1.0))
+        })();
+        self.stack.pop();
+        result
+    }
+
+    pub(in super::super) fn array_last_index_of(
+        &mut self,
+        receiver: &Value,
+        search: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as u64;
+            if length == 0 {
+                return Ok(Value::Number(-1.0));
+            }
+            let length = length.min(i64::MAX as u64) as i64;
+            let mut index = if args.len() < 2 {
+                length - 1
+            } else {
+                let number = self.coerce_number(&args[1])?;
+                if number.is_nan() {
+                    0
+                } else if number.is_sign_positive() && number.is_infinite() {
+                    length - 1
+                } else if number.is_sign_negative() && number.is_infinite() {
+                    -1
+                } else {
+                    let integer = number.trunc();
+                    if integer >= 0.0 {
+                        integer.min((length - 1) as f64) as i64
+                    } else if integer < -(length as f64) {
+                        -1
+                    } else {
+                        (length as f64 + integer) as i64
+                    }
+                }
+            };
+            while index >= 0 {
+                self.charge_step()?;
+                let key: PropertyName = index.to_string().into();
+                if self.has_property(object, &key)?
+                    && self.get_property(&Value::Object(object), &key)? == *search
+                {
+                    return Ok(Value::Number(index as f64));
+                }
+                index -= 1;
             }
             Ok(Value::Number(-1.0))
         })();

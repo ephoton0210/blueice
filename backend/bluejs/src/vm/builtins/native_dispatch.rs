@@ -4,7 +4,70 @@
 
 use super::*;
 
+fn days_from_civil(year: i128, month: i128, day: i128) -> i128 {
+    // Howard Hinnant's proleptic-Gregorian civil-date conversion, with the
+    // Unix epoch as day zero. Month is normalized by the caller to 1..=12.
+    let year = year - i128::from(month <= 2);
+    let era = year.div_euclid(400);
+    let year_of_era = year - era * 400;
+    let march_month = month + if month > 2 { -3 } else { 9 };
+    let day_of_year = (153 * march_month + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
+}
+
 impl Vm {
+    fn date_utc(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let defaults = [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
+        let mut components = [0.0; 7];
+        let mut invalid = false;
+        for (index, component) in components.iter_mut().enumerate() {
+            let number = if index < args.len() {
+                self.coerce_number(&args[index])?
+            } else if index == 0 {
+                f64::NAN
+            } else {
+                defaults[index]
+            };
+            if !number.is_finite() {
+                invalid = true;
+            } else {
+                *component = number.trunc();
+            }
+        }
+        if invalid {
+            return Ok(Value::Number(f64::NAN));
+        }
+        let mut year = components[0];
+        if (0.0..=99.0).contains(&year) {
+            year += 1900.0;
+        }
+        if year.abs() > i64::MAX as f64
+            || components[1].abs() > i64::MAX as f64
+            || components[2].abs() > i64::MAX as f64
+        {
+            return Ok(Value::Number(f64::NAN));
+        }
+        let mut year = year as i128;
+        let month = components[1] as i128;
+        year += month.div_euclid(12);
+        let month = month.rem_euclid(12) + 1;
+        // MakeTime and MakeDate deliberately perform each multiplication and
+        // addition as IEEE-754 Number arithmetic. Collapsing this to an exact
+        // integer calculation changes the observable rounding/cancellation
+        // behavior for large, but still TimeClip-valid, components.
+        let time = (components[3] * 3_600_000.0 + components[4] * 60_000.0)
+            + components[5] * 1_000.0
+            + components[6];
+        let milliseconds =
+            days_from_civil(year, month, components[2] as i128) as f64 * 86_400_000.0 + time;
+        if !milliseconds.is_finite() || milliseconds.abs() > 8_640_000_000_000_000.0 {
+            Ok(Value::Number(f64::NAN))
+        } else {
+            Ok(Value::Number(milliseconds.trunc()))
+        }
+    }
+
     pub(in super::super) fn native_call(
         &mut self,
         function: NativeFunction,
@@ -185,6 +248,7 @@ impl Vm {
                     .unwrap_or_default()
                     .as_millis() as f64,
             )),
+            NativeFunction::DateUtc => self.date_utc(&args),
             NativeFunction::ArrayBuffer => self.array_buffer_constructor(&args, construct),
             NativeFunction::ArrayBufferByteLength => Ok(Value::Number(
                 self.heap
@@ -363,6 +427,13 @@ impl Vm {
             }
             NativeFunction::Map => self.collection_constructor(true, construct),
             NativeFunction::Set => self.collection_constructor(false, construct),
+            NativeFunction::WeakMap => self.weak_collection_constructor(true, &args, construct),
+            NativeFunction::WeakSet => self.weak_collection_constructor(false, &args, construct),
+            NativeFunction::WeakRef => self.weak_ref_constructor(first.clone(), construct),
+            NativeFunction::WeakRefDeref => self.weak_ref_deref(&receiver),
+            NativeFunction::WeakCollectionMethod { map, method } => {
+                self.weak_collection_method(map, method, &receiver, &args)
+            }
             NativeFunction::ArrayIsArray => Ok(Value::Bool(
                 first
                     .object_id()
@@ -375,10 +446,20 @@ impl Vm {
             NativeFunction::ArrayFilter => {
                 self.array_filter(&receiver, first, native::argument(&args, 1))
             }
+            NativeFunction::ArrayMap => {
+                self.array_map(&receiver, first, native::argument(&args, 1))
+            }
+            NativeFunction::ArrayEvery => {
+                self.array_every(&receiver, first, native::argument(&args, 1))
+            }
+            NativeFunction::ArraySome => {
+                self.array_some(&receiver, first, native::argument(&args, 1))
+            }
             NativeFunction::ArrayIncludes => {
                 self.array_includes(&receiver, first, native::argument(&args, 1))
             }
             NativeFunction::ArrayReduce => self.array_reduce(&receiver, &args),
+            NativeFunction::ArrayReduceRight => self.array_reduce_right(&receiver, &args),
             NativeFunction::ArrayPush => {
                 let object = self.coerce_object(&receiver)?;
                 let array = Value::Object(object);
@@ -395,6 +476,7 @@ impl Vm {
             NativeFunction::ArrayIndexOf => {
                 self.array_index_of(&receiver, first, native::argument(&args, 1))
             }
+            NativeFunction::ArrayLastIndexOf => self.array_last_index_of(&receiver, first, &args),
             NativeFunction::ArraySlice => self.array_slice(&receiver, &args),
             NativeFunction::ArraySplice => self.array_splice(&receiver, &args),
             NativeFunction::ArraySort => self.array_sort(&receiver, first),
@@ -892,6 +974,27 @@ impl Vm {
                     Some(self.coerce_string(first)?)
                 },
             ))),
+            NativeFunction::SymbolFor => {
+                let key = self.coerce_string(first)?;
+                let symbol = self
+                    .symbol_registry
+                    .entry(key.clone())
+                    .or_insert_with(|| JsSymbol::new(Some(key)))
+                    .clone();
+                Ok(Value::Symbol(symbol))
+            }
+            NativeFunction::SymbolKeyFor => {
+                let Value::Symbol(symbol) = first else {
+                    return Err(RuntimeError::TypeError(
+                        "Symbol.keyFor requires a Symbol".into(),
+                    ));
+                };
+                Ok(self
+                    .symbol_registry
+                    .iter()
+                    .find_map(|(key, candidate)| (candidate == symbol).then(|| key.clone()))
+                    .map_or(Value::Undefined, Value::String))
+            }
             NativeFunction::Object => {
                 if matches!(first, Value::Undefined | Value::Null) {
                     let proto = if construct {

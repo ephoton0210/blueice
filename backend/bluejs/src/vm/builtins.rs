@@ -21,6 +21,7 @@ use crate::heap::{
 };
 use crate::native::{
     AtomicOp, MathMethod, ObjectMethod, PatternMethod, StringMethod, TypedArrayMethod,
+    WeakCollectionMethod,
 };
 use std::collections::HashMap;
 use std::rc::Rc;

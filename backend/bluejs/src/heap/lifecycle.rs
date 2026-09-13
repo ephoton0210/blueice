@@ -137,11 +137,85 @@ impl Heap {
                 work.extend(metadata.references());
             }
         }
+        // WeakMap/WeakSet entries are ephemerons, rather than ordinary
+        // object edges. Once a live key has independently been marked, its
+        // value joins the mark worklist; repeat to a fixed point because that
+        // value may in turn make another key reachable. During a minor
+        // collection old objects are retained conservatively, so old tables
+        // and old keys participate even though only young objects are marked.
+        loop {
+            let mut ephemeron_work = Vec::new();
+            for (owner, object) in &self.objects {
+                let table_live = if young_only {
+                    !object.young || marked.contains(owner)
+                } else {
+                    marked.contains(owner)
+                };
+                if !table_live {
+                    continue;
+                }
+                let ObjectKind::WeakCollection { entries, .. } = &object.kind else {
+                    continue;
+                };
+                for (key, value) in entries {
+                    let key_live = match key {
+                        WeakCollectionKey::Object(key) if young_only => self
+                            .objects
+                            .get(key)
+                            .is_some_and(|key_object| !key_object.young || marked.contains(key)),
+                        WeakCollectionKey::Object(key) => marked.contains(key),
+                        // Symbols have identity but no heap record; a
+                        // non-registered symbol key is therefore live while
+                        // the table itself is reachable.
+                        WeakCollectionKey::Symbol(_) => true,
+                    };
+                    if key_live {
+                        if let Some(value) = value
+                            .object_id()
+                            .filter(|value| self.objects.contains_key(value))
+                        {
+                            ephemeron_work.push(value);
+                        }
+                    }
+                }
+            }
+            let mut added = false;
+            while let Some(id) = ephemeron_work.pop() {
+                let obj = &self.objects[&id];
+                if (young_only && !obj.young) || !marked.insert(id) {
+                    continue;
+                }
+                added = true;
+                ephemeron_work.extend(obj.references());
+                if let Some(metadata) = self.closure_metadata.get(&id) {
+                    ephemeron_work.extend(metadata.references());
+                }
+            }
+            if !added {
+                break;
+            }
+        }
         marked
     }
 
     pub(super) fn minor_gc(&mut self, protected: &[ObjectId]) {
         let marked = self.mark(true, protected);
+        let young: HashSet<_> = self.nursery.iter().copied().collect();
+        for object in self.objects.values_mut() {
+            if let ObjectKind::WeakCollection { entries, .. } = &mut object.kind {
+                entries.retain(|key, _| match key {
+                    WeakCollectionKey::Object(key) => !young.contains(key) || marked.contains(key),
+                    WeakCollectionKey::Symbol(_) => true,
+                });
+            }
+            if let ObjectKind::WeakRef { target } = &mut object.kind {
+                if target.as_ref().is_some_and(|target| {
+                    matches!(target, WeakCollectionKey::Object(key) if young.contains(key) && !marked.contains(key))
+                }) {
+                    *target = None;
+                }
+            }
+        }
         for id in self.nursery.drain(..) {
             if marked.contains(&id) {
                 self.objects
@@ -165,6 +239,21 @@ impl Heap {
 
     pub(super) fn major_gc(&mut self, protected: &[ObjectId]) {
         let marked = self.mark(false, protected);
+        for object in self.objects.values_mut() {
+            if let ObjectKind::WeakCollection { entries, .. } = &mut object.kind {
+                entries.retain(|key, _| match key {
+                    WeakCollectionKey::Object(key) => marked.contains(key),
+                    WeakCollectionKey::Symbol(_) => true,
+                });
+            }
+            if let ObjectKind::WeakRef { target } = &mut object.kind {
+                if target.as_ref().is_some_and(
+                    |target| matches!(target, WeakCollectionKey::Object(key) if !marked.contains(key)),
+                ) {
+                    *target = None;
+                }
+            }
+        }
         let reclaimed_metadata = self
             .closure_metadata
             .keys()

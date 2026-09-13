@@ -68,6 +68,68 @@ fn typed_array_backing_buffer_survives_minor_and_major_collection() {
 }
 
 #[test]
+fn weak_collection_values_follow_live_keys_to_an_ephemeron_fixed_point() {
+    let mut heap = Heap::default();
+    let first = heap.alloc_weak_collection(true, None).unwrap();
+    let first_root = heap.root(first).unwrap();
+    let second = heap.alloc_weak_collection(true, None).unwrap();
+    let second_root = heap.root(second).unwrap();
+    let first_key = heap.alloc_object(None).unwrap();
+    let first_key_root = heap.root(first_key).unwrap();
+    let second_key = heap.alloc_object(None).unwrap();
+    let value = heap.alloc_object(None).unwrap();
+
+    // `first_key` makes `second_key` live through the first table. The
+    // second table then makes `value` live, so one ephemeron scan is not
+    // enough to retain the entire chain.
+    heap.weak_collection_set(first, Value::Object(first_key), Value::Object(second_key))
+        .unwrap();
+    heap.weak_collection_set(second, Value::Object(second_key), Value::Object(value))
+        .unwrap();
+    heap.collect_minor();
+    heap.collect_major();
+    assert!(heap.contains(second_key));
+    assert!(heap.contains(value));
+    assert_eq!(
+        heap.weak_collection_get(second, &Value::Object(second_key))
+            .unwrap(),
+        Some(Value::Object(value))
+    );
+
+    heap.unroot(first_key_root).unwrap();
+    heap.collect_major();
+    assert!(!heap.contains(second_key));
+    assert!(!heap.contains(value));
+    assert_eq!(
+        heap.weak_collection_get(second, &Value::Object(second_key))
+            .unwrap(),
+        None
+    );
+    heap.unroot(second_root).unwrap();
+    heap.unroot(first_root).unwrap();
+}
+
+#[test]
+fn weak_ref_does_not_trace_its_target_and_clears_after_collection() {
+    let mut heap = Heap::default();
+    let target = heap.alloc_object(None).unwrap();
+    let target_root = heap.root(target).unwrap();
+    let weak_ref = heap.alloc_weak_ref(Value::Object(target), None).unwrap();
+    let weak_ref_root = heap.root(weak_ref).unwrap();
+
+    heap.collect_minor();
+    assert_eq!(
+        heap.weak_ref_target(weak_ref).unwrap(),
+        Some(Value::Object(target))
+    );
+    heap.unroot(target_root).unwrap();
+    heap.collect_major();
+    assert!(!heap.contains(target));
+    assert_eq!(heap.weak_ref_target(weak_ref).unwrap(), None);
+    heap.unroot(weak_ref_root).unwrap();
+}
+
+#[test]
 fn suspended_generator_references_keep_every_saved_object_visible_to_gc() {
     let mut heap = Heap::default();
     let prototype = heap.alloc_object(None).unwrap();
