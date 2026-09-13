@@ -1655,25 +1655,43 @@ impl Vm {
                     Err(self.test262_failure(name))
                 }
             }
+            "verifyWritable" | "verifyNotWritable" => {
+                let verify_property = native::argument(args, 2);
+                // The deprecated Test262 helpers still perform an observable
+                // assignment after their descriptor check. In particular,
+                // `verifyNotWritable(object, key, alternate)` is valid when
+                // `key` is absent: it verifies that an attempted addition
+                // cannot change `alternate`. Merely inspecting an own
+                // descriptor therefore both rejects valid tests and misses
+                // receiver/setter behavior.
+                if !self.to_boolean(verify_property)? {
+                    let (_, descriptor) = self.test262_own_descriptor(target, key)?;
+                    let Some(descriptor) = descriptor else {
+                        return Err(self.test262_failure(name));
+                    };
+                    let expected = name == "verifyWritable";
+                    if descriptor.writable.unwrap_or(false) != expected {
+                        return Err(self.test262_failure(name));
+                    }
+                }
+                let writable = self.test262_is_writable(target, key, verify_property, args)?;
+                if writable == (name == "verifyWritable") {
+                    Ok(Value::Undefined)
+                } else {
+                    Err(self.test262_failure(name))
+                }
+            }
             _ => {
                 let (_, descriptor) = self.test262_own_descriptor(target, key)?;
                 let Some(descriptor) = descriptor else {
                     return Err(self.test262_failure(name));
                 };
-                let actual = if matches!(name, "verifyWritable" | "verifyNotWritable") {
-                    // Accessor descriptors have no [[Writable]] field and
-                    // therefore satisfy the deprecated helper's
-                    // `writable: false` check.
-                    Some(descriptor.writable.unwrap_or(false))
-                } else if matches!(name, "verifyEnumerable" | "verifyNotEnumerable") {
+                let actual = if matches!(name, "verifyEnumerable" | "verifyNotEnumerable") {
                     descriptor.enumerable
                 } else {
                     descriptor.configurable
                 };
-                let expected = !matches!(
-                    name,
-                    "verifyNotWritable" | "verifyNotEnumerable" | "verifyNotConfigurable"
-                );
+                let expected = !matches!(name, "verifyNotEnumerable" | "verifyNotConfigurable");
                 if actual == Some(expected) {
                     Ok(Value::Undefined)
                 } else {
@@ -1681,6 +1699,66 @@ impl Vm {
                 }
             }
         }
+    }
+
+    /// Native equivalent of the deprecated `propertyHelper.js` `isWritable`.
+    ///
+    /// The Test262 runner substitutes this helper before executing test code,
+    /// so it must retain the helper's observable write, read, and restoration
+    /// steps instead of treating a data descriptor as the complete answer.
+    fn test262_is_writable(
+        &mut self,
+        target: &Value,
+        key_value: &Value,
+        verify_property: &Value,
+        args: &[Value],
+    ) -> Result<bool, RuntimeError> {
+        let base = self.stack.len();
+        self.stack
+            .extend([target.clone(), key_value.clone(), verify_property.clone()]);
+        let result = (|| {
+            let object = self.coerce_object(target)?;
+            self.stack.push(Value::Object(object));
+            let key = self.coerce_property_key(key_value)?;
+            let verify_key = if self.to_boolean(verify_property)? {
+                self.coerce_property_key(verify_property)?
+            } else {
+                key.clone()
+            };
+            let array_length = self.heap.is_array(object)? && key == "length";
+            let supplied = args.get(3).cloned().unwrap_or(Value::Undefined);
+            let mut new_value = if self.to_boolean(&supplied)? {
+                supplied
+            } else if array_length {
+                Value::Number(f64::from(u32::MAX))
+            } else {
+                Value::String("unlikelyValue".into())
+            };
+            let had_value = self.object_get_own_property(object, &key)?.is_some();
+            let old_value = self.get_property(target, &key)?;
+            if args.len() < 4 && crate::heap::same_value(&new_value, &old_value) {
+                let mut string = self.coerce_string(&new_value)?;
+                native::append(&mut string, &"2".into(), self.config.max_string_bytes)?;
+                new_value = Value::String(string);
+            }
+            self.stack.extend([old_value.clone(), new_value.clone()]);
+            match self.set_property(target, &key, &new_value) {
+                Ok(()) | Err(RuntimeError::TypeError(_)) => {}
+                Err(_) => return Err(self.test262_failure("verifyWritable")),
+            }
+            let observed = self.get_property(target, &verify_key)?;
+            let writable = crate::heap::same_value(&observed, &new_value);
+            if writable {
+                if had_value {
+                    self.set_property(target, &key, &old_value)?;
+                } else {
+                    self.object_delete(object, &key)?;
+                }
+            }
+            Ok(writable)
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     fn test262_verify_property(

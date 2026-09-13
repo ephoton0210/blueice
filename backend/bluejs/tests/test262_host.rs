@@ -50,6 +50,55 @@ fn harness_assertions_fail_closed() {
 }
 
 #[test]
+fn property_helper_observes_writes_and_receiver_setters() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let sealed = Object.preventExtensions({});
+        let accessor = {};
+        Object.defineProperty(accessor, "value", {
+            get() { return 0; },
+            set(value) { accessor.received = value; },
+            configurable: true,
+        });
+        let existing = { value: "unlikelyValue" };
+        let created = {};
+        let locked = {};
+        Object.defineProperty(locked, "value", { value: 1 });
+        let throwing = {};
+        Object.defineProperty(throwing, "value", {
+            set(value) { throw new Error("setter error"); },
+            configurable: true,
+        });
+        verifyNotWritable(sealed, "newProperty", "noWrite");
+        verifyWritable(accessor, "value", "received", "written");
+        verifyWritable(existing, "value");
+        verifyWritable(created, "created", "created");
+        verifyWritable([], "length");
+        verifyNotWritable(locked, "value");
+        assert.throws(Test262Error, () => verifyWritable({}, "missing"));
+        assert.throws(Test262Error, () => verifyWritable(locked, "value"));
+        assert.throws(Test262Error, () => verifyNotWritable(existing, "value", "value"));
+        assert.throws(Test262Error, () => verifyWritable(throwing, "value", "value"));
+        sealed.newProperty === undefined && accessor.received === 0 && created.created === undefined
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap()),
+        Ok(Value::Bool(true))
+    );
+
+    let strict = r#"
+        "use strict";
+        verifyNotWritable(Object.preventExtensions({}), "newProperty", "noWrite");
+        true
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(strict).unwrap()).unwrap()),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
 fn test262_agents_share_bytes_wait_and_report_in_notify_order() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();

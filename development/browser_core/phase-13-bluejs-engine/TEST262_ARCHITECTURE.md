@@ -1655,6 +1655,39 @@ Focused validation: `built-ins/Proxy` **607/607**, `built-ins/Proxy/construct`
 **60/60**, `built-ins/Reflect/construct` **20/20**, and the public
 `conformance_edges` suite **37/37**.
 
+## P0.4 continuation: Test262 writable-property observation
+
+The adapter replaces `propertyHelper.js` with native helpers, so those helpers
+are part of the conformance boundary rather than an assertion-only shortcut.
+Its former `verifyWritable` and `verifyNotWritable` implementations inspected
+only an own descriptor. That is insufficient: the standard helper writes the
+property, observes either the property or its caller-supplied verification
+property, and restores a successful write. In particular,
+`verifyNotWritable(object, key, alternate)` must be able to prove that adding
+an absent `key` to a non-extensible object does not change `alternate`; there
+is deliberately no descriptor for `key` to inspect first.
+
+The native equivalent now retains the target, keys, old value, and probe value
+on the VM stack while a getter, setter, or Proxy internal method may allocate.
+It keeps the helper's descriptor precondition only when no alternate
+verification property was supplied; chooses the same array-length and ordinary
+probe values; performs the real receiver-aware `[[Set]]`; handles the expected
+strict-mode `TypeError`; observes the requested property; and restores a
+successful own write or deletes a newly-created one. A public
+parse → compile → execute regression covers non-extensible addition, strict
+assignment failure, data and accessor writes, alternate receiver observation,
+new-property cleanup, array-length probing, descriptor rejection, and an
+abrupt setter.
+
+With the current adapter, the full `built-ins/Object` selection is **5,949
+pass / 859 fail** of 6,808 modes, compared with **5,613 pass / 1,195 fail**
+before this correction: **336 fail-to-pass and zero pass-to-fail**. The core
+`Object.preventExtensions` slice is **74/78**; its four residual modes require
+the deliberately minimal Date constructor. The broader Object failures remain
+separately classified Date, Weak collection, resizable TypedArray, and
+unimplemented Object-library work, so this is a P0.4 internal-method/
+conformance-host repair, not a claim that P0.4 as a whole is closed.
+
 ## P0.1 continuation: generator-return iterator closing and PromiseResolve observation
 
 The published ECMAScript 2026 [IteratorClose](https://tc39.es/ecma262/2026/multipage/abstract-operations.html#sec-iteratorclose),
