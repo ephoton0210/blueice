@@ -97,6 +97,10 @@ fn carries_the_compact_exponent_and_supplemental_manx_rules_into_selection() {
         french_rules.select_compact_f64(1_500_000.0, true).unwrap(),
         PluralCategory::Many
     );
+    assert_eq!(
+        french_rules.select_compact_f64(0.0, false).unwrap(),
+        PluralCategory::One
+    );
 
     let manx = canonicalize("gv").unwrap();
     let manx_rules = PluralRules::try_new(&[manx], Default::default()).unwrap();
@@ -144,6 +148,10 @@ fn exposes_plural_locale_filters_errors_and_remaining_supplemental_paths() {
     assert_eq!(manx.select_decimal("-20").unwrap(), PluralCategory::Few);
     assert_eq!(
         manx.select_compact_f64(20.0, false).unwrap(),
+        PluralCategory::Few
+    );
+    assert_eq!(
+        manx.select_compact_f64(20.0, true).unwrap(),
         PluralCategory::Few
     );
     assert_eq!(

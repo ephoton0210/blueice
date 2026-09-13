@@ -541,6 +541,7 @@ enum ObjectKind {
         format: Option<ObjectId>,
     },
     DisplayNames(Rc<crate::intl::DisplayNames>),
+    DurationFormat(Rc<crate::intl::DurationFormat>),
     ListFormat(Rc<crate::intl::ListFormat>),
     PluralRules(Rc<crate::intl::PluralRules>),
     RelativeTimeFormat(Rc<crate::intl::RelativeTimeFormat>),
@@ -1024,6 +1025,7 @@ impl Object {
                 ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
                 ObjectKind::NumberFormat { format, .. } => format.iter().copied().collect(),
                 ObjectKind::DisplayNames(_) => Vec::new(),
+                ObjectKind::DurationFormat(_) => Vec::new(),
                 ObjectKind::ListFormat(_) => Vec::new(),
                 ObjectKind::PluralRules(_) => Vec::new(),
                 ObjectKind::RelativeTimeFormat(_) => Vec::new(),
@@ -1134,6 +1136,7 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
             ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
             ObjectKind::NumberFormat { format, .. } => format.iter().copied().collect(),
             ObjectKind::DisplayNames(_) => Vec::new(),
+            ObjectKind::DurationFormat(_) => Vec::new(),
             ObjectKind::ListFormat(_) => Vec::new(),
             ObjectKind::PluralRules(_) => Vec::new(),
             ObjectKind::RelativeTimeFormat(_) => Vec::new(),
@@ -2204,6 +2207,24 @@ impl Heap {
     ) -> Result<Option<Rc<crate::intl::DisplayNames>>, HeapError> {
         Ok(match &self.object(object)?.kind {
             ObjectKind::DisplayNames(data) => Some(data.clone()),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn alloc_duration_format(
+        &mut self,
+        data: Rc<crate::intl::DurationFormat>,
+        prototype: ObjectId,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::DurationFormat(data), Some(prototype))
+    }
+
+    pub(crate) fn duration_format(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<Rc<crate::intl::DurationFormat>>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::DurationFormat(data) => Some(data.clone()),
             _ => None,
         })
     }

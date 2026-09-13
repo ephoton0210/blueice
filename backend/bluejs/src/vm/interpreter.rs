@@ -1214,11 +1214,11 @@ impl Vm {
                         self.stack.swap(index, index + 1);
                     }
                     Opcode::Add => self.binary(Self::add)?,
-                    Opcode::Subtract => self.numeric(|a, b| a - b)?,
-                    Opcode::Multiply => self.numeric(|a, b| a * b)?,
+                    Opcode::Subtract => self.arithmetic(Opcode::Subtract)?,
+                    Opcode::Multiply => self.arithmetic(Opcode::Multiply)?,
                     Opcode::Exponentiate => self.exponentiate()?,
-                    Opcode::Divide => self.numeric(|a, b| a / b)?,
-                    Opcode::Remainder => self.numeric(|a, b| a % b)?,
+                    Opcode::Divide => self.arithmetic(Opcode::Divide)?,
+                    Opcode::Remainder => self.arithmetic(Opcode::Remainder)?,
                     Opcode::ShiftLeft | Opcode::ShiftRight | Opcode::UnsignedShiftRight => {
                         self.shift(instruction.opcode)?
                     }

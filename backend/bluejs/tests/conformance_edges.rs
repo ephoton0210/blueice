@@ -89,6 +89,9 @@ fn bigint_bitwise_operators_preserve_precision_and_reject_mixed_numeric_types() 
         "(1n<<33n)===8589934592n&&(5n<<-1n)===2n&&(-8n>>1n)===-4n&&(-8n>>-1n)===-16n",
         "(Object(3n)&1n)===1n&&(({valueOf(){return 2n}}|1n)===3n)",
         "typeof 0n==='bigint'&&String(-2n)==='-2'&&BigInt(2n)===2n&&Object.prototype.toString.call(Object(1n))==='[object BigInt]'",
+        "BigInt(6)*1000000000n===6000000000n&&7n-10n===-3n&&7n+10n===17n&&7n/2n===3n&&7n%2n===1n",
+        "BigInt(4503599627370495000000)===4503599627370494951424n",
+        "-1n<0&&1n>0&&1n<1.5&&-1n>-1.5&&!(1n<NaN)&&9007199254740993n>9007199254740992",
         "let caught=false;try{1n&1}catch(error){caught=error instanceof TypeError;}caught",
         "let caught=false;try{1n>>>0n}catch(error){caught=error instanceof TypeError;}caught",
         "1n < 2n && 2n > 1n && 2n >= 2n && !(2n < 1n)",
@@ -99,6 +102,15 @@ fn bigint_bitwise_operators_preserve_precision_and_reject_mixed_numeric_types() 
     }
     for source in ["1.0n", "1e1n", "01n", "0x1nn"] {
         assert!(parse(source).is_err(), "{source}");
+    }
+    for source in ["1n/0n", "1n%0n", "1n*1"] {
+        assert!(
+            matches!(
+                Vm::default().execute(&compile(&parse(source).unwrap()).unwrap()),
+                Err(RuntimeError::RangeError(_) | RuntimeError::TypeError(_))
+            ),
+            "{source}"
+        );
     }
 }
 

@@ -55,7 +55,10 @@ fn locale_information_supplies_deterministic_defaults_and_region_data() {
 
     let unregional = locale_information(&canonicalize("en").unwrap());
     assert_eq!(unregional.time_zones, None);
-    assert_eq!(unregional.week_info.first_day, 1);
+    assert_eq!(
+        unregional.week_info.first_day, 7,
+        "week information uses en's likely US region"
+    );
 }
 
 #[test]
@@ -120,12 +123,21 @@ fn locale_options_are_applied_and_canonicalized_without_a_realm() {
 #[test]
 fn locale_option_errors_aliases_and_information_fallbacks_are_explicit() {
     assert_eq!(
+        canonicalize("e"),
+        Err(LocaleError::InvalidLanguageTag),
+        "a one-character primary language subtag is structurally invalid"
+    );
+    assert_eq!(
         canonicalize("en_US").unwrap_err().to_string(),
         "invalid Unicode locale identifier"
     );
     assert_eq!(
         LocaleError::InvalidLanguageTag.to_string(),
         "invalid Unicode locale identifier"
+    );
+    assert_eq!(
+        LocaleOptionError::InvalidLanguage.to_string(),
+        "invalid language option"
     );
 
     let base = canonicalize("en").unwrap();
@@ -226,6 +238,8 @@ fn locale_option_errors_aliases_and_information_fallbacks_are_explicit() {
     assert_eq!(aliases.as_str(), "en-u-ks-level3-ms-uksystem-tz-iedub");
     let boolean = canonicalize("en-u-kn-yes").unwrap();
     assert_eq!(boolean.as_str(), "en-u-kn");
+    let boolean = canonicalize("en-u-kb-yes").unwrap();
+    assert_eq!(boolean.as_str(), "en-u-kb");
     assert_eq!(
         apply_locale_options(&canonicalize("posix").unwrap(), &LocaleOptions::default())
             .unwrap()
@@ -252,6 +266,10 @@ fn locale_option_errors_aliases_and_information_fallbacks_are_explicit() {
         canonicalize("en-u-tz-est").unwrap().as_str(),
         "en-u-tz-papty"
     );
+    assert_eq!(
+        canonicalize("en-u-tz-gmt0").unwrap().as_str(),
+        "en-u-tz-gmt"
+    );
 
     for (tag, first_day, time_zone, direction) in [
         ("en-u-fw-tue", 2, None, TextDirection::LeftToRight),
@@ -267,7 +285,7 @@ fn locale_option_errors_aliases_and_information_fallbacks_are_explicit() {
         ),
         ("ja-JP", 7, Some("Asia/Tokyo"), TextDirection::LeftToRight),
         ("de-DE", 1, Some("Etc/UTC"), TextDirection::LeftToRight),
-        ("en-Arab", 1, None, TextDirection::RightToLeft),
+        ("en-Arab", 7, None, TextDirection::RightToLeft),
         ("ar", 1, None, TextDirection::RightToLeft),
     ] {
         let information = locale_information(&canonicalize(tag).unwrap());
@@ -282,5 +300,41 @@ fn locale_option_errors_aliases_and_information_fallbacks_are_explicit() {
             "{tag}"
         );
         assert_eq!(information.text_direction, direction, "{tag}");
+    }
+}
+
+#[test]
+fn locale_information_uses_region_preference_for_locale_information_methods() {
+    let calendars = locale_information(&canonicalize("en-US-u-rg-thzzzz").unwrap());
+    assert_eq!(calendars.calendars, strings(&["buddhist", "gregory"]));
+
+    let hour_cycles = locale_information(&canonicalize("en-u-sd-gbeng").unwrap());
+    assert_eq!(hour_cycles.hour_cycles, strings(&["h23"]));
+
+    let language_hour_cycle = locale_information(&canonicalize("en-CA").unwrap());
+    assert_eq!(language_hour_cycle.hour_cycles, strings(&["h12"]));
+
+    let week_info = locale_information(&canonicalize("fa-JP-u-sd-inka-rg-afzzzz").unwrap());
+    assert_eq!(week_info.week_info.first_day, 6);
+    assert_eq!(week_info.week_info.weekend, vec![4, 5]);
+
+    let likely = locale_information(&canonicalize("fa").unwrap());
+    assert_eq!(likely.calendars[0], "persian");
+    assert_eq!(likely.week_info.first_day, 6);
+
+    let world = locale_information(&canonicalize("eo").unwrap());
+    assert_eq!(world.calendars, strings(&["gregory"]));
+    assert_eq!(world.hour_cycles, strings(&["h23"]));
+    assert_eq!(world.week_info.first_day, 1);
+}
+
+#[test]
+fn locale_information_uses_root_collations_for_unavailable_locales() {
+    for tag in ["und", "und-US", "qfz", "qga-DE", "qtz-CN"] {
+        assert_eq!(
+            locale_information(&canonicalize(tag).unwrap()).collations,
+            strings(&["emoji", "eor"]),
+            "{tag}"
+        );
     }
 }

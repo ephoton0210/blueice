@@ -444,6 +444,11 @@ impl Vm {
                 .get("%Intl.DisplayNames%")
                 .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
                 .and_then(|value| value.object_id());
+            let intl_duration_format_prototype = self
+                .globals
+                .get("%Intl.DurationFormat%")
+                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
+                .and_then(|value| value.object_id());
             let intl_list_format_prototype = self
                 .globals
                 .get("%Intl.ListFormat%")
@@ -480,6 +485,8 @@ impl Vm {
                 Some("Intl.Locale")
             } else if intl_display_names_prototype == Some(default) {
                 Some("Intl.DisplayNames")
+            } else if intl_duration_format_prototype == Some(default) {
+                Some("Intl.DurationFormat")
             } else if intl_list_format_prototype == Some(default) {
                 Some("Intl.ListFormat")
             } else if intl_plural_rules_prototype == Some(default) {

@@ -1274,6 +1274,10 @@ impl Vm {
                     realm.vm.intl_global()?;
                     Value::Object(realm.vm.globals["%Intl.DisplayNames%"])
                 }
+                "Intl.DurationFormat" => {
+                    realm.vm.intl_global()?;
+                    Value::Object(realm.vm.globals["%Intl.DurationFormat%"])
+                }
                 "Intl.ListFormat" => {
                     realm.vm.intl_global()?;
                     Value::Object(realm.vm.globals["%Intl.ListFormat%"])

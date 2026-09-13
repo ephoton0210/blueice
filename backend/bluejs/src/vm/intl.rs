@@ -41,6 +41,13 @@ impl Vm {
             self.install_native(
                 namespace,
                 function_prototype,
+                "supportedValuesOf",
+                1,
+                NativeFunction::SupportedValuesOf,
+            )?;
+            self.install_native(
+                namespace,
+                function_prototype,
                 "Collator",
                 0,
                 NativeFunction::Collator,
@@ -102,6 +109,7 @@ impl Vm {
                 ("NumberFormat", native::IntlService::Number),
                 ("DateTimeFormat", native::IntlService::DateTime),
                 ("DisplayNames", native::IntlService::DisplayNames),
+                ("DurationFormat", native::IntlService::Duration),
                 ("ListFormat", native::IntlService::List),
                 ("PluralRules", native::IntlService::Plural),
                 ("RelativeTimeFormat", native::IntlService::RelativeTime),
@@ -169,6 +177,13 @@ impl Vm {
                             "get format",
                             NativeFunction::NumberFormatFormatGetter,
                         )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "formatToParts",
+                            1,
+                            NativeFunction::NumberFormatFormatToParts,
+                        )?;
                         self.globals
                             .insert("%Intl.NumberFormat%".into(), constructor);
                     } else if service == native::IntlService::DisplayNames {
@@ -203,6 +218,45 @@ impl Vm {
                         )?;
                         self.globals
                             .insert("%Intl.DisplayNames%".into(), constructor);
+                    } else if service == native::IntlService::Duration {
+                        self.define_data(
+                            prototype,
+                            JsSymbol::well_known("toStringTag"),
+                            Value::String("Intl.DurationFormat".into()),
+                            false,
+                            false,
+                            true,
+                        )?;
+                        self.install_native(
+                            constructor,
+                            function_prototype,
+                            "supportedLocalesOf",
+                            1,
+                            NativeFunction::DurationFormatSupportedLocales,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "resolvedOptions",
+                            0,
+                            NativeFunction::DurationFormatResolvedOptions,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "format",
+                            1,
+                            NativeFunction::DurationFormatFormat,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "formatToParts",
+                            1,
+                            NativeFunction::DurationFormatFormatToParts,
+                        )?;
+                        self.globals
+                            .insert("%Intl.DurationFormat%".into(), constructor);
                     } else if service == native::IntlService::List {
                         self.define_data(
                             prototype,
@@ -587,11 +641,8 @@ impl Vm {
         Ok(result)
     }
 
-    /// Edition 13's constructor initialization uses GetOptionsObject rather
-    /// than the ToObject-based option coercion used by supportedLocalesOf.
-    /// Keep the two abstract operations distinct: a primitive constructor
-    /// options value throws, while a primitive supportedLocalesOf options
-    /// value is boxed and can expose observable inherited properties.
+    /// The legacy constructor algorithms use `GetOptionsObject`: only an
+    /// ordinary object is accepted when an options value is supplied.
     fn intl_constructor_options(&mut self, value: &Value) -> Result<Value, RuntimeError> {
         let object = match value {
             Value::Undefined => self.with_roots(|heap| heap.alloc_object(None))?,
@@ -605,6 +656,13 @@ impl Vm {
         let result = Value::Object(object);
         self.stack.push(result.clone());
         Ok(result)
+    }
+
+    /// `InitializeNumberFormat` uses current ECMA-402's
+    /// `CoerceOptionsToObject`, so primitives are boxed and can expose
+    /// observable inherited properties. `null` still fails `ToObject`.
+    fn number_format_constructor_options(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        self.intl_options(value)
     }
 
     fn string_option(
@@ -636,6 +694,21 @@ impl Vm {
             locales
                 .iter()
                 .map(|l| Value::String(l.to_string().into()))
+                .collect(),
+        )
+    }
+
+    pub(super) fn supported_values_of(&mut self, key: &Value) -> Result<Value, RuntimeError> {
+        let key = self.coerce_string(key)?;
+        let key = key
+            .to_utf8()
+            .map_err(|_| RuntimeError::RangeError("invalid Intl.supportedValuesOf key".into()))?;
+        let values = blueice_ecma402::supported_values_of(&key)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        self.array_from(
+            values
+                .iter()
+                .map(|value| Value::String((*value).into()))
                 .collect(),
         )
     }
@@ -765,6 +838,9 @@ impl Vm {
         if service == native::IntlService::DisplayNames {
             return self.create_display_names(args, construct);
         }
+        if service == native::IntlService::Duration {
+            return self.create_duration_format(args, construct);
+        }
         if service == native::IntlService::RelativeTime {
             return self.create_relative_time_format(args, construct);
         }
@@ -776,6 +852,7 @@ impl Vm {
             native::IntlService::Number => "NumberFormat",
             native::IntlService::DateTime => "DateTimeFormat",
             native::IntlService::DisplayNames => "DisplayNames",
+            native::IntlService::Duration => "DurationFormat",
             native::IntlService::List => "ListFormat",
             native::IntlService::Plural => "PluralRules",
             native::IntlService::RelativeTime => "RelativeTimeFormat",
@@ -1253,10 +1330,15 @@ impl Vm {
     fn number_grouping(
         &mut self,
         options: &Value,
+        notation: blueice_ecma402::NumberNotation,
     ) -> Result<blueice_ecma402::NumberGrouping, RuntimeError> {
         let value = self.get_property(options, &"useGrouping".into())?;
         match value {
-            Value::Undefined => Ok(blueice_ecma402::NumberGrouping::Auto),
+            Value::Undefined => Ok(if notation == blueice_ecma402::NumberNotation::Compact {
+                blueice_ecma402::NumberGrouping::Min2
+            } else {
+                blueice_ecma402::NumberGrouping::Auto
+            }),
             Value::Bool(true) => Ok(blueice_ecma402::NumberGrouping::Always),
             Value::Bool(false) => Ok(blueice_ecma402::NumberGrouping::Never),
             value => match self
@@ -1268,7 +1350,8 @@ impl Vm {
                 "auto" => Ok(blueice_ecma402::NumberGrouping::Auto),
                 "always" => Ok(blueice_ecma402::NumberGrouping::Always),
                 "min2" => Ok(blueice_ecma402::NumberGrouping::Min2),
-                "false" | "never" => Ok(blueice_ecma402::NumberGrouping::Never),
+                "false" | "true" => Ok(blueice_ecma402::NumberGrouping::Auto),
+                "" | "null" | "0" => Ok(blueice_ecma402::NumberGrouping::Never),
                 _ => Err(RuntimeError::RangeError(
                     "invalid useGrouping option".into(),
                 )),
@@ -1292,24 +1375,397 @@ impl Vm {
         Ok(Some(number.floor() as u8))
     }
 
+    fn number_minimum_integer_digits_option(
+        &mut self,
+        options: &Value,
+    ) -> Result<u8, RuntimeError> {
+        let value = self.get_property(options, &"minimumIntegerDigits".into())?;
+        if value == Value::Undefined {
+            return Ok(1);
+        }
+        let number = self.coerce_number(&value)?;
+        if !number.is_finite() || !(1.0..=21.0).contains(&number) {
+            return Err(RuntimeError::RangeError(
+                "invalid minimumIntegerDigits option".into(),
+            ));
+        }
+        Ok(number.floor() as u8)
+    }
+
+    fn number_style(
+        &mut self,
+        options: &Value,
+    ) -> Result<blueice_ecma402::NumberFormatStyle, RuntimeError> {
+        match self
+            .string_option(
+                options,
+                "style",
+                &["decimal", "percent", "currency", "unit"],
+            )?
+            .as_deref()
+        {
+            None | Some("decimal") => Ok(blueice_ecma402::NumberFormatStyle::Decimal),
+            Some("percent") => Ok(blueice_ecma402::NumberFormatStyle::Percent),
+            Some("currency") => Ok(blueice_ecma402::NumberFormatStyle::Currency),
+            Some("unit") => Ok(blueice_ecma402::NumberFormatStyle::Unit),
+            Some(_) => unreachable!("string_option validates NumberFormat style"),
+        }
+    }
+
+    fn number_unit(
+        &mut self,
+        options: &Value,
+        style: blueice_ecma402::NumberFormatStyle,
+    ) -> Result<Option<blueice_ecma402::NumberFormatUnit>, RuntimeError> {
+        let unit = self
+            .string_option(options, "unit", &[])?
+            .as_deref()
+            .map(|unit| {
+                blueice_ecma402::NumberFormatUnit::parse(unit)
+                    .ok_or_else(|| RuntimeError::RangeError("invalid unit option".into()))
+            })
+            .transpose()?;
+        match (style, unit) {
+            (
+                blueice_ecma402::NumberFormatStyle::Decimal
+                | blueice_ecma402::NumberFormatStyle::Percent
+                | blueice_ecma402::NumberFormatStyle::Currency,
+                _,
+            ) => Ok(None),
+            (blueice_ecma402::NumberFormatStyle::Unit, None) => Err(RuntimeError::TypeError(
+                "unit is required when style is unit".into(),
+            )),
+            (blueice_ecma402::NumberFormatStyle::Unit, Some(unit)) => Ok(Some(unit)),
+        }
+    }
+
+    fn number_currency(
+        &mut self,
+        options: &Value,
+        style: blueice_ecma402::NumberFormatStyle,
+    ) -> Result<Option<blueice_ecma402::NumberCurrencyOptions>, RuntimeError> {
+        let code = self.string_option(options, "currency", &[])?;
+        let display = match self
+            .string_option(
+                options,
+                "currencyDisplay",
+                &["code", "symbol", "narrowSymbol", "name"],
+            )?
+            .as_deref()
+        {
+            None | Some("symbol") => blueice_ecma402::NumberCurrencyDisplay::Symbol,
+            Some("code") => blueice_ecma402::NumberCurrencyDisplay::Code,
+            Some("narrowSymbol") => blueice_ecma402::NumberCurrencyDisplay::NarrowSymbol,
+            Some("name") => blueice_ecma402::NumberCurrencyDisplay::Name,
+            Some(_) => unreachable!("string_option validates NumberFormat currencyDisplay"),
+        };
+        let sign = match self
+            .string_option(options, "currencySign", &["standard", "accounting"])?
+            .as_deref()
+        {
+            None | Some("standard") => blueice_ecma402::NumberCurrencySign::Standard,
+            Some("accounting") => blueice_ecma402::NumberCurrencySign::Accounting,
+            Some(_) => unreachable!("string_option validates NumberFormat currencySign"),
+        };
+        let code = code
+            .map(|code| {
+                if code.len() != 3 || !code.bytes().all(|byte| byte.is_ascii_alphabetic()) {
+                    Err(RuntimeError::RangeError("invalid currency option".into()))
+                } else {
+                    Ok(code.to_ascii_uppercase())
+                }
+            })
+            .transpose()?;
+        if style != blueice_ecma402::NumberFormatStyle::Currency {
+            return Ok(None);
+        }
+        let code = code.ok_or_else(|| {
+            RuntimeError::TypeError("currency is required when style is currency".into())
+        })?;
+        Ok(Some(blueice_ecma402::NumberCurrencyOptions {
+            code,
+            display,
+            sign,
+        }))
+    }
+
+    fn number_unit_display(
+        &mut self,
+        options: &Value,
+    ) -> Result<blueice_ecma402::NumberUnitDisplay, RuntimeError> {
+        match self
+            .string_option(options, "unitDisplay", &["short", "narrow", "long"])?
+            .as_deref()
+        {
+            None | Some("short") => Ok(blueice_ecma402::NumberUnitDisplay::Short),
+            Some("narrow") => Ok(blueice_ecma402::NumberUnitDisplay::Narrow),
+            Some("long") => Ok(blueice_ecma402::NumberUnitDisplay::Long),
+            Some(_) => unreachable!("string_option validates NumberFormat unitDisplay"),
+        }
+    }
+
+    fn number_rounding_mode(
+        &mut self,
+        options: &Value,
+    ) -> Result<blueice_ecma402::NumberRoundingMode, RuntimeError> {
+        match self
+            .string_option(
+                options,
+                "roundingMode",
+                &[
+                    "ceil",
+                    "floor",
+                    "expand",
+                    "trunc",
+                    "halfCeil",
+                    "halfFloor",
+                    "halfExpand",
+                    "halfTrunc",
+                    "halfEven",
+                ],
+            )?
+            .as_deref()
+        {
+            None | Some("halfExpand") => Ok(blueice_ecma402::NumberRoundingMode::HalfExpand),
+            Some("ceil") => Ok(blueice_ecma402::NumberRoundingMode::Ceil),
+            Some("floor") => Ok(blueice_ecma402::NumberRoundingMode::Floor),
+            Some("expand") => Ok(blueice_ecma402::NumberRoundingMode::Expand),
+            Some("trunc") => Ok(blueice_ecma402::NumberRoundingMode::Trunc),
+            Some("halfCeil") => Ok(blueice_ecma402::NumberRoundingMode::HalfCeil),
+            Some("halfFloor") => Ok(blueice_ecma402::NumberRoundingMode::HalfFloor),
+            Some("halfTrunc") => Ok(blueice_ecma402::NumberRoundingMode::HalfTrunc),
+            Some("halfEven") => Ok(blueice_ecma402::NumberRoundingMode::HalfEven),
+            Some(_) => unreachable!("string_option validates NumberFormat roundingMode"),
+        }
+    }
+
+    /// Reads NumberFormat's notation option at its standard observable point.
+    /// Formatting extensions consume this resolved value in their own service
+    /// slices; retaining it here keeps the constructor boundary spec ordered.
+    fn number_notation(
+        &mut self,
+        options: &Value,
+    ) -> Result<blueice_ecma402::NumberNotation, RuntimeError> {
+        match self
+            .string_option(
+                options,
+                "notation",
+                &["standard", "scientific", "engineering", "compact"],
+            )?
+            .as_deref()
+        {
+            None | Some("standard") => Ok(blueice_ecma402::NumberNotation::Standard),
+            Some("scientific") => Ok(blueice_ecma402::NumberNotation::Scientific),
+            Some("engineering") => Ok(blueice_ecma402::NumberNotation::Engineering),
+            Some("compact") => Ok(blueice_ecma402::NumberNotation::Compact),
+            Some(_) => unreachable!("string_option validates NumberFormat notation"),
+        }
+    }
+
+    /// Validates the Unicode type grammar accepted by the `numberingSystem`
+    /// option. The host-neutral locale service applies a supported value when
+    /// its numbering-system data is selected.
+    fn number_numbering_system(&mut self, options: &Value) -> Result<(), RuntimeError> {
+        let Some(value) = self.string_option(options, "numberingSystem", &[])? else {
+            return Ok(());
+        };
+        if !value.split('-').all(|part| {
+            (3..=8).contains(&part.len()) && part.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        }) {
+            return Err(RuntimeError::RangeError(
+                "invalid numberingSystem option".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Reads `compactDisplay` even for the non-compact notation branches, as
+    /// required by InitializeNumberFormat's observable option sequence.
+    fn number_compact_display(
+        &mut self,
+        options: &Value,
+    ) -> Result<blueice_ecma402::NumberCompactDisplay, RuntimeError> {
+        match self
+            .string_option(options, "compactDisplay", &["short", "long"])?
+            .as_deref()
+        {
+            None | Some("short") => Ok(blueice_ecma402::NumberCompactDisplay::Short),
+            Some("long") => Ok(blueice_ecma402::NumberCompactDisplay::Long),
+            Some(_) => unreachable!("string_option validates NumberFormat compactDisplay"),
+        }
+    }
+
+    fn number_rounding_increment(&mut self, options: &Value) -> Result<u16, RuntimeError> {
+        let value = self.get_property(options, &"roundingIncrement".into())?;
+        if value == Value::Undefined {
+            return Ok(1);
+        }
+        let value = self.coerce_number(&value)?;
+        if !value.is_finite() || value.fract() != 0.0 || !(1.0..=5000.0).contains(&value) {
+            return Err(RuntimeError::RangeError(
+                "invalid roundingIncrement option".into(),
+            ));
+        }
+        let value = value as u16;
+        if !matches!(
+            value,
+            1 | 2 | 5 | 10 | 20 | 25 | 50 | 100 | 200 | 250 | 500 | 1000 | 2000 | 2500 | 5000
+        ) {
+            return Err(RuntimeError::RangeError(
+                "invalid roundingIncrement option".into(),
+            ));
+        }
+        Ok(value)
+    }
+
+    fn number_trailing_zero_display(
+        &mut self,
+        options: &Value,
+    ) -> Result<blueice_ecma402::NumberTrailingZeroDisplay, RuntimeError> {
+        match self
+            .string_option(options, "trailingZeroDisplay", &["auto", "stripIfInteger"])?
+            .as_deref()
+        {
+            None | Some("auto") => Ok(blueice_ecma402::NumberTrailingZeroDisplay::Auto),
+            Some("stripIfInteger") => {
+                Ok(blueice_ecma402::NumberTrailingZeroDisplay::StripIfInteger)
+            }
+            Some(_) => unreachable!("string_option validates NumberFormat trailingZeroDisplay"),
+        }
+    }
+
+    fn number_significant_digits_option(
+        &mut self,
+        options: &Value,
+        name: &str,
+    ) -> Result<Option<u8>, RuntimeError> {
+        let value = self.get_property(options, &name.into())?;
+        if value == Value::Undefined {
+            return Ok(None);
+        }
+        let value = self.coerce_number(&value)?;
+        if !value.is_finite() || value.fract() != 0.0 || !(1.0..=21.0).contains(&value) {
+            return Err(RuntimeError::RangeError(format!("invalid {name} option")));
+        }
+        Ok(Some(value as u8))
+    }
+
+    fn number_rounding_priority(
+        &mut self,
+        options: &Value,
+    ) -> Result<Option<String>, RuntimeError> {
+        self.string_option(
+            options,
+            "roundingPriority",
+            &["auto", "morePrecision", "lessPrecision"],
+        )
+    }
+
+    fn validate_number_precision_options(
+        rounding_increment: u16,
+        rounding_priority: Option<&str>,
+        minimum_significant_digits: Option<u8>,
+        maximum_significant_digits: Option<u8>,
+    ) -> Result<(), RuntimeError> {
+        if rounding_increment != 1
+            && (matches!(rounding_priority, Some("morePrecision" | "lessPrecision"))
+                || minimum_significant_digits.is_some()
+                || maximum_significant_digits.is_some())
+        {
+            return Err(RuntimeError::TypeError(
+                "roundingIncrement is incompatible with significant-digit rounding".into(),
+            ));
+        }
+        if matches!(rounding_priority, Some("morePrecision" | "lessPrecision")) {
+            return Err(RuntimeError::RangeError(
+                "unsupported NumberFormat roundingPriority".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn number_sign_display(
+        &mut self,
+        options: &Value,
+    ) -> Result<blueice_ecma402::NumberSignDisplay, RuntimeError> {
+        match self
+            .string_option(
+                options,
+                "signDisplay",
+                &["auto", "never", "always", "exceptZero", "negative"],
+            )?
+            .as_deref()
+        {
+            None | Some("auto") => Ok(blueice_ecma402::NumberSignDisplay::Auto),
+            Some("never") => Ok(blueice_ecma402::NumberSignDisplay::Never),
+            Some("always") => Ok(blueice_ecma402::NumberSignDisplay::Always),
+            Some("exceptZero") => Ok(blueice_ecma402::NumberSignDisplay::ExceptZero),
+            Some("negative") => Ok(blueice_ecma402::NumberSignDisplay::Negative),
+            Some(_) => unreachable!("string_option validates NumberFormat signDisplay"),
+        }
+    }
+
     fn resolve_number_format(
         &mut self,
         locales: &Value,
         options: &Value,
     ) -> Result<Rc<intl::NumberFormat>, RuntimeError> {
         let locales = self.canonical_locales(locales)?;
-        let options = self.intl_options(options)?;
+        let options = self.number_format_constructor_options(options)?;
+        let locale_matcher = self.locale_matcher(&options)?;
+        self.number_numbering_system(&options)?;
+        let style = self.number_style(&options)?;
+        let currency = self.number_currency(&options, style)?;
+        let unit = self.number_unit(&options, style)?;
+        let unit_display = self.number_unit_display(&options)?;
+        let notation = self.number_notation(&options)?;
+        let minimum_integer_digits = self.number_minimum_integer_digits_option(&options)?;
+        let minimum_fraction_digits =
+            self.number_fraction_digits_option(&options, "minimumFractionDigits")?;
+        let maximum_fraction_digits =
+            self.number_fraction_digits_option(&options, "maximumFractionDigits")?;
+        let minimum_significant_digits =
+            self.number_significant_digits_option(&options, "minimumSignificantDigits")?;
+        let maximum_significant_digits =
+            self.number_significant_digits_option(&options, "maximumSignificantDigits")?;
+        let rounding_increment = self.number_rounding_increment(&options)?;
+        let rounding_mode = self.number_rounding_mode(&options)?;
+        let rounding_priority = self.number_rounding_priority(&options)?;
+        let trailing_zero_display = self.number_trailing_zero_display(&options)?;
+        let compact_display = self.number_compact_display(&options)?;
+        let use_grouping = self.number_grouping(&options, notation)?;
+        let sign_display = self.number_sign_display(&options)?;
+        Self::validate_number_precision_options(
+            rounding_increment,
+            rounding_priority.as_deref(),
+            minimum_significant_digits,
+            maximum_significant_digits,
+        )?;
         let options = blueice_ecma402::NumberFormatOptions {
-            locale_matcher: self.locale_matcher(&options)?,
-            use_grouping: self.number_grouping(&options)?,
-            minimum_fraction_digits: self
-                .number_fraction_digits_option(&options, "minimumFractionDigits")?,
-            maximum_fraction_digits: self
-                .number_fraction_digits_option(&options, "maximumFractionDigits")?,
+            locale_matcher,
+            use_grouping,
+            style,
+            notation,
+            compact_display,
+            unit,
+            unit_display,
+            minimum_integer_digits,
+            minimum_fraction_digits,
+            maximum_fraction_digits,
+            rounding_mode,
+            sign_display,
         };
-        blueice_ecma402::NumberFormat::try_new(&locales, options)
-            .map(Rc::new)
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+        blueice_ecma402::NumberFormat::try_new_with_currency(
+            &locales,
+            options,
+            rounding_increment,
+            minimum_significant_digits,
+            maximum_significant_digits,
+            trailing_zero_display,
+            currency,
+        )
+        .map(Rc::new)
+        .map_err(|error| RuntimeError::RangeError(error.to_string()))
     }
 
     pub(super) fn number_format_supported_locales(
@@ -1617,6 +2073,389 @@ impl Vm {
             self.define_data(result, key, value, true, true, true)?;
         }
         Ok(Value::Object(result))
+    }
+
+    fn duration_style(
+        &mut self,
+        options: &Value,
+    ) -> Result<blueice_ecma402::DurationStyle, RuntimeError> {
+        match self
+            .string_option(options, "style", &["long", "short", "narrow", "digital"])?
+            .as_deref()
+        {
+            None | Some("short") => Ok(blueice_ecma402::DurationStyle::Short),
+            Some("long") => Ok(blueice_ecma402::DurationStyle::Long),
+            Some("narrow") => Ok(blueice_ecma402::DurationStyle::Narrow),
+            Some("digital") => Ok(blueice_ecma402::DurationStyle::Digital),
+            Some(_) => unreachable!("string_option validates DurationFormat style"),
+        }
+    }
+
+    fn duration_unit_options(
+        &mut self,
+        options: &Value,
+        unit: blueice_ecma402::DurationUnit,
+    ) -> Result<blueice_ecma402::DurationUnitOptions, RuntimeError> {
+        let (name, allows_two_digit) = match unit {
+            blueice_ecma402::DurationUnit::Years => ("years", false),
+            blueice_ecma402::DurationUnit::Months => ("months", false),
+            blueice_ecma402::DurationUnit::Weeks => ("weeks", false),
+            blueice_ecma402::DurationUnit::Days => ("days", false),
+            blueice_ecma402::DurationUnit::Hours => ("hours", true),
+            blueice_ecma402::DurationUnit::Minutes => ("minutes", true),
+            blueice_ecma402::DurationUnit::Seconds => ("seconds", true),
+            blueice_ecma402::DurationUnit::Milliseconds => ("milliseconds", false),
+            blueice_ecma402::DurationUnit::Microseconds => ("microseconds", false),
+            blueice_ecma402::DurationUnit::Nanoseconds => ("nanoseconds", false),
+        };
+        let allowed = if allows_two_digit {
+            &["long", "short", "narrow", "numeric", "2-digit"][..]
+        } else if matches!(
+            unit,
+            blueice_ecma402::DurationUnit::Milliseconds
+                | blueice_ecma402::DurationUnit::Microseconds
+                | blueice_ecma402::DurationUnit::Nanoseconds
+        ) {
+            &["long", "short", "narrow", "numeric"][..]
+        } else {
+            &["long", "short", "narrow"][..]
+        };
+        let style = self
+            .string_option(options, name, allowed)?
+            .map(|style| match style.as_str() {
+                "long" => blueice_ecma402::DurationUnitStyle::Long,
+                "short" => blueice_ecma402::DurationUnitStyle::Short,
+                "narrow" => blueice_ecma402::DurationUnitStyle::Narrow,
+                "numeric" => blueice_ecma402::DurationUnitStyle::Numeric,
+                "2-digit" => blueice_ecma402::DurationUnitStyle::TwoDigit,
+                _ => unreachable!("string_option validates DurationFormat unit style"),
+            });
+        let display = self
+            .string_option(options, &format!("{name}Display"), &["auto", "always"])?
+            .map(|display| match display.as_str() {
+                "auto" => blueice_ecma402::DurationUnitDisplay::Auto,
+                "always" => blueice_ecma402::DurationUnitDisplay::Always,
+                _ => unreachable!("string_option validates DurationFormat display"),
+            });
+        Ok(blueice_ecma402::DurationUnitOptions { style, display })
+    }
+
+    fn duration_fractional_digits(&mut self, options: &Value) -> Result<Option<u8>, RuntimeError> {
+        let value = self.get_property(options, &"fractionalDigits".into())?;
+        if value == Value::Undefined {
+            return Ok(None);
+        }
+        let value = self.coerce_number(&value)?;
+        if !value.is_finite() || value.floor() != value || !(0.0..=9.0).contains(&value) {
+            return Err(RuntimeError::RangeError(
+                "invalid fractionalDigits option".into(),
+            ));
+        }
+        Ok(Some(value as u8))
+    }
+
+    fn resolve_duration_format(
+        &mut self,
+        locales: &Value,
+        options: &Value,
+    ) -> Result<Rc<intl::DurationFormat>, RuntimeError> {
+        let locales = self.canonical_locales(locales)?;
+        let options = self.intl_constructor_options(options)?;
+        let locale_matcher = self.locale_matcher(&options)?;
+        // The current host unit data exposes the Latin numbering system. Still
+        // perform the observable option lookup and validate its BCP-47 shape.
+        if let Some(numbering_system) = self.string_option(&options, "numberingSystem", &[])? {
+            if !(3..=8).contains(&numbering_system.len())
+                || !numbering_system
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric())
+            {
+                return Err(RuntimeError::RangeError(
+                    "invalid numberingSystem option".into(),
+                ));
+            }
+        }
+        let style = self.duration_style(&options)?;
+        let mut units = [blueice_ecma402::DurationUnitOptions::default(); 10];
+        for unit in blueice_ecma402::DurationUnit::ALL {
+            units[unit as usize] = self.duration_unit_options(&options, unit)?;
+        }
+        let options = blueice_ecma402::DurationFormatOptions {
+            locale_matcher,
+            style,
+            units,
+            fractional_digits: self.duration_fractional_digits(&options)?,
+        };
+        blueice_ecma402::DurationFormat::try_new(&locales, options)
+            .map(Rc::new)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+    }
+
+    pub(super) fn duration_format_supported_locales(
+        &mut self,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let locales = self.canonical_locales(native::argument(args, 0))?;
+        let options = self.intl_options(native::argument(args, 1))?;
+        let locales = blueice_ecma402::supported_duration_format_locales(
+            &locales,
+            self.locale_matcher(&options)?,
+        );
+        self.array_from(
+            locales
+                .iter()
+                .map(|locale| Value::String(locale.to_string().into()))
+                .collect(),
+        )
+    }
+
+    fn create_duration_format(
+        &mut self,
+        args: &[Value],
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        if !construct {
+            return Err(RuntimeError::TypeError(
+                "Intl.DurationFormat must be called with new".into(),
+            ));
+        }
+        self.intl_global()?;
+        let constructor = self.globals["%Intl.DurationFormat%"];
+        let default = self
+            .heap
+            .get(constructor, "prototype")?
+            .object_id()
+            .expect("Intl.DurationFormat.prototype is an object");
+        let prototype = self.constructor_prototype(default)?;
+        self.stack.push(Value::Object(prototype));
+        let data =
+            self.resolve_duration_format(native::argument(args, 0), native::argument(args, 1))?;
+        self.with_roots(|heap| heap.alloc_duration_format(data, prototype))
+            .map(Value::Object)
+    }
+
+    fn duration_format_data(
+        &self,
+        value: &Value,
+    ) -> Result<Rc<intl::DurationFormat>, RuntimeError> {
+        if let Value::Object(id) = value {
+            if let Some(data) = self.heap.duration_format(*id)? {
+                return Ok(data);
+            }
+        }
+        Err(RuntimeError::TypeError(
+            "receiver is not an Intl.DurationFormat".into(),
+        ))
+    }
+
+    fn duration_record(
+        &mut self,
+        value: &Value,
+    ) -> Result<blueice_ecma402::DurationRecord, RuntimeError> {
+        if matches!(value, Value::String(_)) {
+            // ISO 8601/Temporal duration string conversion is the next
+            // adapter slice. At this boundary, a string is a duration-like
+            // input whose malformed spelling must be a RangeError; other
+            // primitives are rejected by ToDurationRecord as TypeError.
+            return Err(RuntimeError::RangeError(
+                "invalid Intl.DurationFormat duration string".into(),
+            ));
+        }
+        if !matches!(value, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "Intl.DurationFormat duration must be an object".into(),
+            ));
+        }
+        let mut values = [0.0; 10];
+        let mut has_duration_field = false;
+        for (index, name) in [
+            "years",
+            "months",
+            "weeks",
+            "days",
+            "hours",
+            "minutes",
+            "seconds",
+            "milliseconds",
+            "microseconds",
+            "nanoseconds",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let field = self.get_property(value, &name.into())?;
+            if field != Value::Undefined {
+                has_duration_field = true;
+                values[index] = self.coerce_number(&field)?;
+            }
+        }
+        if !has_duration_field {
+            return Err(RuntimeError::TypeError(
+                "Intl.DurationFormat duration has no fields".into(),
+            ));
+        }
+        blueice_ecma402::DurationRecord::try_from_f64(
+            values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7],
+            values[8], values[9],
+        )
+        .map_err(|error| RuntimeError::RangeError(error.to_string()))
+    }
+
+    pub(super) fn duration_format_format(
+        &mut self,
+        receiver: &Value,
+        duration: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.duration_format_data(receiver)?;
+        let duration = self.duration_record(duration)?;
+        data.format(duration)
+            .map(|value| Value::String(value.into()))
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+    }
+
+    pub(super) fn duration_format_format_to_parts(
+        &mut self,
+        receiver: &Value,
+        duration: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.duration_format_data(receiver)?;
+        let duration = self.duration_record(duration)?;
+        let parts = data
+            .format_to_parts(duration)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        let prototype = self.object_prototype;
+        let base = self.stack.len();
+        let result = (|| {
+            for source in parts {
+                let part = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+                self.stack.push(Value::Object(part));
+                let kind = match source.kind {
+                    blueice_ecma402::DurationPartKind::Integer => "integer",
+                    blueice_ecma402::DurationPartKind::Decimal => "decimal",
+                    blueice_ecma402::DurationPartKind::Fraction => "fraction",
+                    blueice_ecma402::DurationPartKind::MinusSign => "minusSign",
+                    blueice_ecma402::DurationPartKind::Unit => "unit",
+                    blueice_ecma402::DurationPartKind::Literal => "literal",
+                };
+                self.define_data(part, "type", Value::String(kind.into()), true, true, true)?;
+                self.define_data(
+                    part,
+                    "value",
+                    Value::String(source.value.into()),
+                    true,
+                    true,
+                    true,
+                )?;
+                if let Some(unit) = source.unit {
+                    let unit = match unit {
+                        blueice_ecma402::DurationUnit::Years => "year",
+                        blueice_ecma402::DurationUnit::Months => "month",
+                        blueice_ecma402::DurationUnit::Weeks => "week",
+                        blueice_ecma402::DurationUnit::Days => "day",
+                        blueice_ecma402::DurationUnit::Hours => "hour",
+                        blueice_ecma402::DurationUnit::Minutes => "minute",
+                        blueice_ecma402::DurationUnit::Seconds => "second",
+                        blueice_ecma402::DurationUnit::Milliseconds => "millisecond",
+                        blueice_ecma402::DurationUnit::Microseconds => "microsecond",
+                        blueice_ecma402::DurationUnit::Nanoseconds => "nanosecond",
+                    };
+                    self.define_data(part, "unit", Value::String(unit.into()), true, true, true)?;
+                }
+            }
+            self.array_from(self.stack[base..].to_vec())
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    pub(super) fn duration_format_resolved_options(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.duration_format_data(receiver)?;
+        let resolved = data.resolved_options();
+        let prototype = self.object_prototype;
+        let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        self.stack.push(Value::Object(object));
+        self.define_data(
+            object,
+            "locale",
+            Value::String(resolved.locale.clone().into()),
+            true,
+            true,
+            true,
+        )?;
+        self.define_data(
+            object,
+            "numberingSystem",
+            Value::String(resolved.numbering_system.clone().into()),
+            true,
+            true,
+            true,
+        )?;
+        let style = match resolved.style {
+            blueice_ecma402::DurationStyle::Long => "long",
+            blueice_ecma402::DurationStyle::Short => "short",
+            blueice_ecma402::DurationStyle::Narrow => "narrow",
+            blueice_ecma402::DurationStyle::Digital => "digital",
+        };
+        self.define_data(
+            object,
+            "style",
+            Value::String(style.into()),
+            true,
+            true,
+            true,
+        )?;
+        for unit in blueice_ecma402::DurationUnit::ALL {
+            let (name, display_name) = match unit {
+                blueice_ecma402::DurationUnit::Years => ("years", "yearsDisplay"),
+                blueice_ecma402::DurationUnit::Months => ("months", "monthsDisplay"),
+                blueice_ecma402::DurationUnit::Weeks => ("weeks", "weeksDisplay"),
+                blueice_ecma402::DurationUnit::Days => ("days", "daysDisplay"),
+                blueice_ecma402::DurationUnit::Hours => ("hours", "hoursDisplay"),
+                blueice_ecma402::DurationUnit::Minutes => ("minutes", "minutesDisplay"),
+                blueice_ecma402::DurationUnit::Seconds => ("seconds", "secondsDisplay"),
+                blueice_ecma402::DurationUnit::Milliseconds => {
+                    ("milliseconds", "millisecondsDisplay")
+                }
+                blueice_ecma402::DurationUnit::Microseconds => {
+                    ("microseconds", "microsecondsDisplay")
+                }
+                blueice_ecma402::DurationUnit::Nanoseconds => ("nanoseconds", "nanosecondsDisplay"),
+            };
+            let style = match resolved.unit_style(unit) {
+                blueice_ecma402::DurationUnitStyle::Long => "long",
+                blueice_ecma402::DurationUnitStyle::Short => "short",
+                blueice_ecma402::DurationUnitStyle::Narrow => "narrow",
+                blueice_ecma402::DurationUnitStyle::Numeric => "numeric",
+                blueice_ecma402::DurationUnitStyle::TwoDigit => "2-digit",
+            };
+            let display = match resolved.unit_display(unit) {
+                blueice_ecma402::DurationUnitDisplay::Auto => "auto",
+                blueice_ecma402::DurationUnitDisplay::Always => "always",
+            };
+            self.define_data(object, name, Value::String(style.into()), true, true, true)?;
+            self.define_data(
+                object,
+                display_name,
+                Value::String(display.into()),
+                true,
+                true,
+                true,
+            )?;
+        }
+        if let Some(fractional_digits) = resolved.fractional_digits {
+            self.define_data(
+                object,
+                "fractionalDigits",
+                Value::Number(f64::from(fractional_digits)),
+                true,
+                true,
+                true,
+            )?;
+        }
+        Ok(Value::Object(object))
     }
 
     fn plural_rules_integer_option(
@@ -2289,6 +3128,57 @@ impl Vm {
         Ok(Value::Object(function))
     }
 
+    pub(super) fn number_format_format_to_parts(
+        &mut self,
+        receiver: &Value,
+        value: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.number_format_data(receiver)?;
+        let value = self.coerce_number(value)?;
+        self.number_format_parts_to_value(data.format_to_parts_f64(value))
+    }
+
+    fn number_format_parts_to_value(
+        &mut self,
+        parts: Result<Vec<blueice_ecma402::NumberFormatPart>, blueice_ecma402::NumberFormatError>,
+    ) -> Result<Value, RuntimeError> {
+        let parts = parts.map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        let prototype = self.object_prototype;
+        let base = self.stack.len();
+        let result = (|| {
+            for source in parts {
+                let part = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+                self.stack.push(Value::Object(part));
+                let kind = match source.kind {
+                    blueice_ecma402::NumberFormatPartKind::MinusSign => "minusSign",
+                    blueice_ecma402::NumberFormatPartKind::PlusSign => "plusSign",
+                    blueice_ecma402::NumberFormatPartKind::Integer => "integer",
+                    blueice_ecma402::NumberFormatPartKind::Group => "group",
+                    blueice_ecma402::NumberFormatPartKind::Decimal => "decimal",
+                    blueice_ecma402::NumberFormatPartKind::Fraction => "fraction",
+                    blueice_ecma402::NumberFormatPartKind::Literal => "literal",
+                    blueice_ecma402::NumberFormatPartKind::Unit => "unit",
+                    blueice_ecma402::NumberFormatPartKind::Currency => "currency",
+                    blueice_ecma402::NumberFormatPartKind::PercentSign => "percentSign",
+                    blueice_ecma402::NumberFormatPartKind::Nan => "nan",
+                    blueice_ecma402::NumberFormatPartKind::Infinity => "infinity",
+                };
+                self.define_data(part, "type", Value::String(kind.into()), true, true, true)?;
+                self.define_data(
+                    part,
+                    "value",
+                    Value::String(source.value.into()),
+                    true,
+                    true,
+                    true,
+                )?;
+            }
+            self.array_from(self.stack[base..].to_vec())
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
     pub(super) fn number_format_resolved_options(
         &mut self,
         receiver: &Value,
@@ -2298,34 +3188,175 @@ impl Vm {
         let prototype = self.object_prototype;
         let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         self.stack.push(Value::Object(result));
-        for (key, value) in [
+        let mut properties = vec![
             ("locale", Value::String(resolved.locale.as_str().into())),
             (
                 "numberingSystem",
                 Value::String(resolved.numbering_system.as_str().into()),
             ),
-            ("style", Value::String("decimal".into())),
+            (
+                "style",
+                Value::String(
+                    match resolved.style {
+                        blueice_ecma402::NumberFormatStyle::Decimal => "decimal",
+                        blueice_ecma402::NumberFormatStyle::Percent => "percent",
+                        blueice_ecma402::NumberFormatStyle::Currency => "currency",
+                        blueice_ecma402::NumberFormatStyle::Unit => "unit",
+                    }
+                    .into(),
+                ),
+            ),
+        ];
+        if let Some(unit) = resolved.unit {
+            properties.push(("unit", Value::String(unit.as_str().into())));
+            properties.push((
+                "unitDisplay",
+                Value::String(
+                    match resolved.unit_display {
+                        blueice_ecma402::NumberUnitDisplay::Short => "short",
+                        blueice_ecma402::NumberUnitDisplay::Narrow => "narrow",
+                        blueice_ecma402::NumberUnitDisplay::Long => "long",
+                    }
+                    .into(),
+                ),
+            ));
+        }
+        if let Some(currency) = data.currency() {
+            properties.push(("currency", Value::String(currency.code.clone().into())));
+            properties.push((
+                "currencyDisplay",
+                Value::String(
+                    match currency.display {
+                        blueice_ecma402::NumberCurrencyDisplay::Symbol => "symbol",
+                        blueice_ecma402::NumberCurrencyDisplay::Code => "code",
+                        blueice_ecma402::NumberCurrencyDisplay::Name => "name",
+                        blueice_ecma402::NumberCurrencyDisplay::NarrowSymbol => "narrowSymbol",
+                    }
+                    .into(),
+                ),
+            ));
+            properties.push((
+                "currencySign",
+                Value::String(
+                    match currency.sign {
+                        blueice_ecma402::NumberCurrencySign::Standard => "standard",
+                        blueice_ecma402::NumberCurrencySign::Accounting => "accounting",
+                    }
+                    .into(),
+                ),
+            ));
+        }
+        properties.push((
+            "notation",
+            Value::String(
+                match resolved.notation {
+                    blueice_ecma402::NumberNotation::Standard => "standard",
+                    blueice_ecma402::NumberNotation::Scientific => "scientific",
+                    blueice_ecma402::NumberNotation::Engineering => "engineering",
+                    blueice_ecma402::NumberNotation::Compact => "compact",
+                }
+                .into(),
+            ),
+        ));
+        if resolved.notation == blueice_ecma402::NumberNotation::Compact {
+            properties.push((
+                "compactDisplay",
+                Value::String(
+                    match data.compact_display() {
+                        blueice_ecma402::NumberCompactDisplay::Short => "short",
+                        blueice_ecma402::NumberCompactDisplay::Long => "long",
+                    }
+                    .into(),
+                ),
+            ));
+        }
+        properties.extend([
             (
                 "useGrouping",
+                match resolved.use_grouping {
+                    blueice_ecma402::NumberGrouping::Auto => Value::String("auto".into()),
+                    blueice_ecma402::NumberGrouping::Never => Value::Bool(false),
+                    blueice_ecma402::NumberGrouping::Always => Value::String("always".into()),
+                    blueice_ecma402::NumberGrouping::Min2 => Value::String("min2".into()),
+                },
+            ),
+            (
+                "minimumIntegerDigits",
+                Value::Number(resolved.minimum_integer_digits.into()),
+            ),
+        ]);
+        if let Some((minimum, maximum)) = data.significant_digits() {
+            properties.extend([
+                (
+                    "minimumSignificantDigits",
+                    Value::Number(f64::from(minimum)),
+                ),
+                (
+                    "maximumSignificantDigits",
+                    Value::Number(f64::from(maximum)),
+                ),
+            ]);
+        } else {
+            properties.extend([
+                (
+                    "minimumFractionDigits",
+                    Value::Number(resolved.minimum_fraction_digits.into()),
+                ),
+                (
+                    "maximumFractionDigits",
+                    Value::Number(resolved.maximum_fraction_digits.into()),
+                ),
+            ]);
+        }
+        properties.extend([
+            (
+                "roundingMode",
                 Value::String(
-                    match resolved.use_grouping {
-                        blueice_ecma402::NumberGrouping::Auto => "auto",
-                        blueice_ecma402::NumberGrouping::Never => "false",
-                        blueice_ecma402::NumberGrouping::Always => "always",
-                        blueice_ecma402::NumberGrouping::Min2 => "min2",
+                    match resolved.rounding_mode {
+                        blueice_ecma402::NumberRoundingMode::HalfExpand => "halfExpand",
+                        blueice_ecma402::NumberRoundingMode::Floor => "floor",
+                        blueice_ecma402::NumberRoundingMode::Ceil => "ceil",
+                        blueice_ecma402::NumberRoundingMode::Expand => "expand",
+                        blueice_ecma402::NumberRoundingMode::Trunc => "trunc",
+                        blueice_ecma402::NumberRoundingMode::HalfCeil => "halfCeil",
+                        blueice_ecma402::NumberRoundingMode::HalfFloor => "halfFloor",
+                        blueice_ecma402::NumberRoundingMode::HalfTrunc => "halfTrunc",
+                        blueice_ecma402::NumberRoundingMode::HalfEven => "halfEven",
                     }
                     .into(),
                 ),
             ),
             (
-                "minimumFractionDigits",
-                Value::Number(resolved.minimum_fraction_digits.into()),
+                "roundingIncrement",
+                Value::Number(f64::from(data.rounding_increment())),
             ),
             (
-                "maximumFractionDigits",
-                Value::Number(resolved.maximum_fraction_digits.into()),
+                "trailingZeroDisplay",
+                Value::String(
+                    match data.trailing_zero_display() {
+                        blueice_ecma402::NumberTrailingZeroDisplay::Auto => "auto",
+                        blueice_ecma402::NumberTrailingZeroDisplay::StripIfInteger => {
+                            "stripIfInteger"
+                        }
+                    }
+                    .into(),
+                ),
             ),
-        ] {
+            (
+                "signDisplay",
+                Value::String(
+                    match resolved.sign_display {
+                        blueice_ecma402::NumberSignDisplay::Auto => "auto",
+                        blueice_ecma402::NumberSignDisplay::Never => "never",
+                        blueice_ecma402::NumberSignDisplay::Always => "always",
+                        blueice_ecma402::NumberSignDisplay::ExceptZero => "exceptZero",
+                        blueice_ecma402::NumberSignDisplay::Negative => "negative",
+                    }
+                    .into(),
+                ),
+            ),
+        ]);
+        for (key, value) in properties {
             self.define_data(result, key, value, true, true, true)?;
         }
         Ok(Value::Object(result))
@@ -2758,68 +3789,28 @@ impl Vm {
         receiver: &Value,
         operation: native::LocaleInfo,
     ) -> Result<Value, RuntimeError> {
-        let locale = self.locale_data(receiver)?.locale.locale().clone();
+        let locale = self.locale_data(receiver)?.locale.clone();
+        let information = blueice_ecma402::locale_information(&locale);
         match operation {
-            native::LocaleInfo::Calendars => {
-                let calendar = intl::keyword(&locale, "ca").unwrap_or_else(|| "gregory".into());
-                self.locale_info_array(vec![calendar])
-            }
-            native::LocaleInfo::Collations => {
-                let collation = intl::keyword(&locale, "co")
-                    .filter(|value| value != "standard" && value != "search")
-                    .unwrap_or_else(|| "emoji".into());
-                self.locale_info_array(vec![collation])
-            }
-            native::LocaleInfo::HourCycles => {
-                let hour_cycle = intl::keyword(&locale, "hc").unwrap_or_else(|| {
-                    if locale.id.language.as_str() == "en" {
-                        "h12".into()
-                    } else {
-                        "h23".into()
-                    }
-                });
-                self.locale_info_array(vec![hour_cycle])
-            }
+            native::LocaleInfo::Calendars => self.locale_info_array(information.calendars),
+            native::LocaleInfo::Collations => self.locale_info_array(information.collations),
+            native::LocaleInfo::HourCycles => self.locale_info_array(information.hour_cycles),
             native::LocaleInfo::NumberingSystems => {
-                let numbering_system = intl::keyword(&locale, "nu").unwrap_or_else(|| {
-                    if locale.id.language.as_str() == "ar" {
-                        "arab".into()
-                    } else {
-                        "latn".into()
-                    }
-                });
-                self.locale_info_array(vec![numbering_system])
+                self.locale_info_array(information.numbering_systems)
             }
             native::LocaleInfo::TextInfo => {
-                let script = locale.id.script.map(|script| script.to_string());
-                let rtl = script.as_deref().is_some_and(|script| {
-                    matches!(
-                        script,
-                        "Arab" | "Hebr" | "Syrc" | "Thaa" | "Nkoo" | "Adlm" | "Rohg"
-                    )
-                }) || matches!(
-                    locale.id.language.as_str(),
-                    "ar" | "arc"
-                        | "ckb"
-                        | "dv"
-                        | "fa"
-                        | "he"
-                        | "ks"
-                        | "ku"
-                        | "nqo"
-                        | "ps"
-                        | "sd"
-                        | "syr"
-                        | "ug"
-                        | "ur"
-                        | "yi"
-                );
                 let prototype = self.object_prototype;
                 let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
                 self.define_data(
                     result,
                     "direction",
-                    Value::String(if rtl { "rtl" } else { "ltr" }.into()),
+                    Value::String(
+                        match information.text_direction {
+                            blueice_ecma402::TextDirection::LeftToRight => "ltr",
+                            blueice_ecma402::TextDirection::RightToLeft => "rtl",
+                        }
+                        .into(),
+                    ),
                     true,
                     true,
                     true,
@@ -2827,59 +3818,31 @@ impl Vm {
                 Ok(Value::Object(result))
             }
             native::LocaleInfo::TimeZones => {
-                let Some(region) = locale.id.region else {
+                let Some(time_zones) = information.time_zones else {
                     return Ok(Value::Undefined);
                 };
-                let zones = match region.as_str() {
-                    "US" => vec![
-                        "America/Adak",
-                        "America/Anchorage",
-                        "America/Boise",
-                        "America/Chicago",
-                        "America/Denver",
-                        "America/Detroit",
-                        "America/Indiana/Indianapolis",
-                        "America/Los_Angeles",
-                        "America/New_York",
-                        "Pacific/Honolulu",
-                    ],
-                    "GB" => vec!["Europe/London"],
-                    "JP" => vec!["Asia/Tokyo"],
-                    "TW" => vec!["Asia/Taipei"],
-                    _ => vec!["Etc/UTC"],
-                };
-                self.locale_info_array(zones.into_iter().map(String::from).collect())
+                self.locale_info_array(time_zones)
             }
             native::LocaleInfo::WeekInfo => {
-                let first_day =
-                    match intl::keyword(&locale, "fw").as_deref() {
-                        Some("mon") => 1.0,
-                        Some("tue") => 2.0,
-                        Some("wed") => 3.0,
-                        Some("thu") => 4.0,
-                        Some("fri") => 5.0,
-                        Some("sat") => 6.0,
-                        Some("sun") => 7.0,
-                        _ if locale.id.region.as_ref().is_some_and(|region| {
-                            matches!(region.as_str(), "US" | "CA" | "JP")
-                        }) =>
-                        {
-                            7.0
-                        }
-                        _ => 1.0,
-                    };
                 let prototype = self.object_prototype;
                 let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
                 self.stack.push(Value::Object(result));
                 self.define_data(
                     result,
                     "firstDay",
-                    Value::Number(first_day),
+                    Value::Number(f64::from(information.week_info.first_day)),
                     true,
                     true,
                     true,
                 )?;
-                let weekend = self.array_from(vec![Value::Number(6.0), Value::Number(7.0)])?;
+                let weekend = self.array_from(
+                    information
+                        .week_info
+                        .weekend
+                        .into_iter()
+                        .map(|day| Value::Number(f64::from(day)))
+                        .collect(),
+                )?;
                 self.define_data(result, "weekend", weekend, true, true, true)?;
                 self.stack.pop();
                 Ok(Value::Object(result))

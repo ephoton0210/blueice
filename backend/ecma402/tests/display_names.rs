@@ -233,10 +233,6 @@ fn validates_grammar_fallback_and_locale_negotiation_at_the_public_boundary() {
         );
     }
     assert_eq!(
-        DisplayNamesError::DataUnavailable.to_string(),
-        "display-name data is unavailable"
-    );
-    assert_eq!(
         DisplayNamesError::InvalidCode.to_string(),
         "invalid display-name code"
     );

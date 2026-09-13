@@ -229,6 +229,14 @@ fn covers_relative_time_locale_fallback_number_parts_and_errors() {
         fallback.format(f64::INFINITY, RelativeTimeUnit::Second),
         Err(RelativeTimeFormatError::NonFiniteNumber)
     );
+    assert_eq!(
+        RelativeTimeFormatError::DataUnavailable.to_string(),
+        "relative-time data is unavailable"
+    );
+    assert_eq!(
+        RelativeTimeFormatError::NonFiniteNumber.to_string(),
+        "relative time must be finite"
+    );
 
     let retained_extension = RelativeTimeFormat::try_new(
         &[canonicalize("en-u-nu-arab").unwrap()],

@@ -62,6 +62,12 @@ UNICODE_IDENTIFIER_TIMEOUT = 30
 # per-case wall allowance instead of weakening the deadline for all tests.
 TYPED_ARRAY_HARNESS_TIMEOUT = 60
 TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET = 10_000_000
+# `testIntl.js` runs every asserted result through a finite locale and
+# numbering-system matrix. Debug interpreter dispatch exceeds the ordinary
+# two-second process deadline, so grant that upstream harness a bounded wall
+# allowance without weakening unrelated Intl or ECMAScript tests.
+INTL_MATRIX_HARNESS = "testIntl.js"
+INTL_MATRIX_HARNESS_TIMEOUT = 30
 # ResizableArrayBuffer helper fixtures exercise the same operation across
 # fixed, offset, and length-tracking views for every numeric element type.
 # Keep their larger but finite allowance feature-scoped.
@@ -479,6 +485,8 @@ def instruction_budget(data, default, relative=None, source=""):
 
 def case_timeout(data, default, relative=None, source=""):
     """Return a bounded, metadata-derived wall deadline for a Test262 mode."""
+    if INTL_MATRIX_HARNESS in data.get("includes", []):
+        return max(default, INTL_MATRIX_HARNESS_TIMEOUT)
     if relative in URI_EXHAUSTIVE_FIXTURES:
         return max(default, URI_EXHAUSTIVE_TIMEOUT)
     if is_uri_global_fixture(relative):

@@ -565,6 +565,7 @@ fn debug_number_format_report(
             use_grouping: debug_number_grouping(params.use_grouping.as_deref())?,
             minimum_fraction_digits: params.minimum_fraction_digits,
             maximum_fraction_digits: params.maximum_fraction_digits,
+            ..Default::default()
         },
     )
     .map_err(|error| format!("could not construct NumberFormat: {error}"))?;

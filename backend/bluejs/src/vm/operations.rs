@@ -217,12 +217,46 @@ impl Vm {
         Ok(())
     }
 
-    pub(super) fn numeric(&mut self, operation: fn(f64, f64) -> f64) -> Result<(), RuntimeError> {
-        self.binary(|vm, a, b| {
-            Ok(Value::Number(operation(
-                vm.coerce_number(&a)?,
-                vm.coerce_number(&b)?,
-            )))
+    /// Applies the arithmetic operators shared by Number and BigInt.
+    ///
+    /// Arithmetic is deliberately separate from bitwise operations because
+    /// Number division follows IEEE-754 while BigInt division truncates toward
+    /// zero and must reject a zero divisor. Both operands still pass through
+    /// `ToNumeric`, so object coercion remains observable before mixed-type
+    /// rejection.
+    pub(super) fn arithmetic(&mut self, operation: Opcode) -> Result<(), RuntimeError> {
+        self.binary(|vm, left, right| {
+            let left = vm.coerce_numeric(&left)?;
+            let right = vm.coerce_numeric(&right)?;
+            match (left, right) {
+                (primitive::Numeric::Number(left), primitive::Numeric::Number(right)) => {
+                    let value = match operation {
+                        Opcode::Subtract => left - right,
+                        Opcode::Multiply => left * right,
+                        Opcode::Divide => left / right,
+                        Opcode::Remainder => left % right,
+                        _ => unreachable!("arithmetic caller selects an arithmetic opcode"),
+                    };
+                    Ok(Value::Number(value))
+                }
+                (primitive::Numeric::BigInt(left), primitive::Numeric::BigInt(right)) => {
+                    if matches!(operation, Opcode::Divide | Opcode::Remainder) && right == 0.into()
+                    {
+                        return Err(RuntimeError::RangeError("BigInt division by zero".into()));
+                    }
+                    let value = match operation {
+                        Opcode::Subtract => left - right,
+                        Opcode::Multiply => left * right,
+                        Opcode::Divide => left / right,
+                        Opcode::Remainder => left % right,
+                        _ => unreachable!("arithmetic caller selects an arithmetic opcode"),
+                    };
+                    Ok(Value::BigInt(value))
+                }
+                _ => Err(RuntimeError::TypeError(
+                    "cannot mix BigInt and other types in an arithmetic operation".into(),
+                )),
+            }
         })
     }
 
@@ -484,9 +518,19 @@ impl Vm {
             a.push_str(&b);
             Ok(Value::String(a))
         } else {
-            Ok(Value::Number(
-                primitive::number(&left)? + primitive::number(&right)?,
-            ))
+            let left = primitive::numeric(&left)?;
+            let right = primitive::numeric(&right)?;
+            match (left, right) {
+                (primitive::Numeric::Number(left), primitive::Numeric::Number(right)) => {
+                    Ok(Value::Number(left + right))
+                }
+                (primitive::Numeric::BigInt(left), primitive::Numeric::BigInt(right)) => {
+                    Ok(Value::BigInt(left + right))
+                }
+                _ => Err(RuntimeError::TypeError(
+                    "cannot mix BigInt and other types in an addition operation".into(),
+                )),
+            }
         }
     }
 }

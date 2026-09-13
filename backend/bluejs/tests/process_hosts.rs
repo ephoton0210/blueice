@@ -297,10 +297,34 @@ fn adapter_executes_number_format_through_the_json_lines_interface() {
 }
 
 #[test]
+fn adapter_executes_supported_values_through_the_json_lines_interface() {
+    let replies = adapter(
+        &[json!({
+            "source": "assert.sameValue(Intl.supportedValuesOf('numberingSystem').join(','),'latn');assert.throws(RangeError,function(){Intl.supportedValuesOf('currency')})",
+            "mode": "sloppy",
+        })],
+        None,
+    );
+    assert_eq!(replies, vec![json!({"kind":"ok", "phase":"runtime"})]);
+}
+
+#[test]
 fn adapter_executes_list_format_through_the_json_lines_interface() {
     let replies = adapter(
         &[json!({
             "source": "let f=new Intl.ListFormat('es',{type:'conjunction',style:'long'});assert.sameValue(f.format(['España','Suiza','Italia']),'España, Suiza e Italia');let p=f.formatToParts(['A','B']);assert.sameValue(p.length,3);assert.sameValue(p[0].type,'element');assert.sameValue(p[1].type,'literal');assert.sameValue(Intl.ListFormat.supportedLocalesOf(['zz','es']).join(','),'es')",
+            "mode": "sloppy",
+        })],
+        None,
+    );
+    assert_eq!(replies, vec![json!({"kind":"ok", "phase":"runtime"})]);
+}
+
+#[test]
+fn adapter_executes_duration_format_through_the_json_lines_interface() {
+    let replies = adapter(
+        &[json!({
+            "source": "let f=new Intl.DurationFormat('en',{style:'digital',fractionalDigits:3});assert.sameValue(f.format({hours:1,minutes:2,seconds:3,milliseconds:4}),'1:02:03.004');let p=f.formatToParts({hours:1,minutes:2,seconds:3,milliseconds:4});assert.sameValue(p[0].type,'integer');assert.sameValue(p[0].unit,'hour');assert.sameValue(p[5].type,'decimal');assert.sameValue(p[6].type,'fraction');assert.sameValue(f.resolvedOptions().style,'digital');assert.sameValue(Intl.DurationFormat.supportedLocalesOf(['zz','en']).join(','),'en')",
             "mode": "sloppy",
         })],
         None,

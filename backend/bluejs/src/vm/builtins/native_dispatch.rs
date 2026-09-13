@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use num_traits::FromPrimitive;
 
 fn days_from_civil(year: i128, month: i128, day: i128) -> i128 {
     // Howard Hinnant's proleptic-Gregorian civil-date conversion, with the
@@ -889,6 +890,7 @@ impl Vm {
                         .collect(),
                 )
             }
+            NativeFunction::SupportedValuesOf => self.supported_values_of(first),
             NativeFunction::SupportedLocales => self.supported_locales(&args),
             NativeFunction::CollatorCompareGetter => self.collator_compare_getter(&receiver),
             NativeFunction::CollatorCompare => {
@@ -905,6 +907,16 @@ impl Vm {
             NativeFunction::DisplayNamesResolvedOptions => {
                 self.display_names_resolved_options(&receiver)
             }
+            NativeFunction::DurationFormatSupportedLocales => {
+                self.duration_format_supported_locales(&args)
+            }
+            NativeFunction::DurationFormatFormat => self.duration_format_format(&receiver, first),
+            NativeFunction::DurationFormatFormatToParts => {
+                self.duration_format_format_to_parts(&receiver, first)
+            }
+            NativeFunction::DurationFormatResolvedOptions => {
+                self.duration_format_resolved_options(&receiver)
+            }
             NativeFunction::NumberFormatSupportedLocales => {
                 self.number_format_supported_locales(&args)
             }
@@ -916,6 +928,9 @@ impl Vm {
                     .format_f64(value)
                     .map(|formatted| Value::String(formatted.into()))
                     .map_err(|error| RuntimeError::RangeError(error.to_string()))
+            }
+            NativeFunction::NumberFormatFormatToParts => {
+                self.number_format_format_to_parts(&receiver, first)
             }
             NativeFunction::NumberFormatResolvedOptions => {
                 self.number_format_resolved_options(&receiver)
@@ -1418,10 +1433,14 @@ impl Vm {
                 match value {
                     Value::BigInt(value) => Ok(Value::BigInt(value)),
                     Value::Number(value) if value.is_finite() && value.fract() == 0.0 => {
-                        // Every integral IEEE-754 Number is within i64's
-                        // magnitude range, including the safe-integer range
-                        // used by TypedArray conversion fixtures.
-                        Ok(Value::BigInt(BigInt::from(value as i64)))
+                        // An integral IEEE-754 Number can be much larger
+                        // than i64 (up to roughly 2^1024). Convert its exact
+                        // represented integer, rather than saturating a
+                        // narrowing Rust cast before constructing the BigInt.
+                        Ok(Value::BigInt(
+                            BigInt::from_f64(value)
+                                .expect("a finite integral Number converts to a BigInt"),
+                        ))
                     }
                     Value::Number(_) => Err(RuntimeError::RangeError(
                         "BigInt conversion requires an integral Number".into(),

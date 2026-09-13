@@ -6,7 +6,7 @@
 
 use crate::{JsString, RuntimeError, Value};
 use num_bigint::BigInt;
-use num_traits::Zero;
+use num_traits::{FromPrimitive, Zero};
 use std::cmp::Ordering;
 
 /// The ECMAScript Numeric union, kept distinct from `Number` conversion so
@@ -185,9 +185,42 @@ pub(crate) fn compare(left: &Value, right: &Value) -> Result<Option<Ordering>, R
         // these through ToNumber incorrectly throws before a BigInt typed
         // array comparator can return its ordinary Number ordering result.
         Ok(Some(a.cmp(b)))
+    } else if let (Value::BigInt(bigint), Value::Number(number)) = (left, right) {
+        compare_bigint_number(bigint, *number)
+    } else if let (Value::Number(number), Value::BigInt(bigint)) = (left, right) {
+        compare_bigint_number(bigint, *number).map(|ordering| ordering.map(Ordering::reverse))
     } else {
         Ok(number(left)?.partial_cmp(&number(right)?))
     }
+}
+
+/// Implements abstract relational comparison between an arbitrary-precision
+/// integer and an IEEE-754 Number without first losing the integer through a
+/// Number coercion. The truncated finite Number is exactly representable as a
+/// `BigInt`; when it has a fractional remainder, an equal integer lies below a
+/// positive Number and above a negative Number.
+fn compare_bigint_number(bigint: &BigInt, number: f64) -> Result<Option<Ordering>, RuntimeError> {
+    if number.is_nan() {
+        return Ok(None);
+    }
+    if number == f64::INFINITY {
+        return Ok(Some(Ordering::Less));
+    }
+    if number == f64::NEG_INFINITY {
+        return Ok(Some(Ordering::Greater));
+    }
+    let integer = BigInt::from_f64(number.trunc()).ok_or_else(|| {
+        RuntimeError::RangeError("cannot compare a BigInt with this Number".into())
+    })?;
+    let ordering = bigint.cmp(&integer);
+    if ordering == Ordering::Equal && number.fract() != 0.0 {
+        return Ok(Some(if number.is_sign_positive() {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }));
+    }
+    Ok(Some(ordering))
 }
 
 pub(crate) fn whitespace(c: char) -> bool {
