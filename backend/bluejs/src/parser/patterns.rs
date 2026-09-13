@@ -8,6 +8,25 @@ impl Parser {
     pub(super) fn parse_binding_pattern(&mut self) -> Result<Pattern, ParseError> {
         match self.peek().clone() {
             Token::Identifier(name) => {
+                // These are ReservedWords which the tokenizer preserves as
+                // IdentifierName tokens because they remain valid property
+                // names. A BindingIdentifier may not use them, escaped or
+                // otherwise.
+                if matches!(
+                    name.as_str(),
+                    "class"
+                        | "debugger"
+                        | "enum"
+                        | "export"
+                        | "extends"
+                        | "import"
+                        | "super"
+                        | "with"
+                ) {
+                    return Err(
+                        self.syntax_error("a reserved word cannot be used as a binding identifier")
+                    );
+                }
                 if name == "await" && (self.async_depth != 0 || self.module_await) {
                     let detail = if self.current_identifier_escaped() {
                         "the await keyword cannot contain an escape"
@@ -29,7 +48,7 @@ impl Parser {
             }
             Token::Punct(Punct::LBracket) => self.parse_array_pattern(),
             Token::Punct(Punct::LBrace) => self.parse_object_pattern(),
-            _ => Err(self.error("expected a binding target (identifier, '[', or '{')")),
+            _ => Err(self.syntax_error("expected a binding target (identifier, '[', or '{')")),
         }
     }
 

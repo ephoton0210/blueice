@@ -2077,3 +2077,50 @@ join uses unique `(path, mode)` keys, yielding exactly **908 / 908 pass**.
 The focused Rust regressions and every BlueJS test target reached by the
 workspace rerun passed; the existing Node-dependent differential test remains
 explicitly ignored.
+
+## P1/P2 continuation: grammar, module namespace, Intl, and Iterator helpers
+
+The tokenizer now uses ICU's Unicode `ID_Start` and `ID_Continue` properties,
+with ECMAScript's post-start ZWNJ/ZWJ allowance. Binding-pattern parsing keeps
+identifier-name property keys valid while classifying reserved binding names
+and a missing binding target as established parse `SyntaxError`s. The adapter
+regression distinguishes that known grammar failure from truly unsupported
+syntax. The rebuilt `language/identifiers` inventory is **535 / 535 pass** at
+`/private/tmp/bluejs-p11-identifiers-final`.
+
+Module Namespace Exotic `[[Set]]` now always returns false, including a
+same-value assignment to an existing export and symbol-key writes; strict
+assignment consequently throws. The public regression covers direct,
+renamed, indirect, default, `Symbol.toStringTag`, and arbitrary-symbol keys.
+The current combined P1/P2 rerun records `language/module-code` at **599 / 602
+pass**. Its three remaining modes are the explicit top-level-await dependency
+ordering/resource cases (`fulfillment-order`, `rejection-order`, and
+`unobservable-global-async-evaluation-count-reset`), not namespace writes.
+
+ECMA-402 canonicalization now maps the observed Unicode extension aliases
+(`ks`, `ms`, `tz`) and removes canonical boolean `yes` values for the relevant
+keys. The existing Collator/Locale/getCanonicalLocales acceptance filter is
+**492 / 510 pass**; its 18 remaining modes require cross-realm Collator
+construction or additional non-IANA/transformed locale canonicalization.
+The combined evidence is at
+`/private/tmp/bluejs-p1-grammar-module-intl-final`.
+
+The standard-library iterator entry point is now exposed as the abstract
+`Iterator` constructor, sharing the existing `%Iterator.prototype%` with
+Array, String, RegExp, Map/Set, and generator iterators. `Iterator.from`
+stores its source iterator and cached `next` method as traced, non-observable
+heap slots; the wrapper supplies `next`/`return`. The base prototype provides
+`@@iterator`, `@@dispose`, the `@@toStringTag` accessor pair, and terminal
+`toArray`, `forEach`, `every`, `some`, `find`, and `reduce` helpers. The
+helpers reuse the engine's existing `IteratorStep` and `IteratorClose`
+contracts for result validation and early exit cleanup. The partial
+`built-ins/Iterator` run rose from **24 / 1,028** to **332 / 1,028 pass** at
+`/private/tmp/bluejs-p21-iterator-terminals-2`.
+
+The remaining 696 Iterator modes are principally lazy helper state machines
+(`map`, `filter`, `take`, `drop`, `flatMap`) and multi-input `concat`/`zip`/
+`zipKeyed`; they remain explicitly open rather than being represented by an
+eager terminal-helper approximation. Final verification for this continuation
+was `cargo test -p blueice-bluejs --quiet --no-fail-fast`: all enabled BlueJS
+tests passed, with only the pre-existing Node-dependent differential test
+explicitly ignored.

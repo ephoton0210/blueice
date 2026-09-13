@@ -43,14 +43,24 @@ impl Vm {
                 0,
                 NativeFunction::IteratorSelf,
             )?;
-            self.define_data(
+            self.install_symbol_native(
                 prototype,
-                JsSymbol::well_known("toStringTag"),
-                Value::String("Iterator".into()),
-                false,
-                false,
-                true,
-            )
+                function_prototype,
+                "dispose",
+                0,
+                NativeFunction::IteratorDispose,
+            )?;
+            for (name, length, native) in [
+                ("toArray", 0, NativeFunction::IteratorToArray),
+                ("forEach", 1, NativeFunction::IteratorForEach),
+                ("every", 1, NativeFunction::IteratorEvery),
+                ("some", 1, NativeFunction::IteratorSome),
+                ("find", 1, NativeFunction::IteratorFind),
+                ("reduce", 1, NativeFunction::IteratorReduce),
+            ] {
+                self.install_native(prototype, function_prototype, name, length, native)?;
+            }
+            self.install_iterator_to_string_tag_accessor(prototype, function_prototype)
         })();
         if let Err(error) = result {
             self.heap.unroot(root)?;
@@ -58,6 +68,435 @@ impl Vm {
         }
         self.iterator_base = Some(prototype);
         Ok(prototype)
+    }
+
+    fn install_iterator_to_string_tag_accessor(
+        &mut self,
+        owner: ObjectId,
+        function_prototype: ObjectId,
+    ) -> Result<(), RuntimeError> {
+        let base = self.stack.len();
+        let result = (|| {
+            let getter = self.with_roots(|heap| {
+                heap.alloc_native_function(
+                    NativeFunction::IteratorToStringTagGetter,
+                    "get [Symbol.toStringTag]",
+                    function_prototype,
+                )
+            })?;
+            self.stack.push(Value::Object(getter));
+            self.define_data(
+                getter,
+                "name",
+                Value::String("get [Symbol.toStringTag]".into()),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(getter, "length", Value::Number(0.0), false, false, true)?;
+
+            let setter = self.with_roots(|heap| {
+                heap.alloc_native_function(
+                    NativeFunction::IteratorToStringTagSetter,
+                    "set [Symbol.toStringTag]",
+                    function_prototype,
+                )
+            })?;
+            self.stack.push(Value::Object(setter));
+            self.define_data(
+                setter,
+                "name",
+                Value::String("set [Symbol.toStringTag]".into()),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(setter, "length", Value::Number(1.0), false, false, true)?;
+            self.with_roots(|heap| {
+                heap.define_own_property(
+                    owner,
+                    JsSymbol::well_known("toStringTag"),
+                    PropertyDescriptor {
+                        get: Some(Value::Object(getter)),
+                        set: Some(Value::Object(setter)),
+                        enumerable: Some(false),
+                        configurable: Some(true),
+                        ..PropertyDescriptor::default()
+                    },
+                )
+            })?;
+            Ok(())
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    pub(in super::super) fn iterator_wrapper_prototype(
+        &mut self,
+    ) -> Result<ObjectId, RuntimeError> {
+        if let Some(prototype) = self.iterator_wrapper_prototype {
+            return Ok(prototype);
+        }
+        let function_prototype = self.function_prototype()?;
+        let base = self.base_iterator_prototype()?;
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
+        let root = self.heap.root(prototype)?;
+        let result = (|| {
+            self.install_native(
+                prototype,
+                function_prototype,
+                "next",
+                0,
+                NativeFunction::IteratorWrapperNext,
+            )?;
+            self.install_native(
+                prototype,
+                function_prototype,
+                "return",
+                0,
+                NativeFunction::IteratorWrapperReturn,
+            )?;
+            Ok(())
+        })();
+        if let Err(error) = result {
+            self.heap.unroot(root)?;
+            return Err(error);
+        }
+        self.iterator_wrapper_prototype = Some(prototype);
+        Ok(prototype)
+    }
+
+    pub(in super::super) fn iterator_from(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        if !matches!(value, Value::Object(_) | Value::String(_)) {
+            return Err(RuntimeError::TypeError(
+                "Iterator.from requires an object or String".into(),
+            ));
+        }
+        let iterator_method = self.get_method(value, &JsSymbol::well_known("iterator").into())?;
+        let iterator = if iterator_method == Value::Undefined {
+            self.coerce_object(value)?
+        } else {
+            let iterator = self.call_native(iterator_method, value.clone(), Vec::new(), false)?;
+            iterator.object_id().ok_or_else(|| {
+                RuntimeError::TypeError(
+                    "Iterator.from iterator method must return an object".into(),
+                )
+            })?
+        };
+        self.stack.push(Value::Object(iterator));
+        let result = (|| {
+            let next = self.get_property(&Value::Object(iterator), &"next".into())?;
+            let base = self.base_iterator_prototype()?;
+            let mut prototype = Some(iterator);
+            while let Some(current) = prototype {
+                if current == base {
+                    return Ok(Value::Object(iterator));
+                }
+                prototype = self.object_get_prototype(current)?;
+            }
+            let prototype = self.iterator_wrapper_prototype()?;
+            Ok(Value::Object(self.with_roots(|heap| {
+                heap.alloc_iterator_wrapper(iterator, next, prototype)
+            })?))
+        })();
+        self.stack.pop();
+        result
+    }
+
+    pub(in super::super) fn iterator_wrapper_next(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let Value::Object(wrapper) = receiver else {
+            return Err(RuntimeError::TypeError(
+                "Iterator wrapper next requires an iterator wrapper".into(),
+            ));
+        };
+        let Some((iterator, next)) = self.heap.iterator_wrapper(*wrapper)? else {
+            return Err(RuntimeError::TypeError(
+                "Iterator wrapper next requires an iterator wrapper".into(),
+            ));
+        };
+        self.stack.push(receiver.clone());
+        self.stack.push(next.clone());
+        let result = self.call_native(next, Value::Object(iterator), Vec::new(), false);
+        self.stack.pop();
+        self.stack.pop();
+        result
+    }
+
+    pub(in super::super) fn iterator_wrapper_return(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let Value::Object(wrapper) = receiver else {
+            return Err(RuntimeError::TypeError(
+                "Iterator wrapper return requires an iterator wrapper".into(),
+            ));
+        };
+        let Some((iterator, _)) = self.heap.iterator_wrapper(*wrapper)? else {
+            return Err(RuntimeError::TypeError(
+                "Iterator wrapper return requires an iterator wrapper".into(),
+            ));
+        };
+        self.stack.push(receiver.clone());
+        let result = (|| {
+            let return_method = self.get_method(&Value::Object(iterator), &"return".into())?;
+            if return_method == Value::Undefined {
+                self.iterator_result(Value::Undefined, true)
+            } else {
+                self.call_native(return_method, Value::Object(iterator), Vec::new(), false)
+            }
+        })();
+        self.stack.pop();
+        result
+    }
+
+    pub(in super::super) fn iterator_dispose(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let return_method = self.get_method(receiver, &"return".into())?;
+        if return_method != Value::Undefined {
+            self.call_native(return_method, receiver.clone(), Vec::new(), false)?;
+        }
+        Ok(Value::Undefined)
+    }
+
+    fn direct_iterator_record(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        let Value::Object(iterator) = value else {
+            return Err(RuntimeError::TypeError(
+                "Iterator helper requires an object receiver".into(),
+            ));
+        };
+        self.stack.push(value.clone());
+        let result = (|| {
+            let next = self.get_property(value, &"next".into())?;
+            self.stack.push(next.clone());
+            let record = self.with_roots(|heap| heap.alloc_object(None))?;
+            self.stack.push(Value::Object(record));
+            self.with_roots(|heap| heap.set(record, "iterator", Value::Object(*iterator)))?;
+            self.with_roots(|heap| heap.set(record, "next", next))?;
+            self.with_roots(|heap| heap.set(record, "done", Value::Bool(false)))?;
+            self.stack.pop();
+            self.stack.pop();
+            Ok(Value::Object(record))
+        })();
+        self.stack.pop();
+        result
+    }
+
+    fn iterator_callback(
+        &mut self,
+        callback: &Value,
+        value: Value,
+        index: u64,
+    ) -> Result<Value, RuntimeError> {
+        if !self.is_callable(callback)? {
+            return Err(RuntimeError::TypeError(
+                "Iterator helper callback must be callable".into(),
+            ));
+        }
+        self.call_native(
+            callback.clone(),
+            Value::Undefined,
+            vec![value, Value::Number(index as f64)],
+            false,
+        )
+    }
+
+    fn close_iterator_on_error<T>(
+        &mut self,
+        record: &Value,
+        result: Result<T, RuntimeError>,
+    ) -> Result<T, RuntimeError> {
+        match result {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                // IteratorClose preserves an active iterator's observable
+                // cleanup side effect. The original abrupt completion remains
+                // the public result when closing itself succeeds.
+                self.iterator_close(record)?;
+                Err(error)
+            }
+        }
+    }
+
+    pub(in super::super) fn iterator_to_array(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let record = self.direct_iterator_record(receiver)?;
+        self.stack.push(record.clone());
+        let result = (|| {
+            let array = self.array_from(Vec::new())?;
+            self.stack.push(array.clone());
+            while let Some(value) = self.iterator_step(&record, true)? {
+                self.array_push(&array, &value, 0)?;
+            }
+            self.stack.pop();
+            Ok(array)
+        })();
+        self.stack.pop();
+        self.close_iterator_on_error(&record, result)
+    }
+
+    pub(in super::super) fn iterator_for_each(
+        &mut self,
+        receiver: &Value,
+        callback: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let record = self.direct_iterator_record(receiver)?;
+        self.stack.push(record.clone());
+        let result = (|| {
+            let mut index = 0_u64;
+            while let Some(value) = self.iterator_step(&record, true)? {
+                self.iterator_callback(callback, value, index)?;
+                index += 1;
+            }
+            Ok(Value::Undefined)
+        })();
+        self.stack.pop();
+        self.close_iterator_on_error(&record, result)
+    }
+
+    pub(in super::super) fn iterator_every(
+        &mut self,
+        receiver: &Value,
+        callback: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let record = self.direct_iterator_record(receiver)?;
+        self.stack.push(record.clone());
+        let result = (|| {
+            let mut index = 0_u64;
+            while let Some(value) = self.iterator_step(&record, true)? {
+                let predicate = self.iterator_callback(callback, value, index)?;
+                if !self.to_boolean(&predicate)? {
+                    self.iterator_close(&record)?;
+                    return Ok(Value::Bool(false));
+                }
+                index += 1;
+            }
+            Ok(Value::Bool(true))
+        })();
+        self.stack.pop();
+        self.close_iterator_on_error(&record, result)
+    }
+
+    pub(in super::super) fn iterator_some(
+        &mut self,
+        receiver: &Value,
+        callback: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let record = self.direct_iterator_record(receiver)?;
+        self.stack.push(record.clone());
+        let result = (|| {
+            let mut index = 0_u64;
+            while let Some(value) = self.iterator_step(&record, true)? {
+                let predicate = self.iterator_callback(callback, value, index)?;
+                if self.to_boolean(&predicate)? {
+                    self.iterator_close(&record)?;
+                    return Ok(Value::Bool(true));
+                }
+                index += 1;
+            }
+            Ok(Value::Bool(false))
+        })();
+        self.stack.pop();
+        self.close_iterator_on_error(&record, result)
+    }
+
+    pub(in super::super) fn iterator_find(
+        &mut self,
+        receiver: &Value,
+        callback: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let record = self.direct_iterator_record(receiver)?;
+        self.stack.push(record.clone());
+        let result = (|| {
+            let mut index = 0_u64;
+            while let Some(value) = self.iterator_step(&record, true)? {
+                let predicate = self.iterator_callback(callback, value.clone(), index)?;
+                if self.to_boolean(&predicate)? {
+                    self.iterator_close(&record)?;
+                    return Ok(value);
+                }
+                index += 1;
+            }
+            Ok(Value::Undefined)
+        })();
+        self.stack.pop();
+        self.close_iterator_on_error(&record, result)
+    }
+
+    pub(in super::super) fn iterator_reduce(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let callback = native::argument(args, 0);
+        let record = self.direct_iterator_record(receiver)?;
+        self.stack.push(record.clone());
+        let result = (|| {
+            if !self.is_callable(callback)? {
+                return Err(RuntimeError::TypeError(
+                    "Iterator helper callback must be callable".into(),
+                ));
+            }
+            let mut index = 0_u64;
+            let mut accumulator = if args.len() > 1 {
+                args[1].clone()
+            } else {
+                let Some(value) = self.iterator_step(&record, true)? else {
+                    return Err(RuntimeError::TypeError(
+                        "cannot reduce an empty iterator without an initial value".into(),
+                    ));
+                };
+                index = 1;
+                value
+            };
+            while let Some(value) = self.iterator_step(&record, true)? {
+                accumulator = self.call_native(
+                    callback.clone(),
+                    Value::Undefined,
+                    vec![accumulator, value, Value::Number(index as f64)],
+                    false,
+                )?;
+                index += 1;
+            }
+            Ok(accumulator)
+        })();
+        self.stack.pop();
+        self.close_iterator_on_error(&record, result)
+    }
+
+    pub(in super::super) fn iterator_to_string_tag_setter(
+        &mut self,
+        receiver: &Value,
+        value: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let Value::Object(receiver) = receiver else {
+            return Err(RuntimeError::TypeError(
+                "Iterator prototype tag setter requires an object receiver".into(),
+            ));
+        };
+        let base = self.base_iterator_prototype()?;
+        if *receiver == base {
+            return Err(RuntimeError::TypeError(
+                "cannot assign Iterator.prototype Symbol.toStringTag".into(),
+            ));
+        }
+        let key: PropertyName = JsSymbol::well_known("toStringTag").into();
+        if self
+            .heap
+            .get_own_property_descriptor(*receiver, &key)?
+            .is_none()
+        {
+            self.define_data(*receiver, key, value.clone(), true, true, true)?;
+        } else {
+            self.set_property(&Value::Object(*receiver), &key, value)?;
+        }
+        Ok(Value::Undefined)
     }
 
     pub(in super::super) fn template_object(

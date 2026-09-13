@@ -19,6 +19,7 @@
 //! units so Unicode escapes can preserve lone surrogates losslessly.
 
 use crate::JsString;
+use icu_properties::{props, CodePointSetData};
 use num_bigint::BigInt;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -245,11 +246,12 @@ pub struct Tokenizer {
 }
 
 fn is_ident_start(c: char) -> bool {
-    c.is_alphabetic() || c == '_' || c == '$'
+    matches!(c, '_' | '$') || CodePointSetData::new::<props::IdStart>().contains(c)
 }
 
 fn is_ident_continue(c: char) -> bool {
-    c.is_alphanumeric() || c == '_' || c == '$'
+    matches!(c, '_' | '$' | '\u{200c}' | '\u{200d}')
+        || CodePointSetData::new::<props::IdContinue>().contains(c)
 }
 
 fn is_line_terminator(c: char) -> bool {
@@ -1313,6 +1315,19 @@ mod tests {
                 Token::Eof
             ]
         );
+        // ECMAScript uses Unicode ID_Start/ID_Continue, rather than Rust's
+        // alphabetic/alphanumeric approximation, and additionally permits
+        // ZWNJ/ZWJ after the first code point.
+        assert_eq!(
+            tokens("℘x a\u{200c}b \\u{2118}\\u{200d}c"),
+            vec![
+                Token::Identifier("℘x".to_string()),
+                Token::Identifier("a\u{200c}b".to_string()),
+                Token::Identifier("℘\u{200d}c".to_string()),
+                Token::Eof,
+            ]
+        );
+        assert!(Tokenizer::new("\u{200c}name").next_spanned().is_err());
     }
 
     #[test]

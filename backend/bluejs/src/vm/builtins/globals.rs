@@ -78,6 +78,7 @@ impl Vm {
             "Promise" => NativeFunction::Promise,
             "eval" => NativeFunction::Eval,
             "Object" => NativeFunction::Object,
+            "Iterator" => NativeFunction::Iterator,
             "Number" => NativeFunction::PrimitiveConstructor(false),
             "Boolean" => NativeFunction::PrimitiveConstructor(true),
             "BigInt" => NativeFunction::BigInt,
@@ -111,6 +112,7 @@ impl Vm {
                     "length",
                     Value::Number(match name {
                         "Symbol" => 0.0,
+                        "Iterator" => 0.0,
                         "Proxy" => 2.0,
                         "Date" => 7.0,
                         "WeakMap" | "WeakSet" => 0.0,
@@ -222,6 +224,25 @@ impl Vm {
                     0,
                     NativeFunction::PromiseWithResolvers,
                 )?;
+            } else if name == "Iterator" {
+                let iterator_prototype = self.base_iterator_prototype()?;
+                self.define_data(
+                    id,
+                    "prototype",
+                    Value::Object(iterator_prototype),
+                    false,
+                    false,
+                    false,
+                )?;
+                self.define_data(
+                    iterator_prototype,
+                    "constructor",
+                    Value::Object(id),
+                    true,
+                    false,
+                    true,
+                )?;
+                self.install_native(id, prototype, "from", 1, NativeFunction::IteratorFrom)?;
             } else if name == "Array" {
                 self.define_data(
                     id,

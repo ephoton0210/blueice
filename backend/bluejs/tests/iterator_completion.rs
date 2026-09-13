@@ -38,6 +38,72 @@ fn elisions_step_without_reading_values_and_stop_after_done() {
 }
 
 #[test]
+fn iterator_from_exposes_the_shared_iterator_protocol_without_public_slots() {
+    let source = r#"
+        let calls = 0;
+        let source = {
+            next() { calls++; return calls < 3 ? { value: calls, done: false } : { done: true }; },
+            return() { return { value: 'closed', done: true }; },
+        };
+        let wrapped = Iterator.from(source);
+        let iteratorPrototype = Object.getPrototypeOf(Object.getPrototypeOf([][Symbol.iterator]()));
+        let descriptor = Object.getOwnPropertyDescriptor(Iterator.prototype, Symbol.toStringTag);
+        let first = wrapped.next();
+        let closed = wrapped.return();
+        Iterator.prototype === iteratorPrototype &&
+          Object.getPrototypeOf(wrapped) !== Iterator.prototype &&
+          wrapped[Symbol.iterator]() === wrapped &&
+          first.value === 1 && !first.done &&
+          closed.value === 'closed' && closed.done &&
+          calls === 1 &&
+          typeof descriptor.get === 'function' && typeof descriptor.set === 'function' &&
+          Iterator.prototype[Symbol.toStringTag] === 'Iterator' &&
+          Object.keys(wrapped).length === 0
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn iterator_from_validates_inputs_and_disposal_calls_return() {
+    let source = r#"
+        let disposed = 0;
+        let iterator = { return() { disposed++; return { done: true }; } };
+        let wrapper = Iterator.from(iterator);
+        let invalid = false;
+        try { Iterator.from(1); } catch (error) { invalid = error instanceof TypeError; }
+        let abstract = false;
+        try { new Iterator(); } catch (error) { abstract = error instanceof TypeError; }
+        wrapper[Symbol.dispose]();
+        invalid && abstract && disposed === 1
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn iterator_terminal_helpers_share_step_and_early_close_protocol() {
+    let source = r#"
+        let closes = 0;
+        let source = {
+            index: 0,
+            next() { return this.index < 4 ? { value: this.index++, done: false } : { done: true }; },
+            return() { closes++; return { done: true }; },
+        };
+        let values = Iterator.from(source);
+        let mapped = [0, 1, 2][Symbol.iterator]();
+        let array = mapped.toArray();
+        let every = values.every(value => value < 2);
+        let some = Iterator.from([2, 4, 5]).some(value => value % 2);
+        let found = Iterator.from([3, 6, 8]).find(value => value % 2 === 0);
+        let sum = Iterator.from([1, 2, 3]).reduce((total, value) => total + value, 0);
+        let seen = '';
+        Iterator.from(['a', 'b']).forEach((value, index) => { seen += value + index; });
+        array.length === 3 && array[2] === 2 && !every && some && found === 6 &&
+          sum === 6 && seen === 'a0b1' && closes === 1
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
 fn undeclared_for_heads_use_assignment_patterns_and_close_on_abrupt_assignment() {
     for source in [
         "let first=0;let second=0;let rest;for([first,second=3,...rest] of [[1,undefined,4,5]]){}first===1&&second===3&&rest.length===2&&rest[0]===4&&rest[1]===5",

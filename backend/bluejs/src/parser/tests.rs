@@ -85,6 +85,18 @@ fn parses_literals() {
 }
 
 #[test]
+fn binding_identifiers_reject_reserved_words_but_not_identifier_names() {
+    for name in [
+        "break", "class", "const", "debugger", "enum", "export", "extends", "import", "super",
+        "var", "with",
+    ] {
+        let error = parse(&format!("var {name};")).unwrap_err();
+        assert!(error.known_syntax, "{name}: {error:?}");
+    }
+    assert!(parse("({ class: 1, default: 2 })").is_ok());
+}
+
+#[test]
 fn rejects_super_calls_and_properties_in_script_code() {
     for source in [
         "super()",

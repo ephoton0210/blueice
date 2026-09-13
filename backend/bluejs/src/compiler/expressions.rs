@@ -130,6 +130,7 @@ impl Compiler {
                         | "BigUint64Array"
                         | "Atomics"
                         | "Intl"
+                        | "Iterator"
                         | "Promise"
                         | "Error"
                         | "TypeError"

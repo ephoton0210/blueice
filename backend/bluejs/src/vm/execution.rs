@@ -211,6 +211,7 @@ impl Vm {
                 | "WeakSet"
                 | "WeakRef"
                 | "FinalizationRegistry"
+                | "Iterator"
                 | "Function"
                 | "Proxy"
                 | "Promise"

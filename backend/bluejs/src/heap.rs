@@ -636,6 +636,14 @@ enum ObjectKind {
         done: bool,
         kind: ArrayIteratorKind,
     },
+    /// `Iterator.from` wraps a valid iterator which does not already inherit
+    /// `%Iterator.prototype%`. The cached `next` method is an internal slot,
+    /// rather than an observable property, and both references participate in
+    /// ordinary heap tracing.
+    IteratorWrapper {
+        iterator: ObjectId,
+        next: Value,
+    },
     RegExpIterator {
         matcher: ObjectId,
         string: JsString,
@@ -1002,6 +1010,9 @@ impl Object {
                 ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
                 ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
                 ObjectKind::ArrayIterator { object, .. } => vec![*object],
+                ObjectKind::IteratorWrapper { iterator, next } => {
+                    std::iter::once(*iterator).chain(next.object_id()).collect()
+                }
                 ObjectKind::DataView { buffer, .. } | ObjectKind::TypedArray { buffer, .. } => {
                     vec![*buffer]
                 }
@@ -1101,6 +1112,9 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
             ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
             ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
             ObjectKind::ArrayIterator { object, .. } => vec![*object],
+            ObjectKind::IteratorWrapper { iterator, next } => {
+                std::iter::once(*iterator).chain(next.object_id()).collect()
+            }
             ObjectKind::DataView { buffer, .. } | ObjectKind::TypedArray { buffer, .. } => {
                 vec![*buffer]
             }
@@ -2186,6 +2200,26 @@ impl Heap {
             *index += 1;
             *finished = done;
         }
+    }
+    pub(crate) fn alloc_iterator_wrapper(
+        &mut self,
+        iterator: ObjectId,
+        next: Value,
+        prototype: ObjectId,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(
+            ObjectKind::IteratorWrapper { iterator, next },
+            Some(prototype),
+        )
+    }
+    pub(crate) fn iterator_wrapper(
+        &self,
+        id: ObjectId,
+    ) -> Result<Option<(ObjectId, Value)>, HeapError> {
+        Ok(match &self.object(id)?.kind {
+            ObjectKind::IteratorWrapper { iterator, next } => Some((*iterator, next.clone())),
+            _ => None,
+        })
     }
     pub(crate) fn regexp(
         &self,

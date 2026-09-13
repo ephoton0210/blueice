@@ -716,6 +716,24 @@ fn module_namespace_has_exotic_descriptor_symbol_and_integrity_semantics() {
 }
 
 #[test]
+fn module_namespace_set_rejects_every_export_and_symbol_key() {
+    let modules = HashMap::from([(
+        "namespace-set/main.js".to_string(),
+        compile_module(
+            &parse_module(
+                "import * as ns from './main.js';export var local1=null;var local2=null;export {local2 as renamed};export {local1 as indirect} from './main.js';var sym=Symbol('test262');let count=0;try{ns.local1=null}catch(error){count+=1}try{ns.local2=null}catch(error){count+=2}try{ns.renamed=null}catch(error){count+=4}try{ns.indirect=null}catch(error){count+=8}try{ns.default=null}catch(error){count+=16}try{ns[Symbol.toStringTag]=null}catch(error){count+=32}try{ns[sym]=null}catch(error){count+=64}(Reflect.set(ns,'local1')===false&&Reflect.set(ns,'renamed')===false&&Reflect.set(ns,'indirect')===false&&Reflect.set(ns,Symbol.toStringTag)===false&&Reflect.set(ns,sym)===false&&count===127)?127:count",
+            )
+            .unwrap(),
+        )
+        .unwrap(),
+    )]);
+    assert_eq!(
+        Vm::default().execute_module_graph("namespace-set/main.js", &modules),
+        Ok(Value::Number(127.0))
+    );
+}
+
+#[test]
 fn dynamic_import_resolves_against_the_module_registry_in_a_promise_job() {
     let sources = [
         (

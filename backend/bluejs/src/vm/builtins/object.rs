@@ -147,6 +147,7 @@ impl Vm {
                 "URIError",
                 "Math",
                 "JSON",
+                "Iterator",
             ] {
                 self.materialize_lexical_global(object, name)?;
             }
@@ -230,6 +231,14 @@ impl Vm {
     ) -> Result<bool, RuntimeError> {
         if self.heap.proxy(target)?.is_some() {
             return self.proxy_set(target, receiver, key, value);
+        }
+        // Module Namespace Exotic Objects have a distinct [[Set]] internal
+        // method: it returns false for every property key, including a
+        // writable-looking live export whose assigned value is unchanged.
+        // Falling through OrdinarySet incorrectly accepts that same-value
+        // DefineOwnProperty operation.
+        if self.heap.is_module_namespace(target)? {
+            return Ok(false);
         }
         if let Some(numeric) = self.heap.typed_array_numeric_key(target, key)? {
             let valid = match numeric {
@@ -529,6 +538,7 @@ impl Vm {
                     | NativeFunction::Promise
                     | NativeFunction::AsyncFunction
                     | NativeFunction::Object
+                    | NativeFunction::Iterator
                     | NativeFunction::RegExp
                     | NativeFunction::Collator
                     | NativeFunction::Locale

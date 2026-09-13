@@ -64,7 +64,7 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
         ),
         (
             json!({"source":"let =", "mode":"sloppy", "parse_only":true}),
-            "unclassified_parse_error",
+            "SyntaxError",
         ),
         // The adapter must distinguish early errors it can establish from a
         // valid production whose execution is not implemented yet.  These

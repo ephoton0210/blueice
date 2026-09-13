@@ -278,7 +278,7 @@ impl Heap {
         })
     }
 
-    pub(super) fn is_module_namespace(&self, object: ObjectId) -> Result<bool, HeapError> {
+    pub(crate) fn is_module_namespace(&self, object: ObjectId) -> Result<bool, HeapError> {
         Ok(matches!(
             self.object(object)?.kind,
             ObjectKind::ModuleNamespace { .. }

@@ -105,6 +105,45 @@ pub(crate) fn canonicalize(string: &JsString) -> Result<IcuLocale, RuntimeError>
             .keywords
             .set(calendar, "ethioaa".parse().unwrap());
     }
+    // ICU intentionally preserves several CLDR aliases. ECMA-402 exposes
+    // their canonical UTS 35 spellings from both Intl.Locale and
+    // Intl.getCanonicalLocales, including the special boolean-key removal.
+    for key_name in ["kb", "kc", "kh", "kk", "kn", "ks", "ms", "tz"] {
+        let key = key_name.parse().unwrap();
+        let Some(value) = locale
+            .extensions
+            .unicode
+            .keywords
+            .get(&key)
+            .map(ToString::to_string)
+        else {
+            continue;
+        };
+        let replacement = match (key_name, value.as_str()) {
+            ("kb" | "kc" | "kh" | "kk" | "kn", "yes") => None,
+            ("ks", "primary") => Some("level1"),
+            ("ks", "tertiary") => Some("level3"),
+            ("ms", "imperial") => Some("uksystem"),
+            ("tz", "cnckg") => Some("cnsha"),
+            ("tz", "eire") => Some("iedub"),
+            ("tz", "est") => Some("papty"),
+            ("tz", "gmt0") => Some("gmt"),
+            ("tz", "uct" | "zulu") => Some("utc"),
+            _ => continue,
+        };
+        match replacement {
+            Some(value) => {
+                locale
+                    .extensions
+                    .unicode
+                    .keywords
+                    .set(key, value.parse().unwrap());
+            }
+            None => {
+                locale.extensions.unicode.keywords.remove(key);
+            }
+        }
+    }
     Ok(locale)
 }
 

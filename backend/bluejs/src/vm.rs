@@ -686,6 +686,9 @@ pub struct Vm {
     // constructor bytecode.
     class_field_initializer_depth: u32,
     iterator_base: Option<ObjectId>,
+    /// `%WrapForValidIteratorPrototype%`, shared by the iterator wrappers
+    /// created by `Iterator.from`.
+    iterator_wrapper_prototype: Option<ObjectId>,
     array_iterator_prototype: Option<ObjectId>,
     map_iterator_prototype: Option<ObjectId>,
     set_iterator_prototype: Option<ObjectId>,
@@ -807,6 +810,7 @@ impl Vm {
             class_constructor: None,
             class_field_initializer_depth: 0,
             iterator_base: None,
+            iterator_wrapper_prototype: None,
             array_iterator_prototype: None,
             map_iterator_prototype: None,
             set_iterator_prototype: None,

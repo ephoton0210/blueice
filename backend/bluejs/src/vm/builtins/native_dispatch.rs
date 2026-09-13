@@ -1746,6 +1746,33 @@ impl Vm {
                 }
                 self.coerce_object(first).map(Value::Object)
             }
+            NativeFunction::Iterator => {
+                let constructor = self.global("Iterator")?;
+                if !construct || self.new_target == constructor {
+                    return Err(RuntimeError::TypeError(
+                        "Iterator is not directly callable or constructable".into(),
+                    ));
+                }
+                let iterator_prototype = self.base_iterator_prototype()?;
+                let prototype = self.constructor_prototype(iterator_prototype)?;
+                Ok(Value::Object(
+                    self.with_roots(|heap| heap.alloc_object(Some(prototype)))?,
+                ))
+            }
+            NativeFunction::IteratorFrom => {
+                if construct {
+                    return Err(RuntimeError::TypeError(
+                        "Iterator.from is not a constructor".into(),
+                    ));
+                }
+                self.iterator_from(first)
+            }
+            NativeFunction::IteratorToArray => self.iterator_to_array(&receiver),
+            NativeFunction::IteratorForEach => self.iterator_for_each(&receiver, first),
+            NativeFunction::IteratorEvery => self.iterator_every(&receiver, first),
+            NativeFunction::IteratorSome => self.iterator_some(&receiver, first),
+            NativeFunction::IteratorFind => self.iterator_find(&receiver, first),
+            NativeFunction::IteratorReduce => self.iterator_reduce(&receiver, &args),
             NativeFunction::ObjectMethod(method) => self.object_method(method, &receiver, &args),
             NativeFunction::StringIterator => {
                 let string = self.string_receiver(&receiver)?;
@@ -1767,6 +1794,13 @@ impl Vm {
                 };
                 let done = value.is_none();
                 self.iterator_result(value.map_or(Value::Undefined, Value::String), done)
+            }
+            NativeFunction::IteratorWrapperNext => self.iterator_wrapper_next(&receiver),
+            NativeFunction::IteratorWrapperReturn => self.iterator_wrapper_return(&receiver),
+            NativeFunction::IteratorDispose => self.iterator_dispose(&receiver),
+            NativeFunction::IteratorToStringTagGetter => Ok(Value::String("Iterator".into())),
+            NativeFunction::IteratorToStringTagSetter => {
+                self.iterator_to_string_tag_setter(&receiver, first)
             }
             NativeFunction::IteratorSelf | NativeFunction::AsyncIteratorSelf => Ok(receiver),
             NativeFunction::Pattern(method) => self.string_pattern(method, &receiver, &args),
