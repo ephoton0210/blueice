@@ -194,13 +194,21 @@ impl Vm {
             self.globals.insert("Intl".into(), namespace);
             Ok(Value::Object(namespace))
         })();
-        if result.is_err() {
-            self.heap.unroot(root)?;
-            if let Some(root) = constructor_root {
+        match result {
+            Ok(value) => {
+                if let Some(&global) = self.globals.get("globalThis") {
+                    self.define_data(global, "Intl", Value::Object(namespace), true, false, true)?;
+                }
+                Ok(value)
+            }
+            Err(error) => {
                 self.heap.unroot(root)?;
+                if let Some(root) = constructor_root {
+                    self.heap.unroot(root)?;
+                }
+                Err(error)
             }
         }
-        result
     }
 
     pub(super) fn canonical_locales(

@@ -41,9 +41,6 @@ impl Vm {
             // Materialize such lazy globals before testing the object record.
             self.materialize_lexical_global(global, name)?;
         }
-        if let Some(&id) = self.globals.get(name) {
-            return Ok(Some(Value::Object(id)));
-        }
         if let Some(&id) = self.globals.get("globalThis") {
             if self.has_property(id, &name.into())? {
                 return self
@@ -228,7 +225,7 @@ impl Vm {
         } else {
             default
         };
-        let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        let object = self.with_roots(|heap| heap.alloc_error(Some(prototype)))?;
         self.stack.push(Value::Object(object));
         let result = (|| {
             let message = native::argument(args, 0);

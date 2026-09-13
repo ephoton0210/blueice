@@ -11,6 +11,12 @@ fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap())
 }
 
+fn evaluate_test262_script(source: &str) -> Result<Value, RuntimeError> {
+    let mut vm = Vm::default();
+    vm.install_test262_harness()?;
+    vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+}
+
 #[test]
 fn immutable_descriptors_and_nonextensible_objects() {
     let mut heap = Heap::default();
@@ -273,6 +279,24 @@ fn object_to_locale_string_uses_the_receiver_to_string_method() {
 }
 
 #[test]
+fn object_to_string_uses_internal_slots_before_observing_to_string_tag() {
+    assert_eq!(
+        evaluate(
+            "let arrayProxy=new Proxy([],{});let error=Error('message');let override=[];override[Symbol.toStringTag]='overridden';let generator=function*(){};let generatorProxy=new Proxy(generator,{});let generatorTag=Object.prototype.toString.call(generatorProxy);delete generatorProxy.constructor.prototype[Symbol.toStringTag];let generatorFallback=Object.prototype.toString.call(generatorProxy);let bigint=Object.prototype.toString.call(3n);Object.prototype.toString.call(arrayProxy)==='[object Array]'&&Object.prototype.toString.call(error)==='[object Error]'&&Object.prototype.toString.call(override)==='[object overridden]'&&generatorTag==='[object GeneratorFunction]'&&generatorFallback==='[object Function]'&&bigint==='[object BigInt]'",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate_test262_script(
+            "'use strict';var custom;let results=[];function probe(value){try{custom=value;custom[Symbol.toStringTag]='overridden';results.push(Object.prototype.toString.call(custom))}catch(error){results.push(error.name)}}probe([]);probe(new String());probe((function(){return arguments})());probe(function(){});probe(new Error());probe(new Boolean());probe(new Number());probe(new Date());probe(/./);results.join(',')",
+        )
+        .unwrap(),
+        Value::String("[object overridden],[object overridden],[object overridden],[object overridden],[object overridden],[object overridden],[object overridden],[object overridden],[object overridden]".into())
+    );
+}
+
+#[test]
 fn object_property_queries_coerce_keys_before_the_receiver() {
     assert_eq!(
         evaluate(
@@ -302,6 +326,71 @@ fn object_static_has_own_and_is_use_internal_property_and_same_value_contracts()
 }
 
 #[test]
+fn object_returns_function_values_without_leaking_expression_names() {
+    assert_eq!(
+        evaluate(
+            "let wrapped=Object(function hidden(){return 1});typeof hidden==='undefined'&&wrapped.constructor===Function&&wrapped()===1",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn object_constructor_uses_a_subclass_new_target_and_ignores_its_argument() {
+    assert_eq!(
+        evaluate(
+            "class Subclass extends Object{}let direct=new Subclass({direct:true});let reflected=Reflect.construct(Object,[{reflected:true}],Subclass);direct.direct===undefined&&reflected.reflected===undefined&&Object.getPrototypeOf(direct)===Subclass.prototype&&Object.getPrototypeOf(reflected)===Subclass.prototype",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn reflective_own_keys_materialize_the_p0_global_realm_surface() {
+    assert_eq!(
+        evaluate(
+            "let names=Object.getOwnPropertyNames(this);let expected=['NaN','Infinity','undefined','eval','parseInt','parseFloat','isNaN','isFinite','decodeURI','decodeURIComponent','encodeURI','encodeURIComponent','Object','Function','Array','String','Boolean','Number','Date','RegExp','Error','EvalError','RangeError','ReferenceError','SyntaxError','TypeError','URIError','Math','JSON'];let constructor=Object.getOwnPropertyDescriptor(Function.prototype,'constructor');expected.every(function(name){return names.includes(name)})&&constructor.value===Function&&constructor.writable===true&&constructor.enumerable===false&&constructor.configurable===true",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn object_get_own_property_descriptors_uses_internal_key_and_descriptor_methods() {
+    assert_eq!(
+        evaluate(
+            "let symbol=Symbol('key');let log=[];let target={visible:1,[symbol]:2};Object.defineProperty(target,'hidden',{value:3,enumerable:false});let proxy=new Proxy(target,{ownKeys:function(object){log.push('keys');return Reflect.ownKeys(object)},getOwnPropertyDescriptor:function(object,key){log.push('descriptor:'+String(key));return Reflect.getOwnPropertyDescriptor(object,key)}});let descriptors=Object.getOwnPropertyDescriptors(proxy);let stringDescriptors=Object.getOwnPropertyDescriptors('ab');Object.getPrototypeOf(descriptors)===Object.prototype&&descriptors.visible.value===1&&descriptors.hidden.enumerable===false&&descriptors[symbol].value===2&&stringDescriptors.length.value===2&&stringDescriptors[0].value==='a'&&log.join(',')==='keys,descriptor:visible,descriptor:hidden,descriptor:Symbol(key)'&&Object.getOwnPropertyDescriptors.length===1",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate(
+            "function fakeObject(){};fakeObject.getOwnPropertyDescriptors=Object.getOwnPropertyDescriptors;fakeObject.keys=Object.keys;this.Object=fakeObject;Object.keys(Object.getOwnPropertyDescriptors('a')).length",
+        )
+        .unwrap(),
+        Value::Number(2.0)
+    );
+    assert_eq!(
+        evaluate(
+            "function fakeObject(){throw new Error('not called')};fakeObject.getOwnPropertyDescriptors=Object.getOwnPropertyDescriptors;fakeObject.keys=Object.keys;var global=this;global.Object=fakeObject;Object===fakeObject",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate(
+            "function fakeObject(){throw new Error('not called')};fakeObject.getOwnPropertyDescriptors=Object.getOwnPropertyDescriptors;fakeObject.keys=Object.keys;var global=this;global.Object=fakeObject;Object.keys(Object.getOwnPropertyDescriptors('a')).length",
+        )
+        .unwrap(),
+        Value::Number(2.0)
+    );
+}
+
+#[test]
 fn object_assign_uses_enumerable_own_keys_and_proxy_internal_methods() {
     assert_eq!(
         evaluate(
@@ -314,6 +403,28 @@ fn object_assign_uses_enumerable_own_keys_and_proxy_internal_methods() {
         evaluate("Object.assign(Object.freeze({}),{value:1})"),
         Err(RuntimeError::TypeError(_))
     ));
+}
+
+#[test]
+fn object_entries_and_values_skip_keys_deleted_by_a_previous_getter() {
+    assert_eq!(
+        evaluate(
+            "let source={a:'A',get b(){delete this.c;return 'B'},c:'C'};let entries=Object.entries(source);let values=Object.values(source);entries.length===2&&entries[0][0]==='a'&&entries[0][1]==='A'&&entries[1][0]==='b'&&entries[1][1]==='B'&&values.length===2&&values[0]==='A'&&values[1]==='B'",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn object_keys_observes_proxy_own_keys_and_descriptor_traps_in_order() {
+    assert_eq!(
+        evaluate(
+            "let log=[];let symbol=Symbol('key');let target={x:true};let keys={get length(){log.push('length');return 3},get 0(){log.push('0');return 'a'},get 1(){log.push('1');return symbol},get 2(){log.push('2');return 'b'}};let descriptors={a:{enumerable:true,configurable:true,value:1},b:{enumerable:false,configurable:true,value:2},[symbol]:{enumerable:true,configurable:true,value:3}};let handler={get ownKeys(){log.push('trap:keys');return function(){log.push('call:keys');return keys}},get getOwnPropertyDescriptor(){log.push('trap:descriptor');return function(target,key){log.push('call:descriptor:'+String(key));return descriptors[key]}}};let result=Object.keys(new Proxy(target,handler));log.join(',')+';'+result.join(',')",
+        )
+        .unwrap(),
+        Value::String("trap:keys,call:keys,length,0,1,2,trap:descriptor,call:descriptor:a,trap:descriptor,call:descriptor:b;a".into())
+    );
 }
 
 #[test]
@@ -457,7 +568,7 @@ fn reflect_and_proxy_operations_keep_the_explicit_receiver_and_trap_contract() {
     ));
     assert_eq!(
         evaluate(
-            "let errors=0;for(let value of [1,null,undefined,'']){try{Reflect.getPrototypeOf(value)}catch(error){errors++};try{Reflect.isExtensible(value)}catch(error){errors++};try{Reflect.setPrototypeOf(value,{})}catch(error){errors++}}errors===12&&Reflect.set({p:42},'p',43,'receiver')===false&&Reflect[Symbol.toStringTag]==='Reflect'",
+            "let errors=0;for(let value of [1,null,undefined,'']){try{Reflect.getPrototypeOf(value)}catch(error){errors++};try{Reflect.isExtensible(value)}catch(error){errors++};try{Reflect.setPrototypeOf(value,{})}catch(error){errors++}}let target={p:42};let receiver='receiver is a string';errors===12&&Reflect.set(target,'p',43,receiver)===false&&target.p===42&&!receiver.hasOwnProperty('p')&&Reflect[Symbol.toStringTag]==='Reflect'",
         )
         .unwrap(),
         Value::Bool(true)

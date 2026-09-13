@@ -432,6 +432,7 @@ pub(crate) enum ObjectMethod {
     HasOwn,
     Is,
     GetOwnPropertyDescriptor,
+    GetOwnPropertyDescriptors,
     DefineProperty,
     DefineProperties,
     Keys,

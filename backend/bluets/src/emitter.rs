@@ -69,10 +69,10 @@ pub(crate) fn emit(
         .iter()
         .filter(|(id, _)| !is_declaration_module(id))
         .map(|(id, checked_module)| {
-            let javascript = emit_javascript(&checked_module.module);
+            let emitted = emit_javascript(&checked_module.module);
             let source_map = options
                 .source_map
-                .then(|| source_map(id, &checked_module.module.source, &javascript));
+                .then(|| source_map(id, &checked_module.module.source, &emitted));
             let declaration = options
                 .declaration
                 .then(|| emit_declaration(&checked_module.module));
@@ -80,7 +80,7 @@ pub(crate) fn emit(
                 id.clone(),
                 BuildArtifact {
                     module_id: id.clone(),
-                    javascript,
+                    javascript: emitted.javascript,
                     source_map,
                     declaration,
                     fingerprint: build_fingerprint.clone(),
@@ -107,7 +107,20 @@ pub(crate) fn emit(
     }
 }
 
-fn emit_javascript(module: &Module) -> String {
+struct EmittedJavaScript {
+    javascript: String,
+    provenance: Vec<ProvenanceSegment>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ProvenanceSegment {
+    generated_line: usize,
+    generated_column: usize,
+    source_line: usize,
+    source_column: usize,
+}
+
+fn emit_javascript(module: &Module) -> EmittedJavaScript {
     let mut edits = module.edits.clone();
     for declaration in &module.declarations {
         let Declaration::Import(import) = declaration else {
@@ -144,9 +157,9 @@ fn javascript_specifier(specifier: &str) -> String {
         .unwrap_or_else(|| specifier.to_string())
 }
 
-fn apply_edits(source: &str, mut edits: Vec<TextEdit>) -> String {
+fn apply_edits(source: &str, mut edits: Vec<TextEdit>) -> EmittedJavaScript {
     edits.sort_by_key(|edit| (edit.start, edit.end));
-    let mut emitted = String::with_capacity(source.len());
+    let mut emitted = ProvenanceEmitter::new(source, source.len());
     let mut cursor = 0usize;
     for edit in edits {
         if edit.start < cursor || edit.end < edit.start || edit.end > source.len() {
@@ -154,22 +167,19 @@ fn apply_edits(source: &str, mut edits: Vec<TextEdit>) -> String {
             // ownership produces these intentionally for `declare function`.
             continue;
         }
-        emitted.push_str(&source[cursor..edit.start]);
+        emitted.copy(&source[cursor..edit.start], cursor);
         if edit.replacement.is_empty() {
             // Preserve physical lines so line-level source maps, diagnostics,
             // and ordinary text diffs remain stable after type erasure.
-            for character in source[edit.start..edit.end].chars() {
-                if matches!(character, '\n' | '\r') {
-                    emitted.push(character);
-                }
-            }
+            emitted.preserve_line_breaks(&source[edit.start..edit.end], edit.start);
         } else {
-            emitted.push_str(&edit.replacement);
+            emitted.replace(&edit.replacement, edit.start);
         }
+        emitted.mark(edit.end);
         cursor = edit.end;
     }
-    emitted.push_str(&source[cursor..]);
-    emitted
+    emitted.copy(&source[cursor..], cursor);
+    emitted.finish()
 }
 
 fn emit_declaration(module: &Module) -> String {
@@ -333,27 +343,162 @@ fn type_to_ts(value: &Type) -> String {
     }
 }
 
-fn source_map(module_id: &str, source: &str, javascript: &str) -> SourceMap {
-    let source_lines = source.lines().count().max(1);
-    let output_lines = javascript.lines().count().max(1);
-    let mut mappings = String::new();
-    let mut previous_source_line = 0i64;
-    for generated_line in 0..output_lines {
-        if generated_line > 0 {
-            mappings.push(';');
+struct ProvenanceEmitter<'a> {
+    source: &'a str,
+    javascript: String,
+    provenance: Vec<ProvenanceSegment>,
+    generated_line: usize,
+    generated_column: usize,
+}
+
+impl<'a> ProvenanceEmitter<'a> {
+    fn new(source: &'a str, capacity: usize) -> Self {
+        Self {
+            source,
+            javascript: String::with_capacity(capacity),
+            provenance: Vec::new(),
+            generated_line: 0,
+            generated_column: 0,
         }
-        let source_line = generated_line.min(source_lines - 1) as i64;
-        mappings.push_str("AA");
-        mappings.push_str(&base64_vlq(source_line - previous_source_line));
-        mappings.push('A');
-        previous_source_line = source_line;
     }
+
+    fn copy(&mut self, value: &str, source_offset: usize) {
+        self.mark(source_offset);
+        let mut characters = value.char_indices().peekable();
+        while let Some((offset, character)) = characters.next() {
+            let next = characters.peek().map(|(_, character)| *character);
+            self.push(character, next);
+            if is_line_break(character, next) {
+                self.mark(source_offset + offset + character.len_utf8());
+            }
+        }
+    }
+
+    fn preserve_line_breaks(&mut self, value: &str, source_offset: usize) {
+        let mut characters = value.char_indices().peekable();
+        while let Some((offset, character)) = characters.next() {
+            let next = characters.peek().map(|(_, character)| *character);
+            if matches!(character, '\r' | '\n') {
+                self.push(character, next);
+                if is_line_break(character, next) {
+                    self.mark(source_offset + offset + character.len_utf8());
+                }
+            }
+        }
+    }
+
+    fn replace(&mut self, value: &str, source_offset: usize) {
+        self.mark(source_offset);
+        let mut characters = value.chars().peekable();
+        while let Some(character) = characters.next() {
+            self.push(character, characters.peek().copied());
+        }
+    }
+
+    fn mark(&mut self, source_offset: usize) {
+        let (source_line, source_column) = source_line_column(self.source, source_offset);
+        let segment = ProvenanceSegment {
+            generated_line: self.generated_line,
+            generated_column: self.generated_column,
+            source_line,
+            source_column,
+        };
+        if self.provenance.last().is_some_and(|previous| {
+            previous.generated_line == segment.generated_line
+                && previous.generated_column == segment.generated_column
+        }) {
+            self.provenance.pop();
+        }
+        self.provenance.push(segment);
+    }
+
+    fn push(&mut self, character: char, next: Option<char>) {
+        self.javascript.push(character);
+        if is_line_break(character, next) {
+            self.generated_line += 1;
+            self.generated_column = 0;
+        } else {
+            self.generated_column += character.len_utf16();
+        }
+    }
+
+    fn finish(self) -> EmittedJavaScript {
+        EmittedJavaScript {
+            javascript: self.javascript,
+            provenance: self.provenance,
+        }
+    }
+}
+
+fn is_line_break(character: char, next: Option<char>) -> bool {
+    character == '\n' || (character == '\r' && next != Some('\n'))
+}
+
+fn source_line_column(source: &str, offset: usize) -> (usize, usize) {
+    let prefix = &source[..offset];
+    let mut line = 0usize;
+    let mut column = 0usize;
+    let mut characters = prefix.chars().peekable();
+    while let Some(character) = characters.next() {
+        if is_line_break(character, characters.peek().copied()) {
+            line += 1;
+            column = 0;
+        } else {
+            column += character.len_utf16();
+        }
+    }
+    (line, column)
+}
+
+fn source_map(module_id: &str, source: &str, emitted: &EmittedJavaScript) -> SourceMap {
     SourceMap {
         file: output_file_name(module_id),
         sources: vec![module_id.to_string()],
         sources_content: vec![source.to_string()],
-        mappings,
+        mappings: encode_mappings(&emitted.provenance),
     }
+}
+
+fn encode_mappings(segments: &[ProvenanceSegment]) -> String {
+    let last_line = segments
+        .last()
+        .map(|segment| segment.generated_line)
+        .unwrap_or(0);
+    let mut mappings = String::new();
+    let mut index = 0usize;
+    let mut previous_source_line = 0i64;
+    let mut previous_source_column = 0i64;
+    for line in 0..=last_line {
+        if line > 0 {
+            mappings.push(';');
+        }
+        let mut previous_generated_column = 0i64;
+        let mut first = true;
+        while let Some(segment) = segments
+            .get(index)
+            .filter(|segment| segment.generated_line == line)
+        {
+            if !first {
+                mappings.push(',');
+            }
+            first = false;
+            mappings.push_str(&base64_vlq(
+                segment.generated_column as i64 - previous_generated_column,
+            ));
+            mappings.push('A');
+            mappings.push_str(&base64_vlq(
+                segment.source_line as i64 - previous_source_line,
+            ));
+            mappings.push_str(&base64_vlq(
+                segment.source_column as i64 - previous_source_column,
+            ));
+            previous_generated_column = segment.generated_column as i64;
+            previous_source_line = segment.source_line as i64;
+            previous_source_column = segment.source_column as i64;
+            index += 1;
+        }
+    }
+    mappings
 }
 
 fn output_file_name(module_id: &str) -> String {
@@ -417,6 +562,8 @@ fn json_escape(value: &str) -> String {
 mod tests {
     use crate::{compile, CompilerOptions, MapLoader, ModuleSource};
 
+    use super::source_line_column;
+
     #[test]
     fn erases_types_and_rewrites_typescript_module_specifiers() {
         let loader = MapLoader::from([
@@ -470,6 +617,45 @@ mod tests {
     }
 
     #[test]
+    fn source_map_tracks_columns_across_erased_annotations() {
+        let source = "export const label: string = 'value';";
+        let loader = MapLoader::from([ModuleSource::new("memory:///columns.ts", source)]);
+        let output = compile(
+            "memory:///columns.ts",
+            &loader,
+            CompilerOptions {
+                source_map: true,
+                ..CompilerOptions::default()
+            },
+        )
+        .output
+        .unwrap();
+        let artifact = &output.artifacts["memory:///columns.ts"];
+        let generated_equals = artifact.javascript.find('=').unwrap();
+        let source_equals = source.find('=').unwrap();
+        let expected_generated_column = artifact.javascript[..generated_equals]
+            .encode_utf16()
+            .count();
+        let expected_source_column = source[..source_equals].encode_utf16().count();
+        let mappings = decode_mappings(&artifact.source_map.as_ref().unwrap().mappings);
+        assert!(mappings.iter().any(|mapping| {
+            *mapping == (0, expected_generated_column, 0, expected_source_column)
+        }));
+    }
+
+    #[test]
+    fn provenance_uses_utf16_columns_and_normalizes_crlf_to_one_line_break() {
+        let source = "const 值 = 1;\r\nconst next = 2;";
+        let first_value = source.find('1').unwrap();
+        let second_line = source.rfind("next").unwrap();
+        assert_eq!(
+            source_line_column(source, first_value),
+            (0, "const 值 = ".encode_utf16().count())
+        );
+        assert_eq!(source_line_column(source, second_line), (1, 6));
+    }
+
+    #[test]
     fn emits_an_erasable_generic_function_without_a_javascript_type_parameter() {
         let loader = MapLoader::from([ModuleSource::new(
             "memory:///generic.ts",
@@ -508,5 +694,65 @@ mod tests {
             artifact.declaration.as_deref(),
             Some("export type { User } from \"./model.ts\";\n")
         );
+    }
+
+    fn decode_mappings(value: &str) -> Vec<(usize, usize, usize, usize)> {
+        let mut mappings = Vec::new();
+        let mut source_index = 0i64;
+        let mut source_line = 0i64;
+        let mut source_column = 0i64;
+        for (generated_line, line) in value.split(';').enumerate() {
+            let mut generated_column = 0i64;
+            for segment in line.split(',').filter(|segment| !segment.is_empty()) {
+                let values = decode_vlq_fields(segment);
+                assert_eq!(values.len(), 4);
+                generated_column += values[0];
+                source_index += values[1];
+                source_line += values[2];
+                source_column += values[3];
+                assert_eq!(source_index, 0);
+                mappings.push((
+                    generated_line,
+                    generated_column as usize,
+                    source_line as usize,
+                    source_column as usize,
+                ));
+            }
+        }
+        mappings
+    }
+
+    fn decode_vlq_fields(value: &str) -> Vec<i64> {
+        let bytes = value.as_bytes();
+        let mut fields = Vec::new();
+        let mut index = 0usize;
+        while index < bytes.len() {
+            let mut value = 0u64;
+            let mut shift = 0u32;
+            loop {
+                let digit = base64_value(bytes[index]);
+                index += 1;
+                value |= u64::from(digit & 0b1_1111) << shift;
+                shift += 5;
+                if digit & 0b10_0000 == 0 {
+                    break;
+                }
+            }
+            let negative = value & 1 == 1;
+            let value = (value >> 1) as i64;
+            fields.push(if negative { -value } else { value });
+        }
+        fields
+    }
+
+    fn base64_value(value: u8) -> u8 {
+        match value {
+            b'A'..=b'Z' => value - b'A',
+            b'a'..=b'z' => value - b'a' + 26,
+            b'0'..=b'9' => value - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => panic!("invalid base64 VLQ digit"),
+        }
     }
 }

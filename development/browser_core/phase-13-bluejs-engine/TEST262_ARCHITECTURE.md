@@ -1894,3 +1894,56 @@ These are focused filters, not a replacement for the checked-in complete
 inventory. The Rust 1.95 complete reconciliation above ran after these changes;
 the full-inventory totals and generated `test262-summary.json` now record its
 73,553 pass, 28,956 fail and 69 timeout outcomes.
+
+## P0.1–P0.4 closure: reflective realm and object contracts
+
+The final P0 closure keeps lazy intrinsic allocation as an implementation
+detail, rather than exposing it through JavaScript reflection. A source-level
+global read now resolves through the current global-object property, while VM
+internals retain their intrinsic cache. `Math`, `RegExp`, and `Intl` publish
+their own global properties when first materialized. `[[OwnPropertyKeys]]` on
+the realm global materializes the P0 standard global surface before reporting
+keys, so `Object.getOwnPropertyNames(globalThis)` agrees with direct global
+access without eagerly constructing later-phase libraries.
+
+`Object.getOwnPropertyDescriptors` now walks `[[OwnPropertyKeys]]` and
+`[[GetOwnProperty]]` directly, preserving Proxy trap order and symbol keys
+without consulting a replaceable public helper. The same internal boundary
+handles a key deleted by an earlier `Object.values`/`Object.entries` getter,
+and filters symbol keys before an enumerable-own-properties descriptor trap.
+Reflective descriptor access also materializes the lazy `%Object.prototype%`
+methods and `%Function.prototype%.constructor`; the latter has its standard
+writable, non-enumerable, configurable descriptor.
+
+`Object(value)` retains function identity and `new Object` now takes the
+OrdinaryCreateFromConstructor path whenever `newTarget` differs from `%Object%`.
+Consequently a derived `class extends Object` and
+`Reflect.construct(Object, values, newTarget)` allocate the requested
+prototype instead of returning an object argument. `Object.prototype.toString`
+selects array, Error, Date, RegExp, callable, boxed primitive, iterator, and
+Proxy brands from internal slots before observing an overridable
+`Symbol.toStringTag`; the generator-function prototype supplies its own tag.
+
+The rebuilt adapter was run with eight workers, the normal 100,000 instruction
+budget and the two-second case deadline. The focused closure evidence is local
+to `/private/tmp/bluejs-p0-*-closure`:
+
+| Workstream | Filter | Result |
+| --- | --- | ---: |
+| P0.1 | `language/statements/try` | **398 / 398 pass** |
+| P0.2 | `language/global-code` | **228 / 228 pass** |
+| P0.2 | `language/eval-code` | **924 / 924 pass** |
+| P0.2 | `language/arguments-object` | **460 / 460 pass** |
+| P0.3 | `language/expressions/assignment` | **1,488 / 1,488 pass** |
+| P0.4 | `built-ins/Proxy` | **607 / 607 pass** |
+| P0.4 | `built-ins/Reflect` | **306 pass / 2 P1.5 failures** of 308 |
+| P0.4 | `built-ins/Object` | **6,746 pass / 62 later-phase failures** of 6,808 |
+
+The two Reflect failures and six Object modes require resizable or
+variable-length TypedArray semantics (P1.5). The Object remainder is otherwise
+explicitly outside P0: 14 modes require Promise, collections, AggregateError,
+or async-function behavior (P1); 18 descriptor checks require missing
+`Array.prototype` or `Number.prototype` library methods and 24 require
+`Object.groupBy` (P2). No remaining failure in these closure filters is
+attributed to a P0.1–P0.4 contract. This closes the listed P0 acceptance
+slices, not full Test262 conformance or the later-phase libraries they expose.

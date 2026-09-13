@@ -545,6 +545,10 @@ enum ObjectKind {
     Date {
         time: f64,
     },
+    /// The `[[ErrorData]]` internal slot.  Error instances otherwise use
+    /// ordinary property storage, but Object.prototype.toString observes
+    /// this brand independently of their prototype chain or `name` value.
+    Error,
     /// An ephemeron table. Keys do not become ordinary tracing edges; GC
     /// marks a value only after its key has independently become live.
     WeakCollection {
@@ -1691,6 +1695,21 @@ impl Heap {
         prototype: Option<ObjectId>,
     ) -> Result<ObjectId, HeapError> {
         self.alloc(ObjectKind::Date { time }, prototype)
+    }
+
+    pub(crate) fn alloc_error(
+        &mut self,
+        prototype: Option<ObjectId>,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::Error, prototype)
+    }
+
+    pub(crate) fn is_error(&self, object: ObjectId) -> Result<bool, HeapError> {
+        Ok(matches!(self.object(object)?.kind, ObjectKind::Error))
+    }
+
+    pub(crate) fn is_date(&self, object: ObjectId) -> Result<bool, HeapError> {
+        Ok(matches!(self.object(object)?.kind, ObjectKind::Date { .. }))
     }
 
     pub(crate) fn date_value(&self, object: ObjectId) -> Result<f64, HeapError> {

@@ -17,6 +17,24 @@ impl Vm {
         // Intrinsic globals are lazily initialized, but reflective descriptor
         // operations must observe the same own properties as ordinary Get.
         self.materialize_global_object_property(object, key)?;
+        // These %Object.prototype% methods are installed on first ordinary
+        // lookup. [[GetOwnProperty]] is also observable through descriptor
+        // APIs, however, so it must not expose a transient lazy-intrinsic
+        // absence to Object.getOwnPropertyDescriptor.
+        if object == self.object_prototype {
+            if key == "propertyIsEnumerable" {
+                self.property_is_enumerable_intrinsic()?;
+            }
+            if key == "hasOwnProperty" {
+                self.has_own_property_intrinsic()?;
+            }
+        }
+        // Likewise, %Function.prototype%'s constructor is installed while
+        // materializing %Function%. A reflective lookup needs the same
+        // observable property that `fn.constructor` receives through [[Get]].
+        if key == "constructor" && object == self.function_prototype()? {
+            self.global("Function")?;
+        }
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_get_own_property(object, key);
         }
@@ -92,6 +110,47 @@ impl Vm {
         &mut self,
         object: ObjectId,
     ) -> Result<Vec<PropertyName>, RuntimeError> {
+        // Global built-ins are initialized on demand to keep ordinary realms
+        // compact. [[OwnPropertyKeys]] is nevertheless a reflective view of
+        // the realm record, so it must expose the standard global properties
+        // even when no direct identifier/property access has initialized
+        // them yet. Keep this to the P0 realm surface rather than creating
+        // later-phase collection and asynchronous library globals here.
+        if self.globals.get("globalThis") == Some(&object) {
+            for name in [
+                "undefined",
+                "NaN",
+                "Infinity",
+                "eval",
+                "parseInt",
+                "parseFloat",
+                "isNaN",
+                "isFinite",
+                "decodeURI",
+                "decodeURIComponent",
+                "encodeURI",
+                "encodeURIComponent",
+                "Object",
+                "Function",
+                "Array",
+                "String",
+                "Boolean",
+                "Number",
+                "Date",
+                "RegExp",
+                "Error",
+                "EvalError",
+                "RangeError",
+                "ReferenceError",
+                "SyntaxError",
+                "TypeError",
+                "URIError",
+                "Math",
+                "JSON",
+            ] {
+                self.materialize_lexical_global(object, name)?;
+            }
+        }
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_own_keys(object);
         }

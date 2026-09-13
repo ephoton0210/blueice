@@ -383,14 +383,6 @@ impl Vm {
                         NativeFunction::DateMethod(native::DateMethod::Set(setter)),
                     )?;
                 }
-                self.define_data(
-                    date_prototype,
-                    JsSymbol::well_known("toStringTag"),
-                    Value::String("Date".into()),
-                    false,
-                    false,
-                    true,
-                )?;
             } else if matches!(name, "ArrayBuffer" | "SharedArrayBuffer") {
                 let buffer_prototype =
                     self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
@@ -716,7 +708,7 @@ impl Vm {
                     prototype,
                     "constructor",
                     Value::Object(id),
-                    false,
+                    true,
                     false,
                     true,
                 )?;
@@ -776,6 +768,14 @@ impl Vm {
                         "valueOf",
                         0,
                         NativeFunction::BigIntValueOf,
+                    )?;
+                    self.define_data(
+                        boxed_prototype,
+                        JsSymbol::well_known("toStringTag"),
+                        Value::String("BigInt".into()),
+                        false,
+                        false,
+                        true,
                     )?;
                 } else {
                     self.install_native(
@@ -929,6 +929,7 @@ impl Vm {
                     ("hasOwn", 2, HasOwn),
                     ("is", 2, Is),
                     ("getOwnPropertyDescriptor", 2, GetOwnPropertyDescriptor),
+                    ("getOwnPropertyDescriptors", 1, GetOwnPropertyDescriptors),
                     ("defineProperty", 3, DefineProperty),
                     ("defineProperties", 2, DefineProperties),
                     ("keys", 1, Keys),

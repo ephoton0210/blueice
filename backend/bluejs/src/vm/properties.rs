@@ -30,6 +30,20 @@ impl Vm {
                         return Ok(value);
                     }
                 }
+                // Primitive-string lookup reaches `%Object.prototype%` through
+                // `%String.prototype%`, too.  These two Object methods are
+                // installed lazily, so materialize them before walking that
+                // inherited path just as `get_object_property` does for an
+                // ordinary object receiver.  In particular, a primitive
+                // receiver supplied to Reflect.set must still support the
+                // standard `receiver.hasOwnProperty(key)` observation after
+                // [[Set]] correctly returns false.
+                if key == "propertyIsEnumerable" {
+                    self.property_is_enumerable_intrinsic()?;
+                }
+                if key == "hasOwnProperty" {
+                    self.has_own_property_intrinsic()?;
+                }
                 let (_, prototype) = self.string_intrinsics()?;
                 self.get_from_prototype(prototype, receiver, key)
             }
@@ -69,6 +83,13 @@ impl Vm {
             // expression. Materialize it first so `[].constructor` is not
             // observably absent.
             self.global("Array")?;
+        }
+        if key == "constructor" && self.is_callable(&Value::Object(target))? {
+            // `%Function.prototype%` owns its `constructor` property.
+            // Materialize `%Function%` before an inherited lookup on a
+            // closure (including one passed through Object(value)) can
+            // observe the temporary lazy-intrinsic gap.
+            self.global("Function")?;
         }
         // Imported live Proxies have both a membrane record and a local
         // Proxy exotic record.  The latter owns the current execution

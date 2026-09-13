@@ -121,12 +121,26 @@ impl Vm {
             )?;
             Ok(Value::Object(constructor))
         })();
-        if result.is_err() {
-            self.heap.unroot(root)?;
-        } else {
-            self.globals.insert("RegExp".into(), constructor);
+        match result {
+            Ok(value) => {
+                self.globals.insert("RegExp".into(), constructor);
+                if let Some(&global) = self.globals.get("globalThis") {
+                    self.define_data(
+                        global,
+                        "RegExp",
+                        Value::Object(constructor),
+                        true,
+                        false,
+                        true,
+                    )?;
+                }
+                Ok(value)
+            }
+            Err(error) => {
+                self.heap.unroot(root)?;
+                Err(error)
+            }
         }
-        result
     }
 
     pub(super) fn regexp_escape(&mut self, value: &Value) -> Result<Value, RuntimeError> {

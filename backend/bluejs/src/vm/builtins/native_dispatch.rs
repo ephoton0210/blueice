@@ -1592,27 +1592,44 @@ impl Vm {
                     Value::Undefined => "Undefined",
                     Value::Null => "Null",
                     Value::String(_) => "String",
-                    Value::Symbol(_) => "Symbol",
+                    // Symbol and BigInt obtain their default tag from their
+                    // prototypes' @@toStringTag properties.  If user code
+                    // replaces those with a non-string value, the ordinary
+                    // fallback is Object rather than a hidden primitive tag.
+                    Value::Symbol(_) => "Object",
                     Value::Number(_) => "Number",
-                    Value::BigInt(_) => "BigInt",
+                    Value::BigInt(_) => "Object",
                     Value::Bool(_) => "Boolean",
                     Value::Object(id) => {
-                        if self.heap.boxed_string(*id)?.is_some() {
+                        // IsArray walks Proxy targets and throws for a
+                        // revoked Proxy before Object.prototype.toString
+                        // observes @@toStringTag.  The rest of BlueJS's
+                        // object brands remain heap-owned, so unwrap only
+                        // for this internal-slot inspection while retaining
+                        // the original receiver for the later Get.
+                        let mut branded = *id;
+                        while let Some((target, _)) = self.heap.proxy(branded)? {
+                            branded = target;
+                        }
+                        if self.heap.boxed_string(branded)?.is_some() {
                             "String"
-                        } else if self.heap.is_array(*id)? {
+                        } else if self.heap.is_array(branded)? {
                             "Array"
-                        } else if self.heap.is_arguments(*id)? {
+                        } else if self.heap.is_arguments(branded)? {
                             "Arguments"
+                        } else if self.heap.is_date(branded)? {
+                            "Date"
                         } else if self.is_callable(&receiver)? {
                             "Function"
-                        } else if self.heap.regexp(*id)?.is_some() {
+                        } else if self.heap.regexp(branded)?.is_some() {
                             "RegExp"
-                        } else if let Some(value) = self.heap.boxed_primitive(*id)? {
+                        } else if self.heap.is_error(branded)? {
+                            "Error"
+                        } else if let Some(value) = self.heap.boxed_primitive(branded)? {
                             match value {
                                 Value::Number(_) => "Number",
                                 Value::Bool(_) => "Boolean",
-                                Value::BigInt(_) => "BigInt",
-                                Value::Symbol(_) => "Symbol",
+                                Value::BigInt(_) | Value::Symbol(_) => "Object",
                                 _ => "Object",
                             }
                         } else {
@@ -1696,6 +1713,19 @@ impl Vm {
                     .map_or(Value::Undefined, Value::String))
             }
             NativeFunction::Object => {
+                // Object(value) normally returns an object argument (or
+                // boxes a primitive), but a distinct NewTarget takes the
+                // OrdinaryCreateFromConstructor branch first.  This is what
+                // makes `class C extends Object {}` and
+                // Reflect.construct(Object, values, C) allocate a fresh C
+                // instance rather than returning `values[0]`.
+                let object_constructor = self.global("Object")?;
+                if construct && self.new_target != object_constructor {
+                    let prototype = self.constructor_prototype(self.object_prototype)?;
+                    return Ok(Value::Object(
+                        self.with_roots(|heap| heap.alloc_object(Some(prototype)))?,
+                    ));
+                }
                 if matches!(first, Value::Undefined | Value::Null) {
                     let proto = if construct {
                         self.constructor_prototype(self.object_prototype)?

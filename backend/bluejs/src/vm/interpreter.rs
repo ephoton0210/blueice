@@ -620,7 +620,9 @@ impl Vm {
                     }
                     Opcode::Closure => {
                         let child = code.functions[operand].clone();
-                        let function_prototype = if child.async_function {
+                        let function_prototype = if child.generator && !child.async_function {
+                            self.generator_function_prototype()?
+                        } else if child.async_function {
                             self.async_function_prototype()?
                         } else {
                             self.function_prototype()?
@@ -965,7 +967,20 @@ impl Vm {
                         let Value::String(name) = &code.constants[operand] else {
                             unreachable!()
                         };
-                        let value = self.global(&name.to_utf8().unwrap())?;
+                        let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                        // A direct reference to a standard global resolves
+                        // through the global object record.  `Vm::global`
+                        // remains the private intrinsic materializer used by
+                        // engine algorithms, but source-level `Object`,
+                        // `Array`, and friends must observe replacement or
+                        // deletion of their configurable global properties.
+                        // Establish the realm global first so
+                        // `lookup_global_name` can materialize the initial
+                        // lazy property before it checks that object record.
+                        self.global("globalThis")?;
+                        let value = self
+                            .lookup_global_name(&name)?
+                            .ok_or(RuntimeError::ReferenceError(name))?;
                         self.stack.push(value);
                     }
                     Opcode::ToPropertyKey => {

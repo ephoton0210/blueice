@@ -655,6 +655,84 @@ impl Vm {
         result
     }
 
+    /// `%GeneratorFunction.prototype%` is the prototype of generator
+    /// function objects, distinct from the `.prototype` object owned by an
+    /// individual generator function for its iterator instances.  Keeping
+    /// the `@@toStringTag` here gives both a generator function and a Proxy
+    /// around it the standard `GeneratorFunction` observation, while later
+    /// mutation through `function.constructor.prototype` remains visible.
+    pub(super) fn generator_function_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
+        if let Some(prototype) = self.generator_function_prototype {
+            return Ok(prototype);
+        }
+        let function_prototype = self.function_prototype()?;
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(function_prototype)))?;
+        let root = self.heap.root(prototype)?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(prototype));
+        let result = (|| {
+            let constructor = self.with_roots(|heap| {
+                heap.alloc_native_function(
+                    NativeFunction::Function,
+                    "GeneratorFunction",
+                    function_prototype,
+                )
+            })?;
+            self.stack.push(Value::Object(constructor));
+            self.define_data(
+                constructor,
+                "name",
+                Value::String("GeneratorFunction".into()),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                constructor,
+                "length",
+                Value::Number(1.0),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                constructor,
+                "prototype",
+                Value::Object(prototype),
+                false,
+                false,
+                false,
+            )?;
+            self.define_data(
+                prototype,
+                "constructor",
+                Value::Object(constructor),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                prototype,
+                JsSymbol::well_known("toStringTag"),
+                Value::String("GeneratorFunction".into()),
+                false,
+                false,
+                true,
+            )
+        })();
+        self.stack.truncate(base);
+        match result {
+            Ok(()) => {
+                self.generator_function_prototype = Some(prototype);
+                Ok(prototype)
+            }
+            Err(error) => {
+                self.heap.unroot(root)?;
+                Err(error)
+            }
+        }
+    }
+
     pub(super) fn generator_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
         if let Some(prototype) = self.generator_prototype {
             return Ok(prototype);
@@ -1766,6 +1844,55 @@ impl Vm {
                     self.object_get_own_property(object, &key)?.is_some(),
                 ))
             }
+            GetOwnPropertyDescriptors => {
+                // Object.getOwnPropertyDescriptors observes the object's
+                // internal methods directly.  In particular, it does not
+                // call the public Object.getOwnPropertyDescriptor property:
+                // replacing that property must not affect this operation.
+                // Keeping the walk at this boundary also preserves Proxy
+                // trap order and lets primitive inputs use their ordinary
+                // temporary wrapper without exposing it to JavaScript.
+                let prototype = self.object_prototype;
+                let descriptors = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+                self.stack.push(Value::Object(descriptors));
+                for key in self.object_own_property_keys(object)? {
+                    let Some(descriptor) = self.object_get_own_property(object, &key)? else {
+                        continue;
+                    };
+                    let descriptor_object =
+                        self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+                    self.stack.push(Value::Object(descriptor_object));
+                    for (name, value) in [
+                        ("value", descriptor.value),
+                        ("writable", descriptor.writable.map(Value::Bool)),
+                        ("get", descriptor.get),
+                        ("set", descriptor.set),
+                        ("enumerable", descriptor.enumerable.map(Value::Bool)),
+                        ("configurable", descriptor.configurable.map(Value::Bool)),
+                    ] {
+                        if let Some(value) = value {
+                            self.with_roots(|heap| heap.set(descriptor_object, name, value))?;
+                        }
+                    }
+                    let defined = self.object_define_own_property(
+                        descriptors,
+                        key,
+                        PropertyDescriptor::data(
+                            Value::Object(descriptor_object),
+                            true,
+                            true,
+                            true,
+                        ),
+                    )?;
+                    if !defined {
+                        return Err(RuntimeError::TypeError(
+                            "cannot define descriptor property".into(),
+                        ));
+                    }
+                    self.stack.pop();
+                }
+                Ok(Value::Object(descriptors))
+            }
             DefineProperties => {
                 let properties = self.coerce_object(native::argument(args, 1))?;
                 self.stack.push(Value::Object(properties));
@@ -1859,15 +1986,24 @@ impl Vm {
                 let keys = self.object_own_property_keys(object)?;
                 let mut values = Vec::new();
                 for key in keys {
-                    if matches!(method, Keys | Values | Entries)
-                        && (!matches!(key, PropertyName::String(_))
-                            || self
-                                .object_get_own_property(object, &key)?
-                                .unwrap()
-                                .enumerable
-                                != Some(true))
-                    {
-                        continue;
+                    if matches!(method, Keys | Values | Entries) {
+                        // EnumerableOwnProperties filters to String keys
+                        // before it invokes [[GetOwnProperty]].  A Proxy
+                        // descriptor trap must therefore never observe a
+                        // symbol that Object.keys/values/entries will omit.
+                        if !matches!(key, PropertyName::String(_)) {
+                            continue;
+                        }
+                        // EnumerableOwnProperties snapshots keys, but obtains
+                        // a descriptor for each key immediately before it
+                        // observes the value.  An earlier getter can delete
+                        // a later key, in which case it is simply omitted.
+                        let Some(descriptor) = self.object_get_own_property(object, &key)? else {
+                            continue;
+                        };
+                        if descriptor.enumerable != Some(true) {
+                            continue;
+                        }
                     }
                     if method == GetOwnPropertyNames && !matches!(key, PropertyName::String(_))
                         || method == GetOwnPropertySymbols

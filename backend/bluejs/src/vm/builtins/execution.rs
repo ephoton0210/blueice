@@ -35,13 +35,23 @@ impl Vm {
         let object_prototype = self.object_prototype;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
         let root = self.heap.root(prototype)?;
-        let result = self.install_symbol_native(
-            prototype,
-            function_prototype,
-            "iterator",
-            0,
-            NativeFunction::IteratorSelf,
-        );
+        let result = (|| {
+            self.install_symbol_native(
+                prototype,
+                function_prototype,
+                "iterator",
+                0,
+                NativeFunction::IteratorSelf,
+            )?;
+            self.define_data(
+                prototype,
+                JsSymbol::well_known("toStringTag"),
+                Value::String("Iterator".into()),
+                false,
+                false,
+                true,
+            )
+        })();
         if let Err(error) = result {
             self.heap.unroot(root)?;
             return Err(error);

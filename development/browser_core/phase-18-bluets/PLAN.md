@@ -24,7 +24,7 @@ dependency before introducing any page-runtime coupling:
   resolution, duplicate names, unknown types and the implemented assignment /
   return checks, and never emits on an error.
 - `bluetsc check` uses that shared pipeline without writes. `bluetsc build`
-  stages ESM `.js`, optional line source maps and public `.d.ts` files, then
+  stages ESM `.js`, optional column-provenance source maps and public `.d.ts` files, then
   replaces the selected output directory only after every artifact has been
   staged. Its fingerprint includes source content, the pinned language version,
   target, source-map/declaration modes, runtime-policy label and resolver
@@ -61,6 +61,11 @@ dependency before introducing any page-runtime coupling:
   It also contains a bounded, pure contract IR/validator for reifiable
   JSON-like values. Neither artifact claims a runtime type tag or validates a
   live page boundary yet.
+- BlueTSC source maps use Source Map v3 segments at copied, rewritten and
+  erased-source boundaries rather than line-only placeholders. Generated and
+  original columns use UTF-16 code units; CRLF is represented as one source
+  line transition. This gives portable JavaScript builds column-level
+  TypeScript provenance without claiming a BlueJS bytecode safe-point map.
 - `IncrementalCompiler` is a reusable, host-neutral single-entry session for
   development hosts. It reloads the caller-authorized graph to detect changed
   source or resolution edges, reuses parsed modules with identical bytes, and
@@ -72,12 +77,16 @@ dependency before introducing any page-runtime coupling:
   `ValidationLimits` for depth, collection entries, visited-node fuel and
   string bytes. These checks remain pure data validation; host-boundary
   discovery and enforcement are still deliberately separate work.
+- `backend/bluets/tests/typescript_oracle.rs` is an opt-in compatibility job.
+  It requires `BLUEICE_TSC` to name a TypeScript 5.9.3 compiler, verifies that
+  pin before executing, and compares the accepted initial erasure fixture's
+  Node output plus a rejected assignment. Node and `tsc` are test tools only;
+  neither is linked, spawned, or discovered by the BlueTS compiler or CLI.
 
 This is deliberately not a claim of general `tsc` compatibility. Control-flow
 narrowing, overload resolution, generic substitution, decorators, enums,
-classes, TSX, namespace emission, parameter properties, arbitrary JavaScript
-expression typing, incremental caching and a full source-map
-column/provenance model remain pending. A construct outside the
+classes, TSX, namespace emission, parameter properties, and arbitrary JavaScript
+expression typing remain pending. A construct outside the
 implemented matrix must be added with a parser/checker/emitter test and a
 precise compatibility entry; it must not be advertised merely because its
 tokens happen to be erasable.
@@ -264,7 +273,7 @@ Acceptance: editing one module invalidates only its dependents; a cache entry ch
 
 - Keep public parser, binding, checker, lowering, contract and debugger fixtures under the eventual `backend/bluets/tests/` boundary, with shared HTML page fixtures beside the Phase 13/17 integration tests.
 - Test diagnostics by stable code/category, source span and semantic condition—not copied compiler-message wording. Every unsupported feature must have an explicit rejection fixture.
-- Compare accepted syntax and checker behavior against a pinned external TypeScript reference in an opt-in test job; compare resulting runtime behavior against the reference JavaScript output where the selected BlueJS feature subset supports it. The reference never determines BlueTS's security policy or makes an unsupported test silently pass.
+- Compare accepted syntax and checker behavior against the pinned TypeScript 5.9.3 reference in the opt-in `typescript_oracle` test job (`BLUEICE_TSC=/absolute/path/to/tsc cargo test -p blueice-bluets --test typescript_oracle -- --ignored`); compare resulting runtime behavior against the reference JavaScript output where the selected BlueJS feature subset supports it. The reference never determines BlueTS's security policy or makes an unsupported test silently pass.
 - Run BlueTSC's emitted JavaScript and direct BlueTS bytecode against the same deterministic fixtures; compare public results, exceptions, module order, source-map locations, contract failures and type-only import elision. Assert an erroneous multi-entry build publishes no partial artifact set.
 - Test contracts with malformed, adversarial, recursive, cyclic, getter/proxy-like, deep, oversized and resource-exhausting inputs. Assert no arbitrary user code runs during a pure validation path.
 - Test debugger round trips: source breakpoints, async/exception locations, renamed symbols, type displays, erased type-only imports, transformed spans, stale source-map rejection and privacy redaction.
@@ -296,12 +305,12 @@ Acceptance: editing one module invalidates only its dependents; a cache entry ch
 - [ ] Define the public BlueJS AST/IR hand-off (without emitted-source reparsing) and its compatibility matrix
 - [ ] Generate and test `lib.blueice.d.ts` from actual host bindings
 - [x] Implement the independent initial parser/binder/closed-module resolver/checker/type-erasure ESM emitter with atomic compile failures
-- [x] Implement `bluetsc check`/staged `build`, ESM/line-source-map/declaration emission and reproducible artifact fingerprints for the initial matrix
+- [x] Implement `bluetsc check`/staged `build`, ESM/column-provenance-source-map/declaration emission and reproducible artifact fingerprints for the initial matrix
 - [x] Implement VM-independent `BlueTsDebugInfo` (source hashes, symbols, static types and spans); bytecode source mapping and controlled debugger retention remain pending
 - [ ] Expose TypeScript diagnostics, symbols, types, contracts, lowering provenance and BlueTSC check/build through Phase 12's negotiated MCP debug interface
 - [x] Implement the pure runtime-contract IR and bounded JSON-like validator; host-boundary discovery, JSON Schema delegation and page enforcement remain pending
 - [x] Implement host-neutral dependency-aware incremental parser/checker cache invalidation; cache reuse is refused across compiler-policy changes and failed compilations preserve the last successful entry
 - [x] Support root-confined, type-only local `.d.ts` modules without runtime emission or package/remote declaration acquisition
 - [x] Bound the pure contract validator's depth, collection, node-fuel and string-byte work with caller-visible limits
-- [ ] Add opt-in external-oracle jobs
+- [x] Add an opt-in, TypeScript-5.9.3-pinned external-oracle job for the implemented initial matrix
 - [ ] Add real-process page, debugger, contract, resource, policy and multi-tab regression coverage

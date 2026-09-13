@@ -81,12 +81,19 @@ impl Vm {
             )?;
             Ok(Value::Object(math))
         })();
-        if result.is_err() {
-            self.heap.unroot(root)?;
-        } else {
-            self.globals.insert("Math".into(), math);
+        match result {
+            Ok(value) => {
+                self.globals.insert("Math".into(), math);
+                if let Some(&global) = self.globals.get("globalThis") {
+                    self.define_data(global, "Math", Value::Object(math), true, false, true)?;
+                }
+                Ok(value)
+            }
+            Err(error) => {
+                self.heap.unroot(root)?;
+                Err(error)
+            }
         }
-        result
     }
 
     pub(in super::super) fn math_method(
