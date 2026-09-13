@@ -78,6 +78,88 @@ fn check_and_build_use_the_same_closed_project_and_preserve_output_on_error() {
     fs::remove_dir_all(temporary).unwrap();
 }
 
+#[test]
+fn config_builds_multiple_entries_and_resolves_only_declared_imports() {
+    let temporary = unique_test_directory();
+    let root = temporary.join("project");
+    let source = root.join("src");
+    fs::create_dir_all(source.join("entries")).unwrap();
+    fs::create_dir_all(source.join("shared")).unwrap();
+    fs::write(
+        source.join("shared/model.ts"),
+        "export interface User { id: string }\n",
+    )
+    .unwrap();
+    fs::write(
+        source.join("entries/main.ts"),
+        "import type { User } from '@shared/model.ts';\nexport const mainUser: User = { id: 'main' };\n",
+    )
+    .unwrap();
+    fs::write(
+        source.join("entries/admin.ts"),
+        "import type { User } from '@shared/model.ts';\nexport const adminUser: User = { id: 'admin' };\n",
+    )
+    .unwrap();
+    let config = root.join("bluetsc.json");
+    fs::write(
+        &config,
+        r#"{
+  "entries": ["src/entries/main.ts", "src/entries/admin.ts"],
+  "outDir": "dist",
+  "sourceMap": true,
+  "declaration": true,
+  "imports": { "@shared/": "src/shared" }
+}"#,
+    )
+    .unwrap();
+
+    let checked = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .args(["check", "--config", config.to_str().unwrap()])
+        .status()
+        .unwrap();
+    assert!(checked.success());
+    let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .args(["build", "--config", config.to_str().unwrap()])
+        .status()
+        .unwrap();
+    assert!(built.success());
+    let output = root.join("dist");
+    assert!(output.join("src/entries/main.js").is_file());
+    assert!(output.join("src/entries/admin.js").is_file());
+    assert!(output.join("src/shared/model.js").is_file());
+    assert!(output.join("src/entries/main.d.ts").is_file());
+    assert!(output.join("src/entries/main.js.map").is_file());
+    let main_javascript = fs::read_to_string(output.join("src/entries/main.js")).unwrap();
+    let manifest = fs::read_to_string(output.join("bluetsc.manifest.json")).unwrap();
+    let import_map = fs::read_to_string(output.join("bluetsc.importmap.json")).unwrap();
+    let source_map = fs::read_to_string(output.join("src/entries/main.js.map")).unwrap();
+    assert!(manifest.contains("\"runtimePolicy\": \"checked\""));
+    assert!(manifest.contains("\"src/entries/main.js\""));
+    assert!(import_map.contains("\"@shared/\": \"./src/shared/\""));
+    assert!(!manifest.contains(&root.to_string_lossy().into_owned()));
+    assert!(!source_map.contains(&root.to_string_lossy().into_owned()));
+
+    fs::write(
+        source.join("entries/admin.ts"),
+        "export const broken: number = 'wrong';\n",
+    )
+    .unwrap();
+    let failed = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+        .args(["build", "--config", config.to_str().unwrap()])
+        .status()
+        .unwrap();
+    assert!(!failed.success());
+    assert_eq!(
+        fs::read_to_string(output.join("src/entries/main.js")).unwrap(),
+        main_javascript
+    );
+    assert_eq!(
+        fs::read_to_string(output.join("bluetsc.manifest.json")).unwrap(),
+        manifest
+    );
+    fs::remove_dir_all(temporary).unwrap();
+}
+
 fn unique_test_directory() -> PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)

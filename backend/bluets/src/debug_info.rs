@@ -106,9 +106,10 @@ fn options_hash(options: &CompilerOptions) -> String {
     let source_map = if options.source_map { "map" } else { "no-map" };
     let declaration = if options.declaration { "dts" } else { "no-dts" };
     hash(&format!(
-        "{}|{}|{source_map}|{declaration}",
+        "{}|{}|{}|{source_map}|{declaration}",
         options.target.as_str(),
         options.runtime_policy.as_str(),
+        options.resolver_fingerprint,
     ))
 }
 

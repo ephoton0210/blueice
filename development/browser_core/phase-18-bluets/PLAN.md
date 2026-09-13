@@ -27,7 +27,26 @@ dependency before introducing any page-runtime coupling:
   stages ESM `.js`, optional line source maps and public `.d.ts` files, then
   replaces the selected output directory only after every artifact has been
   staged. Its fingerprint includes source content, the pinned language version,
-  target, source-map/declaration modes and runtime-policy label.
+  target, source-map/declaration modes, runtime-policy label and resolver
+  identity.
+- `bluetsc` accepts either one explicit entry or a `bluetsc.json` project file.
+  The latter supports multiple `entries`, project-root-confined `outDir`,
+  `sourceMap`, `declaration`, `target`, `runtimePolicy`, and exact/prefix
+  `imports` mappings. Config flags cannot be mixed with client-side overrides;
+  an import target, entry or output path that escapes the declared root is
+  rejected before compilation. This is the standalone compiler's closed-world
+  resolver, not a page/network loader or an arbitrary package-manager hook.
+- Every successful build stages a root-relative `bluetsc.manifest.json` with
+  language version, project fingerprint, target, runtime policy, requested
+  output modes and emitted entries. A configured `imports` map also emits
+  `bluetsc.importmap.json`, translating source `.ts`/`.tsx` mappings to their
+  generated `.js` locations. Both files are published with the artifacts, so
+  they contain no absolute host path and cannot drift from an atomic build.
+- The filesystem adapter supplies root-relative source identities to the shared
+  compiler. Therefore artifacts, source maps and the VM-independent
+  `BlueTsDebugInfo` do not expose checkout paths, and relocating an unchanged
+  project does not change its resolver or source-identity contribution to the
+  build fingerprint.
 - The standalone compiler emits the VM-independent portion of
   `BlueTsDebugInfo`: source-content hashes, static types, symbols and spans.
   It also contains a bounded, pure contract IR/validator for reifiable
@@ -37,8 +56,8 @@ dependency before introducing any page-runtime coupling:
 This is deliberately not a claim of general `tsc` compatibility. Control-flow
 narrowing, overload resolution, generic substitution, decorators, enums,
 classes, TSX, namespace emission, parameter properties, arbitrary JavaScript
-expression typing, incremental caching, import maps/config files and a full
-source-map column/provenance model remain pending. A construct outside the
+expression typing, incremental caching and a full source-map
+column/provenance model remain pending. A construct outside the
 implemented matrix must be added with a parser/checker/emitter test and a
 precise compatibility entry; it must not be advertised merely because its
 tokens happen to be erasable.
@@ -77,7 +96,7 @@ The direct page path has no `TS -> emitted .js text -> parse .js again` round tr
 
 BlueTSC's default output is standard ECMAScript modules (`.js`) preserving ESM import/export semantics, accompanied on request by `.js.map` and `.d.ts` artifacts. Type-only imports/exports, interfaces and type aliases do not appear in emitted JavaScript. The emitter supports only an explicitly declared ECMAScript target matrix; it neither silently produces CommonJS nor claims that every TypeScript feature can target every JavaScript version. Resolution, import-map and declaration policies match BlueTS's declared project configuration, so a source graph cannot type-check one way in the browser and emit another way on the command line.
 
-`bluetsc check` performs parse/bind/type/resolution validation without writing artifacts. `bluetsc build` type-checks first, lowers once, stages all output and publishes it atomically only if every selected entry and dependency succeeds. The default is equivalent to `noEmitOnError`: no stale or partial JavaScript output is described as a successful build. The exact CLI/config file syntax remains implementation work, but its public contract must include pinned language/target versions, module/import-map inputs, output root, source-map mode, declaration mode, contract policy and reproducible content hashes.
+`bluetsc check` performs parse/bind/type/resolution validation without writing artifacts. `bluetsc build` type-checks first, lowers once, stages all output and publishes it atomically only if every selected entry and dependency succeeds. The default is equivalent to `noEmitOnError`: no stale or partial JavaScript output is described as a successful build. The initial implemented CLI accepts either `check|build <entry.ts>` or `check|build --config bluetsc.json`. A config has `entries`, optional project-root-confined `outDir`, `sourceMap`, `declaration`, `target`, `runtimePolicy`, and `imports`; a config invocation rejects extra CLI overrides so the recorded settings cannot drift. Its import map permits only exact file keys or trailing-slash prefixes to existing project-root-confined local source files/directories. A build always includes root-relative `bluetsc.manifest.json`; a configured map additionally produces the standard-shape `bluetsc.importmap.json` for the resulting ESM tree. This remains a deliberately small resolver, not Node/package-manager resolution.
 
 BlueTSC's source maps map emitted JavaScript back to original TypeScript spans using the same provenance records that make BlueTS debugger locations correct. Declarations describe the checker-approved public surface, not a claim that an unimplemented BlueIce host API exists. JavaScript and declaration outputs carry a compiler/host-typing/configuration fingerprint; consuming an artifact built under a weaker contract policy must be observable and rejectable by a strict project policy.
 

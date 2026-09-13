@@ -54,6 +54,10 @@ pub struct CompilerOptions {
     pub runtime_policy: RuntimePolicy,
     pub source_map: bool,
     pub declaration: bool,
+    /// Host-supplied identity for resolution inputs such as an import map.
+    /// This prevents an artifact/cache key from being reused under a resolver
+    /// policy different from the one that selected its module graph.
+    pub resolver_fingerprint: String,
 }
 
 impl Default for CompilerOptions {
@@ -63,6 +67,7 @@ impl Default for CompilerOptions {
             runtime_policy: RuntimePolicy::Checked,
             source_map: false,
             declaration: false,
+            resolver_fingerprint: "relative-v1".to_string(),
         }
     }
 }
@@ -343,6 +348,7 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(LANGUAGE_VERSION);
     add(options.target.as_str());
     add(options.runtime_policy.as_str());
+    add(&options.resolver_fingerprint);
     add(if options.source_map {
         "source-map"
     } else {
@@ -389,5 +395,29 @@ mod tests {
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == DiagnosticCode::ModuleNotFound));
+    }
+
+    #[test]
+    fn resolver_identity_changes_the_artifact_fingerprint() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///a.ts",
+            "export const answer: number = 42;",
+        )]);
+        let default = compile("memory:///a.ts", &loader, CompilerOptions::default())
+            .output
+            .unwrap()
+            .fingerprint;
+        let mapped = compile(
+            "memory:///a.ts",
+            &loader,
+            CompilerOptions {
+                resolver_fingerprint: "import-map-deadbeef".to_string(),
+                ..CompilerOptions::default()
+            },
+        )
+        .output
+        .unwrap()
+        .fingerprint;
+        assert_ne!(default, mapped);
     }
 }
