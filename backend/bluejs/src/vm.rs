@@ -1239,7 +1239,6 @@ impl Vm {
         let id = self.with_roots(|heap| heap.alloc_native_function(function, name, prototype))?;
         self.stack.push(Value::Object(id));
         let result = (|| {
-            self.define_data(id, "name", Value::String(name.into()), false, false, true)?;
             self.define_data(
                 id,
                 "length",
@@ -1248,6 +1247,7 @@ impl Vm {
                 false,
                 true,
             )?;
+            self.define_data(id, "name", Value::String(name.into()), false, false, true)?;
             self.define_data(owner, name, Value::Object(id), true, false, true)
         })();
         self.stack.pop();
@@ -1266,6 +1266,7 @@ impl Vm {
             self.with_roots(|heap| heap.alloc_native_function(function, name, prototype))?;
         self.stack.push(Value::Object(getter));
         let result = (|| {
+            self.define_data(getter, "length", Value::Number(0.0), false, false, true)?;
             self.define_data(
                 getter,
                 "name",
@@ -1274,7 +1275,6 @@ impl Vm {
                 false,
                 true,
             )?;
-            self.define_data(getter, "length", Value::Number(0.0), false, false, true)?;
             self.with_roots(|heap| {
                 heap.define_own_property(
                     owner,

@@ -584,7 +584,7 @@ impl Vm {
             start = end;
         }
         while runs.len() > 1 {
-            let mut next_runs = Vec::with_capacity((runs.len() + 1) / 2);
+            let mut next_runs = Vec::with_capacity(runs.len().div_ceil(2));
             let mut index = 0usize;
             while index < runs.len() {
                 let (start, middle) = runs[index];

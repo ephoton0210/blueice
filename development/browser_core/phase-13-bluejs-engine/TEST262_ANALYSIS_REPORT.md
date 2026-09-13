@@ -90,3 +90,12 @@ Every positive pass records `runtime/ok`; passes with another completion are
 runtime-negative tests whose requested phase and error type matched exactly.
 The runner checks every path/mode, source hash, metadata, and result
 classification before publishing this report. Async tests wait for `$DONE`.
+
+## Targeted P0.4 closure audit
+
+The final targeted realm and Proxy audit records **607/607** passing modes for
+`built-ins/Proxy`, **60/60** for `built-ins/Proxy/construct`, and **20/20** for
+`built-ins/Reflect/construct`. The remaining Reflect modes required only that
+`Date.now` exist as a callable, non-constructor; the Date baseline supplies
+that contract without claiming complete Date object support. The public
+`conformance_edges` regression suite passes **37/37**.

@@ -339,10 +339,26 @@ impl Vm {
         // caller-supplied default is already the correct fallback after the
         // validation walk completes.
         if let Some(realm) = self.validate_function_realm(target)? {
+            let boolean = self.global("Boolean")?;
+            let boolean_prototype = self
+                .get_property(&boolean, &"prototype".into())?
+                .object_id()
+                .expect("Boolean.prototype is an object");
+            let number = self.global("Number")?;
+            let number_prototype = self
+                .get_property(&number, &"prototype".into())?
+                .object_id()
+                .expect("Number.prototype is an object");
             let intrinsic = if default == self.object_prototype {
                 Some("Object")
             } else if default == self.function_prototype()? {
                 Some("Function")
+            } else if default == self.array_prototype {
+                Some("Array")
+            } else if default == boolean_prototype {
+                Some("Boolean")
+            } else if default == number_prototype {
+                Some("Number")
             } else if default == self.buffer_prototype("ArrayBuffer")? {
                 Some("ArrayBuffer")
             } else if default == self.buffer_prototype("SharedArrayBuffer")? {
@@ -413,6 +429,7 @@ impl Vm {
                 NativeFunction::Function
                     | NativeFunction::String
                     | NativeFunction::Array
+                    | NativeFunction::Date
                     | NativeFunction::ArrayBuffer
                     | NativeFunction::SharedArrayBuffer
                     | NativeFunction::DataView
@@ -487,8 +504,8 @@ impl Vm {
                 )
             })?;
             self.stack.push(Value::Object(revoke));
-            self.define_data(revoke, "name", Value::String("".into()), false, false, true)?;
             self.define_data(revoke, "length", Value::Number(0.0), false, false, true)?;
+            self.define_data(revoke, "name", Value::String("".into()), false, false, true)?;
             let object_prototype = self.object_prototype;
             let result = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
             self.stack.push(Value::Object(result));
@@ -914,6 +931,19 @@ impl Vm {
         {
             return Err(RuntimeError::TypeError(
                 "Proxy defineProperty trap reported a new non-configurable property".into(),
+            ));
+        }
+        // A successful defineProperty trap cannot make a non-configurable,
+        // writable target property non-writable. Ordinary descriptor
+        // compatibility permits that transition, so Proxy.[[DefineOwnProperty]]
+        // requires this additional invariant check.
+        if target_descriptor.as_ref().is_some_and(|current| {
+            current.configurable == Some(false)
+                && current.writable == Some(true)
+                && descriptor.writable == Some(false)
+        }) {
+            return Err(RuntimeError::TypeError(
+                "Proxy defineProperty trap made a target property non-writable".into(),
             ));
         }
         Ok(true)

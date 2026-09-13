@@ -146,6 +146,11 @@ impl Vm {
             NativeFunction::LocaleGetter(name) => self.locale_getter(&receiver, name),
             NativeFunction::LocaleInfo(name) => self.locale_info(&receiver, name),
             NativeFunction::Array => {
+                let prototype = if construct {
+                    self.constructor_prototype(self.array_prototype)?
+                } else {
+                    self.array_prototype
+                };
                 if args.len() == 1 {
                     if let Value::Number(length) = first {
                         let Value::Number(length) =
@@ -153,14 +158,33 @@ impl Vm {
                         else {
                             unreachable!()
                         };
-                        let prototype = self.array_prototype;
                         return Ok(Value::Object(self.with_roots(|heap| {
                             heap.alloc_array(length as u32, Some(prototype))
                         })?));
                     }
                 }
-                self.array_from(args)
+                self.array_from_with_prototype(args, prototype)
             }
+            NativeFunction::Date => {
+                if !construct {
+                    return Ok(Value::String("Invalid Date".into()));
+                }
+                let constructor = self.global("Date")?;
+                let default = self
+                    .get_property(&constructor, &"prototype".into())?
+                    .object_id()
+                    .expect("Date.prototype is an object");
+                let prototype = self.constructor_prototype(default)?;
+                Ok(Value::Object(
+                    self.with_roots(|heap| heap.alloc_object(Some(prototype)))?,
+                ))
+            }
+            NativeFunction::DateNow => Ok(Value::Number(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as f64,
+            )),
             NativeFunction::ArrayBuffer => self.array_buffer_constructor(&args, construct),
             NativeFunction::ArrayBufferByteLength => Ok(Value::Number(
                 self.heap

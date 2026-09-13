@@ -62,6 +62,8 @@ pub(crate) enum NativeFunction {
     AsyncFunction,
     String,
     Array,
+    Date,
+    DateNow,
     ArrayBuffer,
     ArrayBufferByteLength,
     ArrayBufferMaxByteLength,

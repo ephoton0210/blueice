@@ -1333,7 +1333,17 @@ impl Vm {
     }
 
     pub(super) fn array_from(&mut self, values: Vec<Value>) -> Result<Value, RuntimeError> {
-        let prototype = self.array_prototype;
+        self.array_from_with_prototype(values, self.array_prototype)
+    }
+
+    /// Create an Array exotic with a caller-selected prototype. Array's
+    /// constructor uses this for `Reflect.construct` and subclass `super()`;
+    /// the ordinary helper above retains the current Realm's intrinsic.
+    pub(super) fn array_from_with_prototype(
+        &mut self,
+        values: Vec<Value>,
+        prototype: ObjectId,
+    ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
         self.stack.extend(values.iter().cloned());
         let result = (|| {

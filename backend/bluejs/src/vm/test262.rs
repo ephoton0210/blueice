@@ -1055,6 +1055,28 @@ impl Vm {
         })
     }
 
+    /// Return a facade's child-VM builtin tag without invoking it. Internal
+    /// algorithms use this to recognize intrinsic hooks such as
+    /// `Function.prototype[@@hasInstance]`; calling that hook in the child
+    /// would otherwise receive an opaque stand-in for a caller-realm value.
+    pub(super) fn test262_foreign_native_function(
+        &self,
+        wrapper: ObjectId,
+    ) -> Result<Option<NativeFunction>, RuntimeError> {
+        let Some((realm_id, target, _, _)) = self.test262_foreign_reference(wrapper) else {
+            return Ok(None);
+        };
+        self.test262_realms
+            .get(&realm_id)
+            .ok_or_else(|| {
+                RuntimeError::TypeError("foreign Test262 realm is no longer available".into())
+            })?
+            .vm
+            .heap
+            .native_function(target)
+            .map_err(Into::into)
+    }
+
     pub(super) fn test262_foreign_regexp_data(
         &self,
         wrapper: ObjectId,
@@ -1140,10 +1162,8 @@ impl Vm {
                 self.with_roots(|heap| {
                     heap.alloc_proxy(target, handler, Some(prototype), callable, constructible)
                 })
-                .map_err(Into::into)
             } else {
                 self.with_roots(|heap| heap.alloc_object(Some(prototype)))
-                    .map_err(Into::into)
             }
         })() {
             Ok(wrapper) => wrapper,
@@ -1396,6 +1416,26 @@ impl Vm {
         if construct && foreign_native == Some(NativeFunction::Object) {
             return self.native_call(NativeFunction::Object, receiver, args, true);
         }
+        // Array construction is similarly Realm-sensitive through
+        // GetPrototypeFromConstructor. Preserve the caller's `newTarget`
+        // facade rather than replacing it with the foreign Array itself in a
+        // child `call_native` frame.
+        if construct && foreign_native == Some(NativeFunction::Array) {
+            return self.native_call(NativeFunction::Array, receiver, args, true);
+        }
+        if construct
+            && matches!(
+                foreign_native,
+                Some(NativeFunction::PrimitiveConstructor(_))
+            )
+        {
+            return self.native_call(
+                foreign_native.expect("matched primitive constructor"),
+                receiver,
+                args,
+                true,
+            );
+        }
         // `%Proxy%` stores its supplied target and handler in the new proxy's
         // internal slots.  Transporting either object into the child VM would
         // replace it with an opaque stand-in, so later traps would lose both
@@ -1482,20 +1522,16 @@ impl Vm {
         let result = realm
             .vm
             .call_native(Value::Object(target), receiver, args, construct);
-        let result = if foreign_native == Some(NativeFunction::Apply) {
-            match result {
-                Ok(value) => Ok(value),
-                // Function.prototype.apply creates its argument validation
-                // errors in the builtin's Realm.  Preserve the ordinary VM
-                // API's raw RuntimeError boundary, and materialize only when
-                // this Test262 membrane transports that completion outward.
-                Err(error) => match realm.vm.error_value(error) {
-                    Ok(error) => Err(RuntimeError::Thrown(error)),
-                    Err(error) => Err(error),
-                },
-            }
-        } else {
-            result
+        let result = match result {
+            Ok(value) => Ok(value),
+            // RuntimeError represents spec throws until they cross a VM
+            // boundary. Materialize every ordinary abrupt completion in the
+            // child before import so a foreign closure, Proxy, or builtin
+            // exposes the Error object from the Realm that created it.
+            Err(error) => match realm.vm.error_value(error) {
+                Ok(error) => Err(RuntimeError::Thrown(error)),
+                Err(error) => Err(error),
+            },
         };
         let result = self.test262_import_foreign_result(realm_id, result)?;
         if construct && foreign_native == Some(NativeFunction::Function) {
@@ -1546,6 +1582,10 @@ impl Vm {
     /// caller's current global environment.
     fn test262_create_realm(&mut self) -> Result<Value, RuntimeError> {
         let mut realm = Box::new(Vm::new(self.config)?);
+        // A Test262 realm exposes the same host interface as its creator.
+        // In particular, the record returned by createRealm must provide an
+        // evalScript function that evaluates in this child Realm.
+        realm.install_test262_harness()?;
         let prototype = self.object_prototype;
         let base = self.stack.len();
         let result = (|| {
@@ -1579,6 +1619,9 @@ impl Vm {
                     _target_root: target_root,
                 },
             );
+            let host = self.test262_foreign_get(global, &Value::Object(global), &"$262".into())?;
+            let eval_script = self.get_property(&host, &"evalScript".into())?;
+            self.define_data(record, "evalScript", eval_script, true, true, true)?;
             Ok(Value::Object(record))
         })();
         self.stack.truncate(base);

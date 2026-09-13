@@ -94,15 +94,16 @@ impl Compiler {
                             self.emit(Opcode::GlobalString, 0)?;
                         }
                         "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number"
-                        | "Boolean" | "BigInt" | "Array" | "Function" | "Proxy" | "globalThis"
-                        | "ArrayBuffer" | "SharedArrayBuffer" | "DataView" | "Int8Array"
-                        | "Uint8Array" | "Uint8ClampedArray" | "Int16Array" | "Uint16Array"
-                        | "Int32Array" | "Uint32Array" | "Float32Array" | "Float64Array"
-                        | "BigInt64Array" | "BigUint64Array" | "Atomics" | "Intl" | "Promise"
-                        | "Error" | "TypeError" | "eval" | "isNaN" | "isFinite" | "parseInt"
-                        | "parseFloat" | "encodeURI" | "encodeURIComponent" | "decodeURI"
-                        | "decodeURIComponent" | "JSON" | "RangeError" | "SyntaxError"
-                        | "ReferenceError" | "EvalError" | "URIError" | "import" => {
+                        | "Boolean" | "BigInt" | "Array" | "Date" | "Function" | "Proxy"
+                        | "globalThis" | "ArrayBuffer" | "SharedArrayBuffer" | "DataView"
+                        | "Int8Array" | "Uint8Array" | "Uint8ClampedArray" | "Int16Array"
+                        | "Uint16Array" | "Int32Array" | "Uint32Array" | "Float32Array"
+                        | "Float64Array" | "BigInt64Array" | "BigUint64Array" | "Atomics"
+                        | "Intl" | "Promise" | "Error" | "TypeError" | "eval" | "isNaN"
+                        | "isFinite" | "parseInt" | "parseFloat" | "encodeURI"
+                        | "encodeURIComponent" | "decodeURI" | "decodeURIComponent" | "JSON"
+                        | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError"
+                        | "URIError" | "import" => {
                             let index = self.bytecode.constants.len() as u32;
                             self.bytecode
                                 .constants
@@ -172,7 +173,7 @@ impl Compiler {
                     return Ok(());
                 }
                 if *op == UnaryOp::Typeof
-                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Function" | "Proxy" | "globalThis" | "ArrayBuffer" | "SharedArrayBuffer" | "DataView" | "Int8Array" | "Uint8Array" | "Uint8ClampedArray" | "Int16Array" | "Uint16Array" | "Int32Array" | "Uint32Array" | "Float32Array" | "Float64Array" | "BigInt64Array" | "BigUint64Array" | "Atomics" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "encodeURI" | "encodeURIComponent" | "decodeURI" | "decodeURIComponent" | "JSON" | "import"))
+                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Date" | "Function" | "Proxy" | "globalThis" | "ArrayBuffer" | "SharedArrayBuffer" | "DataView" | "Int8Array" | "Uint8Array" | "Uint8ClampedArray" | "Int16Array" | "Uint16Array" | "Int32Array" | "Uint32Array" | "Float32Array" | "Float64Array" | "BigInt64Array" | "BigUint64Array" | "Atomics" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "encodeURI" | "encodeURIComponent" | "decodeURI" | "decodeURIComponent" | "JSON" | "import"))
                 {
                     let Expr::Identifier(name) = &**arg else {
                         unreachable!()

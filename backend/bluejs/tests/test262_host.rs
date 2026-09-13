@@ -1418,6 +1418,69 @@ fn foreign_proxy_revocable_retains_caller_realm_target_and_handler() {
 }
 
 #[test]
+fn foreign_proxy_and_constructor_membranes_preserve_realms() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let other = $262.createRealm();
+        let proxy = other.global.eval(
+          'new Proxy(function() {}, { apply(_, __, args) { return args; } })'
+        );
+        let arguments = proxy();
+
+        let realm1 = $262.createRealm().global;
+        let realm2 = $262.createRealm().global;
+        let realm3 = $262.createRealm().global;
+        let newTarget = new realm1.Function();
+        newTarget.prototype = false;
+        let newTargetProxy = new realm2.Proxy(newTarget, {});
+        let array = Reflect.construct(realm3.Array, [], newTargetProxy);
+
+        let foreignThrow = other.evalScript(`
+          (function() {
+            let handle = Proxy.revocable(function() {}, {});
+            handle.revoke();
+            return handle.proxy();
+          })
+        `);
+        let foreignError = false;
+        try { foreignThrow(); }
+        catch (error) { foreignError = error.constructor === other.global.TypeError; }
+
+        arguments.constructor === Array &&
+          Object.getPrototypeOf(arguments) === Array.prototype &&
+          array instanceof realm1.Array &&
+          Object.getPrototypeOf(array) === realm1.Array.prototype &&
+          foreignError
+    "#;
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn reflect_construct_rejects_date_now_as_a_non_constructor() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        typeof Date === 'function' &&
+          typeof Date.now === 'function' &&
+          (function() {
+            try { Reflect.construct(Date.now, []); }
+            catch (error) { return error instanceof TypeError; }
+            return false;
+          })()
+    "#;
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn is_html_dda_host_object_keeps_strict_equality_ordinary() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();

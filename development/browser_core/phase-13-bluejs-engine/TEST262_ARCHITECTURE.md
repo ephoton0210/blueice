@@ -1628,3 +1628,28 @@ files / 102,578 modes: 67,529 pass, 35,049 fail, zero unsupported, zero
 timeout, and zero harness errors**. The four previous TypedArray sort timeout
 modes now pass. Instruction-budget exhaustion is recorded as `resource_error`
 (a failing bounded-resource outcome), distinct from a supervisor timeout.
+
+## P0.4 closure: Proxy realms and constructor forwarding
+
+Imported live Proxies are now represented by a local Proxy exotic facade that
+retains foreign target and handler facades. Internal-method dispatch chooses
+that local Proxy before ordinary foreign forwarding, so apply and construct
+traps allocate their argument and descriptor objects in the current Realm.
+This preserves target/handler identity without copying child-heap objects.
+
+Foreign Array and Boolean/Number construction retains the caller's
+`newTarget`. `GetFunctionRealm` follows local Proxy layers to foreign targets,
+and `instanceof` recognizes a foreign facade around the intrinsic
+`@@hasInstance` hook. Child abrupt completions are materialized before they
+cross the membrane, preserving the child Error constructor. A realm record
+now exposes its own `evalScript` facade as required by the Test262 host.
+
+The Proxy `[[DefineOwnProperty]]` non-writable invariant and the observable
+`length`/`name` property order for native functions are also enforced. The
+minimal Date baseline provides the standard callable/constructible global and
+non-constructible `Date.now`; full Date internal slots and prototype
+algorithms remain library work.
+
+Focused validation: `built-ins/Proxy` **607/607**, `built-ins/Proxy/construct`
+**60/60**, `built-ins/Reflect/construct` **20/20**, and the public
+`conformance_edges` suite **37/37**.

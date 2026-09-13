@@ -52,6 +52,7 @@ impl Vm {
             "Function" => NativeFunction::Function,
             "Symbol" => NativeFunction::Symbol,
             "Array" => NativeFunction::Array,
+            "Date" => NativeFunction::Date,
             "ArrayBuffer" => NativeFunction::ArrayBuffer,
             "SharedArrayBuffer" => NativeFunction::SharedArrayBuffer,
             "DataView" => NativeFunction::DataView,
@@ -106,6 +107,7 @@ impl Vm {
                     Value::Number(match name {
                         "Symbol" => 0.0,
                         "Proxy" => 2.0,
+                        "Date" => 7.0,
                         _ => 1.0,
                     }),
                     false,
@@ -230,6 +232,26 @@ impl Vm {
                 )?;
                 self.install_native(id, prototype, "isArray", 1, NativeFunction::ArrayIsArray)?;
                 self.install_native(id, prototype, "from", 1, NativeFunction::ArrayFrom)?;
+            } else if name == "Date" {
+                let date_prototype =
+                    self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+                self.define_data(
+                    id,
+                    "prototype",
+                    Value::Object(date_prototype),
+                    false,
+                    false,
+                    false,
+                )?;
+                self.define_data(
+                    date_prototype,
+                    "constructor",
+                    Value::Object(id),
+                    true,
+                    false,
+                    true,
+                )?;
+                self.install_native(id, prototype, "now", 0, NativeFunction::DateNow)?;
             } else if matches!(name, "ArrayBuffer" | "SharedArrayBuffer") {
                 let buffer_prototype =
                     self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;

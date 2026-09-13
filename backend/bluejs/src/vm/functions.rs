@@ -88,7 +88,14 @@ impl Vm {
                     if let Value::Object(id) = method {
                         // The intrinsic can be tail-dispatched here. Custom hooks
                         // still use normal call rooting, error and depth handling.
-                        if self.heap.native_function(id)? != Some(NativeFunction::HasInstance) {
+                        // A Test262 facade around the foreign intrinsic must
+                        // take this path too: its ordinary algorithm belongs
+                        // to the current Realm's value and prototype chain.
+                        let native = self
+                            .heap
+                            .native_function(id)?
+                            .or(self.test262_foreign_native_function(id)?);
+                        if native != Some(NativeFunction::HasInstance) {
                             let result = self.call_native(method, target, vec![value], false)?;
                             return self.to_boolean(&result);
                         }
