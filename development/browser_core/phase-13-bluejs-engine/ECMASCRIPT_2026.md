@@ -6,7 +6,7 @@ Status: **in progress, not conformant**. Requested 2026-09-09. This extends the 
 
 Target the [published ECMA-262 edition 17 HTML](https://262.ecma-international.org/17.0/), not features added only to the living 2027 draft. The [baseline record](../research/js-conformance-baseline.md) explains their difference. Read each affected clause before implementation and record the link/date. DOM, HTML event-loop integration and ECMA-402 internationalization are separate host/specification projects; they must not be counted as ECMAScript language completion. JIT optimization is not required for conformance.
 
-Full completion requires an audited clause/feature inventory, a pinned Test262 revision appropriate to the edition, explicit strict/non-strict/module/async harness modes, negative-phase/error-type checking, and no silently skipped mandatory tests. Record unsupported cases separately from passed cases; Node differential results are supplemental. Feature tests must drive public APIs, BlueJS's 100% line gate remains, and every slice gets a dedicated test-content review. Passing coverage or a selected Test262 subset never means the edition is complete. Normative optional, legacy and host-defined requirements need explicit applicability decisions, not blanket exclusions.
+Full completion requires an audited clause/feature inventory, a pinned Test262 revision appropriate to the edition, explicit strict/non-strict/module/async harness modes, negative-phase/error-type checking, and no silently skipped mandatory tests. Record unsupported cases separately from passed cases; Node differential results are supplemental. Feature tests must drive public APIs, BlueJS's current no-exclusion baseline is 88.38% line coverage with an 88% CI floor (Rust 1.95, 2026-09-13), and every slice gets a dedicated test-content review. Passing coverage or a selected Test262 subset never means the edition is complete. Normative optional, legacy and host-defined requirements need explicit applicability decisions, not blanket exclusions.
 
 ## Dependency-ordered work inventory
 
@@ -20,7 +20,7 @@ Full completion requires an audited clause/feature inventory, a pinned Test262 r
 | Text/indexed/collections (§§22–24) | All String method entry points and conversion/callback/RegExp/Symbol/locale/iterator paths are implemented; RegExp.escape is also implemented; see the [String inventory](STRING_BUILTINS.md). Full RegExp/Array libraries, typed arrays, collections and iterator helpers remain. |
 | Structured/control/reflection (§§25–28) | Reflect.ownKeys/construct exist. ArrayBuffer/DataView/Atomics/JSON, promises/jobs/generators/async, resource-management objects, WeakRef/finalization, full Reflect/Proxy and module namespaces remain. |
 | Memory model and annexes (§29, A–F) | Annex B String extensions and selected B.3.2/B.3.3/B.3.5 legacy function-declaration semantics are included. Shared-memory semantics, host-agent applicability and remaining normative-optional/legacy requirements need implementation/audit. |
-| Conformance infrastructure | Public regressions, a 100% line gate and a 21,604-script Node oracle exist. Full CLI/host harness, edition-pinned Test262 inventory and per-feature reporting remain. |
+| Conformance infrastructure | Public regressions, an 88% line floor (latest no-exclusion result: 88.38%) and a 21,604-script Node oracle exist. Full CLI/host harness, edition-pinned Test262 inventory and per-feature reporting remain. |
 
 This is a workstream inventory, not a complete clause-by-clause audit. The [String implementation and dependency record](STRING_BUILTINS.md) distinguishes the implemented surface and observed protocols from edition-wide conformance and documents native matcher resource limits.
 
@@ -54,7 +54,7 @@ Implementation is test-first. Add public regression fixtures before the changes,
 - [x] Reject unparenthesized nullish/logical mixtures, while preserving parenthesized, conditional, array and template expression boundaries and short-circuit behavior.
 - [x] Number radix prefixes and separators; single-rounding conversion; incomplete exponent/trailing-identifier rejection; sloppy leading-zero octal/decimal distinction. This does not implement BigInt or strict-mode source processing.
 - [x] ECMAScript whitespace/line terminators, ASI/comment boundaries, quoted-string continuation and template CR/CRLF normalization. Review additionally fixed comment contents being mistaken for closing braces/quotes/backticks inside template placeholders.
-- [x] Default tests and 100% BlueJS line gate; opt-in Node oracle; workspace regression checks.
+- [x] Default tests and the current 88% BlueJS line floor (88.38% measured); opt-in Node oracle; workspace regression checks.
 - [ ] Full source grammar and strict/module processing.
 - [ ] Full runtime environments, user callables and the other inventory workstreams above; UTF-16 storage/native calls are now implemented by the second slice.
 - [x] Pinned whole-inventory Test262 measurement with explicit unsupported/failure outcomes; see [report](INTL_CONFORMANCE.md).

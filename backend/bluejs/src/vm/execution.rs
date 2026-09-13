@@ -209,6 +209,7 @@ impl Vm {
                 | "WeakMap"
                 | "WeakSet"
                 | "WeakRef"
+                | "FinalizationRegistry"
                 | "Function"
                 | "Proxy"
                 | "Promise"

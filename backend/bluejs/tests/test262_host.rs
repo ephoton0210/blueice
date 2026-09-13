@@ -377,8 +377,21 @@ fn test262_agents_wait_async_registers_two_waiters_before_notify() {
         Ok(Value::Number(2.0))
     );
     let reports = compile(
-        &parse("$262.agent.sleep(10); [$262.agent.getReport(), $262.agent.getReport()].sort().join(',')")
-            .unwrap(),
+        &parse(
+            r#"
+                let reports = [];
+                while (reports.length !== 2) {
+                    let report = $262.agent.getReport();
+                    if (report === null) {
+                        $262.agent.sleep(1);
+                    } else {
+                        reports.push(report);
+                    }
+                }
+                reports.sort().join(',')
+            "#,
+        )
+        .unwrap(),
     )
     .unwrap();
     assert_eq!(

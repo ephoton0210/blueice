@@ -215,6 +215,15 @@ impl Heap {
                     *target = None;
                 }
             }
+            if let ObjectKind::FinalizationRegistry { cells, .. } = &mut object.kind {
+                for cell in cells {
+                    if cell.target.as_ref().is_some_and(|target| {
+                        matches!(target, WeakCollectionKey::Object(key) if young.contains(key) && !marked.contains(key))
+                    }) {
+                        cell.target = None;
+                    }
+                }
+            }
         }
         for id in self.nursery.drain(..) {
             if marked.contains(&id) {
@@ -251,6 +260,15 @@ impl Heap {
                     |target| matches!(target, WeakCollectionKey::Object(key) if !marked.contains(key)),
                 ) {
                     *target = None;
+                }
+            }
+            if let ObjectKind::FinalizationRegistry { cells, .. } = &mut object.kind {
+                for cell in cells {
+                    if cell.target.as_ref().is_some_and(
+                        |target| matches!(target, WeakCollectionKey::Object(key) if !marked.contains(key)),
+                    ) {
+                        cell.target = None;
+                    }
                 }
             }
         }

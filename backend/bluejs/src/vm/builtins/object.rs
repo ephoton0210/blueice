@@ -380,6 +380,10 @@ impl Vm {
                 Some("WeakSet")
             } else if default == self.weak_ref_prototype()? {
                 Some("WeakRef")
+            } else if default == self.finalization_registry_prototype()? {
+                Some("FinalizationRegistry")
+            } else if self.date_prototype == Some(default) {
+                Some("Date")
             } else {
                 None
             };
@@ -457,6 +461,7 @@ impl Vm {
                     | NativeFunction::WeakMap
                     | NativeFunction::WeakSet
                     | NativeFunction::WeakRef
+                    | NativeFunction::FinalizationRegistry
                     | NativeFunction::Promise
                     | NativeFunction::Object
                     | NativeFunction::RegExp

@@ -540,6 +540,11 @@ enum ObjectKind {
     Array {
         length: u32,
     },
+    /// The `[[DateValue]]` internal slot, expressed as a TimeClip'd UTC
+    /// millisecond count or NaN for an invalid Date.
+    Date {
+        time: f64,
+    },
     /// An ephemeron table. Keys do not become ordinary tracing edges; GC
     /// marks a value only after its key has independently become live.
     WeakCollection {
@@ -551,6 +556,14 @@ enum ObjectKind {
     /// before reclaiming a dead object target.
     WeakRef {
         target: Option<WeakCollectionKey>,
+    },
+    /// The registry owns its cleanup callback and holdings, but its targets
+    /// and unregister tokens are weak identities. Collection-to-cleanup-job
+    /// delivery stays in the VM host layer; this storage establishes the
+    /// ECMAScript internal slots and their tracing boundary.
+    FinalizationRegistry {
+        cleanup_callback: Value,
+        cells: Vec<FinalizationCell>,
     },
     /// The byte storage shared by ArrayBuffer and SharedArrayBuffer.  The
     /// `shared` marker is an internal-slot brand: ordinary ArrayBuffers can
@@ -632,6 +645,14 @@ enum ObjectKind {
     ModuleNamespace {
         exports: Vec<(JsString, ObjectId)>,
     },
+}
+
+struct FinalizationCell {
+    /// `None` records a target observed dead by collection. The holding stays
+    /// strongly retained until the future cleanup-job path consumes the cell.
+    target: Option<WeakCollectionKey>,
+    holdings: Value,
+    unregister_token: Option<WeakCollectionKey>,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -986,6 +1007,14 @@ impl Object {
                 ObjectKind::Arguments { parameter_map } => {
                     parameter_map.values().copied().collect()
                 }
+                ObjectKind::FinalizationRegistry {
+                    cleanup_callback,
+                    cells,
+                } => cleanup_callback
+                    .object_id()
+                    .into_iter()
+                    .chain(cells.iter().filter_map(|cell| cell.holdings.object_id()))
+                    .collect(),
                 ObjectKind::ModuleNamespace { exports } => {
                     exports.iter().map(|(_, cell)| *cell).collect()
                 }
@@ -1075,6 +1104,14 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
                 target, handler, ..
             } => target.iter().chain(handler.iter()).copied().collect(),
             ObjectKind::Arguments { parameter_map } => parameter_map.values().copied().collect(),
+            ObjectKind::FinalizationRegistry {
+                cleanup_callback,
+                cells,
+            } => cleanup_callback
+                .object_id()
+                .into_iter()
+                .chain(cells.iter().filter_map(|cell| cell.holdings.object_id()))
+                .collect(),
             ObjectKind::ModuleNamespace { exports } => {
                 exports.iter().map(|(_, cell)| *cell).collect()
             }
@@ -1176,6 +1213,78 @@ impl Heap {
             },
             prototype,
         )
+    }
+
+    pub(crate) fn alloc_finalization_registry(
+        &mut self,
+        cleanup_callback: Value,
+        prototype: Option<ObjectId>,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(
+            ObjectKind::FinalizationRegistry {
+                cleanup_callback,
+                cells: Vec::new(),
+            },
+            prototype,
+        )
+    }
+
+    pub(crate) fn is_finalization_registry(&self, object: ObjectId) -> Result<bool, HeapError> {
+        Ok(matches!(
+            self.object(object)?.kind,
+            ObjectKind::FinalizationRegistry { .. }
+        ))
+    }
+
+    pub(crate) fn finalization_registry_register(
+        &mut self,
+        registry: ObjectId,
+        target: Value,
+        holdings: Value,
+        unregister_token: Option<Value>,
+    ) -> Result<(), HeapError> {
+        let target = WeakCollectionKey::from_value(&target).ok_or(HeapError::InvalidWeakTarget)?;
+        let unregister_token = unregister_token
+            .map(|token| WeakCollectionKey::from_value(&token).ok_or(HeapError::InvalidWeakTarget))
+            .transpose()?;
+        if let WeakCollectionKey::Object(target) = &target {
+            self.object(*target)?;
+        }
+        if let Some(WeakCollectionKey::Object(token)) = &unregister_token {
+            self.object(*token)?;
+        }
+        let object = self
+            .objects
+            .get_mut(&registry)
+            .ok_or(HeapError::InvalidObject(registry))?;
+        let ObjectKind::FinalizationRegistry { cells, .. } = &mut object.kind else {
+            return Err(HeapError::InvalidInternalSlot(registry));
+        };
+        cells.push(FinalizationCell {
+            target: Some(target),
+            holdings,
+            unregister_token,
+        });
+        Ok(())
+    }
+
+    pub(crate) fn finalization_registry_unregister(
+        &mut self,
+        registry: ObjectId,
+        unregister_token: Value,
+    ) -> Result<bool, HeapError> {
+        let unregister_token =
+            WeakCollectionKey::from_value(&unregister_token).ok_or(HeapError::InvalidWeakTarget)?;
+        let object = self
+            .objects
+            .get_mut(&registry)
+            .ok_or(HeapError::InvalidObject(registry))?;
+        let ObjectKind::FinalizationRegistry { cells, .. } = &mut object.kind else {
+            return Err(HeapError::InvalidInternalSlot(registry));
+        };
+        let previous_len = cells.len();
+        cells.retain(|cell| cell.unregister_token.as_ref() != Some(&unregister_token));
+        Ok(cells.len() != previous_len)
     }
 
     pub(crate) fn weak_ref_target(&self, object: ObjectId) -> Result<Option<Value>, HeapError> {
@@ -1574,6 +1683,34 @@ impl Heap {
         prototype: Option<ObjectId>,
     ) -> Result<ObjectId, HeapError> {
         self.alloc(ObjectKind::Array { length }, prototype)
+    }
+
+    pub(crate) fn alloc_date(
+        &mut self,
+        time: f64,
+        prototype: Option<ObjectId>,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::Date { time }, prototype)
+    }
+
+    pub(crate) fn date_value(&self, object: ObjectId) -> Result<f64, HeapError> {
+        let ObjectKind::Date { time } = self.object(object)?.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(time)
+    }
+
+    pub(crate) fn set_date_value(&mut self, object: ObjectId, time: f64) -> Result<(), HeapError> {
+        let id = object;
+        let object = self
+            .objects
+            .get_mut(&id)
+            .ok_or(HeapError::InvalidObject(id))?;
+        let ObjectKind::Date { time: slot } = &mut object.kind else {
+            return Err(HeapError::InvalidInternalSlot(id));
+        };
+        *slot = time;
+        Ok(())
     }
 }
 

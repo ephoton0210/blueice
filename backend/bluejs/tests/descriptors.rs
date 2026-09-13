@@ -365,6 +365,28 @@ fn date_utc_normalizes_components_and_exposes_the_date_tag() {
 }
 
 #[test]
+fn date_instances_store_timeclip_values_and_expose_iso_json_and_parse_contracts() {
+    assert_eq!(
+        evaluate(
+            "let date=new Date(Date.UTC(2000,1,29,12,34,56,789));let invalid=new Date(NaN);let globalDate=Object.getOwnPropertyDescriptor(globalThis,'Date');date.getTime()===951827696789&&date.valueOf()===951827696789&&date.getUTCFullYear()===2000&&date.getUTCMonth()===1&&date.getUTCDate()===29&&date.getUTCDay()===2&&date.getUTCHours()===12&&date.getUTCMinutes()===34&&date.getUTCSeconds()===56&&date.getUTCMilliseconds()===789&&date.getTimezoneOffset()===0&&date.setTime(-0)===0&&1/date.getTime()===Infinity&&date.setTime(0)===0&&date.toISOString()==='1970-01-01T00:00:00.000Z'&&date.toUTCString()==='Thu, 01 Jan 1970 00:00:00 GMT'&&date.toDateString()==='Thu Jan 01 1970'&&date.toTimeString()==='00:00:00 GMT+0000 (Coordinated Universal Time)'&&date.toString()==='Thu Jan 01 1970 00:00:00 GMT+0000 (Coordinated Universal Time)'&&date.toJSON()==='1970-01-01T00:00:00.000Z'&&invalid.toJSON()===null&&Date.parse('1970-01-01T01:00:00+01:00')===0&&new Date('1970-01-01').getTime()===0&&Date.parse.length===1&&date instanceof Date&&date[Symbol.toPrimitive]('number')===0&&globalDate.value===Date&&globalDate.writable&&globalDate.configurable&&!globalDate.enumerable",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn date_setters_normalize_utc_components_and_invalid_times() {
+    assert_eq!(
+        evaluate(
+            "let date=new Date(Date.UTC(2000,0,31,23,59,59,900));date.setUTCMonth(1)===952041599900&&date.getUTCMonth()===2&&date.getUTCDate()===2&&date.setUTCSeconds(61,5)===952041601005&&date.getUTCMinutes()===0&&date.getUTCSeconds()===1&&date.getUTCMilliseconds()===5&&date.setUTCFullYear(1999,11,31)===946598401005&&date.getUTCFullYear()===1999&&date.getUTCMonth()===11&&date.getUTCDate()===31&&date.setYear(99)===946598401005&&date.getFullYear()===1999&&((new Date(NaN).setUTCDate(1))!==(new Date(NaN).setUTCDate(1)))",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn weak_collections_accept_object_keys_and_reject_primitive_insertions() {
     assert_eq!(
         evaluate("typeof globalThis.WeakMap").unwrap(),
@@ -399,6 +421,17 @@ fn weak_ref_exposes_weak_targets_and_rejects_non_weakly_held_values() {
     assert_eq!(
         evaluate(
             "let object={};let symbol=Symbol('target');let reference=new WeakRef(object);let symbolReference=new WeakRef(symbol);let rejected=false;let registeredRejected=false;try{new WeakRef(1)}catch(error){rejected=error instanceof TypeError}try{new WeakRef(Symbol.for('registered'))}catch(error){registeredRejected=error instanceof TypeError}typeof WeakRef==='function'&&WeakRef.length===1&&reference.deref()===object&&symbolReference.deref()===symbol&&rejected&&registeredRejected&&WeakRef.prototype.deref.length===0&&Object.prototype.toString.call(reference)==='[object WeakRef]'",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn finalization_registry_has_real_slots_and_weak_registration_validation() {
+    assert_eq!(
+        evaluate(
+            "let target={};let token={};let registry=new FinalizationRegistry(function(){});let targetRejected=false;let selfRejected=false;try{registry.register(1,'held')}catch(error){targetRejected=error instanceof TypeError}try{registry.register(target,target)}catch(error){selfRejected=error instanceof TypeError}registry.register(target,'held',token)===undefined&&registry.unregister(token)===true&&registry.unregister(token)===false&&targetRejected&&selfRejected&&FinalizationRegistry.length===1&&FinalizationRegistry.prototype.register.length===2&&FinalizationRegistry.prototype.unregister.length===1&&Object.prototype.toString.call(registry)==='[object FinalizationRegistry]'",
         )
         .unwrap(),
         Value::Bool(true)

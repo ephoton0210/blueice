@@ -5,6 +5,36 @@
 use super::*;
 
 impl Vm {
+    pub(in super::super) fn array_at(
+        &mut self,
+        receiver: &Value,
+        index: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)?;
+            let index = self.coerce_number(index)?;
+            // ToIntegerOrInfinity, followed by the relative-index check.
+            // Avoid converting an out-of-range finite double to usize before
+            // knowing it is within the bounded array-like length.
+            let index = if index.is_nan() || index == 0.0 {
+                0.0
+            } else {
+                index.trunc()
+            };
+            let index = if index >= 0.0 { index } else { length + index };
+            if !index.is_finite() || index < 0.0 || index >= length {
+                Ok(Value::Undefined)
+            } else {
+                self.get_property(&Value::Object(object), &(index as u64).to_string().into())
+            }
+        })();
+        self.stack.pop();
+        result
+    }
+
     pub(in super::super) fn array_join(
         &mut self,
         receiver: &Value,
@@ -129,8 +159,8 @@ impl Vm {
         let result = (|| {
             let length = self.get_property(&Value::Object(object), &"length".into())?;
             let length = self.coerce_length(&length)? as u64;
-            let target = self.array_from(Vec::new())?;
-            self.stack.push(target.clone());
+            let target = self.array_species_create(object, 0)?;
+            self.stack.push(Value::Object(target));
             let result = (|| {
                 let mut target_index = 0usize;
                 if let Some(indices) = self.array_own_indices(object, length)? {
@@ -149,10 +179,10 @@ impl Vm {
                             false,
                         )?;
                         if self.to_boolean(&selected)? {
-                            self.set_property_value(
-                                &target,
-                                &target_index.to_string().into(),
-                                &value,
+                            self.array_create_data_property_or_throw(
+                                target,
+                                target_index.to_string().into(),
+                                value,
                             )?;
                             target_index += 1;
                         }
@@ -176,16 +206,16 @@ impl Vm {
                             false,
                         )?;
                         if self.to_boolean(&selected)? {
-                            self.set_property_value(
-                                &target,
-                                &target_index.to_string().into(),
-                                &value,
+                            self.array_create_data_property_or_throw(
+                                target,
+                                target_index.to_string().into(),
+                                value,
                             )?;
                             target_index += 1;
                         }
                     }
                 }
-                Ok(target)
+                Ok(Value::Object(target))
             })();
             self.stack.pop();
             result
@@ -210,12 +240,8 @@ impl Vm {
                     "Array.prototype.map callback must be callable".into(),
                 ));
             }
-            // ArraySpeciesCreate is still intentionally outside this compact
-            // Array core. The ordinary result must nevertheless preserve the
-            // source length and holes via CreateDataProperty semantics.
-            let target = self.array_from(Vec::new())?;
-            let target_id = target.object_id().expect("array result is an object");
-            self.stack.push(target.clone());
+            let target = self.array_species_create(object, length as usize)?;
+            self.stack.push(Value::Object(target));
             let outcome = (|| {
                 for index in 0..length {
                     self.charge_step()?;
@@ -230,29 +256,9 @@ impl Vm {
                         vec![value, Value::Number(index as f64), Value::Object(object)],
                         false,
                     )?;
-                    if !self.object_define_own_property(
-                        target_id,
-                        key,
-                        PropertyDescriptor::data(mapped, true, true, true),
-                    )? {
-                        return Err(RuntimeError::TypeError(
-                            "cannot define mapped array element".into(),
-                        ));
-                    }
+                    self.array_create_data_property_or_throw(target, key, mapped)?;
                 }
-                if !self.object_define_own_property(
-                    target_id,
-                    "length".into(),
-                    PropertyDescriptor {
-                        value: Some(Value::Number(length as f64)),
-                        ..PropertyDescriptor::default()
-                    },
-                )? {
-                    return Err(RuntimeError::TypeError(
-                        "cannot define mapped array length".into(),
-                    ));
-                }
-                Ok(target)
+                Ok(Value::Object(target))
             })();
             self.stack.pop();
             outcome
@@ -317,6 +323,62 @@ impl Vm {
         this_arg: &Value,
     ) -> Result<Value, RuntimeError> {
         self.array_predicate(receiver, callback, this_arg, true)
+    }
+
+    pub(in super::super) fn array_find(
+        &mut self,
+        receiver: &Value,
+        callback: &Value,
+        this_arg: &Value,
+        reverse: bool,
+        return_index: bool,
+    ) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as u64;
+            if !self.is_callable(callback)? {
+                return Err(RuntimeError::TypeError(
+                    "Array.prototype.find callback must be callable".into(),
+                ));
+            }
+            let indices: Box<dyn Iterator<Item = u64>> = if reverse {
+                Box::new((0..length).rev())
+            } else {
+                Box::new(0..length)
+            };
+            // Unlike map/every/some, find visits holes and passes undefined
+            // to the predicate. This is why it must use [[Get]] directly.
+            for index in indices {
+                self.charge_step()?;
+                let value = self.get_property(&Value::Object(object), &index.to_string().into())?;
+                let selected = self.call_native(
+                    callback.clone(),
+                    this_arg.clone(),
+                    vec![
+                        value.clone(),
+                        Value::Number(index as f64),
+                        Value::Object(object),
+                    ],
+                    false,
+                )?;
+                if self.to_boolean(&selected)? {
+                    return Ok(if return_index {
+                        Value::Number(index as f64)
+                    } else {
+                        value
+                    });
+                }
+            }
+            Ok(if return_index {
+                Value::Number(-1.0)
+            } else {
+                Value::Undefined
+            })
+        })();
+        self.stack.pop();
+        result
     }
 
     pub(in super::super) fn array_reduce(
@@ -809,7 +871,7 @@ impl Vm {
         .ok_or_else(|| RuntimeError::TypeError("Array species must return an object".into()))
     }
 
-    fn array_set_or_throw(
+    pub(super) fn array_set_or_throw(
         &mut self,
         object: ObjectId,
         key: PropertyName,
@@ -824,7 +886,7 @@ impl Vm {
         }
     }
 
-    fn array_create_data_property_or_throw(
+    pub(super) fn array_create_data_property_or_throw(
         &mut self,
         object: ObjectId,
         key: PropertyName,

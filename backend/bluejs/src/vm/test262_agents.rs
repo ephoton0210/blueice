@@ -93,6 +93,24 @@ impl Test262AsyncWaits {
     fn has_pending(&self) -> bool {
         self.pending.load(Ordering::Acquire) != 0
     }
+
+    /// Sleep until a host completion is available.  Re-checking the queue
+    /// while holding its mutex closes the gap between draining it and waiting
+    /// on the condition variable, so an Atomics waiter cannot leave an agent
+    /// needlessly polling for its promise settlement.
+    fn wait_for_event(&self) {
+        let events = self
+            .events
+            .lock()
+            .expect("Test262 async-wait queue lock poisoned");
+        if events.is_empty() && self.has_pending() {
+            drop(
+                self.ready
+                    .wait(events)
+                    .expect("Test262 async-wait condition poisoned"),
+            );
+        }
+    }
 }
 
 impl Test262AgentControl {
@@ -374,7 +392,14 @@ impl Vm {
                 {
                     let woke = vm.process_test262_async_wait_events()?;
                     if !woke && !vm.run_next_promise_job()? {
-                        thread::sleep(Duration::from_millis(1));
+                        if vm.test262_async_waits.has_pending() {
+                            vm.test262_async_waits.wait_for_event();
+                        } else {
+                            // An agent can be progressing toward a synchronous
+                            // Atomics.wait without an async host event. Leave
+                            // it scheduler time before checking again.
+                            thread::sleep(Duration::from_millis(1));
+                        }
                     }
                 }
                 Ok(())
@@ -566,7 +591,7 @@ impl Vm {
                 if !self.test262_async_waits.has_pending() {
                     return Ok(None);
                 }
-                thread::sleep(Duration::from_millis(1));
+                self.test262_async_waits.wait_for_event();
             }
         }
     }

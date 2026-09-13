@@ -695,11 +695,13 @@ pub struct Vm {
     /// `%AsyncFunction%` reachable without exposing a global binding.
     async_function_prototype: Option<ObjectId>,
     promise_prototype: Option<ObjectId>,
+    date_prototype: Option<ObjectId>,
     map_prototype: Option<ObjectId>,
     set_prototype: Option<ObjectId>,
     weak_map_prototype: Option<ObjectId>,
     weak_set_prototype: Option<ObjectId>,
     weak_ref_prototype: Option<ObjectId>,
+    finalization_registry_prototype: Option<ObjectId>,
     /// Targets passed to WeakRef or returned by `deref` must survive the
     /// current ECMAScript job. The list is cleared at the outer execution
     /// boundary and registered by every allocation safepoint.
@@ -808,11 +810,13 @@ impl Vm {
             async_generator_prototype: None,
             async_function_prototype: None,
             promise_prototype: None,
+            date_prototype: None,
             map_prototype: None,
             set_prototype: None,
             weak_map_prototype: None,
             weak_set_prototype: None,
             weak_ref_prototype: None,
+            finalization_registry_prototype: None,
             kept_weak_objects: Vec::new(),
             promises: HashMap::new(),
             promise_all: HashMap::new(),
@@ -1147,6 +1151,37 @@ impl Vm {
             self.install_native(
                 self.array_prototype,
                 function_prototype,
+                "at",
+                1,
+                NativeFunction::ArrayAt,
+            )?;
+            for (name, kind) in [
+                ("entries", ArrayIteratorKind::Entries),
+                ("keys", ArrayIteratorKind::Keys),
+                ("values", ArrayIteratorKind::Values),
+            ] {
+                self.install_native(
+                    self.array_prototype,
+                    function_prototype,
+                    name,
+                    0,
+                    NativeFunction::ArrayIterator(kind),
+                )?;
+            }
+            // Array.prototype[Symbol.iterator] is the same function object
+            // as Array.prototype.values.
+            let values = self.heap.get(self.array_prototype, "values")?;
+            self.define_data(
+                self.array_prototype,
+                JsSymbol::well_known("iterator"),
+                values,
+                true,
+                false,
+                true,
+            )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
                 "toString",
                 0,
                 NativeFunction::ArrayToString,
@@ -1186,6 +1221,14 @@ impl Vm {
                 1,
                 NativeFunction::ArrayMap,
             )?;
+            for (name, function) in [
+                ("find", NativeFunction::ArrayFind),
+                ("findIndex", NativeFunction::ArrayFindIndex),
+                ("findLast", NativeFunction::ArrayFindLast),
+                ("findLastIndex", NativeFunction::ArrayFindLastIndex),
+            ] {
+                self.install_native(self.array_prototype, function_prototype, name, 1, function)?;
+            }
             self.install_native(
                 self.array_prototype,
                 function_prototype,
@@ -1263,13 +1306,6 @@ impl Vm {
                 1,
                 NativeFunction::ArraySort,
             )?;
-            self.install_symbol_native(
-                self.array_prototype,
-                function_prototype,
-                "iterator",
-                0,
-                NativeFunction::ArrayIterator(ArrayIteratorKind::Values),
-            )?;
             Ok((constructor, prototype))
         })();
         match result {
@@ -1291,12 +1327,20 @@ impl Vm {
                     (object_prototype, "__lookupSetter__".into()),
                     (object_prototype, "__proto__".into()),
                     (object_prototype, "hasOwnProperty".into()),
+                    (self.array_prototype, "at".into()),
+                    (self.array_prototype, "entries".into()),
+                    (self.array_prototype, "keys".into()),
+                    (self.array_prototype, "values".into()),
                     (self.array_prototype, "toString".into()),
                     (self.array_prototype, "concat".into()),
                     (self.array_prototype, "join".into()),
                     (self.array_prototype, "forEach".into()),
                     (self.array_prototype, "filter".into()),
                     (self.array_prototype, "map".into()),
+                    (self.array_prototype, "find".into()),
+                    (self.array_prototype, "findIndex".into()),
+                    (self.array_prototype, "findLast".into()),
+                    (self.array_prototype, "findLastIndex".into()),
                     (self.array_prototype, "every".into()),
                     (self.array_prototype, "some".into()),
                     (self.array_prototype, "includes".into()),
@@ -1383,6 +1427,46 @@ impl Vm {
                 heap.define_own_property(
                     owner,
                     name,
+                    PropertyDescriptor {
+                        get: Some(Value::Object(getter)),
+                        set: Some(Value::Undefined),
+                        enumerable: Some(false),
+                        configurable: Some(true),
+                        ..Default::default()
+                    },
+                )
+            })?;
+            Ok(())
+        })();
+        self.stack.pop();
+        result
+    }
+
+    fn install_symbol_native_getter(
+        &mut self,
+        owner: ObjectId,
+        prototype: ObjectId,
+        name: &str,
+        function: NativeFunction,
+    ) -> Result<(), RuntimeError> {
+        let getter_name = format!("get [Symbol.{name}]");
+        let getter =
+            self.with_roots(|heap| heap.alloc_native_function(function, &getter_name, prototype))?;
+        self.stack.push(Value::Object(getter));
+        let result = (|| {
+            self.define_data(getter, "length", Value::Number(0.0), false, false, true)?;
+            self.define_data(
+                getter,
+                "name",
+                Value::String(getter_name.into()),
+                false,
+                false,
+                true,
+            )?;
+            self.with_roots(|heap| {
+                heap.define_own_property(
+                    owner,
+                    JsSymbol::well_known(name),
                     PropertyDescriptor {
                         get: Some(Value::Object(getter)),
                         set: Some(Value::Undefined),
@@ -1665,6 +1749,7 @@ impl Vm {
                     | NativeFunction::WeakMap
                     | NativeFunction::WeakSet
                     | NativeFunction::WeakRef
+                    | NativeFunction::FinalizationRegistry
                     | NativeFunction::Object
                     | NativeFunction::RegExp
                     | NativeFunction::Collator

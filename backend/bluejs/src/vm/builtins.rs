@@ -1000,6 +1000,38 @@ impl Vm {
         self.stack.truncate(base);
         result
     }
+
+    fn array_of_method(&mut self, receiver: &Value, args: &[Value]) -> Result<Value, RuntimeError> {
+        let base = self.stack.len();
+        self.stack.push(receiver.clone());
+        self.stack.extend(args.iter().cloned());
+        let result = (|| {
+            let array = if self.is_constructor(receiver)? {
+                self.call_with_target(
+                    receiver.clone(),
+                    Value::Undefined,
+                    vec![Value::Number(args.len() as f64)],
+                    true,
+                    receiver.clone(),
+                )?
+                .object_id()
+                .ok_or_else(|| {
+                    RuntimeError::TypeError("Array.of constructor returned a primitive".into())
+                })?
+            } else {
+                let prototype = self.array_prototype;
+                self.with_roots(|heap| heap.alloc_array(0, Some(prototype)))?
+            };
+            self.stack.push(Value::Object(array));
+            for (index, value) in args.iter().cloned().enumerate() {
+                self.array_create_data_property_or_throw(array, index.to_string().into(), value)?;
+            }
+            self.array_set_or_throw(array, "length".into(), &Value::Number(args.len() as f64))?;
+            Ok(Value::Object(array))
+        })();
+        self.stack.truncate(base);
+        result
+    }
 }
 
 impl Vm {

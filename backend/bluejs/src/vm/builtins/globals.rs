@@ -73,6 +73,7 @@ impl Vm {
             "WeakMap" => NativeFunction::WeakMap,
             "WeakSet" => NativeFunction::WeakSet,
             "WeakRef" => NativeFunction::WeakRef,
+            "FinalizationRegistry" => NativeFunction::FinalizationRegistry,
             "Promise" => NativeFunction::Promise,
             "eval" => NativeFunction::Eval,
             "Object" => NativeFunction::Object,
@@ -112,6 +113,7 @@ impl Vm {
                         "Proxy" => 2.0,
                         "Date" => 7.0,
                         "WeakMap" | "WeakSet" => 0.0,
+                        "FinalizationRegistry" => 1.0,
                         _ => 1.0,
                     }),
                     false,
@@ -237,10 +239,20 @@ impl Vm {
                     true,
                 )?;
                 self.install_native(id, prototype, "isArray", 1, NativeFunction::ArrayIsArray)?;
+                self.install_native(id, prototype, "of", 0, NativeFunction::ArrayOf)?;
                 self.install_native(id, prototype, "from", 1, NativeFunction::ArrayFrom)?;
+                self.install_symbol_native_getter(
+                    id,
+                    prototype,
+                    "species",
+                    NativeFunction::ArraySpecies,
+                )?;
             } else if name == "Date" {
+                // `%Date.prototype%` has ordinary object behavior and the
+                // Date tag, but deliberately does not have a [[DateValue]].
                 let date_prototype =
                     self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+                self.date_prototype = Some(date_prototype);
                 self.define_data(
                     id,
                     "prototype",
@@ -258,7 +270,119 @@ impl Vm {
                     true,
                 )?;
                 self.install_native(id, prototype, "now", 0, NativeFunction::DateNow)?;
+                self.install_native(id, prototype, "parse", 1, NativeFunction::DateParse)?;
                 self.install_native(id, prototype, "UTC", 7, NativeFunction::DateUtc)?;
+                for (name, length, method) in [
+                    ("getYear", 0, native::DateMethod::GetYear),
+                    ("getTime", 0, native::DateMethod::GetTime),
+                    ("setTime", 1, native::DateMethod::SetTime),
+                    ("toISOString", 0, native::DateMethod::ToIsoString),
+                    ("toJSON", 1, native::DateMethod::ToJson),
+                    ("toDateString", 0, native::DateMethod::ToDateString),
+                    ("toString", 0, native::DateMethod::ToString),
+                    ("toTimeString", 0, native::DateMethod::ToTimeString),
+                    (
+                        "toLocaleDateString",
+                        0,
+                        native::DateMethod::ToLocaleDateString,
+                    ),
+                    ("toLocaleString", 0, native::DateMethod::ToLocaleString),
+                    (
+                        "toLocaleTimeString",
+                        0,
+                        native::DateMethod::ToLocaleTimeString,
+                    ),
+                    ("toUTCString", 0, native::DateMethod::ToUtcString),
+                    ("valueOf", 0, native::DateMethod::ValueOf),
+                ] {
+                    self.install_native(
+                        date_prototype,
+                        prototype,
+                        name,
+                        length,
+                        NativeFunction::DateMethod(method),
+                    )?;
+                }
+                // Annex B requires this to be the same function object, not
+                // merely an equivalent native implementation.
+                let to_utc_string = self.heap.get(date_prototype, "toUTCString")?;
+                self.define_data(
+                    date_prototype,
+                    "toGMTString",
+                    to_utc_string,
+                    true,
+                    false,
+                    true,
+                )?;
+                for (name, part) in [
+                    ("getDate", native::DatePart::Date),
+                    ("getDay", native::DatePart::Day),
+                    ("getFullYear", native::DatePart::FullYear),
+                    ("getHours", native::DatePart::Hours),
+                    ("getMilliseconds", native::DatePart::Milliseconds),
+                    ("getMinutes", native::DatePart::Minutes),
+                    ("getMonth", native::DatePart::Month),
+                    ("getSeconds", native::DatePart::Seconds),
+                    ("getTimezoneOffset", native::DatePart::TimezoneOffset),
+                    ("getUTCDate", native::DatePart::Date),
+                    ("getUTCDay", native::DatePart::Day),
+                    ("getUTCFullYear", native::DatePart::FullYear),
+                    ("getUTCHours", native::DatePart::Hours),
+                    ("getUTCMilliseconds", native::DatePart::Milliseconds),
+                    ("getUTCMinutes", native::DatePart::Minutes),
+                    ("getUTCMonth", native::DatePart::Month),
+                    ("getUTCSeconds", native::DatePart::Seconds),
+                ] {
+                    self.install_native(
+                        date_prototype,
+                        prototype,
+                        name,
+                        0,
+                        NativeFunction::DateMethod(native::DateMethod::Get(part)),
+                    )?;
+                }
+                self.install_symbol_native(
+                    date_prototype,
+                    prototype,
+                    "toPrimitive",
+                    1,
+                    NativeFunction::DateMethod(native::DateMethod::ToPrimitive),
+                )?;
+                self.with_roots(|heap| {
+                    heap.define_own_property(
+                        date_prototype,
+                        JsSymbol::well_known("toPrimitive"),
+                        PropertyDescriptor {
+                            writable: Some(false),
+                            ..PropertyDescriptor::default()
+                        },
+                    )
+                })?;
+                for (name, length, setter) in [
+                    ("setDate", 1, native::DateSetter::Date),
+                    ("setFullYear", 3, native::DateSetter::FullYear),
+                    ("setHours", 4, native::DateSetter::Hours),
+                    ("setMilliseconds", 1, native::DateSetter::Milliseconds),
+                    ("setMinutes", 3, native::DateSetter::Minutes),
+                    ("setMonth", 2, native::DateSetter::Month),
+                    ("setSeconds", 2, native::DateSetter::Seconds),
+                    ("setUTCDate", 1, native::DateSetter::Date),
+                    ("setUTCFullYear", 3, native::DateSetter::FullYear),
+                    ("setUTCHours", 4, native::DateSetter::Hours),
+                    ("setUTCMilliseconds", 1, native::DateSetter::Milliseconds),
+                    ("setUTCMinutes", 3, native::DateSetter::Minutes),
+                    ("setUTCMonth", 2, native::DateSetter::Month),
+                    ("setUTCSeconds", 2, native::DateSetter::Seconds),
+                    ("setYear", 1, native::DateSetter::Year),
+                ] {
+                    self.install_native(
+                        date_prototype,
+                        prototype,
+                        name,
+                        length,
+                        NativeFunction::DateMethod(native::DateMethod::Set(setter)),
+                    )?;
+                }
                 self.define_data(
                     date_prototype,
                     JsSymbol::well_known("toStringTag"),
@@ -561,6 +685,24 @@ impl Vm {
                     false,
                     true,
                 )?;
+            } else if name == "FinalizationRegistry" {
+                let registry_prototype = self.finalization_registry_prototype()?;
+                self.define_data(
+                    id,
+                    "prototype",
+                    Value::Object(registry_prototype),
+                    false,
+                    false,
+                    false,
+                )?;
+                self.define_data(
+                    registry_prototype,
+                    "constructor",
+                    Value::Object(id),
+                    true,
+                    false,
+                    true,
+                )?;
             } else if name == "Function" {
                 self.define_data(
                     id,
@@ -674,6 +816,12 @@ impl Vm {
             } else if name == "globalThis" {
                 self.define_data(id, "String", Value::Object(constructor), true, false, true)?;
                 self.define_data(id, "globalThis", Value::Object(id), true, false, true)?;
+                // A global-property lookup must observe Date before any
+                // lexical `Date` reference has caused its lazy intrinsic to
+                // be materialized (for example, property-descriptor probes).
+                // It is then copied into this global object below along with
+                // the already-created String intrinsic.
+                self.global("Date")?;
             } else if name == "Reflect" {
                 self.install_native(id, prototype, "apply", 3, NativeFunction::ReflectApply)?;
                 self.install_native(

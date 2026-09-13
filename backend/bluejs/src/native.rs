@@ -66,6 +66,51 @@ pub(crate) enum WeakCollectionMethod {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DateMethod {
+    Get(DatePart),
+    GetYear,
+    GetTime,
+    Set(DateSetter),
+    SetTime,
+    ToIsoString,
+    ToJson,
+    ToDateString,
+    ToString,
+    ToTimeString,
+    ToLocaleDateString,
+    ToLocaleString,
+    ToLocaleTimeString,
+    ToPrimitive,
+    ToUtcString,
+    ValueOf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DateSetter {
+    Date,
+    FullYear,
+    Hours,
+    Milliseconds,
+    Minutes,
+    Month,
+    Seconds,
+    Year,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DatePart {
+    Date,
+    Day,
+    FullYear,
+    Hours,
+    Milliseconds,
+    Minutes,
+    Month,
+    Seconds,
+    TimezoneOffset,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NativeFunction {
     Function,
     /// The intrinsic constructor reached through an async function's
@@ -75,7 +120,9 @@ pub(crate) enum NativeFunction {
     Array,
     Date,
     DateNow,
+    DateParse,
     DateUtc,
+    DateMethod(DateMethod),
     ArrayBuffer,
     ArrayBufferByteLength,
     ArrayBufferMaxByteLength,
@@ -137,15 +184,25 @@ pub(crate) enum NativeFunction {
     WeakSet,
     WeakRef,
     WeakRefDeref,
+    FinalizationRegistry,
+    FinalizationRegistryRegister,
+    FinalizationRegistryUnregister,
     WeakCollectionMethod {
         map: bool,
         method: WeakCollectionMethod,
     },
     ArrayIsArray,
+    ArrayAt,
+    ArrayOf,
+    ArraySpecies,
     ArrayFrom,
     ArrayForEach,
     ArrayFilter,
     ArrayMap,
+    ArrayFind,
+    ArrayFindIndex,
+    ArrayFindLast,
+    ArrayFindLastIndex,
     ArrayEvery,
     ArraySome,
     ArrayIncludes,

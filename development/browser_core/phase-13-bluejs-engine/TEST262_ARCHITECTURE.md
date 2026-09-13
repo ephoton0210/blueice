@@ -1848,17 +1848,48 @@ instruction budget, and a two-second case deadline:
 | --- | ---: | --- |
 | `built-ins/WeakMap/` | **281 / 281 pass** | `target/test262-p04-weak-map-final` |
 | `built-ins/WeakSet/` | **170 / 170 pass** | `target/test262-p04-weak-set-final` |
-| `built-ins/WeakRef/` | **56 pass / 2 fail** of 58 modes | `target/test262-p04-weak-ref-after-implementation` |
+| `built-ins/WeakRef/` | **58 / 58 pass** | `target/test262-p04-weak-ref-final-2` |
 
-Both WeakRef failures are the sloppy and strict modes of
-`built-ins/WeakRef/prototype/deref/this-does-not-have-internal-target-throws.js`.
-That fixture constructs a `FinalizationRegistry` before it calls `deref` with
-the wrong receiver, so it currently stops at a `ReferenceError` because the
-global is absent. It is not evidence of a remaining `WeakRef.prototype.deref`
-brand-check defect. A placeholder `FinalizationRegistry` must not be added to
-turn these modes green: correct support needs registry cells, holdings,
-unregistration, collection observation, and cleanup-job scheduling. It remains
-separate P1.5/P1.6 weak-GC and host-scheduler work.
+`FinalizationRegistry` is no longer a placeholder: its constructor validates
+the cleanup callback, registry cells retain strong holdings and weak target /
+unregister-token keys, `register` and `unregister` validate their inputs, and
+collection clears a dead cell target. Cleanup-job scheduling and delivery of
+holdings are intentionally not implemented yet, so this is a sound substrate
+for the WeakRef fixture and future registry work, not a claim of complete
+FinalizationRegistry conformance.
+
+## P0.4 continuation: Date and Array baseline closure
+
+`Date` now has a real `[[DateValue]]` heap slot rather than using ordinary
+properties. The constructor, `Date.UTC`, `Date.parse`, TimeClip, UTC/local
+(currently UTC-host-zone) getters and setters, ISO/JSON/string conversion,
+`@@toPrimitive`, Annex B `getYear`/`setYear`/`toGMTString`, subclass prototype
+selection, and cross-Realm default-prototype fallback use their observable
+internal-method paths. ISO parsing also rejects the extended negative zero
+year, and the engine's own `toString`/`toUTCString` output round-trips through
+`Date.parse`. `%Date.prototype%` deliberately has no `[[DateValue]]`.
+
+Array work adds species construction and CreateDataProperty semantics to
+`map`/`filter`, `Array.of`, `Array[Symbol.species]`, relative-index `at`, and
+the `entries`/`keys`/`values` iterator family with
+`Array.prototype[Symbol.iterator] === Array.prototype.values`. The four
+`find` methods now visit holes as `undefined` and preserve their required
+forward or reverse callback order.
+
+Focused results from the same snapshot are:
+
+| Filter | Result | Evidence |
+| --- | ---: | --- |
+| `built-ins/Date/` | **1,220 pass / 16 fail** of 1,236 | `target/test262-p04-date-final-4` |
+| `built-ins/Array/` | **5,169 pass / 950 fail** of 6,119 | `target/test262-p04-array-final-3` |
+| `built-ins/WeakRef/` | **58 / 58 pass** | `target/test262-p04-weak-ref-final-2` |
+
+The Date remainder is exactly the 16 modes for `Date.prototype.toTemporalInstant`,
+which requires the unsupported Temporal value model. Array improved by 323
+passing modes from the 4,846 / 1,273 audit baseline; its largest remaining
+families are `Array.fromAsync`, concat spreadability, copy-by-value methods,
+and resizable-buffer interactions. These focused results do not replace the
+complete-inventory result below.
 
 These are focused filters, not a replacement for the checked-in complete
 inventory. The full-inventory totals and generated `test262-summary.json`

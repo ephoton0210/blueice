@@ -180,6 +180,147 @@ impl Vm {
         Ok(target.unwrap_or(Value::Undefined))
     }
 
+    pub(in super::super) fn finalization_registry_prototype(
+        &mut self,
+    ) -> Result<ObjectId, RuntimeError> {
+        if let Some(prototype) = self.finalization_registry_prototype {
+            return Ok(prototype);
+        }
+        let object_prototype = self.object_prototype;
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+        let function_prototype = self.function_prototype()?;
+        self.stack.push(Value::Object(prototype));
+        let result: Result<(), RuntimeError> = (|| {
+            self.define_data(
+                prototype,
+                JsSymbol::well_known("toStringTag"),
+                Value::String("FinalizationRegistry".into()),
+                false,
+                false,
+                true,
+            )?;
+            self.install_native(
+                prototype,
+                function_prototype,
+                "register",
+                2,
+                NativeFunction::FinalizationRegistryRegister,
+            )?;
+            self.install_native(
+                prototype,
+                function_prototype,
+                "unregister",
+                1,
+                NativeFunction::FinalizationRegistryUnregister,
+            )?;
+            Ok(())
+        })();
+        self.stack.pop();
+        result?;
+        self.finalization_registry_prototype = Some(prototype);
+        Ok(prototype)
+    }
+
+    pub(in super::super) fn finalization_registry_constructor(
+        &mut self,
+        cleanup_callback: Value,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        if !construct {
+            return Err(RuntimeError::TypeError(
+                "FinalizationRegistry constructor must be called with new".into(),
+            ));
+        }
+        if !self.is_callable(&cleanup_callback)? {
+            return Err(RuntimeError::TypeError(
+                "FinalizationRegistry cleanup callback must be callable".into(),
+            ));
+        }
+        let base = self.stack.len();
+        self.stack.push(cleanup_callback.clone());
+        let result = (|| {
+            let default = self.finalization_registry_prototype()?;
+            let prototype = self.constructor_prototype(default)?;
+            Ok(Value::Object(self.with_roots(|heap| {
+                heap.alloc_finalization_registry(cleanup_callback, Some(prototype))
+            })?))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    pub(in super::super) fn finalization_registry_register(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let registry = receiver.object_id().ok_or_else(|| {
+            RuntimeError::TypeError(
+                "FinalizationRegistry register requires a registry receiver".into(),
+            )
+        })?;
+        if !self.heap.is_finalization_registry(registry)? {
+            return Err(RuntimeError::TypeError(
+                "FinalizationRegistry register requires a registry receiver".into(),
+            ));
+        }
+        let target = native::argument(args, 0).clone();
+        let holdings = native::argument(args, 1).clone();
+        let unregister_token = args.get(2).cloned();
+        if !self.can_hold_weakly(&target)
+            || unregister_token
+                .as_ref()
+                .is_some_and(|token| !self.can_hold_weakly(token))
+        {
+            return Err(RuntimeError::TypeError(
+                "FinalizationRegistry target or unregister token cannot be held weakly".into(),
+            ));
+        }
+        if target == holdings {
+            return Err(RuntimeError::TypeError(
+                "FinalizationRegistry target and holdings must differ".into(),
+            ));
+        }
+        let base = self.stack.len();
+        self.stack.push(Value::Object(registry));
+        self.stack.push(target.clone());
+        self.stack.push(holdings.clone());
+        if let Some(token) = &unregister_token {
+            self.stack.push(token.clone());
+        }
+        let result = self.with_roots(|heap| {
+            heap.finalization_registry_register(registry, target, holdings, unregister_token)
+        });
+        self.stack.truncate(base);
+        result?;
+        Ok(Value::Undefined)
+    }
+
+    pub(in super::super) fn finalization_registry_unregister(
+        &mut self,
+        receiver: &Value,
+        unregister_token: Value,
+    ) -> Result<Value, RuntimeError> {
+        let registry = receiver.object_id().ok_or_else(|| {
+            RuntimeError::TypeError(
+                "FinalizationRegistry unregister requires a registry receiver".into(),
+            )
+        })?;
+        if !self.heap.is_finalization_registry(registry)? {
+            return Err(RuntimeError::TypeError(
+                "FinalizationRegistry unregister requires a registry receiver".into(),
+            ));
+        }
+        if !self.can_hold_weakly(&unregister_token) {
+            return Err(RuntimeError::TypeError(
+                "FinalizationRegistry unregister token cannot be held weakly".into(),
+            ));
+        }
+        Ok(Value::Bool(self.with_roots(|heap| {
+            heap.finalization_registry_unregister(registry, unregister_token)
+        })?))
+    }
+
     pub(in super::super) fn weak_collection_prototype(
         &mut self,
         map: bool,

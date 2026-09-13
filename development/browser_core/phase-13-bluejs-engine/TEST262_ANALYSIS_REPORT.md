@@ -103,16 +103,27 @@ that contract without claiming complete Date object support. The public
 ## Focused P0.4 weak-collection follow-up
 
 The P0.4 weak-collection implementation was checked with focused filters on
-the same Test262 snapshot: `built-ins/WeakMap/` is **281/281 pass** and
-`built-ins/WeakSet/` is **170/170 pass**. `built-ins/WeakRef/` is **56 pass /
-2 fail** of 58 modes. The two failures are the sloppy and strict modes of
-`built-ins/WeakRef/prototype/deref/this-does-not-have-internal-target-throws.js`:
-the fixture constructs a `FinalizationRegistry` before exercising the wrong
-receiver, and therefore stops at `ReferenceError: FinalizationRegistry is not
-defined`. They do not identify a WeakRef dereference failure.
+the same Test262 snapshot: `built-ins/WeakMap/` is **281/281 pass**,
+`built-ins/WeakSet/` is **170/170 pass**, and `built-ins/WeakRef/` is now
+**58/58 pass** at `target/test262-p04-weak-ref-final-2`.
+
+The two previous WeakRef failures were unblocked by a non-placeholder
+`FinalizationRegistry` substrate: the constructor/callback, weak target and
+unregister-token cells, strong holdings, `register`, `unregister`, and dead
+target collection behavior are represented in the VM. Cleanup-job scheduling
+and callback delivery remain future weak-GC/host work, so this does not claim
+full FinalizationRegistry conformance.
+
+The corresponding Date audit rose from **166/1,236** to **1,220/1,236** at
+`target/test262-p04-date-final-4`; all 16 remaining modes require the absent
+Temporal bridge (`Date.prototype.toTemporalInstant`). The Array audit rose
+from **4,846/6,119** to **5,169/6,119** at
+`target/test262-p04-array-final-3`, after species-aware map/filter,
+`Array.of`, `at`, iterators, and the find family. The remaining Array failures
+are predominantly `Array.fromAsync`, concat spreadability, copy-by-value, and
+resizable-buffer work.
 
 These focused results do not revise the complete-inventory table, observed
-blocker counts, or generated summary above. Completing `FinalizationRegistry`
-requires weak cells, holdings, unregistration, collection observation, and
-cleanup-job dispatch; it remains separate weak-GC/host work rather than a
-placeholder API added to satisfy this one fixture.
+blocker counts, or generated summary above. They must be reconciled against a
+new complete inventory before those documents are republished as a full-suite
+baseline.

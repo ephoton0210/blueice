@@ -248,6 +248,39 @@ fn array_from_maps_iterables_lazily_and_closes_on_a_mapper_throw() {
 }
 
 #[test]
+fn map_filter_and_array_of_use_create_data_property_and_species_construction() {
+    assert_eq!(
+        evaluate(
+            "let calls=[];function C(length){calls.push(length);return {}}let source=[1,2,3];source.constructor={};source.constructor[Symbol.species]=C;let mapped=source.map(function(value){return value*2});let filtered=source.filter(function(value){return value>1});let of=Array.of.call(C,'a','b');calls.join(',')==='3,0,2'&&mapped[0]===2&&mapped[2]===6&&filtered[0]===2&&filtered[1]===3&&of[0]==='a'&&of[1]==='b'&&of.length===2&&Array[Symbol.species]===Array",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn at_and_iterator_methods_use_relative_indices_and_share_values_identity() {
+    for source in [
+        "let array=[10,,30];array.at(-1)===30&&array.at(-4)===undefined&&array.at(NaN)===10&&array.at(1)===undefined",
+        "Array.prototype[Symbol.iterator]===Array.prototype.values&&Array.prototype.at.length===1",
+        "let entries=[10,,30].entries();entries.next().value[0]===0&&entries.next().value[1]===undefined",
+        "[10,,30].values().next().value===10&&[10,,30].keys().next().value===0",
+    ] {
+        assert_eq!(evaluate(source), Ok(Value::Bool(true)), "{source}");
+    }
+}
+
+#[test]
+fn find_methods_visit_holes_and_observe_forward_or_reverse_order() {
+    assert_eq!(
+        evaluate(
+            "let seen=[];let array=[,2,3,2];let found=array.find(function(value,index){seen.push([value,index].join(':'));return value===2});let first=array.findIndex(function(value){return value===2});let last=array.findLast(function(value){return value===2});let lastIndex=array.findLastIndex(function(value){return value===2});found===2&&first===1&&last===2&&lastIndex===3&&seen[0]===':0'&&seen[1]==='2:1'&&[].find(function(){return true})===undefined&&[].findIndex(function(){return true})===-1",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
 fn invalid_runtime_lengths_report_range_errors_and_vm_remains_reusable() {
     let mut vm = Vm::default();
     for source in [
