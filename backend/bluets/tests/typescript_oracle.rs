@@ -4,11 +4,11 @@
 
 //! Opt-in compatibility checks against a pinned external TypeScript compiler.
 //!
-//! The oracle is deliberately outside the BlueTS dependency graph.  CI (or a
-//! developer) supplies the exact `tsc` executable through `BLUEICE_TSC`; this
-//! test verifies that it is the version pinned below before accepting it.
+//! The fixtures are deliberately narrow: each one is already part of BlueTS's
+//! documented language matrix. The oracle never makes a new syntax supported.
 
 use blueice_bluets::{compile, CompilerOptions, DiagnosticCode, MapLoader, ModuleSource};
+use serde_json::Value;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -19,83 +19,180 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const PINNED_TYPESCRIPT_VERSION: &str = "5.9.3";
 static TEST_DIRECTORY_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+struct OracleCase {
+    name: &'static str,
+    modules: &'static [(&'static str, &'static str)],
+    expected_stdout: Option<&'static str>,
+}
+
+const CASES: &[OracleCase] = &[
+    OracleCase {
+        name: "generic-property",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/generic-property/main.ts"),
+        )],
+        expected_stdout: Some("Ada\n"),
+    },
+    OracleCase {
+        name: "optional-default",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/optional-default/main.ts"),
+        )],
+        expected_stdout: Some("2\n"),
+    },
+    OracleCase {
+        name: "generic-declaration-module",
+        modules: &[
+            (
+                "memory:///main.ts",
+                include_str!("fixtures/typescript_oracle/generic-declaration-module/main.ts"),
+            ),
+            (
+                "memory:///types/envelope.d.ts",
+                include_str!(
+                    "fixtures/typescript_oracle/generic-declaration-module/types/envelope.d.ts"
+                ),
+            ),
+        ],
+        expected_stdout: Some("Ada\n"),
+    },
+    OracleCase {
+        name: "assignment-error",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/assignment-error/main.ts"),
+        )],
+        expected_stdout: None,
+    },
+    OracleCase {
+        name: "call-argument-error",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/call-argument-error/main.ts"),
+        )],
+        expected_stdout: None,
+    },
+];
+
 /// This test is ignored in ordinary Rust builds because the reference compiler
 /// is an explicitly provisioned test tool, not a BlueTS dependency.
 #[test]
 #[ignore = "requires BLUEICE_TSC to point to the pinned TypeScript compiler"]
-fn pinned_typescript_oracle_agrees_on_supported_erasure_and_type_errors() {
+fn pinned_typescript_oracle_matches_the_supported_fixture_matrix() {
     let tsc = pinned_tsc();
     assert_pinned_version(&tsc);
-
-    let temporary = TestDirectory::new();
-    let source = r#"interface Account { id: string }
-function identity<T>(value: T): T { return value; }
-const accountName: string = identity('Ada');
-const account: Account = { id: accountName };
-function label(value: Account): string { return value.id; }
-console.log(label(account));
-"#;
-    let input = temporary.path().join("main.ts");
-    fs::write(&input, source).unwrap();
-
-    let compilation = compile(
-        "main.ts",
-        &MapLoader::from([ModuleSource::new("main.ts", source)]),
-        CompilerOptions::default(),
-    );
-    assert!(
-        !compilation.has_errors(),
-        "BlueTS rejected the oracle's accepted fixture: {:#?}",
-        compilation.diagnostics
-    );
-    let blueice_javascript = &compilation
-        .output
-        .as_ref()
-        .unwrap()
-        .artifacts
-        .get("main.ts")
-        .unwrap()
-        .javascript;
-    assert!(!blueice_javascript.contains("interface Account"));
-    assert!(!blueice_javascript.contains(": Account"));
-    let blueice_output = temporary.path().join("blueice.js");
-    fs::write(&blueice_output, blueice_javascript).unwrap();
-
-    let typescript_output = temporary.path().join("typescript");
-    let emitted_by_tsc = run_tsc(&tsc, &input, &typescript_output, false);
-    assert_success(
-        &emitted_by_tsc,
-        "the pinned TypeScript compiler rejected the fixture",
-    );
-
     let node = env::var_os("BLUEICE_NODE").unwrap_or_else(|| "node".into());
-    let blueice_result = run_node(&node, &blueice_output);
-    let typescript_result = run_node(&node, &typescript_output.join("main.js"));
-    assert_success(&blueice_result, "Node could not execute BlueTSC output");
-    assert_success(
-        &typescript_result,
-        "Node could not execute TypeScript output",
-    );
-    assert_eq!(blueice_result.stdout, typescript_result.stdout);
+    for case in CASES {
+        run_case(case, &tsc, &node);
+    }
+}
 
-    let invalid_source = "const mustBeNumber: number = 'not a number';\n";
-    let invalid_input = temporary.path().join("invalid.ts");
-    fs::write(&invalid_input, invalid_source).unwrap();
-    let rejected_by_tsc = run_tsc(&tsc, &invalid_input, &typescript_output, true);
-    assert!(
-        !rejected_by_tsc.status.success(),
-        "the pinned TypeScript compiler accepted an invalid assignment"
-    );
-    let rejected_by_bluets = compile(
-        "invalid.ts",
-        &MapLoader::from([ModuleSource::new("invalid.ts", invalid_source)]),
-        CompilerOptions::default(),
-    );
-    assert!(rejected_by_bluets.has_errors());
-    assert!(rejected_by_bluets
-        .diagnostics
+fn run_case(case: &OracleCase, tsc: &Path, node: &std::ffi::OsStr) {
+    let temporary = TestDirectory::new();
+    let sources = case
+        .modules
         .iter()
-        .any(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch));
+        .map(|(id, text)| ModuleSource::new(*id, *text))
+        .collect::<Vec<_>>();
+    for (id, text) in case.modules {
+        let path = temporary.path().join(disk_path(id));
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    }
+    let options = CompilerOptions {
+        source_map: true,
+        ..CompilerOptions::default()
+    };
+    let compilation = compile("memory:///main.ts", &MapLoader::from(sources), options);
+    let typescript_output = temporary.path().join("typescript");
+    let input = temporary.path().join("main.ts");
+    let tsc_output = run_tsc(
+        tsc,
+        &input,
+        &typescript_output,
+        case.expected_stdout.is_none(),
+    );
+
+    match case.expected_stdout {
+        Some(expected_stdout) => {
+            assert!(
+                !compilation.has_errors(),
+                "BlueTS rejected accepted fixture {}: {:#?}",
+                case.name,
+                compilation.diagnostics
+            );
+            assert_success(
+                &tsc_output,
+                &format!(
+                    "the pinned TypeScript compiler rejected fixture {}",
+                    case.name
+                ),
+            );
+            let artifact = &compilation.output.as_ref().unwrap().artifacts["memory:///main.ts"];
+            let blueice_output = temporary.path().join("blueice.js");
+            fs::write(&blueice_output, &artifact.javascript).unwrap();
+            assert_source_map(&artifact.source_map.as_ref().unwrap().to_json(), "BlueTSC");
+            assert_source_map(
+                &fs::read_to_string(typescript_output.join("main.js.map")).unwrap(),
+                "TypeScript",
+            );
+            let blueice_result = run_node(node, &blueice_output);
+            let typescript_result = run_node(node, &typescript_output.join("main.js"));
+            assert_success(&blueice_result, "Node could not execute BlueTSC output");
+            assert_success(
+                &typescript_result,
+                "Node could not execute TypeScript output",
+            );
+            assert_eq!(
+                blueice_result.stdout,
+                expected_stdout.as_bytes(),
+                "{} BlueTSC stdout",
+                case.name
+            );
+            assert_eq!(
+                typescript_result.stdout,
+                expected_stdout.as_bytes(),
+                "{} TypeScript stdout",
+                case.name
+            );
+        }
+        None => {
+            assert!(
+                compilation.has_errors(),
+                "BlueTS accepted rejected fixture {}",
+                case.name
+            );
+            assert!(compilation
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch));
+            assert!(
+                !tsc_output.status.success(),
+                "the pinned TypeScript compiler accepted rejected fixture {}",
+                case.name
+            );
+        }
+    }
+}
+
+fn disk_path(module_id: &str) -> &str {
+    module_id
+        .strip_prefix("memory:///")
+        .expect("oracle fixture module IDs are memory-rooted")
+}
+
+fn assert_source_map(source_map: &str, producer: &str) {
+    let value: Value = serde_json::from_str(source_map)
+        .unwrap_or_else(|error| panic!("{producer} emitted invalid source-map JSON: {error}"));
+    assert_eq!(value["version"], 3, "{producer} source map version");
+    assert!(value["mappings"]
+        .as_str()
+        .is_some_and(|value| !value.is_empty()));
+    assert!(value["sources"]
+        .as_array()
+        .is_some_and(|value| !value.is_empty()));
 }
 
 fn pinned_tsc() -> PathBuf {
@@ -117,7 +214,13 @@ fn assert_pinned_version(tsc: &Path) {
 fn run_tsc(tsc: &Path, input: &Path, output: &Path, no_emit: bool) -> Output {
     let mut command = Command::new(tsc);
     command.args([
-        "--target", "ES2022", "--module", "none", "--pretty", "false",
+        "--target",
+        "ES2022",
+        "--module",
+        "none",
+        "--pretty",
+        "false",
+        "--sourceMap",
     ]);
     if no_emit {
         command.arg("--noEmit");

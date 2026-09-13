@@ -8,11 +8,39 @@ use crate::checker;
 use crate::debug_info;
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::emitter;
-use crate::parser::{parse_module, Module};
+use crate::parser::{parse_module, parse_module_with_limits, Module, ParserLimits};
 use crate::{Compilation, LANGUAGE_VERSION};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
-const MAX_MODULES: usize = 4_096;
+/// Closed-project work limits. They are part of [`CompilerOptions`] so a
+/// cached result or artifact cannot be reused under a looser resource policy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompilerLimits {
+    pub max_modules: usize,
+    /// Maximum number of import/type-export edges in the closed graph.
+    pub max_module_edges: usize,
+    /// Maximum number of resolution edges from the entry module. The entry is
+    /// at depth zero, so a limit of one permits its direct dependencies.
+    pub max_module_depth: usize,
+    pub max_total_source_bytes: usize,
+    pub parser: ParserLimits,
+    pub max_type_expansions: usize,
+    pub max_source_map_segments: usize,
+}
+
+impl Default for CompilerLimits {
+    fn default() -> Self {
+        Self {
+            max_modules: 4_096,
+            max_module_edges: 16_384,
+            max_module_depth: 128,
+            max_total_source_bytes: 16 * 1_024 * 1_024,
+            parser: ParserLimits::default(),
+            max_type_expansions: 256,
+            max_source_map_segments: 100_000,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EcmaTarget {
@@ -58,6 +86,7 @@ pub struct CompilerOptions {
     /// This prevents an artifact/cache key from being reused under a resolver
     /// policy different from the one that selected its module graph.
     pub resolver_fingerprint: String,
+    pub limits: CompilerLimits,
 }
 
 impl Default for CompilerOptions {
@@ -68,6 +97,7 @@ impl Default for CompilerOptions {
             source_map: false,
             declaration: false,
             resolver_fingerprint: "relative-v1".to_string(),
+            limits: CompilerLimits::default(),
         }
     }
 }
@@ -236,8 +266,8 @@ fn compile_with_cache(
     cached: Option<&CachedCompilation>,
 ) -> IncrementalResult {
     let previous_project = cached.map(|cached| &cached.compilation.project);
-    let mut builder = ProjectBuilder::new(loader, previous_project);
-    builder.visit(entry);
+    let mut builder = ProjectBuilder::new(loader, previous_project, options.limits.clone());
+    builder.visit(entry, 0);
     let ProjectBuilder {
         project,
         mut diagnostics,
@@ -272,8 +302,15 @@ fn compile_with_cache(
         !matches!(options.runtime_policy, RuntimePolicy::TranspileOnly),
         previous_checked,
         &rechecked_modules,
+        options.limits.max_type_expansions,
     );
     diagnostics.extend(checker_diagnostics);
+    if options.source_map {
+        diagnostics.extend(emitter::validate_source_map_limits(
+            &checked,
+            options.limits.max_source_map_segments,
+        ));
+    }
     diagnostics.sort_by(|left, right| {
         (&left.span.module, left.span.start, left.code.to_string()).cmp(&(
             &right.span.module,
@@ -365,6 +402,8 @@ struct ProjectBuilder<'a> {
     project: Project,
     diagnostics: Vec<Diagnostic>,
     state: HashMap<String, VisitState>,
+    limits: CompilerLimits,
+    total_source_bytes: usize,
     parsed_modules: BTreeSet<String>,
     reused_parsed_modules: BTreeSet<String>,
 }
@@ -376,19 +415,25 @@ enum VisitState {
 }
 
 impl<'a> ProjectBuilder<'a> {
-    fn new(loader: &'a dyn ModuleLoader, previous: Option<&'a Project>) -> Self {
+    fn new(
+        loader: &'a dyn ModuleLoader,
+        previous: Option<&'a Project>,
+        limits: CompilerLimits,
+    ) -> Self {
         Self {
             loader,
             previous,
             project: Project::empty(""),
             diagnostics: Vec::new(),
             state: HashMap::new(),
+            limits,
+            total_source_bytes: 0,
             parsed_modules: BTreeSet::new(),
             reused_parsed_modules: BTreeSet::new(),
         }
     }
 
-    fn visit(&mut self, module_id: &str) {
+    fn visit(&mut self, module_id: &str, depth: usize) {
         if self.project.entry.is_empty() {
             self.project.entry = module_id.to_string();
         }
@@ -404,11 +449,25 @@ impl<'a> ProjectBuilder<'a> {
             }
             None => {}
         }
-        if self.state.len() >= MAX_MODULES {
+        if depth > self.limits.max_module_depth {
             self.diagnostics.push(Diagnostic::error(
                 DiagnosticCode::ResourceLimit,
                 SourceSpan::new(module_id, 0, 0),
-                format!("project exceeds the {MAX_MODULES} module limit"),
+                format!(
+                    "module graph exceeds the {} import-depth limit",
+                    self.limits.max_module_depth
+                ),
+            ));
+            return;
+        }
+        if self.state.len() >= self.limits.max_modules {
+            self.diagnostics.push(Diagnostic::error(
+                DiagnosticCode::ResourceLimit,
+                SourceSpan::new(module_id, 0, 0),
+                format!(
+                    "project exceeds the {} module limit",
+                    self.limits.max_modules
+                ),
             ));
             return;
         }
@@ -438,6 +497,29 @@ impl<'a> ProjectBuilder<'a> {
             self.state.insert(module_id.to_string(), VisitState::Done);
             return;
         }
+        let Some(total_source_bytes) = self.total_source_bytes.checked_add(source.text.len())
+        else {
+            self.diagnostics.push(Diagnostic::error(
+                DiagnosticCode::ResourceLimit,
+                SourceSpan::new(module_id, 0, 0),
+                "project source-byte accounting overflowed",
+            ));
+            self.state.insert(module_id.to_string(), VisitState::Done);
+            return;
+        };
+        if total_source_bytes > self.limits.max_total_source_bytes {
+            self.diagnostics.push(Diagnostic::error(
+                DiagnosticCode::ResourceLimit,
+                SourceSpan::new(module_id, 0, 0),
+                format!(
+                    "project exceeds the {} total source-byte limit",
+                    self.limits.max_total_source_bytes
+                ),
+            ));
+            self.state.insert(module_id.to_string(), VisitState::Done);
+            return;
+        }
+        self.total_source_bytes = total_source_bytes;
         let module = if let Some(module) = self
             .previous
             .and_then(|previous| previous.modules.get(module_id))
@@ -447,7 +529,12 @@ impl<'a> ProjectBuilder<'a> {
             module.clone()
         } else {
             self.parsed_modules.insert(module_id.to_string());
-            match parse_module(source.id.clone(), source.text) {
+            let parsed = if self.limits.parser == ParserLimits::default() {
+                parse_module(source.id.clone(), source.text)
+            } else {
+                parse_module_with_limits(source.id.clone(), source.text, self.limits.parser.clone())
+            };
+            match parsed {
                 Ok(module) => module,
                 Err(mut parse_diagnostics) => {
                     self.diagnostics.append(&mut parse_diagnostics);
@@ -469,10 +556,24 @@ impl<'a> ProjectBuilder<'a> {
             };
             match self.loader.resolve(module_id, specifier) {
                 Ok(resolved) => {
+                    let resolution_key = (module_id.to_string(), specifier.clone());
+                    if !self.project.resolutions.contains_key(&resolution_key)
+                        && self.project.resolutions.len() >= self.limits.max_module_edges
+                    {
+                        self.diagnostics.push(Diagnostic::error(
+                            DiagnosticCode::ResourceLimit,
+                            span.clone(),
+                            format!(
+                                "module graph exceeds the {} import-edge limit",
+                                self.limits.max_module_edges
+                            ),
+                        ));
+                        continue;
+                    }
                     self.project
                         .resolutions
-                        .insert((module_id.to_string(), specifier.clone()), resolved.clone());
-                    self.visit(&resolved);
+                        .insert(resolution_key, resolved.clone());
+                    self.visit(&resolved, depth.saturating_add(1));
                 }
                 Err(message) => self.diagnostics.push(Diagnostic::error(
                     DiagnosticCode::ModuleNotFound,
@@ -544,6 +645,15 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(options.target.as_str());
     add(options.runtime_policy.as_str());
     add(&options.resolver_fingerprint);
+    add(&options.limits.max_modules.to_string());
+    add(&options.limits.max_module_edges.to_string());
+    add(&options.limits.max_module_depth.to_string());
+    add(&options.limits.max_total_source_bytes.to_string());
+    add(&options.limits.parser.max_source_bytes.to_string());
+    add(&options.limits.parser.max_tokens.to_string());
+    add(&options.limits.parser.max_type_depth.to_string());
+    add(&options.limits.max_type_expansions.to_string());
+    add(&options.limits.max_source_map_segments.to_string());
     add(if options.source_map {
         "source-map"
     } else {
@@ -641,6 +751,100 @@ mod tests {
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == DiagnosticCode::ModuleNotFound));
+    }
+
+    #[test]
+    fn enforces_module_graph_and_source_work_limits() {
+        let graph = MapLoader::from([
+            ModuleSource::new(
+                "memory:///main.ts",
+                "import type { Model } from './model.ts'; const value: Model = { id: 'ok' };",
+            ),
+            ModuleSource::new(
+                "memory:///model.ts",
+                "export interface Model { id: string }",
+            ),
+        ]);
+        let module_limited = compile(
+            "memory:///main.ts",
+            &graph,
+            CompilerOptions {
+                limits: CompilerLimits {
+                    max_modules: 1,
+                    ..CompilerLimits::default()
+                },
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(module_limited.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::ResourceLimit
+                && diagnostic.message.contains("module limit")
+        }));
+        assert!(module_limited.output.is_none());
+
+        let depth_limited = compile(
+            "memory:///main.ts",
+            &MapLoader::from([
+                ModuleSource::new(
+                    "memory:///main.ts",
+                    "import type { Mid } from './mid.ts'; const value: Mid = { id: 'ok' };",
+                ),
+                ModuleSource::new(
+                    "memory:///mid.ts",
+                    "import type { Leaf } from './leaf.ts'; export type Mid = Leaf;",
+                ),
+                ModuleSource::new("memory:///leaf.ts", "export interface Leaf { id: string }"),
+            ]),
+            CompilerOptions {
+                limits: CompilerLimits {
+                    max_module_depth: 1,
+                    ..CompilerLimits::default()
+                },
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(depth_limited.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::ResourceLimit
+                && diagnostic.message.contains("import-depth limit")
+        }));
+        assert!(depth_limited.output.is_none());
+
+        let edge_limited = compile(
+            "memory:///main.ts",
+            &graph,
+            CompilerOptions {
+                limits: CompilerLimits {
+                    max_module_edges: 0,
+                    ..CompilerLimits::default()
+                },
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(edge_limited.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::ResourceLimit
+                && diagnostic.message.contains("import-edge limit")
+        }));
+        assert!(edge_limited.output.is_none());
+
+        let source_limited = compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "const value: number = 1;",
+            )]),
+            CompilerOptions {
+                limits: CompilerLimits {
+                    max_total_source_bytes: 8,
+                    ..CompilerLimits::default()
+                },
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(source_limited.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::ResourceLimit
+                && diagnostic.message.contains("total source-byte limit")
+        }));
+        assert!(source_limited.output.is_none());
     }
 
     #[test]

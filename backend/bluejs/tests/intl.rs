@@ -19,6 +19,11 @@ fn locale_casing_and_canonicalization() {
         "Intl.getCanonicalLocales({length:3,1:'de'}).join(',') === 'de'",
         "Intl.getCanonicalLocales().length === 0 && Intl.getCanonicalLocales(42).length === 0",
         "typeof Intl === 'object' && Object.prototype.toString.call(Intl) === '[object Intl]'",
+        "Intl.getCanonicalLocales('und-u-ks-primary')[0] === 'und-u-ks-level1'",
+        "Intl.getCanonicalLocales('und-u-ks-tertiary')[0] === 'und-u-ks-level3'",
+        "Intl.getCanonicalLocales('und-u-ms-imperial')[0] === 'und-u-ms-uksystem'",
+        "Intl.getCanonicalLocales('und-u-tz-eire')[0] === 'und-u-tz-iedub'",
+        "Intl.getCanonicalLocales('und-u-kn-yes')[0] === 'und'",
     ] {
         assert_eq!(evaluate(source).unwrap(), Value::Bool(true), "{source}");
     }

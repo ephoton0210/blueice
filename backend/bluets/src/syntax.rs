@@ -10,6 +10,10 @@ use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 /// from turning diagnostics or compiler work into an unbounded allocation.
 pub const MAX_TOKENS: usize = 1_000_000;
 
+/// Maximum UTF-8 source bytes accepted by the default parser policy.  Token
+/// limits alone do not bound whitespace-only input, so both limits are needed.
+pub const MAX_SOURCE_BYTES: usize = 1_048_576;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
     Identifier,
@@ -116,6 +120,22 @@ const KEYWORDS: &[&str] = &[
 ];
 
 pub fn lex(module: &str, source: &str) -> Result<Vec<Token>, Vec<Diagnostic>> {
+    lex_with_limits(module, source, MAX_SOURCE_BYTES, MAX_TOKENS)
+}
+
+pub(crate) fn lex_with_limits(
+    module: &str,
+    source: &str,
+    max_source_bytes: usize,
+    max_tokens: usize,
+) -> Result<Vec<Token>, Vec<Diagnostic>> {
+    if source.len() > max_source_bytes {
+        return Err(vec![Diagnostic::error(
+            DiagnosticCode::ResourceLimit,
+            SourceSpan::new(module, 0, source.len()),
+            format!("source exceeds the {max_source_bytes} byte limit"),
+        )]);
+    }
     let bytes = source.as_bytes();
     let mut tokens = Vec::new();
     let mut index = 0;
@@ -266,11 +286,11 @@ pub fn lex(module: &str, source: &str) -> Result<Vec<Token>, Vec<Diagnostic>> {
             });
         }
 
-        if tokens.len() > MAX_TOKENS {
+        if tokens.len() > max_tokens {
             diagnostics.push(Diagnostic::error(
                 DiagnosticCode::ResourceLimit,
                 SourceSpan::new(module, start, index),
-                format!("source exceeds the {MAX_TOKENS} token limit"),
+                format!("source exceeds the {max_tokens} token limit"),
             ));
             break;
         }
@@ -356,5 +376,16 @@ mod tests {
     fn reports_an_unterminated_literal() {
         let diagnostics = lex("memory:///a.ts", "const x = 'no").unwrap_err();
         assert_eq!(diagnostics[0].code, DiagnosticCode::ParseError);
+    }
+
+    #[test]
+    fn enforces_source_byte_and_token_limits_before_unbounded_work() {
+        let bytes =
+            lex_with_limits("memory:///a.ts", "const answer = 1;", 4, MAX_TOKENS).unwrap_err();
+        assert_eq!(bytes[0].code, DiagnosticCode::ResourceLimit);
+
+        let tokens = lex_with_limits("memory:///a.ts", "const answer = 1;", MAX_SOURCE_BYTES, 1)
+            .unwrap_err();
+        assert_eq!(tokens[0].code, DiagnosticCode::ResourceLimit);
     }
 }

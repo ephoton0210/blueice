@@ -61,6 +61,30 @@ struct FunctionSignature {
     return_type: Type,
 }
 
+struct TypeExpansionBudget {
+    remaining: usize,
+    exhausted: bool,
+}
+
+impl TypeExpansionBudget {
+    fn new(limit: usize) -> Self {
+        Self {
+            remaining: limit,
+            exhausted: false,
+        }
+    }
+
+    fn consume(&mut self) -> bool {
+        if let Some(remaining) = self.remaining.checked_sub(1) {
+            self.remaining = remaining;
+            true
+        } else {
+            self.exhausted = true;
+            false
+        }
+    }
+}
+
 /// Rechecks the requested modules while retaining checker output for modules
 /// that the incremental project graph proved unaffected. The caller must only
 /// supply a previous project checked under the same compiler policy and must
@@ -70,6 +94,7 @@ pub(crate) fn check_incremental(
     enforce_types: bool,
     previous: Option<&CheckedProject>,
     rechecked: &BTreeSet<String>,
+    max_type_expansions: usize,
 ) -> (CheckedProject, Vec<Diagnostic>) {
     let mut diagnostics = declaration_module_diagnostics(project);
     let exported_types = exported_types(project);
@@ -82,7 +107,13 @@ pub(crate) fn check_incremental(
                 continue;
             }
         }
-        let mut checker = ModuleChecker::new(project, module, &exported_types, enforce_types);
+        let mut checker = ModuleChecker::new(
+            project,
+            module,
+            &exported_types,
+            enforce_types,
+            max_type_expansions,
+        );
         checker.bind();
         if enforce_types {
             checker.check_types();
@@ -245,6 +276,7 @@ struct ModuleChecker<'a> {
     values: BTreeMap<String, Type>,
     functions: BTreeMap<String, FunctionSignature>,
     type_parameters: BTreeSet<String>,
+    max_type_expansions: usize,
 }
 
 impl<'a> ModuleChecker<'a> {
@@ -253,6 +285,7 @@ impl<'a> ModuleChecker<'a> {
         module: &'a Module,
         exported_types: &'a BTreeMap<String, BTreeMap<String, TypeDefinition>>,
         enforce_types: bool,
+        max_type_expansions: usize,
     ) -> Self {
         Self {
             project,
@@ -265,6 +298,7 @@ impl<'a> ModuleChecker<'a> {
             values: BTreeMap::new(),
             functions: BTreeMap::new(),
             type_parameters: BTreeSet::new(),
+            max_type_expansions,
         }
     }
 
@@ -515,8 +549,9 @@ impl<'a> ModuleChecker<'a> {
             return;
         }
         self.check_function_call(&variable.initializer, scope, &variable.span);
+        self.check_direct_property_access(&variable.initializer, scope, &variable.span);
         let inferred = self.infer_expression(&variable.initializer, scope);
-        if !is_assignable(&inferred, annotation, &self.types, &mut HashSet::new()) {
+        if !self.is_assignable_bounded(&inferred, annotation, &variable.span) {
             self.type_error(
                 &variable.span,
                 format!(
@@ -556,8 +591,9 @@ impl<'a> ModuleChecker<'a> {
                     continue;
                 }
                 self.check_function_call(returned, &scope, &function.span);
+                self.check_direct_property_access(returned, &scope, &function.span);
                 let actual = self.infer_expression(returned, &scope);
-                if !is_assignable(&actual, return_type, &self.types, &mut HashSet::new()) {
+                if !self.is_assignable_bounded(&actual, return_type, &function.span) {
                     self.type_error(
                         &function.span,
                         format!(
@@ -644,8 +680,19 @@ impl<'a> ModuleChecker<'a> {
                         .is_some_and(|token| token.kind == TokenKind::Identifier)
                 {
                     let base = scope.get(&first.text).cloned().unwrap_or(Type::Unknown);
-                    return property_type(&base, &tokens[2].text, &self.types, &mut HashSet::new())
-                        .unwrap_or(Type::Unknown);
+                    let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                    return match property_type(
+                        &base,
+                        &tokens[2].text,
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    ) {
+                        PropertyType::Found(value) => value,
+                        PropertyType::Missing
+                        | PropertyType::Indeterminate
+                        | PropertyType::Exhausted => Type::Unknown,
+                    };
                 }
                 if tokens.get(1).is_some_and(|token| token.is("(")) {
                     if let Some(signature) = self.functions.get(&first.text) {
@@ -724,7 +771,10 @@ impl<'a> ModuleChecker<'a> {
         }
         let actuals = arguments
             .iter()
-            .map(|argument| self.infer_expression(argument, scope))
+            .map(|argument| {
+                self.check_direct_property_access(argument, scope, span);
+                self.infer_expression(argument, scope)
+            })
             .collect::<Vec<_>>();
         let substitutions = infer_call_substitutions(&signature, &actuals);
         for (index, (parameter, actual)) in signature.parameters.iter().zip(actuals).enumerate() {
@@ -732,7 +782,7 @@ impl<'a> ModuleChecker<'a> {
                 continue;
             };
             let expected = substitute_type(annotation, &substitutions);
-            if !is_assignable(&actual, &expected, &self.types, &mut HashSet::new()) {
+            if !self.is_assignable_bounded(&actual, &expected, span) {
                 self.type_error(
                     span,
                     format!(
@@ -745,6 +795,75 @@ impl<'a> ModuleChecker<'a> {
                     DiagnosticCode::TypeMismatch,
                 );
             }
+        }
+    }
+
+    fn is_assignable_bounded(&mut self, actual: &Type, expected: &Type, span: &SourceSpan) -> bool {
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        let assignable = is_assignable(
+            actual,
+            expected,
+            &self.types,
+            &mut HashSet::new(),
+            &mut budget,
+        );
+        if budget.exhausted {
+            self.type_error(
+                span,
+                format!(
+                    "type comparison exceeds the {} generic-expansion limit",
+                    self.max_type_expansions
+                ),
+                DiagnosticCode::ResourceLimit,
+            );
+            true
+        } else {
+            assignable
+        }
+    }
+
+    fn check_direct_property_access(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        let [base, dot, property] = tokens else {
+            return;
+        };
+        if base.kind != TokenKind::Identifier
+            || !dot.is(".")
+            || property.kind != TokenKind::Identifier
+        {
+            return;
+        }
+        let value = scope.get(&base.text).cloned().unwrap_or(Type::Unknown);
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        match property_type(
+            &value,
+            &property.text,
+            &self.types,
+            &mut HashSet::new(),
+            &mut budget,
+        ) {
+            PropertyType::Found(_) | PropertyType::Indeterminate => {}
+            PropertyType::Missing => self.type_error(
+                span,
+                format!(
+                    "property `{}` does not exist on type `{}`",
+                    property.text,
+                    type_label(&value)
+                ),
+                DiagnosticCode::TypeMismatch,
+            ),
+            PropertyType::Exhausted => self.type_error(
+                span,
+                format!(
+                    "property lookup exceeds the {} generic-expansion limit",
+                    self.max_type_expansions
+                ),
+                DiagnosticCode::ResourceLimit,
+            ),
         }
     }
 }
@@ -839,26 +958,44 @@ fn infer_type_arguments(
     }
 }
 
+enum PropertyType {
+    Found(Type),
+    Missing,
+    /// The initial checker has no property semantics for this expression, so
+    /// retain its conservative `unknown` behavior rather than rejecting a
+    /// potentially valid JavaScript property access.
+    Indeterminate,
+    Exhausted,
+}
+
 fn property_type(
     value: &Type,
     property: &str,
     aliases: &BTreeMap<String, TypeDefinition>,
     visited: &mut HashSet<String>,
-) -> Option<Type> {
+    budget: &mut TypeExpansionBudget,
+) -> PropertyType {
     match value {
         Type::Record(fields) => fields
             .iter()
             .find(|field| field.name == property)
             .map(|field| {
                 if field.optional {
-                    Type::Union(vec![field.value.clone(), Type::Undefined])
+                    PropertyType::Found(Type::Union(vec![field.value.clone(), Type::Undefined]))
                 } else {
-                    field.value.clone()
+                    PropertyType::Found(field.value.clone())
                 }
-            }),
-        Type::Named { .. } => instantiate_named(value, aliases, visited, "property")
-            .and_then(|value| property_type(&value, property, aliases, visited)),
-        _ => None,
+            })
+            .unwrap_or(PropertyType::Missing),
+        Type::Named { .. } => {
+            match instantiate_named(value, aliases, visited, budget, "property") {
+                Some(value) => property_type(&value, property, aliases, visited, budget),
+                None if budget.exhausted => PropertyType::Exhausted,
+                None => PropertyType::Indeterminate,
+            }
+        }
+        Type::Any | Type::Unknown => PropertyType::Indeterminate,
+        _ => PropertyType::Missing,
     }
 }
 
@@ -944,6 +1081,7 @@ fn is_assignable(
     expected: &Type,
     aliases: &BTreeMap<String, TypeDefinition>,
     visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
 ) -> bool {
     if matches!(actual, Type::Any | Type::Unknown) || matches!(expected, Type::Any | Type::Unknown)
     {
@@ -952,32 +1090,32 @@ fn is_assignable(
     if actual == expected {
         return true;
     }
-    if let Some(expanded) = instantiate_named(actual, aliases, visited, "actual") {
-        return is_assignable(&expanded, expected, aliases, visited);
+    if let Some(expanded) = instantiate_named(actual, aliases, visited, budget, "actual") {
+        return is_assignable(&expanded, expected, aliases, visited, budget);
     }
-    if let Some(expanded) = instantiate_named(expected, aliases, visited, "expected") {
-        return is_assignable(actual, &expanded, aliases, visited);
+    if let Some(expanded) = instantiate_named(expected, aliases, visited, budget, "expected") {
+        return is_assignable(actual, &expanded, aliases, visited, budget);
     }
     if let Type::Union(options) = expected {
         return options
             .iter()
-            .any(|option| is_assignable(actual, option, aliases, &mut visited.clone()));
+            .any(|option| is_assignable(actual, option, aliases, &mut visited.clone(), budget));
     }
     if let Type::Intersection(parts) = expected {
         return parts
             .iter()
-            .all(|part| is_assignable(actual, part, aliases, &mut visited.clone()));
+            .all(|part| is_assignable(actual, part, aliases, &mut visited.clone(), budget));
     }
     match (actual, expected) {
         (Type::Literal(value), Type::String) => value.starts_with('\'') || value.starts_with('\"'),
         (Type::Literal(value), Type::Number) => value.parse::<f64>().is_ok(),
         (Type::Literal(value), Type::Boolean) => matches!(value.as_str(), "true" | "false"),
         (Type::Array(actual), Type::Array(expected)) => {
-            is_assignable(actual, expected, aliases, visited)
+            is_assignable(actual, expected, aliases, visited, budget)
         }
         (Type::Tuple(actual), Type::Tuple(expected)) if actual.len() == expected.len() => {
             actual.iter().zip(expected).all(|(actual, expected)| {
-                is_assignable(actual, expected, aliases, &mut visited.clone())
+                is_assignable(actual, expected, aliases, &mut visited.clone(), budget)
             })
         }
         (Type::Record(actual), Type::Record(expected)) => expected.iter().all(|expected_field| {
@@ -990,6 +1128,7 @@ fn is_assignable(
                         &expected_field.value,
                         aliases,
                         &mut visited.clone(),
+                        budget,
                     )
                 })
                 .unwrap_or(expected_field.optional)
@@ -1002,6 +1141,7 @@ fn instantiate_named(
     value: &Type,
     aliases: &BTreeMap<String, TypeDefinition>,
     visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
     side: &str,
 ) -> Option<Type> {
     let Type::Named { name, arguments } = value else {
@@ -1013,6 +1153,9 @@ fn instantiate_named(
     }
     let key = format!("{side}:{}", type_identity(value));
     if !visited.insert(key) {
+        return None;
+    }
+    if !budget.consume() {
         return None;
     }
     let substitutions = definition
@@ -1373,5 +1516,95 @@ mod tests {
             CompilerOptions::default(),
         );
         assert!(!result.has_errors(), "{:#?}", result.diagnostics);
+    }
+
+    #[test]
+    fn checks_direct_call_and_record_property_boundaries() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "interface Account { id: string; revision?: number }\n\
+                 const account: Account = { id: 'ada' };\n\
+                 const id: string = account.id;\n\
+                 const optionalAsNumber: number = account.revision;\n\
+                 const missing: string = account.missing;\n\
+                 function label(value: string, revision?: number): string { return value; }\n\
+                 const accepted: string = label('Ada');\n\
+                 const wrongArgument: string = label('Ada', 'wrong');\n\
+                 const tooFew: string = label();\n\
+                 const tooMany: string = label('Ada', 1, 2);\n\
+                 function count(value: number = 1): number { return value; }\n\
+                 const defaulted: number = count();",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert_eq!(
+            result
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+                .count(),
+            5,
+            "{:#?}",
+            result.diagnostics
+        );
+        assert!(result.diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .message
+                .contains("property `missing` does not exist")
+        }));
+    }
+
+    #[test]
+    fn instantiates_generic_record_properties_before_assignment_checks() {
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///main.ts",
+                "type Box<T> = { value: T };\n\
+                 const box: Box<number> = { value: 1 };\n\
+                 const accepted: number = box.value;\n\
+                 const rejected: string = box.value;",
+            )]),
+            CompilerOptions::default(),
+        );
+        assert!(result.has_errors());
+        assert_eq!(
+            result
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+                .count(),
+            1,
+            "{:#?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn bounds_generic_alias_expansion_work() {
+        let mut source = String::from("type Alias0 = { value: number };\n");
+        for index in 1..=8 {
+            source.push_str(&format!("type Alias{index} = Alias{};\n", index - 1));
+        }
+        source.push_str("const value: Alias8 = { value: 'wrong' };");
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
+            CompilerOptions {
+                limits: crate::CompilerLimits {
+                    max_type_expansions: 2,
+                    ..crate::CompilerLimits::default()
+                },
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(result.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::ResourceLimit
+                && diagnostic.message.contains("generic-expansion limit")
+        }));
+        assert!(result.output.is_none());
     }
 }

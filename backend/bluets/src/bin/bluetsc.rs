@@ -5,7 +5,8 @@
 //! The standalone BlueTSC command-line front end.
 
 use blueice_bluets::{
-    compile, BuildArtifact, CompilerOptions, EcmaTarget, ModuleLoader, ModuleSource, RuntimePolicy,
+    compile, BuildArtifact, CompilerLimits, CompilerOptions, EcmaTarget, ModuleLoader,
+    ModuleSource, RuntimePolicy,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -474,6 +475,7 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         source_map: config.source_map,
         declaration: config.declaration,
         resolver_fingerprint: import_map_fingerprint(&root, &imports),
+        limits: CompilerLimits::default(),
     };
     Ok(Invocation {
         root,

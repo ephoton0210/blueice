@@ -5,7 +5,28 @@
 //! Parser for the explicitly supported BlueTS language subset.
 
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
-use crate::syntax::{lex, string_contents, Token, TokenKind};
+use crate::syntax::{
+    lex, lex_with_limits, string_contents, Token, TokenKind, MAX_SOURCE_BYTES, MAX_TOKENS,
+};
+
+/// Parser work bounds. Hosts may lower these for a constrained compile slot;
+/// the values are included in [`crate::CompilerLimits`] fingerprints.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParserLimits {
+    pub max_source_bytes: usize,
+    pub max_tokens: usize,
+    pub max_type_depth: usize,
+}
+
+impl Default for ParserLimits {
+    fn default() -> Self {
+        Self {
+            max_source_bytes: MAX_SOURCE_BYTES,
+            max_tokens: MAX_TOKENS,
+            max_type_depth: 128,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
@@ -156,10 +177,22 @@ pub fn parse_module(
     id: impl Into<String>,
     source: impl Into<String>,
 ) -> Result<Module, Vec<Diagnostic>> {
+    parse_module_with_limits(id, source, ParserLimits::default())
+}
+
+pub(crate) fn parse_module_with_limits(
+    id: impl Into<String>,
+    source: impl Into<String>,
+    limits: ParserLimits,
+) -> Result<Module, Vec<Diagnostic>> {
     let id = id.into();
     let source = source.into();
-    let tokens = lex(&id, &source)?;
-    Parser::new(id, source, tokens).parse_module()
+    let tokens = if limits == ParserLimits::default() {
+        lex(&id, &source)?
+    } else {
+        lex_with_limits(&id, &source, limits.max_source_bytes, limits.max_tokens)?
+    };
+    Parser::new(id, source, tokens, limits.max_type_depth).parse_module()
 }
 
 struct Parser {
@@ -170,10 +203,12 @@ struct Parser {
     declarations: Vec<Declaration>,
     edits: Vec<TextEdit>,
     diagnostics: Vec<Diagnostic>,
+    max_type_depth: usize,
+    type_depth: usize,
 }
 
 impl Parser {
-    fn new(id: String, source: String, tokens: Vec<Token>) -> Self {
+    fn new(id: String, source: String, tokens: Vec<Token>, max_type_depth: usize) -> Self {
         Self {
             id,
             source,
@@ -182,6 +217,8 @@ impl Parser {
             declarations: Vec::new(),
             edits: Vec::new(),
             diagnostics: Vec::new(),
+            max_type_depth,
+            type_depth: 0,
         }
     }
 
@@ -615,7 +652,15 @@ impl Parser {
             let parameter_start = self.current().start;
             self.consume("...");
             let parameter_name = self.require_identifier("expected a parameter name");
+            let optional_start = self.current().start;
             let mut optional = self.consume("?");
+            if optional {
+                self.edits.push(TextEdit {
+                    start: optional_start,
+                    end: self.current().start,
+                    replacement: String::new(),
+                });
+            }
             let annotation_start = self.current().start;
             let annotation = if self.consume(":") {
                 let value = self.parse_type_until(&["=", ",", ")"]);
@@ -839,13 +884,39 @@ impl Parser {
     }
 
     fn parse_type_until(&mut self, stop: &[&str]) -> Type {
+        if self.type_depth >= self.max_type_depth {
+            self.error_here(
+                DiagnosticCode::ResourceLimit,
+                format!(
+                    "type expression exceeds the {} nesting limit",
+                    self.max_type_depth
+                ),
+            );
+            self.skip_type_until(stop);
+            return Type::Unknown;
+        }
+        self.type_depth += 1;
         let type_start = self.index;
         let value = self.parse_union(stop);
         if self.index == type_start && !self.at_eof() && !stop.iter().any(|stop| self.peek(stop)) {
             self.error_here(DiagnosticCode::ParseError, "expected a type");
             self.bump();
         }
+        self.type_depth -= 1;
         value
+    }
+
+    fn skip_type_until(&mut self, stop: &[&str]) {
+        let mut nesting = 0usize;
+        while !self.at_eof() {
+            match self.current().text.as_str() {
+                "{" | "[" | "<" => nesting += 1,
+                "}" | "]" | ">" if nesting > 0 => nesting -= 1,
+                _ if nesting == 0 && stop.iter().any(|stop| self.peek(stop)) => break,
+                _ => {}
+            }
+            self.bump();
+        }
     }
 
     fn parse_union(&mut self, stop: &[&str]) -> Type {
@@ -1148,5 +1219,21 @@ mod tests {
             let diagnostics = parse_module("memory:///app.ts", source).unwrap_err();
             assert_eq!(diagnostics[0].code, DiagnosticCode::UnsupportedSyntax);
         }
+    }
+
+    #[test]
+    fn bounds_deeply_nested_type_expressions() {
+        let diagnostics = parse_module_with_limits(
+            "memory:///deep.ts",
+            "type Deep = { value: { value: { value: string } } };",
+            ParserLimits {
+                max_type_depth: 2,
+                ..ParserLimits::default()
+            },
+        )
+        .unwrap_err();
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == DiagnosticCode::ResourceLimit));
     }
 }

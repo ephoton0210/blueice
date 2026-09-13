@@ -28,8 +28,8 @@ mod syntax;
 
 pub use checker::{CheckedModule, CheckedProject, Symbol, SymbolKind, Type};
 pub use compiler::{
-    compile, CompilerOptions, EcmaTarget, IncrementalCompiler, IncrementalResult, MapLoader,
-    ModuleLoader, ModuleSource, Project, RuntimePolicy,
+    compile, CompilerLimits, CompilerOptions, EcmaTarget, IncrementalCompiler, IncrementalResult,
+    MapLoader, ModuleLoader, ModuleSource, Project, RuntimePolicy,
 };
 pub use contracts::{
     Contract, ContractError, ContractPlan, ContractValue, ValidationError, ValidationLimits,
@@ -39,7 +39,7 @@ pub use diagnostic::{Diagnostic, DiagnosticCode, Severity, SourceSpan};
 pub use emitter::{BuildArtifact, BuildOutput, SourceMap};
 pub use parser::{
     Declaration, FunctionDeclaration, ImportDeclaration, InterfaceDeclaration, Module, Parameter,
-    TypeAliasDeclaration, TypeExportDeclaration, VariableDeclaration,
+    ParserLimits, TypeAliasDeclaration, TypeExportDeclaration, VariableDeclaration,
 };
 
 /// The pinned BlueTS language matrix exposed in emitted fingerprints and

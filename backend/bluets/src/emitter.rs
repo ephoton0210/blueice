@@ -6,6 +6,7 @@
 
 use crate::checker::CheckedProject;
 use crate::compiler::{fingerprint, is_declaration_module, CompilerOptions, Project};
+use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{Declaration, Module, TextEdit, Type};
 use std::collections::BTreeMap;
 
@@ -105,6 +106,52 @@ pub(crate) fn emit(
         artifacts,
         declaration_modules,
     }
+}
+
+/// Rejects a source-map request before allocating an unbounded provenance
+/// vector. The bound is conservative: erased/replaced spans and physical line
+/// boundaries are the only sites that can add a mapping segment.
+pub(crate) fn validate_source_map_limits(
+    checked: &CheckedProject,
+    max_segments: usize,
+) -> Vec<Diagnostic> {
+    checked
+        .modules
+        .iter()
+        .filter(|(id, _)| !is_declaration_module(id))
+        .filter_map(|(id, checked_module)| {
+            let module = &checked_module.module;
+            let physical_lines = module
+                .source
+                .chars()
+                .filter(|character| matches!(character, '\r' | '\n'))
+                .count()
+                .saturating_add(1);
+            let rewritten_imports = module
+                .declarations
+                .iter()
+                .filter(|declaration| {
+                    matches!(declaration, Declaration::Import(import) if !import.type_only)
+                })
+                .count();
+            let bound = physical_lines.saturating_add(
+                module
+                    .edits
+                    .len()
+                    .saturating_add(rewritten_imports)
+                    .saturating_mul(2),
+            );
+            (bound > max_segments).then(|| {
+                Diagnostic::error(
+                    DiagnosticCode::ResourceLimit,
+                    SourceSpan::new(id, 0, 0),
+                    format!(
+                        "source map requires up to {bound} segments, exceeding the {max_segments} segment limit"
+                    ),
+                )
+            })
+        })
+        .collect()
 }
 
 struct EmittedJavaScript {
@@ -667,6 +714,46 @@ mod tests {
         let javascript = &output.artifacts["memory:///generic.ts"].javascript;
         assert!(javascript.contains("function identity(value)"));
         assert!(!javascript.contains("<T>"));
+    }
+
+    #[test]
+    fn erases_optional_parameter_markers_but_preserves_default_initializers() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///optional.ts",
+            "export function count(value: number = 2, multiplier?: number): number { return value; }",
+        )]);
+        let output = compile("memory:///optional.ts", &loader, CompilerOptions::default())
+            .output
+            .unwrap();
+        let javascript = &output.artifacts["memory:///optional.ts"].javascript;
+        assert!(javascript.contains("function count(value= 2, multiplier)"));
+        assert!(!javascript.contains("?:"));
+        assert!(!javascript.contains("multiplier?"));
+    }
+
+    #[test]
+    fn rejects_source_maps_that_exceed_the_segment_budget() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///limited.ts",
+            "const label: string = 'BlueIce';\n",
+        )]);
+        let result = compile(
+            "memory:///limited.ts",
+            &loader,
+            CompilerOptions {
+                source_map: true,
+                limits: crate::CompilerLimits {
+                    max_source_map_segments: 1,
+                    ..crate::CompilerLimits::default()
+                },
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(result.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == crate::DiagnosticCode::ResourceLimit
+                && diagnostic.message.contains("segment limit")
+        }));
+        assert!(result.output.is_none());
     }
 
     #[test]

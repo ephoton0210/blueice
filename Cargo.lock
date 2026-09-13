@@ -149,6 +149,7 @@ dependencies = [
  "icu_collator",
  "icu_locale",
  "icu_locale_core",
+ "icu_properties",
  "num-bigint",
  "num-traits",
  "regress",

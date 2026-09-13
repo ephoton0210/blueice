@@ -4,8 +4,9 @@
 
 //! End-to-end coverage for the standalone `bluetsc` process boundary.
 
+use std::collections::BTreeMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -173,12 +174,12 @@ fn build_uses_root_confined_declaration_modules_without_emitting_runtime_artifac
     fs::create_dir_all(&types).unwrap();
     fs::write(
         types.join("account.d.ts"),
-        "export interface Account { id: string }\n",
+        "export interface Account<T> { id: T }\n",
     )
     .unwrap();
     fs::write(
         source.join("main.ts"),
-        "import type { Account } from '@local/account';\nexport const account: Account = { id: 'ada' };\n",
+        "import type { Account } from '@local/account';\nexport const account: Account<string> = { id: 'ada' };\n",
     )
     .unwrap();
     let config = root.join("bluetsc.json");
@@ -210,16 +211,90 @@ fn build_uses_root_confined_declaration_modules_without_emitting_runtime_artifac
     assert!(!output.join("types/account.d.js").exists());
     assert_eq!(
         fs::read_to_string(output.join("types/account.d.ts")).unwrap(),
-        "export interface Account { id: string }\n"
+        "export interface Account<T> { id: T }\n"
     );
-    assert!(fs::read_to_string(output.join("src/main.d.ts"))
-        .unwrap()
-        .contains("import type { Account } from '@local/account';"));
+    let main_declaration = fs::read_to_string(output.join("src/main.d.ts")).unwrap();
+    assert!(main_declaration.contains("import type { Account } from '@local/account';"));
+    assert!(main_declaration.contains("Account<string>"));
     let manifest = fs::read_to_string(output.join("bluetsc.manifest.json")).unwrap();
     assert!(manifest.contains("\"types/account.d.ts\""));
     let import_map = fs::read_to_string(output.join("bluetsc.importmap.json")).unwrap();
     assert!(!import_map.contains("@local/account"));
     fs::remove_dir_all(temporary).unwrap();
+}
+
+#[test]
+fn repeated_config_builds_publish_byte_identical_artifacts() {
+    let temporary = unique_test_directory();
+    let root = temporary.join("project");
+    let source = root.join("src");
+    let types = root.join("types");
+    fs::create_dir_all(&source).unwrap();
+    fs::create_dir_all(&types).unwrap();
+    fs::write(
+        types.join("model.d.ts"),
+        "export interface Model<T> { id: T }\n",
+    )
+    .unwrap();
+    fs::write(
+        source.join("main.ts"),
+        "import type { Model } from '@local/model';\nexport const model: Model<string> = { id: 'stable' };\n",
+    )
+    .unwrap();
+    let config = root.join("bluetsc.json");
+    fs::write(
+        &config,
+        r#"{
+  "entries": ["src/main.ts"],
+  "outDir": "dist",
+  "sourceMap": true,
+  "declaration": true,
+  "imports": { "@local/model": "types/model.d.ts" }
+}"#,
+    )
+    .unwrap();
+
+    for snapshot in 0..2 {
+        let built = Command::new(env!("CARGO_BIN_EXE_bluetsc"))
+            .args(["build", "--config", config.to_str().unwrap()])
+            .status()
+            .unwrap();
+        assert!(built.success());
+        let current = build_snapshot(&root.join("dist"));
+        if snapshot == 0 {
+            fs::write(
+                temporary.join("first-build.json"),
+                serde_json::to_string(&current).unwrap(),
+            )
+            .unwrap();
+        } else {
+            let previous: BTreeMap<String, String> = serde_json::from_str(
+                &fs::read_to_string(temporary.join("first-build.json")).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(current, previous);
+        }
+    }
+    fs::remove_dir_all(temporary).unwrap();
+}
+
+fn build_snapshot(output: &Path) -> BTreeMap<String, String> {
+    [
+        "src/main.js",
+        "src/main.js.map",
+        "src/main.d.ts",
+        "types/model.d.ts",
+        "bluetsc.manifest.json",
+        "bluetsc.importmap.json",
+    ]
+    .into_iter()
+    .map(|path| {
+        (
+            path.to_string(),
+            fs::read_to_string(output.join(path)).unwrap(),
+        )
+    })
+    .collect()
 }
 
 fn unique_test_directory() -> PathBuf {

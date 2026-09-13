@@ -102,9 +102,21 @@ dependency before introducing any page-runtime coupling:
   discovery and enforcement are still deliberately separate work.
 - `backend/bluets/tests/typescript_oracle.rs` is an opt-in compatibility job.
   It requires `BLUEICE_TSC` to name a TypeScript 5.9.3 compiler, verifies that
-  pin before executing, and compares the accepted initial erasure fixture's
-  Node output plus a rejected assignment. Node and `tsc` are test tools only;
-  neither is linked, spawned, or discovered by the BlueTS compiler or CLI.
+  pin before executing, and runs a fixture matrix covering generic properties,
+  optional/default parameters, generic local `.d.ts` imports, rejected
+  assignment/call arguments, Source Map v3 shape and accepted Node output.
+  The `typescript-oracle` CI job runs only from `workflow_dispatch` when its
+  `run_typescript_oracle` input is selected. Node and `tsc` are test tools
+  only; neither is linked, spawned, or discovered by the BlueTS compiler or
+  CLI.
+- `CompilerLimits` makes source bytes/tokens/type nesting, module count/edge
+  count/import depth, aggregate source bytes, generic-expansion work and
+  source-map segments explicit compiler policy. Every limit participates in
+  cache and artifact fingerprints; adversarial unit tests require a stable
+  `ResourceLimit` failure with no output.
+- The public [BlueTS ↔ BlueJS integration contract](INTEGRATION_CONTRACT.md)
+  freezes the proposed v1 AST/IR hand-off, safe-point map and generated host
+  typings/version policy without adding a BlueJS dependency to BlueTS.
 
 This is deliberately not a claim of general `tsc` compatibility. Control-flow
 narrowing, overload resolution, generic constraints/defaults, decorators,
@@ -251,8 +263,8 @@ The first slice explicitly rejects TSX/JSX, decorators, `enum`/`const enum`, run
 
 1. Complete Phase 13's BlueJS host/core wiring, DOM binding design and a real script-bearing page fixture.
 2. Complete Phase 17's script source/safe-point debugger path and the source-map representation required by BlueTS.
-3. Define a public `BlueJsProgram` hand-off that accepts an origin-preserving AST/IR without reparsing emitted source, plus compiler/cache resource accounting.
-4. Define a pinned BlueTS language-version matrix and generate `lib.blueice.d.ts` from implemented host bindings.
+3. Implement the published `BlueJsProgram` v1 hand-off that accepts an origin-preserving AST/IR without reparsing emitted source, plus compiler/cache resource accounting.
+4. Generate `lib.blueice.d.ts` from implemented host bindings using the published host-typing version policy.
 
 Acceptance: a JavaScript fixture executes through the page loader and debugger with a stable source location, while an unimplemented host API is absent from `lib.blueice.d.ts` and fails an attempted typed use.
 
@@ -325,8 +337,9 @@ Acceptance: editing one module invalidates only its dependents; a cache entry ch
 - [x] Define cache keys, resource accounting, debugger metadata and gatekeeper visibility requirements
 - [ ] Complete Phase 13 page-script host and Phase 17 source-map prerequisites
 - [x] Create the standalone `blueice-bluets` crate and pin the initial `blue-ts-0.1` compatibility matrix
-- [ ] Define the public BlueJS AST/IR hand-off (without emitted-source reparsing) and its compatibility matrix
-- [ ] Generate and test `lib.blueice.d.ts` from actual host bindings
+- [x] Publish the versioned BlueJS AST/IR hand-off, bytecode-safe-point-map and host-typing compatibility contract; implementation remains gated on public BlueJS APIs
+- [ ] Implement the public BlueJS AST/IR hand-off (without emitted-source reparsing) using the published compatibility contract
+- [ ] Generate and test `lib.blueice.d.ts` from actual host bindings using the published host-typing strategy
 - [x] Implement the independent initial parser/binder/closed-module resolver/checker/type-erasure ESM emitter with atomic compile failures
 - [x] Implement `bluetsc check`/staged `build`, ESM/column-provenance-source-map/declaration emission and reproducible artifact fingerprints for the initial matrix
 - [x] Implement VM-independent `BlueTsDebugInfo` (source hashes, symbols, static types and spans); bytecode source mapping and controlled debugger retention remain pending
