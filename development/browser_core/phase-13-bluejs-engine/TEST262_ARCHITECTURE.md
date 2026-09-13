@@ -10,11 +10,12 @@ and feature. It does not establish failure root causes or architectural priority
 ## Evidence and classification contract
 
 The verified snapshot is `6eec1ac9ee144dafd8f344d73a21f36bfc9f6755`:
-53,404 test files, 279 fixture resources, 102,578 execution modes. The baseline
-for this work includes the comma/void changes now committed as `401eb8e`:
-16,216 pass, 62,701 fail, 22,736 unsupported, 925 timeout, zero harness errors.
-It was run with 8 workers, 100,000 instructions and a 2-second case deadline.
-The runner exited 1, as expected for a non-passing full inventory.
+53,404 test files, 279 fixture resources, 102,578 execution modes. The current
+Rust 1.95 complete inventory (2026-09-13) records **73,553 pass, 28,956 fail
+and 69 timeout**, with zero unsupported or harness-error modes. It ran with
+eight workers, a 100,000-instruction default budget and a two-second case
+deadline in 2,160.529 seconds. The runner exited 1, as expected while
+conformance failures remain.
 
 The new [analyzer](../../../backend/bluejs/test262/analyze.py) reconciles the
 summary, unique path/mode pairs, source hashes, metadata and full source inventory
@@ -25,12 +26,13 @@ Targets are inferred from paths/metadata; diagnostics identify the **first
 observed symptom**, not every root cause. Dependencies overlap; exclusive target
 totals reconcile to the full denominator. Passed negative tests are not errors.
 
-The baseline has 39,447 unclassified parser rejections, 14,768 unresolved-name
-errors, 10,160 TypeErrors, 9,166 unsupported harness prerequisites and 3,955
-unsupported compiler cases. These symptoms often hide later failures. In
-particular, a failed Array test does not establish that its Array algorithm is
-the first missing dependency. The generic unsupported-statement diagnostic
-covers several AST kinds and must not be labelled as a confirmed try/catch bug.
+The current inventory's largest observed symptoms are 13,845 unresolved-name
+errors, 5,724 TypeErrors, 4,435 assertion failures, and 2,669 SyntaxErrors;
+12,240 modes first report that `Temporal` is absent. These symptoms often hide
+later failures. In particular, a failed Array test does not establish that its
+Array algorithm is the first missing dependency. The generic unsupported-
+statement diagnostic covers several AST kinds and must not be labelled as a
+confirmed try/catch bug.
 
 The pinned `INTERPRETING.md` requires isolated realms, same-realm harness
 includes, exact strict/raw/module/async behavior and negative phase/type
@@ -38,8 +40,8 @@ matching. Adapter runtime errors currently do not identify whether an include
 or the test body threw; treat those cases as requiring reproduction. All
 staging, Annex B, ECMA-402 and host-dependent cases remain in the inventory.
 Their applicability needs an explicit clause/edition audit, never a silent skip.
-Instruction exhaustion (906 baseline modes) and wall/regex deadlines (19) are
-separate from semantic failures and should be rerun with recorded budgets.
+Resource limits and 69 wall/regex deadlines are separate from semantic failures
+and should be rerun with recorded budgets.
 
 The Test262 adapter maps a parser rejection to a parse-phase `SyntaxError` only
 when the parser marked that production as a recognized early error. Other
@@ -98,12 +100,13 @@ both inner and outer instead of only outer. An allocation-pressure regression
 also reproduced a stale managed object in rest collection. All four regressions
 failed before the corresponding fixes.
 
-### Results of this slice
+### Historical results of this slice
 
-The full after-run reconciles all 102,578 modes: **16,226 pass, 62,697 fail,
-22,736 unsupported, 919 timeout, zero harness errors**. Comparing every path/mode
-against the baseline found **zero pass-to-nonpass regressions**. Four modes
-changed from assertion failure to pass:
+The contemporaneous after-run reconciled all 102,578 modes: **16,226 pass,
+62,697 fail, 22,736 unsupported and 919 timeout**, with zero harness errors.
+Comparing every path/mode against that slice's baseline found **zero
+pass-to-nonpass regressions**. Four modes changed from assertion failure to
+pass:
 
 | Test path under `test/` | Modes | Change |
 | --- | --- | --- |
@@ -117,15 +120,11 @@ suppression, exhaustion, next/done/value/non-object errors, parameter and for-of
 consumers, nested close order, original thrown-object identity and rest GC
 reachability. The independent Node oracle passes 22,271 isolated scripts.
 
-Validation: 249 default BlueJS tests plus two doc examples, nine Python
-runner/analyzer tests, workspace build/all-target Clippy (`-D warnings`) and
-workspace tests pass. Workspace socket tests required execution outside the
-socket-restricted sandbox. The no-exclusion BlueJS line gate reports
-**8,488/8,488 lines (100%)**, 881/881 functions and 94.18% regions. The existing
-unary AST test was extended for `void` alongside public malformed-expression
-and inclusive bytecode-budget cases. `cargo fmt --all -- --check` still reports
-pre-existing formatting differences across the workspace; the new Rust test
-file is rustfmt-clean. No workspace coverage claim is made by the BlueJS gate.
+The historical slice's test details are retained above as implementation
+evidence. The current Rust 1.95 no-exclusion BlueJS coverage measurement is
+**30,342 / 34,330 lines (88.38%)**, 2,148 / 2,384 functions (90.10%), and
+84.78% regions; CI enforces an 88% line floor. It is the current coverage
+baseline and must not be represented as 100%.
 
 The iterator completion state and rest-rooting subtask is complete. The next
 subtask, general Completion records plus `catch`/`finally`, is implemented in
@@ -1892,5 +1891,6 @@ and resizable-buffer interactions. These focused results do not replace the
 complete-inventory result below.
 
 These are focused filters, not a replacement for the checked-in complete
-inventory. The full-inventory totals and generated `test262-summary.json`
-remain unchanged until a complete reconciliation is rerun.
+inventory. The Rust 1.95 complete reconciliation above ran after these changes;
+the full-inventory totals and generated `test262-summary.json` now record its
+73,553 pass, 28,956 fail and 69 timeout outcomes.

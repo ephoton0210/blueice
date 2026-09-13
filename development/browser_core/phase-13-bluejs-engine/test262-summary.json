@@ -1,8 +1,8 @@
 {
-  "adapter_sha256": "01a1f60211891e077121be234c7ecad1fdda3add2b7eef56c55d353b869cf414",
+  "adapter_sha256": "8f94006be505646c51fac175042fe55d25c536c0e2e782629ffdb1b403d820ad",
   "complete_inventory": true,
   "discovered_js": 53683,
-  "elapsed_seconds": 1677.542,
+  "elapsed_seconds": 2160.529,
   "features": {
     "AggregateError": {
       "fail": 62
@@ -11,7 +11,7 @@
       "fail": 186
     },
     "Array.prototype.at": {
-      "fail": 22
+      "pass": 22
     },
     "Array.prototype.flat": {
       "fail": 30
@@ -24,15 +24,16 @@
       "pass": 80
     },
     "Array.prototype.values": {
-      "fail": 8
+      "fail": 6,
+      "pass": 2
     },
     "ArrayBuffer": {
-      "fail": 138,
-      "pass": 418
+      "fail": 112,
+      "pass": 444
     },
     "Atomics": {
-      "fail": 104,
-      "pass": 668
+      "fail": 82,
+      "pass": 690
     },
     "Atomics.pause": {
       "pass": 10
@@ -41,12 +42,12 @@
       "pass": 202
     },
     "BigInt": {
-      "fail": 1248,
-      "pass": 1733
+      "fail": 1234,
+      "pass": 1747
     },
     "DataView": {
-      "fail": 68,
-      "pass": 318
+      "fail": 48,
+      "pass": 338
     },
     "DataView.prototype.getFloat32": {
       "pass": 14
@@ -77,7 +78,8 @@
       "fail": 26
     },
     "FinalizationRegistry": {
-      "fail": 98
+      "fail": 4,
+      "pass": 94
     },
     "Float16Array": {
       "fail": 80,
@@ -138,12 +140,11 @@
       "pass": 2
     },
     "Intl.Locale": {
-      "fail": 12,
-      "pass": 300
+      "fail": 10,
+      "pass": 302
     },
     "Intl.Locale-info": {
-      "fail": 2,
-      "pass": 86
+      "pass": 88
     },
     "Intl.NumberFormat-unified": {
       "fail": 136
@@ -159,25 +160,24 @@
       "pass": 4
     },
     "IsHTMLDDA": {
-      "fail": 24,
-      "pass": 60
+      "fail": 22,
+      "pass": 62
     },
     "Map": {
-      "fail": 70,
-      "pass": 10
+      "fail": 60,
+      "pass": 20
     },
     "Math.sumPrecise": {
       "fail": 20
     },
     "Object.fromEntries": {
-      "fail": 50
+      "pass": 50
     },
     "Object.hasOwn": {
-      "fail": 118,
-      "pass": 6
+      "pass": 124
     },
     "Object.is": {
-      "fail": 4
+      "pass": 4
     },
     "Promise": {
       "fail": 6,
@@ -196,39 +196,38 @@
       "pass": 22
     },
     "Proxy": {
-      "fail": 246,
-      "pass": 687
+      "fail": 112,
+      "pass": 821
     },
     "Reflect": {
-      "fail": 244,
-      "pass": 689
+      "fail": 182,
+      "pass": 751
     },
     "Reflect.construct": {
-      "fail": 732,
-      "pass": 674
+      "fail": 514,
+      "pass": 892
     },
     "Reflect.set": {
-      "fail": 18,
-      "pass": 74
+      "fail": 20,
+      "pass": 72
     },
     "Reflect.setPrototypeOf": {
-      "fail": 4,
-      "pass": 42
+      "pass": 46
     },
     "RegExp.escape": {
       "fail": 4,
       "pass": 38
     },
     "Set": {
-      "fail": 48,
-      "pass": 28
+      "fail": 30,
+      "pass": 46
     },
     "ShadowRealm": {
       "fail": 124
     },
     "SharedArrayBuffer": {
-      "fail": 54,
-      "pass": 876
+      "fail": 32,
+      "pass": 898
     },
     "String.fromCodePoint": {
       "pass": 44
@@ -263,8 +262,8 @@
       "pass": 46
     },
     "Symbol": {
-      "fail": 1474,
-      "pass": 1478
+      "fail": 1181,
+      "pass": 1771
     },
     "Symbol.asyncIterator": {
       "fail": 50,
@@ -278,16 +277,16 @@
       "pass": 6
     },
     "Symbol.iterator": {
-      "fail": 536,
-      "pass": 3184
+      "fail": 446,
+      "pass": 3274
     },
     "Symbol.match": {
       "fail": 12,
       "pass": 164
     },
     "Symbol.matchAll": {
-      "fail": 10,
-      "pass": 116
+      "fail": 8,
+      "pass": 118
     },
     "Symbol.prototype.description": {
       "fail": 16
@@ -301,20 +300,20 @@
       "pass": 64
     },
     "Symbol.species": {
-      "fail": 260,
-      "pass": 308
+      "fail": 224,
+      "pass": 344
     },
     "Symbol.split": {
-      "fail": 16,
-      "pass": 100
+      "fail": 14,
+      "pass": 102
     },
     "Symbol.toPrimitive": {
-      "fail": 144,
-      "pass": 322
+      "fail": 76,
+      "pass": 390
     },
     "Symbol.toStringTag": {
-      "fail": 127,
-      "pass": 118
+      "fail": 113,
+      "pass": 132
     },
     "Symbol.unscopables": {
       "fail": 13,
@@ -324,8 +323,9 @@
       "fail": 13428
     },
     "TypedArray": {
-      "fail": 1201,
-      "pass": 3799
+      "fail": 1132,
+      "pass": 3867,
+      "timeout": 1
     },
     "TypedArray.prototype.at": {
       "fail": 2,
@@ -345,25 +345,25 @@
       "pass": 12
     },
     "WeakMap": {
-      "fail": 137,
-      "pass": 20
+      "fail": 4,
+      "pass": 153
     },
     "WeakRef": {
-      "fail": 74
+      "fail": 4,
+      "pass": 70
     },
     "WeakSet": {
-      "fail": 54,
-      "pass": 14
+      "pass": 68
     },
     "__getter__": {
-      "fail": 54
+      "pass": 54
     },
     "__proto__": {
-      "fail": 34,
-      "pass": 6
+      "fail": 4,
+      "pass": 36
     },
     "__setter__": {
-      "fail": 54
+      "pass": 54
     },
     "align-detached-buffer-semantics-with-web-reality": {
       "fail": 94,
@@ -374,8 +374,8 @@
       "pass": 15
     },
     "array-find-from-last": {
-      "fail": 92,
-      "pass": 114
+      "fail": 28,
+      "pass": 178
     },
     "array-grouping": {
       "fail": 48,
@@ -386,16 +386,18 @@
       "pass": 92
     },
     "arrow-function": {
-      "fail": 841,
-      "pass": 959
+      "fail": 659,
+      "pass": 1141
     },
     "async-functions": {
       "fail": 257,
-      "pass": 1051
+      "pass": 1042,
+      "timeout": 9
     },
     "async-iteration": {
-      "fail": 467,
-      "pass": 9328
+      "fail": 455,
+      "pass": 9338,
+      "timeout": 2
     },
     "await-dictionary": {
       "fail": 174,
@@ -412,12 +414,12 @@
       "pass": 86
     },
     "class": {
-      "fail": 2486,
-      "pass": 6890
+      "fail": 2461,
+      "pass": 6915
     },
     "class-fields-private": {
-      "fail": 909,
-      "pass": 1339
+      "fail": 905,
+      "pass": 1343
     },
     "class-fields-private-in": {
       "fail": 8,
@@ -428,39 +430,39 @@
       "pass": 1914
     },
     "class-methods-private": {
-      "fail": 481,
-      "pass": 2920
+      "fail": 464,
+      "pass": 2937
     },
     "class-static-block": {
       "fail": 28,
       "pass": 102
     },
     "class-static-fields-private": {
-      "fail": 489,
-      "pass": 197
+      "fail": 488,
+      "pass": 198
     },
     "class-static-fields-public": {
       "fail": 58,
       "pass": 363
     },
     "class-static-methods-private": {
-      "fail": 581,
-      "pass": 2428
+      "fail": 578,
+      "pass": 2431
     },
     "coalesce-expression": {
       "fail": 10,
       "pass": 40
     },
     "computed-property-names": {
-      "fail": 126,
-      "pass": 820
+      "fail": 124,
+      "pass": 822
     },
     "const": {
       "pass": 29
     },
     "cross-realm": {
-      "fail": 277,
-      "pass": 121
+      "fail": 188,
+      "pass": 210
     },
     "decorators": {
       "fail": 42,
@@ -475,23 +477,24 @@
       "pass": 142
     },
     "destructuring-binding": {
-      "fail": 58,
-      "pass": 13079
+      "fail": 24,
+      "pass": 13113
     },
     "dynamic-import": {
-      "fail": 864,
-      "pass": 1040
+      "fail": 862,
+      "pass": 1042
     },
     "error-cause": {
       "fail": 2,
       "pass": 8
     },
     "error-stack-accessor": {
-      "fail": 70
+      "fail": 68,
+      "pass": 2
     },
     "explicit-resource-management": {
-      "fail": 809,
-      "pass": 132
+      "fail": 805,
+      "pass": 136
     },
     "exponentiation": {
       "fail": 46,
@@ -501,16 +504,15 @@
       "pass": 23
     },
     "for-in-order": {
-      "fail": 4,
-      "pass": 14
+      "fail": 2,
+      "pass": 16
     },
     "for-of": {
-      "fail": 2,
-      "pass": 8
+      "pass": 10
     },
     "generators": {
-      "fail": 676,
-      "pass": 7331
+      "fail": 640,
+      "pass": 7367
     },
     "globalThis": {
       "fail": 33,
@@ -521,8 +523,9 @@
       "pass": 21
     },
     "host-gc-required": {
-      "fail": 22,
-      "pass": 6
+      "fail": 20,
+      "pass": 6,
+      "timeout": 2
     },
     "immutable-arraybuffer": {
       "fail": 123,
@@ -550,8 +553,8 @@
       "fail": 16
     },
     "iterator-helpers": {
-      "fail": 1120,
-      "pass": 14
+      "fail": 1108,
+      "pass": 26
     },
     "iterator-sequencing": {
       "fail": 64
@@ -596,8 +599,7 @@
       "pass": 707
     },
     "object-spread": {
-      "fail": 8,
-      "pass": 230
+      "pass": 238
     },
     "optional-catch-binding": {
       "pass": 10
@@ -615,16 +617,15 @@
       "pass": 6
     },
     "proxy-missing-checks": {
-      "fail": 4,
-      "pass": 2
+      "pass": 6
     },
     "regexp-dotall": {
       "fail": 4,
       "pass": 30
     },
     "regexp-duplicate-named-groups": {
-      "fail": 14,
-      "pass": 24
+      "fail": 12,
+      "pass": 26
     },
     "regexp-lookbehind": {
       "pass": 38
@@ -641,16 +642,17 @@
       "pass": 188
     },
     "regexp-unicode-property-escapes": {
-      "fail": 2,
-      "pass": 1360
+      "pass": 1360,
+      "timeout": 2
     },
     "regexp-v-flag": {
-      "fail": 4,
-      "pass": 370
+      "fail": 2,
+      "pass": 370,
+      "timeout": 2
     },
     "resizable-arraybuffer": {
-      "fail": 292,
-      "pass": 638
+      "fail": 212,
+      "pass": 718
     },
     "rest-parameters": {
       "pass": 192
@@ -680,11 +682,12 @@
       "pass": 38
     },
     "symbols-as-weakmap-keys": {
-      "fail": 57
+      "fail": 2,
+      "pass": 55
     },
     "tail-call-optimization": {
-      "fail": 15,
-      "pass": 20
+      "fail": 14,
+      "pass": 21
     },
     "template": {
       "pass": 2
@@ -701,8 +704,8 @@
       "pass": 16
     },
     "upsert": {
-      "fail": 130,
-      "pass": 12
+      "fail": 51,
+      "pass": 91
     },
     "well-formed-json-stringify": {
       "pass": 2
@@ -712,32 +715,35 @@
   "fixture_resources": 279,
   "groups": {
     "annexB": {
-      "fail": 254,
-      "pass": 1123
+      "fail": 204,
+      "pass": 1173
     },
     "built-ins": {
-      "fail": 21704,
-      "pass": 25327
+      "fail": 16022,
+      "pass": 30969,
+      "timeout": 40
     },
     "harness": {
-      "fail": 44,
-      "pass": 188
+      "fail": 36,
+      "pass": 196
     },
     "intl402": {
-      "fail": 6122,
-      "pass": 560
+      "fail": 6090,
+      "pass": 588,
+      "timeout": 4
     },
     "language": {
-      "fail": 5472,
-      "pass": 39003
+      "fail": 5346,
+      "pass": 39129
     },
     "staging": {
-      "fail": 1453,
-      "pass": 1328
+      "fail": 1258,
+      "pass": 1498,
+      "timeout": 25
     }
   },
   "instruction_budget": 100000,
-  "jobs": 4,
+  "jobs": 8,
   "limitations": [
     "static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable",
     "unclassified parser rejections never satisfy parse-SyntaxError negative tests",
@@ -745,10 +751,11 @@
     "native overrides for sta.js, assert.js, propertyHelper.js, isConstructor.js, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness",
     "each mode has a bounded interpreter instruction budget; tail-call and TypedArray-harness fixtures receive their recorded budgets"
   ],
-  "regex_worker_sha256": "98083453b5aa21920e89736697496bb0cb760a96627024ad06ac05f9fd1edc51",
+  "regex_worker_sha256": "73aa080f6ccedd8278ea52d47337927f5a9cca3ece6886c7fae73f3264ae0991",
   "results": {
-    "fail": 35049,
-    "pass": 67529
+    "fail": 28956,
+    "pass": 73553,
+    "timeout": 69
   },
   "runner_sha256": "ab749e83592bbdb2ce6aefa0e76618ed7d31e3bc6ce78961281569b68769a94e",
   "scheduled_modes": 102578,
@@ -763,7 +770,7 @@
   "tail_call_instruction_budget": 3000000,
   "tail_call_timeout_seconds": 30,
   "test_files": 53404,
-  "timeout_seconds": 15.0,
+  "timeout_seconds": 2,
   "typed_array_harness_instruction_budget": 10000000,
   "typed_array_harness_timeout_seconds": 60,
   "unicode_identifier_timeout_seconds": 30,
