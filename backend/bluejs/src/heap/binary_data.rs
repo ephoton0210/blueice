@@ -31,6 +31,36 @@ impl Heap {
         self.alloc_buffer(byte_length, max_byte_length, true, prototype)
     }
 
+    /// Installs a local SharedArrayBuffer wrapper for bytes owned by another
+    /// Test262 agent. Its ObjectId remains heap-local; only the backing store
+    /// crosses the agent boundary.
+    pub(crate) fn alloc_shared_array_buffer_backing(
+        &mut self,
+        backing: std::sync::Arc<SharedBuffer>,
+        max_byte_length: Option<usize>,
+        prototype: Option<ObjectId>,
+    ) -> Result<ObjectId, HeapError> {
+        let byte_length = backing.byte_length();
+        let capacity = self.max_array_buffer_byte_length();
+        if byte_length > capacity
+            || max_byte_length.is_some_and(|maximum| maximum < byte_length || maximum > capacity)
+        {
+            return Err(HeapError::InvalidBufferRange);
+        }
+        self.alloc(
+            ObjectKind::ArrayBuffer {
+                // Keep the ordinary heap's accounting model unchanged. Shared
+                // reads and writes always select `shared_backing` below.
+                bytes: vec![0; byte_length],
+                shared_backing: Some(backing),
+                detached: false,
+                max_byte_length,
+                shared: true,
+            },
+            prototype,
+        )
+    }
+
     fn alloc_buffer(
         &mut self,
         byte_length: usize,
@@ -47,6 +77,7 @@ impl Heap {
         self.alloc(
             ObjectKind::ArrayBuffer {
                 bytes: vec![0; byte_length],
+                shared_backing: shared.then(|| std::sync::Arc::new(SharedBuffer::new(byte_length))),
                 detached: false,
                 max_byte_length,
                 shared,
@@ -159,10 +190,32 @@ impl Heap {
     }
 
     pub(crate) fn buffer_byte_length(&self, object: ObjectId) -> Result<usize, HeapError> {
-        let ObjectKind::ArrayBuffer { bytes, .. } = &self.object(object)?.kind else {
+        let ObjectKind::ArrayBuffer {
+            bytes,
+            shared_backing,
+            ..
+        } = &self.object(object)?.kind
+        else {
             return Err(HeapError::InvalidInternalSlot(object));
         };
-        Ok(bytes.len())
+        Ok(shared_backing
+            .as_ref()
+            .map_or_else(|| bytes.len(), |backing| backing.byte_length()))
+    }
+
+    pub(crate) fn shared_buffer_backing(
+        &self,
+        object: ObjectId,
+    ) -> Result<std::sync::Arc<SharedBuffer>, HeapError> {
+        let ObjectKind::ArrayBuffer {
+            shared: true,
+            shared_backing: Some(backing),
+            ..
+        } = &self.object(object)?.kind
+        else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(std::sync::Arc::clone(backing))
     }
 
     pub(crate) fn array_buffer_is_detached(&self, object: ObjectId) -> Result<bool, HeapError> {
@@ -234,9 +287,11 @@ impl Heap {
     pub(crate) fn buffer_max_byte_length(&self, object: ObjectId) -> Result<usize, HeapError> {
         let ObjectKind::ArrayBuffer {
             bytes,
+            shared_backing,
             detached,
             max_byte_length,
             shared,
+            ..
         } = &self.object(object)?.kind
         else {
             return Err(HeapError::InvalidInternalSlot(object));
@@ -244,7 +299,11 @@ impl Heap {
         if !*shared && *detached {
             return Ok(0);
         }
-        Ok(max_byte_length.unwrap_or(bytes.len()))
+        Ok(max_byte_length.unwrap_or_else(|| {
+            shared_backing
+                .as_ref()
+                .map_or_else(|| bytes.len(), |backing| backing.byte_length())
+        }))
     }
 
     pub(crate) fn buffer_resizable(&self, object: ObjectId) -> Result<bool, HeapError> {
@@ -328,12 +387,25 @@ impl Heap {
             .objects
             .get_mut(&object)
             .ok_or(HeapError::InvalidObject(object))?;
-        let ObjectKind::ArrayBuffer { bytes, .. } = &mut obj.kind else {
+        let ObjectKind::ArrayBuffer {
+            bytes,
+            shared_backing,
+            ..
+        } = &mut obj.kind
+        else {
             return Err(HeapError::InvalidInternalSlot(object));
         };
+        // Another agent may already have grown the shared backing. This
+        // wrapper's Vec exists only for its local heap accounting, so update
+        // that accounting from its own previous length rather than the global
+        // byte length observed above.
+        let accounted = bytes.len();
         bytes.resize(byte_length, 0);
-        obj.bytes = obj.bytes - current + byte_length;
-        self.managed_bytes = self.managed_bytes - current + byte_length;
+        if let Some(backing) = shared_backing {
+            backing.resize(byte_length);
+        }
+        obj.bytes = obj.bytes - accounted + byte_length;
+        self.managed_bytes = self.managed_bytes - accounted + byte_length;
         Ok(())
     }
 
@@ -343,6 +415,11 @@ impl Heap {
         byte_offset: usize,
         byte_length: usize,
     ) -> Result<Vec<u8>, HeapError> {
+        if let Ok(backing) = self.shared_buffer_backing(object) {
+            return backing
+                .copy(byte_offset, byte_length)
+                .ok_or(HeapError::InvalidBufferRange);
+        }
         let bytes = self.buffer_bytes(object)?;
         let end = byte_offset
             .checked_add(byte_length)
@@ -357,6 +434,12 @@ impl Heap {
         byte_offset: usize,
         values: &[u8],
     ) -> Result<(), HeapError> {
+        if let Ok(backing) = self.shared_buffer_backing(object) {
+            return backing
+                .write(byte_offset, values)
+                .then_some(())
+                .ok_or(HeapError::InvalidBufferRange);
+        }
         let bytes = self.buffer_bytes_mut(object)?;
         let end = byte_offset
             .checked_add(values.len())
@@ -515,8 +598,14 @@ impl Heap {
         if index >= length {
             return Ok(None);
         }
-        let bytes = self.buffer_bytes(buffer)?;
         let start = byte_offset + index * kind.byte_width();
+        if let Ok(backing) = self.shared_buffer_backing(buffer) {
+            let bytes = backing
+                .copy(start, kind.byte_width())
+                .ok_or(HeapError::InvalidBufferRange)?;
+            return Ok(Some(typed_read(kind, &bytes)));
+        }
+        let bytes = self.buffer_bytes(buffer)?;
         Ok(Some(typed_read(kind, &bytes[start..])))
     }
 
@@ -531,9 +620,49 @@ impl Heap {
             return Ok(false);
         }
         let start = byte_offset + index * kind.byte_width();
+        if let Ok(backing) = self.shared_buffer_backing(buffer) {
+            let mut bytes = backing
+                .copy(start, kind.byte_width())
+                .ok_or(HeapError::InvalidBufferRange)?;
+            typed_write(kind, &mut bytes, value);
+            backing
+                .write(start, &bytes)
+                .then_some(())
+                .ok_or(HeapError::InvalidBufferRange)?;
+            return Ok(true);
+        }
         let bytes = self.buffer_bytes_mut(buffer)?;
         typed_write(kind, &mut bytes[start..], value);
         Ok(true)
+    }
+
+    /// Atomically reads and optionally replaces one shared typed-array
+    /// element. The closure runs under the SharedArrayBuffer byte lock, so
+    /// read-modify-write Atomics operations cannot lose updates between agent
+    /// VMs. Only Atomics reaches this helper; ordinary indexed stores retain
+    /// their normal element semantics.
+    pub(crate) fn shared_typed_array_atomic_modify<T>(
+        &self,
+        object: ObjectId,
+        index: usize,
+        modify: impl FnOnce(Value) -> (Option<Value>, T),
+    ) -> Result<T, HeapError> {
+        let (buffer, byte_offset, length, kind) = self.typed_array_info(object)?;
+        if index >= length {
+            return Err(HeapError::InvalidBufferRange);
+        }
+        let backing = self.shared_buffer_backing(buffer)?;
+        let start = byte_offset + index * kind.byte_width();
+        backing
+            .modify(start, kind.byte_width(), |bytes| {
+                let current = typed_read(kind, bytes);
+                let (replacement, result) = modify(current);
+                if let Some(replacement) = replacement {
+                    typed_write(kind, bytes, &replacement);
+                }
+                result
+            })
+            .ok_or(HeapError::InvalidBufferRange)
     }
 
     pub(crate) fn typed_array_normalize_value(&self, kind: TypedArrayKind, value: &Value) -> Value {

@@ -32,6 +32,8 @@ use std::fmt;
 use std::mem::size_of;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 mod binary_data;
 mod lifecycle;
@@ -541,6 +543,10 @@ enum ObjectKind {
     /// detach and resize, while shared stores cannot detach and can only grow.
     ArrayBuffer {
         bytes: Vec<u8>,
+        /// SharedArrayBuffer bytes live outside a single Heap so Test262
+        /// agents can install local buffer wrappers over the same storage.
+        /// Ordinary ArrayBuffers keep this empty and retain their local Vec.
+        shared_backing: Option<Arc<SharedBuffer>>,
         detached: bool,
         max_byte_length: Option<usize>,
         shared: bool,
@@ -612,6 +618,163 @@ enum ObjectKind {
     ModuleNamespace {
         exports: Vec<(JsString, ObjectId)>,
     },
+}
+
+/// Thread-safe backing bytes for a SharedArrayBuffer. The ordinary heap keeps
+/// ownership and GC accounting of its local wrapper, while agents exchange a
+/// clone of this handle through the Test262 host scheduler.
+#[derive(Debug)]
+pub(crate) struct SharedBuffer {
+    bytes: Mutex<Vec<u8>>,
+    waiters: Mutex<VecDeque<SharedBufferWaiter>>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SharedBufferWaiter {
+    byte_offset: usize,
+    signal: Arc<(Mutex<Option<SharedWaitResult>>, Condvar)>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SharedWaitResult {
+    Ok,
+    TimedOut,
+}
+
+impl SharedBuffer {
+    pub(crate) fn new(byte_length: usize) -> Self {
+        Self {
+            bytes: Mutex::new(vec![0; byte_length]),
+            waiters: Mutex::new(VecDeque::new()),
+        }
+    }
+
+    pub(crate) fn byte_length(&self) -> usize {
+        self.bytes
+            .lock()
+            .expect("SharedArrayBuffer lock poisoned")
+            .len()
+    }
+
+    pub(crate) fn copy(&self, offset: usize, length: usize) -> Option<Vec<u8>> {
+        let bytes = self.bytes.lock().expect("SharedArrayBuffer lock poisoned");
+        let end = offset.checked_add(length)?;
+        (end <= bytes.len()).then(|| bytes[offset..end].to_vec())
+    }
+
+    pub(crate) fn write(&self, offset: usize, values: &[u8]) -> bool {
+        let mut bytes = self.bytes.lock().expect("SharedArrayBuffer lock poisoned");
+        let Some(end) = offset.checked_add(values.len()) else {
+            return false;
+        };
+        if end > bytes.len() {
+            return false;
+        }
+        bytes[offset..end].copy_from_slice(values);
+        true
+    }
+
+    /// Performs one bounded byte-range mutation while retaining the backing
+    /// lock. Atomic typed-array operations use this to make their read,
+    /// comparison, and write one indivisible host operation across agent VMs.
+    pub(crate) fn modify<T>(
+        &self,
+        offset: usize,
+        length: usize,
+        modify: impl FnOnce(&mut [u8]) -> T,
+    ) -> Option<T> {
+        let mut bytes = self.bytes.lock().expect("SharedArrayBuffer lock poisoned");
+        let end = offset.checked_add(length)?;
+        (end <= bytes.len()).then(|| modify(&mut bytes[offset..end]))
+    }
+
+    pub(crate) fn resize(&self, byte_length: usize) {
+        self.bytes
+            .lock()
+            .expect("SharedArrayBuffer lock poisoned")
+            .resize(byte_length, 0);
+    }
+
+    /// Adds a FIFO waiter at an Atomics byte position. The returned handle can
+    /// be waited on by either a synchronous Atomics.wait caller or an async
+    /// host task. It intentionally contains no VM-owned state.
+    pub(crate) fn register_waiter(&self, byte_offset: usize) -> SharedBufferWaiter {
+        let signal = Arc::new((Mutex::new(None), Condvar::new()));
+        let waiter = SharedBufferWaiter {
+            byte_offset,
+            signal,
+        };
+        self.waiters
+            .lock()
+            .expect("SharedArrayBuffer waiter lock poisoned")
+            .push_back(waiter.clone());
+        waiter
+    }
+
+    /// Sleeps for a waiter previously registered with [`Self::register_waiter`]
+    /// without holding the backing-byte lock. Only `notify` changes its status;
+    /// other Atomic operations deliberately do not cause a spurious wake-up.
+    pub(crate) fn wait_for(
+        &self,
+        waiter: SharedBufferWaiter,
+        timeout: Option<Duration>,
+    ) -> SharedWaitResult {
+        let (status_lock, ready) = &*waiter.signal;
+        let mut status = status_lock
+            .lock()
+            .expect("SharedArrayBuffer waiter status lock poisoned");
+        if status.is_none() {
+            if let Some(timeout) = timeout {
+                let (next, _) = ready
+                    .wait_timeout_while(status, timeout, |status| status.is_none())
+                    .expect("SharedArrayBuffer waiter condition poisoned");
+                status = next;
+            } else {
+                status = ready
+                    .wait_while(status, |status| status.is_none())
+                    .expect("SharedArrayBuffer waiter condition poisoned");
+            }
+        }
+        let result = status.unwrap_or(SharedWaitResult::TimedOut);
+        drop(status);
+        self.waiters
+            .lock()
+            .expect("SharedArrayBuffer waiter lock poisoned")
+            .retain(|candidate| !Arc::ptr_eq(&candidate.signal, &waiter.signal));
+        result
+    }
+
+    /// Adds one FIFO waiter and waits for it synchronously.
+    pub(crate) fn wait(&self, byte_offset: usize, timeout: Option<Duration>) -> SharedWaitResult {
+        self.wait_for(self.register_waiter(byte_offset), timeout)
+    }
+
+    /// Wakes at most `count` waiters in insertion order for one byte
+    /// position. A count of `usize::MAX` is the host representation of
+    /// Atomics.notify's omitted/infinite count.
+    pub(crate) fn notify(&self, byte_offset: usize, count: usize) -> usize {
+        let mut waiters = self
+            .waiters
+            .lock()
+            .expect("SharedArrayBuffer waiter lock poisoned");
+        let mut woken = 0;
+        let mut remaining = VecDeque::new();
+        while let Some(waiter) = waiters.pop_front() {
+            if waiter.byte_offset == byte_offset && woken < count {
+                let (status, ready) = &*waiter.signal;
+                *status
+                    .lock()
+                    .expect("SharedArrayBuffer waiter status lock poisoned") =
+                    Some(SharedWaitResult::Ok);
+                ready.notify_one();
+                woken += 1;
+            } else {
+                remaining.push_back(waiter);
+            }
+        }
+        *waiters = remaining;
+        woken
+    }
 }
 
 /// The three observable forms of Array Iterator. TypedArray reuses this

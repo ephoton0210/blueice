@@ -765,16 +765,6 @@ impl Vm {
             .ok_or_else(|| RuntimeError::TypeError("TypedArray is out of bounds".into()))
     }
 
-    fn atomics_write(
-        &mut self,
-        object: ObjectId,
-        index: usize,
-        value: &Value,
-    ) -> Result<Value, RuntimeError> {
-        self.with_roots(|heap| heap.typed_array_set_index(object, index, value))?;
-        self.atomics_read(object, index)
-    }
-
     fn atomics_binary_value(
         kind: TypedArrayKind,
         old: &Value,
@@ -814,33 +804,54 @@ impl Vm {
         operation: AtomicOp,
     ) -> Result<Value, RuntimeError> {
         let (object, index, kind) = self.atomics_access(args, false)?;
-        let old = self.atomics_read(object, index)?;
-        match operation {
-            AtomicOp::Load => Ok(old),
+        let result = match operation {
+            AtomicOp::Load => self
+                .heap
+                .shared_typed_array_atomic_modify(object, index, |old| (None, old))
+                .map_err(Into::into),
             AtomicOp::Store => {
                 let value = self.atomics_element_value(kind, native::argument(args, 2))?;
-                self.atomics_write(object, index, &value)
+                self.heap
+                    .shared_typed_array_atomic_modify(object, index, move |_| {
+                        (Some(value.clone()), value)
+                    })
+                    .map_err(Into::into)
             }
             AtomicOp::CompareExchange => {
                 let expected = self.atomics_element_value(kind, native::argument(args, 2))?;
                 let replacement = self.atomics_element_value(kind, native::argument(args, 3))?;
-                if old == expected {
-                    self.atomics_write(object, index, &replacement)?;
-                }
-                Ok(old)
+                self.heap
+                    .shared_typed_array_atomic_modify(object, index, move |old| {
+                        let replace = (old == expected).then(|| replacement.clone());
+                        (replace, old)
+                    })
+                    .map_err(Into::into)
             }
             AtomicOp::Add | AtomicOp::And | AtomicOp::Or | AtomicOp::Sub | AtomicOp::Xor => {
                 let value = self.atomics_element_value(kind, native::argument(args, 2))?;
-                let value = Self::atomics_binary_value(kind, &old, &value, operation);
-                self.atomics_write(object, index, &value)?;
-                Ok(old)
+                self.heap
+                    .shared_typed_array_atomic_modify(object, index, move |old| {
+                        let next = Self::atomics_binary_value(kind, &old, &value, operation);
+                        (Some(next), old)
+                    })
+                    .map_err(Into::into)
             }
             AtomicOp::Exchange => {
                 let value = self.atomics_element_value(kind, native::argument(args, 2))?;
-                self.atomics_write(object, index, &value)?;
-                Ok(old)
+                self.heap
+                    .shared_typed_array_atomic_modify(object, index, move |old| (Some(value), old))
+                    .map_err(Into::into)
             }
+        };
+        // Test262's agent helper intentionally spins on Atomics.load while
+        // agent VMs are entering receiveBroadcast.  A normal OS thread yield
+        // at this host scheduling boundary prevents four parallel runner
+        // processes from starving their own worker threads, without exposing a
+        // JavaScript-visible yield in ordinary realms.
+        if self.test262_agent_host.is_some() {
+            std::thread::yield_now();
         }
+        result
     }
 
     pub(super) fn atomics_is_lock_free(&mut self, value: &Value) -> Result<Value, RuntimeError> {
@@ -850,11 +861,23 @@ impl Vm {
     }
 
     pub(super) fn atomics_notify(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        self.atomics_access(args, true)?;
-        // BlueJS has one VM thread today. There can be no blocked agents to
-        // awaken, but validation and the observable conversions above follow
-        // the ordinary Atomics path.
-        Ok(Value::Number(0.0))
+        let (object, index, kind) = self.atomics_access(args, true)?;
+        let (buffer, byte_offset, _, _) = self.heap.typed_array_info(object)?;
+        let count = if args.len() < 3 || args[2] == Value::Undefined {
+            usize::MAX
+        } else {
+            let count = self.coerce_number(native::argument(args, 2))?;
+            if count.is_nan() || count <= 0.0 {
+                0
+            } else if !count.is_finite() || count >= usize::MAX as f64 {
+                usize::MAX
+            } else {
+                count.trunc() as usize
+            }
+        };
+        let backing = self.heap.shared_buffer_backing(buffer)?;
+        let position = byte_offset + index * kind.byte_width();
+        Ok(Value::Number(backing.notify(position, count) as f64))
     }
 
     fn atomics_wait_status(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
@@ -864,13 +887,26 @@ impl Vm {
         if observed != expected {
             return Ok(Value::String("not-equal".into()));
         }
-        if let Some(timeout) = args.get(3) {
-            self.coerce_number(timeout)?;
-        }
-        // A waiter queue needs the P1.6 agent scheduler. Until that host
-        // boundary is present, a matching wait completes as a timed-out
-        // single-agent operation rather than blocking the VM thread.
-        Ok(Value::String("timed-out".into()))
+        let timeout = args.get(3).map_or(Ok::<_, RuntimeError>(None), |timeout| {
+            let timeout = self.coerce_number(timeout)?;
+            Ok(if timeout.is_nan() || timeout == f64::INFINITY {
+                None
+            } else if timeout <= 0.0 {
+                Some(std::time::Duration::ZERO)
+            } else {
+                Some(std::time::Duration::from_secs_f64(timeout / 1_000.0))
+            })
+        })?;
+        let (buffer, byte_offset, _, _) = self.heap.typed_array_info(object)?;
+        let backing = self.heap.shared_buffer_backing(buffer)?;
+        let position = byte_offset + index * kind.byte_width();
+        Ok(Value::String(
+            match backing.wait(position, timeout) {
+                crate::heap::SharedWaitResult::Ok => "ok",
+                crate::heap::SharedWaitResult::TimedOut => "timed-out",
+            }
+            .into(),
+        ))
     }
 
     pub(super) fn atomics_wait(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
@@ -878,11 +914,52 @@ impl Vm {
     }
 
     pub(super) fn atomics_wait_async(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let value = self.atomics_wait_status(args)?;
+        let (object, index, kind) = self.atomics_access(args, true)?;
+        let expected = self.atomics_element_value(kind, native::argument(args, 2))?;
+        let observed = self.atomics_read(object, index)?;
         let prototype = self.object_prototype;
         let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-        self.define_data(result, "async", Value::Bool(false), true, true, true)?;
-        self.define_data(result, "value", value, true, true, true)?;
+        if observed != expected {
+            self.define_data(result, "async", Value::Bool(false), true, true, true)?;
+            self.define_data(
+                result,
+                "value",
+                Value::String("not-equal".into()),
+                true,
+                true,
+                true,
+            )?;
+            return Ok(Value::Object(result));
+        }
+        let timeout = args.get(3).map_or(Ok::<_, RuntimeError>(None), |timeout| {
+            let timeout = self.coerce_number(timeout)?;
+            Ok(if timeout.is_nan() || timeout == f64::INFINITY {
+                None
+            } else if timeout <= 0.0 {
+                Some(std::time::Duration::ZERO)
+            } else {
+                Some(std::time::Duration::from_secs_f64(timeout / 1_000.0))
+            })
+        })?;
+        if timeout == Some(std::time::Duration::ZERO) {
+            self.define_data(result, "async", Value::Bool(false), true, true, true)?;
+            self.define_data(
+                result,
+                "value",
+                Value::String("timed-out".into()),
+                true,
+                true,
+                true,
+            )?;
+            return Ok(Value::Object(result));
+        }
+        let (buffer, byte_offset, _, _) = self.heap.typed_array_info(object)?;
+        let position = byte_offset + index * kind.byte_width();
+        let backing = self.heap.shared_buffer_backing(buffer)?;
+        let promise = self.new_promise()?;
+        self.schedule_test262_async_wait(backing, position, timeout, promise);
+        self.define_data(result, "async", Value::Bool(true), true, true, true)?;
+        self.define_data(result, "value", Value::Object(promise), true, true, true)?;
         Ok(Value::Object(result))
     }
 

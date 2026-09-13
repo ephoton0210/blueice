@@ -68,10 +68,34 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(instruction_budget(data, 100_000), 30_000_000)
         self.assertEqual(case_timeout(data, 2), 60)
 
+    def test_stable_array_sort_and_agent_cases_have_scoped_host_allowances(self):
+        self.assertEqual(
+            instruction_budget({"features": ["stable-array-sort"]}, 100_000),
+            10_000_000,
+        )
+        self.assertEqual(case_timeout({"features": ["stable-array-sort"]}, 2), 30)
+        source = "$262.agent.start('');"
+        self.assertEqual(instruction_budget({}, 100_000, source=source), 50_000_000)
+        self.assertEqual(case_timeout({}, 2, source=source), 120)
+
+    def test_finite_locale_module_and_sparse_array_stress_fixtures_are_bounded(self):
+        for relative in (
+            "intl402/Intl/getCanonicalLocales/canonicalized-tags.js",
+            "intl402/Intl/getCanonicalLocales/complex-region-subtag-replacement.js",
+            "intl402/Intl/getCanonicalLocales/transformed-ext-valid.js",
+            "intl402/language-tags-canonicalized.js",
+            "language/module-code/top-level-await/fulfillment-order.js",
+            "language/module-code/top-level-await/rejection-order.js",
+            "language/module-code/top-level-await/unobservable-global-async-evaluation-count-reset.js",
+            "staging/sm/Array/sort_holes.js",
+        ):
+            self.assertEqual(instruction_budget({}, 100_000, relative), 10_000_000)
+            self.assertEqual(case_timeout({}, 2, relative), 90)
+
     def test_typed_array_harness_receives_a_bounded_extended_wall_deadline(self):
         self.assertEqual(case_timeout({"includes": []}, 2), 2)
-        self.assertEqual(case_timeout({"includes": ["testTypedArray.js"]}, 2), 30)
-        self.assertEqual(case_timeout({"includes": ["testTypedArray.js"]}, 40), 40)
+        self.assertEqual(case_timeout({"includes": ["testTypedArray.js"]}, 2), 60)
+        self.assertEqual(case_timeout({"includes": ["testTypedArray.js"]}, 40), 60)
 
     def test_exhaustive_uri_decode_fixtures_use_the_verified_native_adapter(self):
         source = "/* original exhaustive fixture */"

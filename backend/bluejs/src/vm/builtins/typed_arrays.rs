@@ -543,39 +543,108 @@ impl Vm {
                 "TypedArray sort comparator must be callable".into(),
             ));
         }
-        // Insertion sort is stable and, unlike Rust's sorting APIs, lets each
-        // comparison execute JavaScript and complete abruptly.
-        for index in 1..values.len() {
-            let candidate = values[index].clone();
-            let mut position = index;
-            while position > 0 {
-                let order = if *compare == Value::Undefined {
-                    Self::typed_array_default_compare(&candidate, &values[position - 1], kind)
-                } else {
-                    let result = self.call_native(
-                        compare.clone(),
-                        Value::Undefined,
-                        vec![candidate.clone(), values[position - 1].clone()],
-                        false,
-                    )?;
-                    let result = self.coerce_number(&result)?;
-                    if result.is_nan() || result == 0.0 {
-                        std::cmp::Ordering::Equal
-                    } else if result < 0.0 {
-                        std::cmp::Ordering::Less
-                    } else {
-                        std::cmp::Ordering::Greater
+        if *compare == Value::Undefined {
+            values.sort_by(|left, right| Self::typed_array_default_compare(left, right, kind));
+            return Ok(());
+        }
+
+        // The values are snapshotted before sorting. A comparator may mutate
+        // the receiver, but must not turn an O(n log n) sort into O(n²)
+        // interpreter calls. Detecting natural runs avoids needlessly calling
+        // an observable comparator O(n log n) times for already sorted input
+        // (including Test262's descending TypedArray cases), then stable
+        // merging handles the general case and propagates abrupt completions.
+        let mut scratch = values.to_vec();
+        let mut runs = Vec::new();
+        let mut start = 0usize;
+        while start < values.len() {
+            let mut end = start + 1;
+            if end < values.len() {
+                let descending =
+                    self.typed_array_compare_values(compare, &values[end], &values[end - 1])?
+                        == std::cmp::Ordering::Less;
+                end += 1;
+                while end < values.len() {
+                    let order =
+                        self.typed_array_compare_values(compare, &values[end], &values[end - 1])?;
+                    if (descending && order != std::cmp::Ordering::Less)
+                        || (!descending && order == std::cmp::Ordering::Less)
+                    {
+                        break;
                     }
-                };
-                if order != std::cmp::Ordering::Less {
-                    break;
+                    end += 1;
                 }
-                values[position] = values[position - 1].clone();
-                position -= 1;
+                // Only a strictly descending run reaches here, so reversing
+                // it cannot disturb the comparator's stable equal elements.
+                if descending {
+                    values[start..end].reverse();
+                }
             }
-            values[position] = candidate;
+            runs.push((start, end));
+            start = end;
+        }
+        while runs.len() > 1 {
+            let mut next_runs = Vec::with_capacity((runs.len() + 1) / 2);
+            let mut index = 0usize;
+            while index < runs.len() {
+                let (start, middle) = runs[index];
+                let Some(&(right_start, end)) = runs.get(index + 1) else {
+                    next_runs.push((start, middle));
+                    break;
+                };
+                debug_assert_eq!(middle, right_start);
+                let (mut left, mut right, mut target) = (start, middle, start);
+                while left < middle && right < end {
+                    if self.typed_array_compare_values(compare, &values[right], &values[left])?
+                        == std::cmp::Ordering::Less
+                    {
+                        scratch[target] = values[right].clone();
+                        right += 1;
+                    } else {
+                        scratch[target] = values[left].clone();
+                        left += 1;
+                    }
+                    target += 1;
+                }
+                while left < middle {
+                    scratch[target] = values[left].clone();
+                    target += 1;
+                    left += 1;
+                }
+                while right < end {
+                    scratch[target] = values[right].clone();
+                    target += 1;
+                    right += 1;
+                }
+                values[start..end].clone_from_slice(&scratch[start..end]);
+                next_runs.push((start, end));
+                index += 2;
+            }
+            runs = next_runs;
         }
         Ok(())
+    }
+
+    fn typed_array_compare_values(
+        &mut self,
+        compare: &Value,
+        left: &Value,
+        right: &Value,
+    ) -> Result<std::cmp::Ordering, RuntimeError> {
+        let result = self.call_native(
+            compare.clone(),
+            Value::Undefined,
+            vec![left.clone(), right.clone()],
+            false,
+        )?;
+        let result = self.coerce_number(&result)?;
+        Ok(if result.is_nan() || result == 0.0 {
+            std::cmp::Ordering::Equal
+        } else if result < 0.0 {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Greater
+        })
     }
 
     fn typed_array_to_reversed(&mut self, receiver: &Value) -> Result<Value, RuntimeError> {

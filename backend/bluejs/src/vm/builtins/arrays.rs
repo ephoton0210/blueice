@@ -113,6 +113,87 @@ impl Vm {
         Ok(Value::Undefined)
     }
 
+    pub(in super::super) fn array_filter(
+        &mut self,
+        receiver: &Value,
+        callback: &Value,
+        this_arg: &Value,
+    ) -> Result<Value, RuntimeError> {
+        if !self.is_callable(callback)? {
+            return Err(RuntimeError::TypeError(
+                "Array.prototype.filter callback must be callable".into(),
+            ));
+        }
+        let object = self.coerce_object(receiver)?;
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as u64;
+            let target = self.array_from(Vec::new())?;
+            self.stack.push(target.clone());
+            let result = (|| {
+                let mut target_index = 0usize;
+                if let Some(indices) = self.array_own_indices(object, length)? {
+                    for index in indices {
+                        self.charge_step()?;
+                        let value =
+                            self.get_property(&Value::Object(object), &index.to_string().into())?;
+                        let selected = self.call_native(
+                            callback.clone(),
+                            this_arg.clone(),
+                            vec![
+                                value.clone(),
+                                Value::Number(index as f64),
+                                Value::Object(object),
+                            ],
+                            false,
+                        )?;
+                        if self.to_boolean(&selected)? {
+                            self.set_property_value(
+                                &target,
+                                &target_index.to_string().into(),
+                                &value,
+                            )?;
+                            target_index += 1;
+                        }
+                    }
+                } else {
+                    for index in 0..length {
+                        self.charge_step()?;
+                        let key: PropertyName = index.to_string().into();
+                        if !self.has_property(object, &key)? {
+                            continue;
+                        }
+                        let value = self.get_property(&Value::Object(object), &key)?;
+                        let selected = self.call_native(
+                            callback.clone(),
+                            this_arg.clone(),
+                            vec![
+                                value.clone(),
+                                Value::Number(index as f64),
+                                Value::Object(object),
+                            ],
+                            false,
+                        )?;
+                        if self.to_boolean(&selected)? {
+                            self.set_property_value(
+                                &target,
+                                &target_index.to_string().into(),
+                                &value,
+                            )?;
+                            target_index += 1;
+                        }
+                    }
+                }
+                Ok(target)
+            })();
+            self.stack.pop();
+            result
+        })();
+        self.stack.pop();
+        result
+    }
+
     pub(in super::super) fn array_reduce(
         &mut self,
         receiver: &Value,
@@ -329,6 +410,125 @@ impl Vm {
         })();
         self.stack.pop();
         result
+    }
+
+    /// Array.prototype.sort with the observable comparison path retained for
+    /// the host scheduler's report arrays. Undefined values follow sorted
+    /// present values and holes remain trailing holes, as required by the
+    /// ArraySort collection/write-back steps.
+    pub(in super::super) fn array_sort(
+        &mut self,
+        receiver: &Value,
+        compare: &Value,
+    ) -> Result<Value, RuntimeError> {
+        if *compare != Value::Undefined && !self.is_callable(compare)? {
+            return Err(RuntimeError::TypeError(
+                "Array sort comparator must be callable".into(),
+            ));
+        }
+        let object = self.coerce_object(receiver)?;
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as usize;
+            let mut values = Vec::new();
+            let mut undefined = 0usize;
+            for index in 0..length {
+                self.charge_step()?;
+                let key: PropertyName = index.to_string().into();
+                if self.has_property(object, &key)? {
+                    let value = self.get_property(&Value::Object(object), &key)?;
+                    if value == Value::Undefined {
+                        undefined += 1;
+                    } else {
+                        values.push(value);
+                    }
+                }
+            }
+            // Bottom-up merge sorting remains stable while bounding observable
+            // user comparator calls to O(n log n). The 513- and 2048-element
+            // stable-array-sort conformance cases exercise this exact path.
+            let mut scratch = values.to_vec();
+            let mut width = 1usize;
+            while width < values.len() {
+                let mut start = 0usize;
+                while start < values.len() {
+                    let middle = start.saturating_add(width).min(values.len());
+                    let end = middle.saturating_add(width).min(values.len());
+                    let (mut left, mut right, mut target) = (start, middle, start);
+                    while left < middle && right < end {
+                        if self.array_sort_order(compare, &values[right], &values[left])?
+                            == std::cmp::Ordering::Less
+                        {
+                            scratch[target] = values[right].clone();
+                            right += 1;
+                        } else {
+                            scratch[target] = values[left].clone();
+                            left += 1;
+                        }
+                        target += 1;
+                    }
+                    while left < middle {
+                        scratch[target] = values[left].clone();
+                        target += 1;
+                        left += 1;
+                    }
+                    while right < end {
+                        scratch[target] = values[right].clone();
+                        target += 1;
+                        right += 1;
+                    }
+                    values[start..end].clone_from_slice(&scratch[start..end]);
+                    start = end;
+                }
+                width = width.saturating_mul(2);
+            }
+            let mut index = 0usize;
+            for value in values {
+                self.set_property_value(&Value::Object(object), &index.to_string().into(), &value)?;
+                index += 1;
+            }
+            for _ in 0..undefined {
+                self.set_property_value(
+                    &Value::Object(object),
+                    &index.to_string().into(),
+                    &Value::Undefined,
+                )?;
+                index += 1;
+            }
+            while index < length {
+                self.object_delete(object, &index.to_string().into())?;
+                index += 1;
+            }
+            Ok(receiver.clone())
+        })();
+        self.stack.pop();
+        result
+    }
+
+    fn array_sort_order(
+        &mut self,
+        compare: &Value,
+        left: &Value,
+        right: &Value,
+    ) -> Result<std::cmp::Ordering, RuntimeError> {
+        if *compare == Value::Undefined {
+            return Ok(self.coerce_string(left)?.cmp(&self.coerce_string(right)?));
+        }
+        let value = self.call_native(
+            compare.clone(),
+            Value::Undefined,
+            vec![left.clone(), right.clone()],
+            false,
+        )?;
+        let value = self.coerce_number(&value)?;
+        Ok(if value.is_nan() || value == 0.0 {
+            std::cmp::Ordering::Equal
+        } else if value < 0.0 {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Greater
+        })
     }
 
     fn array_species_create(

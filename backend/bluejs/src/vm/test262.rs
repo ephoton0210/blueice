@@ -98,6 +98,7 @@ impl Vm {
             1,
             NativeFunction::Test262("detachArrayBuffer"),
         )?;
+        self.install_test262_agent(host, prototype)?;
         self.install_native(
             global,
             prototype,
@@ -115,6 +116,16 @@ impl Vm {
             "print",
             1,
             NativeFunction::Test262("print"),
+        )?;
+        // atomicsHelper.js uses a host timer to poll reports. Installing this
+        // before that helper runs keeps its fallback Date.now()-based shim out
+        // of the Test262 realm and routes callbacks through the scheduler.
+        self.install_native(
+            global,
+            prototype,
+            "setTimeout",
+            2,
+            NativeFunction::Test262("setTimeout"),
         )?;
         let assert = self.heap.get(global, "assert")?.object_id().unwrap();
         for (name, length) in [
@@ -341,6 +352,9 @@ impl Vm {
         name: &str,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
+        if let Some(result) = self.test262_agent_call(name, args) {
+            return result;
+        }
         let first = native::argument(args, 0);
         let second = native::argument(args, 1);
         if name == "createRealm" {
@@ -358,6 +372,24 @@ impl Vm {
         }
         if name == "print" {
             return Ok(Value::Undefined);
+        }
+        if name == "setTimeout" {
+            let callback = first.object_id().ok_or_else(|| {
+                RuntimeError::TypeError("setTimeout callback must be callable".into())
+            })?;
+            if !self.is_callable(first)? {
+                return Err(RuntimeError::TypeError(
+                    "setTimeout callback must be callable".into(),
+                ));
+            }
+            let delay = self.coerce_number(second)?;
+            let delay = if delay.is_finite() && delay > 0.0 {
+                std::time::Duration::from_secs_f64(delay / 1_000.0)
+            } else {
+                std::time::Duration::ZERO
+            };
+            self.schedule_test262_timer(callback, delay)?;
+            return Ok(Value::Number(0.0));
         }
         if name == "buildString" {
             return self.test262_build_string(first);

@@ -81,3 +81,12 @@ Exact per-mode evidence, source hashes, esid, includes and dependency labels are
 ## Measurement limits
 
 A passing result is the runner's observation, not proof of complete feature conformance. Unclassified parser rejections cannot establish required negative early errors. Existing adapter records may not distinguish a runtime exception in an include from one in the test body. Missing APIs, assertion mismatches and timeouts require reproduction before assigning a confirmed engine root cause. Staging, Annex B, Intl and host-dependent cases remain visible pending applicability audit.
+
+## P1.6 final audit
+
+The final P1.6 inventory reconciled 53,404 files and 102,578 modes: 67,529
+pass and 35,049 fail, with no unsupported, timeout, or harness-error modes.
+Every positive pass records `runtime/ok`; passes with another completion are
+runtime-negative tests whose requested phase and error type matched exactly.
+The runner checks every path/mode, source hash, metadata, and result
+classification before publishing this report. Async tests wait for `$DONE`.

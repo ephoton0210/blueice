@@ -90,6 +90,8 @@ fn bigint_bitwise_operators_preserve_precision_and_reject_mixed_numeric_types() 
         "typeof 0n==='bigint'&&String(-2n)==='-2'&&BigInt(2n)===2n&&Object.prototype.toString.call(Object(1n))==='[object BigInt]'",
         "let caught=false;try{1n&1}catch(error){caught=error instanceof TypeError;}caught",
         "let caught=false;try{1n>>>0n}catch(error){caught=error instanceof TypeError;}caught",
+        "1n < 2n && 2n > 1n && 2n >= 2n && !(2n < 1n)",
+        "42n.toString() === '42'",
     ] {
         let code = compile(&parse(source).unwrap()).unwrap();
         assert_eq!(Vm::default().execute(&code), Ok(Value::Bool(true)), "{source}");

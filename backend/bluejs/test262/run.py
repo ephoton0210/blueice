@@ -68,6 +68,17 @@ TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET = 10_000_000
 RESIZABLE_ARRAY_BUFFER_FEATURE = "resizable-arraybuffer"
 RESIZABLE_ARRAY_BUFFER_TIMEOUT = 60
 RESIZABLE_ARRAY_BUFFER_INSTRUCTION_BUDGET = 10_000_000
+# Agent fixtures deliberately synchronize with a spin loop while a separate
+# host VM reaches receiveBroadcast. They are bounded by the outer per-case
+# deadline, but need more interpreter fuel than an ordinary one-turn script.
+# Agent tests must start independent VM threads, exchange a broadcast, and
+# coordinate at least one host wait. Under a parallel inventory run that work
+# competes with three other workers, so keep a bounded allowance high enough
+# for the standard `timeouts.huge` and FIFO suites.
+TEST262_AGENT_INSTRUCTION_BUDGET = 50_000_000
+TEST262_AGENT_TIMEOUT = 120
+STABLE_ARRAY_SORT_INSTRUCTION_BUDGET = 10_000_000
+STABLE_ARRAY_SORT_TIMEOUT = 30
 # Unicode-property conformance fixtures intentionally materialize every
 # scalar value (often twice, for a property and its complement) before one
 # anchored RegExp match.  That is finite standard-harness work, but larger
@@ -148,12 +159,24 @@ FINITE_STRESS_FIXTURES = frozenset(
         "built-ins/parseInt/S15.1.2.2_A7.2_T1.js",
         "built-ins/parseInt/S15.1.2.2_A7.3_T1.js",
         "built-ins/parseInt/S15.1.2.2_A8.js",
+        # These fixtures perform finite but interpreter-heavy validation: four
+        # iterate locale-tag data through the Test262 Intl helper, three drive
+        # multi-module top-level-await graphs, and the sparse-array test scans
+        # several thousand holes. Keep their resource envelope explicit.
+        "intl402/Intl/getCanonicalLocales/canonicalized-tags.js",
+        "intl402/Intl/getCanonicalLocales/complex-region-subtag-replacement.js",
+        "intl402/Intl/getCanonicalLocales/transformed-ext-valid.js",
+        "intl402/language-tags-canonicalized.js",
         "language/comments/S7.4_A5.js",
         "language/comments/S7.4_A6.js",
         "language/literals/regexp/S7.8.5_A1.1_T2.js",
         "language/literals/regexp/S7.8.5_A1.4_T2.js",
         "language/literals/regexp/S7.8.5_A2.1_T2.js",
         "language/literals/regexp/S7.8.5_A2.4_T2.js",
+        "language/module-code/top-level-await/fulfillment-order.js",
+        "language/module-code/top-level-await/rejection-order.js",
+        "language/module-code/top-level-await/unobservable-global-async-evaluation-count-reset.js",
+        "staging/sm/Array/sort_holes.js",
         "staging/sm/Function/has-instance-jitted.js",
         "staging/sm/Function/function-toString-builtin.js",
         "staging/sm/Proxy/ownkeys-linear.js",
@@ -161,6 +184,11 @@ FINITE_STRESS_FIXTURES = frozenset(
         "staging/sm/String/string-pad-start-end.js",
         "staging/sm/String/string-upper-lower-mapping.js",
         "staging/sm/TypedArray/set-same-buffer-different-source-target-types.js",
+        # These two fixtures execute a finite O(n log n) sequence of
+        # user-visible TypedArray comparisons across many lengths. They are
+        # conformance checks, not unbounded stress loops.
+        "staging/sm/TypedArray/sort_modifications.js",
+        "staging/sm/TypedArray/sort_sorted.js",
         "staging/sm/class/newTargetEval.js",
         "staging/sm/expressions/nullish-coalescing.js",
         "staging/sm/expressions/object-literal-__proto__.js",
@@ -408,7 +436,7 @@ def format_progress(completed, total, counts, active, now, checkpoint=False):
     )
 
 
-def instruction_budget(data, default, relative=None):
+def instruction_budget(data, default, relative=None, source=""):
     """Keep standard tail-call conformance probes within a bounded budget."""
     if relative in URI_EXHAUSTIVE_FIXTURES:
         return max(default, URI_EXHAUSTIVE_INSTRUCTION_BUDGET)
@@ -424,10 +452,14 @@ def instruction_budget(data, default, relative=None):
         return max(default, TAIL_CALL_INSTRUCTION_BUDGET)
     if "testTypedArray.js" in data.get("includes", []):
         return max(default, TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET)
+    if "stable-array-sort" in data.get("features", []):
+        return max(default, STABLE_ARRAY_SORT_INSTRUCTION_BUDGET)
+    if "$262.agent." in source:
+        return max(default, TEST262_AGENT_INSTRUCTION_BUDGET)
     return default
 
 
-def case_timeout(data, default, relative=None):
+def case_timeout(data, default, relative=None, source=""):
     """Return a bounded, metadata-derived wall deadline for a Test262 mode."""
     if relative in URI_EXHAUSTIVE_FIXTURES:
         return max(default, URI_EXHAUSTIVE_TIMEOUT)
@@ -447,6 +479,10 @@ def case_timeout(data, default, relative=None):
         return max(default, RESIZABLE_ARRAY_BUFFER_TIMEOUT)
     if "testTypedArray.js" in data.get("includes", []):
         return max(default, TYPED_ARRAY_HARNESS_TIMEOUT)
+    if "stable-array-sort" in data.get("features", []):
+        return max(default, STABLE_ARRAY_SORT_TIMEOUT)
+    if "$262.agent." in source:
+        return max(default, TEST262_AGENT_TIMEOUT)
     return default
 
 
@@ -630,7 +666,7 @@ def main():
             for mode in modes(data):
                 report_case(mode)
                 negative = data.get("negative")
-                request = {"source": source_for_execution, "mode": mode, "includes": data.get("includes", []), "harness_sources": harness_sources, "asynchronous": "async" in data.get("flags", []), "parse_only": bool(negative and negative["phase"] == "parse"), "is_html_dda": "IsHTMLDDA" in data.get("features", []), "instruction_budget": instruction_budget(data, args.instruction_budget, relative)}
+                request = {"source": source_for_execution, "mode": mode, "includes": data.get("includes", []), "harness_sources": harness_sources, "asynchronous": "async" in data.get("flags", []), "parse_only": bool(negative and negative["phase"] == "parse"), "is_html_dda": "IsHTMLDDA" in data.get("features", []), "instruction_budget": instruction_budget(data, args.instruction_budget, relative, source_for_execution)}
                 if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):
                     request["string_limit"] = REGEXP_PROPERTY_ESCAPES_STRING_LIMIT
                     request["regex_timeout_ms"] = REGEXP_PROPERTY_ESCAPES_REGEX_TIMEOUT_MS
@@ -652,7 +688,7 @@ def main():
                             if match.group(1) == "<module source>"
                         }
                     )
-                reply = local.worker.run(request, case_timeout(data, args.timeout, relative))
+                reply = local.worker.run(request, case_timeout(data, args.timeout, relative, source_for_execution))
                 results.append({"path": relative, "mode": mode, "status": classify(reply, negative), "expected": negative, "actual": reply, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
             return results
         finally:

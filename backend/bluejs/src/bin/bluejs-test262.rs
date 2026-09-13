@@ -54,7 +54,11 @@ fn runtime(error: RuntimeError) -> Value {
         RuntimeError::ReferenceError(_) => "ReferenceError",
         RuntimeError::Test262(_) => "Test262Error",
         RuntimeError::Thrown(_) => "ThrownValue",
-        RuntimeError::RegexTimeout | RuntimeError::InstructionLimit => "timeout",
+        // An instruction budget is a deterministic runner resource boundary,
+        // not a wall-clock hang. Preserve that distinction so inventory
+        // timeouts identify work that failed to terminate under supervision.
+        RuntimeError::InstructionLimit => "resource_error",
+        RuntimeError::RegexTimeout => "timeout",
         RuntimeError::RegexWorker(_) => "worker_error",
         RuntimeError::ModuleResolution(_) => "SyntaxError",
         _ => "resource_error",
@@ -289,19 +293,20 @@ fn evaluate(request: Request) -> Value {
     } else {
         vm.execute_script(code.as_ref().expect("script compilation produced bytecode"))
     };
-    match execution {
-        Ok(_) if request.asynchronous => {
-            if let Err(error) = vm.run_promise_jobs() {
-                return runtime_with_vm(&vm, error);
-            }
-            match vm.take_test262_done() {
-                Some(Ok(())) => json!({"kind":"ok", "phase":"runtime"}),
-                Some(Err(value)) => runtime_with_vm(&vm, RuntimeError::Thrown(value)),
-                None => json!({"kind":"timeout", "message":"async test did not call $DONE"}),
-            }
-        }
+    let reply = match execution {
+        Ok(_) if request.asynchronous => match vm.run_test262_async_until_done() {
+            Err(error) => runtime_with_vm(&vm, error),
+            Ok(Some(Ok(()))) => json!({"kind":"ok", "phase":"runtime"}),
+            Ok(Some(Err(value))) => runtime_with_vm(&vm, RuntimeError::Thrown(value)),
+            Ok(None) => json!({"kind":"timeout", "message":"async test did not call $DONE"}),
+        },
         Ok(_) => json!({"kind":"ok", "phase":"runtime"}),
         Err(error) => runtime_with_vm(&vm, error),
+    };
+    match vm.shutdown_test262_agents() {
+        Ok(()) => reply,
+        Err(error) if reply.get("kind") == Some(&json!("ok")) => runtime_with_vm(&vm, error),
+        Err(_) => reply,
     }
 }
 

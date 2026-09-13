@@ -40,6 +40,7 @@ impl Vm {
                 let constructor = self.global(match receiver {
                     Value::Symbol(_) => "Symbol",
                     Value::Bool(_) => "Boolean",
+                    Value::BigInt(_) => "BigInt",
                     _ => "Number",
                 })?;
                 let prototype = self

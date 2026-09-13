@@ -180,6 +180,11 @@ pub(crate) fn compare(left: &Value, right: &Value) -> Result<Option<Ordering>, R
         // ECMAScript ordering is by UTF-16 code units, not UTF-8 bytes
         // or Unicode scalar values (notably astral vs. BMP characters).
         Ok(Some(a.cmp(b)))
+    } else if let (Value::BigInt(a), Value::BigInt(b)) = (left, right) {
+        // Abstract Relational Comparison is numeric for two BigInts. Routing
+        // these through ToNumber incorrectly throws before a BigInt typed
+        // array comparator can return its ordinary Number ordering result.
+        Ok(Some(a.cmp(b)))
     } else {
         Ok(number(left)?.partial_cmp(&number(right)?))
     }

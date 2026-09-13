@@ -33,6 +33,7 @@ mod operations;
 mod properties;
 mod regexp;
 mod test262;
+mod test262_agents;
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -696,6 +697,12 @@ pub struct Vm {
     promise_all: HashMap<ObjectId, PromiseAllState>,
     promise_jobs: VecDeque<PromiseJob>,
     test262_done: Option<Result<(), Value>>,
+    /// Test262-only host scheduler state. Ordinary realms never install or
+    /// expose it; agent VMs receive the same Arc while retaining their own
+    /// heap and realm records.
+    test262_agent_host: Option<std::sync::Arc<test262_agents::Test262AgentHost>>,
+    test262_agent_control: Option<std::sync::Arc<test262_agents::Test262AgentControl>>,
+    test262_async_waits: std::sync::Arc<test262_agents::Test262AsyncWaits>,
     test262_realms: HashMap<ObjectId, Test262Realm>,
     test262_foreign_values: HashMap<ObjectId, Test262ForeignValue>,
     throw_type_error: Option<ObjectId>,
@@ -795,6 +802,9 @@ impl Vm {
             promise_all: HashMap::new(),
             promise_jobs: VecDeque::new(),
             test262_done: None,
+            test262_agent_host: None,
+            test262_agent_control: None,
+            test262_async_waits: std::sync::Arc::new(test262_agents::Test262AsyncWaits::new()),
             test262_realms: HashMap::new(),
             test262_foreign_values: HashMap::new(),
             throw_type_error: None,
@@ -1111,6 +1121,13 @@ impl Vm {
             self.install_native(
                 self.array_prototype,
                 function_prototype,
+                "filter",
+                1,
+                NativeFunction::ArrayFilter,
+            )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
                 "includes",
                 1,
                 NativeFunction::ArrayIncludes,
@@ -1150,6 +1167,13 @@ impl Vm {
                 2,
                 NativeFunction::ArraySplice,
             )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
+                "sort",
+                1,
+                NativeFunction::ArraySort,
+            )?;
             self.install_symbol_native(
                 self.array_prototype,
                 function_prototype,
@@ -1176,8 +1200,10 @@ impl Vm {
                     (self.array_prototype, "concat".into()),
                     (self.array_prototype, "join".into()),
                     (self.array_prototype, "forEach".into()),
+                    (self.array_prototype, "filter".into()),
                     (self.array_prototype, "includes".into()),
                     (self.array_prototype, "reduce".into()),
+                    (self.array_prototype, "sort".into()),
                     (
                         self.array_prototype,
                         JsSymbol::well_known("iterator").into(),

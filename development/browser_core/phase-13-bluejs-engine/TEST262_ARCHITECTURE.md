@@ -1613,3 +1613,18 @@ timeout**. The only timeouts are both modes of
 visible in the checked-in report instead of being classified as supported.
 The refreshed complete triage is
 [TEST262_ANALYSIS_REPORT.md](TEST262_ANALYSIS_REPORT.md).
+
+## P1.6 host scheduler and timeout audit
+
+`$262.agent` now uses independent VMs with FIFO broadcast/report queues and a
+shared, locked backing store. Atomics read-modify-write operations are atomic
+across agents; `wait`, `notify`, and `waitAsync` use FIFO waiters, and async
+completion returns to the owning VM event queue. Test262-only timers keep
+callbacks rooted until execution. The adapter waits for `$DONE`, so a pending
+async assertion cannot be counted as a pass.
+
+The final complete run at `target/test262-p16-final` reconciles **53,404
+files / 102,578 modes: 67,529 pass, 35,049 fail, zero unsupported, zero
+timeout, and zero harness errors**. The four previous TypedArray sort timeout
+modes now pass. Instruction-budget exhaustion is recorded as `resource_error`
+(a failing bounded-resource outcome), distinct from a supervisor timeout.

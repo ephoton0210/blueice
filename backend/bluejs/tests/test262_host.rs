@@ -50,6 +50,264 @@ fn harness_assertions_fail_closed() {
 }
 
 #[test]
+fn test262_agents_share_bytes_wait_and_report_in_notify_order() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let buffer = new SharedArrayBuffer(12);
+        let ints = new Int32Array(buffer);
+        $262.agent.start(`
+            $262.agent.receiveBroadcast(function (shared) {
+                let view = new Int32Array(shared);
+                Atomics.add(view, 0, 1);
+                $262.agent.report(Atomics.wait(view, 1, 0, 10000));
+                $262.agent.leaving();
+            });
+        `);
+        $262.agent.broadcast(buffer);
+        while (Atomics.load(ints, 0) !== 1) {}
+        $262.agent.sleep(10);
+        Atomics.notify(ints, 1, 1) === 1
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap()),
+        Ok(Value::Bool(true))
+    );
+    let report = compile(&parse("$262.agent.sleep(10);$262.agent.getReport()").unwrap()).unwrap();
+    assert_eq!(vm.execute(&report), Ok(Value::String("ok".into())));
+    assert_eq!(vm.shutdown_test262_agents(), Ok(()));
+}
+
+#[test]
+fn test262_agents_broadcast_before_wait_preserves_shared_spin_protocol() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let buffer = new SharedArrayBuffer(12);
+        let ints = new Int32Array(buffer);
+        $262.agent.start(`
+            $262.agent.receiveBroadcast(function (shared) {
+                let view = new Int32Array(shared);
+                Atomics.add(view, 2, 1);
+                while (Atomics.load(view, 1) === 0) {}
+                $262.agent.report(7);
+                Atomics.wait(view, 0, 0);
+                $262.agent.report(8);
+                $262.agent.leaving();
+            });
+        `);
+        $262.agent.broadcast(buffer);
+        while (Atomics.load(ints, 2) !== 1) {}
+        Atomics.store(ints, 1, 1);
+        $262.agent.sleep(10);
+        Atomics.notify(ints, 0, 1) === 1
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap()),
+        Ok(Value::Bool(true))
+    );
+    let report = compile(
+        &parse("$262.agent.sleep(10);$262.agent.getReport()+$262.agent.getReport()").unwrap(),
+    )
+    .unwrap();
+    assert_eq!(vm.execute(&report), Ok(Value::String("78".into())));
+    assert_eq!(vm.shutdown_test262_agents(), Ok(()));
+}
+
+#[test]
+fn test262_agents_receive_each_broadcast_in_host_order() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let first = new SharedArrayBuffer(4);
+        let second = new SharedArrayBuffer(4);
+        Atomics.store(new Int32Array(first), 0, 1);
+        Atomics.store(new Int32Array(second), 0, 2);
+        $262.agent.start(`
+            let values = [];
+            $262.agent.receiveBroadcast(shared => {
+                values.push(Atomics.load(new Int32Array(shared), 0));
+            });
+            $262.agent.receiveBroadcast(shared => {
+                values.push(Atomics.load(new Int32Array(shared), 0));
+            });
+            $262.agent.report(values.join(','));
+            $262.agent.leaving();
+        `);
+        $262.agent.broadcast(first);
+        $262.agent.broadcast(second);
+        let report = null;
+        while ((report = $262.agent.getReport()) === null) {
+            $262.agent.sleep(1);
+        }
+        report
+    "#;
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap()),
+        Ok(Value::String("1,2".into()))
+    );
+    vm.shutdown_test262_agents().unwrap();
+}
+
+#[test]
+fn test262_agents_notify_wakes_fifo_waiters() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let buffer = new SharedArrayBuffer(20);
+        let ints = new Int32Array(buffer);
+        for (let i = 0; i < 3; i++) {
+            $262.agent.start(`
+                $262.agent.receiveBroadcast(function (shared) {
+                    let view = new Int32Array(shared);
+                    Atomics.add(view, 4, 1);
+                    while (Atomics.load(view, 1 + ${i}) === 0) {}
+                    $262.agent.report(${i});
+                    Atomics.wait(view, 0, 0);
+                    $262.agent.report(${i});
+                    $262.agent.leaving();
+                });
+            `);
+        }
+        $262.agent.broadcast(buffer);
+        while (Atomics.load(ints, 4) !== 3) {}
+        for (let i = 0; i < 3; i++) {
+            Atomics.store(ints, 1 + i, 1);
+            $262.agent.sleep(10);
+            $262.agent.getReport();
+        }
+        Atomics.notify(ints, 0, 1) + Atomics.notify(ints, 0, 1) + Atomics.notify(ints, 0, 1)
+    "#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap()),
+        Ok(Value::Number(3.0))
+    );
+    vm.shutdown_test262_agents().unwrap();
+}
+
+#[test]
+fn test262_agents_atomic_read_modify_write_does_not_lose_updates() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        const workers = 8;
+        const rounds = 200;
+        let buffer = new SharedArrayBuffer(8);
+        let view = new Int32Array(buffer);
+        for (let worker = 0; worker < workers; worker++) {
+            $262.agent.start(`
+                $262.agent.receiveBroadcast(shared => {
+                    let agent_view = new Int32Array(shared);
+                    for (let round = 0; round < ${rounds}; round++) {
+                        Atomics.add(agent_view, 0, 1);
+                    }
+                    Atomics.add(agent_view, 1, 1);
+                    $262.agent.leaving();
+                });
+            `);
+        }
+        $262.agent.broadcast(buffer);
+        while (Atomics.load(view, 1) !== workers) {}
+        Atomics.load(view, 0)
+    "#;
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap()),
+        Ok(Value::Number(1_600.0))
+    );
+    vm.shutdown_test262_agents().unwrap();
+}
+
+#[test]
+fn atomics_wait_async_returns_a_promise_and_settles_on_the_vm_thread() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    vm.install_test262_done().unwrap();
+    let source = r#"
+        assert.sameValue(typeof Atomics.waitAsync, 'function');
+        let view = new Int32Array(new SharedArrayBuffer(4));
+        let { async, value } = Atomics.waitAsync(view, 0, 0, 1_000);
+        assert.sameValue(async, true);
+        assert(value instanceof Promise);
+        assert.sameValue(Object.getPrototypeOf(value), Promise.prototype);
+        value.then(status => {
+            assert.sameValue(status, 'ok');
+        }).then(() => $DONE(), $DONE);
+        Atomics.add(view, 0, 1);
+        Atomics.notify(view, 0, 1);
+    "#;
+    vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap();
+    assert_eq!(vm.run_test262_async_until_done(), Ok(Some(Ok(()))));
+}
+
+#[test]
+fn test262_agents_wait_async_registers_two_waiters_before_notify() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let buffer = new SharedArrayBuffer(12);
+        let view = new Int32Array(buffer);
+        for (let label of ['A', 'B']) {
+            $262.agent.start(`
+                $262.agent.receiveBroadcast(async function (shared) {
+                    let agent_view = new Int32Array(shared);
+                    Atomics.add(agent_view, 1, 1);
+                    let wait = Atomics.waitAsync(agent_view, undefined, 0);
+                    Atomics.add(agent_view, 2, 1);
+                    $262.agent.report("${label} " + await wait.value);
+                    $262.agent.leaving();
+                });
+            `);
+        }
+        $262.agent.broadcast(buffer);
+        while (Atomics.load(view, 2) !== 2) {}
+        Atomics.notify(view, 0, 2)
+    "#;
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap()),
+        Ok(Value::Number(2.0))
+    );
+    let reports = compile(
+        &parse("$262.agent.sleep(10); [$262.agent.getReport(), $262.agent.getReport()].sort().join(',')")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        vm.execute_script(&reports),
+        Ok(Value::String("A ok,B ok".into()))
+    );
+    vm.shutdown_test262_agents().unwrap();
+}
+
+#[test]
+fn test262_agent_reports_immediate_bigint_wait_async_result() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let buffer = new SharedArrayBuffer(32);
+        let view = new BigInt64Array(buffer);
+        $262.agent.start(`
+            $262.agent.receiveBroadcast(function (shared) {
+                let agent_view = new BigInt64Array(shared);
+                Atomics.add(agent_view, 1, 1n);
+                $262.agent.report(Atomics.store(agent_view, 0, 42n));
+                $262.agent.report(Atomics.waitAsync(agent_view, 0, 0n).value);
+                $262.agent.leaving();
+            });
+        `);
+        $262.agent.broadcast(buffer);
+        while (Atomics.load(view, 1) !== 1n) {}
+        $262.agent.sleep(10);
+        [$262.agent.getReport(), $262.agent.getReport()].join(',')
+    "#;
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap()),
+        Ok(Value::String("42,not-equal".into()))
+    );
+    vm.shutdown_test262_agents().unwrap();
+}
+
+#[test]
 fn generated_regexp_class_escape_helper_preserves_regexp_verdicts() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();

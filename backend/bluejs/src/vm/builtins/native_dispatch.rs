@@ -348,6 +348,9 @@ impl Vm {
             NativeFunction::ArrayForEach => {
                 self.array_for_each(&receiver, first, native::argument(&args, 1))
             }
+            NativeFunction::ArrayFilter => {
+                self.array_filter(&receiver, first, native::argument(&args, 1))
+            }
             NativeFunction::ArrayIncludes => {
                 self.array_includes(&receiver, first, native::argument(&args, 1))
             }
@@ -370,6 +373,7 @@ impl Vm {
             }
             NativeFunction::ArraySlice => self.array_slice(&receiver, &args),
             NativeFunction::ArraySplice => self.array_splice(&receiver, &args),
+            NativeFunction::ArraySort => self.array_sort(&receiver, first),
             NativeFunction::Eval => self.indirect_eval(first),
             NativeFunction::IsNaN => Ok(Value::Bool(self.coerce_number(first)?.is_nan())),
             NativeFunction::IsFinite => Ok(Value::Bool(self.coerce_number(first)?.is_finite())),
