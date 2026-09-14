@@ -522,20 +522,29 @@ impl<'a> ModuleChecker<'a> {
                 }
                 continue;
             };
-            if !overload_is_compatible_with_implementation(
+            match overload_is_compatible_with_implementation(
                 overload,
                 implementation,
                 &self.types,
                 self.max_type_expansions,
             ) {
-                self.type_error(
+                Ok(true) => {}
+                Ok(false) => self.type_error(
                     &overload.span,
                     format!(
                         "overload signature for {} is incompatible with its implementation",
                         overload.name
                     ),
                     DiagnosticCode::TypeMismatch,
-                );
+                ),
+                Err(()) => self.type_error(
+                    &overload.span,
+                    format!(
+                        "overload compatibility exceeds the {} generic-expansion limit",
+                        self.max_type_expansions
+                    ),
+                    DiagnosticCode::ResourceLimit,
+                ),
             }
         }
     }
@@ -1072,7 +1081,7 @@ impl<'a> ModuleChecker<'a> {
             .iter()
             .map(|argument| self.infer_expression(argument, scope))
             .collect::<Vec<_>>();
-        let Some(signature) =
+        let Ok(Some(signature)) =
             self.select_function_signature(signatures, &actuals, explicit_type_arguments)
         else {
             return Type::Unknown;
@@ -1112,9 +1121,20 @@ impl<'a> ModuleChecker<'a> {
                 .expect("parsed generic call has recorded type arguments")
                 .as_slice()
         });
-        let selected = self
-            .select_function_signature(&signatures, &actuals, explicit)
-            .cloned();
+        let selected = match self.select_function_signature(&signatures, &actuals, explicit) {
+            Ok(selected) => selected.cloned(),
+            Err(()) => {
+                self.type_error(
+                    span,
+                    format!(
+                        "overload selection exceeds the {} generic-expansion limit",
+                        self.max_type_expansions
+                    ),
+                    DiagnosticCode::ResourceLimit,
+                );
+                return;
+            }
+        };
         if signatures.len() > 1 && selected.is_none() {
             self.type_error(
                 span,
@@ -1188,16 +1208,19 @@ impl<'a> ModuleChecker<'a> {
         signatures: &'b [FunctionSignature],
         actuals: &[Type],
         explicit_type_arguments: Option<&[Type]>,
-    ) -> Option<&'b FunctionSignature> {
-        signatures.iter().find(|signature| {
-            function_signature_matches(
+    ) -> Result<Option<&'b FunctionSignature>, ()> {
+        for signature in signatures {
+            if function_signature_matches(
                 signature,
                 actuals,
                 explicit_type_arguments,
                 &self.types,
                 self.max_type_expansions,
-            )
-        })
+            )? {
+                return Ok(Some(signature));
+            }
+        }
+        Ok(None)
     }
 
     fn is_assignable_bounded(&mut self, actual: &Type, expected: &Type, span: &SourceSpan) -> bool {
@@ -1403,19 +1426,19 @@ fn function_signature_matches(
     explicit_type_arguments: Option<&[Type]>,
     aliases: &BTreeMap<String, TypeDefinition>,
     max_type_expansions: usize,
-) -> bool {
+) -> Result<bool, ()> {
     let required = signature
         .parameters
         .iter()
         .filter(|parameter| !parameter.optional)
         .count();
     if actuals.len() < required || actuals.len() > signature.parameters.len() {
-        return false;
+        return Ok(false);
     }
     let Some(substitutions) =
         function_call_substitutions(signature, actuals, explicit_type_arguments)
     else {
-        return false;
+        return Ok(false);
     };
     let mut budget = TypeExpansionBudget::new(max_type_expansions);
     for parameter in &signature.type_parameters {
@@ -1426,21 +1449,23 @@ fn function_signature_matches(
             .get(&parameter.name)
             .expect("function substitutions contain every type parameter");
         let expected = substitute_type(constraint, &substitutions);
-        if !is_assignable(actual, &expected, aliases, &mut HashSet::new(), &mut budget)
-            && !budget.exhausted
-        {
-            return false;
+        if !is_assignable(actual, &expected, aliases, &mut HashSet::new(), &mut budget) {
+            return if budget.exhausted { Err(()) } else { Ok(false) };
+        }
+        if budget.exhausted {
+            return Err(());
         }
     }
     for (parameter, actual) in signature.parameters.iter().zip(actuals) {
         let expected = parameter_expected_type(parameter, &substitutions);
-        if !is_assignable(actual, &expected, aliases, &mut HashSet::new(), &mut budget)
-            && !budget.exhausted
-        {
-            return false;
+        if !is_assignable(actual, &expected, aliases, &mut HashSet::new(), &mut budget) {
+            return if budget.exhausted { Err(()) } else { Ok(false) };
+        }
+        if budget.exhausted {
+            return Err(());
         }
     }
-    true
+    Ok(true)
 }
 
 fn overload_is_compatible_with_implementation(
@@ -1448,7 +1473,7 @@ fn overload_is_compatible_with_implementation(
     implementation: &FunctionDeclaration,
     aliases: &BTreeMap<String, TypeDefinition>,
     max_type_expansions: usize,
-) -> bool {
+) -> Result<bool, ()> {
     let overload_required = overload
         .parameters
         .iter()
@@ -1462,7 +1487,7 @@ fn overload_is_compatible_with_implementation(
     if overload_required < implementation_required
         || overload.parameters.len() > implementation.parameters.len()
     {
-        return false;
+        return Ok(false);
     }
     let overload_substitutions = type_parameter_constraint_substitutions(&overload.type_parameters);
     let implementation_substitutions =
@@ -1480,9 +1505,11 @@ fn overload_is_compatible_with_implementation(
             aliases,
             &mut HashSet::new(),
             &mut budget,
-        ) && !budget.exhausted
-        {
-            return false;
+        ) {
+            return if budget.exhausted { Err(()) } else { Ok(false) };
+        }
+        if budget.exhausted {
+            return Err(());
         }
     }
     let actual = overload
@@ -1495,13 +1522,18 @@ fn overload_is_compatible_with_implementation(
         .as_ref()
         .map(|value| substitute_type(value, &implementation_substitutions))
         .unwrap_or(Type::Unknown);
-    is_assignable(
+    let compatible = is_assignable(
         &actual,
         &expected,
         aliases,
         &mut HashSet::new(),
         &mut budget,
-    ) || budget.exhausted
+    );
+    if budget.exhausted {
+        Err(())
+    } else {
+        Ok(compatible)
+    }
 }
 
 fn parameter_expected_type(parameter: &Parameter, substitutions: &BTreeMap<String, Type>) -> Type {
@@ -2634,6 +2666,36 @@ mod tests {
             source.push_str(&format!("type Alias{index} = Alias{};\n", index - 1));
         }
         source.push_str("const value: Alias8 = { value: 'wrong' };");
+        let result = crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
+            CompilerOptions {
+                limits: crate::CompilerLimits {
+                    max_type_expansions: 2,
+                    ..crate::CompilerLimits::default()
+                },
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(result.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::ResourceLimit
+                && diagnostic.message.contains("generic-expansion limit")
+        }));
+        assert!(result.output.is_none());
+    }
+
+    #[test]
+    fn fails_closed_when_overload_selection_exhausts_generic_expansion_budget() {
+        let mut source = String::from("type Alias0 = { value: number };\n");
+        for index in 1..=6 {
+            source.push_str(&format!("type Alias{index} = Alias{};\n", index - 1));
+        }
+        source.push_str(
+            "function choose(value: Alias6): Alias6;\n\
+             function choose(value: string): string;\n\
+             function choose(value: Alias6 | string): Alias6 | string { return value; }\n\
+             const selected = choose({ value: 1 });",
+        );
         let result = crate::compile(
             "memory:///main.ts",
             &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),

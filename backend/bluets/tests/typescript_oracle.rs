@@ -7,7 +7,7 @@
 //! The fixtures are deliberately narrow: each one is already part of BlueTS's
 //! documented language matrix. The oracle never makes a new syntax supported.
 
-use blueice_bluets::{compile, CompilerOptions, DiagnosticCode, MapLoader, ModuleSource};
+use blueice_bluets::{compile, CompilerOptions, DiagnosticCode, MapLoader, ModuleSource, Severity};
 use serde_json::Value;
 use std::env;
 use std::fs;
@@ -23,6 +23,12 @@ struct OracleCase {
     name: &'static str,
     modules: &'static [(&'static str, &'static str)],
     expected_stdout: Option<&'static str>,
+    expected_diagnostics: &'static [ExpectedDiagnostic],
+}
+
+struct ExpectedDiagnostic {
+    code: DiagnosticCode,
+    line: usize,
 }
 
 const CASES: &[OracleCase] = &[
@@ -33,6 +39,7 @@ const CASES: &[OracleCase] = &[
             include_str!("fixtures/typescript_oracle/generic-property/main.ts"),
         )],
         expected_stdout: Some("Ada\n"),
+        expected_diagnostics: &[],
     },
     OracleCase {
         name: "optional-default",
@@ -41,6 +48,7 @@ const CASES: &[OracleCase] = &[
             include_str!("fixtures/typescript_oracle/optional-default/main.ts"),
         )],
         expected_stdout: Some("2\n"),
+        expected_diagnostics: &[],
     },
     OracleCase {
         name: "optional-record",
@@ -49,6 +57,7 @@ const CASES: &[OracleCase] = &[
             include_str!("fixtures/typescript_oracle/optional-record/main.ts"),
         )],
         expected_stdout: Some("missing\n"),
+        expected_diagnostics: &[],
     },
     OracleCase {
         name: "generic-declaration-module",
@@ -65,6 +74,7 @@ const CASES: &[OracleCase] = &[
             ),
         ],
         expected_stdout: Some("Ada\n"),
+        expected_diagnostics: &[],
     },
     OracleCase {
         name: "generic-constraint-default-declaration-module",
@@ -83,6 +93,7 @@ const CASES: &[OracleCase] = &[
             ),
         ],
         expected_stdout: Some("Ada\n"),
+        expected_diagnostics: &[],
     },
     OracleCase {
         name: "explicit-generic-call",
@@ -91,6 +102,7 @@ const CASES: &[OracleCase] = &[
             include_str!("fixtures/typescript_oracle/explicit-generic-call/main.ts"),
         )],
         expected_stdout: Some("Ada\n"),
+        expected_diagnostics: &[],
     },
     OracleCase {
         name: "generic-interface-heritage",
@@ -99,6 +111,7 @@ const CASES: &[OracleCase] = &[
             include_str!("fixtures/typescript_oracle/generic-interface-heritage/main.ts"),
         )],
         expected_stdout: Some("Ada:user:account\n"),
+        expected_diagnostics: &[],
     },
     OracleCase {
         name: "generic-interface-heritage-declaration-module",
@@ -117,6 +130,7 @@ const CASES: &[OracleCase] = &[
             ),
         ],
         expected_stdout: Some("Ada:user:account\n"),
+        expected_diagnostics: &[],
     },
     OracleCase {
         name: "function-overload",
@@ -125,6 +139,7 @@ const CASES: &[OracleCase] = &[
             include_str!("fixtures/typescript_oracle/function-overload/main.ts"),
         )],
         expected_stdout: Some("Ada:2\n"),
+        expected_diagnostics: &[],
     },
     OracleCase {
         name: "generic-function-overload",
@@ -133,6 +148,7 @@ const CASES: &[OracleCase] = &[
             include_str!("fixtures/typescript_oracle/generic-function-overload/main.ts"),
         )],
         expected_stdout: Some("Ada\n"),
+        expected_diagnostics: &[],
     },
     OracleCase {
         name: "assignment-error",
@@ -141,6 +157,10 @@ const CASES: &[OracleCase] = &[
             include_str!("fixtures/typescript_oracle/assignment-error/main.ts"),
         )],
         expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 5,
+        }],
     },
     OracleCase {
         name: "call-argument-error",
@@ -149,6 +169,10 @@ const CASES: &[OracleCase] = &[
             include_str!("fixtures/typescript_oracle/call-argument-error/main.ts"),
         )],
         expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 6,
+        }],
     },
     OracleCase {
         name: "optional-record-error",
@@ -157,6 +181,10 @@ const CASES: &[OracleCase] = &[
             include_str!("fixtures/typescript_oracle/optional-record-error/main.ts"),
         )],
         expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 8,
+        }],
     },
     OracleCase {
         name: "generic-constraint-error",
@@ -165,6 +193,10 @@ const CASES: &[OracleCase] = &[
             include_str!("fixtures/typescript_oracle/generic-constraint-error/main.ts"),
         )],
         expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 6,
+        }],
     },
     OracleCase {
         name: "explicit-generic-constraint-error",
@@ -173,6 +205,10 @@ const CASES: &[OracleCase] = &[
             include_str!("fixtures/typescript_oracle/explicit-generic-constraint-error/main.ts"),
         )],
         expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 6,
+        }],
     },
     OracleCase {
         name: "generic-interface-heritage-error",
@@ -181,6 +217,10 @@ const CASES: &[OracleCase] = &[
             include_str!("fixtures/typescript_oracle/generic-interface-heritage-error/main.ts"),
         )],
         expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 8,
+        }],
     },
     OracleCase {
         name: "interface-heritage-override-error",
@@ -189,6 +229,10 @@ const CASES: &[OracleCase] = &[
             include_str!("fixtures/typescript_oracle/interface-heritage-override-error/main.ts"),
         )],
         expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 6,
+        }],
     },
     OracleCase {
         name: "function-overload-error",
@@ -197,6 +241,16 @@ const CASES: &[OracleCase] = &[
             include_str!("fixtures/typescript_oracle/function-overload-error/main.ts"),
         )],
         expected_stdout: None,
+        expected_diagnostics: &[
+            ExpectedDiagnostic {
+                code: DiagnosticCode::TypeMismatch,
+                line: 8,
+            },
+            ExpectedDiagnostic {
+                code: DiagnosticCode::TypeMismatch,
+                line: 10,
+            },
+        ],
     },
 ];
 
@@ -241,6 +295,11 @@ fn run_case(case: &OracleCase, tsc: &Path, node: &std::ffi::OsStr) {
 
     match case.expected_stdout {
         Some(expected_stdout) => {
+            assert!(
+                case.expected_diagnostics.is_empty(),
+                "accepted fixture {} must not define expected diagnostics",
+                case.name
+            );
             assert!(
                 !compilation.has_errors(),
                 "BlueTS rejected accepted fixture {}: {:#?}",
@@ -288,17 +347,82 @@ fn run_case(case: &OracleCase, tsc: &Path, node: &std::ffi::OsStr) {
                 "BlueTS accepted rejected fixture {}",
                 case.name
             );
-            assert!(compilation
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch));
+            assert_expected_diagnostics(case, &compilation.diagnostics);
             assert!(
                 !tsc_output.status.success(),
                 "the pinned TypeScript compiler accepted rejected fixture {}",
                 case.name
             );
+            assert_eq!(
+                typescript_diagnostic_lines(&tsc_output),
+                case.expected_diagnostics
+                    .iter()
+                    .map(|diagnostic| diagnostic.line)
+                    .collect::<Vec<_>>(),
+                "{} TypeScript diagnostic count or source lines",
+                case.name
+            );
         }
     }
+}
+
+fn assert_expected_diagnostics(case: &OracleCase, diagnostics: &[blueice_bluets::Diagnostic]) {
+    let errors = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity == Severity::Error)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        errors.len(),
+        case.expected_diagnostics.len(),
+        "{} BlueTS diagnostic count: {diagnostics:#?}",
+        case.name
+    );
+    for (diagnostic, expected) in errors.iter().zip(case.expected_diagnostics) {
+        assert_eq!(
+            diagnostic.code, expected.code,
+            "{} BlueTS diagnostic code at {}:{}",
+            case.name, diagnostic.span.module, diagnostic.span.start
+        );
+        let source = case
+            .modules
+            .iter()
+            .find_map(|(module, source)| (*module == diagnostic.span.module).then_some(*source))
+            .unwrap_or_else(|| {
+                panic!(
+                    "{} BlueTS reported an unexpected module {}",
+                    case.name, diagnostic.span.module
+                )
+            });
+        assert_eq!(
+            source_line(source, diagnostic.span.start),
+            expected.line,
+            "{} BlueTS diagnostic location",
+            case.name
+        );
+    }
+}
+
+fn source_line(source: &str, byte_offset: usize) -> usize {
+    source[..byte_offset]
+        .bytes()
+        .filter(|byte| *byte == b'\n')
+        .count()
+        + 1
+}
+
+fn typescript_diagnostic_lines(output: &Output) -> Vec<usize> {
+    let text = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    text.lines()
+        .filter_map(|line| {
+            let (_, location) = line.rsplit_once('(')?;
+            let (location, _) = location.split_once("): error TS")?;
+            location.split_once(',')?.0.parse().ok()
+        })
+        .collect()
 }
 
 fn disk_path(module_id: &str) -> &str {
@@ -342,6 +466,7 @@ fn run_tsc(tsc: &Path, input: &Path, output: &Path, no_emit: bool) -> Output {
         "ES2022",
         "--module",
         "none",
+        "--strict",
         "--pretty",
         "false",
         "--sourceMap",

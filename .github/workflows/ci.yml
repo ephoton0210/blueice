@@ -6,12 +6,6 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      run_typescript_oracle:
-        description: Run the pinned TypeScript 5.9.3 BlueTS oracle matrix
-        required: false
-        default: false
-        type: boolean
 
 jobs:
   build-test:
@@ -88,8 +82,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   typescript-oracle:
-    name: BlueTS TypeScript oracle (opt-in)
-    if: github.event_name == 'workflow_dispatch' && inputs.run_typescript_oracle
+    name: BlueTS TypeScript oracle
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

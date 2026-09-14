@@ -29,9 +29,9 @@
 //! locales other than English, clearly labeled non-authoritative,
 //! never in place of the original.
 
-/// The well-known URL [`Page::navigate`](crate::Page::navigate)
-/// recognizes as a request for the built-in credits page instead of a
-/// network fetch. An optional `?lang=<locale>` query parameter selects
+/// The well-known URL the core session recognizes as a request for the
+/// built-in credits page instead of a network fetch. An optional
+/// `?lang=<locale>` query parameter selects
 /// a locale from `blueice_i18n::SUPPORTED_LOCALES` (see
 /// [`locale_from_url`]); `blueice-frontend` sends this in response to
 /// its `credits` stdin command. It doesn't share this constant

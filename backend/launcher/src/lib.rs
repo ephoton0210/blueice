@@ -289,6 +289,12 @@ fn spawn_generation_tagged_broadcast(
 /// [`broadcast_core_to_clients`] was already fanning v1's traffic out
 /// to, so no already-registered client ever needs to reconnect.
 struct Broker {
+    /// A cutover spans tab capture, v2 startup/replay, health checking and
+    /// the swap. Control connections are served on independent threads, so
+    /// this lock makes that whole transaction serial: a second request sees
+    /// the newly active generation rather than racing for the same v2 frame
+    /// directory or generation number.
+    cutover_lock: Mutex<()>,
     /// The one connection external clients' messages are currently
     /// forwarded into. Its *contents* (not the `Arc` itself) are
     /// swapped during a cutover, so [`forward_client_to_core`] threads
@@ -627,6 +633,10 @@ fn perform_swap(broker: &Arc<Broker>, v2: SpawnedCore, target_generation: u64) {
 /// "Wiring design" for why no retry policy exists yet. v1 is never
 /// touched until every step through the health check has succeeded.
 fn cutover(broker: &Arc<Broker>) -> control::ControlReply {
+    let _cutover = broker
+        .cutover_lock
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let captured_tabs =
         match capture_v1_tabs(&broker.core_writer, &broker.clients, TAB_CAPTURE_TIMEOUT) {
             Ok(tabs) => tabs,
@@ -709,6 +719,7 @@ pub fn run_broker(
     let (done_tx, done_rx) = mpsc::channel();
 
     let broker = Arc::new(Broker {
+        cutover_lock: Mutex::new(()),
         core_writer: Arc::clone(&core_writer),
         clients: Arc::clone(&clients),
         generation: Arc::clone(&generation),

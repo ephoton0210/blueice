@@ -9,11 +9,8 @@ fn main() {
         .nth(2)
         .unwrap_or_else(|| blueice_i18n::DEFAULT_LOCALE.to_string());
     let mut page = blueice_engine::Page::new(700.0, 1400.0);
-    page.navigate(&format!(
-        "{}?lang={locale}",
-        blueice_engine::credits::CREDITS_URL
-    ))
-    .expect("built-in page must not hit the network");
+    let url = format!("{}?lang={locale}", blueice_engine::credits::CREDITS_URL);
+    page.load_html_str(&blueice_engine::credits::credits_html(&locale), Some(url));
     let pixmap = page.render_visible();
     let path = std::env::args()
         .nth(1)

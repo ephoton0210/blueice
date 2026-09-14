@@ -397,7 +397,7 @@ struct Completion {
 /// Starts a gated navigation to `url` for `tab_id`. Built-in `about:`
 /// pages ([`crate::page::built_in_page`]) are handled entirely
 /// synchronously here -- loaded directly and replied to before this
-/// returns, exactly like `Page::navigate` always did, and *never* going
+/// returns, and *never* going
 /// through the gatekeeper at all (per `phase-7-local-ai/PLAN.md`, these
 /// are BlueIce's own trusted pages, never fetched). A syntactically
 /// invalid scheme is also rejected synchronously, with no thread

@@ -112,20 +112,20 @@ dependency before introducing any page-runtime coupling:
   `ValidationLimits` for depth, collection entries, visited-node fuel and
   string bytes. These checks remain pure data validation; host-boundary
   discovery and enforcement are still deliberately separate work.
-- `backend/bluets/tests/typescript_oracle.rs` is an opt-in compatibility job.
-  It requires `BLUEICE_TSC` to name a TypeScript 5.9.3 compiler, verifies that
-  pin before executing, and runs a fixture matrix covering generic properties,
-  constraints/defaults, explicit direct-call type arguments and generic
+- `backend/bluets/tests/typescript_oracle.rs` is a compatibility job run on
+  every push and pull request. It requires `BLUEICE_TSC` to name a TypeScript
+  5.9.3 compiler in strict mode, verifies that pin before executing, and runs
+  a fixture matrix covering generic properties, constraints/defaults,
+  explicit direct-call type arguments and generic
   interface heritage (including local `.d.ts` parents and rejected conflicting
   inherited fields), optional record fields and default/explicit-`undefined`
   parameters, local constrained generic
   function overloads, rejected assignment/call arguments,
-  Source Map v3 shape and
-  accepted Node output.
-  The `typescript-oracle` CI job runs only from `workflow_dispatch` when its
-  `run_typescript_oracle` input is selected. Node and `tsc` are test tools
-  only; neither is linked, spawned, or discovered by the BlueTS compiler or
-  CLI.
+  Source Map v3 shape and accepted Node output. Rejected fixtures assert the
+  exact BlueTS diagnostic count, stable code and source line, then require the
+  pinned compiler to report the same count and source lines. Node and `tsc`
+  are test tools only; neither is linked, spawned, or discovered by the BlueTS
+  compiler or CLI.
 - `CompilerLimits` makes source bytes/tokens/type nesting, module count/edge
   count/import depth, aggregate source bytes, generic-expansion work and
   source-map segments explicit compiler policy. Every limit participates in
@@ -320,9 +320,9 @@ Acceptance: malformed JSON cannot enter a `User`-typed value; the validation err
 
 ### Slice 4 — incremental projects and compatibility growth
 
-1. Implement dependency-aware incremental checker/cache invalidation and trusted local declaration files. Both, plus the opt-in external-oracle coverage and bounded erasable generic substitution, are complete in the standalone front end.
+1. Implement dependency-aware incremental checker/cache invalidation and trusted local declaration files. Both, plus external-oracle coverage and bounded erasable generic substitution, are complete in the standalone front end.
 2. Expand the supported TypeScript feature matrix only alongside its BlueJS lowering/runtime, source mapping, contract and oracle evidence.
-3. Add opt-in comparison against a pinned TypeScript compiler for accepted syntax/diagnostics and Node/BlueJS behavioral differential tests for the lowered output.
+3. Compare the supported fixture matrix against a pinned TypeScript compiler for accepted syntax/diagnostics and add Node/BlueJS behavioral differential tests for the lowered output.
 4. Expose carefully redacted project/type metadata to Phase 17 DevTools and the documented, capability-scoped Phase 12 MCP debug interface.
 
 Acceptance: editing one module invalidates only its dependents; a cache entry checked under another policy is refused; every supported compatibility feature has parser/checker/lowering/debug/contract expectations and an independently checked fixture.
@@ -331,7 +331,7 @@ Acceptance: editing one module invalidates only its dependents; a cache entry ch
 
 - Keep public parser, binding, checker, lowering, contract and debugger fixtures under the eventual `backend/bluets/tests/` boundary, with shared HTML page fixtures beside the Phase 13/17 integration tests.
 - Test diagnostics by stable code/category, source span and semantic condition—not copied compiler-message wording. Every unsupported feature must have an explicit rejection fixture.
-- Compare accepted syntax and checker behavior against the pinned TypeScript 5.9.3 reference in the opt-in `typescript_oracle` test job (`BLUEICE_TSC=/absolute/path/to/tsc cargo test -p blueice-bluets --test typescript_oracle -- --ignored`); compare resulting runtime behavior against the reference JavaScript output where the selected BlueJS feature subset supports it. The reference never determines BlueTS's security policy or makes an unsupported test silently pass.
+- Compare accepted syntax and checker behavior against the pinned TypeScript 5.9.3 reference in the CI `typescript_oracle` test job (`BLUEICE_TSC=/absolute/path/to/tsc cargo test -p blueice-bluets --test typescript_oracle -- --ignored`); compare resulting runtime behavior against the reference JavaScript output where the selected BlueJS feature subset supports it. The reference never determines BlueTS's security policy or makes an unsupported test silently pass.
 - Run BlueTSC's emitted JavaScript and direct BlueTS bytecode against the same deterministic fixtures; compare public results, exceptions, module order, source-map locations, contract failures and type-only import elision. Assert an erroneous multi-entry build publishes no partial artifact set.
 - Test contracts with malformed, adversarial, recursive, cyclic, getter/proxy-like, deep, oversized and resource-exhausting inputs. Assert no arbitrary user code runs during a pure validation path.
 - Test debugger round trips: source breakpoints, async/exception locations, renamed symbols, type displays, erased type-only imports, transformed spans, stale source-map rejection and privacy redaction.

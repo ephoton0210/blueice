@@ -32,6 +32,7 @@ use blueice_launcher::control::{
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -452,6 +453,37 @@ fn a_client_survives_a_cutover_and_sees_v2s_replayed_state() {
         ]
     );
 
+    write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+    launcher.wait_or_kill(Duration::from_secs(5));
+}
+
+#[test]
+fn simultaneous_cutovers_serialize_without_reusing_a_generation() {
+    let mut launcher = Launcher::spawn();
+    let barrier = Arc::new(Barrier::new(3));
+    let requests = (0..2)
+        .map(|_| {
+            let socket = launcher.control_socket.clone();
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                let mut control = UnixStream::connect(socket).unwrap();
+                write_control_request(&mut control, &ControlRequest::Cutover).unwrap();
+                read_control_reply(&mut control).unwrap()
+            })
+        })
+        .collect::<Vec<_>>();
+    barrier.wait();
+    for request in requests {
+        assert!(
+            matches!(request.join().unwrap(), ControlReply::CutoverDone { .. }),
+            "each serialized cutover must start from the generation committed by its predecessor"
+        );
+    }
+
+    // The broker's client-facing socket remains usable after both serialized
+    // swaps; use the ordinary shutdown path so the subprocess exits cleanly.
+    let mut client = launcher.connect();
     write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
     launcher.wait_or_kill(Duration::from_secs(5));
 }

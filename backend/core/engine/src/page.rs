@@ -96,10 +96,14 @@ impl Page {
         self.scroll_y = self.scroll_y.min(max_scroll);
     }
 
-    /// Fetches `url` over the network and loads it as the current
-    /// page -- except for the handful of built-in `about:` pages
-    /// ([`built_in_page`]), which never hit the network at all.
-    pub fn navigate(&mut self, url: &str) -> Result<(), blueice_net::FetchError> {
+    /// Test-only direct navigation for exercising the fetch-to-document path.
+    ///
+    /// Production navigation goes through `session`, which obtains
+    /// gatekeeper clearance before fetching a non-built-in URL. Keeping this
+    /// helper out of non-test builds means external `Page` users cannot bypass
+    /// that boundary by calling a convenient network method directly.
+    #[cfg(test)]
+    fn navigate(&mut self, url: &str) -> Result<(), blueice_net::FetchError> {
         if let Some(html) = built_in_page(url) {
             self.load_html(&html);
             self.url = Some(url.to_string());
@@ -118,8 +122,8 @@ impl Page {
         self.url = url;
     }
 
-    /// The gated counterpart to [`Page::navigate`]'s network-fetching
-    /// half, per `phase-7-local-ai/PLAN.md`'s "Wiring design": `session.
+    /// The gated navigation completion path, per `phase-7-local-ai/PLAN.md`'s
+    /// "Wiring design": `session.
     /// rs`'s background thread does the actual gatekeeper round trips
     /// and the fetch itself (never touching `Page` state, since it
     /// doesn't run on the main thread); once that's all cleared, this
