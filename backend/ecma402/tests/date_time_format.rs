@@ -155,7 +155,7 @@ fn uses_the_requested_field_skeleton_without_filling_in_extra_fields() {
 }
 
 #[test]
-fn collapses_ranges_in_field_order_and_repeats_cjk_endpoints() {
+fn cldr_range_patterns_own_their_source_spans() {
     let english = DateTimeFormat::try_new(
         &[canonicalize("en-US").unwrap()],
         DateTimeFormatOptions {
@@ -163,7 +163,6 @@ fn collapses_ranges_in_field_order_and_repeats_cjk_endpoints() {
             month: Some(DateTimeWidth::Long),
             day: Some(DateTimeWidth::Numeric),
             time_zone: Some("UTC".into()),
-            use_experimental_icu4x_range_formatter: true,
             ..Default::default()
         },
     )
@@ -173,22 +172,24 @@ fn collapses_ranges_in_field_order_and_repeats_cjk_endpoints() {
         "January 1\u{2009}–\u{2009}2, 1970"
     );
     let english_parts = english.format_range_to_parts(0.0, 86_400_000.0).unwrap();
-    assert!(english_parts
-        .iter()
-        .any(|part| part.source == DateTimeRangePartSource::Shared && part.kind == "year"));
-    assert!(english_parts
-        .iter()
-        .any(|part| part.source == DateTimeRangePartSource::StartRange && part.kind == "day"));
-    assert!(english_parts
-        .iter()
-        .any(|part| part.source == DateTimeRangePartSource::EndRange && part.kind == "day"));
-    let month = english_parts
-        .iter()
-        .position(|part| part.kind == "month")
-        .unwrap();
     assert_eq!(
-        english_parts[month + 1].source,
-        DateTimeRangePartSource::Shared
+        english_parts
+            .iter()
+            .map(|part| (&part.kind[..], &part.value[..], part.source))
+            .collect::<Vec<_>>(),
+        vec![
+            ("month", "January", DateTimeRangePartSource::StartRange),
+            ("literal", " ", DateTimeRangePartSource::StartRange),
+            ("day", "1", DateTimeRangePartSource::StartRange),
+            (
+                "literal",
+                "\u{2009}–\u{2009}",
+                DateTimeRangePartSource::StartRange,
+            ),
+            ("day", "2", DateTimeRangePartSource::EndRange),
+            ("literal", ", ", DateTimeRangePartSource::EndRange),
+            ("year", "1970", DateTimeRangePartSource::EndRange),
+        ]
     );
 
     let cross_year = english
@@ -214,7 +215,6 @@ fn collapses_ranges_in_field_order_and_repeats_cjk_endpoints() {
             month: Some(DateTimeWidth::Numeric),
             day: Some(DateTimeWidth::Numeric),
             time_zone: Some("UTC".into()),
-            use_experimental_icu4x_range_formatter: true,
             ..Default::default()
         },
     )
@@ -236,7 +236,6 @@ fn collapses_ranges_in_field_order_and_repeats_cjk_endpoints() {
             year: Some(DateTimeWidth::Numeric),
             day: Some(DateTimeWidth::TwoDigit),
             time_zone: Some("UTC".into()),
-            use_experimental_icu4x_range_formatter: true,
             ..Default::default()
         },
     )
@@ -367,7 +366,7 @@ fn range_parts_keep_fractional_second_boundaries_and_accept_reverse_order() {
     let experimental = DateTimeFormat::try_new(
         &[canonicalize("en-US").unwrap()],
         DateTimeFormatOptions {
-            use_experimental_icu4x_range_formatter: true,
+            use_icu4x_range_formatter: true,
             minute: Some(DateTimeWidth::Numeric),
             second: Some(DateTimeWidth::Numeric),
             fractional_second_digits: Some(1),

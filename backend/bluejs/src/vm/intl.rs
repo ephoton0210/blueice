@@ -2071,9 +2071,7 @@ impl Vm {
             ));
         }
         Ok(blueice_ecma402::DateTimeFormatOptions {
-            use_experimental_icu4x_range_formatter: self
-                .config
-                .enable_experimental_icu4x_date_range_formatter,
+            use_icu4x_range_formatter: self.config.enable_icu4x_date_range_formatter,
             locale_matcher,
             calendar,
             numbering_system,
@@ -2374,7 +2372,11 @@ impl Vm {
             || original.month.is_some()
             || original.day.is_some());
         let mut options = original.clone();
-        options.use_experimental_icu4x_range_formatter = false;
+        // ICU4X's direct range formatter currently lacks the Temporal plain
+        // value shape needed here. Keep this explicitly scoped compatibility
+        // path instead of treating it as a replacement for the instant/date
+        // range formatter used by ordinary DateTimeFormat inputs.
+        options.use_icu4x_range_formatter = false;
         // Plain Temporal values denote local calendar fields, not instants.
         // UTC carries those fields through ICU4X without applying the
         // formatter's requested IANA transition rules.

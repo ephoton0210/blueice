@@ -226,9 +226,9 @@ fn date_time_format_constructs_formats_and_exposes_parts() {
         "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC',year:'numeric',month:'long',day:'numeric'}); let p=f.formatToParts(0); f.format(0)==='January 1, 1970' && p.map(x=>x.type).join(',')==='month,literal,day,literal,year' && p.map(x=>x.value).join('')===f.format(0)",
         "let f=Intl.DateTimeFormat('de-DE',{timeZone:'UTC',hour:'numeric',minute:'2-digit',second:'2-digit'}); let r=f.resolvedOptions(); f instanceof Intl.DateTimeFormat && f.format(new Date(0)).length > 0 && r.locale === 'de-DE' && r.timeZone === 'UTC' && r.hour === 'numeric' && r.minute === '2-digit' && r.second === '2-digit'",
         "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC',year:'numeric',month:'numeric',day:'numeric'}); f.formatRange(0,86400000).includes('–') && f.formatRangeToParts(0,86400000).map(x=>x.source).join(',').includes('startRange') && f.formatRangeToParts(0,86400000).map(x=>x.source).join(',').includes('endRange')",
-        "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC',year:'numeric',month:'long',day:'numeric'}); f.formatRange(0,86400000) === 'January 1 – 2, 1970' && f.formatRangeToParts(0,86400000).filter(x=>x.source==='shared').some(x=>x.type==='year')",
+        "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC',year:'numeric',month:'long',day:'numeric'}); let p=f.formatRangeToParts(0,86400000); f.formatRange(0,86400000) === 'January 1 – 2, 1970' && p.map(x=>x.type+':'+x.source).join(',') === 'month:startRange,literal:startRange,day:startRange,literal:startRange,day:endRange,literal:endRange,year:endRange'",
         "let f=new Intl.DateTimeFormat('zh-TW',{timeZone:'UTC',year:'numeric',month:'numeric',day:'numeric'}); f.formatRange(0,86400000).includes('至') && f.formatRangeToParts(0,86400000).filter(x=>x.type==='year').length===2",
-        "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC'}); let p=f.formatRangeToParts(0,86400000); f.formatRange(0,86400000)==='1/1/1970 – 1/2/1970' && p.length===11 && p[0].type==='month' && p[0].source==='startRange' && p[4].type==='year' && p[4].source==='startRange' && p[5].type==='literal' && p[5].source==='shared' && p[6].type==='month' && p[6].source==='endRange' && p[10].type==='year' && p[10].source==='endRange'",
+        "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC'}); let p=f.formatRangeToParts(0,86400000); f.formatRange(0,86400000)==='1/1/1970 – 1/2/1970' && p.length===11 && p[0].type==='month' && p[0].source==='startRange' && p[4].type==='year' && p[4].source==='startRange' && p[5].type==='literal' && p[5].value===' – ' && p[5].source==='shared' && p[6].type==='month' && p[6].source==='endRange' && p[10].type==='year' && p[10].source==='endRange'",
         "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC',minute:'numeric',second:'numeric',fractionalSecondDigits:1}); let p=f.formatRangeToParts(0,300); p.length===11 && p[0].type==='minute' && p[0].value==='00' && p[0].source==='startRange' && p[1].type==='literal' && p[1].value===':' && p[1].source==='startRange' && p[2].type==='second' && p[2].value==='00' && p[2].source==='startRange' && p[3].value==='.' && p[3].source==='startRange' && p[4].type==='fractionalSecond' && p[4].value==='0' && p[4].source==='startRange' && p[5].source==='shared' && p[6].type==='minute' && p[6].source==='endRange' && p[8].type==='second' && p[8].value==='00' && p[8].source==='endRange' && p[10].type==='fractionalSecond' && p[10].value==='3' && p[10].source==='endRange' && f.formatRangeToParts(0,0.9).every(x=>x.source==='shared') && typeof f.formatRangeToParts(300,0)==='object'",
         "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC',weekday:'long',year:'numeric',day:'2-digit'}); let t=f.formatToParts(0).map(x=>x.type); t.includes('weekday') && t.includes('year') && t.includes('day') && !t.includes('month')",
         "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC',dateStyle:'short'}); f.resolvedOptions().dateStyle === 'short' && f.format(0).length > 0 && Object.prototype.toString.call(f)==='[object Intl.DateTimeFormat]'",
@@ -272,20 +272,51 @@ fn date_time_format_constructs_formats_and_exposes_parts() {
 }
 
 #[test]
-fn experimental_date_range_formatter_is_a_host_switch() {
-    let source = "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC',year:'numeric',month:'long',day:'numeric'}); f.formatRange(0,86400000) === 'January 1 – 2, 1970' && f.formatRangeToParts(0,86400000).filter(x=>x.type==='month')[0].source === 'shared'";
+fn cldr_date_range_formatter_is_the_production_default() {
+    let source = "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC',year:'numeric',month:'long',day:'numeric'}); let p=f.formatRangeToParts(0,86400000); f.formatRange(0,86400000) === 'January 1 – 2, 1970' && p.map(x=>x.type+':'+x.source).join(',') === 'month:startRange,literal:startRange,day:startRange,literal:startRange,day:endRange,literal:endRange,year:endRange'";
 
     assert_eq!(evaluate(source), Ok(Value::Bool(true)));
     assert_eq!(
         evaluate_with_config(
             source,
             VmConfig {
-                enable_experimental_icu4x_date_range_formatter: true,
+                enable_icu4x_date_range_formatter: false,
                 ..VmConfig::default()
             }
         ),
-        Ok(Value::Bool(true))
+        Ok(Value::Bool(false))
     );
+}
+
+#[test]
+fn date_time_range_contract_and_source_regressions() {
+    for source in [
+        // The undefined guard precedes either observable ToNumber conversion.
+        "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC'});let converted=0;let poison={valueOf:function(){converted++;return 0}};let a=false;let b=false;try{f.formatRange(undefined,poison)}catch(error){a=error instanceof TypeError}try{f.formatRangeToParts(poison,undefined)}catch(error){b=error instanceof TypeError}a&&b&&converted===0",
+        // Ordinary input continues through ToNumber and TimeClip; reverse
+        // endpoints are formatted rather than rejected by an adapter check.
+        "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC'});let calls='';let start={valueOf:function(){calls+='s';return -0.9}};let end={valueOf:function(){calls+='e';return 0.9}};let clip=f.formatRange(start,end)===f.formatRange(0,0)&&calls==='se';let reverse=typeof f.formatRange(86400000,0)==='string'&&Array.isArray(f.formatRangeToParts(86400000,0));let invalid=false;try{f.formatRange(8640000000000001,0)}catch(error){invalid=error instanceof RangeError}clip&&reverse&&invalid",
+        // `source: shared` for equal displayed values is the whole-pattern
+        // branch, not a per-part equality rewrite after CLDR serialization.
+        "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC'});let p=f.formatRangeToParts(0,0.9);p.length>0&&p.map(x=>x.value).join('')===f.format(0)&&p.every(x=>x.source==='shared')",
+        // ICU4X's known time-only fractional interval limitation remains on
+        // the bounded compatibility path, preserving the ECMA-402 parts.
+        "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC',minute:'numeric',second:'numeric',fractionalSecondDigits:1});let p=f.formatRangeToParts(0,300);f.formatRange(0,300)==='00:00.0 – 00:00.3'&&p.map(x=>x.type+':'+x.value+':'+x.source).join('|')==='minute:00:startRange|literal:::startRange|second:00:startRange|literal:.:startRange|fractionalSecond:0:startRange|literal: – :shared|minute:00:endRange|literal:::endRange|second:00:endRange|literal:.:endRange|fractionalSecond:3:endRange'",
+        // Default en-US and a collapsing CLDR date skeleton retain the
+        // formatter-provided source spans without downstream reassignment.
+        "let d=new Intl.DateTimeFormat('en-US',{timeZone:'UTC'});let c=new Intl.DateTimeFormat('en-US',{timeZone:'UTC',year:'numeric',month:'long',day:'numeric'});let dp=d.formatRangeToParts(0,86400000);let cp=c.formatRangeToParts(0,86400000);d.formatRange(0,86400000)==='1/1/1970 – 1/2/1970'&&dp.map(x=>x.type+':'+x.source).join(',')==='month:startRange,literal:startRange,day:startRange,literal:startRange,year:startRange,literal:shared,month:endRange,literal:endRange,day:endRange,literal:endRange,year:endRange'&&c.formatRange(0,86400000)==='January 1 – 2, 1970'&&cp.map(x=>x.type+':'+x.source).join(',')==='month:startRange,literal:startRange,day:startRange,literal:startRange,day:endRange,literal:endRange,year:endRange'",
+        // CJK CLDR patterns are exercised through the production direct path.
+        "let f=new Intl.DateTimeFormat('zh-TW',{timeZone:'UTC',year:'numeric',month:'numeric',day:'numeric'});let p=f.formatRangeToParts(0,86400000);f.formatRange(0,86400000).includes('至')&&p.some(x=>x.source==='startRange')&&p.some(x=>x.source==='endRange')",
+        // Date/time styles use a one-pattern, all-shared result when their
+        // displayed fields agree.
+        "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC',dateStyle:'long',timeStyle:'short'});let start=1565398923234;let p=f.formatRangeToParts(start,start+1);f.formatRange(start,start+1)===f.format(start)&&p.length>0&&p.every(x=>x.source==='shared')",
+        // The zone-name path is deliberately covered as a compatibility
+        // boundary: it keeps both DST names and endpoint ownership, but is
+        // not represented as a CLDR DateRangeFormatter result.
+        "let f=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit',timeZoneName:'short'});let before=1710052200000;let after=1710055800000;let p=f.formatRangeToParts(before,after);f.format(before).endsWith('EST')&&f.format(after).endsWith('EDT')&&p.some(x=>x.type==='timeZoneName'&&x.value==='EST'&&x.source==='startRange')&&p.some(x=>x.type==='timeZoneName'&&x.value==='EDT'&&x.source==='endRange')",
+    ] {
+        assert_eq!(evaluate(source), Ok(Value::Bool(true)), "{source}");
+    }
 }
 
 #[test]

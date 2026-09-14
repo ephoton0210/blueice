@@ -47,12 +47,14 @@ pub enum DateTimeWidth {
 }
 
 /// The host-neutral options accepted by the DateTimeFormat service.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct DateTimeFormatOptions {
-    /// Host policy switch for ICU4X's unstable CLDR interval formatter. This
-    /// is deliberately not an ECMAScript option; JavaScript callers continue
-    /// to use only standard `Intl.DateTimeFormat` options.
-    pub use_experimental_icu4x_range_formatter: bool,
+    /// Host policy switch for ICU4X's CLDR interval formatter. This is
+    /// deliberately not an ECMAScript option; JavaScript callers continue to
+    /// use only standard `Intl.DateTimeFormat` options. New formatters use
+    /// the CLDR formatter by default; `false` remains available only for a
+    /// host that needs the legacy compatibility path while upgrading ICU4X.
+    pub use_icu4x_range_formatter: bool,
     pub locale_matcher: LocaleMatcher,
     pub calendar: Option<String>,
     pub numbering_system: Option<String>,
@@ -72,6 +74,33 @@ pub struct DateTimeFormatOptions {
     pub time_zone_name: Option<String>,
     pub date_style: Option<DateTimeStyle>,
     pub time_style: Option<DateTimeStyle>,
+}
+
+impl Default for DateTimeFormatOptions {
+    fn default() -> Self {
+        Self {
+            use_icu4x_range_formatter: true,
+            locale_matcher: LocaleMatcher::default(),
+            calendar: None,
+            numbering_system: None,
+            hour_cycle: None,
+            hour12: None,
+            time_zone: None,
+            weekday: None,
+            era: None,
+            year: None,
+            month: None,
+            day: None,
+            day_period: None,
+            hour: None,
+            minute: None,
+            second: None,
+            fractional_second_digits: None,
+            time_zone_name: None,
+            date_style: None,
+            time_style: None,
+        }
+    }
 }
 
 /// The `dateStyle` and `timeStyle` values prescribed by ECMA-402.
@@ -264,60 +293,60 @@ impl DateTimeFormat {
         end: f64,
     ) -> Result<Vec<DateTimeRangePart>, DateTimeFormatError> {
         // ICU4X's DateRangeFormatter accepts date/time input but no external
-        // IANA-zone display data. Its current interval skeleton also emits a
-        // misplaced end-range literal for fractional seconds. Preserve the
-        // compatibility path until those inputs have correct source spans.
-        if !self.options.use_experimental_icu4x_range_formatter
+        // IANA-zone display data. Its time-only and fractional-second
+        // interval skeletons also emit malformed end spans. Non-Gregorian
+        // calendars need a separate range data path. Keep explicitly limited
+        // compatibility paths for those inputs; every supported range is
+        // formed by the CLDR interval pattern.
+        if !self.options.use_icu4x_range_formatter
             || self.effective_time_zone_name().is_some()
             || self.options.fractional_second_digits.is_some()
+            || (self.date_fields().is_none() && self.time_precision().is_some())
+            || self.calendar != "gregory"
         {
             return self.format_range_with_zone_name(start, end);
         }
-        let start_datetime = self.datetime_for_time_clip(start)?;
-        let end_datetime = self.datetime_for_time_clip(end)?;
+        let start_milliseconds = time_clip_milliseconds(start)?;
+        let end_milliseconds = time_clip_milliseconds(end)?;
+        let start_parts = self.format_to_parts_from_milliseconds(start_milliseconds, false)?;
+        let end_parts = self.format_to_parts_from_milliseconds(end_milliseconds, false)?;
+        // ECMA-402 returns one normal pattern when the requested fields have
+        // the same displayed values. This is an equality decision for the
+        // entire formatted result, before range-pattern serialization; it
+        // does not rewrite ownership of individual CLDR range spans.
+        if start_parts == end_parts {
+            return Ok(start_parts.iter().map(shared_range_part).collect());
+        }
+        let (start_datetime, _, _) = self.datetime_from_milliseconds(start_milliseconds)?;
+        let (end_datetime, _, _) = self.datetime_from_milliseconds(end_milliseconds)?;
+        self.format_datetime_range_to_parts(start_datetime, end_datetime)
+    }
+
+    fn format_datetime_range_to_parts(
+        &self,
+        start: DateTime<icu_calendar::Iso>,
+        end: DateTime<icu_calendar::Iso>,
+    ) -> Result<Vec<DateTimeRangePart>, DateTimeFormatError> {
         let formatter = DateRangeFormatter::try_new(
             self.format_locale.locale().clone().into(),
             self.field_set(),
         )
         .map_err(|_| DateTimeFormatError::Formatter)?;
-        let formatted = formatter.format(&start_datetime, &end_datetime);
+        let formatted = formatter.format(&start, &end);
         let mut writer = PartWriter::default();
         formatted
             .write_to_parts_with_source(&mut writer)
             .map_err(|_| DateTimeFormatError::Formatter)?;
-        let mut parts = self.filter_unrequested_range_parts(split_range_fractional_seconds(
-            writer.into_range_parts(),
-            self.options.fractional_second_digits,
-        ));
-
-        // ICU4X source annotations identify the interval-pattern span that
-        // wrote a part. ECMA-402 additionally calls equal endpoint fields
-        // `shared`, but only when CLDR serialized that field once. A fallback
-        // can repeat an equal-looking field on both endpoints.
-        let start_parts = self.format_to_parts(start)?;
-        let end_parts = self.format_to_parts(end)?;
-        let emitted_fields = parts
-            .iter()
-            .filter(|part| part.kind != "literal")
-            .map(|part| (part.kind.clone(), part.value.clone()))
-            .collect::<Vec<_>>();
-        for part in &mut parts {
-            if part.kind != "literal"
-                && emitted_fields
-                    .iter()
-                    .filter(|(kind, value)| *kind == part.kind && *value == part.value)
-                    .count()
-                    == 1
-                && endpoint_part_is_shared(&start_parts, &end_parts, &part.kind, &part.value)
-            {
-                part.source = DateTimeRangePartSource::Shared;
-            }
-            if part.kind == "literal" && contains_range_separator(&part.value) {
-                part.source = DateTimeRangePartSource::Shared;
-            }
-        }
-        mark_literals_shared_with_adjacent_shared_fields(&mut parts);
-        Ok(parts)
+        // The nested range-source annotations are the authoritative CLDR
+        // interval-pattern ownership. In particular, do not infer `shared`
+        // from equal values, a separator character, or neighboring literals:
+        // those are serialization details which need not match pattern spans.
+        Ok(
+            self.filter_unrequested_range_parts(split_range_fractional_seconds(
+                writer.into_range_parts(),
+                self.options.fractional_second_digits,
+            )),
+        )
     }
 
     /// Formats a time value and retains every ICU date-time field boundary.
@@ -344,24 +373,22 @@ impl DateTimeFormat {
         let formatter = Self::try_new(std::slice::from_ref(&self.locale), options)?;
         let start = formatter.format_to_parts_from_milliseconds(start_milliseconds, false)?;
         let end = formatter.format_to_parts_from_milliseconds(end_milliseconds, false)?;
-        if repeat_endpoints && start != end {
-            return Ok(join_range_parts(
-                &start,
-                &end,
-                formatter.range_format().separator,
-            ));
+        if !formatter.options.use_icu4x_range_formatter {
+            if repeat_endpoints && start != end {
+                return Ok(join_range_parts(
+                    &start,
+                    &end,
+                    formatter.range_format().separator,
+                ));
+            }
+            return Ok(formatter.format_range_from_parts(start, end));
         }
-        Ok(formatter.format_range_from_parts(start, end))
-    }
-
-    /// Builds ICU4X's date-time input for a TimeClip-valid ECMAScript number.
-    fn datetime_for_time_clip(
-        &self,
-        epoch_milliseconds: f64,
-    ) -> Result<DateTime<icu_calendar::Iso>, DateTimeFormatError> {
-        let (datetime, _, _) =
-            self.datetime_from_milliseconds(time_clip_milliseconds(epoch_milliseconds)?)?;
-        Ok(datetime)
+        if start == end {
+            return Ok(start.iter().map(shared_range_part).collect());
+        }
+        let (start_datetime, _, _) = formatter.datetime_from_milliseconds(start_milliseconds)?;
+        let (end_datetime, _, _) = formatter.datetime_from_milliseconds(end_milliseconds)?;
+        formatter.format_datetime_range_to_parts(start_datetime, end_datetime)
     }
 
     /// Converts an epoch value into ICU4X's calendar input. ICU4X's input
@@ -914,47 +941,6 @@ fn join_range_parts(
     parts
 }
 
-fn endpoint_part_is_shared(
-    start: &[DateTimePart],
-    end: &[DateTimePart],
-    kind: &str,
-    value: &str,
-) -> bool {
-    start
-        .iter()
-        .any(|part| part.kind == kind && part.value == value)
-        && end
-            .iter()
-            .any(|part| part.kind == kind && part.value == value)
-}
-
-fn contains_range_separator(value: &str) -> bool {
-    value.contains(['–', '〜', '～', '至', '~'])
-}
-
-fn mark_literals_shared_with_adjacent_shared_fields(parts: &mut [DateTimeRangePart]) {
-    for index in 0..parts.len() {
-        if parts[index].kind != "literal" || parts[index].source == DateTimeRangePartSource::Shared
-        {
-            continue;
-        }
-        let previous = parts[..index]
-            .iter()
-            .rev()
-            .find(|part| part.kind != "literal")
-            .map(|part| part.source);
-        let next = parts[index + 1..]
-            .iter()
-            .find(|part| part.kind != "literal")
-            .map(|part| part.source);
-        if previous == Some(DateTimeRangePartSource::Shared)
-            || next == Some(DateTimeRangePartSource::Shared)
-        {
-            parts[index].source = DateTimeRangePartSource::Shared;
-        }
-    }
-}
-
 /// ICU4X currently emits a fractional second as part of the `second` field.
 /// ECMA-402 exposes the decimal marker and fractional digits as independent
 /// `formatToParts` fields, so split that ICU field before range ownership is
@@ -1196,6 +1182,16 @@ fn push_range_literal(
     source: DateTimeRangePartSource,
 ) {
     if !value.is_empty() {
+        // Nested ICU annotations can split one contiguous pattern literal.
+        // Joining equal-source literal bytes preserves both the text and its
+        // authoritative owner; unlike the old post-pass, it never changes a
+        // source according to neighboring fields or separator contents.
+        if let Some(previous) = parts.last_mut() {
+            if previous.kind == "literal" && previous.source == source {
+                previous.value.push_str(value);
+                return;
+            }
+        }
         parts.push(DateTimeRangePart {
             kind: "literal".into(),
             value: value.into(),
