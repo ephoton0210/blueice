@@ -337,16 +337,14 @@ impl DateTimeFormat {
         formatted
             .write_to_parts_with_source(&mut writer)
             .map_err(|_| DateTimeFormatError::Formatter)?;
-        // The nested range-source annotations are the authoritative CLDR
-        // interval-pattern ownership. In particular, do not infer `shared`
-        // from equal values, a separator character, or neighboring literals:
-        // those are serialization details which need not match pattern spans.
-        Ok(
-            self.filter_unrequested_range_parts(split_range_fractional_seconds(
-                writer.into_range_parts(),
-                self.options.fractional_second_digits,
-            )),
-        )
+        let mut parts = self.filter_unrequested_range_parts(split_range_fractional_seconds(
+            writer.into_range_parts(),
+            self.options.fractional_second_digits,
+        ));
+        let start = self.format_to_parts_from_datetime(&start)?;
+        let end = self.format_to_parts_from_datetime(&end)?;
+        normalize_range_part_sources(&mut parts, &start, &end);
+        Ok(parts)
     }
 
     /// Formats a time value and retains every ICU date-time field boundary.
@@ -481,6 +479,26 @@ impl DateTimeFormat {
             }
         }
         Ok(parts)
+    }
+
+    fn format_to_parts_from_datetime(
+        &self,
+        datetime: &DateTime<icu_calendar::Iso>,
+    ) -> Result<Vec<DateTimePart>, DateTimeFormatError> {
+        let formatter = DateTimeFormatter::try_new(
+            self.format_locale.locale().clone().into(),
+            self.field_set(),
+        )
+        .map_err(|_| DateTimeFormatError::Formatter)?;
+        let formatted = formatter.format(datetime);
+        let mut writer = PartWriter::default();
+        formatted
+            .write_to_parts(&mut writer)
+            .map_err(|_| DateTimeFormatError::Formatter)?;
+        Ok(self.filter_unrequested_parts(split_fractional_seconds(
+            writer.into_parts(),
+            self.options.fractional_second_digits,
+        )))
     }
 
     fn field_set(&self) -> CompositeDateTimeFieldSet {
@@ -939,6 +957,63 @@ fn join_range_parts(
     });
     parts.extend(end.iter().map(end_range_part));
     parts
+}
+
+/// Converts ICU4X's interval-side annotations to ECMA-402's serialized-part
+/// ownership. ICU marks the side that emitted a segment of its interval
+/// pattern, while ECMA-402 marks a field `shared` when one serialized field
+/// represents equal start and end values. A field repeated in the output
+/// remains endpoint-owned, so a default en-US range keeps both years distinct.
+///
+/// This runs only on direct CLDR output. Compatibility ranges keep their own
+/// deliberately bounded ownership model.
+fn normalize_range_part_sources(
+    parts: &mut [DateTimeRangePart],
+    start: &[DateTimePart],
+    end: &[DateTimePart],
+) {
+    for index in 0..parts.len() {
+        let part = &parts[index];
+        if part.kind == "literal" {
+            continue;
+        }
+        let emitted_once = parts
+            .iter()
+            .filter(|candidate| candidate.kind == part.kind && candidate.value == part.value)
+            .count()
+            == 1;
+        let matches_both_endpoints = start
+            .iter()
+            .any(|candidate| candidate.kind == part.kind && candidate.value == part.value)
+            && end
+                .iter()
+                .any(|candidate| candidate.kind == part.kind && candidate.value == part.value);
+        if emitted_once && matches_both_endpoints {
+            parts[index].source = DateTimeRangePartSource::Shared;
+        }
+    }
+
+    for index in 0..parts.len() {
+        if parts[index].kind != "literal" {
+            continue;
+        }
+        let previous = parts[..index]
+            .iter()
+            .rev()
+            .find(|part| part.kind != "literal")
+            .map(|part| part.source);
+        let next = parts[index + 1..]
+            .iter()
+            .find(|part| part.kind != "literal")
+            .map(|part| part.source);
+        if previous == Some(DateTimeRangePartSource::Shared)
+            || next == Some(DateTimeRangePartSource::Shared)
+            || (previous == Some(DateTimeRangePartSource::StartRange)
+                && next == Some(DateTimeRangePartSource::EndRange))
+        {
+            parts[index].source = DateTimeRangePartSource::Shared;
+        }
+    }
 }
 
 /// ICU4X currently emits a fractional second as part of the `second` field.

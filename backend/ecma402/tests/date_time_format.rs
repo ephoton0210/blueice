@@ -178,17 +178,17 @@ fn cldr_range_patterns_own_their_source_spans() {
             .map(|part| (&part.kind[..], &part.value[..], part.source))
             .collect::<Vec<_>>(),
         vec![
-            ("month", "January", DateTimeRangePartSource::StartRange),
-            ("literal", " ", DateTimeRangePartSource::StartRange),
+            ("month", "January", DateTimeRangePartSource::Shared),
+            ("literal", " ", DateTimeRangePartSource::Shared),
             ("day", "1", DateTimeRangePartSource::StartRange),
             (
                 "literal",
                 "\u{2009}–\u{2009}",
-                DateTimeRangePartSource::StartRange,
+                DateTimeRangePartSource::Shared,
             ),
             ("day", "2", DateTimeRangePartSource::EndRange),
-            ("literal", ", ", DateTimeRangePartSource::EndRange),
-            ("year", "1970", DateTimeRangePartSource::EndRange),
+            ("literal", ", ", DateTimeRangePartSource::Shared),
+            ("year", "1970", DateTimeRangePartSource::Shared),
         ]
     );
 
