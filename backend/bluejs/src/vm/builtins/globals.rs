@@ -161,6 +161,13 @@ impl Vm {
                     0,
                     NativeFunction::SymbolValueOf,
                 )?;
+                self.install_getter(
+                    symbol_prototype,
+                    prototype,
+                    "description".into(),
+                    "get description",
+                    NativeFunction::SymbolDescription,
+                )?;
                 self.install_symbol_native(
                     symbol_prototype,
                     prototype,

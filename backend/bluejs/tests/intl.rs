@@ -265,6 +265,8 @@ fn date_time_format_constructs_formats_and_exposes_parts() {
         "let f=new Intl.DateTimeFormat('en',{era:'narrow'});f.format(new Temporal.PlainDateTime(2025,11,4,14,46)).startsWith('11')",
         "let f=new Intl.DateTimeFormat('en',{era:'narrow'});f.format(new Temporal.Instant(0n))===new Date(0).toLocaleString('en',{era:'narrow'})",
         "let f=new Intl.DateTimeFormat('en-US',{timeZone:'Pacific/Apia',year:'numeric',month:'numeric',day:'numeric',hour:'numeric',timeZoneName:'long'});let p=f.formatToParts(new Temporal.PlainDateTime(2011,12,30,12));p.some(x=>x.type==='day'&&x.value==='30')&&!p.some(x=>x.type==='timeZoneName')",
+        "let legacy=Object.create(Intl.DateTimeFormat.prototype);let result=Intl.DateTimeFormat.call(legacy,'en',{timeZone:'UTC'});let symbol=Object.getOwnPropertySymbols(legacy).find(key=>key.description==='IntlLegacyConstructedSymbol');let descriptor=Object.getOwnPropertyDescriptor(legacy,symbol);result===legacy&&symbol!==undefined&&legacy[symbol] instanceof Intl.DateTimeFormat&&!descriptor.writable&&!descriptor.enumerable&&!descriptor.configurable&&legacy.format(0).length>0&&legacy.resolvedOptions().timeZone==='UTC'",
+        "let legacy=new Intl.DateTimeFormat('en',{timeZone:'UTC'});Intl.DateTimeFormat.call(legacy);let observed;let proxy=new Proxy(legacy,{get(target,key){observed=key;return target[key]}});let options=Intl.DateTimeFormat.prototype.resolvedOptions.call(proxy);options.timeZone==='UTC'&&typeof observed==='symbol'&&observed.description==='IntlLegacyConstructedSymbol'&&Symbol('named').description==='named'&&Symbol().description===undefined",
     ] {
         match evaluate(source) {
             Ok(value) => assert_eq!(value, Value::Bool(true), "{source}"),
@@ -282,6 +284,7 @@ fn date_time_format_constructs_formats_and_exposes_parts() {
         "new Intl.DateTimeFormat('en').formatRangeToParts(undefined,0)",
         "Temporal.Instant.from('not-an-instant')",
         "new Intl.DateTimeFormat('en').format(new Temporal.ZonedDateTime(0n,'UTC'))",
+        "let legacy=Object.create(Intl.DateTimeFormat.prototype);Intl.DateTimeFormat.call(legacy);Intl.DateTimeFormat.prototype.formatToParts.call(legacy,0)",
     ] {
         assert!(
             matches!(

@@ -905,7 +905,7 @@ impl Vm {
             }
             NativeFunction::Collator => self.create_collator(&args, construct),
             NativeFunction::IntlService(service) => {
-                self.create_intl_service(service, &args, construct)
+                self.create_intl_service(service, &receiver, &args, construct)
             }
             NativeFunction::Locale => self.create_locale(&args, construct),
             NativeFunction::CanonicalLocales => {
@@ -1584,6 +1584,22 @@ impl Vm {
                 } else {
                     Ok(Value::Symbol(symbol))
                 }
+            }
+            NativeFunction::SymbolDescription => {
+                let value = if let Value::Object(id) = receiver {
+                    self.heap
+                        .boxed_primitive(id)?
+                        .or(self.test262_foreign_boxed_primitive(id)?)
+                        .unwrap_or(Value::Undefined)
+                } else {
+                    receiver
+                };
+                let Value::Symbol(symbol) = value else {
+                    return Err(RuntimeError::TypeError(
+                        "Symbol description requires a Symbol".into(),
+                    ));
+                };
+                Ok(symbol.description.map_or(Value::Undefined, Value::String))
             }
             NativeFunction::BigIntToString | NativeFunction::BigIntValueOf => {
                 let value = if let Value::Object(id) = receiver {

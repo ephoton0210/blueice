@@ -442,6 +442,7 @@ pub(crate) enum NativeFunction {
     SymbolKeyFor,
     SymbolToString,
     SymbolValueOf,
+    SymbolDescription,
     BigInt,
     BigIntToString,
     BigIntValueOf,

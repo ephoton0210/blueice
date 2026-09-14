@@ -665,6 +665,7 @@ impl Vm {
                 true,
             )?;
             let formatter = self.create_date_time_format(
+                &Value::Undefined,
                 &[native::argument(args, 0).clone(), Value::Object(options)],
                 false,
             )?;

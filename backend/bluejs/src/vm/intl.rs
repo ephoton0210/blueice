@@ -986,6 +986,7 @@ impl Vm {
     pub(super) fn create_intl_service(
         &mut self,
         service: native::IntlService,
+        receiver: &Value,
         args: &[Value],
         construct: bool,
     ) -> Result<Value, RuntimeError> {
@@ -993,7 +994,7 @@ impl Vm {
             return self.create_number_format(args, construct);
         }
         if service == native::IntlService::DateTime {
-            return self.create_date_time_format(args, construct);
+            return self.create_date_time_format(receiver, args, construct);
         }
         if service == native::IntlService::List {
             return self.create_list_format(args, construct);
@@ -2232,6 +2233,7 @@ impl Vm {
 
     pub(super) fn create_date_time_format(
         &mut self,
+        receiver: &Value,
         args: &[Value],
         construct: bool,
     ) -> Result<Value, RuntimeError> {
@@ -2242,6 +2244,9 @@ impl Vm {
             .get(constructor, "prototype")?
             .object_id()
             .expect("Intl.DateTimeFormat.prototype is an object");
+        let legacy_receiver = (!construct
+            && self.date_time_format_legacy_receiver(receiver, default)?)
+        .then(|| receiver.clone());
         let prototype = if construct {
             self.constructor_prototype(default)?
         } else {
@@ -2250,8 +2255,67 @@ impl Vm {
         self.stack.push(Value::Object(prototype));
         let data =
             self.resolve_date_time_format(native::argument(args, 0), native::argument(args, 1))?;
-        self.with_roots(|heap| heap.alloc_date_time_format(data, prototype))
-            .map(Value::Object)
+        let date_time_format =
+            self.with_roots(|heap| heap.alloc_date_time_format(data, prototype))?;
+        let Some(legacy_receiver) = legacy_receiver else {
+            return Ok(Value::Object(date_time_format));
+        };
+
+        // ECMA-402's normative-optional ChainDateTimeFormat mode preserves
+        // the eligible call receiver, while a real DateTimeFormat object is
+        // kept behind a per-realm non-enumerable, non-writable and
+        // non-configurable Symbol property. Use the generic internal method
+        // here so an eligible Proxy observes [[DefineOwnProperty]].
+        let fallback_symbol = self
+            .intl_date_time_format_fallback_symbol
+            .get_or_insert_with(|| JsSymbol::new(Some("IntlLegacyConstructedSymbol".into())))
+            .clone();
+        let legacy_id = legacy_receiver
+            .object_id()
+            .expect("legacy DateTimeFormat receiver is an object");
+        self.stack.push(Value::Object(date_time_format));
+        if !self.object_define_own_property(
+            legacy_id,
+            fallback_symbol.into(),
+            PropertyDescriptor::data(Value::Object(date_time_format), false, false, false),
+        )? {
+            return Err(RuntimeError::TypeError(
+                "cannot define IntlLegacyConstructedSymbol property".into(),
+            ));
+        }
+        Ok(legacy_receiver)
+    }
+
+    /// Returns whether `%Intl.DateTimeFormat.prototype%` occurs strictly in
+    /// `receiver`'s prototype chain. This is the receiver predicate for the
+    /// normative-optional `ChainDateTimeFormat` constructor behavior.
+    fn date_time_format_legacy_receiver(
+        &mut self,
+        receiver: &Value,
+        prototype: ObjectId,
+    ) -> Result<bool, RuntimeError> {
+        let Some(mut object) = receiver.object_id() else {
+            return Ok(false);
+        };
+        let base = self.stack.len();
+        self.stack
+            .extend([receiver.clone(), Value::Object(prototype)]);
+        let result = (|| {
+            loop {
+                // Proxy [[GetPrototypeOf]] can execute arbitrary JavaScript,
+                // so retain the current link across that operation.
+                self.stack[base] = Value::Object(object);
+                let Some(parent) = self.object_get_prototype(object)? else {
+                    return Ok(false);
+                };
+                if parent == prototype {
+                    return Ok(true);
+                }
+                object = parent;
+            }
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     fn date_time_format_data(
@@ -2268,12 +2332,49 @@ impl Vm {
         ))
     }
 
+    /// Implements `UnwrapDateTimeFormat` for the only legacy-facing methods
+    /// that ECMA-402 permits to unwrap a ChainDateTimeFormat receiver. Other
+    /// DateTimeFormat methods deliberately continue to call
+    /// `date_time_format_data` and require a directly branded receiver.
+    fn unwrap_date_time_format(&mut self, value: &Value) -> Result<ObjectId, RuntimeError> {
+        if let Some(id) = value.object_id() {
+            if self.heap.date_time_format(id)?.is_some() {
+                return Ok(id);
+            }
+        } else {
+            return Err(RuntimeError::TypeError(
+                "receiver is not an Intl.DateTimeFormat".into(),
+            ));
+        }
+
+        let fallback_symbol = self
+            .intl_date_time_format_fallback_symbol
+            .clone()
+            .ok_or_else(|| {
+                RuntimeError::TypeError("receiver is not an Intl.DateTimeFormat".into())
+            })?;
+        // `Get` is intentional. In particular, a Proxy around a chained
+        // receiver must observe this symbol lookup before the hidden object
+        // is brand-checked.
+        let fallback_key = PropertyName::from(fallback_symbol);
+        let fallback = self.get_property(value, &fallback_key)?;
+        let Some(id) = fallback.object_id() else {
+            return Err(RuntimeError::TypeError(
+                "receiver is not an Intl.DateTimeFormat".into(),
+            ));
+        };
+        self.heap
+            .date_time_format(id)?
+            .is_some()
+            .then_some(id)
+            .ok_or_else(|| RuntimeError::TypeError("receiver is not an Intl.DateTimeFormat".into()))
+    }
+
     pub(super) fn date_time_format_format_getter(
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        self.date_time_format_data(receiver)?;
-        let id = receiver.object_id().unwrap();
+        let id = self.unwrap_date_time_format(receiver)?;
         if let Some(function) = self.heap.date_time_format_format(id) {
             return Ok(Value::Object(function));
         }
@@ -2286,7 +2387,10 @@ impl Vm {
             heap.alloc_bound_function(
                 crate::heap::BoundFunction {
                     target,
-                    this: receiver.clone(),
+                    // The getter may have received a legacy chained object.
+                    // Bind the actual branded formatter selected by
+                    // UnwrapDateTimeFormat, not that outer receiver.
+                    this: Value::Object(id),
                     args: vec![],
                     constructible: false,
                 },
@@ -2701,7 +2805,11 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let data = self.date_time_format_data(receiver)?;
+        let id = self.unwrap_date_time_format(receiver)?;
+        let data = self
+            .heap
+            .date_time_format(id)?
+            .expect("UnwrapDateTimeFormat returns a branded object");
         let options = data.options();
         let prototype = self.object_prototype;
         let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
