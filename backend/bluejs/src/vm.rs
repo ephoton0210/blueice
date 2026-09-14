@@ -442,6 +442,18 @@ struct PromiseAllState {
     remaining: usize,
 }
 
+/// Bookkeeping for `Promise.any`: each rejection occupies its input-indexed
+/// slot so the eventual AggregateError preserves iterator order.
+struct PromiseAnyState {
+    errors: Vec<Option<Value>>,
+    remaining: usize,
+}
+
+struct PromiseAllSettledState {
+    results: Vec<Option<(Value, bool)>>,
+    remaining: usize,
+}
+
 enum PromiseJob {
     Reaction {
         target: ObjectId,
@@ -449,6 +461,10 @@ enum PromiseJob {
         value: Value,
         fulfilled: bool,
     },
+    /// HostCleanupFinalizationRegistry delivers a holding only after a GC has
+    /// observed its target dead. It deliberately shares the normal job queue
+    /// so cleanup cannot run in the middle of an ECMAScript execution.
+    FinalizationCleanup { callback: Value, holdings: Value },
     /// PromiseResolveThenableJob. Keeping this as a real queue entry (rather
     /// than calling `then` inline) preserves the observable microtask turn
     /// between resolving a thenable and resuming an await/reaction.
@@ -721,6 +737,8 @@ pub struct Vm {
     kept_weak_objects: Vec<ObjectId>,
     promises: HashMap<ObjectId, PromiseRecord>,
     promise_all: HashMap<ObjectId, PromiseAllState>,
+    promise_any: HashMap<ObjectId, PromiseAnyState>,
+    promise_all_settled: HashMap<ObjectId, PromiseAllSettledState>,
     promise_jobs: VecDeque<PromiseJob>,
     test262_done: Option<Result<(), Value>>,
     /// Test262-only host scheduler state. Ordinary realms never install or
@@ -837,6 +855,8 @@ impl Vm {
             kept_weak_objects: Vec::new(),
             promises: HashMap::new(),
             promise_all: HashMap::new(),
+            promise_any: HashMap::new(),
+            promise_all_settled: HashMap::new(),
             promise_jobs: VecDeque::new(),
             test262_done: None,
             test262_agent_host: None,

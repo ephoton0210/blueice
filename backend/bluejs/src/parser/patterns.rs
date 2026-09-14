@@ -5,44 +5,39 @@
 use super::*;
 
 impl Parser {
+    fn validate_binding_identifier(&self, name: &str, escaped: bool) -> Result<(), ParseError> {
+        // These are ReservedWords which the tokenizer preserves as
+        // IdentifierName tokens because they remain valid property names. A
+        // BindingIdentifier may not use them, escaped or otherwise.
+        if matches!(
+            name,
+            "class" | "debugger" | "enum" | "export" | "extends" | "import" | "super" | "with"
+        ) {
+            return Err(self.syntax_error("a reserved word cannot be used as a binding identifier"));
+        }
+        if name == "await" && (self.async_depth != 0 || self.module_await) {
+            let detail = if escaped {
+                "the await keyword cannot contain an escape"
+            } else {
+                "await cannot be used as a binding identifier in an async function or module"
+            };
+            return Err(self.syntax_error(detail));
+        }
+        if name == "yield" && self.generator_depth != 0 {
+            let detail = if escaped {
+                "the yield keyword cannot contain an escape"
+            } else {
+                "yield cannot be used as a binding identifier in a generator function"
+            };
+            return Err(self.syntax_error(detail));
+        }
+        Ok(())
+    }
+
     pub(super) fn parse_binding_pattern(&mut self) -> Result<Pattern, ParseError> {
         match self.peek().clone() {
             Token::Identifier(name) => {
-                // These are ReservedWords which the tokenizer preserves as
-                // IdentifierName tokens because they remain valid property
-                // names. A BindingIdentifier may not use them, escaped or
-                // otherwise.
-                if matches!(
-                    name.as_str(),
-                    "class"
-                        | "debugger"
-                        | "enum"
-                        | "export"
-                        | "extends"
-                        | "import"
-                        | "super"
-                        | "with"
-                ) {
-                    return Err(
-                        self.syntax_error("a reserved word cannot be used as a binding identifier")
-                    );
-                }
-                if name == "await" && (self.async_depth != 0 || self.module_await) {
-                    let detail = if self.current_identifier_escaped() {
-                        "the await keyword cannot contain an escape"
-                    } else {
-                        "await cannot be used as a binding identifier in an async function or module"
-                    };
-                    return Err(self.syntax_error(detail));
-                }
-                if name == "yield" && self.generator_depth != 0 {
-                    let detail = if self.current_identifier_escaped() {
-                        "the yield keyword cannot contain an escape"
-                    } else {
-                        "yield cannot be used as a binding identifier in a generator function"
-                    };
-                    return Err(self.syntax_error(detail));
-                }
+                self.validate_binding_identifier(&name, self.current_identifier_escaped())?;
                 self.advance();
                 Ok(Pattern::Identifier(name))
             }
@@ -104,6 +99,14 @@ impl Parser {
                 }
                 break;
             } else {
+                // `parse_property_key` accepts every IdentifierName, including
+                // keywords. A shorthand property is also a binding target, so
+                // retain the lexical-token distinction and apply the same
+                // early errors as `parse_binding_pattern`.
+                let binding_identifier = match self.peek().clone() {
+                    Token::Identifier(name) => Some((name, self.current_identifier_escaped())),
+                    _ => None,
+                };
                 let key = self.parse_property_key()?;
                 if self.eat_punct(Punct::Colon) {
                     let value = self.parse_binding_pattern()?;
@@ -118,10 +121,16 @@ impl Parser {
                         default,
                     });
                 } else {
+                    let Some((_, escaped)) = binding_identifier else {
+                        return Err(self.syntax_error(
+                            "expected a binding identifier in destructuring pattern",
+                        ));
+                    };
                     let name = match &key {
                         PropertyKey::Identifier(n) => n.clone(),
                         _ => return Err(self.error("expected ':' in destructuring pattern")),
                     };
+                    self.validate_binding_identifier(&name, escaped)?;
                     let default = if self.eat_punct(Punct::Assign) {
                         Some(self.parse_assignment()?)
                     } else {

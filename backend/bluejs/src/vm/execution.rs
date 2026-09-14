@@ -24,6 +24,7 @@ impl Vm {
             heap.collect_major();
             Ok(())
         })?;
+        self.enqueue_finalization_cleanup_jobs();
         self.bindings.resize(code.bindings.len(), None);
         self.binding_metadata = code.bindings.clone();
         self.remaining_instructions = self.config.instruction_budget;
@@ -77,7 +78,17 @@ impl Vm {
             heap.collect_major();
             Ok(())
         })?;
+        self.enqueue_finalization_cleanup_jobs();
         result
+    }
+
+    pub(super) fn enqueue_finalization_cleanup_jobs(&mut self) {
+        self.promise_jobs.extend(
+            self.heap
+                .take_finalization_registry_cleanup_jobs()
+                .into_iter()
+                .map(|(callback, holdings)| PromiseJob::FinalizationCleanup { callback, holdings }),
+        );
     }
 
     /// GlobalDeclarationInstantiation for this VM's implemented classic
@@ -952,6 +963,20 @@ impl Vm {
                     }
                 }
             }
+            for state in self.promise_any.values() {
+                for value in state.errors.iter().flatten() {
+                    if let Value::Object(id) = value {
+                        roots.push(self.heap.root(*id)?);
+                    }
+                }
+            }
+            for state in self.promise_all_settled.values() {
+                for (value, _) in state.results.iter().flatten() {
+                    if let Value::Object(id) = value {
+                        roots.push(self.heap.root(*id)?);
+                    }
+                }
+            }
             for job in &self.promise_jobs {
                 match job {
                     PromiseJob::Reaction {
@@ -1012,6 +1037,13 @@ impl Vm {
                         roots.push(self.heap.root(*target)?);
                         if let Value::Object(id) = value {
                             roots.push(self.heap.root(*id)?);
+                        }
+                    }
+                    PromiseJob::FinalizationCleanup { callback, holdings } => {
+                        for value in [callback, holdings] {
+                            if let Value::Object(id) = value {
+                                roots.push(self.heap.root(*id)?);
+                            }
                         }
                     }
                 }

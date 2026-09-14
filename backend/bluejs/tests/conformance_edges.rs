@@ -52,6 +52,32 @@ fn all_supported_keywords_work_as_literal_and_member_property_names() {
 }
 
 #[test]
+fn object_pattern_shorthand_applies_binding_identifier_early_errors() {
+    for source in [
+        "var {class} = {};",
+        "var {this} = {};",
+        "async function f() { var {await} = {}; }",
+        "function* f() { var {yield} = {}; }",
+    ] {
+        assert!(parse(source).is_err(), "{source}");
+    }
+}
+
+#[test]
+fn recursive_call_depth_stays_a_catchable_resource_limit() {
+    assert_eq!(
+        evaluate("function depth(n){return n===0?0:1+depth(n-1);}depth(12)===12"),
+        Value::Bool(true)
+    );
+    let code = compile(&parse("function depth(n){return n===0?0:1+depth(n-1);}depth(24)").unwrap())
+        .unwrap();
+    assert!(matches!(
+        Vm::default().execute(&code),
+        Err(RuntimeError::RangeError(_))
+    ));
+}
+
+#[test]
 fn void_evaluates_its_operand_and_returns_undefined() {
     for source in [
         "void 0===undefined",

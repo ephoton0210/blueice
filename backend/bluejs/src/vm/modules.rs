@@ -43,6 +43,7 @@ impl Vm {
                 heap.collect_major();
                 Ok(())
             })?;
+            self.enqueue_finalization_cleanup_jobs();
             self.stack.clear();
             self.bindings.clear();
             self.binding_metadata.clear();
@@ -352,6 +353,7 @@ impl Vm {
             heap.collect_major();
             Ok(())
         })?;
+        self.enqueue_finalization_cleanup_jobs();
         result
     }
 

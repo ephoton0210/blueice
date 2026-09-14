@@ -613,6 +613,64 @@ fn finalization_registry_has_real_slots_and_weak_registration_validation() {
 }
 
 #[test]
+fn finalization_registry_delivers_collected_holdings_in_a_later_job() {
+    let mut vm = Vm::default();
+    vm.execute_script(
+        &compile(
+            &parse(
+                "
+                    globalThis.cleaned=[];
+                    globalThis.registry=new FinalizationRegistry(holding=>cleaned.push(holding));
+                    (function(){let target={};registry.register(target,'holding');})();
+                ",
+            )
+            .unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        vm.execute_script(
+            &compile(&parse("cleaned.length===1&&cleaned[0]==='holding'").unwrap()).unwrap()
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn weak_collection_and_finalization_entries_participate_in_managed_byte_accounting() {
+    let mut vm = Vm::default();
+    vm.execute_script(
+        &compile(
+            &parse(
+                "
+                    globalThis.key={};globalThis.value={};globalThis.token={};
+                    globalThis.map=new WeakMap;
+                    globalThis.registry=new FinalizationRegistry(function(){});
+                ",
+            )
+            .unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let empty = vm.heap().stats().managed_bytes;
+    vm.execute_script(
+        &compile(&parse("map.set(key,value);registry.register(key,value,token);").unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    let charged = vm.heap().stats().managed_bytes;
+    assert!(charged > empty);
+    vm.execute_script(
+        &compile(&parse("map.delete(key);registry.unregister(token);").unwrap()).unwrap(),
+    )
+    .unwrap();
+    assert!(vm.heap().stats().managed_bytes < charged);
+}
+
+#[test]
 fn reflect_and_proxy_operations_keep_the_explicit_receiver_and_trap_contract() {
     assert_eq!(
         evaluate(

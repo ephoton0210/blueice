@@ -1218,11 +1218,18 @@ impl Vm {
         target: ObjectId,
         index: Option<u32>,
     ) -> Result<Value, RuntimeError> {
-        let prototype = self.function_prototype()?;
         let function = match index {
             Some(index) => NativeFunction::PromiseAllResolve { target, index },
             None => NativeFunction::PromiseAllReject { target },
         };
+        self.promise_combinator_handler(function)
+    }
+
+    fn promise_combinator_handler(
+        &mut self,
+        function: NativeFunction,
+    ) -> Result<Value, RuntimeError> {
+        let prototype = self.function_prototype()?;
         let id = self.with_roots(|heap| heap.alloc_native_function(function, "", prototype))?;
         self.stack.push(Value::Object(id));
         let result = (|| {
@@ -1334,6 +1341,312 @@ impl Vm {
             Ok(value) => Ok(value),
             Err(error) => {
                 self.promise_all.remove(&promise);
+                let value = self.error_value(error)?;
+                self.settle_promise(promise, PromiseStatus::Rejected(value))?;
+                Ok(Value::Object(promise))
+            }
+        }
+    }
+
+    pub(in super::super) fn promise_race(
+        &mut self,
+        constructor: &Value,
+        values: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let values = self.array_like_values(values)?;
+        let promise = self.new_promise()?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(promise));
+        let outcome = (|| {
+            let resolve = self.get_property(constructor, &"resolve".into())?;
+            if !self.is_callable(&resolve)? {
+                return Err(RuntimeError::TypeError(
+                    "Promise.race resolve must be callable".into(),
+                ));
+            }
+            for value in values {
+                let input =
+                    self.call_native(resolve.clone(), constructor.clone(), vec![value], false)?;
+                let fulfilled =
+                    self.promise_combinator_handler(NativeFunction::PromiseRaceFulfill {
+                        target: promise,
+                    })?;
+                let rejected =
+                    self.promise_combinator_handler(NativeFunction::PromiseRaceReject {
+                        target: promise,
+                    })?;
+                let then = self.get_property(&input, &"then".into())?;
+                self.call_native(then, input, vec![fulfilled, rejected], false)?;
+            }
+            Ok(Value::Object(promise))
+        })();
+        self.stack.truncate(base);
+        match outcome {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                let value = self.error_value(error)?;
+                self.settle_promise(promise, PromiseStatus::Rejected(value))?;
+                Ok(Value::Object(promise))
+            }
+        }
+    }
+
+    fn promise_settlement_record(
+        &mut self,
+        fulfilled: bool,
+        value: Value,
+    ) -> Result<Value, RuntimeError> {
+        let prototype = self.object_prototype;
+        let record = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(record));
+        self.stack.push(value.clone());
+        let result = (|| {
+            self.define_data(
+                record,
+                "status",
+                Value::String(if fulfilled { "fulfilled" } else { "rejected" }.into()),
+                true,
+                true,
+                true,
+            )?;
+            self.define_data(
+                record,
+                if fulfilled { "value" } else { "reason" },
+                value,
+                true,
+                true,
+                true,
+            )?;
+            Ok(Value::Object(record))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    pub(in super::super) fn promise_all_settled_result(
+        &mut self,
+        target: ObjectId,
+        index: u32,
+        value: Value,
+        fulfilled: bool,
+    ) -> Result<(), RuntimeError> {
+        let complete = {
+            let Some(state) = self.promise_all_settled.get_mut(&target) else {
+                return Ok(());
+            };
+            let slot = state
+                .results
+                .get_mut(index as usize)
+                .expect("Promise.allSettled reaction index was allocated");
+            if slot.is_some() {
+                return Ok(());
+            }
+            *slot = Some((value, fulfilled));
+            state.remaining -= 1;
+            (state.remaining == 0).then(|| {
+                state
+                    .results
+                    .iter()
+                    .cloned()
+                    .map(|value| value.expect("completed Promise.allSettled has every result"))
+                    .collect::<Vec<_>>()
+            })
+        };
+        let Some(values) = complete else {
+            return Ok(());
+        };
+        let base = self.stack.len();
+        let mut records = Vec::with_capacity(values.len());
+        for (value, fulfilled) in values {
+            let record = self.promise_settlement_record(fulfilled, value)?;
+            // The aggregate state retains the input values, not these newly
+            // allocated result records. Keep every completed record rooted
+            // while creating its siblings and the output array.
+            self.stack.push(record.clone());
+            records.push(record);
+        }
+        let records = self.array_from(records);
+        self.stack.truncate(base);
+        let records = records?;
+        self.promise_all_settled.remove(&target);
+        self.settle_promise(target, PromiseStatus::Fulfilled(records))
+    }
+
+    pub(in super::super) fn promise_all_settled_static(
+        &mut self,
+        constructor: &Value,
+        values: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let values = self.array_like_values(values)?;
+        let promise = self.new_promise()?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(promise));
+        let outcome = (|| {
+            let resolve = self.get_property(constructor, &"resolve".into())?;
+            if !self.is_callable(&resolve)? {
+                return Err(RuntimeError::TypeError(
+                    "Promise.allSettled resolve must be callable".into(),
+                ));
+            }
+            if values.is_empty() {
+                let values = self.array_from(Vec::new())?;
+                self.settle_promise(promise, PromiseStatus::Fulfilled(values))?;
+                return Ok(Value::Object(promise));
+            }
+            self.promise_all_settled.insert(
+                promise,
+                PromiseAllSettledState {
+                    results: vec![None; values.len()],
+                    remaining: values.len(),
+                },
+            );
+            for (index, value) in values.into_iter().enumerate() {
+                let input =
+                    self.call_native(resolve.clone(), constructor.clone(), vec![value], false)?;
+                let fulfilled =
+                    self.promise_combinator_handler(NativeFunction::PromiseAllSettledFulfill {
+                        target: promise,
+                        index: index as u32,
+                    })?;
+                let rejected =
+                    self.promise_combinator_handler(NativeFunction::PromiseAllSettledReject {
+                        target: promise,
+                        index: index as u32,
+                    })?;
+                let then = self.get_property(&input, &"then".into())?;
+                self.call_native(then, input, vec![fulfilled, rejected], false)?;
+            }
+            Ok(Value::Object(promise))
+        })();
+        self.stack.truncate(base);
+        match outcome {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                self.promise_all_settled.remove(&promise);
+                let value = self.error_value(error)?;
+                self.settle_promise(promise, PromiseStatus::Rejected(value))?;
+                Ok(Value::Object(promise))
+            }
+        }
+    }
+
+    fn promise_any_aggregate_error(&mut self, errors: Vec<Value>) -> Result<Value, RuntimeError> {
+        let base = self.stack.len();
+        self.stack.extend(errors.iter().cloned());
+        let result = (|| {
+            let errors = self.array_from(errors)?;
+            self.stack.push(errors.clone());
+            let constructor = self.error_global("AggregateError")?;
+            self.call_native(
+                constructor,
+                Value::Undefined,
+                vec![errors, Value::String("All promises were rejected".into())],
+                false,
+            )
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    pub(in super::super) fn promise_any_fulfill(
+        &mut self,
+        target: ObjectId,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
+        if self.promise_any.remove(&target).is_some() {
+            self.settle_promise(target, PromiseStatus::Fulfilled(value))?;
+        }
+        Ok(())
+    }
+
+    pub(in super::super) fn promise_any_reject(
+        &mut self,
+        target: ObjectId,
+        index: u32,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
+        let complete = {
+            let Some(state) = self.promise_any.get_mut(&target) else {
+                return Ok(());
+            };
+            let slot = state
+                .errors
+                .get_mut(index as usize)
+                .expect("Promise.any reaction index was allocated");
+            if slot.is_some() {
+                return Ok(());
+            }
+            *slot = Some(value);
+            state.remaining -= 1;
+            (state.remaining == 0).then(|| {
+                state
+                    .errors
+                    .iter()
+                    .cloned()
+                    .map(|value| value.expect("completed Promise.any has every error"))
+                    .collect::<Vec<_>>()
+            })
+        };
+        let Some(errors) = complete else {
+            return Ok(());
+        };
+        let error = self.promise_any_aggregate_error(errors)?;
+        self.promise_any.remove(&target);
+        self.settle_promise(target, PromiseStatus::Rejected(error))
+    }
+
+    pub(in super::super) fn promise_any(
+        &mut self,
+        constructor: &Value,
+        values: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let values = self.array_like_values(values)?;
+        let promise = self.new_promise()?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(promise));
+        let outcome = (|| {
+            let resolve = self.get_property(constructor, &"resolve".into())?;
+            if !self.is_callable(&resolve)? {
+                return Err(RuntimeError::TypeError(
+                    "Promise.any resolve must be callable".into(),
+                ));
+            }
+            self.promise_any.insert(
+                promise,
+                PromiseAnyState {
+                    errors: vec![None; values.len()],
+                    remaining: values.len(),
+                },
+            );
+            if values.is_empty() {
+                let error = self.promise_any_aggregate_error(Vec::new())?;
+                self.promise_any.remove(&promise);
+                self.settle_promise(promise, PromiseStatus::Rejected(error))?;
+                return Ok(Value::Object(promise));
+            }
+            for (index, value) in values.into_iter().enumerate() {
+                let input =
+                    self.call_native(resolve.clone(), constructor.clone(), vec![value], false)?;
+                let fulfilled =
+                    self.promise_combinator_handler(NativeFunction::PromiseAnyFulfill {
+                        target: promise,
+                    })?;
+                let rejected =
+                    self.promise_combinator_handler(NativeFunction::PromiseAnyReject {
+                        target: promise,
+                        index: index as u32,
+                    })?;
+                let then = self.get_property(&input, &"then".into())?;
+                self.call_native(then, input, vec![fulfilled, rejected], false)?;
+            }
+            Ok(Value::Object(promise))
+        })();
+        self.stack.truncate(base);
+        match outcome {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                self.promise_any.remove(&promise);
                 let value = self.error_value(error)?;
                 self.settle_promise(promise, PromiseStatus::Rejected(value))?;
                 Ok(Value::Object(promise))
@@ -1462,6 +1775,13 @@ impl Vm {
                 value,
                 fulfilled,
             } => self.finish_async_generator_delegate(generator, target, kind, value, fulfilled)?,
+            PromiseJob::FinalizationCleanup { callback, holdings } => {
+                // Cleanup callbacks are host jobs, not Promise reactions. A
+                // throwing callback is reported through this embedding's job
+                // runner but cannot resurrect or re-register the consumed
+                // cell.
+                self.call_native(callback, Value::Undefined, vec![holdings], false)?;
+            }
         }
         Ok(true)
     }

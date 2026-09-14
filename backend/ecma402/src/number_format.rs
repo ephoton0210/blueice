@@ -1282,7 +1282,7 @@ fn apply_currency_pattern(
         kind: NumberFormatPartKind::Currency,
         value: symbol,
     };
-    if locale.starts_with("de") {
+    if uses_trailing_currency_pattern(locale) {
         parts.push(NumberFormatPart {
             kind: NumberFormatPartKind::Literal,
             value: "\u{a0}".into(),
@@ -1311,7 +1311,7 @@ fn apply_currency_pattern(
 }
 
 fn apply_percent_pattern(parts: &mut Vec<NumberFormatPart>, locale: &str) {
-    if locale.starts_with("de") {
+    if uses_space_before_percent(locale) {
         parts.push(NumberFormatPart {
             kind: NumberFormatPartKind::Literal,
             value: "\u{a0}".into(),
@@ -1321,6 +1321,55 @@ fn apply_percent_pattern(parts: &mut Vec<NumberFormatPart>, locale: &str) {
         kind: NumberFormatPartKind::PercentSign,
         value: "%".into(),
     });
+}
+
+/// CLDR's common currency patterns place the symbol after the magnitude in
+/// most European, Cyrillic, and right-to-left language families. The compact
+/// decimal service intentionally carries this small pattern table instead of
+/// pretending the English prefix is universal; ICU4X decimal symbols alone do
+/// not expose currency-unit patterns.
+fn uses_trailing_currency_pattern(locale: &str) -> bool {
+    matches!(
+        locale.split('-').next().unwrap_or(locale),
+        "ar" | "be"
+            | "bg"
+            | "ca"
+            | "cs"
+            | "da"
+            | "de"
+            | "el"
+            | "es"
+            | "et"
+            | "fi"
+            | "fr"
+            | "he"
+            | "hr"
+            | "hu"
+            | "is"
+            | "it"
+            | "lt"
+            | "lv"
+            | "nl"
+            | "no"
+            | "pl"
+            | "pt"
+            | "ro"
+            | "ru"
+            | "sk"
+            | "sl"
+            | "sr"
+            | "sv"
+            | "tr"
+            | "uk"
+    )
+}
+
+fn uses_space_before_percent(locale: &str) -> bool {
+    uses_trailing_currency_pattern(locale)
+        && !matches!(
+            locale.split('-').next().unwrap_or(locale),
+            "ar" | "he" | "tr"
+        )
 }
 
 fn currency_symbol(currency: &NumberCurrencyOptions, locale: &str) -> String {

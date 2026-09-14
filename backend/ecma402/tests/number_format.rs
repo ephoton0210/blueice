@@ -396,6 +396,28 @@ fn formats_currency_patterns_digits_and_parts_through_the_number_service() {
         ),
         Err(NumberFormatError::MissingCurrency)
     ));
+
+    let french = NumberFormat::try_new_with_currency(
+        &[canonicalize("fr-FR").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Currency,
+            ..Default::default()
+        },
+        1,
+        None,
+        None,
+        Default::default(),
+        Some(NumberCurrencyOptions {
+            code: "EUR".into(),
+            display: NumberCurrencyDisplay::Symbol,
+            sign: NumberCurrencySign::Standard,
+        }),
+    )
+    .unwrap();
+    assert_eq!(
+        french.format_decimal("1234.5").unwrap(),
+        "1\u{202f}234,50\u{a0}€"
+    );
 }
 
 #[test]
@@ -424,6 +446,15 @@ fn formats_percent_values_and_parts_through_the_number_service() {
             (NumberFormatPartKind::PercentSign, "%".into()),
         ]
     );
+    let french = NumberFormat::try_new(
+        &[canonicalize("fr-FR").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Percent,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(french.format_decimal("0.2").unwrap(), "20\u{a0}%");
 }
 
 #[test]

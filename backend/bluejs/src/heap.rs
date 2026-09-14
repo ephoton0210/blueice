@@ -1304,6 +1304,34 @@ fn map_entry_bytes(key: &Value, value: &Value) -> usize {
         .saturating_add(value.payload_bytes())
 }
 
+fn weak_collection_key_bytes(key: &WeakCollectionKey) -> usize {
+    match key {
+        WeakCollectionKey::Object(_) => 0,
+        WeakCollectionKey::Symbol(symbol) => Value::Symbol(symbol.clone()).payload_bytes(),
+    }
+}
+
+fn weak_collection_entry_bytes(key: &WeakCollectionKey, value: &Value) -> usize {
+    size_of::<(WeakCollectionKey, Value)>()
+        .saturating_add(weak_collection_key_bytes(key))
+        .saturating_add(value.payload_bytes())
+}
+
+fn finalization_cell_bytes(
+    target: &WeakCollectionKey,
+    holdings: &Value,
+    unregister_token: &Option<WeakCollectionKey>,
+) -> usize {
+    size_of::<FinalizationCell>()
+        .saturating_add(weak_collection_key_bytes(target))
+        .saturating_add(holdings.payload_bytes())
+        .saturating_add(
+            unregister_token
+                .as_ref()
+                .map_or(0, weak_collection_key_bytes),
+        )
+}
+
 fn same_value_zero(left: &Value, right: &Value) -> bool {
     left == right
         || matches!((left, right), (Value::Number(left), Value::Number(right)) if left.is_nan() && right.is_nan())
@@ -1730,10 +1758,23 @@ impl Heap {
         if let Some(WeakCollectionKey::Object(token)) = &unregister_token {
             self.object(*token)?;
         }
+        let bytes = finalization_cell_bytes(&target, &holdings, &unregister_token);
+        let protected: Vec<_> = std::iter::once(registry)
+            .chain(match &target {
+                WeakCollectionKey::Object(target) => Some(*target),
+                WeakCollectionKey::Symbol(_) => None,
+            })
+            .chain(holdings.object_id())
+            .chain(match &unregister_token {
+                Some(WeakCollectionKey::Object(token)) => Some(*token),
+                _ => None,
+            })
+            .collect();
+        self.ensure_room(bytes, &protected)?;
         let object = self
             .objects
             .get_mut(&registry)
-            .ok_or(HeapError::InvalidObject(registry))?;
+            .expect("FinalizationRegistry is protected across collection");
         let ObjectKind::FinalizationRegistry { cells, .. } = &mut object.kind else {
             return Err(HeapError::InvalidInternalSlot(registry));
         };
@@ -1742,6 +1783,8 @@ impl Heap {
             holdings,
             unregister_token,
         });
+        object.bytes += bytes;
+        self.managed_bytes += bytes;
         Ok(())
     }
 
@@ -1752,16 +1795,79 @@ impl Heap {
     ) -> Result<bool, HeapError> {
         let unregister_token =
             WeakCollectionKey::from_value(&unregister_token).ok_or(HeapError::InvalidWeakTarget)?;
-        let object = self
-            .objects
-            .get_mut(&registry)
-            .ok_or(HeapError::InvalidObject(registry))?;
-        let ObjectKind::FinalizationRegistry { cells, .. } = &mut object.kind else {
-            return Err(HeapError::InvalidInternalSlot(registry));
+        let (removed, released) = {
+            let object = self
+                .objects
+                .get_mut(&registry)
+                .ok_or(HeapError::InvalidObject(registry))?;
+            let ObjectKind::FinalizationRegistry { cells, .. } = &mut object.kind else {
+                return Err(HeapError::InvalidInternalSlot(registry));
+            };
+            let mut released: usize = 0;
+            let previous_len = cells.len();
+            cells.retain(|cell| {
+                let remove = cell.unregister_token.as_ref() == Some(&unregister_token);
+                if remove {
+                    released = released
+                        .saturating_add(size_of::<FinalizationCell>())
+                        .saturating_add(cell.target.as_ref().map_or(0, weak_collection_key_bytes))
+                        .saturating_add(cell.holdings.payload_bytes())
+                        .saturating_add(
+                            cell.unregister_token
+                                .as_ref()
+                                .map_or(0, weak_collection_key_bytes),
+                        );
+                }
+                !remove
+            });
+            object.bytes -= released;
+            (cells.len() != previous_len, released)
         };
-        let previous_len = cells.len();
-        cells.retain(|cell| cell.unregister_token.as_ref() != Some(&unregister_token));
-        Ok(cells.len() != previous_len)
+        self.managed_bytes -= released;
+        Ok(removed)
+    }
+
+    /// Transfers cells whose weak target was cleared by collection to the VM
+    /// job queue. The callback and holdings stay strongly reachable through
+    /// the returned job until the host invokes the callback.
+    pub(crate) fn take_finalization_registry_cleanup_jobs(&mut self) -> Vec<(Value, Value)> {
+        let mut jobs = Vec::new();
+        let mut released: usize = 0;
+        for object in self.objects.values_mut() {
+            let ObjectKind::FinalizationRegistry {
+                cleanup_callback,
+                cells,
+            } = &mut object.kind
+            else {
+                continue;
+            };
+            let mut registry_released: usize = 0;
+            let mut live = Vec::with_capacity(cells.len());
+            for cell in std::mem::take(cells) {
+                if cell.target.is_none() {
+                    // `target` is cleared by GC, so only its key identity is
+                    // needed here; the entry still carries the holdings and
+                    // unregister token payload that were charged at register.
+                    registry_released =
+                        registry_released.saturating_add(size_of::<FinalizationCell>());
+                    registry_released =
+                        registry_released.saturating_add(cell.holdings.payload_bytes());
+                    registry_released = registry_released.saturating_add(
+                        cell.unregister_token
+                            .as_ref()
+                            .map_or(0, weak_collection_key_bytes),
+                    );
+                    jobs.push((cleanup_callback.clone(), cell.holdings));
+                } else {
+                    live.push(cell);
+                }
+            }
+            *cells = live;
+            object.bytes -= registry_released;
+            released = released.saturating_add(registry_released);
+        }
+        self.managed_bytes -= released;
+        jobs
     }
 
     pub(crate) fn weak_ref_target(&self, object: ObjectId) -> Result<Option<Value>, HeapError> {
@@ -1810,15 +1916,37 @@ impl Heap {
         if let WeakCollectionKey::Object(key) = &key {
             self.object(*key)?;
         }
+        let old_bytes = match &self.object(object)?.kind {
+            ObjectKind::WeakCollection { entries, .. } => entries
+                .get(&key)
+                .map(|value| weak_collection_entry_bytes(&key, value))
+                .unwrap_or(0),
+            _ => return Err(HeapError::InvalidInternalSlot(object)),
+        };
+        let new_bytes = weak_collection_entry_bytes(&key, &value);
+        let protected: Vec<_> = std::iter::once(object)
+            .chain(match &key {
+                WeakCollectionKey::Object(key) => Some(*key),
+                WeakCollectionKey::Symbol(_) => None,
+            })
+            .chain(value.object_id())
+            .collect();
+        self.ensure_room(new_bytes.saturating_sub(old_bytes), &protected)?;
         let ObjectKind::WeakCollection { entries, .. } = &mut self
             .objects
             .get_mut(&object)
-            .ok_or(HeapError::InvalidObject(object))?
+            .expect("WeakCollection is protected across collection")
             .kind
         else {
             return Err(HeapError::InvalidInternalSlot(object));
         };
         entries.insert(key, value);
+        let entry = self
+            .objects
+            .get_mut(&object)
+            .expect("WeakCollection exists");
+        entry.bytes = entry.bytes - old_bytes + new_bytes;
+        self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
         self.remembered.insert(object);
         Ok(())
     }
@@ -1828,15 +1956,27 @@ impl Heap {
         object: ObjectId,
         key: &Value,
     ) -> Result<bool, HeapError> {
-        let ObjectKind::WeakCollection { entries, .. } = &mut self
-            .objects
-            .get_mut(&object)
-            .ok_or(HeapError::InvalidObject(object))?
-            .kind
-        else {
-            return Err(HeapError::InvalidInternalSlot(object));
+        let Some(key) = WeakCollectionKey::from_value(key) else {
+            return Ok(false);
         };
-        Ok(WeakCollectionKey::from_value(key).is_some_and(|key| entries.remove(&key).is_some()))
+        let object_id = object;
+        let (deleted, released) = {
+            let object = self
+                .objects
+                .get_mut(&object_id)
+                .ok_or(HeapError::InvalidObject(object_id))?;
+            let ObjectKind::WeakCollection { entries, .. } = &mut object.kind else {
+                return Err(HeapError::InvalidInternalSlot(object_id));
+            };
+            let Some(value) = entries.remove(&key) else {
+                return Ok(false);
+            };
+            let released = weak_collection_entry_bytes(&key, &value);
+            object.bytes -= released;
+            (true, released)
+        };
+        self.managed_bytes -= released;
+        Ok(deleted)
     }
 
     fn ensure_private_data(

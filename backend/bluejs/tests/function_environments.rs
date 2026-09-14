@@ -95,6 +95,46 @@ fn parameter_closures_survive_collection_and_tail_frame_reuse() {
 }
 
 #[test]
+fn named_generator_recursion_creates_a_fresh_lazy_generator() {
+    let mut vm = Vm::default();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "'use strict';let g=function* g(n){if(n)return g(n-1);return 42;};let outer=g(1);let result=outer.next();result.done&&typeof result.value.next==='function'&&result.value.next().value===42",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn promise_race_any_and_all_settled_are_installed_and_settle_as_promises() {
+    let mut vm = Vm::default();
+    execute(
+        &mut vm,
+        "
+            globalThis.raceResult=globalThis.anyResult=globalThis.settledResult=globalThis.anyError=false;
+            Promise.race([Promise.resolve('race')]).then(value=>{globalThis.raceResult=value==='race';});
+            Promise.any([Promise.reject('first'),Promise.resolve('any')]).then(value=>{globalThis.anyResult=value==='any';});
+            Promise.allSettled([Promise.resolve(1),Promise.reject(2)]).then(values=>{
+                globalThis.settledResult=values[0].status==='fulfilled'&&values[0].value===1&&values[1].status==='rejected'&&values[1].reason===2;
+            });
+            Promise.any([Promise.reject(3)]).then(undefined,error=>{
+                globalThis.anyError=error instanceof AggregateError&&error.errors[0]===3;
+            });
+        ",
+    )
+    .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(
+            &mut vm,
+            "typeof Promise.race==='function'&&typeof Promise.any==='function'&&typeof Promise.allSettled==='function'&&raceResult&&anyResult&&settledResult&&anyError",
+        ),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
 fn classic_for_let_creates_a_fresh_binding_for_each_iteration() {
     let mut vm = Vm::default();
     for source in [

@@ -404,12 +404,36 @@ pub(crate) enum NativeFunction {
     PromiseResolve,
     PromiseReject,
     PromiseAll,
+    PromiseRace,
+    PromiseAny,
+    PromiseAllSettled,
     PromiseAllResolve {
         target: ObjectId,
         index: u32,
     },
     PromiseAllReject {
         target: ObjectId,
+    },
+    PromiseRaceFulfill {
+        target: ObjectId,
+    },
+    PromiseRaceReject {
+        target: ObjectId,
+    },
+    PromiseAnyFulfill {
+        target: ObjectId,
+    },
+    PromiseAnyReject {
+        target: ObjectId,
+        index: u32,
+    },
+    PromiseAllSettledFulfill {
+        target: ObjectId,
+        index: u32,
+    },
+    PromiseAllSettledReject {
+        target: ObjectId,
+        index: u32,
     },
     PromiseWithResolvers,
     Test262Done,
@@ -476,9 +500,14 @@ impl NativeFunction {
             Self::PromiseCapabilityExecutor { storage } => vec![storage],
             Self::AsyncFromSyncFulfill { target, .. } => vec![target],
             Self::AsyncFromSyncReject { target, record } => vec![target, record],
-            Self::PromiseAllResolve { target, .. } | Self::PromiseAllReject { target } => {
-                vec![target]
-            }
+            Self::PromiseAllResolve { target, .. }
+            | Self::PromiseAllReject { target }
+            | Self::PromiseRaceFulfill { target }
+            | Self::PromiseRaceReject { target }
+            | Self::PromiseAnyFulfill { target }
+            | Self::PromiseAnyReject { target, .. }
+            | Self::PromiseAllSettledFulfill { target, .. }
+            | Self::PromiseAllSettledReject { target, .. } => vec![target],
             _ => Vec::new(),
         }
     }

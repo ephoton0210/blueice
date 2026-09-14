@@ -201,12 +201,24 @@ impl Heap {
     pub(super) fn minor_gc(&mut self, protected: &[ObjectId]) {
         let marked = self.mark(true, protected);
         let young: HashSet<_> = self.nursery.iter().copied().collect();
+        let mut released_weak_entries: usize = 0;
         for object in self.objects.values_mut() {
             if let ObjectKind::WeakCollection { entries, .. } = &mut object.kind {
-                entries.retain(|key, _| match key {
-                    WeakCollectionKey::Object(key) => !young.contains(key) || marked.contains(key),
-                    WeakCollectionKey::Symbol(_) => true,
+                let mut released: usize = 0;
+                entries.retain(|key, value| {
+                    let keep = match key {
+                        WeakCollectionKey::Object(key) => {
+                            !young.contains(key) || marked.contains(key)
+                        }
+                        WeakCollectionKey::Symbol(_) => true,
+                    };
+                    if !keep {
+                        released = released.saturating_add(weak_collection_entry_bytes(key, value));
+                    }
+                    keep
                 });
+                object.bytes -= released;
+                released_weak_entries = released_weak_entries.saturating_add(released);
             }
             if let ObjectKind::WeakRef { target } = &mut object.kind {
                 if target.as_ref().is_some_and(|target| {
@@ -225,6 +237,7 @@ impl Heap {
                 }
             }
         }
+        self.managed_bytes -= released_weak_entries;
         for id in self.nursery.drain(..) {
             if marked.contains(&id) {
                 self.objects
@@ -248,12 +261,22 @@ impl Heap {
 
     pub(super) fn major_gc(&mut self, protected: &[ObjectId]) {
         let marked = self.mark(false, protected);
+        let mut released_weak_entries: usize = 0;
         for object in self.objects.values_mut() {
             if let ObjectKind::WeakCollection { entries, .. } = &mut object.kind {
-                entries.retain(|key, _| match key {
-                    WeakCollectionKey::Object(key) => marked.contains(key),
-                    WeakCollectionKey::Symbol(_) => true,
+                let mut released: usize = 0;
+                entries.retain(|key, value| {
+                    let keep = match key {
+                        WeakCollectionKey::Object(key) => marked.contains(key),
+                        WeakCollectionKey::Symbol(_) => true,
+                    };
+                    if !keep {
+                        released = released.saturating_add(weak_collection_entry_bytes(key, value));
+                    }
+                    keep
                 });
+                object.bytes -= released;
+                released_weak_entries = released_weak_entries.saturating_add(released);
             }
             if let ObjectKind::WeakRef { target } = &mut object.kind {
                 if target.as_ref().is_some_and(
@@ -272,6 +295,7 @@ impl Heap {
                 }
             }
         }
+        self.managed_bytes -= released_weak_entries;
         let reclaimed_metadata = self
             .closure_metadata
             .keys()

@@ -154,7 +154,7 @@ impl Vm {
             self.define_data(
                 constructor,
                 "length",
-                Value::Number(1.0),
+                Value::Number(if name == "AggregateError" { 2.0 } else { 1.0 }),
                 false,
                 false,
                 true,
@@ -229,12 +229,23 @@ impl Vm {
         let object = self.with_roots(|heap| heap.alloc_error(Some(prototype)))?;
         self.stack.push(Value::Object(object));
         let result = (|| {
-            let message = native::argument(args, 0);
+            let aggregate = name == "AggregateError";
+            if aggregate {
+                self.define_data(
+                    object,
+                    "errors",
+                    native::argument(args, 0).clone(),
+                    true,
+                    false,
+                    true,
+                )?;
+            }
+            let message = native::argument(args, if aggregate { 1 } else { 0 });
             if *message != Value::Undefined {
                 let message = self.coerce_string(message)?;
                 self.define_data(object, "message", Value::String(message), true, false, true)?;
             }
-            if let Value::Object(options) = native::argument(args, 1) {
+            if let Value::Object(options) = native::argument(args, if aggregate { 2 } else { 1 }) {
                 if self.has_property(*options, &"cause".into())? {
                     let cause = self.get_property(&Value::Object(*options), &"cause".into())?;
                     self.define_data(object, "cause", cause, true, false, true)?;

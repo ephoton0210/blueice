@@ -1887,10 +1887,11 @@ instruction budget, and a two-second case deadline:
 `FinalizationRegistry` is no longer a placeholder: its constructor validates
 the cleanup callback, registry cells retain strong holdings and weak target /
 unregister-token keys, `register` and `unregister` validate their inputs, and
-collection clears a dead cell target. Cleanup-job scheduling and delivery of
-holdings are intentionally not implemented yet, so this is a sound substrate
-for the WeakRef fixture and future registry work, not a claim of complete
-FinalizationRegistry conformance.
+collection clears a dead cell target. Once collection has observed that state,
+the VM transfers the callback and holdings into a later host job; callback
+execution is never synchronous with the triggering ECMAScript job. This is a
+bounded implementation slice, not a claim of complete FinalizationRegistry
+conformance or host-controlled cleanup timing.
 
 ## P0.4 continuation: Date and Array baseline closure
 

@@ -220,6 +220,15 @@ impl Vm {
                 self.install_native(id, prototype, "resolve", 1, NativeFunction::PromiseResolve)?;
                 self.install_native(id, prototype, "reject", 1, NativeFunction::PromiseReject)?;
                 self.install_native(id, prototype, "all", 1, NativeFunction::PromiseAll)?;
+                self.install_native(id, prototype, "race", 1, NativeFunction::PromiseRace)?;
+                self.install_native(id, prototype, "any", 1, NativeFunction::PromiseAny)?;
+                self.install_native(
+                    id,
+                    prototype,
+                    "allSettled",
+                    1,
+                    NativeFunction::PromiseAllSettled,
+                )?;
                 self.install_native(
                     id,
                     prototype,

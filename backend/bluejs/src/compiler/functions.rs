@@ -601,6 +601,11 @@ impl Compiler {
         };
         let slot = self.bytecode.self_slot?;
         (self.bytecode.strict
+            // A recursive call made by a generator or async function creates
+            // a distinct generator/promise execution. Reusing this frame
+            // would eagerly run it and changes the observable result.
+            && !self.bytecode.generator
+            && !self.bytecode.async_function
             && self.resolve(name) == Some(slot)
             && args
                 .iter()

@@ -843,12 +843,39 @@ impl Vm {
             }
             NativeFunction::PromiseReject => self.promise_reject(first.clone()),
             NativeFunction::PromiseAll => self.promise_all(&receiver, first),
+            NativeFunction::PromiseRace => self.promise_race(&receiver, first),
+            NativeFunction::PromiseAny => self.promise_any(&receiver, first),
+            NativeFunction::PromiseAllSettled => self.promise_all_settled_static(&receiver, first),
             NativeFunction::PromiseAllResolve { target, index } => {
                 self.promise_all_settled(target, index, first.clone())?;
                 Ok(Value::Undefined)
             }
             NativeFunction::PromiseAllReject { target } => {
                 self.promise_all_reject(target, first.clone())?;
+                Ok(Value::Undefined)
+            }
+            NativeFunction::PromiseRaceFulfill { target } => {
+                self.settle_promise(target, PromiseStatus::Fulfilled(first.clone()))?;
+                Ok(Value::Undefined)
+            }
+            NativeFunction::PromiseRaceReject { target } => {
+                self.settle_promise(target, PromiseStatus::Rejected(first.clone()))?;
+                Ok(Value::Undefined)
+            }
+            NativeFunction::PromiseAnyFulfill { target } => {
+                self.promise_any_fulfill(target, first.clone())?;
+                Ok(Value::Undefined)
+            }
+            NativeFunction::PromiseAnyReject { target, index } => {
+                self.promise_any_reject(target, index, first.clone())?;
+                Ok(Value::Undefined)
+            }
+            NativeFunction::PromiseAllSettledFulfill { target, index } => {
+                self.promise_all_settled_result(target, index, first.clone(), true)?;
+                Ok(Value::Undefined)
+            }
+            NativeFunction::PromiseAllSettledReject { target, index } => {
+                self.promise_all_settled_result(target, index, first.clone(), false)?;
                 Ok(Value::Undefined)
             }
             NativeFunction::PromiseWithResolvers => self.promise_with_resolvers(),

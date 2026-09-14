@@ -179,10 +179,13 @@ The independent NumberFormat slice accepts finite base-10 decimal strings or
 IEEE-754 values (including `NaN` and infinities), applies the `nu` Unicode extension, CLDR
 separators/digits and grouping, resolves ECMA-402 fraction-digit defaults and
 all current rounding-mode and `signDisplay` names, and partitions decimal and currently
-supported duration-unit output through `formatToParts`. Currency, percent,
-range, compact/scientific notation and the complete
-sanctioned-unit data set remain explicit future slices rather than silent
-partial implementations.
+supported duration-unit output through `formatToParts`. Currency and percent
+now cover their finite-decimal defaults, `formatToParts`, accounting signs and
+the bundled locale table's prefix/suffix patterns (including French trailing
+currency and non-breaking percent spacing); they are not a claim of complete
+CLDR currency-name, unit-pattern or range support. Range,
+compact/scientific notation and the complete sanctioned-unit data set remain
+explicit future slices rather than silent partial implementations.
 
 BlueJS now owns JavaScript coercion and Realm/prototype semantics for that
 finite-decimal slice, then stores the resolved host formatter in an internal
@@ -190,10 +193,11 @@ slot. `Intl.NumberFormat` supports construction/call allocation, a cached bound
 `format` getter, `resolvedOptions` and `supportedLocalesOf`; its direct VM test
 and `bluejs-test262` JSON-lines process test cover locale negotiation, Thai
 digits, fraction rounding, custom constructor prototypes and GC reachability.
-This is deliberately not a claim of the full JavaScript constructor: currency,
-the complete unit data, compact/scientific notation, range formatting and the
-remaining NumberFormat options still require their own host-neutral slices
-before they are advertised as supported.
+This is deliberately not a claim of the full JavaScript constructor: the
+complete currency-name and locale-pattern data, complete unit data,
+compact/scientific notation, range formatting and the remaining NumberFormat
+options still require their own host-neutral slices before they are advertised
+as supported.
 
 The independent PluralRules slice selects cardinal or ordinal CLDR categories
 from a finite base-10 decimal or IEEE-754 value, preserving visible fractional
