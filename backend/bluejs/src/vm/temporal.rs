@@ -10,6 +10,8 @@
 
 use super::*;
 use crate::heap::{TemporalKind, TemporalValue};
+use num_bigint::BigInt;
+use num_traits::ToPrimitive;
 
 fn is_leap_year(year: i32) -> bool {
     year.rem_euclid(4) == 0 && (year.rem_euclid(100) != 0 || year.rem_euclid(400) == 0)
@@ -26,14 +28,19 @@ fn days_in_month(year: i32, month: u8) -> Option<u8> {
 }
 
 fn temporal_date(source: &str) -> Option<(i32, u8, u8)> {
-    let date = source.split(['T', '[', 'Z', '+']).next().unwrap_or(source);
+    let end = source
+        .find(['T', 't', '[', 'Z', 'z'])
+        .unwrap_or(source.len());
+    let date = &source[..end];
     let end = date.rfind('-')?;
     let before_day = &date[..end];
     let middle = before_day.rfind('-')?;
     let year = date[..middle].parse().ok()?;
     let month = date[middle + 1..end].parse().ok()?;
     let day = date[end + 1..].parse().ok()?;
-    (days_in_month(year, month).is_some_and(|last| day <= last)).then_some((year, month, day))
+    ((-271_821..=275_760).contains(&year)
+        && days_in_month(year, month).is_some_and(|last| day <= last))
+    .then_some((year, month, day))
 }
 
 fn temporal_time(source: &str) -> Option<(u8, u8, u8, u16, u16, u16)> {
@@ -69,6 +76,74 @@ fn temporal_time(source: &str) -> Option<(u8, u8, u8, u16, u16, u16)> {
         ((nanos / 1_000) % 1_000) as u16,
         (nanos % 1_000) as u16,
     ))
+}
+
+fn temporal_offset_seconds(source: &str) -> Option<i32> {
+    let index = source.char_indices().find_map(|(index, character)| {
+        matches!(character, 'Z' | 'z' | '+' | '-' | '[').then_some(index)
+    })?;
+    let suffix = &source[index..];
+    if matches!(suffix.as_bytes().first(), Some(b'Z' | b'z')) {
+        return (suffix.len() == 1 || suffix.starts_with("Z[") || suffix.starts_with("z["))
+            .then_some(0);
+    }
+    let sign = match suffix.as_bytes().first() {
+        Some(b'+') => 1,
+        Some(b'-') => -1,
+        _ => return None,
+    };
+    let fields = suffix[1..]
+        .split_once('[')
+        .map_or(&suffix[1..], |(fields, _)| fields);
+    let fields: Vec<_> = if fields.contains(':') {
+        fields.split(':').collect()
+    } else {
+        match fields.len() {
+            2 => vec![&fields[..2]],
+            4 => vec![&fields[..2], &fields[2..4]],
+            6 => vec![&fields[..2], &fields[2..4], &fields[4..6]],
+            _ => return None,
+        }
+    };
+    let [hour, minute, second] = match fields.as_slice() {
+        [hour] => [*hour, "0", "0"],
+        [hour, minute] => [*hour, *minute, "0"],
+        [hour, minute, second] => [*hour, *minute, *second],
+        _ => return None,
+    };
+    let hour: i32 = hour.parse().ok()?;
+    let minute: i32 = minute.parse().ok()?;
+    let second: i32 = second.parse().ok()?;
+    (hour <= 23 && minute <= 59 && second <= 59)
+        .then_some(sign * (hour * 3_600 + minute * 60 + second))
+}
+
+fn temporal_epoch_nanoseconds(
+    (year, month, day): (i32, u8, u8),
+    (hour, minute, second, millisecond, microsecond, nanosecond): (u8, u8, u8, u16, u16, u16),
+    offset_seconds: i32,
+) -> BigInt {
+    let adjusted_year = i64::from(year) - i64::from(month <= 2);
+    let era = adjusted_year.div_euclid(400);
+    let year_of_era = adjusted_year - era * 400;
+    let march_month = i64::from(month) + if month > 2 { -3 } else { 9 };
+    let day_of_year = (153 * march_month + 2) / 5 + i64::from(day) - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    let days = era * 146_097 + day_of_era - 719_468;
+    let milliseconds = days * 86_400_000
+        + i64::from(hour) * 3_600_000
+        + i64::from(minute) * 60_000
+        + i64::from(second) * 1_000
+        + i64::from(millisecond);
+    BigInt::from(milliseconds) * 1_000_000_u32
+        + BigInt::from(microsecond) * 1_000_u32
+        + BigInt::from(nanosecond)
+        - BigInt::from(offset_seconds) * 1_000_000_000_u32
+}
+
+fn temporal_epoch_nanoseconds_in_range(value: &BigInt) -> bool {
+    let limit = BigInt::from(8_640_000_000_000_000_i64) * 1_000_000_u32;
+    value >= &-limit.clone() && value <= &limit
 }
 
 impl Vm {
@@ -268,6 +343,11 @@ impl Vm {
                         ));
                     }
                 };
+                if !temporal_epoch_nanoseconds_in_range(&value.epoch_nanoseconds) {
+                    return Err(RuntimeError::RangeError(
+                        "Temporal.Instant epoch nanoseconds are outside the supported range".into(),
+                    ));
+                }
             }
             TemporalKind::ZonedDateTime => {
                 value.epoch_nanoseconds = match native::argument(args, 0) {
@@ -278,6 +358,12 @@ impl Vm {
                         ));
                     }
                 };
+                if !temporal_epoch_nanoseconds_in_range(&value.epoch_nanoseconds) {
+                    return Err(RuntimeError::RangeError(
+                        "Temporal.ZonedDateTime epoch nanoseconds are outside the supported range"
+                            .into(),
+                    ));
+                }
                 value.time_zone = self
                     .coerce_string(native::argument(args, 1))?
                     .to_utf8()
@@ -342,7 +428,13 @@ impl Vm {
                 value.month = number(self, 0, 1, 12, "month")? as u8;
                 value.day = number(self, 1, 1, 31, "day")? as u8;
                 value.calendar = self.temporal_calendar(native::argument(args, 2))?;
-                value.year = number(self, 3, -271_821, 275_760, "reference year").unwrap_or(1972);
+                value.year = self.temporal_optional_integer(
+                    native::argument(args, 3),
+                    1972,
+                    -271_821,
+                    275_760,
+                    "reference year",
+                )?;
                 if days_in_month(value.year, value.month).is_none_or(|last| value.day > last) {
                     return Err(RuntimeError::RangeError("invalid Temporal day".into()));
                 }
@@ -383,7 +475,18 @@ impl Vm {
                 value.year = number(self, 0, -271_821, 275_760, "year")?;
                 value.month = number(self, 1, 1, 12, "month")? as u8;
                 value.calendar = self.temporal_calendar(native::argument(args, 2))?;
-                value.day = number(self, 3, 1, 31, "reference day").unwrap_or(1) as u8;
+                value.day = self.temporal_optional_integer(
+                    native::argument(args, 3),
+                    1,
+                    1,
+                    31,
+                    "reference day",
+                )? as u8;
+                if days_in_month(value.year, value.month).is_none_or(|last| value.day > last) {
+                    return Err(RuntimeError::RangeError(
+                        "invalid Temporal reference day".into(),
+                    ));
+                }
             }
         }
         Ok(value)
@@ -394,29 +497,35 @@ impl Vm {
         kind: TemporalKind,
         source: &str,
     ) -> Result<TemporalValue, RuntimeError> {
-        if kind == TemporalKind::Instant {
-            return Ok(TemporalValue {
-                kind,
-                year: 1970,
-                month: 1,
-                day: 1,
-                hour: 0,
-                minute: 0,
-                second: 0,
-                millisecond: 0,
-                microsecond: 0,
-                nanosecond: 0,
-                epoch_nanoseconds: 0.into(),
-                calendar: "iso8601".into(),
-                time_zone: "UTC".into(),
-            });
-        }
         let (year, month, day) = temporal_date(source)
             .ok_or_else(|| RuntimeError::RangeError("invalid Temporal date string".into()))?;
-        let (hour, minute, second, millisecond, microsecond, nanosecond) = source
-            .split_once('T')
-            .and_then(|(_, time)| temporal_time(time))
-            .unwrap_or((0, 0, 0, 0, 0, 0));
+        let time = source.split_once(['T', 't']).map(|(_, time)| time);
+        let (hour, minute, second, millisecond, microsecond, nanosecond) = match time {
+            Some(time) => temporal_time(time)
+                .ok_or_else(|| RuntimeError::RangeError("invalid Temporal time string".into()))?,
+            None => (0, 0, 0, 0, 0, 0),
+        };
+        let epoch_nanoseconds = if kind == TemporalKind::Instant {
+            let time = time.ok_or_else(|| {
+                RuntimeError::RangeError("invalid Temporal Instant string".into())
+            })?;
+            let offset = temporal_offset_seconds(time).ok_or_else(|| {
+                RuntimeError::RangeError("invalid Temporal Instant string".into())
+            })?;
+            let epoch_nanoseconds = temporal_epoch_nanoseconds(
+                (year, month, day),
+                (hour, minute, second, millisecond, microsecond, nanosecond),
+                offset,
+            );
+            if !temporal_epoch_nanoseconds_in_range(&epoch_nanoseconds) {
+                return Err(RuntimeError::RangeError(
+                    "Temporal.Instant string is outside the supported range".into(),
+                ));
+            }
+            epoch_nanoseconds
+        } else {
+            0.into()
+        };
         Ok(TemporalValue {
             kind,
             year: if kind == TemporalKind::PlainMonthDay {
@@ -436,7 +545,7 @@ impl Vm {
             millisecond,
             microsecond,
             nanosecond,
-            epoch_nanoseconds: 0.into(),
+            epoch_nanoseconds,
             calendar: "iso8601".into(),
             time_zone: "UTC".into(),
         })
@@ -520,8 +629,9 @@ impl Vm {
     }
 
     pub(super) fn temporal_zoned_date_time_to_locale_string(
-        &self,
+        &mut self,
         receiver: &Value,
+        args: &[Value],
     ) -> Result<Value, RuntimeError> {
         let object = receiver.object_id().ok_or_else(|| {
             RuntimeError::TypeError("Temporal.ZonedDateTime method requires a receiver".into())
@@ -534,6 +644,34 @@ impl Vm {
                 "Temporal.ZonedDateTime method requires a receiver".into(),
             ));
         }
-        Ok(Value::String("1970-01-01".into()))
+        let milliseconds = (&value.epoch_nanoseconds / 1_000_000_u32)
+            .to_f64()
+            .ok_or_else(|| RuntimeError::RangeError("invalid Temporal instant".into()))?;
+        let stack_base = self.stack.len();
+        let result = (|| {
+            let options_prototype = if native::argument(args, 1) == &Value::Undefined {
+                None
+            } else {
+                Some(self.coerce_object(native::argument(args, 1))?)
+            };
+            let options = self.with_roots(|heap| heap.alloc_object(options_prototype))?;
+            self.stack.push(Value::Object(options));
+            self.define_data(
+                options,
+                "timeZone",
+                Value::String(value.time_zone.into()),
+                true,
+                true,
+                true,
+            )?;
+            let formatter = self.create_date_time_format(
+                &[native::argument(args, 0).clone(), Value::Object(options)],
+                false,
+            )?;
+            self.stack.push(formatter.clone());
+            self.date_time_format_format(&formatter, &Value::Number(milliseconds))
+        })();
+        self.stack.truncate(stack_base);
+        result
     }
 }

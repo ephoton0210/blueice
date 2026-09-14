@@ -360,6 +360,7 @@ impl Heap {
                 ObjectKind::Segments(data) => data.bytes(),
                 ObjectKind::SegmentIterator { .. } => 0,
                 ObjectKind::IntlLocale(data) => data.bytes(),
+                ObjectKind::Temporal(value) => value.bytes(),
                 ObjectKind::BoxedPrimitive(value) => value.payload_bytes(),
                 ObjectKind::NativeFunction { initial_name, .. } => initial_name.byte_len(),
                 ObjectKind::Closure { captures, this, .. } => {

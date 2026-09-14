@@ -565,6 +565,21 @@ fn map_entries_preserve_strong_key_identity_and_same_value_zero() {
 }
 
 #[test]
+fn set_has_an_internal_collection_and_size_getter() {
+    assert_eq!(
+        evaluate(
+            "let set=new Set();let empty=set.size===0;let first=set.add(-0);set.add(NaN).add(NaN);empty&&first===set&&set.size===2&&set.has(0)&&set.has(NaN)&&set.delete(0)&&set.size===1&&!set.has(-0)",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    assert!(matches!(
+        evaluate("Object.getOwnPropertyDescriptor(Set.prototype, 'size').get.call({})"),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
 fn weak_map_upserts_preserve_symbol_identity_and_callback_order() {
     assert_eq!(
         evaluate(

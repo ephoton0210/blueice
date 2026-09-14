@@ -82,6 +82,13 @@ pub(crate) enum MapMethod {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SetMethod {
+    Add,
+    Delete,
+    Has,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DateMethod {
     Get(DatePart),
     GetYear,
@@ -202,6 +209,8 @@ pub(crate) enum NativeFunction {
     MapMethod(MapMethod),
     MapSize,
     Set,
+    SetMethod(SetMethod),
+    SetSize,
     WeakMap,
     WeakSet,
     WeakRef,

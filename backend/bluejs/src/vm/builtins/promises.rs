@@ -45,9 +45,7 @@ impl Vm {
         Ok(prototype)
     }
 
-    /// Map and Set have distinct ordinary prototypes. Map exposes the core
-    /// keyed-entry operations needed by ECMAScript helpers; Set remains a
-    /// separate bootstrap while its entry methods are introduced.
+    /// Map and Set have distinct ordinary prototypes and keyed-entry cores.
     pub(in super::super) fn collection_prototype(
         &mut self,
         map: bool,
@@ -99,6 +97,26 @@ impl Vm {
                         name,
                         length,
                         NativeFunction::MapMethod(method),
+                    )?;
+                }
+            } else {
+                self.install_native_getter(
+                    prototype,
+                    function_prototype,
+                    "size",
+                    NativeFunction::SetSize,
+                )?;
+                for (name, length, method) in [
+                    ("add", 1, SetMethod::Add),
+                    ("delete", 1, SetMethod::Delete),
+                    ("has", 1, SetMethod::Has),
+                ] {
+                    self.install_native(
+                        prototype,
+                        function_prototype,
+                        name,
+                        length,
+                        NativeFunction::SetMethod(method),
                     )?;
                 }
             }
@@ -197,7 +215,7 @@ impl Vm {
         let collection = if map {
             self.with_roots(|heap| heap.alloc_map(Some(prototype)))?
         } else {
-            self.with_roots(|heap| heap.alloc_object(Some(prototype)))?
+            self.with_roots(|heap| heap.alloc_set(Some(prototype)))?
         };
         self.stack.push(Value::Object(collection));
         self.stack.pop();
@@ -231,6 +249,33 @@ impl Vm {
                 })?;
                 Ok(Value::Object(map))
             }
+        }
+    }
+
+    pub(in super::super) fn set_method(
+        &mut self,
+        method: SetMethod,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let Some(set) = receiver.object_id() else {
+            return Err(RuntimeError::TypeError(
+                "Set method requires a Set receiver".into(),
+            ));
+        };
+        if !self.heap.is_set(set)? {
+            return Err(RuntimeError::TypeError(
+                "Set method requires a Set receiver".into(),
+            ));
+        }
+        let key = native::argument(args, 0);
+        match method {
+            SetMethod::Add => {
+                self.with_roots(|heap| heap.set_add(set, key.clone()))?;
+                Ok(Value::Object(set))
+            }
+            SetMethod::Delete => Ok(Value::Bool(self.heap.set_delete(set, key)?)),
+            SetMethod::Has => Ok(Value::Bool(self.heap.set_has(set, key)?)),
         }
     }
 

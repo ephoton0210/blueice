@@ -80,6 +80,41 @@ fn defaults_to_a_date_rejects_invalid_times_and_uses_iana_dst_rules() {
 }
 
 #[test]
+fn time_zone_name_keeps_the_default_numeric_date_fields() {
+    let format = DateTimeFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        DateTimeFormatOptions {
+            time_zone: Some("UTC".into()),
+            time_zone_name: Some("short".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let parts = format.format_to_parts(0.0).unwrap();
+    for field in ["month", "day", "year", "timeZoneName"] {
+        assert!(parts.iter().any(|part| part.kind == field), "{field}");
+    }
+}
+
+#[test]
+fn named_zones_format_time_clip_endpoints_outside_jiff_civil_range() {
+    let format = DateTimeFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        DateTimeFormatOptions {
+            time_zone: Some("America/New_York".into()),
+            year: Some(DateTimeWidth::Numeric),
+            month: Some(DateTimeWidth::Numeric),
+            day: Some(DateTimeWidth::Numeric),
+            time_zone_name: Some("short".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(!format.format(8_640_000_000_000_000.0).unwrap().is_empty());
+    assert!(!format.format(-8_640_000_000_000_000.0).unwrap().is_empty());
+}
+
+#[test]
 fn pins_and_exposes_the_iana_tzdb_release() {
     assert_eq!(bundled_tzdb_version(), "2026c");
 }

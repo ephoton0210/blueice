@@ -237,6 +237,11 @@ fn date_time_format_constructs_formats_and_exposes_parts() {
         "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC'}); f.format === f.format && f.format.name === '' && f.format.length === 1 && f.format.prototype === undefined",
         "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC'}); let converted=false; let poison={valueOf:function(){converted=true;return 0}}; let caught=false; try{f.formatRangeToParts(undefined,poison)}catch(error){caught=error instanceof TypeError} caught && !converted",
         "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC'}); let low=f.formatRange(-8640000000000000,0); let high=f.formatRange(0,8640000000000000); let bad=false; try{f.formatRange(8640000000000001,0)}catch(error){bad=error instanceof RangeError} low.length>0&&high.length>0&&bad",
+        "let f=new Intl.DateTimeFormat('en-US',{timeZoneName:'short'});let p=f.formatToParts(0);p.some(x=>x.type==='month')&&p.some(x=>x.type==='day')&&p.some(x=>x.type==='year')&&p.some(x=>x.type==='timeZoneName')",
+        "new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'numeric',day:'numeric',timeZoneName:'short'}).format(8640000000000000).length>0",
+        "let start=Temporal.Instant.from('2020-01-02T00:00:00+00:00');let end=Temporal.Instant.from('2020-01-03T00:00:00Z');let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC',year:'numeric',month:'numeric',day:'numeric'});f.formatRange(start,end).includes('2020')",
+        "let z=new Temporal.ZonedDateTime(1577836800000000000n,'UTC');z.toLocaleString('en-US',{year:'numeric',month:'numeric',day:'numeric'}).includes('2020')",
+        "let extended=Temporal.PlainDate.from('+002020-06-01');let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC',year:'numeric',month:'numeric',day:'numeric'});let monthDay=false;let yearMonth=false;try{new Temporal.PlainMonthDay(2,1,'iso8601',300000)}catch(error){monthDay=error instanceof RangeError};try{new Temporal.PlainYearMonth(2020,4,'iso8601',31)}catch(error){yearMonth=error instanceof RangeError};if(!f.formatRange(extended,extended).includes('2020'))throw new Error('extended year');if(!monthDay)throw new Error('reference year');if(!yearMonth)throw new Error('reference day');true",
         "let f=new Intl.DateTimeFormat('en',{timeZone:'America/New_York',year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',timeZoneName:'short'});let start=Temporal.PlainDateTime.from('2020-01-01T00:00');let end=Temporal.PlainDateTime.from('2020-01-01T01:00');let parts=f.formatRangeToParts(start,end);parts.some(x=>x.source==='startRange')&&parts.some(x=>x.source==='endRange')&&!parts.some(x=>x.type==='timeZoneName')&&f.formatRange(start,end).length>0",
         "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC',year:'numeric',month:'numeric',day:'numeric'});let start=new Temporal.PlainDate(2020,1,1);let end=new Temporal.PlainDate(2020,1,2);let p=f.formatRangeToParts(start,end);p[0].source==='startRange'&&p[p.length-1].source==='endRange'&&f.formatRange(start,end).length>0",
     ] {
@@ -254,6 +259,7 @@ fn date_time_format_constructs_formats_and_exposes_parts() {
         "new Intl.DateTimeFormat('en').format(NaN)",
         "new Intl.DateTimeFormat('en').formatRange()",
         "new Intl.DateTimeFormat('en').formatRangeToParts(undefined,0)",
+        "Temporal.Instant.from('not-an-instant')",
     ] {
         assert!(
             matches!(

@@ -28,8 +28,10 @@
 use crate::native::NativeFunction;
 use crate::{Bytecode, JsString, JsSymbol, ObjectId, PropertyDescriptor, PropertyName, Value};
 use num_bigint::BigInt;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::mem::size_of;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -590,6 +592,13 @@ pub(crate) struct TemporalValue {
 }
 
 impl TemporalValue {
+    pub(crate) fn bytes(&self) -> usize {
+        size_of::<Self>()
+            .saturating_add(self.epoch_nanoseconds.to_signed_bytes_le().len())
+            .saturating_add(self.calendar.len())
+            .saturating_add(self.time_zone.len())
+    }
+
     /// Interprets a Temporal plain value as an ISO local date-time carried in
     /// UTC milliseconds. This is not instant conversion: ECMA-402 requires
     /// plain Temporal values to ignore the formatter's time zone.
@@ -610,6 +619,91 @@ impl TemporalValue {
             + i64::from(self.minute) * 60_000
             + i64::from(self.second) * 1_000
             + i64::from(self.millisecond)
+    }
+}
+
+/// Insertion-ordered collection entries with an average O(1) SameValueZero
+/// lookup index. Deletions leave order tombstones so a later insertion stays
+/// at the end, keeping the representation compatible with Map and Set's
+/// insertion-order iterator semantics.
+#[derive(Default)]
+struct OrderedCollection {
+    entries: Vec<Option<(Value, Value)>>,
+    indexes: HashMap<u64, Vec<usize>>,
+    len: usize,
+}
+
+impl OrderedCollection {
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    fn find_index(&self, key: &Value) -> Option<usize> {
+        self.indexes
+            .get(&same_value_zero_hash(key))
+            .and_then(|indexes| {
+                indexes.iter().copied().find(|&index| {
+                    self.entries[index]
+                        .as_ref()
+                        .is_some_and(|(stored_key, _)| same_value_zero(stored_key, key))
+                })
+            })
+    }
+
+    fn get(&self, key: &Value) -> Option<&Value> {
+        self.find_index(key)
+            .and_then(|index| self.entries[index].as_ref().map(|(_, value)| value))
+    }
+
+    fn has(&self, key: &Value) -> bool {
+        self.find_index(key).is_some()
+    }
+
+    /// Replaces a value in-place or appends a new entry. The returned value is
+    /// the previous entry, allowing the heap to update its byte accounting.
+    fn set(&mut self, key: Value, value: Value) -> Option<(Value, Value)> {
+        if let Some(index) = self.find_index(&key) {
+            return self.entries[index].replace((key, value));
+        }
+        let index = self.entries.len();
+        self.indexes
+            .entry(same_value_zero_hash(&key))
+            .or_default()
+            .push(index);
+        self.entries.push(Some((key, value)));
+        self.len += 1;
+        None
+    }
+
+    fn delete(&mut self, key: &Value) -> Option<(Value, Value)> {
+        let index = self.find_index(key)?;
+        let hash = same_value_zero_hash(key);
+        let remove_hash = {
+            let indexes = self
+                .indexes
+                .get_mut(&hash)
+                .expect("collection index was found above");
+            let position = indexes
+                .iter()
+                .position(|&candidate| candidate == index)
+                .expect("collection entry index was found above");
+            indexes.swap_remove(position);
+            indexes.is_empty()
+        };
+        if remove_hash {
+            self.indexes.remove(&hash);
+        }
+        self.len -= 1;
+        self.entries[index].take()
+    }
+
+    fn references(&self) -> Vec<ObjectId> {
+        self.entries
+            .iter()
+            .flatten()
+            .flat_map(|(key, value)| [key.object_id(), value.object_id()])
+            .flatten()
+            .collect()
     }
 }
 
@@ -650,7 +744,11 @@ enum ObjectKind {
     Temporal(Box<TemporalValue>),
     /// Strong, insertion-ordered entries for the observable Map core.
     Map {
-        entries: Vec<(Value, Value)>,
+        entries: OrderedCollection,
+    },
+    /// Strong, insertion-ordered values for the observable Set core.
+    Set {
+        entries: OrderedCollection,
     },
     /// The `[[ErrorData]]` internal slot.  Error instances otherwise use
     /// ordinary property storage, but Object.prototype.toString observes
@@ -1133,11 +1231,7 @@ impl Object {
                 ObjectKind::DataView { buffer, .. } | ObjectKind::TypedArray { buffer, .. } => {
                     vec![*buffer]
                 }
-                ObjectKind::Map { entries } => entries
-                    .iter()
-                    .flat_map(|(key, value)| [key.object_id(), value.object_id()])
-                    .flatten()
-                    .collect(),
+                ObjectKind::Map { entries } | ObjectKind::Set { entries } => entries.references(),
                 ObjectKind::Proxy {
                     target, handler, ..
                 } => target.iter().chain(handler.iter()).copied().collect(),
@@ -1215,6 +1309,54 @@ fn same_value_zero(left: &Value, right: &Value) -> bool {
         || matches!((left, right), (Value::Number(left), Value::Number(right)) if left.is_nan() && right.is_nan())
 }
 
+fn same_value_zero_hash(value: &Value) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    match value {
+        Value::Undefined => 0_u8.hash(&mut hasher),
+        Value::Null => 1_u8.hash(&mut hasher),
+        Value::Bool(value) => {
+            2_u8.hash(&mut hasher);
+            value.hash(&mut hasher);
+        }
+        Value::Number(value) => {
+            3_u8.hash(&mut hasher);
+            let bits = if value.is_nan() {
+                u64::MAX
+            } else if *value == 0.0 {
+                0
+            } else {
+                value.to_bits()
+            };
+            bits.hash(&mut hasher);
+        }
+        Value::BigInt(value) => {
+            4_u8.hash(&mut hasher);
+            value.hash(&mut hasher);
+        }
+        Value::String(value) => {
+            5_u8.hash(&mut hasher);
+            value.hash(&mut hasher);
+        }
+        Value::Symbol(value) => {
+            6_u8.hash(&mut hasher);
+            value.hash(&mut hasher);
+        }
+        Value::Object(value) => {
+            7_u8.hash(&mut hasher);
+            value.hash(&mut hasher);
+        }
+    }
+    hasher.finish()
+}
+
+fn normalize_collection_key(key: Value) -> Value {
+    if matches!(key, Value::Number(value) if value == 0.0) {
+        Value::Number(0.0)
+    } else {
+        key
+    }
+}
+
 fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<ObjectId> {
     prototype
         .into_iter()
@@ -1261,11 +1403,7 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
             ObjectKind::DataView { buffer, .. } | ObjectKind::TypedArray { buffer, .. } => {
                 vec![*buffer]
             }
-            ObjectKind::Map { entries } => entries
-                .iter()
-                .flat_map(|(key, value)| [key.object_id(), value.object_id()])
-                .flatten()
-                .collect(),
+            ObjectKind::Map { entries } | ObjectKind::Set { entries } => entries.references(),
             ObjectKind::Proxy {
                 target, handler, ..
             } => target.iter().chain(handler.iter()).copied().collect(),
@@ -1367,7 +1505,16 @@ impl Heap {
     pub(crate) fn alloc_map(&mut self, prototype: Option<ObjectId>) -> Result<ObjectId, HeapError> {
         self.alloc(
             ObjectKind::Map {
-                entries: Vec::new(),
+                entries: OrderedCollection::default(),
+            },
+            prototype,
+        )
+    }
+
+    pub(crate) fn alloc_set(&mut self, prototype: Option<ObjectId>) -> Result<ObjectId, HeapError> {
+        self.alloc(
+            ObjectKind::Set {
+                entries: OrderedCollection::default(),
             },
             prototype,
         )
@@ -1375,6 +1522,10 @@ impl Heap {
 
     pub(crate) fn is_map(&self, object: ObjectId) -> Result<bool, HeapError> {
         Ok(matches!(self.object(object)?.kind, ObjectKind::Map { .. }))
+    }
+
+    pub(crate) fn is_set(&self, object: ObjectId) -> Result<bool, HeapError> {
+        Ok(matches!(self.object(object)?.kind, ObjectKind::Set { .. }))
     }
 
     pub(crate) fn map_size(&self, object: ObjectId) -> Result<usize, HeapError> {
@@ -1392,19 +1543,14 @@ impl Heap {
         let ObjectKind::Map { entries } = &self.object(object)?.kind else {
             return Err(HeapError::InvalidInternalSlot(object));
         };
-        Ok(entries
-            .iter()
-            .find(|(stored_key, _)| same_value_zero(stored_key, key))
-            .map(|(_, value)| value.clone()))
+        Ok(entries.get(key).cloned())
     }
 
     pub(crate) fn map_has(&self, object: ObjectId, key: &Value) -> Result<bool, HeapError> {
         let ObjectKind::Map { entries } = &self.object(object)?.kind else {
             return Err(HeapError::InvalidInternalSlot(object));
         };
-        Ok(entries
-            .iter()
-            .any(|(stored_key, _)| same_value_zero(stored_key, key)))
+        Ok(entries.has(key))
     }
 
     pub(crate) fn map_set(
@@ -1413,6 +1559,7 @@ impl Heap {
         key: Value,
         value: Value,
     ) -> Result<(), HeapError> {
+        let key = normalize_collection_key(key);
         if let Some(reference) = key.object_id() {
             self.object(reference)?;
         }
@@ -1420,13 +1567,14 @@ impl Heap {
             self.object(reference)?;
         }
         let existing = match &self.object(object)?.kind {
-            ObjectKind::Map { entries } => entries
-                .iter()
-                .position(|(stored_key, _)| same_value_zero(stored_key, &key)),
+            ObjectKind::Map { entries } => entries.find_index(&key),
             _ => return Err(HeapError::InvalidInternalSlot(object)),
         };
         let old_bytes = existing.map_or(0, |index| match &self.objects[&object].kind {
-            ObjectKind::Map { entries } => map_entry_bytes(&entries[index].0, &entries[index].1),
+            ObjectKind::Map { entries } => entries.entries[index]
+                .as_ref()
+                .map(|(stored_key, stored_value)| map_entry_bytes(stored_key, stored_value))
+                .expect("Map index was found above"),
             _ => unreachable!("Map brand was checked above"),
         });
         let new_bytes = map_entry_bytes(&key, &value);
@@ -1442,11 +1590,7 @@ impl Heap {
         let ObjectKind::Map { entries } = &mut entry.kind else {
             return Err(HeapError::InvalidInternalSlot(object));
         };
-        if let Some(index) = existing {
-            entries[index] = (key.clone(), value.clone());
-        } else {
-            entries.push((key.clone(), value.clone()));
-        }
+        entries.set(key.clone(), value.clone());
         entry.bytes = entry.bytes - old_bytes + new_bytes;
         self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
         self.write_barrier(object, key.object_id());
@@ -1462,13 +1606,69 @@ impl Heap {
         let ObjectKind::Map { entries } = &mut entry.kind else {
             return Err(HeapError::InvalidInternalSlot(object));
         };
-        let Some(index) = entries
-            .iter()
-            .position(|(stored_key, _)| same_value_zero(stored_key, key))
-        else {
+        let Some((stored_key, stored_value)) = entries.delete(key) else {
             return Ok(false);
         };
-        let (stored_key, stored_value) = entries.remove(index);
+        let bytes = map_entry_bytes(&stored_key, &stored_value);
+        entry.bytes -= bytes;
+        self.managed_bytes -= bytes;
+        Ok(true)
+    }
+
+    pub(crate) fn set_size(&self, object: ObjectId) -> Result<usize, HeapError> {
+        let ObjectKind::Set { entries } = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(entries.len())
+    }
+
+    pub(crate) fn set_has(&self, object: ObjectId, key: &Value) -> Result<bool, HeapError> {
+        let ObjectKind::Set { entries } = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(entries.has(key))
+    }
+
+    pub(crate) fn set_add(&mut self, object: ObjectId, key: Value) -> Result<(), HeapError> {
+        let key = normalize_collection_key(key);
+        if let Some(reference) = key.object_id() {
+            self.object(reference)?;
+        }
+        let exists = match &self.object(object)?.kind {
+            ObjectKind::Set { entries } => entries.has(&key),
+            _ => return Err(HeapError::InvalidInternalSlot(object)),
+        };
+        let bytes = map_entry_bytes(&key, &Value::Undefined);
+        if !exists {
+            let protected: Vec<_> = std::iter::once(object).chain(key.object_id()).collect();
+            self.ensure_room(bytes, &protected)?;
+        }
+        let entry = self
+            .objects
+            .get_mut(&object)
+            .expect("Set was protected across collection");
+        let ObjectKind::Set { entries } = &mut entry.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        if entries.set(key.clone(), Value::Undefined).is_none() {
+            entry.bytes += bytes;
+            self.managed_bytes += bytes;
+        }
+        self.write_barrier(object, key.object_id());
+        Ok(())
+    }
+
+    pub(crate) fn set_delete(&mut self, object: ObjectId, key: &Value) -> Result<bool, HeapError> {
+        let entry = self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?;
+        let ObjectKind::Set { entries } = &mut entry.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        let Some((stored_key, stored_value)) = entries.delete(key) else {
+            return Ok(false);
+        };
         let bytes = map_entry_bytes(&stored_key, &stored_value);
         entry.bytes -= bytes;
         self.managed_bytes -= bytes;

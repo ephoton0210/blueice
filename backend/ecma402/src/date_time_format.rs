@@ -381,12 +381,23 @@ impl DateTimeFormat {
                 (info.offset().seconds(), info.abbreviation().to_string())
             }
             // Jiff's fixed-zone result remains correct outside its civil
-            // Timestamp range. `UTC` is by far the common path here (and the
-            // one used by the ECMA-402 boundary tests), but retain the general
-            // fixed-offset case as well.
+            // Timestamp range. For named zones, map the instant into the
+            // equivalent position of the Gregorian 400-year cycle. That keeps
+            // the ISO date, time, and weekday while allowing Jiff's recurring
+            // IANA rule to provide an offset instead of rejecting a valid
+            // TimeClip endpoint merely because it is outside Jiff's civil
+            // representation.
             Err(_) => match time_zone.to_fixed_offset() {
                 Ok(offset) => (offset.seconds(), offset.to_string()),
-                Err(_) => return Err(DateTimeFormatError::InvalidTime),
+                Err(_) => {
+                    const GREGORIAN_400_YEAR_MILLISECONDS: i64 = 146_097 * 86_400_000;
+                    let timestamp = Timestamp::from_millisecond(
+                        milliseconds.rem_euclid(GREGORIAN_400_YEAR_MILLISECONDS),
+                    )
+                    .expect("a 400-year Gregorian cycle fits Jiff's Timestamp range");
+                    let info = time_zone.to_offset_info(timestamp);
+                    (info.offset().seconds(), info.abbreviation().to_string())
+                }
             },
         };
         let zoned = ZonedDateTime::from_epoch_milliseconds_and_utc_offset(
@@ -735,7 +746,6 @@ impl DateTimeFormat {
             && self.options.minute.is_none()
             && self.options.second.is_none()
             && self.options.fractional_second_digits.is_none()
-            && self.options.time_zone_name.is_none()
     }
 
     fn length(&self) -> Length {

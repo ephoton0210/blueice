@@ -20,8 +20,8 @@ use crate::heap::{
     TypedArrayNumericKey,
 };
 use crate::native::{
-    AtomicOp, MapMethod, MathMethod, NumberMethod, ObjectMethod, PatternMethod, StringMethod,
-    TypedArrayMethod, WeakCollectionMethod,
+    AtomicOp, MapMethod, MathMethod, NumberMethod, ObjectMethod, PatternMethod, SetMethod,
+    StringMethod, TypedArrayMethod, WeakCollectionMethod,
 };
 use std::collections::HashMap;
 use std::rc::Rc;

@@ -963,7 +963,7 @@ impl Vm {
             NativeFunction::TemporalFrom(kind) => self.temporal_from(kind, first),
             NativeFunction::TemporalWithCalendar => self.temporal_with_calendar(&receiver, first),
             NativeFunction::TemporalZonedDateTimeToLocaleString => {
-                self.temporal_zoned_date_time_to_locale_string(&receiver)
+                self.temporal_zoned_date_time_to_locale_string(&receiver, &args)
             }
             NativeFunction::ListFormatSupportedLocales => self.list_format_supported_locales(&args),
             NativeFunction::ListFormatFormat => self.list_format_format(&receiver, first),
@@ -1223,6 +1223,20 @@ impl Vm {
                 Ok(Value::Number(self.heap.map_size(map)? as f64))
             }
             NativeFunction::Set => self.collection_constructor(false, construct),
+            NativeFunction::SetMethod(method) => self.set_method(method, &receiver, &args),
+            NativeFunction::SetSize => {
+                let Some(set) = receiver.object_id() else {
+                    return Err(RuntimeError::TypeError(
+                        "Set size requires a Set receiver".into(),
+                    ));
+                };
+                if !self.heap.is_set(set)? {
+                    return Err(RuntimeError::TypeError(
+                        "Set size requires a Set receiver".into(),
+                    ));
+                }
+                Ok(Value::Number(self.heap.set_size(set)? as f64))
+            }
             NativeFunction::WeakMap => self.weak_collection_constructor(true, &args, construct),
             NativeFunction::WeakSet => self.weak_collection_constructor(false, &args, construct),
             NativeFunction::WeakRef => self.weak_ref_constructor(first.clone(), construct),

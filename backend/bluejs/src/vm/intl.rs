@@ -2124,7 +2124,7 @@ impl Vm {
         )
     }
 
-    fn create_date_time_format(
+    pub(super) fn create_date_time_format(
         &mut self,
         args: &[Value],
         construct: bool,

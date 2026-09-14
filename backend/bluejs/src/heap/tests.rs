@@ -373,3 +373,30 @@ fn canonical_numeric_index_strings_use_ecmascript_number_formatting() {
     assert!(binary_data::typed_array_numeric_key(&"1e21".into()).is_none());
     assert!(binary_data::typed_array_numeric_key(&"1e+21".into()).is_some());
 }
+
+#[test]
+fn temporal_payload_is_accounted() {
+    let mut heap = Heap::new(HeapConfig::default()).unwrap();
+    let before = heap.stats().managed_bytes;
+    let value = TemporalValue {
+        kind: TemporalKind::PlainDateTime,
+        year: 2024,
+        month: 1,
+        day: 1,
+        hour: 0,
+        minute: 0,
+        second: 0,
+        millisecond: 0,
+        microsecond: 0,
+        nanosecond: 0,
+        epoch_nanoseconds: BigInt::from(0),
+        calendar: "iso8601".repeat(50),
+        time_zone: "UTC".repeat(50),
+    };
+    let expected = std::mem::size_of::<Object>() + value.bytes();
+    let bytes_added = heap
+        .alloc(ObjectKind::Temporal(Box::new(value)), None)
+        .map(|_| heap.stats().managed_bytes - before)
+        .unwrap();
+    assert_eq!(bytes_added, expected);
+}
