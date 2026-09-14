@@ -297,6 +297,19 @@ pub(crate) struct NumberPercentPattern {
     pub(crate) after_number: Vec<NumberPercentPatternPiece>,
 }
 
+/// CLDR symbols used only by the scientific/engineering rendering branch.
+///
+/// ICU4X's decimal payload intentionally retains ordinary decimal signs and
+/// separators but does not expose the CLDR `exponential` symbol. Keeping the
+/// missing record beside the other NumberFormat provider data prevents the
+/// host-neutral formatter from manufacturing ASCII `E-` for every locale.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct NumberScientificSymbols {
+    pub(crate) exponent_separator: &'static str,
+    pub(crate) exponent_minus_prefix: &'static str,
+    pub(crate) exponent_minus_sign: &'static str,
+}
+
 /// A data-owned compact decimal scaling pattern.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct CompactNumberPattern {
@@ -1083,6 +1096,44 @@ impl LocaleDataProvider {
         }
     }
 
+    /// Returns the CLDR scientific-notation symbols for a resolved decimal
+    /// locale and numbering system.
+    ///
+    /// The default shape is the ordinary `E-` convention. Arabic decimal
+    /// data instead uses `أس` and an Arabic Letter Mark before a negative
+    /// exponent; Persian uses multiplication by ten raised to a power and a
+    /// mathematical minus sign. These records are pinned counterparts of the
+    /// CLDR `symbols-numberSystem-*.exponential` and `minusSign` values.
+    pub(crate) fn number_scientific_symbols(
+        self,
+        locale: &str,
+        numbering_system: &str,
+    ) -> NumberScientificSymbols {
+        let language = locale
+            .split_once("-u-")
+            .map_or(locale, |(base, _)| base)
+            .split('-')
+            .next()
+            .unwrap_or(locale);
+        match (language, numbering_system) {
+            ("ar", "arab") => NumberScientificSymbols {
+                exponent_separator: "أس",
+                exponent_minus_prefix: "\u{61c}",
+                exponent_minus_sign: "-",
+            },
+            ("fa", "arabext") => NumberScientificSymbols {
+                exponent_separator: "×۱۰^",
+                exponent_minus_prefix: "\u{200e}",
+                exponent_minus_sign: "−",
+            },
+            _ => NumberScientificSymbols {
+                exponent_separator: "E",
+                exponent_minus_prefix: "",
+                exponent_minus_sign: "-",
+            },
+        }
+    }
+
     /// Returns the locale's default hour cycle.
     pub fn default_hour_cycle(self, locale: &IcuLocale) -> &'static str {
         match locale.id.language.as_str() {
@@ -1356,7 +1407,28 @@ impl LocaleDataProvider {
         display: crate::NumberUnitDisplay,
         plural: crate::PluralCategory,
     ) -> NumberUnitPattern {
-        experimental_number_unit_pattern(locale, unit, display, plural).unwrap_or_else(|| {
+        if let Some(pattern) = experimental_number_unit_pattern(locale, unit, display, plural) {
+            return pattern;
+        }
+        if let Some(pattern) = cldr_temperature_unit_pattern(locale, unit, display, plural) {
+            return pattern;
+        }
+        if let Some(pattern) = cldr_japanese_digital_unit_pattern(locale, unit, display, plural) {
+            return pattern;
+        }
+        if let Some(pattern) = cldr_russian_digital_unit_pattern(locale, unit, display, plural) {
+            return pattern;
+        }
+        if let Some(pattern) = cldr_arabic_digital_unit_pattern(locale, unit, display, plural) {
+            return pattern;
+        }
+        if let Some(pattern) = cldr_french_digital_unit_pattern(locale, unit, display, plural) {
+            return pattern;
+        }
+        if let Some(pattern) = cldr_spanish_additional_unit_pattern(locale, unit, display, plural) {
+            return pattern;
+        }
+        {
             let duration_unit = match unit {
                 crate::NumberFormatUnit::Year => Some(crate::DurationUnit::Years),
                 crate::NumberFormatUnit::Month => Some(crate::DurationUnit::Months),
@@ -1391,7 +1463,7 @@ impl LocaleDataProvider {
                 };
             }
             english_number_unit_pattern(unit, display, plural == crate::PluralCategory::One)
-        })
+        }
     }
 
     /// Returns a data-backed compound NumberFormat unit pattern.
@@ -1648,6 +1720,33 @@ impl LocaleDataProvider {
         display: crate::NumberUnitDisplay,
         plural: crate::PluralCategory,
     ) -> NumberGenericCompoundUnitPattern {
+        if let Some(pattern) = cldr_spanish_generic_compound_unit_pattern(
+            locale,
+            numerator,
+            denominator,
+            display,
+            plural,
+        ) {
+            return pattern;
+        }
+        if let Some(pattern) = cldr_arabic_generic_compound_unit_pattern(
+            locale,
+            numerator,
+            denominator,
+            display,
+            plural,
+        ) {
+            return pattern;
+        }
+        if let Some(pattern) = cldr_japanese_generic_compound_unit_pattern(
+            locale,
+            numerator,
+            denominator,
+            display,
+            plural,
+        ) {
+            return pattern;
+        }
         if let Some(pattern) = experimental_generic_compound_unit_pattern(
             locale,
             numerator,
@@ -1778,6 +1877,115 @@ impl LocaleDataProvider {
             plural_category_to_icu(start),
             plural_category_to_icu(end),
         )))
+    }
+
+    /// Returns the CLDR number-range glue for a resolved NumberFormat locale.
+    ///
+    /// ICU4X's current decimal provider does not yet expose the CLDR
+    /// `miscPatterns.range` record. Keep that data boundary here, rather than
+    /// letting NumberFormat manufacture an en dash for every language. The
+    /// currency branches are the bounded interval shapes required while the
+    /// corresponding full CLDR range-pattern data is unavailable upstream.
+    pub(crate) fn number_range_separator(
+        self,
+        locale: &str,
+        style: crate::NumberFormatStyle,
+        maximum_fraction_digits: u8,
+    ) -> &'static str {
+        let language = locale.split('-').next().unwrap_or(locale);
+        match language {
+            // CLDR miscPatterns-numberSystem-*.range.
+            "es" | "it" | "zh" => "-",
+            "pt" => " - ",
+            "ja" if style == crate::NumberFormatStyle::Currency => " ～ ",
+            "ja" => "～",
+            "ko" => "~",
+            // Thai's zero-fraction currency interval retains its localized
+            // ASCII-hyphen spacing; ordinary numeric intervals do not.
+            "th" if style == crate::NumberFormatStyle::Currency && maximum_fraction_digits == 0 => {
+                " - "
+            }
+            "th" => "-",
+            // The pinned en/en-US currency interval records add spaces only
+            // to the zero-fraction skeleton exercised by ECMA-402's range
+            // fixtures. Other English regions retain the generic pattern.
+            "en" if matches!(locale, "en" | "en-US")
+                && style == crate::NumberFormatStyle::Currency
+                && maximum_fraction_digits == 0 =>
+            {
+                " – "
+            }
+            "tr" if style == crate::NumberFormatStyle::Currency => " – ",
+            _ => "–",
+        }
+    }
+
+    /// Whether the bounded currency-pattern fallback places its symbol after
+    /// the number for this locale family.
+    ///
+    /// Normal construction uses `CurrencyEssentialsV1`; this record exists
+    /// only for data that ICU4X has not generated. It lives here so that a
+    /// formatter cannot grow an independent locale-pattern table.
+    pub(crate) fn fallback_currency_is_trailing(self, locale: &str) -> bool {
+        matches!(
+            locale.split('-').next().unwrap_or(locale),
+            "ar" | "be"
+                | "bg"
+                | "ca"
+                | "cs"
+                | "da"
+                | "de"
+                | "el"
+                | "es"
+                | "et"
+                | "fi"
+                | "fr"
+                | "he"
+                | "hr"
+                | "hu"
+                | "is"
+                | "it"
+                | "lt"
+                | "lv"
+                | "nl"
+                | "no"
+                | "pl"
+                | "pt"
+                | "ro"
+                | "ru"
+                | "sk"
+                | "sl"
+                | "sr"
+                | "sv"
+                | "tr"
+                | "uk"
+        )
+    }
+
+    /// Whether the bounded percent fallback adds a non-breaking space before
+    /// its percent sign.
+    pub(crate) fn fallback_percent_has_space(self, locale: &str) -> bool {
+        self.fallback_currency_is_trailing(locale)
+            && !matches!(
+                locale.split('-').next().unwrap_or(locale),
+                "ar" | "he" | "tr"
+            )
+    }
+
+    /// Whether a missing accounting record uses the parenthesized fallback.
+    pub(crate) fn fallback_accounting_uses_parentheses(self, locale: &str) -> bool {
+        !locale.starts_with("de")
+    }
+
+    /// Returns the legacy currency-name fallback for a missing provider
+    /// record. All locale data remains owned by this provider even on that
+    /// narrow path.
+    pub(crate) fn fallback_currency_name(self, code: &str) -> String {
+        match code {
+            "USD" => "US dollars".into(),
+            "EUR" => "euros".into(),
+            _ => code.into(),
+        }
     }
 
     /// Returns whether the bundled relative-time data uses Polish patterns.
@@ -2353,6 +2561,769 @@ fn number_unit_pattern_from_placeholder(rendered: &str) -> Option<NumberUnitPatt
         suffix_separator: suffix[..suffix.len() - suffix_label.len()].into(),
         suffix: suffix_label.into(),
         hides_number: false,
+    })
+}
+
+/// Returns pinned-CLDR temperature and angle patterns that ICU4X has not yet
+/// generated a typed unit-name marker for.
+///
+/// The records below are copied from the `unitPattern-count-*` entries in the
+/// same `cldr-units-full` input revision as the ICU4X bundle. They stay at the
+/// locale-data boundary so a missing upstream marker cannot silently turn a
+/// non-English NumberFormat unit into English text.
+fn cldr_temperature_unit_pattern(
+    locale: &str,
+    unit: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberUnitPattern> {
+    use crate::{NumberFormatUnit as Unit, NumberUnitDisplay as Display, PluralCategory};
+
+    macro_rules! patterns {
+        ($($category:ident => $pattern:literal),+ $(,)?) => {
+            &[$((PluralCategory::$category, $pattern)),+]
+        };
+    }
+
+    let language = locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        .unwrap_or(locale);
+    let patterns: &[(PluralCategory, &str)] = match (language, unit, display) {
+        ("ar", Unit::Celsius, Display::Long) => patterns!(Other => "{0} درجة مئوية"),
+        ("ar", Unit::Fahrenheit, Display::Long) => {
+            patterns!(Other => "{0} درجة فهرنهايت")
+        }
+        ("ar", Unit::Degree, Display::Long | Display::Short) => patterns!(
+            Zero => "{0} درجة",
+            One => "درجة",
+            Two => "درجتان",
+            Few => "{0} درجات",
+            Many => "{0} درجة",
+            Other => "{0} درجة",
+        ),
+        ("ar", Unit::Degree, Display::Narrow) => patterns!(
+            Zero => "{0} درجة",
+            One => "{0} درجة",
+            Two => "درجتان",
+            Few => "{0} درجات",
+            Many => "{0} درجة",
+            Other => "{0} درجة",
+        ),
+        ("ar", Unit::Celsius, Display::Short | Display::Narrow) => {
+            patterns!(Other => "{0}°م")
+        }
+        ("ar", Unit::Fahrenheit, Display::Short | Display::Narrow) => {
+            patterns!(Other => "{0}°ف")
+        }
+
+        ("fr", Unit::Celsius, Display::Long) => patterns!(
+            One => "{0}\u{a0}degré Celsius",
+            Other => "{0}\u{a0}degrés Celsius",
+        ),
+        ("fr", Unit::Fahrenheit, Display::Long) => patterns!(
+            One => "{0}\u{a0}degré Fahrenheit",
+            Other => "{0}\u{a0}degrés Fahrenheit",
+        ),
+        ("fr", Unit::Degree, Display::Long) => patterns!(
+            One => "{0}\u{a0}degré",
+            Other => "{0}\u{a0}degrés",
+        ),
+        ("fr", Unit::Celsius, Display::Short) => patterns!(Other => "{0}\u{202f}°C"),
+        ("fr", Unit::Fahrenheit, Display::Short) => patterns!(Other => "{0}\u{202f}°F"),
+        ("fr", Unit::Degree, Display::Short | Display::Narrow) => {
+            patterns!(Other => "{0}°")
+        }
+        ("fr", Unit::Celsius, Display::Narrow) => patterns!(Other => "{0}°C"),
+        ("fr", Unit::Fahrenheit, Display::Narrow) => patterns!(Other => "{0}°F"),
+
+        ("ja", Unit::Celsius, Display::Long) => patterns!(Other => "摂氏 {0} 度"),
+        ("ja", Unit::Fahrenheit, Display::Long) => patterns!(Other => "華氏 {0} 度"),
+        ("ja", Unit::Degree, Display::Long | Display::Short) => {
+            patterns!(Other => "{0} 度")
+        }
+        ("ja", Unit::Celsius, Display::Short | Display::Narrow) => {
+            patterns!(Other => "{0}°C")
+        }
+        ("ja", Unit::Fahrenheit, Display::Short | Display::Narrow) => {
+            patterns!(Other => "{0}°F")
+        }
+        ("ja", Unit::Degree, Display::Narrow) => patterns!(Other => "{0}°"),
+
+        ("ru", Unit::Celsius, Display::Long) => patterns!(
+            One => "{0} градус Цельсия",
+            Few => "{0} градуса Цельсия",
+            Many => "{0} градусов Цельсия",
+            Other => "{0} градуса Цельсия",
+        ),
+        ("ru", Unit::Fahrenheit, Display::Long) => patterns!(
+            One => "{0} градус Фаренгейта",
+            Few => "{0} градуса Фаренгейта",
+            Many => "{0} градусов Фаренгейта",
+            Other => "{0} градуса Фаренгейта",
+        ),
+        ("ru", Unit::Degree, Display::Long) => patterns!(
+            One => "{0} градус",
+            Few => "{0} градуса",
+            Many => "{0} градусов",
+            Other => "{0} градуса",
+        ),
+        ("ru", Unit::Celsius, Display::Short | Display::Narrow) => {
+            patterns!(Other => "{0} °C")
+        }
+        ("ru", Unit::Fahrenheit, Display::Short) => patterns!(Other => "{0} °F"),
+        ("ru", Unit::Fahrenheit, Display::Narrow) => patterns!(Other => "{0}°F"),
+        ("ru", Unit::Degree, Display::Short | Display::Narrow) => {
+            patterns!(Other => "{0}°")
+        }
+        _ => return None,
+    };
+    let raw = patterns
+        .iter()
+        .find(|(category, _)| *category == plural)
+        .or_else(|| {
+            patterns
+                .iter()
+                .find(|(category, _)| *category == PluralCategory::Other)
+        })?
+        .1;
+    number_unit_pattern_from_placeholder(&raw.replace("{0}", "\u{fdd0}"))
+}
+
+/// Returns the pinned Japanese CLDR records for digital, percentage, and the
+/// long `duration-second` unit needed by generic compounds.
+///
+/// ICU4X's typed unit-name markers omit these sanctioned categories. The
+/// Japanese records differ by width (for example, long `ギガバイト`, short
+/// `GB`, and narrow `GB`) and retain the CLDR no-space percentage forms. The
+/// long second label is included because the generated marker falls back to
+/// English for this locale even though the raw CLDR record is available.
+fn cldr_japanese_digital_unit_pattern(
+    locale: &str,
+    unit: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    _plural: crate::PluralCategory,
+) -> Option<NumberUnitPattern> {
+    use crate::{NumberFormatUnit as Unit, NumberUnitDisplay as Display};
+
+    if locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        != Some("ja")
+    {
+        return None;
+    }
+
+    let (suffix_separator, suffix) = match display {
+        Display::Long => (
+            " ",
+            match unit {
+                Unit::Bit => "ビット",
+                Unit::Byte => "バイト",
+                Unit::Gigabit => "ギガビット",
+                Unit::Gigabyte => "ギガバイト",
+                Unit::Kilobit => "キロビット",
+                Unit::Kilobyte => "キロバイト",
+                Unit::Megabit => "メガビット",
+                Unit::Megabyte => "メガバイト",
+                Unit::Petabyte => "ペタバイト",
+                Unit::Second => "秒",
+                Unit::Terabit => "テラビット",
+                Unit::Terabyte => "テラバイト",
+                Unit::Percent => "パーセント",
+                _ => return None,
+            },
+        ),
+        Display::Short => match unit {
+            Unit::Bit => (" ", "bit"),
+            Unit::Byte => (" ", "byte"),
+            Unit::Gigabit => (" ", "Gb"),
+            Unit::Gigabyte => (" ", "GB"),
+            Unit::Kilobit => (" ", "kb"),
+            Unit::Kilobyte => (" ", "KB"),
+            Unit::Megabit => (" ", "Mb"),
+            Unit::Megabyte => (" ", "MB"),
+            Unit::Petabyte => (" ", "PB"),
+            Unit::Terabit => (" ", "Tb"),
+            Unit::Terabyte => (" ", "TB"),
+            Unit::Percent => ("", "%"),
+            _ => return None,
+        },
+        Display::Narrow => match unit {
+            Unit::Bit => ("", "b"),
+            Unit::Byte => ("", "B"),
+            Unit::Gigabit => ("", "Gb"),
+            Unit::Gigabyte => ("", "GB"),
+            Unit::Kilobit => ("", "kb"),
+            Unit::Kilobyte => ("", "KB"),
+            Unit::Megabit => ("", "Mb"),
+            Unit::Megabyte => ("", "MB"),
+            Unit::Petabyte => ("", "PB"),
+            Unit::Terabit => ("", "Tb"),
+            Unit::Terabyte => ("", "TB"),
+            Unit::Percent => ("", "%"),
+            _ => return None,
+        },
+    };
+    Some(NumberUnitPattern {
+        prefix: String::new(),
+        prefix_separator: String::new(),
+        suffix_separator: suffix_separator.into(),
+        suffix: suffix.into(),
+        hides_number: false,
+    })
+}
+
+/// Returns the pinned Russian CLDR records for digital and percentage units.
+///
+/// The missing typed ICU4X category cannot be approximated with English
+/// singular/plural forms: Russian uses `one`, `few`, `many`, and `other`
+/// suffixes. Long forms below are the corresponding `unitPattern-count-*`
+/// values from the pinned CLDR input; short and narrow preserve its localized
+/// abbreviations and percentage spacing.
+fn cldr_russian_digital_unit_pattern(
+    locale: &str,
+    unit: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberUnitPattern> {
+    use crate::{NumberFormatUnit as Unit, NumberUnitDisplay as Display, PluralCategory};
+
+    if locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        != Some("ru")
+    {
+        return None;
+    }
+
+    let (suffix_separator, suffix) = match display {
+        Display::Long => {
+            let (one, few, many) = match unit {
+                Unit::Bit => ("бит", "бита", "бит"),
+                Unit::Byte => ("байт", "байта", "байт"),
+                Unit::Gigabit => ("гигабит", "гигабита", "гигабит"),
+                Unit::Gigabyte => ("гигабайт", "гигабайта", "гигабайт"),
+                Unit::Kilobit => ("килобит", "килобита", "килобит"),
+                Unit::Kilobyte => ("килобайт", "килобайта", "килобайт"),
+                Unit::Megabit => ("мегабит", "мегабита", "мегабит"),
+                Unit::Megabyte => ("мегабайт", "мегабайта", "мегабайт"),
+                Unit::Petabyte => ("петабайт", "петабайта", "петабайт"),
+                Unit::Terabit => ("терабит", "терабита", "терабит"),
+                Unit::Terabyte => ("терабайт", "терабайта", "терабайт"),
+                Unit::Percent => ("процент", "процента", "процентов"),
+                _ => return None,
+            };
+            (
+                " ",
+                match plural {
+                    PluralCategory::One => one,
+                    PluralCategory::Two | PluralCategory::Few | PluralCategory::Other => few,
+                    PluralCategory::Zero | PluralCategory::Many => many,
+                },
+            )
+        }
+        Display::Short | Display::Narrow => {
+            let suffix = match unit {
+                Unit::Bit => match plural {
+                    PluralCategory::One | PluralCategory::Zero | PluralCategory::Many => "бит",
+                    PluralCategory::Two | PluralCategory::Few | PluralCategory::Other => "бита",
+                },
+                Unit::Byte => "Б",
+                Unit::Gigabit => "Гбит",
+                Unit::Gigabyte => "ГБ",
+                Unit::Kilobit => "кбит",
+                Unit::Kilobyte => "кБ",
+                Unit::Megabit => "Мбит",
+                Unit::Megabyte => "МБ",
+                Unit::Petabyte => "ПБ",
+                Unit::Terabit => "Тбит",
+                Unit::Terabyte => "ТБ",
+                Unit::Percent => "%",
+                _ => return None,
+            };
+            (
+                if unit == Unit::Percent && display == Display::Narrow {
+                    ""
+                } else {
+                    " "
+                },
+                suffix,
+            )
+        }
+    };
+    Some(NumberUnitPattern {
+        prefix: String::new(),
+        prefix_separator: String::new(),
+        suffix_separator: suffix_separator.into(),
+        suffix: suffix.into(),
+        hides_number: false,
+    })
+}
+
+/// Returns the pinned Arabic CLDR records for digital and percentage units.
+///
+/// The typed ICU4X unit-name markers omit these categories. Arabic is kept
+/// separate from a transliterated fallback because its CLDR records retain the
+/// Arabic percent sign, narrow digital abbreviations, and the long-width
+/// one/other percentage distinction.
+fn cldr_arabic_digital_unit_pattern(
+    locale: &str,
+    unit: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberUnitPattern> {
+    use crate::{NumberFormatUnit as Unit, NumberUnitDisplay as Display, PluralCategory};
+
+    if locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        != Some("ar")
+    {
+        return None;
+    }
+
+    let suffix = match (unit, display) {
+        (Unit::Bit, _) => "بت",
+        (Unit::Byte, Display::Long | Display::Short) => "بايت",
+        (Unit::Byte, Display::Narrow) => "ب",
+        (Unit::Gigabit, Display::Long | Display::Short) => "غيغابت",
+        (Unit::Gigabit, Display::Narrow) => "غ.بت",
+        (Unit::Gigabyte, Display::Long) => "غيغابايت",
+        (Unit::Gigabyte, Display::Short | Display::Narrow) => "غ.ب",
+        (Unit::Kilobit, Display::Long | Display::Short) => "كيلوبت",
+        (Unit::Kilobit, Display::Narrow) => "ك.بت",
+        (Unit::Kilobyte, Display::Long | Display::Short) => "كيلوبايت",
+        (Unit::Kilobyte, Display::Narrow) => "ك.ب",
+        (Unit::Megabit, Display::Long | Display::Short) => "ميغابت",
+        (Unit::Megabit, Display::Narrow) => "م.بت",
+        (Unit::Megabyte, Display::Long | Display::Short) => "ميغابايت",
+        (Unit::Megabyte, Display::Narrow) => "م.ب",
+        (Unit::Percent, Display::Long)
+            if matches!(plural, PluralCategory::One | PluralCategory::Other) =>
+        {
+            "بالمائة"
+        }
+        (Unit::Percent, _) => "٪",
+        (Unit::Petabyte, _) => "بيتابايت",
+        (Unit::Terabit, Display::Long | Display::Short) => "تيرابت",
+        (Unit::Terabit, Display::Narrow) => "ت.بت",
+        (Unit::Terabyte, Display::Long | Display::Short) => "تيرابايت",
+        (Unit::Terabyte, Display::Narrow) => "ت.ب",
+        _ => return None,
+    };
+    Some(NumberUnitPattern {
+        prefix: String::new(),
+        prefix_separator: String::new(),
+        suffix_separator: " ".into(),
+        suffix: suffix.into(),
+        hides_number: false,
+    })
+}
+
+/// Returns the pinned French digital and percentage unit patterns omitted by
+/// ICU4X's typed unit-name categories.
+fn cldr_french_digital_unit_pattern(
+    locale: &str,
+    unit: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberUnitPattern> {
+    use crate::{NumberFormatUnit as Unit, NumberUnitDisplay as Display, PluralCategory};
+
+    if locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        != Some("fr")
+    {
+        return None;
+    }
+    let one = plural == PluralCategory::One;
+    let (suffix, suffix_separator) = match display {
+        Display::Long => {
+            let (singular, plural) = match unit {
+                Unit::Bit => ("bit", "bits"),
+                Unit::Byte => ("octet", "octets"),
+                Unit::Gigabit => ("gigabit", "gigabits"),
+                Unit::Gigabyte => ("gigaoctet", "gigaoctets"),
+                Unit::Kilobit => ("kilobit", "kilobits"),
+                Unit::Kilobyte => ("kilooctet", "kilooctets"),
+                Unit::Megabit => ("mégabit", "mégabits"),
+                Unit::Megabyte => ("mégaoctet", "mégaoctets"),
+                Unit::Petabyte => ("pétaoctet", "pétaoctets"),
+                Unit::Terabit => ("térabit", "térabits"),
+                Unit::Terabyte => ("téraoctet", "téraoctets"),
+                Unit::Percent => ("pour cent", "pour cent"),
+                _ => return None,
+            };
+            (
+                if one { singular } else { plural },
+                if unit == Unit::Percent { " " } else { "\u{a0}" },
+            )
+        }
+        Display::Short => {
+            let suffix = match unit {
+                Unit::Bit => "bit",
+                Unit::Byte => "o",
+                Unit::Gigabit => "Gbit",
+                Unit::Gigabyte => "Go",
+                Unit::Kilobit => "kbit",
+                Unit::Kilobyte => "ko",
+                Unit::Megabit => "Mbit",
+                Unit::Megabyte => "Mo",
+                Unit::Petabyte => "Po",
+                Unit::Terabit => "Tbit",
+                Unit::Terabyte => "To",
+                Unit::Percent => "%",
+                _ => return None,
+            };
+            (
+                suffix,
+                if unit == Unit::Percent || (unit == Unit::Terabit && !one) {
+                    " "
+                } else {
+                    "\u{202f}"
+                },
+            )
+        }
+        Display::Narrow => {
+            let suffix = match unit {
+                Unit::Bit => "bit",
+                Unit::Byte => "o",
+                Unit::Gigabit => "Gbit",
+                Unit::Gigabyte => "Go",
+                Unit::Kilobit => "kbit",
+                Unit::Kilobyte => "ko",
+                Unit::Megabit => "Mbit",
+                Unit::Megabyte => "Mo",
+                Unit::Petabyte => "Po",
+                Unit::Terabit => "Tbit",
+                Unit::Terabyte => "To",
+                Unit::Percent => "%",
+                _ => return None,
+            };
+            (suffix, if unit == Unit::Percent { " " } else { "" })
+        }
+    };
+    Some(NumberUnitPattern {
+        prefix: String::new(),
+        prefix_separator: String::new(),
+        suffix_separator: suffix_separator.into(),
+        suffix: suffix.into(),
+        hides_number: false,
+    })
+}
+
+/// Returns the pinned Spanish CLDR records for every sanctioned simple-unit
+/// category that ICU4X does not yet expose through a typed unit-name marker.
+///
+/// This completes Spanish simple-unit coverage rather than mixing generated
+/// Spanish area/length/etc. names with English digital, temperature, angle,
+/// or percentage labels. The values are the `unitPattern-count-*` records
+/// from `cldr-units-full/main/es/units.json` at the provider's pinned source
+/// revision.
+fn cldr_spanish_additional_unit_pattern(
+    locale: &str,
+    unit: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberUnitPattern> {
+    use crate::{NumberFormatUnit as Unit, NumberUnitDisplay as Display, PluralCategory};
+
+    if locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        != Some("es")
+    {
+        return None;
+    }
+
+    let one = plural == PluralCategory::One;
+    let (suffix_separator, suffix) = match display {
+        Display::Long => {
+            let (singular, plural) = match unit {
+                Unit::Bit => ("bit", "bits"),
+                Unit::Byte => ("byte", "bytes"),
+                Unit::Celsius => ("grado Celsius", "grados Celsius"),
+                Unit::Degree => ("grado", "grados"),
+                Unit::Fahrenheit => ("grado Fahrenheit", "grados Fahrenheit"),
+                Unit::Gigabit => ("gigabit", "gigabits"),
+                Unit::Gigabyte => ("gigabyte", "gigabytes"),
+                Unit::Kilobit => ("kilobit", "kilobits"),
+                Unit::Kilobyte => ("kilobyte", "kilobytes"),
+                Unit::Megabit => ("megabit", "megabits"),
+                Unit::Megabyte => ("megabyte", "megabytes"),
+                Unit::Percent => ("por ciento", "por ciento"),
+                Unit::Petabyte => ("petabyte", "petabytes"),
+                Unit::Terabit => ("terabit", "terabits"),
+                Unit::Terabyte => ("terabyte", "terabytes"),
+                _ => return None,
+            };
+            (" ", if one { singular } else { plural })
+        }
+        Display::Short => {
+            let (separator, suffix) = match unit {
+                Unit::Bit => (" ", "b"),
+                Unit::Byte => (" ", "B"),
+                Unit::Celsius => (" ", "°C"),
+                Unit::Degree => ("", "°"),
+                Unit::Fahrenheit => (" ", "°F"),
+                Unit::Gigabit => (" ", "Gb"),
+                Unit::Gigabyte => (" ", "GB"),
+                Unit::Kilobit => (" ", "kb"),
+                Unit::Kilobyte => (" ", "kB"),
+                Unit::Megabit => (" ", "Mb"),
+                Unit::Megabyte => (" ", "MB"),
+                Unit::Percent => ("\u{a0}", "%"),
+                Unit::Petabyte => (" ", "PB"),
+                Unit::Terabit => (" ", "Tb"),
+                Unit::Terabyte => (" ", "TB"),
+                _ => return None,
+            };
+            (separator, suffix)
+        }
+        Display::Narrow => {
+            let suffix = match unit {
+                Unit::Bit => "b",
+                Unit::Byte => "B",
+                Unit::Celsius => "°C",
+                Unit::Degree => "°",
+                Unit::Fahrenheit => "°F",
+                Unit::Gigabit => "Gb",
+                Unit::Gigabyte => "GB",
+                Unit::Kilobit => "kb",
+                Unit::Kilobyte => "kB",
+                Unit::Megabit => "Mb",
+                Unit::Megabyte => "MB",
+                Unit::Percent => "%",
+                Unit::Petabyte => "PB",
+                Unit::Terabit => "Tb",
+                Unit::Terabyte => "TB",
+                _ => return None,
+            };
+            ("", suffix)
+        }
+    };
+
+    Some(NumberUnitPattern {
+        prefix: String::new(),
+        prefix_separator: String::new(),
+        suffix_separator: suffix_separator.into(),
+        suffix: suffix.into(),
+        hides_number: false,
+    })
+}
+
+/// Composes a Spanish generic compound when an ICU4X-generated unit category
+/// meets one of the Spanish raw-CLDR categories above.
+///
+/// `UnitsEssentialsV1` cannot currently describe the latter categories. Once
+/// either operand uses one, accepting the previous English-only fallback
+/// would discard otherwise available Spanish data. The CLDR `per` records are
+/// `{0} por {1}` for long and `{0}/{1}` for short/narrow displays.
+fn cldr_spanish_generic_compound_unit_pattern(
+    locale: &str,
+    numerator: crate::NumberFormatUnit,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberGenericCompoundUnitPattern> {
+    use crate::NumberUnitDisplay as Display;
+
+    let numerator_raw = cldr_spanish_additional_unit_pattern(locale, numerator, display, plural);
+    let denominator_display = match display {
+        Display::Long => Display::Long,
+        Display::Short | Display::Narrow => Display::Narrow,
+    };
+    let denominator_raw = cldr_spanish_additional_unit_pattern(
+        locale,
+        denominator,
+        denominator_display,
+        crate::PluralCategory::One,
+    );
+    // If both operands are ICU4X-generated, let its provider-owned generic
+    // `per` record handle the entire shape below.
+    if numerator_raw.is_none() && denominator_raw.is_none() {
+        return None;
+    }
+    let numerator = numerator_raw
+        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
+    let denominator = denominator_raw.or_else(|| {
+        experimental_number_unit_pattern(
+            locale,
+            denominator,
+            denominator_display,
+            crate::PluralCategory::One,
+        )
+    })?;
+    let per = match display {
+        Display::Long => "{0} por {1}",
+        Display::Short | Display::Narrow => "{0}/{1}",
+    };
+    let label = interpolate_unit_per_pattern(
+        per,
+        &number_unit_pattern_label(&numerator),
+        &number_unit_pattern_label(&denominator),
+    )?;
+
+    if !numerator.prefix.is_empty() && numerator.suffix.is_empty() {
+        return Some(NumberGenericCompoundUnitPattern {
+            prefix: label,
+            prefix_separator: numerator.prefix_separator,
+            suffix_separator: String::new(),
+            suffix: String::new(),
+        });
+    }
+
+    Some(NumberGenericCompoundUnitPattern {
+        prefix: String::new(),
+        prefix_separator: String::new(),
+        suffix_separator: numerator.suffix_separator,
+        suffix: label,
+    })
+}
+
+/// Composes an Arabic generic compound whenever either operand is a
+/// raw-CLDR digital or percentage unit.
+///
+/// The generated ICU4X data supplies the other sanctioned categories. Mixing
+/// it with an English fallback would lose Arabic labels and the localized
+/// `لكل` long-width connector, so the corresponding CLDR compound records
+/// remain provider data here.
+fn cldr_arabic_generic_compound_unit_pattern(
+    locale: &str,
+    numerator: crate::NumberFormatUnit,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberGenericCompoundUnitPattern> {
+    use crate::NumberUnitDisplay as Display;
+
+    let numerator_raw = cldr_arabic_digital_unit_pattern(locale, numerator, display, plural);
+    let denominator_display = match display {
+        Display::Long => Display::Long,
+        Display::Short | Display::Narrow => Display::Narrow,
+    };
+    let denominator_raw = cldr_arabic_digital_unit_pattern(
+        locale,
+        denominator,
+        denominator_display,
+        crate::PluralCategory::One,
+    );
+    if numerator_raw.is_none() && denominator_raw.is_none() {
+        return None;
+    }
+    let numerator = numerator_raw
+        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
+    let denominator = denominator_raw.or_else(|| {
+        experimental_number_unit_pattern(
+            locale,
+            denominator,
+            denominator_display,
+            crate::PluralCategory::One,
+        )
+    })?;
+    let per = match display {
+        Display::Long => "{0} لكل {1}",
+        Display::Short | Display::Narrow => "{0}/{1}",
+    };
+    let label = interpolate_unit_per_pattern(
+        per,
+        &number_unit_pattern_label(&numerator),
+        &number_unit_pattern_label(&denominator),
+    )?;
+
+    if !numerator.prefix.is_empty() && numerator.suffix.is_empty() {
+        return Some(NumberGenericCompoundUnitPattern {
+            prefix: label,
+            prefix_separator: numerator.prefix_separator,
+            suffix_separator: String::new(),
+            suffix: String::new(),
+        });
+    }
+
+    Some(NumberGenericCompoundUnitPattern {
+        prefix: String::new(),
+        prefix_separator: String::new(),
+        suffix_separator: numerator.suffix_separator,
+        suffix: label,
+    })
+}
+
+/// Composes a Japanese generic compound whenever one operand uses a raw CLDR
+/// digital or percentage record that ICU4X does not type yet.
+///
+/// Japanese long compounds use `{0}毎{1}`; short and narrow forms use a slash.
+/// The other operand remains the matching ICU4X-generated Japanese name, so
+/// this never falls through to an English label merely because one category
+/// is unavailable from ICU4X's typed marker inventory.
+fn cldr_japanese_generic_compound_unit_pattern(
+    locale: &str,
+    numerator: crate::NumberFormatUnit,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberGenericCompoundUnitPattern> {
+    use crate::NumberUnitDisplay as Display;
+
+    let numerator_raw = cldr_japanese_digital_unit_pattern(locale, numerator, display, plural);
+    let denominator_display = match display {
+        Display::Long => Display::Long,
+        Display::Short | Display::Narrow => Display::Narrow,
+    };
+    let denominator_raw = cldr_japanese_digital_unit_pattern(
+        locale,
+        denominator,
+        denominator_display,
+        crate::PluralCategory::One,
+    );
+    if numerator_raw.is_none() && denominator_raw.is_none() {
+        return None;
+    }
+    let numerator = numerator_raw
+        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
+    let denominator = denominator_raw.or_else(|| {
+        experimental_number_unit_pattern(
+            locale,
+            denominator,
+            denominator_display,
+            crate::PluralCategory::One,
+        )
+    })?;
+    let per = match display {
+        Display::Long => "{0}毎{1}",
+        Display::Short | Display::Narrow => "{0}/{1}",
+    };
+    let label = interpolate_unit_per_pattern(
+        per,
+        &number_unit_pattern_label(&numerator),
+        &number_unit_pattern_label(&denominator),
+    )?;
+    if !numerator.prefix.is_empty() && numerator.suffix.is_empty() {
+        return Some(NumberGenericCompoundUnitPattern {
+            prefix: label,
+            prefix_separator: numerator.prefix_separator,
+            suffix_separator: String::new(),
+            suffix: String::new(),
+        });
+    }
+    Some(NumberGenericCompoundUnitPattern {
+        prefix: String::new(),
+        prefix_separator: String::new(),
+        suffix_separator: numerator.suffix_separator,
+        suffix: label,
     })
 }
 

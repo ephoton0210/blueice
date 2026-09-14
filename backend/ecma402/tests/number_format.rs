@@ -306,6 +306,48 @@ fn emits_localized_scientific_and_engineering_exponent_parts() {
     )
     .unwrap();
     assert_eq!(scientific.format_f64(543_211.1).unwrap(), "5.432E5");
+
+    let arabic = NumberFormat::try_new(
+        &[canonicalize("ar").unwrap()],
+        NumberFormatOptions {
+            notation: NumberNotation::Scientific,
+            maximum_fraction_digits: Some(1),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(arabic.format_f64(123_000.0).unwrap(), "١٫٢أس٥");
+    assert_eq!(arabic.format_f64(-0.001_23).unwrap(), "؜-١٫٢أس؜-٣");
+    assert_eq!(
+        arabic
+            .format_to_parts_f64(-0.001_23)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::MinusSign, "؜-".into()),
+            (NumberFormatPartKind::Integer, "١".into()),
+            (NumberFormatPartKind::Decimal, "٫".into()),
+            (NumberFormatPartKind::Fraction, "٢".into()),
+            (NumberFormatPartKind::ExponentSeparator, "أس".into()),
+            (NumberFormatPartKind::Literal, "؜".into()),
+            (NumberFormatPartKind::ExponentMinusSign, "-".into()),
+            (NumberFormatPartKind::ExponentInteger, "٣".into()),
+        ]
+    );
+
+    let persian = NumberFormat::try_new(
+        &[canonicalize("fa").unwrap()],
+        NumberFormatOptions {
+            notation: NumberNotation::Scientific,
+            maximum_fraction_digits: Some(1),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(persian.format_f64(123_000.0).unwrap(), "۱٫۲×۱۰^۵");
+    assert_eq!(persian.format_f64(-0.001_23).unwrap(), "‎−۱٫۲×۱۰^‎−۳");
 }
 
 #[test]
@@ -499,6 +541,369 @@ fn formats_provider_selected_compact_patterns_as_typed_parts() {
     )
     .unwrap();
     assert_eq!(korean.format_f64(98_765_432.0).unwrap(), "9877만");
+}
+
+#[test]
+fn sources_non_english_range_glue_from_the_shared_provider() {
+    let format_range = |locale: &str| {
+        NumberFormat::try_new(
+            &[canonicalize(locale).unwrap()],
+            NumberFormatOptions::default(),
+        )
+        .unwrap()
+        .format_range_inputs(
+            NumberFormatInput::Number(1.0),
+            NumberFormatInput::Number(2.0),
+        )
+        .unwrap()
+    };
+
+    assert_eq!(format_range("es"), "1-2");
+    assert_eq!(format_range("ja"), "1～2");
+    assert_eq!(format_range("ko"), "1~2");
+
+    let french_yen = NumberFormat::try_new_with_currency(
+        &[canonicalize("fr").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Currency,
+            ..Default::default()
+        },
+        1,
+        None,
+        None,
+        Default::default(),
+        Some(NumberCurrencyOptions {
+            code: "JPY".into(),
+            display: NumberCurrencyDisplay::Symbol,
+            sign: NumberCurrencySign::Standard,
+        }),
+    )
+    .unwrap();
+    assert_eq!(
+        french_yen
+            .format_range_inputs(
+                NumberFormatInput::Number(1.0),
+                NumberFormatInput::Number(2.0),
+            )
+            .unwrap(),
+        "1–2\u{a0}JP¥"
+    );
+
+    let japanese_dollar = NumberFormat::try_new_with_currency(
+        &[canonicalize("ja").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Currency,
+            ..Default::default()
+        },
+        1,
+        None,
+        None,
+        Default::default(),
+        Some(NumberCurrencyOptions {
+            code: "USD".into(),
+            display: NumberCurrencyDisplay::Symbol,
+            sign: NumberCurrencySign::Standard,
+        }),
+    )
+    .unwrap();
+    assert_eq!(
+        japanese_dollar
+            .format_range_inputs(
+                NumberFormatInput::Number(1.0),
+                NumberFormatInput::Number(2.0),
+            )
+            .unwrap(),
+        "$1.00 ～ $2.00"
+    );
+}
+
+#[test]
+fn sources_localized_temperature_and_angle_units_from_the_shared_provider() {
+    let format = |locale: &str, unit, display, value| {
+        NumberFormat::try_new(
+            &[canonicalize(locale).unwrap()],
+            NumberFormatOptions {
+                style: NumberFormatStyle::Unit,
+                unit: Some(unit),
+                unit_display: display,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .format_f64(value)
+        .unwrap()
+    };
+
+    assert_eq!(
+        format(
+            "fr",
+            NumberFormatUnit::Celsius,
+            NumberUnitDisplay::Long,
+            2.0,
+        ),
+        "2\u{a0}degrés Celsius"
+    );
+    assert_eq!(
+        format(
+            "fr",
+            NumberFormatUnit::Fahrenheit,
+            NumberUnitDisplay::Short,
+            2.0,
+        ),
+        "2\u{202f}°F"
+    );
+    assert_eq!(
+        format(
+            "ja",
+            NumberFormatUnit::Celsius,
+            NumberUnitDisplay::Long,
+            2.0,
+        ),
+        "摂氏 2 度"
+    );
+    assert_eq!(
+        format("ru", NumberFormatUnit::Degree, NumberUnitDisplay::Long, 5.0,),
+        "5 градусов"
+    );
+    assert_eq!(
+        format("ar", NumberFormatUnit::Degree, NumberUnitDisplay::Long, 1.0,),
+        "درجة"
+    );
+    assert_eq!(
+        format("fr", NumberFormatUnit::Byte, NumberUnitDisplay::Long, 2.0,),
+        "2\u{a0}octets"
+    );
+    assert_eq!(
+        format(
+            "fr",
+            NumberFormatUnit::Kilobyte,
+            NumberUnitDisplay::Short,
+            2.0,
+        ),
+        "2\u{202f}ko"
+    );
+    assert_eq!(
+        format(
+            "fr",
+            NumberFormatUnit::Percent,
+            NumberUnitDisplay::Long,
+            2.0,
+        ),
+        "2 pour cent"
+    );
+    assert_eq!(
+        format(
+            "ja",
+            NumberFormatUnit::Gigabyte,
+            NumberUnitDisplay::Long,
+            2.0,
+        ),
+        "2 ギガバイト"
+    );
+    assert_eq!(
+        format("ja", NumberFormatUnit::Byte, NumberUnitDisplay::Short, 2.0,),
+        "2 byte"
+    );
+    assert_eq!(
+        format(
+            "ja",
+            NumberFormatUnit::Percent,
+            NumberUnitDisplay::Narrow,
+            2.0,
+        ),
+        "2%"
+    );
+    let japanese_compound = NumberFormat::try_new(
+        &[canonicalize("ja").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: NumberFormatUnit::parse("gigabyte-per-second"),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        japanese_compound.format_f64(2.0).unwrap(),
+        "2 ギガバイト毎秒"
+    );
+    assert_eq!(
+        japanese_compound
+            .format_to_parts_f64(2.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::Integer, "2".into()),
+            (NumberFormatPartKind::Literal, " ".into()),
+            (NumberFormatPartKind::Unit, "ギガバイト毎秒".into()),
+        ]
+    );
+    assert_eq!(
+        format(
+            "ru",
+            NumberFormatUnit::Gigabyte,
+            NumberUnitDisplay::Long,
+            1.0,
+        ),
+        "1 гигабайт"
+    );
+    assert_eq!(
+        format(
+            "ru",
+            NumberFormatUnit::Gigabyte,
+            NumberUnitDisplay::Long,
+            2.0,
+        ),
+        "2 гигабайта"
+    );
+    assert_eq!(
+        format(
+            "ru",
+            NumberFormatUnit::Gigabyte,
+            NumberUnitDisplay::Long,
+            5.0,
+        ),
+        "5 гигабайт"
+    );
+    assert_eq!(
+        format(
+            "ru",
+            NumberFormatUnit::Percent,
+            NumberUnitDisplay::Long,
+            5.0,
+        ),
+        "5 процентов"
+    );
+    assert_eq!(
+        format(
+            "ru",
+            NumberFormatUnit::Gigabyte,
+            NumberUnitDisplay::Short,
+            2.0,
+        ),
+        "2 ГБ"
+    );
+    assert_eq!(
+        format(
+            "ru",
+            NumberFormatUnit::Percent,
+            NumberUnitDisplay::Narrow,
+            2.0,
+        ),
+        "2%"
+    );
+    // ICU4X does not yet generate typed name markers for these categories.
+    // The Spanish records therefore prove that the provider's raw CLDR bridge
+    // covers the whole remaining sanctioned simple-unit family, rather than
+    // silently substituting the English fallback.
+    assert_eq!(
+        format(
+            "es",
+            NumberFormatUnit::Celsius,
+            NumberUnitDisplay::Long,
+            2.0,
+        ),
+        "2 grados Celsius"
+    );
+    assert_eq!(
+        format(
+            "es",
+            NumberFormatUnit::Gigabyte,
+            NumberUnitDisplay::Short,
+            2.0,
+        ),
+        "2 GB"
+    );
+    assert_eq!(
+        format(
+            "es",
+            NumberFormatUnit::Percent,
+            NumberUnitDisplay::Short,
+            2.0,
+        ),
+        "2\u{a0}%"
+    );
+    assert_eq!(
+        format(
+            "es",
+            NumberFormatUnit::Degree,
+            NumberUnitDisplay::Narrow,
+            2.0,
+        ),
+        "2°"
+    );
+
+    let spanish_compound = NumberFormat::try_new(
+        &[canonicalize("es").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: NumberFormatUnit::parse("gigabyte-per-second"),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        spanish_compound.format_f64(2.0).unwrap(),
+        "2 gigabytes por segundo"
+    );
+    assert_eq!(
+        spanish_compound
+            .format_to_parts_f64(2.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::Integer, "2".into()),
+            (NumberFormatPartKind::Literal, " ".into()),
+            (NumberFormatPartKind::Unit, "gigabytes por segundo".into(),),
+        ]
+    );
+
+    assert_eq!(
+        format(
+            "ar",
+            NumberFormatUnit::Gigabyte,
+            NumberUnitDisplay::Narrow,
+            2.0,
+        ),
+        "٢ غ.ب"
+    );
+    assert_eq!(
+        format(
+            "ar",
+            NumberFormatUnit::Percent,
+            NumberUnitDisplay::Long,
+            1.0,
+        ),
+        "١ بالمائة"
+    );
+    assert_eq!(
+        format(
+            "ar",
+            NumberFormatUnit::Percent,
+            NumberUnitDisplay::Long,
+            2.0,
+        ),
+        "٢ ٪"
+    );
+    let arabic_compound = NumberFormat::try_new(
+        &[canonicalize("ar").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: NumberFormatUnit::parse("gigabyte-per-second"),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        arabic_compound.format_f64(2.0).unwrap(),
+        "٢ غيغابايت لكل ثانية"
+    );
 }
 
 #[test]

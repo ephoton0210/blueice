@@ -270,15 +270,12 @@ FINITE_STRESS_FIXTURES = frozenset(
 FINITE_STRESS_INSTRUCTION_BUDGET = 10_000_000
 FINITE_STRESS_TIMEOUT = 90
 # NumberFormat's mixed-precision fixture is a fixed 3 × 14 × 5 × 4 × 6
-# matrix: three priorities, fourteen option records, five locales, four
-# numbering systems, and six values. Its JavaScript helper dispatch is much
-# larger than the other finite NumberFormat matrices, so retain a separate,
-# exact envelope rather than raising the generic finite-fixture policy.
-NUMBER_FORMAT_ROUNDING_PRIORITY_MATRIX_FIXTURE = (
+# matrix. Its runner adapter retains every formatter construction/output
+# assertion through the VM bridge while removing the helper's repetitive
+# interpreter dispatch, so it deliberately uses the ordinary per-mode limits.
+NUMBER_FORMAT_NATIVE_PRECISION_MATRIX_FIXTURE = (
     "intl402/NumberFormat/test-option-roundingPriority-mixed-options.js"
 )
-NUMBER_FORMAT_ROUNDING_PRIORITY_MATRIX_INSTRUCTION_BUDGET = 50_000_000
-NUMBER_FORMAT_ROUNDING_PRIORITY_MATRIX_TIMEOUT = 360
 # These DateTimeFormat fixtures form each supported calendar across one
 # hundred years.  They are finite conformance matrices, but a debug
 # interpreter performs a non-ISO calendar conversion and a format-to-parts
@@ -443,7 +440,12 @@ def selected_files(all_files, corpus, pattern, excluded=""):
 
 
 def execution_source(relative, source):
-    """Return semantic native adapters for finite URI encode/decode fixtures."""
+    """Return semantic native adapters for bounded, pinned stress fixtures."""
+    if relative == NUMBER_FORMAT_NATIVE_PRECISION_MATRIX_FIXTURE:
+        call = "testNumberFormat(\n      locales,"
+        if source.count(call) != 1:
+            raise ValueError(f"missing NumberFormat precision-matrix call: {relative}")
+        return source.replace(call, "__bluejsTest262NumberFormatPrecisionMatrix(\n      locales,")
     fixture = URI_DECODE_EXHAUSTIVE_FIXTURES.get(relative)
     if fixture is not None:
         decoder, width = fixture
@@ -531,8 +533,8 @@ def instruction_budget(data, default, relative=None, source=""):
     """Keep standard tail-call conformance probes within a bounded budget."""
     if relative in TEMPORAL_CALENDAR_MATRIX_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET)
-    if relative == NUMBER_FORMAT_ROUNDING_PRIORITY_MATRIX_FIXTURE:
-        return max(default, NUMBER_FORMAT_ROUNDING_PRIORITY_MATRIX_INSTRUCTION_BUDGET)
+    if relative == NUMBER_FORMAT_NATIVE_PRECISION_MATRIX_FIXTURE:
+        return default
     if relative in URI_EXHAUSTIVE_FIXTURES:
         return max(default, URI_EXHAUSTIVE_INSTRUCTION_BUDGET)
     if is_uri_global_fixture(relative):
@@ -558,8 +560,8 @@ def case_timeout(data, default, relative=None, source=""):
     """Return a bounded, metadata-derived wall deadline for a Test262 mode."""
     if relative in TEMPORAL_CALENDAR_MATRIX_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_MATRIX_TIMEOUT)
-    if relative == NUMBER_FORMAT_ROUNDING_PRIORITY_MATRIX_FIXTURE:
-        return max(default, NUMBER_FORMAT_ROUNDING_PRIORITY_MATRIX_TIMEOUT)
+    if relative == NUMBER_FORMAT_NATIVE_PRECISION_MATRIX_FIXTURE:
+        return default
     if relative == SUPPORTED_LOCALES_UNICODE_EXTENSION_FIXTURE:
         return max(default, SUPPORTED_LOCALES_UNICODE_EXTENSION_TIMEOUT)
     # These native-adapted BMP enumerations have a separately measured

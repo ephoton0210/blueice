@@ -121,6 +121,22 @@ class RunnerTests(unittest.TestCase):
             execution_source("built-ins/decodeURI/prop-desc.js", source), source
         )
 
+    def test_number_format_precision_matrix_uses_its_normal_timeout_after_native_adaptation(self):
+        relative = "intl402/NumberFormat/test-option-roundingPriority-mixed-options.js"
+        source = "function testPrecision() {\n  testNumberFormat(\n      locales, numberingSystems);\n}"
+        adapted = execution_source(relative, source)
+        self.assertIn(
+            "__bluejsTest262NumberFormatPrecisionMatrix(\n      locales,",
+            adapted,
+        )
+        self.assertEqual(instruction_budget({}, 100_000, relative), 100_000)
+        # This fixture includes testIntl.js, but its precise adapter retains
+        # the standard two-second policy instead of inheriting that helper's
+        # generic matrix allowance.
+        self.assertEqual(case_timeout({"includes": ["testIntl.js"]}, 2, relative), 2)
+        with self.assertRaisesRegex(ValueError, "missing NumberFormat precision-matrix call"):
+            execution_source(relative, "testNumberFormat(locales, numberingSystems)")
+
     def test_generated_character_class_escape_adapter_keeps_the_full_regexp_check(self):
         source = "const regexes = [];\nconst str = '';\nconst errors = [];\nthrow new Error();"
         adapted = execution_source(

@@ -27,3 +27,15 @@ members = [
 edition = "2021"
 license = "MPL-2.0"
 rust-version = "1.95"
+
+# BlueJS's Test262 adapter exercises the bytecode interpreter through large,
+# finite upstream harness matrices.  Leaving the interpreter itself at the
+# default debug optimisation level makes ordinary conformance cases exceed
+# their wall-clock budget by an order of magnitude.  Optimise the engine in
+# development and test builds while retaining debug information and the usual
+# unoptimised profile for the rest of the workspace.
+[profile.dev.package.blueice-bluejs]
+opt-level = 3
+
+[profile.test.package.blueice-bluejs]
+opt-level = 3

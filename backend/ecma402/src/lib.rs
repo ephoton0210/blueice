@@ -33,7 +33,7 @@ use icu_segmenter::{
     options::{SentenceBreakOptions, WordBreakOptions},
     GraphemeClusterSegmenter, GraphemeClusterSegmenterBorrowed, SentenceSegmenter, WordSegmenter,
 };
-use std::{any::TypeId, cell::RefCell};
+use std::any::TypeId;
 use writeable::{Part, PartsWrite, Writeable};
 
 mod collator;

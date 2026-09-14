@@ -5,6 +5,7 @@
 //! Host-neutral implementation of the ECMA-402 number-format service.
 
 use super::*;
+use std::cell::RefCell;
 
 /// Whether the shared provider has decimal data for this locale.
 pub fn supports_number_format_locale(locale: &IcuLocale) -> bool {
@@ -884,6 +885,10 @@ pub struct NumberFormat {
     // it reaches that formatter. Retain the exact `DecimalDigitsV1` payload
     // selected at construction so those parts use provider data too.
     decimal_digits: [char; 10],
+    // ICU4X's decimal payload does not currently expose CLDR's scientific
+    // `exponential` symbol. The shared provider keeps that typed record with
+    // the exponent-minus bidi/sign shape selected for this formatter.
+    scientific_symbols: crate::locale_data::NumberScientificSymbols,
     // Unit and currency-name selection are CLDR cardinal-plural operations
     // over the rounded decimal that is actually rendered. Keeping the shared
     // service here avoids reducing every locale to an English one/other
@@ -1096,6 +1101,8 @@ impl NumberFormat {
         let decimal_digits = locale_data_provider()
             .decimal_digits(&numbering_system)
             .ok_or(NumberFormatError::DataUnavailable)?;
+        let scientific_symbols =
+            locale_data_provider().number_scientific_symbols(selected.as_str(), &numbering_system);
         let resolved = ResolvedNumberFormatOptions {
             locale: selected.as_str().into(),
             numbering_system,
@@ -1128,6 +1135,7 @@ impl NumberFormat {
         Ok(Self {
             formatter,
             decimal_digits,
+            scientific_symbols,
             display_plural_rules,
             negotiation,
             resolved,
@@ -1364,12 +1372,13 @@ impl NumberFormat {
         result.extend(start_parts.into_iter().map(start_number_range_part));
         result.push(NumberRangePart {
             kind: NumberFormatPartKind::Literal,
-            value: number_range_separator(
-                &self.resolved.locale,
-                self.resolved.style,
-                self.resolved.maximum_fraction_digits,
-            )
-            .into(),
+            value: crate::locale_data_provider()
+                .number_range_separator(
+                    &self.resolved.locale,
+                    self.resolved.style,
+                    self.resolved.maximum_fraction_digits,
+                )
+                .into(),
             source: NumberRangePartSource::Shared,
         });
         result.extend(end_parts.into_iter().map(end_number_range_part));
@@ -1601,7 +1610,16 @@ impl NumberFormat {
             }
             collector.push(NumberFormatPartKind::Compact, &pattern.suffix);
         }
-        let numeric_parts = collector.parts.clone();
+        // Only a unit pattern that suppresses its numeric placeholder needs
+        // the undecorated core later, when `formatRange` reconstructs the
+        // shared range-unit affix.  Decimal, percent, and currency formatting
+        // are the hot `format()` path used by Test262's finite matrices, so do
+        // not allocate and clone their parts solely for that unit-range case.
+        let mut numeric_parts = if self.resolved.style == NumberFormatStyle::Unit {
+            collector.parts.clone()
+        } else {
+            Vec::new()
+        };
         let unit_hides_number = if let Some(currency) = self.currency.as_ref() {
             apply_currency_pattern(
                 &mut collector.parts,
@@ -1626,16 +1644,29 @@ impl NumberFormat {
             false
         };
         if let Some(exponent) = exponent {
-            collector.push(NumberFormatPartKind::ExponentSeparator, "E");
+            collector.push(
+                NumberFormatPartKind::ExponentSeparator,
+                self.scientific_symbols.exponent_separator,
+            );
             if exponent < 0 {
-                collector.push(NumberFormatPartKind::ExponentMinusSign, "-");
+                if !self.scientific_symbols.exponent_minus_prefix.is_empty() {
+                    collector.push(
+                        NumberFormatPartKind::Literal,
+                        self.scientific_symbols.exponent_minus_prefix,
+                    );
+                }
+                collector.push(
+                    NumberFormatPartKind::ExponentMinusSign,
+                    self.scientific_symbols.exponent_minus_sign,
+                );
             }
             let exponent = exponent.unsigned_abs().to_string();
             collector.push(NumberFormatPartKind::ExponentInteger, &exponent);
         }
         localize_decimal_parts(&mut collector.parts, &self.decimal_digits);
-        let mut numeric_parts = numeric_parts;
-        localize_decimal_parts(&mut numeric_parts, &self.decimal_digits);
+        if !numeric_parts.is_empty() {
+            localize_decimal_parts(&mut numeric_parts, &self.decimal_digits);
+        }
         Ok(FormattedNumber {
             parts: collector.parts,
             numeric_parts,
@@ -2142,7 +2173,7 @@ fn apply_currency_pattern(
             kind: NumberFormatPartKind::Currency,
             value: symbol,
         };
-        if uses_trailing_currency_pattern(locale) {
+        if crate::locale_data_provider().fallback_currency_is_trailing(locale) {
             parts.push(NumberFormatPart {
                 kind: NumberFormatPartKind::Literal,
                 value: "\u{a0}".into(),
@@ -2166,7 +2197,7 @@ fn apply_currency_pattern(
     let accounting_fallback = negative
         && currency.sign == NumberCurrencySign::Accounting
         && currency.display != NumberCurrencyDisplay::Name
-        && !locale.starts_with("de");
+        && crate::locale_data_provider().fallback_accounting_uses_parentheses(locale);
     if accounting_fallback && !used_provider_pattern {
         parts.retain(|part| part.kind != NumberFormatPartKind::MinusSign);
         parts.insert(
@@ -2235,7 +2266,7 @@ fn apply_percent_pattern(parts: &mut Vec<NumberFormatPart>, locale: &str) {
         return;
     }
 
-    if uses_space_before_percent(locale) {
+    if crate::locale_data_provider().fallback_percent_has_space(locale) {
         parts.push(NumberFormatPart {
             kind: NumberFormatPartKind::Literal,
             value: "\u{a0}".into(),
@@ -2348,81 +2379,12 @@ fn range_plural_affix_suffix_length(
     (length < start.len() && length < end.len()).then_some(length)
 }
 
-/// A compact representation of the CLDR interval patterns needed by the
-/// currently bundled number data. Decimal ranges normally use an en dash;
-/// Portuguese's pattern uses a spaced hyphen, while fixed-zero-digit prefix
-/// currencies use the spaced English pattern.
-fn number_range_separator(
-    locale: &str,
-    style: NumberFormatStyle,
-    maximum_fraction_digits: u8,
-) -> &'static str {
-    if locale.split('-').next().unwrap_or(locale) == "pt" {
-        " - "
-    } else if style == NumberFormatStyle::Currency && maximum_fraction_digits == 0 {
-        " – "
-    } else {
-        "–"
-    }
-}
-
-/// CLDR's common currency patterns place the symbol after the magnitude in
-/// most European, Cyrillic, and right-to-left language families. The compact
-/// decimal service intentionally carries this small pattern table instead of
-/// pretending the English prefix is universal; ICU4X decimal symbols alone do
-/// not expose currency-unit patterns.
-fn uses_trailing_currency_pattern(locale: &str) -> bool {
-    matches!(
-        locale.split('-').next().unwrap_or(locale),
-        "ar" | "be"
-            | "bg"
-            | "ca"
-            | "cs"
-            | "da"
-            | "de"
-            | "el"
-            | "es"
-            | "et"
-            | "fi"
-            | "fr"
-            | "he"
-            | "hr"
-            | "hu"
-            | "is"
-            | "it"
-            | "lt"
-            | "lv"
-            | "nl"
-            | "no"
-            | "pl"
-            | "pt"
-            | "ro"
-            | "ru"
-            | "sk"
-            | "sl"
-            | "sr"
-            | "sv"
-            | "tr"
-            | "uk"
-    )
-}
-
-fn uses_space_before_percent(locale: &str) -> bool {
-    uses_trailing_currency_pattern(locale)
-        && !matches!(
-            locale.split('-').next().unwrap_or(locale),
-            "ar" | "he" | "tr"
-        )
-}
-
 fn currency_symbol(currency: &NumberCurrencyOptions, locale: &str) -> String {
     match currency.display {
         NumberCurrencyDisplay::Code => currency.code.clone(),
-        NumberCurrencyDisplay::Name => match currency.code.as_str() {
-            "USD" => "US dollars".into(),
-            "EUR" => "euros".into(),
-            _ => currency.code.clone(),
-        },
+        NumberCurrencyDisplay::Name => {
+            crate::locale_data_provider().fallback_currency_name(&currency.code)
+        }
         NumberCurrencyDisplay::Symbol | NumberCurrencyDisplay::NarrowSymbol => {
             crate::locale_data_provider()
                 .currency_symbol(locale, &currency.code, currency.display)

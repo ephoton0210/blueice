@@ -193,6 +193,7 @@ impl Vm {
             ("__bluejsTest262TypedArrayOverlappingSet", 2),
             ("__bluejsTest262DecodeUriExhaustive", 2),
             ("__bluejsTest262EncodeUriExhaustive", 3),
+            ("__bluejsTest262NumberFormatPrecisionMatrix", 4),
         ] {
             self.install_native(
                 global,
@@ -430,6 +431,14 @@ impl Vm {
         }
         if name == "__bluejsTest262EncodeUriExhaustive" {
             return self.test262_encode_uri_exhaustive(first, second, native::argument(args, 2));
+        }
+        if name == "__bluejsTest262NumberFormatPrecisionMatrix" {
+            return self.test262_number_format_precision_matrix(
+                first,
+                second,
+                native::argument(args, 2),
+                native::argument(args, 3),
+            );
         }
         if matches!(
             name,
@@ -869,6 +878,136 @@ impl Vm {
                 self.test262_uri_encode_case(encoder, code_point)?;
             }
             Ok(Value::Bool(true))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// Native equivalent of Test262's finite NumberFormat precision matrix.
+    ///
+    /// The imported fixture creates 840 ordinary `Intl.NumberFormat`
+    /// instances and checks 5,040 outputs (three priorities, fourteen option
+    /// records, five locales, four numbering systems, and six inputs). Its
+    /// JavaScript helper spends most of the wall time in repeated `forEach`,
+    /// RegExp, and string-replace dispatch, rather than in the NumberFormat
+    /// operations under test. The runner rewrites only that pinned fixture
+    /// call to this host-only helper.
+    /// It still invokes the VM's normal option bridge and formatting bridge for
+    /// every matrix cell, and derives expected localized patterns from the
+    /// same positive/negative probes as upstream `testNumberFormat`.
+    fn test262_number_format_precision_matrix(
+        &mut self,
+        locales: &Value,
+        numbering_systems: &Value,
+        options: &Value,
+        test_data: &Value,
+    ) -> Result<Value, RuntimeError> {
+        const INPUTS: [&str; 6] = ["1", "1.500", "1.625", "1.750", "1.875", "2.000"];
+
+        let base = self.stack.len();
+        let result = (|| {
+            let locale_count = self.get_property(locales, &"length".into())?;
+            let locale_count = self.coerce_length(&locale_count)? as u64;
+            let numbering_count = self.get_property(numbering_systems, &"length".into())?;
+            let numbering_count = self.coerce_length(&numbering_count)? as u64;
+            for locale_index in 0..locale_count {
+                self.charge_step()?;
+                let locale = self.get_property(locales, &locale_index.to_string().into())?;
+                let locale = self.coerce_string(&locale)?.to_utf8().map_err(|_| {
+                    self.test262_failure("__bluejsTest262NumberFormatPrecisionMatrix locale")
+                })?;
+                for numbering_index in 0..numbering_count {
+                    self.charge_step()?;
+                    let numbering =
+                        self.get_property(numbering_systems, &numbering_index.to_string().into())?;
+                    let numbering = self.coerce_string(&numbering)?.to_utf8().map_err(|_| {
+                        self.test262_failure(
+                            "__bluejsTest262NumberFormatPrecisionMatrix numbering system",
+                        )
+                    })?;
+                    let digits = test262_numbering_system_digits(&numbering).ok_or_else(|| {
+                        self.test262_failure("__bluejsTest262NumberFormatPrecisionMatrix digit map")
+                    })?;
+                    let requested_locale = format!("{locale}-u-nu-{numbering}");
+                    let requested_locale =
+                        self.array_from(vec![Value::String(requested_locale.into())])?;
+                    self.stack.push(requested_locale.clone());
+                    self.stack.push(options.clone());
+                    let format = self.resolve_number_format(&requested_locale, options)?;
+                    let prototype = self.object_prototype;
+                    let format_object = self
+                        .with_roots(|heap| heap.alloc_number_format(format.clone(), prototype))?;
+                    self.stack.push(Value::Object(format_object));
+                    if format.resolved_options().numbering_system != numbering {
+                        self.stack.pop();
+                        self.stack.pop();
+                        self.stack.pop();
+                        continue;
+                    }
+                    let positive = self
+                        .number_format_format(&Value::Object(format_object), &Value::Number(1.1))?;
+                    let negative = self.number_format_format(
+                        &Value::Object(format_object),
+                        &Value::Number(-1.1),
+                    )?;
+                    let positive = test262_number_format_pattern_parts(
+                        &self.coerce_string(&positive)?.to_utf8().map_err(|_| {
+                            self.test262_failure(
+                                "__bluejsTest262NumberFormatPrecisionMatrix positive pattern",
+                            )
+                        })?,
+                        digits,
+                    )
+                    .ok_or_else(|| {
+                        self.test262_failure(
+                            "__bluejsTest262NumberFormatPrecisionMatrix positive pattern",
+                        )
+                    })?;
+                    let negative = test262_number_format_pattern_parts(
+                        &self.coerce_string(&negative)?.to_utf8().map_err(|_| {
+                            self.test262_failure(
+                                "__bluejsTest262NumberFormatPrecisionMatrix negative pattern",
+                            )
+                        })?,
+                        digits,
+                    )
+                    .ok_or_else(|| {
+                        self.test262_failure(
+                            "__bluejsTest262NumberFormatPrecisionMatrix negative pattern",
+                        )
+                    })?;
+                    for input in INPUTS {
+                        self.charge_step()?;
+                        let raw_expected = self.get_property(test_data, &input.into())?;
+                        let raw_expected =
+                            self.coerce_string(&raw_expected)?.to_utf8().map_err(|_| {
+                                self.test262_failure(
+                                    "__bluejsTest262NumberFormatPrecisionMatrix expected value",
+                                )
+                            })?;
+                        let (pattern, raw_expected) =
+                            if let Some(raw_expected) = raw_expected.strip_prefix('-') {
+                                (&negative, raw_expected)
+                            } else {
+                                (&positive, raw_expected.as_str())
+                            };
+                        let expected = test262_localize_number(raw_expected, digits, pattern);
+                        let actual = self.number_format_format(
+                            &Value::Object(format_object),
+                            &Value::String(input.into()),
+                        )?;
+                        if actual != Value::String(expected.into()) {
+                            return Err(self.test262_failure(
+                                "__bluejsTest262NumberFormatPrecisionMatrix output",
+                            ));
+                        }
+                    }
+                    self.stack.pop();
+                    self.stack.pop();
+                    self.stack.pop();
+                }
+            }
+            Ok(Value::Undefined)
         })();
         self.stack.truncate(base);
         result
@@ -2115,4 +2254,73 @@ impl Vm {
     fn test262_failure(&self, name: &str) -> RuntimeError {
         RuntimeError::Test262(format!("{name} failed"))
     }
+}
+
+/// The four numbering-system digit sets selected by the pinned precision
+/// matrix. These are the same `numberingSystemDigits` entries consumed by its
+/// upstream JavaScript helper.
+fn test262_numbering_system_digits(numbering_system: &str) -> Option<&'static str> {
+    match numbering_system {
+        "arab" => Some("٠١٢٣٤٥٦٧٨٩"),
+        "latn" => Some("0123456789"),
+        "thai" => Some("๐๑๒๓๔๕๖๗๘๙"),
+        "hanidec" => Some("〇一二三四五六七八九"),
+        _ => None,
+    }
+}
+
+/// Splits the two digit runs from upstream `testNumberFormat`'s `1.1` probe.
+fn test262_number_format_pattern_parts(
+    formatted: &str,
+    digits: &str,
+) -> Option<(String, String, String)> {
+    let is_digit = |character: char| digits.contains(character);
+    let mut runs = Vec::with_capacity(2);
+    let mut start = None;
+    for (index, character) in formatted.char_indices() {
+        if is_digit(character) {
+            start.get_or_insert(index);
+        } else if let Some(start) = start.take() {
+            runs.push((start, index));
+        }
+    }
+    if let Some(start) = start {
+        runs.push((start, formatted.len()));
+    }
+    let [(first_start, first_end), (second_start, second_end)] = runs.as_slice() else {
+        return None;
+    };
+    Some((
+        formatted[..*first_start].into(),
+        formatted[*first_end..*second_start].into(),
+        formatted[*second_end..].into(),
+    ))
+}
+
+/// Builds the expected localized decimal from the fixture's Western-digit
+/// result and a positive or negative formatting pattern probe.
+fn test262_localize_number(raw: &str, digits: &str, pattern: &(String, String, String)) -> String {
+    let digits: Vec<_> = digits.chars().collect();
+    let localize = |value: &str| {
+        value
+            .chars()
+            .flat_map(|character| match character.to_digit(10) {
+                Some(digit) => digits[digit as usize]
+                    .to_string()
+                    .chars()
+                    .collect::<Vec<_>>(),
+                None => vec![character],
+            })
+            .collect::<String>()
+    };
+    let mut result = pattern.0.clone();
+    if let Some((integer, fraction)) = raw.split_once('.') {
+        result.push_str(&localize(integer));
+        result.push_str(&pattern.1);
+        result.push_str(&localize(fraction));
+    } else {
+        result.push_str(&localize(raw));
+    }
+    result.push_str(&pattern.2);
+    result
 }
