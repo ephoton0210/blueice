@@ -128,6 +128,7 @@ fn collapses_ranges_in_field_order_and_repeats_cjk_endpoints() {
             month: Some(DateTimeWidth::Long),
             day: Some(DateTimeWidth::Numeric),
             time_zone: Some("UTC".into()),
+            use_experimental_icu4x_range_formatter: true,
             ..Default::default()
         },
     )
@@ -146,6 +147,30 @@ fn collapses_ranges_in_field_order_and_repeats_cjk_endpoints() {
     assert!(english_parts
         .iter()
         .any(|part| part.source == DateTimeRangePartSource::EndRange && part.kind == "day"));
+    let month = english_parts
+        .iter()
+        .position(|part| part.kind == "month")
+        .unwrap();
+    assert_eq!(
+        english_parts[month + 1].source,
+        DateTimeRangePartSource::Shared
+    );
+
+    let cross_year = english
+        .format_range_to_parts(0.0, 31_536_000_000.0)
+        .unwrap();
+    let cross_year_months = cross_year
+        .iter()
+        .filter(|part| part.kind == "month")
+        .map(|part| part.source)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        cross_year_months,
+        vec![
+            DateTimeRangePartSource::StartRange,
+            DateTimeRangePartSource::EndRange,
+        ]
+    );
 
     let taiwan = DateTimeFormat::try_new(
         &[canonicalize("zh-TW").unwrap()],
@@ -154,6 +179,7 @@ fn collapses_ranges_in_field_order_and_repeats_cjk_endpoints() {
             month: Some(DateTimeWidth::Numeric),
             day: Some(DateTimeWidth::Numeric),
             time_zone: Some("UTC".into()),
+            use_experimental_icu4x_range_formatter: true,
             ..Default::default()
         },
     )
@@ -167,4 +193,39 @@ fn collapses_ranges_in_field_order_and_repeats_cjk_endpoints() {
         .filter(|part| part.kind == "year")
         .count();
     assert_eq!(years, 2);
+
+    let requested = DateTimeFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        DateTimeFormatOptions {
+            weekday: Some(DateTimeWidth::Long),
+            year: Some(DateTimeWidth::Numeric),
+            day: Some(DateTimeWidth::TwoDigit),
+            time_zone: Some("UTC".into()),
+            use_experimental_icu4x_range_formatter: true,
+            ..Default::default()
+        },
+    )
+    .unwrap()
+    .format_range_to_parts(0.0, 86_400_000.0)
+    .unwrap();
+    assert!(!requested.iter().any(|part| part.kind == "month"));
+
+    let zoned = DateTimeFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        DateTimeFormatOptions {
+            year: Some(DateTimeWidth::Numeric),
+            month: Some(DateTimeWidth::Short),
+            day: Some(DateTimeWidth::Numeric),
+            hour: Some(DateTimeWidth::Numeric),
+            minute: Some(DateTimeWidth::TwoDigit),
+            time_zone: Some("America/New_York".into()),
+            time_zone_name: Some("short".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(zoned
+        .format_range(1_705_319_200_000.0, 1_705_322_800_000.0)
+        .unwrap()
+        .ends_with("EST"));
 }

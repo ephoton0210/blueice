@@ -1994,6 +1994,9 @@ impl Vm {
             ));
         }
         Ok(blueice_ecma402::DateTimeFormatOptions {
+            use_experimental_icu4x_range_formatter: self
+                .config
+                .enable_experimental_icu4x_date_range_formatter,
             locale_matcher,
             calendar,
             numbering_system,

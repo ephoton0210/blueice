@@ -2,10 +2,16 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
+use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm, VmConfig};
 
 fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap())
+}
+
+fn evaluate_with_config(source: &str, config: VmConfig) -> Result<Value, RuntimeError> {
+    Vm::new(config)
+        .unwrap()
+        .execute(&compile(&parse(source).unwrap()).unwrap())
 }
 
 #[test]
@@ -250,6 +256,23 @@ fn date_time_format_constructs_formats_and_exposes_parts() {
             "{source}"
         );
     }
+}
+
+#[test]
+fn experimental_date_range_formatter_is_a_host_switch() {
+    let source = "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC',year:'numeric',month:'long',day:'numeric'}); f.formatRange(0,86400000) === 'January 1 – 2, 1970' && f.formatRangeToParts(0,86400000).filter(x=>x.type==='month')[0].source === 'shared'";
+
+    assert_eq!(evaluate(source), Ok(Value::Bool(true)));
+    assert_eq!(
+        evaluate_with_config(
+            source,
+            VmConfig {
+                enable_experimental_icu4x_date_range_formatter: true,
+                ..VmConfig::default()
+            }
+        ),
+        Ok(Value::Bool(true))
+    );
 }
 
 #[test]

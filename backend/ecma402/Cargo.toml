@@ -5,16 +5,16 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-fixed_decimal = { version = "=0.7.2", features = ["ryu"] }
-icu_collator = "=2.2.0"
-icu_decimal = { version = "=2.2.0", features = ["ryu", "unstable"] }
-icu_datetime = "=2.2.0"
-icu_list = "=2.2.0"
-icu_locale = "=2.2.0"
-icu_locale_core = "=2.3.0"
-icu_plurals = "=2.2.0"
-icu_provider = "=2.3.1"
-icu_segmenter = "=2.2.0"
+fixed_decimal = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57", features = ["ryu"] }
+icu_collator = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
+icu_decimal = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57", features = ["ryu", "unstable"] }
+icu_datetime = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57", features = ["unstable"] }
+icu_list = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
+icu_locale = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
+icu_locale_core = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
+icu_plurals = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
+icu_provider = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
+icu_segmenter = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
 jiff = { version = "=0.2.35", default-features = false, features = ["std", "tzdb-bundle-always"] }
 jiff-tzdb = "=0.1.8"
-writeable = "=0.6.4"
+writeable = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }

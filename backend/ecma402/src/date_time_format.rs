@@ -19,6 +19,7 @@ use icu_datetime::{
     },
     input::{DateTime, ZonedDateTime},
     options::{Alignment, Length, SubsecondDigits, TimePrecision, YearStyle},
+    range::{DateRangeFormatter, DATE_RANGE_PART_SOURCE_CATEGORY},
     DateTimeFormatter,
 };
 use jiff::{tz::TimeZoneDatabase, Timestamp};
@@ -39,6 +40,10 @@ pub enum DateTimeWidth {
 /// The host-neutral options accepted by the DateTimeFormat service.
 #[derive(Clone, Debug, Default)]
 pub struct DateTimeFormatOptions {
+    /// Host policy switch for ICU4X's unstable CLDR interval formatter. This
+    /// is deliberately not an ECMAScript option; JavaScript callers continue
+    /// to use only standard `Intl.DateTimeFormat` options.
+    pub use_experimental_icu4x_range_formatter: bool,
     pub locale_matcher: LocaleMatcher,
     pub calendar: Option<String>,
     pub numbering_system: Option<String>,
@@ -230,8 +235,7 @@ impl DateTimeFormat {
             .collect())
     }
 
-    /// Formats a range and collapses fields shared by both endpoints using the
-    /// locale's date-field order and interval separator.
+    /// Formats a range with ICU4X's CLDR interval pattern data.
     pub fn format_range(&self, start: f64, end: f64) -> Result<String, DateTimeFormatError> {
         Ok(self
             .format_range_to_parts(start, end)?
@@ -249,42 +253,79 @@ impl DateTimeFormat {
         if start > end {
             return Err(DateTimeFormatError::InvalidTime);
         }
-        let start = self.format_to_parts(start)?;
-        let end = self.format_to_parts(end)?;
-        if start == end {
-            return Ok(start
-                .into_iter()
-                .map(|part| DateTimeRangePart {
-                    kind: part.kind,
-                    value: part.value,
-                    source: DateTimeRangePartSource::Shared,
-                })
-                .collect());
+        // ICU4X's DateRangeFormatter accepts date/time input but no external
+        // IANA-zone display data. Preserve the existing zone-name behavior
+        // until that formatter can receive BlueIce's versioned TZDB output.
+        if !self.options.use_experimental_icu4x_range_formatter
+            || self.effective_time_zone_name().is_some()
+        {
+            return self.format_range_with_zone_name(start, end);
         }
+        let range_input = |epoch_milliseconds: f64| {
+            if !epoch_milliseconds.is_finite()
+                || !(-8_640_000_000_000_000.0..=8_640_000_000_000_000.0)
+                    .contains(&epoch_milliseconds)
+            {
+                return Err(DateTimeFormatError::InvalidTime);
+            }
+            let milliseconds = epoch_milliseconds.trunc() as i64;
+            let timestamp = Timestamp::from_millisecond(milliseconds)
+                .map_err(|_| DateTimeFormatError::InvalidTime)?;
+            let time_zone = time_zone_database()
+                .get(&self.time_zone)
+                .map_err(|_| DateTimeFormatError::UnsupportedTimeZone)?;
+            let time_zone_info = time_zone.to_offset_info(timestamp);
+            let zoned = ZonedDateTime::from_epoch_milliseconds_and_utc_offset(
+                milliseconds,
+                icu_datetime::input::UtcOffset::try_from_seconds(time_zone_info.offset().seconds())
+                    .map_err(|_| DateTimeFormatError::Formatter)?,
+            );
+            Ok(DateTime {
+                date: zoned.date,
+                time: zoned.time,
+            })
+        };
+        let start_datetime = range_input(start)?;
+        let end_datetime = range_input(end)?;
+        let formatter = DateRangeFormatter::try_new(
+            self.format_locale.locale().clone().into(),
+            self.field_set(),
+        )
+        .map_err(|_| DateTimeFormatError::Formatter)?;
+        let formatted = formatter.format(&start_datetime, &end_datetime);
+        let mut writer = PartWriter::default();
+        formatted
+            .write_to_parts_with_source(&mut writer)
+            .map_err(|_| DateTimeFormatError::Formatter)?;
+        let mut parts = self.filter_unrequested_range_parts(writer.into_range_parts());
 
-        let range_format = self.range_format();
-        if !range_format.collapse || has_different_year(&start, &end) {
-            return Ok(join_range_parts(&start, &end, range_format.separator));
+        // ICU4X source annotations identify the interval-pattern span that
+        // wrote a part. ECMA-402 additionally calls equal endpoint fields
+        // `shared`, but only when CLDR serialized that field once. A fallback
+        // can repeat an equal-looking field on both endpoints.
+        let start_parts = self.format_to_parts(start)?;
+        let end_parts = self.format_to_parts(end)?;
+        let emitted_fields = parts
+            .iter()
+            .filter(|part| part.kind != "literal")
+            .map(|part| (part.kind.clone(), part.value.clone()))
+            .collect::<Vec<_>>();
+        for part in &mut parts {
+            if part.kind != "literal"
+                && emitted_fields
+                    .iter()
+                    .filter(|(kind, value)| *kind == part.kind && *value == part.value)
+                    .count()
+                    == 1
+                && endpoint_part_is_shared(&start_parts, &end_parts, &part.kind, &part.value)
+            {
+                part.source = DateTimeRangePartSource::Shared;
+            }
+            if part.kind == "literal" && contains_range_separator(&part.value) {
+                part.source = DateTimeRangePartSource::Shared;
+            }
         }
-
-        let prefix = shared_prefix_len(&start, &end);
-        let suffix = shared_suffix_len(&start[prefix..], &end[prefix..]);
-        if prefix == 0 && suffix == 0 {
-            return Ok(join_range_parts(&start, &end, range_format.separator));
-        }
-
-        let start_end = start.len() - suffix;
-        let end_end = end.len() - suffix;
-        let mut parts = Vec::with_capacity(start.len() + end.len() + 1);
-        parts.extend(start[..prefix].iter().map(shared_range_part));
-        parts.extend(start[prefix..start_end].iter().map(start_range_part));
-        parts.push(DateTimeRangePart {
-            kind: "literal".into(),
-            value: range_format.separator.into(),
-            source: DateTimeRangePartSource::Shared,
-        });
-        parts.extend(end[prefix..end_end].iter().map(end_range_part));
-        parts.extend(start[start_end..].iter().map(shared_range_part));
+        mark_literals_shared_with_adjacent_shared_fields(&mut parts);
         Ok(parts)
     }
 
@@ -506,6 +547,80 @@ impl DateTimeFormat {
         result
     }
 
+    fn filter_unrequested_range_parts(
+        &self,
+        parts: Vec<DateTimeRangePart>,
+    ) -> Vec<DateTimeRangePart> {
+        let selected = parts
+            .iter()
+            .enumerate()
+            .filter_map(|(index, part)| {
+                (part.kind != "literal" && self.shows_part(&part.kind)).then_some(index)
+            })
+            .collect::<Vec<_>>();
+        if selected.is_empty() {
+            return parts;
+        }
+
+        let mut result = Vec::with_capacity(selected.len() * 2);
+        for (position, index) in selected.iter().copied().enumerate() {
+            if position > 0 {
+                result.extend(
+                    parts[selected[position - 1] + 1..index]
+                        .iter()
+                        .filter(|part| part.kind == "literal")
+                        .cloned(),
+                );
+            }
+            result.push(parts[index].clone());
+        }
+        result
+    }
+
+    fn format_range_with_zone_name(
+        &self,
+        start: f64,
+        end: f64,
+    ) -> Result<Vec<DateTimeRangePart>, DateTimeFormatError> {
+        let start = self.format_to_parts(start)?;
+        let end = self.format_to_parts(end)?;
+        if start == end {
+            return Ok(start
+                .into_iter()
+                .map(|part| DateTimeRangePart {
+                    kind: part.kind,
+                    value: part.value,
+                    source: DateTimeRangePartSource::Shared,
+                })
+                .collect());
+        }
+
+        let range_format = self.range_format();
+        if !range_format.collapse || has_different_year(&start, &end) {
+            return Ok(join_range_parts(&start, &end, range_format.separator));
+        }
+
+        let prefix = shared_prefix_len(&start, &end);
+        let suffix = shared_suffix_len(&start[prefix..], &end[prefix..]);
+        if prefix == 0 && suffix == 0 {
+            return Ok(join_range_parts(&start, &end, range_format.separator));
+        }
+
+        let start_end = start.len() - suffix;
+        let end_end = end.len() - suffix;
+        let mut parts = Vec::with_capacity(start.len() + end.len() + 1);
+        parts.extend(start[..prefix].iter().map(shared_range_part));
+        parts.extend(start[prefix..start_end].iter().map(start_range_part));
+        parts.push(DateTimeRangePart {
+            kind: "literal".into(),
+            value: range_format.separator.into(),
+            source: DateTimeRangePartSource::Shared,
+        });
+        parts.extend(end[prefix..end_end].iter().map(end_range_part));
+        parts.extend(start[start_end..].iter().map(shared_range_part));
+        Ok(parts)
+    }
+
     fn range_format(&self) -> RangeFormat {
         let language = self.locale.as_str().split('-').next().unwrap_or("und");
         match language {
@@ -687,6 +802,47 @@ fn join_range_parts(
     parts
 }
 
+fn endpoint_part_is_shared(
+    start: &[DateTimePart],
+    end: &[DateTimePart],
+    kind: &str,
+    value: &str,
+) -> bool {
+    start
+        .iter()
+        .any(|part| part.kind == kind && part.value == value)
+        && end
+            .iter()
+            .any(|part| part.kind == kind && part.value == value)
+}
+
+fn contains_range_separator(value: &str) -> bool {
+    value.contains(['–', '〜', '～', '至', '~'])
+}
+
+fn mark_literals_shared_with_adjacent_shared_fields(parts: &mut [DateTimeRangePart]) {
+    for index in 0..parts.len() {
+        if parts[index].kind != "literal" || parts[index].source == DateTimeRangePartSource::Shared
+        {
+            continue;
+        }
+        let previous = parts[..index]
+            .iter()
+            .rev()
+            .find(|part| part.kind != "literal")
+            .map(|part| part.source);
+        let next = parts[index + 1..]
+            .iter()
+            .find(|part| part.kind != "literal")
+            .map(|part| part.source);
+        if previous == Some(DateTimeRangePartSource::Shared)
+            || next == Some(DateTimeRangePartSource::Shared)
+        {
+            parts[index].source = DateTimeRangePartSource::Shared;
+        }
+    }
+}
+
 #[derive(Default)]
 struct PartWriter {
     string: String,
@@ -751,5 +907,98 @@ impl PartWriter {
             });
         }
         result
+    }
+
+    fn into_range_parts(mut self) -> Vec<DateTimeRangePart> {
+        self.parts.sort_unstable_by_key(|(start, end, part)| {
+            (
+                *start,
+                *end,
+                if part.category == DATE_RANGE_PART_SOURCE_CATEGORY {
+                    0
+                } else {
+                    1
+                },
+            )
+        });
+        let fields = self
+            .parts
+            .iter()
+            .filter(|(_, _, part)| part.category == "datetime")
+            .copied()
+            .collect::<Vec<_>>();
+        let mut sources = self
+            .parts
+            .iter()
+            .filter_map(|(start, end, part)| {
+                (part.category == DATE_RANGE_PART_SOURCE_CATEGORY)
+                    .then(|| range_part_source(part.value).map(|source| (*start, *end, source)))
+                    .flatten()
+            })
+            .collect::<Vec<_>>();
+        sources.sort_unstable_by_key(|(start, end, _)| (*start, *end));
+
+        let mut result = Vec::new();
+        let mut cursor = 0;
+        for (start, end, source) in sources {
+            if end <= cursor {
+                continue;
+            }
+            if cursor < start {
+                push_range_literal(
+                    &mut result,
+                    &self.string[cursor..start],
+                    DateTimeRangePartSource::Shared,
+                );
+            }
+            let mut within_source = start.max(cursor);
+            for (field_start, field_end, field) in &fields {
+                if *field_start < within_source || *field_end > end {
+                    continue;
+                }
+                push_range_literal(
+                    &mut result,
+                    &self.string[within_source..*field_start],
+                    source,
+                );
+                result.push(DateTimeRangePart {
+                    kind: field.value.into(),
+                    value: self.string[*field_start..*field_end].into(),
+                    source,
+                });
+                within_source = *field_end;
+            }
+            push_range_literal(&mut result, &self.string[within_source..end], source);
+            cursor = end;
+        }
+        push_range_literal(
+            &mut result,
+            &self.string[cursor..],
+            DateTimeRangePartSource::Shared,
+        );
+        result
+    }
+}
+
+fn range_part_source(value: &str) -> Option<DateTimeRangePartSource> {
+    match value {
+        "shared" => Some(DateTimeRangePartSource::Shared),
+        "startRange" => Some(DateTimeRangePartSource::StartRange),
+        "endRange" => Some(DateTimeRangePartSource::EndRange),
+        _ => None,
+    }
+}
+
+fn push_range_literal(
+    parts: &mut Vec<DateTimeRangePart>,
+    value: &str,
+    source: DateTimeRangePartSource,
+) {
+    if !value.is_empty() {
+        parts.push(DateTimeRangePart {
+            kind: "literal".into(),
+            value: value.into(),
+            source,
+        });
     }
 }
