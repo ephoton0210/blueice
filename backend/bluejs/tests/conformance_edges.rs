@@ -103,6 +103,22 @@ fn test262_native_deep_equal_compares_part_record_arrays_without_recursion() {
     .unwrap();
     assert_eq!(vm.execute_script(&matching).unwrap(), Value::Bool(true));
 
+    // `formatToParts` records do not include the range-only `source` key.
+    // Verify the declared direct-parts shape independently from the
+    // three-key range-parts records above.
+    let direct_matching = compile(
+        &parse(
+            "assert.deepEqual([{type:'month',value:'8'},{type:'literal',value:'/'}], \
+             [{type:'month',value:'8'},{type:'literal',value:'/'}]); true",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        vm.execute_script(&direct_matching).unwrap(),
+        Value::Bool(true)
+    );
+
     let mismatch = compile(
         &parse(
             "assert.deepEqual([{type:'month',value:'8',source:'startRange'}], \

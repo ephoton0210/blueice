@@ -52,6 +52,32 @@ fn clear_temporal_time_components(options: &mut blueice_ecma402::DateTimeFormatO
     options.time_style = None;
 }
 
+fn apply_temporal_partial_date_style(
+    options: &mut blueice_ecma402::DateTimeFormatOptions,
+    style: blueice_ecma402::DateTimeStyle,
+    includes_year: bool,
+) {
+    use blueice_ecma402::DateTimeWidth::{Long, Numeric, Short, TwoDigit};
+
+    // A dateStyle normally expands to YMD. Temporal.PlainMonthDay and
+    // Temporal.PlainYearMonth retain the style's field widths while omitting
+    // the reference field they do not model. This must happen before ICU4X's
+    // semantic skeleton is built; deleting a rendered year afterwards would
+    // leave the wrong month width and punctuation.
+    options.date_style = None;
+    options.month = Some(match style {
+        blueice_ecma402::DateTimeStyle::Full | blueice_ecma402::DateTimeStyle::Long => Long,
+        blueice_ecma402::DateTimeStyle::Medium => Short,
+        blueice_ecma402::DateTimeStyle::Short => Numeric,
+    });
+    options.day = (!includes_year).then_some(Numeric);
+    options.year = includes_year.then_some(if style == blueice_ecma402::DateTimeStyle::Short {
+        TwoDigit
+    } else {
+        Numeric
+    });
+}
+
 fn temporal_default_components(
     options: &mut blueice_ecma402::DateTimeFormatOptions,
     kind: TemporalKind,
@@ -84,7 +110,15 @@ fn temporal_default_components(
             options.year = Some(Numeric);
             options.month = Some(Numeric);
         }
-        TemporalKind::Instant | TemporalKind::ZonedDateTime => {}
+        TemporalKind::Instant => {
+            options.year = Some(Numeric);
+            options.month = Some(Numeric);
+            options.day = Some(Numeric);
+            options.hour = Some(Numeric);
+            options.minute = Some(Numeric);
+            options.second = Some(Numeric);
+        }
+        TemporalKind::ZonedDateTime => {}
     }
 }
 
@@ -2290,9 +2324,14 @@ impl Vm {
         value: &Value,
     ) -> Result<Value, RuntimeError> {
         let data = self.date_time_format_data(receiver)?;
-        data.format(self.date_time_value(value)?)
-            .map(|formatted| Value::String(formatted.into()))
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+        let parts = self.date_time_format_parts(&data, value)?;
+        Ok(Value::String(
+            parts
+                .into_iter()
+                .map(|part| part.value)
+                .collect::<String>()
+                .into(),
+        ))
     }
 
     fn date_time_parts_to_value(
@@ -2391,10 +2430,46 @@ impl Vm {
         value: &Value,
     ) -> Result<Value, RuntimeError> {
         let data = self.date_time_format_data(receiver)?;
-        let parts = data
-            .format_to_parts(self.date_time_value(value)?)
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        let parts = self.date_time_format_parts(&data, value)?;
         self.date_time_parts_to_value(parts, None)
+    }
+
+    fn date_time_format_parts(
+        &mut self,
+        data: &blueice_ecma402::DateTimeFormat,
+        value: &Value,
+    ) -> Result<Vec<blueice_ecma402::DateTimePart>, RuntimeError> {
+        let Some(object) = value.object_id() else {
+            return data
+                .format_to_parts(self.date_time_value(value)?)
+                .map_err(|error| RuntimeError::RangeError(error.to_string()));
+        };
+        let Some(temporal) = self.heap.temporal_value(object)? else {
+            return data
+                .format_to_parts(self.date_time_value(value)?)
+                .map_err(|error| RuntimeError::RangeError(error.to_string()));
+        };
+        match temporal.kind {
+            TemporalKind::ZonedDateTime => Err(RuntimeError::TypeError(
+                "Intl.DateTimeFormat does not support Temporal.ZonedDateTime".into(),
+            )),
+            TemporalKind::Instant => {
+                let milliseconds = (&temporal.epoch_nanoseconds / 1_000_000u32)
+                    .to_f64()
+                    .ok_or_else(|| RuntimeError::RangeError("invalid Temporal instant".into()))?;
+                data.format_to_parts_with_options(
+                    milliseconds,
+                    self.temporal_format_options(data, TemporalKind::Instant)?,
+                )
+                .map_err(|error| RuntimeError::RangeError(error.to_string()))
+            }
+            kind => data
+                .format_temporal_to_parts(
+                    temporal.plain_epoch_milliseconds(),
+                    self.temporal_format_options(data, kind)?,
+                )
+                .map_err(|error| RuntimeError::RangeError(error.to_string())),
+        }
     }
 
     fn date_time_range_value(&mut self, value: &Value) -> Result<DateTimeRangeValue, RuntimeError> {
@@ -2428,7 +2503,7 @@ impl Vm {
         ))
     }
 
-    fn temporal_range_options(
+    fn temporal_format_options(
         &self,
         data: &blueice_ecma402::DateTimeFormat,
         kind: TemporalKind,
@@ -2446,10 +2521,16 @@ impl Vm {
             || original.month.is_some()
             || original.day.is_some());
         let mut options = original.clone();
-        // ICU4X's direct range formatter currently lacks the Temporal plain
-        // value shape needed here. Keep this explicitly scoped compatibility
-        // path instead of treating it as a replacement for the instant/date
-        // range formatter used by ordinary DateTimeFormat inputs.
+        if kind == TemporalKind::Instant {
+            if only_default_components {
+                temporal_default_components(&mut options, kind);
+            }
+            return Ok(options);
+        }
+        // Plain Temporal values need their local ISO fields carried through a
+        // calendar formatter without becoming instants. Keep this explicitly
+        // scoped compatibility path instead of treating it as a replacement
+        // for the instant/date path used by ordinary DateTimeFormat inputs.
         options.use_icu4x_range_formatter = false;
         // Plain Temporal values denote local calendar fields, not instants.
         // UTC carries those fields through ICU4X without applying the
@@ -2464,10 +2545,8 @@ impl Vm {
                 options.weekday = None;
                 options.era = None;
                 options.year = None;
-                options.date_style = None;
-                if original.date_style.is_some() {
-                    options.month = Some(blueice_ecma402::DateTimeWidth::Numeric);
-                    options.day = Some(blueice_ecma402::DateTimeWidth::Numeric);
+                if let Some(style) = original.date_style {
+                    apply_temporal_partial_date_style(&mut options, style, false);
                 }
             }
             TemporalKind::PlainTime => clear_temporal_date_components(&mut options),
@@ -2475,10 +2554,8 @@ impl Vm {
                 clear_temporal_time_components(&mut options);
                 options.weekday = None;
                 options.day = None;
-                options.date_style = None;
-                if original.date_style.is_some() {
-                    options.year = Some(blueice_ecma402::DateTimeWidth::Numeric);
-                    options.month = Some(blueice_ecma402::DateTimeWidth::Numeric);
+                if let Some(style) = original.date_style {
+                    apply_temporal_partial_date_style(&mut options, style, true);
                 }
             }
             TemporalKind::Instant | TemporalKind::ZonedDateTime => unreachable!(),
@@ -2558,7 +2635,7 @@ impl Vm {
                 .format_temporal_range_to_parts(
                     start.plain_epoch_milliseconds(),
                     end.plain_epoch_milliseconds(),
-                    self.temporal_range_options(data, kind)?,
+                    self.temporal_format_options(data, kind)?,
                     matches!(
                         kind,
                         TemporalKind::PlainDate

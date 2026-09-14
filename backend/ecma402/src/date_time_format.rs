@@ -615,6 +615,36 @@ impl DateTimeFormat {
         self.format_to_parts_from_milliseconds(milliseconds, true)
     }
 
+    /// Formats a Temporal plain value's ISO local calendar fields.
+    ///
+    /// `ToDateTimeFormattable` carries plain values through a UTC date-time
+    /// only to preserve their fields; it does not convert them to an instant.
+    /// Consequently this intentionally bypasses TimeClip, ignores the
+    /// formatter's requested time zone, and never emits a time-zone name.
+    /// The embedding VM has already removed components that do not overlap
+    /// with the Temporal value's data model.
+    pub fn format_temporal_to_parts(
+        &self,
+        milliseconds: i64,
+        options: DateTimeFormatOptions,
+    ) -> Result<Vec<DateTimePart>, DateTimeFormatError> {
+        let formatter = Self::try_new(std::slice::from_ref(&self.locale), options)?;
+        formatter.format_to_parts_from_milliseconds(milliseconds, false)
+    }
+
+    /// Formats an instant with the supplied, already-resolved service options.
+    /// This keeps `Temporal.Instant` on the ordinary time-zone-aware path
+    /// while allowing `ToDateTimeFormattable` to select its type-specific
+    /// default components.
+    pub fn format_to_parts_with_options(
+        &self,
+        epoch_milliseconds: f64,
+        options: DateTimeFormatOptions,
+    ) -> Result<Vec<DateTimePart>, DateTimeFormatError> {
+        let formatter = Self::try_new(std::slice::from_ref(&self.locale), options)?;
+        formatter.format_to_parts(epoch_milliseconds)
+    }
+
     /// Formats Temporal plain-object calendar fields. Unlike legacy Date and
     /// number input, Temporal values are not subject to TimeClip. The caller
     /// supplies an already-pruned option record and uses UTC solely as a

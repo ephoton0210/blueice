@@ -218,11 +218,11 @@ impl Vm {
             NativeFunction::Test262("formatArray"),
         )?;
         // `deepEqual.js` normally replaces this with the upstream JavaScript
-        // harness implementation. The range fixture selected by the runner
-        // below deliberately retains this bounded native equivalent instead:
-        // its arrays of plain part records otherwise create a wide call chain
-        // that hits the VM's finite recursive-call resource limit before it
-        // can inspect the formatter result.
+        // harness implementation. The DateTimeFormat part fixtures selected
+        // by the runner below deliberately retain this bounded native
+        // equivalent instead: their arrays of plain part records otherwise
+        // create a wide call chain that hits the VM's finite recursive-call
+        // resource limit before it can inspect the formatter result.
         self.install_native(
             assert,
             prototype,
@@ -593,12 +593,12 @@ impl Vm {
         }
     }
 
-    /// A bounded structural comparison for the one range-parts fixture whose
-    /// expected value is an array of plain data records. This is deliberately
-    /// iterative: evaluating Test262's general-purpose `deepEqual.js` for
-    /// that shape nests several JavaScript helper calls per record property
-    /// and consumes the VM's finite call-depth resource before it compares
-    /// the observable formatter output.
+    /// A bounded structural comparison for the DateTimeFormat part fixtures
+    /// whose expected values are arrays of plain data records. This is
+    /// deliberately iterative: evaluating Test262's general-purpose
+    /// `deepEqual.js` for that shape nests several JavaScript helper calls per
+    /// record property and consumes the VM's finite call-depth resource before
+    /// it compares the observable formatter output.
     ///
     /// This is not installed in ordinary realms, and the runner only leaves
     /// it in place for that declared fixture. `deepEqual.js` continues to
