@@ -1,43 +1,43 @@
 # Test262 architecture triage
 
-Snapshot: `6eec1ac9ee144dafd8f344d73a21f36bfc9f6755`.
+Snapshot: `72faf8ec1445c55149615e8b35187830783aba1a`.
 
-Reconciled 53,404 files / 102,578 modes; complete inventory: True.
+Reconciled 53,582 files / 102,926 modes; complete inventory: True.
 
 Targets are inferred from paths/metadata; blockers are first observed symptoms, not proven root causes. Feature/dependency counts overlap. Target counts are exclusive and reconcile to all modes. Priorities are dependency order, not failure-count order. Passed negatives remain passes; no outcomes are excluded.
 
 | Order | Target | Pass | Fail | Unsupported | Timeout | Harness error | Prerequisites |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| P0.1 | completion: Completion records, iterator lifetime, catch/finally, control transfer | 8930 | 729 | 0 | 0 | 0 | — |
-| P0.2 | environments: Persistent realms, bindings, parameter environments, arguments, eval | 3724 | 194 | 0 | 29 | 0 | completion |
-| P0.3 | references: Reference evaluation, coercion and observable evaluation order | 5753 | 330 | 0 | 0 | 0 | completion, environments |
-| P0.4 | objects: Internal methods, descriptors, receiver and callable/constructor contracts | 7637 | 162 | 0 | 0 | 0 | references |
-| P1.1 | grammar: Source grammar and classified strict/early errors | 3273 | 1042 | 0 | 0 | 0 | environments, references |
-| P1.2 | classes: Classes, private slots, super and derived construction | 14559 | 2561 | 0 | 2 | 0 | objects, grammar |
-| P1.3 | suspension: Resumable frames, generators, async functions and promise jobs | 3891 | 1184 | 0 | 0 | 0 | completion, environments, objects, grammar |
-| P1.4 | modules: Module linking, live bindings, evaluation and dynamic import | 1667 | 996 | 0 | 0 | 0 | environments, suspension, grammar |
-| P1.5 | storage: BigInt, buffers, typed arrays, shared memory and GC weak slots | 5947 | 1703 | 0 | 1 | 0 | objects |
-| P1.6 | host: Test262 realm, agent, GC, buffer and async host hooks | 196 | 36 | 0 | 0 | 0 | environments, suspension, modules, storage |
-| P2.1 | library: Remaining standard builtin algorithms and descriptors | 16245 | 13004 | 0 | 10 | 0 | completion, references, objects |
-| P2.2 | intl: ECMA-402 constructors, algorithms and locale data | 588 | 6090 | 0 | 4 | 0 | library |
-| P3.1 | review: Unmapped/staging targets requiring specification and applicability review | 1143 | 925 | 0 | 23 | 0 | — |
+| P0.1 | completion: Completion records, iterator lifetime, catch/finally, control transfer | 8968 | 691 | 0 | 0 | 0 | — |
+| P0.2 | environments: Persistent realms, bindings, parameter environments, arguments, eval | 3766 | 180 | 0 | 1 | 0 | completion |
+| P0.3 | references: Reference evaluation, coercion and observable evaluation order | 5818 | 265 | 0 | 0 | 0 | completion, environments |
+| P0.4 | objects: Internal methods, descriptors, receiver and callable/constructor contracts | 7781 | 10 | 0 | 8 | 0 | references |
+| P1.1 | grammar: Source grammar and classified strict/early errors | 3669 | 664 | 0 | 0 | 0 | environments, references |
+| P1.2 | classes: Classes, private slots, super and derived construction | 16738 | 380 | 0 | 4 | 0 | objects, grammar |
+| P1.3 | suspension: Resumable frames, generators, async functions and promise jobs | 3915 | 1164 | 0 | 2 | 0 | completion, environments, objects, grammar |
+| P1.4 | modules: Module linking, live bindings, evaluation and dynamic import | 1681 | 986 | 0 | 0 | 0 | environments, suspension, grammar |
+| P1.5 | storage: BigInt, buffers, typed arrays, shared memory and GC weak slots | 6009 | 1636 | 0 | 6 | 0 | objects |
+| P1.6 | host: Test262 realm, agent, GC, buffer and async host hooks | 200 | 28 | 0 | 4 | 0 | environments, suspension, modules, storage |
+| P2.1 | library: Remaining standard builtin algorithms and descriptors | 17673 | 11872 | 0 | 0 | 0 | completion, references, objects |
+| P2.2 | intl: ECMA-402 constructors, algorithms and locale data | 2365 | 4342 | 0 | 7 | 0 | library |
+| P3.1 | review: Unmapped/staging targets requiring specification and applicability review | 1314 | 744 | 0 | 35 | 0 | — |
 
 ## Observed blockers
 
 | Symptom | Modes | Representative test / mode |
 | --- | ---: | --- |
-| none | 73553 | `—` |
-| unresolved-name | 13845 | `annexB/built-ins/escape/argument_bigint.js [sloppy]` |
-| exception:TypeError | 5724 | `annexB/built-ins/RegExp/legacy-accessors/index/prop-desc.js [sloppy]` |
-| assertion | 4435 | `annexB/built-ins/RegExp/legacy-accessors/index/this-cross-realm-constructor.js [sloppy]` |
-| exception:SyntaxError | 2669 | `annexB/language/function-code/function-redeclaration-block.js [sloppy]` |
-| missing-expected-error | 1139 | `annexB/language/expressions/template-literal/legacy-octal-escape-sequence-strict.js [strict]` |
-| unclassified-parse | 791 | `language/asi/S7.9.2_A1_T3.js [sloppy]` |
-| exception:ThrownValue | 196 | `built-ins/Promise/all/capability-resolve-throws-reject.js [sloppy]` |
-| deadline | 69 | `built-ins/Array/prototype/every/15.4.4.16-7-c-ii-2.js [sloppy]` |
-| exception:RangeError | 63 | `built-ins/Array/prototype/slice/S15.4.4.10_A1.1_T3.js [sloppy]` |
+| none | 79897 | `—` |
+| exception:TypeError | 9632 | `annexB/built-ins/RegExp/legacy-accessors/index/prop-desc.js [sloppy]` |
+| assertion | 7242 | `annexB/built-ins/RegExp/legacy-accessors/index/this-cross-realm-constructor.js [sloppy]` |
+| exception:RangeError | 3090 | `built-ins/Array/prototype/slice/S15.4.4.10_A1.1_T3.js [sloppy]` |
+| missing-expected-error | 906 | `annexB/language/expressions/template-literal/legacy-octal-escape-sequence-strict.js [strict]` |
+| unresolved-name | 647 | `annexB/built-ins/escape/argument_bigint.js [sloppy]` |
+| exception:SyntaxError | 577 | `annexB/language/function-code/function-redeclaration-block.js [sloppy]` |
+| unclassified-parse | 564 | `language/asi/S7.9.2_A1_T3.js [sloppy]` |
+| exception:ThrownValue | 199 | `built-ins/Promise/all/capability-resolve-throws-reject.js [sloppy]` |
+| deadline | 67 | `built-ins/TypedArray/prototype/sort/stability.js [sloppy]` |
 | exception:crash | 55 | `annexB/language/statements/labeled/function-declaration.js [sloppy]` |
-| resource-limit | 29 | `language/module-code/top-level-await/fulfillment-order.js [module]` |
+| resource-limit | 40 | `built-ins/Array/prototype/every/15.4.4.16-7-c-ii-2.js [sloppy]` |
 | exception:Error | 10 | `built-ins/AsyncGeneratorPrototype/return/return-suspendedStart-broken-promise.js [sloppy]` |
 
 ## Frequent diagnostics
@@ -46,46 +46,48 @@ Exact per-mode evidence, source hashes, esid, includes and dependency labels are
 
 | Diagnostic (numeric details normalized) | Modes |
 | --- | ---: |
-| ReferenceError: Temporal is not defined | 12240 |
-| TypeError: value is not callable | 3061 |
-| Test262Error: throws failed | 2043 |
-| uncaught JavaScript value: Object(ObjectId { heap: #, serial: # }) | 1678 |
-| Test262Error: sameValue failed | 1152 |
-| ok | 1139 |
-| TypeError: cannot access a property of null or undefined | 1020 |
-| ReferenceError: Iterator is not defined | 906 |
-| expected a property key (found Invalid("unicode escape does not form a valid private identifier character")) | 882 |
-| expected a property key (found Invalid("private identifier requires a name")) | 828 |
-| TypeError: property helper requires an object | 326 |
-| Test262Error: verifyProperty failed | 221 |
+| TypeError: value is not callable | 6019 |
+| Test262Error: throws failed | 3104 |
+| RangeError: invalid Temporal date string | 2788 |
+| Test262Error: sameValue failed | 2594 |
+| uncaught JavaScript value: Object(ObjectId { heap: #, serial: # }) | 1614 |
+| TypeError: cannot access a property of null or undefined | 1486 |
+| ok | 906 |
+| TypeError: property helper requires an object | 582 |
+| TypeError: value is not a constructor | 408 |
+| Test262Error: isConstructor failed | 278 |
+| Test262Error: verifyProperty failed | 253 |
 | ReferenceError: DisposableStack is not defined | 188 |
 | expected RParen (found Punct(Comma)) | 171 |
-| expected a property key (found Invalid("unicode escape does not form a valid identifier character")) | 150 |
+| Test262Error: compareArray failed | 168 |
+| Test262Error: assert failed | 153 |
 | uncaught JavaScript value: String(JsString([#, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #,  | 148 |
 | ReferenceError: AsyncDisposableStack is not defined | 146 |
 | expected ';' (found Identifier("x")) | 139 |
-| TypeError: Number conversion requires a non-Symbol primitive | 132 |
 | ReferenceError: ShadowRealm is not defined | 118 |
-| default import requires 'from' or ',' (found Punct(Star)) | 94 |
-| Test262Error: compareArray failed | 86 |
-| Test262Error: assert failed | 80 |
-| class fields on one line require a semicolon separator (found Invalid("private identifier requires a name")) | 68 |
+| TypeError: class extends value is not a constructor or null | 110 |
+| default import requires 'from' or ',' (found Punct(Star)) | 96 |
+| RangeError: invalid time value | 92 |
+| whole-case wall deadline exceeded | 67 |
+| expected ';' (found Identifier("_")) | 59 |
+| adapter exited with code # | 55 |
+| RangeError: Intl.supportedValuesOf data is unavailable | 50 |
+| TypeError: TypedArray is out of bounds | 50 |
+| RangeError: maximum call depth exceeded | 42 |
+| expected an expression (found Punct(Ellipsis)) | 42 |
+| TypeError: cannot convert null or undefined to Object | 39 |
 
 ## Measurement limits
 
 A passing result is the runner's observation, not proof of complete feature conformance. Unclassified parser rejections cannot establish required negative early errors. Existing adapter records may not distinguish a runtime exception in an include from one in the test body. Missing APIs, assertion mismatches and timeouts require reproduction before assigning a confirmed engine root cause. Staging, Annex B, Intl and host-dependent cases remain visible pending applicability audit.
 
-## Complete Rust 1.95 regression
+## Historical focused P0.4 audits
 
-The 2026-09-13 complete rerun reconciled 53,404 files and 102,578 modes:
-**73,553 pass, 28,956 fail and 69 timeout**, with zero unsupported and
-harness-error modes. It took 2,160.529 seconds with eight workers, a
-100,000-instruction default budget and a two-second case deadline. The runner
-exited 1 because conformance failures remain; the analyzer verified every
-source path, mode and result classification before publishing this report.
-Async tests wait for `$DONE` when the test requests it.
+The following focused filters were measured against the prior `6eec1ac9…`
+snapshot. They remain useful regression evidence but are not substitutes for
+the complete `72faf8ec…` inventory above.
 
-## Targeted P0.4 closure audit
+### Closure audit
 
 The final targeted realm and Proxy audit records **607/607** passing modes for
 `built-ins/Proxy`, **60/60** for `built-ins/Proxy/construct`, and **20/20** for
@@ -94,7 +96,7 @@ The final targeted realm and Proxy audit records **607/607** passing modes for
 that contract without claiming complete Date object support. The public
 `conformance_edges` regression suite passes **37/37**.
 
-## Focused P0.4 weak-collection follow-up
+### Weak collections, Date and Array
 
 The P0.4 weak-collection implementation was checked with focused filters on
 the same Test262 snapshot: `built-ins/WeakMap/` is **281/281 pass**,
@@ -117,6 +119,4 @@ from **4,846/6,119** to **5,169/6,119** at
 are predominantly `Array.fromAsync`, concat spreadability, copy-by-value, and
 resizable-buffer work.
 
-These focused results remain regression evidence for their respective slices.
-The complete Rust 1.95 inventory above was run after those changes and is the
-current full-suite baseline; the checked-in summary and tables now use it.
+These focused results are historical regression evidence for their respective slices. The current complete-inventory baseline is the reconciled 72faf8ec result recorded above and in the checked-in summary.

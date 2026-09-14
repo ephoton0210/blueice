@@ -9,12 +9,12 @@ and feature. It does not establish failure root causes or architectural priority
 
 ## Evidence and classification contract
 
-The verified snapshot is `6eec1ac9ee144dafd8f344d73a21f36bfc9f6755`:
-53,404 test files, 279 fixture resources, 102,578 execution modes. The current
-Rust 1.95 complete inventory (2026-09-13) records **73,553 pass, 28,956 fail
-and 69 timeout**, with zero unsupported or harness-error modes. It ran with
+The verified snapshot is `72faf8ec1445c55149615e8b35187830783aba1a`:
+53,582 test files, 294 fixture resources, 102,926 execution modes. The current
+Rust 1.95 complete inventory (2026-09-14) records **79,897 pass, 22,962 fail
+and 67 timeout**, with zero unsupported or harness-error modes. It ran with
 eight workers, a 100,000-instruction default budget and a two-second case
-deadline in 2,160.529 seconds. The runner exited 1, as expected while
+deadline in 1,885.361 seconds. The runner exited 1, as expected while
 conformance failures remain.
 
 The new [analyzer](../../../backend/bluejs/test262/analyze.py) reconciles the
@@ -26,9 +26,11 @@ Targets are inferred from paths/metadata; diagnostics identify the **first
 observed symptom**, not every root cause. Dependencies overlap; exclusive target
 totals reconcile to the full denominator. Passed negative tests are not errors.
 
-The current inventory's largest observed symptoms are 13,845 unresolved-name
-errors, 5,724 TypeErrors, 4,435 assertion failures, and 2,669 SyntaxErrors;
-12,240 modes first report that `Temporal` is absent. These symptoms often hide
+The current inventory's largest observed symptoms are 9,632 TypeErrors, 7,242
+assertion failures, 3,090 RangeErrors, and 906 missing expected errors. The
+`Temporal` feature still has 12,518 failing modes, but its failures are no
+longer all an absent-global symptom: the new typed range bridge deliberately
+covers only the ECMA-402 DateTimeFormat boundary. These symptoms often hide
 later failures. In particular, a failed Array test does not establish that its
 Array algorithm is the first missing dependency. The generic unsupported-
 statement diagnostic covers several AST kinds and must not be labelled as a
@@ -40,7 +42,7 @@ matching. Adapter runtime errors currently do not identify whether an include
 or the test body threw; treat those cases as requiring reproduction. All
 staging, Annex B, ECMA-402 and host-dependent cases remain in the inventory.
 Their applicability needs an explicit clause/edition audit, never a silent skip.
-Resource limits and 69 wall/regex deadlines are separate from semantic failures
+Resource limits and 67 wall/regex deadlines are separate from semantic failures
 and should be rerun with recorded budgets.
 
 The Test262 adapter maps a parser rejection to a parse-phase `SyntaxError` only
@@ -1926,7 +1928,7 @@ complete-inventory result below.
 These are focused filters, not a replacement for the checked-in complete
 inventory. The Rust 1.95 complete reconciliation above ran after these changes;
 the full-inventory totals and generated `test262-summary.json` now record its
-73,553 pass, 28,956 fail and 69 timeout outcomes.
+79,897 pass, 22,962 fail and 67 timeout outcomes.
 
 ## P0.1–P0.4 closure: reflective realm and object contracts
 
