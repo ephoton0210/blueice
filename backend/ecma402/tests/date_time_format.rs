@@ -3,8 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use blueice_ecma402::{
-    bundled_tzdb_version, canonicalize, DateTimeFormat, DateTimeFormatError, DateTimeFormatOptions,
-    DateTimeRangePart, DateTimeRangePartSource, DateTimeStyle, DateTimeWidth,
+    bundled_tzdb_version, canonicalize, DateTimeFormat, DateTimeFormatError, DateTimeFormatMatcher,
+    DateTimeFormatOptions, DateTimeRangePart, DateTimeRangePartSource, DateTimeStyle,
+    DateTimeWidth,
 };
 
 #[test]
@@ -34,6 +35,94 @@ fn formats_a_utc_epoch_with_localized_parts() {
     assert!(parts.iter().any(|part| part.kind == "month"));
     assert!(parts.iter().any(|part| part.kind == "day"));
     assert_eq!(format.time_zone(), "UTC");
+}
+
+#[test]
+fn formats_non_latin_numbering_systems_in_time_fields() {
+    let time = 1_704_076_506_789.0;
+    for (locale, no_fraction, fraction, two_digit, second) in [
+        ("en-US", "2:35:06", "2:35:06.789", "02:35:06", "6"),
+        ("en-US-u-nu-arab", "٢:٣٥:٠٦", "٢:٣٥:٠٦٫٧٨٩", "٠٢:٣٥:٠٦", "٦"),
+        ("en-US-u-nu-deva", "२:३५:०६", "२:३५:०६.७८९", "०२:३५:०६", "६"),
+        (
+            "en-US-u-nu-hanidec",
+            "二:三五:〇六",
+            "二:三五:〇六.七八九",
+            "〇二:三五:〇六 AM",
+            "六",
+        ),
+    ] {
+        let format = |options: DateTimeFormatOptions| {
+            DateTimeFormat::try_new(&[canonicalize(locale).unwrap()], options)
+                .unwrap()
+                .format(time)
+                .unwrap()
+        };
+        let common = DateTimeFormatOptions {
+            hour: Some(DateTimeWidth::Numeric),
+            minute: Some(DateTimeWidth::Numeric),
+            second: Some(DateTimeWidth::Numeric),
+            time_zone: Some("UTC".into()),
+            ..Default::default()
+        };
+        assert!(format(common.clone()).contains(no_fraction), "{locale}");
+        assert!(
+            format(DateTimeFormatOptions {
+                fractional_second_digits: Some(3),
+                ..common.clone()
+            })
+            .contains(fraction),
+            "{locale}"
+        );
+        assert!(
+            format(DateTimeFormatOptions {
+                hour: Some(DateTimeWidth::TwoDigit),
+                minute: Some(DateTimeWidth::TwoDigit),
+                second: Some(DateTimeWidth::TwoDigit),
+                ..common.clone()
+            })
+            .contains(two_digit),
+            "{locale}"
+        );
+        assert!(
+            format(DateTimeFormatOptions {
+                hour: None,
+                minute: None,
+                second: Some(DateTimeWidth::Numeric),
+                ..common
+            })
+            .contains(second),
+            "{locale}"
+        );
+    }
+}
+
+#[test]
+fn retains_the_requested_format_matcher_policy() {
+    let basic = DateTimeFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        DateTimeFormatOptions {
+            format_matcher: DateTimeFormatMatcher::Basic,
+            year: Some(DateTimeWidth::Numeric),
+            month: Some(DateTimeWidth::Numeric),
+            time_zone: Some("UTC".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(basic.format_matcher(), DateTimeFormatMatcher::Basic);
+
+    let best_fit = DateTimeFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        DateTimeFormatOptions {
+            year: Some(DateTimeWidth::Numeric),
+            month: Some(DateTimeWidth::Numeric),
+            time_zone: Some("UTC".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(best_fit.format_matcher(), DateTimeFormatMatcher::BestFit);
 }
 
 #[test]

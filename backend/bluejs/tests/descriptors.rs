@@ -553,7 +553,7 @@ fn weak_collections_accept_object_keys_and_reject_primitive_insertions() {
 fn map_entries_preserve_strong_key_identity_and_same_value_zero() {
     assert_eq!(
         evaluate(
-            "let key={};let map=new Map();map.set(key,'object').set(-0,'zero').set(NaN,undefined);map.get(key)==='object'&&map.has(key)&&map.get(0)==='zero'&&map.has(NaN)&&map.get(NaN)===undefined&&map.size===3&&map.delete(key)&&!map.has(key)&&map.size===2",
+            "let key={};let map=new Map();let iterable=new Map([['first',1],['second',2],['first',3]]);map.set(key,'object').set(-0,'zero').set(NaN,undefined);map.get(key)==='object'&&map.has(key)&&map.get(0)==='zero'&&map.has(NaN)&&map.get(NaN)===undefined&&map.size===3&&map.delete(key)&&!map.has(key)&&map.size===2&&iterable.size===2&&iterable.get('first')===3&&iterable.get('second')===2",
         )
         .unwrap(),
         Value::Bool(true)
@@ -568,7 +568,7 @@ fn map_entries_preserve_strong_key_identity_and_same_value_zero() {
 fn set_has_an_internal_collection_and_size_getter() {
     assert_eq!(
         evaluate(
-            "let set=new Set();let empty=set.size===0;let first=set.add(-0);set.add(NaN).add(NaN);empty&&first===set&&set.size===2&&set.has(0)&&set.has(NaN)&&set.delete(0)&&set.size===1&&!set.has(-0)",
+            "let set=new Set();let empty=set.size===0;let first=set.add(-0);set.add(NaN).add(NaN);let iterable=new Set(['one','two','one']);empty&&first===set&&set.size===2&&set.has(0)&&set.has(NaN)&&set.delete(0)&&set.size===1&&!set.has(-0)&&iterable.size===2&&iterable.has('one')&&iterable.has('two')",
         )
         .unwrap(),
         Value::Bool(true)

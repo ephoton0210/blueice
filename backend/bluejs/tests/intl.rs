@@ -266,10 +266,45 @@ fn date_time_format_constructs_formats_and_exposes_parts() {
 }
 
 #[test]
+fn date_locale_methods_share_datetime_format_resolution_and_defaults() {
+    for source in [
+        "let d=new Date(0);d.toLocaleString('en-US')===new Intl.DateTimeFormat('en-US',{year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',second:'numeric'}).format(d)",
+        "let d=new Date(0);d.toLocaleDateString('en-US',{hour:'numeric',minute:'numeric',second:'numeric'})===new Intl.DateTimeFormat('en-US',{year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',second:'numeric'}).format(d)",
+        "let d=new Date(0);d.toLocaleTimeString('en-US',{weekday:'short',year:'numeric',month:'numeric',day:'numeric'})===new Intl.DateTimeFormat('en-US',{weekday:'short',year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',second:'numeric'}).format(d)",
+        "let d=new Date(0);d.toLocaleString('de-DE',{year:'numeric',month:'numeric'})===new Intl.DateTimeFormat('de-DE',{year:'numeric',month:'numeric'}).format(d)",
+        "let d=new Date(NaN);d.toLocaleString('de-DE')==='Invalid Date'&&d.toLocaleDateString('de-DE')==='Invalid Date'&&d.toLocaleTimeString('de-DE')==='Invalid Date'",
+        "let log='';let locale=[{toString(){log+='locale';return 'en-US'}}];let options={get localeMatcher(){log+=' options';return 'best fit'}};new Date(0).toLocaleString(locale,options);log===' optionslocale'",
+    ] {
+        assert_eq!(evaluate(source), Ok(Value::Bool(true)), "{source}");
+    }
+}
+
+#[test]
 fn cldr_date_range_formatter_is_the_production_default() {
     let source = "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC',year:'numeric',month:'long',day:'numeric'}); let p=f.formatRangeToParts(0,86400000); f.formatRange(0,86400000) === 'January 1 – 2, 1970' && p.map(x=>x.type+':'+x.source).join(',') === 'month:shared,literal:shared,day:startRange,literal:shared,day:endRange,literal:shared,year:shared'";
 
     assert!(VmConfig::default().enable_icu4x_date_range_formatter);
+    assert_eq!(evaluate(source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn date_time_format_resolves_locale_keywords_before_formatting() {
+    let source = "let ca1=new Intl.DateTimeFormat('en-u-ca-iso8601',{calendar:'invalid'}).resolvedOptions();let ca2=new Intl.DateTimeFormat('en-u-ca-gregory',{calendar:'iso8601'}).resolvedOptions();let nu1=new Intl.DateTimeFormat('en-u-nu-arab',{numberingSystem:'invalid'}).resolvedOptions();let nu2=new Intl.DateTimeFormat('en-u-nu-latn',{numberingSystem:'arab'}).resolvedOptions();let hc1=new Intl.DateTimeFormat('en-u-hc-h11',{hour:'numeric',hour12:false}).resolvedOptions();let hc2=new Intl.DateTimeFormat('en-u-hc-h11',{hour:'numeric'}).resolvedOptions();let fraction=new Intl.DateTimeFormat('en',{fractionalSecondDigits:2.9}).resolvedOptions();let arab=new Intl.DateTimeFormat('en-u-nu-arab',{timeZone:'UTC'});ca1.locale==='en-u-ca-iso8601'&&ca1.calendar==='iso8601'&&ca2.locale==='en'&&ca2.calendar==='iso8601'&&nu1.locale==='en-u-nu-arab'&&nu1.numberingSystem==='arab'&&nu2.locale==='en'&&nu2.numberingSystem==='arab'&&hc1.locale==='en'&&hc1.hourCycle==='h23'&&hc2.locale==='en-u-hc-h11'&&hc2.hourCycle==='h11'&&fraction.fractionalSecondDigits===2&&arab.format(0).includes('١٩٧٠')&&arab.formatToParts(0).some(function(part){return part.type==='year'&&part.value==='١٩٧٠'})";
+
+    assert_eq!(evaluate(source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn date_time_format_styles_select_their_field_widths() {
+    let source = "let d=new Date('1886-05-01T14:12:47Z');let date=new Intl.DateTimeFormat('en-US',{dateStyle:'short',timeZone:'UTC'});let time=new Intl.DateTimeFormat('en-US',{timeStyle:'short',timeZone:'UTC',hourCycle:'h24'});date.format(d)==='5/1/86'&&time.format(d)==='14:12'&&date.formatToParts(d).some(function(part){return part.type==='year'&&part.value==='86'})";
+
+    assert_eq!(evaluate(source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn date_time_format_emits_complete_chinese_year_parts() {
+    let source = "let f=new Intl.DateTimeFormat('zh-u-ca-chinese',{year:'numeric',timeZone:'UTC'});let p=f.formatToParts(new Date(2019,5,1));f.format(new Date(2019,5,1))==='2019己亥年'&&p.map(function(part){return part.type+':'+part.value}).join('|')==='relatedYear:2019|yearName:己亥|literal:年'";
+
     assert_eq!(evaluate(source), Ok(Value::Bool(true)));
 }
 

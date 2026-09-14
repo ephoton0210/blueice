@@ -1985,12 +1985,15 @@ impl Vm {
             return Ok(None);
         }
         let value = self.coerce_number(&value)?;
-        if !value.is_finite() || value.fract() != 0.0 || !(1.0..=3.0).contains(&value) {
+        // GetNumberOption first validates the numeric value against its
+        // inclusive bounds and only then applies floor. Thus 2.9 resolves to
+        // 2, whereas 3.000001 remains out of range.
+        if !value.is_finite() || !(1.0..=3.0).contains(&value) {
             return Err(RuntimeError::RangeError(
                 "invalid fractionalSecondDigits option".into(),
             ));
         }
-        Ok(Some(value as u8))
+        Ok(Some(value.floor() as u8))
     }
 
     fn date_time_format_options(
@@ -2048,10 +2051,15 @@ impl Vm {
                 "longGeneric",
             ],
         )?;
-        // `formatMatcher` has no effect on the ICU semantic skeleton, but it
-        // remains an observable option read and validated in the mandated
-        // initialization path.
-        self.string_option(&options, "formatMatcher", &["basic", "best fit"])?;
+        let format_matcher =
+            match self.string_option(&options, "formatMatcher", &["basic", "best fit"])? {
+                Some(value) if value == "basic" => blueice_ecma402::DateTimeFormatMatcher::Basic,
+                Some(value) if value == "best fit" => {
+                    blueice_ecma402::DateTimeFormatMatcher::BestFit
+                }
+                None => blueice_ecma402::DateTimeFormatMatcher::BestFit,
+                Some(_) => unreachable!("string_option validates formatMatcher values"),
+            };
         let date_style = self.date_time_style(&options, "dateStyle")?;
         let time_style = self.date_time_style(&options, "timeStyle")?;
         let has_components = weekday.is_some()
@@ -2073,6 +2081,7 @@ impl Vm {
         Ok(blueice_ecma402::DateTimeFormatOptions {
             use_icu4x_range_formatter: self.config.enable_icu4x_date_range_formatter,
             locale_matcher,
+            format_matcher,
             calendar,
             numbering_system,
             hour_cycle,
@@ -2103,6 +2112,71 @@ impl Vm {
         let options = self.date_time_format_options(options)?;
         blueice_ecma402::DateTimeFormat::try_new(&locales, options)
             .map(Rc::new)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+    }
+
+    /// Shared `Date.prototype.toLocale*` bridge. The legacy Date methods do
+    /// not use the fixed English Date string helpers: they run the same
+    /// DateTimeFormat resolution as an explicit formatter after
+    /// `ToDateTimeOptions` supplies only the defaults required by that
+    /// particular method.
+    pub(super) fn date_to_locale_string(
+        &mut self,
+        time: f64,
+        args: &[Value],
+        default_date: bool,
+        default_time: bool,
+    ) -> Result<Value, RuntimeError> {
+        if !time.is_finite() {
+            return Ok(Value::String("Invalid Date".into()));
+        }
+        let mut options = self.date_time_format_options(native::argument(args, 1))?;
+        let has_date = options.weekday.is_some()
+            || options.year.is_some()
+            || options.month.is_some()
+            || options.day.is_some();
+        let has_time = options.day_period.is_some()
+            || options.hour.is_some()
+            || options.minute.is_some()
+            || options.second.is_some()
+            || options.fractional_second_digits.is_some();
+        let has_style = options.date_style.is_some() || options.time_style.is_some();
+
+        // ToDateTimeOptions has three distinct defaulting modes. `any` (the
+        // all-locales method) defaults only when neither group was supplied;
+        // the date/time methods independently fill their required group while
+        // retaining any caller-supplied fields from the other group.
+        let need_date = default_date
+            && !has_style
+            && if default_time {
+                !has_date && !has_time
+            } else {
+                !has_date
+            };
+        let need_time = default_time
+            && !has_style
+            && if default_date {
+                !has_date && !has_time
+            } else {
+                !has_time
+            };
+        if need_date {
+            options.year = Some(blueice_ecma402::DateTimeWidth::Numeric);
+            options.month = Some(blueice_ecma402::DateTimeWidth::Numeric);
+            options.day = Some(blueice_ecma402::DateTimeWidth::Numeric);
+        }
+        if need_time {
+            options.hour = Some(blueice_ecma402::DateTimeWidth::Numeric);
+            options.minute = Some(blueice_ecma402::DateTimeWidth::Numeric);
+            options.second = Some(blueice_ecma402::DateTimeWidth::Numeric);
+        }
+        // Date.prototype.toLocale* runs ToDateTimeOptions before it delegates
+        // to CreateDateTimeFormat, so an abrupt option getter wins over a
+        // later locale coercion just as it does in the specification.
+        let locales = self.canonical_locales(native::argument(args, 0))?;
+        blueice_ecma402::DateTimeFormat::try_new(&locales, options)
+            .and_then(|format| format.format(time))
+            .map(|formatted| Value::String(formatted.into()))
             .map_err(|error| RuntimeError::RangeError(error.to_string()))
     }
 
@@ -2571,6 +2645,17 @@ impl Vm {
             || options.minute.is_some()
             || options.second.is_some()
             || options.fractional_second_digits.is_some();
+        // InitializeDateTimeFormat supplies the numeric date triple only
+        // when *no* date or time component was requested. Do not turn a
+        // requested year/month, month/day, or weekday skeleton into YMD in
+        // resolvedOptions merely because it has no time fields.
+        let default_date = !time_requested
+            && options.date_style.is_none()
+            && options.weekday.is_none()
+            && options.year.is_none()
+            && options.month.is_none()
+            && options.day.is_none();
+        let default_date_width = default_date.then_some(blueice_ecma402::DateTimeWidth::Numeric);
         if time_requested {
             self.define_data(
                 result,
@@ -2592,36 +2677,9 @@ impl Vm {
         for (name, width) in [
             ("weekday", options.weekday),
             ("era", options.era),
-            (
-                "year",
-                options.year.or_else(|| {
-                    if !time_requested && options.date_style.is_none() {
-                        Some(blueice_ecma402::DateTimeWidth::Numeric)
-                    } else {
-                        None
-                    }
-                }),
-            ),
-            (
-                "month",
-                options.month.or_else(|| {
-                    if !time_requested && options.date_style.is_none() {
-                        Some(blueice_ecma402::DateTimeWidth::Numeric)
-                    } else {
-                        None
-                    }
-                }),
-            ),
-            (
-                "day",
-                options.day.or_else(|| {
-                    if !time_requested && options.date_style.is_none() {
-                        Some(blueice_ecma402::DateTimeWidth::Numeric)
-                    } else {
-                        None
-                    }
-                }),
-            ),
+            ("year", options.year.or(default_date_width)),
+            ("month", options.month.or(default_date_width)),
+            ("day", options.day.or(default_date_width)),
             ("dayPeriod", options.day_period),
             ("hour", options.hour),
             ("minute", options.minute),

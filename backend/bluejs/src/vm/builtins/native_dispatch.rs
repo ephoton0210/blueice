@@ -682,15 +682,15 @@ impl Vm {
                     "Date primitive conversion did not produce a primitive".into(),
                 ))
             }
-            native::DateMethod::ToLocaleDateString => Ok(Value::String(date_date_string(
-                self.date_receiver_time(receiver)?,
-            ))),
-            native::DateMethod::ToLocaleString => Ok(Value::String(date_string(
-                self.date_receiver_time(receiver)?,
-            ))),
-            native::DateMethod::ToLocaleTimeString => Ok(Value::String(date_time_string(
-                self.date_receiver_time(receiver)?,
-            ))),
+            native::DateMethod::ToLocaleDateString => {
+                self.date_to_locale_string(self.date_receiver_time(receiver)?, args, true, false)
+            }
+            native::DateMethod::ToLocaleString => {
+                self.date_to_locale_string(self.date_receiver_time(receiver)?, args, true, true)
+            }
+            native::DateMethod::ToLocaleTimeString => {
+                self.date_to_locale_string(self.date_receiver_time(receiver)?, args, false, true)
+            }
             native::DateMethod::ToJson => {
                 self.coerce_object(receiver)?;
                 let primitive = self.coerce_primitive(receiver, "number")?;
@@ -1234,7 +1234,7 @@ impl Vm {
                 self.with_roots(|heap| heap.revoke_proxy(proxy))?;
                 Ok(Value::Undefined)
             }
-            NativeFunction::Map => self.collection_constructor(true, construct),
+            NativeFunction::Map => self.collection_constructor(true, &args, construct),
             NativeFunction::MapMethod(method) => self.map_method(method, &receiver, &args),
             NativeFunction::MapSize => {
                 let Some(map) = receiver.object_id() else {
@@ -1249,7 +1249,7 @@ impl Vm {
                 }
                 Ok(Value::Number(self.heap.map_size(map)? as f64))
             }
-            NativeFunction::Set => self.collection_constructor(false, construct),
+            NativeFunction::Set => self.collection_constructor(false, &args, construct),
             NativeFunction::SetMethod(method) => self.set_method(method, &receiver, &args),
             NativeFunction::SetSize => {
                 let Some(set) = receiver.object_id() else {

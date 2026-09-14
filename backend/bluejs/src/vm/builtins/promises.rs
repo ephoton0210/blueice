@@ -198,6 +198,7 @@ impl Vm {
     pub(in super::super) fn collection_constructor(
         &mut self,
         map: bool,
+        args: &[Value],
         construct: bool,
     ) -> Result<Value, RuntimeError> {
         if !construct {
@@ -217,9 +218,70 @@ impl Vm {
         } else {
             self.with_roots(|heap| heap.alloc_set(Some(prototype)))?
         };
+        let base = self.stack.len();
         self.stack.push(Value::Object(collection));
-        self.stack.pop();
-        Ok(Value::Object(collection))
+        let result = (|| {
+            let source = native::argument(args, 0).clone();
+            if matches!(source, Value::Undefined | Value::Null) {
+                return Ok(Value::Object(collection));
+            }
+
+            // Like WeakMap and WeakSet, obtain the adder after construction
+            // and invoke that exact callable for every iterator value. Apart
+            // from supporting the standard iterable constructor argument,
+            // this keeps subclass and observable-adder semantics aligned with
+            // the collection constructor algorithms.
+            let adder = self.get_property(
+                &Value::Object(collection),
+                &(if map { "set" } else { "add" }).into(),
+            )?;
+            self.stack.push(adder.clone());
+            if !self.is_callable(&adder)? {
+                return Err(RuntimeError::TypeError(
+                    "collection adder must be callable".into(),
+                ));
+            }
+
+            self.stack.push(source.clone());
+            let record = self.get_iterator(&source)?;
+            self.stack.push(record.clone());
+            let outcome = (|| {
+                while let Some(entry) = self.iterator_step(&record, true)? {
+                    let entry_base = self.stack.len();
+                    let call_args = if map {
+                        let Value::Object(entry) = entry else {
+                            return Err(RuntimeError::TypeError(
+                                "Map constructor entry must be an object".into(),
+                            ));
+                        };
+                        let entry = Value::Object(entry);
+                        self.stack.push(entry.clone());
+                        let key = self.get_property(&entry, &"0".into())?;
+                        self.stack.push(key.clone());
+                        let value = self.get_property(&entry, &"1".into())?;
+                        self.stack.push(value.clone());
+                        vec![key, value]
+                    } else {
+                        self.stack.push(entry.clone());
+                        vec![entry]
+                    };
+                    self.call_native(adder.clone(), Value::Object(collection), call_args, false)?;
+                    self.stack.truncate(entry_base);
+                }
+                Ok(Value::Object(collection))
+            })();
+            if outcome.is_err() {
+                let error_base = self.stack.len();
+                if let Err(RuntimeError::Thrown(value)) = &outcome {
+                    self.stack.push(value.clone());
+                }
+                let _ = self.iterator_close(&record);
+                self.stack.truncate(error_base);
+            }
+            outcome
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     pub(in super::super) fn map_method(

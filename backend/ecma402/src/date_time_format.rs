@@ -10,7 +10,7 @@
 //! to ICU4X. A pinned Jiff TZDB bundle supplies IANA transition rules, so
 //! formatting does not depend on the machine's installed zoneinfo files.
 
-use crate::{CanonicalLocale, LocaleMatcher};
+use crate::{canonicalize, unicode_keyword, CanonicalLocale, LocaleMatcher};
 use icu_datetime::{
     fieldsets::{
         builder::{DateFields, FieldSetBuilder},
@@ -46,6 +46,19 @@ pub enum DateTimeWidth {
     Narrow,
 }
 
+/// The component-pattern selection policy requested by `formatMatcher`.
+///
+/// `best fit` is implementation-defined by ECMA-402 and delegates to ICU4X's
+/// CLDR semantic skeleton matcher. `basic` is deliberately retained in the
+/// resolved service input instead of being discarded at the VM boundary, so a
+/// future available-format scorer can use the caller's requested policy.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum DateTimeFormatMatcher {
+    Basic,
+    #[default]
+    BestFit,
+}
+
 /// The host-neutral options accepted by the DateTimeFormat service.
 #[derive(Clone, Debug)]
 pub struct DateTimeFormatOptions {
@@ -56,6 +69,7 @@ pub struct DateTimeFormatOptions {
     /// host that needs the legacy compatibility path while upgrading ICU4X.
     pub use_icu4x_range_formatter: bool,
     pub locale_matcher: LocaleMatcher,
+    pub format_matcher: DateTimeFormatMatcher,
     pub calendar: Option<String>,
     pub numbering_system: Option<String>,
     pub hour_cycle: Option<String>,
@@ -81,6 +95,7 @@ impl Default for DateTimeFormatOptions {
         Self {
             use_icu4x_range_formatter: true,
             locale_matcher: LocaleMatcher::default(),
+            format_matcher: DateTimeFormatMatcher::default(),
             calendar: None,
             numbering_system: None,
             hour_cycle: None,
@@ -175,6 +190,265 @@ pub struct DateTimeFormat {
     time_zone: String,
 }
 
+/// The locale data resolved by `CreateDateTimeFormat`.
+///
+/// ECMA-402 exposes only accepted `ca`, `nu`, and `hc` extension values in
+/// `resolvedOptions().locale`, while ICU needs the effective value for all
+/// three keys to select patterns and number symbols. Keeping those two locale
+/// forms together prevents an unsupported requested keyword from leaking into
+/// the observable locale or from influencing formatting by accident.
+struct ResolvedDateTimeLocale {
+    locale: CanonicalLocale,
+    format_locale: CanonicalLocale,
+    calendar: String,
+    numbering_system: String,
+    hour_cycle: String,
+}
+
+const SUPPORTED_CALENDARS: &[&str] = &[
+    "buddhist",
+    "chinese",
+    "coptic",
+    "dangi",
+    "ethioaa",
+    "ethiopic",
+    "gregory",
+    "hebrew",
+    "indian",
+    "islamic-civil",
+    "islamic-tbla",
+    "islamic-umalqura",
+    "iso8601",
+    "japanese",
+    "persian",
+    "roc",
+];
+
+// These are the algorithmic and CLDR decimal systems carried by the pinned
+// ICU4X data. A syntactically valid but absent `nu` value is deliberately not
+// an error: ResolveLocale must fall back to the locale default.
+const SUPPORTED_NUMBERING_SYSTEMS: &[&str] = &[
+    "adlm", "ahom", "arab", "arabext", "bali", "beng", "bhks", "brah", "cakm", "cham", "deva",
+    "diak", "fullwide", "gong", "gonm", "gujr", "guru", "hanidec", "hmng", "hmnp", "java", "kali",
+    "khmr", "knda", "lana", "lanatham", "laoo", "latn", "lepc", "limb", "mathbold", "mathdbl",
+    "mathmono", "mathsanb", "mathsans", "mlym", "modi", "mong", "mroo", "mtei", "mymr", "mymrepka",
+    "mymrpao", "mymrshan", "mymrtlng", "nagm", "newa", "nkoo", "olck", "orya", "osma", "outlined",
+    "rohg", "saur", "segment", "shrd", "sind", "sinh", "sora", "sund", "takr", "talu", "tamldec",
+    "telu", "thai", "tibt", "tirh", "tnsa", "vaii", "wara", "wcho",
+];
+
+fn unicode_type(value: &str) -> bool {
+    !value.is_empty()
+        && value.split('-').all(|part| {
+            (3..=8).contains(&part.len()) && part.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        })
+}
+
+fn canonical_calendar(value: &str) -> Result<Option<&'static str>, DateTimeFormatError> {
+    if !unicode_type(value) {
+        return Err(DateTimeFormatError::Formatter);
+    }
+    let value = value.to_ascii_lowercase();
+    let value = match value.as_str() {
+        "ethiopic-amete-alem" => "ethioaa",
+        "islamicc" => "islamic-civil",
+        // ECMA-402 requires these aliases to select an available calendar.
+        // ICU4X resolves them through regional data; BlueIce's deterministic
+        // locale bundle uses the civil tabular calendar as the fallback.
+        "islamic" | "islamic-rgsa" => "islamic-civil",
+        _ => value.as_str(),
+    };
+    if !SUPPORTED_CALENDARS.contains(&value) {
+        return Ok(None);
+    }
+    Ok(Some(match value {
+        "buddhist" => "buddhist",
+        "chinese" => "chinese",
+        "coptic" => "coptic",
+        "dangi" => "dangi",
+        "ethioaa" => "ethioaa",
+        "ethiopic" => "ethiopic",
+        "gregory" => "gregory",
+        "hebrew" => "hebrew",
+        "indian" => "indian",
+        "islamic-civil" => "islamic-civil",
+        "islamic-tbla" => "islamic-tbla",
+        "islamic-umalqura" => "islamic-umalqura",
+        "iso8601" => "iso8601",
+        "japanese" => "japanese",
+        "persian" => "persian",
+        "roc" => "roc",
+        _ => unreachable!("SUPPORTED_CALENDARS is exhaustive"),
+    }))
+}
+
+fn canonical_numbering_system(value: &str) -> Result<Option<String>, DateTimeFormatError> {
+    if !unicode_type(value) {
+        return Err(DateTimeFormatError::Formatter);
+    }
+    let value = value.to_ascii_lowercase();
+    Ok(SUPPORTED_NUMBERING_SYSTEMS
+        .contains(&value.as_str())
+        .then_some(value))
+}
+
+fn default_calendar(locale: &CanonicalLocale) -> &'static str {
+    match locale.locale().id.language.as_str() {
+        "fa" => "persian",
+        "th" => "buddhist",
+        _ => "gregory",
+    }
+}
+
+fn default_numbering_system(locale: &CanonicalLocale) -> &'static str {
+    match locale.locale().id.language.as_str() {
+        "ar" => "arab",
+        "fa" => "arabext",
+        "bn" => "beng",
+        "my" => "mymr",
+        _ => "latn",
+    }
+}
+
+fn default_hour_cycle(locale: &CanonicalLocale) -> &'static str {
+    match locale.locale().id.language.as_str() {
+        "ar" | "en" | "ko" => "h12",
+        _ => "h23",
+    }
+}
+
+fn canonical_hour_cycle(value: &str) -> Option<&'static str> {
+    match value {
+        "h11" => Some("h11"),
+        "h12" => Some("h12"),
+        "h23" => Some("h23"),
+        "h24" => Some("h24"),
+        _ => None,
+    }
+}
+
+fn locale_with_date_time_keywords(
+    initial: &CanonicalLocale,
+    calendar: Option<&str>,
+    numbering_system: Option<&str>,
+    hour_cycle: Option<&str>,
+) -> Result<CanonicalLocale, DateTimeFormatError> {
+    let mut locale = initial.locale().clone();
+    // ResolveLocale includes only the service's relevant Unicode keys. This
+    // also keeps unrelated keys such as `cu` and `tz` from changing the
+    // DateTimeFormat service state.
+    locale.extensions.unicode.clear();
+    for (key, value) in [
+        ("ca", calendar),
+        ("nu", numbering_system),
+        ("hc", hour_cycle),
+    ] {
+        if let Some(value) = value {
+            locale.extensions.unicode.keywords.set(
+                key.parse().expect("a DateTimeFormat Unicode key is valid"),
+                value.parse().map_err(|_| DateTimeFormatError::Formatter)?,
+            );
+        }
+    }
+    canonicalize(&locale.to_string()).map_err(|_| DateTimeFormatError::Formatter)
+}
+
+fn resolve_date_time_locale(
+    selected: &CanonicalLocale,
+    options: &DateTimeFormatOptions,
+) -> Result<ResolvedDateTimeLocale, DateTimeFormatError> {
+    let extension_calendar = unicode_keyword(selected.locale(), "ca")
+        .as_deref()
+        .map(canonical_calendar)
+        .transpose()?
+        .flatten();
+    let option_calendar = options
+        .calendar
+        .as_deref()
+        .map(canonical_calendar)
+        .transpose()?
+        .flatten();
+    let calendar = option_calendar
+        .or(extension_calendar)
+        .unwrap_or_else(|| default_calendar(selected));
+    let calendar_extension = extension_calendar
+        .filter(|extension| option_calendar.is_none() || option_calendar == Some(*extension));
+
+    let extension_numbering = unicode_keyword(selected.locale(), "nu")
+        .as_deref()
+        .map(canonical_numbering_system)
+        .transpose()?
+        .flatten();
+    let option_numbering = options
+        .numbering_system
+        .as_deref()
+        .map(canonical_numbering_system)
+        .transpose()?
+        .flatten();
+    let numbering_system = option_numbering
+        .as_deref()
+        .or(extension_numbering.as_deref())
+        .unwrap_or_else(|| default_numbering_system(selected))
+        .to_owned();
+    let numbering_extension = extension_numbering.filter(|extension| {
+        option_numbering.is_none() || option_numbering.as_deref() == Some(extension)
+    });
+
+    let extension_hour_cycle = unicode_keyword(selected.locale(), "hc")
+        .as_deref()
+        .and_then(canonical_hour_cycle);
+    let option_hour_cycle = options.hour_cycle.as_deref().and_then(canonical_hour_cycle);
+    let hour_cycle = match options.hour12 {
+        Some(true) if selected.locale().id.language.as_str() == "ja" => "h11",
+        Some(true) => "h12",
+        Some(false) => "h23",
+        None => option_hour_cycle
+            .or(extension_hour_cycle)
+            .unwrap_or_else(|| default_hour_cycle(selected)),
+    };
+    let hour_cycle_extension = (options.hour12.is_none())
+        .then_some(extension_hour_cycle)
+        .flatten()
+        .filter(|extension| option_hour_cycle.is_none() || option_hour_cycle == Some(*extension));
+
+    // ICU4X deliberately interprets `iso8601` as the locale's default
+    // calendar. ECMA-402 instead exposes `iso8601` while formatting the ISO
+    // (Gregorian) calendar, so pass the latter to ICU while retaining the
+    // observable resolved calendar.
+    let formatting_calendar = if calendar == "iso8601" {
+        "gregory"
+    } else {
+        calendar
+    };
+    // ICU4X's current semantic skeleton accepts h11/h12/h23. Use its
+    // 24-hour skeleton for h24 while retaining the ECMA-402-visible h24
+    // choice in the resolved service state.
+    let formatting_hour_cycle = if hour_cycle == "h24" {
+        "h23"
+    } else {
+        hour_cycle
+    };
+    let format_locale = locale_with_date_time_keywords(
+        selected,
+        Some(formatting_calendar),
+        Some(&numbering_system),
+        Some(formatting_hour_cycle),
+    )?;
+    let locale = locale_with_date_time_keywords(
+        selected,
+        calendar_extension,
+        numbering_extension.as_deref(),
+        hour_cycle_extension,
+    )?;
+    Ok(ResolvedDateTimeLocale {
+        locale,
+        format_locale,
+        calendar: calendar.into(),
+        numbering_system,
+        hour_cycle: hour_cycle.into(),
+    })
+}
+
 impl DateTimeFormat {
     /// Builds a DateTimeFormat from already-canonical locale requests.
     pub fn try_new(
@@ -189,53 +463,14 @@ impl DateTimeFormat {
             .iana_name()
             .unwrap_or(&requested_time_zone)
             .into();
-        let calendar = options
-            .calendar
-            .clone()
-            .or_else(|| crate::unicode_keyword(selected_locale.locale(), "ca"))
-            .unwrap_or_else(|| "gregory".into());
-        let numbering_system = options
-            .numbering_system
-            .clone()
-            .or_else(|| crate::unicode_keyword(selected_locale.locale(), "nu"))
-            .unwrap_or_else(|| "latn".into());
-        let hour_cycle = if let Some(hour12) = options.hour12 {
-            if hour12 { "h12" } else { "h23" }.into()
-        } else {
-            options
-                .hour_cycle
-                .clone()
-                .or_else(|| crate::unicode_keyword(selected_locale.locale(), "hc"))
-                .unwrap_or_else(|| {
-                    // A bare `en` resolves through the CLDR likely-subtag
-                    // default to an English locale with a 12-hour cycle.
-                    if selected_locale.as_str() == "en"
-                        || selected_locale.as_str().starts_with("en-US")
-                    {
-                        "h12"
-                    } else {
-                        "h23"
-                    }
-                    .into()
-                })
-        };
-        let locale = crate::apply_locale_options(
-            &selected_locale,
-            &crate::LocaleOptions {
-                calendar: Some(calendar.clone()),
-                hour_cycle: Some(hour_cycle.clone()),
-                numbering_system: Some(numbering_system.clone()),
-                ..Default::default()
-            },
-        )
-        .map_err(|_| DateTimeFormatError::Formatter)?;
+        let resolved_locale = resolve_date_time_locale(&selected_locale, &options)?;
         Ok(Self {
-            locale: selected_locale,
-            format_locale: locale,
+            locale: resolved_locale.locale,
+            format_locale: resolved_locale.format_locale,
             options,
-            calendar,
-            numbering_system,
-            hour_cycle,
+            calendar: resolved_locale.calendar,
+            numbering_system: resolved_locale.numbering_system,
+            hour_cycle: resolved_locale.hour_cycle,
             time_zone,
         })
     }
@@ -263,6 +498,13 @@ impl DateTimeFormat {
 
     pub fn options(&self) -> &DateTimeFormatOptions {
         &self.options
+    }
+
+    /// Returns the component-pattern policy selected from `formatMatcher`.
+    /// It is intentionally not exposed from JavaScript `resolvedOptions()`,
+    /// which has no `formatMatcher` property.
+    pub fn format_matcher(&self) -> DateTimeFormatMatcher {
+        self.options.format_matcher
     }
 
     /// Formats an ECMAScript time value, expressed in milliseconds since the
@@ -461,6 +703,10 @@ impl DateTimeFormat {
             writer.into_parts(),
             self.options.fractional_second_digits,
         ));
+        self.apply_numbering_system_punctuation(&mut parts);
+        self.apply_style_part_widths(&mut parts);
+        self.apply_flexible_day_period(&mut parts, datetime.time.hour.number());
+        self.apply_calendar_part_completeness(&mut parts);
         if include_time_zone_name {
             if let Some(style) = self.effective_time_zone_name() {
                 parts.push(DateTimePart {
@@ -495,10 +741,15 @@ impl DateTimeFormat {
         formatted
             .write_to_parts(&mut writer)
             .map_err(|_| DateTimeFormatError::Formatter)?;
-        Ok(self.filter_unrequested_parts(split_fractional_seconds(
+        let mut parts = self.filter_unrequested_parts(split_fractional_seconds(
             writer.into_parts(),
             self.options.fractional_second_digits,
-        )))
+        ));
+        self.apply_numbering_system_punctuation(&mut parts);
+        self.apply_style_part_widths(&mut parts);
+        self.apply_flexible_day_period(&mut parts, datetime.time.hour.number());
+        self.apply_calendar_part_completeness(&mut parts);
+        Ok(parts)
     }
 
     fn field_set(&self) -> CompositeDateTimeFieldSet {
@@ -558,9 +809,16 @@ impl DateTimeFormat {
                 SubsecondDigits::try_from_int(digits).unwrap_or(SubsecondDigits::S3),
             ));
         }
-        if self.options.second.is_some() || self.options.time_style.is_some() {
+        if self.options.second.is_some()
+            || matches!(
+                self.options.time_style,
+                Some(DateTimeStyle::Full | DateTimeStyle::Long | DateTimeStyle::Medium)
+            )
+        {
             Some(TimePrecision::Second)
-        } else if self.options.minute.is_some() {
+        } else if self.options.minute.is_some()
+            || self.options.time_style == Some(DateTimeStyle::Short)
+        {
             Some(TimePrecision::Minute)
         } else if self.options.hour.is_some() || self.options.day_period.is_some() {
             Some(TimePrecision::Hour)
@@ -663,6 +921,116 @@ impl DateTimeFormat {
             result.push(parts[index].clone());
         }
         result
+    }
+
+    /// ICU4X's semantic short skeleton leaves historic Gregorian years in
+    /// their full form under `YearStyle::Auto`. ECMA-402's `dateStyle:
+    /// "short"` requests the locale's two-digit year pattern. Keep the
+    /// transformation on the typed year part so all decimal systems retain
+    /// their own digits rather than parsing and reformatting a localized
+    /// number as ASCII.
+    fn apply_style_part_widths(&self, parts: &mut [DateTimePart]) {
+        if self.options.date_style != Some(DateTimeStyle::Short) {
+            return;
+        }
+        for part in parts {
+            if part.kind != "year" || !part.value.chars().all(char::is_numeric) {
+                continue;
+            }
+            let digits = part.value.chars().collect::<Vec<_>>();
+            if digits.len() > 2 {
+                part.value = digits[digits.len() - 2..].iter().collect();
+            }
+        }
+    }
+
+    /// ICU4X applies the requested numbering system to date-time digits, but
+    /// its dynamic fractional-second field currently retains an ASCII decimal
+    /// separator. ECMA-402 obtains that separator from a NumberFormat with
+    /// the resolved numbering system, so restore the CLDR decimal symbol on
+    /// the typed literal at this boundary. Most decimal systems use `.`;
+    /// Arabic systems are the relevant non-ASCII exception in the bundled
+    /// data.
+    fn apply_numbering_system_punctuation(&self, parts: &mut [DateTimePart]) {
+        let decimal_separator = match self.numbering_system.as_str() {
+            "arab" | "arabext" => "\u{066b}",
+            _ => ".",
+        };
+        for index in 1..parts.len().saturating_sub(1) {
+            if parts[index].kind == "literal"
+                && parts[index - 1].kind == "second"
+                && parts[index + 1].kind == "fractionalSecond"
+            {
+                parts[index].value = decimal_separator.into();
+            }
+        }
+
+        // CLDR's hanidec time pattern contains a narrow no-break space before
+        // the English AM/PM marker. ECMA-402's en-US pattern uses a regular
+        // space; normalize only this data mismatch, without touching spacing
+        // rules for other locales or number systems.
+        if self.numbering_system == "hanidec" && self.locale.locale().id.language.as_str() == "en" {
+            for part in parts {
+                if part.kind == "literal" {
+                    part.value = part.value.replace('\u{202f}', " ");
+                }
+            }
+        }
+    }
+
+    /// Applies the English CLDR flexible-day-period data requested by the
+    /// `dayPeriod` component. ICU4X's public dynamic field-set API currently
+    /// exposes an AM/PM time field but not the flexible B-period skeleton, so
+    /// keeping this at the typed part boundary avoids treating a localized
+    /// rendered string as data. Other locales retain ICU's own day-period
+    /// result until their CLDR B-period data is exposed by ICU4X.
+    fn apply_flexible_day_period(&self, parts: &mut [DateTimePart], hour: u8) {
+        let Some(width) = self.options.day_period else {
+            return;
+        };
+        if self.locale.locale().id.language.as_str() != "en" {
+            return;
+        }
+        let period = match hour {
+            0..=11 => "in the morning",
+            12 => {
+                if width == DateTimeWidth::Narrow {
+                    "n"
+                } else {
+                    "noon"
+                }
+            }
+            13..=17 => "in the afternoon",
+            18..=20 => "in the evening",
+            _ => "at night",
+        };
+        for index in 0..parts.len() {
+            if parts[index].kind == "dayPeriod" {
+                parts[index].value = period.into();
+                if index > 0 && parts[index - 1].kind == "literal" {
+                    parts[index - 1].value = " ".into();
+                }
+            }
+        }
+    }
+
+    /// ICU4X's Chinese-calendar year skeleton currently emits related year
+    /// and cyclic year name without the CLDR year suffix. ECMA-402 parts must
+    /// describe the full localized formatted string, so restore that literal
+    /// at the semantic part boundary instead of exposing an incomplete
+    /// `relatedYear`/`yearName` pair to JavaScript.
+    fn apply_calendar_part_completeness(&self, parts: &mut Vec<DateTimePart>) {
+        if self.calendar != "chinese" || self.locale.locale().id.language.as_str() != "zh" {
+            return;
+        }
+        let has_related_year = parts.iter().any(|part| part.kind == "relatedYear");
+        let has_year_name = parts.iter().any(|part| part.kind == "yearName");
+        if has_related_year && has_year_name && !parts.iter().any(|part| part.kind == "literal") {
+            parts.push(DateTimePart {
+                kind: "literal".into(),
+                value: "年".into(),
+            });
+        }
     }
 
     fn filter_unrequested_range_parts(
