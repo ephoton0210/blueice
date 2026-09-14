@@ -608,7 +608,10 @@ def main():
         fetch(args.corpus)
     marker = args.corpus / ".bluejs-snapshot.json"
     if not marker.is_file() or json.loads(marker.read_text()) != SNAPSHOT:
-        parser.error("corpus lacks matching verified snapshot; use --fetch with an absent destination")
+        parser.error(
+            "corpus lacks matching verified snapshot; the runner never overwrites it. "
+            "Use --fetch --corpus /tmp/blueice-test262-<snapshot-revision>."
+        )
     manifest_bytes = (args.corpus / ".bluejs-manifest.json").read_bytes()
     if hashlib.sha256(manifest_bytes).hexdigest() != SNAPSHOT["manifest_sha256"]:
         parser.error("corpus manifest differs from pinned archive")

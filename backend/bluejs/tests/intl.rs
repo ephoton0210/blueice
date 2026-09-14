@@ -228,11 +228,14 @@ fn date_time_format_constructs_formats_and_exposes_parts() {
         "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC',year:'numeric',month:'numeric',day:'numeric'}); f.formatRange(0,86400000).includes('–') && f.formatRangeToParts(0,86400000).map(x=>x.source).join(',').includes('startRange') && f.formatRangeToParts(0,86400000).map(x=>x.source).join(',').includes('endRange')",
         "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC',year:'numeric',month:'long',day:'numeric'}); f.formatRange(0,86400000) === 'January 1 – 2, 1970' && f.formatRangeToParts(0,86400000).filter(x=>x.source==='shared').some(x=>x.type==='year')",
         "let f=new Intl.DateTimeFormat('zh-TW',{timeZone:'UTC',year:'numeric',month:'numeric',day:'numeric'}); f.formatRange(0,86400000).includes('至') && f.formatRangeToParts(0,86400000).filter(x=>x.type==='year').length===2",
+        "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC'}); let p=f.formatRangeToParts(0,86400000); f.formatRange(0,86400000)==='1/1/1970 – 1/2/1970' && p.length===11 && p[0].type==='month' && p[0].source==='startRange' && p[4].type==='year' && p[4].source==='startRange' && p[5].type==='literal' && p[5].source==='shared' && p[6].type==='month' && p[6].source==='endRange' && p[10].type==='year' && p[10].source==='endRange'",
+        "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC',minute:'numeric',second:'numeric',fractionalSecondDigits:1}); let p=f.formatRangeToParts(0,300); p.length===11 && p[0].type==='minute' && p[0].value==='00' && p[0].source==='startRange' && p[1].type==='literal' && p[1].value===':' && p[1].source==='startRange' && p[2].type==='second' && p[2].value==='00' && p[2].source==='startRange' && p[3].value==='.' && p[3].source==='startRange' && p[4].type==='fractionalSecond' && p[4].value==='0' && p[4].source==='startRange' && p[5].source==='shared' && p[6].type==='minute' && p[6].source==='endRange' && p[8].type==='second' && p[8].value==='00' && p[8].source==='endRange' && p[10].type==='fractionalSecond' && p[10].value==='3' && p[10].source==='endRange' && f.formatRangeToParts(0,0.9).every(x=>x.source==='shared') && typeof f.formatRangeToParts(300,0)==='object'",
         "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC',weekday:'long',year:'numeric',day:'2-digit'}); let t=f.formatToParts(0).map(x=>x.type); t.includes('weekday') && t.includes('year') && t.includes('day') && !t.includes('month')",
         "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC',dateStyle:'short'}); f.resolvedOptions().dateStyle === 'short' && f.format(0).length > 0 && Object.prototype.toString.call(f)==='[object Intl.DateTimeFormat]'",
         "let f=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit',timeZoneName:'short'}); f.format(1705320000000).endsWith('EST') && f.format(1721044800000).endsWith('EDT') && f.resolvedOptions().timeZone === 'America/New_York'",
         "Intl.DateTimeFormat.supportedLocalesOf(['zz','de-DE','en']).join(',') === 'de-DE,en'",
         "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC'}); f.format === f.format && f.format.name === '' && f.format.length === 1 && f.format.prototype === undefined",
+        "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC'}); let converted=false; let poison={valueOf:function(){converted=true;return 0}}; let caught=false; try{f.formatRangeToParts(undefined,poison)}catch(error){caught=error instanceof TypeError} caught && !converted",
     ] {
         match evaluate(source) {
             Ok(value) => assert_eq!(value, Value::Bool(true), "{source}"),
@@ -246,7 +249,8 @@ fn date_time_format_constructs_formats_and_exposes_parts() {
         "new Intl.DateTimeFormat('en',{dateStyle:'short',year:'numeric'})",
         "new Intl.DateTimeFormat('en',{fractionalSecondDigits:4})",
         "new Intl.DateTimeFormat('en').format(NaN)",
-        "new Intl.DateTimeFormat('en').formatRange(1,0)",
+        "new Intl.DateTimeFormat('en').formatRange()",
+        "new Intl.DateTimeFormat('en').formatRangeToParts(undefined,0)",
     ] {
         assert!(
             matches!(

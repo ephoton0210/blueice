@@ -4,7 +4,7 @@
 
 use blueice_ecma402::{
     bundled_tzdb_version, canonicalize, DateTimeFormat, DateTimeFormatError, DateTimeFormatOptions,
-    DateTimeRangePartSource, DateTimeStyle, DateTimeWidth,
+    DateTimeRangePart, DateTimeRangePartSource, DateTimeStyle, DateTimeWidth,
 };
 
 #[test]
@@ -228,4 +228,127 @@ fn collapses_ranges_in_field_order_and_repeats_cjk_endpoints() {
         .format_range(1_705_319_200_000.0, 1_705_322_800_000.0)
         .unwrap()
         .ends_with("EST"));
+}
+
+#[test]
+fn range_parts_keep_fractional_second_boundaries_and_accept_reverse_order() {
+    let format = DateTimeFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        DateTimeFormatOptions {
+            minute: Some(DateTimeWidth::Numeric),
+            second: Some(DateTimeWidth::Numeric),
+            fractional_second_digits: Some(1),
+            time_zone: Some("UTC".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        format.format_to_parts(0.0).unwrap(),
+        vec![
+            blueice_ecma402::DateTimePart {
+                kind: "minute".into(),
+                value: "00".into(),
+            },
+            blueice_ecma402::DateTimePart {
+                kind: "literal".into(),
+                value: ":".into(),
+            },
+            blueice_ecma402::DateTimePart {
+                kind: "second".into(),
+                value: "00".into(),
+            },
+            blueice_ecma402::DateTimePart {
+                kind: "literal".into(),
+                value: ".".into(),
+            },
+            blueice_ecma402::DateTimePart {
+                kind: "fractionalSecond".into(),
+                value: "0".into(),
+            },
+        ]
+    );
+    assert_eq!(
+        format.format_range_to_parts(0.0, 300.0).unwrap(),
+        vec![
+            DateTimeRangePart {
+                kind: "minute".into(),
+                value: "00".into(),
+                source: DateTimeRangePartSource::StartRange,
+            },
+            DateTimeRangePart {
+                kind: "literal".into(),
+                value: ":".into(),
+                source: DateTimeRangePartSource::StartRange,
+            },
+            DateTimeRangePart {
+                kind: "second".into(),
+                value: "00".into(),
+                source: DateTimeRangePartSource::StartRange,
+            },
+            DateTimeRangePart {
+                kind: "literal".into(),
+                value: ".".into(),
+                source: DateTimeRangePartSource::StartRange,
+            },
+            DateTimeRangePart {
+                kind: "fractionalSecond".into(),
+                value: "0".into(),
+                source: DateTimeRangePartSource::StartRange,
+            },
+            DateTimeRangePart {
+                kind: "literal".into(),
+                value: "\u{2009}–\u{2009}".into(),
+                source: DateTimeRangePartSource::Shared,
+            },
+            DateTimeRangePart {
+                kind: "minute".into(),
+                value: "00".into(),
+                source: DateTimeRangePartSource::EndRange,
+            },
+            DateTimeRangePart {
+                kind: "literal".into(),
+                value: ":".into(),
+                source: DateTimeRangePartSource::EndRange,
+            },
+            DateTimeRangePart {
+                kind: "second".into(),
+                value: "00".into(),
+                source: DateTimeRangePartSource::EndRange,
+            },
+            DateTimeRangePart {
+                kind: "literal".into(),
+                value: ".".into(),
+                source: DateTimeRangePartSource::EndRange,
+            },
+            DateTimeRangePart {
+                kind: "fractionalSecond".into(),
+                value: "3".into(),
+                source: DateTimeRangePartSource::EndRange,
+            },
+        ]
+    );
+    let experimental = DateTimeFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        DateTimeFormatOptions {
+            use_experimental_icu4x_range_formatter: true,
+            minute: Some(DateTimeWidth::Numeric),
+            second: Some(DateTimeWidth::Numeric),
+            fractional_second_digits: Some(1),
+            time_zone: Some("UTC".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        experimental.format_range_to_parts(0.0, 300.0).unwrap(),
+        format.format_range_to_parts(0.0, 300.0).unwrap()
+    );
+    assert!(format.format_range_to_parts(300.0, 0.0).is_ok());
+    assert!(format
+        .format_range_to_parts(0.0, 0.9)
+        .unwrap()
+        .iter()
+        .all(|part| part.source == DateTimeRangePartSource::Shared));
 }

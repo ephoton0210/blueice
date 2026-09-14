@@ -9,10 +9,10 @@ python3 -m venv /tmp/bluejs-conformance-venv
 /tmp/bluejs-conformance-venv/bin/pip install -r backend/bluejs/test262/requirements.txt
 cargo build -p blueice-bluejs --bins --offline
 /tmp/bluejs-conformance-venv/bin/python -m unittest discover -s backend/bluejs/test262 -v
-/tmp/bluejs-conformance-venv/bin/python backend/bluejs/test262/run.py --fetch
+/tmp/bluejs-conformance-venv/bin/python backend/bluejs/test262/run.py --fetch --corpus /tmp/blueice-test262-72faf8ec
 ```
 
-Use `--fetch` only when the corpus destination does not exist; it verifies the archive and complete file manifest against `snapshot.json`. Subsequent runs omit it. Every run checks all 56,778 archive files, rejects additional test files, and records executable and runner hashes. The archive contains 53,683 JavaScript resources: 53,404 test files and 279 `_FIXTURE` resources. The snapshot selection is time based, not an assertion that every proposal belongs to ECMA-262 edition 17.
+Use `--fetch` only when the corpus destination does not exist; it verifies the archive and complete file manifest against `snapshot.json`. It then starts the requested inventory. Subsequent runs omit `--fetch` but retain the same `--corpus` path. If a pre-existing corpus was fetched for an older snapshot, do not replace or edit it: fetch the current snapshot into a new directory, as above. Every run checks all 56,979 archive files, rejects additional test files, and records executable and runner hashes. The archive contains 54,026 JavaScript resources: 53,582 test files and 294 `_FIXTURE` resources. The snapshot selection is time based, not an assertion that every proposal belongs to ECMA-262 edition 17.
 
 Outputs are `target/test262/results.jsonl` (one record per test/mode, source hash, features, expected and actual phase/type/status) and `summary.json` (counts and feature/group breakdown). `--filter intl402/Collator` runs a clearly labelled partial inventory; a filter that selects no test files is a configuration error. `--jobs` defaults to 8, `--timeout` to 2 seconds, and `--instruction-budget` to 100,000 VM dispatches per mode. Every five seconds the runner reports completed files, result counts, and each active `path [mode, elapsed]`; use `--progress-interval 0` for non-interactive output or a different positive interval for more or less detail. Exit 0 requires every scheduled mode to pass; exit 1 means non-passing cases and exit 2 indicates a configuration/argument error. Unexpected Python errors terminate with a traceback and must not be treated as a completed report.
 

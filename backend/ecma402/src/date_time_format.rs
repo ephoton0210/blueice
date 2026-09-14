@@ -250,14 +250,13 @@ impl DateTimeFormat {
         start: f64,
         end: f64,
     ) -> Result<Vec<DateTimeRangePart>, DateTimeFormatError> {
-        if start > end {
-            return Err(DateTimeFormatError::InvalidTime);
-        }
         // ICU4X's DateRangeFormatter accepts date/time input but no external
-        // IANA-zone display data. Preserve the existing zone-name behavior
-        // until that formatter can receive BlueIce's versioned TZDB output.
+        // IANA-zone display data. Its current interval skeleton also emits a
+        // misplaced end-range literal for fractional seconds. Preserve the
+        // compatibility path until those inputs have correct source spans.
         if !self.options.use_experimental_icu4x_range_formatter
             || self.effective_time_zone_name().is_some()
+            || self.options.fractional_second_digits.is_some()
         {
             return self.format_range_with_zone_name(start, end);
         }
@@ -297,7 +296,10 @@ impl DateTimeFormat {
         formatted
             .write_to_parts_with_source(&mut writer)
             .map_err(|_| DateTimeFormatError::Formatter)?;
-        let mut parts = self.filter_unrequested_range_parts(writer.into_range_parts());
+        let mut parts = self.filter_unrequested_range_parts(split_range_fractional_seconds(
+            writer.into_range_parts(),
+            self.options.fractional_second_digits,
+        ));
 
         // ICU4X source annotations identify the interval-pattern span that
         // wrote a part. ECMA-402 additionally calls equal endpoint fields
@@ -365,7 +367,10 @@ impl DateTimeFormat {
         formatted
             .write_to_parts(&mut writer)
             .map_err(|_| DateTimeFormatError::Formatter)?;
-        let mut parts = self.filter_unrequested_parts(writer.into_parts());
+        let mut parts = self.filter_unrequested_parts(split_fractional_seconds(
+            writer.into_parts(),
+            self.options.fractional_second_digits,
+        ));
         if let Some(style) = self.effective_time_zone_name() {
             parts.push(DateTimePart {
                 kind: "literal".into(),
@@ -414,7 +419,9 @@ impl DateTimeFormat {
         let day = self.options.day.is_some();
         let weekday = self.options.weekday.is_some();
         match (year, month, day, weekday) {
-            (false, false, false, false) => None,
+            (false, false, false, false) => {
+                self.uses_default_date_pattern().then_some(DateFields::YMD)
+            }
             (false, false, false, true) => Some(DateFields::E),
             (false, false, true, false) => Some(DateFields::D),
             (false, false, true, true) => Some(DateFields::DE),
@@ -453,7 +460,9 @@ impl DateTimeFormat {
     fn year_style(&self) -> Option<YearStyle> {
         if self.options.era.is_some() {
             Some(YearStyle::WithEra)
-        } else if matches!(self.options.year, Some(DateTimeWidth::Numeric)) {
+        } else if matches!(self.options.year, Some(DateTimeWidth::Numeric))
+            || self.uses_default_date_pattern()
+        {
             Some(YearStyle::Full)
         } else {
             None
@@ -484,10 +493,7 @@ impl DateTimeFormat {
     }
 
     fn shows_part(&self, kind: &str) -> bool {
-        let default_date = self.options.date_style.is_none()
-            && self.options.time_style.is_none()
-            && self.date_fields().is_none()
-            && self.time_precision().is_none();
+        let default_date = self.uses_default_date_pattern();
         match kind {
             "weekday" => {
                 self.options.date_style == Some(DateTimeStyle::Full)
@@ -596,7 +602,21 @@ impl DateTimeFormat {
         }
 
         let range_format = self.range_format();
-        if !range_format.collapse || has_different_year(&start, &end) {
+        if !range_format.collapse
+            || has_different_year(&start, &end)
+            // ECMA-402 range patterns for a fractional-second difference
+            // render both complete time patterns. Collapsing their common
+            // minute or second prefix loses both text and `source` ownership.
+            || self.options.fractional_second_digits.is_some()
+            // The available English time-only interval patterns repeat both
+            // endpoints when a displayed time field differs. Prefix-based
+            // collapsing would incorrectly mark the repeated prefix shared.
+            || (self.date_fields().is_none() && self.time_precision().is_some())
+            // The default en-US numeric-date pattern has a default range
+            // pattern that repeats complete endpoints. Do not infer sharing
+            // merely from equal textual prefixes.
+            || self.uses_default_date_pattern()
+        {
             return Ok(join_range_parts(&start, &end, range_format.separator));
         }
 
@@ -639,7 +659,26 @@ impl DateTimeFormat {
         }
     }
 
+    fn uses_default_date_pattern(&self) -> bool {
+        self.options.date_style.is_none()
+            && self.options.time_style.is_none()
+            && self.options.weekday.is_none()
+            && self.options.era.is_none()
+            && self.options.year.is_none()
+            && self.options.month.is_none()
+            && self.options.day.is_none()
+            && self.options.day_period.is_none()
+            && self.options.hour.is_none()
+            && self.options.minute.is_none()
+            && self.options.second.is_none()
+            && self.options.fractional_second_digits.is_none()
+            && self.options.time_zone_name.is_none()
+    }
+
     fn length(&self) -> Length {
+        if self.uses_default_date_pattern() {
+            return Length::Short;
+        }
         match self.options.date_style.or(self.options.time_style) {
             Some(DateTimeStyle::Full | DateTimeStyle::Long) => Length::Long,
             Some(DateTimeStyle::Short) => Length::Short,
@@ -841,6 +880,95 @@ fn mark_literals_shared_with_adjacent_shared_fields(parts: &mut [DateTimeRangePa
             parts[index].source = DateTimeRangePartSource::Shared;
         }
     }
+}
+
+/// ICU4X currently emits a fractional second as part of the `second` field.
+/// ECMA-402 exposes the decimal marker and fractional digits as independent
+/// `formatToParts` fields, so split that ICU field before range ownership is
+/// assigned or unrequested fields are filtered.
+fn fractional_second_segments(value: &str, digits: Option<u8>) -> Option<(&str, &str, &str)> {
+    let digits = usize::from(digits?);
+    let positions = value
+        .char_indices()
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    if positions.len() <= digits {
+        return None;
+    }
+    let fractional_start = positions[positions.len() - digits];
+    let separator_start = positions[positions.len() - digits - 1];
+    let second = &value[..separator_start];
+    let separator = &value[separator_start..fractional_start];
+    let fractional = &value[fractional_start..];
+    (!second.is_empty()
+        && !separator.is_empty()
+        && separator.chars().all(|character| !character.is_numeric())
+        && fractional.chars().all(char::is_numeric))
+    .then_some((second, separator, fractional))
+}
+
+fn split_fractional_seconds(parts: Vec<DateTimePart>, digits: Option<u8>) -> Vec<DateTimePart> {
+    let mut result = Vec::with_capacity(parts.len() + usize::from(digits.unwrap_or(0)) * 2);
+    for part in parts {
+        if part.kind == "second" {
+            if let Some((second, separator, fractional)) =
+                fractional_second_segments(&part.value, digits)
+            {
+                result.extend([
+                    DateTimePart {
+                        kind: "second".into(),
+                        value: second.into(),
+                    },
+                    DateTimePart {
+                        kind: "literal".into(),
+                        value: separator.into(),
+                    },
+                    DateTimePart {
+                        kind: "fractionalSecond".into(),
+                        value: fractional.into(),
+                    },
+                ]);
+                continue;
+            }
+        }
+        result.push(part);
+    }
+    result
+}
+
+fn split_range_fractional_seconds(
+    parts: Vec<DateTimeRangePart>,
+    digits: Option<u8>,
+) -> Vec<DateTimeRangePart> {
+    let mut result = Vec::with_capacity(parts.len() + usize::from(digits.unwrap_or(0)) * 2);
+    for part in parts {
+        if part.kind == "second" {
+            if let Some((second, separator, fractional)) =
+                fractional_second_segments(&part.value, digits)
+            {
+                result.extend([
+                    DateTimeRangePart {
+                        kind: "second".into(),
+                        value: second.into(),
+                        source: part.source,
+                    },
+                    DateTimeRangePart {
+                        kind: "literal".into(),
+                        value: separator.into(),
+                        source: part.source,
+                    },
+                    DateTimeRangePart {
+                        kind: "fractionalSecond".into(),
+                        value: fractional.into(),
+                        source: part.source,
+                    },
+                ]);
+                continue;
+            }
+        }
+        result.push(part);
+    }
+    result
 }
 
 #[derive(Default)]

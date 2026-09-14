@@ -2253,14 +2253,15 @@ impl Vm {
         start: &Value,
         end: &Value,
     ) -> Result<(f64, f64), RuntimeError> {
-        let start = self.date_time_value(start)?;
-        let end = self.date_time_value(end)?;
-        if start > end {
-            return Err(RuntimeError::RangeError(
-                "date-time range start is after end".into(),
+        // Unlike `format` and `formatToParts`, the range methods require both
+        // operands. Check that before ToNumber so a missing endpoint takes
+        // precedence over observable conversion of the other argument.
+        if *start == Value::Undefined || *end == Value::Undefined {
+            return Err(RuntimeError::TypeError(
+                "date-time range endpoints must not be undefined".into(),
             ));
         }
-        Ok((start, end))
+        Ok((self.coerce_number(start)?, self.coerce_number(end)?))
     }
 
     pub(super) fn date_time_format_format_range(
