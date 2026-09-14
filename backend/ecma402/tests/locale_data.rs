@@ -94,7 +94,7 @@ fn provider_exposes_per_service_capabilities_without_negotiating_locales() {
         IntlService::DurationFormat,
         canonicalize("en-GB").unwrap().locale()
     ));
-    assert!(!provider.supports_service_locale(
+    assert!(provider.supports_service_locale(
         IntlService::DurationFormat,
         canonicalize("fr").unwrap().locale()
     ));

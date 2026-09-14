@@ -5,8 +5,8 @@
 //! Public, host-neutral locale negotiation coverage.
 
 use blueice_ecma402::{
-    canonicalize, negotiate_collation_locale, resolve_collation_locale,
-    supported_collation_locales, LocaleMatcher,
+    canonicalize, negotiate_collation_locale, resolve_collation_locale, resolve_locale,
+    supported_collation_locales, supported_locales, IntlService, LocaleMatcher,
 };
 
 #[test]
@@ -71,4 +71,50 @@ fn best_fit_uses_the_advertised_lookup_policy() {
             .collect::<Vec<_>>(),
         ["sv-SE"]
     );
+}
+
+#[test]
+fn shared_resolver_carries_service_data_request_order_and_extensions() {
+    let requested = [
+        canonicalize("zz-u-nu-arab").unwrap(),
+        canonicalize("es-MX-u-nu-arab").unwrap(),
+        canonicalize("en").unwrap(),
+    ];
+
+    for service in [
+        IntlService::Collator,
+        IntlService::DateTimeFormat,
+        IntlService::DisplayNames,
+        IntlService::DurationFormat,
+        IntlService::ListFormat,
+        IntlService::NumberFormat,
+        IntlService::PluralRules,
+        IntlService::RelativeTimeFormat,
+        IntlService::Segmenter,
+    ] {
+        let resolution = resolve_locale(service, &requested, LocaleMatcher::BestFit);
+        assert_eq!(resolution.service(), service);
+        assert_eq!(resolution.matcher(), LocaleMatcher::BestFit);
+        assert_eq!(resolution.selected().as_str(), "es-MX-u-nu-arab");
+        assert!(!resolution.used_default());
+        assert_eq!(
+            resolution
+                .candidates()
+                .iter()
+                .map(|candidate| (candidate.requested().as_str(), candidate.is_supported()))
+                .collect::<Vec<_>>(),
+            [
+                ("zz-u-nu-arab", false),
+                ("es-MX-u-nu-arab", true),
+                ("en", true),
+            ]
+        );
+        assert_eq!(
+            supported_locales(service, &requested, LocaleMatcher::Lookup)
+                .iter()
+                .map(|locale| locale.as_str())
+                .collect::<Vec<_>>(),
+            ["es-MX-u-nu-arab", "en"]
+        );
+    }
 }

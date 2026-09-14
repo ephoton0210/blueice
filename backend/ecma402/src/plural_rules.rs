@@ -123,26 +123,19 @@ pub fn negotiate_plural_rules_locale(
     requested: &[CanonicalLocale],
     matcher: LocaleMatcher,
 ) -> PluralRulesLocaleNegotiation {
-    let candidates = requested
-        .iter()
-        .cloned()
-        .map(|requested| PluralRulesLocaleCandidate {
-            supported: locale_data_provider()
-                .supports_service_locale(IntlService::PluralRules, requested.locale()),
-            requested,
-        })
-        .collect::<Vec<_>>();
-    let selected = candidates
-        .iter()
-        .find(|candidate| candidate.supported)
-        .map(|candidate| candidate.requested.clone());
-    let used_default = selected.is_none();
+    let resolution = resolve_locale(IntlService::PluralRules, requested, matcher);
     PluralRulesLocaleNegotiation {
-        matcher,
-        candidates,
-        selected: selected
-            .unwrap_or_else(|| canonicalize("en-US").expect("the default locale is valid")),
-        used_default,
+        matcher: resolution.matcher(),
+        candidates: resolution
+            .candidates()
+            .iter()
+            .map(|candidate| PluralRulesLocaleCandidate {
+                requested: candidate.requested().clone(),
+                supported: candidate.is_supported(),
+            })
+            .collect(),
+        selected: resolution.selected().clone(),
+        used_default: resolution.used_default(),
     }
 }
 
@@ -161,12 +154,7 @@ pub fn supported_plural_rules_locales(
     requested: &[CanonicalLocale],
     matcher: LocaleMatcher,
 ) -> Vec<CanonicalLocale> {
-    negotiate_plural_rules_locale(requested, matcher)
-        .candidates
-        .into_iter()
-        .filter(|candidate| candidate.supported)
-        .map(|candidate| candidate.requested)
-        .collect()
+    supported_locales(IntlService::PluralRules, requested, matcher)
 }
 
 /// Host-neutral options for constructing an `Intl.PluralRules` service.

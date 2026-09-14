@@ -605,6 +605,128 @@ pub enum LocaleMatcher {
     BestFit,
 }
 
+/// One requested locale considered by the shared ECMA-402 locale resolver.
+///
+/// `requested` deliberately retains its canonical Unicode extensions. The
+/// service-specific `ResolveLocale` key processing that follows this common
+/// step decides which of those extensions remain observable in
+/// `resolvedOptions().locale`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocaleResolutionCandidate {
+    requested: CanonicalLocale,
+    supported: bool,
+}
+
+impl LocaleResolutionCandidate {
+    /// Returns the canonical locale supplied by the embedding host.
+    pub fn requested(&self) -> &CanonicalLocale {
+        &self.requested
+    }
+
+    /// Returns whether this service's provider data can satisfy the request.
+    pub fn is_supported(&self) -> bool {
+        self.supported
+    }
+}
+
+/// The shared, service-aware result of ECMA-402 locale resolution.
+///
+/// The locale-data provider owns the available-locale registry. This type
+/// owns request ordering, fallback to the stable default, and the common
+/// lookup/best-fit boundary so services cannot accidentally grow independent
+/// locale matchers.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocaleResolution {
+    service: IntlService,
+    matcher: LocaleMatcher,
+    candidates: Vec<LocaleResolutionCandidate>,
+    selected: CanonicalLocale,
+    used_default: bool,
+}
+
+impl LocaleResolution {
+    /// Returns the service whose data availability was considered.
+    pub fn service(&self) -> IntlService {
+        self.service
+    }
+
+    /// Returns the requested locale matching policy.
+    pub fn matcher(&self) -> LocaleMatcher {
+        self.matcher
+    }
+
+    /// Returns every request and its service-data availability result.
+    pub fn candidates(&self) -> &[LocaleResolutionCandidate] {
+        &self.candidates
+    }
+
+    /// Returns the selected canonical locale before service-key processing.
+    pub fn selected(&self) -> &CanonicalLocale {
+        &self.selected
+    }
+
+    /// Whether no requested locale matched and the stable default was used.
+    pub fn used_default(&self) -> bool {
+        self.used_default
+    }
+}
+
+/// Performs the common ECMA-402 locale matching step for an Intl service.
+///
+/// The provider's available-locale data is language-parent-backed: a request
+/// such as `es-MX-u-nu-arab` therefore lookup-matches the same `es` data that
+/// serves `es`. We retain the canonical request rather than serializing the
+/// parent tag here, because ECMA-402 resolves Unicode extension keys only
+/// after matching and each service must retain accepted keys in its visible
+/// locale. The pinned provider currently has no distinct best-fit-only
+/// mappings, so both algorithms share this deterministic available-data
+/// result; keeping the matcher here makes a future CLDR distance table one
+/// provider change rather than a per-service fork.
+pub fn resolve_locale(
+    service: IntlService,
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> LocaleResolution {
+    let provider = locale_data_provider();
+    let candidates = requested
+        .iter()
+        .cloned()
+        .map(|requested| LocaleResolutionCandidate {
+            supported: provider.supports_service_locale(service, requested.locale()),
+            requested,
+        })
+        .collect::<Vec<_>>();
+    let selected = candidates
+        .iter()
+        .find(|candidate| candidate.supported)
+        .map(|candidate| candidate.requested.clone());
+    let used_default = selected.is_none();
+    LocaleResolution {
+        service,
+        matcher,
+        candidates,
+        selected: selected
+            .unwrap_or_else(|| canonicalize("en-US").expect("the default locale is valid")),
+        used_default,
+    }
+}
+
+/// Returns the requested locale spellings supported by one service.
+///
+/// Unlike [`resolve_locale`], this never includes the fallback locale.
+pub fn supported_locales(
+    service: IntlService,
+    requested: &[CanonicalLocale],
+    matcher: LocaleMatcher,
+) -> Vec<CanonicalLocale> {
+    resolve_locale(service, requested, matcher)
+        .candidates
+        .into_iter()
+        .filter(|candidate| candidate.supported)
+        .map(|candidate| candidate.requested)
+        .collect()
+}
+
 /// One canonical locale considered during collation negotiation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CollationLocaleCandidate {
@@ -669,25 +791,19 @@ pub fn negotiate_collation_locale(
     requested: &[CanonicalLocale],
     matcher: LocaleMatcher,
 ) -> CollationLocaleNegotiation {
-    let candidates = requested
-        .iter()
-        .cloned()
-        .map(|requested| CollationLocaleCandidate {
-            supported: supports_collation_locale(requested.locale()),
-            requested,
-        })
-        .collect::<Vec<_>>();
-    let selected = candidates
-        .iter()
-        .find(|candidate| candidate.supported)
-        .map(|candidate| candidate.requested.clone());
-    let used_default = selected.is_none();
+    let resolution = resolve_locale(IntlService::Collator, requested, matcher);
     CollationLocaleNegotiation {
-        matcher,
-        candidates,
-        selected: selected
-            .unwrap_or_else(|| canonicalize("en-US").expect("the default locale is valid")),
-        used_default,
+        matcher: resolution.matcher,
+        candidates: resolution
+            .candidates
+            .into_iter()
+            .map(|candidate| CollationLocaleCandidate {
+                requested: candidate.requested,
+                supported: candidate.supported,
+            })
+            .collect(),
+        selected: resolution.selected,
+        used_default: resolution.used_default,
     }
 }
 
@@ -715,12 +831,7 @@ pub fn supported_collation_locales(
     requested: &[CanonicalLocale],
     matcher: LocaleMatcher,
 ) -> Vec<CanonicalLocale> {
-    negotiate_collation_locale(requested, matcher)
-        .candidates
-        .into_iter()
-        .filter(|candidate| candidate.supported)
-        .map(|candidate| candidate.requested)
-        .collect()
+    supported_locales(IntlService::Collator, requested, matcher)
 }
 
 #[cfg(test)]

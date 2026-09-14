@@ -642,7 +642,13 @@ impl DateTimeFormat {
         mut options: DateTimeFormatOptions,
     ) -> Result<Self, DateTimeFormatError> {
         resolve_basic_semantic_format(&mut options);
-        let selected_locale = crate::resolve_collation_locale(requested, options.locale_matcher);
+        let selected_locale = crate::resolve_locale(
+            crate::IntlService::DateTimeFormat,
+            requested,
+            options.locale_matcher,
+        )
+        .selected()
+        .clone();
         let requested_time_zone = options.time_zone.clone().unwrap_or_else(|| "UTC".into());
         let (time_zone, fixed_offset_seconds) = match parse_time_zone_offset(&requested_time_zone) {
             Some((identifier, seconds)) => (identifier, Some(seconds)),

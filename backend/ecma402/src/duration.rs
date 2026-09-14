@@ -376,7 +376,7 @@ impl DurationFormat {
         requested: &[crate::CanonicalLocale],
         options: DurationFormatOptions,
     ) -> Result<Self, DurationFormatError> {
-        let requested = duration_supported_requests(requested);
+        let requested = duration_supported_requests(requested, options.locale_matcher);
         let list_format = crate::ListFormat::try_new(
             &requested,
             crate::ListFormatOptions {
@@ -792,29 +792,20 @@ impl DurationFormat {
 /// Returns requested locales currently backed by duration unit-pattern data.
 pub fn supported_duration_format_locales(
     requested: &[crate::CanonicalLocale],
-    _matcher: crate::LocaleMatcher,
+    matcher: crate::LocaleMatcher,
 ) -> Vec<crate::CanonicalLocale> {
-    requested
-        .iter()
-        .filter(|locale| duration_locale_is_supported(locale))
-        .cloned()
-        .collect()
+    crate::supported_locales(crate::IntlService::DurationFormat, requested, matcher)
 }
 
 fn duration_supported_requests(
     requested: &[crate::CanonicalLocale],
+    matcher: crate::LocaleMatcher,
 ) -> Vec<crate::CanonicalLocale> {
-    let supported = supported_duration_format_locales(requested, crate::LocaleMatcher::default());
-    if supported.is_empty() {
-        vec![crate::canonicalize("en-US").expect("the DurationFormat fallback is valid")]
-    } else {
-        supported
-    }
-}
-
-fn duration_locale_is_supported(locale: &crate::CanonicalLocale) -> bool {
-    crate::locale_data_provider()
-        .supports_service_locale(crate::IntlService::DurationFormat, locale.locale())
+    vec![
+        crate::resolve_locale(crate::IntlService::DurationFormat, requested, matcher)
+            .selected()
+            .clone(),
+    ]
 }
 
 fn duration_list_style(style: DurationStyle) -> crate::ListStyle {

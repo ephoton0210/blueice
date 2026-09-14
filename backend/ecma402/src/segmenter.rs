@@ -78,25 +78,19 @@ pub fn negotiate_segmenter_locale(
     requested: &[CanonicalLocale],
     matcher: LocaleMatcher,
 ) -> SegmenterLocaleNegotiation {
-    let candidates = requested
-        .iter()
-        .cloned()
-        .map(|requested| SegmenterLocaleCandidate {
-            supported: supports_segmenter_locale(requested.locale()),
-            requested,
-        })
-        .collect::<Vec<_>>();
-    let selected = candidates
-        .iter()
-        .find(|candidate| candidate.supported)
-        .map(|candidate| candidate.requested.clone());
-    let used_default = selected.is_none();
+    let resolution = resolve_locale(IntlService::Segmenter, requested, matcher);
     SegmenterLocaleNegotiation {
-        matcher,
-        candidates,
-        selected: selected
-            .unwrap_or_else(|| canonicalize("en-US").expect("the default locale is valid")),
-        used_default,
+        matcher: resolution.matcher(),
+        candidates: resolution
+            .candidates()
+            .iter()
+            .map(|candidate| SegmenterLocaleCandidate {
+                requested: candidate.requested().clone(),
+                supported: candidate.is_supported(),
+            })
+            .collect(),
+        selected: resolution.selected().clone(),
+        used_default: resolution.used_default(),
     }
 }
 
@@ -115,12 +109,7 @@ pub fn supported_segmenter_locales(
     requested: &[CanonicalLocale],
     matcher: LocaleMatcher,
 ) -> Vec<CanonicalLocale> {
-    negotiate_segmenter_locale(requested, matcher)
-        .candidates
-        .into_iter()
-        .filter(|candidate| candidate.supported)
-        .map(|candidate| candidate.requested)
-        .collect()
+    supported_locales(IntlService::Segmenter, requested, matcher)
 }
 
 /// Host-neutral options for constructing an `Intl.Segmenter` service.

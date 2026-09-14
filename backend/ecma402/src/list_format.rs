@@ -95,26 +95,19 @@ pub fn negotiate_list_format_locale(
     requested: &[CanonicalLocale],
     matcher: LocaleMatcher,
 ) -> ListFormatLocaleNegotiation {
-    let candidates = requested
-        .iter()
-        .cloned()
-        .map(|requested| ListFormatLocaleCandidate {
-            supported: locale_data_provider()
-                .supports_service_locale(IntlService::ListFormat, requested.locale()),
-            requested,
-        })
-        .collect::<Vec<_>>();
-    let selected = candidates
-        .iter()
-        .find(|candidate| candidate.supported)
-        .map(|candidate| candidate.requested.clone());
-    let used_default = selected.is_none();
+    let resolution = resolve_locale(IntlService::ListFormat, requested, matcher);
     ListFormatLocaleNegotiation {
-        matcher,
-        candidates,
-        selected: selected
-            .unwrap_or_else(|| canonicalize("en-US").expect("the default locale is valid")),
-        used_default,
+        matcher: resolution.matcher(),
+        candidates: resolution
+            .candidates()
+            .iter()
+            .map(|candidate| ListFormatLocaleCandidate {
+                requested: candidate.requested().clone(),
+                supported: candidate.is_supported(),
+            })
+            .collect(),
+        selected: resolution.selected().clone(),
+        used_default: resolution.used_default(),
     }
 }
 
@@ -133,12 +126,7 @@ pub fn supported_list_format_locales(
     requested: &[CanonicalLocale],
     matcher: LocaleMatcher,
 ) -> Vec<CanonicalLocale> {
-    negotiate_list_format_locale(requested, matcher)
-        .candidates
-        .into_iter()
-        .filter(|candidate| candidate.supported)
-        .map(|candidate| candidate.requested)
-        .collect()
+    supported_locales(IntlService::ListFormat, requested, matcher)
 }
 
 /// Host-neutral options for constructing an `Intl.ListFormat` service.

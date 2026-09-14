@@ -113,25 +113,19 @@ pub fn supports_display_names_locale(locale: &IcuLocale) -> bool {
 /// resolution is also the construction-time data-availability invariant.
 pub fn resolve_display_names_locale(
     requested: &[CanonicalLocale],
-    _matcher: LocaleMatcher,
+    matcher: LocaleMatcher,
 ) -> CanonicalLocale {
-    requested
-        .iter()
-        .find(|locale| supports_display_names_locale(locale.locale()))
-        .cloned()
-        .unwrap_or_else(|| canonicalize("en-US").expect("the default locale is valid"))
+    resolve_locale(IntlService::DisplayNames, requested, matcher)
+        .selected()
+        .clone()
 }
 
 /// Returns requested locales supported by the bundled display-name service.
 pub fn supported_display_names_locales(
     requested: &[CanonicalLocale],
-    _matcher: LocaleMatcher,
+    matcher: LocaleMatcher,
 ) -> Vec<CanonicalLocale> {
-    requested
-        .iter()
-        .filter(|locale| supports_display_names_locale(locale.locale()))
-        .cloned()
-        .collect()
+    supported_locales(IntlService::DisplayNames, requested, matcher)
 }
 
 /// A host-neutral `Intl.DisplayNames` service.

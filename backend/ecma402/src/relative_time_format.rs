@@ -163,23 +163,18 @@ pub fn supports_relative_time_format_locale(locale: &IcuLocale) -> bool {
 /// Returns requested locales supported by the bundled relative-time service.
 pub fn supported_relative_time_format_locales(
     requested: &[CanonicalLocale],
-    _matcher: LocaleMatcher,
+    matcher: LocaleMatcher,
 ) -> Vec<CanonicalLocale> {
-    requested
-        .iter()
-        .filter(|locale| supports_relative_time_format_locale(locale.locale()))
-        .cloned()
-        .collect()
+    supported_locales(IntlService::RelativeTimeFormat, requested, matcher)
 }
 
 fn resolve_relative_time_format_locale(
     requested: &[CanonicalLocale],
     matcher: LocaleMatcher,
 ) -> CanonicalLocale {
-    supported_relative_time_format_locales(requested, matcher)
-        .into_iter()
-        .next()
-        .unwrap_or_else(|| canonicalize("en-US").expect("the default locale is valid"))
+    resolve_locale(IntlService::RelativeTimeFormat, requested, matcher)
+        .selected()
+        .clone()
 }
 
 /// A host-neutral `Intl.RelativeTimeFormat` service.

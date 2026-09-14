@@ -2266,8 +2266,11 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let locales = self.canonical_locales(native::argument(args, 0))?;
         let options = self.intl_options(native::argument(args, 1))?;
-        let locales =
-            blueice_ecma402::supported_collation_locales(&locales, self.locale_matcher(&options)?);
+        let locales = blueice_ecma402::supported_locales(
+            blueice_ecma402::IntlService::DateTimeFormat,
+            &locales,
+            self.locale_matcher(&options)?,
+        );
         self.array_from(
             locales
                 .into_iter()
