@@ -256,10 +256,11 @@ enum InterpreterExit {
     },
 }
 
-// Ordinary calls still nest the Rust interpreter. Keep this comfortably below
-// the default test-thread stack so recursive JavaScript reports a catchable
-// RangeError instead of aborting the embedding process.
-const MAX_RECURSIVE_CALL_DEPTH: usize = 16;
+// Ordinary calls still nest the Rust interpreter. The public 32-frame bound
+// makes recursive JavaScript report a catchable RangeError on the normal
+// process stack; an embedding that executes BlueJS on a deliberately smaller
+// worker stack must provision enough host stack for that documented bound.
+const MAX_RECURSIVE_CALL_DEPTH: usize = 32;
 
 /// A realm-level declarative or object-backed global binding. The cell is
 /// permanently rooted for the realm lifetime so script closures and later

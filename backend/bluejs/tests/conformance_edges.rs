@@ -65,15 +65,55 @@ fn object_pattern_shorthand_applies_binding_identifier_early_errors() {
 
 #[test]
 fn recursive_call_depth_stays_a_catchable_resource_limit() {
-    assert_eq!(
-        evaluate("function depth(n){return n===0?0:1+depth(n-1);}depth(12)===12"),
-        Value::Bool(true)
-    );
-    let code = compile(&parse("function depth(n){return n===0?0:1+depth(n-1);}depth(24)").unwrap())
+    // Each interpreted call currently occupies a substantial host frame. Run
+    // this exact-limit regression on the same 8 MiB stack a normal process
+    // receives, rather than Rust's smaller default test-worker stack.
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            assert_eq!(
+                evaluate("function depth(n){return n===0?0:1+depth(n-1);}depth(31)===31"),
+                Value::Bool(true)
+            );
+            let code = compile(
+                &parse("function depth(n){return n===0?0:1+depth(n-1);}depth(32)").unwrap(),
+            )
+            .unwrap();
+            assert!(matches!(
+                Vm::default().execute(&code),
+                Err(RuntimeError::RangeError(_))
+            ));
+        })
+        .unwrap()
+        .join()
         .unwrap();
+}
+
+#[test]
+fn test262_native_deep_equal_compares_part_record_arrays_without_recursion() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let matching = compile(
+        &parse(
+            "assert.deepEqual([{type:'month',value:'8',source:'startRange'}], \
+             [{type:'month',value:'8',source:'startRange'}]); true",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(vm.execute_script(&matching).unwrap(), Value::Bool(true));
+
+    let mismatch = compile(
+        &parse(
+            "assert.deepEqual([{type:'month',value:'8',source:'startRange'}], \
+             [{type:'month',value:'8',source:'endRange'}])",
+        )
+        .unwrap(),
+    )
+    .unwrap();
     assert!(matches!(
-        Vm::default().execute(&code),
-        Err(RuntimeError::RangeError(_))
+        vm.execute_script(&mismatch),
+        Err(RuntimeError::Test262(_))
     ));
 }
 

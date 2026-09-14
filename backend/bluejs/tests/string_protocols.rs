@@ -403,7 +403,12 @@ fn conversion_iteration_and_descriptor_errors() {
     ] {
         assert!(matches!(evaluate(source), Err(RuntimeError::TypeError(_))), "{source}: {:?}", evaluate(source));
     }
-    let error = evaluate("function recurse(){return recurse();} recurse()").unwrap_err();
+    let error = std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| evaluate("function recurse(){return recurse();} recurse()").unwrap_err())
+        .unwrap()
+        .join()
+        .unwrap();
     assert!(matches!(error, RuntimeError::RangeError(_)));
     assert!(evaluate("new RegExp('[')")
         .unwrap_err()
