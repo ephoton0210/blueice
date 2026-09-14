@@ -350,6 +350,7 @@ impl Heap {
                 }
                 ObjectKind::Collator { data, .. } => data.bytes(),
                 ObjectKind::NumberFormat { data, .. } => data.bytes(),
+                ObjectKind::DateTimeFormat { data, .. } => data.bytes(),
                 ObjectKind::DisplayNames(data) => data.bytes(),
                 ObjectKind::DurationFormat(data) => data.bytes(),
                 ObjectKind::ListFormat(data) => data.bytes(),

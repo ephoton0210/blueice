@@ -102,9 +102,8 @@ impl Vm {
             )?;
             self.globals.insert("%Intl.Collator%".into(), constructor);
             // NumberFormat and DateTimeFormat are mandatory service
-            // constructors. NumberFormat delegates its finite decimal slice to
-            // blueice-ecma402; DateTimeFormat retains its allocation-only
-            // boundary until its own host-neutral formatter is complete.
+            // constructors. Their locale data and formatting algorithms live
+            // in the host-neutral blueice-ecma402 crate.
             for (name, service) in [
                 ("NumberFormat", native::IntlService::Number),
                 ("DateTimeFormat", native::IntlService::DateTime),
@@ -186,6 +185,59 @@ impl Vm {
                         )?;
                         self.globals
                             .insert("%Intl.NumberFormat%".into(), constructor);
+                    } else if service == native::IntlService::DateTime {
+                        self.define_data(
+                            prototype,
+                            JsSymbol::well_known("toStringTag"),
+                            Value::String("Intl.DateTimeFormat".into()),
+                            false,
+                            false,
+                            true,
+                        )?;
+                        self.install_native(
+                            constructor,
+                            function_prototype,
+                            "supportedLocalesOf",
+                            1,
+                            NativeFunction::DateTimeFormatSupportedLocales,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "resolvedOptions",
+                            0,
+                            NativeFunction::DateTimeFormatResolvedOptions,
+                        )?;
+                        self.install_getter(
+                            prototype,
+                            function_prototype,
+                            "format".into(),
+                            "get format",
+                            NativeFunction::DateTimeFormatFormatGetter,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "formatToParts",
+                            1,
+                            NativeFunction::DateTimeFormatFormatToParts,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "formatRange",
+                            2,
+                            NativeFunction::DateTimeFormatFormatRange,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "formatRangeToParts",
+                            2,
+                            NativeFunction::DateTimeFormatFormatRangeToParts,
+                        )?;
+                        self.globals
+                            .insert("%Intl.DateTimeFormat%".into(), constructor);
                     } else if service == native::IntlService::DisplayNames {
                         self.define_data(
                             prototype,
@@ -828,6 +880,9 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         if service == native::IntlService::Number {
             return self.create_number_format(args, construct);
+        }
+        if service == native::IntlService::DateTime {
+            return self.create_date_time_format(args, construct);
         }
         if service == native::IntlService::List {
             return self.create_list_format(args, construct);
@@ -1806,6 +1861,591 @@ impl Vm {
             self.resolve_number_format(native::argument(args, 0), native::argument(args, 1))?;
         self.with_roots(|heap| heap.alloc_number_format(data, prototype))
             .map(Value::Object)
+    }
+
+    fn date_time_width(
+        &mut self,
+        options: &Value,
+        name: &str,
+        allowed: &[&str],
+    ) -> Result<Option<blueice_ecma402::DateTimeWidth>, RuntimeError> {
+        self.string_option(options, name, allowed)?
+            .map_or(Ok(None), |value| {
+                Ok(Some(match value.as_str() {
+                    "numeric" => blueice_ecma402::DateTimeWidth::Numeric,
+                    "2-digit" => blueice_ecma402::DateTimeWidth::TwoDigit,
+                    "short" => blueice_ecma402::DateTimeWidth::Short,
+                    "long" => blueice_ecma402::DateTimeWidth::Long,
+                    "narrow" => blueice_ecma402::DateTimeWidth::Narrow,
+                    _ => unreachable!("string_option validates date-time field widths"),
+                }))
+            })
+    }
+
+    fn date_time_style(
+        &mut self,
+        options: &Value,
+        name: &str,
+    ) -> Result<Option<blueice_ecma402::DateTimeStyle>, RuntimeError> {
+        self.string_option(options, name, &["full", "long", "medium", "short"])?
+            .map_or(Ok(None), |value| {
+                Ok(Some(match value.as_str() {
+                    "full" => blueice_ecma402::DateTimeStyle::Full,
+                    "long" => blueice_ecma402::DateTimeStyle::Long,
+                    "medium" => blueice_ecma402::DateTimeStyle::Medium,
+                    "short" => blueice_ecma402::DateTimeStyle::Short,
+                    _ => unreachable!("string_option validates date-time styles"),
+                }))
+            })
+    }
+
+    fn date_time_fractional_second_digits(
+        &mut self,
+        options: &Value,
+    ) -> Result<Option<u8>, RuntimeError> {
+        let value = self.get_property(options, &"fractionalSecondDigits".into())?;
+        if value == Value::Undefined {
+            return Ok(None);
+        }
+        let value = self.coerce_number(&value)?;
+        if !value.is_finite() || value.fract() != 0.0 || !(1.0..=3.0).contains(&value) {
+            return Err(RuntimeError::RangeError(
+                "invalid fractionalSecondDigits option".into(),
+            ));
+        }
+        Ok(Some(value as u8))
+    }
+
+    fn date_time_format_options(
+        &mut self,
+        value: &Value,
+    ) -> Result<blueice_ecma402::DateTimeFormatOptions, RuntimeError> {
+        let options = self.intl_options(value)?;
+        let locale_matcher = self.locale_matcher(&options)?;
+        let calendar = self.string_option(&options, "calendar", &[])?;
+        let numbering_system = self.string_option(&options, "numberingSystem", &[])?;
+        if let Some(value) = &numbering_system {
+            if !(3..=8).contains(&value.len())
+                || !value
+                    .bytes()
+                    .all(|character| character.is_ascii_alphanumeric())
+            {
+                return Err(RuntimeError::RangeError(
+                    "invalid numberingSystem option".into(),
+                ));
+            }
+        }
+        let hour12 = self.get_property(&options, &"hour12".into())?;
+        let hour12 = if hour12 == Value::Undefined {
+            None
+        } else {
+            Some(self.to_boolean(&hour12)?)
+        };
+        let hour_cycle =
+            self.string_option(&options, "hourCycle", &["h11", "h12", "h23", "h24"])?;
+        let time_zone = self.string_option(&options, "timeZone", &[])?;
+        let weekday = self.date_time_width(&options, "weekday", &["short", "long", "narrow"])?;
+        let era = self.date_time_width(&options, "era", &["short", "long", "narrow"])?;
+        let year = self.date_time_width(&options, "year", &["numeric", "2-digit"])?;
+        let month = self.date_time_width(
+            &options,
+            "month",
+            &["numeric", "2-digit", "short", "long", "narrow"],
+        )?;
+        let day = self.date_time_width(&options, "day", &["numeric", "2-digit"])?;
+        let day_period =
+            self.date_time_width(&options, "dayPeriod", &["narrow", "short", "long"])?;
+        let hour = self.date_time_width(&options, "hour", &["numeric", "2-digit"])?;
+        let minute = self.date_time_width(&options, "minute", &["numeric", "2-digit"])?;
+        let second = self.date_time_width(&options, "second", &["numeric", "2-digit"])?;
+        let fractional_second_digits = self.date_time_fractional_second_digits(&options)?;
+        let time_zone_name = self.string_option(
+            &options,
+            "timeZoneName",
+            &[
+                "long",
+                "short",
+                "shortOffset",
+                "longOffset",
+                "shortGeneric",
+                "longGeneric",
+            ],
+        )?;
+        // `formatMatcher` has no effect on the ICU semantic skeleton, but it
+        // remains an observable option read and validated in the mandated
+        // initialization path.
+        self.string_option(&options, "formatMatcher", &["basic", "best fit"])?;
+        let date_style = self.date_time_style(&options, "dateStyle")?;
+        let time_style = self.date_time_style(&options, "timeStyle")?;
+        let has_components = weekday.is_some()
+            || era.is_some()
+            || year.is_some()
+            || month.is_some()
+            || day.is_some()
+            || day_period.is_some()
+            || hour.is_some()
+            || minute.is_some()
+            || second.is_some()
+            || fractional_second_digits.is_some()
+            || time_zone_name.is_some();
+        if (date_style.is_some() || time_style.is_some()) && has_components {
+            return Err(RuntimeError::TypeError(
+                "dateStyle and timeStyle cannot be used with date-time component options".into(),
+            ));
+        }
+        Ok(blueice_ecma402::DateTimeFormatOptions {
+            locale_matcher,
+            calendar,
+            numbering_system,
+            hour_cycle,
+            hour12,
+            time_zone,
+            weekday,
+            era,
+            year,
+            month,
+            day,
+            day_period,
+            hour,
+            minute,
+            second,
+            fractional_second_digits,
+            time_zone_name,
+            date_style,
+            time_style,
+        })
+    }
+
+    fn resolve_date_time_format(
+        &mut self,
+        locales: &Value,
+        options: &Value,
+    ) -> Result<Rc<intl::DateTimeFormat>, RuntimeError> {
+        let locales = self.canonical_locales(locales)?;
+        let options = self.date_time_format_options(options)?;
+        blueice_ecma402::DateTimeFormat::try_new(&locales, options)
+            .map(Rc::new)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+    }
+
+    pub(super) fn date_time_format_supported_locales(
+        &mut self,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let locales = self.canonical_locales(native::argument(args, 0))?;
+        let options = self.intl_options(native::argument(args, 1))?;
+        let locales =
+            blueice_ecma402::supported_collation_locales(&locales, self.locale_matcher(&options)?);
+        self.array_from(
+            locales
+                .into_iter()
+                .map(|locale| Value::String(locale.to_string().into()))
+                .collect(),
+        )
+    }
+
+    fn create_date_time_format(
+        &mut self,
+        args: &[Value],
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        self.intl_global()?;
+        let constructor = self.globals["%Intl.DateTimeFormat%"];
+        let default = self
+            .heap
+            .get(constructor, "prototype")?
+            .object_id()
+            .expect("Intl.DateTimeFormat.prototype is an object");
+        let prototype = if construct {
+            self.constructor_prototype(default)?
+        } else {
+            default
+        };
+        self.stack.push(Value::Object(prototype));
+        let data =
+            self.resolve_date_time_format(native::argument(args, 0), native::argument(args, 1))?;
+        self.with_roots(|heap| heap.alloc_date_time_format(data, prototype))
+            .map(Value::Object)
+    }
+
+    fn date_time_format_data(
+        &self,
+        value: &Value,
+    ) -> Result<Rc<intl::DateTimeFormat>, RuntimeError> {
+        if let Value::Object(id) = value {
+            if let Some(data) = self.heap.date_time_format(*id)? {
+                return Ok(data);
+            }
+        }
+        Err(RuntimeError::TypeError(
+            "receiver is not an Intl.DateTimeFormat".into(),
+        ))
+    }
+
+    pub(super) fn date_time_format_format_getter(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        self.date_time_format_data(receiver)?;
+        let id = receiver.object_id().unwrap();
+        if let Some(function) = self.heap.date_time_format_format(id) {
+            return Ok(Value::Object(function));
+        }
+        let constructor = self.string_intrinsics()?.0;
+        let prototype = self.heap.prototype(constructor)?.unwrap();
+        let target = self.with_roots(|heap| {
+            heap.alloc_native_function(NativeFunction::DateTimeFormatFormat, "", prototype)
+        })?;
+        let function = self.with_roots(|heap| {
+            heap.alloc_bound_function(
+                crate::heap::BoundFunction {
+                    target,
+                    this: receiver.clone(),
+                    args: vec![],
+                    constructible: false,
+                },
+                Some(prototype),
+            )
+        })?;
+        self.stack.push(Value::Object(function));
+        self.define_data(function, "length", Value::Number(1.0), false, false, true)?;
+        self.define_data(
+            function,
+            "name",
+            Value::String("".into()),
+            false,
+            false,
+            true,
+        )?;
+        self.heap.set_date_time_format_format(id, function);
+        Ok(Value::Object(function))
+    }
+
+    fn date_time_value(&mut self, value: &Value) -> Result<f64, RuntimeError> {
+        if *value == Value::Undefined {
+            return Ok(Self::current_time());
+        }
+        let value = self.coerce_number(value)?;
+        if !value.is_finite() {
+            return Err(RuntimeError::RangeError("invalid time value".into()));
+        }
+        Ok(value)
+    }
+
+    pub(super) fn date_time_format_format(
+        &mut self,
+        receiver: &Value,
+        value: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.date_time_format_data(receiver)?;
+        data.format(self.date_time_value(value)?)
+            .map(|formatted| Value::String(formatted.into()))
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+    }
+
+    fn date_time_parts_to_value(
+        &mut self,
+        parts: Vec<blueice_ecma402::DateTimePart>,
+        source: Option<&str>,
+    ) -> Result<Value, RuntimeError> {
+        let prototype = self.object_prototype;
+        let base = self.stack.len();
+        let result = (|| {
+            for part in parts {
+                let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+                self.stack.push(Value::Object(object));
+                self.define_data(
+                    object,
+                    "type",
+                    Value::String(part.kind.into()),
+                    true,
+                    true,
+                    true,
+                )?;
+                self.define_data(
+                    object,
+                    "value",
+                    Value::String(part.value.into()),
+                    true,
+                    true,
+                    true,
+                )?;
+                if let Some(source) = source {
+                    self.define_data(
+                        object,
+                        "source",
+                        Value::String(source.into()),
+                        true,
+                        true,
+                        true,
+                    )?;
+                }
+            }
+            self.array_from(self.stack[base..].to_vec())
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    pub(super) fn date_time_format_format_to_parts(
+        &mut self,
+        receiver: &Value,
+        value: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.date_time_format_data(receiver)?;
+        let parts = data
+            .format_to_parts(self.date_time_value(value)?)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        self.date_time_parts_to_value(parts, None)
+    }
+
+    fn date_time_range_values(
+        &mut self,
+        start: &Value,
+        end: &Value,
+    ) -> Result<(f64, f64), RuntimeError> {
+        let start = self.date_time_value(start)?;
+        let end = self.date_time_value(end)?;
+        if start > end {
+            return Err(RuntimeError::RangeError(
+                "date-time range start is after end".into(),
+            ));
+        }
+        Ok((start, end))
+    }
+
+    pub(super) fn date_time_format_format_range(
+        &mut self,
+        receiver: &Value,
+        start: &Value,
+        end: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.date_time_format_data(receiver)?;
+        let (start, end) = self.date_time_range_values(start, end)?;
+        let start = data
+            .format(start)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        if start
+            == data
+                .format(end)
+                .map_err(|error| RuntimeError::RangeError(error.to_string()))?
+        {
+            return Ok(Value::String(start.into()));
+        }
+        let end = data
+            .format(end)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        Ok(Value::String(format!("{start} – {end}").into()))
+    }
+
+    pub(super) fn date_time_format_format_range_to_parts(
+        &mut self,
+        receiver: &Value,
+        start: &Value,
+        end: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.date_time_format_data(receiver)?;
+        let (start, end) = self.date_time_range_values(start, end)?;
+        let start_parts = data
+            .format_to_parts(start)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        let end_parts = data
+            .format_to_parts(end)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        if start_parts == end_parts {
+            return self.date_time_parts_to_value(start_parts, Some("shared"));
+        }
+        let prototype = self.object_prototype;
+        let base = self.stack.len();
+        let result = (|| {
+            let start = self.date_time_parts_to_value(start_parts, Some("startRange"))?;
+            self.stack.push(start.clone());
+            let end = self.date_time_parts_to_value(end_parts, Some("endRange"))?;
+            self.stack.push(end.clone());
+            let separator = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+            self.stack.push(Value::Object(separator));
+            self.define_data(
+                separator,
+                "type",
+                Value::String("literal".into()),
+                true,
+                true,
+                true,
+            )?;
+            self.define_data(
+                separator,
+                "value",
+                Value::String(" – ".into()),
+                true,
+                true,
+                true,
+            )?;
+            self.define_data(
+                separator,
+                "source",
+                Value::String("shared".into()),
+                true,
+                true,
+                true,
+            )?;
+            let mut values = self.array_like_values(&start)?;
+            values.push(Value::Object(separator));
+            values.extend(self.array_like_values(&end)?);
+            self.array_from(values)
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    pub(super) fn date_time_format_resolved_options(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.date_time_format_data(receiver)?;
+        let options = data.options();
+        let prototype = self.object_prototype;
+        let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        self.stack.push(Value::Object(result));
+        for (name, value) in [
+            ("locale", Value::String(data.locale().into())),
+            ("calendar", Value::String(data.calendar().into())),
+            (
+                "numberingSystem",
+                Value::String(data.numbering_system().into()),
+            ),
+            ("timeZone", Value::String(data.time_zone().into())),
+        ] {
+            self.define_data(result, name, value, true, true, true)?;
+        }
+        let time_requested = options.time_style.is_some()
+            || options.hour.is_some()
+            || options.minute.is_some()
+            || options.second.is_some()
+            || options.fractional_second_digits.is_some();
+        if time_requested {
+            self.define_data(
+                result,
+                "hourCycle",
+                Value::String(data.hour_cycle().into()),
+                true,
+                true,
+                true,
+            )?;
+            self.define_data(
+                result,
+                "hour12",
+                Value::Bool(matches!(data.hour_cycle(), "h11" | "h12")),
+                true,
+                true,
+                true,
+            )?;
+        }
+        for (name, width) in [
+            ("weekday", options.weekday),
+            ("era", options.era),
+            (
+                "year",
+                options.year.or_else(|| {
+                    if !time_requested && options.date_style.is_none() {
+                        Some(blueice_ecma402::DateTimeWidth::Numeric)
+                    } else {
+                        None
+                    }
+                }),
+            ),
+            (
+                "month",
+                options.month.or_else(|| {
+                    if !time_requested && options.date_style.is_none() {
+                        Some(blueice_ecma402::DateTimeWidth::Numeric)
+                    } else {
+                        None
+                    }
+                }),
+            ),
+            (
+                "day",
+                options.day.or_else(|| {
+                    if !time_requested && options.date_style.is_none() {
+                        Some(blueice_ecma402::DateTimeWidth::Numeric)
+                    } else {
+                        None
+                    }
+                }),
+            ),
+            ("dayPeriod", options.day_period),
+            ("hour", options.hour),
+            ("minute", options.minute),
+            ("second", options.second),
+        ] {
+            if let Some(width) = width {
+                let width = match width {
+                    blueice_ecma402::DateTimeWidth::Numeric => "numeric",
+                    blueice_ecma402::DateTimeWidth::TwoDigit => "2-digit",
+                    blueice_ecma402::DateTimeWidth::Short => "short",
+                    blueice_ecma402::DateTimeWidth::Long => "long",
+                    blueice_ecma402::DateTimeWidth::Narrow => "narrow",
+                };
+                self.define_data(result, name, Value::String(width.into()), true, true, true)?;
+            }
+        }
+        if let Some(digits) = options.fractional_second_digits {
+            self.define_data(
+                result,
+                "fractionalSecondDigits",
+                Value::Number(digits.into()),
+                true,
+                true,
+                true,
+            )?;
+        }
+        if let Some(name) = &options.time_zone_name {
+            self.define_data(
+                result,
+                "timeZoneName",
+                Value::String(name.clone().into()),
+                true,
+                true,
+                true,
+            )?;
+        }
+        if let Some(style) = options.date_style {
+            self.define_data(
+                result,
+                "dateStyle",
+                Value::String(
+                    match style {
+                        blueice_ecma402::DateTimeStyle::Full => "full",
+                        blueice_ecma402::DateTimeStyle::Long => "long",
+                        blueice_ecma402::DateTimeStyle::Medium => "medium",
+                        blueice_ecma402::DateTimeStyle::Short => "short",
+                    }
+                    .into(),
+                ),
+                true,
+                true,
+                true,
+            )?;
+        }
+        if let Some(style) = options.time_style {
+            self.define_data(
+                result,
+                "timeStyle",
+                Value::String(
+                    match style {
+                        blueice_ecma402::DateTimeStyle::Full => "full",
+                        blueice_ecma402::DateTimeStyle::Long => "long",
+                        blueice_ecma402::DateTimeStyle::Medium => "medium",
+                        blueice_ecma402::DateTimeStyle::Short => "short",
+                    }
+                    .into(),
+                ),
+                true,
+                true,
+                true,
+            )?;
+        }
+        Ok(Value::Object(result))
     }
 
     fn list_type(&mut self, options: &Value) -> Result<blueice_ecma402::ListType, RuntimeError> {

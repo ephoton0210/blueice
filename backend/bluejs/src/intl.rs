@@ -28,6 +28,7 @@ impl From<&Locale> for CanonicalLocale {
 }
 
 pub(crate) type Collator = blueice_ecma402::Collator;
+pub(crate) type DateTimeFormat = blueice_ecma402::DateTimeFormat;
 pub(crate) type DisplayNames = blueice_ecma402::DisplayNames;
 pub(crate) type DurationFormat = blueice_ecma402::DurationFormat;
 pub(crate) type ListFormat = blueice_ecma402::ListFormat;

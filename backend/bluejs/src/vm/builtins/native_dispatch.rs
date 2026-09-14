@@ -360,7 +360,7 @@ fn date_from_parts(
 }
 
 impl Vm {
-    fn current_time() -> f64 {
+    pub(in super::super) fn current_time() -> f64 {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -934,6 +934,28 @@ impl Vm {
             }
             NativeFunction::NumberFormatResolvedOptions => {
                 self.number_format_resolved_options(&receiver)
+            }
+            NativeFunction::DateTimeFormatSupportedLocales => {
+                self.date_time_format_supported_locales(&args)
+            }
+            NativeFunction::DateTimeFormatFormatGetter => {
+                self.date_time_format_format_getter(&receiver)
+            }
+            NativeFunction::DateTimeFormatFormat => self.date_time_format_format(&receiver, first),
+            NativeFunction::DateTimeFormatFormatToParts => {
+                self.date_time_format_format_to_parts(&receiver, first)
+            }
+            NativeFunction::DateTimeFormatFormatRange => {
+                self.date_time_format_format_range(&receiver, first, native::argument(&args, 1))
+            }
+            NativeFunction::DateTimeFormatFormatRangeToParts => self
+                .date_time_format_format_range_to_parts(
+                    &receiver,
+                    first,
+                    native::argument(&args, 1),
+                ),
+            NativeFunction::DateTimeFormatResolvedOptions => {
+                self.date_time_format_resolved_options(&receiver)
             }
             NativeFunction::ListFormatSupportedLocales => self.list_format_supported_locales(&args),
             NativeFunction::ListFormatFormat => self.list_format_format(&receiver, first),

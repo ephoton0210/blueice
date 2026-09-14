@@ -540,6 +540,10 @@ enum ObjectKind {
         data: Rc<crate::intl::NumberFormat>,
         format: Option<ObjectId>,
     },
+    DateTimeFormat {
+        data: Rc<crate::intl::DateTimeFormat>,
+        format: Option<ObjectId>,
+    },
     DisplayNames(Rc<crate::intl::DisplayNames>),
     DurationFormat(Rc<crate::intl::DurationFormat>),
     ListFormat(Rc<crate::intl::ListFormat>),
@@ -1024,6 +1028,7 @@ impl Object {
                 ObjectKind::NativeFunction { function, .. } => function.references(),
                 ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
                 ObjectKind::NumberFormat { format, .. } => format.iter().copied().collect(),
+                ObjectKind::DateTimeFormat { format, .. } => format.iter().copied().collect(),
                 ObjectKind::DisplayNames(_) => Vec::new(),
                 ObjectKind::DurationFormat(_) => Vec::new(),
                 ObjectKind::ListFormat(_) => Vec::new(),
@@ -1135,6 +1140,7 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
             ObjectKind::NativeFunction { function, .. } => function.references(),
             ObjectKind::Collator { compare, .. } => compare.iter().copied().collect(),
             ObjectKind::NumberFormat { format, .. } => format.iter().copied().collect(),
+            ObjectKind::DateTimeFormat { format, .. } => format.iter().copied().collect(),
             ObjectKind::DisplayNames(_) => Vec::new(),
             ObjectKind::DurationFormat(_) => Vec::new(),
             ObjectKind::ListFormat(_) => Vec::new(),
@@ -2186,6 +2192,44 @@ impl Heap {
 
     pub(crate) fn set_number_format_format(&mut self, object: ObjectId, function: ObjectId) {
         if let ObjectKind::NumberFormat { format, .. } =
+            &mut self.objects.get_mut(&object).unwrap().kind
+        {
+            *format = Some(function);
+        }
+        self.write_barrier(object, Some(function));
+    }
+
+    pub(crate) fn alloc_date_time_format(
+        &mut self,
+        data: Rc<crate::intl::DateTimeFormat>,
+        prototype: ObjectId,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(
+            ObjectKind::DateTimeFormat { data, format: None },
+            Some(prototype),
+        )
+    }
+
+    pub(crate) fn date_time_format(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<Rc<crate::intl::DateTimeFormat>>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::DateTimeFormat { data, .. } => Some(data.clone()),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn date_time_format_format(&self, object: ObjectId) -> Option<ObjectId> {
+        let ObjectKind::DateTimeFormat { format, .. } = &self.objects.get(&object).unwrap().kind
+        else {
+            unreachable!("VM checks the DateTimeFormat brand")
+        };
+        *format
+    }
+
+    pub(crate) fn set_date_time_format_format(&mut self, object: ObjectId, function: ObjectId) {
+        if let ObjectKind::DateTimeFormat { format, .. } =
             &mut self.objects.get_mut(&object).unwrap().kind
         {
             *format = Some(function);

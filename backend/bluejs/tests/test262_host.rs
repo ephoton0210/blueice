@@ -1543,6 +1543,7 @@ fn intl_constructors_select_foreign_new_target_intrinsics() {
         let newTarget = new other.Function();
         newTarget.prototype = undefined;
         let collator = Reflect.construct(Intl.Collator, [], newTarget);
+        let dateTime = Reflect.construct(Intl.DateTimeFormat, [], newTarget);
         let displayNames = Reflect.construct(Intl.DisplayNames, ['en', {type: 'language'}], newTarget);
         let duration = Reflect.construct(Intl.DurationFormat, ['en'], newTarget);
         let list = Reflect.construct(Intl.ListFormat, [], newTarget);
@@ -1551,6 +1552,7 @@ fn intl_constructors_select_foreign_new_target_intrinsics() {
         let segmenter = Reflect.construct(Intl.Segmenter, [], newTarget);
         let locale = Reflect.construct(Intl.Locale, ['de'], newTarget);
           Object.getPrototypeOf(collator) === other.Intl.Collator.prototype &&
+          Object.getPrototypeOf(dateTime) === other.Intl.DateTimeFormat.prototype &&
           Object.getPrototypeOf(displayNames) === other.Intl.DisplayNames.prototype &&
           Object.getPrototypeOf(duration) === other.Intl.DurationFormat.prototype &&
           Object.getPrototypeOf(list) === other.Intl.ListFormat.prototype &&

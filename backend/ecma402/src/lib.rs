@@ -37,6 +37,7 @@ use std::{any::TypeId, cell::RefCell};
 use writeable::{Part, PartsWrite, Writeable};
 
 mod collator;
+mod date_time_format;
 mod display_names;
 mod duration;
 mod list_format;
@@ -48,6 +49,7 @@ mod segmenter;
 mod supported_values;
 
 pub use collator::*;
+pub use date_time_format::*;
 pub use display_names::*;
 pub use duration::*;
 pub use list_format::*;
