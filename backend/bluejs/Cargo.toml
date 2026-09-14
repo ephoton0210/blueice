@@ -11,6 +11,7 @@ unicode-normalization = "=0.1.25"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 icu_casemap = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
+icu_calendar = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
 icu_locale = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
 icu_locale_core = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
 icu_properties = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }

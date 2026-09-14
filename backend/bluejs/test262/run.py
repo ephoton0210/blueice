@@ -241,6 +241,19 @@ FINITE_STRESS_FIXTURES = frozenset(
 )
 FINITE_STRESS_INSTRUCTION_BUDGET = 10_000_000
 FINITE_STRESS_TIMEOUT = 90
+# These DateTimeFormat fixtures form each supported calendar across one
+# hundred years.  They are finite conformance matrices, but a debug
+# interpreter performs a non-ISO calendar conversion and a format-to-parts
+# call for every cell. Keep their larger envelope attached to these exact
+# upstream files rather than weakening the normal Temporal or Intl policy.
+TEMPORAL_CALENDAR_MATRIX_FIXTURES = frozenset(
+    {
+        "intl402/DateTimeFormat/prototype/formatToParts/compare-to-temporal.js",
+        "intl402/DateTimeFormat/prototype/formatToParts/compare-to-temporal-lunisolar.js",
+    }
+)
+TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET = 10_000_000
+TEMPORAL_CALENDAR_MATRIX_TIMEOUT = 360
 # These six historical RegExp BMP enumerations parse or execute one pattern
 # for every UTF-16 code unit. They compete for the isolated matcher processes
 # during a parallel inventory run, so their measured per-mode bound is higher
@@ -472,6 +485,8 @@ def format_progress(completed, total, counts, active, now, checkpoint=False):
 
 def instruction_budget(data, default, relative=None, source=""):
     """Keep standard tail-call conformance probes within a bounded budget."""
+    if relative in TEMPORAL_CALENDAR_MATRIX_FIXTURES:
+        return max(default, TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET)
     if relative in URI_EXHAUSTIVE_FIXTURES:
         return max(default, URI_EXHAUSTIVE_INSTRUCTION_BUDGET)
     if is_uri_global_fixture(relative):
@@ -495,6 +510,8 @@ def instruction_budget(data, default, relative=None, source=""):
 
 def case_timeout(data, default, relative=None, source=""):
     """Return a bounded, metadata-derived wall deadline for a Test262 mode."""
+    if relative in TEMPORAL_CALENDAR_MATRIX_FIXTURES:
+        return max(default, TEMPORAL_CALENDAR_MATRIX_TIMEOUT)
     if INTL_MATRIX_HARNESS in data.get("includes", []):
         return max(default, INTL_MATRIX_HARNESS_TIMEOUT)
     if relative in URI_EXHAUSTIVE_FIXTURES:
@@ -789,7 +806,7 @@ def main():
             reporter.join()
         for worker in workers:
             worker.close()
-    report = {"snapshot": SNAPSHOT, "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(), "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "regex_worker_sha256": hashlib.sha256(args.adapter.with_name("bluejs-regexp-worker").read_bytes()).hexdigest(), "complete_inventory": not args.filter, "filter": args.filter, "discovered_js": len(all_files), "fixture_resources": len(fixtures), "test_files": len(files), "scheduled_modes": sum(counters.values()), "results": counters, "groups": groups, "features": features, "elapsed_seconds": round(time.monotonic() - start, 3), "timeout_seconds": args.timeout, "typed_array_harness_timeout_seconds": TYPED_ARRAY_HARNESS_TIMEOUT, "typed_array_harness_instruction_budget": TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET, "instruction_budget": args.instruction_budget, "tail_call_instruction_budget": TAIL_CALL_INSTRUCTION_BUDGET, "tail_call_timeout_seconds": TAIL_CALL_TIMEOUT, "unicode_identifier_timeout_seconds": UNICODE_IDENTIFIER_TIMEOUT, "uri_global_instruction_budget": URI_GLOBAL_INSTRUCTION_BUDGET, "uri_global_timeout_seconds": URI_GLOBAL_TIMEOUT, "uri_exhaustive_instruction_budget": URI_EXHAUSTIVE_INSTRUCTION_BUDGET, "uri_exhaustive_timeout_seconds": URI_EXHAUSTIVE_TIMEOUT, "jobs": args.jobs, "limitations": ["static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable", "unclassified parser rejections never satisfy parse-SyntaxError negative tests", "harness sources still require supported grammar and APIs", "native overrides for sta.js, assert.js, propertyHelper.js, isConstructor.js, the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness", "each mode has a bounded interpreter instruction budget; tail-call and TypedArray-harness fixtures receive their recorded budgets"]}
+    report = {"snapshot": SNAPSHOT, "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(), "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "regex_worker_sha256": hashlib.sha256(args.adapter.with_name("bluejs-regexp-worker").read_bytes()).hexdigest(), "complete_inventory": not args.filter, "filter": args.filter, "discovered_js": len(all_files), "fixture_resources": len(fixtures), "test_files": len(files), "scheduled_modes": sum(counters.values()), "results": counters, "groups": groups, "features": features, "elapsed_seconds": round(time.monotonic() - start, 3), "timeout_seconds": args.timeout, "typed_array_harness_timeout_seconds": TYPED_ARRAY_HARNESS_TIMEOUT, "typed_array_harness_instruction_budget": TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET, "instruction_budget": args.instruction_budget, "tail_call_instruction_budget": TAIL_CALL_INSTRUCTION_BUDGET, "tail_call_timeout_seconds": TAIL_CALL_TIMEOUT, "unicode_identifier_timeout_seconds": UNICODE_IDENTIFIER_TIMEOUT, "uri_global_instruction_budget": URI_GLOBAL_INSTRUCTION_BUDGET, "uri_global_timeout_seconds": URI_GLOBAL_TIMEOUT, "uri_exhaustive_instruction_budget": URI_EXHAUSTIVE_INSTRUCTION_BUDGET, "uri_exhaustive_timeout_seconds": URI_EXHAUSTIVE_TIMEOUT, "temporal_calendar_matrix_instruction_budget": TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET, "temporal_calendar_matrix_timeout_seconds": TEMPORAL_CALENDAR_MATRIX_TIMEOUT, "jobs": args.jobs, "limitations": ["static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable", "unclassified parser rejections never satisfy parse-SyntaxError negative tests", "harness sources still require supported grammar and APIs", "native overrides for sta.js, assert.js, propertyHelper.js, isConstructor.js, the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness", "each mode has a bounded interpreter instruction budget; tail-call, TypedArray-harness, and the two Temporal calendar matrices receive their recorded budgets"]}
     (args.output / "summary.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps({key: report[key] for key in ("test_files", "scheduled_modes", "results", "elapsed_seconds")}, indent=2))
     return 0 if counters["pass"] == sum(counters.values()) else 1

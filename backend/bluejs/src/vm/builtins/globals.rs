@@ -867,6 +867,14 @@ impl Vm {
                     ] {
                         self.define_data(id, property, Value::Number(value), false, false, false)?;
                     }
+                    self.install_native(
+                        id,
+                        prototype,
+                        "isInteger",
+                        1,
+                        NativeFunction::NumberIsInteger,
+                    )?;
+                    self.install_native(id, prototype, "parseInt", 2, NativeFunction::ParseInt)?;
                 }
             } else if name == "globalThis" {
                 self.define_data(id, "String", Value::Object(constructor), true, false, true)?;

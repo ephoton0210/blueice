@@ -146,6 +146,7 @@ name = "blueice-bluejs"
 version = "0.1.0"
 dependencies = [
  "blueice-ecma402",
+ "icu_calendar",
  "icu_casemap",
  "icu_locale",
  "icu_locale_core",

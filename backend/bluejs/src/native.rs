@@ -149,6 +149,8 @@ pub(crate) enum NativeFunction {
     TemporalConstructor(TemporalKind),
     TemporalFrom(TemporalKind),
     TemporalWithCalendar,
+    TemporalPlainToZonedDateTime,
+    TemporalGetter(TemporalGetter),
     TemporalZonedDateTimeToLocaleString,
     ArrayBuffer,
     ArrayBufferByteLength,
@@ -446,6 +448,7 @@ pub(crate) enum NativeFunction {
     BigInt,
     BigIntToString,
     BigIntValueOf,
+    NumberIsInteger,
     PrimitiveConstructor(bool),
     PrimitiveMethod {
         boolean: bool,
@@ -607,6 +610,19 @@ pub(crate) enum LocaleGetter {
     Numeric,
     NumberingSystem,
     FirstDayOfWeek,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TemporalGetter {
+    CalendarId,
+    Year,
+    Month,
+    MonthCode,
+    Day,
+    Era,
+    EraYear,
+    MonthsInYear,
+    EpochMilliseconds,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

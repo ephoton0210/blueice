@@ -989,6 +989,10 @@ impl Vm {
             }
             NativeFunction::TemporalFrom(kind) => self.temporal_from(kind, first),
             NativeFunction::TemporalWithCalendar => self.temporal_with_calendar(&receiver, first),
+            NativeFunction::TemporalPlainToZonedDateTime => {
+                self.temporal_plain_to_zoned_date_time(&receiver, first)
+            }
+            NativeFunction::TemporalGetter(getter) => self.temporal_getter(&receiver, getter),
             NativeFunction::TemporalZonedDateTimeToLocaleString => {
                 self.temporal_zoned_date_time_to_locale_string(&receiver, &args)
             }
@@ -1508,6 +1512,9 @@ impl Vm {
                     heap.alloc_boxed_primitive(value, prototype)
                 })?))
             }
+            NativeFunction::NumberIsInteger => Ok(Value::Bool(
+                matches!(first, Value::Number(number) if number.is_finite() && number.fract() == 0.0),
+            )),
             NativeFunction::BigInt => {
                 if construct {
                     return Err(RuntimeError::TypeError(

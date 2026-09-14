@@ -168,6 +168,28 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(instruction_budget({}, 100_000, "built-ins/parseInt/basic.js"), 100_000)
         self.assertEqual(case_timeout({}, 2, "built-ins/parseInt/basic.js"), 2)
 
+    def test_temporal_calendar_matrices_receive_an_exact_bounded_envelope(self):
+        for relative in (
+            "intl402/DateTimeFormat/prototype/formatToParts/compare-to-temporal.js",
+            "intl402/DateTimeFormat/prototype/formatToParts/compare-to-temporal-lunisolar.js",
+        ):
+            self.assertEqual(instruction_budget({}, 100_000, relative), 10_000_000)
+            self.assertEqual(case_timeout({}, 2, relative), 360)
+        self.assertEqual(
+            instruction_budget(
+                {},
+                100_000,
+                "intl402/DateTimeFormat/prototype/formatToParts/basic.js",
+            ),
+            100_000,
+        )
+        self.assertEqual(
+            case_timeout(
+                {}, 2, "intl402/DateTimeFormat/prototype/formatToParts/basic.js"
+            ),
+            2,
+        )
+
     def test_bmp_regexp_enumerations_use_native_adapters_with_a_bounded_deadline(self):
         self.assertEqual(
             case_timeout({}, 2, "built-ins/RegExp/character-class-escape-non-whitespace.js"),

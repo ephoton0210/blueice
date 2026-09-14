@@ -297,6 +297,68 @@ fn date_time_format_constructs_formats_and_exposes_parts() {
 }
 
 #[test]
+fn temporal_calendar_fields_round_trip_through_iso_and_lunisolar_months() {
+    let source = r#"
+        let calendars = [
+            "buddhist", "coptic", "ethioaa", "ethiopic", "gregory", "indian",
+            "islamic-civil", "islamic-tbla", "islamic-umalqura", "japanese",
+            "persian", "roc"
+        ];
+        for (let calendar of calendars) {
+            let anchor = new Temporal.PlainDate(2050, 1, 1, calendar);
+            let date = Temporal.PlainDate.from({
+                calendar, year: anchor.year, month: 1, day: 31
+            });
+            let iso = date.withCalendar("iso8601").toZonedDateTime("UTC");
+            let formatter = new Intl.DateTimeFormat("en", {
+                calendar, timeZone: "UTC", year: "numeric", month: "numeric", day: "numeric"
+            });
+            let parts = formatter.formatToParts(iso.epochMilliseconds);
+            let year;
+            let month;
+            let day;
+            for (let part of parts) {
+                if (part.type === "year") year = +part.value;
+                if (part.type === "month") month = +part.value;
+                if (part.type === "day") day = +part.value;
+            }
+            if (year !== (date.eraYear === undefined ? date.year : date.eraYear)) throw new Error("year");
+            if (month !== date.month || day !== date.day) throw new Error("month/day");
+        }
+        let chinese = new Temporal.PlainDate(2048, 1, 1, "chinese");
+        if (chinese.monthsInYear !== 13) throw new Error("lunisolar year");
+        let leap = Temporal.PlainDate.from({
+            calendar: "chinese", year: chinese.year, month: 13, day: 30
+        });
+        let byCode = Temporal.PlainDate.from({
+            calendar: "chinese", year: leap.year, monthCode: leap.monthCode, day: leap.day
+        });
+        if (leap.month !== 13 || byCode.monthCode !== leap.monthCode || byCode.day !== leap.day) {
+            throw new Error("leap month");
+        }
+        let coptic = new Temporal.PlainDate(2025, 1, 1, "coptic");
+        if (coptic.monthsInYear !== 13) throw new Error("intercalary year");
+        let intercalary = Temporal.PlainDate.from({
+            calendar: "coptic", year: coptic.year, month: 13, day: 31
+        });
+        if (intercalary.month !== 13 || intercalary.day > 6) throw new Error("intercalary month");
+        let midnight = Temporal.PlainDateTime.from({
+            calendar: "buddhist", year: 2563, month: 1, day: 1
+        }).withCalendar("iso8601").toZonedDateTime("UTC");
+        let afternoon = Temporal.PlainDateTime.from({
+            calendar: "buddhist", year: 2563, month: 1, day: 1,
+            hour: 12, minute: 34, second: 56, millisecond: 789,
+            microsecond: 123, nanosecond: 456
+        }).withCalendar("iso8601").toZonedDateTime("UTC");
+        if (afternoon.epochMilliseconds - midnight.epochMilliseconds !== 45296789) {
+            throw new Error("plain date-time fields");
+        }
+        Number.isInteger(13) && Number.parseInt("11bis") === 11
+    "#;
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
 fn date_locale_methods_share_datetime_format_resolution_and_defaults() {
     for source in [
         "let d=new Date(0);d.toLocaleString('en-US')===new Intl.DateTimeFormat('en-US',{year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',second:'numeric'}).format(d)",

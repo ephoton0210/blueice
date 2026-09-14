@@ -29,6 +29,12 @@ harness deliberately invokes a callback across all numeric constructors and
 the byte-conversion matrix. They retain the ordinary bounded interpreter
 budget, so this allowance cannot turn an unbounded execution into a pass.
 
+The two immutable `formatToParts/compare-to-temporal` calendar matrices are
+separately bounded at 10,000,000 dispatches and 360 seconds per mode. They
+exercise a hundred years of non-ISO calendar conversion, including lunisolar
+leap months, and must not cause the ordinary Intl or Temporal timeout policy
+to become permissive.
+
 Each supervising worker owns a process group. A whole-case timeout or adapter crash kills and reaps that group, including a regex child, before the next case creates a replacement. Regex operations additionally have their own engine-level deadline. Transport uses nonblocking bounded IO, so a blocked pipe does not disable the case deadline.
 
 The checked-in [summary](../../../development/browser_core/phase-13-bluejs-engine/test262-summary.json) records the current complete inventory. Full passing conformance, complete host hooks, the remaining ECMA-402 constructors, and unsupported language/API subsystems remain open work.
