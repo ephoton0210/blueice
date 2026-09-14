@@ -239,7 +239,13 @@ impl RelativeTimeFormat {
         if !value.is_finite() {
             return Err(RelativeTimeFormatError::NonFiniteNumber);
         }
-        if let Some(term) = self.qualitative_term(value, unit) {
+        let provider = crate::locale_data_provider();
+        if let Some(term) = provider.relative_time_qualitative_term(
+            &self.resolved.locale,
+            self.resolved.numeric,
+            value,
+            unit,
+        ) {
             return Ok(vec![RelativeTimePart {
                 kind: RelativeTimePartKind::Literal,
                 value: term.into(),
@@ -251,32 +257,24 @@ impl RelativeTimeFormat {
             .format_f64(value.abs())
             .map_err(|_| RelativeTimeFormatError::NonFiniteNumber)?;
         let mut parts = Vec::new();
+        let polish = provider.relative_time_uses_polish(&self.resolved.locale);
+        let label = provider.relative_time_unit_label(
+            &self.resolved.locale,
+            self.resolved.style,
+            unit,
+            value.abs(),
+        );
+        let (prefix, suffix) = provider.relative_time_affixes(&self.resolved.locale, past, label);
         if !past {
             parts.push(RelativeTimePart {
                 kind: RelativeTimePartKind::Literal,
-                value: if self.resolved.locale.starts_with("pl") {
-                    "za ".into()
-                } else {
-                    "in ".into()
-                },
+                value: prefix.into(),
             });
         }
-        parts.extend(relative_time_number_parts(
-            &number,
-            self.resolved.locale.starts_with("pl"),
-        ));
-        let label = self.unit_label(value.abs(), unit);
+        parts.extend(relative_time_number_parts(&number, polish));
         parts.push(RelativeTimePart {
             kind: RelativeTimePartKind::Literal,
-            value: if past {
-                if self.resolved.locale.starts_with("pl") {
-                    format!(" {label} temu")
-                } else {
-                    format!(" {label} ago")
-                }
-            } else {
-                format!(" {label}")
-            },
+            value: suffix,
         });
         Ok(parts)
     }
@@ -305,42 +303,6 @@ impl RelativeTimeFormat {
             + self.number_format.bytes()
             + self.resolved.locale.len()
             + self.resolved.numbering_system.len()
-    }
-
-    fn qualitative_term(&self, value: f64, unit: RelativeTimeUnit) -> Option<&'static str> {
-        if self.resolved.numeric != RelativeTimeNumeric::Auto
-            || !self.resolved.locale.starts_with("en")
-        {
-            return None;
-        }
-        match (value.is_sign_negative(), value.abs() as i64, unit) {
-            (_, 0, RelativeTimeUnit::Second) if value == 0.0 => Some("now"),
-            (_, 0, RelativeTimeUnit::Minute) if value == 0.0 => Some("this minute"),
-            (_, 0, RelativeTimeUnit::Hour) if value == 0.0 => Some("this hour"),
-            (_, 0, RelativeTimeUnit::Day) if value == 0.0 => Some("today"),
-            (false, 1, RelativeTimeUnit::Day) => Some("tomorrow"),
-            (true, 1, RelativeTimeUnit::Day) => Some("yesterday"),
-            (_, 0, RelativeTimeUnit::Week) if value == 0.0 => Some("this week"),
-            (false, 1, RelativeTimeUnit::Week) => Some("next week"),
-            (true, 1, RelativeTimeUnit::Week) => Some("last week"),
-            (_, 0, RelativeTimeUnit::Month) if value == 0.0 => Some("this month"),
-            (false, 1, RelativeTimeUnit::Month) => Some("next month"),
-            (true, 1, RelativeTimeUnit::Month) => Some("last month"),
-            (_, 0, RelativeTimeUnit::Quarter) if value == 0.0 => Some("this quarter"),
-            (false, 1, RelativeTimeUnit::Quarter) => Some("next quarter"),
-            (true, 1, RelativeTimeUnit::Quarter) => Some("last quarter"),
-            (_, 0, RelativeTimeUnit::Year) if value == 0.0 => Some("this year"),
-            (false, 1, RelativeTimeUnit::Year) => Some("next year"),
-            (true, 1, RelativeTimeUnit::Year) => Some("last year"),
-            _ => None,
-        }
-    }
-
-    fn unit_label(&self, value: f64, unit: RelativeTimeUnit) -> &'static str {
-        if self.resolved.locale.starts_with("pl") {
-            return polish_relative_time_label(self.resolved.style, unit, value);
-        }
-        english_relative_time_label(self.resolved.style, unit, value)
     }
 }
 
@@ -380,115 +342,4 @@ fn relative_time_number_parts(number: &str, polish: bool) -> Vec<RelativeTimePar
     }
     flush(&mut parts, &mut buffer, kind);
     parts
-}
-
-fn english_relative_time_label(
-    style: RelativeTimeStyle,
-    unit: RelativeTimeUnit,
-    value: f64,
-) -> &'static str {
-    let one = value == 1.0;
-    match (style, unit, one) {
-        (RelativeTimeStyle::Long, RelativeTimeUnit::Second, true) => "second",
-        (RelativeTimeStyle::Long, RelativeTimeUnit::Minute, true) => "minute",
-        (RelativeTimeStyle::Long, RelativeTimeUnit::Hour, true) => "hour",
-        (RelativeTimeStyle::Long, RelativeTimeUnit::Day, true) => "day",
-        (RelativeTimeStyle::Long, RelativeTimeUnit::Week, true) => "week",
-        (RelativeTimeStyle::Long, RelativeTimeUnit::Month, true) => "month",
-        (RelativeTimeStyle::Long, RelativeTimeUnit::Quarter, true) => "quarter",
-        (RelativeTimeStyle::Long, RelativeTimeUnit::Year, true) => "year",
-        (RelativeTimeStyle::Long, RelativeTimeUnit::Second, false) => "seconds",
-        (RelativeTimeStyle::Long, RelativeTimeUnit::Minute, false) => "minutes",
-        (RelativeTimeStyle::Long, RelativeTimeUnit::Hour, false) => "hours",
-        (RelativeTimeStyle::Long, RelativeTimeUnit::Day, false) => "days",
-        (RelativeTimeStyle::Long, RelativeTimeUnit::Week, false) => "weeks",
-        (RelativeTimeStyle::Long, RelativeTimeUnit::Month, false) => "months",
-        (RelativeTimeStyle::Long, RelativeTimeUnit::Quarter, false) => "quarters",
-        (RelativeTimeStyle::Long, RelativeTimeUnit::Year, false) => "years",
-        (RelativeTimeStyle::Short, RelativeTimeUnit::Second, _) => "sec.",
-        (RelativeTimeStyle::Short, RelativeTimeUnit::Minute, _) => "min.",
-        (RelativeTimeStyle::Short, RelativeTimeUnit::Hour, _) => "hr.",
-        (RelativeTimeStyle::Short, RelativeTimeUnit::Day, true) => "day",
-        (RelativeTimeStyle::Short, RelativeTimeUnit::Day, false) => "days",
-        (RelativeTimeStyle::Short, RelativeTimeUnit::Week, _) => "wk.",
-        (RelativeTimeStyle::Short, RelativeTimeUnit::Month, _) => "mo.",
-        (RelativeTimeStyle::Short, RelativeTimeUnit::Quarter, true) => "qtr.",
-        (RelativeTimeStyle::Short, RelativeTimeUnit::Quarter, false) => "qtrs.",
-        (RelativeTimeStyle::Short, RelativeTimeUnit::Year, _) => "yr.",
-        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Second, _) => "s",
-        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Minute, _) => "m",
-        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Hour, _) => "h",
-        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Day, _) => "d",
-        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Week, _) => "w",
-        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Month, _) => "mo",
-        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Quarter, _) => "q",
-        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Year, _) => "y",
-    }
-}
-
-fn polish_relative_time_label(
-    style: RelativeTimeStyle,
-    unit: RelativeTimeUnit,
-    value: f64,
-) -> &'static str {
-    #[derive(Clone, Copy)]
-    enum Category {
-        One,
-        Few,
-        Many,
-        Other,
-    }
-
-    let integer = value.fract() == 0.0;
-    let number = value as i64;
-    let category = if integer && number == 1 {
-        Category::One
-    } else if integer
-        && (2..=4).contains(&(number.rem_euclid(10)))
-        && !(12..=14).contains(&(number.rem_euclid(100)))
-    {
-        Category::Few
-    } else if integer {
-        Category::Many
-    } else {
-        Category::Other
-    };
-    let select = |one, few, many, other| match category {
-        Category::One => one,
-        Category::Few => few,
-        Category::Many => many,
-        Category::Other => other,
-    };
-    match style {
-        RelativeTimeStyle::Long => match unit {
-            RelativeTimeUnit::Second => select("sekundę", "sekundy", "sekund", "sekundy"),
-            RelativeTimeUnit::Minute => select("minutę", "minuty", "minut", "minuty"),
-            RelativeTimeUnit::Hour => select("godzinę", "godziny", "godzin", "godziny"),
-            RelativeTimeUnit::Day => select("dzień", "dni", "dni", "dnia"),
-            RelativeTimeUnit::Week => select("tydzień", "tygodnie", "tygodni", "tygodnia"),
-            RelativeTimeUnit::Month => select("miesiąc", "miesiące", "miesięcy", "miesiąca"),
-            RelativeTimeUnit::Quarter => select("kwartał", "kwartały", "kwartałów", "kwartału"),
-            RelativeTimeUnit::Year => select("rok", "lata", "lat", "roku"),
-        },
-        RelativeTimeStyle::Short => match unit {
-            RelativeTimeUnit::Second => "sek.",
-            RelativeTimeUnit::Minute => "min",
-            RelativeTimeUnit::Hour => "godz.",
-            RelativeTimeUnit::Day => select("dzień", "dni", "dni", "dnia"),
-            RelativeTimeUnit::Week => select("tydz.", "tyg.", "tyg.", "tyg."),
-            RelativeTimeUnit::Month => "mies.",
-            RelativeTimeUnit::Quarter => "kw.",
-            RelativeTimeUnit::Year => select("rok", "lata", "lat", "roku"),
-        },
-        RelativeTimeStyle::Narrow => match unit {
-            RelativeTimeUnit::Second => "s",
-            RelativeTimeUnit::Minute => "min",
-            RelativeTimeUnit::Hour => "g.",
-            RelativeTimeUnit::Day => select("dzień", "dni", "dni", "dnia"),
-            RelativeTimeUnit::Week => select("tydz.", "tyg.", "tyg.", "tyg."),
-            RelativeTimeUnit::Month => "mies.",
-            RelativeTimeUnit::Quarter => "kw.",
-            RelativeTimeUnit::Year => select("rok", "lata", "lat", "roku"),
-        },
-    }
 }

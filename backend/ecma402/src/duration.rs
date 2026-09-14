@@ -718,7 +718,8 @@ impl DurationFormat {
         style: DurationUnitStyle,
         singular: bool,
     ) {
-        let (separator, label) = english_duration_unit_pattern(unit, style, singular);
+        let (separator, label) =
+            crate::locale_data_provider().english_duration_unit_pattern(unit, style, singular);
         if !separator.is_empty() {
             parts.push(DurationPart {
                 kind: DurationPartKind::Literal,
@@ -898,77 +899,6 @@ fn english_group_digits(digits: &str) -> String {
         grouped.push_str(std::str::from_utf8(chunk).expect("decimal digits are valid UTF-8"));
     }
     grouped
-}
-
-fn english_duration_unit_pattern(
-    unit: DurationUnit,
-    style: DurationUnitStyle,
-    singular: bool,
-) -> (&'static str, &'static str) {
-    match style {
-        DurationUnitStyle::Long => (
-            " ",
-            match (unit, singular) {
-                (DurationUnit::Years, true) => "year",
-                (DurationUnit::Months, true) => "month",
-                (DurationUnit::Weeks, true) => "week",
-                (DurationUnit::Days, true) => "day",
-                (DurationUnit::Hours, true) => "hour",
-                (DurationUnit::Minutes, true) => "minute",
-                (DurationUnit::Seconds, true) => "second",
-                (DurationUnit::Milliseconds, true) => "millisecond",
-                (DurationUnit::Microseconds, true) => "microsecond",
-                (DurationUnit::Nanoseconds, true) => "nanosecond",
-                (DurationUnit::Years, false) => "years",
-                (DurationUnit::Months, false) => "months",
-                (DurationUnit::Weeks, false) => "weeks",
-                (DurationUnit::Days, false) => "days",
-                (DurationUnit::Hours, false) => "hours",
-                (DurationUnit::Minutes, false) => "minutes",
-                (DurationUnit::Seconds, false) => "seconds",
-                (DurationUnit::Milliseconds, false) => "milliseconds",
-                (DurationUnit::Microseconds, false) => "microseconds",
-                (DurationUnit::Nanoseconds, false) => "nanoseconds",
-            },
-        ),
-        DurationUnitStyle::Short => (
-            " ",
-            match (unit, singular) {
-                (DurationUnit::Years, true) => "yr",
-                (DurationUnit::Years, false) => "yrs",
-                (DurationUnit::Months, true) => "mth",
-                (DurationUnit::Months, false) => "mths",
-                (DurationUnit::Weeks, true) => "wk",
-                (DurationUnit::Weeks, false) => "wks",
-                (DurationUnit::Days, true) => "day",
-                (DurationUnit::Days, false) => "days",
-                (DurationUnit::Hours, _) => "hr",
-                (DurationUnit::Minutes, _) => "min",
-                (DurationUnit::Seconds, _) => "sec",
-                (DurationUnit::Milliseconds, _) => "ms",
-                (DurationUnit::Microseconds, _) => "μs",
-                (DurationUnit::Nanoseconds, _) => "ns",
-            },
-        ),
-        DurationUnitStyle::Narrow => (
-            "",
-            match unit {
-                DurationUnit::Years => "y",
-                DurationUnit::Months => "m",
-                DurationUnit::Weeks => "w",
-                DurationUnit::Days => "d",
-                DurationUnit::Hours => "h",
-                DurationUnit::Minutes => "m",
-                DurationUnit::Seconds => "s",
-                DurationUnit::Milliseconds => "ms",
-                DurationUnit::Microseconds => "μs",
-                DurationUnit::Nanoseconds => "ns",
-            },
-        ),
-        // Callers route numeric styles to `FormatNumericUnits`; the neutral
-        // empty pattern keeps this helper total if an embedding misroutes one.
-        DurationUnitStyle::Numeric | DurationUnitStyle::TwoDigit => ("", ""),
-    }
 }
 
 /// Resolves typed `Intl.DurationFormat` unit options using Edition 13 table
@@ -1359,10 +1289,14 @@ mod implementation_tests {
             DurationUnitStyle::TwoDigit
         );
 
-        // The service cannot route numeric styles here, but the total helper
-        // remains defensive for a future host adapter.
+        // The service cannot route numeric styles here, but the total data
+        // lookup remains defensive for a future host adapter.
         assert_eq!(
-            english_duration_unit_pattern(DurationUnit::Seconds, DurationUnitStyle::Numeric, false),
+            crate::locale_data_provider().english_duration_unit_pattern(
+                DurationUnit::Seconds,
+                DurationUnitStyle::Numeric,
+                false,
+            ),
             ("", "")
         );
     }

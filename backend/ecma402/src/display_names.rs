@@ -174,7 +174,7 @@ impl DisplayNames {
     /// service was configured with `fallback: "none"`.
     pub fn of(&self, code: &str) -> Result<Option<String>, DisplayNamesError> {
         let code = canonical_display_name_code(self.resolved.display_type, code)?;
-        let localized = display_name(
+        let localized = locale_data_provider().display_name(
             self.resolved.locale.as_str(),
             self.resolved.display_type,
             self.resolved.style,
@@ -321,72 +321,4 @@ pub(crate) fn canonical_unicode_language_id(code: &str) -> String {
     }
     result.extend(remaining.map(str::to_ascii_lowercase));
     result.join("-")
-}
-
-fn display_name(
-    locale: &str,
-    display_type: DisplayNamesType,
-    style: DisplayNamesStyle,
-    language_display: Option<DisplayNamesLanguageDisplay>,
-    code: &str,
-) -> Option<String> {
-    // This deliberately small, host-neutral table is data, not a semantic
-    // fallback. Its remaining absence is represented by DisplayNamesFallback.
-    let english = locale.starts_with("en");
-    let french = locale.starts_with("fr");
-    let name = match (display_type, code) {
-        (DisplayNamesType::Language, "en") if english => "English",
-        (DisplayNamesType::Language, "fr") if english => "French",
-        (DisplayNamesType::Language, "de") if english => "German",
-        (DisplayNamesType::Language, "es") if english => "Spanish",
-        (DisplayNamesType::Language, "ja") if english => "Japanese",
-        (DisplayNamesType::Language, "zh") if english => "Chinese",
-        (DisplayNamesType::Language, "en-US")
-            if english && language_display == Some(DisplayNamesLanguageDisplay::Dialect) =>
-        {
-            "American English"
-        }
-        (DisplayNamesType::Language, "en") if french => "anglais",
-        (DisplayNamesType::Language, "fr") if french => "français",
-        (DisplayNamesType::Region, "US") if english => "United States",
-        (DisplayNamesType::Region, "GB") if english => "United Kingdom",
-        (DisplayNamesType::Region, "FR") if english => "France",
-        (DisplayNamesType::Region, "TW") if english => "Taiwan",
-        (DisplayNamesType::Script, "Latn") if english => "Latin",
-        (DisplayNamesType::Script, "Cyrl") if english => "Cyrillic",
-        (DisplayNamesType::Currency, "USD") if english => "US Dollar",
-        (DisplayNamesType::Currency, "EUR") if english => "Euro",
-        (DisplayNamesType::Currency, "JPY") if english => "Japanese Yen",
-        (DisplayNamesType::Calendar, "gregory") if english => "Gregorian Calendar",
-        (DisplayNamesType::Calendar, "buddhist") if english => "Buddhist Calendar",
-        (DisplayNamesType::Calendar, "chinese") if english => "Chinese Calendar",
-        (DisplayNamesType::Calendar, "coptic") if english => "Coptic Calendar",
-        (DisplayNamesType::Calendar, "dangi") if english => "Dangi Calendar",
-        (DisplayNamesType::Calendar, "ethioaa") if english => "Ethiopic Amete Alem Calendar",
-        (DisplayNamesType::Calendar, "ethiopic") if english => "Ethiopic Calendar",
-        (DisplayNamesType::Calendar, "hebrew") if english => "Hebrew Calendar",
-        (DisplayNamesType::Calendar, "indian") if english => "Indian National Calendar",
-        (DisplayNamesType::Calendar, "islamic-civil") if english => "Islamic Civil Calendar",
-        (DisplayNamesType::Calendar, "islamic-tbla") if english => "Islamic Tabular Calendar",
-        (DisplayNamesType::Calendar, "islamic-umalqura") if english => {
-            "Islamic Calendar (Umm al-Qura)"
-        }
-        (DisplayNamesType::Calendar, "iso8601") if english => "ISO-8601 Calendar",
-        (DisplayNamesType::Calendar, "japanese") if english => "Japanese Calendar",
-        (DisplayNamesType::Calendar, "persian") if english => "Persian Calendar",
-        (DisplayNamesType::Calendar, "roc") if english => "Minguo Calendar",
-        (DisplayNamesType::DateTimeField, "year") if english => "year",
-        (DisplayNamesType::DateTimeField, "month") if english => "month",
-        (DisplayNamesType::DateTimeField, "day") if english => "day",
-        (DisplayNamesType::DateTimeField, "hour") if english => "hour",
-        (DisplayNamesType::DateTimeField, "minute") if english => "minute",
-        (DisplayNamesType::DateTimeField, "second") if english => "second",
-        _ => return None,
-    };
-    Some(match style {
-        DisplayNamesStyle::Long => name.into(),
-        // The bundled data has no separate short/narrow form for these names.
-        // CLDR permits a parent-width fallback, so retain the long form.
-        DisplayNamesStyle::Short | DisplayNamesStyle::Narrow => name.into(),
-    })
 }

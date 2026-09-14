@@ -518,6 +518,352 @@ impl LocaleDataProvider {
             _ => (1, &[6, 7]),
         }
     }
+
+    /// Looks up one localized name in the bounded DisplayNames data bundle.
+    ///
+    /// A missing entry is data absence, not a semantic fallback; the
+    /// DisplayNames service applies its requested `code`/`none` policy after
+    /// this lookup.
+    pub(crate) fn display_name(
+        self,
+        locale: &str,
+        display_type: crate::DisplayNamesType,
+        style: crate::DisplayNamesStyle,
+        language_display: Option<crate::DisplayNamesLanguageDisplay>,
+        code: &str,
+    ) -> Option<String> {
+        use crate::{DisplayNamesLanguageDisplay, DisplayNamesStyle, DisplayNamesType};
+
+        let english = locale.starts_with("en");
+        let french = locale.starts_with("fr");
+        let name = match (display_type, code) {
+            (DisplayNamesType::Language, "en") if english => "English",
+            (DisplayNamesType::Language, "fr") if english => "French",
+            (DisplayNamesType::Language, "de") if english => "German",
+            (DisplayNamesType::Language, "es") if english => "Spanish",
+            (DisplayNamesType::Language, "ja") if english => "Japanese",
+            (DisplayNamesType::Language, "zh") if english => "Chinese",
+            (DisplayNamesType::Language, "en-US")
+                if english && language_display == Some(DisplayNamesLanguageDisplay::Dialect) =>
+            {
+                "American English"
+            }
+            (DisplayNamesType::Language, "en") if french => "anglais",
+            (DisplayNamesType::Language, "fr") if french => "français",
+            (DisplayNamesType::Region, "US") if english => "United States",
+            (DisplayNamesType::Region, "GB") if english => "United Kingdom",
+            (DisplayNamesType::Region, "FR") if english => "France",
+            (DisplayNamesType::Region, "TW") if english => "Taiwan",
+            (DisplayNamesType::Script, "Latn") if english => "Latin",
+            (DisplayNamesType::Script, "Cyrl") if english => "Cyrillic",
+            (DisplayNamesType::Currency, "USD") if english => "US Dollar",
+            (DisplayNamesType::Currency, "EUR") if english => "Euro",
+            (DisplayNamesType::Currency, "JPY") if english => "Japanese Yen",
+            (DisplayNamesType::Calendar, "gregory") if english => "Gregorian Calendar",
+            (DisplayNamesType::Calendar, "buddhist") if english => "Buddhist Calendar",
+            (DisplayNamesType::Calendar, "chinese") if english => "Chinese Calendar",
+            (DisplayNamesType::Calendar, "coptic") if english => "Coptic Calendar",
+            (DisplayNamesType::Calendar, "dangi") if english => "Dangi Calendar",
+            (DisplayNamesType::Calendar, "ethioaa") if english => "Ethiopic Amete Alem Calendar",
+            (DisplayNamesType::Calendar, "ethiopic") if english => "Ethiopic Calendar",
+            (DisplayNamesType::Calendar, "hebrew") if english => "Hebrew Calendar",
+            (DisplayNamesType::Calendar, "indian") if english => "Indian National Calendar",
+            (DisplayNamesType::Calendar, "islamic-civil") if english => "Islamic Civil Calendar",
+            (DisplayNamesType::Calendar, "islamic-tbla") if english => "Islamic Tabular Calendar",
+            (DisplayNamesType::Calendar, "islamic-umalqura") if english => {
+                "Islamic Calendar (Umm al-Qura)"
+            }
+            (DisplayNamesType::Calendar, "iso8601") if english => "ISO-8601 Calendar",
+            (DisplayNamesType::Calendar, "japanese") if english => "Japanese Calendar",
+            (DisplayNamesType::Calendar, "persian") if english => "Persian Calendar",
+            (DisplayNamesType::Calendar, "roc") if english => "Minguo Calendar",
+            (DisplayNamesType::DateTimeField, "year") if english => "year",
+            (DisplayNamesType::DateTimeField, "month") if english => "month",
+            (DisplayNamesType::DateTimeField, "day") if english => "day",
+            (DisplayNamesType::DateTimeField, "hour") if english => "hour",
+            (DisplayNamesType::DateTimeField, "minute") if english => "minute",
+            (DisplayNamesType::DateTimeField, "second") if english => "second",
+            _ => return None,
+        };
+        Some(match style {
+            DisplayNamesStyle::Long => name.into(),
+            // The bundle has no distinct short/narrow name. CLDR permits a
+            // parent-width fallback, so retain the long form.
+            DisplayNamesStyle::Short | DisplayNamesStyle::Narrow => name.into(),
+        })
+    }
+
+    /// Returns the bundled English DurationFormat unit pattern.
+    ///
+    /// DurationFormat currently advertises English-only unit-pattern data;
+    /// keeping that bounded table here makes its availability declaration and
+    /// actual output derive from one provider.
+    pub(crate) fn english_duration_unit_pattern(
+        self,
+        unit: crate::DurationUnit,
+        style: crate::DurationUnitStyle,
+        singular: bool,
+    ) -> (&'static str, &'static str) {
+        use crate::{DurationUnit, DurationUnitStyle};
+
+        match style {
+            DurationUnitStyle::Long => (
+                " ",
+                match (unit, singular) {
+                    (DurationUnit::Years, true) => "year",
+                    (DurationUnit::Months, true) => "month",
+                    (DurationUnit::Weeks, true) => "week",
+                    (DurationUnit::Days, true) => "day",
+                    (DurationUnit::Hours, true) => "hour",
+                    (DurationUnit::Minutes, true) => "minute",
+                    (DurationUnit::Seconds, true) => "second",
+                    (DurationUnit::Milliseconds, true) => "millisecond",
+                    (DurationUnit::Microseconds, true) => "microsecond",
+                    (DurationUnit::Nanoseconds, true) => "nanosecond",
+                    (DurationUnit::Years, false) => "years",
+                    (DurationUnit::Months, false) => "months",
+                    (DurationUnit::Weeks, false) => "weeks",
+                    (DurationUnit::Days, false) => "days",
+                    (DurationUnit::Hours, false) => "hours",
+                    (DurationUnit::Minutes, false) => "minutes",
+                    (DurationUnit::Seconds, false) => "seconds",
+                    (DurationUnit::Milliseconds, false) => "milliseconds",
+                    (DurationUnit::Microseconds, false) => "microseconds",
+                    (DurationUnit::Nanoseconds, false) => "nanoseconds",
+                },
+            ),
+            DurationUnitStyle::Short => (
+                " ",
+                match (unit, singular) {
+                    (DurationUnit::Years, true) => "yr",
+                    (DurationUnit::Years, false) => "yrs",
+                    (DurationUnit::Months, true) => "mth",
+                    (DurationUnit::Months, false) => "mths",
+                    (DurationUnit::Weeks, true) => "wk",
+                    (DurationUnit::Weeks, false) => "wks",
+                    (DurationUnit::Days, true) => "day",
+                    (DurationUnit::Days, false) => "days",
+                    (DurationUnit::Hours, _) => "hr",
+                    (DurationUnit::Minutes, _) => "min",
+                    (DurationUnit::Seconds, _) => "sec",
+                    (DurationUnit::Milliseconds, _) => "ms",
+                    (DurationUnit::Microseconds, _) => "μs",
+                    (DurationUnit::Nanoseconds, _) => "ns",
+                },
+            ),
+            DurationUnitStyle::Narrow => (
+                "",
+                match unit {
+                    DurationUnit::Years => "y",
+                    DurationUnit::Months => "m",
+                    DurationUnit::Weeks => "w",
+                    DurationUnit::Days => "d",
+                    DurationUnit::Hours => "h",
+                    DurationUnit::Minutes => "m",
+                    DurationUnit::Seconds => "s",
+                    DurationUnit::Milliseconds => "ms",
+                    DurationUnit::Microseconds => "μs",
+                    DurationUnit::Nanoseconds => "ns",
+                },
+            ),
+            // Callers route numeric styles to FormatNumericUnits; the neutral
+            // empty pattern keeps this data lookup total if one misroutes it.
+            DurationUnitStyle::Numeric | DurationUnitStyle::TwoDigit => ("", ""),
+        }
+    }
+
+    /// Returns whether the bundled relative-time data uses Polish patterns.
+    pub(crate) fn relative_time_uses_polish(self, locale: &str) -> bool {
+        locale.starts_with("pl")
+    }
+
+    /// Returns a qualitative English relative-time term when bundled data has
+    /// one for `numeric: "auto"`.
+    pub(crate) fn relative_time_qualitative_term(
+        self,
+        locale: &str,
+        numeric: crate::RelativeTimeNumeric,
+        value: f64,
+        unit: crate::RelativeTimeUnit,
+    ) -> Option<&'static str> {
+        use crate::{RelativeTimeNumeric, RelativeTimeUnit};
+
+        if numeric != RelativeTimeNumeric::Auto || !locale.starts_with("en") {
+            return None;
+        }
+        match (value.is_sign_negative(), value.abs() as i64, unit) {
+            (_, 0, RelativeTimeUnit::Second) if value == 0.0 => Some("now"),
+            (_, 0, RelativeTimeUnit::Minute) if value == 0.0 => Some("this minute"),
+            (_, 0, RelativeTimeUnit::Hour) if value == 0.0 => Some("this hour"),
+            (_, 0, RelativeTimeUnit::Day) if value == 0.0 => Some("today"),
+            (false, 1, RelativeTimeUnit::Day) => Some("tomorrow"),
+            (true, 1, RelativeTimeUnit::Day) => Some("yesterday"),
+            (_, 0, RelativeTimeUnit::Week) if value == 0.0 => Some("this week"),
+            (false, 1, RelativeTimeUnit::Week) => Some("next week"),
+            (true, 1, RelativeTimeUnit::Week) => Some("last week"),
+            (_, 0, RelativeTimeUnit::Month) if value == 0.0 => Some("this month"),
+            (false, 1, RelativeTimeUnit::Month) => Some("next month"),
+            (true, 1, RelativeTimeUnit::Month) => Some("last month"),
+            (_, 0, RelativeTimeUnit::Quarter) if value == 0.0 => Some("this quarter"),
+            (false, 1, RelativeTimeUnit::Quarter) => Some("next quarter"),
+            (true, 1, RelativeTimeUnit::Quarter) => Some("last quarter"),
+            (_, 0, RelativeTimeUnit::Year) if value == 0.0 => Some("this year"),
+            (false, 1, RelativeTimeUnit::Year) => Some("next year"),
+            (true, 1, RelativeTimeUnit::Year) => Some("last year"),
+            _ => None,
+        }
+    }
+
+    /// Returns the bundled relative-time number affix for a finite value.
+    pub(crate) fn relative_time_affixes(
+        self,
+        locale: &str,
+        past: bool,
+        label: &str,
+    ) -> (&'static str, String) {
+        let prefix = if past {
+            ""
+        } else if self.relative_time_uses_polish(locale) {
+            "za "
+        } else {
+            "in "
+        };
+        let suffix = match (past, self.relative_time_uses_polish(locale)) {
+            (true, true) => format!(" {label} temu"),
+            (true, false) => format!(" {label} ago"),
+            (false, _) => format!(" {label}"),
+        };
+        (prefix, suffix)
+    }
+
+    /// Returns the bundled relative-time unit pattern for one finite value.
+    pub(crate) fn relative_time_unit_label(
+        self,
+        locale: &str,
+        style: crate::RelativeTimeStyle,
+        unit: crate::RelativeTimeUnit,
+        value: f64,
+    ) -> &'static str {
+        if self.relative_time_uses_polish(locale) {
+            return polish_relative_time_label(style, unit, value);
+        }
+        english_relative_time_label(style, unit, value)
+    }
+}
+
+fn english_relative_time_label(
+    style: crate::RelativeTimeStyle,
+    unit: crate::RelativeTimeUnit,
+    value: f64,
+) -> &'static str {
+    use crate::{RelativeTimeStyle, RelativeTimeUnit};
+
+    let one = value == 1.0;
+    match (style, unit, one) {
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Second, true) => "second",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Minute, true) => "minute",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Hour, true) => "hour",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Day, true) => "day",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Week, true) => "week",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Month, true) => "month",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Quarter, true) => "quarter",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Year, true) => "year",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Second, false) => "seconds",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Minute, false) => "minutes",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Hour, false) => "hours",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Day, false) => "days",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Week, false) => "weeks",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Month, false) => "months",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Quarter, false) => "quarters",
+        (RelativeTimeStyle::Long, RelativeTimeUnit::Year, false) => "years",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Second, _) => "sec.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Minute, _) => "min.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Hour, _) => "hr.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Day, true) => "day",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Day, false) => "days",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Week, _) => "wk.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Month, _) => "mo.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Quarter, true) => "qtr.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Quarter, false) => "qtrs.",
+        (RelativeTimeStyle::Short, RelativeTimeUnit::Year, _) => "yr.",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Second, _) => "s",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Minute, _) => "m",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Hour, _) => "h",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Day, _) => "d",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Week, _) => "w",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Month, _) => "mo",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Quarter, _) => "q",
+        (RelativeTimeStyle::Narrow, RelativeTimeUnit::Year, _) => "y",
+    }
+}
+
+fn polish_relative_time_label(
+    style: crate::RelativeTimeStyle,
+    unit: crate::RelativeTimeUnit,
+    value: f64,
+) -> &'static str {
+    use crate::{RelativeTimeStyle, RelativeTimeUnit};
+
+    #[derive(Clone, Copy)]
+    enum Category {
+        One,
+        Few,
+        Many,
+        Other,
+    }
+
+    let integer = value.fract() == 0.0;
+    let number = value as i64;
+    let category = if integer && number == 1 {
+        Category::One
+    } else if integer
+        && (2..=4).contains(&(number.rem_euclid(10)))
+        && !(12..=14).contains(&(number.rem_euclid(100)))
+    {
+        Category::Few
+    } else if integer {
+        Category::Many
+    } else {
+        Category::Other
+    };
+    let select = |one, few, many, other| match category {
+        Category::One => one,
+        Category::Few => few,
+        Category::Many => many,
+        Category::Other => other,
+    };
+    match style {
+        RelativeTimeStyle::Long => match unit {
+            RelativeTimeUnit::Second => select("sekundę", "sekundy", "sekund", "sekundy"),
+            RelativeTimeUnit::Minute => select("minutę", "minuty", "minut", "minuty"),
+            RelativeTimeUnit::Hour => select("godzinę", "godziny", "godzin", "godziny"),
+            RelativeTimeUnit::Day => select("dzień", "dni", "dni", "dnia"),
+            RelativeTimeUnit::Week => select("tydzień", "tygodnie", "tygodni", "tygodnia"),
+            RelativeTimeUnit::Month => select("miesiąc", "miesiące", "miesięcy", "miesiąca"),
+            RelativeTimeUnit::Quarter => select("kwartał", "kwartały", "kwartałów", "kwartału"),
+            RelativeTimeUnit::Year => select("rok", "lata", "lat", "roku"),
+        },
+        RelativeTimeStyle::Short => match unit {
+            RelativeTimeUnit::Second => "sek.",
+            RelativeTimeUnit::Minute => "min",
+            RelativeTimeUnit::Hour => "godz.",
+            RelativeTimeUnit::Day => select("dzień", "dni", "dni", "dnia"),
+            RelativeTimeUnit::Week => select("tydz.", "tyg.", "tyg.", "tyg."),
+            RelativeTimeUnit::Month => "mies.",
+            RelativeTimeUnit::Quarter => "kw.",
+            RelativeTimeUnit::Year => select("rok", "lata", "lat", "roku"),
+        },
+        RelativeTimeStyle::Narrow => match unit {
+            RelativeTimeUnit::Second => "s",
+            RelativeTimeUnit::Minute => "min",
+            RelativeTimeUnit::Hour => "g.",
+            RelativeTimeUnit::Day => select("dzień", "dni", "dni", "dnia"),
+            RelativeTimeUnit::Week => select("tydz.", "tyg.", "tyg.", "tyg."),
+            RelativeTimeUnit::Month => "mies.",
+            RelativeTimeUnit::Quarter => "kw.",
+            RelativeTimeUnit::Year => select("rok", "lata", "lat", "roku"),
+        },
+    }
 }
 
 const fn contains(values: &[&str], value: &str) -> bool {
