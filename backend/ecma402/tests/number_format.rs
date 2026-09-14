@@ -6,9 +6,10 @@
 
 use blueice_ecma402::{
     canonicalize, locale_with_numbering_system, resolve_number_format_locale,
-    supported_number_format_locales, unicode_keyword, NumberCurrencyDisplay, NumberCurrencyOptions,
-    NumberCurrencySign, NumberFormat, NumberFormatError, NumberFormatOptions, NumberFormatPartKind,
-    NumberFormatStyle, NumberFormatUnit, NumberGrouping, NumberNotation, NumberRoundingMode,
+    supported_number_format_locales, unicode_keyword, NumberCompactDisplay, NumberCurrencyDisplay,
+    NumberCurrencyOptions, NumberCurrencySign, NumberFormat, NumberFormatError, NumberFormatInput,
+    NumberFormatOptions, NumberFormatPartKind, NumberFormatStyle, NumberFormatUnit, NumberGrouping,
+    NumberNotation, NumberRangePartSource, NumberRoundingMode, NumberRoundingPriority,
     NumberSignDisplay, NumberUnitDisplay, ResolvedNumberFormatOptions, SUPPORTED_NUMBERING_SYSTEMS,
 };
 
@@ -49,6 +50,497 @@ fn localizes_decimal_digits_separators_and_half_expand_rounding() {
 }
 
 #[test]
+fn formats_number_ranges_without_losing_decimal_precision_or_part_sources() {
+    let currency = NumberCurrencyOptions {
+        code: "USD".into(),
+        display: NumberCurrencyDisplay::Symbol,
+        sign: NumberCurrencySign::Standard,
+    };
+    let formatter = NumberFormat::try_new_with_currency(
+        &[canonicalize("en-US").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Currency,
+            maximum_fraction_digits: Some(0),
+            ..Default::default()
+        },
+        1,
+        None,
+        None,
+        Default::default(),
+        Some(currency),
+    )
+    .unwrap();
+    let parts = formatter
+        .format_range_inputs_to_parts(
+            NumberFormatInput::Number(3.0),
+            NumberFormatInput::Number(5.0),
+        )
+        .unwrap();
+    assert_eq!(
+        parts
+            .iter()
+            .map(|part| (part.kind, part.value.as_str(), part.source))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                NumberFormatPartKind::Currency,
+                "$",
+                NumberRangePartSource::StartRange
+            ),
+            (
+                NumberFormatPartKind::Integer,
+                "3",
+                NumberRangePartSource::StartRange
+            ),
+            (
+                NumberFormatPartKind::Literal,
+                " – ",
+                NumberRangePartSource::Shared
+            ),
+            (
+                NumberFormatPartKind::Currency,
+                "$",
+                NumberRangePartSource::EndRange
+            ),
+            (
+                NumberFormatPartKind::Integer,
+                "5",
+                NumberRangePartSource::EndRange
+            ),
+        ]
+    );
+    assert_eq!(
+        formatter
+            .format_range_inputs(
+                NumberFormatInput::Number(2.9),
+                NumberFormatInput::Number(3.1),
+            )
+            .unwrap(),
+        "~$3"
+    );
+
+    let french_decimal = NumberFormat::try_new(
+        &[canonicalize("fr").unwrap()],
+        NumberFormatOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        french_decimal
+            .format_range_inputs(
+                NumberFormatInput::Number(1.0),
+                NumberFormatInput::Number(1.0),
+            )
+            .unwrap(),
+        "≃1"
+    );
+
+    let decimal = NumberFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        NumberFormatOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        decimal
+            .format_range_inputs(
+                NumberFormatInput::Decimal("987654321987654321".into()),
+                NumberFormatInput::Decimal("987654321987654322".into()),
+            )
+            .unwrap(),
+        "987,654,321,987,654,321–987,654,321,987,654,322"
+    );
+    assert_eq!(
+        decimal
+            .format_range_inputs_to_parts(
+                NumberFormatInput::Number(f64::NAN),
+                NumberFormatInput::Number(1.0),
+            )
+            .unwrap_err(),
+        NumberFormatError::RangeNaN
+    );
+
+    let french_currency_name = NumberFormat::try_new_with_currency(
+        &[canonicalize("fr").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Currency,
+            ..Default::default()
+        },
+        1,
+        None,
+        None,
+        Default::default(),
+        Some(NumberCurrencyOptions {
+            code: "USD".into(),
+            display: NumberCurrencyDisplay::Name,
+            sign: NumberCurrencySign::Standard,
+        }),
+    )
+    .unwrap();
+    assert_eq!(
+        french_currency_name
+            .format_range_inputs(
+                NumberFormatInput::Decimal("2".into()),
+                NumberFormatInput::Decimal("3".into()),
+            )
+            .unwrap(),
+        "2,00–3,00 dollars des États-Unis"
+    );
+    assert_eq!(
+        french_currency_name
+            .format_range_inputs(
+                NumberFormatInput::Decimal("1".into()),
+                NumberFormatInput::Decimal("2".into()),
+            )
+            .unwrap(),
+        "1,00–2,00 dollars des États-Unis"
+    );
+    assert_eq!(
+        french_currency_name
+            .format_range_inputs_to_parts(
+                NumberFormatInput::Decimal("1".into()),
+                NumberFormatInput::Decimal("2".into()),
+            )
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value, part.source))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                NumberFormatPartKind::Integer,
+                "1".into(),
+                NumberRangePartSource::StartRange,
+            ),
+            (
+                NumberFormatPartKind::Decimal,
+                ",".into(),
+                NumberRangePartSource::StartRange,
+            ),
+            (
+                NumberFormatPartKind::Fraction,
+                "00".into(),
+                NumberRangePartSource::StartRange,
+            ),
+            (
+                NumberFormatPartKind::Literal,
+                "–".into(),
+                NumberRangePartSource::Shared,
+            ),
+            (
+                NumberFormatPartKind::Integer,
+                "2".into(),
+                NumberRangePartSource::EndRange,
+            ),
+            (
+                NumberFormatPartKind::Decimal,
+                ",".into(),
+                NumberRangePartSource::EndRange,
+            ),
+            (
+                NumberFormatPartKind::Fraction,
+                "00".into(),
+                NumberRangePartSource::EndRange,
+            ),
+            (
+                NumberFormatPartKind::Literal,
+                " ".into(),
+                NumberRangePartSource::Shared,
+            ),
+            (
+                NumberFormatPartKind::Currency,
+                "dollars des États-Unis".into(),
+                NumberRangePartSource::Shared,
+            ),
+        ]
+    );
+
+    let french_unit = NumberFormat::try_new(
+        &[canonicalize("fr").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::Meter),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        french_unit
+            .format_range_inputs(
+                NumberFormatInput::Number(1.0),
+                NumberFormatInput::Number(2.0),
+            )
+            .unwrap(),
+        "1–2\u{a0}mètres"
+    );
+}
+
+#[test]
+fn emits_localized_scientific_and_engineering_exponent_parts() {
+    let engineering = NumberFormat::try_new(
+        &[canonicalize("de-DE").unwrap()],
+        NumberFormatOptions {
+            notation: NumberNotation::Engineering,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        engineering
+            .format_to_parts_f64(0.000_345)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::Integer, "345".into()),
+            (NumberFormatPartKind::ExponentSeparator, "E".into()),
+            (NumberFormatPartKind::ExponentMinusSign, "-".into()),
+            (NumberFormatPartKind::ExponentInteger, "6".into()),
+        ]
+    );
+    let scientific = NumberFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        NumberFormatOptions {
+            notation: NumberNotation::Scientific,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(scientific.format_f64(543_211.1).unwrap(), "5.432E5");
+}
+
+#[test]
+fn formats_provider_selected_compact_patterns_as_typed_parts() {
+    let english = NumberFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        NumberFormatOptions {
+            notation: NumberNotation::Compact,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        english
+            .format_to_parts_f64(9_876.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::Integer, "9".into()),
+            (NumberFormatPartKind::Decimal, ".".into()),
+            (NumberFormatPartKind::Fraction, "9".into()),
+            (NumberFormatPartKind::Compact, "K".into()),
+        ]
+    );
+    let french = NumberFormat::try_new(
+        &[canonicalize("fr").unwrap()],
+        NumberFormatOptions {
+            notation: NumberNotation::Compact,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(french.format_f64(9_876.0).unwrap(), "9,9\u{a0}k");
+    assert_eq!(french.format_f64(1_200.0).unwrap(), "1,2\u{a0}k");
+    let french_long = NumberFormat::try_new(
+        &[canonicalize("fr").unwrap()],
+        NumberFormatOptions {
+            notation: NumberNotation::Compact,
+            compact_display: NumberCompactDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(french_long.format_f64(1_200.0).unwrap(), "1,2 millier");
+    assert_eq!(french_long.format_f64(1_000.0).unwrap(), "mille");
+    assert_eq!(french_long.format_f64(-1_000.0).unwrap(), "-mille");
+    assert_eq!(
+        french_long
+            .format_to_parts_f64(1_000.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![(NumberFormatPartKind::Compact, "mille".into())]
+    );
+    assert_eq!(
+        french_long
+            .format_to_parts_f64(-1_000.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::MinusSign, "-".into()),
+            (NumberFormatPartKind::Compact, "mille".into()),
+        ]
+    );
+    assert_eq!(
+        french_long
+            .format_range_inputs(
+                NumberFormatInput::Number(1_000.0),
+                NumberFormatInput::Number(2_000.0),
+            )
+            .unwrap(),
+        "mille–2 mille"
+    );
+    assert_eq!(
+        french_long
+            .format_range_inputs_to_parts(
+                NumberFormatInput::Number(1_000.0),
+                NumberFormatInput::Number(2_000.0),
+            )
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value, part.source))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                NumberFormatPartKind::Compact,
+                "mille".into(),
+                NumberRangePartSource::StartRange,
+            ),
+            (
+                NumberFormatPartKind::Literal,
+                "–".into(),
+                NumberRangePartSource::Shared,
+            ),
+            (
+                NumberFormatPartKind::Integer,
+                "2".into(),
+                NumberRangePartSource::EndRange,
+            ),
+            (
+                NumberFormatPartKind::Literal,
+                " ".into(),
+                NumberRangePartSource::EndRange,
+            ),
+            (
+                NumberFormatPartKind::Compact,
+                "mille".into(),
+                NumberRangePartSource::EndRange,
+            ),
+        ]
+    );
+    let french_long_unit = NumberFormat::try_new(
+        &[canonicalize("fr").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::Meter),
+            unit_display: NumberUnitDisplay::Short,
+            notation: NumberNotation::Compact,
+            compact_display: NumberCompactDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        french_long_unit.format_f64(1_000.0).unwrap(),
+        "mille\u{202f}m"
+    );
+    assert_eq!(
+        french_long_unit
+            .format_to_parts_f64(1_000.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::Compact, "mille".into()),
+            (NumberFormatPartKind::Literal, "\u{202f}".into()),
+            (NumberFormatPartKind::Unit, "m".into()),
+        ]
+    );
+    let french_compact_currency = NumberFormat::try_new_with_currency(
+        &[canonicalize("fr").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Currency,
+            notation: NumberNotation::Compact,
+            ..Default::default()
+        },
+        1,
+        None,
+        None,
+        Default::default(),
+        Some(NumberCurrencyOptions {
+            code: "USD".into(),
+            display: NumberCurrencyDisplay::Symbol,
+            sign: NumberCurrencySign::Standard,
+        }),
+    )
+    .unwrap();
+    assert_eq!(
+        french_compact_currency.format_f64(1_200.0).unwrap(),
+        "1,2\u{a0}k\u{a0}$US"
+    );
+    assert_eq!(
+        french_compact_currency
+            .format_to_parts_f64(1_200.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::Integer, "1".into()),
+            (NumberFormatPartKind::Decimal, ",".into()),
+            (NumberFormatPartKind::Fraction, "2".into()),
+            (NumberFormatPartKind::Literal, "\u{a0}".into()),
+            (NumberFormatPartKind::Compact, "k".into()),
+            (NumberFormatPartKind::Literal, "\u{a0}".into()),
+            (NumberFormatPartKind::Currency, "$US".into()),
+        ]
+    );
+    let korean = NumberFormat::try_new(
+        &[canonicalize("ko-KR").unwrap()],
+        NumberFormatOptions {
+            notation: NumberNotation::Compact,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(korean.format_f64(98_765_432.0).unwrap(), "9877만");
+}
+
+#[test]
+fn chooses_fraction_or_significant_digits_from_rounding_priority() {
+    let more = NumberFormat::try_new_with_precision(
+        &[canonicalize("en").unwrap()],
+        NumberFormatOptions {
+            minimum_fraction_digits: Some(2),
+            rounding_priority: NumberRoundingPriority::MorePrecision,
+            ..Default::default()
+        },
+        1,
+        Some(2),
+        None,
+    )
+    .unwrap();
+    assert_eq!(more.format_f64(1.0).unwrap(), "1.0");
+    assert_eq!(
+        more.rounding_priority(),
+        NumberRoundingPriority::MorePrecision
+    );
+
+    let less = NumberFormat::try_new_with_precision(
+        &[canonicalize("en").unwrap()],
+        NumberFormatOptions {
+            minimum_fraction_digits: Some(2),
+            rounding_priority: NumberRoundingPriority::LessPrecision,
+            ..Default::default()
+        },
+        1,
+        Some(2),
+        None,
+    )
+    .unwrap();
+    assert_eq!(less.format_f64(1.0).unwrap(), "1.00");
+    assert_eq!(
+        less.rounding_priority(),
+        NumberRoundingPriority::LessPrecision
+    );
+}
+
+#[test]
 fn honors_unicode_numbering_systems_and_fraction_padding() {
     let thai = canonicalize("th-u-nu-thai").unwrap();
     assert_eq!(thai.as_str(), "th-u-nu-thai");
@@ -78,14 +570,29 @@ fn honors_unicode_numbering_systems_and_fraction_padding() {
 #[test]
 fn resolves_every_advertised_numbering_system() {
     let english = canonicalize("en").unwrap();
+    let mut unavailable = Vec::new();
     for numbering_system in SUPPORTED_NUMBERING_SYSTEMS {
         let locale = locale_with_numbering_system(&english, numbering_system, false);
-        let format = NumberFormat::try_new(&[locale], NumberFormatOptions::default()).unwrap();
-        assert_eq!(
-            format.resolved_options().numbering_system,
-            *numbering_system
-        );
+        match NumberFormat::try_new(&[locale], NumberFormatOptions::default()) {
+            Ok(format) => assert_eq!(
+                format.resolved_options().numbering_system,
+                *numbering_system
+            ),
+            Err(_) => unavailable.push(*numbering_system),
+        }
     }
+    assert!(unavailable.is_empty(), "unavailable: {unavailable:?}");
+}
+
+#[test]
+fn sources_simple_numbering_system_digits_from_the_shared_provider() {
+    let english = canonicalize("en").unwrap();
+    let ahom = locale_with_numbering_system(&english, "ahom", false);
+    let format = NumberFormat::try_new(&[ahom], NumberFormatOptions::default()).unwrap();
+
+    assert!(SUPPORTED_NUMBERING_SYSTEMS.contains(&"ahom"));
+    assert_eq!(format.resolved_options().numbering_system, "ahom");
+    assert_eq!(format.format_decimal("123").unwrap(), "𑜱𑜲𑜳");
 }
 
 #[test]
@@ -342,6 +849,236 @@ fn formats_duration_units_and_parts_through_the_number_service() {
 }
 
 #[test]
+fn parses_compound_units_and_keeps_their_locale_pattern_part_boundaries() {
+    let unit = NumberFormatUnit::parse("kilometer-per-hour").unwrap();
+    assert!(unit.is_compound());
+    assert_eq!(unit.identifier(), "kilometer-per-hour");
+    assert_eq!(
+        unit.compound_parts(),
+        Some((NumberFormatUnit::Kilometer, NumberFormatUnit::Hour))
+    );
+    assert!(NumberFormatUnit::parse("meter-per-second").is_some());
+    assert_eq!(NumberFormatUnit::parse("meter-per-per-second"), None);
+    assert_eq!(NumberFormatUnit::parse("per-hour"), None);
+
+    let format = NumberFormat::try_new(
+        &[canonicalize("ko-KR").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(unit),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        format
+            .format_to_parts_f64(-987.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::Unit, "시속".into()),
+            (NumberFormatPartKind::Literal, " ".into()),
+            (NumberFormatPartKind::MinusSign, "-".into()),
+            (NumberFormatPartKind::Integer, "987".into()),
+            (NumberFormatPartKind::Unit, "킬로미터".into()),
+        ]
+    );
+
+    let generic = NumberFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::parse("meter-per-second").unwrap()),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(generic.format_f64(2.0).unwrap(), "2 meters per second");
+
+    let french_generic = NumberFormat::try_new(
+        &[canonicalize("fr").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::parse("meter-per-second").unwrap()),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        french_generic.format_f64(2.0).unwrap(),
+        "2\u{a0}mètres par seconde"
+    );
+    assert_eq!(
+        french_generic
+            .format_to_parts_f64(2.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::Integer, "2".into()),
+            (NumberFormatPartKind::Literal, "\u{a0}".into()),
+            (NumberFormatPartKind::Unit, "mètres par seconde".into(),),
+        ]
+    );
+
+    let full_english_inventory = NumberFormat::try_new(
+        &[canonicalize("en").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::parse("fluid-ounce-per-second").unwrap()),
+            unit_display: NumberUnitDisplay::Short,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(full_english_inventory.format_f64(2.0).unwrap(), "2 fl oz/s");
+}
+
+#[test]
+fn loads_localized_simple_unit_patterns_from_the_shared_cldr_provider() {
+    let french = NumberFormat::try_new(
+        &[canonicalize("fr").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::Meter),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(french.format_f64(2.0).unwrap(), "2\u{a0}mètres");
+    assert_eq!(
+        french
+            .format_to_parts_f64(2.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::Integer, "2".into()),
+            (NumberFormatPartKind::Literal, "\u{a0}".into()),
+            (NumberFormatPartKind::Unit, "mètres".into()),
+        ]
+    );
+
+    let german = NumberFormat::try_new(
+        &[canonicalize("de").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::Liter),
+            unit_display: NumberUnitDisplay::Short,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(german.format_f64(2.0).unwrap(), "2 l");
+
+    let arabic = NumberFormat::try_new(
+        &[canonicalize("ar").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::Meter),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(arabic.format_f64(1.0).unwrap(), "متر");
+    assert_eq!(
+        arabic
+            .format_to_parts_f64(1.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![(NumberFormatPartKind::Unit, "متر".into())]
+    );
+    assert_eq!(
+        arabic
+            .format_range_inputs(
+                NumberFormatInput::Number(0.0),
+                NumberFormatInput::Number(1.0),
+            )
+            .unwrap(),
+        "٠–١ متر"
+    );
+    assert_eq!(
+        arabic
+            .format_range_inputs_to_parts(
+                NumberFormatInput::Number(0.0),
+                NumberFormatInput::Number(1.0),
+            )
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value, part.source))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                NumberFormatPartKind::Integer,
+                "٠".into(),
+                NumberRangePartSource::StartRange,
+            ),
+            (
+                NumberFormatPartKind::Literal,
+                "–".into(),
+                NumberRangePartSource::Shared,
+            ),
+            (
+                NumberFormatPartKind::Integer,
+                "١".into(),
+                NumberRangePartSource::EndRange,
+            ),
+            (
+                NumberFormatPartKind::Literal,
+                " ".into(),
+                NumberRangePartSource::Shared,
+            ),
+            (
+                NumberFormatPartKind::Unit,
+                "متر".into(),
+                NumberRangePartSource::Shared,
+            ),
+        ]
+    );
+}
+
+#[test]
+fn compound_unit_patterns_use_the_rounded_cldr_plural_category() {
+    let unit = NumberFormatUnit::parse("kilometer-per-hour").unwrap();
+    let russian = NumberFormat::try_new(
+        &[canonicalize("ru").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(unit),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(russian.format_f64(1.0).unwrap(), "1 километр в час");
+    assert_eq!(russian.format_f64(2.0).unwrap(), "2 километра в час");
+    assert_eq!(russian.format_f64(5.0).unwrap(), "5 километров в час");
+
+    let french = NumberFormat::try_new(
+        &[canonicalize("fr").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(unit),
+            unit_display: NumberUnitDisplay::Short,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(french.format_f64(2.0).unwrap(), "2\u{202f}km/h");
+}
+
+#[test]
 fn formats_currency_patterns_digits_and_parts_through_the_number_service() {
     let accounting = NumberFormat::try_new_with_currency(
         &[canonicalize("en-US").unwrap()],
@@ -410,6 +1147,153 @@ fn formats_currency_patterns_digits_and_parts_through_the_number_service() {
         Err(NumberFormatError::MissingCurrency)
     ));
 
+    let canadian_dollar = NumberFormat::try_new_with_currency(
+        &[canonicalize("fr-CA").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Currency,
+            ..Default::default()
+        },
+        1,
+        None,
+        None,
+        Default::default(),
+        Some(NumberCurrencyOptions {
+            code: "CAD".into(),
+            display: NumberCurrencyDisplay::Symbol,
+            sign: NumberCurrencySign::Standard,
+        }),
+    )
+    .unwrap();
+    assert_eq!(
+        canadian_dollar.format_decimal("12.34").unwrap(),
+        "12,34\u{a0}$"
+    );
+
+    let forint = NumberFormat::try_new_with_currency(
+        &[canonicalize("en").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Currency,
+            ..Default::default()
+        },
+        1,
+        None,
+        None,
+        Default::default(),
+        Some(NumberCurrencyOptions {
+            code: "HUF".into(),
+            display: NumberCurrencyDisplay::NarrowSymbol,
+            sign: NumberCurrencySign::Standard,
+        }),
+    )
+    .unwrap();
+    assert_eq!(forint.resolved_options().minimum_fraction_digits, 0);
+    assert_eq!(forint.resolved_options().maximum_fraction_digits, 0);
+    assert_eq!(forint.format_decimal("12").unwrap(), "Ft\u{a0}12");
+
+    let malagasy_ariary = NumberFormat::try_new_with_currency(
+        &[canonicalize("en").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Currency,
+            ..Default::default()
+        },
+        1,
+        None,
+        None,
+        Default::default(),
+        Some(NumberCurrencyOptions {
+            code: "MGA".into(),
+            display: NumberCurrencyDisplay::Symbol,
+            sign: NumberCurrencySign::Standard,
+        }),
+    )
+    .unwrap();
+    assert_eq!(malagasy_ariary.format_decimal("12").unwrap(), "MGA\u{a0}12");
+
+    let iso_code = NumberFormat::try_new_with_currency(
+        &[canonicalize("en").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Currency,
+            ..Default::default()
+        },
+        1,
+        None,
+        None,
+        Default::default(),
+        Some(NumberCurrencyOptions {
+            code: "USD".into(),
+            display: NumberCurrencyDisplay::Code,
+            sign: NumberCurrencySign::Standard,
+        }),
+    )
+    .unwrap();
+    assert_eq!(iso_code.format_decimal("12").unwrap(), "USD\u{a0}12.00");
+
+    let french_name = NumberFormat::try_new_with_currency(
+        &[canonicalize("fr").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Currency,
+            ..Default::default()
+        },
+        1,
+        None,
+        None,
+        Default::default(),
+        Some(NumberCurrencyOptions {
+            code: "USD".into(),
+            display: NumberCurrencyDisplay::Name,
+            sign: NumberCurrencySign::Standard,
+        }),
+    )
+    .unwrap();
+    assert_eq!(
+        french_name.format_decimal("1").unwrap(),
+        "1,00 dollar des États-Unis"
+    );
+    assert_eq!(
+        french_name.format_decimal("2").unwrap(),
+        "2,00 dollars des États-Unis"
+    );
+    assert_eq!(
+        french_name
+            .format_to_parts_decimal("2")
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::Integer, "2".into()),
+            (NumberFormatPartKind::Decimal, ",".into()),
+            (NumberFormatPartKind::Fraction, "00".into()),
+            (NumberFormatPartKind::Literal, " ".into()),
+            (
+                NumberFormatPartKind::Currency,
+                "dollars des États-Unis".into(),
+            ),
+        ]
+    );
+
+    let accounting_name = NumberFormat::try_new_with_currency(
+        &[canonicalize("en").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Currency,
+            ..Default::default()
+        },
+        1,
+        None,
+        None,
+        Default::default(),
+        Some(NumberCurrencyOptions {
+            code: "USD".into(),
+            display: NumberCurrencyDisplay::Name,
+            sign: NumberCurrencySign::Accounting,
+        }),
+    )
+    .unwrap();
+    assert_eq!(
+        accounting_name.format_decimal("-1").unwrap(),
+        "-1.00 US dollars"
+    );
+
     let french = NumberFormat::try_new_with_currency(
         &[canonicalize("fr-FR").unwrap()],
         NumberFormatOptions {
@@ -468,6 +1352,30 @@ fn formats_percent_values_and_parts_through_the_number_service() {
     )
     .unwrap();
     assert_eq!(french.format_decimal("0.2").unwrap(), "20\u{a0}%");
+
+    let turkish = NumberFormat::try_new(
+        &[canonicalize("tr").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Percent,
+            sign_display: NumberSignDisplay::Always,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(turkish.format_decimal("0.2").unwrap(), "+%20");
+    assert_eq!(
+        turkish
+            .format_to_parts_decimal("-0.2")
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::MinusSign, "-".into()),
+            (NumberFormatPartKind::PercentSign, "%".into()),
+            (NumberFormatPartKind::Integer, "20".into()),
+        ]
+    );
 }
 
 #[test]

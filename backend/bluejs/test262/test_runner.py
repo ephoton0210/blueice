@@ -213,15 +213,36 @@ class RunnerTests(unittest.TestCase):
             test = corpus / "test"
             test.mkdir()
             matching = test / "language" / "match.js"
+            retained = test / "language" / "retained.js"
             fixture = test / "language" / "match_FIXTURE.js"
             matching.parent.mkdir()
             matching.write_text("/*---\n---*/")
+            retained.write_text("/*---\n---*/")
             fixture.write_text("/*---\n---*/")
             all_files = sorted(test.rglob("*.js"))
 
             self.assertEqual(selected_files(all_files, corpus, "language/match"), [matching])
+            self.assertEqual(
+                selected_files(all_files, corpus, "language/", "match.js"), [retained]
+            )
             with self.assertRaisesRegex(ValueError, "selected no test files"):
                 selected_files(all_files, corpus, "language/missing")
+            with self.assertRaisesRegex(ValueError, "selected no test files"):
+                selected_files(all_files, corpus, "language/", "match.js,retained.js")
+
+    def test_unicode_extension_locale_matrix_has_a_scoped_envelope(self):
+        self.assertEqual(
+            case_timeout(
+                {},
+                2,
+                "intl402/supportedLocalesOf-unicode-extensions-ignored.js",
+            ),
+            180,
+        )
+        self.assertEqual(
+            case_timeout({}, 2, "intl402/supportedLocalesOf/basic.js"),
+            2,
+        )
 
     def test_module_sources_collects_only_reachable_relative_fixtures(self):
         with tempfile.TemporaryDirectory() as temporary:

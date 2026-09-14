@@ -10,10 +10,11 @@ icu_calendar = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf4
 icu_collator = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
 icu_decimal = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57", features = ["ryu", "unstable"] }
 icu_datetime = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57", features = ["unstable"] }
+icu_experimental = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
 icu_list = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
 icu_locale = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
 icu_locale_core = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
-icu_plurals = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
+icu_plurals = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57", features = ["unstable"] }
 icu_provider = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
 icu_segmenter = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
 icu_time = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }

@@ -131,6 +131,7 @@ impl Vm {
                 ("join", 1, TypedArrayMethod::Join),
                 ("reduce", 1, TypedArrayMethod::Reduce),
                 ("toString", 0, TypedArrayMethod::ToString),
+                ("toLocaleString", 0, TypedArrayMethod::ToLocaleString),
                 ("reduceRight", 1, TypedArrayMethod::ReduceRight),
                 ("reverse", 0, TypedArrayMethod::Reverse),
                 ("slice", 2, TypedArrayMethod::Slice),

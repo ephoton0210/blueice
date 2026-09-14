@@ -789,6 +789,14 @@ impl Vm {
                     self.native_call(NativeFunction::ObjectToString, receiver.clone(), vec![], false)
                 }
             }
+            TypedArrayMethod::ToLocaleString => {
+                // ValidateTypedArray precedes any observable element lookup.
+                // The shared array algorithm then forwards both locale
+                // arguments to each Number/BigInt element exactly as the
+                // TypedArray specification requires.
+                self.typed_array_method_receiver(receiver)?;
+                self.array_to_locale_string(receiver, args)
+            }
             TypedArrayMethod::ReduceRight => {
                 let (object, length, _) = self.typed_array_method_receiver(receiver)?;
                 let callback = native::argument(args, 0);

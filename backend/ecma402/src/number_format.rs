@@ -203,8 +203,32 @@ pub struct NumberCurrencyOptions {
     pub sign: NumberCurrencySign,
 }
 
-/// ECMA-402 sanctioned simple units. DurationFormat uses the duration subset,
-/// while direct NumberFormat also accepts the remaining simple identifiers.
+/// Supplemental NumberFormat policies resolved by an embedding's option
+/// adapter. Keeping these in one typed record makes a data-only
+/// `numberingSystem` preference available even when locale negotiation uses
+/// the default locale.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NumberFormatConstructionOptions {
+    /// The selected ECMA-402 rounding increment.
+    pub rounding_increment: u16,
+    /// The optional lower significant-digit bound.
+    pub minimum_significant_digits: Option<u8>,
+    /// The optional upper significant-digit bound.
+    pub maximum_significant_digits: Option<u8>,
+    /// Whether an integral formatted value sheds trailing zeros.
+    pub trailing_zero_display: NumberTrailingZeroDisplay,
+    /// The currency record selected by the embedding.
+    pub currency: Option<NumberCurrencyOptions>,
+    /// An explicit, syntactically valid `numberingSystem` option.
+    pub numbering_system: Option<String>,
+}
+
+/// ECMA-402 sanctioned units.
+///
+/// [`Self::ALL`] deliberately contains only simple-unit identifiers, as
+/// required by `Intl.supportedValuesOf("unit")`. A `-per-` compound carries
+/// two indexes into that canonical inventory and remains `Copy`, allowing the
+/// resolved option record to keep its existing value semantics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NumberFormatUnit {
     /// Acres.
@@ -297,6 +321,14 @@ pub enum NumberFormatUnit {
     Yard,
     /// Calendar years.
     Year,
+    /// A sanctioned numerator/denominator compound such as
+    /// `kilometer-per-hour`.
+    CompoundPer {
+        /// The numerator's index in [`Self::ALL`].
+        numerator: u8,
+        /// The denominator's index in [`Self::ALL`].
+        denominator: u8,
+    },
 }
 
 impl NumberFormatUnit {
@@ -349,8 +381,22 @@ impl NumberFormatUnit {
         Self::Year,
     ];
 
-    /// Parses one data-backed sanctioned single-unit identifier.
+    /// Parses a sanctioned simple or `-per-` compound unit identifier.
     pub fn parse(value: &str) -> Option<Self> {
+        if let Some(simple) = Self::parse_simple(value) {
+            return Some(simple);
+        }
+        let (numerator, denominator) = value.split_once("-per-")?;
+        if numerator.is_empty() || denominator.is_empty() || denominator.contains("-per-") {
+            return None;
+        }
+        Some(Self::CompoundPer {
+            numerator: Self::simple_index(numerator)?,
+            denominator: Self::simple_index(denominator)?,
+        })
+    }
+
+    fn parse_simple(value: &str) -> Option<Self> {
         match value {
             "acre" => Some(Self::Acre),
             "bit" => Some(Self::Bit),
@@ -401,7 +447,40 @@ impl NumberFormatUnit {
         }
     }
 
-    /// Returns the sanctioned single-unit identifier.
+    fn simple_index(value: &str) -> Option<u8> {
+        Self::ALL
+            .iter()
+            .position(|unit| unit.as_str() == value)
+            .and_then(|index| u8::try_from(index).ok())
+    }
+
+    fn simple_at(index: u8) -> Self {
+        Self::ALL
+            .get(usize::from(index))
+            .copied()
+            .expect("compound unit indexes are derived from NumberFormatUnit::ALL")
+    }
+
+    /// Returns the simple numerator and denominator for a compound unit.
+    pub fn compound_parts(self) -> Option<(Self, Self)> {
+        let Self::CompoundPer {
+            numerator,
+            denominator,
+        } = self
+        else {
+            return None;
+        };
+        Some((Self::simple_at(numerator), Self::simple_at(denominator)))
+    }
+
+    /// Returns whether this is a compound rather than a simple unit.
+    pub const fn is_compound(self) -> bool {
+        matches!(self, Self::CompoundPer { .. })
+    }
+
+    /// Returns a simple-unit identifier, or a stable placeholder for internal
+    /// callers which require a borrowed value. Use [`Self::identifier`] for a
+    /// resolved compound identifier.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Acre => "acre",
@@ -449,6 +528,18 @@ impl NumberFormatUnit {
             Self::Week => "week",
             Self::Yard => "yard",
             Self::Year => "year",
+            Self::CompoundPer { .. } => "compound",
+        }
+    }
+
+    /// Returns the canonical ECMA-402 identifier, including `-per-` compound
+    /// identifiers.
+    pub fn identifier(self) -> String {
+        match self.compound_parts() {
+            Some((numerator, denominator)) => {
+                format!("{}-per-{}", numerator.as_str(), denominator.as_str())
+            }
+            None => self.as_str().into(),
         }
     }
 }
@@ -503,6 +594,19 @@ pub enum NumberRoundingMode {
     HalfTrunc,
     /// Round halfway values to even.
     HalfEven,
+}
+
+/// The precision family selected when both fraction and significant digit
+/// options are present.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum NumberRoundingPriority {
+    /// Prefer significant digits when they were requested.
+    #[default]
+    Auto,
+    /// Select the candidate with the smaller rounding magnitude.
+    MorePrecision,
+    /// Select the candidate with the larger rounding magnitude.
+    LessPrecision,
 }
 
 /// The `trailingZeroDisplay` policy selected by `Intl.NumberFormat`.
@@ -561,6 +665,8 @@ pub struct NumberFormatOptions {
     pub maximum_fraction_digits: Option<u8>,
     /// The rounding algorithm for finite decimal values.
     pub rounding_mode: NumberRoundingMode,
+    /// How fraction and significant digit precisions interact.
+    pub rounding_priority: NumberRoundingPriority,
     /// Whether a negative sign is emitted.
     pub sign_display: NumberSignDisplay,
 }
@@ -579,6 +685,7 @@ impl Default for NumberFormatOptions {
             minimum_fraction_digits: None,
             maximum_fraction_digits: None,
             rounding_mode: NumberRoundingMode::default(),
+            rounding_priority: NumberRoundingPriority::default(),
             sign_display: NumberSignDisplay::default(),
         }
     }
@@ -622,6 +729,42 @@ pub struct NumberFormatPart {
     pub value: String,
 }
 
+/// An already-converted input to the host-neutral number formatter.
+///
+/// JavaScript's `ToIntlMathematicalValue` preserves decimal strings and
+/// BigInts instead of first rounding them through IEEE-754. Embedders use the
+/// decimal variant for those exact values and the number variant for ordinary
+/// ECMAScript Numbers (including `NaN` and infinities).
+#[derive(Clone, Debug, PartialEq)]
+pub enum NumberFormatInput {
+    /// A finite, base-10 decimal value whose spelling must remain exact.
+    Decimal(String),
+    /// An IEEE-754 Number value.
+    Number(f64),
+}
+
+/// Which end of a formatted number range supplied a part.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NumberRangePartSource {
+    /// Text shared by both range endpoints.
+    Shared,
+    /// Text supplied by the range start.
+    StartRange,
+    /// Text supplied by the range end.
+    EndRange,
+}
+
+/// One `Intl.NumberFormat.prototype.formatRangeToParts` result record.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NumberRangePart {
+    /// The ECMA-402 part type.
+    pub kind: NumberFormatPartKind,
+    /// The localized text for this contiguous part.
+    pub value: String,
+    /// The endpoint (or common range pattern) that supplied this part.
+    pub source: NumberRangePartSource,
+}
+
 /// The ECMA-402 type of one number-format part.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NumberFormatPartKind {
@@ -629,6 +772,14 @@ pub enum NumberFormatPartKind {
     MinusSign,
     /// The positive sign.
     PlusSign,
+    /// The approximation marker used when both endpoints round alike.
+    ApproximatelySign,
+    /// The scientific-notation exponent separator.
+    ExponentSeparator,
+    /// The negative sign of a scientific-notation exponent.
+    ExponentMinusSign,
+    /// The exponent digits of scientific notation.
+    ExponentInteger,
     /// A contiguous integer digit sequence.
     Integer,
     /// A grouping separator.
@@ -645,6 +796,8 @@ pub enum NumberFormatPartKind {
     Currency,
     /// The localized percent sign.
     PercentSign,
+    /// The locale-selected compact-notation suffix.
+    Compact,
     /// A localized not-a-number symbol.
     Nan,
     /// A localized infinity symbol.
@@ -678,6 +831,8 @@ pub enum NumberFormatError {
     InvalidDecimal,
     /// An IEEE-754 input was `NaN` or infinite.
     NonFiniteNumber,
+    /// A range endpoint became `NaN` during `ToIntlMathematicalValue`.
+    RangeNaN,
     /// A writeable formatter failed while producing parts.
     FormattingFailed,
 }
@@ -709,6 +864,7 @@ impl std::fmt::Display for NumberFormatError {
             }
             Self::InvalidDecimal => formatter.write_str("invalid finite decimal input"),
             Self::NonFiniteNumber => formatter.write_str("number must be finite"),
+            Self::RangeNaN => formatter.write_str("number range endpoints must not be NaN"),
             Self::FormattingFailed => formatter.write_str("number formatting failed"),
         }
     }
@@ -723,13 +879,36 @@ impl std::error::Error for NumberFormatError {}
 /// selection occur here.
 pub struct NumberFormat {
     formatter: DecimalFormatter,
+    // ICU4X's DecimalFormatter owns this mapping internally, but the
+    // handwritten scientific and range-part paths build numeric text before
+    // it reaches that formatter. Retain the exact `DecimalDigitsV1` payload
+    // selected at construction so those parts use provider data too.
+    decimal_digits: [char; 10],
+    // Unit and currency-name selection are CLDR cardinal-plural operations
+    // over the rounded decimal that is actually rendered. Keeping the shared
+    // service here avoids reducing every locale to an English one/other
+    // distinction while preserving the existing NumberFormat rounding path.
+    display_plural_rules: Option<PluralRules>,
     negotiation: NumberFormatLocaleNegotiation,
     resolved: ResolvedNumberFormatOptions,
     rounding_increment: u16,
     significant_digits: Option<(u8, u8)>,
+    rounding_priority: NumberRoundingPriority,
     trailing_zero_display: NumberTrailingZeroDisplay,
     compact_display: NumberCompactDisplay,
     currency: Option<NumberCurrencyOptions>,
+}
+
+/// The internal output of one rounded NumberFormat operation.
+///
+/// The plural category is retained for `formatRange`: a unit or currency name
+/// uses CLDR plural-range data over the categories of the decimals actually
+/// rendered, not the source values supplied by the embedding.
+struct FormattedNumber {
+    parts: Vec<NumberFormatPart>,
+    numeric_parts: Vec<NumberFormatPart>,
+    display_plural_category: Option<PluralCategory>,
+    unit_hides_number: bool,
 }
 
 impl NumberFormat {
@@ -816,6 +995,39 @@ impl NumberFormat {
         trailing_zero_display: NumberTrailingZeroDisplay,
         currency: Option<NumberCurrencyOptions>,
     ) -> Result<Self, NumberFormatError> {
+        Self::try_new_with_construction_options(
+            requested,
+            options,
+            NumberFormatConstructionOptions {
+                rounding_increment,
+                minimum_significant_digits,
+                maximum_significant_digits,
+                trailing_zero_display,
+                currency,
+                numbering_system: None,
+            },
+        )
+    }
+
+    /// Constructs a formatter with a NumberFormat `numberingSystem` option.
+    ///
+    /// The preference is deliberately separate from the requested locale
+    /// list: an explicit option also applies when locale negotiation falls
+    /// back to the host default, and must not become visible as a `-u-nu-`
+    /// locale extension.
+    pub fn try_new_with_construction_options(
+        requested: &[CanonicalLocale],
+        options: NumberFormatOptions,
+        construction: NumberFormatConstructionOptions,
+    ) -> Result<Self, NumberFormatError> {
+        let NumberFormatConstructionOptions {
+            rounding_increment,
+            minimum_significant_digits,
+            maximum_significant_digits,
+            trailing_zero_display,
+            currency,
+            numbering_system,
+        } = construction;
         if rounding_increment_parts(rounding_increment).is_none() {
             return Err(NumberFormatError::InvalidRoundingIncrement);
         }
@@ -826,9 +1038,11 @@ impl NumberFormat {
             == NumberFormatStyle::Currency
             && options.notation == NumberNotation::Standard
         {
-            let digits = currency
-                .as_ref()
-                .map_or(2, |currency| currency_digits(&currency.code));
+            let digits = currency.as_ref().map_or(2, |currency| {
+                crate::locale_data_provider()
+                    .currency_fraction_digits(&currency.code)
+                    .unwrap_or(2)
+            });
             (digits, digits)
         } else if options.notation == NumberNotation::Compact
             || options.style == NumberFormatStyle::Percent
@@ -855,7 +1069,8 @@ impl NumberFormat {
             return Err(NumberFormatError::MissingUnit);
         }
         let negotiation = negotiate_number_format_locale(requested, options.locale_matcher);
-        let selected = resolve_numbering_system_locale(&negotiation.selected, None);
+        let selected =
+            resolve_numbering_system_locale(&negotiation.selected, numbering_system.as_deref());
         let provider = NumberingSystemInspectionProvider::default();
         let mut formatter_options = DecimalFormatterOptions::default();
         formatter_options.grouping_strategy = Some(options.use_grouping.into());
@@ -878,6 +1093,9 @@ impl NumberFormat {
                 .into_inner()
                 .unwrap_or_else(|| "latn".into())
         });
+        let decimal_digits = locale_data_provider()
+            .decimal_digits(&numbering_system)
+            .ok_or(NumberFormatError::DataUnavailable)?;
         let resolved = ResolvedNumberFormatOptions {
             locale: selected.as_str().into(),
             numbering_system,
@@ -892,12 +1110,30 @@ impl NumberFormat {
             rounding_mode: options.rounding_mode,
             sign_display: options.sign_display,
         };
+        let display_plural_rules = matches!(
+            options.style,
+            NumberFormatStyle::Unit | NumberFormatStyle::Currency
+        )
+        .then(|| {
+            PluralRules::try_new(
+                std::slice::from_ref(&selected),
+                PluralRulesOptions {
+                    locale_matcher: options.locale_matcher,
+                    ..Default::default()
+                },
+            )
+            .map_err(|_| NumberFormatError::DataUnavailable)
+        })
+        .transpose()?;
         Ok(Self {
             formatter,
+            decimal_digits,
+            display_plural_rules,
             negotiation,
             resolved,
             rounding_increment,
             significant_digits,
+            rounding_priority: options.rounding_priority,
             trailing_zero_display,
             compact_display: options.compact_display,
             currency,
@@ -927,6 +1163,256 @@ impl NumberFormat {
             .collect())
     }
 
+    /// Formats an input whose ECMAScript numeric kind has already been
+    /// selected by the embedding.
+    pub fn format_input(&self, value: NumberFormatInput) -> Result<String, NumberFormatError> {
+        Ok(self
+            .format_input_to_parts(value)?
+            .iter()
+            .map(|part| part.value.as_str())
+            .collect())
+    }
+
+    /// Formats a numeric range with range-part provenance retained.
+    ///
+    /// The decimal service owns range pattern selection so embeddings do not
+    /// accidentally lose precision by converting a BigInt or decimal string
+    /// to `f64` while assembling a range.
+    pub fn format_range_inputs(
+        &self,
+        start: NumberFormatInput,
+        end: NumberFormatInput,
+    ) -> Result<String, NumberFormatError> {
+        Ok(self
+            .format_range_inputs_to_parts(start, end)?
+            .iter()
+            .map(|part| part.value.as_str())
+            .collect())
+    }
+
+    /// Formats a numeric range with `formatRangeToParts` provenance.
+    pub fn format_range_inputs_to_parts(
+        &self,
+        start: NumberFormatInput,
+        end: NumberFormatInput,
+    ) -> Result<Vec<NumberRangePart>, NumberFormatError> {
+        if matches!(&start, NumberFormatInput::Number(value) if value.is_nan())
+            || matches!(&end, NumberFormatInput::Number(value) if value.is_nan())
+        {
+            return Err(NumberFormatError::RangeNaN);
+        }
+        let FormattedNumber {
+            parts: mut start_parts,
+            numeric_parts: start_numeric_parts,
+            display_plural_category: start_plural_category,
+            unit_hides_number: start_unit_hides_number,
+        } = self.format_input_to_formatted_number(start)?;
+        let FormattedNumber {
+            parts: mut end_parts,
+            numeric_parts: end_numeric_parts,
+            display_plural_category: end_plural_category,
+            unit_hides_number: end_unit_hides_number,
+        } = self.format_input_to_formatted_number(end)?;
+        if start_parts == end_parts {
+            let mut result = Vec::with_capacity(start_parts.len() + 1);
+            result.push(NumberRangePart {
+                kind: NumberFormatPartKind::ApproximatelySign,
+                value: crate::locale_data_provider()
+                    .number_approximately_sign(&self.resolved.locale)
+                    .unwrap_or_else(|| "~".into()),
+                source: NumberRangePartSource::Shared,
+            });
+            result.extend(start_parts.drain(..).map(shared_number_range_part));
+            return Ok(result);
+        }
+
+        let hidden_unit_range_suffix = if self.resolved.style == NumberFormatStyle::Unit
+            && (start_unit_hides_number || end_unit_hides_number)
+        {
+            let range_plural_category = start_plural_category
+                .zip(end_plural_category)
+                .and_then(|(start, end)| {
+                    crate::locale_data_provider().number_range_plural_category(
+                        &self.resolved.locale,
+                        start,
+                        end,
+                    )
+                })
+                .or(end_plural_category);
+            range_plural_category.and_then(|range_plural_category| {
+                let unit = self.resolved.unit?;
+                let mut end_with_range_affix = end_numeric_parts.clone();
+                apply_unit_pattern(
+                    &mut end_with_range_affix,
+                    &self.resolved.locale,
+                    unit,
+                    self.resolved.unit_display,
+                    range_plural_category,
+                );
+                (end_with_range_affix[..end_numeric_parts.len()] == end_numeric_parts)
+                    .then(|| end_with_range_affix.split_off(end_numeric_parts.len()))
+            })
+        } else {
+            None
+        };
+        if hidden_unit_range_suffix.is_some() {
+            start_parts = start_numeric_parts;
+            end_parts = end_numeric_parts;
+        }
+
+        // CLDR range patterns commonly share a trailing currency, unit, or
+        // percent affix. The formatted parts, rather than a language-family
+        // table, tell us whether the selected provider pattern placed that
+        // affix after the magnitude.
+        let suffix_length = common_number_affix_suffix_length(&start_parts, &end_parts);
+        // An exact-value compact pattern may consist solely of its `compact`
+        // part (for example pinned French long `mille`). It is not an affix
+        // when extracting it would erase an endpoint altogether.
+        let suffix_is_affix = suffix_length > 0
+            && suffix_length < start_parts.len()
+            && suffix_length < end_parts.len();
+        let suffix = if let Some(suffix) = hidden_unit_range_suffix {
+            suffix
+        } else if suffix_is_affix {
+            let start_at = start_parts.len() - suffix_length;
+            end_parts.truncate(end_parts.len() - suffix_length);
+            start_parts.split_off(start_at)
+        } else if let Some(suffix_length) =
+            range_plural_affix_suffix_length(&start_parts, &end_parts)
+        {
+            // Rebuild the trailing affix with the CLDR plural-range category
+            // over the rounded endpoint values. This normally matches the
+            // end category, but preserves locales with an explicit range
+            // rule as well as French `1–2 mètres`.
+            let start_at = start_parts.len() - suffix_length;
+            start_parts.truncate(start_at);
+            let end_at = end_parts.len() - suffix_length;
+            let end_suffix = end_parts.split_off(end_at);
+            let range_plural_category =
+                start_plural_category
+                    .zip(end_plural_category)
+                    .and_then(|(start, end)| {
+                        crate::locale_data_provider().number_range_plural_category(
+                            &self.resolved.locale,
+                            start,
+                            end,
+                        )
+                    });
+            if let Some(range_plural_category) = range_plural_category {
+                let mut end_with_range_affix = end_parts.clone();
+                let rebuilt = match (
+                    self.resolved.style,
+                    self.resolved.unit,
+                    self.currency.as_ref(),
+                ) {
+                    (NumberFormatStyle::Unit, Some(unit), _) => {
+                        apply_unit_pattern(
+                            &mut end_with_range_affix,
+                            &self.resolved.locale,
+                            unit,
+                            self.resolved.unit_display,
+                            range_plural_category,
+                        );
+                        true
+                    }
+                    (NumberFormatStyle::Currency, _, Some(currency)) => {
+                        let negative = end_with_range_affix
+                            .iter()
+                            .any(|part| part.kind == NumberFormatPartKind::MinusSign);
+                        apply_currency_pattern(
+                            &mut end_with_range_affix,
+                            currency,
+                            &self.resolved.locale,
+                            negative,
+                            range_plural_category,
+                        );
+                        true
+                    }
+                    _ => false,
+                };
+                if rebuilt {
+                    end_with_range_affix.split_off(end_at)
+                } else {
+                    end_suffix
+                }
+            } else {
+                end_suffix
+            }
+        } else {
+            Vec::new()
+        };
+
+        // The CLDR currency pattern folds a common explicit plus/currency
+        // prefix into the start endpoint (for example `+$2.90–3.10`). A bare
+        // prefix currency remains endpoint-specific (`$3 – $5`).
+        let prefix_length = common_number_part_prefix_length(&start_parts, &end_parts);
+        if prefix_length > 0
+            && start_parts[..prefix_length]
+                .iter()
+                .any(|part| part.kind == NumberFormatPartKind::PlusSign)
+            && (start_parts[..prefix_length]
+                .iter()
+                .any(|part| part.kind == NumberFormatPartKind::Currency)
+                || suffix
+                    .iter()
+                    .any(|part| part.kind == NumberFormatPartKind::Currency))
+        {
+            end_parts.drain(..prefix_length);
+        }
+
+        let mut result = Vec::with_capacity(start_parts.len() + end_parts.len() + suffix.len() + 1);
+        result.extend(start_parts.into_iter().map(start_number_range_part));
+        result.push(NumberRangePart {
+            kind: NumberFormatPartKind::Literal,
+            value: number_range_separator(
+                &self.resolved.locale,
+                self.resolved.style,
+                self.resolved.maximum_fraction_digits,
+            )
+            .into(),
+            source: NumberRangePartSource::Shared,
+        });
+        result.extend(end_parts.into_iter().map(end_number_range_part));
+        result.extend(suffix.into_iter().map(shared_number_range_part));
+        Ok(result)
+    }
+
+    /// Formats an input into ECMA-402 parts without collapsing its numeric
+    /// representation through an embedding-specific conversion.
+    pub fn format_input_to_parts(
+        &self,
+        value: NumberFormatInput,
+    ) -> Result<Vec<NumberFormatPart>, NumberFormatError> {
+        self.format_input_to_formatted_number(value)
+            .map(|formatted| formatted.parts)
+    }
+
+    fn format_input_to_formatted_number(
+        &self,
+        value: NumberFormatInput,
+    ) -> Result<FormattedNumber, NumberFormatError> {
+        match value {
+            NumberFormatInput::Decimal(value) => {
+                let value = number_sign_display_decimal(&value, self.resolved.sign_display);
+                let decimal =
+                    Decimal::try_from_str(value).map_err(|_| NumberFormatError::InvalidDecimal)?;
+                self.format_decimal_value(decimal)
+            }
+            NumberFormatInput::Number(value) if !value.is_finite() => Ok(FormattedNumber {
+                parts: self.format_non_finite(value),
+                numeric_parts: Vec::new(),
+                display_plural_category: None,
+                unit_hides_number: false,
+            }),
+            NumberFormatInput::Number(value) => {
+                let value = number_sign_display_f64(value, self.resolved.sign_display);
+                let decimal = Decimal::try_from_f64(value, FloatPrecision::RoundTrip)
+                    .map_err(|_| NumberFormatError::NonFiniteNumber)?;
+                self.format_decimal_value(decimal)
+            }
+        }
+    }
+
     /// Formats an already-coerced finite decimal string into ECMA-402 parts.
     pub fn format_to_parts_decimal(
         &self,
@@ -936,6 +1422,7 @@ impl NumberFormat {
         let decimal =
             Decimal::try_from_str(value).map_err(|_| NumberFormatError::InvalidDecimal)?;
         self.format_decimal_value(decimal)
+            .map(|formatted| formatted.parts)
     }
 
     /// Formats a finite IEEE-754 number into ECMA-402 parts.
@@ -950,16 +1437,58 @@ impl NumberFormat {
         let decimal = Decimal::try_from_f64(value, FloatPrecision::RoundTrip)
             .map_err(|_| NumberFormatError::NonFiniteNumber)?;
         self.format_decimal_value(decimal)
+            .map(|formatted| formatted.parts)
     }
 
     fn format_decimal_value(
         &self,
         mut value: Decimal,
-    ) -> Result<Vec<NumberFormatPart>, NumberFormatError> {
+    ) -> Result<FormattedNumber, NumberFormatError> {
         if self.resolved.style == NumberFormatStyle::Percent {
             value.multiply_pow10(2);
         }
-        if let Some((minimum, maximum)) = self.significant_digits {
+        let compact_magnitude = value.nonzero_magnitude_start();
+        let compact_scale = (self.resolved.notation == NumberNotation::Compact).then(|| {
+            crate::locale_data_provider().compact_number_pattern(
+                &self.resolved.locale,
+                compact_magnitude,
+                self.compact_display,
+                PluralCategory::Other,
+                None,
+            )
+        });
+        let compact_scale = compact_scale.flatten();
+        if let Some(pattern) = &compact_scale {
+            value.multiply_pow10(-pattern.divisor);
+        }
+        let mut exponent = notation_exponent(&value, self.resolved.notation);
+        if let Some(exponent) = exponent {
+            value.multiply_pow10(-exponent);
+        }
+        let (increment, position_adjustment) =
+            rounding_increment_parts(self.rounding_increment).expect("validated at construction");
+        let maximum_fraction_digits = if self.resolved.notation == NumberNotation::Compact
+            && self.significant_digits.is_none()
+        {
+            compact_maximum_fraction_digits(&value)
+        } else {
+            self.resolved.maximum_fraction_digits
+        };
+        let use_significant_digits = self
+            .significant_digits
+            .is_some_and(|(_, maximum)| match self.rounding_priority {
+                NumberRoundingPriority::Auto => true,
+                NumberRoundingPriority::MorePrecision => {
+                    value.nonzero_magnitude_start() - i16::from(maximum) + 1
+                        < -(maximum_fraction_digits as i16) + position_adjustment
+                }
+                NumberRoundingPriority::LessPrecision => {
+                    value.nonzero_magnitude_start() - i16::from(maximum) + 1
+                        > -(maximum_fraction_digits as i16) + position_adjustment
+                }
+            });
+        if let Some((minimum, maximum)) = self.significant_digits.filter(|_| use_significant_digits)
+        {
             value.round_with_mode(
                 value.nonzero_magnitude_start() - i16::from(maximum) + 1,
                 self.resolved.rounding_mode.fixed_decimal_mode(),
@@ -967,26 +1496,71 @@ impl NumberFormat {
             let minimum_position = value.nonzero_magnitude_start() - i16::from(minimum) + 1;
             value.pad_end(minimum_position);
         } else {
-            let (increment, position_adjustment) =
-                rounding_increment_parts(self.rounding_increment)
-                    .expect("validated at construction");
             value.round_with_mode_and_increment(
-                -(self.resolved.maximum_fraction_digits as i16) + position_adjustment,
+                -(maximum_fraction_digits as i16) + position_adjustment,
                 self.resolved.rounding_mode.fixed_decimal_mode(),
                 increment,
             );
             value.pad_end(-(self.resolved.minimum_fraction_digits as i16));
         }
+        if let Some(previous_exponent) = exponent {
+            let adjustment = notation_exponent(&value, self.resolved.notation)
+                .expect("scientific notation always has an exponent");
+            if adjustment != 0 {
+                value.multiply_pow10(-adjustment);
+                exponent = Some(previous_exponent + adjustment);
+                // The carry induced by moving a rounded significand is exact;
+                // retain its existing precision instead of applying a second
+                // option-resolution round.
+            }
+        }
         if self.trailing_zero_display == NumberTrailingZeroDisplay::StripIfInteger {
             value.trim_end_if_integer();
         }
         value.pad_start(self.resolved.minimum_integer_digits.into());
-        let singular = decimal_is_one(&value);
+        let display_plural_category = self
+            .display_plural_rules
+            .as_ref()
+            .map(|rules| rules.select_decimal(&value.to_string()))
+            .transpose()
+            .map_err(|_| NumberFormatError::FormattingFailed)?;
+        let compact = compact_scale.as_ref().and_then(|_| {
+            crate::locale_data_provider().compact_number_pattern(
+                &self.resolved.locale,
+                compact_magnitude,
+                self.compact_display,
+                display_plural_category.unwrap_or(PluralCategory::Other),
+                matches!(
+                    self.resolved.style,
+                    NumberFormatStyle::Decimal | NumberFormatStyle::Unit
+                )
+                .then_some(&value),
+            )
+        });
         let mut collector = NumberPartCollector::default();
         self.formatter
             .format(&value)
             .write_to_parts(&mut collector)
             .map_err(|_| NumberFormatError::FormattingFailed)?;
+        // Compact CLDR patterns own their integer skeleton. In particular,
+        // the Korean/Japanese ten-thousand patterns do not inherit ordinary
+        // decimal grouping after the value has been scaled.
+        if compact_scale.is_some() {
+            collector
+                .parts
+                .retain(|part| part.kind != NumberFormatPartKind::Group);
+        }
+        if compact.as_ref().is_some_and(|pattern| pattern.hides_number) {
+            collector.parts.retain(|part| {
+                !matches!(
+                    part.kind,
+                    NumberFormatPartKind::Integer
+                        | NumberFormatPartKind::Group
+                        | NumberFormatPartKind::Decimal
+                        | NumberFormatPartKind::Fraction
+                )
+            });
+        }
         let zero = decimal_is_zero(&value);
         if zero
             && matches!(
@@ -1018,32 +1592,56 @@ impl NumberFormat {
                 },
             );
         }
-        if let Some(currency) = self.currency.as_ref() {
+        // Compact notation belongs to the formatted number itself. Currency,
+        // percent, and unit patterns therefore wrap the completed compact
+        // number rather than leaving its suffix after a trailing affix.
+        if let Some(pattern) = compact {
+            if !pattern.separator.is_empty() {
+                collector.push(NumberFormatPartKind::Literal, &pattern.separator);
+            }
+            collector.push(NumberFormatPartKind::Compact, &pattern.suffix);
+        }
+        let numeric_parts = collector.parts.clone();
+        let unit_hides_number = if let Some(currency) = self.currency.as_ref() {
             apply_currency_pattern(
                 &mut collector.parts,
                 currency,
                 &self.resolved.locale,
                 negative,
+                display_plural_category.unwrap_or(PluralCategory::Other),
             );
+            false
         } else if self.resolved.style == NumberFormatStyle::Percent {
             apply_percent_pattern(&mut collector.parts, &self.resolved.locale);
+            false
         } else if let Some(unit) = self.resolved.unit {
-            let (separator, label) = unit_pattern(
+            apply_unit_pattern(
+                &mut collector.parts,
                 &self.resolved.locale,
                 unit,
                 self.resolved.unit_display,
-                singular,
-            );
-            if !separator.is_empty() {
-                collector.push(NumberFormatPartKind::Literal, separator);
+                display_plural_category.unwrap_or(PluralCategory::Other),
+            )
+        } else {
+            false
+        };
+        if let Some(exponent) = exponent {
+            collector.push(NumberFormatPartKind::ExponentSeparator, "E");
+            if exponent < 0 {
+                collector.push(NumberFormatPartKind::ExponentMinusSign, "-");
             }
-            collector.push(NumberFormatPartKind::Unit, label);
+            let exponent = exponent.unsigned_abs().to_string();
+            collector.push(NumberFormatPartKind::ExponentInteger, &exponent);
         }
-        localize_simple_numbering_system_parts(
-            &mut collector.parts,
-            &self.resolved.numbering_system,
-        );
-        Ok(collector.parts)
+        localize_decimal_parts(&mut collector.parts, &self.decimal_digits);
+        let mut numeric_parts = numeric_parts;
+        localize_decimal_parts(&mut numeric_parts, &self.decimal_digits);
+        Ok(FormattedNumber {
+            parts: collector.parts,
+            numeric_parts,
+            display_plural_category,
+            unit_hides_number,
+        })
     }
 
     fn format_non_finite(&self, value: f64) -> Vec<NumberFormatPart> {
@@ -1094,26 +1692,23 @@ impl NumberFormat {
             value: special.into(),
         });
         if let Some(currency) = self.currency.as_ref() {
-            apply_currency_pattern(&mut parts, currency, &self.resolved.locale, negative);
+            apply_currency_pattern(
+                &mut parts,
+                currency,
+                &self.resolved.locale,
+                negative,
+                PluralCategory::Other,
+            );
         } else if self.resolved.style == NumberFormatStyle::Percent {
             apply_percent_pattern(&mut parts, &self.resolved.locale);
         } else if let Some(unit) = self.resolved.unit {
-            let (separator, label) = unit_pattern(
+            apply_unit_pattern(
+                &mut parts,
                 &self.resolved.locale,
                 unit,
                 self.resolved.unit_display,
-                false,
+                PluralCategory::Other,
             );
-            if !separator.is_empty() {
-                parts.push(NumberFormatPart {
-                    kind: NumberFormatPartKind::Literal,
-                    value: separator.into(),
-                });
-            }
-            parts.push(NumberFormatPart {
-                kind: NumberFormatPartKind::Unit,
-                value: label.into(),
-            });
         }
         parts
     }
@@ -1131,6 +1726,11 @@ impl NumberFormat {
     /// Returns the resolved significant-digit precision, when requested.
     pub fn significant_digits(&self) -> Option<(u8, u8)> {
         self.significant_digits
+    }
+
+    /// Returns the resolved interaction of fraction and significant digits.
+    pub fn rounding_priority(&self) -> NumberRoundingPriority {
+        self.rounding_priority
     }
 
     /// Returns the resolved ECMA-402 `trailingZeroDisplay` option.
@@ -1188,15 +1788,6 @@ fn decimal_is_zero(value: &Decimal) -> bool {
         .trim_start_matches(['-', '+'])
         .bytes()
         .all(|byte| matches!(byte, b'0' | b'.'))
-}
-
-fn decimal_is_one(value: &Decimal) -> bool {
-    let text = value.to_string();
-    let text = text.trim_start_matches(['-', '+']);
-    text == "1"
-        || text.strip_prefix("1.").is_some_and(|fraction| {
-            !fraction.is_empty() && fraction.bytes().all(|digit| digit == b'0')
-        })
 }
 
 /// Maps ICU4X decimal writeable parts to ECMA-402 `formatToParts` records.
@@ -1265,240 +1856,171 @@ impl PartsWrite for NumberPartCollector {
     }
 }
 
-/// ICU4X's compact decimal bundle can use Latin fallback data for newly
-/// assigned simple numbering systems. Keep ResolveLocale's requested system
-/// observable and substitute its UTS 35 digit mapping in numeric parts, while
-/// retaining ICU's locale-specific signs, grouping, and decimal separators.
-fn localize_simple_numbering_system_parts(parts: &mut [NumberFormatPart], numbering_system: &str) {
+/// Applies the selected ICU4X `DecimalDigitsV1` payload to handwritten
+/// numeric parts while retaining ICU's locale-specific signs, grouping, and
+/// decimal separators.
+fn localize_decimal_parts(parts: &mut [NumberFormatPart], digits: &[char; 10]) {
     for part in parts.iter_mut().filter(|part| {
         matches!(
             part.kind,
-            NumberFormatPartKind::Integer | NumberFormatPartKind::Fraction
+            NumberFormatPartKind::Integer
+                | NumberFormatPartKind::Fraction
+                | NumberFormatPartKind::ExponentInteger
         )
     }) {
-        part.value = localize_simple_numbering_system(&part.value, numbering_system);
+        part.value = localize_decimal_digits(&part.value, digits);
     }
 }
 
-/// Applies a simple numbering system's UTS 35 digits to ASCII decimal text.
+fn notation_exponent(value: &Decimal, notation: NumberNotation) -> Option<i16> {
+    match notation {
+        NumberNotation::Standard | NumberNotation::Compact => None,
+        NumberNotation::Scientific => Some(value.nonzero_magnitude_start()),
+        NumberNotation::Engineering => {
+            let magnitude = value.nonzero_magnitude_start();
+            Some(magnitude - magnitude.rem_euclid(3))
+        }
+    }
+}
+
+/// Compact notation keeps two visible significant positions below ten and no
+/// fractional positions at larger magnitudes. This is applied after the CLDR
+/// compact scale has been selected, so `9876` becomes `9.9K` while an
+/// unscaled `98765` remains an integer.
+fn compact_maximum_fraction_digits(value: &Decimal) -> u8 {
+    let magnitude = value.nonzero_magnitude_start();
+    u8::try_from((1 - magnitude).clamp(0, 100)).expect("clamped compact fraction digits")
+}
+
+/// Applies one ICU4X `DecimalDigitsV1` payload to ASCII decimal text.
 ///
 /// DurationFormat's numeric substeps use the same helper so an accepted
 /// `numberingSystem` affects both direct NumberFormat and duration output.
-pub(crate) fn localize_simple_numbering_system(value: &str, numbering_system: &str) -> String {
-    let Some(digits) = simple_numbering_system_digits(numbering_system) else {
-        return value.into();
-    };
-    let mut mapping = ['0'; 10];
-    for (index, digit) in digits.chars().enumerate() {
-        mapping[index] = digit;
-    }
+pub(crate) fn localize_decimal_digits(value: &str, digits: &[char; 10]) -> String {
     value
         .chars()
         .map(|character| {
             character
                 .to_digit(10)
                 .filter(|_| character.is_ascii_digit())
-                .map_or(character, |digit| mapping[digit as usize])
+                .map_or(character, |digit| digits[digit as usize])
         })
         .collect()
 }
 
-/// ECMA-402 Table 4's simple digit mappings. Algorithmic systems deliberately
-/// do not occur here; every system advertised by this implementation has one
-/// of these ten-code-point substitutions.
-fn simple_numbering_system_digits(numbering_system: &str) -> Option<&'static str> {
-    Some(match numbering_system {
-        "adlm" => "𞥐𞥑𞥒𞥓𞥔𞥕𞥖𞥗𞥘𞥙",
-        "ahom" => "𑜰𑜱𑜲𑜳𑜴𑜵𑜶𑜷𑜸𑜹",
-        "arab" => "٠١٢٣٤٥٦٧٨٩",
-        "arabext" => "۰۱۲۳۴۵۶۷۸۹",
-        "bali" => "᭐᭑᭒᭓᭔᭕᭖᭗᭘᭙",
-        "beng" => "০১২৩৪৫৬৭৮৯",
-        "bhks" => "𑱐𑱑𑱒𑱓𑱔𑱕𑱖𑱗𑱘𑱙",
-        "brah" => "𑁦𑁧𑁨𑁩𑁪𑁫𑁬𑁭𑁮𑁯",
-        "cakm" => "𑄶𑄷𑄸𑄹𑄺𑄻𑄼𑄽𑄾𑄿",
-        "cham" => "꩐꩑꩒꩓꩔꩕꩖꩗꩘꩙",
-        "deva" => "०१२३४५६७८९",
-        "diak" => "𑥐𑥑𑥒𑥓𑥔𑥕𑥖𑥗𑥘𑥙",
-        "fullwide" => "０１２３４５６７８９",
-        "gara" => "𐵀𐵁𐵂𐵃𐵄𐵅𐵆𐵇𐵈𐵉",
-        "gong" => "𑶠𑶡𑶢𑶣𑶤𑶥𑶦𑶧𑶨𑶩",
-        "gonm" => "𑵐𑵑𑵒𑵓𑵔𑵕𑵖𑵗𑵘𑵙",
-        "gujr" => "૦૧૨૩૪૫૬૭૮૯",
-        "gukh" => "𖄰𖄱𖄲𖄳𖄴𖄵𖄶𖄷𖄸𖄹",
-        "guru" => "੦੧੨੩੪੫੬੭੮੯",
-        "hanidec" => "〇一二三四五六七八九",
-        "hmng" => "𖭐𖭑𖭒𖭓𖭔𖭕𖭖𖭗𖭘𖭙",
-        "hmnp" => "𞅀𞅁𞅂𞅃𞅄𞅅𞅆𞅇𞅈𞅉",
-        "java" => "꧐꧑꧒꧓꧔꧕꧖꧗꧘꧙",
-        "kali" => "꤀꤁꤂꤃꤄꤅꤆꤇꤈꤉",
-        "kawi" => "𑽐𑽑𑽒𑽓𑽔𑽕𑽖𑽗𑽘𑽙",
-        "khmr" => "០១២៣៤៥៦៧៨៩",
-        "knda" => "೦೧೨೩೪೫೬೭೮೯",
-        "krai" => "𖵰𖵱𖵲𖵳𖵴𖵵𖵶𖵷𖵸𖵹",
-        "lana" => "᪀᪁᪂᪃᪄᪅᪆᪇᪈᪉",
-        "lanatham" => "᪐᪑᪒᪓᪔᪕᪖᪗᪘᪙",
-        "laoo" => "໐໑໒໓໔໕໖໗໘໙",
-        "latn" => "0123456789",
-        "lepc" => "᱀᱁᱂᱃᱄᱅᱆᱇᱈᱉",
-        "limb" => "᥆᥇᥈᥉᥊᥋᥌᥍᥎᥏",
-        "mathbold" => "𝟎𝟏𝟐𝟑𝟒𝟓𝟔𝟕𝟖𝟗",
-        "mathdbl" => "𝟘𝟙𝟚𝟛𝟜𝟝𝟞𝟟𝟠𝟡",
-        "mathmono" => "𝟶𝟷𝟸𝟹𝟺𝟻𝟼𝟽𝟾𝟿",
-        "mathsanb" => "𝟬𝟭𝟮𝟯𝟰𝟱𝟲𝟳𝟴𝟵",
-        "mathsans" => "𝟢𝟣𝟤𝟥𝟦𝟧𝟨𝟩𝟪𝟫",
-        "mlym" => "൦൧൨൩൪൫൬൭൮൯",
-        "modi" => "𑙐𑙑𑙒𑙓𑙔𑙕𑙖𑙗𑙘𑙙",
-        "mong" => "᠐᠑᠒᠓᠔᠕᠖᠗᠘᠙",
-        "mroo" => "𖩠𖩡𖩢𖩣𖩤𖩥𖩦𖩧𖩨𖩩",
-        "mtei" => "꯰꯱꯲꯳꯴꯵꯶꯷꯸꯹",
-        "mymr" => "၀၁၂၃၄၅၆၇၈၉",
-        "mymrepka" => "𑛚𑛛𑛜𑛝𑛞𑛟𑛠𑛡𑛢𑛣",
-        "mymrpao" => "𑛐𑛑𑛒𑛓𑛔𑛕𑛖𑛗𑛘𑛙",
-        "mymrshan" => "႐႑႒႓႔႕႖႗႘႙",
-        "mymrtlng" => "꧰꧱꧲꧳꧴꧵꧶꧷꧸꧹",
-        "nagm" => "𞓰𞓱𞓲𞓳𞓴𞓵𞓶𞓷𞓸𞓹",
-        "newa" => "𑑐𑑑𑑒𑑓𑑔𑑕𑑖𑑗𑑘𑑙",
-        "nkoo" => "߀߁߂߃߄߅߆߇߈߉",
-        "olck" => "᱐᱑᱒᱓᱔᱕᱖᱗᱘᱙",
-        "onao" => "𞗱𞗲𞗳𞗴𞗵𞗶𞗷𞗸𞗹𞗺",
-        "orya" => "୦୧୨୩୪୫୬୭୮୯",
-        "osma" => "𐒠𐒡𐒢𐒣𐒤𐒥𐒦𐒧𐒨𐒩",
-        "outlined" => "𜳰𜳱𜳲𜳳𜳴𜳵𜳶𜳷𜳸𜳹",
-        "rohg" => "𐴰𐴱𐴲𐴳𐴴𐴵𐴶𐴷𐴸𐴹",
-        "saur" => "꣐꣑꣒꣓꣔꣕꣖꣗꣘꣙",
-        "segment" => "🯰🯱🯲🯳🯴🯵🯶🯷🯸🯹",
-        "shrd" => "𑇐𑇑𑇒𑇓𑇔𑇕𑇖𑇗𑇘𑇙",
-        "sind" => "𑋰𑋱𑋲𑋳𑋴𑋵𑋶𑋷𑋸𑋹",
-        "sinh" => "෦෧෨෩෪෫෬෭෮෯",
-        "sora" => "𑃰𑃱𑃲𑃳𑃴𑃵𑃶𑃷𑃸𑃹",
-        "sund" => "᮰᮱᮲᮳᮴᮵᮶᮷᮸᮹",
-        "sunu" => "𑯰𑯱𑯲𑯳𑯴𑯵𑯶𑯷𑯸𑯹",
-        "takr" => "𑛀𑛁𑛂𑛃𑛄𑛅𑛆𑛇𑛈𑛉",
-        "talu" => "᧐᧑᧒᧓᧔᧕᧖᧗᧘᧙",
-        "tamldec" => "௦௧௨௩௪௫௬௭௮௯",
-        "telu" => "౦౧౨౩౪౫౬౭౮౯",
-        "thai" => "๐๑๒๓๔๕๖๗๘๙",
-        "tibt" => "༠༡༢༣༤༥༦༧༨༩",
-        "tirh" => "𑓐𑓑𑓒𑓓𑓔𑓕𑓖𑓗𑓘𑓙",
-        "tnsa" => "𖫀𖫁𖫂𖫃𖫄𖫅𖫆𖫇𖫈𖫉",
-        "tols" => "𑷠𑷡𑷢𑷣𑷤𑷥𑷦𑷧𑷨𑷩",
-        "vaii" => "꘠꘡꘢꘣꘤꘥꘦꘧꘨꘩",
-        "wara" => "𑣠𑣡𑣢𑣣𑣤𑣥𑣦𑣧𑣨𑣩",
-        "wcho" => "𞋰𞋱𞋲𞋳𞋴𞋵𞋶𞋷𞋸𞋹",
-        _ => return None,
-    })
-}
-
-fn unit_pattern(
+fn apply_unit_pattern(
+    parts: &mut Vec<NumberFormatPart>,
     locale: &str,
     unit: NumberFormatUnit,
     display: NumberUnitDisplay,
-    singular: bool,
-) -> (&'static str, &'static str) {
-    let duration_unit = match unit {
-        NumberFormatUnit::Year => Some(crate::DurationUnit::Years),
-        NumberFormatUnit::Month => Some(crate::DurationUnit::Months),
-        NumberFormatUnit::Week => Some(crate::DurationUnit::Weeks),
-        NumberFormatUnit::Day => Some(crate::DurationUnit::Days),
-        NumberFormatUnit::Hour => Some(crate::DurationUnit::Hours),
-        NumberFormatUnit::Minute => Some(crate::DurationUnit::Minutes),
-        NumberFormatUnit::Second => Some(crate::DurationUnit::Seconds),
-        NumberFormatUnit::Millisecond => Some(crate::DurationUnit::Milliseconds),
-        NumberFormatUnit::Microsecond => Some(crate::DurationUnit::Microseconds),
-        NumberFormatUnit::Nanosecond => Some(crate::DurationUnit::Nanoseconds),
-        _ => None,
-    };
-    if let Some(unit) = duration_unit {
-        let style = match display {
-            NumberUnitDisplay::Long => crate::DurationUnitStyle::Long,
-            NumberUnitDisplay::Short => crate::DurationUnitStyle::Short,
-            NumberUnitDisplay::Narrow => crate::DurationUnitStyle::Narrow,
-        };
-        return crate::locale_data_provider().duration_unit_pattern(locale, unit, style, singular);
-    }
-    english_unit_pattern(unit, display, singular)
-}
+    plural: PluralCategory,
+) -> bool {
+    if let Some((numerator, denominator)) = unit.compound_parts() {
+        if let Some(pattern) = crate::locale_data_provider().number_compound_unit_pattern(
+            locale,
+            numerator.as_str(),
+            denominator.as_str(),
+            display,
+            plural,
+        ) {
+            let mut prefix = Vec::new();
+            if !pattern.prefix.is_empty() {
+                prefix.push(NumberFormatPart {
+                    kind: NumberFormatPartKind::Unit,
+                    value: pattern.prefix.into(),
+                });
+            }
+            if !pattern.prefix_separator.is_empty() {
+                prefix.push(NumberFormatPart {
+                    kind: NumberFormatPartKind::Literal,
+                    value: pattern.prefix_separator.into(),
+                });
+            }
+            parts.splice(..0, prefix);
+            if !pattern.suffix_separator.is_empty() {
+                parts.push(NumberFormatPart {
+                    kind: NumberFormatPartKind::Literal,
+                    value: pattern.suffix_separator.into(),
+                });
+            }
+            parts.push(NumberFormatPart {
+                kind: NumberFormatPartKind::Unit,
+                value: pattern.suffix.into(),
+            });
+            return false;
+        }
 
-/// Returns the English CLDR unit suffix used by the current duration-unit
-/// locale-data slice. It is shared with DurationFormat to ensure the standard
-/// delegation path and direct service output cannot diverge.
-pub(crate) fn english_unit_pattern(
-    unit: NumberFormatUnit,
-    display: NumberUnitDisplay,
-    singular: bool,
-) -> (&'static str, &'static str) {
-    match display {
-        NumberUnitDisplay::Long => (
-            " ",
-            match (unit, singular) {
-                (NumberFormatUnit::Percent, _) => "percent",
-                (NumberFormatUnit::Year, true) => "year",
-                (NumberFormatUnit::Month, true) => "month",
-                (NumberFormatUnit::Week, true) => "week",
-                (NumberFormatUnit::Day, true) => "day",
-                (NumberFormatUnit::Hour, true) => "hour",
-                (NumberFormatUnit::Minute, true) => "minute",
-                (NumberFormatUnit::Second, true) => "second",
-                (NumberFormatUnit::Millisecond, true) => "millisecond",
-                (NumberFormatUnit::Microsecond, true) => "microsecond",
-                (NumberFormatUnit::Nanosecond, true) => "nanosecond",
-                (NumberFormatUnit::Year, false) => "years",
-                (NumberFormatUnit::Month, false) => "months",
-                (NumberFormatUnit::Week, false) => "weeks",
-                (NumberFormatUnit::Day, false) => "days",
-                (NumberFormatUnit::Hour, false) => "hours",
-                (NumberFormatUnit::Minute, false) => "minutes",
-                (NumberFormatUnit::Second, false) => "seconds",
-                (NumberFormatUnit::Millisecond, false) => "milliseconds",
-                (NumberFormatUnit::Microsecond, false) => "microseconds",
-                (NumberFormatUnit::Nanosecond, false) => "nanoseconds",
-                (unit, _) => unit.as_str(),
-            },
-        ),
-        NumberUnitDisplay::Short => (
-            if unit == NumberFormatUnit::Percent {
-                ""
-            } else {
-                " "
-            },
-            match (unit, singular) {
-                (NumberFormatUnit::Percent, _) => "%",
-                (NumberFormatUnit::Year, true) => "yr",
-                (NumberFormatUnit::Year, false) => "yrs",
-                (NumberFormatUnit::Month, true) => "mth",
-                (NumberFormatUnit::Month, false) => "mths",
-                (NumberFormatUnit::Week, true) => "wk",
-                (NumberFormatUnit::Week, false) => "wks",
-                (NumberFormatUnit::Day, true) => "day",
-                (NumberFormatUnit::Day, false) => "days",
-                (NumberFormatUnit::Hour, _) => "hr",
-                (NumberFormatUnit::Minute, _) => "min",
-                (NumberFormatUnit::Second, _) => "sec",
-                (NumberFormatUnit::Millisecond, _) => "ms",
-                (NumberFormatUnit::Microsecond, _) => "μs",
-                (NumberFormatUnit::Nanosecond, _) => "ns",
-                (unit, _) => unit.as_str(),
-            },
-        ),
-        NumberUnitDisplay::Narrow => (
-            "",
-            match unit {
-                NumberFormatUnit::Percent => "%",
-                NumberFormatUnit::Year => "y",
-                NumberFormatUnit::Month => "m",
-                NumberFormatUnit::Week => "w",
-                NumberFormatUnit::Day => "d",
-                NumberFormatUnit::Hour => "h",
-                NumberFormatUnit::Minute => "m",
-                NumberFormatUnit::Second => "s",
-                NumberFormatUnit::Millisecond => "ms",
-                NumberFormatUnit::Microsecond => "μs",
-                NumberFormatUnit::Nanosecond => "ns",
-                unit => unit.as_str(),
-            },
-        ),
+        let pattern = crate::locale_data_provider().number_generic_compound_unit_pattern(
+            locale,
+            numerator,
+            denominator,
+            display,
+            plural,
+        );
+        let mut prefix = Vec::new();
+        if !pattern.prefix.is_empty() {
+            prefix.push(NumberFormatPart {
+                kind: NumberFormatPartKind::Unit,
+                value: pattern.prefix,
+            });
+        }
+        if !pattern.prefix_separator.is_empty() {
+            prefix.push(NumberFormatPart {
+                kind: NumberFormatPartKind::Literal,
+                value: pattern.prefix_separator,
+            });
+        }
+        parts.splice(..0, prefix);
+        if !pattern.suffix_separator.is_empty() {
+            parts.push(NumberFormatPart {
+                kind: NumberFormatPartKind::Literal,
+                value: pattern.suffix_separator,
+            });
+        }
+        parts.push(NumberFormatPart {
+            kind: NumberFormatPartKind::Unit,
+            value: pattern.suffix,
+        });
+        return false;
     }
+
+    let pattern = crate::locale_data_provider().number_unit_pattern(locale, unit, display, plural);
+    if pattern.hides_number {
+        parts.retain(|part| {
+            !matches!(
+                part.kind,
+                NumberFormatPartKind::Integer
+                    | NumberFormatPartKind::Group
+                    | NumberFormatPartKind::Decimal
+                    | NumberFormatPartKind::Fraction
+            )
+        });
+    }
+    let mut prefix = Vec::new();
+    if !pattern.prefix.is_empty() {
+        prefix.push(NumberFormatPart {
+            kind: NumberFormatPartKind::Unit,
+            value: pattern.prefix,
+        });
+    }
+    if !pattern.prefix_separator.is_empty() {
+        prefix.push(NumberFormatPart {
+            kind: NumberFormatPartKind::Literal,
+            value: pattern.prefix_separator,
+        });
+    }
+    parts.splice(..0, prefix);
+    if !pattern.suffix_separator.is_empty() {
+        parts.push(NumberFormatPart {
+            kind: NumberFormatPartKind::Literal,
+            value: pattern.suffix_separator,
+        });
+    }
+    parts.push(NumberFormatPart {
+        kind: NumberFormatPartKind::Unit,
+        value: pattern.suffix,
+    });
+    pattern.hides_number
 }
 
 fn resolve_fraction_digits(
@@ -1571,46 +2093,27 @@ fn rounding_increment_parts(value: u16) -> Option<(RoundingIncrement, i16)> {
     }
 }
 
-fn currency_digits(code: &str) -> u8 {
-    match code {
-        "BHD" | "JOD" | "KWD" | "OMR" | "TND" => 3,
-        "CLF" => 4,
-        "JPY" | "KRW" => 0,
-        _ => 2,
-    }
-}
-
 fn apply_currency_pattern(
     parts: &mut Vec<NumberFormatPart>,
     currency: &NumberCurrencyOptions,
     locale: &str,
     negative: bool,
+    plural: PluralCategory,
 ) {
-    let accounting =
-        negative && currency.sign == NumberCurrencySign::Accounting && !locale.starts_with("de");
-    if accounting {
-        parts.retain(|part| part.kind != NumberFormatPartKind::MinusSign);
-        parts.insert(
-            0,
-            NumberFormatPart {
-                kind: NumberFormatPartKind::Literal,
-                value: "(".into(),
-            },
-        );
-    }
-
-    let symbol = currency_symbol(currency, locale);
-    let currency_part = NumberFormatPart {
-        kind: NumberFormatPartKind::Currency,
-        value: symbol,
-    };
-    if uses_trailing_currency_pattern(locale) {
-        parts.push(NumberFormatPart {
-            kind: NumberFormatPartKind::Literal,
-            value: "\u{a0}".into(),
-        });
-        parts.push(currency_part);
-    } else {
+    let mut used_provider_pattern = false;
+    if let Some(pattern) = crate::locale_data_provider().number_currency_pattern(
+        locale,
+        &currency.code,
+        currency.display,
+        currency.sign == NumberCurrencySign::Accounting
+            && currency.display != NumberCurrencyDisplay::Name,
+        negative,
+        plural,
+    ) {
+        used_provider_pattern = true;
+        if pattern.consumes_decimal_sign {
+            parts.retain(|part| part.kind != NumberFormatPartKind::MinusSign);
+        }
         let index = parts
             .iter()
             .take_while(|part| {
@@ -1622,9 +2125,57 @@ fn apply_currency_pattern(
                 )
             })
             .count();
-        parts.insert(index, currency_part);
+        let before = pattern
+            .before_number
+            .into_iter()
+            .map(number_currency_pattern_part);
+        parts.splice(index..index, before);
+        parts.extend(
+            pattern
+                .after_number
+                .into_iter()
+                .map(number_currency_pattern_part),
+        );
+    } else {
+        let symbol = currency_symbol(currency, locale);
+        let currency_part = NumberFormatPart {
+            kind: NumberFormatPartKind::Currency,
+            value: symbol,
+        };
+        if uses_trailing_currency_pattern(locale) {
+            parts.push(NumberFormatPart {
+                kind: NumberFormatPartKind::Literal,
+                value: "\u{a0}".into(),
+            });
+            parts.push(currency_part);
+        } else {
+            let index = parts
+                .iter()
+                .take_while(|part| {
+                    matches!(
+                        part.kind,
+                        NumberFormatPartKind::MinusSign
+                            | NumberFormatPartKind::PlusSign
+                            | NumberFormatPartKind::Literal
+                    )
+                })
+                .count();
+            parts.insert(index, currency_part);
+        }
     }
-    if accounting {
+    let accounting_fallback = negative
+        && currency.sign == NumberCurrencySign::Accounting
+        && currency.display != NumberCurrencyDisplay::Name
+        && !locale.starts_with("de");
+    if accounting_fallback && !used_provider_pattern {
+        parts.retain(|part| part.kind != NumberFormatPartKind::MinusSign);
+        parts.insert(
+            0,
+            NumberFormatPart {
+                kind: NumberFormatPartKind::Literal,
+                value: "(".into(),
+            },
+        );
         parts.push(NumberFormatPart {
             kind: NumberFormatPartKind::Literal,
             value: ")".into(),
@@ -1632,7 +2183,58 @@ fn apply_currency_pattern(
     }
 }
 
+fn number_currency_pattern_part(piece: NumberCurrencyPatternPiece) -> NumberFormatPart {
+    match piece {
+        NumberCurrencyPatternPiece::Literal(value) => NumberFormatPart {
+            kind: NumberFormatPartKind::Literal,
+            value,
+        },
+        NumberCurrencyPatternPiece::Currency(value) => NumberFormatPart {
+            kind: NumberFormatPartKind::Currency,
+            value,
+        },
+        NumberCurrencyPatternPiece::Sign => NumberFormatPart {
+            kind: NumberFormatPartKind::MinusSign,
+            value: "-".into(),
+        },
+    }
+}
+
 fn apply_percent_pattern(parts: &mut Vec<NumberFormatPart>, locale: &str) {
+    let sign = parts
+        .iter()
+        .find(|part| {
+            matches!(
+                part.kind,
+                NumberFormatPartKind::MinusSign | NumberFormatPartKind::PlusSign
+            )
+        })
+        .cloned();
+    if let Some(pattern) =
+        crate::locale_data_provider().number_percent_pattern(locale, sign.is_some())
+    {
+        parts.retain(|part| {
+            !matches!(
+                part.kind,
+                NumberFormatPartKind::MinusSign | NumberFormatPartKind::PlusSign
+            )
+        });
+        let mut formatted = pattern
+            .before_number
+            .into_iter()
+            .filter_map(|piece| number_percent_pattern_part(piece, sign.as_ref()))
+            .collect::<Vec<_>>();
+        formatted.append(parts);
+        formatted.extend(
+            pattern
+                .after_number
+                .into_iter()
+                .filter_map(|piece| number_percent_pattern_part(piece, sign.as_ref())),
+        );
+        *parts = formatted;
+        return;
+    }
+
     if uses_space_before_percent(locale) {
         parts.push(NumberFormatPart {
             kind: NumberFormatPartKind::Literal,
@@ -1643,6 +2245,125 @@ fn apply_percent_pattern(parts: &mut Vec<NumberFormatPart>, locale: &str) {
         kind: NumberFormatPartKind::PercentSign,
         value: "%".into(),
     });
+}
+
+fn number_percent_pattern_part(
+    piece: NumberPercentPatternPiece,
+    sign: Option<&NumberFormatPart>,
+) -> Option<NumberFormatPart> {
+    match piece {
+        NumberPercentPatternPiece::Literal(value) => Some(NumberFormatPart {
+            kind: NumberFormatPartKind::Literal,
+            value,
+        }),
+        NumberPercentPatternPiece::PercentSign(value) => Some(NumberFormatPart {
+            kind: NumberFormatPartKind::PercentSign,
+            value,
+        }),
+        NumberPercentPatternPiece::Sign => sign.cloned(),
+    }
+}
+
+fn shared_number_range_part(part: NumberFormatPart) -> NumberRangePart {
+    NumberRangePart {
+        kind: part.kind,
+        value: part.value,
+        source: NumberRangePartSource::Shared,
+    }
+}
+
+fn start_number_range_part(part: NumberFormatPart) -> NumberRangePart {
+    NumberRangePart {
+        kind: part.kind,
+        value: part.value,
+        source: NumberRangePartSource::StartRange,
+    }
+}
+
+fn end_number_range_part(part: NumberFormatPart) -> NumberRangePart {
+    NumberRangePart {
+        kind: part.kind,
+        value: part.value,
+        source: NumberRangePartSource::EndRange,
+    }
+}
+
+fn common_number_part_prefix_length(start: &[NumberFormatPart], end: &[NumberFormatPart]) -> usize {
+    start
+        .iter()
+        .zip(end)
+        .take_while(|(left, right)| left == right)
+        .count()
+}
+
+fn common_number_affix_suffix_length(
+    start: &[NumberFormatPart],
+    end: &[NumberFormatPart],
+) -> usize {
+    start
+        .iter()
+        .rev()
+        .zip(end.iter().rev())
+        .take_while(|(left, right)| {
+            left == right
+                && matches!(
+                    left.kind,
+                    NumberFormatPartKind::Literal
+                        | NumberFormatPartKind::Currency
+                        | NumberFormatPartKind::Unit
+                        | NumberFormatPartKind::PercentSign
+                        | NumberFormatPartKind::Compact
+                )
+        })
+        .count()
+}
+
+/// Returns a structurally shared trailing unit or currency-name affix whose
+/// localized label differs only because the two endpoints selected different
+/// cardinal forms. The default CLDR plural-range category is the end
+/// category, so the caller preserves this suffix from the end formatting.
+fn range_plural_affix_suffix_length(
+    start: &[NumberFormatPart],
+    end: &[NumberFormatPart],
+) -> Option<usize> {
+    let (start_last, end_last) = (start.last()?, end.last()?);
+    if start_last.kind != end_last.kind
+        || !matches!(
+            start_last.kind,
+            NumberFormatPartKind::Unit | NumberFormatPartKind::Currency
+        )
+        || start_last.value == end_last.value
+    {
+        return None;
+    }
+
+    let mut length = 1;
+    while length < start.len()
+        && length < end.len()
+        && start[start.len() - length - 1].kind == NumberFormatPartKind::Literal
+        && start[start.len() - length - 1] == end[end.len() - length - 1]
+    {
+        length += 1;
+    }
+    (length < start.len() && length < end.len()).then_some(length)
+}
+
+/// A compact representation of the CLDR interval patterns needed by the
+/// currently bundled number data. Decimal ranges normally use an en dash;
+/// Portuguese's pattern uses a spaced hyphen, while fixed-zero-digit prefix
+/// currencies use the spaced English pattern.
+fn number_range_separator(
+    locale: &str,
+    style: NumberFormatStyle,
+    maximum_fraction_digits: u8,
+) -> &'static str {
+    if locale.split('-').next().unwrap_or(locale) == "pt" {
+        " - "
+    } else if style == NumberFormatStyle::Currency && maximum_fraction_digits == 0 {
+        " – "
+    } else {
+        "–"
+    }
 }
 
 /// CLDR's common currency patterns place the symbol after the magnitude in
@@ -1703,14 +2424,9 @@ fn currency_symbol(currency: &NumberCurrencyOptions, locale: &str) -> String {
             _ => currency.code.clone(),
         },
         NumberCurrencyDisplay::Symbol | NumberCurrencyDisplay::NarrowSymbol => {
-            match currency.code.as_str() {
-                "USD" if locale.starts_with("ko") || locale.starts_with("zh") => "US$".into(),
-                "USD" => "$".into(),
-                "EUR" => "€".into(),
-                "JPY" => "¥".into(),
-                "KRW" => "₩".into(),
-                _ => currency.code.clone(),
-            }
+            crate::locale_data_provider()
+                .currency_symbol(locale, &currency.code, currency.display)
+                .unwrap_or_else(|| currency.code.clone())
         }
     }
 }

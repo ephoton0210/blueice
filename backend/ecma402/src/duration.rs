@@ -8,9 +8,6 @@
 //! This module receives the resulting numeric fields and owns the Edition 13
 //! duration-record invariants shared by `format` and `formatToParts`.
 
-use fixed_decimal::{SignedRoundingMode, UnsignedRoundingMode};
-use icu_decimal::input::{Decimal, FloatPrecision};
-
 /// A host-neutral ECMA-402 Duration Record.
 ///
 /// All ten fields are integral and either all non-negative or all non-positive.
@@ -313,6 +310,8 @@ pub enum DurationFormatError {
     InvalidDuration(DurationRecordError),
     /// CLDR list-pattern data was unavailable for the selected locale.
     ListFormattingUnavailable,
+    /// Decimal-digit data was unavailable for the selected numbering system.
+    NumberingSystemDataUnavailable,
 }
 
 impl std::fmt::Display for DurationFormatError {
@@ -322,6 +321,9 @@ impl std::fmt::Display for DurationFormatError {
             Self::InvalidDuration(error) => error.fmt(formatter),
             Self::ListFormattingUnavailable => {
                 formatter.write_str("duration list-pattern data is unavailable")
+            }
+            Self::NumberingSystemDataUnavailable => {
+                formatter.write_str("duration decimal-digit data is unavailable")
             }
         }
     }
@@ -366,6 +368,7 @@ impl ResolvedDurationFormatServiceOptions {
 /// strings enter through the VM's single duration-record bridge.
 pub struct DurationFormat {
     list_format: crate::ListFormat,
+    decimal_digits: [char; 10],
     resolved: ResolvedDurationFormatServiceOptions,
 }
 
@@ -398,10 +401,14 @@ impl DurationFormat {
                     .default_numbering_system(selected.locale())
                     .into()
             });
+        let decimal_digits = crate::locale_data_provider()
+            .decimal_digits(&numbering_system)
+            .ok_or(DurationFormatError::NumberingSystemDataUnavailable)?;
         let options = resolve_duration_format_options_with_digital_format(options, false)
             .map_err(DurationFormatError::InvalidOptions)?;
         Ok(Self {
             list_format,
+            decimal_digits,
             resolved: ResolvedDurationFormatServiceOptions {
                 locale,
                 numbering_system,
@@ -638,10 +645,7 @@ impl DurationFormat {
         if grouping {
             digits = english_group_digits(&digits);
         }
-        digits = crate::number_format::localize_simple_numbering_system(
-            &digits,
-            &self.resolved.numbering_system,
-        );
+        digits = crate::number_format::localize_decimal_digits(&digits, &self.decimal_digits);
         result.push(DurationPart {
             kind: DurationPartKind::Integer,
             value: digits,
@@ -659,32 +663,18 @@ impl DurationFormat {
         two_digit: bool,
         display_sign: bool,
     ) -> Vec<DurationPart> {
-        let scale = 10_i128.pow(exponent.into());
-        // `PartitionDurationFormatPattern` supplies the mathematical total to
-        // `PartitionNumberPattern`. The latter is an ECMAScript Number
-        // operation, so its observable decimal representation is the finite
-        // IEEE-754 value, not an invented arbitrary-precision decimal. Keep
-        // record validation exact, then reproduce NumberFormat's truncation
-        // to the configured (or default nine) fraction digits.
+        let scale = 10_u128.pow(exponent.into());
+        // PartitionDurationFormatPattern combines seconds and smaller fields
+        // as mathematical values before it partitions the resulting decimal.
+        // Do not round-trip that total through f64: a valid duration can have
+        // an integer portion beyond the precision where a nanosecond remains
+        // representable (for example 10_000_000 seconds plus 1 nanosecond).
+        // The Duration Record bounds prove the exact quotient/remainder fit
+        // in i128/u128, so form its decimal expansion directly.
         let fraction_digits = self.resolved.fractional_digits.unwrap_or(exponent);
-        // Convert the integer and fractional components separately. Casting
-        // the nanosecond total first would erase a low-order fraction before
-        // IEEE-754 gets the chance to round the final Number.
-        let quotient = total / scale;
-        let remainder = total % scale;
-        let value = quotient as f64 + remainder as f64 / scale as f64;
-        let mut number = Decimal::try_from_f64(value.abs(), FloatPrecision::RoundTrip)
-            .expect("a validated DurationRecord has a finite normalized Number");
-        number.round_with_mode(
-            -(i16::from(fraction_digits)),
-            SignedRoundingMode::Unsigned(UnsignedRoundingMode::Trunc),
-        );
-        let number = number.to_string();
-        let (integer, fraction) = number
-            .split_once('.')
-            .map_or((number.as_str(), ""), |(integer, fraction)| {
-                (integer, fraction)
-            });
+        let total = total.unsigned_abs();
+        let integer = (total / scale).to_string();
+        let fraction = format!("{:0width$}", total % scale, width = usize::from(exponent));
         let mut result = Vec::new();
         // See `integer_parts`: a zero first numeric field can carry the
         // duration's sole negative sign.
@@ -695,25 +685,22 @@ impl DurationFormat {
                 unit: Some(unit),
             });
         }
-        let mut integer = integer.to_owned();
+        let mut integer = integer;
         if two_digit && integer.len() < 2 {
             integer.insert(0, '0');
         }
         if grouping {
             integer = english_group_digits(&integer);
         }
-        integer = crate::number_format::localize_simple_numbering_system(
-            &integer,
-            &self.resolved.numbering_system,
-        );
+        integer = crate::number_format::localize_decimal_digits(&integer, &self.decimal_digits);
         result.push(DurationPart {
             kind: DurationPartKind::Integer,
             value: integer,
             unit: Some(unit),
         });
-        let fraction = crate::number_format::localize_simple_numbering_system(
-            &duration_fraction_digits(fraction, fraction_digits, self.resolved.fractional_digits),
-            &self.resolved.numbering_system,
+        let fraction = crate::number_format::localize_decimal_digits(
+            &duration_fraction_digits(&fraction, fraction_digits, self.resolved.fractional_digits),
+            &self.decimal_digits,
         );
         if !fraction.is_empty() {
             result.push(DurationPart {

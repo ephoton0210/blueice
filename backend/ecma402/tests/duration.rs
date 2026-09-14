@@ -17,6 +17,7 @@ fn supported_values_advertises_only_data_backed_service_values() {
     let numbering_systems = supported_values_of("numberingSystem").unwrap();
     assert!(numbering_systems.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(numbering_systems.contains(&"latn".into()));
+    assert!(numbering_systems.contains(&"adlm".into()));
     assert!(numbering_systems.contains(&"gara".into()));
     assert!(supported_values_of("calendar")
         .unwrap()
@@ -708,7 +709,17 @@ fn covers_zero_numeric_units_negative_fractional_parts_and_fraction_padding() {
         })
         .format(duration(0, 0, 0, 0, 0, 0, 10_000_000, 0, 0, 1).unwrap())
         .unwrap(),
-        "0:00:10000000.000000002"
+        "0:00:10000000.000000001"
+    );
+
+    assert_eq!(
+        formatter(DurationFormatOptions {
+            style: DurationStyle::Digital,
+            ..Default::default()
+        })
+        .format(duration(0, 0, 0, 0, 0, 0, 1, 2, 3, 9_007_199_254_740_991,).unwrap(),)
+        .unwrap(),
+        "0:00:9007200.256743991"
     );
 
     let mut nanoseconds = DurationFormatOptions::default();

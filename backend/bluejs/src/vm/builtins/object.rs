@@ -439,6 +439,11 @@ impl Vm {
                 .get("%Intl.DateTimeFormat%")
                 .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
                 .and_then(|value| value.object_id());
+            let intl_number_format_prototype = self
+                .globals
+                .get("%Intl.NumberFormat%")
+                .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
+                .and_then(|value| value.object_id());
             let intl_locale_prototype = self
                 .globals
                 .get("%Intl.Locale%")
@@ -488,6 +493,8 @@ impl Vm {
                 Some("Intl.Collator")
             } else if intl_date_time_format_prototype == Some(default) {
                 Some("Intl.DateTimeFormat")
+            } else if intl_number_format_prototype == Some(default) {
+                Some("Intl.NumberFormat")
             } else if intl_locale_prototype == Some(default) {
                 Some("Intl.Locale")
             } else if intl_display_names_prototype == Some(default) {

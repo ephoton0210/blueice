@@ -21,6 +21,33 @@ enum DateTimeFormatValue {
     Temporal(TemporalValue),
 }
 
+/// The VM-side `ToIntlMathematicalValue` result. This is intentionally kept
+/// separate from `ToNumber`: NumberFormat must preserve exact decimal strings
+/// and BigInts through `format`, `formatToParts`, and both range operations.
+enum NumberFormatValue {
+    Decimal(String),
+    Number(f64),
+}
+
+fn is_exact_decimal_intl_mathematical_value(value: &str) -> bool {
+    let value = value
+        .strip_prefix('+')
+        .or_else(|| value.strip_prefix('-'))
+        .unwrap_or(value);
+    let mut digits = 0;
+    let mut decimal = false;
+    for byte in value.bytes() {
+        if byte.is_ascii_digit() {
+            digits += 1;
+        } else if byte == b'.' && !decimal {
+            decimal = true;
+        } else {
+            return false;
+        }
+    }
+    digits > 0
+}
+
 fn temporal_has_date_components(options: &blueice_ecma402::DateTimeFormatOptions) -> bool {
     options.weekday.is_some()
         || options.era.is_some()
@@ -297,6 +324,20 @@ impl Vm {
                             "formatToParts",
                             1,
                             NativeFunction::NumberFormatFormatToParts,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "formatRange",
+                            2,
+                            NativeFunction::NumberFormatFormatRange,
+                        )?;
+                        self.install_native(
+                            prototype,
+                            function_prototype,
+                            "formatRangeToParts",
+                            2,
+                            NativeFunction::NumberFormatFormatRangeToParts,
                         )?;
                         self.globals
                             .insert("%Intl.NumberFormat%".into(), constructor);
@@ -1824,32 +1865,35 @@ impl Vm {
     fn number_rounding_priority(
         &mut self,
         options: &Value,
-    ) -> Result<Option<String>, RuntimeError> {
-        self.string_option(
-            options,
-            "roundingPriority",
-            &["auto", "morePrecision", "lessPrecision"],
-        )
+    ) -> Result<blueice_ecma402::NumberRoundingPriority, RuntimeError> {
+        match self
+            .string_option(
+                options,
+                "roundingPriority",
+                &["auto", "morePrecision", "lessPrecision"],
+            )?
+            .as_deref()
+        {
+            None | Some("auto") => Ok(blueice_ecma402::NumberRoundingPriority::Auto),
+            Some("morePrecision") => Ok(blueice_ecma402::NumberRoundingPriority::MorePrecision),
+            Some("lessPrecision") => Ok(blueice_ecma402::NumberRoundingPriority::LessPrecision),
+            Some(_) => unreachable!("string_option validates NumberFormat roundingPriority"),
+        }
     }
 
     fn validate_number_precision_options(
         rounding_increment: u16,
-        rounding_priority: Option<&str>,
+        rounding_priority: blueice_ecma402::NumberRoundingPriority,
         minimum_significant_digits: Option<u8>,
         maximum_significant_digits: Option<u8>,
     ) -> Result<(), RuntimeError> {
         if rounding_increment != 1
-            && (matches!(rounding_priority, Some("morePrecision" | "lessPrecision"))
+            && (rounding_priority != blueice_ecma402::NumberRoundingPriority::Auto
                 || minimum_significant_digits.is_some()
                 || maximum_significant_digits.is_some())
         {
             return Err(RuntimeError::TypeError(
                 "roundingIncrement is incompatible with significant-digit rounding".into(),
-            ));
-        }
-        if matches!(rounding_priority, Some("morePrecision" | "lessPrecision")) {
-            return Err(RuntimeError::RangeError(
-                "unsupported NumberFormat roundingPriority".into(),
             ));
         }
         Ok(())
@@ -1876,7 +1920,7 @@ impl Vm {
         }
     }
 
-    fn resolve_number_format(
+    pub(super) fn resolve_number_format(
         &mut self,
         locales: &Value,
         options: &Value,
@@ -1885,15 +1929,6 @@ impl Vm {
         let options = self.number_format_constructor_options(options)?;
         let locale_matcher = self.locale_matcher(&options)?;
         let requested_numbering_system = self.number_numbering_system(&options)?;
-        let locales = locales
-            .iter()
-            .map(|locale| {
-                blueice_ecma402::resolve_numbering_system_locale(
-                    locale,
-                    requested_numbering_system.as_deref(),
-                )
-            })
-            .collect::<Vec<_>>();
         let style = self.number_style(&options)?;
         let currency = self.number_currency(&options, style)?;
         let unit = self.number_unit(&options, style)?;
@@ -1917,7 +1952,7 @@ impl Vm {
         let sign_display = self.number_sign_display(&options)?;
         Self::validate_number_precision_options(
             rounding_increment,
-            rounding_priority.as_deref(),
+            rounding_priority,
             minimum_significant_digits,
             maximum_significant_digits,
         )?;
@@ -1933,16 +1968,20 @@ impl Vm {
             minimum_fraction_digits,
             maximum_fraction_digits,
             rounding_mode,
+            rounding_priority,
             sign_display,
         };
-        blueice_ecma402::NumberFormat::try_new_with_currency(
+        blueice_ecma402::NumberFormat::try_new_with_construction_options(
             &locales,
             options,
-            rounding_increment,
-            minimum_significant_digits,
-            maximum_significant_digits,
-            trailing_zero_display,
-            currency,
+            blueice_ecma402::NumberFormatConstructionOptions {
+                rounding_increment,
+                minimum_significant_digits,
+                maximum_significant_digits,
+                trailing_zero_display,
+                currency,
+                numbering_system: requested_numbering_system,
+            },
         )
         .map(Rc::new)
         .map_err(|error| RuntimeError::RangeError(error.to_string()))
@@ -4382,8 +4421,110 @@ impl Vm {
         value: &Value,
     ) -> Result<Value, RuntimeError> {
         let data = self.number_format_data(receiver)?;
-        let value = self.coerce_number(value)?;
-        self.number_format_parts_to_value(data.format_to_parts_f64(value))
+        let parts = self.number_format_parts(&data, value)?;
+        self.number_format_parts_to_value(Ok(parts))
+    }
+
+    pub(super) fn number_format_format(
+        &mut self,
+        receiver: &Value,
+        value: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.number_format_data(receiver)?;
+        let parts = self.number_format_parts(&data, value)?;
+        Ok(Value::String(
+            parts
+                .into_iter()
+                .map(|part| part.value)
+                .collect::<String>()
+                .into(),
+        ))
+    }
+
+    fn number_format_parts(
+        &mut self,
+        data: &blueice_ecma402::NumberFormat,
+        value: &Value,
+    ) -> Result<Vec<blueice_ecma402::NumberFormatPart>, RuntimeError> {
+        data.format_input_to_parts(self.number_format_input(value)?)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+    }
+
+    fn number_format_input(
+        &mut self,
+        value: &Value,
+    ) -> Result<blueice_ecma402::NumberFormatInput, RuntimeError> {
+        let value = self.coerce_primitive(value, "number")?;
+        let value = match value {
+            Value::BigInt(value) => NumberFormatValue::Decimal(value.to_string()),
+            Value::String(value) => {
+                let number = crate::primitive::number(&Value::String(value.clone()))?;
+                match value.to_utf8() {
+                    Ok(value) if is_exact_decimal_intl_mathematical_value(&value) => {
+                        NumberFormatValue::Decimal(value)
+                    }
+                    _ => NumberFormatValue::Number(number),
+                }
+            }
+            value => NumberFormatValue::Number(crate::primitive::number(&value)?),
+        };
+        Ok(match value {
+            NumberFormatValue::Decimal(value) => blueice_ecma402::NumberFormatInput::Decimal(value),
+            NumberFormatValue::Number(value) => blueice_ecma402::NumberFormatInput::Number(value),
+        })
+    }
+
+    fn number_format_range_values(
+        &mut self,
+        start: &Value,
+        end: &Value,
+    ) -> Result<
+        (
+            blueice_ecma402::NumberFormatInput,
+            blueice_ecma402::NumberFormatInput,
+        ),
+        RuntimeError,
+    > {
+        // The range methods require both values. Check first so a missing end
+        // takes precedence over an observable conversion of the start value.
+        if *start == Value::Undefined || *end == Value::Undefined {
+            return Err(RuntimeError::TypeError(
+                "number range endpoints must not be undefined".into(),
+            ));
+        }
+        // Convert both values before the host checks for NaN, preserving the
+        // specified observable order of ToIntlMathematicalValue.
+        Ok((
+            self.number_format_input(start)?,
+            self.number_format_input(end)?,
+        ))
+    }
+
+    pub(super) fn number_format_format_range(
+        &mut self,
+        receiver: &Value,
+        start: &Value,
+        end: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.number_format_data(receiver)?;
+        let (start, end) = self.number_format_range_values(start, end)?;
+        data.format_range_inputs(start, end)
+            .map(|formatted| Value::String(formatted.into()))
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+    }
+
+    pub(super) fn number_format_format_range_to_parts(
+        &mut self,
+        receiver: &Value,
+        start: &Value,
+        end: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let data = self.number_format_data(receiver)?;
+        let (start, end) = self.number_format_range_values(start, end)?;
+        let parts = data
+            .format_range_inputs_to_parts(start, end)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        self.number_format_range_parts_to_value(parts)
     }
 
     fn number_format_parts_to_value(
@@ -4397,20 +4538,7 @@ impl Vm {
             for source in parts {
                 let part = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
                 self.stack.push(Value::Object(part));
-                let kind = match source.kind {
-                    blueice_ecma402::NumberFormatPartKind::MinusSign => "minusSign",
-                    blueice_ecma402::NumberFormatPartKind::PlusSign => "plusSign",
-                    blueice_ecma402::NumberFormatPartKind::Integer => "integer",
-                    blueice_ecma402::NumberFormatPartKind::Group => "group",
-                    blueice_ecma402::NumberFormatPartKind::Decimal => "decimal",
-                    blueice_ecma402::NumberFormatPartKind::Fraction => "fraction",
-                    blueice_ecma402::NumberFormatPartKind::Literal => "literal",
-                    blueice_ecma402::NumberFormatPartKind::Unit => "unit",
-                    blueice_ecma402::NumberFormatPartKind::Currency => "currency",
-                    blueice_ecma402::NumberFormatPartKind::PercentSign => "percentSign",
-                    blueice_ecma402::NumberFormatPartKind::Nan => "nan",
-                    blueice_ecma402::NumberFormatPartKind::Infinity => "infinity",
-                };
+                let kind = Self::number_format_part_kind_name(source.kind);
                 self.define_data(part, "type", Value::String(kind.into()), true, true, true)?;
                 self.define_data(
                     part,
@@ -4425,6 +4553,74 @@ impl Vm {
         })();
         self.stack.truncate(base);
         result
+    }
+
+    fn number_format_range_parts_to_value(
+        &mut self,
+        parts: Vec<blueice_ecma402::NumberRangePart>,
+    ) -> Result<Value, RuntimeError> {
+        let prototype = self.object_prototype;
+        let base = self.stack.len();
+        let result = (|| {
+            for part in parts {
+                let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+                self.stack.push(Value::Object(object));
+                self.define_data(
+                    object,
+                    "type",
+                    Value::String(Self::number_format_part_kind_name(part.kind).into()),
+                    true,
+                    true,
+                    true,
+                )?;
+                self.define_data(
+                    object,
+                    "value",
+                    Value::String(part.value.into()),
+                    true,
+                    true,
+                    true,
+                )?;
+                let source = match part.source {
+                    blueice_ecma402::NumberRangePartSource::Shared => "shared",
+                    blueice_ecma402::NumberRangePartSource::StartRange => "startRange",
+                    blueice_ecma402::NumberRangePartSource::EndRange => "endRange",
+                };
+                self.define_data(
+                    object,
+                    "source",
+                    Value::String(source.into()),
+                    true,
+                    true,
+                    true,
+                )?;
+            }
+            self.array_from(self.stack[base..].to_vec())
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    fn number_format_part_kind_name(kind: blueice_ecma402::NumberFormatPartKind) -> &'static str {
+        match kind {
+            blueice_ecma402::NumberFormatPartKind::MinusSign => "minusSign",
+            blueice_ecma402::NumberFormatPartKind::PlusSign => "plusSign",
+            blueice_ecma402::NumberFormatPartKind::ApproximatelySign => "approximatelySign",
+            blueice_ecma402::NumberFormatPartKind::ExponentSeparator => "exponentSeparator",
+            blueice_ecma402::NumberFormatPartKind::ExponentMinusSign => "exponentMinusSign",
+            blueice_ecma402::NumberFormatPartKind::ExponentInteger => "exponentInteger",
+            blueice_ecma402::NumberFormatPartKind::Integer => "integer",
+            blueice_ecma402::NumberFormatPartKind::Group => "group",
+            blueice_ecma402::NumberFormatPartKind::Decimal => "decimal",
+            blueice_ecma402::NumberFormatPartKind::Fraction => "fraction",
+            blueice_ecma402::NumberFormatPartKind::Literal => "literal",
+            blueice_ecma402::NumberFormatPartKind::Unit => "unit",
+            blueice_ecma402::NumberFormatPartKind::Currency => "currency",
+            blueice_ecma402::NumberFormatPartKind::PercentSign => "percentSign",
+            blueice_ecma402::NumberFormatPartKind::Compact => "compact",
+            blueice_ecma402::NumberFormatPartKind::Nan => "nan",
+            blueice_ecma402::NumberFormatPartKind::Infinity => "infinity",
+        }
     }
 
     pub(super) fn number_format_resolved_options(
@@ -4485,7 +4681,7 @@ impl Vm {
             ));
         }
         if let Some(unit) = resolved.unit {
-            properties.push(("unit", Value::String(unit.as_str().into())));
+            properties.push(("unit", Value::String(unit.identifier().into())));
             properties.push((
                 "unitDisplay",
                 Value::String(
@@ -4502,18 +4698,10 @@ impl Vm {
             "minimumIntegerDigits",
             Value::Number(resolved.minimum_integer_digits.into()),
         ));
-        if let Some((minimum, maximum)) = data.significant_digits() {
-            properties.extend([
-                (
-                    "minimumSignificantDigits",
-                    Value::Number(f64::from(minimum)),
-                ),
-                (
-                    "maximumSignificantDigits",
-                    Value::Number(f64::from(maximum)),
-                ),
-            ]);
-        } else {
+        let significant_digits = data.significant_digits();
+        let mixed_precision = significant_digits.is_some()
+            && data.rounding_priority() != blueice_ecma402::NumberRoundingPriority::Auto;
+        if significant_digits.is_none() || mixed_precision {
             properties.extend([
                 (
                     "minimumFractionDigits",
@@ -4522,6 +4710,18 @@ impl Vm {
                 (
                     "maximumFractionDigits",
                     Value::Number(resolved.maximum_fraction_digits.into()),
+                ),
+            ]);
+        }
+        if let Some((minimum, maximum)) = significant_digits {
+            properties.extend([
+                (
+                    "minimumSignificantDigits",
+                    Value::Number(f64::from(minimum)),
+                ),
+                (
+                    "maximumSignificantDigits",
+                    Value::Number(f64::from(maximum)),
                 ),
             ]);
         }
@@ -4589,6 +4789,17 @@ impl Vm {
                         blueice_ecma402::NumberRoundingMode::HalfFloor => "halfFloor",
                         blueice_ecma402::NumberRoundingMode::HalfTrunc => "halfTrunc",
                         blueice_ecma402::NumberRoundingMode::HalfEven => "halfEven",
+                    }
+                    .into(),
+                ),
+            ),
+            (
+                "roundingPriority",
+                Value::String(
+                    match data.rounding_priority() {
+                        blueice_ecma402::NumberRoundingPriority::Auto => "auto",
+                        blueice_ecma402::NumberRoundingPriority::MorePrecision => "morePrecision",
+                        blueice_ecma402::NumberRoundingPriority::LessPrecision => "lessPrecision",
                     }
                     .into(),
                 ),

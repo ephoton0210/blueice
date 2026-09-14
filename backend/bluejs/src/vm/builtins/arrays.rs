@@ -809,6 +809,7 @@ impl Vm {
     pub(in super::super) fn array_to_locale_string(
         &mut self,
         receiver: &Value,
+        args: &[Value],
     ) -> Result<Value, RuntimeError> {
         let object = self.coerce_object(receiver)?;
         let base = self.stack.len();
@@ -834,7 +835,19 @@ impl Vm {
                         "Array element toLocaleString is not callable".into(),
                     ));
                 }
-                let string = self.call_native(method, value, Vec::new(), false)?;
+                // ECMA-262 forwards both optional arguments, including their
+                // `undefined` defaults, to every non-null array element.
+                // Supplying the pair explicitly is observable to user-defined
+                // `toLocaleString` methods through `arguments.length`.
+                let string = self.call_native(
+                    method,
+                    value,
+                    vec![
+                        native::argument(args, 0).clone(),
+                        native::argument(args, 1).clone(),
+                    ],
+                    false,
+                )?;
                 let string = self.coerce_string(&string)?;
                 native::append(&mut output, &string, self.config.max_string_bytes)?;
                 self.stack.truncate(base + 1);

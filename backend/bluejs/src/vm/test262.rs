@@ -1362,6 +1362,10 @@ impl Vm {
                     realm.vm.intl_global()?;
                     Value::Object(realm.vm.globals["%Intl.DateTimeFormat%"])
                 }
+                "Intl.NumberFormat" => {
+                    realm.vm.intl_global()?;
+                    Value::Object(realm.vm.globals["%Intl.NumberFormat%"])
+                }
                 "Intl.Locale" => {
                     realm.vm.intl_global()?;
                     Value::Object(realm.vm.globals["%Intl.Locale%"])

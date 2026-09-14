@@ -88,6 +88,10 @@ fn fixed_length_array_buffers_views_and_typed_indices_share_backing_bytes() {
             Value::Bool(true),
         ),
         (
+            "let locale='th-u-nu-thai';let options={minimumFractionDigits:3};let expected=(0).toLocaleString(locale,options);let descriptor=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(Int8Array).prototype,'toLocaleString');new Uint8Array([0]).toLocaleString(locale,options)===expected&&new BigInt64Array([0n]).toLocaleString(locale,options)===expected&&descriptor.writable&&descriptor.configurable&&!descriptor.enumerable&&Object.getPrototypeOf(Int8Array).prototype.toLocaleString.length===0",
+            Value::Bool(true),
+        ),
+        (
             "let ctors=[Float64Array,Float32Array,Int32Array,Int16Array,Int8Array,Uint32Array,Uint16Array,Uint8Array,Uint8ClampedArray];let mismatches='';ctors.forEach(function(T){let sample=new T([42,43]);let first=Object.getOwnPropertyDescriptor(sample,'0');let second=Object.getOwnPropertyDescriptor(sample,'1');if(first.value!==42||second.value!==43||!first.writable||!first.enumerable||!first.configurable){mismatches+=T.name}});mismatches",
             Value::String("".into()),
         ),

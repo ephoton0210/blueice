@@ -189,6 +189,7 @@ dependencies = [
  "icu_collator",
  "icu_datetime",
  "icu_decimal",
+ "icu_experimental",
  "icu_list",
  "icu_locale",
  "icu_locale_core",
@@ -1172,6 +1173,44 @@ version = "2.3.0"
 source = "git+https://github.com/ephoton0210/icu4x.git?rev=31dcf42731d45cb191cdbd5bb92b669b5be12b57#31dcf42731d45cb191cdbd5bb92b669b5be12b57"
 
 [[package]]
+name = "icu_experimental"
+version = "0.6.0"
+source = "git+https://github.com/ephoton0210/icu4x.git?rev=31dcf42731d45cb191cdbd5bb92b669b5be12b57#31dcf42731d45cb191cdbd5bb92b669b5be12b57"
+dependencies = [
+ "displaydoc",
+ "either",
+ "fixed_decimal",
+ "icu_casemap",
+ "icu_collections",
+ "icu_decimal",
+ "icu_experimental_data",
+ "icu_list",
+ "icu_locale",
+ "icu_locale_core",
+ "icu_locale_fallback",
+ "icu_normalizer",
+ "icu_pattern",
+ "icu_plurals",
+ "icu_properties",
+ "icu_provider",
+ "litemap",
+ "num-bigint",
+ "num-rational",
+ "num-traits",
+ "potential_utf",
+ "smallvec",
+ "tinystr 0.8.4 (git+https://github.com/ephoton0210/icu4x.git?rev=31dcf42731d45cb191cdbd5bb92b669b5be12b57)",
+ "writeable",
+ "zerotrie",
+ "zerovec 0.11.7",
+]
+
+[[package]]
+name = "icu_experimental_data"
+version = "0.6.0"
+source = "git+https://github.com/ephoton0210/icu4x.git?rev=31dcf42731d45cb191cdbd5bb92b669b5be12b57#31dcf42731d45cb191cdbd5bb92b669b5be12b57"
+
+[[package]]
 name = "icu_list"
 version = "2.3.0"
 source = "git+https://github.com/ephoton0210/icu4x.git?rev=31dcf42731d45cb191cdbd5bb92b669b5be12b57#31dcf42731d45cb191cdbd5bb92b669b5be12b57"
@@ -1269,6 +1308,7 @@ dependencies = [
  "either",
  "serde",
  "writeable",
+ "yoke",
  "zerovec 0.11.7",
 ]
 
@@ -1299,6 +1339,7 @@ dependencies = [
  "icu_locale_core",
  "icu_properties_data",
  "icu_provider",
+ "serde",
  "zerotrie",
  "zerovec 0.11.7",
 ]
@@ -1702,6 +1743,17 @@ version = "0.1.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ce2d95d4b3734dc35aa2f45e1aa22cd416814592a4f9d9205e11affd5b8e10b"
 dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "num-rational"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f83d14da390562dca69fc84082e73e548e1ad308d24accdedd2720017cb37824"
+dependencies = [
+ "num-bigint",
+ "num-integer",
  "num-traits",
 ]
 

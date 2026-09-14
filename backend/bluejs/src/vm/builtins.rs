@@ -1254,14 +1254,23 @@ impl Vm {
         args: &[Value],
         method: NumberMethod,
     ) -> Result<Value, RuntimeError> {
-        let mut number = self.number_receiver(receiver)?;
+        let number = self.number_receiver(receiver)?;
+        if method == NumberMethod::LocaleString {
+            let formatter =
+                self.resolve_number_format(native::argument(args, 0), native::argument(args, 1))?;
+            return formatter
+                .format_f64(number)
+                .map(|formatted| Value::String(formatted.into()))
+                .map_err(|error| RuntimeError::RangeError(error.to_string()));
+        }
         // Number formatting canonicalizes -0 before producing a string.
+        let mut number = number;
         if number == 0.0 {
             number = 0.0;
         }
         let source_string = || primitive::string(&Value::Number(number));
         match method {
-            NumberMethod::LocaleString => Ok(Value::String(source_string()?)),
+            NumberMethod::LocaleString => unreachable!("handled before numeric string methods"),
             NumberMethod::Fixed => {
                 let digits =
                     self.number_precision_argument(native::argument(args, 0), "toFixed")?;

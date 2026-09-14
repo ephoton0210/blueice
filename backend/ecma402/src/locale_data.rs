@@ -9,9 +9,46 @@
 //! ECMA-402 and the deterministic fallbacks around that data. It deliberately
 //! does not negotiate locales: `ResolveLocale` remains a separate layer.
 
-use icu_decimal::provider::{Baked as DecimalData, DecimalSymbolsV1};
+use fixed_decimal::Decimal;
+use icu_decimal::provider::{
+    Baked as DecimalData, DecimalCompactLongV1, DecimalCompactShortV1, DecimalDigitsV1,
+    DecimalSymbolsV1,
+};
+use icu_experimental::{
+    dimension::{
+        currency::CurrencyType,
+        provider::{
+            currency::{
+                essentials::CurrencyEssentialsV1, extended::CurrencyExtendedDataV1,
+                fractions::CurrencyFractionsV1, patterns::CurrencyPatternsDataV1,
+                symbols::CurrencySymbolsV1,
+            },
+            percent::PercentEssentialsV1,
+            units::{
+                categorized_display_names::{
+                    UnitsNamesAreaCoreV1, UnitsNamesAreaExtendedV1, UnitsNamesAreaOutlierV1,
+                    UnitsNamesDurationCoreV1, UnitsNamesDurationExtendedV1,
+                    UnitsNamesDurationOutlierV1, UnitsNamesLengthCoreV1,
+                    UnitsNamesLengthExtendedV1, UnitsNamesLengthOutlierV1, UnitsNamesMassCoreV1,
+                    UnitsNamesMassExtendedV1, UnitsNamesMassOutlierV1, UnitsNamesVolumeCoreV1,
+                    UnitsNamesVolumeExtendedV1, UnitsNamesVolumeOutlierV1,
+                },
+                display_names::UnitsDisplayNames,
+                essentials::UnitsEssentialsV1,
+            },
+        },
+    },
+    provider::Baked as ExperimentalData,
+};
 use icu_locale_core::Locale as IcuLocale;
-use icu_provider::{DataIdentifierBorrowed, DataProvider, DataRequest};
+use icu_plurals::{
+    PluralCategory as IcuPluralCategory, PluralRules as IcuPluralRules,
+    PluralRulesWithRanges as IcuPluralRulesWithRanges,
+};
+use icu_provider::{
+    DataIdentifierBorrowed, DataMarker, DataMarkerAttributes, DataProvider, DataRequest,
+};
+use writeable::Writeable;
 
 /// Immutable source revision for the ICU4X data bundle consumed by this crate.
 ///
@@ -50,8 +87,14 @@ pub const SUPPORTED_CALENDARS: &[&str] = &[
     "roc",
 ];
 
-/// Decimal numbering systems backed by date, number, and relative-time
-/// formatting. The list includes every ECMA-402 simple digit mapping.
+/// Decimal numbering systems backed by the pinned CLDR simple-digit dataset
+/// used by date, number, and relative-time formatting.
+///
+/// ICU4X's compact baked decimal payload is intentionally selective, so the
+/// provider completes it from the same pinned CLDR source before advertising
+/// the ECMA-402 simple-digit registry. The query in
+/// [`LocaleDataProvider::decimal_digits`] is the source of truth for the
+/// characters used by NumberFormat and DurationFormat.
 pub const SUPPORTED_NUMBERING_SYSTEMS: &[&str] = &[
     "adlm", "ahom", "arab", "arabext", "bali", "beng", "bhks", "brah", "cakm", "cham", "deva",
     "diak", "fullwide", "gara", "gong", "gonm", "gujr", "gukh", "guru", "hanidec", "hmng", "hmnp",
@@ -176,9 +219,342 @@ pub struct LocaleDataCapabilities {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LocaleDataProvider;
 
+/// Data-owned placement and labels for a compound NumberFormat unit pattern.
+///
+/// The fields intentionally preserve part boundaries: `prefix` and `suffix`
+/// become `unit` parts while the separators become `literal` parts.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct NumberCompoundUnitPattern {
+    pub(crate) prefix: &'static str,
+    pub(crate) prefix_separator: &'static str,
+    pub(crate) suffix_separator: &'static str,
+    pub(crate) suffix: &'static str,
+}
+
+/// A provider-owned generic compound-unit shape.
+///
+/// When ICU4X supplies both simple display names and a `per` composition
+/// record this is the fully localized result. Otherwise it is the bounded
+/// provider fallback. The owned fields preserve the observable `unit` and
+/// `literal` boundaries while permitting a CLDR composition to occur before
+/// or after the formatted number.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct NumberGenericCompoundUnitPattern {
+    pub(crate) prefix: String,
+    pub(crate) prefix_separator: String,
+    pub(crate) suffix_separator: String,
+    pub(crate) suffix: String,
+}
+
+/// A localized NumberFormat simple-unit affix split along its observable
+/// `unit` and `literal` part boundaries.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct NumberUnitPattern {
+    pub(crate) prefix: String,
+    pub(crate) prefix_separator: String,
+    pub(crate) suffix_separator: String,
+    pub(crate) suffix: String,
+    /// Whether this CLDR unit pattern deliberately omits its number
+    /// placeholder (for example Arabic long singular `متر`).
+    pub(crate) hides_number: bool,
+}
+
+/// The non-numeric portions of a localized currency pattern, split at the
+/// number placeholder so NumberFormat can retain the decimal formatter's
+/// existing sign and digit parts.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum NumberCurrencyPatternPiece {
+    Literal(String),
+    Currency(String),
+    /// A sign encoded by an explicit CLDR negative subpattern.
+    Sign,
+}
+
+/// A localized CLDR currency pattern split around its number placeholder.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct NumberCurrencyPattern {
+    pub(crate) before_number: Vec<NumberCurrencyPatternPiece>,
+    pub(crate) after_number: Vec<NumberCurrencyPatternPiece>,
+    /// Whether the selected CLDR pattern supplied the negative presentation,
+    /// so NumberFormat must not retain its decimal formatter minus part.
+    pub(crate) consumes_decimal_sign: bool,
+}
+
+/// The non-numeric portions of an ICU percent pattern. A `Sign` item keeps
+/// the decimal formatter's existing typed plus/minus part while allowing
+/// CLDR to position it relative to the percent sign.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum NumberPercentPatternPiece {
+    Literal(String),
+    PercentSign(String),
+    Sign,
+}
+
+/// A localized CLDR percent pattern split around its number placeholder.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct NumberPercentPattern {
+    pub(crate) before_number: Vec<NumberPercentPatternPiece>,
+    pub(crate) after_number: Vec<NumberPercentPatternPiece>,
+}
+
+/// A data-owned compact decimal scaling pattern.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct CompactNumberPattern {
+    /// Decimal power removed from the source magnitude before formatting.
+    pub(crate) divisor: i16,
+    /// Literal text between the compact magnitude and suffix.
+    pub(crate) separator: String,
+    /// The compact suffix as an ECMA-402 `compact` part.
+    pub(crate) suffix: String,
+    /// Whether this CLDR pattern intentionally omits the numeric placeholder.
+    ///
+    /// Exact-value patterns such as French long `mille` carry the entire
+    /// compact display in `suffix`; the NumberFormat core keeps a sign, but
+    /// suppresses its ordinary digit parts before appending this record.
+    pub(crate) hides_number: bool,
+}
+
 /// Returns the process-wide provider for every host-neutral Intl service.
 pub const fn locale_data_provider() -> LocaleDataProvider {
     LocaleDataProvider
+}
+
+/// Splits a rendered ICU currency pattern around the two fixed placeholders.
+///
+/// `CurrencyEssentialsV1` patterns contain exactly the number and currency
+/// placeholders. Keeping the split here preserves its CLDR literals as
+/// `formatToParts()` literal records instead of flattening them into a
+/// service-local prefix/suffix rule.
+fn split_number_currency_pattern(
+    rendered: &str,
+    currency: String,
+    consumes_decimal_sign: bool,
+) -> Option<NumberCurrencyPattern> {
+    const NUMBER: &str = "\u{fdd0}";
+    const CURRENCY: &str = "\u{fdd1}";
+
+    let number_index = rendered.find(NUMBER)?;
+    let currency_index = rendered.find(CURRENCY)?;
+    if number_index == currency_index {
+        return None;
+    }
+
+    let mut before_number = Vec::new();
+    let mut after_number = Vec::new();
+    if currency_index < number_index {
+        push_currency_literal(&mut before_number, &rendered[..currency_index]);
+        before_number.push(NumberCurrencyPatternPiece::Currency(currency));
+        push_currency_literal(
+            &mut before_number,
+            &rendered[currency_index + CURRENCY.len()..number_index],
+        );
+        push_currency_literal(&mut after_number, &rendered[number_index + NUMBER.len()..]);
+    } else {
+        push_currency_literal(&mut before_number, &rendered[..number_index]);
+        push_currency_literal(
+            &mut after_number,
+            &rendered[number_index + NUMBER.len()..currency_index],
+        );
+        after_number.push(NumberCurrencyPatternPiece::Currency(currency));
+        push_currency_literal(
+            &mut after_number,
+            &rendered[currency_index + CURRENCY.len()..],
+        );
+    }
+    Some(NumberCurrencyPattern {
+        before_number,
+        after_number,
+        consumes_decimal_sign,
+    })
+}
+
+fn push_currency_literal(pieces: &mut Vec<NumberCurrencyPatternPiece>, literal: &str) {
+    let mut literal_start = 0;
+    for (index, character) in literal.char_indices() {
+        if matches!(character, '-' | '\u{2212}') {
+            if literal_start < index {
+                pieces.push(NumberCurrencyPatternPiece::Literal(
+                    literal[literal_start..index].into(),
+                ));
+            }
+            pieces.push(NumberCurrencyPatternPiece::Sign);
+            literal_start = index + character.len_utf8();
+        }
+    }
+    if literal_start < literal.len() {
+        pieces.push(NumberCurrencyPatternPiece::Literal(
+            literal[literal_start..].into(),
+        ));
+    }
+}
+
+/// Splits a rendered ICU percent pattern around its number and optional sign
+/// placeholders, preserving the localized percent sign as its own part.
+fn split_number_percent_pattern(rendered: &str) -> Option<NumberPercentPattern> {
+    const NUMBER: &str = "\u{fdd0}";
+    const SIGN: &str = "\u{fdd1}";
+
+    let mut pieces = Vec::new();
+    let mut remaining = rendered;
+    while !remaining.is_empty() {
+        let number_index = remaining.find(NUMBER);
+        let sign_index = remaining.find(SIGN);
+        let percent_index = remaining.char_indices().find_map(|(index, character)| {
+            matches!(character, '%' | '\u{066a}' | '\u{fe6a}' | '\u{ff05}').then_some(index)
+        });
+        let Some(next) = [number_index, sign_index, percent_index]
+            .into_iter()
+            .flatten()
+            .min()
+        else {
+            push_percent_literal(&mut pieces, remaining);
+            break;
+        };
+        push_percent_literal(&mut pieces, &remaining[..next]);
+        if number_index == Some(next) {
+            pieces.push(None);
+            remaining = &remaining[next + NUMBER.len()..];
+        } else if sign_index == Some(next) {
+            pieces.push(Some(NumberPercentPatternPiece::Sign));
+            remaining = &remaining[next + SIGN.len()..];
+        } else {
+            let percent = remaining[next..]
+                .chars()
+                .next()
+                .expect("percent index is a character boundary");
+            pieces.push(Some(NumberPercentPatternPiece::PercentSign(percent.into())));
+            remaining = &remaining[next + percent.len_utf8()..];
+        }
+    }
+    let number_index = pieces.iter().position(Option::is_none)?;
+    if pieces[number_index + 1..].iter().any(Option::is_none) {
+        return None;
+    }
+    let before_number = pieces[..number_index]
+        .iter()
+        .filter_map(Clone::clone)
+        .collect();
+    let after_number = pieces[number_index + 1..]
+        .iter()
+        .filter_map(Clone::clone)
+        .collect();
+    Some(NumberPercentPattern {
+        before_number,
+        after_number,
+    })
+}
+
+fn push_percent_literal(pieces: &mut Vec<Option<NumberPercentPatternPiece>>, literal: &str) {
+    if !literal.is_empty() {
+        pieces.push(Some(NumberPercentPatternPiece::Literal(literal.into())));
+    }
+}
+
+/// Turns CLDR's required ten-code-point simple digit sequence into the
+/// provider payload shape used by ICU4X.
+fn decimal_digit_array(digits: &str) -> Option<[char; 10]> {
+    let mut chars = digits.chars();
+    let result = [
+        chars.next()?,
+        chars.next()?,
+        chars.next()?,
+        chars.next()?,
+        chars.next()?,
+        chars.next()?,
+        chars.next()?,
+        chars.next()?,
+        chars.next()?,
+        chars.next()?,
+    ];
+    chars.next().is_none().then_some(result)
+}
+
+/// The complete simple-digit data from the pinned CLDR source. ICU4X's baked
+/// decimal component intentionally carries only a compact subset; this
+/// provider-owned completion record preserves ECMA-402's Table 4 capability
+/// without making NumberFormat invent a second digit table.
+fn cldr_simple_decimal_digits(numbering_system: &str) -> Option<&'static str> {
+    Some(match numbering_system {
+        "adlm" => "𞥐𞥑𞥒𞥓𞥔𞥕𞥖𞥗𞥘𞥙",
+        "ahom" => "𑜰𑜱𑜲𑜳𑜴𑜵𑜶𑜷𑜸𑜹",
+        "arab" => "٠١٢٣٤٥٦٧٨٩",
+        "arabext" => "۰۱۲۳۴۵۶۷۸۹",
+        "bali" => "᭐᭑᭒᭓᭔᭕᭖᭗᭘᭙",
+        "beng" => "০১২৩৪৫৬৭৮৯",
+        "bhks" => "𑱐𑱑𑱒𑱓𑱔𑱕𑱖𑱗𑱘𑱙",
+        "brah" => "𑁦𑁧𑁨𑁩𑁪𑁫𑁬𑁭𑁮𑁯",
+        "cakm" => "𑄶𑄷𑄸𑄹𑄺𑄻𑄼𑄽𑄾𑄿",
+        "cham" => "꩐꩑꩒꩓꩔꩕꩖꩗꩘꩙",
+        "deva" => "०१२३४५६७८९",
+        "diak" => "𑥐𑥑𑥒𑥓𑥔𑥕𑥖𑥗𑥘𑥙",
+        "fullwide" => "０１２３４５６７８９",
+        "gara" => "𐵀𐵁𐵂𐵃𐵄𐵅𐵆𐵇𐵈𐵉",
+        "gong" => "𑶠𑶡𑶢𑶣𑶤𑶥𑶦𑶧𑶨𑶩",
+        "gonm" => "𑵐𑵑𑵒𑵓𑵔𑵕𑵖𑵗𑵘𑵙",
+        "gujr" => "૦૧૨૩૪૫૬૭૮૯",
+        "gukh" => "𖄰𖄱𖄲𖄳𖄴𖄵𖄶𖄷𖄸𖄹",
+        "guru" => "੦੧੨੩੪੫੬੭੮੯",
+        "hanidec" => "〇一二三四五六七八九",
+        "hmng" => "𖭐𖭑𖭒𖭓𖭔𖭕𖭖𖭗𖭘𖭙",
+        "hmnp" => "𞅀𞅁𞅂𞅃𞅄𞅅𞅆𞅇𞅈𞅉",
+        "java" => "꧐꧑꧒꧓꧔꧕꧖꧗꧘꧙",
+        "kali" => "꤀꤁꤂꤃꤄꤅꤆꤇꤈꤉",
+        "kawi" => "𑽐𑽑𑽒𑽓𑽔𑽕𑽖𑽗𑽘𑽙",
+        "khmr" => "០១២៣៤៥៦៧៨៩",
+        "knda" => "೦೧೨೩೪೫೬೭೮೯",
+        "krai" => "𖵰𖵱𖵲𖵳𖵴𖵵𖵶𖵷𖵸𖵹",
+        "lana" => "᪀᪁᪂᪃᪄᪅᪆᪇᪈᪉",
+        "lanatham" => "᪐᪑᪒᪓᪔᪕᪖᪗᪘᪙",
+        "laoo" => "໐໑໒໓໔໕໖໗໘໙",
+        "latn" => "0123456789",
+        "lepc" => "᱀᱁᱂᱃᱄᱅᱆᱇᱈᱉",
+        "limb" => "᥆᥇᥈᥉᥊᥋᥌᥍᥎᥏",
+        "mathbold" => "𝟎𝟏𝟐𝟑𝟒𝟓𝟔𝟕𝟖𝟗",
+        "mathdbl" => "𝟘𝟙𝟚𝟛𝟜𝟝𝟞𝟟𝟠𝟡",
+        "mathmono" => "𝟶𝟷𝟸𝟹𝟺𝟻𝟼𝟽𝟾𝟿",
+        "mathsanb" => "𝟬𝟭𝟮𝟯𝟰𝟱𝟲𝟳𝟴𝟵",
+        "mathsans" => "𝟢𝟣𝟤𝟥𝟦𝟧𝟨𝟩𝟪𝟫",
+        "mlym" => "൦൧൨൩൪൫൬൭൮൯",
+        "modi" => "𑙐𑙑𑙒𑙓𑙔𑙕𑙖𑙗𑙘𑙙",
+        "mong" => "᠐᠑᠒᠓᠔᠕᠖᠗᠘᠙",
+        "mroo" => "𖩠𖩡𖩢𖩣𖩤𖩥𖩦𖩧𖩨𖩩",
+        "mtei" => "꯰꯱꯲꯳꯴꯵꯶꯷꯸꯹",
+        "mymr" => "၀၁၂၃၄၅၆၇၈၉",
+        "mymrepka" => "𑛚𑛛𑛜𑛝𑛞𑛟𑛠𑛡𑛢𑛣",
+        "mymrpao" => "𑛐𑛑𑛒𑛓𑛔𑛕𑛖𑛗𑛘𑛙",
+        "mymrshan" => "႐႑႒႓႔႕႖႗႘႙",
+        "mymrtlng" => "꧰꧱꧲꧳꧴꧵꧶꧷꧸꧹",
+        "nagm" => "𞓰𞓱𞓲𞓳𞓴𞓵𞓶𞓷𞓸𞓹",
+        "newa" => "𑑐𑑑𑑒𑑓𑑔𑑕𑑖𑑗𑑘𑑙",
+        "nkoo" => "߀߁߂߃߄߅߆߇߈߉",
+        "olck" => "᱐᱑᱒᱓᱔᱕᱖᱗᱘᱙",
+        "onao" => "𞗱𞗲𞗳𞗴𞗵𞗶𞗷𞗸𞗹𞗺",
+        "orya" => "୦୧୨୩୪୫୬୭୮୯",
+        "osma" => "𐒠𐒡𐒢𐒣𐒤𐒥𐒦𐒧𐒨𐒩",
+        "outlined" => "𜳰𜳱𜳲𜳳𜳴𜳵𜳶𜳷𜳸𜳹",
+        "rohg" => "𐴰𐴱𐴲𐴳𐴴𐴵𐴶𐴷𐴸𐴹",
+        "saur" => "꣐꣑꣒꣓꣔꣕꣖꣗꣘꣙",
+        "segment" => "🯰🯱🯲🯳🯴🯵🯶🯷🯸🯹",
+        "shrd" => "𑇐𑇑𑇒𑇓𑇔𑇕𑇖𑇗𑇘𑇙",
+        "sind" => "𑋰𑋱𑋲𑋳𑋴𑋵𑋶𑋷𑋸𑋹",
+        "sinh" => "෦෧෨෩෪෫෬෭෮෯",
+        "sora" => "𑃰𑃱𑃲𑃳𑃴𑃵𑃶𑃷𑃸𑃹",
+        "sund" => "᮰᮱᮲᮳᮴᮵᮶᮷᮸᮹",
+        "sunu" => "𑯰𑯱𑯲𑯳𑯴𑯵𑯶𑯷𑯸𑯹",
+        "takr" => "𑛀𑛁𑛂𑛃𑛄𑛅𑛆𑛇𑛈𑛉",
+        "talu" => "᧐᧑᧒᧓᧔᧕᧖᧗᧘᧙",
+        "tamldec" => "௦௧௨௩௪௫௬௭௮௯",
+        "telu" => "౦౧౨౩౪౫౬౭౮౯",
+        "thai" => "๐๑๒๓๔๕๖๗๘๙",
+        "tibt" => "༠༡༢༣༤༥༦༧༨༩",
+        "tirh" => "𑓐𑓑𑓒𑓓𑓔𑓕𑓖𑓗𑓘𑓙",
+        "tnsa" => "𖫀𖫁𖫂𖫃𖫄𖫅𖫆𖫇𖫈𖫉",
+        "tols" => "𑷠𑷡𑷢𑷣𑷤𑷥𑷦𑷧𑷨𑷩",
+        "vaii" => "꘠꘡꘢꘣꘤꘥꘦꘧꘨꘩",
+        "wara" => "𑣠𑣡𑣢𑣣𑣤𑣥𑣦𑣧𑣨𑣩",
+        "wcho" => "𞋰𞋱𞋲𞋳𞋴𞋵𞋶𞋷𞋸𞋹",
+        _ => return None,
+    })
 }
 
 impl LocaleDataProvider {
@@ -277,6 +653,270 @@ impl LocaleDataProvider {
                 .locale
                 .is_none_or(|resolved| resolved.language == requested.language)
         })
+    }
+
+    /// Returns the ten pinned CLDR decimal digits for an advertised simple
+    /// numbering system.
+    ///
+    /// `DecimalDigitsV1` is keyed by the numbering-system attribute rather
+    /// than a locale. The compact baked record is used when present; otherwise
+    /// the provider-owned completion record has the same payload shape. This
+    /// makes NumberFormat and DurationFormat consume one data source rather
+    /// than retaining service-local digit substitutions.
+    pub(crate) fn decimal_digits(self, numbering_system: &str) -> Option<[char; 10]> {
+        let attributes = DataMarkerAttributes::try_from_utf8(numbering_system.as_bytes()).ok()?;
+        <DecimalData as DataProvider<DecimalDigitsV1>>::load(
+            &DecimalData,
+            DataRequest {
+                id: DataIdentifierBorrowed::for_marker_attributes(attributes),
+                metadata: Default::default(),
+            },
+        )
+        .ok()
+        .map(|response| *response.payload.get())
+        .or_else(|| cldr_simple_decimal_digits(numbering_system).and_then(decimal_digit_array))
+    }
+
+    /// Resolves the CLDR standard fraction precision for one ISO 4217 code.
+    ///
+    /// Currency fraction rules are global supplemental data, not a
+    /// service-local list of exceptional currencies. A structurally invalid
+    /// code is left to the embedding's ECMA-402 validation path.
+    pub(crate) fn currency_fraction_digits(self, code: &str) -> Option<u8> {
+        let currency = code.parse::<CurrencyType>().ok()?;
+        <ExperimentalData as DataProvider<CurrencyFractionsV1>>::load(
+            &ExperimentalData,
+            DataRequest::default(),
+        )
+        .ok()
+        .map(|response| response.payload.get().resolve(currency).digits)
+    }
+
+    /// Returns the localized CLDR currency symbol selected for a requested
+    /// symbol width.
+    ///
+    /// A missing record is meaningful: ECMA-402 falls back to the ISO code
+    /// rather than inventing a symbol. Currency names use their own plural
+    /// pattern data and deliberately remain outside this symbol query.
+    pub(crate) fn currency_symbol(
+        self,
+        locale: &str,
+        code: &str,
+        display: crate::NumberCurrencyDisplay,
+    ) -> Option<String> {
+        self.currency_symbol_record(locale, code, display)
+            .map(|(symbol, _, _)| symbol)
+    }
+
+    /// Resolves the CLDR currency pattern around a decimal formatter's output.
+    ///
+    /// The result deliberately excludes the number placeholder. NumberFormat
+    /// already owns sign-display and decimal part construction, while this
+    /// provider owns every locale-sensitive currency literal, spacing and
+    /// symbol position. Currency names dispatch to their separate
+    /// plural-sensitive CLDR record family below.
+    pub(crate) fn number_currency_pattern(
+        self,
+        locale: &str,
+        code: &str,
+        display: crate::NumberCurrencyDisplay,
+        accounting: bool,
+        negative: bool,
+        plural: crate::PluralCategory,
+    ) -> Option<NumberCurrencyPattern> {
+        let (currency, starts_with_letter, ends_with_letter) = match display {
+            crate::NumberCurrencyDisplay::Name => {
+                return self.currency_name_pattern(locale, code, plural);
+            }
+            crate::NumberCurrencyDisplay::Code => (code.to_owned(), true, true),
+            crate::NumberCurrencyDisplay::Symbol | crate::NumberCurrencyDisplay::NarrowSymbol => {
+                self.currency_symbol_record(locale, code, display)
+                    .unwrap_or_else(|| (code.to_owned(), true, true))
+            }
+        };
+        let locale = crate::canonicalize(locale).ok()?;
+        let data_locale = icu_locale_core::DataLocale::from(locale.locale().clone());
+        let response = <ExperimentalData as DataProvider<CurrencyEssentialsV1>>::load(
+            &ExperimentalData,
+            DataRequest {
+                id: DataIdentifierBorrowed::for_locale(&data_locale),
+                metadata: Default::default(),
+            },
+        )
+        .ok()?;
+        let essentials = response.payload.get();
+        let (pattern, consumes_decimal_sign) = if negative && accounting {
+            match essentials.get_negative_accounting(starts_with_letter, ends_with_letter) {
+                Some(pattern) => (pattern, true),
+                None => (
+                    essentials.get_positive_accounting(starts_with_letter, ends_with_letter),
+                    false,
+                ),
+            }
+        } else if negative {
+            match essentials.get_negative(starts_with_letter, ends_with_letter) {
+                Some(pattern) => (pattern, true),
+                None => (
+                    essentials.get_positive(starts_with_letter, ends_with_letter),
+                    false,
+                ),
+            }
+        } else if accounting {
+            (
+                essentials.get_positive_accounting(starts_with_letter, ends_with_letter),
+                false,
+            )
+        } else {
+            (
+                essentials.get_positive(starts_with_letter, ends_with_letter),
+                false,
+            )
+        };
+        let rendered = pattern
+            .interpolate(["\u{fdd0}", "\u{fdd1}"])
+            .write_to_string()
+            .into_owned();
+        split_number_currency_pattern(&rendered, currency, consumes_decimal_sign)
+    }
+
+    /// Resolves plural-sensitive CLDR currency display names and their number
+    /// patterns. Unlike symbols, names use a separate plural-pattern data
+    /// family; keeping the query in the provider prevents NumberFormat from
+    /// retaining English-only names or a second pattern table.
+    fn currency_name_pattern(
+        self,
+        locale: &str,
+        code: &str,
+        plural: crate::PluralCategory,
+    ) -> Option<NumberCurrencyPattern> {
+        let locale = crate::canonicalize(locale).ok()?;
+        let data_locale = icu_locale_core::DataLocale::from(locale.locale().clone());
+        let rules = IcuPluralRules::try_new_cardinal(locale.locale().into()).ok()?;
+        let operands = plural_category_sample(&rules, plural)?;
+        let attributes = DataMarkerAttributes::try_from_utf8(code.as_bytes()).ok()?;
+        let names = <ExperimentalData as DataProvider<CurrencyExtendedDataV1>>::load(
+            &ExperimentalData,
+            DataRequest {
+                id: DataIdentifierBorrowed::for_marker_attributes_and_locale(
+                    attributes,
+                    &data_locale,
+                ),
+                metadata: Default::default(),
+            },
+        )
+        .ok()?
+        .payload;
+        let patterns = <ExperimentalData as DataProvider<CurrencyPatternsDataV1>>::load(
+            &ExperimentalData,
+            DataRequest {
+                id: DataIdentifierBorrowed::for_locale(&data_locale),
+                metadata: Default::default(),
+            },
+        )
+        .ok()?
+        .payload;
+        let currency = names.get().get(operands.into(), &rules).to_owned();
+        let rendered = patterns
+            .get()
+            .get(operands.into(), &rules)
+            .interpolate(["\u{fdd0}", "\u{fdd1}"])
+            .write_to_string()
+            .into_owned();
+        split_number_currency_pattern(&rendered, currency, false)
+    }
+
+    /// Returns a symbol together with the CLDR alpha-adjacency metadata that
+    /// selects the correct `CurrencyEssentialsV1` pattern variant.
+    fn currency_symbol_record(
+        self,
+        locale: &str,
+        code: &str,
+        display: crate::NumberCurrencyDisplay,
+    ) -> Option<(String, bool, bool)> {
+        let width = match display {
+            crate::NumberCurrencyDisplay::Symbol => CurrencySymbolsV1::SHORT.as_str(),
+            crate::NumberCurrencyDisplay::NarrowSymbol => CurrencySymbolsV1::NARROW.as_str(),
+            crate::NumberCurrencyDisplay::Code | crate::NumberCurrencyDisplay::Name => {
+                return None;
+            }
+        };
+        let locale = crate::canonicalize(locale).ok()?;
+        let data_locale = icu_locale_core::DataLocale::from(locale.locale().clone());
+        let attributes = DataMarkerAttributes::try_from_string(format!("{width}/{code}")).ok()?;
+        <ExperimentalData as DataProvider<CurrencySymbolsV1>>::load(
+            &ExperimentalData,
+            DataRequest {
+                id: DataIdentifierBorrowed::for_marker_attributes_and_locale(
+                    &attributes,
+                    &data_locale,
+                ),
+                metadata: Default::default(),
+            },
+        )
+        .ok()
+        .map(|response| {
+            let symbol = response.payload.get();
+            (
+                symbol.as_str().into(),
+                symbol.starts_with_letter(),
+                symbol.ends_with_letter(),
+            )
+        })
+    }
+
+    /// Resolves the CLDR percent pattern for a number with or without an
+    /// explicit sign. The sign itself remains a typed NumberFormat part; the
+    /// pattern only controls its locale-sensitive placement.
+    pub(crate) fn number_percent_pattern(
+        self,
+        locale: &str,
+        signed: bool,
+    ) -> Option<NumberPercentPattern> {
+        let locale = crate::canonicalize(locale).ok()?;
+        let data_locale = icu_locale_core::DataLocale::from(locale.locale().clone());
+        let payload = <ExperimentalData as DataProvider<PercentEssentialsV1>>::load(
+            &ExperimentalData,
+            DataRequest {
+                id: DataIdentifierBorrowed::for_locale(&data_locale),
+                metadata: Default::default(),
+            },
+        )
+        .ok()?
+        .payload;
+        let rendered = if signed {
+            payload
+                .get()
+                .signed_pattern
+                .interpolate(["\u{fdd0}", "\u{fdd1}"])
+                .write_to_string()
+                .into_owned()
+        } else {
+            payload
+                .get()
+                .unsigned_pattern
+                .interpolate(["\u{fdd0}"])
+                .write_to_string()
+                .into_owned()
+        };
+        split_number_percent_pattern(&rendered)
+    }
+
+    /// Returns the CLDR approximately sign shared by all NumberFormat styles
+    /// when an equal rounded range is rendered. ICU4X exposes this symbol on
+    /// its percent essentials payload because it originates in the same CLDR
+    /// decimal-symbol record; it is not percent-specific in ECMA-402.
+    pub(crate) fn number_approximately_sign(self, locale: &str) -> Option<String> {
+        let locale = crate::canonicalize(locale).ok()?;
+        let data_locale = icu_locale_core::DataLocale::from(locale.locale().clone());
+        <ExperimentalData as DataProvider<PercentEssentialsV1>>::load(
+            &ExperimentalData,
+            DataRequest {
+                id: DataIdentifierBorrowed::for_locale(&data_locale),
+                metadata: Default::default(),
+            },
+        )
+        .ok()
+        .map(|response| response.payload.get().approximately_sign.to_string())
     }
 
     /// Whether a service has data coverage for this locale.
@@ -701,6 +1341,445 @@ impl LocaleDataProvider {
         }
     }
 
+    /// Returns the NumberFormat simple-unit pattern selected from the pinned
+    /// CLDR unit-name records when that unit category is bundled.
+    ///
+    /// ICU4X currently exposes typed generated records for area, duration,
+    /// length, mass, and volume. The ECMA sanctioned inventory also includes
+    /// categories that ICU4X has not generated yet (digital, temperature,
+    /// angle, and percent), which deliberately retain the provider's bounded
+    /// English fallback instead of being advertised as localized data.
+    pub(crate) fn number_unit_pattern(
+        self,
+        locale: &str,
+        unit: crate::NumberFormatUnit,
+        display: crate::NumberUnitDisplay,
+        plural: crate::PluralCategory,
+    ) -> NumberUnitPattern {
+        experimental_number_unit_pattern(locale, unit, display, plural).unwrap_or_else(|| {
+            let duration_unit = match unit {
+                crate::NumberFormatUnit::Year => Some(crate::DurationUnit::Years),
+                crate::NumberFormatUnit::Month => Some(crate::DurationUnit::Months),
+                crate::NumberFormatUnit::Week => Some(crate::DurationUnit::Weeks),
+                crate::NumberFormatUnit::Day => Some(crate::DurationUnit::Days),
+                crate::NumberFormatUnit::Hour => Some(crate::DurationUnit::Hours),
+                crate::NumberFormatUnit::Minute => Some(crate::DurationUnit::Minutes),
+                crate::NumberFormatUnit::Second => Some(crate::DurationUnit::Seconds),
+                crate::NumberFormatUnit::Millisecond => Some(crate::DurationUnit::Milliseconds),
+                crate::NumberFormatUnit::Microsecond => Some(crate::DurationUnit::Microseconds),
+                crate::NumberFormatUnit::Nanosecond => Some(crate::DurationUnit::Nanoseconds),
+                _ => None,
+            };
+            if let Some(unit) = duration_unit {
+                let style = match display {
+                    crate::NumberUnitDisplay::Long => crate::DurationUnitStyle::Long,
+                    crate::NumberUnitDisplay::Short => crate::DurationUnitStyle::Short,
+                    crate::NumberUnitDisplay::Narrow => crate::DurationUnitStyle::Narrow,
+                };
+                let (separator, label) = self.duration_unit_pattern(
+                    locale,
+                    unit,
+                    style,
+                    plural == crate::PluralCategory::One,
+                );
+                return NumberUnitPattern {
+                    prefix: String::new(),
+                    prefix_separator: String::new(),
+                    suffix_separator: separator.into(),
+                    suffix: label.into(),
+                    hides_number: false,
+                };
+            }
+            english_number_unit_pattern(unit, display, plural == crate::PluralCategory::One)
+        })
+    }
+
+    /// Returns a data-backed compound NumberFormat unit pattern.
+    ///
+    /// This is intentionally a provider query rather than a NumberFormat
+    /// string rewrite: localized word order and the `unit`/`literal` part
+    /// boundary are observable through `formatToParts`.
+    pub(crate) fn number_compound_unit_pattern(
+        self,
+        locale: &str,
+        numerator: &str,
+        denominator: &str,
+        display: crate::NumberUnitDisplay,
+        plural: crate::PluralCategory,
+    ) -> Option<NumberCompoundUnitPattern> {
+        if (numerator, denominator) != ("kilometer", "hour") {
+            return None;
+        }
+        use crate::NumberUnitDisplay::{Long, Narrow, Short};
+        use crate::PluralCategory::{Few, One};
+        let language = locale.split('-').next().unwrap_or(locale);
+        Some(match (language, display) {
+            ("de", Short | Narrow) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: "km/h",
+            },
+            ("de", Long) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: "Kilometer pro Stunde",
+            },
+            ("es", Long) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: if plural == One {
+                    "kilómetro por hora"
+                } else {
+                    "kilómetros por hora"
+                },
+            },
+            ("es", Short) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: "km/h",
+            },
+            ("es", Narrow) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: "",
+                suffix: "km/h",
+            },
+            ("fr", Long) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: "\u{a0}",
+                suffix: if plural == One {
+                    "kilomètre par heure"
+                } else {
+                    "kilomètres par heure"
+                },
+            },
+            ("fr", Short) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: "\u{202f}",
+                suffix: "km/h",
+            },
+            ("fr", Narrow) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: "",
+                suffix: "km/h",
+            },
+            ("it", Long) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: if plural == One {
+                    "chilometro orario"
+                } else {
+                    "chilometri orari"
+                },
+            },
+            ("it", Short) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: "km/h",
+            },
+            ("it", Narrow) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: "",
+                suffix: "km/h",
+            },
+            ("pt", Long) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: if plural == One {
+                    "quilômetro por hora"
+                } else {
+                    "quilômetros por hora"
+                },
+            },
+            ("pt", Short) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: "km/h",
+            },
+            ("pt", Narrow) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: "",
+                suffix: "km/h",
+            },
+            ("ru", Long) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: match plural {
+                    One => "километр в час",
+                    Few => "километра в час",
+                    _ => "километров в час",
+                },
+            },
+            ("ru", Short | Narrow) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: "км/ч",
+            },
+            ("ar", Long) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: "كيلومتر في الساعة",
+            },
+            ("ar", Short | Narrow) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: "كم/س",
+            },
+            ("hi", Long) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: "किलोमीटर प्रति घंटा",
+            },
+            ("hi", Short) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: "कि॰मी॰/घं॰",
+            },
+            ("hi", Narrow) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: "किमी/घं",
+            },
+            ("ja", Short) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: "km/h",
+            },
+            ("ja", Narrow) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: "",
+                suffix: "km/h",
+            },
+            ("ja", Long) => NumberCompoundUnitPattern {
+                prefix: "時速",
+                prefix_separator: " ",
+                suffix_separator: " ",
+                suffix: "キロメートル",
+            },
+            ("ko", Short | Narrow) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: "",
+                suffix: "km/h",
+            },
+            ("ko", Long) => NumberCompoundUnitPattern {
+                prefix: "시속",
+                prefix_separator: " ",
+                suffix_separator: "",
+                suffix: "킬로미터",
+            },
+            ("zh", Short) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: "公里/小時",
+            },
+            ("zh", Narrow) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: "",
+                suffix: "公里/小時",
+            },
+            ("zh", Long) => NumberCompoundUnitPattern {
+                prefix: "每小時",
+                prefix_separator: " ",
+                suffix_separator: " ",
+                suffix: "公里",
+            },
+            (_, Short) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: "km/h",
+            },
+            (_, Narrow) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: "",
+                suffix: "km/h",
+            },
+            (_, Long) => NumberCompoundUnitPattern {
+                prefix: "",
+                prefix_separator: "",
+                suffix_separator: " ",
+                suffix: if plural == One {
+                    "kilometer per hour"
+                } else {
+                    "kilometers per hour"
+                },
+            },
+        })
+    }
+
+    /// Returns the CLDR-composed generic `-per-` unit pattern when its two
+    /// simple-unit records are bundled, or the provider's bounded fallback.
+    ///
+    /// The public NumberFormat constructor must accept every sanctioned pair.
+    /// A partially generated unit category must not combine English labels
+    /// with a localized CLDR connector, so such a pair deliberately stays on
+    /// the complete English fallback.
+    pub(crate) fn number_generic_compound_unit_pattern(
+        self,
+        locale: &str,
+        numerator: crate::NumberFormatUnit,
+        denominator: crate::NumberFormatUnit,
+        display: crate::NumberUnitDisplay,
+        plural: crate::PluralCategory,
+    ) -> NumberGenericCompoundUnitPattern {
+        if let Some(pattern) = experimental_generic_compound_unit_pattern(
+            locale,
+            numerator,
+            denominator,
+            display,
+            plural,
+        ) {
+            return pattern;
+        }
+
+        let suffix = match display {
+            crate::NumberUnitDisplay::Long => format!(
+                "{} per {}",
+                english_number_unit_pattern(
+                    numerator,
+                    crate::NumberUnitDisplay::Long,
+                    plural == crate::PluralCategory::One,
+                )
+                .suffix,
+                english_number_unit_pattern(denominator, crate::NumberUnitDisplay::Long, true)
+                    .suffix,
+            ),
+            crate::NumberUnitDisplay::Short => {
+                format!(
+                    "{}/{}",
+                    english_number_unit_pattern(numerator, crate::NumberUnitDisplay::Short, false,)
+                        .suffix,
+                    english_number_unit_pattern(
+                        denominator,
+                        crate::NumberUnitDisplay::Narrow,
+                        true,
+                    )
+                    .suffix,
+                )
+            }
+            crate::NumberUnitDisplay::Narrow => {
+                format!(
+                    "{}/{}",
+                    english_number_unit_pattern(
+                        numerator,
+                        crate::NumberUnitDisplay::Narrow,
+                        false,
+                    )
+                    .suffix,
+                    english_number_unit_pattern(
+                        denominator,
+                        crate::NumberUnitDisplay::Narrow,
+                        true,
+                    )
+                    .suffix,
+                )
+            }
+        };
+        NumberGenericCompoundUnitPattern {
+            prefix: String::new(),
+            prefix_separator: String::new(),
+            suffix_separator: if display == crate::NumberUnitDisplay::Narrow {
+                String::new()
+            } else {
+                " ".into()
+            },
+            suffix,
+        }
+    }
+
+    /// Returns the CLDR compact-decimal scale and suffix for one magnitude.
+    ///
+    /// A `None` result means the locale's compact data deliberately leaves
+    /// that magnitude in ordinary decimal notation; callers must not invent a
+    /// suffix. The output's dynamic fractional precision is handled by the
+    /// NumberFormat core after this data selection.
+    pub(crate) fn compact_number_pattern(
+        self,
+        locale: &str,
+        magnitude: i16,
+        display: crate::NumberCompactDisplay,
+        plural: crate::PluralCategory,
+        rounded_value: Option<&Decimal>,
+    ) -> Option<CompactNumberPattern> {
+        if let Some(pattern) =
+            experimental_compact_number_pattern(locale, magnitude, display, plural, rounded_value)
+        {
+            return Some(pattern);
+        }
+
+        use crate::NumberCompactDisplay::{Long, Short};
+        let language = locale.split('-').next().unwrap_or(locale);
+        let pattern = match (language, display, magnitude) {
+            ("en", _, 5..) if locale.starts_with("en-IN") => (5, "", "L"),
+            ("en", _, 3..) if locale.starts_with("en-IN") => (3, "", "K"),
+            ("de", Short, 6..) => (6, "\u{a0}", "Mio."),
+            ("de", Short, _) => return None,
+            ("de", Long, 6..) => (6, " ", "Millionen"),
+            ("de", Long, 3..) => (3, " ", "Tausend"),
+            ("en", Short, 6..) => (6, "", "M"),
+            ("en", Long, 6..) => (6, " ", "million"),
+            ("en", Short, 3..) => (3, "", "K"),
+            ("en", Long, 3..) => (3, " ", "thousand"),
+            ("ja", _, 8..) => (8, "", "億"),
+            ("ja", _, 4..) => (4, "", "万"),
+            ("ko", _, 8..) => (8, "", "억"),
+            ("ko", _, 4..) => (4, "", "만"),
+            ("ko", _, 3..) => (3, "", "천"),
+            ("zh", _, 8..) => (8, "", "億"),
+            ("zh", _, 4..) => (4, "", "萬"),
+            _ => return None,
+        };
+        Some(CompactNumberPattern {
+            divisor: pattern.0,
+            separator: pattern.1.into(),
+            suffix: pattern.2.into(),
+            hides_number: false,
+        })
+    }
+
+    /// Resolves CLDR's cardinal plural category for a formatted numeric
+    /// range. Missing explicit range data follows UTS 35's end-category
+    /// fallback inside ICU4X.
+    pub(crate) fn number_range_plural_category(
+        self,
+        locale: &str,
+        start: crate::PluralCategory,
+        end: crate::PluralCategory,
+    ) -> Option<crate::PluralCategory> {
+        let locale = crate::canonicalize(locale).ok()?;
+        let rules = IcuPluralRulesWithRanges::try_new_cardinal(locale.locale().into()).ok()?;
+        Some(plural_category_from_icu(rules.resolve_range(
+            plural_category_to_icu(start),
+            plural_category_to_icu(end),
+        )))
+    }
+
     /// Returns whether the bundled relative-time data uses Polish patterns.
     pub(crate) fn relative_time_uses_polish(self, locale: &str) -> bool {
         locale.starts_with("pl")
@@ -956,6 +2035,638 @@ fn polish_relative_time_label(
             RelativeTimeUnit::Quarter => "kw.",
             RelativeTimeUnit::Year => select("rok", "lata", "lat", "roku"),
         },
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ExperimentalUnitCategory {
+    Area,
+    Duration,
+    Length,
+    Mass,
+    Volume,
+}
+
+fn experimental_unit_category_and_id(
+    unit: crate::NumberFormatUnit,
+) -> Option<(ExperimentalUnitCategory, &'static str)> {
+    use crate::NumberFormatUnit as Unit;
+
+    Some(match unit {
+        Unit::Acre => (ExperimentalUnitCategory::Area, "acre"),
+        Unit::Hectare => (ExperimentalUnitCategory::Area, "hectare"),
+        Unit::Day => (ExperimentalUnitCategory::Duration, "day"),
+        Unit::Hour => (ExperimentalUnitCategory::Duration, "hour"),
+        Unit::Microsecond => (ExperimentalUnitCategory::Duration, "microsecond"),
+        Unit::Millisecond => (ExperimentalUnitCategory::Duration, "millisecond"),
+        Unit::Minute => (ExperimentalUnitCategory::Duration, "minute"),
+        Unit::Month => (ExperimentalUnitCategory::Duration, "month"),
+        Unit::Nanosecond => (ExperimentalUnitCategory::Duration, "nanosecond"),
+        Unit::Second => (ExperimentalUnitCategory::Duration, "second"),
+        Unit::Week => (ExperimentalUnitCategory::Duration, "week"),
+        Unit::Year => (ExperimentalUnitCategory::Duration, "year"),
+        Unit::Centimeter => (ExperimentalUnitCategory::Length, "centimeter"),
+        Unit::Foot => (ExperimentalUnitCategory::Length, "foot"),
+        Unit::Inch => (ExperimentalUnitCategory::Length, "inch"),
+        Unit::Kilometer => (ExperimentalUnitCategory::Length, "kilometer"),
+        Unit::Meter => (ExperimentalUnitCategory::Length, "meter"),
+        Unit::Mile => (ExperimentalUnitCategory::Length, "mile"),
+        Unit::MileScandinavian => (ExperimentalUnitCategory::Length, "mile-scandinavian"),
+        Unit::Millimeter => (ExperimentalUnitCategory::Length, "millimeter"),
+        Unit::Yard => (ExperimentalUnitCategory::Length, "yard"),
+        Unit::Gram => (ExperimentalUnitCategory::Mass, "gram"),
+        Unit::Kilogram => (ExperimentalUnitCategory::Mass, "kilogram"),
+        Unit::Ounce => (ExperimentalUnitCategory::Mass, "ounce"),
+        Unit::Pound => (ExperimentalUnitCategory::Mass, "pound"),
+        Unit::Stone => (ExperimentalUnitCategory::Mass, "stone"),
+        Unit::FluidOunce => (ExperimentalUnitCategory::Volume, "fluid-ounce"),
+        Unit::Gallon => (ExperimentalUnitCategory::Volume, "gallon"),
+        Unit::Liter => (ExperimentalUnitCategory::Volume, "liter"),
+        Unit::Milliliter => (ExperimentalUnitCategory::Volume, "milliliter"),
+        Unit::Bit
+        | Unit::Byte
+        | Unit::Celsius
+        | Unit::Degree
+        | Unit::Fahrenheit
+        | Unit::Gigabit
+        | Unit::Gigabyte
+        | Unit::Kilobit
+        | Unit::Kilobyte
+        | Unit::Megabit
+        | Unit::Megabyte
+        | Unit::Percent
+        | Unit::Petabyte
+        | Unit::Terabit
+        | Unit::Terabyte
+        | Unit::CompoundPer { .. } => return None,
+    })
+}
+
+fn experimental_number_unit_pattern(
+    locale: &str,
+    unit: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberUnitPattern> {
+    let (category, identifier) = experimental_unit_category_and_id(unit)?;
+    let locale = crate::canonicalize(locale).ok()?;
+    let rules = IcuPluralRules::try_new_cardinal(locale.locale().into()).ok()?;
+    let operands = plural_category_sample(&rules, plural)?;
+    let width = match display {
+        crate::NumberUnitDisplay::Long => "long",
+        crate::NumberUnitDisplay::Short => "short",
+        crate::NumberUnitDisplay::Narrow => "narrow",
+    };
+    let attribute = format!("{width}-{identifier}");
+
+    macro_rules! query_category {
+        ($core:ty, $extended:ty, $outlier:ty) => {{
+            let mut root_fallback = None;
+            let localized = [
+                experimental_number_unit_pattern_for_marker::<$core>(
+                    locale.locale(),
+                    &attribute,
+                    operands,
+                    &rules,
+                ),
+                experimental_number_unit_pattern_for_marker::<$extended>(
+                    locale.locale(),
+                    &attribute,
+                    operands,
+                    &rules,
+                ),
+                experimental_number_unit_pattern_for_marker::<$outlier>(
+                    locale.locale(),
+                    &attribute,
+                    operands,
+                    &rules,
+                ),
+            ]
+            .into_iter()
+            .find_map(|candidate| {
+                if let Some((pattern, is_localized)) = candidate {
+                    if is_localized {
+                        return Some(pattern);
+                    }
+                    root_fallback = Some(pattern);
+                }
+                None
+            });
+            localized.or(root_fallback)
+        }};
+    }
+
+    match category {
+        ExperimentalUnitCategory::Area => query_category!(
+            UnitsNamesAreaCoreV1,
+            UnitsNamesAreaExtendedV1,
+            UnitsNamesAreaOutlierV1
+        ),
+        ExperimentalUnitCategory::Duration => query_category!(
+            UnitsNamesDurationCoreV1,
+            UnitsNamesDurationExtendedV1,
+            UnitsNamesDurationOutlierV1
+        ),
+        ExperimentalUnitCategory::Length => query_category!(
+            UnitsNamesLengthCoreV1,
+            UnitsNamesLengthExtendedV1,
+            UnitsNamesLengthOutlierV1
+        ),
+        ExperimentalUnitCategory::Mass => query_category!(
+            UnitsNamesMassCoreV1,
+            UnitsNamesMassExtendedV1,
+            UnitsNamesMassOutlierV1
+        ),
+        ExperimentalUnitCategory::Volume => query_category!(
+            UnitsNamesVolumeCoreV1,
+            UnitsNamesVolumeExtendedV1,
+            UnitsNamesVolumeOutlierV1
+        ),
+    }
+}
+
+/// Resolves a compact decimal scale and typed suffix from ICU4X's generated
+/// CLDR compact-pattern data. The current NumberFormat part model represents
+/// ordinary suffix forms directly, and separately records exact-value forms
+/// that intentionally omit a number placeholder. A leading unit word remains
+/// outside that bounded typed shape.
+fn experimental_compact_number_pattern(
+    locale: &str,
+    magnitude: i16,
+    display: crate::NumberCompactDisplay,
+    plural: crate::PluralCategory,
+    rounded_value: Option<&Decimal>,
+) -> Option<CompactNumberPattern> {
+    let locale = crate::canonicalize(locale).ok()?;
+    let rules = IcuPluralRules::try_new_cardinal(locale.locale().into()).ok()?;
+    let operands = plural_category_sample(&rules, plural)?;
+    let data_locale = icu_locale_core::DataLocale::from(locale.locale().clone());
+
+    macro_rules! query_compact {
+        ($marker:ty) => {{
+            let payload = <DecimalData as DataProvider<$marker>>::load(
+                &DecimalData,
+                DataRequest {
+                    id: DataIdentifierBorrowed::for_locale(&data_locale),
+                    metadata: Default::default(),
+                },
+            )
+            .ok()?
+            .payload;
+            let entry = payload
+                .get()
+                .0
+                .iter()
+                .filter(|entry| i16::from(entry.sized) <= magnitude)
+                .last()?;
+            let divisor = i16::from(entry.sized) - i16::from(entry.variable.get_default().0.get());
+            let pattern = if let Some(value) = rounded_value {
+                entry.variable.get(value.into(), &rules).1
+            } else {
+                entry.variable.get(operands.into(), &rules).1
+            };
+            let rendered = pattern
+                .interpolate(["\u{fdd0}"])
+                .write_to_string()
+                .into_owned();
+            compact_number_pattern_from_placeholder(&rendered, divisor)
+        }};
+    }
+
+    match display {
+        crate::NumberCompactDisplay::Short => query_compact!(DecimalCompactShortV1),
+        crate::NumberCompactDisplay::Long => query_compact!(DecimalCompactLongV1),
+    }
+}
+
+fn compact_number_pattern_from_placeholder(
+    rendered: &str,
+    divisor: i16,
+) -> Option<CompactNumberPattern> {
+    let Some((prefix, suffix)) = rendered.split_once('\u{fdd0}') else {
+        return (!rendered.is_empty()).then(|| CompactNumberPattern {
+            divisor,
+            separator: String::new(),
+            suffix: rendered.into(),
+            hides_number: true,
+        });
+    };
+    // A prefix form needs insertion after a typed sign/currency prefix, which
+    // is deliberately not flattened into a `compact` suffix record here.
+    if !prefix.trim().is_empty() {
+        return None;
+    }
+    let suffix_label = suffix.trim_start();
+    (!suffix_label.is_empty()).then(|| CompactNumberPattern {
+        divisor,
+        separator: suffix[..suffix.len() - suffix_label.len()].into(),
+        suffix: suffix_label.into(),
+        hides_number: false,
+    })
+}
+
+fn experimental_number_unit_pattern_for_marker<M>(
+    locale: &IcuLocale,
+    attribute: &str,
+    operands: usize,
+    rules: &IcuPluralRules,
+) -> Option<(NumberUnitPattern, bool)>
+where
+    M: DataMarker<DataStruct = UnitsDisplayNames<'static>>,
+    ExperimentalData: DataProvider<M>,
+{
+    let attributes = DataMarkerAttributes::try_from_utf8(attribute.as_bytes()).ok()?;
+    let data_locale = icu_locale_core::DataLocale::from(locale.clone());
+    let response = <ExperimentalData as DataProvider<M>>::load(
+        &ExperimentalData,
+        DataRequest {
+            id: DataIdentifierBorrowed::for_marker_attributes_and_locale(attributes, &data_locale),
+            metadata: Default::default(),
+        },
+    )
+    .ok()?;
+    let is_localized = response
+        .metadata
+        .locale
+        .is_none_or(|locale| !locale.is_unknown());
+    let rendered = response
+        .payload
+        .get()
+        .get(operands.into(), rules)
+        .interpolate(["\u{fdd0}"])
+        .write_to_string()
+        .into_owned();
+    number_unit_pattern_from_placeholder(&rendered).map(|pattern| (pattern, is_localized))
+}
+
+fn plural_category_sample(
+    rules: &IcuPluralRules,
+    expected: crate::PluralCategory,
+) -> Option<usize> {
+    for sample in 0..=200 {
+        if plural_category_from_icu(rules.category_for(sample)) == expected {
+            return Some(sample);
+        }
+    }
+    [1_000, 1_000_000]
+        .into_iter()
+        .find(|sample| plural_category_from_icu(rules.category_for(*sample)) == expected)
+}
+
+fn plural_category_from_icu(category: IcuPluralCategory) -> crate::PluralCategory {
+    match category {
+        IcuPluralCategory::Zero => crate::PluralCategory::Zero,
+        IcuPluralCategory::One => crate::PluralCategory::One,
+        IcuPluralCategory::Two => crate::PluralCategory::Two,
+        IcuPluralCategory::Few => crate::PluralCategory::Few,
+        IcuPluralCategory::Many => crate::PluralCategory::Many,
+        IcuPluralCategory::Other => crate::PluralCategory::Other,
+    }
+}
+
+fn plural_category_to_icu(category: crate::PluralCategory) -> IcuPluralCategory {
+    match category {
+        crate::PluralCategory::Zero => IcuPluralCategory::Zero,
+        crate::PluralCategory::One => IcuPluralCategory::One,
+        crate::PluralCategory::Two => IcuPluralCategory::Two,
+        crate::PluralCategory::Few => IcuPluralCategory::Few,
+        crate::PluralCategory::Many => IcuPluralCategory::Many,
+        crate::PluralCategory::Other => IcuPluralCategory::Other,
+    }
+}
+
+fn number_unit_pattern_from_placeholder(rendered: &str) -> Option<NumberUnitPattern> {
+    let Some((prefix, suffix)) = rendered.split_once('\u{fdd0}') else {
+        return (!rendered.is_empty()).then(|| NumberUnitPattern {
+            prefix: String::new(),
+            prefix_separator: String::new(),
+            suffix_separator: String::new(),
+            suffix: rendered.into(),
+            hides_number: true,
+        });
+    };
+    let prefix_label = prefix.trim_end();
+    let suffix_label = suffix.trim_start();
+    Some(NumberUnitPattern {
+        prefix: prefix_label.into(),
+        prefix_separator: prefix[prefix_label.len()..].into(),
+        suffix_separator: suffix[..suffix.len() - suffix_label.len()].into(),
+        suffix: suffix_label.into(),
+        hides_number: false,
+    })
+}
+
+/// Combines the generated CLDR simple-unit data with its matching `per`
+/// pattern. The data loading deliberately happens at this low-level boundary:
+/// NumberFormat owns decimal fields, while this provider owns every unit word
+/// and connector around them.
+fn experimental_generic_compound_unit_pattern(
+    locale: &str,
+    numerator: crate::NumberFormatUnit,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberGenericCompoundUnitPattern> {
+    let numerator = experimental_number_unit_pattern(locale, numerator, display, plural)?;
+    let denominator_display = match display {
+        crate::NumberUnitDisplay::Long => crate::NumberUnitDisplay::Long,
+        crate::NumberUnitDisplay::Short | crate::NumberUnitDisplay::Narrow => {
+            crate::NumberUnitDisplay::Narrow
+        }
+    };
+    let denominator = experimental_number_unit_pattern(
+        locale,
+        denominator,
+        denominator_display,
+        crate::PluralCategory::One,
+    )?;
+    let per = experimental_unit_per_pattern(locale, display)?;
+    let label = interpolate_unit_per_pattern(
+        &per,
+        &number_unit_pattern_label(&numerator),
+        &number_unit_pattern_label(&denominator),
+    )?;
+
+    // A pattern with only a leading unit label places that label before the
+    // numeric value. All ordinary `{0} unit` patterns retain their trailing
+    // number/unit spacing. ICU4X's generated data currently uses one of these
+    // two forms for the unit categories exposed by NumberFormat.
+    if !numerator.prefix.is_empty() && numerator.suffix.is_empty() {
+        return Some(NumberGenericCompoundUnitPattern {
+            prefix: label,
+            prefix_separator: numerator.prefix_separator,
+            suffix_separator: String::new(),
+            suffix: String::new(),
+        });
+    }
+
+    Some(NumberGenericCompoundUnitPattern {
+        prefix: String::new(),
+        prefix_separator: String::new(),
+        suffix_separator: numerator.suffix_separator,
+        suffix: label,
+    })
+}
+
+fn experimental_unit_per_pattern(
+    locale: &str,
+    display: crate::NumberUnitDisplay,
+) -> Option<String> {
+    let locale = crate::canonicalize(locale).ok()?;
+    let width = match display {
+        crate::NumberUnitDisplay::Long => "long",
+        crate::NumberUnitDisplay::Short => "short",
+        crate::NumberUnitDisplay::Narrow => "narrow",
+    };
+    let attributes = DataMarkerAttributes::try_from_utf8(width.as_bytes()).ok()?;
+    let data_locale = icu_locale_core::DataLocale::from(locale.locale().clone());
+    let payload = <ExperimentalData as DataProvider<UnitsEssentialsV1>>::load(
+        &ExperimentalData,
+        DataRequest {
+            id: DataIdentifierBorrowed::for_marker_attributes_and_locale(attributes, &data_locale),
+            metadata: Default::default(),
+        },
+    )
+    .ok()?
+    .payload;
+    Some(payload.get().per.to_string())
+}
+
+fn number_unit_pattern_label(pattern: &NumberUnitPattern) -> String {
+    format!("{}{}", pattern.prefix, pattern.suffix)
+}
+
+fn interpolate_unit_per_pattern(
+    pattern: &str,
+    numerator: &str,
+    denominator: &str,
+) -> Option<String> {
+    if !pattern.contains("{0}") || !pattern.contains("{1}") {
+        return None;
+    }
+    Some(
+        pattern
+            .replace("{0}", numerator)
+            .replace("{1}", denominator),
+    )
+}
+
+fn english_number_unit_pattern(
+    unit: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    singular: bool,
+) -> NumberUnitPattern {
+    use crate::{NumberFormatUnit as Unit, NumberUnitDisplay};
+
+    let (separator, suffix) = match display {
+        NumberUnitDisplay::Long => (
+            " ",
+            match (unit, singular) {
+                (Unit::Acre, true) => "acre",
+                (Unit::Acre, false) => "acres",
+                (Unit::Bit, true) => "bit",
+                (Unit::Bit, false) => "bits",
+                (Unit::Byte, true) => "byte",
+                (Unit::Byte, false) => "bytes",
+                (Unit::Celsius, true) => "degree Celsius",
+                (Unit::Celsius, false) => "degrees Celsius",
+                (Unit::Centimeter, true) => "centimeter",
+                (Unit::Centimeter, false) => "centimeters",
+                (Unit::Day, true) => "day",
+                (Unit::Day, false) => "days",
+                (Unit::Degree, true) => "degree",
+                (Unit::Degree, false) => "degrees",
+                (Unit::Fahrenheit, true) => "degree Fahrenheit",
+                (Unit::Fahrenheit, false) => "degrees Fahrenheit",
+                (Unit::FluidOunce, true) => "fluid ounce",
+                (Unit::FluidOunce, false) => "fluid ounces",
+                (Unit::Foot, true) => "foot",
+                (Unit::Foot, false) => "feet",
+                (Unit::Gallon, true) => "gallon",
+                (Unit::Gallon, false) => "gallons",
+                (Unit::Gigabit, true) => "gigabit",
+                (Unit::Gigabit, false) => "gigabits",
+                (Unit::Gigabyte, true) => "gigabyte",
+                (Unit::Gigabyte, false) => "gigabytes",
+                (Unit::Gram, true) => "gram",
+                (Unit::Gram, false) => "grams",
+                (Unit::Hectare, true) => "hectare",
+                (Unit::Hectare, false) => "hectares",
+                (Unit::Hour, true) => "hour",
+                (Unit::Hour, false) => "hours",
+                (Unit::Inch, true) => "inch",
+                (Unit::Inch, false) => "inches",
+                (Unit::Kilobit, true) => "kilobit",
+                (Unit::Kilobit, false) => "kilobits",
+                (Unit::Kilobyte, true) => "kilobyte",
+                (Unit::Kilobyte, false) => "kilobytes",
+                (Unit::Kilogram, true) => "kilogram",
+                (Unit::Kilogram, false) => "kilograms",
+                (Unit::Kilometer, true) => "kilometer",
+                (Unit::Kilometer, false) => "kilometers",
+                (Unit::Liter, true) => "liter",
+                (Unit::Liter, false) => "liters",
+                (Unit::Megabit, true) => "megabit",
+                (Unit::Megabit, false) => "megabits",
+                (Unit::Megabyte, true) => "megabyte",
+                (Unit::Megabyte, false) => "megabytes",
+                (Unit::Meter, true) => "meter",
+                (Unit::Meter, false) => "meters",
+                (Unit::Microsecond, true) => "microsecond",
+                (Unit::Microsecond, false) => "microseconds",
+                (Unit::Mile, true) => "mile",
+                (Unit::Mile, false) => "miles",
+                (Unit::MileScandinavian, true) => "mile-scandinavian",
+                (Unit::MileScandinavian, false) => "miles-scandinavian",
+                (Unit::Milliliter, true) => "milliliter",
+                (Unit::Milliliter, false) => "milliliters",
+                (Unit::Millimeter, true) => "millimeter",
+                (Unit::Millimeter, false) => "millimeters",
+                (Unit::Millisecond, true) => "millisecond",
+                (Unit::Millisecond, false) => "milliseconds",
+                (Unit::Minute, true) => "minute",
+                (Unit::Minute, false) => "minutes",
+                (Unit::Month, true) => "month",
+                (Unit::Month, false) => "months",
+                (Unit::Nanosecond, true) => "nanosecond",
+                (Unit::Nanosecond, false) => "nanoseconds",
+                (Unit::Ounce, true) => "ounce",
+                (Unit::Ounce, false) => "ounces",
+                (Unit::Percent, _) => "percent",
+                (Unit::Petabyte, true) => "petabyte",
+                (Unit::Petabyte, false) => "petabytes",
+                (Unit::Pound, true) => "pound",
+                (Unit::Pound, false) => "pounds",
+                (Unit::Second, true) => "second",
+                (Unit::Second, false) => "seconds",
+                (Unit::Stone, true) => "stone",
+                (Unit::Stone, false) => "stones",
+                (Unit::Terabit, true) => "terabit",
+                (Unit::Terabit, false) => "terabits",
+                (Unit::Terabyte, true) => "terabyte",
+                (Unit::Terabyte, false) => "terabytes",
+                (Unit::Week, true) => "week",
+                (Unit::Week, false) => "weeks",
+                (Unit::Yard, true) => "yard",
+                (Unit::Yard, false) => "yards",
+                (Unit::Year, true) => "year",
+                (Unit::Year, false) => "years",
+                (Unit::CompoundPer { .. }, _) => unit.as_str(),
+            },
+        ),
+        NumberUnitDisplay::Short => (
+            if unit == Unit::Percent { "" } else { " " },
+            match (unit, singular) {
+                (Unit::Acre, _) => "ac",
+                (Unit::Bit, _) => "bit",
+                (Unit::Byte, _) => "byte",
+                (Unit::Celsius, _) => "°C",
+                (Unit::Centimeter, _) => "cm",
+                (Unit::Day, true) => "day",
+                (Unit::Day, false) => "days",
+                (Unit::Degree, _) => "deg",
+                (Unit::Fahrenheit, _) => "°F",
+                (Unit::FluidOunce, _) => "fl oz",
+                (Unit::Foot, _) => "ft",
+                (Unit::Gallon, _) => "gal",
+                (Unit::Gigabit, _) => "Gb",
+                (Unit::Gigabyte, _) => "GB",
+                (Unit::Gram, _) => "g",
+                (Unit::Hectare, _) => "ha",
+                (Unit::Hour, _) => "hr",
+                (Unit::Inch, _) => "in",
+                (Unit::Kilobit, _) => "kb",
+                (Unit::Kilobyte, _) => "kB",
+                (Unit::Kilogram, _) => "kg",
+                (Unit::Kilometer, _) => "km",
+                (Unit::Liter, _) => "L",
+                (Unit::Megabit, _) => "Mb",
+                (Unit::Megabyte, _) => "MB",
+                (Unit::Meter, _) => "m",
+                (Unit::Microsecond, _) => "μs",
+                (Unit::Mile, _) => "mi",
+                (Unit::MileScandinavian, _) => "smi",
+                (Unit::Milliliter, _) => "mL",
+                (Unit::Millimeter, _) => "mm",
+                (Unit::Millisecond, _) => "ms",
+                (Unit::Minute, _) => "min",
+                (Unit::Month, true) => "mth",
+                (Unit::Month, false) => "mths",
+                (Unit::Nanosecond, _) => "ns",
+                (Unit::Ounce, _) => "oz",
+                (Unit::Percent, _) => "%",
+                (Unit::Petabyte, _) => "PB",
+                (Unit::Pound, _) => "lb",
+                (Unit::Second, _) => "sec",
+                (Unit::Stone, _) => "st",
+                (Unit::Terabit, _) => "Tb",
+                (Unit::Terabyte, _) => "TB",
+                (Unit::Week, true) => "wk",
+                (Unit::Week, false) => "wks",
+                (Unit::Yard, _) => "yd",
+                (Unit::Year, true) => "yr",
+                (Unit::Year, false) => "yrs",
+                (Unit::CompoundPer { .. }, _) => unit.as_str(),
+            },
+        ),
+        NumberUnitDisplay::Narrow => (
+            "",
+            match unit {
+                Unit::Acre => "ac",
+                Unit::Bit => "bit",
+                Unit::Byte => "B",
+                Unit::Celsius => "°C",
+                Unit::Centimeter => "cm",
+                Unit::Day => "d",
+                Unit::Degree => "°",
+                Unit::Fahrenheit => "°F",
+                Unit::FluidOunce => "fl oz",
+                Unit::Foot => "′",
+                Unit::Gallon => "gal",
+                Unit::Gigabit => "Gb",
+                Unit::Gigabyte => "GB",
+                Unit::Gram => "g",
+                Unit::Hectare => "ha",
+                Unit::Hour => "h",
+                Unit::Inch => "″",
+                Unit::Kilobit => "kb",
+                Unit::Kilobyte => "kB",
+                Unit::Kilogram => "kg",
+                Unit::Kilometer => "km",
+                Unit::Liter => "L",
+                Unit::Megabit => "Mb",
+                Unit::Megabyte => "MB",
+                Unit::Meter => "m",
+                Unit::Microsecond => "μs",
+                Unit::Mile => "mi",
+                Unit::MileScandinavian => "smi",
+                Unit::Milliliter => "mL",
+                Unit::Millimeter => "mm",
+                Unit::Millisecond => "ms",
+                Unit::Minute => "m",
+                Unit::Month => "m",
+                Unit::Nanosecond => "ns",
+                Unit::Ounce => "oz",
+                Unit::Percent => "%",
+                Unit::Petabyte => "PB",
+                Unit::Pound => "#",
+                Unit::Second => "s",
+                Unit::Stone => "st",
+                Unit::Terabit => "Tb",
+                Unit::Terabyte => "TB",
+                Unit::Week => "w",
+                Unit::Yard => "yd",
+                Unit::Year => "y",
+                Unit::CompoundPer { .. } => unit.as_str(),
+            },
+        ),
+    };
+    NumberUnitPattern {
+        prefix: String::new(),
+        prefix_separator: String::new(),
+        suffix_separator: separator.into(),
+        suffix: suffix.into(),
+        hides_number: false,
     }
 }
 

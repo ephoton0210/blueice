@@ -810,6 +810,13 @@ impl Vm {
                         0,
                         NativeFunction::BigIntValueOf,
                     )?;
+                    self.install_native(
+                        boxed_prototype,
+                        prototype,
+                        "toLocaleString",
+                        0,
+                        NativeFunction::BigIntToLocaleString,
+                    )?;
                     self.define_data(
                         boxed_prototype,
                         JsSymbol::well_known("toStringTag"),

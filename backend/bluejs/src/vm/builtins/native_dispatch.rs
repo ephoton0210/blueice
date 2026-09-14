@@ -948,17 +948,15 @@ impl Vm {
                 self.number_format_supported_locales(&args)
             }
             NativeFunction::NumberFormatFormatGetter => self.number_format_format_getter(&receiver),
-            NativeFunction::NumberFormatFormat => {
-                let formatter = self.number_format_data(&receiver)?;
-                let value = self.coerce_number(first)?;
-                formatter
-                    .format_f64(value)
-                    .map(|formatted| Value::String(formatted.into()))
-                    .map_err(|error| RuntimeError::RangeError(error.to_string()))
-            }
+            NativeFunction::NumberFormatFormat => self.number_format_format(&receiver, first),
             NativeFunction::NumberFormatFormatToParts => {
                 self.number_format_format_to_parts(&receiver, first)
             }
+            NativeFunction::NumberFormatFormatRange => {
+                self.number_format_format_range(&receiver, first, native::argument(&args, 1))
+            }
+            NativeFunction::NumberFormatFormatRangeToParts => self
+                .number_format_format_range_to_parts(&receiver, first, native::argument(&args, 1)),
             NativeFunction::NumberFormatResolvedOptions => {
                 self.number_format_resolved_options(&receiver)
             }
@@ -1349,7 +1347,7 @@ impl Vm {
             NativeFunction::ArraySlice => self.array_slice(&receiver, &args),
             NativeFunction::ArraySplice => self.array_splice(&receiver, &args),
             NativeFunction::ArraySort => self.array_sort(&receiver, first),
-            NativeFunction::ArrayToLocaleString => self.array_to_locale_string(&receiver),
+            NativeFunction::ArrayToLocaleString => self.array_to_locale_string(&receiver, &args),
             NativeFunction::NumberMethod(method) => self.number_method(&receiver, &args, method),
             NativeFunction::Eval => self.indirect_eval(first),
             NativeFunction::IsNaN => Ok(Value::Bool(self.coerce_number(first)?.is_nan())),
@@ -1632,6 +1630,28 @@ impl Vm {
                 } else {
                     Ok(Value::BigInt(value))
                 }
+            }
+            NativeFunction::BigIntToLocaleString => {
+                let value = if let Value::Object(id) = receiver {
+                    self.heap.boxed_primitive(id)?.unwrap_or(Value::Undefined)
+                } else {
+                    receiver
+                };
+                let Value::BigInt(value) = value else {
+                    return Err(RuntimeError::TypeError(
+                        "BigInt method requires a BigInt".into(),
+                    ));
+                };
+                let formatter = self.resolve_number_format(
+                    native::argument(&args, 0),
+                    native::argument(&args, 1),
+                )?;
+                formatter
+                    .format_input(blueice_ecma402::NumberFormatInput::Decimal(
+                        value.to_string(),
+                    ))
+                    .map(|formatted| Value::String(formatted.into()))
+                    .map_err(|error| RuntimeError::RangeError(error.to_string()))
             }
             NativeFunction::RegExp => {
                 if !construct
