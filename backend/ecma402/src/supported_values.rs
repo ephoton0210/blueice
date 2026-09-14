@@ -30,18 +30,37 @@ impl std::error::Error for SupportedValuesError {}
 
 /// Returns the canonical values in a registry category.
 ///
-/// The initial registry deliberately exposes only `latn`: it is the one
-/// numbering system implemented by the DurationFormat formatter, so every
-/// advertised value has matching constructor and formatting support. Other
-/// standardized categories remain unavailable until their complete data sets
-/// can be supplied; returning a partial global list for those categories would
-/// violate `Intl.supportedValuesOf`'s cross-service contract.
-pub fn supported_values_of(key: &str) -> Result<&'static [&'static str], SupportedValuesError> {
+/// The pinned `jiff-tzdb` data is also the database DateTimeFormat uses for
+/// zone lookup, so its complete Zone-and-Link inventory can safely be exposed
+/// for `timeZone`. The UTC-equivalent legacy spellings that ECMA-402
+/// canonicalizes are folded to `UTC`; every other accepted IANA spelling is retained. This is
+/// important because modern `CreateDateTimeFormat` retains a Link name in its
+/// internal `[[TimeZone]]` slot instead of resolving it to its target.
+///
+/// The remaining categories deliberately advertise only data that is backed
+/// by a fully implemented formatter.
+pub fn supported_values_of(key: &str) -> Result<Vec<String>, SupportedValuesError> {
     match key {
-        "numberingSystem" => Ok(&["latn"]),
-        "calendar" | "collation" | "currency" | "timeZone" | "unit" => {
+        "numberingSystem" => Ok(vec!["latn".into()]),
+        "timeZone" => {
+            let mut values = jiff_tzdb::available()
+                .map(canonical_supported_time_zone)
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            values.sort_unstable();
+            values.dedup();
+            Ok(values)
+        }
+        "calendar" | "collation" | "currency" | "unit" => {
             Err(SupportedValuesError::DataUnavailable)
         }
         _ => Err(SupportedValuesError::InvalidKey),
+    }
+}
+
+fn canonical_supported_time_zone(identifier: &str) -> &str {
+    match identifier {
+        "Etc/GMT" | "Etc/GMT0" | "Etc/UTC" | "GMT" | "GMT0" => "UTC",
+        _ => identifier,
     }
 }

@@ -15,7 +15,12 @@ use blueice_ecma402::{
 #[test]
 fn supported_values_only_advertises_duration_format_numbering_data() {
     assert_eq!(supported_values_of("numberingSystem").unwrap(), ["latn"]);
-    for key in ["calendar", "collation", "currency", "timeZone", "unit"] {
+    let time_zones = supported_values_of("timeZone").unwrap();
+    assert!(time_zones.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!(time_zones.contains(&"UTC".into()));
+    assert!(time_zones.contains(&"Etc/GMT-14".into()));
+    assert!(!time_zones.contains(&"Etc/UTC".into()));
+    for key in ["calendar", "collation", "currency", "unit"] {
         let error = supported_values_of(key).unwrap_err();
         assert_eq!(error, SupportedValuesError::DataUnavailable, "{key}");
         assert_eq!(

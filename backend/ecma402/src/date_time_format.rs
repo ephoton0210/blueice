@@ -188,6 +188,11 @@ pub struct DateTimeFormat {
     numbering_system: String,
     hour_cycle: String,
     time_zone: String,
+    // Offset identifiers are valid ECMA-402 time zones but are intentionally
+    // not IANA names. Keep the parsed offset alongside its normalized
+    // identifier instead of trying to synthesize an `Etc/GMT` name: those
+    // names only cover whole-hour offsets and reverse their sign.
+    fixed_offset_seconds: Option<i32>,
 }
 
 /// The locale data resolved by `CreateDateTimeFormat`.
@@ -457,12 +462,23 @@ impl DateTimeFormat {
     ) -> Result<Self, DateTimeFormatError> {
         let selected_locale = crate::resolve_collation_locale(requested, options.locale_matcher);
         let requested_time_zone = options.time_zone.clone().unwrap_or_else(|| "UTC".into());
-        let time_zone = time_zone_database()
-            .get(&requested_time_zone)
-            .map_err(|_| DateTimeFormatError::UnsupportedTimeZone)?
-            .iana_name()
-            .unwrap_or(&requested_time_zone)
-            .into();
+        let (time_zone, fixed_offset_seconds) = match parse_time_zone_offset(&requested_time_zone) {
+            Some((identifier, seconds)) => (identifier, Some(seconds)),
+            None => {
+                // ECMA-402 canonicalizes ASCII casing, but (unlike older
+                // editions) deliberately retains the accepted Zone-or-Link
+                // identifier rather than replacing an alias with its target.
+                // jiff-tzdb carries the complete, pinned IANA name table and
+                // gives us that case-normalized identifier directly.
+                let Some((identifier, _)) = jiff_tzdb::get(&requested_time_zone) else {
+                    return Err(DateTimeFormatError::UnsupportedTimeZone);
+                };
+                time_zone_database()
+                    .get(identifier)
+                    .map_err(|_| DateTimeFormatError::UnsupportedTimeZone)?;
+                (identifier.into(), None)
+            }
+        };
         let resolved_locale = resolve_date_time_locale(&selected_locale, &options)?;
         Ok(Self {
             locale: resolved_locale.locale,
@@ -472,6 +488,7 @@ impl DateTimeFormat {
             numbering_system: resolved_locale.numbering_system,
             hour_cycle: resolved_locale.hour_cycle,
             time_zone,
+            fixed_offset_seconds,
         })
     }
 
@@ -639,6 +656,21 @@ impl DateTimeFormat {
         &self,
         milliseconds: i64,
     ) -> Result<(DateTime<icu_calendar::Iso>, i32, String), DateTimeFormatError> {
+        if let Some(offset_seconds) = self.fixed_offset_seconds {
+            let zoned = ZonedDateTime::from_epoch_milliseconds_and_utc_offset(
+                milliseconds,
+                icu_datetime::input::UtcOffset::try_from_seconds(offset_seconds)
+                    .map_err(|_| DateTimeFormatError::Formatter)?,
+            );
+            return Ok((
+                DateTime {
+                    date: zoned.date,
+                    time: zoned.time,
+                },
+                offset_seconds,
+                gmt_offset(offset_seconds, false),
+            ));
+        }
         let time_zone = time_zone_database()
             .get(&self.time_zone)
             .map_err(|_| DateTimeFormatError::UnsupportedTimeZone)?;
@@ -1204,6 +1236,13 @@ fn time_zone_database() -> &'static TimeZoneDatabase {
 }
 
 fn time_zone_display_name(style: &str, zone: &str, seconds: i32, abbreviation: &str) -> String {
+    if parse_time_zone_offset(zone).is_some() {
+        return match style {
+            "short" | "shortGeneric" | "shortOffset" => gmt_offset(seconds, false),
+            "long" | "longGeneric" | "longOffset" => gmt_offset(seconds, true),
+            _ => gmt_offset(seconds, false),
+        };
+    }
     match style {
         "shortOffset" => gmt_offset(seconds, false),
         "longOffset" => gmt_offset(seconds, true),
@@ -1212,13 +1251,67 @@ fn time_zone_display_name(style: &str, zone: &str, seconds: i32, abbreviation: &
             if zone == "UTC" {
                 "Coordinated Universal Time".into()
             } else {
-                zone.replace('_', " ")
+                // A Zone/Link identifier is not a localized display name.
+                // Until ICU4X's zone-name input is wired into this formatter,
+                // use a long offset fallback. It also keeps
+                // equivalent links (for example Calcutta and Kolkata) from
+                // producing different visible text.
+                gmt_offset(seconds, true)
             }
         }
         "shortGeneric" => zone.rsplit('/').next().unwrap_or(zone).replace('_', " "),
         "longGeneric" => zone.replace('_', " "),
         _ => abbreviation.into(),
     }
+}
+
+/// Parses the restricted ISO offset grammar used by `IsTimeZoneOffsetString`.
+///
+/// Offsets admit only an ASCII sign followed by `HH`, `HHMM`, or `HH:MM`.
+/// They are bounded at 23:59, and negative zero is normalized to positive
+/// zero for `resolvedOptions().timeZone`.
+fn parse_time_zone_offset(identifier: &str) -> Option<(String, i32)> {
+    let bytes = identifier.as_bytes();
+    let (&sign, rest) = bytes.split_first()?;
+    let sign = match sign {
+        b'+' => 1_i32,
+        b'-' => -1_i32,
+        _ => return None,
+    };
+    let (hour, minute) = match rest {
+        [hour_tens, hour_ones] => (ascii_decimal(*hour_tens, *hour_ones)?, 0),
+        [hour_tens, hour_ones, minute_tens, minute_ones] => (
+            ascii_decimal(*hour_tens, *hour_ones)?,
+            ascii_decimal(*minute_tens, *minute_ones)?,
+        ),
+        [hour_tens, hour_ones, b':', minute_tens, minute_ones] => (
+            ascii_decimal(*hour_tens, *hour_ones)?,
+            ascii_decimal(*minute_tens, *minute_ones)?,
+        ),
+        _ => return None,
+    };
+    if hour > 23 || minute > 59 {
+        return None;
+    }
+    let seconds = sign * (i32::from(hour) * 3_600 + i32::from(minute) * 60);
+    let normalized_seconds = if seconds == 0 { 0 } else { seconds };
+    let normalized_sign = if normalized_seconds < 0 { '-' } else { '+' };
+    let absolute = normalized_seconds.unsigned_abs();
+    Some((
+        format!(
+            "{normalized_sign}{:02}:{:02}",
+            absolute / 3_600,
+            (absolute % 3_600) / 60
+        ),
+        normalized_seconds,
+    ))
+}
+
+fn ascii_decimal(tens: u8, ones: u8) -> Option<u8> {
+    tens.is_ascii_digit()
+        .then_some((tens - b'0') * 10)
+        .zip(ones.is_ascii_digit().then_some(ones - b'0'))
+        .map(|(tens, ones)| tens + ones)
 }
 
 fn gmt_offset(seconds: i32, long: bool) -> String {

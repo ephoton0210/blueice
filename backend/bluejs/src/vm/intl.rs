@@ -837,7 +837,7 @@ impl Vm {
         self.array_from(
             values
                 .iter()
-                .map(|value| Value::String((*value).into()))
+                .map(|value| Value::String(value.as_str().into()))
                 .collect(),
         )
     }

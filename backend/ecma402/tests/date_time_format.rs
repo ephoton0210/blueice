@@ -169,6 +169,65 @@ fn defaults_to_a_date_rejects_invalid_times_and_uses_iana_dst_rules() {
 }
 
 #[test]
+fn accepts_and_normalizes_offset_time_zones() {
+    let format = |time_zone: &str| {
+        DateTimeFormat::try_new(
+            &[canonicalize("en-US").unwrap()],
+            DateTimeFormatOptions {
+                time_zone: Some(time_zone.into()),
+                time_style: Some(DateTimeStyle::Short),
+                ..Default::default()
+            },
+        )
+    };
+    assert_eq!(format("+0301").unwrap().time_zone(), "+03:01");
+    assert_eq!(format("-00:00").unwrap().time_zone(), "+00:00");
+    let parts = format("+03:01")
+        .unwrap()
+        .format_to_parts(819_170_696_000.0)
+        .unwrap();
+    assert!(parts
+        .iter()
+        .any(|part| part.kind == "hour" && part.value == "6"));
+    assert!(parts
+        .iter()
+        .any(|part| part.kind == "minute" && part.value == "25"));
+    for invalid in [
+        "+3",
+        "+24",
+        "+23:0",
+        "+130",
+        "+15:59:00",
+        "-1:10",
+        "\u{2212}0900",
+    ] {
+        assert!(matches!(
+            format(invalid),
+            Err(DateTimeFormatError::UnsupportedTimeZone)
+        ));
+    }
+}
+
+#[test]
+fn case_normalizes_iana_names_without_resolving_links() {
+    let format = |time_zone: &str| {
+        DateTimeFormat::try_new(
+            &[canonicalize("en").unwrap()],
+            DateTimeFormatOptions {
+                time_zone: Some(time_zone.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    };
+    assert_eq!(format("america/new_york").time_zone(), "America/New_York");
+    assert_eq!(format("asia/calcutta").time_zone(), "Asia/Calcutta");
+    assert_eq!(format("Asia/Kolkata").time_zone(), "Asia/Kolkata");
+    assert_eq!(format("etc/gmt").time_zone(), "Etc/GMT");
+    assert_eq!(format("gmt").time_zone(), "GMT");
+}
+
+#[test]
 fn time_zone_name_keeps_the_default_numeric_date_fields() {
     let format = DateTimeFormat::try_new(
         &[canonicalize("en-US").unwrap()],

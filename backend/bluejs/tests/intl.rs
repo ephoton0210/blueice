@@ -28,6 +28,9 @@ fn locale_casing_and_canonicalization() {
         "Intl.getCanonicalLocales('und-Latn-t-und-hani-m0-names')[0] === 'und-Latn-t-und-hani-m0-prprname'",
         "Intl.getCanonicalLocales('und-u-kb-yes,und-u-kc-yes'.split(','))[0] === 'und-u-kb' && Intl.getCanonicalLocales('und-u-kc-yes')[0] === 'und-u-kc'",
         "Intl.supportedValuesOf('numberingSystem').join() === 'latn'",
+        "Intl.supportedValuesOf('timeZone').includes('UTC') && Intl.supportedValuesOf('timeZone').includes('Etc/GMT-14') && !Intl.supportedValuesOf('timeZone').includes('Etc/UTC')",
+        "let zones=Intl.supportedValuesOf('timeZone');zones.join()===zones.slice().sort().join()",
+        "let zones=Intl.supportedValuesOf('timeZone');new Set(zones).size===zones.length",
     ] {
         assert_eq!(evaluate(source).unwrap(), Value::Bool(true), "{source}");
     }
@@ -54,6 +57,23 @@ fn locale_casing_and_canonicalization() {
             "{source}"
         );
     }
+}
+
+#[test]
+fn supported_time_zones_are_ecma402_structurally_canonical() {
+    let source = r#"
+        let fileNameComponent = "(?:[A-Za-z_]|\\.(?!\\.?(?:/|$)))[A-Za-z.\\-_]{0,13}";
+        let fileName = fileNameComponent + "(?:/" + fileNameComponent + ")*";
+        let etcName = "(?:Etc/)?GMT[+-]\\d{1,2}";
+        let systemVName = "SystemV/[A-Z]{3}\\d{1,2}(?:[A-Z]{3})?";
+        let legacyName = etcName + "|" + systemVName + "|CST6CDT|EST5EDT|MST7MDT|PST8PDT|NZ";
+        let zoneName = new RegExp("^(?:" + fileName + "|" + legacyName + ")$");
+        Intl.supportedValuesOf("timeZone").find((timeZone) =>
+            timeZone !== "UTC" &&
+            (timeZone === "Etc/UTC" || timeZone === "Etc/GMT" || !zoneName.test(timeZone))
+        )
+    "#;
+    assert_eq!(evaluate(source).unwrap(), Value::Undefined);
 }
 
 #[test]
