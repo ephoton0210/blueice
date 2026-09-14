@@ -287,7 +287,6 @@ impl LocaleDataProvider {
     pub fn supports_service_locale(self, service: IntlService, locale: &IcuLocale) -> bool {
         match service {
             IntlService::NumberFormat => self.supports_decimal_locale(locale),
-            IntlService::DurationFormat => locale.id.language.as_str() == "en",
             _ => self.supports_language(locale),
         }
     }
@@ -593,19 +592,23 @@ impl LocaleDataProvider {
         })
     }
 
-    /// Returns the bundled English DurationFormat unit pattern.
+    /// Returns the bundled DurationFormat unit pattern for `locale`.
     ///
-    /// DurationFormat currently advertises English-only unit-pattern data;
-    /// keeping that bounded table here makes its availability declaration and
-    /// actual output derive from one provider.
-    pub(crate) fn english_duration_unit_pattern(
+    /// The provider carries the available Spanish CLDR width data alongside
+    /// the original English bundle. Other supported languages resolve through
+    /// the explicit English parent pattern until their own unit data is added.
+    pub(crate) fn duration_unit_pattern(
         self,
+        locale: &str,
         unit: crate::DurationUnit,
         style: crate::DurationUnitStyle,
         singular: bool,
     ) -> (&'static str, &'static str) {
         use crate::{DurationUnit, DurationUnitStyle};
 
+        if locale.starts_with("es") {
+            return spanish_duration_unit_pattern(unit, style, singular);
+        }
         match style {
             DurationUnitStyle::Long => (
                 " ",
@@ -749,6 +752,70 @@ impl LocaleDataProvider {
         }
         english_relative_time_label(style, unit, value)
     }
+}
+
+fn spanish_duration_unit_pattern(
+    unit: crate::DurationUnit,
+    style: crate::DurationUnitStyle,
+    singular: bool,
+) -> (&'static str, &'static str) {
+    use crate::{DurationUnit, DurationUnitStyle};
+
+    let label = match style {
+        DurationUnitStyle::Long => match (unit, singular) {
+            (DurationUnit::Years, true) => "año",
+            (DurationUnit::Months, true) => "mes",
+            (DurationUnit::Weeks, true) => "semana",
+            (DurationUnit::Days, true) => "día",
+            (DurationUnit::Hours, true) => "hora",
+            (DurationUnit::Minutes, true) => "minuto",
+            (DurationUnit::Seconds, true) => "segundo",
+            (DurationUnit::Milliseconds, true) => "milisegundo",
+            (DurationUnit::Microseconds, true) => "microsegundo",
+            (DurationUnit::Nanoseconds, true) => "nanosegundo",
+            (DurationUnit::Years, false) => "años",
+            (DurationUnit::Months, false) => "meses",
+            (DurationUnit::Weeks, false) => "semanas",
+            (DurationUnit::Days, false) => "días",
+            (DurationUnit::Hours, false) => "horas",
+            (DurationUnit::Minutes, false) => "minutos",
+            (DurationUnit::Seconds, false) => "segundos",
+            (DurationUnit::Milliseconds, false) => "milisegundos",
+            (DurationUnit::Microseconds, false) => "microsegundos",
+            (DurationUnit::Nanoseconds, false) => "nanosegundos",
+        },
+        DurationUnitStyle::Short => match unit {
+            DurationUnit::Years => "a",
+            DurationUnit::Months => "m",
+            DurationUnit::Weeks => "sem",
+            DurationUnit::Days => "d",
+            DurationUnit::Hours => "h",
+            DurationUnit::Minutes => "min",
+            DurationUnit::Seconds => "s",
+            DurationUnit::Milliseconds => "ms",
+            DurationUnit::Microseconds => "μs",
+            DurationUnit::Nanoseconds => "ns",
+        },
+        DurationUnitStyle::Narrow => match unit {
+            DurationUnit::Years => "a",
+            DurationUnit::Months => "m",
+            DurationUnit::Weeks => "sem",
+            DurationUnit::Days => "d",
+            DurationUnit::Hours => "h",
+            DurationUnit::Minutes => "min",
+            DurationUnit::Seconds => "s",
+            DurationUnit::Milliseconds => "ms",
+            DurationUnit::Microseconds => "μs",
+            DurationUnit::Nanoseconds => "ns",
+        },
+        DurationUnitStyle::Numeric | DurationUnitStyle::TwoDigit => "",
+    };
+    let separator = if matches!(style, DurationUnitStyle::Narrow) {
+        ""
+    } else {
+        " "
+    };
+    (separator, label)
 }
 
 fn english_relative_time_label(

@@ -1043,8 +1043,12 @@ impl NumberFormat {
         } else if self.resolved.style == NumberFormatStyle::Percent {
             apply_percent_pattern(&mut collector.parts, &self.resolved.locale);
         } else if let Some(unit) = self.resolved.unit {
-            let (separator, label) =
-                english_unit_pattern(unit, self.resolved.unit_display, singular);
+            let (separator, label) = unit_pattern(
+                &self.resolved.locale,
+                unit,
+                self.resolved.unit_display,
+                singular,
+            );
             if !separator.is_empty() {
                 collector.push(NumberFormatPartKind::Literal, separator);
             }
@@ -1109,7 +1113,12 @@ impl NumberFormat {
         } else if self.resolved.style == NumberFormatStyle::Percent {
             apply_percent_pattern(&mut parts, &self.resolved.locale);
         } else if let Some(unit) = self.resolved.unit {
-            let (separator, label) = english_unit_pattern(unit, self.resolved.unit_display, false);
+            let (separator, label) = unit_pattern(
+                &self.resolved.locale,
+                unit,
+                self.resolved.unit_display,
+                false,
+            );
             if !separator.is_empty() {
                 parts.push(NumberFormatPart {
                     kind: NumberFormatPartKind::Literal,
@@ -1276,30 +1285,37 @@ impl PartsWrite for NumberPartCollector {
 /// observable and substitute its UTS 35 digit mapping in numeric parts, while
 /// retaining ICU's locale-specific signs, grouping, and decimal separators.
 fn localize_simple_numbering_system_parts(parts: &mut [NumberFormatPart], numbering_system: &str) {
-    let Some(digits) = simple_numbering_system_digits(numbering_system) else {
-        return;
-    };
-    let mut mapping = ['0'; 10];
-    for (index, digit) in digits.chars().enumerate() {
-        mapping[index] = digit;
-    }
     for part in parts.iter_mut().filter(|part| {
         matches!(
             part.kind,
             NumberFormatPartKind::Integer | NumberFormatPartKind::Fraction
         )
     }) {
-        part.value = part
-            .value
-            .chars()
-            .map(|character| {
-                character
-                    .to_digit(10)
-                    .filter(|_| character.is_ascii_digit())
-                    .map_or(character, |digit| mapping[digit as usize])
-            })
-            .collect();
+        part.value = localize_simple_numbering_system(&part.value, numbering_system);
     }
+}
+
+/// Applies a simple numbering system's UTS 35 digits to ASCII decimal text.
+///
+/// DurationFormat's numeric substeps use the same helper so an accepted
+/// `numberingSystem` affects both direct NumberFormat and duration output.
+pub(crate) fn localize_simple_numbering_system(value: &str, numbering_system: &str) -> String {
+    let Some(digits) = simple_numbering_system_digits(numbering_system) else {
+        return value.into();
+    };
+    let mut mapping = ['0'; 10];
+    for (index, digit) in digits.chars().enumerate() {
+        mapping[index] = digit;
+    }
+    value
+        .chars()
+        .map(|character| {
+            character
+                .to_digit(10)
+                .filter(|_| character.is_ascii_digit())
+                .map_or(character, |digit| mapping[digit as usize])
+        })
+        .collect()
 }
 
 /// ECMA-402 Table 4's simple digit mappings. Algorithmic systems deliberately
@@ -1387,6 +1403,36 @@ fn simple_numbering_system_digits(numbering_system: &str) -> Option<&'static str
         "wcho" => "𞋰𞋱𞋲𞋳𞋴𞋵𞋶𞋷𞋸𞋹",
         _ => return None,
     })
+}
+
+fn unit_pattern(
+    locale: &str,
+    unit: NumberFormatUnit,
+    display: NumberUnitDisplay,
+    singular: bool,
+) -> (&'static str, &'static str) {
+    let duration_unit = match unit {
+        NumberFormatUnit::Year => Some(crate::DurationUnit::Years),
+        NumberFormatUnit::Month => Some(crate::DurationUnit::Months),
+        NumberFormatUnit::Week => Some(crate::DurationUnit::Weeks),
+        NumberFormatUnit::Day => Some(crate::DurationUnit::Days),
+        NumberFormatUnit::Hour => Some(crate::DurationUnit::Hours),
+        NumberFormatUnit::Minute => Some(crate::DurationUnit::Minutes),
+        NumberFormatUnit::Second => Some(crate::DurationUnit::Seconds),
+        NumberFormatUnit::Millisecond => Some(crate::DurationUnit::Milliseconds),
+        NumberFormatUnit::Microsecond => Some(crate::DurationUnit::Microseconds),
+        NumberFormatUnit::Nanosecond => Some(crate::DurationUnit::Nanoseconds),
+        _ => None,
+    };
+    if let Some(unit) = duration_unit {
+        let style = match display {
+            NumberUnitDisplay::Long => crate::DurationUnitStyle::Long,
+            NumberUnitDisplay::Short => crate::DurationUnitStyle::Short,
+            NumberUnitDisplay::Narrow => crate::DurationUnitStyle::Narrow,
+        };
+        return crate::locale_data_provider().duration_unit_pattern(locale, unit, style, singular);
+    }
+    english_unit_pattern(unit, display, singular)
 }
 
 /// Returns the English CLDR unit suffix used by the current duration-unit

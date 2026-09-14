@@ -380,6 +380,7 @@ fn temporal_payload_is_accounted() {
     let before = heap.stats().managed_bytes;
     let value = TemporalValue {
         kind: TemporalKind::PlainDateTime,
+        duration: None,
         year: 2024,
         month: 1,
         day: 1,

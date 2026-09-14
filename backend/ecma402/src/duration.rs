@@ -361,11 +361,9 @@ impl ResolvedDurationFormatServiceOptions {
 /// A host-neutral `Intl.DurationFormat` service.
 ///
 /// The service owns option resolution, numeric grouping, list partitioning and
-/// all `formatToParts` boundaries. ECMAScript property lookup, `ToNumber`, and
-/// Temporal string conversion intentionally remain at the embedding boundary.
-/// The initial unit-pattern data slice is English. Until additional patterns
-/// are bundled, construction negotiates only English requests and uses its
-/// stable `en-US` fallback for every other request.
+/// all `formatToParts` boundaries. ECMAScript property lookup and `ToNumber`
+/// remain at the embedding boundary. Typed Temporal values and ISO duration
+/// strings enter through the VM's single duration-record bridge.
 pub struct DurationFormat {
     list_format: crate::ListFormat,
     resolved: ResolvedDurationFormatServiceOptions,
@@ -388,14 +386,22 @@ impl DurationFormat {
             },
         )
         .map_err(|_| DurationFormatError::ListFormattingUnavailable)?;
-        let locale = list_format.resolved_options().locale.clone();
+        let selected = list_format.negotiation().selected();
+        let locale = selected.as_str().to_owned();
+        let numbering_system = crate::unicode_keyword(selected.locale(), "nu")
+            .filter(|value| crate::supports_numbering_system(value))
+            .unwrap_or_else(|| {
+                crate::locale_data_provider()
+                    .default_numbering_system(selected.locale())
+                    .into()
+            });
         let options = resolve_duration_format_options_with_digital_format(options, false)
             .map_err(DurationFormatError::InvalidOptions)?;
         Ok(Self {
             list_format,
             resolved: ResolvedDurationFormatServiceOptions {
                 locale,
-                numbering_system: "latn".into(),
+                numbering_system,
                 style: options.style,
                 unit_styles: options.unit_styles,
                 unit_displays: options.unit_displays,
@@ -629,6 +635,10 @@ impl DurationFormat {
         if grouping {
             digits = english_group_digits(&digits);
         }
+        digits = crate::number_format::localize_simple_numbering_system(
+            &digits,
+            &self.resolved.numbering_system,
+        );
         result.push(DurationPart {
             kind: DurationPartKind::Integer,
             value: digits,
@@ -689,13 +699,19 @@ impl DurationFormat {
         if grouping {
             integer = english_group_digits(&integer);
         }
+        integer = crate::number_format::localize_simple_numbering_system(
+            &integer,
+            &self.resolved.numbering_system,
+        );
         result.push(DurationPart {
             kind: DurationPartKind::Integer,
             value: integer,
             unit: Some(unit),
         });
-        let fraction =
-            duration_fraction_digits(fraction, fraction_digits, self.resolved.fractional_digits);
+        let fraction = crate::number_format::localize_simple_numbering_system(
+            &duration_fraction_digits(fraction, fraction_digits, self.resolved.fractional_digits),
+            &self.resolved.numbering_system,
+        );
         if !fraction.is_empty() {
             result.push(DurationPart {
                 kind: DurationPartKind::Decimal,
@@ -718,8 +734,12 @@ impl DurationFormat {
         style: DurationUnitStyle,
         singular: bool,
     ) {
-        let (separator, label) =
-            crate::locale_data_provider().english_duration_unit_pattern(unit, style, singular);
+        let (separator, label) = crate::locale_data_provider().duration_unit_pattern(
+            &self.resolved.locale,
+            unit,
+            style,
+            singular,
+        );
         if !separator.is_empty() {
             parts.push(DurationPart {
                 kind: DurationPartKind::Literal,
@@ -1292,7 +1312,8 @@ mod implementation_tests {
         // The service cannot route numeric styles here, but the total data
         // lookup remains defensive for a future host adapter.
         assert_eq!(
-            crate::locale_data_provider().english_duration_unit_pattern(
+            crate::locale_data_provider().duration_unit_pattern(
+                "en",
                 DurationUnit::Seconds,
                 DurationUnitStyle::Numeric,
                 false,

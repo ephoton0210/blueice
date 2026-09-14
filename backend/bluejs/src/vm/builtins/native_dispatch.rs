@@ -1512,8 +1512,16 @@ impl Vm {
                     heap.alloc_boxed_primitive(value, prototype)
                 })?))
             }
+            NativeFunction::NumberIsFinite => Ok(Value::Bool(
+                matches!(first, Value::Number(number) if number.is_finite()),
+            )),
             NativeFunction::NumberIsInteger => Ok(Value::Bool(
                 matches!(first, Value::Number(number) if number.is_finite() && number.fract() == 0.0),
+            )),
+            NativeFunction::NumberIsSafeInteger => Ok(Value::Bool(
+                matches!(first, Value::Number(number) if number.is_finite()
+                    && number.fract() == 0.0
+                    && number.abs() <= 9_007_199_254_740_991.0),
             )),
             NativeFunction::BigInt => {
                 if construct {

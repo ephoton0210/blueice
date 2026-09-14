@@ -583,20 +583,35 @@ fn exposes_ecma402_duration_parts_and_resolved_service_options() {
 }
 
 #[test]
-fn falls_back_to_english_unit_data_and_rejects_invalid_publicly_constructed_records() {
+fn resolves_spanish_unit_data_and_rejects_invalid_publicly_constructed_records() {
     let spanish = canonicalize("es").unwrap();
-    assert!(supported_duration_format_locales(
-        std::slice::from_ref(&spanish),
-        LocaleMatcher::Lookup
-    )
-    .is_empty());
+    let supported =
+        supported_duration_format_locales(std::slice::from_ref(&spanish), LocaleMatcher::Lookup);
+    assert_eq!(supported.len(), 1);
+    assert_eq!(supported.first(), Some(&spanish));
     assert_eq!(
         DurationFormat::try_new(&[spanish], DurationFormatOptions::default())
             .unwrap()
             .resolved_options()
             .locale,
-        "en-US"
+        "es"
     );
+    let spanish = DurationFormat::try_new(
+        &[canonicalize("es").unwrap()],
+        DurationFormatOptions {
+            style: DurationStyle::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let units = spanish
+        .format_to_parts(duration(1, 2, 0, 0, 0, 0, 0, 0, 0, 0).unwrap())
+        .unwrap()
+        .into_iter()
+        .filter(|part| part.kind == DurationPartKind::Unit)
+        .map(|part| part.value)
+        .collect::<Vec<_>>();
+    assert_eq!(units, ["año", "meses"]);
 
     let invalid = DurationRecord {
         years: 1,

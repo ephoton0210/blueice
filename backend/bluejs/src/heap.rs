@@ -539,6 +539,7 @@ pub(crate) struct BoundFunction {
 /// Temporal value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum TemporalKind {
+    Duration,
     Instant,
     PlainDate,
     PlainDateTime,
@@ -551,6 +552,7 @@ pub(crate) enum TemporalKind {
 impl TemporalKind {
     pub(crate) const fn name(self) -> &'static str {
         match self {
+            Self::Duration => "Duration",
             Self::Instant => "Instant",
             Self::PlainDate => "PlainDate",
             Self::PlainDateTime => "PlainDateTime",
@@ -563,6 +565,7 @@ impl TemporalKind {
 
     pub(crate) const fn to_string_tag(self) -> &'static str {
         match self {
+            Self::Duration => "Temporal.Duration",
             Self::Instant => "Temporal.Instant",
             Self::PlainDate => "Temporal.PlainDate",
             Self::PlainDateTime => "Temporal.PlainDateTime",
@@ -577,6 +580,9 @@ impl TemporalKind {
 #[derive(Clone, Debug)]
 pub(crate) struct TemporalValue {
     pub kind: TemporalKind,
+    /// Duration values retain their ten fields in an internal record so
+    /// Intl.DurationFormat never observes replaceable prototype getters.
+    pub duration: Option<Box<blueice_ecma402::DurationRecord>>,
     pub year: i32,
     pub month: u8,
     pub day: u8,
@@ -605,6 +611,7 @@ impl TemporalValue {
     pub(crate) fn plain_epoch_milliseconds(&self) -> i64 {
         let (year, month, day) = match self.kind {
             TemporalKind::PlainTime => (1970, 1, 1),
+            TemporalKind::Duration => unreachable!("a duration has no date-time fields"),
             _ => (self.year, self.month, self.day),
         };
         let year = i64::from(year) - i64::from(month <= 2);

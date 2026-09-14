@@ -870,9 +870,23 @@ impl Vm {
                     self.install_native(
                         id,
                         prototype,
+                        "isFinite",
+                        1,
+                        NativeFunction::NumberIsFinite,
+                    )?;
+                    self.install_native(
+                        id,
+                        prototype,
                         "isInteger",
                         1,
                         NativeFunction::NumberIsInteger,
+                    )?;
+                    self.install_native(
+                        id,
+                        prototype,
+                        "isSafeInteger",
+                        1,
+                        NativeFunction::NumberIsSafeInteger,
                     )?;
                     self.install_native(id, prototype, "parseInt", 2, NativeFunction::ParseInt)?;
                 }

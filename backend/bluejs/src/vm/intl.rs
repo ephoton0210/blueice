@@ -87,6 +87,7 @@ fn temporal_default_components(
 ) {
     use blueice_ecma402::DateTimeWidth::Numeric;
     match kind {
+        TemporalKind::Duration => unreachable!("Temporal.Duration is not date-time formattable"),
         // Leaving the components absent selects DateTimeFormat's legacy
         // default numeric-date pattern. That matters for interval patterns:
         // en-US repeats both default-date endpoints rather than collapsing a
@@ -2625,6 +2626,11 @@ impl Vm {
                         "Intl.DateTimeFormat does not support Temporal.ZonedDateTime".into(),
                     ));
                 }
+                if temporal.kind == TemporalKind::Duration {
+                    return Err(RuntimeError::TypeError(
+                        "Intl.DateTimeFormat does not support Temporal.Duration".into(),
+                    ));
+                }
                 let options = self.temporal_format_options(data, temporal.kind)?;
                 self.temporal_date_time_format_input(temporal, options)
             }
@@ -2637,6 +2643,9 @@ impl Vm {
         options: blueice_ecma402::DateTimeFormatOptions,
     ) -> Result<blueice_ecma402::DateTimeFormatInput, RuntimeError> {
         match temporal.kind {
+            TemporalKind::Duration => Err(RuntimeError::TypeError(
+                "Intl.DateTimeFormat does not support Temporal.Duration".into(),
+            )),
             TemporalKind::ZonedDateTime => Err(RuntimeError::TypeError(
                 "Intl.DateTimeFormat does not support Temporal.ZonedDateTime".into(),
             )),
@@ -2683,6 +2692,11 @@ impl Vm {
         data: &blueice_ecma402::DateTimeFormat,
         kind: TemporalKind,
     ) -> Result<blueice_ecma402::DateTimeFormatOptions, RuntimeError> {
+        if kind == TemporalKind::Duration {
+            return Err(RuntimeError::TypeError(
+                "Intl.DateTimeFormat does not support Temporal.Duration".into(),
+            ));
+        }
         let original = data.options();
         let has_date = temporal_has_date_components(original);
         let has_time = temporal_has_time_components(original);
@@ -2728,7 +2742,9 @@ impl Vm {
                     apply_temporal_partial_date_style(&mut options, style, true);
                 }
             }
-            TemporalKind::Instant | TemporalKind::ZonedDateTime => unreachable!(),
+            TemporalKind::Instant | TemporalKind::ZonedDateTime | TemporalKind::Duration => {
+                unreachable!()
+            }
         }
         // `timeStyle: long/full` normally supplies a time-zone name. Plain
         // values specifically suppress it, so retain the time fields with an
@@ -3347,9 +3363,8 @@ impl Vm {
         let locales = self.canonical_locales(locales)?;
         let options = self.intl_constructor_options(options)?;
         let locale_matcher = self.locale_matcher(&options)?;
-        // The current host unit data exposes the Latin numbering system. Still
-        // perform the observable option lookup and validate its BCP-47 shape.
-        if let Some(numbering_system) = self.string_option(&options, "numberingSystem", &[])? {
+        let requested_numbering_system = self.string_option(&options, "numberingSystem", &[])?;
+        if let Some(numbering_system) = requested_numbering_system.as_deref() {
             if !(3..=8).contains(&numbering_system.len())
                 || !numbering_system
                     .bytes()
@@ -3360,6 +3375,25 @@ impl Vm {
                 ));
             }
         }
+        let provider = blueice_ecma402::locale_data_provider();
+        let locales = locales
+            .into_iter()
+            .map(|locale| {
+                let extension = blueice_ecma402::unicode_keyword(locale.locale(), "nu")
+                    .filter(|value| provider.supports_numbering_system(value));
+                let numbering_system = requested_numbering_system
+                    .as_deref()
+                    .filter(|value| provider.supports_numbering_system(value))
+                    .or(extension.as_deref())
+                    .unwrap_or_else(|| provider.default_numbering_system(locale.locale()));
+                let retain_extension = extension.as_deref() == Some(numbering_system);
+                blueice_ecma402::locale_with_numbering_system(
+                    &locale,
+                    numbering_system,
+                    retain_extension,
+                )
+            })
+            .collect::<Vec<_>>();
         let style = self.duration_style(&options)?;
         let mut units = [blueice_ecma402::DurationUnitOptions::default(); 10];
         for unit in blueice_ecma402::DurationUnit::ALL {
@@ -3437,14 +3471,28 @@ impl Vm {
         &mut self,
         value: &Value,
     ) -> Result<blueice_ecma402::DurationRecord, RuntimeError> {
+        if let Some(object) = value.object_id() {
+            if let Some(temporal) = self.heap.temporal_value(object)? {
+                if temporal.kind == TemporalKind::Duration {
+                    return Ok(*temporal
+                        .duration
+                        .as_deref()
+                        .expect("Temporal.Duration values retain a duration record"));
+                }
+            }
+        }
         if matches!(value, Value::String(_)) {
-            // ISO 8601/Temporal duration string conversion is the next
-            // adapter slice. At this boundary, a string is a duration-like
-            // input whose malformed spelling must be a RangeError; other
-            // primitives are rejected by ToDurationRecord as TypeError.
-            return Err(RuntimeError::RangeError(
-                "invalid Intl.DurationFormat duration string".into(),
-            ));
+            let source = self.coerce_string(value)?.to_utf8().map_err(|_| {
+                RuntimeError::RangeError("invalid Intl.DurationFormat duration string".into())
+            })?;
+            return self
+                .temporal_value_from_string(TemporalKind::Duration, &source)
+                .map(|temporal| {
+                    *temporal
+                        .duration
+                        .as_deref()
+                        .expect("Temporal.Duration values retain a duration record")
+                });
         }
         if !matches!(value, Value::Object(_)) {
             return Err(RuntimeError::TypeError(

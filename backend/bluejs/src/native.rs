@@ -448,7 +448,9 @@ pub(crate) enum NativeFunction {
     BigInt,
     BigIntToString,
     BigIntValueOf,
+    NumberIsFinite,
     NumberIsInteger,
+    NumberIsSafeInteger,
     PrimitiveConstructor(bool),
     PrimitiveMethod {
         boolean: bool,
@@ -615,6 +617,16 @@ pub(crate) enum LocaleGetter {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TemporalGetter {
     CalendarId,
+    DurationYears,
+    DurationMonths,
+    DurationWeeks,
+    DurationDays,
+    DurationHours,
+    DurationMinutes,
+    DurationSeconds,
+    DurationMilliseconds,
+    DurationMicroseconds,
+    DurationNanoseconds,
     Year,
     Month,
     MonthCode,

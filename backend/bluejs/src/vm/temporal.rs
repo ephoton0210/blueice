@@ -115,6 +115,94 @@ fn temporal_time(source: &str) -> Option<(u8, u8, u8, u16, u16, u16)> {
     ))
 }
 
+/// Parses the ISO duration strings accepted by `Intl.DurationFormat` through
+/// Temporal's duration-string grammar. The host service receives a typed,
+/// validated ECMA-402 record, so neither this parser nor a Temporal object
+/// can trigger observable duration-field accessors while formatting.
+fn temporal_duration_record(source: &str) -> Option<blueice_ecma402::DurationRecord> {
+    let (sign, source) = match source.as_bytes().first() {
+        Some(b'+') => (1_i128, &source[1..]),
+        Some(b'-') => (-1_i128, &source[1..]),
+        _ => (1_i128, source),
+    };
+    let mut characters = source.chars().peekable();
+    (characters.next() == Some('P')).then_some(())?;
+    let mut values = [0_i128; 10];
+    let mut in_time = false;
+    let mut saw_component = false;
+    while characters.peek().is_some() {
+        if characters.peek() == Some(&'T') {
+            if in_time {
+                return None;
+            }
+            characters.next();
+            in_time = true;
+            continue;
+        }
+        let mut number = String::new();
+        while characters
+            .peek()
+            .is_some_and(|character| character.is_ascii_digit())
+        {
+            number.push(characters.next()?);
+        }
+        if number.is_empty() {
+            return None;
+        }
+        let mut fraction = None;
+        if characters.peek() == Some(&'.') {
+            characters.next();
+            let mut digits = String::new();
+            while characters
+                .peek()
+                .is_some_and(|character| character.is_ascii_digit())
+            {
+                digits.push(characters.next()?);
+            }
+            if digits.is_empty() || digits.len() > 9 {
+                return None;
+            }
+            fraction = Some(digits);
+        }
+        let designator = characters.next()?;
+        let index = match (in_time, designator) {
+            (false, 'Y') => 0,
+            (false, 'M') => 1,
+            (false, 'W') => 2,
+            (false, 'D') => 3,
+            (true, 'H') => 4,
+            (true, 'M') => 5,
+            (true, 'S') => 6,
+            _ => return None,
+        };
+        if let Some(fraction) = fraction {
+            if designator != 'S' {
+                return None;
+            }
+            let fraction = format!("{fraction:0<9}").parse::<i128>().ok()?;
+            values[7] = fraction / 1_000_000;
+            values[8] = (fraction / 1_000) % 1_000;
+            values[9] = fraction % 1_000;
+        }
+        values[index] = number.parse::<i128>().ok()?;
+        saw_component = true;
+    }
+    saw_component.then_some(())?;
+    blueice_ecma402::DurationRecord::try_new(
+        sign * values[0],
+        sign * values[1],
+        sign * values[2],
+        sign * values[3],
+        sign * values[4],
+        sign * values[5],
+        sign * values[6],
+        sign * values[7],
+        sign * values[8],
+        sign * values[9],
+    )
+    .ok()
+}
+
 fn temporal_offset_seconds(source: &str) -> Option<i32> {
     let index = source.char_indices().find_map(|(index, character)| {
         matches!(character, 'Z' | 'z' | '+' | '-' | '[').then_some(index)
@@ -204,6 +292,7 @@ impl Vm {
                 true,
             )?;
             for kind in [
+                TemporalKind::Duration,
                 TemporalKind::Instant,
                 TemporalKind::PlainDate,
                 TemporalKind::PlainDateTime,
@@ -217,6 +306,7 @@ impl Vm {
                     function_prototype,
                     kind.name(),
                     match kind {
+                        TemporalKind::Duration => 10,
                         TemporalKind::PlainDate => 3,
                         TemporalKind::PlainDateTime => 3,
                         TemporalKind::PlainMonthDay => 2,
@@ -278,6 +368,18 @@ impl Vm {
                     )?;
                 }
                 let getters: &[(&str, native::TemporalGetter)] = match kind {
+                    TemporalKind::Duration => &[
+                        ("years", native::TemporalGetter::DurationYears),
+                        ("months", native::TemporalGetter::DurationMonths),
+                        ("weeks", native::TemporalGetter::DurationWeeks),
+                        ("days", native::TemporalGetter::DurationDays),
+                        ("hours", native::TemporalGetter::DurationHours),
+                        ("minutes", native::TemporalGetter::DurationMinutes),
+                        ("seconds", native::TemporalGetter::DurationSeconds),
+                        ("milliseconds", native::TemporalGetter::DurationMilliseconds),
+                        ("microseconds", native::TemporalGetter::DurationMicroseconds),
+                        ("nanoseconds", native::TemporalGetter::DurationNanoseconds),
+                    ],
                     TemporalKind::PlainDate | TemporalKind::PlainDateTime => &[
                         ("calendarId", native::TemporalGetter::CalendarId),
                         ("year", native::TemporalGetter::Year),
@@ -428,6 +530,7 @@ impl Vm {
         let iso = date.to_calendar(Iso);
         TemporalValue {
             kind,
+            duration: None,
             year: iso.year().extended_year(),
             month: iso.month().number(),
             day: iso.day_of_month().0,
@@ -559,6 +662,23 @@ impl Vm {
         }
     }
 
+    fn temporal_duration_integer(
+        &mut self,
+        value: &Value,
+        name: &str,
+    ) -> Result<i128, RuntimeError> {
+        if *value == Value::Undefined {
+            return Ok(0);
+        }
+        let value = self.coerce_number(value)?;
+        if !value.is_finite() || value.fract() != 0.0 || value.abs() >= 2_f64.powi(100) {
+            return Err(RuntimeError::RangeError(format!(
+                "invalid Temporal.Duration {name}"
+            )));
+        }
+        Ok(value as i128)
+    }
+
     fn temporal_value_from_args(
         &mut self,
         kind: TemporalKind,
@@ -569,6 +689,7 @@ impl Vm {
         };
         let mut value = TemporalValue {
             kind,
+            duration: None,
             year: 1970,
             month: 1,
             day: 1,
@@ -583,6 +704,27 @@ impl Vm {
             time_zone: "UTC".into(),
         };
         match kind {
+            TemporalKind::Duration => {
+                let values = [
+                    self.temporal_duration_integer(native::argument(args, 0), "years")?,
+                    self.temporal_duration_integer(native::argument(args, 1), "months")?,
+                    self.temporal_duration_integer(native::argument(args, 2), "weeks")?,
+                    self.temporal_duration_integer(native::argument(args, 3), "days")?,
+                    self.temporal_duration_integer(native::argument(args, 4), "hours")?,
+                    self.temporal_duration_integer(native::argument(args, 5), "minutes")?,
+                    self.temporal_duration_integer(native::argument(args, 6), "seconds")?,
+                    self.temporal_duration_integer(native::argument(args, 7), "milliseconds")?,
+                    self.temporal_duration_integer(native::argument(args, 8), "microseconds")?,
+                    self.temporal_duration_integer(native::argument(args, 9), "nanoseconds")?,
+                ];
+                value.duration = Some(Box::new(
+                    blueice_ecma402::DurationRecord::try_new(
+                        values[0], values[1], values[2], values[3], values[4], values[5],
+                        values[6], values[7], values[8], values[9],
+                    )
+                    .map_err(|error| RuntimeError::RangeError(error.to_string()))?,
+                ));
+            }
             TemporalKind::Instant => {
                 value.epoch_nanoseconds = match native::argument(args, 0) {
                     Value::BigInt(value) => value.clone(),
@@ -741,11 +883,32 @@ impl Vm {
         Ok(value)
     }
 
-    fn temporal_value_from_string(
+    pub(super) fn temporal_value_from_string(
         &mut self,
         kind: TemporalKind,
         source: &str,
     ) -> Result<TemporalValue, RuntimeError> {
+        if kind == TemporalKind::Duration {
+            let duration = temporal_duration_record(source).ok_or_else(|| {
+                RuntimeError::RangeError("invalid Temporal.Duration string".into())
+            })?;
+            return Ok(TemporalValue {
+                kind,
+                duration: Some(Box::new(duration)),
+                year: 1970,
+                month: 1,
+                day: 1,
+                hour: 0,
+                minute: 0,
+                second: 0,
+                millisecond: 0,
+                microsecond: 0,
+                nanosecond: 0,
+                epoch_nanoseconds: 0.into(),
+                calendar: "iso8601".into(),
+                time_zone: "UTC".into(),
+            });
+        }
         let (year, month, day) = temporal_date(source)
             .ok_or_else(|| RuntimeError::RangeError("invalid Temporal date string".into()))?;
         let time = source.split_once(['T', 't']).map(|(_, time)| time);
@@ -777,6 +940,7 @@ impl Vm {
         };
         Ok(TemporalValue {
             kind,
+            duration: None,
             year: if kind == TemporalKind::PlainMonthDay {
                 1972
             } else {
@@ -894,6 +1058,40 @@ impl Vm {
             RuntimeError::TypeError("Temporal getter requires a Temporal receiver".into())
         })?;
         match getter {
+            native::TemporalGetter::DurationYears
+            | native::TemporalGetter::DurationMonths
+            | native::TemporalGetter::DurationWeeks
+            | native::TemporalGetter::DurationDays
+            | native::TemporalGetter::DurationHours
+            | native::TemporalGetter::DurationMinutes
+            | native::TemporalGetter::DurationSeconds
+            | native::TemporalGetter::DurationMilliseconds
+            | native::TemporalGetter::DurationMicroseconds
+            | native::TemporalGetter::DurationNanoseconds => {
+                if value.kind != TemporalKind::Duration {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Duration getter requires a duration receiver".into(),
+                    ));
+                }
+                let duration = value
+                    .duration
+                    .as_deref()
+                    .expect("Temporal.Duration values retain a duration record");
+                let field = match getter {
+                    native::TemporalGetter::DurationYears => duration.years,
+                    native::TemporalGetter::DurationMonths => duration.months,
+                    native::TemporalGetter::DurationWeeks => duration.weeks,
+                    native::TemporalGetter::DurationDays => duration.days,
+                    native::TemporalGetter::DurationHours => duration.hours,
+                    native::TemporalGetter::DurationMinutes => duration.minutes,
+                    native::TemporalGetter::DurationSeconds => duration.seconds,
+                    native::TemporalGetter::DurationMilliseconds => duration.milliseconds,
+                    native::TemporalGetter::DurationMicroseconds => duration.microseconds,
+                    native::TemporalGetter::DurationNanoseconds => duration.nanoseconds,
+                    _ => unreachable!("all Temporal.Duration getters are listed above"),
+                };
+                Ok(Value::Number(field as f64))
+            }
             native::TemporalGetter::CalendarId => Ok(Value::String(value.calendar.into())),
             native::TemporalGetter::EpochMilliseconds
                 if value.kind == TemporalKind::ZonedDateTime =>
