@@ -1885,27 +1885,15 @@ impl Vm {
         let options = self.number_format_constructor_options(options)?;
         let locale_matcher = self.locale_matcher(&options)?;
         let requested_numbering_system = self.number_numbering_system(&options)?;
-        let locales = match requested_numbering_system {
-            Some(numbering_system)
-                if blueice_ecma402::supports_numbering_system(&numbering_system) =>
-            {
-                locales
-                    .iter()
-                    .map(|locale| {
-                        blueice_ecma402::locale_with_numbering_system(
-                            locale,
-                            &numbering_system,
-                            false,
-                        )
-                    })
-                    .collect()
-            }
-            Some(_) => locales
-                .iter()
-                .map(blueice_ecma402::locale_without_numbering_system)
-                .collect(),
-            None => locales,
-        };
+        let locales = locales
+            .iter()
+            .map(|locale| {
+                blueice_ecma402::resolve_numbering_system_locale(
+                    locale,
+                    requested_numbering_system.as_deref(),
+                )
+            })
+            .collect::<Vec<_>>();
         let style = self.number_style(&options)?;
         let currency = self.number_currency(&options, style)?;
         let unit = self.number_unit(&options, style)?;
@@ -3378,22 +3366,12 @@ impl Vm {
                 ));
             }
         }
-        let provider = blueice_ecma402::locale_data_provider();
         let locales = locales
             .into_iter()
             .map(|locale| {
-                let extension = blueice_ecma402::unicode_keyword(locale.locale(), "nu")
-                    .filter(|value| provider.supports_numbering_system(value));
-                let numbering_system = requested_numbering_system
-                    .as_deref()
-                    .filter(|value| provider.supports_numbering_system(value))
-                    .or(extension.as_deref())
-                    .unwrap_or_else(|| provider.default_numbering_system(locale.locale()));
-                let retain_extension = extension.as_deref() == Some(numbering_system);
-                blueice_ecma402::locale_with_numbering_system(
+                blueice_ecma402::resolve_numbering_system_locale(
                     &locale,
-                    numbering_system,
-                    retain_extension,
+                    requested_numbering_system.as_deref(),
                 )
             })
             .collect::<Vec<_>>();
@@ -4481,20 +4459,6 @@ impl Vm {
                 ),
             ),
         ];
-        if let Some(unit) = resolved.unit {
-            properties.push(("unit", Value::String(unit.as_str().into())));
-            properties.push((
-                "unitDisplay",
-                Value::String(
-                    match resolved.unit_display {
-                        blueice_ecma402::NumberUnitDisplay::Short => "short",
-                        blueice_ecma402::NumberUnitDisplay::Narrow => "narrow",
-                        blueice_ecma402::NumberUnitDisplay::Long => "long",
-                    }
-                    .into(),
-                ),
-            ));
-        }
         if let Some(currency) = data.currency() {
             properties.push(("currency", Value::String(currency.code.clone().into())));
             properties.push((
@@ -4520,6 +4484,56 @@ impl Vm {
                 ),
             ));
         }
+        if let Some(unit) = resolved.unit {
+            properties.push(("unit", Value::String(unit.as_str().into())));
+            properties.push((
+                "unitDisplay",
+                Value::String(
+                    match resolved.unit_display {
+                        blueice_ecma402::NumberUnitDisplay::Short => "short",
+                        blueice_ecma402::NumberUnitDisplay::Narrow => "narrow",
+                        blueice_ecma402::NumberUnitDisplay::Long => "long",
+                    }
+                    .into(),
+                ),
+            ));
+        }
+        properties.push((
+            "minimumIntegerDigits",
+            Value::Number(resolved.minimum_integer_digits.into()),
+        ));
+        if let Some((minimum, maximum)) = data.significant_digits() {
+            properties.extend([
+                (
+                    "minimumSignificantDigits",
+                    Value::Number(f64::from(minimum)),
+                ),
+                (
+                    "maximumSignificantDigits",
+                    Value::Number(f64::from(maximum)),
+                ),
+            ]);
+        } else {
+            properties.extend([
+                (
+                    "minimumFractionDigits",
+                    Value::Number(resolved.minimum_fraction_digits.into()),
+                ),
+                (
+                    "maximumFractionDigits",
+                    Value::Number(resolved.maximum_fraction_digits.into()),
+                ),
+            ]);
+        }
+        properties.push((
+            "useGrouping",
+            match resolved.use_grouping {
+                blueice_ecma402::NumberGrouping::Auto => Value::String("auto".into()),
+                blueice_ecma402::NumberGrouping::Never => Value::Bool(false),
+                blueice_ecma402::NumberGrouping::Always => Value::String("always".into()),
+                blueice_ecma402::NumberGrouping::Min2 => Value::String("min2".into()),
+            },
+        ));
         properties.push((
             "notation",
             Value::String(
@@ -4544,45 +4558,24 @@ impl Vm {
                 ),
             ));
         }
+        properties.push((
+            "signDisplay",
+            Value::String(
+                match resolved.sign_display {
+                    blueice_ecma402::NumberSignDisplay::Auto => "auto",
+                    blueice_ecma402::NumberSignDisplay::Never => "never",
+                    blueice_ecma402::NumberSignDisplay::Always => "always",
+                    blueice_ecma402::NumberSignDisplay::ExceptZero => "exceptZero",
+                    blueice_ecma402::NumberSignDisplay::Negative => "negative",
+                }
+                .into(),
+            ),
+        ));
         properties.extend([
             (
-                "useGrouping",
-                match resolved.use_grouping {
-                    blueice_ecma402::NumberGrouping::Auto => Value::String("auto".into()),
-                    blueice_ecma402::NumberGrouping::Never => Value::Bool(false),
-                    blueice_ecma402::NumberGrouping::Always => Value::String("always".into()),
-                    blueice_ecma402::NumberGrouping::Min2 => Value::String("min2".into()),
-                },
+                "roundingIncrement",
+                Value::Number(f64::from(data.rounding_increment())),
             ),
-            (
-                "minimumIntegerDigits",
-                Value::Number(resolved.minimum_integer_digits.into()),
-            ),
-        ]);
-        if let Some((minimum, maximum)) = data.significant_digits() {
-            properties.extend([
-                (
-                    "minimumSignificantDigits",
-                    Value::Number(f64::from(minimum)),
-                ),
-                (
-                    "maximumSignificantDigits",
-                    Value::Number(f64::from(maximum)),
-                ),
-            ]);
-        } else {
-            properties.extend([
-                (
-                    "minimumFractionDigits",
-                    Value::Number(resolved.minimum_fraction_digits.into()),
-                ),
-                (
-                    "maximumFractionDigits",
-                    Value::Number(resolved.maximum_fraction_digits.into()),
-                ),
-            ]);
-        }
-        properties.extend([
             (
                 "roundingMode",
                 Value::String(
@@ -4601,10 +4594,6 @@ impl Vm {
                 ),
             ),
             (
-                "roundingIncrement",
-                Value::Number(f64::from(data.rounding_increment())),
-            ),
-            (
                 "trailingZeroDisplay",
                 Value::String(
                     match data.trailing_zero_display() {
@@ -4612,19 +4601,6 @@ impl Vm {
                         blueice_ecma402::NumberTrailingZeroDisplay::StripIfInteger => {
                             "stripIfInteger"
                         }
-                    }
-                    .into(),
-                ),
-            ),
-            (
-                "signDisplay",
-                Value::String(
-                    match resolved.sign_display {
-                        blueice_ecma402::NumberSignDisplay::Auto => "auto",
-                        blueice_ecma402::NumberSignDisplay::Never => "never",
-                        blueice_ecma402::NumberSignDisplay::Always => "always",
-                        blueice_ecma402::NumberSignDisplay::ExceptZero => "exceptZero",
-                        blueice_ecma402::NumberSignDisplay::Negative => "negative",
                     }
                     .into(),
                 ),

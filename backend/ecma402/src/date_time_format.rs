@@ -11,8 +11,8 @@
 //! formatting does not depend on the machine's installed zoneinfo files.
 
 use crate::{
-    canonicalize, locale_data_provider, supports_numbering_system, unicode_keyword,
-    CanonicalLocale, LocaleMatcher, SUPPORTED_CALENDARS,
+    locale_data_provider, supports_numbering_system, CanonicalLocale, LocaleMatcher,
+    SUPPORTED_CALENDARS,
 };
 use icu_datetime::{
     fieldsets::{
@@ -513,89 +513,51 @@ fn canonical_hour_cycle(value: &str) -> Option<&'static str> {
     }
 }
 
-fn locale_with_date_time_keywords(
-    initial: &CanonicalLocale,
-    calendar: Option<&str>,
-    numbering_system: Option<&str>,
-    hour_cycle: Option<&str>,
-) -> Result<CanonicalLocale, DateTimeFormatError> {
-    let mut locale = initial.locale().clone();
-    // ResolveLocale includes only the service's relevant Unicode keys. This
-    // also keeps unrelated keys such as `cu` and `tz` from changing the
-    // DateTimeFormat service state.
-    locale.extensions.unicode.clear();
-    for (key, value) in [
-        ("ca", calendar),
-        ("nu", numbering_system),
-        ("hc", hour_cycle),
-    ] {
-        if let Some(value) = value {
-            locale.extensions.unicode.keywords.set(
-                key.parse().expect("a DateTimeFormat Unicode key is valid"),
-                value.parse().map_err(|_| DateTimeFormatError::Formatter)?,
-            );
-        }
-    }
-    canonicalize(&locale.to_string()).map_err(|_| DateTimeFormatError::Formatter)
-}
-
 fn resolve_date_time_locale(
     selected: &CanonicalLocale,
     options: &DateTimeFormatOptions,
 ) -> Result<ResolvedDateTimeLocale, DateTimeFormatError> {
-    let extension_calendar = unicode_keyword(selected.locale(), "ca")
-        .as_deref()
-        .map(canonical_calendar)
-        .transpose()?
-        .flatten();
-    let option_calendar = options
-        .calendar
-        .as_deref()
-        .map(canonical_calendar)
-        .transpose()?
-        .flatten();
-    let calendar = option_calendar
-        .or(extension_calendar)
-        .unwrap_or_else(|| default_calendar(selected));
-    let calendar_extension = extension_calendar
-        .filter(|extension| option_calendar.is_none() || option_calendar == Some(*extension));
-
-    let extension_numbering = unicode_keyword(selected.locale(), "nu")
-        .as_deref()
-        .map(canonical_numbering_system)
-        .transpose()?
-        .flatten();
-    let option_numbering = options
-        .numbering_system
-        .as_deref()
-        .map(canonical_numbering_system)
-        .transpose()?
-        .flatten();
-    let numbering_system = option_numbering
-        .as_deref()
-        .or(extension_numbering.as_deref())
-        .unwrap_or_else(|| default_numbering_system(selected))
-        .to_owned();
-    let numbering_extension = extension_numbering.filter(|extension| {
-        option_numbering.is_none() || option_numbering.as_deref() == Some(extension)
-    });
-
-    let extension_hour_cycle = unicode_keyword(selected.locale(), "hc")
-        .as_deref()
-        .and_then(canonical_hour_cycle);
-    let option_hour_cycle = options.hour_cycle.as_deref().and_then(canonical_hour_cycle);
+    if let Some(calendar) = options.calendar.as_deref() {
+        canonical_calendar(calendar)?;
+    }
+    if let Some(numbering_system) = options.numbering_system.as_deref() {
+        canonical_numbering_system(numbering_system)?;
+    }
+    let calendar_key = crate::resolve_locale_key(
+        selected,
+        "ca",
+        options.calendar.as_deref(),
+        Some(default_calendar(selected)),
+        |value| canonical_calendar(value).ok().flatten().map(str::to_owned),
+    );
+    let calendar = calendar_key
+        .value()
+        .expect("DateTimeFormat always has a provider calendar");
+    let numbering_key = crate::resolve_locale_key(
+        selected,
+        "nu",
+        options.numbering_system.as_deref(),
+        Some(default_numbering_system(selected)),
+        |value| canonical_numbering_system(value).ok().flatten(),
+    );
+    let numbering_system = numbering_key
+        .value()
+        .expect("DateTimeFormat always has a provider numbering system");
+    let hour_cycle_key = crate::resolve_locale_key(
+        selected,
+        "hc",
+        options.hour_cycle.as_deref(),
+        Some(default_hour_cycle(selected)),
+        |value| canonical_hour_cycle(value).map(str::to_owned),
+    );
     let hour_cycle = match options.hour12 {
         Some(true) if selected.locale().id.language.as_str() == "ja" => "h11",
         Some(true) => "h12",
         Some(false) => "h23",
-        None => option_hour_cycle
-            .or(extension_hour_cycle)
-            .unwrap_or_else(|| default_hour_cycle(selected)),
+        None => hour_cycle_key
+            .value()
+            .expect("DateTimeFormat always has a provider hour cycle"),
     };
-    let hour_cycle_extension = (options.hour12.is_none())
-        .then_some(extension_hour_cycle)
-        .flatten()
-        .filter(|extension| option_hour_cycle.is_none() || option_hour_cycle == Some(*extension));
 
     // ICU4X deliberately interprets `iso8601` as the locale's default
     // calendar. ECMA-402 instead exposes `iso8601` while formatting the ISO
@@ -614,23 +576,40 @@ fn resolve_date_time_locale(
     } else {
         hour_cycle
     };
-    let format_locale = locale_with_date_time_keywords(
+    let formatting_calendar = crate::LocaleKeyResolution::fixed(formatting_calendar);
+    let formatting_numbering = crate::LocaleKeyResolution::fixed(numbering_system);
+    let formatting_hour_cycle = crate::LocaleKeyResolution::fixed(formatting_hour_cycle);
+    // `hour12` is not a Unicode-key option. It overrides the hour-cycle
+    // algorithm preference and therefore suppresses a requested `hc` key
+    // from the observable resolved locale.
+    let visible_hour_cycle = options.hour12.map(|_| {
+        crate::LocaleKeyResolution::fixed(
+            hour_cycle_key
+                .value()
+                .expect("DateTimeFormat always has a provider hour cycle"),
+        )
+    });
+    let format_locale = crate::locale_with_resolved_keys(
         selected,
-        Some(formatting_calendar),
-        Some(&numbering_system),
-        Some(formatting_hour_cycle),
-    )?;
-    let locale = locale_with_date_time_keywords(
+        &[
+            ("ca", &formatting_calendar),
+            ("nu", &formatting_numbering),
+            ("hc", &formatting_hour_cycle),
+        ],
+    );
+    let locale = crate::locale_with_resolved_keys(
         selected,
-        calendar_extension,
-        numbering_extension.as_deref(),
-        hour_cycle_extension,
-    )?;
+        &[
+            ("ca", &calendar_key),
+            ("nu", &numbering_key),
+            ("hc", visible_hour_cycle.as_ref().unwrap_or(&hour_cycle_key)),
+        ],
+    );
     Ok(ResolvedDateTimeLocale {
         locale,
         format_locale,
         calendar: calendar.into(),
-        numbering_system,
+        numbering_system: numbering_system.into(),
         hour_cycle: hour_cycle.into(),
     })
 }

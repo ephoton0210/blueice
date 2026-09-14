@@ -376,7 +376,10 @@ impl DurationFormat {
         requested: &[crate::CanonicalLocale],
         options: DurationFormatOptions,
     ) -> Result<Self, DurationFormatError> {
-        let requested = duration_supported_requests(requested, options.locale_matcher);
+        let requested = duration_supported_requests(requested, options.locale_matcher)
+            .into_iter()
+            .map(|locale| crate::resolve_numbering_system_locale(&locale, None))
+            .collect::<Vec<_>>();
         let list_format = crate::ListFormat::try_new(
             &requested,
             crate::ListFormatOptions {

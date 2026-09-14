@@ -193,20 +193,10 @@ impl RelativeTimeFormat {
         requested: &[CanonicalLocale],
         options: RelativeTimeFormatOptions,
     ) -> Result<Self, RelativeTimeFormatError> {
-        let mut locale = resolve_relative_time_format_locale(requested, options.locale_matcher);
-        let requested_numbering = options
-            .numbering_system
-            .as_deref()
-            .filter(|value| supports_numbering_system(value));
-        let extension_numbering =
-            unicode_keyword(locale.locale(), "nu").filter(|value| supports_numbering_system(value));
-        let numbering_system = requested_numbering
-            .or(extension_numbering.as_deref())
-            .unwrap_or("latn");
-        let retain_extension = extension_numbering.as_deref() == Some(numbering_system);
-        locale = locale_with_numbering_system(&locale, numbering_system, retain_extension);
+        let matched = resolve_relative_time_format_locale(requested, options.locale_matcher);
+        let locale = resolve_numbering_system_locale(&matched, options.numbering_system.as_deref());
         let number_format = NumberFormat::try_new(
-            &[locale.clone()],
+            std::slice::from_ref(&locale),
             NumberFormatOptions {
                 locale_matcher: options.locale_matcher,
                 ..Default::default()

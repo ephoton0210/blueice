@@ -5,8 +5,9 @@
 //! Public, host-neutral locale negotiation coverage.
 
 use blueice_ecma402::{
-    canonicalize, negotiate_collation_locale, resolve_collation_locale, resolve_locale,
-    supported_collation_locales, supported_locales, IntlService, LocaleMatcher,
+    canonicalize, locale_with_resolved_keys, negotiate_collation_locale, resolve_collation_locale,
+    resolve_locale, resolve_locale_key, supported_collation_locales, supported_locales,
+    IntlService, LocaleMatcher,
 };
 
 #[test]
@@ -117,4 +118,48 @@ fn shared_resolver_carries_service_data_request_order_and_extensions() {
             ["es-MX-u-nu-arab", "en"]
         );
     }
+}
+
+#[test]
+fn resolves_unicode_keys_once_and_hides_option_or_default_values() {
+    let locale = canonicalize("en-u-ca-gregory-nu-arab").unwrap();
+    let option = resolve_locale_key(&locale, "nu", Some("latn"), Some("latn"), |value| {
+        ["arab", "latn"].contains(&value).then(|| value.to_owned())
+    });
+    assert_eq!(option.value(), Some("latn"));
+    assert!(!option.retains_extension());
+    assert_eq!(
+        locale_with_resolved_keys(&locale, &[("nu", &option)]).as_str(),
+        "en"
+    );
+
+    let matching_extension =
+        resolve_locale_key(&locale, "nu", Some("arab"), Some("latn"), |value| {
+            ["arab", "latn"].contains(&value).then(|| value.to_owned())
+        });
+    assert_eq!(matching_extension.value(), Some("arab"));
+    assert!(matching_extension.retains_extension());
+    assert_eq!(
+        locale_with_resolved_keys(&locale, &[("nu", &matching_extension)]).as_str(),
+        "en-u-nu-arab"
+    );
+}
+
+#[test]
+fn best_fit_uses_provider_likely_subtags_after_lookup_fails() {
+    let requested = [canonicalize("und-u-nu-arab").unwrap()];
+    assert_eq!(requested[0].locale().id.language.as_str(), "und");
+    let lookup = resolve_locale(IntlService::Collator, &requested, LocaleMatcher::Lookup);
+    assert!(lookup.used_default());
+
+    let best_fit = resolve_locale(IntlService::Collator, &requested, LocaleMatcher::BestFit);
+    assert!(!best_fit.used_default());
+    assert_eq!(best_fit.selected().locale().id.language.as_str(), "en");
+    assert_eq!(
+        supported_locales(IntlService::Collator, &requested, LocaleMatcher::BestFit)
+            .iter()
+            .map(|locale| locale.as_str())
+            .collect::<Vec<_>>(),
+        ["und-u-nu-arab"]
+    );
 }

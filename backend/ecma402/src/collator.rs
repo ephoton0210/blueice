@@ -118,9 +118,8 @@ impl Collator {
         let negotiation = negotiate_collation_locale(requested, options.locale_matcher);
         let selected = negotiation.selected.clone();
         let selected_locale = selected.locale();
-        let mut resolved_locale = IcuLocale::from(selected_locale.id.clone());
-        let mut algorithm_locale = resolved_locale.clone();
         let mut selected_collation = "default".to_owned();
+        let mut resolved_keys = Vec::new();
 
         for (key, option) in [
             (
@@ -137,13 +136,6 @@ impl Collator {
             ),
             ("kn", options.numeric.map(|value| value.to_string())),
         ] {
-            let extension = unicode_keyword(selected_locale, key).map(|value| {
-                if key == "kn" && value.is_empty() {
-                    "true".to_owned()
-                } else {
-                    value
-                }
-            });
             let valid = |value: &str| {
                 (key == "co"
                     && options.usage == CollatorUsage::Sort
@@ -151,28 +143,28 @@ impl Collator {
                     || (key == "kf" && matches!(value, "upper" | "lower" | "false"))
                     || (key == "kn" && matches!(value, "true" | "false"))
             };
-            let extension = extension.filter(|value| valid(value));
-            let choice = option
-                .filter(|value| valid(value))
-                .or_else(|| extension.clone());
-            if let Some(value) = choice {
-                if extension.as_ref() == Some(&value) {
-                    resolved_locale
-                        .extensions
-                        .unicode
-                        .keywords
-                        .set(key.parse().unwrap(), value.parse().unwrap());
-                }
-                algorithm_locale
-                    .extensions
-                    .unicode
-                    .keywords
-                    .set(key.parse().unwrap(), value.parse().unwrap());
+            let resolution = resolve_locale_key(&selected, key, option.as_deref(), None, |value| {
+                let value = if key == "kn" && value.is_empty() {
+                    "true"
+                } else {
+                    value
+                };
+                valid(value).then(|| value.to_owned())
+            });
+            if let Some(value) = resolution.value() {
                 if key == "co" {
-                    selected_collation = value;
+                    selected_collation = value.to_owned();
                 }
             }
+            resolved_keys.push((key, resolution));
         }
+
+        let key_references = resolved_keys
+            .iter()
+            .map(|(key, resolution)| (*key, resolution))
+            .collect::<Vec<_>>();
+        let resolved_locale = locale_with_resolved_keys(&selected, &key_references);
+        let algorithm_locale = resolved_locale.locale().clone();
 
         let mut preferences: CollatorPreferences = (&algorithm_locale).into();
         if options.usage == CollatorUsage::Search {
@@ -202,7 +194,7 @@ impl Collator {
             .map_err(|_| CollatorError::DataUnavailable)?;
         let icu_resolved = algorithm.resolved_options();
         let resolved = ResolvedCollatorOptions {
-            locale: resolved_locale.to_string(),
+            locale: resolved_locale.as_str().to_owned(),
             usage: options.usage,
             sensitivity: options.sensitivity,
             ignore_punctuation,

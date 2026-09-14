@@ -291,6 +291,32 @@ impl LocaleDataProvider {
         }
     }
 
+    /// Selects provider data for a requested locale under one ECMA-402
+    /// matching policy.
+    ///
+    /// Lookup preserves a directly available language-parent request. Best
+    /// fit first takes that same exact path, then consults the pinned CLDR
+    /// likely-subtag data. This gives structurally valid `und` requests a
+    /// data-backed language/region match without inventing a service-local
+    /// fallback table. The shared resolver decides request-list ordering and
+    /// observable Unicode-key retention around this provider decision.
+    pub(crate) fn match_service_locale(
+        self,
+        service: IntlService,
+        locale: &IcuLocale,
+        matcher: crate::LocaleMatcher,
+    ) -> Option<IcuLocale> {
+        if self.supports_service_locale(service, locale) {
+            return Some(locale.clone());
+        }
+        if matcher != crate::LocaleMatcher::BestFit {
+            return None;
+        }
+        let maximal = self.maximize_likely_subtags(locale);
+        self.supports_service_locale(service, &maximal)
+            .then(|| self.minimize_likely_subtags(&maximal))
+    }
+
     /// Applies the pinned likely-subtag data to an ICU locale.
     ///
     /// ICU4X 2.3 intentionally leaves an `und` primary language unchanged in

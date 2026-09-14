@@ -605,6 +605,135 @@ pub enum LocaleMatcher {
     BestFit,
 }
 
+/// The resolved value of one service-relevant Unicode locale key.
+///
+/// ECMA-402 resolves a key after choosing a locale: a supported explicit
+/// option wins over the Unicode extension, which in turn wins over the
+/// locale-data default. The extension remains observable only when it agrees
+/// with the resulting value. Keeping this record separate from a locale lets
+/// every Intl service share that rule without leaking unrelated keys.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocaleKeyResolution {
+    value: Option<String>,
+    retain_extension: bool,
+}
+
+impl LocaleKeyResolution {
+    /// Creates a data-only resolved key value.
+    ///
+    /// This is used when an Intl option such as `hour12` determines an
+    /// algorithm preference without contributing a Unicode extension to the
+    /// observable locale.
+    pub fn fixed(value: impl Into<String>) -> Self {
+        Self {
+            value: Some(value.into()),
+            retain_extension: false,
+        }
+    }
+
+    /// Returns the value used for data lookup and algorithm preferences.
+    pub fn value(&self) -> Option<&str> {
+        self.value.as_deref()
+    }
+
+    /// Returns whether this key remains in the observable locale string.
+    pub fn retains_extension(&self) -> bool {
+        self.retain_extension
+    }
+}
+
+/// Resolves one ECMA-402 Unicode key against a matched locale.
+///
+/// Callers validate observable option syntax before invoking this helper;
+/// `normalize` reports whether an extension or option value is supported by
+/// the service's provider data. `default` is already provider-selected and is
+/// deliberately not filtered through `normalize`, since a service may expose
+/// an internal default that has a distinct canonical spelling.
+pub fn resolve_locale_key<F>(
+    locale: &CanonicalLocale,
+    key: &str,
+    option: Option<&str>,
+    default: Option<&str>,
+    normalize: F,
+) -> LocaleKeyResolution
+where
+    F: Fn(&str) -> Option<String>,
+{
+    // `CanonicalLocale` may carry a data-only option override in its ICU
+    // representation. Read extensions back from its observable canonical
+    // spelling so a prior option never turns into a retained `-u-` key when a
+    // nested formatter resolves the locale again.
+    let visible_locale = canonicalize(locale.as_str())
+        .expect("a CanonicalLocale always carries a valid observable locale");
+    let extension = unicode_keyword(visible_locale.locale(), key)
+        .as_deref()
+        .and_then(&normalize);
+    let option = option.and_then(normalize);
+    let value = option
+        .or_else(|| extension.clone())
+        .or_else(|| default.map(str::to_owned));
+    let retain_extension = value.is_some() && extension == value;
+    LocaleKeyResolution {
+        value,
+        retain_extension,
+    }
+}
+
+/// Builds a service locale from only its resolved Unicode keys.
+///
+/// The returned locale's ICU representation includes every resolved value so
+/// host-neutral formatters see explicit option overrides. Its canonical
+/// spelling contains only accepted request extensions, as required by
+/// `ResolveLocale`; keys set by options or data defaults are not exposed.
+pub fn locale_with_resolved_keys(
+    initial: &CanonicalLocale,
+    keys: &[(&str, &LocaleKeyResolution)],
+) -> CanonicalLocale {
+    let mut data_locale = IcuLocale::from(initial.locale().id.clone());
+    let mut visible_locale = data_locale.clone();
+    for (key, resolution) in keys {
+        let key = key
+            .parse::<icu_locale_core::extensions::unicode::Key>()
+            .expect("a static Unicode locale key is valid");
+        let Some(value) = resolution.value() else {
+            continue;
+        };
+        let value = value
+            .parse::<icu_locale_core::extensions::unicode::Value>()
+            .expect("a resolved Unicode locale value is valid");
+        data_locale
+            .extensions
+            .unicode
+            .keywords
+            .set(key, value.clone());
+        if resolution.retains_extension() {
+            visible_locale.extensions.unicode.keywords.set(key, value);
+        }
+    }
+    CanonicalLocale::from_parts(data_locale, visible_locale.to_string())
+}
+
+/// Resolves ECMA-402's `nu` key and optional `numberingSystem` option.
+///
+/// This is shared by NumberFormat, DurationFormat, and RelativeTimeFormat.
+/// When a host has already represented an explicit option as a data-only
+/// locale keyword, the observable spelling still prevents it from being
+/// retained as a Unicode extension during a nested formatter construction.
+pub fn resolve_numbering_system_locale(
+    locale: &CanonicalLocale,
+    option: Option<&str>,
+) -> CanonicalLocale {
+    let data_value = unicode_keyword(locale.locale(), "nu");
+    let key = resolve_locale_key(
+        locale,
+        "nu",
+        option.or(data_value.as_deref()),
+        Some(locale_data_provider().default_numbering_system(locale.locale())),
+        |value| supports_numbering_system(value).then(|| value.to_owned()),
+    );
+    locale_with_resolved_keys(locale, &[("nu", &key)])
+}
+
 /// One requested locale considered by the shared ECMA-402 locale resolver.
 ///
 /// `requested` deliberately retains its canonical Unicode extensions. The
@@ -614,7 +743,7 @@ pub enum LocaleMatcher {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LocaleResolutionCandidate {
     requested: CanonicalLocale,
-    supported: bool,
+    matched: Option<CanonicalLocale>,
 }
 
 impl LocaleResolutionCandidate {
@@ -625,7 +754,12 @@ impl LocaleResolutionCandidate {
 
     /// Returns whether this service's provider data can satisfy the request.
     pub fn is_supported(&self) -> bool {
-        self.supported
+        self.matched.is_some()
+    }
+
+    /// Returns the provider-selected data locale, when the request matches.
+    pub fn matched(&self) -> Option<&CanonicalLocale> {
+        self.matched.as_ref()
     }
 }
 
@@ -676,12 +810,10 @@ impl LocaleResolution {
 /// The provider's available-locale data is language-parent-backed: a request
 /// such as `es-MX-u-nu-arab` therefore lookup-matches the same `es` data that
 /// serves `es`. We retain the canonical request rather than serializing the
-/// parent tag here, because ECMA-402 resolves Unicode extension keys only
-/// after matching and each service must retain accepted keys in its visible
-/// locale. The pinned provider currently has no distinct best-fit-only
-/// mappings, so both algorithms share this deterministic available-data
-/// result; keeping the matcher here makes a future CLDR distance table one
-/// provider change rather than a per-service fork.
+/// parent tag here for lookup, because ECMA-402 resolves Unicode extension
+/// keys only after matching and each service must retain accepted keys in its
+/// visible locale. Best fit additionally uses the provider's pinned likely
+/// subtag data when a request has no direct language-data match.
 pub fn resolve_locale(
     service: IntlService,
     requested: &[CanonicalLocale],
@@ -691,15 +823,23 @@ pub fn resolve_locale(
     let candidates = requested
         .iter()
         .cloned()
-        .map(|requested| LocaleResolutionCandidate {
-            supported: provider.supports_service_locale(service, requested.locale()),
-            requested,
+        .map(|requested| {
+            let matched = if provider.supports_service_locale(service, requested.locale()) {
+                // Retain the caller-visible spelling. Its ICU data locale may
+                // already contain an option-only keyword which must not be
+                // re-serialized as a request extension.
+                Some(requested.clone())
+            } else {
+                provider
+                    .match_service_locale(service, requested.locale(), matcher)
+                    .map(|locale| CanonicalLocale::from_parts(locale.clone(), locale.to_string()))
+            };
+            LocaleResolutionCandidate { requested, matched }
         })
         .collect::<Vec<_>>();
     let selected = candidates
         .iter()
-        .find(|candidate| candidate.supported)
-        .map(|candidate| candidate.requested.clone());
+        .find_map(|candidate| candidate.matched.clone());
     let used_default = selected.is_none();
     LocaleResolution {
         service,
@@ -722,7 +862,7 @@ pub fn supported_locales(
     resolve_locale(service, requested, matcher)
         .candidates
         .into_iter()
-        .filter(|candidate| candidate.supported)
+        .filter(|candidate| candidate.is_supported())
         .map(|candidate| candidate.requested)
         .collect()
 }
@@ -793,17 +933,17 @@ pub fn negotiate_collation_locale(
 ) -> CollationLocaleNegotiation {
     let resolution = resolve_locale(IntlService::Collator, requested, matcher);
     CollationLocaleNegotiation {
-        matcher: resolution.matcher,
+        matcher: resolution.matcher(),
         candidates: resolution
-            .candidates
-            .into_iter()
+            .candidates()
+            .iter()
             .map(|candidate| CollationLocaleCandidate {
-                requested: candidate.requested,
-                supported: candidate.supported,
+                requested: candidate.requested().clone(),
+                supported: candidate.is_supported(),
             })
             .collect(),
-        selected: resolution.selected,
-        used_default: resolution.used_default,
+        selected: resolution.selected().clone(),
+        used_default: resolution.used_default(),
     }
 }
 

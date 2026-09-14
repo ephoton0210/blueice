@@ -855,11 +855,7 @@ impl NumberFormat {
             return Err(NumberFormatError::MissingUnit);
         }
         let negotiation = negotiate_number_format_locale(requested, options.locale_matcher);
-        let selected = match unicode_keyword(negotiation.selected.locale(), "nu") {
-            Some(value) if supports_numbering_system(&value) => negotiation.selected.clone(),
-            Some(_) => locale_without_numbering_system(&negotiation.selected),
-            None => negotiation.selected.clone(),
-        };
+        let selected = resolve_numbering_system_locale(&negotiation.selected, None);
         let provider = NumberingSystemInspectionProvider::default();
         let mut formatter_options = DecimalFormatterOptions::default();
         formatter_options.grouping_strategy = Some(options.use_grouping.into());
