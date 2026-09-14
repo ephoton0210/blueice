@@ -127,7 +127,8 @@ pub fn negotiate_plural_rules_locale(
         .iter()
         .cloned()
         .map(|requested| PluralRulesLocaleCandidate {
-            supported: supports_locale_language(requested.locale()),
+            supported: locale_data_provider()
+                .supports_service_locale(IntlService::PluralRules, requested.locale()),
             requested,
         })
         .collect::<Vec<_>>();

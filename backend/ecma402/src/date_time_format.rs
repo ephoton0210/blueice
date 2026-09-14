@@ -11,8 +11,8 @@
 //! formatting does not depend on the machine's installed zoneinfo files.
 
 use crate::{
-    canonicalize, supports_numbering_system, unicode_keyword, CanonicalLocale, LocaleMatcher,
-    SUPPORTED_CALENDARS,
+    canonicalize, locale_data_provider, supports_numbering_system, unicode_keyword,
+    CanonicalLocale, LocaleMatcher, SUPPORTED_CALENDARS,
 };
 use icu_datetime::{
     fieldsets::{
@@ -358,7 +358,7 @@ pub struct DateTimeRangePart {
 /// The value comes from the pinned `jiff-tzdb` crate rather than the host's
 /// zoneinfo installation, making an engine build reproducible across hosts.
 pub fn bundled_tzdb_version() -> &'static str {
-    jiff_tzdb::VERSION.unwrap_or("unknown")
+    locale_data_provider().tzdb_version()
 }
 
 /// A failure from DateTimeFormat construction or formatting.
@@ -492,28 +492,15 @@ fn canonical_numbering_system(value: &str) -> Result<Option<String>, DateTimeFor
 }
 
 fn default_calendar(locale: &CanonicalLocale) -> &'static str {
-    match locale.locale().id.language.as_str() {
-        "fa" => "persian",
-        "th" => "buddhist",
-        _ => "gregory",
-    }
+    locale_data_provider().default_calendar(locale.locale())
 }
 
 fn default_numbering_system(locale: &CanonicalLocale) -> &'static str {
-    match locale.locale().id.language.as_str() {
-        "ar" => "arab",
-        "fa" => "arabext",
-        "bn" => "beng",
-        "my" => "mymr",
-        _ => "latn",
-    }
+    locale_data_provider().default_numbering_system(locale.locale())
 }
 
 fn default_hour_cycle(locale: &CanonicalLocale) -> &'static str {
-    match locale.locale().id.language.as_str() {
-        "ar" | "en" | "ko" => "h12",
-        _ => "h23",
-    }
+    locale_data_provider().default_hour_cycle(locale.locale())
 }
 
 fn canonical_hour_cycle(value: &str) -> Option<&'static str> {

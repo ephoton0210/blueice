@@ -6,31 +6,9 @@
 
 use super::*;
 
-/// Whether the bundled decimal data has a locale-specific fallback for a
-/// locale.
-///
-/// ICU4X falls all unknown languages back to `und`; that fallback is useful
-/// for internal data loading but is not an ECMA-402 available-locale match.
-/// A language is therefore supported when the decimal-symbol data resolves to
-/// the same primary language (possibly after dropping region or script).
+/// Whether the shared provider has decimal data for this locale.
 pub fn supports_number_format_locale(locale: &IcuLocale) -> bool {
-    if supports_locale_language(locale) {
-        return true;
-    }
-    let requested = icu_provider::DataLocale::from(locale);
-    let response = <DecimalData as DataProvider<DecimalSymbolsV1>>::load(
-        &DecimalData,
-        DataRequest {
-            id: DataIdentifierBorrowed::for_locale(&requested),
-            metadata: Default::default(),
-        },
-    );
-    response.is_ok_and(|response| {
-        response
-            .metadata
-            .locale
-            .is_none_or(|resolved| resolved.language == requested.language)
-    })
+    locale_data_provider().supports_service_locale(IntlService::NumberFormat, locale)
 }
 
 /// One canonical locale considered during decimal number-format negotiation.

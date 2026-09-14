@@ -20,7 +20,7 @@ use icu_decimal::{
     input::{Decimal, FloatPrecision},
     options::{DecimalFormatterOptions, GroupingStrategy},
     preferences::NumberingSystem,
-    provider::{Baked as DecimalData, DecimalDigitsV1, DecimalSymbolsV1},
+    provider::{Baked as DecimalData, DecimalDigitsV1},
     DecimalFormatter, DecimalFormatterPreferences,
 };
 use icu_list::{
@@ -28,7 +28,7 @@ use icu_list::{
     ListFormatter as IcuListFormatter, ListFormatterPreferences,
 };
 use icu_locale_core::Locale as IcuLocale;
-use icu_provider::{DataIdentifierBorrowed, DataMarker, DataProvider, DataRequest};
+use icu_provider::{DataMarker, DataProvider, DataRequest};
 use icu_segmenter::{
     options::{SentenceBreakOptions, WordBreakOptions},
     GraphemeClusterSegmenter, GraphemeClusterSegmenterBorrowed, SentenceSegmenter, WordSegmenter,
@@ -41,6 +41,7 @@ mod date_time_format;
 mod display_names;
 mod duration;
 mod list_format;
+mod locale_data;
 mod locale_information;
 mod number_format;
 mod plural_rules;
@@ -53,6 +54,7 @@ pub use date_time_format::*;
 pub use display_names::*;
 pub use duration::*;
 pub use list_format::*;
+pub use locale_data::*;
 pub use locale_information::*;
 pub use number_format::*;
 pub use plural_rules::*;
@@ -496,15 +498,12 @@ fn canonicalize_unicode_keyword_aliases(locale: &mut IcuLocale) {
 /// The registry keeps those ECMA-402 locales available even when a particular
 /// data marker resolves through that parent.
 pub fn supports_locale_language(locale: &IcuLocale) -> bool {
-    const LANGUAGES: &str = "af am ar as az be bg bn bo br bs ca ceb chr cs cy da de dsb dz ee el en eo es et fa ff fi fil fo fr fy ga gl gu gv ha haw he hi hr hsb hu hy id ig is it ja ka kk kl km kn ko kok ku ky la lb lkt ln lo lt lv mk ml mn mr ms mt my nb ne nl nn no om or pa pl ps pt ro ru sa se si sk sl so sq sr sv sw ta te th tk to tr ug uk ur uz vi wae wo xh yi yo zh zu";
-    LANGUAGES
-        .split(' ')
-        .any(|language| locale.id.language.as_str() == language)
+    locale_data_provider().supports_language(locale)
 }
 
 /// Whether the bundled collation data supports the locale's language.
 pub fn supports_collation_locale(locale: &IcuLocale) -> bool {
-    supports_locale_language(locale)
+    locale_data_provider().supports_service_locale(IntlService::Collator, locale)
 }
 
 /// Returns a Unicode extension keyword's canonical ICU value, if present.
@@ -578,30 +577,18 @@ fn transform_locale(locale: &CanonicalLocale, maximize: bool) -> CanonicalLocale
     if locale.as_str() == "posix" {
         return locale.clone();
     }
-    let mut transformed = locale.locale().clone();
-    let expander = icu_locale::LocaleExpander::new_extended();
-    if maximize {
-        expander.maximize(&mut transformed.id);
+    let provider = locale_data_provider();
+    let transformed = if maximize {
+        provider.maximize_likely_subtags(locale.locale())
     } else {
-        expander.minimize(&mut transformed.id);
-    }
+        provider.minimize_likely_subtags(locale.locale())
+    };
     canonicalize(&transformed.to_string()).expect("a transformed canonical locale remains valid")
 }
 
 /// Whether a collation is available for an already-selected locale.
 pub fn supports_collation(locale: &IcuLocale, collation: &str) -> bool {
-    let language = locale.id.language.to_string();
-    matches!(collation, "emoji" | "eor")
-        || matches!(
-            (language.as_str(), collation),
-            ("de", "phonebk")
-                | ("es" | "fi" | "sv" | "bn" | "kn", "trad")
-                | ("zh", "pinyin" | "stroke" | "unihan" | "zhuyin")
-                | ("ja" | "ko", "unihan")
-                | ("ko", "searchjl")
-                | ("si", "dict")
-                | ("ar", "compat")
-        )
+    locale_data_provider().supports_collation(locale, collation)
 }
 
 /// The locale matching algorithm selected by an ECMA-402 service.

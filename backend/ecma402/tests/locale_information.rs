@@ -75,6 +75,47 @@ fn likely_subtag_transforms_preserve_the_host_neutral_canonical_form() {
 }
 
 #[test]
+fn likely_subtag_data_matches_the_current_test262_undefined_language_cases() {
+    let maximal = [
+        ("und", "en-Latn-US"),
+        ("und-Thai", "th-Thai-TH"),
+        ("und-419", "es-Latn-419"),
+        ("und-150", "en-Latn-150"),
+        ("und-AT", "de-Latn-AT"),
+        ("und-Cyrl-RO", "bg-Cyrl-RO"),
+        ("und-AQ", "en-Latn-AQ"),
+    ];
+    for (input, expected) in maximal {
+        assert_eq!(
+            maximize_locale(&canonicalize(input).unwrap()).as_str(),
+            expected,
+            "{input}.maximize()"
+        );
+    }
+
+    let minimal = [
+        ("und", "en"),
+        ("und-Thai", "th"),
+        ("und-419", "es-419"),
+        ("und-150", "en-150"),
+        ("und-AT", "de-AT"),
+        ("und-CW", "pap"),
+        ("und-US", "en"),
+        ("zh-Hant", "zh-TW"),
+        ("zh-Hani", "zh-Hani"),
+        ("aae-Latn-IT", "aae"),
+        ("aae-Thai-CO", "aae-Thai-CO"),
+    ];
+    for (input, expected) in minimal {
+        assert_eq!(
+            minimize_locale(&canonicalize(input).unwrap()).as_str(),
+            expected,
+            "{input}.minimize()"
+        );
+    }
+}
+
+#[test]
 fn locale_options_are_applied_and_canonicalized_without_a_realm() {
     let locale = apply_locale_options(
         &canonicalize("de").unwrap(),

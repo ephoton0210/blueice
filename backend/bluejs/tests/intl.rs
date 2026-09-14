@@ -112,6 +112,7 @@ fn locale_objects_preserve_canonical_locale_state() {
         "let l=new Intl.Locale('EN-latn-us-1901-u-ca-islamicc-kn-true'); l.toString() === 'en-Latn-US-1901-u-ca-islamic-civil-kn' && l.baseName === 'en-Latn-US-1901' && l.language === 'en' && l.script === 'Latn' && l.region === 'US' && l.variants === '1901' && l.calendar === 'islamic-civil' && l.numeric",
         "let l=new Intl.Locale('de',{language:'fr',script:'Latn',region:'CA',variants:'fonipa-1901',calendar:'gregory',collation:'phonebk',hourCycle:'h23',caseFirst:'upper',numeric:true,numberingSystem:'latn'}); l.toString() === 'fr-Latn-CA-1901-fonipa-u-ca-gregory-co-phonebk-hc-h23-kf-upper-kn-nu-latn' && l.caseFirst === 'upper' && l.hourCycle === 'h23' && l.collation === 'phonebk' && l.numberingSystem === 'latn'",
         "new Intl.Locale('zh').maximize().toString() === 'zh-Hans-CN' && new Intl.Locale('zh-Hans-CN').minimize().toString() === 'zh'",
+        "new Intl.Locale('und').maximize().toString() === 'en-Latn-US' && new Intl.Locale('und-Thai').minimize().toString() === 'th' && new Intl.Locale('und-CW').minimize().toString() === 'pap' && new Intl.Locale('zh-Hant').minimize().toString() === 'zh-TW'",
         "Intl.getCanonicalLocales(new Intl.Locale('iw-IL'))[0] === 'he-IL'",
         "new Intl.Locale(new Intl.Locale('fr')).toString() === 'fr'",
         "new Intl.Locale({toString(){return 'de-DE';}}).toString() === 'de-DE' && Intl.getCanonicalLocales([new Intl.Locale('fr'), 'de'])[0] === 'fr'",

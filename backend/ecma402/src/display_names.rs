@@ -104,7 +104,7 @@ impl std::error::Error for DisplayNamesError {}
 
 /// Returns whether the bundled display-name data supports this locale.
 pub fn supports_display_names_locale(locale: &IcuLocale) -> bool {
-    supports_locale_language(locale)
+    locale_data_provider().supports_service_locale(IntlService::DisplayNames, locale)
 }
 
 /// Resolves requested locales for the display-name service.

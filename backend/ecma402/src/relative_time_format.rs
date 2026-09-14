@@ -157,7 +157,7 @@ impl std::error::Error for RelativeTimeFormatError {}
 /// NumberFormat's broader data coverage must not be mistaken for relative-time
 /// data coverage.
 pub fn supports_relative_time_format_locale(locale: &IcuLocale) -> bool {
-    supports_locale_language(locale)
+    locale_data_provider().supports_service_locale(IntlService::RelativeTimeFormat, locale)
 }
 
 /// Returns requested locales supported by the bundled relative-time service.

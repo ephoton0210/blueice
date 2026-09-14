@@ -4925,13 +4925,11 @@ impl Vm {
                 .unwrap();
             return self.locale_instance(intl::CanonicalLocale::from(data.as_ref()), prototype);
         }
-        let mut locale = data.locale.locale().clone();
-        let expander = icu_locale::LocaleExpander::new_extended();
-        if maximize {
-            expander.maximize(&mut locale.id);
+        let locale = if maximize {
+            blueice_ecma402::maximize_locale(&data.locale)
         } else {
-            expander.minimize(&mut locale.id);
-        }
+            blueice_ecma402::minimize_locale(&data.locale)
+        };
         self.intl_global()?;
         let constructor = self.globals["%Intl.Locale%"];
         let prototype = self
@@ -4939,10 +4937,7 @@ impl Vm {
             .get(constructor, "prototype")?
             .object_id()
             .unwrap();
-        self.locale_instance(
-            intl::canonicalize(&JsString::from(locale.to_string()))?,
-            prototype,
-        )
+        self.locale_instance(locale, prototype)
     }
 
     pub(super) fn locale_getter(

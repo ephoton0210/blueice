@@ -792,11 +792,8 @@ fn duration_supported_requests(
 }
 
 fn duration_locale_is_supported(locale: &crate::CanonicalLocale) -> bool {
-    locale
-        .as_str()
-        .split('-')
-        .next()
-        .is_some_and(|language| language.eq_ignore_ascii_case("en"))
+    crate::locale_data_provider()
+        .supports_service_locale(crate::IntlService::DurationFormat, locale.locale())
 }
 
 fn duration_list_style(style: DurationStyle) -> crate::ListStyle {

@@ -70,7 +70,7 @@ impl SegmenterLocaleNegotiation {
 
 /// Returns whether the bundled segmentation data supports this locale.
 pub fn supports_segmenter_locale(locale: &IcuLocale) -> bool {
-    supports_locale_language(locale)
+    locale_data_provider().supports_service_locale(IntlService::Segmenter, locale)
 }
 
 /// Negotiates requested locales against the bundled segmenter service.

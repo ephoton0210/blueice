@@ -54,76 +54,55 @@ pub struct LocaleInformation {
 /// `sd`, likely subtags, then the world region (`001`).
 pub fn locale_information(locale: &CanonicalLocale) -> LocaleInformation {
     let locale = locale.locale();
+    let provider = locale_data_provider();
     let language = locale.id.language.as_str();
     let preference_region = locale_preference_region(locale);
     let calendars = unicode_keyword(locale, "ca")
         .map(|calendar| vec![calendar])
-        .unwrap_or_else(|| calendars_for_region(&preference_region));
+        .unwrap_or_else(|| {
+            provider
+                .calendars_for_region(&preference_region)
+                .iter()
+                .map(ToString::to_string)
+                .collect()
+        });
     let collations = unicode_keyword(locale, "co")
         .filter(|value| value != "standard" && value != "search")
         .map(|collation| vec![collation])
-        .unwrap_or_else(|| collations_for_language(language));
+        .unwrap_or_else(|| {
+            provider
+                .collations_for_language(language)
+                .iter()
+                .map(ToString::to_string)
+                .collect()
+        });
     let hour_cycles = unicode_keyword(locale, "hc")
         .map(|hour_cycle| vec![hour_cycle])
-        .unwrap_or_else(|| hour_cycles_for_locale(language, &preference_region));
-    let numbering_systems = vec![unicode_keyword(locale, "nu").unwrap_or_else(|| {
-        if language == "ar" {
-            "arab".into()
-        } else {
-            "latn".into()
-        }
-    })];
+        .unwrap_or_else(|| {
+            vec![provider
+                .hour_cycle_for_locale(language, &preference_region)
+                .into()]
+        });
+    let numbering_systems = vec![unicode_keyword(locale, "nu")
+        .unwrap_or_else(|| provider.default_numbering_system(locale).into())];
     let script = locale.id.script.map(|script| script.to_string());
-    let text_direction = if script.as_deref().is_some_and(|script| {
-        matches!(
-            script,
-            "Arab" | "Hebr" | "Syrc" | "Thaa" | "Nkoo" | "Adlm" | "Rohg"
-        )
-    }) || matches!(
-        language,
-        "ar" | "arc"
-            | "ckb"
-            | "dv"
-            | "fa"
-            | "he"
-            | "ks"
-            | "ku"
-            | "nqo"
-            | "ps"
-            | "sd"
-            | "syr"
-            | "ug"
-            | "ur"
-            | "yi"
-    ) {
+    let text_direction = if provider.is_right_to_left(language, script.as_deref()) {
         TextDirection::RightToLeft
     } else {
         TextDirection::LeftToRight
     };
     let time_zones = locale.id.region.map(|region| {
-        match region.as_str() {
-            "US" => vec![
-                "America/Adak",
-                "America/Anchorage",
-                "America/Boise",
-                "America/Chicago",
-                "America/Denver",
-                "America/Detroit",
-                "America/Indiana/Indianapolis",
-                "America/Los_Angeles",
-                "America/New_York",
-                "Pacific/Honolulu",
-            ],
-            "GB" => vec!["Europe/London"],
-            "JP" => vec!["Asia/Tokyo"],
-            "TW" => vec!["Asia/Taipei"],
-            _ => vec!["Etc/UTC"],
-        }
-        .into_iter()
-        .map(str::to_owned)
-        .collect()
+        provider
+            .time_zones_for_region(region.as_str())
+            .iter()
+            .map(ToString::to_string)
+            .collect()
     });
-    let mut week_info = week_info_for_region(&preference_region);
+    let (first_day, weekend) = provider.week_data_for_region(&preference_region);
+    let mut week_info = WeekInfo {
+        first_day,
+        weekend: weekend.to_vec(),
+    };
     if let Some(first_day) = unicode_keyword(locale, "fw").as_deref().and_then(weekday) {
         week_info.first_day = first_day;
     }
@@ -179,60 +158,6 @@ fn maximized_region(locale: &IcuLocale) -> Option<String> {
     let mut maximal = locale.clone();
     icu_locale::LocaleExpander::new_extended().maximize(&mut maximal.id);
     maximal.id.region.map(|region| region.to_string())
-}
-
-fn calendars_for_region(region: &str) -> Vec<String> {
-    match region {
-        "TH" => vec!["buddhist", "gregory"],
-        "JP" => vec!["gregory", "japanese"],
-        "IN" => vec!["gregory", "indian"],
-        "IR" | "AF" => vec![
-            "persian",
-            "gregory",
-            "islamic",
-            "islamic-civil",
-            "islamic-tbla",
-        ],
-        "ET" => vec!["gregory", "ethiopic"],
-        "BD" | "MY" | "PK" => vec!["gregory", "islamic", "islamic-civil", "islamic-tbla"],
-        "KR" => vec!["gregory", "dangi"],
-        _ => vec!["gregory"],
-    }
-    .into_iter()
-    .map(str::to_owned)
-    .collect()
-}
-
-fn collations_for_language(language: &str) -> Vec<String> {
-    if language == "und" || ("qfz"..="qtz").contains(&language) {
-        vec!["emoji".into(), "eor".into()]
-    } else {
-        vec!["emoji".into()]
-    }
-}
-
-fn hour_cycles_for_locale(language: &str, region: &str) -> Vec<String> {
-    // CLDR time-data records may be keyed by both language and region. They
-    // therefore take precedence over the region-only fallback below.
-    let hour_cycle = match (language, region) {
-        ("en", "US" | "CA" | "001") | ("ar", "001") => "h12",
-        _ => match region {
-            "US" | "IN" | "ET" | "BD" | "GR" | "PH" | "KR" | "MY" | "PK" => "h12",
-            _ => "h23",
-        },
-    };
-    vec![hour_cycle.into()]
-}
-
-fn week_info_for_region(region: &str) -> WeekInfo {
-    let (first_day, weekend) = match region {
-        "US" | "CA" | "JP" | "TH" => (7, vec![6, 7]),
-        "IN" => (7, vec![7]),
-        "IR" => (6, vec![5]),
-        "AF" => (6, vec![4, 5]),
-        _ => (1, vec![6, 7]),
-    };
-    WeekInfo { first_day, weekend }
 }
 
 fn weekday(value: &str) -> Option<u8> {

@@ -99,7 +99,8 @@ pub fn negotiate_list_format_locale(
         .iter()
         .cloned()
         .map(|requested| ListFormatLocaleCandidate {
-            supported: supports_locale_language(requested.locale()),
+            supported: locale_data_provider()
+                .supports_service_locale(IntlService::ListFormat, requested.locale()),
             requested,
         })
         .collect::<Vec<_>>();
