@@ -9,26 +9,37 @@ use blueice_ecma402::{
     supported_values_of, DurationFormat, DurationFormatError, DurationFormatOptions,
     DurationFormatOptionsError, DurationPart, DurationPartKind, DurationRecord,
     DurationRecordError, DurationStyle, DurationUnit, DurationUnitDisplay, DurationUnitOptions,
-    DurationUnitStyle, LocaleMatcher, SupportedValuesError,
+    DurationUnitStyle, LocaleMatcher, NumberFormatUnit, SupportedValuesError,
 };
 
 #[test]
-fn supported_values_only_advertises_duration_format_numbering_data() {
-    assert_eq!(supported_values_of("numberingSystem").unwrap(), ["latn"]);
+fn supported_values_advertises_only_data_backed_service_values() {
+    let numbering_systems = supported_values_of("numberingSystem").unwrap();
+    assert!(numbering_systems.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!(numbering_systems.contains(&"latn".into()));
+    assert!(numbering_systems.contains(&"gara".into()));
+    assert!(supported_values_of("calendar")
+        .unwrap()
+        .contains(&"gregory".into()));
+    assert!(supported_values_of("collation")
+        .unwrap()
+        .contains(&"phonebk".into()));
+    assert_eq!(
+        supported_values_of("currency").unwrap(),
+        ["EUR", "JPY", "USD"]
+    );
+    assert_eq!(
+        supported_values_of("unit").unwrap(),
+        NumberFormatUnit::ALL
+            .iter()
+            .map(|unit| unit.as_str().to_owned())
+            .collect::<Vec<_>>()
+    );
     let time_zones = supported_values_of("timeZone").unwrap();
     assert!(time_zones.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(time_zones.contains(&"UTC".into()));
     assert!(time_zones.contains(&"Etc/GMT-14".into()));
     assert!(!time_zones.contains(&"Etc/UTC".into()));
-    for key in ["calendar", "collation", "currency", "unit"] {
-        let error = supported_values_of(key).unwrap_err();
-        assert_eq!(error, SupportedValuesError::DataUnavailable, "{key}");
-        assert_eq!(
-            error.to_string(),
-            "Intl.supportedValuesOf data is unavailable",
-            "{key}"
-        );
-    }
     let error = supported_values_of("not-a-key").unwrap_err();
     assert_eq!(error, SupportedValuesError::InvalidKey);
     assert_eq!(error.to_string(), "invalid Intl.supportedValuesOf key");

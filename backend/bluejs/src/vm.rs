@@ -675,11 +675,10 @@ pub struct Vm {
     /// `Symbol.for` has per-realm identity. Registered symbols are not valid
     /// WeakMap/WeakSet keys, whereas ordinary and well-known symbols are.
     symbol_registry: HashMap<JsString, JsSymbol>,
-    /// The per-realm hidden key used by the normative-optional
-    /// ChainDateTimeFormat legacy-constructor path. It is deliberately not a
-    /// well-known Symbol: callers may discover it only through the legacy
-    /// receiver's own symbol keys.
-    intl_date_time_format_fallback_symbol: Option<JsSymbol>,
+    /// The per-realm hidden key used by the normative-optional legacy
+    /// constructors. It is deliberately not a well-known Symbol: callers may
+    /// discover it only through the legacy receiver's own symbol keys.
+    intl_legacy_constructed_symbol: Option<JsSymbol>,
     // Slots in the currently executing classic script's outer scope. Nested
     // function/eval frames temporarily replace this map because slot indices
     // are local to their own bytecode.
@@ -823,7 +822,7 @@ impl Vm {
             globals: HashMap::new(),
             global_bindings: HashMap::new(),
             symbol_registry: HashMap::new(),
-            intl_date_time_format_fallback_symbol: None,
+            intl_legacy_constructed_symbol: None,
             script_global_slots: HashMap::new(),
             variable_scope: 0,
             variable_scope_lexicals: Vec::new(),

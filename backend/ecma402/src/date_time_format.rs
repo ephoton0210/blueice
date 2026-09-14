@@ -10,7 +10,10 @@
 //! to ICU4X. A pinned Jiff TZDB bundle supplies IANA transition rules, so
 //! formatting does not depend on the machine's installed zoneinfo files.
 
-use crate::{canonicalize, unicode_keyword, CanonicalLocale, LocaleMatcher};
+use crate::{
+    canonicalize, supports_numbering_system, unicode_keyword, CanonicalLocale, LocaleMatcher,
+    SUPPORTED_CALENDARS,
+};
 use icu_datetime::{
     fieldsets::{
         builder::{DateFields, FieldSetBuilder, ZoneStyle},
@@ -435,38 +438,6 @@ struct ResolvedDateTimeLocale {
     hour_cycle: String,
 }
 
-const SUPPORTED_CALENDARS: &[&str] = &[
-    "buddhist",
-    "chinese",
-    "coptic",
-    "dangi",
-    "ethioaa",
-    "ethiopic",
-    "gregory",
-    "hebrew",
-    "indian",
-    "islamic-civil",
-    "islamic-tbla",
-    "islamic-umalqura",
-    "iso8601",
-    "japanese",
-    "persian",
-    "roc",
-];
-
-// These are the algorithmic and CLDR decimal systems carried by the pinned
-// ICU4X data. A syntactically valid but absent `nu` value is deliberately not
-// an error: ResolveLocale must fall back to the locale default.
-const SUPPORTED_NUMBERING_SYSTEMS: &[&str] = &[
-    "adlm", "ahom", "arab", "arabext", "bali", "beng", "bhks", "brah", "cakm", "cham", "deva",
-    "diak", "fullwide", "gong", "gonm", "gujr", "guru", "hanidec", "hmng", "hmnp", "java", "kali",
-    "khmr", "knda", "lana", "lanatham", "laoo", "latn", "lepc", "limb", "mathbold", "mathdbl",
-    "mathmono", "mathsanb", "mathsans", "mlym", "modi", "mong", "mroo", "mtei", "mymr", "mymrepka",
-    "mymrpao", "mymrshan", "mymrtlng", "nagm", "newa", "nkoo", "olck", "orya", "osma", "outlined",
-    "rohg", "saur", "segment", "shrd", "sind", "sinh", "sora", "sund", "takr", "talu", "tamldec",
-    "telu", "thai", "tibt", "tirh", "tnsa", "vaii", "wara", "wcho",
-];
-
 fn unicode_type(value: &str) -> bool {
     !value.is_empty()
         && value.split('-').all(|part| {
@@ -517,9 +488,7 @@ fn canonical_numbering_system(value: &str) -> Result<Option<String>, DateTimeFor
         return Err(DateTimeFormatError::Formatter);
     }
     let value = value.to_ascii_lowercase();
-    Ok(SUPPORTED_NUMBERING_SYSTEMS
-        .contains(&value.as_str())
-        .then_some(value))
+    Ok(supports_numbering_system(&value).then_some(value))
 }
 
 fn default_calendar(locale: &CanonicalLocale) -> &'static str {

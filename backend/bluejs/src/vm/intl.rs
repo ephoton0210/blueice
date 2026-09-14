@@ -994,7 +994,7 @@ impl Vm {
         construct: bool,
     ) -> Result<Value, RuntimeError> {
         if service == native::IntlService::Number {
-            return self.create_number_format(args, construct);
+            return self.create_number_format(receiver, args, construct);
         }
         if service == native::IntlService::DateTime {
             return self.create_date_time_format(receiver, args, construct);
@@ -1735,9 +1735,9 @@ impl Vm {
     /// Validates the Unicode type grammar accepted by the `numberingSystem`
     /// option. The host-neutral locale service applies a supported value when
     /// its numbering-system data is selected.
-    fn number_numbering_system(&mut self, options: &Value) -> Result<(), RuntimeError> {
+    fn number_numbering_system(&mut self, options: &Value) -> Result<Option<String>, RuntimeError> {
         let Some(value) = self.string_option(options, "numberingSystem", &[])? else {
-            return Ok(());
+            return Ok(None);
         };
         if !value.split('-').all(|part| {
             (3..=8).contains(&part.len()) && part.bytes().all(|byte| byte.is_ascii_alphanumeric())
@@ -1746,7 +1746,7 @@ impl Vm {
                 "invalid numberingSystem option".into(),
             ));
         }
-        Ok(())
+        Ok(Some(value.to_ascii_lowercase()))
     }
 
     /// Reads `compactDisplay` even for the non-compact notation branches, as
@@ -1883,7 +1883,28 @@ impl Vm {
         let locales = self.canonical_locales(locales)?;
         let options = self.number_format_constructor_options(options)?;
         let locale_matcher = self.locale_matcher(&options)?;
-        self.number_numbering_system(&options)?;
+        let requested_numbering_system = self.number_numbering_system(&options)?;
+        let locales = match requested_numbering_system {
+            Some(numbering_system)
+                if blueice_ecma402::supports_numbering_system(&numbering_system) =>
+            {
+                locales
+                    .iter()
+                    .map(|locale| {
+                        blueice_ecma402::locale_with_numbering_system(
+                            locale,
+                            &numbering_system,
+                            false,
+                        )
+                    })
+                    .collect()
+            }
+            Some(_) => locales
+                .iter()
+                .map(blueice_ecma402::locale_without_numbering_system)
+                .collect(),
+            None => locales,
+        };
         let style = self.number_style(&options)?;
         let currency = self.number_currency(&options, style)?;
         let unit = self.number_unit(&options, style)?;
@@ -1956,6 +1977,7 @@ impl Vm {
 
     fn create_number_format(
         &mut self,
+        receiver: &Value,
         args: &[Value],
         construct: bool,
     ) -> Result<Value, RuntimeError> {
@@ -1966,6 +1988,8 @@ impl Vm {
             .get(constructor, "prototype")?
             .object_id()
             .expect("Intl.NumberFormat.prototype is an object");
+        let legacy_receiver =
+            (!construct && self.intl_legacy_receiver(receiver, default)?).then(|| receiver.clone());
         let prototype = if construct {
             self.constructor_prototype(default)?
         } else {
@@ -1974,8 +1998,26 @@ impl Vm {
         self.stack.push(Value::Object(prototype));
         let data =
             self.resolve_number_format(native::argument(args, 0), native::argument(args, 1))?;
-        self.with_roots(|heap| heap.alloc_number_format(data, prototype))
-            .map(Value::Object)
+        let number_format = self.with_roots(|heap| heap.alloc_number_format(data, prototype))?;
+        let Some(legacy_receiver) = legacy_receiver else {
+            return Ok(Value::Object(number_format));
+        };
+
+        let fallback_symbol = self.intl_legacy_fallback_symbol();
+        let legacy_id = legacy_receiver
+            .object_id()
+            .expect("legacy NumberFormat receiver is an object");
+        self.stack.push(Value::Object(number_format));
+        if !self.object_define_own_property(
+            legacy_id,
+            fallback_symbol.into(),
+            PropertyDescriptor::data(Value::Object(number_format), false, false, false),
+        )? {
+            return Err(RuntimeError::TypeError(
+                "cannot define IntlLegacyConstructedSymbol property".into(),
+            ));
+        }
+        Ok(legacy_receiver)
     }
 
     fn date_time_width(
@@ -2246,9 +2288,8 @@ impl Vm {
             .get(constructor, "prototype")?
             .object_id()
             .expect("Intl.DateTimeFormat.prototype is an object");
-        let legacy_receiver = (!construct
-            && self.date_time_format_legacy_receiver(receiver, default)?)
-        .then(|| receiver.clone());
+        let legacy_receiver =
+            (!construct && self.intl_legacy_receiver(receiver, default)?).then(|| receiver.clone());
         let prototype = if construct {
             self.constructor_prototype(default)?
         } else {
@@ -2268,10 +2309,7 @@ impl Vm {
         // kept behind a per-realm non-enumerable, non-writable and
         // non-configurable Symbol property. Use the generic internal method
         // here so an eligible Proxy observes [[DefineOwnProperty]].
-        let fallback_symbol = self
-            .intl_date_time_format_fallback_symbol
-            .get_or_insert_with(|| JsSymbol::new(Some("IntlLegacyConstructedSymbol".into())))
-            .clone();
+        let fallback_symbol = self.intl_legacy_fallback_symbol();
         let legacy_id = legacy_receiver
             .object_id()
             .expect("legacy DateTimeFormat receiver is an object");
@@ -2288,10 +2326,10 @@ impl Vm {
         Ok(legacy_receiver)
     }
 
-    /// Returns whether `%Intl.DateTimeFormat.prototype%` occurs strictly in
-    /// `receiver`'s prototype chain. This is the receiver predicate for the
-    /// normative-optional `ChainDateTimeFormat` constructor behavior.
-    fn date_time_format_legacy_receiver(
+    /// Returns whether the service prototype occurs strictly in `receiver`'s
+    /// prototype chain. This is the receiver predicate for the
+    /// normative-optional legacy constructor behavior.
+    fn intl_legacy_receiver(
         &mut self,
         receiver: &Value,
         prototype: ObjectId,
@@ -2318,6 +2356,12 @@ impl Vm {
         })();
         self.stack.truncate(base);
         result
+    }
+
+    fn intl_legacy_fallback_symbol(&mut self) -> JsSymbol {
+        self.intl_legacy_constructed_symbol
+            .get_or_insert_with(|| JsSymbol::new(Some("IntlLegacyConstructedSymbol".into())))
+            .clone()
     }
 
     fn date_time_format_data(
@@ -2349,12 +2393,9 @@ impl Vm {
             ));
         }
 
-        let fallback_symbol = self
-            .intl_date_time_format_fallback_symbol
-            .clone()
-            .ok_or_else(|| {
-                RuntimeError::TypeError("receiver is not an Intl.DateTimeFormat".into())
-            })?;
+        let fallback_symbol = self.intl_legacy_constructed_symbol.clone().ok_or_else(|| {
+            RuntimeError::TypeError("receiver is not an Intl.DateTimeFormat".into())
+        })?;
         // `Get` is intentional. In particular, a Proxy around a chained
         // receiver must observe this symbol lookup before the hidden object
         // is brand-checked.
@@ -4237,12 +4278,44 @@ impl Vm {
         ))
     }
 
+    /// Implements `UnwrapNumberFormat` for the legacy-facing `format` and
+    /// `resolvedOptions` methods. `formatToParts` deliberately requires a
+    /// directly branded NumberFormat receiver.
+    fn unwrap_number_format(&mut self, value: &Value) -> Result<ObjectId, RuntimeError> {
+        if let Some(id) = value.object_id() {
+            if self.heap.number_format(id)?.is_some() {
+                return Ok(id);
+            }
+        } else {
+            return Err(RuntimeError::TypeError(
+                "receiver is not an Intl.NumberFormat".into(),
+            ));
+        }
+
+        let fallback_symbol = self.intl_legacy_constructed_symbol.clone().ok_or_else(|| {
+            RuntimeError::TypeError("receiver is not an Intl.NumberFormat".into())
+        })?;
+        // `Get` is intentional: a Proxy around a chained receiver must
+        // observe the fallback-symbol lookup before its hidden formatter is
+        // brand-checked.
+        let fallback = self.get_property(value, &PropertyName::from(fallback_symbol))?;
+        let Some(id) = fallback.object_id() else {
+            return Err(RuntimeError::TypeError(
+                "receiver is not an Intl.NumberFormat".into(),
+            ));
+        };
+        self.heap
+            .number_format(id)?
+            .is_some()
+            .then_some(id)
+            .ok_or_else(|| RuntimeError::TypeError("receiver is not an Intl.NumberFormat".into()))
+    }
+
     pub(super) fn number_format_format_getter(
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        self.number_format_data(receiver)?;
-        let id = receiver.object_id().unwrap();
+        let id = self.unwrap_number_format(receiver)?;
         if let Some(function) = self.heap.number_format_format(id) {
             return Ok(Value::Object(function));
         }
@@ -4253,7 +4326,9 @@ impl Vm {
         })?;
         let bound = crate::heap::BoundFunction {
             target,
-            this: receiver.clone(),
+            // The getter may have received a legacy chained object. Bind the
+            // hidden branded NumberFormat selected by UnwrapNumberFormat.
+            this: Value::Object(id),
             args: vec![],
             constructible: false,
         };
@@ -4327,7 +4402,11 @@ impl Vm {
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let data = self.number_format_data(receiver)?;
+        let id = self.unwrap_number_format(receiver)?;
+        let data = self
+            .heap
+            .number_format(id)?
+            .expect("UnwrapNumberFormat returns a branded object");
         let resolved = data.resolved_options();
         let prototype = self.object_prototype;
         let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;

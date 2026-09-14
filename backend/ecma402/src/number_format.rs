@@ -236,53 +236,200 @@ pub struct NumberCurrencyOptions {
     pub sign: NumberCurrencySign,
 }
 
-/// The initially data-backed subset of sanctioned single-unit identifiers.
-///
-/// These are the ten unit values required by `Intl.DurationFormat`'s
-/// `PartitionDurationFormatPattern` use of `Intl.NumberFormat`. The enum is
-/// deliberately independent of DurationFormat so that new sanctioned units
-/// and compound-unit patterns can be added without changing its API.
+/// ECMA-402 sanctioned simple units. DurationFormat uses the duration subset,
+/// while direct NumberFormat also accepts the remaining simple identifiers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NumberFormatUnit {
-    /// A percentage unit.
-    Percent,
-    /// Calendar years.
-    Year,
-    /// Calendar months.
-    Month,
-    /// Seven-day weeks.
-    Week,
+    /// Acres.
+    Acre,
+    /// Bits.
+    Bit,
+    /// Bytes.
+    Byte,
+    /// Degrees Celsius.
+    Celsius,
+    /// Centimeters.
+    Centimeter,
     /// Days.
     Day,
+    /// Angular degrees.
+    Degree,
+    /// Degrees Fahrenheit.
+    Fahrenheit,
+    /// Fluid ounces.
+    FluidOunce,
+    /// Feet.
+    Foot,
+    /// Gallons.
+    Gallon,
+    /// Gigabits.
+    Gigabit,
+    /// Gigabytes.
+    Gigabyte,
+    /// Grams.
+    Gram,
+    /// Hectares.
+    Hectare,
     /// Hours.
     Hour,
-    /// Minutes.
-    Minute,
-    /// Seconds.
-    Second,
-    /// Milliseconds.
-    Millisecond,
+    /// Inches.
+    Inch,
+    /// Kilobits.
+    Kilobit,
+    /// Kilobytes.
+    Kilobyte,
+    /// Kilograms.
+    Kilogram,
+    /// Kilometers.
+    Kilometer,
+    /// Liters.
+    Liter,
+    /// Megabits.
+    Megabit,
+    /// Megabytes.
+    Megabyte,
+    /// Meters.
+    Meter,
     /// Microseconds.
     Microsecond,
+    /// Miles.
+    Mile,
+    /// Scandinavian miles.
+    MileScandinavian,
+    /// Milliliters.
+    Milliliter,
+    /// Millimeters.
+    Millimeter,
+    /// Milliseconds.
+    Millisecond,
+    /// Minutes.
+    Minute,
+    /// Calendar months.
+    Month,
     /// Nanoseconds.
     Nanosecond,
+    /// Ounces.
+    Ounce,
+    /// A percentage unit.
+    Percent,
+    /// Petabytes.
+    Petabyte,
+    /// Pounds.
+    Pound,
+    /// Seconds.
+    Second,
+    /// Stones.
+    Stone,
+    /// Terabits.
+    Terabit,
+    /// Terabytes.
+    Terabyte,
+    /// Seven-day weeks.
+    Week,
+    /// Yards.
+    Yard,
+    /// Calendar years.
+    Year,
 }
 
 impl NumberFormatUnit {
+    /// All sanctioned simple unit identifiers, in ECMA-402 canonical order.
+    pub const ALL: &[Self] = &[
+        Self::Acre,
+        Self::Bit,
+        Self::Byte,
+        Self::Celsius,
+        Self::Centimeter,
+        Self::Day,
+        Self::Degree,
+        Self::Fahrenheit,
+        Self::FluidOunce,
+        Self::Foot,
+        Self::Gallon,
+        Self::Gigabit,
+        Self::Gigabyte,
+        Self::Gram,
+        Self::Hectare,
+        Self::Hour,
+        Self::Inch,
+        Self::Kilobit,
+        Self::Kilobyte,
+        Self::Kilogram,
+        Self::Kilometer,
+        Self::Liter,
+        Self::Megabit,
+        Self::Megabyte,
+        Self::Meter,
+        Self::Microsecond,
+        Self::Mile,
+        Self::MileScandinavian,
+        Self::Milliliter,
+        Self::Millimeter,
+        Self::Millisecond,
+        Self::Minute,
+        Self::Month,
+        Self::Nanosecond,
+        Self::Ounce,
+        Self::Percent,
+        Self::Petabyte,
+        Self::Pound,
+        Self::Second,
+        Self::Stone,
+        Self::Terabit,
+        Self::Terabyte,
+        Self::Week,
+        Self::Yard,
+        Self::Year,
+    ];
+
     /// Parses one data-backed sanctioned single-unit identifier.
     pub fn parse(value: &str) -> Option<Self> {
         match value {
-            "percent" => Some(Self::Percent),
-            "year" => Some(Self::Year),
-            "month" => Some(Self::Month),
-            "week" => Some(Self::Week),
+            "acre" => Some(Self::Acre),
+            "bit" => Some(Self::Bit),
+            "byte" => Some(Self::Byte),
+            "celsius" => Some(Self::Celsius),
+            "centimeter" => Some(Self::Centimeter),
             "day" => Some(Self::Day),
+            "degree" => Some(Self::Degree),
+            "fahrenheit" => Some(Self::Fahrenheit),
+            "fluid-ounce" => Some(Self::FluidOunce),
+            "foot" => Some(Self::Foot),
+            "gallon" => Some(Self::Gallon),
+            "gigabit" => Some(Self::Gigabit),
+            "gigabyte" => Some(Self::Gigabyte),
+            "gram" => Some(Self::Gram),
+            "hectare" => Some(Self::Hectare),
             "hour" => Some(Self::Hour),
+            "inch" => Some(Self::Inch),
+            "kilobit" => Some(Self::Kilobit),
+            "kilobyte" => Some(Self::Kilobyte),
+            "kilogram" => Some(Self::Kilogram),
+            "kilometer" => Some(Self::Kilometer),
+            "liter" => Some(Self::Liter),
+            "megabit" => Some(Self::Megabit),
+            "megabyte" => Some(Self::Megabyte),
+            "meter" => Some(Self::Meter),
             "minute" => Some(Self::Minute),
-            "second" => Some(Self::Second),
+            "month" => Some(Self::Month),
             "millisecond" => Some(Self::Millisecond),
             "microsecond" => Some(Self::Microsecond),
+            "mile" => Some(Self::Mile),
+            "mile-scandinavian" => Some(Self::MileScandinavian),
+            "milliliter" => Some(Self::Milliliter),
+            "millimeter" => Some(Self::Millimeter),
             "nanosecond" => Some(Self::Nanosecond),
+            "ounce" => Some(Self::Ounce),
+            "percent" => Some(Self::Percent),
+            "petabyte" => Some(Self::Petabyte),
+            "pound" => Some(Self::Pound),
+            "second" => Some(Self::Second),
+            "stone" => Some(Self::Stone),
+            "terabit" => Some(Self::Terabit),
+            "terabyte" => Some(Self::Terabyte),
+            "week" => Some(Self::Week),
+            "yard" => Some(Self::Yard),
+            "year" => Some(Self::Year),
             _ => None,
         }
     }
@@ -290,17 +437,51 @@ impl NumberFormatUnit {
     /// Returns the sanctioned single-unit identifier.
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Percent => "percent",
-            Self::Year => "year",
-            Self::Month => "month",
-            Self::Week => "week",
+            Self::Acre => "acre",
+            Self::Bit => "bit",
+            Self::Byte => "byte",
+            Self::Celsius => "celsius",
+            Self::Centimeter => "centimeter",
             Self::Day => "day",
+            Self::Degree => "degree",
+            Self::Fahrenheit => "fahrenheit",
+            Self::FluidOunce => "fluid-ounce",
+            Self::Foot => "foot",
+            Self::Gallon => "gallon",
+            Self::Gigabit => "gigabit",
+            Self::Gigabyte => "gigabyte",
+            Self::Gram => "gram",
+            Self::Hectare => "hectare",
             Self::Hour => "hour",
+            Self::Inch => "inch",
+            Self::Kilobit => "kilobit",
+            Self::Kilobyte => "kilobyte",
+            Self::Kilogram => "kilogram",
+            Self::Kilometer => "kilometer",
+            Self::Liter => "liter",
+            Self::Megabit => "megabit",
+            Self::Megabyte => "megabyte",
+            Self::Meter => "meter",
             Self::Minute => "minute",
-            Self::Second => "second",
+            Self::Month => "month",
             Self::Millisecond => "millisecond",
             Self::Microsecond => "microsecond",
+            Self::Mile => "mile",
+            Self::MileScandinavian => "mile-scandinavian",
+            Self::Milliliter => "milliliter",
+            Self::Millimeter => "millimeter",
             Self::Nanosecond => "nanosecond",
+            Self::Ounce => "ounce",
+            Self::Percent => "percent",
+            Self::Petabyte => "petabyte",
+            Self::Pound => "pound",
+            Self::Second => "second",
+            Self::Stone => "stone",
+            Self::Terabit => "terabit",
+            Self::Terabyte => "terabyte",
+            Self::Week => "week",
+            Self::Yard => "yard",
+            Self::Year => "year",
         }
     }
 }
@@ -707,12 +888,17 @@ impl NumberFormat {
             return Err(NumberFormatError::MissingUnit);
         }
         let negotiation = negotiate_number_format_locale(requested, options.locale_matcher);
-        let selected = negotiation.selected.clone();
+        let selected = match unicode_keyword(negotiation.selected.locale(), "nu") {
+            Some(value) if supports_numbering_system(&value) => negotiation.selected.clone(),
+            Some(_) => locale_without_numbering_system(&negotiation.selected),
+            None => negotiation.selected.clone(),
+        };
         let provider = NumberingSystemInspectionProvider::default();
         let mut formatter_options = DecimalFormatterOptions::default();
         formatter_options.grouping_strategy = Some(options.use_grouping.into());
         let mut preferences: DecimalFormatterPreferences = selected.locale().into();
-        if let Some(numbering_system) = unicode_keyword(selected.locale(), "nu") {
+        let selected_numbering_system = unicode_keyword(selected.locale(), "nu");
+        if let Some(numbering_system) = selected_numbering_system.as_deref() {
             let value = numbering_system
                 .parse::<icu_locale_core::extensions::unicode::Value>()
                 .map_err(|_| NumberFormatError::DataUnavailable)?;
@@ -723,10 +909,12 @@ impl NumberFormat {
         let formatter =
             DecimalFormatter::try_new_unstable(&provider, preferences, formatter_options)
                 .map_err(|_| NumberFormatError::DataUnavailable)?;
-        let numbering_system = provider
-            .numbering_system
-            .into_inner()
-            .unwrap_or_else(|| "latn".into());
+        let numbering_system = selected_numbering_system.unwrap_or_else(|| {
+            provider
+                .numbering_system
+                .into_inner()
+                .unwrap_or_else(|| "latn".into())
+        });
         let resolved = ResolvedNumberFormatOptions {
             locale: selected.as_str().into(),
             numbering_system,
@@ -884,6 +1072,10 @@ impl NumberFormat {
             }
             collector.push(NumberFormatPartKind::Unit, label);
         }
+        localize_simple_numbering_system_parts(
+            &mut collector.parts,
+            &self.resolved.numbering_system,
+        );
         Ok(collector.parts)
     }
 
@@ -1101,6 +1293,124 @@ impl PartsWrite for NumberPartCollector {
     }
 }
 
+/// ICU4X's compact decimal bundle can use Latin fallback data for newly
+/// assigned simple numbering systems. Keep ResolveLocale's requested system
+/// observable and substitute its UTS 35 digit mapping in numeric parts, while
+/// retaining ICU's locale-specific signs, grouping, and decimal separators.
+fn localize_simple_numbering_system_parts(parts: &mut [NumberFormatPart], numbering_system: &str) {
+    let Some(digits) = simple_numbering_system_digits(numbering_system) else {
+        return;
+    };
+    let mut mapping = ['0'; 10];
+    for (index, digit) in digits.chars().enumerate() {
+        mapping[index] = digit;
+    }
+    for part in parts.iter_mut().filter(|part| {
+        matches!(
+            part.kind,
+            NumberFormatPartKind::Integer | NumberFormatPartKind::Fraction
+        )
+    }) {
+        part.value = part
+            .value
+            .chars()
+            .map(|character| {
+                character
+                    .to_digit(10)
+                    .filter(|_| character.is_ascii_digit())
+                    .map_or(character, |digit| mapping[digit as usize])
+            })
+            .collect();
+    }
+}
+
+/// ECMA-402 Table 4's simple digit mappings. Algorithmic systems deliberately
+/// do not occur here; every system advertised by this implementation has one
+/// of these ten-code-point substitutions.
+fn simple_numbering_system_digits(numbering_system: &str) -> Option<&'static str> {
+    Some(match numbering_system {
+        "adlm" => "𞥐𞥑𞥒𞥓𞥔𞥕𞥖𞥗𞥘𞥙",
+        "ahom" => "𑜰𑜱𑜲𑜳𑜴𑜵𑜶𑜷𑜸𑜹",
+        "arab" => "٠١٢٣٤٥٦٧٨٩",
+        "arabext" => "۰۱۲۳۴۵۶۷۸۹",
+        "bali" => "᭐᭑᭒᭓᭔᭕᭖᭗᭘᭙",
+        "beng" => "০১২৩৪৫৬৭৮৯",
+        "bhks" => "𑱐𑱑𑱒𑱓𑱔𑱕𑱖𑱗𑱘𑱙",
+        "brah" => "𑁦𑁧𑁨𑁩𑁪𑁫𑁬𑁭𑁮𑁯",
+        "cakm" => "𑄶𑄷𑄸𑄹𑄺𑄻𑄼𑄽𑄾𑄿",
+        "cham" => "꩐꩑꩒꩓꩔꩕꩖꩗꩘꩙",
+        "deva" => "०१२३४५६७८९",
+        "diak" => "𑥐𑥑𑥒𑥓𑥔𑥕𑥖𑥗𑥘𑥙",
+        "fullwide" => "０１２３４５６７８９",
+        "gara" => "𐵀𐵁𐵂𐵃𐵄𐵅𐵆𐵇𐵈𐵉",
+        "gong" => "𑶠𑶡𑶢𑶣𑶤𑶥𑶦𑶧𑶨𑶩",
+        "gonm" => "𑵐𑵑𑵒𑵓𑵔𑵕𑵖𑵗𑵘𑵙",
+        "gujr" => "૦૧૨૩૪૫૬૭૮૯",
+        "gukh" => "𖄰𖄱𖄲𖄳𖄴𖄵𖄶𖄷𖄸𖄹",
+        "guru" => "੦੧੨੩੪੫੬੭੮੯",
+        "hanidec" => "〇一二三四五六七八九",
+        "hmng" => "𖭐𖭑𖭒𖭓𖭔𖭕𖭖𖭗𖭘𖭙",
+        "hmnp" => "𞅀𞅁𞅂𞅃𞅄𞅅𞅆𞅇𞅈𞅉",
+        "java" => "꧐꧑꧒꧓꧔꧕꧖꧗꧘꧙",
+        "kali" => "꤀꤁꤂꤃꤄꤅꤆꤇꤈꤉",
+        "kawi" => "𑽐𑽑𑽒𑽓𑽔𑽕𑽖𑽗𑽘𑽙",
+        "khmr" => "០១២៣៤៥៦៧៨៩",
+        "knda" => "೦೧೨೩೪೫೬೭೮೯",
+        "krai" => "𖵰𖵱𖵲𖵳𖵴𖵵𖵶𖵷𖵸𖵹",
+        "lana" => "᪀᪁᪂᪃᪄᪅᪆᪇᪈᪉",
+        "lanatham" => "᪐᪑᪒᪓᪔᪕᪖᪗᪘᪙",
+        "laoo" => "໐໑໒໓໔໕໖໗໘໙",
+        "latn" => "0123456789",
+        "lepc" => "᱀᱁᱂᱃᱄᱅᱆᱇᱈᱉",
+        "limb" => "᥆᥇᥈᥉᥊᥋᥌᥍᥎᥏",
+        "mathbold" => "𝟎𝟏𝟐𝟑𝟒𝟓𝟔𝟕𝟖𝟗",
+        "mathdbl" => "𝟘𝟙𝟚𝟛𝟜𝟝𝟞𝟟𝟠𝟡",
+        "mathmono" => "𝟶𝟷𝟸𝟹𝟺𝟻𝟼𝟽𝟾𝟿",
+        "mathsanb" => "𝟬𝟭𝟮𝟯𝟰𝟱𝟲𝟳𝟴𝟵",
+        "mathsans" => "𝟢𝟣𝟤𝟥𝟦𝟧𝟨𝟩𝟪𝟫",
+        "mlym" => "൦൧൨൩൪൫൬൭൮൯",
+        "modi" => "𑙐𑙑𑙒𑙓𑙔𑙕𑙖𑙗𑙘𑙙",
+        "mong" => "᠐᠑᠒᠓᠔᠕᠖᠗᠘᠙",
+        "mroo" => "𖩠𖩡𖩢𖩣𖩤𖩥𖩦𖩧𖩨𖩩",
+        "mtei" => "꯰꯱꯲꯳꯴꯵꯶꯷꯸꯹",
+        "mymr" => "၀၁၂၃၄၅၆၇၈၉",
+        "mymrepka" => "𑛚𑛛𑛜𑛝𑛞𑛟𑛠𑛡𑛢𑛣",
+        "mymrpao" => "𑛐𑛑𑛒𑛓𑛔𑛕𑛖𑛗𑛘𑛙",
+        "mymrshan" => "႐႑႒႓႔႕႖႗႘႙",
+        "mymrtlng" => "꧰꧱꧲꧳꧴꧵꧶꧷꧸꧹",
+        "nagm" => "𞓰𞓱𞓲𞓳𞓴𞓵𞓶𞓷𞓸𞓹",
+        "newa" => "𑑐𑑑𑑒𑑓𑑔𑑕𑑖𑑗𑑘𑑙",
+        "nkoo" => "߀߁߂߃߄߅߆߇߈߉",
+        "olck" => "᱐᱑᱒᱓᱔᱕᱖᱗᱘᱙",
+        "onao" => "𞗱𞗲𞗳𞗴𞗵𞗶𞗷𞗸𞗹𞗺",
+        "orya" => "୦୧୨୩୪୫୬୭୮୯",
+        "osma" => "𐒠𐒡𐒢𐒣𐒤𐒥𐒦𐒧𐒨𐒩",
+        "outlined" => "𜳰𜳱𜳲𜳳𜳴𜳵𜳶𜳷𜳸𜳹",
+        "rohg" => "𐴰𐴱𐴲𐴳𐴴𐴵𐴶𐴷𐴸𐴹",
+        "saur" => "꣐꣑꣒꣓꣔꣕꣖꣗꣘꣙",
+        "segment" => "🯰🯱🯲🯳🯴🯵🯶🯷🯸🯹",
+        "shrd" => "𑇐𑇑𑇒𑇓𑇔𑇕𑇖𑇗𑇘𑇙",
+        "sind" => "𑋰𑋱𑋲𑋳𑋴𑋵𑋶𑋷𑋸𑋹",
+        "sinh" => "෦෧෨෩෪෫෬෭෮෯",
+        "sora" => "𑃰𑃱𑃲𑃳𑃴𑃵𑃶𑃷𑃸𑃹",
+        "sund" => "᮰᮱᮲᮳᮴᮵᮶᮷᮸᮹",
+        "sunu" => "𑯰𑯱𑯲𑯳𑯴𑯵𑯶𑯷𑯸𑯹",
+        "takr" => "𑛀𑛁𑛂𑛃𑛄𑛅𑛆𑛇𑛈𑛉",
+        "talu" => "᧐᧑᧒᧓᧔᧕᧖᧗᧘᧙",
+        "tamldec" => "௦௧௨௩௪௫௬௭௮௯",
+        "telu" => "౦౧౨౩౪౫౬౭౮౯",
+        "thai" => "๐๑๒๓๔๕๖๗๘๙",
+        "tibt" => "༠༡༢༣༤༥༦༧༨༩",
+        "tirh" => "𑓐𑓑𑓒𑓓𑓔𑓕𑓖𑓗𑓘𑓙",
+        "tnsa" => "𖫀𖫁𖫂𖫃𖫄𖫅𖫆𖫇𖫈𖫉",
+        "tols" => "𑷠𑷡𑷢𑷣𑷤𑷥𑷦𑷧𑷨𑷩",
+        "vaii" => "꘠꘡꘢꘣꘤꘥꘦꘧꘨꘩",
+        "wara" => "𑣠𑣡𑣢𑣣𑣤𑣥𑣦𑣧𑣨𑣩",
+        "wcho" => "𞋰𞋱𞋲𞋳𞋴𞋵𞋶𞋷𞋸𞋹",
+        _ => return None,
+    })
+}
+
 /// Returns the English CLDR unit suffix used by the current duration-unit
 /// locale-data slice. It is shared with DurationFormat to ensure the standard
 /// delegation path and direct service output cannot diverge.
@@ -1134,6 +1444,7 @@ pub(crate) fn english_unit_pattern(
                 (NumberFormatUnit::Millisecond, false) => "milliseconds",
                 (NumberFormatUnit::Microsecond, false) => "microseconds",
                 (NumberFormatUnit::Nanosecond, false) => "nanoseconds",
+                (unit, _) => unit.as_str(),
             },
         ),
         NumberUnitDisplay::Short => (
@@ -1158,6 +1469,7 @@ pub(crate) fn english_unit_pattern(
                 (NumberFormatUnit::Millisecond, _) => "ms",
                 (NumberFormatUnit::Microsecond, _) => "μs",
                 (NumberFormatUnit::Nanosecond, _) => "ns",
+                (unit, _) => unit.as_str(),
             },
         ),
         NumberUnitDisplay::Narrow => (
@@ -1174,6 +1486,7 @@ pub(crate) fn english_unit_pattern(
                 NumberFormatUnit::Millisecond => "ms",
                 NumberFormatUnit::Microsecond => "μs",
                 NumberFormatUnit::Nanosecond => "ns",
+                unit => unit.as_str(),
             },
         ),
     }

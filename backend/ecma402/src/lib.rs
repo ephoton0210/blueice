@@ -518,6 +518,45 @@ pub fn unicode_keyword(locale: &IcuLocale, name: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
+/// Applies an effective numbering-system preference to a canonical locale.
+///
+/// ICU receives the requested `nu` keyword in every case. `retain_extension`
+/// controls whether it remains observable in the locale string: an accepted
+/// Unicode locale extension is retained, whereas an explicit options value is
+/// reflected only by `resolvedOptions().numberingSystem`.
+pub fn locale_with_numbering_system(
+    locale: &CanonicalLocale,
+    numbering_system: &str,
+    retain_extension: bool,
+) -> CanonicalLocale {
+    let mut data_locale = locale.locale().clone();
+    let key: icu_locale_core::extensions::unicode::Key = "nu".parse().expect("valid key");
+    data_locale.extensions.unicode.keywords.remove(key);
+    data_locale.extensions.unicode.keywords.set(
+        key,
+        numbering_system
+            .parse()
+            .expect("validated numbering system"),
+    );
+    let canonical = if retain_extension {
+        data_locale.to_string()
+    } else {
+        let mut visible_locale = data_locale.clone();
+        visible_locale.extensions.unicode.keywords.remove(key);
+        visible_locale.to_string()
+    };
+    CanonicalLocale::from_parts(data_locale, canonical)
+}
+
+/// Removes a `nu` extension when an explicit but unavailable option must fall
+/// back to the locale's default numbering system.
+pub fn locale_without_numbering_system(locale: &CanonicalLocale) -> CanonicalLocale {
+    let mut data_locale = locale.locale().clone();
+    let key: icu_locale_core::extensions::unicode::Key = "nu".parse().expect("valid key");
+    data_locale.extensions.unicode.keywords.remove(key);
+    CanonicalLocale::from_parts(data_locale.clone(), data_locale.to_string())
+}
+
 /// Applies CLDR likely-subtag maximization to a canonical locale.
 ///
 /// Unicode extensions remain intact. The ECMA-402-valid `posix` primary

@@ -300,7 +300,7 @@ fn adapter_executes_number_format_through_the_json_lines_interface() {
 fn adapter_executes_supported_values_through_the_json_lines_interface() {
     let replies = adapter(
         &[json!({
-            "source": "assert.sameValue(Intl.supportedValuesOf('numberingSystem').join(','),'latn');assert.throws(RangeError,function(){Intl.supportedValuesOf('currency')})",
+            "source": "assert(Intl.supportedValuesOf('numberingSystem').includes('latn'));assert.sameValue(Intl.supportedValuesOf('currency').join(','),'EUR,JPY,USD')",
             "mode": "sloppy",
         })],
         None,

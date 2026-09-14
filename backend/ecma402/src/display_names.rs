@@ -359,6 +359,22 @@ fn display_name(
         (DisplayNamesType::Currency, "JPY") if english => "Japanese Yen",
         (DisplayNamesType::Calendar, "gregory") if english => "Gregorian Calendar",
         (DisplayNamesType::Calendar, "buddhist") if english => "Buddhist Calendar",
+        (DisplayNamesType::Calendar, "chinese") if english => "Chinese Calendar",
+        (DisplayNamesType::Calendar, "coptic") if english => "Coptic Calendar",
+        (DisplayNamesType::Calendar, "dangi") if english => "Dangi Calendar",
+        (DisplayNamesType::Calendar, "ethioaa") if english => "Ethiopic Amete Alem Calendar",
+        (DisplayNamesType::Calendar, "ethiopic") if english => "Ethiopic Calendar",
+        (DisplayNamesType::Calendar, "hebrew") if english => "Hebrew Calendar",
+        (DisplayNamesType::Calendar, "indian") if english => "Indian National Calendar",
+        (DisplayNamesType::Calendar, "islamic-civil") if english => "Islamic Civil Calendar",
+        (DisplayNamesType::Calendar, "islamic-tbla") if english => "Islamic Tabular Calendar",
+        (DisplayNamesType::Calendar, "islamic-umalqura") if english => {
+            "Islamic Calendar (Umm al-Qura)"
+        }
+        (DisplayNamesType::Calendar, "iso8601") if english => "ISO-8601 Calendar",
+        (DisplayNamesType::Calendar, "japanese") if english => "Japanese Calendar",
+        (DisplayNamesType::Calendar, "persian") if english => "Persian Calendar",
+        (DisplayNamesType::Calendar, "roc") if english => "Minguo Calendar",
         (DisplayNamesType::DateTimeField, "year") if english => "year",
         (DisplayNamesType::DateTimeField, "month") if english => "month",
         (DisplayNamesType::DateTimeField, "day") if english => "day",

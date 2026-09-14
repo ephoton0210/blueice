@@ -5,11 +5,11 @@
 //! Public, host-neutral decimal `Intl.NumberFormat` coverage.
 
 use blueice_ecma402::{
-    canonicalize, resolve_number_format_locale, supported_number_format_locales, unicode_keyword,
-    NumberCurrencyDisplay, NumberCurrencyOptions, NumberCurrencySign, NumberFormat,
-    NumberFormatError, NumberFormatOptions, NumberFormatPartKind, NumberFormatStyle,
-    NumberFormatUnit, NumberGrouping, NumberNotation, NumberRoundingMode, NumberSignDisplay,
-    NumberUnitDisplay, ResolvedNumberFormatOptions,
+    canonicalize, locale_with_numbering_system, resolve_number_format_locale,
+    supported_number_format_locales, unicode_keyword, NumberCurrencyDisplay, NumberCurrencyOptions,
+    NumberCurrencySign, NumberFormat, NumberFormatError, NumberFormatOptions, NumberFormatPartKind,
+    NumberFormatStyle, NumberFormatUnit, NumberGrouping, NumberNotation, NumberRoundingMode,
+    NumberSignDisplay, NumberUnitDisplay, ResolvedNumberFormatOptions, SUPPORTED_NUMBERING_SYSTEMS,
 };
 
 #[test]
@@ -73,6 +73,19 @@ fn honors_unicode_numbering_systems_and_fraction_padding() {
         NumberGrouping::Never
     );
     assert_eq!(formatter.format_decimal("1007.5").unwrap(), "๑๐๐๗.๕๐");
+}
+
+#[test]
+fn resolves_every_advertised_numbering_system() {
+    let english = canonicalize("en").unwrap();
+    for numbering_system in SUPPORTED_NUMBERING_SYSTEMS {
+        let locale = locale_with_numbering_system(&english, numbering_system, false);
+        let format = NumberFormat::try_new(&[locale], NumberFormatOptions::default()).unwrap();
+        assert_eq!(
+            format.resolved_options().numbering_system,
+            *numbering_system
+        );
+    }
 }
 
 #[test]

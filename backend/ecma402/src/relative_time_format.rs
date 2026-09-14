@@ -202,9 +202,9 @@ impl RelativeTimeFormat {
         let requested_numbering = options
             .numbering_system
             .as_deref()
-            .filter(|value| matches!(*value, "latn" | "arab" | "deva" | "hanidec"));
-        let extension_numbering = unicode_keyword(locale.locale(), "nu")
-            .filter(|value| matches!(value.as_str(), "latn" | "arab" | "deva" | "hanidec"));
+            .filter(|value| supports_numbering_system(value));
+        let extension_numbering =
+            unicode_keyword(locale.locale(), "nu").filter(|value| supports_numbering_system(value));
         let numbering_system = requested_numbering
             .or(extension_numbering.as_deref())
             .unwrap_or("latn");
@@ -342,30 +342,6 @@ impl RelativeTimeFormat {
         }
         english_relative_time_label(self.resolved.style, unit, value)
     }
-}
-
-fn locale_with_numbering_system(
-    locale: &CanonicalLocale,
-    numbering_system: &str,
-    retain_extension: bool,
-) -> CanonicalLocale {
-    let mut data_locale = locale.locale().clone();
-    let key: icu_locale_core::extensions::unicode::Key = "nu".parse().expect("valid key");
-    data_locale.extensions.unicode.keywords.remove(key);
-    data_locale.extensions.unicode.keywords.set(
-        key,
-        numbering_system
-            .parse()
-            .expect("validated numbering system"),
-    );
-    let canonical = if retain_extension {
-        data_locale.to_string()
-    } else {
-        let mut visible_locale = data_locale.clone();
-        visible_locale.extensions.unicode.keywords.remove(key);
-        visible_locale.to_string()
-    };
-    CanonicalLocale::from_parts(data_locale, canonical)
 }
 
 fn relative_time_number_parts(number: &str, polish: bool) -> Vec<RelativeTimePart> {

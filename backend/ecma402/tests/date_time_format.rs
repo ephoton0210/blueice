@@ -6,6 +6,7 @@ use blueice_ecma402::{
     basic_format_matcher, bundled_tzdb_version, canonicalize, DateTimeFormat, DateTimeFormatError,
     DateTimeFormatInput, DateTimeFormatMatcher, DateTimeFormatOptions, DateTimeFormatRecord,
     DateTimeRangePart, DateTimeRangePartSource, DateTimeStyle, DateTimeWidth,
+    SUPPORTED_NUMBERING_SYSTEMS,
 };
 
 #[test]
@@ -141,6 +142,21 @@ fn formats_non_latin_numbering_systems_in_time_fields() {
             .contains(second),
             "{locale}"
         );
+    }
+}
+
+#[test]
+fn resolves_every_advertised_numbering_system() {
+    for numbering_system in SUPPORTED_NUMBERING_SYSTEMS {
+        let format = DateTimeFormat::try_new(
+            &[canonicalize("en").unwrap()],
+            DateTimeFormatOptions {
+                numbering_system: Some((*numbering_system).into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(format.numbering_system(), *numbering_system);
     }
 }
 
