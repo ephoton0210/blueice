@@ -567,28 +567,79 @@ fn range_parts_keep_fractional_second_boundaries_and_accept_reverse_order() {
             },
         ]
     );
-    let experimental = DateTimeFormat::try_new(
-        &[canonicalize("en-US").unwrap()],
-        DateTimeFormatOptions {
-            use_icu4x_range_formatter: true,
-            minute: Some(DateTimeWidth::Numeric),
-            second: Some(DateTimeWidth::Numeric),
-            fractional_second_digits: Some(1),
-            time_zone: Some("UTC".into()),
-            ..Default::default()
-        },
-    )
-    .unwrap();
-    assert_eq!(
-        experimental.format_range_to_parts(0.0, 300.0).unwrap(),
-        format.format_range_to_parts(0.0, 300.0).unwrap()
-    );
     assert!(format.format_range_to_parts(300.0, 0.0).is_ok());
     assert!(format
         .format_range_to_parts(0.0, 0.9)
         .unwrap()
         .iter()
         .all(|part| part.source == DateTimeRangePartSource::Shared));
+}
+
+#[test]
+fn cldr_ranges_cover_time_zone_and_non_gregorian_skeletons() {
+    let time_only = DateTimeFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        DateTimeFormatOptions {
+            hour: Some(DateTimeWidth::Numeric),
+            minute: Some(DateTimeWidth::TwoDigit),
+            time_zone: Some("UTC".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let time_parts = time_only.format_range_to_parts(0.0, 7_200_000.0).unwrap();
+    assert!(time_parts.iter().any(|part| part.kind == "hour"));
+    assert!(time_parts
+        .iter()
+        .any(|part| part.source == DateTimeRangePartSource::StartRange));
+    assert!(time_parts
+        .iter()
+        .any(|part| part.source == DateTimeRangePartSource::EndRange));
+
+    let zoned = DateTimeFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        DateTimeFormatOptions {
+            hour: Some(DateTimeWidth::Numeric),
+            minute: Some(DateTimeWidth::TwoDigit),
+            time_zone: Some("America/New_York".into()),
+            time_zone_name: Some("short".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let zone_parts = zoned
+        .format_range_to_parts(1_710_052_200_000.0, 1_710_055_800_000.0)
+        .unwrap();
+    assert!(zone_parts.iter().any(|part| {
+        part.kind == "timeZoneName"
+            && part.value == "EST"
+            && part.source == DateTimeRangePartSource::StartRange
+    }));
+    assert!(zone_parts.iter().any(|part| {
+        part.kind == "timeZoneName"
+            && part.value == "EDT"
+            && part.source == DateTimeRangePartSource::EndRange
+    }));
+
+    let buddhist = DateTimeFormat::try_new(
+        &[canonicalize("th-TH-u-ca-buddhist").unwrap()],
+        DateTimeFormatOptions {
+            year: Some(DateTimeWidth::Numeric),
+            month: Some(DateTimeWidth::Short),
+            day: Some(DateTimeWidth::Numeric),
+            time_zone: Some("UTC".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let buddhist_parts = buddhist.format_range_to_parts(0.0, 86_400_000.0).unwrap();
+    assert!(buddhist_parts.iter().any(|part| part.kind == "year"));
+    assert!(buddhist_parts
+        .iter()
+        .any(|part| part.source == DateTimeRangePartSource::StartRange));
+    assert!(buddhist_parts
+        .iter()
+        .any(|part| part.source == DateTimeRangePartSource::EndRange));
 }
 
 #[test]

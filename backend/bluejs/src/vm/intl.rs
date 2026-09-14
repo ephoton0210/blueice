@@ -2114,7 +2114,6 @@ impl Vm {
             ));
         }
         Ok(blueice_ecma402::DateTimeFormatOptions {
-            use_icu4x_range_formatter: self.config.enable_icu4x_date_range_formatter,
             locale_matcher,
             format_matcher,
             calendar,
@@ -2631,11 +2630,6 @@ impl Vm {
             }
             return Ok(options);
         }
-        // Plain Temporal values need their local ISO fields carried through a
-        // calendar formatter without becoming instants. Keep this explicitly
-        // scoped compatibility path instead of treating it as a replacement
-        // for the instant/date path used by ordinary DateTimeFormat inputs.
-        options.use_icu4x_range_formatter = false;
         // Plain Temporal values denote local calendar fields, not instants.
         // UTC carries those fields through ICU4X without applying the
         // formatter's requested IANA transition rules.
@@ -2740,12 +2734,6 @@ impl Vm {
                     start.plain_epoch_milliseconds(),
                     end.plain_epoch_milliseconds(),
                     self.temporal_format_options(data, kind)?,
-                    matches!(
-                        kind,
-                        TemporalKind::PlainDate
-                            | TemporalKind::PlainMonthDay
-                            | TemporalKind::PlainYearMonth
-                    ),
                 )
                 .map_err(|error| RuntimeError::RangeError(error.to_string())),
         }

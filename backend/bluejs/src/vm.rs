@@ -49,11 +49,6 @@ pub struct VmConfig {
     pub max_string_bytes: usize,
     /// Wall-clock limit for each isolated regex compilation or match.
     pub regex_timeout: std::time::Duration,
-    /// Selects ICU4X's CLDR `DateRangeFormatter` for
-    /// `Intl.DateTimeFormat` ranges. This is a host policy, not a
-    /// non-standard JavaScript option. The production default is enabled;
-    /// `false` is retained as a compatibility escape hatch for embedders.
-    pub enable_icu4x_date_range_formatter: bool,
 }
 
 impl Default for VmConfig {
@@ -63,7 +58,6 @@ impl Default for VmConfig {
             instruction_budget: 1_000_000,
             max_string_bytes: 1024 * 1024,
             regex_timeout: crate::regex_worker::DEFAULT_TIMEOUT,
-            enable_icu4x_date_range_formatter: true,
         }
     }
 }

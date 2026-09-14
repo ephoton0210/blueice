@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm, VmConfig};
+use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
 
 fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap())
@@ -376,7 +376,6 @@ fn date_locale_methods_share_datetime_format_resolution_and_defaults() {
 fn cldr_date_range_formatter_is_the_production_default() {
     let source = "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC',year:'numeric',month:'long',day:'numeric'}); let p=f.formatRangeToParts(0,86400000); f.formatRange(0,86400000) === 'January 1 – 2, 1970' && p.map(x=>x.type+':'+x.source).join(',') === 'month:shared,literal:shared,day:startRange,literal:shared,day:endRange,literal:shared,year:shared'";
 
-    assert!(VmConfig::default().enable_icu4x_date_range_formatter);
     assert_eq!(evaluate(source), Ok(Value::Bool(true)));
 }
 
@@ -412,8 +411,8 @@ fn date_time_range_contract_and_source_regressions() {
         // `source: shared` for equal displayed values is the whole-pattern
         // branch, not a per-part equality rewrite after CLDR serialization.
         "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC'});let p=f.formatRangeToParts(0,0.9);p.length>0&&p.map(x=>x.value).join('')===f.format(0)&&p.every(x=>x.source==='shared')",
-        // ICU4X's known time-only fractional interval limitation remains on
-        // the bounded compatibility path, preserving the ECMA-402 parts.
+        // Time-only fractional seconds retain their field boundaries on the
+        // CLDR range path.
         "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC',minute:'numeric',second:'numeric',fractionalSecondDigits:1});let p=f.formatRangeToParts(0,300);f.formatRange(0,300)==='00:00.0 – 00:00.3'&&p.map(x=>x.type+':'+x.value+':'+x.source).join('|')==='minute:00:startRange|literal:::startRange|second:00:startRange|literal:.:startRange|fractionalSecond:0:startRange|literal: – :shared|minute:00:endRange|literal:::endRange|second:00:endRange|literal:.:endRange|fractionalSecond:3:endRange'",
         // Default en-US and a collapsing CLDR date skeleton retain the
         // formatter-provided source spans without downstream reassignment.
@@ -423,10 +422,11 @@ fn date_time_range_contract_and_source_regressions() {
         // Date/time styles use a one-pattern, all-shared result when their
         // displayed fields agree.
         "let f=new Intl.DateTimeFormat('en-US',{timeZone:'UTC',dateStyle:'long',timeStyle:'short'});let start=1565398923234;let p=f.formatRangeToParts(start,start+1);f.formatRange(start,start+1)===f.format(start)&&p.length>0&&p.every(x=>x.source==='shared')",
-        // The zone-name path is deliberately covered as a compatibility
-        // boundary: it keeps both DST names and endpoint ownership, but is
-        // not represented as a CLDR DateRangeFormatter result.
+        // Zoned inputs retain CLDR's endpoint ownership across a DST change.
         "let f=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit',timeZoneName:'short'});let before=1710052200000;let after=1710055800000;let p=f.formatRangeToParts(before,after);f.format(before).endsWith('EST')&&f.format(after).endsWith('EDT')&&p.some(x=>x.type==='timeZoneName'&&x.value==='EST'&&x.source==='startRange')&&p.some(x=>x.type==='timeZoneName'&&x.value==='EDT'&&x.source==='endRange')",
+        // Plain Temporal values retain local fields while using the same
+        // CLDR interval skeleton and source parts as ordinary ranges.
+        "let f=new Intl.DateTimeFormat('en-US',{year:'numeric',month:'long',day:'numeric'});let start=Temporal.PlainDate.from('2020-01-01');let end=Temporal.PlainDate.from('2020-01-02');let p=f.formatRangeToParts(start,end);p.map(x=>x.value).join('')===f.formatRange(start,end)&&p.some(x=>x.type==='month'&&x.source==='shared')&&p.some(x=>x.type==='year'&&x.source==='shared')&&p.some(x=>x.type==='day'&&x.source==='startRange')&&p.some(x=>x.type==='day'&&x.source==='endRange')",
     ] {
         assert_eq!(evaluate(source), Ok(Value::Bool(true)), "{source}");
     }

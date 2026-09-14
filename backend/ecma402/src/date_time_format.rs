@@ -13,14 +13,18 @@
 use crate::{canonicalize, unicode_keyword, CanonicalLocale, LocaleMatcher};
 use icu_datetime::{
     fieldsets::{
-        builder::{DateFields, FieldSetBuilder},
-        enums::{CompositeDateTimeFieldSet, DateFieldSet},
+        builder::{DateFields, FieldSetBuilder, ZoneStyle},
+        enums::{CompositeDateTimeFieldSet, CompositeFieldSet, DateFieldSet},
         YMD,
     },
-    input::{DateTime, ZonedDateTime},
+    input::{DateTime, TimeZone, UtcOffset, ZonedDateTime},
     options::{Alignment, Length, SubsecondDigits, TimePrecision, YearStyle},
     range::{DateRangeFormatter, DATE_RANGE_PART_SOURCE_CATEGORY},
     DateTimeFormatter,
+};
+use icu_time::{
+    zone::{models::AtTime, ZoneNameTimestamp},
+    TimeZoneInfo,
 };
 use jiff::{tz::TimeZoneDatabase, Timestamp};
 use std::fmt;
@@ -66,14 +70,8 @@ pub enum DateTimeFormatMatcher {
 }
 
 /// The host-neutral options accepted by the DateTimeFormat service.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct DateTimeFormatOptions {
-    /// Host policy switch for ICU4X's CLDR interval formatter. This is
-    /// deliberately not an ECMAScript option; JavaScript callers continue to
-    /// use only standard `Intl.DateTimeFormat` options. New formatters use
-    /// the CLDR formatter by default; `false` remains available only for a
-    /// host that needs the legacy compatibility path while upgrading ICU4X.
-    pub use_icu4x_range_formatter: bool,
     pub locale_matcher: LocaleMatcher,
     pub format_matcher: DateTimeFormatMatcher,
     pub calendar: Option<String>,
@@ -94,34 +92,6 @@ pub struct DateTimeFormatOptions {
     pub time_zone_name: Option<String>,
     pub date_style: Option<DateTimeStyle>,
     pub time_style: Option<DateTimeStyle>,
-}
-
-impl Default for DateTimeFormatOptions {
-    fn default() -> Self {
-        Self {
-            use_icu4x_range_formatter: true,
-            locale_matcher: LocaleMatcher::default(),
-            format_matcher: DateTimeFormatMatcher::default(),
-            calendar: None,
-            numbering_system: None,
-            hour_cycle: None,
-            hour12: None,
-            time_zone: None,
-            weekday: None,
-            era: None,
-            year: None,
-            month: None,
-            day: None,
-            day_period: None,
-            hour: None,
-            minute: None,
-            second: None,
-            fractional_second_digits: None,
-            time_zone_name: None,
-            date_style: None,
-            time_style: None,
-        }
-    }
 }
 
 /// A locale date-time format record considered by basic_format_matcher.
@@ -782,24 +752,12 @@ impl DateTimeFormat {
         start: f64,
         end: f64,
     ) -> Result<Vec<DateTimeRangePart>, DateTimeFormatError> {
-        // ICU4X's DateRangeFormatter accepts date/time input but no external
-        // IANA-zone display data. Its time-only and fractional-second
-        // interval skeletons also emit malformed end spans. Non-Gregorian
-        // calendars need a separate range data path. Keep explicitly limited
-        // compatibility paths for those inputs; every supported range is
-        // formed by the CLDR interval pattern.
-        if !self.options.use_icu4x_range_formatter
-            || self.effective_time_zone_name().is_some()
-            || self.options.fractional_second_digits.is_some()
-            || (self.date_fields().is_none() && self.time_precision().is_some())
-            || self.calendar != "gregory"
-        {
-            return self.format_range_with_zone_name(start, end);
-        }
         let start_milliseconds = time_clip_milliseconds(start)?;
         let end_milliseconds = time_clip_milliseconds(end)?;
-        let start_parts = self.format_to_parts_from_milliseconds(start_milliseconds, false)?;
-        let end_parts = self.format_to_parts_from_milliseconds(end_milliseconds, false)?;
+        let (start_datetime, start_offset) = self.datetime_from_milliseconds(start_milliseconds)?;
+        let (end_datetime, end_offset) = self.datetime_from_milliseconds(end_milliseconds)?;
+        let start_parts = self.format_range_endpoint_to_parts(&start_datetime, start_offset)?;
+        let end_parts = self.format_range_endpoint_to_parts(&end_datetime, end_offset)?;
         // ECMA-402 returns one normal pattern when the requested fields have
         // the same displayed values. This is an equality decision for the
         // entire formatted result, before range-pattern serialization; it
@@ -807,22 +765,29 @@ impl DateTimeFormat {
         if start_parts == end_parts {
             return Ok(start_parts.iter().map(shared_range_part).collect());
         }
-        let (start_datetime, _, _) = self.datetime_from_milliseconds(start_milliseconds)?;
-        let (end_datetime, _, _) = self.datetime_from_milliseconds(end_milliseconds)?;
-        self.format_datetime_range_to_parts(start_datetime, end_datetime)
+        self.format_datetime_range_to_parts(
+            &start_datetime,
+            start_offset,
+            &end_datetime,
+            end_offset,
+        )
     }
 
     fn format_datetime_range_to_parts(
         &self,
-        start: DateTime<icu_calendar::Iso>,
-        end: DateTime<icu_calendar::Iso>,
+        start: &DateTime<icu_calendar::Iso>,
+        start_offset: i32,
+        end: &DateTime<icu_calendar::Iso>,
+        end_offset: i32,
     ) -> Result<Vec<DateTimeRangePart>, DateTimeFormatError> {
         let formatter = DateRangeFormatter::try_new(
             self.format_locale.locale().clone().into(),
-            self.field_set(),
+            self.range_field_set(),
         )
         .map_err(|_| DateTimeFormatError::Formatter)?;
-        let formatted = formatter.format(&start, &end);
+        let start_input = self.zoned_datetime(start, start_offset)?;
+        let end_input = self.zoned_datetime(end, end_offset)?;
+        let formatted = formatter.format(&start_input, &end_input);
         let mut writer = PartWriter::default();
         formatted
             .write_to_parts_with_source(&mut writer)
@@ -831,8 +796,9 @@ impl DateTimeFormat {
             writer.into_range_parts(),
             self.options.fractional_second_digits,
         ));
-        let start = self.format_to_parts_from_datetime(&start)?;
-        let end = self.format_to_parts_from_datetime(&end)?;
+        self.apply_range_part_formatting(&mut parts);
+        let start = self.format_range_endpoint_to_parts(start, start_offset)?;
+        let end = self.format_range_endpoint_to_parts(end, end_offset)?;
         normalize_range_part_sources(&mut parts, &start, &end);
         Ok(parts)
     }
@@ -886,27 +852,22 @@ impl DateTimeFormat {
         start_milliseconds: i64,
         end_milliseconds: i64,
         options: DateTimeFormatOptions,
-        repeat_endpoints: bool,
     ) -> Result<Vec<DateTimeRangePart>, DateTimeFormatError> {
         let formatter = Self::try_new(std::slice::from_ref(&self.locale), options)?;
-        let start = formatter.format_to_parts_from_milliseconds(start_milliseconds, false)?;
-        let end = formatter.format_to_parts_from_milliseconds(end_milliseconds, false)?;
-        if !formatter.options.use_icu4x_range_formatter {
-            if repeat_endpoints && start != end {
-                return Ok(join_range_parts(
-                    &start,
-                    &end,
-                    formatter.range_format().separator,
-                ));
-            }
-            return Ok(formatter.format_range_from_parts(start, end));
-        }
+        let (start_datetime, start_offset) =
+            formatter.datetime_from_milliseconds(start_milliseconds)?;
+        let (end_datetime, end_offset) = formatter.datetime_from_milliseconds(end_milliseconds)?;
+        let start = formatter.format_range_endpoint_to_parts(&start_datetime, start_offset)?;
+        let end = formatter.format_range_endpoint_to_parts(&end_datetime, end_offset)?;
         if start == end {
             return Ok(start.iter().map(shared_range_part).collect());
         }
-        let (start_datetime, _, _) = formatter.datetime_from_milliseconds(start_milliseconds)?;
-        let (end_datetime, _, _) = formatter.datetime_from_milliseconds(end_milliseconds)?;
-        formatter.format_datetime_range_to_parts(start_datetime, end_datetime)
+        formatter.format_datetime_range_to_parts(
+            &start_datetime,
+            start_offset,
+            &end_datetime,
+            end_offset,
+        )
     }
 
     /// Converts an epoch value into ICU4X's calendar input. ICU4X's input
@@ -916,7 +877,7 @@ impl DateTimeFormat {
     fn datetime_from_milliseconds(
         &self,
         milliseconds: i64,
-    ) -> Result<(DateTime<icu_calendar::Iso>, i32, String), DateTimeFormatError> {
+    ) -> Result<(DateTime<icu_calendar::Iso>, i32), DateTimeFormatError> {
         if let Some(offset_seconds) = self.fixed_offset_seconds {
             let zoned = ZonedDateTime::from_epoch_milliseconds_and_utc_offset(
                 milliseconds,
@@ -929,16 +890,15 @@ impl DateTimeFormat {
                     time: zoned.time,
                 },
                 offset_seconds,
-                gmt_offset(offset_seconds, false),
             ));
         }
         let time_zone = time_zone_database()
             .get(&self.time_zone)
             .map_err(|_| DateTimeFormatError::UnsupportedTimeZone)?;
-        let (offset_seconds, abbreviation) = match Timestamp::from_millisecond(milliseconds) {
+        let offset_seconds = match Timestamp::from_millisecond(milliseconds) {
             Ok(timestamp) => {
                 let info = time_zone.to_offset_info(timestamp);
-                (info.offset().seconds(), info.abbreviation().to_string())
+                info.offset().seconds()
             }
             // Jiff's fixed-zone result remains correct outside its civil
             // Timestamp range. For named zones, map the instant into the
@@ -948,7 +908,7 @@ impl DateTimeFormat {
             // TimeClip endpoint merely because it is outside Jiff's civil
             // representation.
             Err(_) => match time_zone.to_fixed_offset() {
-                Ok(offset) => (offset.seconds(), offset.to_string()),
+                Ok(offset) => offset.seconds(),
                 Err(_) => {
                     const GREGORIAN_400_YEAR_MILLISECONDS: i64 = 146_097 * 86_400_000;
                     let timestamp = Timestamp::from_millisecond(
@@ -956,7 +916,7 @@ impl DateTimeFormat {
                     )
                     .expect("a 400-year Gregorian cycle fits Jiff's Timestamp range");
                     let info = time_zone.to_offset_info(timestamp);
-                    (info.offset().seconds(), info.abbreviation().to_string())
+                    info.offset().seconds()
                 }
             },
         };
@@ -971,7 +931,6 @@ impl DateTimeFormat {
                 time: zoned.time,
             },
             offset_seconds,
-            abbreviation,
         ))
     }
 
@@ -980,8 +939,10 @@ impl DateTimeFormat {
         milliseconds: i64,
         include_time_zone_name: bool,
     ) -> Result<Vec<DateTimePart>, DateTimeFormatError> {
-        let (datetime, offset_seconds, abbreviation) =
-            self.datetime_from_milliseconds(milliseconds)?;
+        let (datetime, offset_seconds) = self.datetime_from_milliseconds(milliseconds)?;
+        if include_time_zone_name && self.effective_time_zone_name().is_some() {
+            return self.format_range_endpoint_to_parts(&datetime, offset_seconds);
+        }
         let formatter = DateTimeFormatter::try_new(
             self.format_locale.locale().clone().into(),
             self.field_set(),
@@ -1000,36 +961,25 @@ impl DateTimeFormat {
         self.apply_style_part_widths(&mut parts);
         self.apply_flexible_day_period(&mut parts, datetime.time.hour.number());
         self.apply_calendar_part_completeness(&mut parts);
-        if include_time_zone_name {
-            if let Some(style) = self.effective_time_zone_name() {
-                parts.push(DateTimePart {
-                    kind: "literal".into(),
-                    value: " ".into(),
-                });
-                parts.push(DateTimePart {
-                    kind: "timeZoneName".into(),
-                    value: time_zone_display_name(
-                        style,
-                        &self.time_zone,
-                        offset_seconds,
-                        &abbreviation,
-                    ),
-                });
-            }
-        }
         Ok(parts)
     }
 
-    fn format_to_parts_from_datetime(
+    /// Formats one range endpoint using precisely the same dynamic CLDR
+    /// skeleton as the range formatter. This keeps the whole-pattern
+    /// equality check and source normalization aligned with zone-bearing
+    /// ranges, including local CLDR zone names.
+    fn format_range_endpoint_to_parts(
         &self,
         datetime: &DateTime<icu_calendar::Iso>,
+        offset_seconds: i32,
     ) -> Result<Vec<DateTimePart>, DateTimeFormatError> {
         let formatter = DateTimeFormatter::try_new(
             self.format_locale.locale().clone().into(),
-            self.field_set(),
+            self.range_field_set(),
         )
         .map_err(|_| DateTimeFormatError::Formatter)?;
-        let formatted = formatter.format(datetime);
+        let datetime = self.zoned_datetime(datetime, offset_seconds)?;
+        let formatted = formatter.format(&datetime);
         let mut writer = PartWriter::default();
         formatted
             .write_to_parts(&mut writer)
@@ -1043,6 +993,37 @@ impl DateTimeFormat {
         self.apply_flexible_day_period(&mut parts, datetime.time.hour.number());
         self.apply_calendar_part_completeness(&mut parts);
         Ok(parts)
+    }
+
+    fn zoned_datetime(
+        &self,
+        datetime: &DateTime<icu_calendar::Iso>,
+        offset_seconds: i32,
+    ) -> Result<ZonedDateTime<icu_calendar::Iso, TimeZoneInfo<AtTime>>, DateTimeFormatError> {
+        let time_zone = if self.range_zone_style().is_some() {
+            let zone = if self.fixed_offset_seconds.is_some() {
+                TimeZone::UNKNOWN
+            } else {
+                TimeZone::from_iana_id(&self.time_zone)
+            };
+            zone.with_offset(Some(
+                UtcOffset::try_from_seconds(offset_seconds)
+                    .map_err(|_| DateTimeFormatError::Formatter)?,
+            ))
+            .at_date_time(*datetime)
+        } else {
+            // The zone participates in ICU's range-difference calculation
+            // only when its name is part of the requested skeleton. Otherwise
+            // a DST transition must not force a complete endpoint fallback.
+            TimeZone::UNKNOWN
+                .without_offset()
+                .with_zone_name_timestamp(ZoneNameTimestamp::from_epoch_seconds(0))
+        };
+        Ok(ZonedDateTime {
+            date: datetime.date,
+            time: datetime.time,
+            zone: time_zone,
+        })
     }
 
     fn field_set(&self) -> CompositeDateTimeFieldSet {
@@ -1060,6 +1041,33 @@ impl DateTimeFormat {
             .unwrap_or(CompositeDateTimeFieldSet::Date(DateFieldSet::YMD(
                 YMD::medium(),
             )))
+    }
+
+    fn range_field_set(&self) -> CompositeFieldSet {
+        let mut builder = FieldSetBuilder::new();
+        builder.length = Some(self.length());
+        builder.date_fields = self.date_fields();
+        builder.time_precision = self.time_precision();
+        builder.zone_style = self.range_zone_style();
+        builder.alignment = self.uses_two_digit_fields().then_some(Alignment::Column);
+        builder.year_style = self.year_style();
+        // Dynamic range field sets must retain the zone marker when one was
+        // requested, rather than post-appending a host-generated name.
+        builder
+            .build_composite()
+            .unwrap_or(CompositeFieldSet::Date(DateFieldSet::YMD(YMD::medium())))
+    }
+
+    fn range_zone_style(&self) -> Option<ZoneStyle> {
+        match self.effective_time_zone_name()? {
+            "short" => Some(ZoneStyle::SpecificShort),
+            "long" => Some(ZoneStyle::SpecificLong),
+            "shortOffset" => Some(ZoneStyle::LocalizedOffsetShort),
+            "longOffset" => Some(ZoneStyle::LocalizedOffsetLong),
+            "shortGeneric" => Some(ZoneStyle::GenericShort),
+            "longGeneric" => Some(ZoneStyle::GenericLong),
+            _ => None,
+        }
     }
 
     fn date_fields(&self) -> Option<DateFields> {
@@ -1326,6 +1334,76 @@ impl DateTimeFormat {
         }
     }
 
+    /// Applies the post-processing required by the ECMA-402 part surface to
+    /// CLDR's range-owned fields without discarding their endpoint sources.
+    fn apply_range_part_formatting(&self, parts: &mut Vec<DateTimeRangePart>) {
+        self.repair_time_only_range_delimiter(parts);
+
+        let decimal_separator = match self.numbering_system.as_str() {
+            "arab" | "arabext" => "\u{066b}",
+            _ => ".",
+        };
+        for index in 1..parts.len().saturating_sub(1) {
+            if parts[index].kind == "literal"
+                && parts[index - 1].kind == "second"
+                && parts[index + 1].kind == "fractionalSecond"
+            {
+                parts[index].value = decimal_separator.into();
+            }
+        }
+
+        if self.options.date_style == Some(DateTimeStyle::Short) {
+            for part in parts.iter_mut() {
+                if part.kind != "year" || !part.value.chars().all(char::is_numeric) {
+                    continue;
+                }
+                let digits = part.value.chars().collect::<Vec<_>>();
+                if digits.len() > 2 {
+                    part.value = digits[digits.len() - 2..].iter().collect();
+                }
+            }
+        }
+
+        if self.numbering_system == "hanidec" && self.locale.locale().id.language.as_str() == "en" {
+            for part in parts.iter_mut() {
+                if part.kind == "literal" {
+                    part.value = part.value.replace('\u{202f}', " ");
+                }
+            }
+        }
+    }
+
+    /// ICU4X's generic fallback for a second/subsecond time-only interval can
+    /// retain the narrow day-period separator after the unrequested day period
+    /// has been removed. The interval and endpoint fields are still CLDR's;
+    /// discard only that orphaned punctuation and retain the CLDR range glue.
+    fn repair_time_only_range_delimiter(&self, parts: &mut Vec<DateTimeRangePart>) {
+        if self.options.fractional_second_digits.is_none() {
+            return;
+        }
+        for index in 1..parts.len().saturating_sub(1) {
+            if parts[index].kind != "literal"
+                || !parts[index].value.contains('–')
+                || parts[index - 1].kind != "literal"
+                || parts[index - 1].value != "\u{202f}"
+                || parts[index + 1].kind != "literal"
+                || parts[index + 1].value != ":"
+            {
+                continue;
+            }
+            let value = parts[index].value.clone();
+            parts.splice(
+                index - 1..index + 2,
+                [DateTimeRangePart {
+                    kind: "literal".into(),
+                    value,
+                    source: DateTimeRangePartSource::Shared,
+                }],
+            );
+            break;
+        }
+    }
+
     fn filter_unrequested_range_parts(
         &self,
         parts: Vec<DateTimeRangePart>,
@@ -1354,90 +1432,6 @@ impl DateTimeFormat {
             result.push(parts[index].clone());
         }
         result
-    }
-
-    fn format_range_with_zone_name(
-        &self,
-        start: f64,
-        end: f64,
-    ) -> Result<Vec<DateTimeRangePart>, DateTimeFormatError> {
-        let start = self.format_to_parts(start)?;
-        let end = self.format_to_parts(end)?;
-        Ok(self.format_range_from_parts(start, end))
-    }
-
-    fn format_range_from_parts(
-        &self,
-        start: Vec<DateTimePart>,
-        end: Vec<DateTimePart>,
-    ) -> Vec<DateTimeRangePart> {
-        if start == end {
-            return start
-                .into_iter()
-                .map(|part| DateTimeRangePart {
-                    kind: part.kind,
-                    value: part.value,
-                    source: DateTimeRangePartSource::Shared,
-                })
-                .collect();
-        }
-
-        let range_format = self.range_format();
-        if !range_format.collapse
-            || has_different_year(&start, &end)
-            // ECMA-402 range patterns for a fractional-second difference
-            // render both complete time patterns. Collapsing their common
-            // minute or second prefix loses both text and `source` ownership.
-            || self.options.fractional_second_digits.is_some()
-            // The available English time-only interval patterns repeat both
-            // endpoints when a displayed time field differs. Prefix-based
-            // collapsing would incorrectly mark the repeated prefix shared.
-            || (self.date_fields().is_none() && self.time_precision().is_some())
-            // The default en-US numeric-date pattern has a default range
-            // pattern that repeats complete endpoints. Do not infer sharing
-            // merely from equal textual prefixes.
-            || self.uses_default_date_pattern()
-        {
-            return join_range_parts(&start, &end, range_format.separator);
-        }
-
-        let prefix = shared_prefix_len(&start, &end);
-        let suffix = shared_suffix_len(&start[prefix..], &end[prefix..]);
-        if prefix == 0 && suffix == 0 {
-            return join_range_parts(&start, &end, range_format.separator);
-        }
-
-        let start_end = start.len() - suffix;
-        let end_end = end.len() - suffix;
-        let mut parts = Vec::with_capacity(start.len() + end.len() + 1);
-        parts.extend(start[..prefix].iter().map(shared_range_part));
-        parts.extend(start[prefix..start_end].iter().map(start_range_part));
-        parts.push(DateTimeRangePart {
-            kind: "literal".into(),
-            value: range_format.separator.into(),
-            source: DateTimeRangePartSource::Shared,
-        });
-        parts.extend(end[prefix..end_end].iter().map(end_range_part));
-        parts.extend(start[start_end..].iter().map(shared_range_part));
-        parts
-    }
-
-    fn range_format(&self) -> RangeFormat {
-        let language = self.locale.as_str().split('-').next().unwrap_or("und");
-        match language {
-            "ja" => RangeFormat::repeat("～"),
-            "zh" if self.locale.as_str().starts_with("zh-TW")
-                || self.locale.as_str().starts_with("zh-HK")
-                || self.locale.as_str().starts_with("zh-MO") =>
-            {
-                RangeFormat::repeat("至")
-            }
-            "zh" => RangeFormat::repeat(" – "),
-            "ko" => RangeFormat::collapse("~"),
-            "en" => RangeFormat::collapse("\u{2009}–\u{2009}"),
-            "de" | "fr" | "es" | "it" | "pt" | "ar" => RangeFormat::collapse("–"),
-            _ => RangeFormat::collapse(" – "),
-        }
     }
 
     fn uses_default_date_pattern(&self) -> bool {
@@ -1496,36 +1490,6 @@ fn time_zone_database() -> &'static TimeZoneDatabase {
     DATABASE.get_or_init(TimeZoneDatabase::bundled)
 }
 
-fn time_zone_display_name(style: &str, zone: &str, seconds: i32, abbreviation: &str) -> String {
-    if parse_time_zone_offset(zone).is_some() {
-        return match style {
-            "short" | "shortGeneric" | "shortOffset" => gmt_offset(seconds, false),
-            "long" | "longGeneric" | "longOffset" => gmt_offset(seconds, true),
-            _ => gmt_offset(seconds, false),
-        };
-    }
-    match style {
-        "shortOffset" => gmt_offset(seconds, false),
-        "longOffset" => gmt_offset(seconds, true),
-        "short" => abbreviation.into(),
-        "long" => {
-            if zone == "UTC" {
-                "Coordinated Universal Time".into()
-            } else {
-                // A Zone/Link identifier is not a localized display name.
-                // Until ICU4X's zone-name input is wired into this formatter,
-                // use a long offset fallback. It also keeps
-                // equivalent links (for example Calcutta and Kolkata) from
-                // producing different visible text.
-                gmt_offset(seconds, true)
-            }
-        }
-        "shortGeneric" => zone.rsplit('/').next().unwrap_or(zone).replace('_', " "),
-        "longGeneric" => zone.replace('_', " "),
-        _ => abbreviation.into(),
-    }
-}
-
 /// Parses the restricted ISO offset grammar used by `IsTimeZoneOffsetString`.
 ///
 /// Offsets admit only an ASCII sign followed by `HH`, `HHMM`, or `HH:MM`.
@@ -1575,72 +1539,6 @@ fn ascii_decimal(tens: u8, ones: u8) -> Option<u8> {
         .map(|(tens, ones)| tens + ones)
 }
 
-fn gmt_offset(seconds: i32, long: bool) -> String {
-    if seconds == 0 {
-        return "GMT".into();
-    }
-    let sign = if seconds < 0 { '-' } else { '+' };
-    let absolute = seconds.unsigned_abs();
-    let hours = absolute / 3_600;
-    let minutes = (absolute % 3_600) / 60;
-    if long || minutes != 0 {
-        format!("GMT{sign}{hours:02}:{minutes:02}")
-    } else {
-        format!("GMT{sign}{hours}")
-    }
-}
-
-#[derive(Clone, Copy)]
-struct RangeFormat {
-    separator: &'static str,
-    collapse: bool,
-}
-
-impl RangeFormat {
-    const fn collapse(separator: &'static str) -> Self {
-        Self {
-            separator,
-            collapse: true,
-        }
-    }
-
-    const fn repeat(separator: &'static str) -> Self {
-        Self {
-            separator,
-            collapse: false,
-        }
-    }
-}
-
-fn has_different_year(start: &[DateTimePart], end: &[DateTimePart]) -> bool {
-    let start_year = start
-        .iter()
-        .find(|part| part.kind == "year")
-        .map(|part| part.value.as_str());
-    let end_year = end
-        .iter()
-        .find(|part| part.kind == "year")
-        .map(|part| part.value.as_str());
-    start_year.is_some() && start_year != end_year
-}
-
-fn shared_prefix_len(start: &[DateTimePart], end: &[DateTimePart]) -> usize {
-    start
-        .iter()
-        .zip(end)
-        .take_while(|(start, end)| start == end)
-        .count()
-}
-
-fn shared_suffix_len(start: &[DateTimePart], end: &[DateTimePart]) -> usize {
-    start
-        .iter()
-        .rev()
-        .zip(end.iter().rev())
-        .take_while(|(start, end)| start == end)
-        .count()
-}
-
 fn shared_range_part(part: &DateTimePart) -> DateTimeRangePart {
     DateTimeRangePart {
         kind: part.kind.clone(),
@@ -1649,46 +1547,11 @@ fn shared_range_part(part: &DateTimePart) -> DateTimeRangePart {
     }
 }
 
-fn start_range_part(part: &DateTimePart) -> DateTimeRangePart {
-    DateTimeRangePart {
-        kind: part.kind.clone(),
-        value: part.value.clone(),
-        source: DateTimeRangePartSource::StartRange,
-    }
-}
-
-fn end_range_part(part: &DateTimePart) -> DateTimeRangePart {
-    DateTimeRangePart {
-        kind: part.kind.clone(),
-        value: part.value.clone(),
-        source: DateTimeRangePartSource::EndRange,
-    }
-}
-
-fn join_range_parts(
-    start: &[DateTimePart],
-    end: &[DateTimePart],
-    separator: &'static str,
-) -> Vec<DateTimeRangePart> {
-    let mut parts = Vec::with_capacity(start.len() + end.len() + 1);
-    parts.extend(start.iter().map(start_range_part));
-    parts.push(DateTimeRangePart {
-        kind: "literal".into(),
-        value: separator.into(),
-        source: DateTimeRangePartSource::Shared,
-    });
-    parts.extend(end.iter().map(end_range_part));
-    parts
-}
-
 /// Converts ICU4X's interval-side annotations to ECMA-402's serialized-part
 /// ownership. ICU marks the side that emitted a segment of its interval
 /// pattern, while ECMA-402 marks a field `shared` when one serialized field
 /// represents equal start and end values. A field repeated in the output
 /// remains endpoint-owned, so a default en-US range keeps both years distinct.
-///
-/// This runs only on direct CLDR output. Compatibility ranges keep their own
-/// deliberately bounded ownership model.
 fn normalize_range_part_sources(
     parts: &mut [DateTimeRangePart],
     start: &[DateTimePart],
