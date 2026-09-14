@@ -2187,6 +2187,52 @@ impl Vm {
         result
     }
 
+    fn date_time_range_parts_to_value(
+        &mut self,
+        parts: Vec<blueice_ecma402::DateTimeRangePart>,
+    ) -> Result<Value, RuntimeError> {
+        let prototype = self.object_prototype;
+        let base = self.stack.len();
+        let result = (|| {
+            for part in parts {
+                let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+                self.stack.push(Value::Object(object));
+                self.define_data(
+                    object,
+                    "type",
+                    Value::String(part.kind.into()),
+                    true,
+                    true,
+                    true,
+                )?;
+                self.define_data(
+                    object,
+                    "value",
+                    Value::String(part.value.into()),
+                    true,
+                    true,
+                    true,
+                )?;
+                let source = match part.source {
+                    blueice_ecma402::DateTimeRangePartSource::Shared => "shared",
+                    blueice_ecma402::DateTimeRangePartSource::StartRange => "startRange",
+                    blueice_ecma402::DateTimeRangePartSource::EndRange => "endRange",
+                };
+                self.define_data(
+                    object,
+                    "source",
+                    Value::String(source.into()),
+                    true,
+                    true,
+                    true,
+                )?;
+            }
+            self.array_from(self.stack[base..].to_vec())
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
     pub(super) fn date_time_format_format_to_parts(
         &mut self,
         receiver: &Value,
@@ -2222,20 +2268,9 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let data = self.date_time_format_data(receiver)?;
         let (start, end) = self.date_time_range_values(start, end)?;
-        let start = data
-            .format(start)
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
-        if start
-            == data
-                .format(end)
-                .map_err(|error| RuntimeError::RangeError(error.to_string()))?
-        {
-            return Ok(Value::String(start.into()));
-        }
-        let end = data
-            .format(end)
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
-        Ok(Value::String(format!("{start} – {end}").into()))
+        data.format_range(start, end)
+            .map(|formatted| Value::String(formatted.into()))
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))
     }
 
     pub(super) fn date_time_format_format_range_to_parts(
@@ -2246,55 +2281,10 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let data = self.date_time_format_data(receiver)?;
         let (start, end) = self.date_time_range_values(start, end)?;
-        let start_parts = data
-            .format_to_parts(start)
+        let parts = data
+            .format_range_to_parts(start, end)
             .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
-        let end_parts = data
-            .format_to_parts(end)
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
-        if start_parts == end_parts {
-            return self.date_time_parts_to_value(start_parts, Some("shared"));
-        }
-        let prototype = self.object_prototype;
-        let base = self.stack.len();
-        let result = (|| {
-            let start = self.date_time_parts_to_value(start_parts, Some("startRange"))?;
-            self.stack.push(start.clone());
-            let end = self.date_time_parts_to_value(end_parts, Some("endRange"))?;
-            self.stack.push(end.clone());
-            let separator = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-            self.stack.push(Value::Object(separator));
-            self.define_data(
-                separator,
-                "type",
-                Value::String("literal".into()),
-                true,
-                true,
-                true,
-            )?;
-            self.define_data(
-                separator,
-                "value",
-                Value::String(" – ".into()),
-                true,
-                true,
-                true,
-            )?;
-            self.define_data(
-                separator,
-                "source",
-                Value::String("shared".into()),
-                true,
-                true,
-                true,
-            )?;
-            let mut values = self.array_like_values(&start)?;
-            values.push(Value::Object(separator));
-            values.extend(self.array_like_values(&end)?);
-            self.array_from(values)
-        })();
-        self.stack.truncate(base);
-        result
+        self.date_time_range_parts_to_value(parts)
     }
 
     pub(super) fn date_time_format_resolved_options(

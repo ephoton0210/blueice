@@ -194,6 +194,7 @@ dependencies = [
  "icu_provider",
  "icu_segmenter",
  "jiff",
+ "jiff-tzdb",
  "writeable",
 ]
 

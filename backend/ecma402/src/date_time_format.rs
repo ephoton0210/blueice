@@ -13,11 +13,12 @@
 use crate::{CanonicalLocale, LocaleMatcher};
 use icu_datetime::{
     fieldsets::{
-        enums::{CompositeDateTimeFieldSet, DateAndTimeFieldSet, DateFieldSet, TimeFieldSet},
-        T, YMD,
+        builder::{DateFields, FieldSetBuilder},
+        enums::{CompositeDateTimeFieldSet, DateFieldSet},
+        YMD,
     },
     input::{DateTime, ZonedDateTime},
-    options::{Length, SubsecondDigits},
+    options::{Alignment, Length, SubsecondDigits, TimePrecision, YearStyle},
     DateTimeFormatter,
 };
 use jiff::{tz::TimeZoneDatabase, Timestamp};
@@ -73,6 +74,30 @@ pub enum DateTimeStyle {
 pub struct DateTimePart {
     pub kind: String,
     pub value: String,
+}
+
+/// Which end of a formatted range supplied a part.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DateTimeRangePartSource {
+    Shared,
+    StartRange,
+    EndRange,
+}
+
+/// One `Intl.DateTimeFormat.prototype.formatRangeToParts` record.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DateTimeRangePart {
+    pub kind: String,
+    pub value: String,
+    pub source: DateTimeRangePartSource,
+}
+
+/// The version of the IANA Time Zone Database compiled into BlueIce.
+///
+/// The value comes from the pinned `jiff-tzdb` crate rather than the host's
+/// zoneinfo installation, making an engine build reproducible across hosts.
+pub fn bundled_tzdb_version() -> &'static str {
+    jiff_tzdb::VERSION.unwrap_or("unknown")
 }
 
 /// A failure from DateTimeFormat construction or formatting.
@@ -205,6 +230,64 @@ impl DateTimeFormat {
             .collect())
     }
 
+    /// Formats a range and collapses fields shared by both endpoints using the
+    /// locale's date-field order and interval separator.
+    pub fn format_range(&self, start: f64, end: f64) -> Result<String, DateTimeFormatError> {
+        Ok(self
+            .format_range_to_parts(start, end)?
+            .into_iter()
+            .map(|part| part.value)
+            .collect())
+    }
+
+    /// Formats a range while retaining the ECMA-402 `source` for every part.
+    pub fn format_range_to_parts(
+        &self,
+        start: f64,
+        end: f64,
+    ) -> Result<Vec<DateTimeRangePart>, DateTimeFormatError> {
+        if start > end {
+            return Err(DateTimeFormatError::InvalidTime);
+        }
+        let start = self.format_to_parts(start)?;
+        let end = self.format_to_parts(end)?;
+        if start == end {
+            return Ok(start
+                .into_iter()
+                .map(|part| DateTimeRangePart {
+                    kind: part.kind,
+                    value: part.value,
+                    source: DateTimeRangePartSource::Shared,
+                })
+                .collect());
+        }
+
+        let range_format = self.range_format();
+        if !range_format.collapse || has_different_year(&start, &end) {
+            return Ok(join_range_parts(&start, &end, range_format.separator));
+        }
+
+        let prefix = shared_prefix_len(&start, &end);
+        let suffix = shared_suffix_len(&start[prefix..], &end[prefix..]);
+        if prefix == 0 && suffix == 0 {
+            return Ok(join_range_parts(&start, &end, range_format.separator));
+        }
+
+        let start_end = start.len() - suffix;
+        let end_end = end.len() - suffix;
+        let mut parts = Vec::with_capacity(start.len() + end.len() + 1);
+        parts.extend(start[..prefix].iter().map(shared_range_part));
+        parts.extend(start[prefix..start_end].iter().map(start_range_part));
+        parts.push(DateTimeRangePart {
+            kind: "literal".into(),
+            value: range_format.separator.into(),
+            source: DateTimeRangePartSource::Shared,
+        });
+        parts.extend(end[prefix..end_end].iter().map(end_range_part));
+        parts.extend(start[start_end..].iter().map(shared_range_part));
+        Ok(parts)
+    }
+
     /// Formats a time value and retains every ICU date-time field boundary.
     pub fn format_to_parts(
         &self,
@@ -241,8 +324,8 @@ impl DateTimeFormat {
         formatted
             .write_to_parts(&mut writer)
             .map_err(|_| DateTimeFormatError::Formatter)?;
-        let mut parts = writer.into_parts();
-        if let Some(style) = &self.options.time_zone_name {
+        let mut parts = self.filter_unrequested_parts(writer.into_parts());
+        if let Some(style) = self.effective_time_zone_name() {
             parts.push(DateTimePart {
                 kind: "literal".into(),
                 value: " ".into(),
@@ -261,45 +344,183 @@ impl DateTimeFormat {
     }
 
     fn field_set(&self) -> CompositeDateTimeFieldSet {
-        let date = self.options.date_style.is_some()
-            || self.options.weekday.is_some()
-            || self.options.era.is_some()
-            || self.options.year.is_some()
-            || self.options.month.is_some()
-            || self.options.day.is_some();
-        let time = self.options.time_style.is_some()
-            || self.options.hour.is_some()
-            || self.options.minute.is_some()
-            || self.options.second.is_some()
-            || self.options.fractional_second_digits.is_some();
-        let length = self.length();
-        if date && time {
-            let ymd = YMD::for_length(length);
-            let ymdt = match self.options.fractional_second_digits {
-                Some(digits) => ymd.with_time_hmss(
-                    SubsecondDigits::try_from_int(digits).unwrap_or(SubsecondDigits::S3),
-                ),
-                None if self.options.second.is_some() || self.options.time_style.is_some() => {
-                    ymd.with_time_hms()
-                }
-                None => ymd.with_time_hm(),
-            };
-            CompositeDateTimeFieldSet::DateTime(DateAndTimeFieldSet::YMDT(ymdt))
-        } else if time {
-            let field = match self.options.fractional_second_digits {
-                Some(digits) => {
-                    T::hmss(SubsecondDigits::try_from_int(digits).unwrap_or(SubsecondDigits::S3))
-                }
-                None if self.options.second.is_some() || self.options.time_style.is_some() => {
-                    T::hms()
-                }
-                None => T::hm(),
-            };
-            CompositeDateTimeFieldSet::Time(TimeFieldSet::T(field))
+        let mut builder = FieldSetBuilder::new();
+        builder.length = Some(self.length());
+        builder.date_fields = self.date_fields();
+        builder.time_precision = self.time_precision();
+        builder.alignment = self.uses_two_digit_fields().then_some(Alignment::Column);
+        builder.year_style = self.year_style();
+        // Every builder input is derived from a valid ECMA-402 option set. A
+        // final YMD fallback is retained to make formatter construction total
+        // even if ICU4X adds a new validation rule.
+        builder
+            .build_composite_datetime()
+            .unwrap_or(CompositeDateTimeFieldSet::Date(DateFieldSet::YMD(
+                YMD::medium(),
+            )))
+    }
+
+    fn date_fields(&self) -> Option<DateFields> {
+        if let Some(style) = self.options.date_style {
+            return Some(if style == DateTimeStyle::Full {
+                DateFields::YMDE
+            } else {
+                DateFields::YMD
+            });
+        }
+        let year = self.options.year.is_some() || self.options.era.is_some();
+        let month = self.options.month.is_some();
+        let day = self.options.day.is_some();
+        let weekday = self.options.weekday.is_some();
+        match (year, month, day, weekday) {
+            (false, false, false, false) => None,
+            (false, false, false, true) => Some(DateFields::E),
+            (false, false, true, false) => Some(DateFields::D),
+            (false, false, true, true) => Some(DateFields::DE),
+            (false, true, false, false) => Some(DateFields::M),
+            (false, true, false, true) => Some(DateFields::MDE),
+            (false, true, true, false) => Some(DateFields::MD),
+            (false, true, true, true) => Some(DateFields::MDE),
+            (true, false, false, false) => Some(DateFields::Y),
+            (true, false, false, true) => Some(DateFields::YMDE),
+            (true, false, true, false) => Some(DateFields::YMD),
+            (true, false, true, true) => Some(DateFields::YMDE),
+            (true, true, false, false) => Some(DateFields::YM),
+            (true, true, false, true) => Some(DateFields::YMDE),
+            (true, true, true, false) => Some(DateFields::YMD),
+            (true, true, true, true) => Some(DateFields::YMDE),
+        }
+    }
+
+    fn time_precision(&self) -> Option<TimePrecision> {
+        if let Some(digits) = self.options.fractional_second_digits {
+            return Some(TimePrecision::Subsecond(
+                SubsecondDigits::try_from_int(digits).unwrap_or(SubsecondDigits::S3),
+            ));
+        }
+        if self.options.second.is_some() || self.options.time_style.is_some() {
+            Some(TimePrecision::Second)
+        } else if self.options.minute.is_some() {
+            Some(TimePrecision::Minute)
+        } else if self.options.hour.is_some() || self.options.day_period.is_some() {
+            Some(TimePrecision::Hour)
         } else {
-            // `ToDateTimeOptions` supplies year/month/day for FormatDateTime
-            // when callers select neither a date nor time component.
-            CompositeDateTimeFieldSet::Date(DateFieldSet::YMD(YMD::for_length(length)))
+            None
+        }
+    }
+
+    fn year_style(&self) -> Option<YearStyle> {
+        if self.options.era.is_some() {
+            Some(YearStyle::WithEra)
+        } else if matches!(self.options.year, Some(DateTimeWidth::Numeric)) {
+            Some(YearStyle::Full)
+        } else {
+            None
+        }
+    }
+
+    fn uses_two_digit_fields(&self) -> bool {
+        [
+            self.options.month,
+            self.options.day,
+            self.options.hour,
+            self.options.minute,
+            self.options.second,
+        ]
+        .into_iter()
+        .any(|width| width == Some(DateTimeWidth::TwoDigit))
+    }
+
+    fn effective_time_zone_name(&self) -> Option<&str> {
+        self.options
+            .time_zone_name
+            .as_deref()
+            .or(match self.options.time_style {
+                Some(DateTimeStyle::Full) => Some("long"),
+                Some(DateTimeStyle::Long) => Some("short"),
+                _ => None,
+            })
+    }
+
+    fn shows_part(&self, kind: &str) -> bool {
+        let default_date = self.options.date_style.is_none()
+            && self.options.time_style.is_none()
+            && self.date_fields().is_none()
+            && self.time_precision().is_none();
+        match kind {
+            "weekday" => {
+                self.options.date_style == Some(DateTimeStyle::Full)
+                    || self.options.weekday.is_some()
+            }
+            "era" => self.options.era.is_some(),
+            "year" => {
+                self.options.date_style.is_some() || self.options.year.is_some() || default_date
+            }
+            "month" => {
+                self.options.date_style.is_some() || self.options.month.is_some() || default_date
+            }
+            "day" => {
+                self.options.date_style.is_some() || self.options.day.is_some() || default_date
+            }
+            "dayPeriod" => {
+                self.options.time_style.is_some()
+                    || self.options.day_period.is_some()
+                    || self.options.hour.is_some()
+            }
+            "hour" => self.options.time_style.is_some() || self.options.hour.is_some(),
+            "minute" => self.options.time_style.is_some() || self.options.minute.is_some(),
+            "second" => self.options.time_style.is_some() || self.options.second.is_some(),
+            "fractionalSecond" => self.options.fractional_second_digits.is_some(),
+            _ => true,
+        }
+    }
+
+    fn filter_unrequested_parts(&self, parts: Vec<DateTimePart>) -> Vec<DateTimePart> {
+        let selected = parts
+            .iter()
+            .enumerate()
+            .filter_map(|(index, part)| {
+                (part.kind != "literal" && self.shows_part(&part.kind)).then_some(index)
+            })
+            .collect::<Vec<_>>();
+        if selected.is_empty() {
+            return parts;
+        }
+        let mut result = Vec::with_capacity(selected.len() * 2);
+        for (position, index) in selected.iter().copied().enumerate() {
+            if position > 0 {
+                let literal = parts[selected[position - 1] + 1..index]
+                    .iter()
+                    .filter(|part| part.kind == "literal")
+                    .map(|part| part.value.as_str())
+                    .collect::<String>();
+                if !literal.is_empty() {
+                    result.push(DateTimePart {
+                        kind: "literal".into(),
+                        value: literal,
+                    });
+                }
+            }
+            result.push(parts[index].clone());
+        }
+        result
+    }
+
+    fn range_format(&self) -> RangeFormat {
+        let language = self.locale.as_str().split('-').next().unwrap_or("und");
+        match language {
+            "ja" => RangeFormat::repeat("～"),
+            "zh" if self.locale.as_str().starts_with("zh-TW")
+                || self.locale.as_str().starts_with("zh-HK")
+                || self.locale.as_str().starts_with("zh-MO") =>
+            {
+                RangeFormat::repeat("至")
+            }
+            "zh" => RangeFormat::repeat(" – "),
+            "ko" => RangeFormat::collapse("~"),
+            "en" => RangeFormat::collapse("\u{2009}–\u{2009}"),
+            "de" | "fr" | "es" | "it" | "pt" | "ar" => RangeFormat::collapse("–"),
+            _ => RangeFormat::collapse(" – "),
         }
     }
 
@@ -373,6 +594,97 @@ fn gmt_offset(seconds: i32, long: bool) -> String {
     } else {
         format!("GMT{sign}{hours}")
     }
+}
+
+#[derive(Clone, Copy)]
+struct RangeFormat {
+    separator: &'static str,
+    collapse: bool,
+}
+
+impl RangeFormat {
+    const fn collapse(separator: &'static str) -> Self {
+        Self {
+            separator,
+            collapse: true,
+        }
+    }
+
+    const fn repeat(separator: &'static str) -> Self {
+        Self {
+            separator,
+            collapse: false,
+        }
+    }
+}
+
+fn has_different_year(start: &[DateTimePart], end: &[DateTimePart]) -> bool {
+    let start_year = start
+        .iter()
+        .find(|part| part.kind == "year")
+        .map(|part| part.value.as_str());
+    let end_year = end
+        .iter()
+        .find(|part| part.kind == "year")
+        .map(|part| part.value.as_str());
+    start_year.is_some() && start_year != end_year
+}
+
+fn shared_prefix_len(start: &[DateTimePart], end: &[DateTimePart]) -> usize {
+    start
+        .iter()
+        .zip(end)
+        .take_while(|(start, end)| start == end)
+        .count()
+}
+
+fn shared_suffix_len(start: &[DateTimePart], end: &[DateTimePart]) -> usize {
+    start
+        .iter()
+        .rev()
+        .zip(end.iter().rev())
+        .take_while(|(start, end)| start == end)
+        .count()
+}
+
+fn shared_range_part(part: &DateTimePart) -> DateTimeRangePart {
+    DateTimeRangePart {
+        kind: part.kind.clone(),
+        value: part.value.clone(),
+        source: DateTimeRangePartSource::Shared,
+    }
+}
+
+fn start_range_part(part: &DateTimePart) -> DateTimeRangePart {
+    DateTimeRangePart {
+        kind: part.kind.clone(),
+        value: part.value.clone(),
+        source: DateTimeRangePartSource::StartRange,
+    }
+}
+
+fn end_range_part(part: &DateTimePart) -> DateTimeRangePart {
+    DateTimeRangePart {
+        kind: part.kind.clone(),
+        value: part.value.clone(),
+        source: DateTimeRangePartSource::EndRange,
+    }
+}
+
+fn join_range_parts(
+    start: &[DateTimePart],
+    end: &[DateTimePart],
+    separator: &'static str,
+) -> Vec<DateTimeRangePart> {
+    let mut parts = Vec::with_capacity(start.len() + end.len() + 1);
+    parts.extend(start.iter().map(start_range_part));
+    parts.push(DateTimeRangePart {
+        kind: "literal".into(),
+        value: separator.into(),
+        source: DateTimeRangePartSource::Shared,
+    });
+    parts.extend(end.iter().map(end_range_part));
+    parts
 }
 
 #[derive(Default)]

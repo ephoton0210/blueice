@@ -3,8 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use blueice_ecma402::{
-    canonicalize, DateTimeFormat, DateTimeFormatError, DateTimeFormatOptions, DateTimeStyle,
-    DateTimeWidth,
+    bundled_tzdb_version, canonicalize, DateTimeFormat, DateTimeFormatError, DateTimeFormatOptions,
+    DateTimeRangePartSource, DateTimeStyle, DateTimeWidth,
 };
 
 #[test]
@@ -77,4 +77,94 @@ fn defaults_to_a_date_rejects_invalid_times_and_uses_iana_dst_rules() {
         ),
         Err(DateTimeFormatError::UnsupportedTimeZone)
     ));
+}
+
+#[test]
+fn pins_and_exposes_the_iana_tzdb_release() {
+    assert_eq!(bundled_tzdb_version(), "2026c");
+}
+
+#[test]
+fn uses_the_requested_field_skeleton_without_filling_in_extra_fields() {
+    let format = DateTimeFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        DateTimeFormatOptions {
+            weekday: Some(DateTimeWidth::Long),
+            year: Some(DateTimeWidth::Numeric),
+            day: Some(DateTimeWidth::TwoDigit),
+            time_zone: Some("UTC".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let parts = format.format_to_parts(0.0).unwrap();
+    assert!(parts.iter().any(|part| part.kind == "weekday"));
+    assert!(parts.iter().any(|part| part.kind == "year"));
+    assert!(parts.iter().any(|part| part.kind == "day"));
+    assert!(!parts.iter().any(|part| part.kind == "month"));
+
+    let time = DateTimeFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        DateTimeFormatOptions {
+            hour: Some(DateTimeWidth::Numeric),
+            time_zone: Some("UTC".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap()
+    .format_to_parts(0.0)
+    .unwrap();
+    assert!(time.iter().any(|part| part.kind == "hour"));
+    assert!(!time.iter().any(|part| part.kind == "minute"));
+    assert!(!time.iter().any(|part| part.kind == "second"));
+}
+
+#[test]
+fn collapses_ranges_in_field_order_and_repeats_cjk_endpoints() {
+    let english = DateTimeFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        DateTimeFormatOptions {
+            year: Some(DateTimeWidth::Numeric),
+            month: Some(DateTimeWidth::Long),
+            day: Some(DateTimeWidth::Numeric),
+            time_zone: Some("UTC".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        english.format_range(0.0, 86_400_000.0).unwrap(),
+        "January 1\u{2009}–\u{2009}2, 1970"
+    );
+    let english_parts = english.format_range_to_parts(0.0, 86_400_000.0).unwrap();
+    assert!(english_parts
+        .iter()
+        .any(|part| part.source == DateTimeRangePartSource::Shared && part.kind == "year"));
+    assert!(english_parts
+        .iter()
+        .any(|part| part.source == DateTimeRangePartSource::StartRange && part.kind == "day"));
+    assert!(english_parts
+        .iter()
+        .any(|part| part.source == DateTimeRangePartSource::EndRange && part.kind == "day"));
+
+    let taiwan = DateTimeFormat::try_new(
+        &[canonicalize("zh-TW").unwrap()],
+        DateTimeFormatOptions {
+            year: Some(DateTimeWidth::Numeric),
+            month: Some(DateTimeWidth::Numeric),
+            day: Some(DateTimeWidth::Numeric),
+            time_zone: Some("UTC".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let range = taiwan.format_range(0.0, 86_400_000.0).unwrap();
+    assert!(range.contains('至'), "{range}");
+    let years = taiwan
+        .format_range_to_parts(0.0, 86_400_000.0)
+        .unwrap()
+        .into_iter()
+        .filter(|part| part.kind == "year")
+        .count();
+    assert_eq!(years, 2);
 }
