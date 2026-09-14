@@ -433,6 +433,13 @@ fn date_time_range_contract_and_source_regressions() {
 }
 
 #[test]
+fn temporal_datetime_format_uses_one_typed_bridge_for_values_and_ranges() {
+    let source = "let instantStart=Temporal.Instant.from('2020-01-02T00:00:00Z');let instantEnd=Temporal.Instant.from('2020-01-02T01:00:00Z');let instantFormat=new Intl.DateTimeFormat('en-US',{timeZone:'UTC'});let instant=instantFormat.format(instantStart);let instantParts=instantFormat.formatToParts(instantStart);let instantRange=instantFormat.formatRange(instantStart,instantEnd);let instantRangeParts=instantFormat.formatRangeToParts(instantStart,instantEnd);let plainStart=Temporal.PlainDateTime.from('2020-01-02T00:00');let plainEnd=Temporal.PlainDateTime.from('2020-01-02T01:00');let plainFormat=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',timeStyle:'long'});let plain=plainFormat.format(plainStart);let plainParts=plainFormat.formatToParts(plainStart);let plainRange=plainFormat.formatRange(plainStart,plainEnd);let plainRangeParts=plainFormat.formatRangeToParts(plainStart,plainEnd);instantParts.map(x=>x.value).join('')===instant&&instantParts.some(x=>x.type==='hour')&&instantRangeParts.map(x=>x.value).join('')===instantRange&&instantRangeParts.some(x=>x.type==='hour')&&plainParts.map(x=>x.value).join('')===plain&&!plainParts.some(x=>x.type==='timeZoneName')&&plainRangeParts.map(x=>x.value).join('')===plainRange&&!plainRangeParts.some(x=>x.type==='timeZoneName')";
+
+    assert_eq!(evaluate(source), Ok(Value::Bool(true)));
+}
+
+#[test]
 fn number_format_delegates_to_the_host_neutral_service() {
     for source in [
         "let n=new Intl.NumberFormat('de',{useGrouping:false,minimumFractionDigits:2,maximumFractionDigits:2}); n.format(1007.5) === '1007,50'",

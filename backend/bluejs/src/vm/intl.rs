@@ -13,7 +13,10 @@ use icu_locale_core::{
 use num_traits::ToPrimitive;
 use std::rc::Rc;
 
-enum DateTimeRangeValue {
+/// The VM-side input to `ToDateTimeFormattable`. It keeps JavaScript coercion
+/// and Temporal internal-slot recognition at the Realm boundary before the
+/// host-neutral ECMA-402 service receives a typed input.
+enum DateTimeFormatValue {
     Number(f64),
     Temporal(TemporalValue),
 }
@@ -2542,16 +2545,56 @@ impl Vm {
         data: &blueice_ecma402::DateTimeFormat,
         value: &Value,
     ) -> Result<Vec<blueice_ecma402::DateTimePart>, RuntimeError> {
-        let Some(object) = value.object_id() else {
-            return data
-                .format_to_parts(self.date_time_value(value)?)
-                .map_err(|error| RuntimeError::RangeError(error.to_string()));
+        let value = self.date_time_format_value(value, true)?;
+        let input = self.date_time_format_input(data, value)?;
+        data.format_input_to_parts(input)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+    }
+
+    fn date_time_format_value(
+        &mut self,
+        value: &Value,
+        default_to_now: bool,
+    ) -> Result<DateTimeFormatValue, RuntimeError> {
+        if let Some(object) = value.object_id() {
+            if let Some(temporal) = self.heap.temporal_value(object)? {
+                return Ok(DateTimeFormatValue::Temporal(temporal));
+            }
+        }
+        let epoch_milliseconds = if default_to_now {
+            self.date_time_value(value)?
+        } else {
+            self.coerce_number(value)?
         };
-        let Some(temporal) = self.heap.temporal_value(object)? else {
-            return data
-                .format_to_parts(self.date_time_value(value)?)
-                .map_err(|error| RuntimeError::RangeError(error.to_string()));
-        };
+        Ok(DateTimeFormatValue::Number(epoch_milliseconds))
+    }
+
+    fn date_time_format_input(
+        &self,
+        data: &blueice_ecma402::DateTimeFormat,
+        value: DateTimeFormatValue,
+    ) -> Result<blueice_ecma402::DateTimeFormatInput, RuntimeError> {
+        match value {
+            DateTimeFormatValue::Number(epoch_milliseconds) => Ok(
+                blueice_ecma402::DateTimeFormatInput::EpochMilliseconds(epoch_milliseconds),
+            ),
+            DateTimeFormatValue::Temporal(temporal) => {
+                if temporal.kind == TemporalKind::ZonedDateTime {
+                    return Err(RuntimeError::TypeError(
+                        "Intl.DateTimeFormat does not support Temporal.ZonedDateTime".into(),
+                    ));
+                }
+                let options = self.temporal_format_options(data, temporal.kind)?;
+                self.temporal_date_time_format_input(temporal, options)
+            }
+        }
+    }
+
+    fn temporal_date_time_format_input(
+        &self,
+        temporal: TemporalValue,
+        options: blueice_ecma402::DateTimeFormatOptions,
+    ) -> Result<blueice_ecma402::DateTimeFormatInput, RuntimeError> {
         match temporal.kind {
             TemporalKind::ZonedDateTime => Err(RuntimeError::TypeError(
                 "Intl.DateTimeFormat does not support Temporal.ZonedDateTime".into(),
@@ -2560,35 +2603,23 @@ impl Vm {
                 let milliseconds = (&temporal.epoch_nanoseconds / 1_000_000u32)
                     .to_f64()
                     .ok_or_else(|| RuntimeError::RangeError("invalid Temporal instant".into()))?;
-                data.format_to_parts_with_options(
-                    milliseconds,
-                    self.temporal_format_options(data, TemporalKind::Instant)?,
-                )
-                .map_err(|error| RuntimeError::RangeError(error.to_string()))
+                Ok(blueice_ecma402::DateTimeFormatInput::TemporalInstant {
+                    epoch_milliseconds: milliseconds,
+                    options,
+                })
             }
-            kind => data
-                .format_temporal_to_parts(
-                    temporal.plain_epoch_milliseconds(),
-                    self.temporal_format_options(data, kind)?,
-                )
-                .map_err(|error| RuntimeError::RangeError(error.to_string())),
+            _ => Ok(blueice_ecma402::DateTimeFormatInput::TemporalPlain {
+                local_epoch_milliseconds: temporal.plain_epoch_milliseconds(),
+                options,
+            }),
         }
-    }
-
-    fn date_time_range_value(&mut self, value: &Value) -> Result<DateTimeRangeValue, RuntimeError> {
-        if let Some(object) = value.object_id() {
-            if let Some(value) = self.heap.temporal_value(object)? {
-                return Ok(DateTimeRangeValue::Temporal(value));
-            }
-        }
-        Ok(DateTimeRangeValue::Number(self.coerce_number(value)?))
     }
 
     fn date_time_range_values(
         &mut self,
         start: &Value,
         end: &Value,
-    ) -> Result<(DateTimeRangeValue, DateTimeRangeValue), RuntimeError> {
+    ) -> Result<(DateTimeFormatValue, DateTimeFormatValue), RuntimeError> {
         // Unlike `format` and `formatToParts`, the range methods require both
         // operands. Check that before ToNumber so a missing endpoint takes
         // precedence over observable conversion of the other argument.
@@ -2601,8 +2632,8 @@ impl Vm {
         // an ordinary object's `valueOf` remains observable when the other
         // argument is a Temporal object, as required by ToDateTimeFormattable.
         Ok((
-            self.date_time_range_value(start)?,
-            self.date_time_range_value(end)?,
+            self.date_time_format_value(start, false)?,
+            self.date_time_format_value(end, false)?,
         ))
     }
 
@@ -2715,41 +2746,34 @@ impl Vm {
                 "date-time range endpoints have different calendars".into(),
             ));
         }
-        match start.kind {
-            TemporalKind::ZonedDateTime => Err(RuntimeError::TypeError(
+        if start.kind == TemporalKind::ZonedDateTime {
+            return Err(RuntimeError::TypeError(
                 "Intl.DateTimeFormat does not support Temporal.ZonedDateTime".into(),
-            )),
-            TemporalKind::Instant => {
-                let start = (&start.epoch_nanoseconds / 1_000_000u32)
-                    .to_f64()
-                    .ok_or_else(|| RuntimeError::RangeError("invalid Temporal instant".into()))?;
-                let end = (&end.epoch_nanoseconds / 1_000_000u32)
-                    .to_f64()
-                    .ok_or_else(|| RuntimeError::RangeError("invalid Temporal instant".into()))?;
-                data.format_range_to_parts(start, end)
-                    .map_err(|error| RuntimeError::RangeError(error.to_string()))
-            }
-            kind => data
-                .format_temporal_range_to_parts(
-                    start.plain_epoch_milliseconds(),
-                    end.plain_epoch_milliseconds(),
-                    self.temporal_format_options(data, kind)?,
-                )
-                .map_err(|error| RuntimeError::RangeError(error.to_string())),
+            ));
         }
+        // Both endpoints share a Temporal kind and calendar above, so one
+        // resolved option record must govern direct and range formatting.
+        let options = self.temporal_format_options(data, start.kind)?;
+        let start = self.temporal_date_time_format_input(start, options.clone())?;
+        let end = self.temporal_date_time_format_input(end, options)?;
+        data.format_range_inputs_to_parts(start, end)
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))
     }
 
     fn date_time_range_parts(
         &self,
         data: &blueice_ecma402::DateTimeFormat,
-        start: DateTimeRangeValue,
-        end: DateTimeRangeValue,
+        start: DateTimeFormatValue,
+        end: DateTimeFormatValue,
     ) -> Result<Vec<blueice_ecma402::DateTimeRangePart>, RuntimeError> {
         match (start, end) {
-            (DateTimeRangeValue::Number(start), DateTimeRangeValue::Number(end)) => data
-                .format_range_to_parts(start, end)
+            (DateTimeFormatValue::Number(start), DateTimeFormatValue::Number(end)) => data
+                .format_range_inputs_to_parts(
+                    blueice_ecma402::DateTimeFormatInput::EpochMilliseconds(start),
+                    blueice_ecma402::DateTimeFormatInput::EpochMilliseconds(end),
+                )
                 .map_err(|error| RuntimeError::RangeError(error.to_string())),
-            (DateTimeRangeValue::Temporal(start), DateTimeRangeValue::Temporal(end)) => {
+            (DateTimeFormatValue::Temporal(start), DateTimeFormatValue::Temporal(end)) => {
                 self.temporal_range_parts(data, start, end)
             }
             _ => Err(RuntimeError::TypeError(

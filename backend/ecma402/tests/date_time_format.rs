@@ -4,8 +4,8 @@
 
 use blueice_ecma402::{
     basic_format_matcher, bundled_tzdb_version, canonicalize, DateTimeFormat, DateTimeFormatError,
-    DateTimeFormatMatcher, DateTimeFormatOptions, DateTimeFormatRecord, DateTimeRangePart,
-    DateTimeRangePartSource, DateTimeStyle, DateTimeWidth,
+    DateTimeFormatInput, DateTimeFormatMatcher, DateTimeFormatOptions, DateTimeFormatRecord,
+    DateTimeRangePart, DateTimeRangePartSource, DateTimeStyle, DateTimeWidth,
 };
 
 #[test]
@@ -35,6 +35,53 @@ fn formats_a_utc_epoch_with_localized_parts() {
     assert!(parts.iter().any(|part| part.kind == "month"));
     assert!(parts.iter().any(|part| part.kind == "day"));
     assert_eq!(format.time_zone(), "UTC");
+}
+
+#[test]
+fn typed_inputs_share_single_and_range_temporal_semantics() {
+    let format = DateTimeFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        DateTimeFormatOptions {
+            time_zone: Some("UTC".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let temporal_options = DateTimeFormatOptions {
+        time_zone: Some("UTC".into()),
+        year: Some(DateTimeWidth::Numeric),
+        month: Some(DateTimeWidth::Numeric),
+        day: Some(DateTimeWidth::Numeric),
+        hour: Some(DateTimeWidth::Numeric),
+        minute: Some(DateTimeWidth::Numeric),
+        second: Some(DateTimeWidth::Numeric),
+        ..Default::default()
+    };
+    let start = DateTimeFormatInput::TemporalInstant {
+        epoch_milliseconds: 1_577_923_200_000.0,
+        options: temporal_options.clone(),
+    };
+    let end = DateTimeFormatInput::TemporalInstant {
+        epoch_milliseconds: 1_577_926_800_000.0,
+        options: temporal_options,
+    };
+    let single = format.format_input_to_parts(start.clone()).unwrap();
+    assert!(single.iter().any(|part| part.kind == "hour"));
+    let range = format.format_range_inputs_to_parts(start, end).unwrap();
+    assert!(range.iter().any(|part| part.kind == "hour"));
+    assert!(range
+        .iter()
+        .any(|part| part.source == DateTimeRangePartSource::StartRange));
+    assert_eq!(
+        format.format_range_inputs_to_parts(
+            DateTimeFormatInput::EpochMilliseconds(0.0),
+            DateTimeFormatInput::TemporalPlain {
+                local_epoch_milliseconds: 0,
+                options: DateTimeFormatOptions::default(),
+            },
+        ),
+        Err(DateTimeFormatError::IncompatibleRangeInputs)
+    );
 }
 
 #[test]

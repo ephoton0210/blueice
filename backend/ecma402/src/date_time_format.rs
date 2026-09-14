@@ -70,7 +70,7 @@ pub enum DateTimeFormatMatcher {
 }
 
 /// The host-neutral options accepted by the DateTimeFormat service.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct DateTimeFormatOptions {
     pub locale_matcher: LocaleMatcher,
     pub format_matcher: DateTimeFormatMatcher,
@@ -364,6 +364,7 @@ pub enum DateTimeFormatError {
     InvalidTime,
     UnsupportedTimeZone,
     Formatter,
+    IncompatibleRangeInputs,
 }
 
 impl fmt::Display for DateTimeFormatError {
@@ -372,11 +373,35 @@ impl fmt::Display for DateTimeFormatError {
             Self::InvalidTime => formatter.write_str("invalid time value"),
             Self::UnsupportedTimeZone => formatter.write_str("unsupported time zone"),
             Self::Formatter => formatter.write_str("could not initialize date-time formatter"),
+            Self::IncompatibleRangeInputs => {
+                formatter.write_str("incompatible date-time range inputs")
+            }
         }
     }
 }
 
 impl std::error::Error for DateTimeFormatError {}
+
+/// A typed value supplied to a DateTimeFormat formatting operation.
+///
+/// ECMAScript values and Temporal object identity remain the embedding VM's
+/// responsibility. This preserves the two semantic inputs relevant to the
+/// host-neutral formatter: instants are subject to TimeClip and use ordinary
+/// time-zone conversion, while plain values carry local ISO fields without
+/// TimeClip or a time-zone name. Temporal-specific options are carried with
+/// the value so single-value and range formatting cannot diverge.
+#[derive(Clone, Debug, PartialEq)]
+pub enum DateTimeFormatInput {
+    EpochMilliseconds(f64),
+    TemporalInstant {
+        epoch_milliseconds: f64,
+        options: DateTimeFormatOptions,
+    },
+    TemporalPlain {
+        local_epoch_milliseconds: i64,
+        options: DateTimeFormatOptions,
+    },
+}
 
 /// A locale-aware ECMA-402 DateTimeFormat service.
 #[derive(Clone, Debug)]
@@ -773,6 +798,84 @@ impl DateTimeFormat {
         )
     }
 
+    /// Formats a typed ECMAScript or Temporal input.
+    ///
+    /// The typed bridge is deliberately shared by `format`, `formatToParts`,
+    /// and their range counterparts. In particular, a Temporal.Instant uses
+    /// the same resolved default components in a single value and interval.
+    pub fn format_input_to_parts(
+        &self,
+        input: DateTimeFormatInput,
+    ) -> Result<Vec<DateTimePart>, DateTimeFormatError> {
+        match input {
+            DateTimeFormatInput::EpochMilliseconds(epoch_milliseconds) => {
+                self.format_to_parts(epoch_milliseconds)
+            }
+            DateTimeFormatInput::TemporalInstant {
+                epoch_milliseconds,
+                options,
+            } => {
+                let formatter = self.with_input_options(options)?;
+                formatter.format_to_parts(epoch_milliseconds)
+            }
+            DateTimeFormatInput::TemporalPlain {
+                local_epoch_milliseconds,
+                options,
+            } => {
+                let formatter = self.with_input_options(options)?;
+                formatter.format_to_parts_from_milliseconds(local_epoch_milliseconds, false)
+            }
+        }
+    }
+
+    /// Formats a pair of typed ECMAScript or Temporal inputs with one
+    /// consistent semantic formatter.
+    pub fn format_range_inputs_to_parts(
+        &self,
+        start: DateTimeFormatInput,
+        end: DateTimeFormatInput,
+    ) -> Result<Vec<DateTimeRangePart>, DateTimeFormatError> {
+        match (start, end) {
+            (
+                DateTimeFormatInput::EpochMilliseconds(start),
+                DateTimeFormatInput::EpochMilliseconds(end),
+            ) => self.format_range_to_parts(start, end),
+            (
+                DateTimeFormatInput::TemporalInstant {
+                    epoch_milliseconds: start,
+                    options,
+                },
+                DateTimeFormatInput::TemporalInstant {
+                    epoch_milliseconds: end,
+                    options: end_options,
+                },
+            ) => {
+                if options != end_options {
+                    return Err(DateTimeFormatError::IncompatibleRangeInputs);
+                }
+                let formatter = self.with_input_options(options)?;
+                formatter.format_range_to_parts(start, end)
+            }
+            (
+                DateTimeFormatInput::TemporalPlain {
+                    local_epoch_milliseconds: start,
+                    options,
+                },
+                DateTimeFormatInput::TemporalPlain {
+                    local_epoch_milliseconds: end,
+                    options: end_options,
+                },
+            ) => {
+                if options != end_options {
+                    return Err(DateTimeFormatError::IncompatibleRangeInputs);
+                }
+                let formatter = self.with_input_options(options)?;
+                formatter.format_plain_range_to_parts(start, end)
+            }
+            _ => Err(DateTimeFormatError::IncompatibleRangeInputs),
+        }
+    }
+
     fn format_datetime_range_to_parts(
         &self,
         start: &DateTime<icu_calendar::Iso>,
@@ -812,57 +915,30 @@ impl DateTimeFormat {
         self.format_to_parts_from_milliseconds(milliseconds, true)
     }
 
-    /// Formats a Temporal plain value's ISO local calendar fields.
-    ///
-    /// `ToDateTimeFormattable` carries plain values through a UTC date-time
-    /// only to preserve their fields; it does not convert them to an instant.
-    /// Consequently this intentionally bypasses TimeClip, ignores the
-    /// formatter's requested time zone, and never emits a time-zone name.
-    /// The embedding VM has already removed components that do not overlap
-    /// with the Temporal value's data model.
-    pub fn format_temporal_to_parts(
+    fn with_input_options(
         &self,
-        milliseconds: i64,
         options: DateTimeFormatOptions,
-    ) -> Result<Vec<DateTimePart>, DateTimeFormatError> {
-        let formatter = Self::try_new(std::slice::from_ref(&self.locale), options)?;
-        formatter.format_to_parts_from_milliseconds(milliseconds, false)
+    ) -> Result<Self, DateTimeFormatError> {
+        Self::try_new(std::slice::from_ref(&self.locale), options)
     }
 
-    /// Formats an instant with the supplied, already-resolved service options.
-    /// This keeps `Temporal.Instant` on the ordinary time-zone-aware path
-    /// while allowing `ToDateTimeFormattable` to select its type-specific
-    /// default components.
-    pub fn format_to_parts_with_options(
-        &self,
-        epoch_milliseconds: f64,
-        options: DateTimeFormatOptions,
-    ) -> Result<Vec<DateTimePart>, DateTimeFormatError> {
-        let formatter = Self::try_new(std::slice::from_ref(&self.locale), options)?;
-        formatter.format_to_parts(epoch_milliseconds)
-    }
-
-    /// Formats Temporal plain-object calendar fields. Unlike legacy Date and
-    /// number input, Temporal values are not subject to TimeClip. The caller
-    /// supplies an already-pruned option record and uses UTC solely as a
-    /// calendar carrier: Temporal plain values intentionally ignore the
-    /// formatter's time zone and never render its zone name.
-    pub fn format_temporal_range_to_parts(
+    /// Formats local ISO fields carried by a Temporal plain value. This
+    /// intentionally bypasses TimeClip, time-zone conversion, and zone-name
+    /// output; the typed input builder has already pruned non-overlapping
+    /// components.
+    fn format_plain_range_to_parts(
         &self,
         start_milliseconds: i64,
         end_milliseconds: i64,
-        options: DateTimeFormatOptions,
     ) -> Result<Vec<DateTimeRangePart>, DateTimeFormatError> {
-        let formatter = Self::try_new(std::slice::from_ref(&self.locale), options)?;
-        let (start_datetime, start_offset) =
-            formatter.datetime_from_milliseconds(start_milliseconds)?;
-        let (end_datetime, end_offset) = formatter.datetime_from_milliseconds(end_milliseconds)?;
-        let start = formatter.format_range_endpoint_to_parts(&start_datetime, start_offset)?;
-        let end = formatter.format_range_endpoint_to_parts(&end_datetime, end_offset)?;
+        let (start_datetime, start_offset) = self.datetime_from_milliseconds(start_milliseconds)?;
+        let (end_datetime, end_offset) = self.datetime_from_milliseconds(end_milliseconds)?;
+        let start = self.format_range_endpoint_to_parts(&start_datetime, start_offset)?;
+        let end = self.format_range_endpoint_to_parts(&end_datetime, end_offset)?;
         if start == end {
             return Ok(start.iter().map(shared_range_part).collect());
         }
-        formatter.format_datetime_range_to_parts(
+        self.format_datetime_range_to_parts(
             &start_datetime,
             start_offset,
             &end_datetime,
