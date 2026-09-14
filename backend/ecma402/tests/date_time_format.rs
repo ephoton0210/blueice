@@ -352,3 +352,27 @@ fn range_parts_keep_fractional_second_boundaries_and_accept_reverse_order() {
         .iter()
         .all(|part| part.source == DateTimeRangePartSource::Shared));
 }
+
+#[test]
+fn accepts_ecmascript_time_clip_endpoints_for_utc_ranges() {
+    let format = DateTimeFormat::try_new(
+        &[canonicalize("en").unwrap()],
+        DateTimeFormatOptions {
+            time_zone: Some("UTC".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    const TIME_CLIP_LIMIT: f64 = 8_640_000_000_000_000.0;
+
+    for time in [-TIME_CLIP_LIMIT, TIME_CLIP_LIMIT] {
+        assert!(format.format_to_parts(time).is_ok(), "{time}");
+    }
+    assert!(format
+        .format_range_to_parts(-TIME_CLIP_LIMIT, TIME_CLIP_LIMIT)
+        .is_ok());
+    assert_eq!(
+        format.format_to_parts(TIME_CLIP_LIMIT + 1.0),
+        Err(DateTimeFormatError::InvalidTime)
+    );
+}

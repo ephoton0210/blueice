@@ -3,13 +3,90 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::heap::{TemporalKind, TemporalValue};
 use crate::intl;
 use icu_locale_core::{
     extensions::unicode::Value as UnicodeValue,
     subtags::{Language, Region, Script, Variant, Variants},
     Locale,
 };
+use num_traits::ToPrimitive;
 use std::rc::Rc;
+
+enum DateTimeRangeValue {
+    Number(f64),
+    Temporal(TemporalValue),
+}
+
+fn temporal_has_date_components(options: &blueice_ecma402::DateTimeFormatOptions) -> bool {
+    options.weekday.is_some()
+        || options.era.is_some()
+        || options.year.is_some()
+        || options.month.is_some()
+        || options.day.is_some()
+}
+
+fn temporal_has_time_components(options: &blueice_ecma402::DateTimeFormatOptions) -> bool {
+    options.day_period.is_some()
+        || options.hour.is_some()
+        || options.minute.is_some()
+        || options.second.is_some()
+        || options.fractional_second_digits.is_some()
+}
+
+fn clear_temporal_date_components(options: &mut blueice_ecma402::DateTimeFormatOptions) {
+    options.weekday = None;
+    options.era = None;
+    options.year = None;
+    options.month = None;
+    options.day = None;
+    options.date_style = None;
+}
+
+fn clear_temporal_time_components(options: &mut blueice_ecma402::DateTimeFormatOptions) {
+    options.day_period = None;
+    options.hour = None;
+    options.minute = None;
+    options.second = None;
+    options.fractional_second_digits = None;
+    options.time_style = None;
+}
+
+fn temporal_default_components(
+    options: &mut blueice_ecma402::DateTimeFormatOptions,
+    kind: TemporalKind,
+) {
+    use blueice_ecma402::DateTimeWidth::Numeric;
+    match kind {
+        // Leaving the components absent selects DateTimeFormat's legacy
+        // default numeric-date pattern. That matters for interval patterns:
+        // en-US repeats both default-date endpoints rather than collapsing a
+        // shared year.
+        TemporalKind::PlainDate => {}
+        TemporalKind::PlainDateTime => {
+            options.year = Some(Numeric);
+            options.month = Some(Numeric);
+            options.day = Some(Numeric);
+            options.hour = Some(Numeric);
+            options.minute = Some(Numeric);
+            options.second = Some(Numeric);
+        }
+        TemporalKind::PlainMonthDay => {
+            options.month = Some(Numeric);
+            options.day = Some(Numeric);
+        }
+        TemporalKind::PlainTime => {
+            options.hour = Some(Numeric);
+            options.minute = Some(Numeric);
+            options.second = Some(Numeric);
+        }
+        TemporalKind::PlainYearMonth => {
+            options.year = Some(Numeric);
+            options.month = Some(Numeric);
+        }
+        TemporalKind::Instant | TemporalKind::ZonedDateTime => {}
+    }
+}
 
 impl Vm {
     pub(super) fn intl_global(&mut self) -> Result<Value, RuntimeError> {
@@ -2248,11 +2325,20 @@ impl Vm {
         self.date_time_parts_to_value(parts, None)
     }
 
+    fn date_time_range_value(&mut self, value: &Value) -> Result<DateTimeRangeValue, RuntimeError> {
+        if let Some(object) = value.object_id() {
+            if let Some(value) = self.heap.temporal_value(object)? {
+                return Ok(DateTimeRangeValue::Temporal(value));
+            }
+        }
+        Ok(DateTimeRangeValue::Number(self.coerce_number(value)?))
+    }
+
     fn date_time_range_values(
         &mut self,
         start: &Value,
         end: &Value,
-    ) -> Result<(f64, f64), RuntimeError> {
+    ) -> Result<(DateTimeRangeValue, DateTimeRangeValue), RuntimeError> {
         // Unlike `format` and `formatToParts`, the range methods require both
         // operands. Check that before ToNumber so a missing endpoint takes
         // precedence over observable conversion of the other argument.
@@ -2261,7 +2347,170 @@ impl Vm {
                 "date-time range endpoints must not be undefined".into(),
             ));
         }
-        Ok((self.coerce_number(start)?, self.coerce_number(end)?))
+        // Convert both arguments before checking their kinds. In particular,
+        // an ordinary object's `valueOf` remains observable when the other
+        // argument is a Temporal object, as required by ToDateTimeFormattable.
+        Ok((
+            self.date_time_range_value(start)?,
+            self.date_time_range_value(end)?,
+        ))
+    }
+
+    fn temporal_range_options(
+        &self,
+        data: &blueice_ecma402::DateTimeFormat,
+        kind: TemporalKind,
+    ) -> Result<blueice_ecma402::DateTimeFormatOptions, RuntimeError> {
+        let original = data.options();
+        let has_date = temporal_has_date_components(original);
+        let has_time = temporal_has_time_components(original);
+        // `era` is an additive display field. It does not suppress the
+        // type-specific default components selected by DateTimeFormat.
+        let only_default_components = !(original.date_style.is_some()
+            || original.time_style.is_some()
+            || has_time
+            || original.weekday.is_some()
+            || original.year.is_some()
+            || original.month.is_some()
+            || original.day.is_some());
+        let mut options = original.clone();
+        options.use_experimental_icu4x_range_formatter = false;
+        // Plain Temporal values denote local calendar fields, not instants.
+        // UTC carries those fields through ICU4X without applying the
+        // formatter's requested IANA transition rules.
+        options.time_zone = Some("UTC".into());
+        options.time_zone_name = None;
+        match kind {
+            TemporalKind::PlainDate => clear_temporal_time_components(&mut options),
+            TemporalKind::PlainDateTime => {}
+            TemporalKind::PlainMonthDay => {
+                clear_temporal_time_components(&mut options);
+                options.weekday = None;
+                options.era = None;
+                options.year = None;
+                options.date_style = None;
+                if original.date_style.is_some() {
+                    options.month = Some(blueice_ecma402::DateTimeWidth::Numeric);
+                    options.day = Some(blueice_ecma402::DateTimeWidth::Numeric);
+                }
+            }
+            TemporalKind::PlainTime => clear_temporal_date_components(&mut options),
+            TemporalKind::PlainYearMonth => {
+                clear_temporal_time_components(&mut options);
+                options.weekday = None;
+                options.day = None;
+                options.date_style = None;
+                if original.date_style.is_some() {
+                    options.year = Some(blueice_ecma402::DateTimeWidth::Numeric);
+                    options.month = Some(blueice_ecma402::DateTimeWidth::Numeric);
+                }
+            }
+            TemporalKind::Instant | TemporalKind::ZonedDateTime => unreachable!(),
+        }
+        // `timeStyle: long/full` normally supplies a time-zone name. Plain
+        // values specifically suppress it, so retain the time fields with an
+        // otherwise equivalent non-zone style.
+        if matches!(
+            options.time_style,
+            Some(blueice_ecma402::DateTimeStyle::Full | blueice_ecma402::DateTimeStyle::Long)
+        ) {
+            options.time_style = Some(blueice_ecma402::DateTimeStyle::Medium);
+        }
+        if only_default_components {
+            temporal_default_components(&mut options, kind);
+        }
+        let visible = only_default_components
+            || options.date_style.is_some()
+            || options.time_style.is_some()
+            || temporal_has_date_components(&options)
+            || temporal_has_time_components(&options);
+        if !visible {
+            return Err(RuntimeError::TypeError(
+                "DateTimeFormat options do not overlap the Temporal value".into(),
+            ));
+        }
+        // If a date/time style was present but it did not apply to this
+        // Temporal kind, the pruning above left no components. This is the
+        // same no-overlap TypeError, including dateStyle with PlainTime.
+        if (kind == TemporalKind::PlainTime
+            && original.date_style.is_some()
+            && original.time_style.is_none()
+            && !has_time)
+            || (kind == TemporalKind::PlainDate
+                && original.time_style.is_some()
+                && original.date_style.is_none()
+                && !has_date)
+        {
+            return Err(RuntimeError::TypeError(
+                "DateTimeFormat options do not overlap the Temporal value".into(),
+            ));
+        }
+        Ok(options)
+    }
+
+    fn temporal_range_parts(
+        &self,
+        data: &blueice_ecma402::DateTimeFormat,
+        start: TemporalValue,
+        end: TemporalValue,
+    ) -> Result<Vec<blueice_ecma402::DateTimeRangePart>, RuntimeError> {
+        if start.kind != end.kind {
+            return Err(RuntimeError::TypeError(
+                "date-time range endpoints have different Temporal types".into(),
+            ));
+        }
+        if start.calendar != end.calendar {
+            return Err(RuntimeError::RangeError(
+                "date-time range endpoints have different calendars".into(),
+            ));
+        }
+        match start.kind {
+            TemporalKind::ZonedDateTime => Err(RuntimeError::TypeError(
+                "Intl.DateTimeFormat does not support Temporal.ZonedDateTime".into(),
+            )),
+            TemporalKind::Instant => {
+                let start = (&start.epoch_nanoseconds / 1_000_000u32)
+                    .to_f64()
+                    .ok_or_else(|| RuntimeError::RangeError("invalid Temporal instant".into()))?;
+                let end = (&end.epoch_nanoseconds / 1_000_000u32)
+                    .to_f64()
+                    .ok_or_else(|| RuntimeError::RangeError("invalid Temporal instant".into()))?;
+                data.format_range_to_parts(start, end)
+                    .map_err(|error| RuntimeError::RangeError(error.to_string()))
+            }
+            kind => data
+                .format_temporal_range_to_parts(
+                    start.plain_epoch_milliseconds(),
+                    end.plain_epoch_milliseconds(),
+                    self.temporal_range_options(data, kind)?,
+                    matches!(
+                        kind,
+                        TemporalKind::PlainDate
+                            | TemporalKind::PlainMonthDay
+                            | TemporalKind::PlainYearMonth
+                    ),
+                )
+                .map_err(|error| RuntimeError::RangeError(error.to_string())),
+        }
+    }
+
+    fn date_time_range_parts(
+        &self,
+        data: &blueice_ecma402::DateTimeFormat,
+        start: DateTimeRangeValue,
+        end: DateTimeRangeValue,
+    ) -> Result<Vec<blueice_ecma402::DateTimeRangePart>, RuntimeError> {
+        match (start, end) {
+            (DateTimeRangeValue::Number(start), DateTimeRangeValue::Number(end)) => data
+                .format_range_to_parts(start, end)
+                .map_err(|error| RuntimeError::RangeError(error.to_string())),
+            (DateTimeRangeValue::Temporal(start), DateTimeRangeValue::Temporal(end)) => {
+                self.temporal_range_parts(data, start, end)
+            }
+            _ => Err(RuntimeError::TypeError(
+                "date-time range endpoints have different kinds".into(),
+            )),
+        }
     }
 
     pub(super) fn date_time_format_format_range(
@@ -2272,9 +2521,15 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let data = self.date_time_format_data(receiver)?;
         let (start, end) = self.date_time_range_values(start, end)?;
-        data.format_range(start, end)
-            .map(|formatted| Value::String(formatted.into()))
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+        self.date_time_range_parts(&data, start, end).map(|parts| {
+            Value::String(
+                parts
+                    .into_iter()
+                    .map(|part| part.value)
+                    .collect::<String>()
+                    .into(),
+            )
+        })
     }
 
     pub(super) fn date_time_format_format_range_to_parts(
@@ -2285,9 +2540,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let data = self.date_time_format_data(receiver)?;
         let (start, end) = self.date_time_range_values(start, end)?;
-        let parts = data
-            .format_range_to_parts(start, end)
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        let parts = self.date_time_range_parts(&data, start, end)?;
         self.date_time_range_parts_to_value(parts)
     }
 

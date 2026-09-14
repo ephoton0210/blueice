@@ -216,6 +216,7 @@ impl Vm {
                 | "Proxy"
                 | "Promise"
                 | "Intl"
+                | "Temporal"
                 | "Error"
                 | "TypeError"
                 | "RangeError"

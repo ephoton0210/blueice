@@ -550,6 +550,21 @@ fn weak_collections_accept_object_keys_and_reject_primitive_insertions() {
 }
 
 #[test]
+fn map_entries_preserve_strong_key_identity_and_same_value_zero() {
+    assert_eq!(
+        evaluate(
+            "let key={};let map=new Map();map.set(key,'object').set(-0,'zero').set(NaN,undefined);map.get(key)==='object'&&map.has(key)&&map.get(0)==='zero'&&map.has(NaN)&&map.get(NaN)===undefined&&map.size===3&&map.delete(key)&&!map.has(key)&&map.size===2",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    assert!(matches!(
+        evaluate("Map.prototype.get.call({}, 0)"),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
 fn weak_map_upserts_preserve_symbol_identity_and_callback_order() {
     assert_eq!(
         evaluate(

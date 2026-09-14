@@ -35,6 +35,9 @@ impl Vm {
         if name == "Intl" {
             return self.intl_global();
         }
+        if name == "Temporal" {
+            return self.temporal_global();
+        }
         if name == "RegExp" {
             return self.regexp_global();
         }

@@ -45,9 +45,9 @@ impl Vm {
         Ok(prototype)
     }
 
-    /// Map and Set have distinct ordinary prototypes.  This shared bootstrap
-    /// keeps constructor/new-target inheritance correct before collection
-    /// entries and iterators are introduced.
+    /// Map and Set have distinct ordinary prototypes. Map exposes the core
+    /// keyed-entry operations needed by ECMAScript helpers; Set remains a
+    /// separate bootstrap while its entry methods are introduced.
     pub(in super::super) fn collection_prototype(
         &mut self,
         map: bool,
@@ -64,7 +64,7 @@ impl Vm {
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
         let function_prototype = self.function_prototype()?;
         self.stack.push(Value::Object(prototype));
-        let result = (|| {
+        let result: Result<(), RuntimeError> = (|| {
             self.define_data(
                 prototype,
                 JsSymbol::well_known("toStringTag"),
@@ -79,7 +79,30 @@ impl Vm {
                 "iterator",
                 0,
                 NativeFunction::CollectionIterator { map },
-            )
+            )?;
+            if map {
+                self.install_native_getter(
+                    prototype,
+                    function_prototype,
+                    "size",
+                    NativeFunction::MapSize,
+                )?;
+                for (name, length, method) in [
+                    ("delete", 1, MapMethod::Delete),
+                    ("get", 1, MapMethod::Get),
+                    ("has", 1, MapMethod::Has),
+                    ("set", 2, MapMethod::Set),
+                ] {
+                    self.install_native(
+                        prototype,
+                        function_prototype,
+                        name,
+                        length,
+                        NativeFunction::MapMethod(method),
+                    )?;
+                }
+            }
+            Ok(())
         })();
         self.stack.pop();
         result?;
@@ -171,12 +194,44 @@ impl Vm {
         }
         let default = self.collection_prototype(map)?;
         let prototype = self.constructor_prototype(default)?;
-        let collection = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        let collection = if map {
+            self.with_roots(|heap| heap.alloc_map(Some(prototype)))?
+        } else {
+            self.with_roots(|heap| heap.alloc_object(Some(prototype)))?
+        };
         self.stack.push(Value::Object(collection));
-        let result = self.define_data(collection, "size", Value::Number(0.0), false, false, true);
         self.stack.pop();
-        result?;
         Ok(Value::Object(collection))
+    }
+
+    pub(in super::super) fn map_method(
+        &mut self,
+        method: MapMethod,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let Some(map) = receiver.object_id() else {
+            return Err(RuntimeError::TypeError(
+                "Map method requires a Map receiver".into(),
+            ));
+        };
+        if !self.heap.is_map(map)? {
+            return Err(RuntimeError::TypeError(
+                "Map method requires a Map receiver".into(),
+            ));
+        }
+        let key = native::argument(args, 0);
+        match method {
+            MapMethod::Delete => Ok(Value::Bool(self.heap.map_delete(map, key)?)),
+            MapMethod::Get => Ok(self.heap.map_get(map, key)?.unwrap_or(Value::Undefined)),
+            MapMethod::Has => Ok(Value::Bool(self.heap.map_has(map, key)?)),
+            MapMethod::Set => {
+                self.with_roots(|heap| {
+                    heap.map_set(map, key.clone(), native::argument(args, 1).clone())
+                })?;
+                Ok(Value::Object(map))
+            }
+        }
     }
 
     pub(in super::super) fn weak_ref_prototype(&mut self) -> Result<ObjectId, RuntimeError> {

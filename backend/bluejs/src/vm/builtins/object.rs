@@ -587,6 +587,7 @@ impl Vm {
                     | NativeFunction::String
                     | NativeFunction::Array
                     | NativeFunction::Date
+                    | NativeFunction::TemporalConstructor(_)
                     | NativeFunction::ArrayBuffer
                     | NativeFunction::SharedArrayBuffer
                     | NativeFunction::DataView

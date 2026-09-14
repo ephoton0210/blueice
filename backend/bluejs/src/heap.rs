@@ -27,6 +27,7 @@
 
 use crate::native::NativeFunction;
 use crate::{Bytecode, JsString, JsSymbol, ObjectId, PropertyDescriptor, PropertyName, Value};
+use num_bigint::BigInt;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::mem::size_of;
@@ -530,6 +531,88 @@ pub(crate) struct BoundFunction {
     pub constructible: bool,
 }
 
+/// The Temporal object kinds needed by `Intl.DateTimeFormat`'s
+/// `ToDateTimeFormattable` bridge. These typed internal slots deliberately
+/// avoid observable properties, so ordinary objects cannot impersonate a
+/// Temporal value.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TemporalKind {
+    Instant,
+    PlainDate,
+    PlainDateTime,
+    PlainMonthDay,
+    PlainTime,
+    PlainYearMonth,
+    ZonedDateTime,
+}
+
+impl TemporalKind {
+    pub(crate) const fn name(self) -> &'static str {
+        match self {
+            Self::Instant => "Instant",
+            Self::PlainDate => "PlainDate",
+            Self::PlainDateTime => "PlainDateTime",
+            Self::PlainMonthDay => "PlainMonthDay",
+            Self::PlainTime => "PlainTime",
+            Self::PlainYearMonth => "PlainYearMonth",
+            Self::ZonedDateTime => "ZonedDateTime",
+        }
+    }
+
+    pub(crate) const fn to_string_tag(self) -> &'static str {
+        match self {
+            Self::Instant => "Temporal.Instant",
+            Self::PlainDate => "Temporal.PlainDate",
+            Self::PlainDateTime => "Temporal.PlainDateTime",
+            Self::PlainMonthDay => "Temporal.PlainMonthDay",
+            Self::PlainTime => "Temporal.PlainTime",
+            Self::PlainYearMonth => "Temporal.PlainYearMonth",
+            Self::ZonedDateTime => "Temporal.ZonedDateTime",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct TemporalValue {
+    pub kind: TemporalKind,
+    pub year: i32,
+    pub month: u8,
+    pub day: u8,
+    pub hour: u8,
+    pub minute: u8,
+    pub second: u8,
+    pub millisecond: u16,
+    pub microsecond: u16,
+    pub nanosecond: u16,
+    pub epoch_nanoseconds: BigInt,
+    pub calendar: String,
+    pub time_zone: String,
+}
+
+impl TemporalValue {
+    /// Interprets a Temporal plain value as an ISO local date-time carried in
+    /// UTC milliseconds. This is not instant conversion: ECMA-402 requires
+    /// plain Temporal values to ignore the formatter's time zone.
+    pub(crate) fn plain_epoch_milliseconds(&self) -> i64 {
+        let (year, month, day) = match self.kind {
+            TemporalKind::PlainTime => (1970, 1, 1),
+            _ => (self.year, self.month, self.day),
+        };
+        let year = i64::from(year) - i64::from(month <= 2);
+        let era = year.div_euclid(400);
+        let year_of_era = year - era * 400;
+        let march_month = i64::from(month) + if month > 2 { -3 } else { 9 };
+        let day_of_year = (153 * march_month + 2) / 5 + i64::from(day) - 1;
+        let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+        let days = era * 146_097 + day_of_era - 719_468;
+        days * 86_400_000
+            + i64::from(self.hour) * 3_600_000
+            + i64::from(self.minute) * 60_000
+            + i64::from(self.second) * 1_000
+            + i64::from(self.millisecond)
+    }
+}
+
 enum ObjectKind {
     Ordinary,
     Collator {
@@ -563,6 +646,11 @@ enum ObjectKind {
     /// millisecond count or NaN for an invalid Date.
     Date {
         time: f64,
+    },
+    Temporal(Box<TemporalValue>),
+    /// Strong, insertion-ordered entries for the observable Map core.
+    Map {
+        entries: Vec<(Value, Value)>,
     },
     /// The `[[ErrorData]]` internal slot.  Error instances otherwise use
     /// ordinary property storage, but Object.prototype.toString observes
@@ -1045,6 +1133,11 @@ impl Object {
                 ObjectKind::DataView { buffer, .. } | ObjectKind::TypedArray { buffer, .. } => {
                     vec![*buffer]
                 }
+                ObjectKind::Map { entries } => entries
+                    .iter()
+                    .flat_map(|(key, value)| [key.object_id(), value.object_id()])
+                    .flatten()
+                    .collect(),
                 ObjectKind::Proxy {
                     target, handler, ..
                 } => target.iter().chain(handler.iter()).copied().collect(),
@@ -1111,6 +1204,17 @@ fn private_slot_bytes(name: &JsString, value: &Value) -> usize {
         .saturating_add(value.payload_bytes())
 }
 
+fn map_entry_bytes(key: &Value, value: &Value) -> usize {
+    size_of::<(Value, Value)>()
+        .saturating_add(key.payload_bytes())
+        .saturating_add(value.payload_bytes())
+}
+
+fn same_value_zero(left: &Value, right: &Value) -> bool {
+    left == right
+        || matches!((left, right), (Value::Number(left), Value::Number(right)) if left.is_nan() && right.is_nan())
+}
+
 fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<ObjectId> {
     prototype
         .into_iter()
@@ -1157,6 +1261,11 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
             ObjectKind::DataView { buffer, .. } | ObjectKind::TypedArray { buffer, .. } => {
                 vec![*buffer]
             }
+            ObjectKind::Map { entries } => entries
+                .iter()
+                .flat_map(|(key, value)| [key.object_id(), value.object_id()])
+                .flatten()
+                .collect(),
             ObjectKind::Proxy {
                 target, handler, ..
             } => target.iter().chain(handler.iter()).copied().collect(),
@@ -1253,6 +1362,117 @@ impl Heap {
             },
             prototype,
         )
+    }
+
+    pub(crate) fn alloc_map(&mut self, prototype: Option<ObjectId>) -> Result<ObjectId, HeapError> {
+        self.alloc(
+            ObjectKind::Map {
+                entries: Vec::new(),
+            },
+            prototype,
+        )
+    }
+
+    pub(crate) fn is_map(&self, object: ObjectId) -> Result<bool, HeapError> {
+        Ok(matches!(self.object(object)?.kind, ObjectKind::Map { .. }))
+    }
+
+    pub(crate) fn map_size(&self, object: ObjectId) -> Result<usize, HeapError> {
+        let ObjectKind::Map { entries } = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(entries.len())
+    }
+
+    pub(crate) fn map_get(
+        &self,
+        object: ObjectId,
+        key: &Value,
+    ) -> Result<Option<Value>, HeapError> {
+        let ObjectKind::Map { entries } = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(entries
+            .iter()
+            .find(|(stored_key, _)| same_value_zero(stored_key, key))
+            .map(|(_, value)| value.clone()))
+    }
+
+    pub(crate) fn map_has(&self, object: ObjectId, key: &Value) -> Result<bool, HeapError> {
+        let ObjectKind::Map { entries } = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(entries
+            .iter()
+            .any(|(stored_key, _)| same_value_zero(stored_key, key)))
+    }
+
+    pub(crate) fn map_set(
+        &mut self,
+        object: ObjectId,
+        key: Value,
+        value: Value,
+    ) -> Result<(), HeapError> {
+        if let Some(reference) = key.object_id() {
+            self.object(reference)?;
+        }
+        if let Some(reference) = value.object_id() {
+            self.object(reference)?;
+        }
+        let existing = match &self.object(object)?.kind {
+            ObjectKind::Map { entries } => entries
+                .iter()
+                .position(|(stored_key, _)| same_value_zero(stored_key, &key)),
+            _ => return Err(HeapError::InvalidInternalSlot(object)),
+        };
+        let old_bytes = existing.map_or(0, |index| match &self.objects[&object].kind {
+            ObjectKind::Map { entries } => map_entry_bytes(&entries[index].0, &entries[index].1),
+            _ => unreachable!("Map brand was checked above"),
+        });
+        let new_bytes = map_entry_bytes(&key, &value);
+        let protected: Vec<_> = std::iter::once(object)
+            .chain(key.object_id())
+            .chain(value.object_id())
+            .collect();
+        self.ensure_room(new_bytes.saturating_sub(old_bytes), &protected)?;
+        let entry = self
+            .objects
+            .get_mut(&object)
+            .expect("Map was protected across collection");
+        let ObjectKind::Map { entries } = &mut entry.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        if let Some(index) = existing {
+            entries[index] = (key.clone(), value.clone());
+        } else {
+            entries.push((key.clone(), value.clone()));
+        }
+        entry.bytes = entry.bytes - old_bytes + new_bytes;
+        self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
+        self.write_barrier(object, key.object_id());
+        self.write_barrier(object, value.object_id());
+        Ok(())
+    }
+
+    pub(crate) fn map_delete(&mut self, object: ObjectId, key: &Value) -> Result<bool, HeapError> {
+        let entry = self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?;
+        let ObjectKind::Map { entries } = &mut entry.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        let Some(index) = entries
+            .iter()
+            .position(|(stored_key, _)| same_value_zero(stored_key, key))
+        else {
+            return Ok(false);
+        };
+        let (stored_key, stored_value) = entries.remove(index);
+        let bytes = map_entry_bytes(&stored_key, &stored_value);
+        entry.bytes -= bytes;
+        self.managed_bytes -= bytes;
+        Ok(true)
     }
 
     pub(crate) fn alloc_weak_ref(
@@ -1783,6 +2003,24 @@ impl Heap {
         };
         *slot = time;
         Ok(())
+    }
+
+    pub(crate) fn alloc_temporal(
+        &mut self,
+        value: TemporalValue,
+        prototype: Option<ObjectId>,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::Temporal(Box::new(value)), prototype)
+    }
+
+    pub(crate) fn temporal_value(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<TemporalValue>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::Temporal(value) => Some((**value).clone()),
+            _ => None,
+        })
     }
 }
 

@@ -20,7 +20,7 @@ use crate::heap::{
     TypedArrayNumericKey,
 };
 use crate::native::{
-    AtomicOp, MathMethod, NumberMethod, ObjectMethod, PatternMethod, StringMethod,
+    AtomicOp, MapMethod, MathMethod, NumberMethod, ObjectMethod, PatternMethod, StringMethod,
     TypedArrayMethod, WeakCollectionMethod,
 };
 use std::collections::HashMap;

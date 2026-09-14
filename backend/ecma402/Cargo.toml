@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 fixed_decimal = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57", features = ["ryu"] }
+icu_calendar = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
 icu_collator = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
 icu_decimal = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57", features = ["ryu", "unstable"] }
 icu_datetime = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57", features = ["unstable"] }

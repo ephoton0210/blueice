@@ -27,6 +27,15 @@ use std::fmt;
 use std::sync::OnceLock;
 use writeable::{Part, PartsWrite, Writeable};
 
+const TIME_CLIP_LIMIT: f64 = 8_640_000_000_000_000.0;
+
+fn time_clip_milliseconds(epoch_milliseconds: f64) -> Result<i64, DateTimeFormatError> {
+    if !epoch_milliseconds.is_finite() || epoch_milliseconds.abs() > TIME_CLIP_LIMIT {
+        return Err(DateTimeFormatError::InvalidTime);
+    }
+    Ok(epoch_milliseconds.trunc() as i64)
+}
+
 /// A date/time field width selected by `Intl.DateTimeFormat`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DateTimeWidth {
@@ -169,7 +178,11 @@ impl DateTimeFormat {
                 .clone()
                 .or_else(|| crate::unicode_keyword(selected_locale.locale(), "hc"))
                 .unwrap_or_else(|| {
-                    if selected_locale.as_str().starts_with("en-US") {
+                    // A bare `en` resolves through the CLDR likely-subtag
+                    // default to an English locale with a 12-hour cycle.
+                    if selected_locale.as_str() == "en"
+                        || selected_locale.as_str().starts_with("en-US")
+                    {
                         "h12"
                     } else {
                         "h23"
@@ -260,32 +273,8 @@ impl DateTimeFormat {
         {
             return self.format_range_with_zone_name(start, end);
         }
-        let range_input = |epoch_milliseconds: f64| {
-            if !epoch_milliseconds.is_finite()
-                || !(-8_640_000_000_000_000.0..=8_640_000_000_000_000.0)
-                    .contains(&epoch_milliseconds)
-            {
-                return Err(DateTimeFormatError::InvalidTime);
-            }
-            let milliseconds = epoch_milliseconds.trunc() as i64;
-            let timestamp = Timestamp::from_millisecond(milliseconds)
-                .map_err(|_| DateTimeFormatError::InvalidTime)?;
-            let time_zone = time_zone_database()
-                .get(&self.time_zone)
-                .map_err(|_| DateTimeFormatError::UnsupportedTimeZone)?;
-            let time_zone_info = time_zone.to_offset_info(timestamp);
-            let zoned = ZonedDateTime::from_epoch_milliseconds_and_utc_offset(
-                milliseconds,
-                icu_datetime::input::UtcOffset::try_from_seconds(time_zone_info.offset().seconds())
-                    .map_err(|_| DateTimeFormatError::Formatter)?,
-            );
-            Ok(DateTime {
-                date: zoned.date,
-                time: zoned.time,
-            })
-        };
-        let start_datetime = range_input(start)?;
-        let end_datetime = range_input(end)?;
+        let start_datetime = self.datetime_for_time_clip(start)?;
+        let end_datetime = self.datetime_for_time_clip(end)?;
         let formatter = DateRangeFormatter::try_new(
             self.format_locale.locale().clone().into(),
             self.field_set(),
@@ -336,27 +325,92 @@ impl DateTimeFormat {
         &self,
         epoch_milliseconds: f64,
     ) -> Result<Vec<DateTimePart>, DateTimeFormatError> {
-        if !epoch_milliseconds.is_finite()
-            || !(-8_640_000_000_000_000.0..=8_640_000_000_000_000.0).contains(&epoch_milliseconds)
-        {
-            return Err(DateTimeFormatError::InvalidTime);
+        let milliseconds = time_clip_milliseconds(epoch_milliseconds)?;
+        self.format_to_parts_from_milliseconds(milliseconds, true)
+    }
+
+    /// Formats Temporal plain-object calendar fields. Unlike legacy Date and
+    /// number input, Temporal values are not subject to TimeClip. The caller
+    /// supplies an already-pruned option record and uses UTC solely as a
+    /// calendar carrier: Temporal plain values intentionally ignore the
+    /// formatter's time zone and never render its zone name.
+    pub fn format_temporal_range_to_parts(
+        &self,
+        start_milliseconds: i64,
+        end_milliseconds: i64,
+        options: DateTimeFormatOptions,
+        repeat_endpoints: bool,
+    ) -> Result<Vec<DateTimeRangePart>, DateTimeFormatError> {
+        let formatter = Self::try_new(std::slice::from_ref(&self.locale), options)?;
+        let start = formatter.format_to_parts_from_milliseconds(start_milliseconds, false)?;
+        let end = formatter.format_to_parts_from_milliseconds(end_milliseconds, false)?;
+        if repeat_endpoints && start != end {
+            return Ok(join_range_parts(
+                &start,
+                &end,
+                formatter.range_format().separator,
+            ));
         }
-        let milliseconds = epoch_milliseconds.trunc() as i64;
-        let timestamp = Timestamp::from_millisecond(milliseconds)
-            .map_err(|_| DateTimeFormatError::InvalidTime)?;
+        Ok(formatter.format_range_from_parts(start, end))
+    }
+
+    /// Builds ICU4X's date-time input for a TimeClip-valid ECMAScript number.
+    fn datetime_for_time_clip(
+        &self,
+        epoch_milliseconds: f64,
+    ) -> Result<DateTime<icu_calendar::Iso>, DateTimeFormatError> {
+        let (datetime, _, _) =
+            self.datetime_from_milliseconds(time_clip_milliseconds(epoch_milliseconds)?)?;
+        Ok(datetime)
+    }
+
+    /// Converts an epoch value into ICU4X's calendar input. ICU4X's input
+    /// supports the entire `i64` millisecond domain, while Jiff's `Timestamp`
+    /// intentionally stops at ISO year +/-9999. ECMA-402 must nevertheless
+    /// accept TimeClip's +/-275,760-year endpoints for UTC and fixed zones.
+    fn datetime_from_milliseconds(
+        &self,
+        milliseconds: i64,
+    ) -> Result<(DateTime<icu_calendar::Iso>, i32, String), DateTimeFormatError> {
         let time_zone = time_zone_database()
             .get(&self.time_zone)
             .map_err(|_| DateTimeFormatError::UnsupportedTimeZone)?;
-        let time_zone_info = time_zone.to_offset_info(timestamp);
+        let (offset_seconds, abbreviation) = match Timestamp::from_millisecond(milliseconds) {
+            Ok(timestamp) => {
+                let info = time_zone.to_offset_info(timestamp);
+                (info.offset().seconds(), info.abbreviation().to_string())
+            }
+            // Jiff's fixed-zone result remains correct outside its civil
+            // Timestamp range. `UTC` is by far the common path here (and the
+            // one used by the ECMA-402 boundary tests), but retain the general
+            // fixed-offset case as well.
+            Err(_) => match time_zone.to_fixed_offset() {
+                Ok(offset) => (offset.seconds(), offset.to_string()),
+                Err(_) => return Err(DateTimeFormatError::InvalidTime),
+            },
+        };
         let zoned = ZonedDateTime::from_epoch_milliseconds_and_utc_offset(
             milliseconds,
-            icu_datetime::input::UtcOffset::try_from_seconds(time_zone_info.offset().seconds())
+            icu_datetime::input::UtcOffset::try_from_seconds(offset_seconds)
                 .map_err(|_| DateTimeFormatError::Formatter)?,
         );
-        let datetime = DateTime {
-            date: zoned.date,
-            time: zoned.time,
-        };
+        Ok((
+            DateTime {
+                date: zoned.date,
+                time: zoned.time,
+            },
+            offset_seconds,
+            abbreviation,
+        ))
+    }
+
+    fn format_to_parts_from_milliseconds(
+        &self,
+        milliseconds: i64,
+        include_time_zone_name: bool,
+    ) -> Result<Vec<DateTimePart>, DateTimeFormatError> {
+        let (datetime, offset_seconds, abbreviation) =
+            self.datetime_from_milliseconds(milliseconds)?;
         let formatter = DateTimeFormatter::try_new(
             self.format_locale.locale().clone().into(),
             self.field_set(),
@@ -371,20 +425,22 @@ impl DateTimeFormat {
             writer.into_parts(),
             self.options.fractional_second_digits,
         ));
-        if let Some(style) = self.effective_time_zone_name() {
-            parts.push(DateTimePart {
-                kind: "literal".into(),
-                value: " ".into(),
-            });
-            parts.push(DateTimePart {
-                kind: "timeZoneName".into(),
-                value: time_zone_display_name(
-                    style,
-                    &self.time_zone,
-                    time_zone_info.offset().seconds(),
-                    time_zone_info.abbreviation(),
-                ),
-            });
+        if include_time_zone_name {
+            if let Some(style) = self.effective_time_zone_name() {
+                parts.push(DateTimePart {
+                    kind: "literal".into(),
+                    value: " ".into(),
+                });
+                parts.push(DateTimePart {
+                    kind: "timeZoneName".into(),
+                    value: time_zone_display_name(
+                        style,
+                        &self.time_zone,
+                        offset_seconds,
+                        &abbreviation,
+                    ),
+                });
+            }
         }
         Ok(parts)
     }
@@ -414,7 +470,7 @@ impl DateTimeFormat {
                 DateFields::YMD
             });
         }
-        let year = self.options.year.is_some() || self.options.era.is_some();
+        let year = self.options.year.is_some();
         let month = self.options.month.is_some();
         let day = self.options.day.is_some();
         let weekday = self.options.weekday.is_some();
@@ -590,15 +646,23 @@ impl DateTimeFormat {
     ) -> Result<Vec<DateTimeRangePart>, DateTimeFormatError> {
         let start = self.format_to_parts(start)?;
         let end = self.format_to_parts(end)?;
+        Ok(self.format_range_from_parts(start, end))
+    }
+
+    fn format_range_from_parts(
+        &self,
+        start: Vec<DateTimePart>,
+        end: Vec<DateTimePart>,
+    ) -> Vec<DateTimeRangePart> {
         if start == end {
-            return Ok(start
+            return start
                 .into_iter()
                 .map(|part| DateTimeRangePart {
                     kind: part.kind,
                     value: part.value,
                     source: DateTimeRangePartSource::Shared,
                 })
-                .collect());
+                .collect();
         }
 
         let range_format = self.range_format();
@@ -617,13 +681,13 @@ impl DateTimeFormat {
             // merely from equal textual prefixes.
             || self.uses_default_date_pattern()
         {
-            return Ok(join_range_parts(&start, &end, range_format.separator));
+            return join_range_parts(&start, &end, range_format.separator);
         }
 
         let prefix = shared_prefix_len(&start, &end);
         let suffix = shared_suffix_len(&start[prefix..], &end[prefix..]);
         if prefix == 0 && suffix == 0 {
-            return Ok(join_range_parts(&start, &end, range_format.separator));
+            return join_range_parts(&start, &end, range_format.separator);
         }
 
         let start_end = start.len() - suffix;
@@ -638,7 +702,7 @@ impl DateTimeFormat {
         });
         parts.extend(end[prefix..end_end].iter().map(end_range_part));
         parts.extend(start[start_end..].iter().map(shared_range_part));
-        Ok(parts)
+        parts
     }
 
     fn range_format(&self) -> RangeFormat {
@@ -663,7 +727,6 @@ impl DateTimeFormat {
         self.options.date_style.is_none()
             && self.options.time_style.is_none()
             && self.options.weekday.is_none()
-            && self.options.era.is_none()
             && self.options.year.is_none()
             && self.options.month.is_none()
             && self.options.day.is_none()

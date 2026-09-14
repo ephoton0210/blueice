@@ -32,6 +32,7 @@ mod modules;
 mod operations;
 mod properties;
 mod regexp;
+mod temporal;
 mod test262;
 mod test262_agents;
 use std::cmp::Ordering;
@@ -1776,6 +1777,7 @@ impl Vm {
                 NativeFunction::String
                     | NativeFunction::Array
                     | NativeFunction::Date
+                    | NativeFunction::TemporalConstructor(_)
                     | NativeFunction::ArrayBuffer
                     | NativeFunction::SharedArrayBuffer
                     | NativeFunction::DataView

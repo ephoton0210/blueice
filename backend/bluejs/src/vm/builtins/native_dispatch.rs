@@ -957,6 +957,14 @@ impl Vm {
             NativeFunction::DateTimeFormatResolvedOptions => {
                 self.date_time_format_resolved_options(&receiver)
             }
+            NativeFunction::TemporalConstructor(kind) => {
+                self.temporal_constructor(kind, &args, construct)
+            }
+            NativeFunction::TemporalFrom(kind) => self.temporal_from(kind, first),
+            NativeFunction::TemporalWithCalendar => self.temporal_with_calendar(&receiver, first),
+            NativeFunction::TemporalZonedDateTimeToLocaleString => {
+                self.temporal_zoned_date_time_to_locale_string(&receiver)
+            }
             NativeFunction::ListFormatSupportedLocales => self.list_format_supported_locales(&args),
             NativeFunction::ListFormatFormat => self.list_format_format(&receiver, first),
             NativeFunction::ListFormatFormatToParts => {
@@ -1200,6 +1208,20 @@ impl Vm {
                 Ok(Value::Undefined)
             }
             NativeFunction::Map => self.collection_constructor(true, construct),
+            NativeFunction::MapMethod(method) => self.map_method(method, &receiver, &args),
+            NativeFunction::MapSize => {
+                let Some(map) = receiver.object_id() else {
+                    return Err(RuntimeError::TypeError(
+                        "Map size requires a Map receiver".into(),
+                    ));
+                };
+                if !self.heap.is_map(map)? {
+                    return Err(RuntimeError::TypeError(
+                        "Map size requires a Map receiver".into(),
+                    ));
+                }
+                Ok(Value::Number(self.heap.map_size(map)? as f64))
+            }
             NativeFunction::Set => self.collection_constructor(false, construct),
             NativeFunction::WeakMap => self.weak_collection_constructor(true, &args, construct),
             NativeFunction::WeakSet => self.weak_collection_constructor(false, &args, construct),

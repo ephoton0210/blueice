@@ -7,7 +7,7 @@
 //! units and bound string growth before allocating the result.
 
 use crate::{
-    heap::{ArrayIteratorKind, TypedArrayKind},
+    heap::{ArrayIteratorKind, TemporalKind, TypedArrayKind},
     primitive, JsString, ObjectId, RuntimeError, Value,
 };
 use unicode_normalization::UnicodeNormalization;
@@ -74,6 +74,14 @@ pub(crate) enum WeakCollectionMethod {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MapMethod {
+    Delete,
+    Get,
+    Has,
+    Set,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DateMethod {
     Get(DatePart),
     GetYear,
@@ -131,6 +139,10 @@ pub(crate) enum NativeFunction {
     DateParse,
     DateUtc,
     DateMethod(DateMethod),
+    TemporalConstructor(TemporalKind),
+    TemporalFrom(TemporalKind),
+    TemporalWithCalendar,
+    TemporalZonedDateTimeToLocaleString,
     ArrayBuffer,
     ArrayBufferByteLength,
     ArrayBufferMaxByteLength,
@@ -187,6 +199,8 @@ pub(crate) enum NativeFunction {
     ProxyRevocable,
     ProxyRevoker(ObjectId),
     Map,
+    MapMethod(MapMethod),
+    MapSize,
     Set,
     WeakMap,
     WeakSet,

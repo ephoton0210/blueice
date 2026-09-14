@@ -236,6 +236,9 @@ fn date_time_format_constructs_formats_and_exposes_parts() {
         "Intl.DateTimeFormat.supportedLocalesOf(['zz','de-DE','en']).join(',') === 'de-DE,en'",
         "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC'}); f.format === f.format && f.format.name === '' && f.format.length === 1 && f.format.prototype === undefined",
         "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC'}); let converted=false; let poison={valueOf:function(){converted=true;return 0}}; let caught=false; try{f.formatRangeToParts(undefined,poison)}catch(error){caught=error instanceof TypeError} caught && !converted",
+        "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC'}); let low=f.formatRange(-8640000000000000,0); let high=f.formatRange(0,8640000000000000); let bad=false; try{f.formatRange(8640000000000001,0)}catch(error){bad=error instanceof RangeError} low.length>0&&high.length>0&&bad",
+        "let f=new Intl.DateTimeFormat('en',{timeZone:'America/New_York',year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',timeZoneName:'short'});let start=Temporal.PlainDateTime.from('2020-01-01T00:00');let end=Temporal.PlainDateTime.from('2020-01-01T01:00');let parts=f.formatRangeToParts(start,end);parts.some(x=>x.source==='startRange')&&parts.some(x=>x.source==='endRange')&&!parts.some(x=>x.type==='timeZoneName')&&f.formatRange(start,end).length>0",
+        "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC',year:'numeric',month:'numeric',day:'numeric'});let start=new Temporal.PlainDate(2020,1,1);let end=new Temporal.PlainDate(2020,1,2);let p=f.formatRangeToParts(start,end);p[0].source==='startRange'&&p[p.length-1].source==='endRange'&&f.formatRange(start,end).length>0",
     ] {
         match evaluate(source) {
             Ok(value) => assert_eq!(value, Value::Bool(true), "{source}"),
