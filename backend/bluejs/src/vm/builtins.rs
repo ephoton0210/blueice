@@ -2188,44 +2188,57 @@ impl Vm {
                 ))
             }
             Keys | Values | Entries | GetOwnPropertyNames | GetOwnPropertySymbols | OwnKeys => {
-                let keys = self.object_own_property_keys(object)?;
-                let mut values = Vec::new();
-                for key in keys {
-                    if matches!(method, Keys | Values | Entries) {
-                        // EnumerableOwnProperties filters to String keys
-                        // before it invokes [[GetOwnProperty]].  A Proxy
-                        // descriptor trap must therefore never observe a
-                        // symbol that Object.keys/values/entries will omit.
-                        if !matches!(key, PropertyName::String(_)) {
+                // Each entry array is created before the final result array.
+                // Keep already-created object values on the VM stack while a
+                // later getter or allocation can trigger collection.
+                let base = self.stack.len();
+                let result = (|| {
+                    let keys = self.object_own_property_keys(object)?;
+                    let mut values = Vec::new();
+                    for key in keys {
+                        if matches!(method, Keys | Values | Entries) {
+                            // EnumerableOwnProperties filters to String keys
+                            // before it invokes [[GetOwnProperty]].  A Proxy
+                            // descriptor trap must therefore never observe a
+                            // symbol that Object.keys/values/entries will omit.
+                            if !matches!(key, PropertyName::String(_)) {
+                                continue;
+                            }
+                            // EnumerableOwnProperties snapshots keys, but obtains
+                            // a descriptor for each key immediately before it
+                            // observes the value.  An earlier getter can delete
+                            // a later key, in which case it is simply omitted.
+                            let Some(descriptor) = self.object_get_own_property(object, &key)?
+                            else {
+                                continue;
+                            };
+                            if descriptor.enumerable != Some(true) {
+                                continue;
+                            }
+                        }
+                        if method == GetOwnPropertyNames && !matches!(key, PropertyName::String(_))
+                            || method == GetOwnPropertySymbols
+                                && !matches!(key, PropertyName::Symbol(_))
+                        {
                             continue;
                         }
-                        // EnumerableOwnProperties snapshots keys, but obtains
-                        // a descriptor for each key immediately before it
-                        // observes the value.  An earlier getter can delete
-                        // a later key, in which case it is simply omitted.
-                        let Some(descriptor) = self.object_get_own_property(object, &key)? else {
-                            continue;
+                        let value = if method == Values {
+                            self.get_property(&Value::Object(object), &key)?
+                        } else if method == Entries {
+                            let value = self.get_property(&Value::Object(object), &key)?;
+                            self.array_from(vec![key.value(), value])?
+                        } else {
+                            key.value()
                         };
-                        if descriptor.enumerable != Some(true) {
-                            continue;
+                        if matches!(value, Value::Object(_)) {
+                            self.stack.push(value.clone());
                         }
+                        values.push(value);
                     }
-                    if method == GetOwnPropertyNames && !matches!(key, PropertyName::String(_))
-                        || method == GetOwnPropertySymbols
-                            && !matches!(key, PropertyName::Symbol(_))
-                    {
-                        continue;
-                    }
-                    if method == Values {
-                        values.push(self.get_property(&Value::Object(object), &key)?);
-                    } else if method == Entries {
-                        let value = self.get_property(&Value::Object(object), &key)?;
-                        values.push(self.array_from(vec![key.value(), value])?);
-                    } else {
-                        values.push(key.value());
-                    }
-                }
-                self.array_from(values)
+                    self.array_from(values)
+                })();
+                self.stack.truncate(base);
+                result
             }
             GetPrototypeOf | ReflectGetPrototypeOf => Ok(self
                 .object_get_prototype(object)?

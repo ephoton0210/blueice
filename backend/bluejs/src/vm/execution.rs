@@ -862,7 +862,10 @@ impl Vm {
                 .iter()
                 .chain(self.bindings.iter().flatten())
                 .chain(std::iter::once(&self.completion))
+                .chain(std::iter::once(&self.this))
+                .chain(self.arguments.iter())
                 .chain(std::iter::once(&self.callee))
+                .chain(std::iter::once(&self.new_target))
                 .chain(self.pending_completions.iter().flat_map(|completion| {
                     let values: &[Value] = match completion {
                         Completion::Return(value)
@@ -888,6 +891,15 @@ impl Vm {
                 }
             }
             for object in &self.kept_weak_objects {
+                roots.push(self.heap.root(*object)?);
+            }
+            for object in self
+                .home_object
+                .iter()
+                .chain(self.class_constructor.iter())
+                .chain(self.templates.values())
+                .chain(self.joining.iter())
+            {
                 roots.push(self.heap.root(*object)?);
             }
             for id in self.cells.values() {

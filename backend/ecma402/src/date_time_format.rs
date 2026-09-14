@@ -899,9 +899,10 @@ impl DateTimeFormat {
             writer.into_range_parts(),
             self.options.fractional_second_digits,
         ));
-        self.apply_range_part_formatting(&mut parts);
         let start = self.format_range_endpoint_to_parts(start, start_offset)?;
         let end = self.format_range_endpoint_to_parts(end, end_offset)?;
+        self.repair_missing_range_seconds(&mut parts, &start, &end);
+        self.apply_range_part_formatting(&mut parts);
         normalize_range_part_sources(&mut parts, &start, &end);
         Ok(parts)
     }
@@ -1397,6 +1398,14 @@ impl DateTimeFormat {
     /// at the semantic part boundary instead of exposing an incomplete
     /// `relatedYear`/`yearName` pair to JavaScript.
     fn apply_calendar_part_completeness(&self, parts: &mut Vec<DateTimePart>) {
+        if matches!(self.calendar.as_str(), "chinese" | "dangi") {
+            for part in parts.iter_mut() {
+                if part.kind == "year" {
+                    part.kind = "relatedYear".into();
+                }
+            }
+        }
+
         if self.calendar != "chinese" || self.locale.locale().id.language.as_str() != "zh" {
             return;
         }
@@ -1414,6 +1423,14 @@ impl DateTimeFormat {
     /// CLDR's range-owned fields without discarding their endpoint sources.
     fn apply_range_part_formatting(&self, parts: &mut Vec<DateTimeRangePart>) {
         self.repair_time_only_range_delimiter(parts);
+
+        if matches!(self.calendar.as_str(), "chinese" | "dangi") {
+            for part in parts.iter_mut() {
+                if part.kind == "year" {
+                    part.kind = "relatedYear".into();
+                }
+            }
+        }
 
         let decimal_separator = match self.numbering_system.as_str() {
             "arab" | "arabext" => "\u{066b}",
@@ -1449,14 +1466,11 @@ impl DateTimeFormat {
         }
     }
 
-    /// ICU4X's generic fallback for a second/subsecond time-only interval can
+    /// ICU4X's generic fallback for a time-only interval can
     /// retain the narrow day-period separator after the unrequested day period
     /// has been removed. The interval and endpoint fields are still CLDR's;
     /// discard only that orphaned punctuation and retain the CLDR range glue.
     fn repair_time_only_range_delimiter(&self, parts: &mut Vec<DateTimeRangePart>) {
-        if self.options.fractional_second_digits.is_none() {
-            return;
-        }
         for index in 1..parts.len().saturating_sub(1) {
             if parts[index].kind != "literal"
                 || !parts[index].value.contains('–')
@@ -1477,6 +1491,79 @@ impl DateTimeFormat {
                 }],
             );
             break;
+        }
+    }
+
+    /// ICU4X's dynamic interval fallback can omit an explicitly requested
+    /// seconds field from both endpoints of a time range, even though its
+    /// matching endpoint formatter includes it. Keep the CLDR interval and
+    /// its ownership data, and restore only the missing typed field and its
+    /// endpoint-local separator.
+    fn repair_missing_range_seconds(
+        &self,
+        parts: &mut Vec<DateTimeRangePart>,
+        start: &[DateTimePart],
+        end: &[DateTimePart],
+    ) {
+        if self.options.second.is_none() || parts.iter().any(|part| part.kind == "second") {
+            return;
+        }
+
+        for (source, endpoint) in [
+            (DateTimeRangePartSource::StartRange, start),
+            (DateTimeRangePartSource::EndRange, end),
+        ] {
+            let Some(second_index) = endpoint.iter().position(|part| part.kind == "second") else {
+                continue;
+            };
+            let Some(separator) = second_index
+                .checked_sub(1)
+                .and_then(|index| endpoint.get(index))
+                .filter(|part| part.kind == "literal")
+            else {
+                continue;
+            };
+            let Some(minute_index) = parts
+                .iter()
+                .position(|part| part.source == source && part.kind == "minute")
+            else {
+                continue;
+            };
+
+            // When a day period or zone follows the minute, its leading
+            // literal belongs after the restored second. Otherwise the range
+            // glue (or the end of the vector) directly follows the minute.
+            let insertion = parts[minute_index + 1..]
+                .iter()
+                .position(|part| {
+                    part.source == source
+                        && matches!(part.kind.as_str(), "dayPeriod" | "timeZoneName")
+                })
+                .map(|index| {
+                    let field_index = minute_index + 1 + index;
+                    (minute_index + 1..field_index)
+                        .rev()
+                        .find(|&index| {
+                            parts[index].source == source && parts[index].kind == "literal"
+                        })
+                        .unwrap_or(field_index)
+                })
+                .unwrap_or(minute_index + 1);
+            parts.splice(
+                insertion..insertion,
+                [
+                    DateTimeRangePart {
+                        kind: "literal".into(),
+                        value: separator.value.clone(),
+                        source,
+                    },
+                    DateTimeRangePart {
+                        kind: "second".into(),
+                        value: endpoint[second_index].value.clone(),
+                        source,
+                    },
+                ],
+            );
         }
     }
 
