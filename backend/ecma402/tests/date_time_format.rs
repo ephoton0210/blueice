@@ -37,7 +37,7 @@ fn formats_a_utc_epoch_with_localized_parts() {
 }
 
 #[test]
-fn defaults_to_a_date_and_rejects_invalid_times_and_zones() {
+fn defaults_to_a_date_rejects_invalid_times_and_uses_iana_dst_rules() {
     let format = DateTimeFormat::try_new(
         &[canonicalize("de-DE").unwrap()],
         DateTimeFormatOptions {
@@ -51,11 +51,27 @@ fn defaults_to_a_date_and_rejects_invalid_times_and_zones() {
         format.format(f64::NAN),
         Err(DateTimeFormatError::InvalidTime)
     );
+    let new_york = DateTimeFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        DateTimeFormatOptions {
+            time_zone: Some("America/New_York".into()),
+            hour: Some(DateTimeWidth::Numeric),
+            minute: Some(DateTimeWidth::TwoDigit),
+            time_zone_name: Some("short".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let winter = new_york.format(1_705_320_000_000.0).unwrap();
+    let summer = new_york.format(1_721_044_800_000.0).unwrap();
+    assert!(winter.ends_with("EST"), "{winter}");
+    assert!(summer.ends_with("EDT"), "{summer}");
+    assert_eq!(new_york.time_zone(), "America/New_York");
     assert!(matches!(
         DateTimeFormat::try_new(
             &[canonicalize("en").unwrap()],
             DateTimeFormatOptions {
-                time_zone: Some("America/New_York".into()),
+                time_zone: Some("No/Such_Zone".into()),
                 ..Default::default()
             },
         ),

@@ -221,6 +221,7 @@ fn date_time_format_constructs_formats_and_exposes_parts() {
         "let f=Intl.DateTimeFormat('de-DE',{timeZone:'UTC',hour:'numeric',minute:'2-digit',second:'2-digit'}); let r=f.resolvedOptions(); f instanceof Intl.DateTimeFormat && f.format(new Date(0)).length > 0 && r.locale === 'de-DE' && r.timeZone === 'UTC' && r.hour === 'numeric' && r.minute === '2-digit' && r.second === '2-digit'",
         "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC',year:'numeric',month:'numeric',day:'numeric'}); f.formatRange(0,86400000).includes('–') && f.formatRangeToParts(0,86400000).map(x=>x.source).join(',').includes('startRange') && f.formatRangeToParts(0,86400000).map(x=>x.source).join(',').includes('endRange')",
         "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC',dateStyle:'short'}); f.resolvedOptions().dateStyle === 'short' && f.format(0).length > 0 && Object.prototype.toString.call(f)==='[object Intl.DateTimeFormat]'",
+        "let f=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit',timeZoneName:'short'}); f.format(1705320000000).endsWith('EST') && f.format(1721044800000).endsWith('EDT') && f.resolvedOptions().timeZone === 'America/New_York'",
         "Intl.DateTimeFormat.supportedLocalesOf(['zz','de-DE','en']).join(',') === 'de-DE,en'",
         "let f=new Intl.DateTimeFormat('en',{timeZone:'UTC'}); f.format === f.format && f.format.name === '' && f.format.length === 1 && f.format.prototype === undefined",
     ] {
@@ -232,7 +233,7 @@ fn date_time_format_constructs_formats_and_exposes_parts() {
     for source in [
         "Intl.DateTimeFormat.prototype.format",
         "Intl.DateTimeFormat.prototype.formatToParts.call({},0)",
-        "new Intl.DateTimeFormat('en',{timeZone:'America/New_York'})",
+        "new Intl.DateTimeFormat('en',{timeZone:'No/Such_Zone'})",
         "new Intl.DateTimeFormat('en',{dateStyle:'short',year:'numeric'})",
         "new Intl.DateTimeFormat('en',{fractionalSecondDigits:4})",
         "new Intl.DateTimeFormat('en').format(NaN)",

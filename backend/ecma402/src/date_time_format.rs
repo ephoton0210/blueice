@@ -2,12 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Host-neutral `Intl.DateTimeFormat` data and UTC formatting.
+//! Host-neutral `Intl.DateTimeFormat` data and IANA-zone formatting.
 //!
 //! The ECMAScript host is responsible for observable option conversion and
 //! for selecting a host default zone. This module keeps the resolved service
 //! data independent from a Realm and delegates localized calendar rendering
-//! to ICU4X. BlueIce deliberately uses UTC as its deterministic host zone.
+//! to ICU4X. A pinned Jiff TZDB bundle supplies IANA transition rules, so
+//! formatting does not depend on the machine's installed zoneinfo files.
 
 use crate::{CanonicalLocale, LocaleMatcher};
 use icu_datetime::{
@@ -19,7 +20,9 @@ use icu_datetime::{
     options::{Length, SubsecondDigits},
     DateTimeFormatter,
 };
+use jiff::{tz::TimeZoneDatabase, Timestamp};
 use std::fmt;
+use std::sync::OnceLock;
 use writeable::{Part, PartsWrite, Writeable};
 
 /// A date/time field width selected by `Intl.DateTimeFormat`.
@@ -111,10 +114,13 @@ impl DateTimeFormat {
         options: DateTimeFormatOptions,
     ) -> Result<Self, DateTimeFormatError> {
         let selected_locale = crate::resolve_collation_locale(requested, options.locale_matcher);
-        let time_zone = options.time_zone.clone().unwrap_or_else(|| "UTC".into());
-        if !matches!(time_zone.as_str(), "UTC" | "Etc/UTC" | "Etc/GMT" | "GMT") {
-            return Err(DateTimeFormatError::UnsupportedTimeZone);
-        }
+        let requested_time_zone = options.time_zone.clone().unwrap_or_else(|| "UTC".into());
+        let time_zone = time_zone_database()
+            .get(&requested_time_zone)
+            .map_err(|_| DateTimeFormatError::UnsupportedTimeZone)?
+            .iana_name()
+            .unwrap_or(&requested_time_zone)
+            .into();
         let calendar = options
             .calendar
             .clone()
@@ -158,7 +164,7 @@ impl DateTimeFormat {
             calendar,
             numbering_system,
             hour_cycle,
-            time_zone: "UTC".into(),
+            time_zone,
         })
     }
 
@@ -210,9 +216,16 @@ impl DateTimeFormat {
             return Err(DateTimeFormatError::InvalidTime);
         }
         let milliseconds = epoch_milliseconds.trunc() as i64;
+        let timestamp = Timestamp::from_millisecond(milliseconds)
+            .map_err(|_| DateTimeFormatError::InvalidTime)?;
+        let time_zone = time_zone_database()
+            .get(&self.time_zone)
+            .map_err(|_| DateTimeFormatError::UnsupportedTimeZone)?;
+        let time_zone_info = time_zone.to_offset_info(timestamp);
         let zoned = ZonedDateTime::from_epoch_milliseconds_and_utc_offset(
             milliseconds,
-            icu_datetime::input::UtcOffset::try_from_seconds(0).expect("zero UTC offset is valid"),
+            icu_datetime::input::UtcOffset::try_from_seconds(time_zone_info.offset().seconds())
+                .map_err(|_| DateTimeFormatError::Formatter)?,
         );
         let datetime = DateTime {
             date: zoned.date,
@@ -236,14 +249,12 @@ impl DateTimeFormat {
             });
             parts.push(DateTimePart {
                 kind: "timeZoneName".into(),
-                value: match style.as_str() {
-                    "long" | "longGeneric" => "Coordinated Universal Time",
-                    "short" | "shortGeneric" => "UTC",
-                    "shortOffset" => "GMT",
-                    "longOffset" => "GMT+00:00",
-                    _ => "UTC",
-                }
-                .into(),
+                value: time_zone_display_name(
+                    style,
+                    &self.time_zone,
+                    time_zone_info.offset().seconds(),
+                    time_zone_info.abbreviation(),
+                ),
             });
         }
         Ok(parts)
@@ -323,6 +334,44 @@ impl DateTimeFormat {
             + self.hour_cycle.len()
             + self.time_zone.len()
             + self.options.time_zone_name.as_ref().map_or(0, String::len)
+    }
+}
+
+fn time_zone_database() -> &'static TimeZoneDatabase {
+    static DATABASE: OnceLock<TimeZoneDatabase> = OnceLock::new();
+    DATABASE.get_or_init(TimeZoneDatabase::bundled)
+}
+
+fn time_zone_display_name(style: &str, zone: &str, seconds: i32, abbreviation: &str) -> String {
+    match style {
+        "shortOffset" => gmt_offset(seconds, false),
+        "longOffset" => gmt_offset(seconds, true),
+        "short" => abbreviation.into(),
+        "long" => {
+            if zone == "UTC" {
+                "Coordinated Universal Time".into()
+            } else {
+                zone.replace('_', " ")
+            }
+        }
+        "shortGeneric" => zone.rsplit('/').next().unwrap_or(zone).replace('_', " "),
+        "longGeneric" => zone.replace('_', " "),
+        _ => abbreviation.into(),
+    }
+}
+
+fn gmt_offset(seconds: i32, long: bool) -> String {
+    if seconds == 0 {
+        return "GMT".into();
+    }
+    let sign = if seconds < 0 { '-' } else { '+' };
+    let absolute = seconds.unsigned_abs();
+    let hours = absolute / 3_600;
+    let minutes = (absolute % 3_600) / 60;
+    if long || minutes != 0 {
+        format!("GMT{sign}{hours:02}:{minutes:02}")
+    } else {
+        format!("GMT{sign}{hours}")
     }
 }
 
