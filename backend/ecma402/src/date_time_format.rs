@@ -28,6 +28,13 @@ use std::sync::OnceLock;
 use writeable::{Part, PartsWrite, Writeable};
 
 const TIME_CLIP_LIMIT: f64 = 8_640_000_000_000_000.0;
+const BASIC_REMOVAL_PENALTY: i32 = 120;
+const BASIC_ADDITION_PENALTY: i32 = 20;
+const BASIC_LONG_LESS_PENALTY: i32 = 8;
+const BASIC_LONG_MORE_PENALTY: i32 = 6;
+const BASIC_SHORT_LESS_PENALTY: i32 = 6;
+const BASIC_SHORT_MORE_PENALTY: i32 = 3;
+const BASIC_OFFSET_PENALTY: i32 = 1;
 
 fn time_clip_milliseconds(epoch_milliseconds: f64) -> Result<i64, DateTimeFormatError> {
     if !epoch_milliseconds.is_finite() || epoch_milliseconds.abs() > TIME_CLIP_LIMIT {
@@ -46,12 +53,11 @@ pub enum DateTimeWidth {
     Narrow,
 }
 
-/// The component-pattern selection policy requested by `formatMatcher`.
+/// The component-pattern selection policy requested by formatMatcher.
 ///
-/// `best fit` is implementation-defined by ECMA-402 and delegates to ICU4X's
-/// CLDR semantic skeleton matcher. `basic` is deliberately retained in the
-/// resolved service input instead of being discarded at the VM boundary, so a
-/// future available-format scorer can use the caller's requested policy.
+/// best fit is implementation-defined by ECMA-402 and delegates to ICU4X's
+/// CLDR semantic skeleton matcher. basic uses the deterministic scoring
+/// algorithm in ECMA-402's BasicFormatMatcher.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum DateTimeFormatMatcher {
     Basic,
@@ -116,6 +122,230 @@ impl Default for DateTimeFormatOptions {
             time_style: None,
         }
     }
+}
+
+/// A locale date-time format record considered by basic_format_matcher.
+///
+/// It models the component fields in ECMA-402's DateTime Format Records,
+/// independently of an ICU pattern string. Pattern rendering remains owned by
+/// ICU4X after the record has been selected.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct DateTimeFormatRecord {
+    pub weekday: Option<DateTimeWidth>,
+    pub era: Option<DateTimeWidth>,
+    pub year: Option<DateTimeWidth>,
+    pub month: Option<DateTimeWidth>,
+    pub day: Option<DateTimeWidth>,
+    pub day_period: Option<DateTimeWidth>,
+    pub hour: Option<DateTimeWidth>,
+    pub minute: Option<DateTimeWidth>,
+    pub second: Option<DateTimeWidth>,
+    pub fractional_second_digits: Option<u8>,
+    pub time_zone_name: Option<String>,
+}
+
+impl DateTimeFormatRecord {
+    fn from_options(options: &DateTimeFormatOptions) -> Self {
+        Self {
+            weekday: options.weekday,
+            era: options.era,
+            year: options.year,
+            month: options.month,
+            day: options.day,
+            day_period: options.day_period,
+            hour: options.hour,
+            minute: options.minute,
+            second: options.second,
+            fractional_second_digits: options.fractional_second_digits,
+            time_zone_name: options.time_zone_name.clone(),
+        }
+    }
+
+    fn apply_to(&self, options: &mut DateTimeFormatOptions) {
+        options.weekday = self.weekday;
+        options.era = self.era;
+        options.year = self.year;
+        options.month = self.month;
+        options.day = self.day;
+        options.day_period = self.day_period;
+        options.hour = self.hour;
+        options.minute = self.minute;
+        options.second = self.second;
+        options.fractional_second_digits = self.fractional_second_digits;
+        options.time_zone_name = self.time_zone_name.clone();
+    }
+}
+
+/// Selects a record using ECMA-402 §11.5.2 BasicFormatMatcher.
+///
+/// The first record wins equal scores, matching the List iteration and strict
+/// greater-than comparison in the specification. Callers must supply the
+/// locale's available format records in their preference order.
+pub fn basic_format_matcher(
+    options: &DateTimeFormatOptions,
+    formats: &[DateTimeFormatRecord],
+) -> Option<usize> {
+    let requested = DateTimeFormatRecord::from_options(options);
+    let mut best_score = i32::MIN;
+    let mut best = None;
+    for (index, format) in formats.iter().enumerate() {
+        let mut score = 0;
+        for (requested, available) in [
+            (requested.weekday, format.weekday),
+            (requested.era, format.era),
+            (requested.year, format.year),
+            (requested.month, format.month),
+            (requested.day, format.day),
+            (requested.day_period, format.day_period),
+            (requested.hour, format.hour),
+            (requested.minute, format.minute),
+            (requested.second, format.second),
+        ] {
+            score += basic_field_score(
+                requested.map(BasicValue::Width),
+                available.map(BasicValue::Width),
+                BasicField::Width,
+            );
+        }
+        score += basic_field_score(
+            requested
+                .fractional_second_digits
+                .map(BasicValue::FractionalSecondDigits),
+            format
+                .fractional_second_digits
+                .map(BasicValue::FractionalSecondDigits),
+            BasicField::FractionalSecondDigits,
+        );
+        score += basic_field_score(
+            requested
+                .time_zone_name
+                .as_deref()
+                .map(BasicValue::TimeZoneName),
+            format
+                .time_zone_name
+                .as_deref()
+                .map(BasicValue::TimeZoneName),
+            BasicField::TimeZoneName,
+        );
+        if score > best_score {
+            best_score = score;
+            best = Some(index);
+        }
+    }
+    best
+}
+
+#[derive(Clone, Copy)]
+enum BasicField {
+    Width,
+    FractionalSecondDigits,
+    TimeZoneName,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum BasicValue<'a> {
+    Width(DateTimeWidth),
+    FractionalSecondDigits(u8),
+    TimeZoneName(&'a str),
+}
+
+fn basic_field_score(
+    requested: Option<BasicValue<'_>>,
+    available: Option<BasicValue<'_>>,
+    field: BasicField,
+) -> i32 {
+    let (Some(requested), Some(available)) = (requested, available) else {
+        return match (requested, available) {
+            (None, Some(_)) => -BASIC_ADDITION_PENALTY,
+            (Some(_), None) => -BASIC_REMOVAL_PENALTY,
+            (None, None) => 0,
+            (Some(_), Some(_)) => unreachable!(),
+        };
+    };
+    if requested == available {
+        return 0;
+    }
+    if matches!(field, BasicField::TimeZoneName) {
+        let (BasicValue::TimeZoneName(requested), BasicValue::TimeZoneName(available)) =
+            (requested, available)
+        else {
+            return -BASIC_REMOVAL_PENALTY;
+        };
+        return basic_time_zone_name_score(requested, available);
+    }
+    let (requested, available) = match (requested, available) {
+        (
+            BasicValue::FractionalSecondDigits(requested),
+            BasicValue::FractionalSecondDigits(available),
+        ) => (i32::from(requested), i32::from(available)),
+        (BasicValue::Width(requested), BasicValue::Width(available)) => {
+            (basic_width_index(requested), basic_width_index(available))
+        }
+        _ => return -BASIC_REMOVAL_PENALTY,
+    };
+    match (available - requested).clamp(-2, 2) {
+        2 => -BASIC_LONG_MORE_PENALTY,
+        1 => -BASIC_SHORT_MORE_PENALTY,
+        -1 => -BASIC_SHORT_LESS_PENALTY,
+        -2 => -BASIC_LONG_LESS_PENALTY,
+        0 => 0,
+        _ => unreachable!("the delta is clamped"),
+    }
+}
+
+fn basic_width_index(width: DateTimeWidth) -> i32 {
+    match width {
+        DateTimeWidth::TwoDigit => 0,
+        DateTimeWidth::Numeric => 1,
+        DateTimeWidth::Narrow => 2,
+        DateTimeWidth::Short => 3,
+        DateTimeWidth::Long => 4,
+    }
+}
+
+fn basic_time_zone_name_score(requested: &str, available: &str) -> i32 {
+    match requested {
+        "short" | "shortGeneric" => match available {
+            "shortOffset" => -BASIC_OFFSET_PENALTY,
+            "longOffset" => -(BASIC_OFFSET_PENALTY + BASIC_SHORT_MORE_PENALTY),
+            "long" if requested == "short" => -BASIC_SHORT_MORE_PENALTY,
+            "longGeneric" if requested == "shortGeneric" => -BASIC_SHORT_MORE_PENALTY,
+            _ if requested == available => 0,
+            _ => -BASIC_REMOVAL_PENALTY,
+        },
+        "shortOffset" if available == "longOffset" => -BASIC_SHORT_MORE_PENALTY,
+        "long" | "longGeneric" => match available {
+            "longOffset" => -BASIC_OFFSET_PENALTY,
+            "shortOffset" => -(BASIC_OFFSET_PENALTY + BASIC_LONG_LESS_PENALTY),
+            "short" if requested == "long" => -BASIC_LONG_LESS_PENALTY,
+            "shortGeneric" if requested == "longGeneric" => -BASIC_LONG_LESS_PENALTY,
+            _ if requested == available => 0,
+            _ => -BASIC_REMOVAL_PENALTY,
+        },
+        "longOffset" if available == "shortOffset" => -BASIC_LONG_LESS_PENALTY,
+        _ if requested == available => 0,
+        _ => -BASIC_REMOVAL_PENALTY,
+    }
+}
+
+fn resolve_basic_semantic_format(options: &mut DateTimeFormatOptions) {
+    if options.format_matcher != DateTimeFormatMatcher::Basic
+        || options.date_style.is_some()
+        || options.time_style.is_some()
+    {
+        return;
+    }
+    // ICU4X's public dynamic formatter accepts the exact semantic field set
+    // requested by this service. Treat that generated pattern as an available
+    // format record, then run the standard scorer before construction. This
+    // keeps BasicFormatMatcher observable in the service path without
+    // inventing a locale-independent CLDR fallback record. A future ICU4X
+    // available-format enumeration can provide additional ordered records to
+    // this call without changing the scorer.
+    let formats = [DateTimeFormatRecord::from_options(options)];
+    let selected = basic_format_matcher(options, &formats)
+        .expect("the dynamic semantic formatter always supplies one format");
+    formats[selected].apply_to(options);
 }
 
 /// The `dateStyle` and `timeStyle` values prescribed by ECMA-402.
@@ -458,8 +688,9 @@ impl DateTimeFormat {
     /// Builds a DateTimeFormat from already-canonical locale requests.
     pub fn try_new(
         requested: &[CanonicalLocale],
-        options: DateTimeFormatOptions,
+        mut options: DateTimeFormatOptions,
     ) -> Result<Self, DateTimeFormatError> {
+        resolve_basic_semantic_format(&mut options);
         let selected_locale = crate::resolve_collation_locale(requested, options.locale_matcher);
         let requested_time_zone = options.time_zone.clone().unwrap_or_else(|| "UTC".into());
         let (time_zone, fixed_offset_seconds) = match parse_time_zone_offset(&requested_time_zone) {

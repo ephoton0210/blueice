@@ -3,9 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use blueice_ecma402::{
-    bundled_tzdb_version, canonicalize, DateTimeFormat, DateTimeFormatError, DateTimeFormatMatcher,
-    DateTimeFormatOptions, DateTimeRangePart, DateTimeRangePartSource, DateTimeStyle,
-    DateTimeWidth,
+    basic_format_matcher, bundled_tzdb_version, canonicalize, DateTimeFormat, DateTimeFormatError,
+    DateTimeFormatMatcher, DateTimeFormatOptions, DateTimeFormatRecord, DateTimeRangePart,
+    DateTimeRangePartSource, DateTimeStyle, DateTimeWidth,
 };
 
 #[test]
@@ -123,6 +123,62 @@ fn retains_the_requested_format_matcher_policy() {
     )
     .unwrap();
     assert_eq!(best_fit.format_matcher(), DateTimeFormatMatcher::BestFit);
+}
+
+#[test]
+fn basic_format_matcher_uses_the_ecma402_penalties_and_stable_ties() {
+    let options = DateTimeFormatOptions {
+        year: Some(DateTimeWidth::Numeric),
+        month: Some(DateTimeWidth::Long),
+        fractional_second_digits: Some(3),
+        time_zone_name: Some("short".into()),
+        ..Default::default()
+    };
+    let formats = [
+        // Missing a requested field is far worse than an added field.
+        DateTimeFormatRecord {
+            month: Some(DateTimeWidth::Long),
+            ..Default::default()
+        },
+        // The exact fractional precision and the short-to-offset conversion
+        // beat a shorter month plus a coarser fractional precision.
+        DateTimeFormatRecord {
+            year: Some(DateTimeWidth::Numeric),
+            month: Some(DateTimeWidth::Short),
+            fractional_second_digits: Some(3),
+            time_zone_name: Some("shortOffset".into()),
+            ..Default::default()
+        },
+        DateTimeFormatRecord {
+            year: Some(DateTimeWidth::Numeric),
+            month: Some(DateTimeWidth::Long),
+            fractional_second_digits: Some(2),
+            time_zone_name: Some("long".into()),
+            ..Default::default()
+        },
+    ];
+    assert_eq!(basic_format_matcher(&options, &formats), Some(1));
+
+    let tied = [
+        DateTimeFormatRecord {
+            year: Some(DateTimeWidth::Numeric),
+            ..Default::default()
+        },
+        DateTimeFormatRecord {
+            year: Some(DateTimeWidth::Numeric),
+            ..Default::default()
+        },
+    ];
+    assert_eq!(
+        basic_format_matcher(
+            &DateTimeFormatOptions {
+                year: Some(DateTimeWidth::Numeric),
+                ..Default::default()
+            },
+            &tied,
+        ),
+        Some(0)
+    );
 }
 
 #[test]
