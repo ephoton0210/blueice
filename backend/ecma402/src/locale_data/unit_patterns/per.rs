@@ -22,6 +22,11 @@ pub(crate) fn expanded_per_unit_pattern(
         return Some(pattern);
     }
     if let Some(pattern) =
+        super::austroasiatic::cldr_khmer_per_unit_pattern(locale, denominator, display)
+    {
+        return Some(pattern);
+    }
+    if let Some(pattern) =
         super::austronesian::cldr_indonesian_per_unit_pattern(locale, denominator, display)
     {
         return Some(pattern);
@@ -42,7 +47,22 @@ pub(crate) fn expanded_per_unit_pattern(
         return Some(pattern);
     }
     if let Some(pattern) =
+        super::austronesian::cldr_javanese_per_unit_pattern(locale, denominator, display)
+    {
+        return Some(pattern);
+    }
+    if let Some(pattern) =
+        super::malayalam::cldr_malayalam_per_unit_pattern(locale, denominator, display)
+    {
+        return Some(pattern);
+    }
+    if let Some(pattern) =
         super::iranian::cldr_persian_per_unit_pattern(locale, denominator, display)
+    {
+        return Some(pattern);
+    }
+    if let Some(pattern) =
+        super::gujarati::cldr_gujarati_per_unit_pattern(locale, denominator, display)
     {
         return Some(pattern);
     }
@@ -53,8 +73,27 @@ pub(crate) fn expanded_per_unit_pattern(
     if let Some(pattern) = super::indic::cldr_tamil_per_unit_pattern(locale, denominator, display) {
         return Some(pattern);
     }
+    if let Some(pattern) = super::telugu::cldr_telugu_per_unit_pattern(locale, denominator, display)
+    {
+        return Some(pattern);
+    }
     if let Some(pattern) =
         super::indo_aryan::cldr_urdu_per_unit_pattern(locale, denominator, display)
+    {
+        return Some(pattern);
+    }
+    if let Some(pattern) =
+        super::indo_aryan::cldr_latin_hindi_per_unit_pattern(locale, denominator, display)
+    {
+        return Some(pattern);
+    }
+    if let Some(pattern) =
+        super::kabuverdianu::cldr_kabuverdianu_per_unit_pattern(locale, denominator, display)
+    {
+        return Some(pattern);
+    }
+    if let Some(pattern) =
+        super::east_slavic::cldr_belarusian_per_unit_pattern(locale, denominator, display)
     {
         return Some(pattern);
     }
@@ -79,6 +118,16 @@ pub(crate) fn expanded_per_unit_pattern(
         return Some(pattern);
     }
     if let Some(pattern) =
+        super::bosnian::cldr_bosnian_per_unit_pattern(locale, denominator, display)
+    {
+        return Some(pattern);
+    }
+    if let Some(pattern) =
+        super::cantonese::cldr_cantonese_per_unit_pattern(locale, denominator, display)
+    {
+        return Some(pattern);
+    }
+    if let Some(pattern) =
         super::south_slavic::cldr_croatian_per_unit_pattern(locale, denominator, display)
     {
         return Some(pattern);
@@ -89,7 +138,22 @@ pub(crate) fn expanded_per_unit_pattern(
         return Some(pattern);
     }
     if let Some(pattern) =
+        super::south_slavic::cldr_macedonian_per_unit_pattern(locale, denominator, display)
+    {
+        return Some(pattern);
+    }
+    if let Some(pattern) =
         super::south_slavic::cldr_slovenian_per_unit_pattern(locale, denominator, display)
+    {
+        return Some(pattern);
+    }
+    if let Some(pattern) =
+        super::sino_tibetan::cldr_burmese_per_unit_pattern(locale, denominator, display)
+    {
+        return Some(pattern);
+    }
+    if let Some(pattern) =
+        super::polynesian::cldr_tongan_per_unit_pattern(locale, denominator, display)
     {
         return Some(pattern);
     }

@@ -262,13 +262,18 @@ impl PluralRules {
     ) -> Result<Self, PluralRulesError> {
         let negotiation = negotiate_plural_rules_locale(requested, options.locale_matcher);
         let selected = negotiation.selected.clone();
-        // ICU4X's compact bundle retains Serbian's cardinal data at `sr`, but
-        // does not parent-resolve its explicit `sr-Latn` record. CLDR plural
-        // rules are language-level for these script variants. Keep the
-        // ECMA-402-visible selected locale untouched while looking up its
-        // parent data record.
+        // ICU4X's compact bundle retains Serbian and Bosnian cardinal data at
+        // their language parents, but does not parent-resolve the explicit
+        // `sr-Latn` and `bs-Cyrl` records. CLDR plural rules are
+        // language-level for these script variants. Keep the ECMA-402-visible
+        // selected locale untouched while looking up its parent data record.
         let data_locale = if selected.as_str().starts_with("sr-Latn") {
             canonicalize("sr")
+                .map_err(|_| PluralRulesError::DataUnavailable)?
+                .locale()
+                .clone()
+        } else if selected.as_str().starts_with("bs-Cyrl") {
+            canonicalize("bs")
                 .map_err(|_| PluralRulesError::DataUnavailable)?
                 .locale()
                 .clone()

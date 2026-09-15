@@ -54,6 +54,23 @@ fn selects_cardinal_categories_while_preserving_visible_fraction_digits() {
     );
     assert_eq!(serbian_latin_rules.resolved_options().locale, "sr-Latn");
 
+    let bosnian_cyrillic = canonicalize("bs-Cyrl").unwrap();
+    let bosnian_cyrillic_rules =
+        PluralRules::try_new(&[bosnian_cyrillic], Default::default()).unwrap();
+    assert_eq!(
+        bosnian_cyrillic_rules.select_decimal("1").unwrap(),
+        PluralCategory::One
+    );
+    assert_eq!(
+        bosnian_cyrillic_rules.select_decimal("2").unwrap(),
+        PluralCategory::Few
+    );
+    assert_eq!(
+        bosnian_cyrillic_rules.select_decimal("5").unwrap(),
+        PluralCategory::Other
+    );
+    assert_eq!(bosnian_cyrillic_rules.resolved_options().locale, "bs-Cyrl");
+
     assert!(english_rules.select_f64(f64::NAN).is_err());
 }
 

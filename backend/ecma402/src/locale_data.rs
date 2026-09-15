@@ -665,7 +665,12 @@ impl LocaleDataProvider {
     /// parent record remains available when it retains the requested primary
     /// language.
     pub fn supports_decimal_locale(self, locale: &IcuLocale) -> bool {
-        if self.supports_language(locale) {
+        // Cantonese has pinned decimal and raw NumberFormat-unit coverage,
+        // but is absent from ICU4X's compact language registry used by the
+        // broader service capability check. Advertise it only to
+        // NumberFormat; other services must not claim a data slice they do
+        // not carry.
+        if self.supports_language(locale) || locale.id.language.as_str() == "yue" {
             return true;
         }
         let requested = icu_provider::DataLocale::from(locale);

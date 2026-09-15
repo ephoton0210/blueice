@@ -159,6 +159,83 @@ fn sources_serbian_cyrillic_and_latin_cldr_patterns_separately() {
 }
 
 #[test]
+fn sources_macedonian_cldr_simple_per_and_generic_compounds() {
+    let formatter = |unit, display| {
+        NumberFormat::try_new(
+            &[canonicalize("mk").unwrap()],
+            NumberFormatOptions {
+                style: NumberFormatStyle::Unit,
+                unit: Some(unit),
+                unit_display: display,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    };
+
+    assert_eq!(
+        formatter(NumberFormatUnit::Gigabyte, NumberUnitDisplay::Long)
+            .format_f64(1.0)
+            .unwrap(),
+        "1 гигабајт"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Gigabyte, NumberUnitDisplay::Long)
+            .format_f64(2.0)
+            .unwrap(),
+        "2 гигабајти"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Byte, NumberUnitDisplay::Short)
+            .format_f64(1.0)
+            .unwrap(),
+        "1 бајт"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Degree, NumberUnitDisplay::Narrow)
+            .format_f64(2.0)
+            .unwrap(),
+        "2 deg"
+    );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("gigabyte-per-second").unwrap(),
+            NumberUnitDisplay::Long,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2 гигабајти во секунда"
+    );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("gigabyte-per-second").unwrap(),
+            NumberUnitDisplay::Short,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2 GB/с"
+    );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("celsius-per-second").unwrap(),
+            NumberUnitDisplay::Narrow,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2 °C/с."
+    );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("gigabyte-per-acre").unwrap(),
+            NumberUnitDisplay::Long,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2 гигабајти на акр"
+    );
+}
+
+#[test]
 fn sources_slovenian_cldr_one_two_few_other_and_per_patterns() {
     let formatter = |unit, display| {
         NumberFormat::try_new(

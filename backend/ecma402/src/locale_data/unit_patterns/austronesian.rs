@@ -768,3 +768,185 @@ pub(crate) fn cldr_filipino_generic_compound_unit_pattern(
         },
     )
 }
+
+fn is_javanese(locale: &str) -> bool {
+    locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        == Some("jv")
+}
+
+/// Returns pinned Javanese CLDR records for simple categories unavailable
+/// through ICU4X's typed unit markers.
+pub(crate) fn cldr_javanese_additional_unit_pattern(
+    locale: &str,
+    unit: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    _plural: crate::PluralCategory,
+) -> Option<NumberUnitPattern> {
+    use crate::{NumberFormatUnit as Unit, NumberUnitDisplay as Display};
+
+    if !is_javanese(locale) {
+        return None;
+    }
+    let raw = match display {
+        Display::Long => match unit {
+            Unit::Acre => "{0} are",
+            Unit::Bit => "{0} bit",
+            Unit::Byte => "{0} bite",
+            Unit::Celsius => "{0} derajat celsius",
+            Unit::Degree => "{0} derajat",
+            Unit::Fahrenheit => "{0} derajat Fahrenhet",
+            Unit::Gigabit => "{0} gigabit",
+            Unit::Gigabyte => "{0} gigabite",
+            Unit::Kilobit => "{0} kilobit",
+            Unit::Kilobyte => "{0} kilobite",
+            Unit::Megabit => "{0} megabit",
+            Unit::Megabyte => "{0} megabite",
+            Unit::Percent => "{0} persen",
+            Unit::Petabyte => "{0} petabite",
+            Unit::Second => "{0} detik",
+            Unit::Terabit => "{0} terabit",
+            Unit::Terabyte => "{0} terabite",
+            _ => return None,
+        },
+        Display::Short | Display::Narrow => match unit {
+            Unit::Acre => "{0} are",
+            Unit::Bit => "{0} bit",
+            Unit::Byte => "{0} bite",
+            Unit::Celsius => "{0}°C",
+            Unit::Degree => "{0}°",
+            Unit::Fahrenheit => "{0}°F",
+            Unit::Gigabit => "{0} Gb",
+            Unit::Gigabyte => "{0} GB",
+            Unit::Kilobit => "{0} kb",
+            Unit::Kilobyte => "{0} kB",
+            Unit::Megabit => "{0} Mb",
+            Unit::Megabyte => "{0} MB",
+            Unit::Percent => "{0}%",
+            Unit::Petabyte => "{0} PB",
+            Unit::Second => "{0} dtk",
+            Unit::Terabit => "{0} Tb",
+            Unit::Terabyte => "{0} TB",
+            _ => return None,
+        },
+    };
+    number_unit_pattern_from_placeholder(&raw.replace("{0}", "\u{fdd0}"))
+}
+
+/// Returns Javanese denominator-specific pinned CLDR `perUnitPattern` records.
+pub(crate) fn cldr_javanese_per_unit_pattern(
+    locale: &str,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+) -> Option<&'static str> {
+    use crate::NumberUnitDisplay as Display;
+
+    if !is_javanese(locale) {
+        return None;
+    }
+    const LONG: [&str; 18] = [
+        "{0} saben sentimeter",
+        "{0} saben dina",
+        "{0} saben kaki",
+        "{0} saben galon",
+        "{0} saben gram",
+        "{0} saben jam",
+        "{0} saben inci",
+        "{0} saben kilogram",
+        "{0} saben kilometer",
+        "{0} saben liter",
+        "{0} saben meter",
+        "{0} saben menit",
+        "{0} saben sasi",
+        "{0} saben ons",
+        "{0} saben pon",
+        "{0} saben detik",
+        "{0} saben peken",
+        "{0} saben taun",
+    ];
+    const SHORT: [&str; 18] = [
+        "{0}/cm",
+        "{0}/d",
+        "{0}/kaki",
+        "{0}/galon",
+        "{0}/g",
+        "{0}/jam",
+        "{0}/in",
+        "{0}/kg",
+        "{0}/km",
+        "{0}/L",
+        "{0}/m",
+        "{0}/mnt",
+        "{0}/sasi",
+        "{0}/ons",
+        "{0}/pon",
+        "{0}/dtk",
+        "{0}/peken",
+        "{0}/taun",
+    ];
+    let patterns = match display {
+        Display::Long => &LONG,
+        Display::Short | Display::Narrow => &SHORT,
+    };
+    patterns
+        .get(super::per_unit_denominator_index(denominator)?)
+        .copied()
+}
+
+/// Composes Javanese generic compounds containing an ICU4X-untyped unit.
+pub(crate) fn cldr_javanese_generic_compound_unit_pattern(
+    locale: &str,
+    numerator: crate::NumberFormatUnit,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberGenericCompoundUnitPattern> {
+    use crate::NumberUnitDisplay as Display;
+
+    if !is_javanese(locale) {
+        return None;
+    }
+    let denominator_unit = denominator;
+    let denominator_display = match display {
+        Display::Long => Display::Long,
+        Display::Short | Display::Narrow => Display::Narrow,
+    };
+    let numerator = cldr_javanese_additional_unit_pattern(locale, numerator, display, plural)
+        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
+    let denominator = cldr_javanese_additional_unit_pattern(
+        locale,
+        denominator_unit,
+        denominator_display,
+        crate::PluralCategory::Other,
+    )
+    .or_else(|| {
+        experimental_number_unit_pattern(
+            locale,
+            denominator_unit,
+            denominator_display,
+            crate::PluralCategory::Other,
+        )
+    })
+    .unwrap_or_else(|| {
+        crate::locale_data_provider().number_unit_pattern(
+            locale,
+            denominator_unit,
+            denominator_display,
+            crate::PluralCategory::Other,
+        )
+    });
+    super::compose_generic_compound_unit_pattern(
+        locale,
+        denominator_unit,
+        display,
+        &numerator,
+        &denominator,
+        match display {
+            Display::Long => "{0} saben {1}",
+            Display::Short | Display::Narrow => "{0}/{1}",
+        },
+    )
+}

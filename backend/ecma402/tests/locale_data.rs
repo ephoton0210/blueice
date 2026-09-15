@@ -59,9 +59,13 @@ fn provider_owns_decimal_and_collation_data_availability() {
     let provider = locale_data_provider();
     let german = canonicalize("de-DE").unwrap();
     let chinese = canonicalize("zh-Hant-TW").unwrap();
+    let cantonese = canonicalize("yue").unwrap();
     let unsupported = canonicalize("zz").unwrap();
 
     assert!(provider.supports_decimal_locale(german.locale()));
+    assert!(provider.supports_decimal_locale(cantonese.locale()));
+    assert!(provider.supports_service_locale(IntlService::NumberFormat, cantonese.locale()));
+    assert!(!provider.supports_service_locale(IntlService::DurationFormat, cantonese.locale()));
     assert!(!provider.supports_decimal_locale(unsupported.locale()));
     assert!(provider.supports_collation(german.locale(), "phonebk"));
     assert!(!provider.supports_collation(german.locale(), "zhuyin"));

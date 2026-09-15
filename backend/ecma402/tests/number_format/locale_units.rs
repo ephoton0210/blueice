@@ -10,22 +10,42 @@ use super::*;
 mod afroasiatic;
 #[path = "locale_units/armenian.rs"]
 mod armenian;
+#[path = "locale_units/austroasiatic.rs"]
+mod austroasiatic;
 #[path = "locale_units/austronesian.rs"]
 mod austronesian;
 #[path = "locale_units/baltic.rs"]
 mod baltic;
+#[path = "locale_units/bosnian.rs"]
+mod bosnian;
+#[path = "locale_units/cantonese.rs"]
+mod cantonese;
 #[path = "locale_units/caucasian.rs"]
 mod caucasian;
+#[path = "locale_units/east_slavic.rs"]
+mod east_slavic;
+#[path = "locale_units/gujarati.rs"]
+mod gujarati;
 #[path = "locale_units/indic.rs"]
 mod indic;
 #[path = "locale_units/indo_aryan.rs"]
 mod indo_aryan;
+#[path = "locale_units/kabuverdianu.rs"]
+mod kabuverdianu;
+#[path = "locale_units/malayalam.rs"]
+mod malayalam;
 #[path = "locale_units/niger_congo.rs"]
 mod niger_congo;
 #[path = "locale_units/north_germanic.rs"]
 mod north_germanic;
+#[path = "locale_units/polynesian.rs"]
+mod polynesian;
+#[path = "locale_units/sino_tibetan.rs"]
+mod sino_tibetan;
 #[path = "locale_units/south_slavic.rs"]
 mod south_slavic;
+#[path = "locale_units/telugu.rs"]
+mod telugu;
 #[path = "locale_units/uralic.rs"]
 mod uralic;
 

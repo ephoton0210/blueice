@@ -18,6 +18,15 @@ fn is_croatian(locale: &str) -> bool {
         == Some("hr")
 }
 
+fn is_macedonian(locale: &str) -> bool {
+    locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        == Some("mk")
+}
+
 #[derive(Clone, Copy)]
 enum SerbianScript {
     Cyrillic,
@@ -469,6 +478,230 @@ pub(crate) fn cldr_serbian_generic_compound_unit_pattern(
         &numerator,
         &denominator,
         "{0}/{1}",
+    )
+}
+
+fn macedonian_cardinal_pattern(
+    one: &'static str,
+    other: &'static str,
+    plural: crate::PluralCategory,
+) -> &'static str {
+    match plural {
+        crate::PluralCategory::One => one,
+        crate::PluralCategory::Zero
+        | crate::PluralCategory::Two
+        | crate::PluralCategory::Few
+        | crate::PluralCategory::Many
+        | crate::PluralCategory::Other => other,
+    }
+}
+
+/// Returns pinned Macedonian CLDR records for every ECMA-402 simple-unit
+/// category that ICU4X's typed markers do not cover.
+pub(crate) fn cldr_macedonian_additional_unit_pattern(
+    locale: &str,
+    unit: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberUnitPattern> {
+    use crate::{NumberFormatUnit as Unit, NumberUnitDisplay as Display};
+
+    if !is_macedonian(locale) {
+        return None;
+    }
+    let raw = match display {
+        Display::Long => match unit {
+            Unit::Acre => macedonian_cardinal_pattern("{0} акр", "{0} акри", plural),
+            Unit::Bit => macedonian_cardinal_pattern("{0} бит", "{0} бита", plural),
+            Unit::Byte => macedonian_cardinal_pattern("{0} бајт", "{0} бајти", plural),
+            Unit::Celsius => macedonian_cardinal_pattern(
+                "{0} целзиусов степен",
+                "{0} целзиусови степени",
+                plural,
+            ),
+            Unit::Degree => macedonian_cardinal_pattern("{0} степен", "{0} степени", plural),
+            Unit::Fahrenheit => macedonian_cardinal_pattern(
+                "{0} фаренхајтов степен",
+                "{0} фаренхајтови степени",
+                plural,
+            ),
+            Unit::Gigabit => macedonian_cardinal_pattern("{0} гигабит", "{0} гигабита", plural),
+            Unit::Gigabyte => macedonian_cardinal_pattern("{0} гигабајт", "{0} гигабајти", plural),
+            Unit::Kilobit => macedonian_cardinal_pattern("{0} килобит", "{0} килобита", plural),
+            Unit::Kilobyte => macedonian_cardinal_pattern("{0} килобајт", "{0} килобајти", plural),
+            Unit::Megabit => macedonian_cardinal_pattern("{0} мегабит", "{0} мегабита", plural),
+            Unit::Megabyte => macedonian_cardinal_pattern("{0} мегабајт", "{0} мегабајти", plural),
+            Unit::Percent => macedonian_cardinal_pattern("{0} процент", "{0} проценти", plural),
+            Unit::Petabyte => macedonian_cardinal_pattern("{0} петабајт", "{0} петабајти", plural),
+            Unit::Terabit => macedonian_cardinal_pattern("{0} терабит", "{0} терабита", plural),
+            Unit::Terabyte => macedonian_cardinal_pattern("{0} терабајт", "{0} терабајти", plural),
+            _ => return None,
+        },
+        Display::Short => match unit {
+            Unit::Acre => "{0} ac",
+            Unit::Bit => "{0} bit",
+            Unit::Byte => macedonian_cardinal_pattern("{0} бајт", "{0} бајти", plural),
+            Unit::Celsius => "{0} °C",
+            Unit::Degree => "{0} deg",
+            Unit::Fahrenheit => "{0} °F",
+            Unit::Gigabit => "{0} Gb",
+            Unit::Gigabyte => "{0} GB",
+            Unit::Kilobit => "{0} kb",
+            Unit::Kilobyte => "{0} kB",
+            Unit::Megabit => "{0} Mb",
+            Unit::Megabyte => "{0} MB",
+            Unit::Percent => "{0} %",
+            Unit::Petabyte => "{0} PB",
+            Unit::Terabit => "{0} Tb",
+            Unit::Terabyte => "{0} TB",
+            _ => return None,
+        },
+        Display::Narrow => match unit {
+            Unit::Acre => "{0} ac",
+            Unit::Bit => "{0} bit",
+            Unit::Byte => "{0} B",
+            Unit::Celsius => "{0} °C",
+            Unit::Degree => "{0} deg",
+            Unit::Fahrenheit => "{0} °F",
+            Unit::Gigabit => "{0} Gb",
+            Unit::Gigabyte => "{0} GB",
+            Unit::Kilobit => "{0} kb",
+            Unit::Kilobyte => "{0} kB",
+            Unit::Megabit => "{0} Mb",
+            Unit::Megabyte => "{0} MB",
+            Unit::Percent => "{0} %",
+            Unit::Petabyte => "{0} PB",
+            Unit::Terabit => "{0} Tb",
+            Unit::Terabyte => "{0} TB",
+            _ => return None,
+        },
+    };
+    number_unit_pattern_from_placeholder(&raw.replace("{0}", "\u{fdd0}"))
+}
+
+/// Returns Macedonian denominator-specific pinned CLDR `perUnitPattern`
+/// records.
+pub(crate) fn cldr_macedonian_per_unit_pattern(
+    locale: &str,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+) -> Option<&'static str> {
+    use crate::NumberUnitDisplay as Display;
+
+    if !is_macedonian(locale) {
+        return None;
+    }
+    const LONG: [&str; 18] = [
+        "{0} на сантиметар",
+        "{0} дневно",
+        "{0} на стапка",
+        "{0} по галон",
+        "{0} на грам",
+        "{0} на час",
+        "{0} на инч",
+        "{0} на килограм",
+        "{0} на километар",
+        "{0} по литар",
+        "{0} на метар",
+        "{0} на минута",
+        "{0} месечно",
+        "{0} на унца",
+        "{0} на фунта",
+        "{0} во секунда",
+        "{0} седмично",
+        "{0} годишно",
+    ];
+    const SHORT: [&str; 18] = [
+        "{0}/cm",
+        "{0}/ден",
+        "{0}/ft",
+        "{0}/gal US",
+        "{0}/g",
+        "{0}/ч.",
+        "{0}/in",
+        "{0}/kg",
+        "{0}/km",
+        "{0}/L",
+        "{0}/m",
+        "{0}/мин.",
+        "{0}/мес.",
+        "{0}/oz",
+        "{0}/lb",
+        "{0}/с",
+        "{0}/сед.",
+        "{0}/год.",
+    ];
+    const NARROW: [&str; 18] = [
+        "{0}/cm", "{0}/д.", "{0}/ft", "{0}/gal", "{0}/g", "{0}/ч.", "{0}/in", "{0}/kg", "{0}/km",
+        "{0}/L", "{0}/m", "{0}/м.", "{0}/м.", "{0}/oz", "{0}/lb", "{0}/с.", "{0}/с.", "{0}/г.",
+    ];
+    let patterns = match display {
+        Display::Long => &LONG,
+        Display::Short => &SHORT,
+        Display::Narrow => &NARROW,
+    };
+    patterns
+        .get(super::per_unit_denominator_index(denominator)?)
+        .copied()
+}
+
+/// Composes Macedonian generic compounds containing an ICU4X-untyped unit.
+pub(crate) fn cldr_macedonian_generic_compound_unit_pattern(
+    locale: &str,
+    numerator: crate::NumberFormatUnit,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberGenericCompoundUnitPattern> {
+    use crate::NumberUnitDisplay as Display;
+
+    if !is_macedonian(locale) {
+        return None;
+    }
+    let denominator_unit = denominator;
+    let denominator_display = match display {
+        Display::Long => Display::Long,
+        Display::Short | Display::Narrow => Display::Narrow,
+    };
+    let numerator_raw = cldr_macedonian_additional_unit_pattern(locale, numerator, display, plural);
+    let denominator_raw = cldr_macedonian_additional_unit_pattern(
+        locale,
+        denominator_unit,
+        denominator_display,
+        crate::PluralCategory::One,
+    );
+    if numerator_raw.is_none() && denominator_raw.is_none() {
+        return None;
+    }
+    let numerator = numerator_raw
+        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
+    let denominator = denominator_raw
+        .or_else(|| {
+            experimental_number_unit_pattern(
+                locale,
+                denominator_unit,
+                denominator_display,
+                crate::PluralCategory::One,
+            )
+        })
+        .unwrap_or_else(|| {
+            crate::locale_data_provider().number_unit_pattern(
+                locale,
+                denominator_unit,
+                denominator_display,
+                crate::PluralCategory::One,
+            )
+        });
+    super::compose_generic_compound_unit_pattern(
+        locale,
+        denominator_unit,
+        display,
+        &numerator,
+        &denominator,
+        match display {
+            Display::Long => "{0} на {1}",
+            Display::Short | Display::Narrow => "{0}/{1}",
+        },
     )
 }
 
