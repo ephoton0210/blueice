@@ -618,6 +618,176 @@ fn sources_non_english_range_glue_from_the_shared_provider() {
 }
 
 #[test]
+fn selects_currency_interval_patterns_from_affix_and_sign_scope() {
+    let formatter = |locale: &str, display, sign| {
+        NumberFormat::try_new_with_currency(
+            &[canonicalize(locale).unwrap()],
+            NumberFormatOptions {
+                style: NumberFormatStyle::Currency,
+                ..Default::default()
+            },
+            1,
+            None,
+            None,
+            Default::default(),
+            Some(NumberCurrencyOptions {
+                code: "USD".into(),
+                display,
+                sign,
+            }),
+        )
+        .unwrap()
+    };
+    let range = |formatter: &NumberFormat, start, end| {
+        formatter
+            .format_range_inputs(
+                NumberFormatInput::Number(start),
+                NumberFormatInput::Number(end),
+            )
+            .unwrap()
+    };
+
+    let english = formatter(
+        "en-US",
+        NumberCurrencyDisplay::Symbol,
+        NumberCurrencySign::Standard,
+    );
+    assert_eq!(range(&english, 3.0, 5.0), "$3.00 – $5.00");
+    assert_eq!(range(&english, -5.0, -3.0), "-$5.00–3.00");
+    assert_eq!(range(&english, -3.0, 5.0), "-$3.00 – $5.00");
+
+    let english_accounting = formatter(
+        "en-US",
+        NumberCurrencyDisplay::Symbol,
+        NumberCurrencySign::Accounting,
+    );
+    assert_eq!(range(&english_accounting, -5.0, -3.0), "($5.00–3.00)");
+    assert_eq!(
+        english_accounting
+            .format_range_inputs_to_parts(
+                NumberFormatInput::Number(-5.0),
+                NumberFormatInput::Number(-3.0),
+            )
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value, part.source))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                NumberFormatPartKind::Literal,
+                "(".into(),
+                NumberRangePartSource::Shared,
+            ),
+            (
+                NumberFormatPartKind::Currency,
+                "$".into(),
+                NumberRangePartSource::Shared,
+            ),
+            (
+                NumberFormatPartKind::Integer,
+                "5".into(),
+                NumberRangePartSource::StartRange,
+            ),
+            (
+                NumberFormatPartKind::Decimal,
+                ".".into(),
+                NumberRangePartSource::StartRange,
+            ),
+            (
+                NumberFormatPartKind::Fraction,
+                "00".into(),
+                NumberRangePartSource::StartRange,
+            ),
+            (
+                NumberFormatPartKind::Literal,
+                "–".into(),
+                NumberRangePartSource::Shared,
+            ),
+            (
+                NumberFormatPartKind::Integer,
+                "3".into(),
+                NumberRangePartSource::EndRange,
+            ),
+            (
+                NumberFormatPartKind::Decimal,
+                ".".into(),
+                NumberRangePartSource::EndRange,
+            ),
+            (
+                NumberFormatPartKind::Fraction,
+                "00".into(),
+                NumberRangePartSource::EndRange,
+            ),
+            (
+                NumberFormatPartKind::Literal,
+                ")".into(),
+                NumberRangePartSource::Shared,
+            ),
+        ]
+    );
+
+    let french = formatter(
+        "fr",
+        NumberCurrencyDisplay::Symbol,
+        NumberCurrencySign::Standard,
+    );
+    assert_eq!(range(&french, 3.0, 5.0), "3,00–5,00\u{a0}$US");
+    assert_eq!(range(&french, -5.0, -3.0), "-5,00–3,00\u{a0}$US");
+    assert_eq!(range(&french, -3.0, 5.0), "-3,00\u{a0}$US – 5,00\u{a0}$US");
+    assert_eq!(
+        french
+            .format_range_inputs_to_parts(
+                NumberFormatInput::Number(-3.0),
+                NumberFormatInput::Number(5.0),
+            )
+            .unwrap()
+            .into_iter()
+            .filter(|part| {
+                matches!(
+                    part.kind,
+                    NumberFormatPartKind::Currency | NumberFormatPartKind::Literal
+                )
+            })
+            .map(|part| (part.value, part.source))
+            .collect::<Vec<_>>(),
+        vec![
+            ("\u{a0}".into(), NumberRangePartSource::StartRange),
+            ("$US".into(), NumberRangePartSource::StartRange),
+            (" – ".into(), NumberRangePartSource::Shared),
+            ("\u{a0}".into(), NumberRangePartSource::EndRange),
+            ("$US".into(), NumberRangePartSource::EndRange),
+        ]
+    );
+
+    let english_code = formatter(
+        "en-US",
+        NumberCurrencyDisplay::Code,
+        NumberCurrencySign::Standard,
+    );
+    assert_eq!(range(&english_code, 3.0, 5.0), "USD\u{a0}3.00–5.00");
+
+    let thai = formatter(
+        "th",
+        NumberCurrencyDisplay::Symbol,
+        NumberCurrencySign::Standard,
+    );
+    assert_eq!(range(&thai, 3.0, 5.0), "US$3.00-5.00");
+    let thai_narrow = formatter(
+        "th",
+        NumberCurrencyDisplay::NarrowSymbol,
+        NumberCurrencySign::Standard,
+    );
+    assert_eq!(range(&thai_narrow, 3.0, 5.0), "$3.00 - $5.00");
+
+    let japanese_code = formatter(
+        "ja",
+        NumberCurrencyDisplay::Code,
+        NumberCurrencySign::Standard,
+    );
+    assert_eq!(range(&japanese_code, 3.0, 5.0), "USD\u{a0}3.00～5.00");
+}
+
+#[test]
 fn sources_localized_temperature_and_angle_units_from_the_shared_provider() {
     let format = |locale: &str, unit, display, value| {
         NumberFormat::try_new(

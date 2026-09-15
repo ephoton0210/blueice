@@ -1268,36 +1268,60 @@ impl NumberFormat {
             end_parts = end_numeric_parts;
         }
 
+        let currency_range =
+            self.resolved.style == NumberFormatStyle::Currency && self.currency.is_some();
+        let currency_range_signs = self.currency.as_ref().map(|currency| {
+            (
+                currency_range_sign_context(&start_parts, currency.sign),
+                currency_range_sign_context(&end_parts, currency.sign),
+            )
+        });
+        let currency_range_signs_match = currency_range_signs
+            .map(|(start, end)| start == end)
+            .unwrap_or(true);
+        // A currency affix is shared only when the endpoint sign scopes are
+        // compatible. In particular, `-3 USD` through `5 USD` must retain
+        // both currencies, whereas `-5` through `-3` may produce `-5–3 USD`.
+        let can_collapse_affixes = !currency_range || currency_range_signs_match;
+        let range_pattern = crate::locale_data_provider()
+            .number_range_pattern(&self.resolved.locale, self.resolved.style);
+
         // CLDR range patterns commonly share a trailing currency, unit, or
         // percent affix. The formatted parts, rather than a language-family
         // table, tell us whether the selected provider pattern placed that
         // affix after the magnitude.
-        let suffix_length = common_number_affix_suffix_length(&start_parts, &end_parts);
+        let suffix_length = if can_collapse_affixes {
+            common_number_affix_suffix_length(&start_parts, &end_parts)
+        } else {
+            0
+        };
         // An exact-value compact pattern may consist solely of its `compact`
         // part (for example pinned French long `mille`). It is not an affix
         // when extracting it would erase an endpoint altogether.
         let suffix_is_affix = suffix_length > 0
             && suffix_length < start_parts.len()
             && suffix_length < end_parts.len();
+        let mut currency_affix_collapsed = false;
         let suffix = if let Some(suffix) = hidden_unit_range_suffix {
             suffix
         } else if suffix_is_affix {
+            currency_affix_collapsed = currency_range;
             let start_at = start_parts.len() - suffix_length;
             end_parts.truncate(end_parts.len() - suffix_length);
             start_parts.split_off(start_at)
-        } else if let Some(suffix_length) =
-            range_plural_affix_suffix_length(&start_parts, &end_parts)
-        {
-            // Rebuild the trailing affix with the CLDR plural-range category
-            // over the rounded endpoint values. This normally matches the
-            // end category, but preserves locales with an explicit range
-            // rule as well as French `1–2 mètres`.
-            let start_at = start_parts.len() - suffix_length;
-            start_parts.truncate(start_at);
-            let end_at = end_parts.len() - suffix_length;
-            let end_suffix = end_parts.split_off(end_at);
-            let range_plural_category =
-                start_plural_category
+        } else if can_collapse_affixes {
+            if let Some(suffix_length) = range_plural_affix_suffix_length(&start_parts, &end_parts)
+            {
+                currency_affix_collapsed = currency_range;
+                // Rebuild the trailing affix with the CLDR plural-range category
+                // over the rounded endpoint values. This normally matches the
+                // end category, but preserves locales with an explicit range
+                // rule as well as French `1–2 mètres`.
+                let start_at = start_parts.len() - suffix_length;
+                start_parts.truncate(start_at);
+                let end_at = end_parts.len() - suffix_length;
+                let end_suffix = end_parts.split_off(end_at);
+                let range_plural_category = start_plural_category
                     .zip(end_plural_category)
                     .and_then(|(start, end)| {
                         crate::locale_data_provider().number_range_plural_category(
@@ -1306,79 +1330,108 @@ impl NumberFormat {
                             end,
                         )
                     });
-            if let Some(range_plural_category) = range_plural_category {
-                let mut end_with_range_affix = end_parts.clone();
-                let rebuilt = match (
-                    self.resolved.style,
-                    self.resolved.unit,
-                    self.currency.as_ref(),
-                ) {
-                    (NumberFormatStyle::Unit, Some(unit), _) => {
-                        apply_unit_pattern(
-                            &mut end_with_range_affix,
-                            &self.resolved.locale,
-                            unit,
-                            self.resolved.unit_display,
-                            range_plural_category,
-                        );
-                        true
+                if let Some(range_plural_category) = range_plural_category {
+                    let mut end_with_range_affix = end_parts.clone();
+                    let rebuilt = match (
+                        self.resolved.style,
+                        self.resolved.unit,
+                        self.currency.as_ref(),
+                    ) {
+                        (NumberFormatStyle::Unit, Some(unit), _) => {
+                            apply_unit_pattern(
+                                &mut end_with_range_affix,
+                                &self.resolved.locale,
+                                unit,
+                                self.resolved.unit_display,
+                                range_plural_category,
+                            );
+                            true
+                        }
+                        (NumberFormatStyle::Currency, _, Some(currency)) => {
+                            let negative = end_with_range_affix
+                                .iter()
+                                .any(|part| part.kind == NumberFormatPartKind::MinusSign);
+                            apply_currency_pattern(
+                                &mut end_with_range_affix,
+                                currency,
+                                &self.resolved.locale,
+                                negative,
+                                range_plural_category,
+                            );
+                            true
+                        }
+                        _ => false,
+                    };
+                    if rebuilt {
+                        end_with_range_affix.split_off(end_at)
+                    } else {
+                        end_suffix
                     }
-                    (NumberFormatStyle::Currency, _, Some(currency)) => {
-                        let negative = end_with_range_affix
-                            .iter()
-                            .any(|part| part.kind == NumberFormatPartKind::MinusSign);
-                        apply_currency_pattern(
-                            &mut end_with_range_affix,
-                            currency,
-                            &self.resolved.locale,
-                            negative,
-                            range_plural_category,
-                        );
-                        true
-                    }
-                    _ => false,
-                };
-                if rebuilt {
-                    end_with_range_affix.split_off(end_at)
                 } else {
                     end_suffix
                 }
             } else {
-                end_suffix
+                Vec::new()
             }
         } else {
             Vec::new()
         };
 
-        // The CLDR currency pattern folds a common explicit plus/currency
-        // prefix into the start endpoint (for example `+$2.90–3.10`). A bare
-        // prefix currency remains endpoint-specific (`$3 – $5`).
+        // RangeCollapse.AUTO shares an explicit sign together with its
+        // currency, and it can share an alphabetic currency prefix (for
+        // example `US$3–5`). A bare symbol remains endpoint-specific
+        // (`$3 – $5`). Accounting parentheses form one sign scope around both
+        // values, so their opening literal is shared with the currency too.
         let prefix_length = common_number_part_prefix_length(&start_parts, &end_parts);
-        if prefix_length > 0
-            && start_parts[..prefix_length]
-                .iter()
-                .any(|part| part.kind == NumberFormatPartKind::PlusSign)
-            && (start_parts[..prefix_length]
-                .iter()
-                .any(|part| part.kind == NumberFormatPartKind::Currency)
-                || suffix
-                    .iter()
-                    .any(|part| part.kind == NumberFormatPartKind::Currency))
+        let prefix = &start_parts[..prefix_length];
+        let prefix_has_explicit_sign = prefix.iter().any(|part| {
+            matches!(
+                part.kind,
+                NumberFormatPartKind::MinusSign | NumberFormatPartKind::PlusSign
+            )
+        });
+        let prefix_has_currency = prefix
+            .iter()
+            .any(|part| part.kind == NumberFormatPartKind::Currency);
+        let prefix_has_alphabetic_currency = prefix.iter().any(|part| {
+            part.kind == NumberFormatPartKind::Currency
+                && part.value.chars().any(char::is_alphabetic)
+        });
+        let suffix_has_currency = suffix
+            .iter()
+            .any(|part| part.kind == NumberFormatPartKind::Currency);
+        let accounting_range = matches!(
+            currency_range_signs,
+            Some((
+                CurrencyRangeSignContext::Accounting,
+                CurrencyRangeSignContext::Accounting
+            ))
+        );
+        let mut shared_prefix = Vec::new();
+        if currency_range
+            && currency_range_signs_match
+            && prefix_length > 0
+            && (prefix_has_explicit_sign || accounting_range || prefix_has_alphabetic_currency)
+            && (prefix_has_currency || suffix_has_currency)
         {
+            shared_prefix = start_parts.drain(..prefix_length).collect();
             end_parts.drain(..prefix_length);
+            currency_affix_collapsed = true;
         }
 
-        let mut result = Vec::with_capacity(start_parts.len() + end_parts.len() + suffix.len() + 1);
+        let mut result = Vec::with_capacity(
+            shared_prefix.len() + start_parts.len() + end_parts.len() + suffix.len() + 1,
+        );
+        result.extend(shared_prefix.into_iter().map(shared_number_range_part));
         result.extend(start_parts.into_iter().map(start_number_range_part));
         result.push(NumberRangePart {
             kind: NumberFormatPartKind::Literal,
-            value: crate::locale_data_provider()
-                .number_range_separator(
-                    &self.resolved.locale,
-                    self.resolved.style,
-                    self.resolved.maximum_fraction_digits,
-                )
-                .into(),
+            value: (if currency_range && !currency_affix_collapsed {
+                range_pattern.uncollapsed_separator
+            } else {
+                range_pattern.collapsed_separator
+            })
+            .into(),
             source: NumberRangePartSource::Shared,
         });
         result.extend(end_parts.into_iter().map(end_number_range_part));
@@ -2317,6 +2370,48 @@ fn end_number_range_part(part: NumberFormatPart) -> NumberRangePart {
         value: part.value,
         source: NumberRangePartSource::EndRange,
     }
+}
+
+/// The sign presentation carried by one fully formatted currency endpoint.
+///
+/// Accounting's parentheses are literals in `formatToParts`, so they need a
+/// distinct range selector state rather than being conflated with unsigned
+/// positive values.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CurrencyRangeSignContext {
+    None,
+    Plus,
+    Minus,
+    Accounting,
+}
+
+fn currency_range_sign_context(
+    parts: &[NumberFormatPart],
+    sign: NumberCurrencySign,
+) -> CurrencyRangeSignContext {
+    if parts
+        .iter()
+        .any(|part| part.kind == NumberFormatPartKind::MinusSign)
+    {
+        return CurrencyRangeSignContext::Minus;
+    }
+    if parts
+        .iter()
+        .any(|part| part.kind == NumberFormatPartKind::PlusSign)
+    {
+        return CurrencyRangeSignContext::Plus;
+    }
+    if sign == NumberCurrencySign::Accounting
+        && parts
+            .iter()
+            .any(|part| part.kind == NumberFormatPartKind::Literal && part.value.contains('('))
+        && parts
+            .iter()
+            .any(|part| part.kind == NumberFormatPartKind::Literal && part.value.contains(')'))
+    {
+        return CurrencyRangeSignContext::Accounting;
+    }
+    CurrencyRangeSignContext::None
 }
 
 fn common_number_part_prefix_length(start: &[NumberFormatPart], end: &[NumberFormatPart]) -> usize {

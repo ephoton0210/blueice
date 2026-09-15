@@ -280,6 +280,19 @@ pub(crate) struct NumberCurrencyPattern {
     pub(crate) consumes_decimal_sign: bool,
 }
 
+/// The two provider-owned connectors used by a formatted numeric range.
+///
+/// A range that collapses a shared currency or sign uses
+/// `collapsed_separator` inside one localized currency pattern. A range whose
+/// endpoint affixes must both remain visible uses `uncollapsed_separator`
+/// between two complete endpoint patterns. Keeping both forms in the provider
+/// prevents NumberFormat from guessing punctuation from the fraction width.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct NumberRangePattern {
+    pub(crate) collapsed_separator: &'static str,
+    pub(crate) uncollapsed_separator: &'static str,
+}
+
 /// The non-numeric portions of an ICU percent pattern. A `Sign` item keeps
 /// the decimal formatter's existing typed plus/minus part while allowing
 /// CLDR to position it relative to the percent sign.
@@ -1897,44 +1910,41 @@ impl LocaleDataProvider {
         )))
     }
 
-    /// Returns the CLDR number-range glue for a resolved NumberFormat locale.
+    /// Returns the provider-owned range pattern for a resolved NumberFormat
+    /// locale and style.
     ///
-    /// ICU4X's current decimal provider does not yet expose the CLDR
-    /// `miscPatterns.range` record. Keep that data boundary here, rather than
-    /// letting NumberFormat manufacture an en dash for every language. The
-    /// currency branches are the bounded interval shapes required while the
-    /// corresponding full CLDR range-pattern data is unavailable upstream.
-    pub(crate) fn number_range_separator(
+    /// ICU4X's current decimal provider does not expose the CLDR
+    /// `miscPatterns.range` record or NumberRangeFormatter's currency
+    /// interval selection. The two connectors preserve both data shapes: a
+    /// collapsed currency pattern has no endpoint-affix spacing, while the
+    /// full-endpoint form retains its localized outer spacing.
+    pub(crate) fn number_range_pattern(
         self,
         locale: &str,
         style: crate::NumberFormatStyle,
-        maximum_fraction_digits: u8,
-    ) -> &'static str {
+    ) -> NumberRangePattern {
         let language = locale.split('-').next().unwrap_or(locale);
-        match language {
+        let collapsed_separator = match language {
             // CLDR miscPatterns-numberSystem-*.range.
-            "es" | "it" | "zh" => "-",
+            "es" | "it" | "zh" | "th" | "fil" => "-",
             "pt" => " - ",
-            "ja" if style == crate::NumberFormatStyle::Currency => " ～ ",
             "ja" => "～",
             "ko" => "~",
-            // Thai's zero-fraction currency interval retains its localized
-            // ASCII-hyphen spacing; ordinary numeric intervals do not.
-            "th" if style == crate::NumberFormatStyle::Currency && maximum_fraction_digits == 0 => {
-                " - "
-            }
-            "th" => "-",
-            // The pinned en/en-US currency interval records add spaces only
-            // to the zero-fraction skeleton exercised by ECMA-402's range
-            // fixtures. Other English regions retain the generic pattern.
-            "en" if matches!(locale, "en" | "en-US")
-                && style == crate::NumberFormatStyle::Currency
-                && maximum_fraction_digits == 0 =>
-            {
-                " – "
-            }
-            "tr" if style == crate::NumberFormatStyle::Currency => " – ",
             _ => "–",
+        };
+        let uncollapsed_separator = if style == crate::NumberFormatStyle::Currency {
+            match language {
+                "es" | "it" | "zh" | "th" | "fil" | "pt" => " - ",
+                "ja" => " ～ ",
+                "ko" => " ~ ",
+                _ => " – ",
+            }
+        } else {
+            collapsed_separator
+        };
+        NumberRangePattern {
+            collapsed_separator,
+            uncollapsed_separator,
         }
     }
 
