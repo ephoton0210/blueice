@@ -691,6 +691,49 @@ fn sources_localized_temperature_and_angle_units_from_the_shared_provider() {
         ),
         "2 pour cent"
     );
+    let french_compound = NumberFormat::try_new(
+        &[canonicalize("fr").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: NumberFormatUnit::parse("gigabyte-per-second"),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        french_compound.format_f64(2.0).unwrap(),
+        "2\u{a0}gigaoctets par seconde"
+    );
+    assert_eq!(
+        french_compound
+            .format_to_parts_f64(2.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::Integer, "2".into()),
+            (NumberFormatPartKind::Literal, "\u{a0}".into()),
+            (NumberFormatPartKind::Unit, "gigaoctets par seconde".into(),),
+        ]
+    );
+    for (display, expected) in [
+        (NumberUnitDisplay::Short, "2\u{202f}Go/s"),
+        (NumberUnitDisplay::Narrow, "2Go/s"),
+    ] {
+        let formatter = NumberFormat::try_new(
+            &[canonicalize("fr").unwrap()],
+            NumberFormatOptions {
+                style: NumberFormatStyle::Unit,
+                unit: NumberFormatUnit::parse("gigabyte-per-second"),
+                unit_display: display,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(formatter.format_f64(2.0).unwrap(), expected);
+    }
     assert_eq!(
         format(
             "ja",
@@ -725,7 +768,7 @@ fn sources_localized_temperature_and_angle_units_from_the_shared_provider() {
     .unwrap();
     assert_eq!(
         japanese_compound.format_f64(2.0).unwrap(),
-        "2 ギガバイト毎秒"
+        "2 ギガバイト/秒"
     );
     assert_eq!(
         japanese_compound
@@ -737,7 +780,7 @@ fn sources_localized_temperature_and_angle_units_from_the_shared_provider() {
         vec![
             (NumberFormatPartKind::Integer, "2".into()),
             (NumberFormatPartKind::Literal, " ".into()),
-            (NumberFormatPartKind::Unit, "ギガバイト毎秒".into()),
+            (NumberFormatPartKind::Unit, "ギガバイト/秒".into()),
         ]
     );
     assert_eq!(
@@ -775,6 +818,20 @@ fn sources_localized_temperature_and_angle_units_from_the_shared_provider() {
             5.0,
         ),
         "5 процентов"
+    );
+    let russian_compound = NumberFormat::try_new(
+        &[canonicalize("ru").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: NumberFormatUnit::parse("gigabyte-per-second"),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        russian_compound.format_f64(2.0).unwrap(),
+        "2 гигабайта в секунду"
     );
     assert_eq!(
         format(
@@ -902,7 +959,73 @@ fn sources_localized_temperature_and_angle_units_from_the_shared_provider() {
     .unwrap();
     assert_eq!(
         arabic_compound.format_f64(2.0).unwrap(),
-        "٢ غيغابايت لكل ثانية"
+        "٢ غيغابايت في الثانية"
+    );
+}
+
+#[test]
+fn uses_localized_per_unit_grammar_before_the_generic_connector() {
+    let format = |locale, unit, display| {
+        NumberFormat::try_new(
+            &[canonicalize(locale).unwrap()],
+            NumberFormatOptions {
+                style: NumberFormatStyle::Unit,
+                unit: NumberFormatUnit::parse(unit),
+                unit_display: display,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .format_f64(2.0)
+        .unwrap()
+    };
+
+    // These records cannot be reconstructed from ICU4X's generic `per`
+    // connector: French changes `year` to `an`, Arabic selects a preposition,
+    // and Japanese uses a slash in long display.
+    assert_eq!(
+        format("fr", "meter-per-year", NumberUnitDisplay::Long),
+        "2\u{a0}mètres par an"
+    );
+    assert_eq!(
+        format("es", "meter-per-week", NumberUnitDisplay::Short),
+        "2 m/sem."
+    );
+    assert_eq!(
+        format("ar", "meter-per-second", NumberUnitDisplay::Long),
+        "٢ متر في الثانية"
+    );
+    assert_eq!(
+        format("ja", "meter-per-second", NumberUnitDisplay::Long),
+        "2 メートル/秒"
+    );
+    assert_eq!(
+        format("ru", "meter-per-year", NumberUnitDisplay::Long),
+        "2 метра в год"
+    );
+
+    let arabic = NumberFormat::try_new(
+        &[canonicalize("ar").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: NumberFormatUnit::parse("meter-per-second"),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        arabic
+            .format_to_parts_f64(2.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::Integer, "٢".into()),
+            (NumberFormatPartKind::Literal, " ".into()),
+            (NumberFormatPartKind::Unit, "متر في الثانية".into()),
+        ]
     );
 }
 

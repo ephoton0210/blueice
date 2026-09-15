@@ -1720,7 +1720,25 @@ impl LocaleDataProvider {
         display: crate::NumberUnitDisplay,
         plural: crate::PluralCategory,
     ) -> NumberGenericCompoundUnitPattern {
+        if let Some(pattern) = cldr_french_generic_compound_unit_pattern(
+            locale,
+            numerator,
+            denominator,
+            display,
+            plural,
+        ) {
+            return pattern;
+        }
         if let Some(pattern) = cldr_spanish_generic_compound_unit_pattern(
+            locale,
+            numerator,
+            denominator,
+            display,
+            plural,
+        ) {
+            return pattern;
+        }
+        if let Some(pattern) = cldr_russian_generic_compound_unit_pattern(
             locale,
             numerator,
             denominator,
@@ -3024,6 +3042,81 @@ fn cldr_french_digital_unit_pattern(
     })
 }
 
+/// Composes a French generic compound whenever either operand uses a raw CLDR
+/// digital or percentage record.
+///
+/// ICU4X currently omits typed markers for those simple-unit categories. The
+/// generated French names still cover the other sanctioned categories, so a
+/// generic `-per-` formatter must combine the two provider records rather
+/// than discard both in favour of the complete English fallback. The pinned
+/// The generic CLDR `per` connector remains a fallback when the pinned
+/// source has no denominator-specific `perUnitPattern`.
+fn cldr_french_generic_compound_unit_pattern(
+    locale: &str,
+    numerator: crate::NumberFormatUnit,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberGenericCompoundUnitPattern> {
+    use crate::NumberUnitDisplay as Display;
+
+    let denominator_unit = denominator;
+    let numerator_raw = cldr_french_digital_unit_pattern(locale, numerator, display, plural);
+    let denominator_display = match display {
+        Display::Long => Display::Long,
+        Display::Short | Display::Narrow => Display::Narrow,
+    };
+    let denominator_raw = cldr_french_digital_unit_pattern(
+        locale,
+        denominator_unit,
+        denominator_display,
+        crate::PluralCategory::One,
+    );
+    // If ICU4X generated both names, its own `per` record remains the
+    // authoritative provider shape.
+    if numerator_raw.is_none() && denominator_raw.is_none() {
+        return None;
+    }
+    let numerator = numerator_raw
+        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
+    let denominator = denominator_raw.or_else(|| {
+        experimental_number_unit_pattern(
+            locale,
+            denominator,
+            denominator_display,
+            crate::PluralCategory::One,
+        )
+    })?;
+    let per = match display {
+        Display::Long => "{0} par {1}",
+        Display::Short | Display::Narrow => "{0}/{1}",
+    };
+    let label = localized_generic_compound_unit_label(
+        locale,
+        denominator_unit,
+        display,
+        &number_unit_pattern_label(&numerator),
+        &number_unit_pattern_label(&denominator),
+        per,
+    )?;
+
+    if !numerator.prefix.is_empty() && numerator.suffix.is_empty() {
+        return Some(NumberGenericCompoundUnitPattern {
+            prefix: label,
+            prefix_separator: numerator.prefix_separator,
+            suffix_separator: String::new(),
+            suffix: String::new(),
+        });
+    }
+
+    Some(NumberGenericCompoundUnitPattern {
+        prefix: String::new(),
+        prefix_separator: String::new(),
+        suffix_separator: numerator.suffix_separator,
+        suffix: label,
+    })
+}
+
 /// Returns the pinned Spanish CLDR records for every sanctioned simple-unit
 /// category that ICU4X does not yet expose through a typed unit-name marker.
 ///
@@ -3131,8 +3224,8 @@ fn cldr_spanish_additional_unit_pattern(
 ///
 /// `UnitsEssentialsV1` cannot currently describe the latter categories. Once
 /// either operand uses one, accepting the previous English-only fallback
-/// would discard otherwise available Spanish data. The CLDR `per` records are
-/// `{0} por {1}` for long and `{0}/{1}` for short/narrow displays.
+/// would discard otherwise available Spanish data. The generic connector is
+/// used only when no denominator-specific `perUnitPattern` is available.
 fn cldr_spanish_generic_compound_unit_pattern(
     locale: &str,
     numerator: crate::NumberFormatUnit,
@@ -3142,6 +3235,7 @@ fn cldr_spanish_generic_compound_unit_pattern(
 ) -> Option<NumberGenericCompoundUnitPattern> {
     use crate::NumberUnitDisplay as Display;
 
+    let denominator_unit = denominator;
     let numerator_raw = cldr_spanish_additional_unit_pattern(locale, numerator, display, plural);
     let denominator_display = match display {
         Display::Long => Display::Long,
@@ -3149,7 +3243,7 @@ fn cldr_spanish_generic_compound_unit_pattern(
     };
     let denominator_raw = cldr_spanish_additional_unit_pattern(
         locale,
-        denominator,
+        denominator_unit,
         denominator_display,
         crate::PluralCategory::One,
     );
@@ -3172,10 +3266,13 @@ fn cldr_spanish_generic_compound_unit_pattern(
         Display::Long => "{0} por {1}",
         Display::Short | Display::Narrow => "{0}/{1}",
     };
-    let label = interpolate_unit_per_pattern(
-        per,
+    let label = localized_generic_compound_unit_label(
+        locale,
+        denominator_unit,
+        display,
         &number_unit_pattern_label(&numerator),
         &number_unit_pattern_label(&denominator),
+        per,
     )?;
 
     if !numerator.prefix.is_empty() && numerator.suffix.is_empty() {
@@ -3200,8 +3297,9 @@ fn cldr_spanish_generic_compound_unit_pattern(
 ///
 /// The generated ICU4X data supplies the other sanctioned categories. Mixing
 /// it with an English fallback would lose Arabic labels and the localized
-/// `لكل` long-width connector, so the corresponding CLDR compound records
-/// remain provider data here.
+/// generic connector, so the corresponding CLDR records remain provider data
+/// here. A denominator-specific `perUnitPattern` takes precedence when one
+/// exists.
 fn cldr_arabic_generic_compound_unit_pattern(
     locale: &str,
     numerator: crate::NumberFormatUnit,
@@ -3211,6 +3309,7 @@ fn cldr_arabic_generic_compound_unit_pattern(
 ) -> Option<NumberGenericCompoundUnitPattern> {
     use crate::NumberUnitDisplay as Display;
 
+    let denominator_unit = denominator;
     let numerator_raw = cldr_arabic_digital_unit_pattern(locale, numerator, display, plural);
     let denominator_display = match display {
         Display::Long => Display::Long,
@@ -3218,7 +3317,7 @@ fn cldr_arabic_generic_compound_unit_pattern(
     };
     let denominator_raw = cldr_arabic_digital_unit_pattern(
         locale,
-        denominator,
+        denominator_unit,
         denominator_display,
         crate::PluralCategory::One,
     );
@@ -3239,10 +3338,13 @@ fn cldr_arabic_generic_compound_unit_pattern(
         Display::Long => "{0} لكل {1}",
         Display::Short | Display::Narrow => "{0}/{1}",
     };
-    let label = interpolate_unit_per_pattern(
-        per,
+    let label = localized_generic_compound_unit_label(
+        locale,
+        denominator_unit,
+        display,
         &number_unit_pattern_label(&numerator),
         &number_unit_pattern_label(&denominator),
+        per,
     )?;
 
     if !numerator.prefix.is_empty() && numerator.suffix.is_empty() {
@@ -3265,10 +3367,11 @@ fn cldr_arabic_generic_compound_unit_pattern(
 /// Composes a Japanese generic compound whenever one operand uses a raw CLDR
 /// digital or percentage record that ICU4X does not type yet.
 ///
-/// Japanese long compounds use `{0}毎{1}`; short and narrow forms use a slash.
-/// The other operand remains the matching ICU4X-generated Japanese name, so
-/// this never falls through to an English label merely because one category
-/// is unavailable from ICU4X's typed marker inventory.
+/// Japanese's generic long connector is `{0}毎{1}`, but its pinned
+/// denominator-specific records can select a slash instead. The other operand
+/// remains the matching ICU4X-generated Japanese name, so this never falls
+/// through to an English label merely because one category is unavailable
+/// from ICU4X's typed marker inventory.
 fn cldr_japanese_generic_compound_unit_pattern(
     locale: &str,
     numerator: crate::NumberFormatUnit,
@@ -3278,6 +3381,7 @@ fn cldr_japanese_generic_compound_unit_pattern(
 ) -> Option<NumberGenericCompoundUnitPattern> {
     use crate::NumberUnitDisplay as Display;
 
+    let denominator_unit = denominator;
     let numerator_raw = cldr_japanese_digital_unit_pattern(locale, numerator, display, plural);
     let denominator_display = match display {
         Display::Long => Display::Long,
@@ -3285,7 +3389,7 @@ fn cldr_japanese_generic_compound_unit_pattern(
     };
     let denominator_raw = cldr_japanese_digital_unit_pattern(
         locale,
-        denominator,
+        denominator_unit,
         denominator_display,
         crate::PluralCategory::One,
     );
@@ -3306,10 +3410,13 @@ fn cldr_japanese_generic_compound_unit_pattern(
         Display::Long => "{0}毎{1}",
         Display::Short | Display::Narrow => "{0}/{1}",
     };
-    let label = interpolate_unit_per_pattern(
-        per,
+    let label = localized_generic_compound_unit_label(
+        locale,
+        denominator_unit,
+        display,
         &number_unit_pattern_label(&numerator),
         &number_unit_pattern_label(&denominator),
+        per,
     )?;
     if !numerator.prefix.is_empty() && numerator.suffix.is_empty() {
         return Some(NumberGenericCompoundUnitPattern {
@@ -3327,10 +3434,76 @@ fn cldr_japanese_generic_compound_unit_pattern(
     })
 }
 
-/// Combines the generated CLDR simple-unit data with its matching `per`
-/// pattern. The data loading deliberately happens at this low-level boundary:
-/// NumberFormat owns decimal fields, while this provider owns every unit word
-/// and connector around them.
+/// Composes a Russian generic compound whenever either operand is a raw CLDR
+/// digital or percentage unit.
+///
+/// Russian's denominator-specific forms carry the required case and
+/// preposition (for example, `в секунду`). ICU4X's generic slash connector
+/// remains available only for a sanctioned denominator without a bundled
+/// `perUnitPattern`.
+fn cldr_russian_generic_compound_unit_pattern(
+    locale: &str,
+    numerator: crate::NumberFormatUnit,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberGenericCompoundUnitPattern> {
+    use crate::NumberUnitDisplay as Display;
+
+    let denominator_unit = denominator;
+    let numerator_raw = cldr_russian_digital_unit_pattern(locale, numerator, display, plural);
+    let denominator_display = match display {
+        Display::Long => Display::Long,
+        Display::Short | Display::Narrow => Display::Narrow,
+    };
+    let denominator_raw = cldr_russian_digital_unit_pattern(
+        locale,
+        denominator_unit,
+        denominator_display,
+        crate::PluralCategory::One,
+    );
+    if numerator_raw.is_none() && denominator_raw.is_none() {
+        return None;
+    }
+    let numerator = numerator_raw
+        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
+    let denominator = denominator_raw.or_else(|| {
+        experimental_number_unit_pattern(
+            locale,
+            denominator,
+            denominator_display,
+            crate::PluralCategory::One,
+        )
+    })?;
+    let label = localized_generic_compound_unit_label(
+        locale,
+        denominator_unit,
+        display,
+        &number_unit_pattern_label(&numerator),
+        &number_unit_pattern_label(&denominator),
+        "{0}/{1}",
+    )?;
+
+    if !numerator.prefix.is_empty() && numerator.suffix.is_empty() {
+        return Some(NumberGenericCompoundUnitPattern {
+            prefix: label,
+            prefix_separator: numerator.prefix_separator,
+            suffix_separator: String::new(),
+            suffix: String::new(),
+        });
+    }
+    Some(NumberGenericCompoundUnitPattern {
+        prefix: String::new(),
+        prefix_separator: String::new(),
+        suffix_separator: numerator.suffix_separator,
+        suffix: label,
+    })
+}
+
+/// Combines the generated CLDR simple-unit data with its matching generic
+/// `per` connector or a pinned denominator-specific form. The data loading
+/// deliberately happens at this low-level boundary: NumberFormat owns decimal
+/// fields, while this provider owns every unit word and connector around them.
 fn experimental_generic_compound_unit_pattern(
     locale: &str,
     numerator: crate::NumberFormatUnit,
@@ -3338,6 +3511,7 @@ fn experimental_generic_compound_unit_pattern(
     display: crate::NumberUnitDisplay,
     plural: crate::PluralCategory,
 ) -> Option<NumberGenericCompoundUnitPattern> {
+    let denominator_unit = denominator;
     let numerator = experimental_number_unit_pattern(locale, numerator, display, plural)?;
     let denominator_display = match display {
         crate::NumberUnitDisplay::Long => crate::NumberUnitDisplay::Long,
@@ -3347,15 +3521,18 @@ fn experimental_generic_compound_unit_pattern(
     };
     let denominator = experimental_number_unit_pattern(
         locale,
-        denominator,
+        denominator_unit,
         denominator_display,
         crate::PluralCategory::One,
     )?;
     let per = experimental_unit_per_pattern(locale, display)?;
-    let label = interpolate_unit_per_pattern(
-        &per,
+    let label = localized_generic_compound_unit_label(
+        locale,
+        denominator_unit,
+        display,
         &number_unit_pattern_label(&numerator),
         &number_unit_pattern_label(&denominator),
+        &per,
     )?;
 
     // A pattern with only a leading unit label places that label before the
@@ -3420,6 +3597,305 @@ fn interpolate_unit_per_pattern(
             .replace("{0}", numerator)
             .replace("{1}", denominator),
     )
+}
+
+/// Returns a pinned CLDR `perUnitPattern` where the data contains a
+/// denominator-specific grammatical form.
+///
+/// `UnitsEssentialsV1.per` carries only a generic two-placeholder connector,
+/// which cannot represent forms such as Arabic `في الثانية` or Japanese
+/// `/秒`. These records are the corresponding `perUnitPattern` values from
+/// the pinned `cldr-units-full` source. They deliberately cover only units
+/// which actually carry a record; callers retain the generic provider
+/// connector for every other sanctioned denominator.
+fn cldr_per_unit_pattern(
+    locale: &str,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+) -> Option<&'static str> {
+    use crate::{NumberFormatUnit as Unit, NumberUnitDisplay as Display};
+
+    const DENOMINATORS: [Unit; 18] = [
+        Unit::Centimeter,
+        Unit::Day,
+        Unit::Foot,
+        Unit::Gallon,
+        Unit::Gram,
+        Unit::Hour,
+        Unit::Inch,
+        Unit::Kilogram,
+        Unit::Kilometer,
+        Unit::Liter,
+        Unit::Meter,
+        Unit::Minute,
+        Unit::Month,
+        Unit::Ounce,
+        Unit::Pound,
+        Unit::Second,
+        Unit::Week,
+        Unit::Year,
+    ];
+    const AR_LONG: [&str; 18] = [
+        "{0}/سنتيمتر",
+        "{0} في اليوم",
+        "{0} لكل قدم",
+        "{0} لكل غالون",
+        "{0}/غرام",
+        "{0} في الساعة",
+        "{0}/بوصة",
+        "{0}/كيلوغرام",
+        "{0}/كيلومتر",
+        "{0} لكل لتر",
+        "{0} لكل متر",
+        "{0} كل دقيقة",
+        "{0} في الشهر",
+        "{0}/أونصة",
+        "{0}/رطل",
+        "{0} في الثانية",
+        "{0} في الأسبوع",
+        "{0} في السنة",
+    ];
+    const AR_SHORT: [&str; 18] = [
+        "{0}/سم",
+        "{0}/ي",
+        "{0}/قدم",
+        "{0}/غالون",
+        "{0}/غرام",
+        "{0}/س",
+        "{0}/بوصة",
+        "{0}/كغم",
+        "{0}/كم",
+        "{0}/ل",
+        "{0}/م",
+        "{0}/د",
+        "{0}/ش",
+        "{0}/أونصة",
+        "{0}/رطل",
+        "{0}/ث",
+        "{0}/أ",
+        "{0}/سنة",
+    ];
+    const AR_NARROW: [&str; 18] = [
+        "{0}/سم",
+        "{0}/ي",
+        "{0}/قدم",
+        "{0}/غالون",
+        "{0} غ",
+        "{0}/س",
+        "{0}/بوصة",
+        "{0}/كغ",
+        "{0}/كم",
+        "{0}/ل",
+        "{0}/م",
+        "{0}/د",
+        "{0}/ش",
+        "{0}/أونصة",
+        "{0}/رطل",
+        "{0}/ث",
+        "{0}/أ",
+        "{0}/سنة",
+    ];
+    const ES_LONG: [&str; 18] = [
+        "{0} por centímetro",
+        "{0} por día",
+        "{0} por pie",
+        "{0} por galón",
+        "{0} por gramo",
+        "{0} por hora",
+        "{0} por pulgada",
+        "{0} por kilogramo",
+        "{0} por kilómetro",
+        "{0} por litro",
+        "{0} por metro",
+        "{0} por minuto",
+        "{0} por mes",
+        "{0} por onza",
+        "{0} por libra",
+        "{0} por segundo",
+        "{0} por semana",
+        "{0} por año",
+    ];
+    const ES_SHORT: [&str; 18] = [
+        "{0}/cm", "{0}/d", "{0}/ft", "{0}/gal", "{0}/g", "{0}/h", "{0}/in", "{0}/kg", "{0}/km",
+        "{0}/l", "{0}/m", "{0}/min", "{0}/m.", "{0}/oz", "{0}/lb", "{0}/s", "{0}/sem.", "{0}/a",
+    ];
+    const ES_NARROW: [&str; 18] = [
+        "{0}/cm", "{0}/d", "{0}/ft", "{0}/gal", "{0}/g", "{0}/h", "{0}/in", "{0}/kg", "{0}/km",
+        "{0}/l", "{0}/m", "{0}/min", "{0}/m", "{0}/oz", "{0}/lb", "{0}/s", "{0}/sem", "{0}/a",
+    ];
+    const FR_LONG: [&str; 18] = [
+        "{0} par centimètre",
+        "{0} par jour",
+        "{0} par pied",
+        "{0} par gallon",
+        "{0} par gramme",
+        "{0} par heure",
+        "{0} par pouce",
+        "{0} par kilogramme",
+        "{0} par kilomètre",
+        "{0} par litre",
+        "{0} par mètre",
+        "{0} par minute",
+        "{0} par mois",
+        "{0} par once",
+        "{0} par livre",
+        "{0} par seconde",
+        "{0} par semaine",
+        "{0} par an",
+    ];
+    const FR_SHORT: [&str; 18] = [
+        "{0}/cm", "{0}/j", "{0}/pi", "{0}/gal", "{0}/g", "{0}/h", "{0}/po", "{0}/kg", "{0}/km",
+        "{0}/l", "{0}/m", "{0}/min", "{0}/m.", "{0}/oz", "{0}/lb", "{0}/s", "{0}/sem.", "{0}/an",
+    ];
+    const FR_NARROW: [&str; 18] = [
+        "{0}/cm", "{0}/j", "{0}/pi", "{0}/gal", "{0}/g", "{0}/h", "{0}/po", "{0}/kg", "{0}/km",
+        "{0}/l", "{0}/m", "{0}/min", "{0}/m.", "{0}/oz", "{0}/lb", "{0}/s", "{0}/sem.", "{0}/a",
+    ];
+    const RU_LONG: [&str; 18] = [
+        "{0} на сантиметр",
+        "{0} в день",
+        "{0} на фут",
+        "{0} на амер. галлон",
+        "{0} на грамм",
+        "{0} в час",
+        "{0} на дюйм",
+        "{0} на килограмм",
+        "{0} на километр",
+        "{0} на литр",
+        "{0} на метр",
+        "{0} в минуту",
+        "{0} в месяц",
+        "{0} на унцию",
+        "{0} на фунт",
+        "{0} в секунду",
+        "{0} в неделю",
+        "{0} в год",
+    ];
+    const RU_SHORT: [&str; 18] = [
+        "{0}/см",
+        "{0}/д",
+        "{0}/фт",
+        "{0}/ам. гал",
+        "{0}/г",
+        "{0}/ч",
+        "{0}/дюйм",
+        "{0}/кг",
+        "{0}/км",
+        "{0}/л",
+        "{0}/м",
+        "{0}/мин",
+        "{0}/мес",
+        "{0}/унц",
+        "{0}/фнт",
+        "{0}/c",
+        "{0}/нед",
+        "{0}/г",
+    ];
+    const RU_NARROW: [&str; 18] = [
+        "{0}/см",
+        "{0}/д.",
+        "{0}/фт",
+        "{0}/ам. гал",
+        "{0}/г",
+        "{0}/ч",
+        "{0}/дюйм",
+        "{0}/кг",
+        "{0}/км",
+        "{0}/л",
+        "{0}/м",
+        "{0}/мин",
+        "{0}/м.",
+        "{0}/унц",
+        "{0}/фнт",
+        "{0}/c",
+        "{0}/н.",
+        "{0}/г.",
+    ];
+    const JA_LONG: [&str; 18] = [
+        "{0}/センチメートル",
+        "{0}/日",
+        "{0}/フィート",
+        "{0}/ガロン",
+        "{0}/グラム",
+        "{0}/時間",
+        "{0}/インチ",
+        "{0}/キログラム",
+        "{0}/キロメートル",
+        "{0}/リットル",
+        "{0}/メートル",
+        "{0}/分",
+        "{0}/月",
+        "{0}/オンス",
+        "{0}/ポンド",
+        "{0}/秒",
+        "{0}/週",
+        "{0}/年",
+    ];
+    const JA_SHORT: [&str; 18] = [
+        "{0}/cm",
+        "{0}/日",
+        "{0}/ft",
+        "{0}/gal",
+        "{0}/g",
+        "{0}/時間",
+        "{0}/in",
+        "{0}/kg",
+        "{0}/km",
+        "{0}/L",
+        "{0}/m",
+        "{0}/分",
+        "{0}/月",
+        "{0}/oz",
+        "{0}/lb",
+        "{0}/秒",
+        "{0}/週",
+        "{0}/年",
+    ];
+
+    let language = locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()?;
+    let index = DENOMINATORS
+        .iter()
+        .position(|candidate| *candidate == denominator)?;
+    let patterns: &[&str] = match (language, display) {
+        ("ar", Display::Long) => &AR_LONG,
+        ("ar", Display::Short) => &AR_SHORT,
+        ("ar", Display::Narrow) => &AR_NARROW,
+        ("es", Display::Long) => &ES_LONG,
+        ("es", Display::Short) => &ES_SHORT,
+        ("es", Display::Narrow) => &ES_NARROW,
+        ("fr", Display::Long) => &FR_LONG,
+        ("fr", Display::Short) => &FR_SHORT,
+        ("fr", Display::Narrow) => &FR_NARROW,
+        ("ru", Display::Long) => &RU_LONG,
+        ("ru", Display::Short) => &RU_SHORT,
+        ("ru", Display::Narrow) => &RU_NARROW,
+        ("ja", Display::Long) => &JA_LONG,
+        ("ja", Display::Short | Display::Narrow) => &JA_SHORT,
+        _ => return None,
+    };
+    patterns.get(index).copied()
+}
+
+/// Resolves a generic composition through a denominator-specific CLDR pattern
+/// when available, retaining ICU4X's generic two-placeholder form otherwise.
+fn localized_generic_compound_unit_label(
+    locale: &str,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    numerator_label: &str,
+    denominator_label: &str,
+    generic_per: &str,
+) -> Option<String> {
+    if let Some(per_unit) = cldr_per_unit_pattern(locale, denominator, display) {
+        return per_unit
+            .contains("{0}")
+            .then(|| per_unit.replace("{0}", numerator_label));
+    }
+    interpolate_unit_per_pattern(generic_per, numerator_label, denominator_label)
 }
 
 fn english_number_unit_pattern(
