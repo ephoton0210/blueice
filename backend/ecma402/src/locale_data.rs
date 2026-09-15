@@ -1441,6 +1441,12 @@ impl LocaleDataProvider {
         {
             return pattern;
         }
+        if let Some(pattern) = cldr_italian_additional_unit_pattern(locale, unit, display, plural) {
+            return pattern;
+        }
+        if let Some(pattern) = cldr_dutch_additional_unit_pattern(locale, unit, display, plural) {
+            return pattern;
+        }
         if let Some(pattern) = cldr_japanese_digital_unit_pattern(locale, unit, display, plural) {
             return pattern;
         }
@@ -1812,6 +1818,24 @@ impl LocaleDataProvider {
             return pattern;
         }
         if let Some(pattern) = cldr_portuguese_generic_compound_unit_pattern(
+            locale,
+            numerator,
+            denominator,
+            display,
+            plural,
+        ) {
+            return pattern;
+        }
+        if let Some(pattern) = cldr_italian_generic_compound_unit_pattern(
+            locale,
+            numerator,
+            denominator,
+            display,
+            plural,
+        ) {
+            return pattern;
+        }
+        if let Some(pattern) = cldr_dutch_generic_compound_unit_pattern(
             locale,
             numerator,
             denominator,
@@ -3412,6 +3436,244 @@ fn cldr_portuguese_additional_unit_pattern(
     number_unit_pattern_from_placeholder(&raw.replace("{0}", "\u{fdd0}"))
 }
 
+/// Returns the pinned Italian CLDR records for categories absent from ICU4X's
+/// typed unit marker inventory.
+fn cldr_italian_additional_unit_pattern(
+    locale: &str,
+    unit: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberUnitPattern> {
+    use crate::{NumberFormatUnit as Unit, NumberUnitDisplay as Display, PluralCategory};
+
+    if locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        != Some("it")
+    {
+        return None;
+    }
+    let singular = plural == PluralCategory::One;
+    let raw = match display {
+        Display::Long => match unit {
+            Unit::Bit => "{0} bit",
+            Unit::Byte => "{0} byte",
+            Unit::Celsius => {
+                if singular {
+                    "{0} grado Celsius"
+                } else {
+                    "{0} gradi Celsius"
+                }
+            }
+            Unit::Degree => {
+                if singular {
+                    "{0} grado"
+                } else {
+                    "{0} gradi"
+                }
+            }
+            Unit::Fahrenheit => {
+                if singular {
+                    "{0} grado Fahrenheit"
+                } else {
+                    "{0} gradi Fahrenheit"
+                }
+            }
+            Unit::Gigabit => "{0} gigabit",
+            Unit::Gigabyte => "{0} gigabyte",
+            Unit::Kilobit => "{0} kilobit",
+            Unit::Kilobyte => "{0} kilobyte",
+            Unit::Megabit => "{0} megabit",
+            Unit::Megabyte => "{0} megabyte",
+            Unit::Percent => "{0} percento",
+            Unit::Petabyte => "{0} petabyte",
+            Unit::Terabit => "{0} terabit",
+            Unit::Terabyte => "{0} terabyte",
+            _ => return None,
+        },
+        Display::Short => match unit {
+            Unit::Bit => "{0} bit",
+            Unit::Byte => "{0} byte",
+            Unit::Celsius => "{0} °C",
+            Unit::Degree => "{0}°",
+            Unit::Fahrenheit => "{0} °F",
+            Unit::Gigabit => "{0} Gb",
+            Unit::Gigabyte => "{0} GB",
+            Unit::Kilobit => "{0} kb",
+            Unit::Kilobyte => "{0} kB",
+            Unit::Megabit => "{0} Mb",
+            Unit::Megabyte => "{0} MB",
+            Unit::Percent => "{0}%",
+            Unit::Petabyte => "{0} PB",
+            Unit::Terabit => "{0} Tb",
+            Unit::Terabyte => "{0} TB",
+            _ => return None,
+        },
+        Display::Narrow => match unit {
+            Unit::Bit => "{0}bit",
+            Unit::Byte => "{0}B",
+            Unit::Celsius => "{0}°C",
+            Unit::Degree => "{0}°",
+            Unit::Fahrenheit => "{0}°F",
+            Unit::Gigabit => "{0}Gb",
+            Unit::Gigabyte => "{0}GB",
+            Unit::Kilobit => "{0}kb",
+            Unit::Kilobyte => "{0}kB",
+            Unit::Megabit => "{0}Mb",
+            Unit::Megabyte => "{0}MB",
+            Unit::Percent => "{0}%",
+            Unit::Petabyte => "{0}PB",
+            Unit::Terabit => "{0}Tb",
+            Unit::Terabyte => "{0}TB",
+            _ => return None,
+        },
+    };
+    number_unit_pattern_from_placeholder(&raw.replace("{0}", "\u{fdd0}"))
+}
+
+/// Returns pinned Dutch CLDR unit records for categories without a typed
+/// ICU4X marker. Dutch distinguishes singular digital-bit and several
+/// temperature and angular long forms, so the provider's English fallback
+/// cannot faithfully stand in for these values.
+fn cldr_dutch_additional_unit_pattern(
+    locale: &str,
+    unit: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberUnitPattern> {
+    use crate::{NumberFormatUnit as Unit, NumberUnitDisplay as Display, PluralCategory};
+
+    if locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        != Some("nl")
+    {
+        return None;
+    }
+    let singular = plural == PluralCategory::One;
+    let raw = match display {
+        Display::Long => match unit {
+            Unit::Bit => {
+                if singular {
+                    "{0} bit"
+                } else {
+                    "{0} bits"
+                }
+            }
+            Unit::Byte => "{0} byte",
+            Unit::Celsius => {
+                if singular {
+                    "{0} graad Celsius"
+                } else {
+                    "{0} graden Celsius"
+                }
+            }
+            Unit::Degree => {
+                if singular {
+                    "{0} booggraad"
+                } else {
+                    "{0} booggraden"
+                }
+            }
+            Unit::Fahrenheit => {
+                if singular {
+                    "{0} graad Fahrenheit"
+                } else {
+                    "{0} graden Fahrenheit"
+                }
+            }
+            Unit::Gigabit => {
+                if singular {
+                    "{0} gigabit"
+                } else {
+                    "{0} gigabits"
+                }
+            }
+            Unit::Gigabyte => "{0} gigabyte",
+            Unit::Kilobit => {
+                if singular {
+                    "{0} kilobit"
+                } else {
+                    "{0} kilobits"
+                }
+            }
+            Unit::Kilobyte => "{0} kilobyte",
+            Unit::Megabit => {
+                if singular {
+                    "{0} megabit"
+                } else {
+                    "{0} megabits"
+                }
+            }
+            Unit::Megabyte => "{0} megabyte",
+            Unit::Percent => "{0} procent",
+            Unit::Petabyte => "{0} petabyte",
+            Unit::Terabit => {
+                if singular {
+                    "{0} terabit"
+                } else {
+                    "{0} terabits"
+                }
+            }
+            Unit::Terabyte => "{0} terabyte",
+            _ => return None,
+        },
+        Display::Short => match unit {
+            Unit::Bit => {
+                if singular {
+                    "{0} bit"
+                } else {
+                    "{0} bits"
+                }
+            }
+            Unit::Byte => "{0} byte",
+            Unit::Celsius => "{0}°C",
+            Unit::Degree => "{0}°",
+            Unit::Fahrenheit => "{0}°F",
+            Unit::Gigabit => "{0} Gb",
+            Unit::Gigabyte => "{0} GB",
+            Unit::Kilobit => "{0} kb",
+            Unit::Kilobyte => "{0} kB",
+            Unit::Megabit => "{0} Mb",
+            Unit::Megabyte => "{0} MB",
+            Unit::Percent => "{0}%",
+            Unit::Petabyte => "{0} PB",
+            Unit::Terabit => "{0} Tb",
+            Unit::Terabyte => "{0} TB",
+            _ => return None,
+        },
+        Display::Narrow => match unit {
+            Unit::Bit => {
+                if singular {
+                    "{0} bit"
+                } else {
+                    "{0} bits"
+                }
+            }
+            Unit::Byte => "{0} byte",
+            Unit::Celsius => "{0}°",
+            Unit::Degree => "{0}°",
+            Unit::Fahrenheit => "{0}°F",
+            Unit::Gigabit => "{0} Gb",
+            Unit::Gigabyte => "{0} GB",
+            Unit::Kilobit => "{0} kb",
+            Unit::Kilobyte => "{0} kB",
+            Unit::Megabit => "{0} Mb",
+            Unit::Megabyte => "{0} MB",
+            Unit::Percent => "{0}%",
+            Unit::Petabyte => "{0} PB",
+            Unit::Terabit => "{0} Tb",
+            Unit::Terabyte => "{0} TB",
+            _ => return None,
+        },
+    };
+    number_unit_pattern_from_placeholder(&raw.replace("{0}", "\u{fdd0}"))
+}
+
 /// Returns the pinned Russian CLDR records for digital and percentage units.
 ///
 /// The missing typed ICU4X category cannot be approximated with English
@@ -4257,12 +4519,9 @@ fn cldr_portuguese_generic_compound_unit_pattern(
             crate::PluralCategory::One,
         )
     })?;
-    let per = match (display, denominator_unit, base) {
-        // CLDR's European Portuguese override deliberately selects a slash
-        // for the long second denominator, unlike the parent `pt` record.
-        (Display::Long, crate::NumberFormatUnit::Second, "pt-PT") => "{0}/s",
-        (Display::Long, _, _) => "{0} por {1}",
-        (Display::Short | Display::Narrow, _, _) => "{0}/{1}",
+    let per = match display {
+        Display::Long => "{0} por {1}",
+        Display::Short | Display::Narrow => "{0}/{1}",
     };
     let label = localized_generic_compound_unit_label(
         locale,
@@ -4280,6 +4539,145 @@ fn cldr_portuguese_generic_compound_unit_pattern(
             suffix: String::new(),
         });
     }
+    Some(NumberGenericCompoundUnitPattern {
+        prefix: String::new(),
+        prefix_separator: String::new(),
+        suffix_separator: numerator.suffix_separator,
+        suffix: label,
+    })
+}
+
+/// Composes Italian generic compounds whenever a raw CLDR simple-unit record
+/// participates in the numerator or denominator.
+fn cldr_italian_generic_compound_unit_pattern(
+    locale: &str,
+    numerator: crate::NumberFormatUnit,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberGenericCompoundUnitPattern> {
+    use crate::NumberUnitDisplay as Display;
+
+    if locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        != Some("it")
+    {
+        return None;
+    }
+    let denominator_unit = denominator;
+    let numerator_raw = cldr_italian_additional_unit_pattern(locale, numerator, display, plural);
+    let denominator_display = match display {
+        Display::Long => Display::Long,
+        Display::Short | Display::Narrow => Display::Narrow,
+    };
+    let denominator_raw = cldr_italian_additional_unit_pattern(
+        locale,
+        denominator_unit,
+        denominator_display,
+        crate::PluralCategory::One,
+    );
+    if numerator_raw.is_none() && denominator_raw.is_none() {
+        return None;
+    }
+    let numerator = numerator_raw
+        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
+    if display == Display::Long && denominator_unit == crate::NumberFormatUnit::Second {
+        let suffix = format!("{} al secondo", number_unit_pattern_label(&numerator));
+        return Some(NumberGenericCompoundUnitPattern {
+            prefix: String::new(),
+            prefix_separator: String::new(),
+            suffix_separator: numerator.suffix_separator,
+            suffix,
+        });
+    }
+    let denominator = denominator_raw.or_else(|| {
+        experimental_number_unit_pattern(
+            locale,
+            denominator_unit,
+            denominator_display,
+            crate::PluralCategory::One,
+        )
+    })?;
+    let per = match display {
+        Display::Long => "{0} per {1}",
+        Display::Short | Display::Narrow => "{0}/{1}",
+    };
+    let label = localized_generic_compound_unit_label(
+        locale,
+        denominator_unit,
+        display,
+        &number_unit_pattern_label(&numerator),
+        &number_unit_pattern_label(&denominator),
+        per,
+    )?;
+    Some(NumberGenericCompoundUnitPattern {
+        prefix: String::new(),
+        prefix_separator: String::new(),
+        suffix_separator: numerator.suffix_separator,
+        suffix: label,
+    })
+}
+
+/// Composes Dutch generic compounds when either operand comes from the pinned
+/// raw CLDR records for an ICU4X-untyped category.
+fn cldr_dutch_generic_compound_unit_pattern(
+    locale: &str,
+    numerator: crate::NumberFormatUnit,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberGenericCompoundUnitPattern> {
+    use crate::NumberUnitDisplay as Display;
+
+    if locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        != Some("nl")
+    {
+        return None;
+    }
+    let denominator_unit = denominator;
+    let numerator_raw = cldr_dutch_additional_unit_pattern(locale, numerator, display, plural);
+    let denominator_display = match display {
+        Display::Long => Display::Long,
+        Display::Short | Display::Narrow => Display::Narrow,
+    };
+    let denominator_raw = cldr_dutch_additional_unit_pattern(
+        locale,
+        denominator_unit,
+        denominator_display,
+        crate::PluralCategory::One,
+    );
+    if numerator_raw.is_none() && denominator_raw.is_none() {
+        return None;
+    }
+    let numerator = numerator_raw
+        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
+    let denominator = denominator_raw.or_else(|| {
+        experimental_number_unit_pattern(
+            locale,
+            denominator_unit,
+            denominator_display,
+            crate::PluralCategory::One,
+        )
+    })?;
+    let generic_per = match display {
+        Display::Long => "{0} per {1}",
+        Display::Short | Display::Narrow => "{0}/{1}",
+    };
+    let label = localized_generic_compound_unit_label(
+        locale,
+        denominator_unit,
+        display,
+        &number_unit_pattern_label(&numerator),
+        &number_unit_pattern_label(&denominator),
+        generic_per,
+    )?;
     Some(NumberGenericCompoundUnitPattern {
         prefix: String::new(),
         prefix_separator: String::new(),
@@ -4799,6 +5197,34 @@ fn cldr_per_unit_pattern(
         "{0}/cm", "{0}/T", "{0}/ft", "{0}/gal", "{0}/g", "{0}/h", "{0}/in", "{0}/kg", "{0}/km",
         "{0}/l", "{0}/m", "{0}/min", "{0}/M", "{0}/oz", "{0}/lb", "{0}/s", "{0}/W", "{0}/J",
     ];
+    const NL_LONG: [&str; 18] = [
+        "{0} per centimeter",
+        "{0} per dag",
+        "{0} per voet",
+        "{0} per gallon",
+        "{0} per gram",
+        "{0} per uur",
+        "{0} per inch",
+        "{0} per kilogram",
+        "{0} per kilometer",
+        "{0} per liter",
+        "{0} per meter",
+        "{0} per minuut",
+        "{0} per maand",
+        "{0} per ounce",
+        "{0} per pound",
+        "{0} per seconde",
+        "{0} per week",
+        "{0} per jaar",
+    ];
+    const NL_SHORT: [&str; 18] = [
+        "{0}/cm", "{0}/dag", "{0}/ft", "{0}/gal", "{0}/g", "{0}/uur", "{0}/in", "{0}/kg", "{0}/km",
+        "{0}/l", "{0}/m", "{0}/min", "{0}/mnd", "{0}/oz", "{0}/lb", "{0}/sec", "{0}/wk", "{0}/jr",
+    ];
+    const NL_NARROW: [&str; 18] = [
+        "{0}/cm", "{0}/d", "{0}/ft", "{0}/gal", "{0}/g", "{0}/u", "{0}/in", "{0}/kg", "{0}/km",
+        "{0}/l", "{0}/m", "{0}/m", "{0}/m", "{0}/oz", "{0}/lb", "{0}/s", "{0}/w", "{0}/jr",
+    ];
     const KO_LONG: [&str; 18] = [
         "센티미터당 {0}",
         "일당 {0}",
@@ -4978,6 +5404,9 @@ fn cldr_per_unit_pattern(
         ("ar", Display::Narrow) => &AR_NARROW,
         ("de", Display::Long) => &DE_LONG,
         ("de", Display::Short | Display::Narrow) => &DE_SHORT,
+        ("nl", Display::Long) => &NL_LONG,
+        ("nl", Display::Short) => &NL_SHORT,
+        ("nl", Display::Narrow) => &NL_NARROW,
         ("es", Display::Long) => &ES_LONG,
         ("es", Display::Short) => &ES_SHORT,
         ("es", Display::Narrow) => &ES_NARROW,
