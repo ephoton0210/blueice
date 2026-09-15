@@ -1557,9 +1557,9 @@ impl LocaleDataProvider {
     /// ICU4X currently exposes typed generated records for area, duration,
     /// length, mass, and volume. The ECMA sanctioned inventory also includes
     /// categories that ICU4X has not generated yet (digital, temperature,
-    /// angle, and percent). Pinned raw CLDR records fill selected locale
-    /// families; all remaining combinations retain the provider's bounded
-    /// English fallback instead of being advertised as localized data.
+    /// angle, and percent). Pinned raw CLDR records fill the remaining cells
+    /// for every advertised NumberFormat locale; unsupported locales retain
+    /// the provider's bounded English fallback.
     pub(crate) fn number_unit_pattern(
         self,
         locale: &str,

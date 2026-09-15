@@ -13,6 +13,8 @@ use super::{
     number_unit_pattern_label, NumberGenericCompoundUnitPattern, NumberUnitPattern,
 };
 
+mod full_cldr;
+
 /// Composes a localized generic compound from the complete numerator pattern.
 ///
 /// A CLDR simple-unit pattern can put the number after the unit name. Passing
@@ -144,7 +146,7 @@ pub(super) fn additional_unit_pattern(
             return Some(pattern);
         }
     }
-    None
+    full_cldr::cldr_full_untyped_unit_pattern(locale, unit, display, plural)
 }
 
 /// Routes every child-owned raw generic-compound family. The public provider

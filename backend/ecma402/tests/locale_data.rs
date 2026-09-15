@@ -106,15 +106,12 @@ fn provider_exposes_per_service_capabilities_without_negotiating_locales() {
 
 #[test]
 fn number_format_provider_coverage_inventory_is_complete_and_localized() {
-    // Baseline from CLDR 48.2.1 / ICU4X revision 31dcf427. This is a floor,
-    // not a completion target: item 2 remains open until every advertised
-    // cell is localized rather than using the bounded English fallback.
-    const SIMPLE_UNIT_DATA_BACKED_FLOOR: usize = 27_540;
     let provider = locale_data_provider();
     let mut decimal_locales = 0;
     let mut currency_patterns = (0, 0);
     let mut percent_patterns = (0, 0);
     let mut simple_unit_patterns = (0, 0);
+    let mut incomplete_locales = Vec::new();
 
     for locale in provider.number_format_locales() {
         let coverage = provider
@@ -127,13 +124,18 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
         percent_patterns.1 += coverage.percent_patterns.total;
         simple_unit_patterns.0 += coverage.simple_unit_patterns.data_backed;
         simple_unit_patterns.1 += coverage.simple_unit_patterns.total;
+        if coverage.simple_unit_patterns.data_backed != coverage.simple_unit_patterns.total {
+            incomplete_locales.push(format!(
+                "{locale} {}/{}",
+                coverage.simple_unit_patterns.data_backed, coverage.simple_unit_patterns.total
+            ));
+        }
     }
 
     assert_eq!(decimal_locales, provider.number_format_locales().len());
     assert_eq!(currency_patterns.0, currency_patterns.1);
     assert_eq!(percent_patterns.0, percent_patterns.1);
-    assert!(simple_unit_patterns.0 <= simple_unit_patterns.1);
-    assert!(simple_unit_patterns.0 >= SIMPLE_UNIT_DATA_BACKED_FLOOR);
+    assert_eq!(simple_unit_patterns.0, simple_unit_patterns.1);
     eprintln!(
         "NumberFormat provider coverage: decimal {decimal_locales}/{}, currency {}/{}, percent {}/{}, simple units {}/{} ({}%)",
         provider.number_format_locales().len(),
@@ -148,5 +150,10 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
             total: simple_unit_patterns.1,
         }
         .percentage(),
+    );
+    assert!(
+        incomplete_locales.is_empty(),
+        "NumberFormat simple-unit gaps by locale: {}",
+        incomplete_locales.join(", ")
     );
 }

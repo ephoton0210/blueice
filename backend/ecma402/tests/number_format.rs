@@ -2786,6 +2786,35 @@ fn loads_localized_simple_unit_patterns_from_the_shared_cldr_provider() {
 }
 
 #[test]
+fn loads_full_cldr_units_for_previously_untyped_locale_cells() {
+    let afrikaans = NumberFormat::try_new(
+        &[canonicalize("af-NA-u-nu-latn").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::Bit),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(afrikaans.format_f64(2.0).unwrap(), "2 bis");
+    assert_eq!(
+        afrikaans
+            .format_to_parts_f64(2.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::Integer, "2".into()),
+            (NumberFormatPartKind::Literal, " ".into()),
+            (NumberFormatPartKind::Unit, "bis".into()),
+        ]
+    );
+}
+
+#[test]
 fn compound_unit_patterns_use_the_rounded_cldr_plural_category() {
     let unit = NumberFormatUnit::parse("kilometer-per-hour").unwrap();
     let russian = NumberFormat::try_new(

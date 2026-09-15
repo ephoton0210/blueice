@@ -184,7 +184,9 @@ version = "0.1.0"
 name = "blueice-ecma402"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "fixed_decimal",
+ "flate2",
  "icu_calendar",
  "icu_collator",
  "icu_datetime",
