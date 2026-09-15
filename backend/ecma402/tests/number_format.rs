@@ -13,6 +13,9 @@ use blueice_ecma402::{
     NumberSignDisplay, NumberUnitDisplay, ResolvedNumberFormatOptions, SUPPORTED_NUMBERING_SYSTEMS,
 };
 
+#[path = "number_format/locale_units.rs"]
+mod locale_units;
+
 #[test]
 fn localizes_decimal_digits_separators_and_half_expand_rounding() {
     let german = canonicalize("de-DE").unwrap();
@@ -2016,6 +2019,15 @@ fn sources_portuguese_cldr_digital_temperature_and_percent_units() {
         .unwrap(),
         "2 gigabytes por segundo"
     );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("gigabyte-per-hour").unwrap(),
+            NumberUnitDisplay::Long,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2 gigabytes por hora"
+    );
     let european = NumberFormat::try_new(
         &[canonicalize("pt-PT").unwrap()],
         NumberFormatOptions {
@@ -2027,6 +2039,17 @@ fn sources_portuguese_cldr_digital_temperature_and_percent_units() {
     )
     .unwrap();
     assert_eq!(european.format_f64(2.0).unwrap(), "2 gigabytes/s");
+    let african = NumberFormat::try_new(
+        &[canonicalize("pt-AO").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::parse("gigabyte-per-hour").unwrap()),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(african.format_f64(2.0).unwrap(), "2 gigabytes/h");
 }
 
 #[test]
@@ -2085,12 +2108,30 @@ fn sources_italian_cldr_digital_temperature_angle_and_percent_units() {
     );
     assert_eq!(
         formatter(
+            NumberFormatUnit::parse("gigabyte-per-hour").unwrap(),
+            NumberUnitDisplay::Long,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2 gigabyte all’ora"
+    );
+    assert_eq!(
+        formatter(
             NumberFormatUnit::parse("gigabyte-per-second").unwrap(),
             NumberUnitDisplay::Narrow,
         )
         .format_f64(2.0)
         .unwrap(),
         "2GB/s"
+    );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("gigabyte-per-week").unwrap(),
+            NumberUnitDisplay::Narrow,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2GB/sett."
     );
 }
 
@@ -2165,6 +2206,364 @@ fn sources_dutch_cldr_digital_temperature_angle_and_generic_per_units() {
         .format_f64(2.0)
         .unwrap(),
         "2°/s"
+    );
+}
+
+#[test]
+fn sources_turkish_cldr_prefix_units_and_generic_per_units() {
+    let formatter = |unit, display| {
+        NumberFormat::try_new(
+            &[canonicalize("tr").unwrap()],
+            NumberFormatOptions {
+                style: NumberFormatStyle::Unit,
+                unit: Some(unit),
+                unit_display: display,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    };
+
+    assert_eq!(
+        formatter(NumberFormatUnit::Percent, NumberUnitDisplay::Long)
+            .format_f64(2.0)
+            .unwrap(),
+        "yüzde 2"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Percent, NumberUnitDisplay::Short)
+            .format_f64(2.0)
+            .unwrap(),
+        "%2"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Celsius, NumberUnitDisplay::Short)
+            .format_f64(1.0)
+            .unwrap(),
+        "1 °C"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Celsius, NumberUnitDisplay::Short)
+            .format_f64(2.0)
+            .unwrap(),
+        "2°C"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Celsius, NumberUnitDisplay::Narrow)
+            .format_f64(1.0)
+            .unwrap(),
+        "1°C"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Celsius, NumberUnitDisplay::Narrow)
+            .format_f64(2.0)
+            .unwrap(),
+        "2 °C"
+    );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("gigabyte-per-second").unwrap(),
+            NumberUnitDisplay::Long,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2 gigabayt/saniye"
+    );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("gigabyte-per-hour").unwrap(),
+            NumberUnitDisplay::Short,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2 GB/sa"
+    );
+    let cypriot = NumberFormat::try_new(
+        &[canonicalize("tr-CY").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::parse("celsius-per-second").unwrap()),
+            unit_display: NumberUnitDisplay::Short,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(cypriot.format_f64(2.0).unwrap(), "2°C/sn");
+}
+
+#[test]
+fn sources_hindi_devanagari_cldr_units_and_generic_per_patterns() {
+    let formatter = |unit, display| {
+        NumberFormat::try_new(
+            &[canonicalize("hi").unwrap()],
+            NumberFormatOptions {
+                style: NumberFormatStyle::Unit,
+                unit: Some(unit),
+                unit_display: display,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    };
+
+    assert_eq!(
+        formatter(NumberFormatUnit::Percent, NumberUnitDisplay::Long)
+            .format_f64(2.0)
+            .unwrap(),
+        "2 प्रतिशत"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Celsius, NumberUnitDisplay::Short)
+            .format_f64(2.0)
+            .unwrap(),
+        "2°से॰"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Degree, NumberUnitDisplay::Narrow)
+            .format_f64(2.0)
+            .unwrap(),
+        "2°"
+    );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("gigabyte-per-second").unwrap(),
+            NumberUnitDisplay::Long,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2 गीगाबाइट प्रति सेकंड"
+    );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("gigabyte-per-hour").unwrap(),
+            NumberUnitDisplay::Short,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2 GB/घं॰"
+    );
+    let latin = NumberFormat::try_new(
+        &[canonicalize("hi-Latn").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::Gigabyte),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(latin.format_f64(2.0).unwrap(), "2 gigabytes");
+}
+
+#[test]
+fn sources_greek_cldr_inflection_and_generic_per_patterns() {
+    let formatter = |unit, display| {
+        NumberFormat::try_new(
+            &[canonicalize("el").unwrap()],
+            NumberFormatOptions {
+                style: NumberFormatStyle::Unit,
+                unit: Some(unit),
+                unit_display: display,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    };
+
+    assert_eq!(
+        formatter(NumberFormatUnit::Celsius, NumberUnitDisplay::Long)
+            .format_f64(1.0)
+            .unwrap(),
+        "1 βαθμός Κελσίου"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Celsius, NumberUnitDisplay::Long)
+            .format_f64(2.0)
+            .unwrap(),
+        "2 βαθμοί Κελσίου"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Gigabit, NumberUnitDisplay::Long)
+            .format_f64(2.0)
+            .unwrap(),
+        "2 gigabit"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Percent, NumberUnitDisplay::Long)
+            .format_f64(2.0)
+            .unwrap(),
+        "2 τοις εκατό"
+    );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("gigabyte-per-second").unwrap(),
+            NumberUnitDisplay::Long,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2 gigabyte ανά δευτερόλεπτο"
+    );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("gigabyte-per-hour").unwrap(),
+            NumberUnitDisplay::Short,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2 GB/ώ."
+    );
+    let cypriot = NumberFormat::try_new(
+        &[canonicalize("el-CY").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::parse("celsius-per-second").unwrap()),
+            unit_display: NumberUnitDisplay::Narrow,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(cypriot.format_f64(2.0).unwrap(), "2°C/δ");
+}
+
+#[test]
+fn sources_polish_cldr_cardinal_forms_and_generic_per_patterns() {
+    let formatter = |unit, display| {
+        NumberFormat::try_new(
+            &[canonicalize("pl").unwrap()],
+            NumberFormatOptions {
+                style: NumberFormatStyle::Unit,
+                unit: Some(unit),
+                unit_display: display,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    };
+
+    assert_eq!(
+        formatter(NumberFormatUnit::Gigabyte, NumberUnitDisplay::Long)
+            .format_f64(1.0)
+            .unwrap(),
+        "1 gigabajt"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Gigabyte, NumberUnitDisplay::Long)
+            .format_f64(2.0)
+            .unwrap(),
+        "2 gigabajty"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Gigabyte, NumberUnitDisplay::Long)
+            .format_f64(5.0)
+            .unwrap(),
+        "5 gigabajtów"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Gigabyte, NumberUnitDisplay::Long)
+            .format_f64(1.5)
+            .unwrap(),
+        "1,5 gigabajta"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Celsius, NumberUnitDisplay::Long)
+            .format_f64(5.0)
+            .unwrap(),
+        "5 stopni Celsjusza"
+    );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("gigabyte-per-second").unwrap(),
+            NumberUnitDisplay::Long,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2 gigabajty na sekundę"
+    );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("gigabyte-per-hour").unwrap(),
+            NumberUnitDisplay::Short,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2 GB/godz."
+    );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("celsius-per-second").unwrap(),
+            NumberUnitDisplay::Narrow,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2°C/s"
+    );
+}
+
+#[test]
+fn sources_hebrew_cldr_bidi_hidden_number_and_generic_per_patterns() {
+    let formatter = |unit, display| {
+        NumberFormat::try_new(
+            &[canonicalize("he").unwrap()],
+            NumberFormatOptions {
+                style: NumberFormatStyle::Unit,
+                unit: Some(unit),
+                unit_display: display,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    };
+
+    assert_eq!(
+        formatter(NumberFormatUnit::Degree, NumberUnitDisplay::Long)
+            .format_f64(1.0)
+            .unwrap(),
+        "מעלה אחת"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Degree, NumberUnitDisplay::Long)
+            .format_f64(2.0)
+            .unwrap(),
+        "שתי מעלות"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Celsius, NumberUnitDisplay::Long)
+            .format_f64(1.0)
+            .unwrap(),
+        "1 מעלת צלזיוס"
+    );
+    assert_eq!(
+        formatter(NumberFormatUnit::Gigabyte, NumberUnitDisplay::Short)
+            .format_f64(1.0)
+            .unwrap(),
+        "GB\u{200f}1"
+    );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("gigabyte-per-second").unwrap(),
+            NumberUnitDisplay::Long,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2 ג׳יגה-בייט לשניה"
+    );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("gigabyte-per-second").unwrap(),
+            NumberUnitDisplay::Short,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2 GB/שנ׳"
+    );
+    assert_eq!(
+        formatter(
+            NumberFormatUnit::parse("celsius-per-second").unwrap(),
+            NumberUnitDisplay::Narrow,
+        )
+        .format_f64(2.0)
+        .unwrap(),
+        "2°C/שנ׳"
     );
 }
 

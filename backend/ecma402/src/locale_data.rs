@@ -50,6 +50,9 @@ use icu_provider::{
 };
 use writeable::Writeable;
 
+mod range_patterns;
+mod unit_patterns;
+
 /// Immutable source revision for the ICU4X data bundle consumed by this crate.
 ///
 /// This is a source revision, rather than a claimed upstream CLDR release:
@@ -1436,6 +1439,10 @@ impl LocaleDataProvider {
         if let Some(pattern) = cldr_german_digital_unit_pattern(locale, unit, display, plural) {
             return pattern;
         }
+        if let Some(pattern) = unit_patterns::additional_unit_pattern(locale, unit, display, plural)
+        {
+            return pattern;
+        }
         if let Some(pattern) =
             cldr_portuguese_additional_unit_pattern(locale, unit, display, plural)
         {
@@ -1817,6 +1824,15 @@ impl LocaleDataProvider {
         ) {
             return pattern;
         }
+        if let Some(pattern) = unit_patterns::generic_compound_unit_pattern(
+            locale,
+            numerator,
+            denominator,
+            display,
+            plural,
+        ) {
+            return pattern;
+        }
         if let Some(pattern) = cldr_portuguese_generic_compound_unit_pattern(
             locale,
             numerator,
@@ -1994,40 +2010,7 @@ impl LocaleDataProvider {
     /// collapsed pattern has no endpoint-affix spacing, while the full-
     /// endpoint form retains its localized outer spacing.
     pub(crate) fn number_range_pattern(self, locale: &str) -> NumberRangePattern {
-        let language = locale.split('-').next().unwrap_or(locale);
-        // Pinned CLDR 48.2.1 `miscPatterns-numberSystem-*.range` records.
-        // ICU4X does not presently generate this field. Keep the raw pattern
-        // connector distinct from the full-endpoint connector: the latter
-        // surrounds a raw connector without outer spaces with endpoint
-        // spacing when signs or affixes must remain on both values.
-        let (collapsed_separator, uncollapsed_separator) = match language {
-            "ja" => ("～", " ～ "),
-            "ko" => ("~", " ~ "),
-            "to" => ("—", " — "),
-            "et" => ("‒", " ‒ "),
-            "mk" => ("\u{2009}–\u{2009}", " \u{2009}–\u{2009} "),
-            "bs" if locale.split('-').any(|subtag| subtag == "Cyrl") => ("–", " – "),
-            "oc" if !locale.split('-').any(|subtag| subtag == "ES") => ("–", " – "),
-            "zh" if locale.split('-').any(|subtag| subtag == "Latn") => ("–", " – "),
-            "bg" | "bs" | "hr" | "jv" | "kea" | "sk" => (" – ", " – "),
-            "my" | "ro" => (" - ", " - "),
-            "pt" if locale.split('-').any(|subtag| {
-                matches!(
-                    subtag,
-                    "AO" | "CH" | "CV" | "GQ" | "GW" | "LU" | "MO" | "MZ" | "PT" | "ST" | "TL"
-                )
-            }) =>
-            {
-                (" - ", " - ")
-            }
-            "ca" | "da" | "es" | "eu" | "fil" | "fy" | "gu" | "it" | "ka" | "lij" | "ml" | "nl"
-            | "oc" | "sq" | "th" | "tt" | "vec" | "vi" | "yue" | "zh" => ("-", " - "),
-            _ => ("–", " – "),
-        };
-        NumberRangePattern {
-            collapsed_separator,
-            uncollapsed_separator,
-        }
+        range_patterns::number_range_pattern(locale)
     }
 
     /// Whether the bounded currency-pattern fallback places its symbol after
@@ -4499,18 +4482,6 @@ fn cldr_portuguese_generic_compound_unit_pattern(
     }
     let numerator = numerator_raw
         .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
-    if matches!(
-        (display, denominator_unit, base),
-        (Display::Long, crate::NumberFormatUnit::Second, "pt-PT")
-    ) {
-        let suffix = format!("{}/s", number_unit_pattern_label(&numerator));
-        return Some(NumberGenericCompoundUnitPattern {
-            prefix: String::new(),
-            prefix_separator: String::new(),
-            suffix_separator: numerator.suffix_separator,
-            suffix,
-        });
-    }
     let denominator = denominator_raw.or_else(|| {
         experimental_number_unit_pattern(
             locale,
@@ -4584,15 +4555,6 @@ fn cldr_italian_generic_compound_unit_pattern(
     }
     let numerator = numerator_raw
         .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
-    if display == Display::Long && denominator_unit == crate::NumberFormatUnit::Second {
-        let suffix = format!("{} al secondo", number_unit_pattern_label(&numerator));
-        return Some(NumberGenericCompoundUnitPattern {
-            prefix: String::new(),
-            prefix_separator: String::new(),
-            suffix_separator: numerator.suffix_separator,
-            suffix,
-        });
-    }
     let denominator = denominator_raw.or_else(|| {
         experimental_number_unit_pattern(
             locale,
@@ -4937,6 +4899,10 @@ fn cldr_per_unit_pattern(
 ) -> Option<&'static str> {
     use crate::{NumberFormatUnit as Unit, NumberUnitDisplay as Display};
 
+    if let Some(pattern) = unit_patterns::expanded_per_unit_pattern(locale, denominator, display) {
+        return Some(pattern);
+    }
+
     const DENOMINATORS: [Unit; 18] = [
         Unit::Centimeter,
         Unit::Day,
@@ -5197,33 +5163,117 @@ fn cldr_per_unit_pattern(
         "{0}/cm", "{0}/T", "{0}/ft", "{0}/gal", "{0}/g", "{0}/h", "{0}/in", "{0}/kg", "{0}/km",
         "{0}/l", "{0}/m", "{0}/min", "{0}/M", "{0}/oz", "{0}/lb", "{0}/s", "{0}/W", "{0}/J",
     ];
-    const NL_LONG: [&str; 18] = [
-        "{0} per centimeter",
-        "{0} per dag",
-        "{0} per voet",
-        "{0} per gallon",
-        "{0} per gram",
-        "{0} per uur",
-        "{0} per inch",
-        "{0} per kilogram",
-        "{0} per kilometer",
-        "{0} per liter",
-        "{0} per meter",
-        "{0} per minuut",
-        "{0} per maand",
-        "{0} per ounce",
-        "{0} per pound",
-        "{0} per seconde",
-        "{0} per week",
-        "{0} per jaar",
+    const PT_LONG: [&str; 18] = [
+        "{0} por centímetro",
+        "{0} por dia",
+        "{0} por pé",
+        "{0} por galão",
+        "{0} por grama",
+        "{0} por hora",
+        "{0} por polegada",
+        "{0} por quilograma",
+        "{0} por quilômetro",
+        "{0} por litro",
+        "{0} por metro",
+        "{0} por minuto",
+        "{0} por mês",
+        "{0} por onça",
+        "{0} por libra",
+        "{0} por segundo",
+        "{0} por semana",
+        "{0} por ano",
     ];
-    const NL_SHORT: [&str; 18] = [
-        "{0}/cm", "{0}/dag", "{0}/ft", "{0}/gal", "{0}/g", "{0}/uur", "{0}/in", "{0}/kg", "{0}/km",
-        "{0}/l", "{0}/m", "{0}/min", "{0}/mnd", "{0}/oz", "{0}/lb", "{0}/sec", "{0}/wk", "{0}/jr",
+    const PT_SHORT: [&str; 18] = [
+        "{0}/cm", "{0}/dia", "{0}/ft", "{0}/gal", "{0}/g", "{0}/h", "{0}/pol.", "{0}/kg", "{0}/km",
+        "{0}/l", "{0}/m", "{0}/min", "{0}/mês", "{0}/oz", "{0}/lb", "{0}/s", "{0}/sem.", "{0}/ano",
     ];
-    const NL_NARROW: [&str; 18] = [
-        "{0}/cm", "{0}/d", "{0}/ft", "{0}/gal", "{0}/g", "{0}/u", "{0}/in", "{0}/kg", "{0}/km",
-        "{0}/l", "{0}/m", "{0}/m", "{0}/m", "{0}/oz", "{0}/lb", "{0}/s", "{0}/w", "{0}/jr",
+    const PT_PT_LONG: [&str; 18] = [
+        "{0} por centímetro",
+        "{0} por dia",
+        "{0} por pé",
+        "{0} por galão",
+        "{0} por grama",
+        "{0}/h",
+        "{0} por polegada",
+        "{0} por quilograma",
+        "{0} por quilómetro",
+        "{0} por litro",
+        "{0} por metro",
+        "{0} por minuto",
+        "{0} por mês",
+        "{0} por onça",
+        "{0} por libra",
+        "{0}/s",
+        "{0} por semana",
+        "{0} por ano",
+    ];
+    const PT_PT_SHORT: [&str; 18] = [
+        "{0}/cm", "{0}/dia", "{0}/ft", "{0}/gal", "{0}/g", "{0}/h", "{0}/pol.", "{0}/kg", "{0}/km",
+        "{0}/l", "{0}/m", "{0}/min", "{0}/mês", "{0}/oz", "{0}/lb", "{0}/s", "{0}/sem.", "{0}/ano",
+    ];
+    const PT_PT_NARROW: [&str; 18] = [
+        "{0}/cm", "{0}/d", "{0}/pé", "{0}/gal", "{0}/g", "{0}/h", "{0}/pol.", "{0}/kg", "{0}/km",
+        "{0}/l", "{0}/m", "{0}/min", "{0}/mês", "{0}/oz", "{0}/lb", "{0}/s", "{0}/sem.", "{0}/ano",
+    ];
+    const IT_LONG: [&str; 18] = [
+        "{0} per centimetro",
+        "{0} al giorno",
+        "{0} per piede",
+        "{0} per gallone",
+        "{0} per grammo",
+        "{0} all’ora",
+        "{0} per pollice",
+        "{0} per chilogrammo",
+        "{0} per chilometro",
+        "{0} per litro",
+        "{0} per metro",
+        "{0} al minuto",
+        "{0} al mese",
+        "{0} per oncia",
+        "{0} per libbra",
+        "{0} al secondo",
+        "{0} alla settimana",
+        "{0} all’anno",
+    ];
+    const IT_SHORT: [&str; 18] = [
+        "{0}/cm",
+        "{0}/giorno",
+        "{0}/ft",
+        "{0}/gal",
+        "{0}/g",
+        "{0}/h",
+        "{0}/in",
+        "{0}/kg",
+        "{0}/km",
+        "{0}/l",
+        "{0}/m",
+        "{0}/min",
+        "{0}/mese",
+        "{0}/oz",
+        "{0}/lb",
+        "{0}/s",
+        "{0}/settimana",
+        "{0}/anno",
+    ];
+    const IT_NARROW: [&str; 18] = [
+        "{0}/cm",
+        "{0}/g",
+        "{0}/ft",
+        "{0}/gal",
+        "{0}/g",
+        "{0}/h",
+        "{0}/in",
+        "{0}/kg",
+        "{0}/km",
+        "{0}/l",
+        "{0}/m",
+        "{0}/min",
+        "{0}/mese",
+        "{0}/oz",
+        "{0}/lb",
+        "{0}/s",
+        "{0}/sett.",
+        "{0}/anno",
     ];
     const KO_LONG: [&str; 18] = [
         "센티미터당 {0}",
@@ -5390,46 +5440,63 @@ fn cldr_per_unit_pattern(
         "{0}/年",
     ];
 
-    let language = locale
-        .split_once("-u-")
-        .map_or(locale, |(base, _)| base)
-        .split('-')
-        .next()?;
+    let base = locale.split_once("-u-").map_or(locale, |(base, _)| base);
+    let language = base.split('-').next()?;
     let index = DENOMINATORS
         .iter()
         .position(|candidate| *candidate == denominator)?;
-    let patterns: &[&str] = match (language, display) {
-        ("ar", Display::Long) => &AR_LONG,
-        ("ar", Display::Short) => &AR_SHORT,
-        ("ar", Display::Narrow) => &AR_NARROW,
-        ("de", Display::Long) => &DE_LONG,
-        ("de", Display::Short | Display::Narrow) => &DE_SHORT,
-        ("nl", Display::Long) => &NL_LONG,
-        ("nl", Display::Short) => &NL_SHORT,
-        ("nl", Display::Narrow) => &NL_NARROW,
-        ("es", Display::Long) => &ES_LONG,
-        ("es", Display::Short) => &ES_SHORT,
-        ("es", Display::Narrow) => &ES_NARROW,
-        ("fr", Display::Long) => &FR_LONG,
-        ("fr", Display::Short) => &FR_SHORT,
-        ("fr", Display::Narrow) => &FR_NARROW,
-        ("ru", Display::Long) => &RU_LONG,
-        ("ru", Display::Short) => &RU_SHORT,
-        ("ru", Display::Narrow) => &RU_NARROW,
-        ("ja", Display::Long) => &JA_LONG,
-        ("ja", Display::Short | Display::Narrow) => &JA_SHORT,
-        ("ko", Display::Long) => &KO_LONG,
-        ("ko", Display::Short) => &KO_SHORT,
-        ("ko", Display::Narrow) => &KO_NARROW,
-        ("zh", Display::Long) => match chinese_unit_variant(locale)? {
+    let patterns: &[&str] = match (base, language, display) {
+        (_, "ar", Display::Long) => &AR_LONG,
+        (_, "ar", Display::Short) => &AR_SHORT,
+        (_, "ar", Display::Narrow) => &AR_NARROW,
+        (_, "de", Display::Long) => &DE_LONG,
+        (_, "de", Display::Short | Display::Narrow) => &DE_SHORT,
+        (_, "it", Display::Long) => &IT_LONG,
+        (_, "it", Display::Short) => &IT_SHORT,
+        (_, "it", Display::Narrow) => &IT_NARROW,
+        (
+            "pt-AO" | "pt-CH" | "pt-CV" | "pt-GQ" | "pt-GW" | "pt-LU" | "pt-MO" | "pt-MZ" | "pt-PT"
+            | "pt-ST" | "pt-TL",
+            _,
+            Display::Long,
+        ) => &PT_PT_LONG,
+        (
+            "pt-AO" | "pt-CH" | "pt-CV" | "pt-GQ" | "pt-GW" | "pt-LU" | "pt-MO" | "pt-MZ" | "pt-PT"
+            | "pt-ST" | "pt-TL",
+            _,
+            Display::Short,
+        ) => &PT_PT_SHORT,
+        (
+            "pt-AO" | "pt-CH" | "pt-CV" | "pt-GQ" | "pt-GW" | "pt-LU" | "pt-MO" | "pt-MZ" | "pt-PT"
+            | "pt-ST" | "pt-TL",
+            _,
+            Display::Narrow,
+        ) => &PT_PT_NARROW,
+        (_, "pt", Display::Long) => &PT_LONG,
+        (_, "pt", Display::Short | Display::Narrow) => &PT_SHORT,
+        (_, "es", Display::Long) => &ES_LONG,
+        (_, "es", Display::Short) => &ES_SHORT,
+        (_, "es", Display::Narrow) => &ES_NARROW,
+        (_, "fr", Display::Long) => &FR_LONG,
+        (_, "fr", Display::Short) => &FR_SHORT,
+        (_, "fr", Display::Narrow) => &FR_NARROW,
+        (_, "ru", Display::Long) => &RU_LONG,
+        (_, "ru", Display::Short) => &RU_SHORT,
+        (_, "ru", Display::Narrow) => &RU_NARROW,
+        (_, "ja", Display::Long) => &JA_LONG,
+        (_, "ja", Display::Short | Display::Narrow) => &JA_SHORT,
+        (_, "ko", Display::Long) => &KO_LONG,
+        (_, "ko", Display::Short) => &KO_SHORT,
+        (_, "ko", Display::Narrow) => &KO_NARROW,
+        (_, "zh", Display::Long) => match chinese_unit_variant(locale)? {
             ChineseUnitVariant::Hans => &ZH_HANS_LONG,
             ChineseUnitVariant::Hant => &ZH_HANT_LONG,
         },
-        ("zh", Display::Short) => match chinese_unit_variant(locale)? {
+        (_, "zh", Display::Short) => match chinese_unit_variant(locale)? {
             ChineseUnitVariant::Hans => &ZH_HANS_SHORT,
             ChineseUnitVariant::Hant => &ZH_HANT_SHORT,
         },
-        ("zh", Display::Narrow) => match chinese_unit_variant(locale)? {
+        (_, "zh", Display::Narrow) => match chinese_unit_variant(locale)? {
             ChineseUnitVariant::Hans => &ZH_HANS_NARROW,
             ChineseUnitVariant::Hant => &ZH_HANT_NARROW,
         },
