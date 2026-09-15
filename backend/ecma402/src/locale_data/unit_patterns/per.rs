@@ -26,6 +26,10 @@ pub(crate) fn expanded_per_unit_pattern(
     {
         return Some(pattern);
     }
+    if let Some(pattern) = super::indic::cldr_bengali_per_unit_pattern(locale, denominator, display)
+    {
+        return Some(pattern);
+    }
     if let Some(pattern) =
         super::north_germanic::cldr_swedish_per_unit_pattern(locale, denominator, display)
     {
@@ -33,6 +37,16 @@ pub(crate) fn expanded_per_unit_pattern(
     }
     if let Some(pattern) =
         super::north_germanic::cldr_danish_per_unit_pattern(locale, denominator, display)
+    {
+        return Some(pattern);
+    }
+    if let Some(pattern) =
+        super::north_germanic::cldr_norwegian_bokmal_per_unit_pattern(locale, denominator, display)
+    {
+        return Some(pattern);
+    }
+    if let Some(pattern) =
+        super::north_germanic::cldr_norwegian_nynorsk_per_unit_pattern(locale, denominator, display)
     {
         return Some(pattern);
     }

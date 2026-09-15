@@ -148,3 +148,240 @@ pub(crate) fn cldr_hindi_generic_compound_unit_pattern(
         suffix: label,
     })
 }
+
+/// Returns pinned Bengali CLDR records for every simple category unavailable
+/// through ICU4X's typed unit markers.
+pub(crate) fn cldr_bengali_additional_unit_pattern(
+    locale: &str,
+    unit: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    _plural: crate::PluralCategory,
+) -> Option<NumberUnitPattern> {
+    use crate::{NumberFormatUnit as Unit, NumberUnitDisplay as Display};
+
+    if locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        != Some("bn")
+    {
+        return None;
+    }
+    let raw = match display {
+        Display::Long => match unit {
+            Unit::Bit => "{0} বিট",
+            Unit::Byte => "{0} বাইট",
+            Unit::Celsius => "{0} ডিগ্রী সেলসিয়াস",
+            Unit::Degree => "{0} ডিগ্রী",
+            Unit::Fahrenheit => "{0} ডিগ্রী ফারেনহাইট",
+            Unit::Gigabit => "{0} গিগাবিট",
+            Unit::Gigabyte => "{0} গিগাবাইট",
+            Unit::Kilobit => "{0} কিলোবিট",
+            Unit::Kilobyte => "{0} কিলোবাইট",
+            Unit::Megabit => "{0} মেগাবিট",
+            Unit::Megabyte => "{0} মেগাবাইট",
+            Unit::Percent => "{0}শতাংশ",
+            Unit::Petabyte => "{0} পেটাবাইটস",
+            Unit::Terabit => "{0} টেরাবিট",
+            Unit::Terabyte => "{0} টেরাবাইট",
+            _ => return None,
+        },
+        Display::Short => match unit {
+            Unit::Bit => "{0} বিট",
+            Unit::Byte => "{0} বাইট",
+            Unit::Celsius => "{0}°C",
+            Unit::Degree => "{0}ডিগ্রী",
+            Unit::Fahrenheit => "{0}°F",
+            Unit::Gigabit => "{0} Gb",
+            Unit::Gigabyte => "{0} GB",
+            Unit::Kilobit => "{0} kb",
+            Unit::Kilobyte => "{0} kB",
+            Unit::Megabit => "{0} Mb",
+            Unit::Megabyte => "{0} MB",
+            Unit::Percent => "{0}%",
+            Unit::Petabyte => "{0} PB",
+            Unit::Terabit => "{0} Tb",
+            Unit::Terabyte => "{0} TB",
+            _ => return None,
+        },
+        Display::Narrow => match unit {
+            Unit::Bit => "{0} বিট",
+            Unit::Byte => "{0} বাইট",
+            Unit::Celsius => "{0}°C",
+            Unit::Degree => "{0}ডিগ্রী",
+            Unit::Fahrenheit => "{0}°F",
+            Unit::Gigabit => "{0} Gb",
+            Unit::Gigabyte => "{0} GB",
+            Unit::Kilobit => "{0} kb",
+            Unit::Kilobyte => "{0} kB",
+            Unit::Megabit => "{0} Mb",
+            Unit::Megabyte => "{0} MB",
+            Unit::Percent => "{0}%",
+            Unit::Petabyte => "{0} PB",
+            Unit::Terabit => "{0} Tb",
+            Unit::Terabyte => "{0} TB",
+            _ => return None,
+        },
+    };
+    number_unit_pattern_from_placeholder(&raw.replace("{0}", "\u{fdd0}"))
+}
+
+/// Returns Bengali denominator-specific pinned CLDR `perUnitPattern` records.
+pub(crate) fn cldr_bengali_per_unit_pattern(
+    locale: &str,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+) -> Option<&'static str> {
+    use crate::NumberUnitDisplay as Display;
+
+    if locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        != Some("bn")
+    {
+        return None;
+    }
+    const LONG: [&str; 18] = [
+        "{0} প্রতি সেন্টিমিটার",
+        "{0}/দিন",
+        "{0} প্রতি ফুট",
+        "{0} প্রতি গ্যালন",
+        "{0} প্রতি গ্রাম",
+        "{0} প্রতি ঘণ্টা",
+        "{0} প্রতি ইঞ্চি",
+        "{0} প্রতি কিলোগ্রাম",
+        "{0} প্রতি কিলোমিটার",
+        "{0} প্রতি লিটার",
+        "{0} প্রতি মিটার",
+        "{0} প্রতি মিনিট",
+        "{0} প্রতি মাস",
+        "{0} প্রতি আউন্স",
+        "{0} প্রতি পাউন্ড",
+        "{0} প্রতি সেকেন্ড",
+        "{0} প্রতি সপ্তাহ",
+        "{0} প্রতি বছর",
+    ];
+    const SHORT: [&str; 18] = [
+        "{0} প্রতি সেমি",
+        "{0}/দিন",
+        "{0} প্রতি ফুট",
+        "{0}/gal US",
+        "{0} প্রতি গ্রাম",
+        "{0} প্রতি ঘন্টা",
+        "{0} প্রতি ইঞ্চি",
+        "{0} প্রতি কেজি",
+        "{0} প্রতি কিমি",
+        "{0}/l",
+        "{0} প্রতি মি",
+        "{0} প্রতি মিনিট",
+        "{0} প্রতি মাস",
+        "{0} প্রতি আউন্স",
+        "{0}/lb",
+        "{0} প্রতি সেকেন্ড",
+        "{0} প্রতি সপ্তাহ",
+        "{0} প্রতি বছর",
+    ];
+    const NARROW: [&str; 18] = [
+        "{0}/সেমি",
+        "{0}/দিন",
+        "{0} প্রতি ফুট",
+        "{0}/gal",
+        "{0}/গ্রা:",
+        "{0}/ঘ:",
+        "{0}/ইঞ্চি",
+        "{0}/কেজি",
+        "{0}/কিমি",
+        "{0}/l",
+        "{0}/মি",
+        "{0}/মি:",
+        "{0}/মাস",
+        "{0}/আউন্স",
+        "{0}/পাউন্ড",
+        "{0}/সেঃ",
+        "{0}/সপ্তাহ",
+        "{0}/বছর",
+    ];
+    let patterns = match display {
+        Display::Long => &LONG,
+        Display::Short => &SHORT,
+        Display::Narrow => &NARROW,
+    };
+    patterns
+        .get(super::per_unit_denominator_index(denominator)?)
+        .copied()
+}
+
+/// Composes Bengali generic compounds containing an ICU4X-untyped unit.
+pub(crate) fn cldr_bengali_generic_compound_unit_pattern(
+    locale: &str,
+    numerator: crate::NumberFormatUnit,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberGenericCompoundUnitPattern> {
+    use crate::NumberUnitDisplay as Display;
+
+    if locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        != Some("bn")
+    {
+        return None;
+    }
+    let denominator_unit = denominator;
+    let numerator_raw = cldr_bengali_additional_unit_pattern(locale, numerator, display, plural);
+    let denominator_display = match display {
+        Display::Long => Display::Long,
+        Display::Short | Display::Narrow => Display::Narrow,
+    };
+    let denominator_raw = cldr_bengali_additional_unit_pattern(
+        locale,
+        denominator_unit,
+        denominator_display,
+        crate::PluralCategory::One,
+    );
+    if numerator_raw.is_none() && denominator_raw.is_none() {
+        return None;
+    }
+    let numerator = numerator_raw
+        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
+    let denominator = denominator_raw
+        .or_else(|| {
+            experimental_number_unit_pattern(
+                locale,
+                denominator_unit,
+                denominator_display,
+                crate::PluralCategory::One,
+            )
+        })
+        .unwrap_or_else(|| {
+            crate::locale_data_provider().number_unit_pattern(
+                locale,
+                denominator_unit,
+                denominator_display,
+                crate::PluralCategory::One,
+            )
+        });
+    let label = localized_generic_compound_unit_label(
+        locale,
+        denominator_unit,
+        display,
+        &number_unit_pattern_label(&numerator),
+        &number_unit_pattern_label(&denominator),
+        match display {
+            Display::Long => "{0} প্রতি {1}",
+            Display::Short | Display::Narrow => "{0}/{1}",
+        },
+    )?;
+    Some(NumberGenericCompoundUnitPattern {
+        prefix: String::new(),
+        prefix_separator: String::new(),
+        suffix_separator: numerator.suffix_separator,
+        suffix: label,
+    })
+}

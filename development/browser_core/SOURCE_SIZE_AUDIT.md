@@ -25,7 +25,7 @@ and non-Rust assets.
 | Source | Lines | Audit finding and required seam before further expansion |
 | --- | ---: | --- |
 | `ecma402/src/locale_data.rs` | 5,777 | Stable provider entry points remain here; raw CLDR range records are in `locale_data/range_patterns.rs`, while raw locale unit families and their dispatch live in `locale_data/unit_patterns/` by linguistic/data concern. New raw unit or range families must not be added to this root file. |
-| `ecma402/tests/number_format.rs` | 3,227 | The integration target remains useful for service-level coverage. Locale-specific raw-CLDR regressions now enter `tests/number_format/locale_units.rs`; extract corresponding `options` or `ranges` children before their next substantial families are added. |
+| `ecma402/tests/number_format.rs` | 3,227 | The integration target remains useful for service-level coverage. Locale-specific raw-CLDR regressions enter `tests/number_format/locale_units.rs`; North Germanic cases already live in its `locale_units/north_germanic.rs` child. Extract corresponding `options`, `ranges`, or linguistic children before their next substantial families are added. |
 | `ecma402/src/number_format.rs` | 2,683 | Its current host-neutral formatting flow is cohesive. Extract `number_format/{options,rendering,ranges}.rs` before a new option family, notation renderer, or range-collapse rule. |
 | `ecma402/src/date_time_format.rs` | 1,965 | Keep the present pipeline intact; extract locale resolution and interval-part normalization before calendar or skeleton breadth is added. |
 | `ecma402/src/duration.rs` | 1,305 | Extract typed option resolution from rendering before another style-data family is introduced. |
@@ -33,9 +33,9 @@ and non-Rust assets.
 The current NumberFormat locale expansion follows this decision: raw range
 selection is isolated, and raw simple, generic-compound, and newer
 denominator-specific `perUnitPattern` records are co-located in their
-linguistic modules. The 170-line `unit_patterns/mod.rs` owns child-family
+linguistic modules. The 181-line `unit_patterns/mod.rs` owns child-family
 dispatch, so adding a locale cannot grow the provider root;
-`unit_patterns/per.rs` is a 571-line compatibility router and legacy-table
+`unit_patterns/per.rs` is a 585-line compatibility router and legacy-table
 owner, not the destination for a new locale family. Austronesian, Greek,
 Indic, Iranian, North Germanic, Romance, Semitic, Slavic, Tai, Turkic,
 Uralic, Vietic, and West Slavic families therefore have focused ownership

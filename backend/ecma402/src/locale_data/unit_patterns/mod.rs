@@ -24,6 +24,8 @@ pub(super) fn additional_unit_pattern(
         cldr_persian_additional_unit_pattern,
         cldr_swedish_additional_unit_pattern,
         cldr_danish_additional_unit_pattern,
+        cldr_norwegian_bokmal_additional_unit_pattern,
+        cldr_norwegian_nynorsk_additional_unit_pattern,
         cldr_hungarian_additional_unit_pattern,
         cldr_finnish_additional_unit_pattern,
         cldr_greek_additional_unit_pattern,
@@ -38,6 +40,7 @@ pub(super) fn additional_unit_pattern(
         cldr_hebrew_additional_unit_pattern,
         cldr_turkish_additional_unit_pattern,
         cldr_hindi_additional_unit_pattern,
+        cldr_bengali_additional_unit_pattern,
     ] {
         if let Some(pattern) = resolver(locale, unit, display, plural) {
             return Some(pattern);
@@ -60,6 +63,8 @@ pub(super) fn generic_compound_unit_pattern(
         cldr_persian_generic_compound_unit_pattern,
         cldr_swedish_generic_compound_unit_pattern,
         cldr_danish_generic_compound_unit_pattern,
+        cldr_norwegian_bokmal_generic_compound_unit_pattern,
+        cldr_norwegian_nynorsk_generic_compound_unit_pattern,
         cldr_hungarian_generic_compound_unit_pattern,
         cldr_finnish_generic_compound_unit_pattern,
         cldr_greek_generic_compound_unit_pattern,
@@ -74,6 +79,7 @@ pub(super) fn generic_compound_unit_pattern(
         cldr_hebrew_generic_compound_unit_pattern,
         cldr_turkish_generic_compound_unit_pattern,
         cldr_hindi_generic_compound_unit_pattern,
+        cldr_bengali_generic_compound_unit_pattern,
     ] {
         if let Some(pattern) = resolver(locale, numerator, denominator, display, plural) {
             return Some(pattern);
@@ -132,6 +138,7 @@ pub(super) use greek::{
     cldr_greek_additional_unit_pattern, cldr_greek_generic_compound_unit_pattern,
 };
 pub(super) use indic::{
+    cldr_bengali_additional_unit_pattern, cldr_bengali_generic_compound_unit_pattern,
     cldr_hindi_additional_unit_pattern, cldr_hindi_generic_compound_unit_pattern,
 };
 pub(super) use iranian::{
@@ -139,7 +146,11 @@ pub(super) use iranian::{
 };
 pub(super) use north_germanic::{
     cldr_danish_additional_unit_pattern, cldr_danish_generic_compound_unit_pattern,
-    cldr_swedish_additional_unit_pattern, cldr_swedish_generic_compound_unit_pattern,
+    cldr_norwegian_bokmal_additional_unit_pattern,
+    cldr_norwegian_bokmal_generic_compound_unit_pattern,
+    cldr_norwegian_nynorsk_additional_unit_pattern,
+    cldr_norwegian_nynorsk_generic_compound_unit_pattern, cldr_swedish_additional_unit_pattern,
+    cldr_swedish_generic_compound_unit_pattern,
 };
 pub(super) use per::expanded_per_unit_pattern;
 pub(super) use romance::{
