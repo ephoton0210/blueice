@@ -464,3 +464,242 @@ pub(crate) fn cldr_finnish_generic_compound_unit_pattern(
         suffix: label,
     })
 }
+
+fn is_estonian(locale: &str) -> bool {
+    locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        == Some("et")
+}
+
+fn estonian_cardinal_pattern(
+    one: &'static str,
+    other: &'static str,
+    plural: crate::PluralCategory,
+) -> &'static str {
+    match plural {
+        crate::PluralCategory::One => one,
+        crate::PluralCategory::Zero
+        | crate::PluralCategory::Two
+        | crate::PluralCategory::Few
+        | crate::PluralCategory::Many
+        | crate::PluralCategory::Other => other,
+    }
+}
+
+/// Returns pinned Estonian CLDR records for simple categories that ICU4X's
+/// typed unit markers do not provide with Estonian inflection.
+pub(crate) fn cldr_estonian_additional_unit_pattern(
+    locale: &str,
+    unit: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberUnitPattern> {
+    use crate::{NumberFormatUnit as Unit, NumberUnitDisplay as Display};
+
+    if !is_estonian(locale) {
+        return None;
+    }
+    let raw = match display {
+        Display::Long => match unit {
+            Unit::Acre => estonian_cardinal_pattern("{0} aaker", "{0} aakrit", plural),
+            Unit::Bit => estonian_cardinal_pattern("{0} bitt", "{0} bitti", plural),
+            Unit::Byte => estonian_cardinal_pattern("{0} bait", "{0} baiti", plural),
+            Unit::Celsius => {
+                estonian_cardinal_pattern("{0} Celsiuse kraad", "{0} Celsiuse kraadi", plural)
+            }
+            Unit::Degree => estonian_cardinal_pattern("{0} kraad", "{0} kraadi", plural),
+            Unit::Fahrenheit => {
+                estonian_cardinal_pattern("{0} Fahrenheiti kraad", "{0} Fahrenheiti kraadi", plural)
+            }
+            Unit::Gigabit => estonian_cardinal_pattern("{0} gigabitt", "{0} gigabitti", plural),
+            Unit::Gigabyte => estonian_cardinal_pattern("{0} gigabait", "{0} gigabaiti", plural),
+            Unit::Kilobit => estonian_cardinal_pattern("{0} kilobitt", "{0} kilobitti", plural),
+            Unit::Kilobyte => estonian_cardinal_pattern("{0} kilobait", "{0} kilobaiti", plural),
+            Unit::Megabit => estonian_cardinal_pattern("{0} megabitt", "{0} megabitti", plural),
+            Unit::Megabyte => estonian_cardinal_pattern("{0} megabait", "{0} megabaiti", plural),
+            Unit::Percent => estonian_cardinal_pattern("{0} protsent", "{0} protsenti", plural),
+            Unit::Petabyte => estonian_cardinal_pattern("{0} petabait", "{0} petabaiti", plural),
+            Unit::Terabit => estonian_cardinal_pattern("{0} terabitt", "{0} terabitti", plural),
+            Unit::Terabyte => estonian_cardinal_pattern("{0} terabait", "{0} terabaiti", plural),
+            _ => return None,
+        },
+        Display::Short => match unit {
+            Unit::Acre => "{0} ac",
+            Unit::Bit => "{0} b",
+            Unit::Byte => estonian_cardinal_pattern("{0} bait", "{0} baiti", plural),
+            Unit::Celsius => "{0} °C",
+            Unit::Degree => "{0}°",
+            Unit::Fahrenheit => "{0} °F",
+            Unit::Gigabit => "{0} Gb",
+            Unit::Gigabyte => "{0} GB",
+            Unit::Kilobit => "{0} kb",
+            Unit::Kilobyte => "{0} kB",
+            Unit::Megabit => "{0} Mb",
+            Unit::Megabyte => "{0} MB",
+            Unit::Percent => "{0}%",
+            Unit::Petabyte => "{0} PB",
+            Unit::Terabit => "{0} Tb",
+            Unit::Terabyte => "{0} TB",
+            _ => return None,
+        },
+        Display::Narrow => match unit {
+            Unit::Acre => estonian_cardinal_pattern("{0} aaker", "{0} aakrit", plural),
+            Unit::Bit => "{0} b",
+            Unit::Byte => "{0} B",
+            Unit::Celsius => "{0} °C",
+            Unit::Degree => "{0}°",
+            Unit::Fahrenheit => "{0} °F",
+            Unit::Gigabit => "{0} Gb",
+            Unit::Gigabyte => "{0} GB",
+            Unit::Kilobit => "{0} kb",
+            Unit::Kilobyte => "{0} kB",
+            Unit::Megabit => "{0} Mb",
+            Unit::Megabyte => "{0} MB",
+            Unit::Percent => "{0}%",
+            Unit::Petabyte => "{0} PB",
+            Unit::Terabit => "{0} Tb",
+            Unit::Terabyte => "{0} TB",
+            _ => return None,
+        },
+    };
+    number_unit_pattern_from_placeholder(&raw.replace("{0}", "\u{fdd0}"))
+}
+
+/// Returns Estonian denominator-specific pinned CLDR `perUnitPattern` records.
+pub(crate) fn cldr_estonian_per_unit_pattern(
+    locale: &str,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+) -> Option<&'static str> {
+    use crate::NumberUnitDisplay as Display;
+
+    if !is_estonian(locale) {
+        return None;
+    }
+    const LONG: [&str; 18] = [
+        "{0} sentimeetri kohta",
+        "{0} ööpäevas",
+        "{0} jala kohta",
+        "{0} galloni kohta",
+        "{0} grammi kohta",
+        "{0} tunnis",
+        "{0} tolli kohta",
+        "{0} kilogrammi kohta",
+        "{0} kilomeetri kohta",
+        "{0} liitri kohta",
+        "{0} meetri kohta",
+        "{0} minutis",
+        "{0} kuus",
+        "{0} untsi kohta",
+        "{0} naela kohta",
+        "{0} sekundis",
+        "{0} nädalas",
+        "{0} aastas",
+    ];
+    const SHORT: [&str; 18] = [
+        "{0}/cm",
+        "{0}/ööp",
+        "{0}/ft",
+        "{0}/gal",
+        "{0}/g",
+        "{0}/t",
+        "{0}/in",
+        "{0}/kg",
+        "{0}/km",
+        "{0}/l",
+        "{0}/m",
+        "{0}/min",
+        "{0}/k",
+        "{0}/oz",
+        "{0}/lb",
+        "{0}/sek",
+        "{0}/näd",
+        "{0}/a",
+    ];
+    const NARROW: [&str; 18] = [
+        "{0}/cm",
+        "{0}/ööp",
+        "{0}/ft",
+        "{0}/gal",
+        "{0}/g",
+        "{0}/t",
+        "{0}/in",
+        "{0}/kg",
+        "{0}/km",
+        "{0}/l",
+        "{0}/m",
+        "{0}/min",
+        "{0}/k",
+        "{0}/oz",
+        "{0}/lb",
+        "{0}/s",
+        "{0}/näd",
+        "{0}/a",
+    ];
+    let patterns = match display {
+        Display::Long => &LONG,
+        Display::Short => &SHORT,
+        Display::Narrow => &NARROW,
+    };
+    patterns
+        .get(super::per_unit_denominator_index(denominator)?)
+        .copied()
+}
+
+/// Composes Estonian generic compounds containing an ICU4X-untyped unit.
+pub(crate) fn cldr_estonian_generic_compound_unit_pattern(
+    locale: &str,
+    numerator: crate::NumberFormatUnit,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberGenericCompoundUnitPattern> {
+    use crate::NumberUnitDisplay as Display;
+
+    if !is_estonian(locale) {
+        return None;
+    }
+    let denominator_unit = denominator;
+    let denominator_display = match display {
+        Display::Long => Display::Long,
+        Display::Short | Display::Narrow => Display::Narrow,
+    };
+    let numerator = cldr_estonian_additional_unit_pattern(locale, numerator, display, plural)
+        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
+    let denominator = cldr_estonian_additional_unit_pattern(
+        locale,
+        denominator_unit,
+        denominator_display,
+        crate::PluralCategory::One,
+    )
+    .or_else(|| {
+        experimental_number_unit_pattern(
+            locale,
+            denominator_unit,
+            denominator_display,
+            crate::PluralCategory::One,
+        )
+    })
+    .unwrap_or_else(|| {
+        crate::locale_data_provider().number_unit_pattern(
+            locale,
+            denominator_unit,
+            denominator_display,
+            crate::PluralCategory::One,
+        )
+    });
+    super::compose_generic_compound_unit_pattern(
+        locale,
+        denominator_unit,
+        display,
+        &numerator,
+        &denominator,
+        match display {
+            Display::Long => "{0} {1} kohta",
+            Display::Short | Display::Narrow => "{0}/{1}",
+        },
+    )
+}

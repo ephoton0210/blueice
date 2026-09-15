@@ -14,7 +14,7 @@ localized bug fixes may remain in place.
 The inventory was obtained with:
 
 ```sh
-find backend -name '*.rs' -type f -print0 | xargs -0 wc -l
+rg --files backend -g '*.rs' | xargs -r wc -l
 ```
 
 The counts exclude `target/`, vendored dependencies, generated build output,
@@ -25,7 +25,7 @@ and non-Rust assets.
 | Source | Lines | Audit finding and required seam before further expansion |
 | --- | ---: | --- |
 | `ecma402/src/locale_data.rs` | 5,777 | Stable provider entry points remain here; raw CLDR range records are in `locale_data/range_patterns.rs`, while raw locale unit families and their dispatch live in `locale_data/unit_patterns/` by linguistic/data concern. New raw unit or range families must not be added to this root file. |
-| `ecma402/tests/number_format.rs` | 3,227 | The integration target remains useful for service-level coverage. Locale-specific raw-CLDR regressions enter `tests/number_format/locale_units.rs`; North Germanic cases already live in its `locale_units/north_germanic.rs` child. Extract corresponding `options`, `ranges`, or linguistic children before their next substantial families are added. |
+| `ecma402/tests/number_format.rs` | 3,227 | The integration target remains useful for service-level coverage. Locale-specific raw-CLDR regressions enter `tests/number_format/locale_units.rs`; Armenian, Austronesian, Baltic, Caucasian, Indic, Niger-Congo, North Germanic, and South Slavic cases already live in their linguistic children. Extract corresponding `options`, `ranges`, or linguistic children before their next substantial families are added. |
 | `ecma402/src/number_format.rs` | 2,683 | Its current host-neutral formatting flow is cohesive. Extract `number_format/{options,rendering,ranges}.rs` before a new option family, notation renderer, or range-collapse rule. |
 | `ecma402/src/date_time_format.rs` | 1,965 | Keep the present pipeline intact; extract locale resolution and interval-part normalization before calendar or skeleton breadth is added. |
 | `ecma402/src/duration.rs` | 1,305 | Extract typed option resolution from rendering before another style-data family is introduced. |
@@ -33,14 +33,17 @@ and non-Rust assets.
 The current NumberFormat locale expansion follows this decision: raw range
 selection is isolated, and raw simple, generic-compound, and newer
 denominator-specific `perUnitPattern` records are co-located in their
-linguistic modules. The 181-line `unit_patterns/mod.rs` owns child-family
-dispatch, so adding a locale cannot grow the provider root;
-`unit_patterns/per.rs` is a 585-line compatibility router and legacy-table
-owner, not the destination for a new locale family. Austronesian, Greek,
-Indic, Iranian, North Germanic, Romance, Semitic, Slavic, Tai, Turkic,
-Uralic, Vietic, and West Slavic families therefore have focused ownership
-boundaries. The Turkish family was moved out of `locale_data.rs` during this
-review, so new data no longer grows the provider root.
+linguistic modules. The 291-line `unit_patterns/mod.rs` owns child-family
+dispatch and the complete-placeholder compound-composition seam, so adding a
+locale cannot grow the provider root or assume that every locale puts its
+number first; `unit_patterns/per.rs` is a 658-line compatibility router and
+legacy-table owner, not the destination for a new locale family. Afroasiatic,
+Austronesian (including Indonesian, Malay, and Filipino), Armenian, Baltic,
+Greek, Indic, Indo-Aryan, Iranian, Niger-Congo, North Germanic, Romance,
+Semitic, Slavic, South Slavic, Tai, Turkic, Uralic, Vietic, and West Slavic
+families therefore have focused ownership boundaries. The Turkish family was
+moved out of `locale_data.rs` during this review, so new data no longer grows
+the provider root.
 
 ## Other reviewed production sources
 

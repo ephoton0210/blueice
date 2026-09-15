@@ -385,3 +385,249 @@ pub(crate) fn cldr_bengali_generic_compound_unit_pattern(
         suffix: label,
     })
 }
+
+/// Returns pinned Tamil CLDR records for every simple category unavailable
+/// through ICU4X's typed unit markers.
+pub(crate) fn cldr_tamil_additional_unit_pattern(
+    locale: &str,
+    unit: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberUnitPattern> {
+    use crate::{NumberFormatUnit as Unit, NumberUnitDisplay as Display, PluralCategory};
+
+    if locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        != Some("ta")
+    {
+        return None;
+    }
+    let raw = match display {
+        Display::Long => match (unit, plural) {
+            (Unit::Bit, PluralCategory::One) => "{0} பிட்",
+            (Unit::Bit, _) => "{0} பிட்கள்",
+            (Unit::Byte, PluralCategory::One) => "{0} பைட்",
+            (Unit::Byte, _) => "{0} பைட்கள்",
+            (Unit::Celsius, _) => "{0} டிகிரி செல்சியஸ்",
+            (Unit::Degree, PluralCategory::One) => "{0} டிகிரி",
+            (Unit::Degree, _) => "{0} டிகிரீஸ்",
+            (Unit::Fahrenheit, _) => "{0} டிகிரி ஃபாரன்ஹீட்",
+            (Unit::Gigabit, PluralCategory::One) => "{0} கிகாபிட்",
+            (Unit::Gigabit, _) => "{0} கிகாபிட்கள்",
+            (Unit::Gigabyte, PluralCategory::One) => "{0} கிகாபைட்",
+            (Unit::Gigabyte, _) => "{0} கிகாபைட்கள்",
+            (Unit::Kilobit, PluralCategory::One) => "{0} கிலோபிட்",
+            (Unit::Kilobit, _) => "{0} கிலோபிட்கள்",
+            (Unit::Kilobyte, PluralCategory::One) => "{0} கிலோபைட்",
+            (Unit::Kilobyte, _) => "{0} கிலோபைட்கள்",
+            (Unit::Megabit, PluralCategory::One) => "{0} மெகாபிட்",
+            (Unit::Megabit, _) => "{0} மெகாபிட்கள்",
+            (Unit::Megabyte, PluralCategory::One) => "{0} மெகாபைட்",
+            (Unit::Megabyte, _) => "{0} மெகாபைட்கள்",
+            (Unit::Percent, _) => "{0} சதவீதம்",
+            (Unit::Petabyte, PluralCategory::One) => "{0} பெடாபைட்",
+            (Unit::Petabyte, _) => "{0} பெடாபைட்கள்",
+            (Unit::Terabit, PluralCategory::One) => "{0} டெராபிட்",
+            (Unit::Terabit, _) => "{0} டெராபிட்கள்",
+            (Unit::Terabyte, PluralCategory::One) => "{0} டெராபைட்",
+            (Unit::Terabyte, _) => "{0} டெராபைட்கள்",
+            _ => return None,
+        },
+        Display::Short => match unit {
+            Unit::Bit => "{0} பிட்",
+            Unit::Byte => "{0} பை.",
+            Unit::Celsius => "{0}°C",
+            Unit::Degree => "{0} டிகி.",
+            Unit::Fahrenheit => "{0}°F",
+            Unit::Gigabit => "{0} Gb",
+            Unit::Gigabyte => "{0} GB",
+            Unit::Kilobit => "{0} kb",
+            Unit::Kilobyte => "{0} kB",
+            Unit::Megabit => "{0} Mb",
+            Unit::Megabyte => "{0} MB",
+            Unit::Percent => "{0}%",
+            Unit::Petabyte => "{0} PB",
+            Unit::Terabit => "{0} Tb",
+            Unit::Terabyte => "{0} TB",
+            _ => return None,
+        },
+        Display::Narrow => match unit {
+            Unit::Bit => "{0}பிட்",
+            Unit::Byte => "{0}பை.",
+            Unit::Celsius => "{0}°C",
+            Unit::Degree => "{0}°",
+            Unit::Fahrenheit => "{0}°",
+            Unit::Gigabit => "{0}Gb",
+            Unit::Gigabyte => "{0}GB",
+            Unit::Kilobit => "{0}kb",
+            Unit::Kilobyte => "{0}kB",
+            Unit::Megabit => "{0}Mb",
+            Unit::Megabyte => "{0}MB",
+            Unit::Percent => "{0}%",
+            Unit::Petabyte => "{0}PB",
+            Unit::Terabit => "{0}Tb",
+            Unit::Terabyte => "{0}TB",
+            _ => return None,
+        },
+    };
+    number_unit_pattern_from_placeholder(&raw.replace("{0}", "\u{fdd0}"))
+}
+
+/// Returns Tamil denominator-specific pinned CLDR `perUnitPattern` records.
+pub(crate) fn cldr_tamil_per_unit_pattern(
+    locale: &str,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+) -> Option<&'static str> {
+    use crate::NumberUnitDisplay as Display;
+
+    if locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        != Some("ta")
+    {
+        return None;
+    }
+    const LONG: [&str; 18] = [
+        "{0}/சென்டிமீட்டர்",
+        "{0} / நாள்",
+        "{0}/அடி",
+        "{0}/கேலன்",
+        "{0}/கிராம்",
+        "{0} / மணிநேரம்",
+        "{0}/அங்குலம்",
+        "{0}/கிலோகிராம்",
+        "{0}/கிலோமீட்டர்",
+        "{0}/லிட்டர்",
+        "{0}/மீட்டர்",
+        "{0} / நிமிடம்",
+        "{0} / மாதம்",
+        "{0}/அவுன்ஸ்",
+        "{0}/பவுண்டு",
+        "{0}/விநாடி",
+        "{0} / வாரம்",
+        "ஒரு வருடத்தில் {0}",
+    ];
+    const SHORT: [&str; 18] = [
+        "{0}/செ.மீ.",
+        "{0}/நா",
+        "{0}/அடி",
+        "{0}/கேல.",
+        "{0}/கி.",
+        "{0} /ம.நே",
+        "{0}/அங்.",
+        "{0}/kg",
+        "{0}/கி.மீ.",
+        "{0}/லி.",
+        "{0}/மீ.",
+        "{0}/நிமி.",
+        "{0}/மா",
+        "{0}/அவு.",
+        "{0}/lb",
+        "{0}/வி.",
+        "{0}/வா.",
+        "{0}/ஆ.",
+    ];
+    const NARROW: [&str; 18] = [
+        "{0}/செ.மீ.",
+        "{0}/நா",
+        "{0}/அடி",
+        "{0}/கேல.",
+        "{0}/கி.",
+        "{0} /ம.நே",
+        "{0}/அங்.",
+        "{0}/kg",
+        "{0}/கி.மீ.",
+        "{0}/லி.",
+        "{0}/மீ.",
+        "{0}/நிமி.",
+        "{0}/மா",
+        "{0}/அவு.",
+        "{0}/lb",
+        "{0}/வி.",
+        "{0}/வா.",
+        "{0}/ஆ.",
+    ];
+    let patterns = match display {
+        Display::Long => &LONG,
+        Display::Short => &SHORT,
+        Display::Narrow => &NARROW,
+    };
+    patterns
+        .get(super::per_unit_denominator_index(denominator)?)
+        .copied()
+}
+
+/// Composes Tamil generic compounds containing an ICU4X-untyped unit.
+pub(crate) fn cldr_tamil_generic_compound_unit_pattern(
+    locale: &str,
+    numerator: crate::NumberFormatUnit,
+    denominator: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberGenericCompoundUnitPattern> {
+    use crate::NumberUnitDisplay as Display;
+
+    if locale
+        .split_once("-u-")
+        .map_or(locale, |(base, _)| base)
+        .split('-')
+        .next()
+        != Some("ta")
+    {
+        return None;
+    }
+    let denominator_unit = denominator;
+    let numerator_raw = cldr_tamil_additional_unit_pattern(locale, numerator, display, plural);
+    let denominator_display = match display {
+        Display::Long => Display::Long,
+        Display::Short | Display::Narrow => Display::Narrow,
+    };
+    let denominator_raw = cldr_tamil_additional_unit_pattern(
+        locale,
+        denominator_unit,
+        denominator_display,
+        crate::PluralCategory::One,
+    );
+    if numerator_raw.is_none() && denominator_raw.is_none() {
+        return None;
+    }
+    let numerator = numerator_raw
+        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
+    let denominator = denominator_raw
+        .or_else(|| {
+            experimental_number_unit_pattern(
+                locale,
+                denominator_unit,
+                denominator_display,
+                crate::PluralCategory::One,
+            )
+        })
+        .unwrap_or_else(|| {
+            crate::locale_data_provider().number_unit_pattern(
+                locale,
+                denominator_unit,
+                denominator_display,
+                crate::PluralCategory::One,
+            )
+        });
+    let label = localized_generic_compound_unit_label(
+        locale,
+        denominator_unit,
+        display,
+        &number_unit_pattern_label(&numerator),
+        &number_unit_pattern_label(&denominator),
+        "{0}/{1}",
+    )?;
+    Some(NumberGenericCompoundUnitPattern {
+        prefix: String::new(),
+        prefix_separator: String::new(),
+        suffix_separator: numerator.suffix_separator,
+        suffix: label,
+    })
+}

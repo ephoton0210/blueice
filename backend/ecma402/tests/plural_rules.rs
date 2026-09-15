@@ -37,6 +37,23 @@ fn selects_cardinal_categories_while_preserving_visible_fraction_digits() {
         PluralCategory::Other
     );
     assert_eq!(english_rules.select_f64(1.0).unwrap(), PluralCategory::One);
+
+    let serbian_latin = canonicalize("sr-Latn").unwrap();
+    let serbian_latin_rules = PluralRules::try_new(&[serbian_latin], Default::default()).unwrap();
+    assert_eq!(
+        serbian_latin_rules.select_decimal("1").unwrap(),
+        PluralCategory::One
+    );
+    assert_eq!(
+        serbian_latin_rules.select_decimal("2").unwrap(),
+        PluralCategory::Few
+    );
+    assert_eq!(
+        serbian_latin_rules.select_decimal("5").unwrap(),
+        PluralCategory::Other
+    );
+    assert_eq!(serbian_latin_rules.resolved_options().locale, "sr-Latn");
+
     assert!(english_rules.select_f64(f64::NAN).is_err());
 }
 

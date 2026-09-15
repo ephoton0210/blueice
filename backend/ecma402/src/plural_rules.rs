@@ -248,6 +248,7 @@ impl SupplementalPluralRules {
 /// boundary.
 pub struct PluralRules {
     rules: IcuPluralRules,
+    data_locale: IcuLocale,
     supplemental: Option<SupplementalPluralRules>,
     negotiation: PluralRulesLocaleNegotiation,
     resolved: ResolvedPluralRulesOptions,
@@ -261,7 +262,20 @@ impl PluralRules {
     ) -> Result<Self, PluralRulesError> {
         let negotiation = negotiate_plural_rules_locale(requested, options.locale_matcher);
         let selected = negotiation.selected.clone();
-        let preferences = selected.locale().into();
+        // ICU4X's compact bundle retains Serbian's cardinal data at `sr`, but
+        // does not parent-resolve its explicit `sr-Latn` record. CLDR plural
+        // rules are language-level for these script variants. Keep the
+        // ECMA-402-visible selected locale untouched while looking up its
+        // parent data record.
+        let data_locale = if selected.as_str().starts_with("sr-Latn") {
+            canonicalize("sr")
+                .map_err(|_| PluralRulesError::DataUnavailable)?
+                .locale()
+                .clone()
+        } else {
+            selected.locale().clone()
+        };
+        let preferences = (&data_locale).into();
         let rules = IcuPluralRules::try_new(
             preferences,
             IcuPluralRulesOptions::from(IcuPluralRuleType::from(options.rule_type)),
@@ -269,6 +283,7 @@ impl PluralRules {
         .map_err(|_| PluralRulesError::DataUnavailable)?;
         Ok(Self {
             rules,
+            data_locale,
             supplemental: (selected.locale().id.language.as_str() == "gv")
                 .then_some(SupplementalPluralRules::Manx),
             negotiation,
@@ -320,7 +335,7 @@ impl PluralRules {
         if value == 0.0 {
             return Ok(self.rules.category_for(&decimal).into());
         }
-        let preferences = self.negotiation.selected.locale().into();
+        let preferences = (&self.data_locale).into();
         let formatter = if long_display {
             CompactDecimalFormatter::try_new_long(preferences, Default::default())
         } else {

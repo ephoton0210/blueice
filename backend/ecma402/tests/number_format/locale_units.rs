@@ -6,70 +6,28 @@
 
 use super::*;
 
+#[path = "locale_units/afroasiatic.rs"]
+mod afroasiatic;
+#[path = "locale_units/armenian.rs"]
+mod armenian;
+#[path = "locale_units/austronesian.rs"]
+mod austronesian;
+#[path = "locale_units/baltic.rs"]
+mod baltic;
+#[path = "locale_units/caucasian.rs"]
+mod caucasian;
+#[path = "locale_units/indic.rs"]
+mod indic;
+#[path = "locale_units/indo_aryan.rs"]
+mod indo_aryan;
+#[path = "locale_units/niger_congo.rs"]
+mod niger_congo;
 #[path = "locale_units/north_germanic.rs"]
 mod north_germanic;
-
-#[test]
-fn sources_indonesian_cldr_units_and_generic_per_patterns() {
-    let formatter = |unit, display| {
-        NumberFormat::try_new(
-            &[canonicalize("id").unwrap()],
-            NumberFormatOptions {
-                style: NumberFormatStyle::Unit,
-                unit: Some(unit),
-                unit_display: display,
-                ..Default::default()
-            },
-        )
-        .unwrap()
-    };
-
-    assert_eq!(
-        formatter(NumberFormatUnit::Celsius, NumberUnitDisplay::Long)
-            .format_f64(2.0)
-            .unwrap(),
-        "2 derajat Celsius"
-    );
-    assert_eq!(
-        formatter(NumberFormatUnit::Percent, NumberUnitDisplay::Long)
-            .format_f64(2.0)
-            .unwrap(),
-        "2 persen"
-    );
-    assert_eq!(
-        formatter(NumberFormatUnit::Fahrenheit, NumberUnitDisplay::Narrow)
-            .format_f64(2.0)
-            .unwrap(),
-        "2°"
-    );
-    assert_eq!(
-        formatter(
-            NumberFormatUnit::parse("gigabyte-per-second").unwrap(),
-            NumberUnitDisplay::Long,
-        )
-        .format_f64(2.0)
-        .unwrap(),
-        "2 gigabyte per detik"
-    );
-    assert_eq!(
-        formatter(
-            NumberFormatUnit::parse("gigabyte-per-second").unwrap(),
-            NumberUnitDisplay::Short,
-        )
-        .format_f64(2.0)
-        .unwrap(),
-        "2 GB/dtk"
-    );
-    assert_eq!(
-        formatter(
-            NumberFormatUnit::parse("celsius-per-second").unwrap(),
-            NumberUnitDisplay::Narrow,
-        )
-        .format_f64(2.0)
-        .unwrap(),
-        "2°C/dtk"
-    );
-}
+#[path = "locale_units/south_slavic.rs"]
+mod south_slavic;
+#[path = "locale_units/uralic.rs"]
+mod uralic;
 
 #[test]
 fn sources_persian_cldr_units_bidi_literals_and_generic_per_patterns() {
