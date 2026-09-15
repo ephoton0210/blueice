@@ -10,10 +10,7 @@
 //! does not negotiate locales: `ResolveLocale` remains a separate layer.
 
 use fixed_decimal::Decimal;
-use icu_decimal::provider::{
-    Baked as DecimalData, DecimalCompactLongV1, DecimalCompactShortV1, DecimalDigitsV1,
-    DecimalSymbolsV1,
-};
+use icu_decimal::provider::{Baked as DecimalData, DecimalCompactLongV1, DecimalCompactShortV1};
 use icu_experimental::{
     dimension::{
         currency::CurrencyType,
@@ -50,8 +47,11 @@ use icu_provider::{
 };
 use writeable::Writeable;
 
+mod decimal_symbols;
 mod range_patterns;
 mod unit_patterns;
+
+pub(crate) use decimal_symbols::NumberDecimalSymbols;
 
 /// Immutable source revision for the ICU4X data bundle consumed by this crate.
 ///
@@ -798,55 +798,32 @@ impl LocaleDataProvider {
 
     /// Whether decimal-symbol data resolves to this locale's language.
     ///
-    /// ICU4X's root fallback is useful for loading internal data but is not an
-    /// ECMA-402 available-locale match. A marker that resolves through a
-    /// parent record remains available when it retains the requested primary
-    /// language.
+    /// NumberFormat's advertised inventory must be backed by an explicit,
+    /// pinned CLDR decimal record. ICU4X root data is deliberately not part
+    /// of this capability check: returning root symbols for a supported
+    /// language would make the result depend on a compact-data omission.
     pub fn supports_decimal_locale(self, locale: &IcuLocale) -> bool {
-        // Cantonese has pinned decimal and raw NumberFormat-unit coverage,
-        // but is absent from ICU4X's compact language registry used by the
-        // broader service capability check. Advertise it only to
-        // NumberFormat; other services must not claim a data slice they do
-        // not carry.
-        if self.supports_language(locale) || locale.id.language.as_str() == "yue" {
-            return true;
-        }
-        let requested = icu_provider::DataLocale::from(locale);
-        let response = <DecimalData as DataProvider<DecimalSymbolsV1>>::load(
-            &DecimalData,
-            DataRequest {
-                id: DataIdentifierBorrowed::for_locale(&requested),
-                metadata: Default::default(),
-            },
-        );
-        response.is_ok_and(|response| {
-            response
-                .metadata
-                .locale
-                .is_none_or(|resolved| resolved.language == requested.language)
-        })
+        decimal_symbols::default_numbering_system(locale.id.language.as_str()).is_some()
     }
 
-    /// Returns the ten pinned CLDR decimal digits for an advertised simple
+    /// Returns the fixed CLDR decimal symbols for a supported locale and
+    /// resolved numbering system.
+    pub(crate) fn number_decimal_symbols(
+        self,
+        locale: &IcuLocale,
+        numbering_system: &str,
+    ) -> Option<decimal_symbols::NumberDecimalSymbols> {
+        decimal_symbols::decimal_symbols(locale.id.language.as_str(), numbering_system)
+    }
+
+    /// Returns the ten pinned CLDR decimal digits for a sanctioned simple
     /// numbering system.
     ///
-    /// `DecimalDigitsV1` is keyed by the numbering-system attribute rather
-    /// than a locale. The compact baked record is used when present; otherwise
-    /// the provider-owned completion record has the same payload shape. This
-    /// makes NumberFormat and DurationFormat consume one data source rather
-    /// than retaining service-local digit substitutions.
+    /// The complete fixed dataset is the provider's source of truth. It does
+    /// not delegate to ICU4X's partial baked marker and therefore cannot
+    /// silently select a synthetic or root digit record.
     pub(crate) fn decimal_digits(self, numbering_system: &str) -> Option<[char; 10]> {
-        let attributes = DataMarkerAttributes::try_from_utf8(numbering_system.as_bytes()).ok()?;
-        <DecimalData as DataProvider<DecimalDigitsV1>>::load(
-            &DecimalData,
-            DataRequest {
-                id: DataIdentifierBorrowed::for_marker_attributes(attributes),
-                metadata: Default::default(),
-            },
-        )
-        .ok()
-        .map(|response| *response.payload.get())
-        .or_else(|| cldr_simple_decimal_digits(numbering_system).and_then(decimal_digit_array))
+        cldr_simple_decimal_digits(numbering_system).and_then(decimal_digit_array)
     }
 
     /// Resolves the CLDR standard fraction precision for one ISO 4217 code.
@@ -1246,13 +1223,7 @@ impl LocaleDataProvider {
 
     /// Returns the locale's default decimal numbering system.
     pub fn default_numbering_system(self, locale: &IcuLocale) -> &'static str {
-        match locale.id.language.as_str() {
-            "ar" => "arab",
-            "fa" => "arabext",
-            "bn" => "beng",
-            "my" => "mymr",
-            _ => "latn",
-        }
+        decimal_symbols::default_numbering_system(locale.id.language.as_str()).unwrap_or("latn")
     }
 
     /// Returns the CLDR scientific-notation symbols for a resolved decimal

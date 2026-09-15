@@ -20,7 +20,6 @@ use icu_decimal::{
     input::{Decimal, FloatPrecision},
     options::{DecimalFormatterOptions, GroupingStrategy},
     preferences::NumberingSystem,
-    provider::{Baked as DecimalData, DecimalDigitsV1},
     DecimalFormatter, DecimalFormatterPreferences,
 };
 use icu_list::{
@@ -28,12 +27,11 @@ use icu_list::{
     ListFormatter as IcuListFormatter, ListFormatterPreferences,
 };
 use icu_locale_core::Locale as IcuLocale;
-use icu_provider::{DataMarker, DataProvider, DataRequest};
+use icu_provider::{DataProvider, DataRequest};
 use icu_segmenter::{
     options::{SentenceBreakOptions, WordBreakOptions},
     GraphemeClusterSegmenter, GraphemeClusterSegmenterBorrowed, SentenceSegmenter, WordSegmenter,
 };
-use std::any::TypeId;
 use writeable::{Part, PartsWrite, Writeable};
 
 mod collator;

@@ -5,7 +5,7 @@
 //! Public, host-neutral decimal `Intl.NumberFormat` coverage.
 
 use blueice_ecma402::{
-    canonicalize, locale_with_numbering_system, resolve_number_format_locale,
+    canonicalize, locale_data_provider, locale_with_numbering_system, resolve_number_format_locale,
     supported_number_format_locales, unicode_keyword, NumberCompactDisplay, NumberCurrencyDisplay,
     NumberCurrencyOptions, NumberCurrencySign, NumberFormat, NumberFormatError, NumberFormatInput,
     NumberFormatOptions, NumberFormatPartKind, NumberFormatStyle, NumberFormatUnit, NumberGrouping,
@@ -329,7 +329,7 @@ fn emits_localized_scientific_and_engineering_exponent_parts() {
     assert_eq!(scientific.format_f64(543_211.1).unwrap(), "5.432E5");
 
     let arabic = NumberFormat::try_new(
-        &[canonicalize("ar").unwrap()],
+        &[canonicalize("ar-u-nu-arab").unwrap()],
         NumberFormatOptions {
             notation: NumberNotation::Scientific,
             maximum_fraction_digits: Some(1),
@@ -1252,7 +1252,7 @@ fn sources_localized_temperature_and_angle_units_from_the_shared_provider() {
 
     assert_eq!(
         format(
-            "ar",
+            "ar-u-nu-arab",
             NumberFormatUnit::Gigabyte,
             NumberUnitDisplay::Narrow,
             2.0,
@@ -1261,7 +1261,7 @@ fn sources_localized_temperature_and_angle_units_from_the_shared_provider() {
     );
     assert_eq!(
         format(
-            "ar",
+            "ar-u-nu-arab",
             NumberFormatUnit::Percent,
             NumberUnitDisplay::Long,
             1.0,
@@ -1270,7 +1270,7 @@ fn sources_localized_temperature_and_angle_units_from_the_shared_provider() {
     );
     assert_eq!(
         format(
-            "ar",
+            "ar-u-nu-arab",
             NumberFormatUnit::Percent,
             NumberUnitDisplay::Long,
             2.0,
@@ -1278,7 +1278,7 @@ fn sources_localized_temperature_and_angle_units_from_the_shared_provider() {
         "٢ ٪"
     );
     let arabic_compound = NumberFormat::try_new(
-        &[canonicalize("ar").unwrap()],
+        &[canonicalize("ar-u-nu-arab").unwrap()],
         NumberFormatOptions {
             style: NumberFormatStyle::Unit,
             unit: NumberFormatUnit::parse("gigabyte-per-second"),
@@ -1322,7 +1322,7 @@ fn uses_localized_per_unit_grammar_before_the_generic_connector() {
         "2 m/sem."
     );
     assert_eq!(
-        format("ar", "meter-per-second", NumberUnitDisplay::Long),
+        format("ar-u-nu-arab", "meter-per-second", NumberUnitDisplay::Long),
         "٢ متر في الثانية"
     );
     assert_eq!(
@@ -1335,7 +1335,7 @@ fn uses_localized_per_unit_grammar_before_the_generic_connector() {
     );
 
     let arabic = NumberFormat::try_new(
-        &[canonicalize("ar").unwrap()],
+        &[canonicalize("ar-u-nu-arab").unwrap()],
         NumberFormatOptions {
             style: NumberFormatStyle::Unit,
             unit: NumberFormatUnit::parse("meter-per-second"),
@@ -1440,6 +1440,83 @@ fn resolves_every_advertised_numbering_system() {
         }
     }
     assert!(unavailable.is_empty(), "unavailable: {unavailable:?}");
+}
+
+#[test]
+fn constructs_every_advertised_decimal_locale_from_pinned_cldr_data() {
+    let provider = locale_data_provider();
+    let mut unavailable = Vec::new();
+    for locale in provider.number_format_locales() {
+        let requested = canonicalize(locale).expect("advertised locale is structurally valid");
+        let expected_numbering_system = provider.default_numbering_system(requested.locale());
+        match NumberFormat::try_new(&[requested], NumberFormatOptions::default()) {
+            Ok(formatter) => {
+                assert_eq!(
+                    formatter.resolved_options().numbering_system,
+                    expected_numbering_system,
+                    "default numbering system for {locale}"
+                );
+                assert!(
+                    !formatter.format_decimal("12345.6").unwrap().is_empty(),
+                    "pinned decimal formatter for {locale}"
+                );
+            }
+            Err(error) => unavailable.push(format!("{locale}: {error}")),
+        }
+    }
+    assert!(
+        unavailable.is_empty(),
+        "advertised locales without pinned decimal construction: {}",
+        unavailable.join(", ")
+    );
+}
+
+#[test]
+fn constructs_former_direct_icu_decimal_locales_from_pinned_cldr_data() {
+    // These locales were directly available from the former ICU4X decimal
+    // provider but are not part of BlueIce's advertised NumberFormat list.
+    // Retain the established construction surface while removing its root
+    // fallback behavior.
+    for locale in [
+        "ast", "ba", "bgc", "bho", "blo", "brx", "bua", "cv", "eu", "ht", "ia", "ie", "jv", "kea",
+        "kgp", "ks", "kxv", "lij", "lmo", "mni", "nds", "nqo", "oc", "pms", "qu", "raj", "rm",
+        "rw", "sah", "sat", "sc", "scn", "sd", "su", "szl", "tg", "tn", "tt", "tyv", "und", "vec",
+        "vmw", "xnr", "yrl",
+    ] {
+        let formatter = NumberFormat::try_new(
+            &[canonicalize(locale).expect("former ICU locale is structurally valid")],
+            NumberFormatOptions::default(),
+        )
+        .unwrap_or_else(|error| panic!("pinned decimal formatter for {locale}: {error}"));
+        assert!(
+            !formatter.format_decimal("12345.6").unwrap().is_empty(),
+            "pinned decimal output for {locale}"
+        );
+    }
+}
+
+#[test]
+fn uses_cldr_defaults_not_the_former_synthetic_numbering_system_map() {
+    for (locale, numbering_system, expected) in [
+        ("ar", "latn", "1,234,567.5"),
+        ("as", "beng", "১২,৩৪,৫৬৭.৫"),
+        ("dz", "tibt", "༡༢,༣༤,༥༦༧.༥"),
+        ("fa", "arabext", "۱٬۲۳۴٬۵۶۷٫۵"),
+        ("mr", "deva", "१२,३४,५६७.५"),
+        ("or", "latn", "12,34,567.5"),
+    ] {
+        let formatter = NumberFormat::try_new(
+            &[canonicalize(locale).unwrap()],
+            NumberFormatOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            formatter.resolved_options().numbering_system,
+            numbering_system,
+            "CLDR default numbering system for {locale}"
+        );
+        assert_eq!(formatter.format_decimal("1234567.5").unwrap(), expected);
+    }
 }
 
 #[test]
@@ -2717,7 +2794,7 @@ fn loads_localized_simple_unit_patterns_from_the_shared_cldr_provider() {
     assert_eq!(german.format_f64(2.0).unwrap(), "2 l");
 
     let arabic = NumberFormat::try_new(
-        &[canonicalize("ar").unwrap()],
+        &[canonicalize("ar-u-nu-arab").unwrap()],
         NumberFormatOptions {
             style: NumberFormatStyle::Unit,
             unit: Some(NumberFormatUnit::Meter),

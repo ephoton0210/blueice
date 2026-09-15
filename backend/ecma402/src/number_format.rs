@@ -5,7 +5,11 @@
 //! Host-neutral implementation of the ECMA-402 number-format service.
 
 use super::*;
-use std::cell::RefCell;
+use icu_decimal::provider::{
+    DecimalDigitsV1, DecimalSymbolStrsBuilder, DecimalSymbols, DecimalSymbolsV1, GroupingSizes,
+};
+use icu_provider::{DataPayload, DataResponse};
+use zerovec::VarZeroCow;
 
 /// Whether the shared provider has decimal data for this locale.
 pub fn supports_number_format_locale(locale: &IcuLocale) -> bool {
@@ -1085,31 +1089,26 @@ impl NumberFormat {
         let negotiation = negotiate_number_format_locale(requested, options.locale_matcher);
         let selected =
             resolve_numbering_system_locale(&negotiation.selected, numbering_system.as_deref());
-        let provider = NumberingSystemInspectionProvider::default();
-        let mut formatter_options = DecimalFormatterOptions::default();
-        formatter_options.grouping_strategy = Some(options.use_grouping.into());
-        let mut preferences: DecimalFormatterPreferences = selected.locale().into();
-        let selected_numbering_system = unicode_keyword(selected.locale(), "nu");
-        if let Some(numbering_system) = selected_numbering_system.as_deref() {
-            let value = numbering_system
-                .parse::<icu_locale_core::extensions::unicode::Value>()
-                .map_err(|_| NumberFormatError::DataUnavailable)?;
-            preferences.numbering_system = Some(
-                NumberingSystem::try_from(value).map_err(|_| NumberFormatError::DataUnavailable)?,
-            );
-        }
-        let formatter =
-            DecimalFormatter::try_new_unstable(&provider, preferences, formatter_options)
-                .map_err(|_| NumberFormatError::DataUnavailable)?;
-        let numbering_system = selected_numbering_system.unwrap_or_else(|| {
-            provider
-                .numbering_system
-                .into_inner()
-                .unwrap_or_else(|| "latn".into())
-        });
+        let numbering_system = unicode_keyword(selected.locale(), "nu")
+            .expect("numbering-system resolution always sets the nu key");
+        let symbols = locale_data_provider()
+            .number_decimal_symbols(selected.locale(), &numbering_system)
+            .ok_or(NumberFormatError::DataUnavailable)?;
         let decimal_digits = locale_data_provider()
             .decimal_digits(&numbering_system)
             .ok_or(NumberFormatError::DataUnavailable)?;
+        let provider = PinnedDecimalProvider::new(symbols, decimal_digits);
+        let mut formatter_options = DecimalFormatterOptions::default();
+        formatter_options.grouping_strategy = Some(options.use_grouping.into());
+        let mut preferences: DecimalFormatterPreferences = selected.locale().into();
+        let value = numbering_system
+            .parse::<icu_locale_core::extensions::unicode::Value>()
+            .map_err(|_| NumberFormatError::DataUnavailable)?;
+        preferences.numbering_system =
+            Some(NumberingSystem::try_from(value).map_err(|_| NumberFormatError::DataUnavailable)?);
+        let formatter =
+            DecimalFormatter::try_new_unstable(&provider, preferences, formatter_options)
+                .map_err(|_| NumberFormatError::DataUnavailable)?;
         let scientific_symbols =
             locale_data_provider().number_scientific_symbols(selected.as_str(), &numbering_system);
         let resolved = ResolvedNumberFormatOptions {
@@ -2674,30 +2673,60 @@ fn currency_symbol(currency: &NumberCurrencyOptions, locale: &str) -> String {
     }
 }
 
-/// Captures the exact numbering system selected by ICU4X during construction.
-///
-/// `DecimalFormatter` deliberately hides its data-provider internals. The
-/// provider protocol nevertheless defines the final `DecimalDigitsV1` request
-/// as the resolved numbering system, so this transparent wrapper makes the
-/// resolved ECMA-402 value observable without exposing ICU4X types to callers.
-#[derive(Default)]
-struct NumberingSystemInspectionProvider {
-    numbering_system: RefCell<Option<String>>,
+/// The exact CLDR decimal symbols and digits selected before formatter
+/// construction. This deliberately never delegates to ICU4X's compact baked
+/// provider: a missing locale record must fail construction rather than
+/// resolving through root data.
+struct PinnedDecimalProvider {
+    symbols: DecimalSymbols<'static>,
+    digits: [char; 10],
 }
 
-impl<M> DataProvider<M> for NumberingSystemInspectionProvider
-where
-    M: DataMarker,
-    DecimalData: DataProvider<M>,
-{
+impl PinnedDecimalProvider {
+    fn new(symbols: NumberDecimalSymbols, digits: [char; 10]) -> Self {
+        let strings = DecimalSymbolStrsBuilder {
+            minus_sign_prefix: VarZeroCow::new_borrowed(&symbols.minus_sign),
+            minus_sign_suffix: VarZeroCow::new_borrowed(""),
+            plus_sign_prefix: VarZeroCow::new_borrowed(&symbols.plus_sign),
+            plus_sign_suffix: VarZeroCow::new_borrowed(""),
+            decimal_separator: VarZeroCow::new_borrowed(&symbols.decimal_separator),
+            grouping_separator: VarZeroCow::new_borrowed(&symbols.grouping_separator),
+            numsys: VarZeroCow::new_borrowed(&symbols.numbering_system),
+        };
+        Self {
+            symbols: DecimalSymbols {
+                strings: VarZeroCow::from_encodeable(&strings),
+                grouping_sizes: GroupingSizes {
+                    primary: symbols.primary_grouping,
+                    secondary: symbols.secondary_grouping,
+                    min_grouping: symbols.minimum_grouping,
+                },
+            },
+            digits,
+        }
+    }
+}
+
+impl DataProvider<DecimalSymbolsV1> for PinnedDecimalProvider {
     fn load(
         &self,
-        request: DataRequest,
-    ) -> Result<icu_provider::DataResponse<M>, icu_provider::DataError> {
-        if TypeId::of::<M>() == TypeId::of::<DecimalDigitsV1>() {
-            self.numbering_system
-                .replace(Some(request.id.marker_attributes.as_str().into()));
-        }
-        DecimalData.load(request)
+        _request: DataRequest,
+    ) -> Result<DataResponse<DecimalSymbolsV1>, icu_provider::DataError> {
+        Ok(DataResponse {
+            metadata: Default::default(),
+            payload: DataPayload::from_owned(self.symbols.clone()),
+        })
+    }
+}
+
+impl DataProvider<DecimalDigitsV1> for PinnedDecimalProvider {
+    fn load(
+        &self,
+        _request: DataRequest,
+    ) -> Result<DataResponse<DecimalDigitsV1>, icu_provider::DataError> {
+        Ok(DataResponse {
+            metadata: Default::default(),
+            payload: DataPayload::from_owned(self.digits),
+        })
     }
 }
