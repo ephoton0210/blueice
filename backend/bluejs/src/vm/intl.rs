@@ -26,26 +26,48 @@ enum DateTimeFormatValue {
 /// and BigInts through `format`, `formatToParts`, and both range operations.
 enum NumberFormatValue {
     Decimal(String),
+    ScientificDecimal { significand: String, exponent: i16 },
     Number(f64),
 }
 
-fn is_exact_decimal_intl_mathematical_value(value: &str) -> bool {
-    let value = value
+/// Parses the finite base-10 subset of `StringNumericLiteral` that can be
+/// represented exactly by the fixed-decimal provider. It intentionally runs
+/// after `ToNumber`, so non-decimal strings retain ordinary Number semantics.
+fn exact_decimal_intl_mathematical_value(value: &str) -> Option<NumberFormatValue> {
+    let value =
+        value.trim_matches(|character: char| character.is_whitespace() || character == '\u{feff}');
+    let (significand, exponent) = match value.find(['e', 'E']) {
+        Some(index) => {
+            let (significand, exponent) = value.split_at(index);
+            if exponent[1..].contains(['e', 'E']) {
+                return None;
+            }
+            (significand, Some(exponent[1..].parse::<i16>().ok()?))
+        }
+        None => (value, None),
+    };
+    let significand = significand
         .strip_prefix('+')
-        .or_else(|| value.strip_prefix('-'))
-        .unwrap_or(value);
+        .or_else(|| significand.strip_prefix('-'))
+        .unwrap_or(significand);
     let mut digits = 0;
     let mut decimal = false;
-    for byte in value.bytes() {
+    for byte in significand.bytes() {
         if byte.is_ascii_digit() {
             digits += 1;
         } else if byte == b'.' && !decimal {
             decimal = true;
         } else {
-            return false;
+            return None;
         }
     }
-    digits > 0
+    (digits > 0).then(|| match exponent {
+        Some(exponent) => NumberFormatValue::ScientificDecimal {
+            significand: value[..value.find(['e', 'E']).unwrap()].into(),
+            exponent,
+        },
+        None => NumberFormatValue::Decimal(value.into()),
+    })
 }
 
 fn temporal_has_date_components(options: &blueice_ecma402::DateTimeFormatOptions) -> bool {
@@ -4460,9 +4482,8 @@ impl Vm {
             Value::String(value) => {
                 let number = crate::primitive::number(&Value::String(value.clone()))?;
                 match value.to_utf8() {
-                    Ok(value) if is_exact_decimal_intl_mathematical_value(&value) => {
-                        NumberFormatValue::Decimal(value)
-                    }
+                    Ok(value) => exact_decimal_intl_mathematical_value(&value)
+                        .unwrap_or(NumberFormatValue::Number(number)),
                     _ => NumberFormatValue::Number(number),
                 }
             }
@@ -4470,6 +4491,13 @@ impl Vm {
         };
         Ok(match value {
             NumberFormatValue::Decimal(value) => blueice_ecma402::NumberFormatInput::Decimal(value),
+            NumberFormatValue::ScientificDecimal {
+                significand,
+                exponent,
+            } => blueice_ecma402::NumberFormatInput::ScientificDecimal {
+                significand,
+                exponent,
+            },
             NumberFormatValue::Number(value) => blueice_ecma402::NumberFormatInput::Number(value),
         })
     }

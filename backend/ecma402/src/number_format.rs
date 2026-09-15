@@ -740,6 +740,15 @@ pub struct NumberFormatPart {
 pub enum NumberFormatInput {
     /// A finite, base-10 decimal value whose spelling must remain exact.
     Decimal(String),
+    /// A finite base-10 significand and exponent whose value must remain
+    /// exact. This is the scientific spelling accepted by ECMA-402's
+    /// `StringIntlMV`, rather than the formatter's output notation.
+    ScientificDecimal {
+        /// The signed base-10 significand, without an exponent.
+        significand: String,
+        /// The base-10 exponent to apply to `significand`.
+        exponent: i16,
+    },
     /// An IEEE-754 Number value.
     Number(f64),
 }
@@ -1563,6 +1572,17 @@ impl NumberFormat {
                 let value = number_sign_display_decimal(&value, self.resolved.sign_display);
                 let decimal =
                     Decimal::try_from_str(value).map_err(|_| NumberFormatError::InvalidDecimal)?;
+                self.format_decimal_value(decimal)
+            }
+            NumberFormatInput::ScientificDecimal {
+                significand,
+                exponent,
+            } => {
+                let significand =
+                    number_sign_display_decimal(&significand, self.resolved.sign_display);
+                let mut decimal = Decimal::try_from_str(significand)
+                    .map_err(|_| NumberFormatError::InvalidDecimal)?;
+                decimal.multiply_pow10(exponent);
                 self.format_decimal_value(decimal)
             }
             NumberFormatInput::Number(value) if !value.is_finite() => Ok(FormattedNumber {

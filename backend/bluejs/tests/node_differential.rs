@@ -291,6 +291,56 @@ fn primitive_completions_and_error_classes_match_node() {
             corpus.push(format!("'' + ({n:e})"));
         }
     }
+    assert_matches_node(&corpus);
+}
+
+/// Strict Node/ICU differential cells chosen from NumberFormat provider data
+/// that is already marked data-backed by the provider coverage inventory.
+///
+/// Keep each entry a primitive result so `node_oracle.js` can compare the
+/// complete UTF-16 output, including spaces, digits and range-part sources.
+#[test]
+#[ignore = "requires Node.js on PATH; run explicitly with --ignored"]
+fn number_format_matrix_matches_node() {
+    let corpus = [
+        // Decimal symbols, grouping, and non-Latin numbering systems.
+        "new Intl.NumberFormat('en',{maximumFractionDigits:3}).format(1234567.895)",
+        "new Intl.NumberFormat('de',{useGrouping:false,minimumFractionDigits:2,maximumFractionDigits:2}).format(1007.5)",
+        "new Intl.NumberFormat('ar-u-nu-arab',{maximumFractionDigits:1}).format(1234.5)",
+        "new Intl.NumberFormat('th-u-nu-thai',{useGrouping:false,minimumFractionDigits:2,maximumFractionDigits:2}).format(1007.5)",
+        "new Intl.NumberFormat('hi-IN').format(1234567.89)",
+        // Currency and percent positive/negative pattern data.
+        "new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',currencySign:'accounting'}).format(-987)",
+        "new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(1234.5)",
+        "new Intl.NumberFormat('ja-JP',{style:'currency',currency:'JPY'}).format(-1234.5)",
+        "new Intl.NumberFormat('fr',{style:'percent',maximumFractionDigits:1}).format(-12.345)",
+        // Simple and compound unit labels from raw unit data.
+        "new Intl.NumberFormat('en',{style:'unit',unit:'meter',unitDisplay:'long'}).format(2)",
+        "new Intl.NumberFormat('de',{style:'unit',unit:'kilometer-per-hour',unitDisplay:'long'}).format(123)",
+        "new Intl.NumberFormat('fr',{style:'unit',unit:'megabyte',unitDisplay:'short'}).format(2)",
+        "new Intl.NumberFormat('ko',{style:'unit',unit:'kilometer-per-hour',unitDisplay:'long'}).format(-987)",
+        "new Intl.NumberFormat('ja',{style:'unit',unit:'liter',unitDisplay:'narrow'}).format(3)",
+        // Compact/scientific output and typed part boundaries.
+        "new Intl.NumberFormat('en',{notation:'compact'}).formatToParts(9876).map(function(part){return part.type+':'+part.value}).join('|')",
+        "new Intl.NumberFormat('de',{notation:'engineering'}).formatToParts(.000345).map(function(part){return part.type+':'+part.value}).join('|')",
+        "new Intl.NumberFormat('en',{notation:'scientific'}).format(543211.1)",
+        // Exact StringIntlMV/BigInt values must bypass IEEE-754 rounding.
+        "new Intl.NumberFormat('en',{useGrouping:false,maximumFractionDigits:20}).format('1.234567890123456789e0')",
+        "new Intl.NumberFormat('en').format(' 987654321987654321 ')",
+        "new Intl.NumberFormat('en').formatRange('987654321987654321','987654321987654322')",
+        "new Intl.NumberFormat('en').formatRange(9007199254740993n,9007199254740994n)",
+        // Range strings and source ownership are independently observable.
+        "new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).formatRange(3,5)",
+        "new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).formatRangeToParts(3,5).map(function(part){return part.type+':'+part.value+':'+part.source}).join('|')",
+        "new Intl.NumberFormat('pt-PT',{style:'currency',currency:'EUR',maximumFractionDigits:0}).formatRange(3,5)",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect::<Vec<_>>();
+    assert_matches_node(&corpus);
+}
+
+fn assert_matches_node(corpus: &[String]) {
     let mut node = Command::new("node")
         .args(["-e", include_str!("fixtures/node_oracle.js")])
         .stdin(Stdio::piped())

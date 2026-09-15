@@ -151,6 +151,24 @@ fn formats_number_ranges_without_losing_decimal_precision_or_part_sources() {
             .unwrap(),
         "987,654,321,987,654,321–987,654,321,987,654,322"
     );
+    let exact_scientific = NumberFormat::try_new(
+        &[canonicalize("en-US").unwrap()],
+        NumberFormatOptions {
+            use_grouping: NumberGrouping::Never,
+            maximum_fraction_digits: Some(20),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        exact_scientific
+            .format_input(NumberFormatInput::ScientificDecimal {
+                significand: "1.234567890123456789".into(),
+                exponent: 0,
+            })
+            .unwrap(),
+        "1.234567890123456789"
+    );
     assert_eq!(
         decimal
             .format_range_inputs_to_parts(

@@ -103,3 +103,50 @@ fn provider_exposes_per_service_capabilities_without_negotiating_locales() {
         canonicalize("fr").unwrap().locale()
     ));
 }
+
+#[test]
+fn number_format_provider_coverage_inventory_is_complete_and_localized() {
+    // Baseline from CLDR 48.2.1 / ICU4X revision 31dcf427. This is a floor,
+    // not a completion target: item 2 remains open until every advertised
+    // cell is localized rather than using the bounded English fallback.
+    const SIMPLE_UNIT_DATA_BACKED_FLOOR: usize = 27_540;
+    let provider = locale_data_provider();
+    let mut decimal_locales = 0;
+    let mut currency_patterns = (0, 0);
+    let mut percent_patterns = (0, 0);
+    let mut simple_unit_patterns = (0, 0);
+
+    for locale in provider.number_format_locales() {
+        let coverage = provider
+            .number_format_coverage(locale)
+            .unwrap_or_else(|| panic!("advertised NumberFormat locale lacks coverage: {locale}"));
+        decimal_locales += usize::from(coverage.decimal_symbols);
+        currency_patterns.0 += coverage.currency_patterns.data_backed;
+        currency_patterns.1 += coverage.currency_patterns.total;
+        percent_patterns.0 += coverage.percent_patterns.data_backed;
+        percent_patterns.1 += coverage.percent_patterns.total;
+        simple_unit_patterns.0 += coverage.simple_unit_patterns.data_backed;
+        simple_unit_patterns.1 += coverage.simple_unit_patterns.total;
+    }
+
+    assert_eq!(decimal_locales, provider.number_format_locales().len());
+    assert_eq!(currency_patterns.0, currency_patterns.1);
+    assert_eq!(percent_patterns.0, percent_patterns.1);
+    assert!(simple_unit_patterns.0 <= simple_unit_patterns.1);
+    assert!(simple_unit_patterns.0 >= SIMPLE_UNIT_DATA_BACKED_FLOOR);
+    eprintln!(
+        "NumberFormat provider coverage: decimal {decimal_locales}/{}, currency {}/{}, percent {}/{}, simple units {}/{} ({}%)",
+        provider.number_format_locales().len(),
+        currency_patterns.0,
+        currency_patterns.1,
+        percent_patterns.0,
+        percent_patterns.1,
+        simple_unit_patterns.0,
+        simple_unit_patterns.1,
+        blueice_ecma402::NumberFormatCoverageCount {
+            data_backed: simple_unit_patterns.0,
+            total: simple_unit_patterns.1,
+        }
+        .percentage(),
+    );
+}

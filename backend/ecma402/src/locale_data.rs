@@ -109,6 +109,24 @@ pub const SUPPORTED_NUMBERING_SYSTEMS: &[&str] = &[
     "tols", "vaii", "wara", "wcho",
 ];
 
+/// Language-level locales advertised by the NumberFormat provider.
+///
+/// ICU4X compacts locale records through their language parents, so this
+/// inventory intentionally contains language identifiers rather than every
+/// language/script/region spelling that resolves through one. Cantonese is a
+/// NumberFormat-only addition: its pinned decimal and raw unit data are
+/// present even though the compact language registry omits it.
+const NUMBER_FORMAT_LOCALES: &[&str] = &[
+    "af", "am", "ar", "as", "az", "be", "bg", "bn", "bo", "br", "bs", "ca", "ceb", "chr", "cs",
+    "cy", "da", "de", "dsb", "dz", "ee", "el", "en", "eo", "es", "et", "fa", "ff", "fi", "fil",
+    "fo", "fr", "fy", "ga", "gl", "gu", "gv", "ha", "haw", "he", "hi", "hr", "hsb", "hu", "hy",
+    "id", "ig", "is", "it", "ja", "ka", "kk", "kl", "km", "kn", "ko", "kok", "ku", "ky", "la",
+    "lb", "lkt", "ln", "lo", "lt", "lv", "mk", "ml", "mn", "mr", "ms", "mt", "my", "nb", "ne",
+    "nl", "nn", "no", "om", "or", "pa", "pl", "ps", "pt", "ro", "ru", "sa", "se", "si", "sk", "sl",
+    "so", "sq", "sr", "sv", "sw", "ta", "te", "th", "tk", "to", "tr", "ug", "uk", "ur", "uz", "vi",
+    "wae", "wo", "xh", "yi", "yo", "yue", "zh", "zu",
+];
+
 /// Collation types that can resolve through `Intl.Collator` for at least one
 /// bundled locale.
 pub const SUPPORTED_COLLATIONS: &[&str] = &[
@@ -213,6 +231,46 @@ pub struct LocaleDataCapabilities {
     pub value_categories: &'static [LocaleDataCategory],
     /// Whether the service consumes the pinned IANA TZDB registry.
     pub uses_time_zone_data: bool,
+}
+
+/// One count within a NumberFormat provider-coverage inventory.
+///
+/// `data_backed` means the selected record came from the pinned ICU4X/CLDR
+/// provider or one of this provider's pinned raw CLDR supplements. It does
+/// not count an English compatibility fallback as localized coverage.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct NumberFormatCoverageCount {
+    /// Number of matrix cells whose selected result is provider-backed.
+    pub data_backed: usize,
+    /// Number of matrix cells evaluated.
+    pub total: usize,
+}
+
+impl NumberFormatCoverageCount {
+    /// Returns the integer percentage of data-backed matrix cells.
+    pub const fn percentage(self) -> usize {
+        match self.data_backed.saturating_mul(100).checked_div(self.total) {
+            Some(percentage) => percentage,
+            None => 0,
+        }
+    }
+}
+
+/// Data provenance coverage for one NumberFormat language locale.
+///
+/// This is deliberately an inventory, not an observable Intl API. It gives
+/// tests and release tooling a stable way to detect when a newly advertised
+/// locale would otherwise reach a bounded compatibility fallback.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct NumberFormatProviderCoverage {
+    /// Whether decimal symbols are loaded from this locale's provider data.
+    pub decimal_symbols: bool,
+    /// Standard and accounting USD pattern lookups.
+    pub currency_patterns: NumberFormatCoverageCount,
+    /// Unsigned and signed percent-pattern lookups.
+    pub percent_patterns: NumberFormatCoverageCount,
+    /// Every simple unit, display width and reachable plural category.
+    pub simple_unit_patterns: NumberFormatCoverageCount,
 }
 
 /// The centralized locale-data provider.
@@ -652,10 +710,90 @@ impl LocaleDataProvider {
     /// provider therefore treats a supported primary language as data-backed
     /// even when the concrete marker resolves through that parent record.
     pub fn supports_language(self, locale: &IcuLocale) -> bool {
-        const LANGUAGES: &str = "af am ar as az be bg bn bo br bs ca ceb chr cs cy da de dsb dz ee el en eo es et fa ff fi fil fo fr fy ga gl gu gv ha haw he hi hr hsb hu hy id ig is it ja ka kk kl km kn ko kok ku ky la lb lkt ln lo lt lv mk ml mn mr ms mt my nb ne nl nn no om or pa pl ps pt ro ru sa se si sk sl so sq sr sv sw ta te th tk to tr ug uk ur uz vi wae wo xh yi yo zh zu";
-        LANGUAGES
-            .split(' ')
-            .any(|language| locale.id.language.as_str() == language)
+        NUMBER_FORMAT_LOCALES
+            .iter()
+            .any(|language| *language != "yue" && locale.id.language.as_str() == *language)
+    }
+
+    /// Returns the language-level inventory used by NumberFormat coverage
+    /// tooling. Script and region variants resolve through these records or
+    /// through their explicit raw CLDR supplement.
+    pub const fn number_format_locales(self) -> &'static [&'static str] {
+        NUMBER_FORMAT_LOCALES
+    }
+
+    /// Measures the NumberFormat provider's localized-data coverage for one
+    /// advertised language locale.
+    ///
+    /// The unit denominator is intentionally every ECMA-402 sanctioned
+    /// simple unit. Each locale contributes only plural categories that its
+    /// pinned cardinal rules can actually select, preventing unreachable
+    /// categories from diluting the rate.
+    pub fn number_format_coverage(self, locale: &str) -> Option<NumberFormatProviderCoverage> {
+        let locale = crate::canonicalize(locale).ok()?;
+        if !self.supports_service_locale(crate::IntlService::NumberFormat, locale.locale()) {
+            return None;
+        }
+        let locale_name = locale.as_str();
+        let plural_categories = number_format_plural_categories(locale_name);
+        let mut simple_unit_patterns = NumberFormatCoverageCount::default();
+        for unit in crate::NumberFormatUnit::ALL {
+            for display in [
+                crate::NumberUnitDisplay::Long,
+                crate::NumberUnitDisplay::Short,
+                crate::NumberUnitDisplay::Narrow,
+            ] {
+                for plural in &plural_categories {
+                    simple_unit_patterns.total += 1;
+                    if self
+                        .number_unit_pattern_with_provenance(locale_name, *unit, display, *plural)
+                        .1
+                    {
+                        simple_unit_patterns.data_backed += 1;
+                    }
+                }
+            }
+        }
+        let currency_patterns = [
+            self.number_currency_pattern(
+                locale_name,
+                "USD",
+                crate::NumberCurrencyDisplay::Symbol,
+                false,
+                false,
+                crate::PluralCategory::Other,
+            ),
+            self.number_currency_pattern(
+                locale_name,
+                "USD",
+                crate::NumberCurrencyDisplay::Symbol,
+                true,
+                true,
+                crate::PluralCategory::Other,
+            ),
+        ];
+        let percent_patterns = [
+            self.number_percent_pattern(locale_name, false),
+            self.number_percent_pattern(locale_name, true),
+        ];
+        Some(NumberFormatProviderCoverage {
+            decimal_symbols: self.supports_decimal_locale(locale.locale()),
+            currency_patterns: NumberFormatCoverageCount {
+                data_backed: currency_patterns
+                    .iter()
+                    .filter(|pattern| pattern.is_some())
+                    .count(),
+                total: currency_patterns.len(),
+            },
+            percent_patterns: NumberFormatCoverageCount {
+                data_backed: percent_patterns
+                    .iter()
+                    .filter(|pattern| pattern.is_some())
+                    .count(),
+                total: percent_patterns.len(),
+            },
+            simple_unit_patterns,
+        })
     }
 
     /// Whether decimal-symbol data resolves to this locale's language.
@@ -1429,50 +1567,63 @@ impl LocaleDataProvider {
         display: crate::NumberUnitDisplay,
         plural: crate::PluralCategory,
     ) -> NumberUnitPattern {
+        self.number_unit_pattern_with_provenance(locale, unit, display, plural)
+            .0
+    }
+
+    /// Resolves a simple-unit pattern together with whether it is localized
+    /// provider data rather than the bounded English compatibility fallback.
+    fn number_unit_pattern_with_provenance(
+        self,
+        locale: &str,
+        unit: crate::NumberFormatUnit,
+        display: crate::NumberUnitDisplay,
+        plural: crate::PluralCategory,
+    ) -> (NumberUnitPattern, bool) {
         if let Some(pattern) = experimental_number_unit_pattern(locale, unit, display, plural) {
-            return pattern;
+            return (pattern, true);
         }
         if let Some(pattern) = cldr_temperature_unit_pattern(locale, unit, display, plural) {
-            return pattern;
+            return (pattern, true);
         }
         if let Some(pattern) = cldr_korean_additional_unit_pattern(locale, unit, display, plural) {
-            return pattern;
+            return (pattern, true);
         }
         if let Some(pattern) = cldr_chinese_additional_unit_pattern(locale, unit, display, plural) {
-            return pattern;
+            return (pattern, true);
         }
         if let Some(pattern) = cldr_german_digital_unit_pattern(locale, unit, display, plural) {
-            return pattern;
+            return (pattern, true);
         }
         if let Some(pattern) = unit_patterns::additional_unit_pattern(locale, unit, display, plural)
         {
-            return pattern;
+            return (pattern, true);
         }
         if let Some(pattern) =
             cldr_portuguese_additional_unit_pattern(locale, unit, display, plural)
         {
-            return pattern;
+            return (pattern, true);
         }
         if let Some(pattern) = cldr_italian_additional_unit_pattern(locale, unit, display, plural) {
-            return pattern;
+            return (pattern, true);
         }
         if let Some(pattern) = cldr_dutch_additional_unit_pattern(locale, unit, display, plural) {
-            return pattern;
+            return (pattern, true);
         }
         if let Some(pattern) = cldr_japanese_digital_unit_pattern(locale, unit, display, plural) {
-            return pattern;
+            return (pattern, true);
         }
         if let Some(pattern) = cldr_russian_digital_unit_pattern(locale, unit, display, plural) {
-            return pattern;
+            return (pattern, true);
         }
         if let Some(pattern) = cldr_arabic_digital_unit_pattern(locale, unit, display, plural) {
-            return pattern;
+            return (pattern, true);
         }
         if let Some(pattern) = cldr_french_digital_unit_pattern(locale, unit, display, plural) {
-            return pattern;
+            return (pattern, true);
         }
         if let Some(pattern) = cldr_spanish_additional_unit_pattern(locale, unit, display, plural) {
-            return pattern;
+            return (pattern, true);
         }
         {
             let duration_unit = match unit {
@@ -1500,15 +1651,21 @@ impl LocaleDataProvider {
                     style,
                     plural == crate::PluralCategory::One,
                 );
-                return NumberUnitPattern {
-                    prefix: String::new(),
-                    prefix_separator: String::new(),
-                    suffix_separator: separator.into(),
-                    suffix: label.into(),
-                    hides_number: false,
-                };
+                return (
+                    NumberUnitPattern {
+                        prefix: String::new(),
+                        prefix_separator: String::new(),
+                        suffix_separator: separator.into(),
+                        suffix: label.into(),
+                        hides_number: false,
+                    },
+                    locale.starts_with("es"),
+                );
             }
-            english_number_unit_pattern(unit, display, plural == crate::PluralCategory::One)
+            (
+                english_number_unit_pattern(unit, display, plural == crate::PluralCategory::One),
+                false,
+            )
         }
     }
 
@@ -2617,6 +2774,40 @@ fn plural_category_sample(
     [1_000, 1_000_000]
         .into_iter()
         .find(|sample| plural_category_from_icu(rules.category_for(*sample)) == expected)
+}
+
+/// Returns only the cardinal categories that can be selected for a locale.
+///
+/// Coverage is measured over observable patterns. A category whose plural
+/// rule can never return it is not a missing locale-data cell. If ICU lacks a
+/// rule for an otherwise advertised NumberFormat locale, retain `other` so
+/// the report makes that fallback visible instead of reporting an empty
+/// matrix.
+fn number_format_plural_categories(locale: &str) -> Vec<crate::PluralCategory> {
+    const CATEGORIES: &[crate::PluralCategory] = &[
+        crate::PluralCategory::Zero,
+        crate::PluralCategory::One,
+        crate::PluralCategory::Two,
+        crate::PluralCategory::Few,
+        crate::PluralCategory::Many,
+        crate::PluralCategory::Other,
+    ];
+    let Ok(locale) = crate::canonicalize(locale) else {
+        return vec![crate::PluralCategory::Other];
+    };
+    let Ok(rules) = IcuPluralRules::try_new_cardinal(locale.locale().into()) else {
+        return vec![crate::PluralCategory::Other];
+    };
+    let categories = CATEGORIES
+        .iter()
+        .copied()
+        .filter(|category| plural_category_sample(&rules, *category).is_some())
+        .collect::<Vec<_>>();
+    if categories.is_empty() {
+        vec![crate::PluralCategory::Other]
+    } else {
+        categories
+    }
 }
 
 fn plural_category_from_icu(category: IcuPluralCategory) -> crate::PluralCategory {

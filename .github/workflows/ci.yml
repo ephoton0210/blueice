@@ -28,6 +28,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+      # Use the same independent ICU implementation on every OS for the
+      # provider-backed NumberFormat differential matrix below.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - uses: Swatinem/rust-cache@v2
       # `backend/core/html/tests/wpt_corpus.rs`'s WPT tree-construction
       # gate (see `testing/TEST_PLAN.md`) needs this checked out or it
@@ -42,6 +47,10 @@ jobs:
         run: cargo build --workspace --all-targets
       - name: Test
         run: cargo test --workspace
+      - name: NumberFormat Node differential matrix
+        run: >-
+          cargo test -p blueice-bluejs --test node_differential
+          number_format_matrix_matches_node -- --ignored
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Rustfmt
@@ -52,6 +61,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # `cargo llvm-cov --workspace` compiles BlueJS integration tests whose
+      # fixtures are embedded with `include_str!`; use the same immutable
+      # corpus as the cross-platform build-and-test job.
+      - name: Checkout pinned Test262 corpus
+        uses: actions/checkout@v4
+        with:
+          repository: tc39/test262
+          ref: 72faf8ec1445c55149615e8b35187830783aba1a
+          path: development/browser_core/reference/test262
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
