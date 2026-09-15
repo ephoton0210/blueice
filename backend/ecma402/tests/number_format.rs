@@ -788,6 +788,111 @@ fn selects_currency_interval_patterns_from_affix_and_sign_scope() {
 }
 
 #[test]
+fn selects_common_range_patterns_by_style_affix_and_sign_scope() {
+    let formatter = |locale: &str, options| {
+        NumberFormat::try_new(&[canonicalize(locale).unwrap()], options).unwrap()
+    };
+    let range = |formatter: &NumberFormat, start, end| {
+        formatter
+            .format_range_inputs(
+                NumberFormatInput::Number(start),
+                NumberFormatInput::Number(end),
+            )
+            .unwrap()
+    };
+
+    let decimal = formatter("en-US", NumberFormatOptions::default());
+    assert_eq!(range(&decimal, 3.0, 5.0), "3–5");
+    assert_eq!(range(&decimal, -5.0, -3.0), "-5 – -3");
+
+    let japanese_decimal = formatter("ja", NumberFormatOptions::default());
+    assert_eq!(range(&japanese_decimal, -5.0, -3.0), "-5 ～ -3");
+
+    let english_percent = formatter(
+        "en-US",
+        NumberFormatOptions {
+            style: NumberFormatStyle::Percent,
+            ..Default::default()
+        },
+    );
+    assert_eq!(range(&english_percent, 3.0, 5.0), "300% – 500%");
+    assert_eq!(range(&english_percent, -5.0, -3.0), "-500–300%");
+    assert_eq!(range(&english_percent, -3.0, 5.0), "-300% – 500%");
+
+    let french_percent = formatter(
+        "fr",
+        NumberFormatOptions {
+            style: NumberFormatStyle::Percent,
+            ..Default::default()
+        },
+    );
+    assert_eq!(range(&french_percent, 3.0, 5.0), "300–500\u{a0}%");
+    assert_eq!(
+        range(&french_percent, -3.0, 5.0),
+        "-300\u{a0}% – 500\u{a0}%"
+    );
+
+    let turkish_percent = formatter(
+        "tr",
+        NumberFormatOptions {
+            style: NumberFormatStyle::Percent,
+            ..Default::default()
+        },
+    );
+    assert_eq!(range(&turkish_percent, 3.0, 5.0), "%300 – %500");
+    assert_eq!(range(&turkish_percent, -5.0, -3.0), "-%500–300");
+
+    let english_unit = formatter(
+        "en-US",
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::Meter),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    );
+    assert_eq!(range(&english_unit, 3.0, 5.0), "3–5 meters");
+    assert_eq!(range(&english_unit, -5.0, -3.0), "-5 – -3 meters");
+    assert_eq!(range(&english_unit, -3.0, 5.0), "-3 – 5 meters");
+
+    let japanese_celsius = formatter(
+        "ja",
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::Celsius),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    );
+    assert_eq!(range(&japanese_celsius, 3.0, 5.0), "摂氏 3～5 度");
+    assert_eq!(range(&japanese_celsius, -5.0, -3.0), "摂氏 -5 ～ -3 度");
+
+    let english_compact = formatter(
+        "en-US",
+        NumberFormatOptions {
+            notation: NumberNotation::Compact,
+            ..Default::default()
+        },
+    );
+    assert_eq!(range(&english_compact, 1_200.0, 2_300.0), "1.2K – 2.3K");
+    assert_eq!(range(&english_compact, -2_300.0, -1_200.0), "-2.3–1.2K");
+    assert_eq!(range(&english_compact, -1_200.0, 2_300.0), "-1.2K – 2.3K");
+
+    let french_compact = formatter(
+        "fr",
+        NumberFormatOptions {
+            notation: NumberNotation::Compact,
+            ..Default::default()
+        },
+    );
+    assert_eq!(range(&french_compact, 1_200.0, 2_300.0), "1,2–2,3\u{a0}k");
+    assert_eq!(
+        range(&french_compact, -1_200.0, 2_300.0),
+        "-1,2\u{a0}k – 2,3\u{a0}k"
+    );
+}
+
+#[test]
 fn sources_localized_temperature_and_angle_units_from_the_shared_provider() {
     let format = |locale: &str, unit, display, value| {
         NumberFormat::try_new(

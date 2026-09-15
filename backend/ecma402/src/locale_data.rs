@@ -282,11 +282,11 @@ pub(crate) struct NumberCurrencyPattern {
 
 /// The two provider-owned connectors used by a formatted numeric range.
 ///
-/// A range that collapses a shared currency or sign uses
-/// `collapsed_separator` inside one localized currency pattern. A range whose
-/// endpoint affixes must both remain visible uses `uncollapsed_separator`
-/// between two complete endpoint patterns. Keeping both forms in the provider
-/// prevents NumberFormat from guessing punctuation from the fraction width.
+/// A range that collapses a shared affix or sign uses `collapsed_separator`
+/// inside one localized pattern. A range whose endpoint affixes must both
+/// remain visible uses `uncollapsed_separator` between two complete endpoint
+/// patterns. Keeping both forms in the provider prevents NumberFormat from
+/// guessing punctuation from the fraction width.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct NumberRangePattern {
     pub(crate) collapsed_separator: &'static str,
@@ -1911,18 +1911,14 @@ impl LocaleDataProvider {
     }
 
     /// Returns the provider-owned range pattern for a resolved NumberFormat
-    /// locale and style.
+    /// locale.
     ///
     /// ICU4X's current decimal provider does not expose the CLDR
-    /// `miscPatterns.range` record or NumberRangeFormatter's currency
+    /// `miscPatterns.range` record or NumberRangeFormatter's style-sensitive
     /// interval selection. The two connectors preserve both data shapes: a
-    /// collapsed currency pattern has no endpoint-affix spacing, while the
-    /// full-endpoint form retains its localized outer spacing.
-    pub(crate) fn number_range_pattern(
-        self,
-        locale: &str,
-        style: crate::NumberFormatStyle,
-    ) -> NumberRangePattern {
+    /// collapsed pattern has no endpoint-affix spacing, while the full-
+    /// endpoint form retains its localized outer spacing.
+    pub(crate) fn number_range_pattern(self, locale: &str) -> NumberRangePattern {
         let language = locale.split('-').next().unwrap_or(locale);
         let collapsed_separator = match language {
             // CLDR miscPatterns-numberSystem-*.range.
@@ -1932,15 +1928,11 @@ impl LocaleDataProvider {
             "ko" => "~",
             _ => "–",
         };
-        let uncollapsed_separator = if style == crate::NumberFormatStyle::Currency {
-            match language {
-                "es" | "it" | "zh" | "th" | "fil" | "pt" => " - ",
-                "ja" => " ～ ",
-                "ko" => " ~ ",
-                _ => " – ",
-            }
-        } else {
-            collapsed_separator
+        let uncollapsed_separator = match language {
+            "es" | "it" | "zh" | "th" | "fil" | "pt" => " - ",
+            "ja" => " ～ ",
+            "ko" => " ~ ",
+            _ => " – ",
         };
         NumberRangePattern {
             collapsed_separator,

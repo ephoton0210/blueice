@@ -1270,26 +1270,47 @@ impl NumberFormat {
 
         let currency_range =
             self.resolved.style == NumberFormatStyle::Currency && self.currency.is_some();
-        let currency_range_signs = self.currency.as_ref().map(|currency| {
-            (
-                currency_range_sign_context(&start_parts, currency.sign),
-                currency_range_sign_context(&end_parts, currency.sign),
-            )
-        });
-        let currency_range_signs_match = currency_range_signs
-            .map(|(start, end)| start == end)
-            .unwrap_or(true);
-        // A currency affix is shared only when the endpoint sign scopes are
-        // compatible. In particular, `-3 USD` through `5 USD` must retain
-        // both currencies, whereas `-5` through `-3` may produce `-5–3 USD`.
-        let can_collapse_affixes = !currency_range || currency_range_signs_match;
-        let range_pattern = crate::locale_data_provider()
-            .number_range_pattern(&self.resolved.locale, self.resolved.style);
+        let currency_sign = self.currency.as_ref().map(|currency| currency.sign);
+        let range_signs = (
+            number_range_sign_context(&start_parts, currency_sign),
+            number_range_sign_context(&end_parts, currency_sign),
+        );
+        let range_signs_match = range_signs.0 == range_signs.1;
+        let range_has_sign = range_signs.0 != NumberRangeSignContext::None
+            || range_signs.1 != NumberRangeSignContext::None;
+        // Currency shares an affix only when the endpoint sign scopes are
+        // compatible. Percent and compact displays use that same condition;
+        // units retain their shared suffix even when their endpoint signs
+        // differ, but then select the full-endpoint connector below.
+        let can_collapse_affixes = match self.resolved.style {
+            NumberFormatStyle::Currency | NumberFormatStyle::Percent => range_signs_match,
+            NumberFormatStyle::Decimal if self.resolved.notation == NumberNotation::Compact => {
+                range_signs_match
+            }
+            _ => true,
+        };
+        let range_pattern =
+            crate::locale_data_provider().number_range_pattern(&self.resolved.locale);
 
         // CLDR range patterns commonly share a trailing currency, unit, or
         // percent affix. The formatted parts, rather than a language-family
         // table, tell us whether the selected provider pattern placed that
         // affix after the magnitude.
+        let has_range_affix = start_parts.iter().chain(&end_parts).any(|part| {
+            matches!(
+                part.kind,
+                NumberFormatPartKind::Currency
+                    | NumberFormatPartKind::Unit
+                    | NumberFormatPartKind::PercentSign
+                    | NumberFormatPartKind::Compact
+            )
+        });
+        // A compact exact-value pattern can be its complete endpoint (for
+        // example French long `mille`). It cannot be extracted as a suffix,
+        // but still uses the provider's compact range connector.
+        let has_exact_compact_endpoint = self.resolved.notation == NumberNotation::Compact
+            && (is_exact_compact_range_endpoint(&start_parts)
+                || is_exact_compact_range_endpoint(&end_parts));
         let suffix_length = if can_collapse_affixes {
             common_number_affix_suffix_length(&start_parts, &end_parts)
         } else {
@@ -1300,19 +1321,25 @@ impl NumberFormat {
         // when extracting it would erase an endpoint altogether.
         let suffix_is_affix = suffix_length > 0
             && suffix_length < start_parts.len()
-            && suffix_length < end_parts.len();
-        let mut currency_affix_collapsed = false;
+            && suffix_length < end_parts.len()
+            && range_affix_is_collapsible(
+                self.resolved.style,
+                self.resolved.notation,
+                &start_parts[start_parts.len() - suffix_length..],
+                range_signs,
+            );
+        let mut range_affix_collapsed = false;
         let suffix = if let Some(suffix) = hidden_unit_range_suffix {
             suffix
         } else if suffix_is_affix {
-            currency_affix_collapsed = currency_range;
+            range_affix_collapsed = true;
             let start_at = start_parts.len() - suffix_length;
             end_parts.truncate(end_parts.len() - suffix_length);
             start_parts.split_off(start_at)
         } else if can_collapse_affixes {
             if let Some(suffix_length) = range_plural_affix_suffix_length(&start_parts, &end_parts)
             {
-                currency_affix_collapsed = currency_range;
+                range_affix_collapsed = true;
                 // Rebuild the trailing affix with the CLDR plural-range category
                 // over the rounded endpoint values. This normally matches the
                 // end category, but preserves locales with an explicit range
@@ -1377,13 +1404,18 @@ impl NumberFormat {
             Vec::new()
         };
 
-        // RangeCollapse.AUTO shares an explicit sign together with its
-        // currency, and it can share an alphabetic currency prefix (for
-        // example `US$3–5`). A bare symbol remains endpoint-specific
-        // (`$3 – $5`). Accounting parentheses form one sign scope around both
-        // values, so their opening literal is shared with the currency too.
+        // RangeCollapse.AUTO can share an explicit sign with a currency,
+        // percent, or compact suffix. Units retain endpoint signs while still
+        // sharing their trailing label. A bare currency symbol stays
+        // endpoint-specific (`$3 – $5`), while an alphabetic prefix such as
+        // `US$` can be shared. Accounting parentheses form one sign scope.
         let prefix_length = common_number_part_prefix_length(&start_parts, &end_parts);
         let prefix = &start_parts[..prefix_length];
+        let leading_affix_prefix_length =
+            common_leading_range_affix_prefix_length(&start_parts, &end_parts);
+        let leading_affix_prefix_has_unit = start_parts[..leading_affix_prefix_length]
+            .iter()
+            .any(|part| part.kind == NumberFormatPartKind::Unit);
         let prefix_has_explicit_sign = prefix.iter().any(|part| {
             matches!(
                 part.kind,
@@ -1393,6 +1425,27 @@ impl NumberFormat {
         let prefix_has_currency = prefix
             .iter()
             .any(|part| part.kind == NumberFormatPartKind::Currency);
+        let prefix_has_non_currency_range_affix = prefix.iter().any(|part| {
+            matches!(
+                part.kind,
+                NumberFormatPartKind::Unit
+                    | NumberFormatPartKind::PercentSign
+                    | NumberFormatPartKind::Compact
+            )
+        });
+        let prefix_is_non_numeric_affix = prefix_has_non_currency_range_affix
+            && prefix.iter().all(|part| {
+                !matches!(
+                    part.kind,
+                    NumberFormatPartKind::Integer
+                        | NumberFormatPartKind::Group
+                        | NumberFormatPartKind::Decimal
+                        | NumberFormatPartKind::Fraction
+                        | NumberFormatPartKind::ExponentSeparator
+                        | NumberFormatPartKind::ExponentMinusSign
+                        | NumberFormatPartKind::ExponentInteger
+                )
+            });
         let prefix_has_alphabetic_currency = prefix.iter().any(|part| {
             part.kind == NumberFormatPartKind::Currency
                 && part.value.chars().any(char::is_alphabetic)
@@ -1401,23 +1454,75 @@ impl NumberFormat {
             .iter()
             .any(|part| part.kind == NumberFormatPartKind::Currency);
         let accounting_range = matches!(
-            currency_range_signs,
-            Some((
-                CurrencyRangeSignContext::Accounting,
-                CurrencyRangeSignContext::Accounting
-            ))
+            range_signs,
+            (
+                NumberRangeSignContext::Accounting,
+                NumberRangeSignContext::Accounting
+            )
         );
-        let mut shared_prefix = Vec::new();
-        if currency_range
-            && currency_range_signs_match
+        let currency_prefix_collapses = currency_range
+            && range_signs_match
             && prefix_length > 0
             && (prefix_has_explicit_sign || accounting_range || prefix_has_alphabetic_currency)
-            && (prefix_has_currency || suffix_has_currency)
+            && (prefix_has_currency || suffix_has_currency);
+        let non_currency_sign_prefix_collapses = !currency_range
+            && range_signs_match
+            && range_has_sign
+            && range_affix_collapsed
+            && prefix_has_explicit_sign
+            && (self.resolved.style == NumberFormatStyle::Percent
+                || (self.resolved.style == NumberFormatStyle::Decimal
+                    && self.resolved.notation == NumberNotation::Compact));
+        // Prefix unit labels (such as Japanese `摂氏`) share independently of
+        // their suffix. Direct percent/compact prefixes behave like their
+        // suffix counterparts: an unsigned bare marker remains on both
+        // endpoints, while a shared sign or a locale literal permits
+        // collapsing the complete prefix.
+        let unit_prefix_collapses = !currency_range
+            && self.resolved.style == NumberFormatStyle::Unit
+            && leading_affix_prefix_length > 0
+            && leading_affix_prefix_has_unit;
+        let direct_prefix_affix_collapses = !currency_range
+            && prefix_is_non_numeric_affix
+            && (self.resolved.style == NumberFormatStyle::Percent
+                || (self.resolved.style == NumberFormatStyle::Decimal
+                    && self.resolved.notation == NumberNotation::Compact))
+            && range_affix_is_collapsible(
+                self.resolved.style,
+                self.resolved.notation,
+                prefix,
+                range_signs,
+            );
+        let range_prefix_affix_collapsed = unit_prefix_collapses || direct_prefix_affix_collapses;
+        let shared_prefix_length = if currency_prefix_collapses
+            || non_currency_sign_prefix_collapses
+            || direct_prefix_affix_collapses
         {
-            shared_prefix = start_parts.drain(..prefix_length).collect();
-            end_parts.drain(..prefix_length);
-            currency_affix_collapsed = true;
+            prefix_length
+        } else if unit_prefix_collapses {
+            leading_affix_prefix_length
+        } else {
+            0
+        };
+        let shared_prefix_has_explicit_sign =
+            shared_prefix_length == prefix_length && prefix_has_explicit_sign;
+        let mut shared_prefix = Vec::new();
+        if shared_prefix_length > 0 {
+            shared_prefix = start_parts.drain(..shared_prefix_length).collect();
+            end_parts.drain(..shared_prefix_length);
         }
+
+        let uses_collapsed_connector = if currency_range {
+            range_affix_collapsed || !shared_prefix.is_empty()
+        } else if range_has_sign {
+            (range_affix_collapsed || range_prefix_affix_collapsed)
+                && shared_prefix_has_explicit_sign
+        } else {
+            !has_range_affix
+                || range_affix_collapsed
+                || range_prefix_affix_collapsed
+                || has_exact_compact_endpoint
+        };
 
         let mut result = Vec::with_capacity(
             shared_prefix.len() + start_parts.len() + end_parts.len() + suffix.len() + 1,
@@ -1426,10 +1531,10 @@ impl NumberFormat {
         result.extend(start_parts.into_iter().map(start_number_range_part));
         result.push(NumberRangePart {
             kind: NumberFormatPartKind::Literal,
-            value: (if currency_range && !currency_affix_collapsed {
-                range_pattern.uncollapsed_separator
-            } else {
+            value: (if uses_collapsed_connector {
                 range_pattern.collapsed_separator
+            } else {
+                range_pattern.uncollapsed_separator
             })
             .into(),
             source: NumberRangePartSource::Shared,
@@ -2372,36 +2477,37 @@ fn end_number_range_part(part: NumberFormatPart) -> NumberRangePart {
     }
 }
 
-/// The sign presentation carried by one fully formatted currency endpoint.
+/// The sign presentation carried by one fully formatted range endpoint.
 ///
-/// Accounting's parentheses are literals in `formatToParts`, so they need a
-/// distinct range selector state rather than being conflated with unsigned
-/// positive values.
+/// Accounting's parentheses are currency literals in `formatToParts`, so they
+/// need a distinct selector state rather than being conflated with unsigned
+/// positive values. The other states apply uniformly to decimal, percent,
+/// unit, compact, and currency ranges.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum CurrencyRangeSignContext {
+enum NumberRangeSignContext {
     None,
     Plus,
     Minus,
     Accounting,
 }
 
-fn currency_range_sign_context(
+fn number_range_sign_context(
     parts: &[NumberFormatPart],
-    sign: NumberCurrencySign,
-) -> CurrencyRangeSignContext {
+    currency_sign: Option<NumberCurrencySign>,
+) -> NumberRangeSignContext {
     if parts
         .iter()
         .any(|part| part.kind == NumberFormatPartKind::MinusSign)
     {
-        return CurrencyRangeSignContext::Minus;
+        return NumberRangeSignContext::Minus;
     }
     if parts
         .iter()
         .any(|part| part.kind == NumberFormatPartKind::PlusSign)
     {
-        return CurrencyRangeSignContext::Plus;
+        return NumberRangeSignContext::Plus;
     }
-    if sign == NumberCurrencySign::Accounting
+    if currency_sign == Some(NumberCurrencySign::Accounting)
         && parts
             .iter()
             .any(|part| part.kind == NumberFormatPartKind::Literal && part.value.contains('('))
@@ -2409,9 +2515,69 @@ fn currency_range_sign_context(
             .iter()
             .any(|part| part.kind == NumberFormatPartKind::Literal && part.value.contains(')'))
     {
-        return CurrencyRangeSignContext::Accounting;
+        return NumberRangeSignContext::Accounting;
     }
-    CurrencyRangeSignContext::None
+    NumberRangeSignContext::None
+}
+
+/// Direct percent and compact affixes repeat on both positive endpoints
+/// unless their locale pattern carries a literal. A shared explicit sign
+/// makes the full affix collapsible regardless of that direct shape.
+fn range_affix_is_collapsible(
+    style: NumberFormatStyle,
+    notation: NumberNotation,
+    suffix: &[NumberFormatPart],
+    signs: (NumberRangeSignContext, NumberRangeSignContext),
+) -> bool {
+    let direct_percent_or_compact = style == NumberFormatStyle::Percent
+        || (style == NumberFormatStyle::Decimal && notation == NumberNotation::Compact);
+    if !direct_percent_or_compact {
+        return true;
+    }
+    if matches!(
+        signs,
+        (NumberRangeSignContext::Minus, NumberRangeSignContext::Minus)
+            | (NumberRangeSignContext::Plus, NumberRangeSignContext::Plus)
+    ) {
+        return true;
+    }
+    suffix
+        .iter()
+        .any(|part| part.kind == NumberFormatPartKind::Literal && !part.value.is_empty())
+}
+
+fn is_exact_compact_range_endpoint(parts: &[NumberFormatPart]) -> bool {
+    parts
+        .iter()
+        .any(|part| part.kind == NumberFormatPartKind::Compact)
+        && parts.iter().all(|part| {
+            matches!(
+                part.kind,
+                NumberFormatPartKind::Compact
+                    | NumberFormatPartKind::MinusSign
+                    | NumberFormatPartKind::PlusSign
+            )
+        })
+}
+
+fn common_leading_range_affix_prefix_length(
+    start: &[NumberFormatPart],
+    end: &[NumberFormatPart],
+) -> usize {
+    start
+        .iter()
+        .zip(end)
+        .take_while(|(left, right)| {
+            left == right
+                && matches!(
+                    left.kind,
+                    NumberFormatPartKind::Literal
+                        | NumberFormatPartKind::Unit
+                        | NumberFormatPartKind::PercentSign
+                        | NumberFormatPartKind::Compact
+                )
+        })
+        .count()
 }
 
 fn common_number_part_prefix_length(start: &[NumberFormatPart], end: &[NumberFormatPart]) -> usize {
