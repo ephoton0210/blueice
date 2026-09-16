@@ -72,8 +72,12 @@ pub(crate) enum NavOutcome {
 }
 
 enum StageOutcome {
+    #[cfg(unix)]
     Cleared,
-    Rejected { reason: String, category: String },
+    Rejected {
+        reason: String,
+        category: String,
+    },
 }
 
 /// One gatekeeper round trip: a short-lived connection (connect ->
