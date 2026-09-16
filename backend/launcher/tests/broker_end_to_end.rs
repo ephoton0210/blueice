@@ -54,16 +54,11 @@ fn unique_path(label: &str) -> PathBuf {
     ))
 }
 
-fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        if path.exists() {
-            return true;
-        }
-        thread::sleep(Duration::from_millis(20));
-    }
-    false
-}
+// `cargo llvm-cov` instruments the launcher and the core that it starts. On
+// a busy CI runner their initial dynamic linking and coverage setup can take
+// longer than the ordinary test-profile startup, so this is deliberately a
+// bounded readiness deadline rather than a five-second scheduling assumption.
+const LAUNCHER_STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Mirrors `blueice_launcher::v2_frame_dir`'s exact (private, so not
 /// directly callable from here) naming scheme, so this test can predict
@@ -110,19 +105,46 @@ impl Launcher {
             .spawn()
             .expect("failed to spawn blueice-launcher");
 
-        assert!(
-            wait_for(&rendezvous_socket, Duration::from_secs(5)),
-            "blueice-launcher never created its rendezvous socket"
-        );
-        assert!(
-            wait_for(&control_socket, Duration::from_secs(5)),
-            "blueice-launcher never created its control socket"
-        );
-        Launcher {
+        // Construct the RAII owner before making assertions about process
+        // readiness. Previously a timeout panicked while `child` was a bare
+        // local, so the launcher (and its core) could survive the failed test.
+        let mut launcher = Launcher {
             child,
             rendezvous_socket,
             control_socket,
             frame_dir,
+        };
+        let rendezvous_socket = launcher.rendezvous_socket.clone();
+        launcher.wait_for_socket(&rendezvous_socket, "rendezvous");
+        let control_socket = launcher.control_socket.clone();
+        launcher.wait_for_socket(&control_socket, "control");
+        launcher
+    }
+
+    fn wait_for_socket(&mut self, path: &Path, name: &str) {
+        let deadline = Instant::now() + LAUNCHER_STARTUP_TIMEOUT;
+        loop {
+            if path.exists() {
+                return;
+            }
+            if let Some(status) = self
+                .child
+                .try_wait()
+                .expect("failed to observe blueice-launcher while waiting for startup")
+            {
+                panic!(
+                    "blueice-launcher exited before creating its {name} socket; \
+                     child status: {status}"
+                );
+            }
+            if Instant::now() >= deadline {
+                self.wait_or_kill(Duration::from_secs(1));
+                panic!(
+                    "blueice-launcher never created its {name} socket within \
+                     {LAUNCHER_STARTUP_TIMEOUT:?}; child was reaped during cleanup"
+                );
+            }
+            thread::sleep(Duration::from_millis(20));
         }
     }
 

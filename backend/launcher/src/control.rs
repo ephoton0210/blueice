@@ -95,6 +95,7 @@ pub fn read_control_reply<R: Read>(r: &mut R) -> io::Result<ControlReply> {
 mod tests {
     use super::*;
     use std::io::Cursor;
+    #[cfg(unix)]
     use std::os::unix::net::UnixStream;
 
     #[test]
@@ -140,6 +141,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn control_protocol_round_trips_over_a_real_unix_socket() {
         let (mut a, mut b) = UnixStream::pair().unwrap();
         write_control_request(&mut a, &ControlRequest::Cutover).unwrap();

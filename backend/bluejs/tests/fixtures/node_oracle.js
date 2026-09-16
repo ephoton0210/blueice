@@ -7,13 +7,17 @@
 // decimal formatting or approximate equality that could hide signed zero.
 const fs = require('node:fs');
 const vm = require('node:vm');
+// Loading ICU's NumberFormat data into a fresh context can exceed one second
+// on a cold Windows runner. Keep the oracle bounded, but give every supported
+// CI platform the same realistic initialization budget.
+const FIXTURE_TIMEOUT_MILLIS = 10_000;
 // One hex-encoded UTF-8 script per line, including multiline scripts.
 for (const encoded of fs.readFileSync(0, 'utf8').split('\n')) {
     if (!encoded) continue;
     const source = Buffer.from(encoded, 'hex').toString('utf8');
     let result;
     try {
-        const value = vm.runInNewContext(source, {}, {timeout: 1000});
+        const value = vm.runInNewContext(source, {}, {timeout: FIXTURE_TIMEOUT_MILLIS});
         if (value === undefined) result = 'undefined';
         else if (value === null) result = 'null';
         else if (typeof value === 'number') {

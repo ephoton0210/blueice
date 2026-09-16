@@ -39,6 +39,7 @@ enum Request {
     Validate {
         patterns: Vec<(Vec<u16>, String)>,
     },
+    Shutdown,
 }
 
 // Keep accepting the original untagged wire format for direct version-one
@@ -201,7 +202,8 @@ impl Worker {
         };
         // Process startup is separately bounded; cold executable loading must
         // not consume a short budget intended for a regex operation.
-        match worker.replies.recv_timeout(Duration::from_secs(2)) {
+        let ready = worker.replies.recv_timeout(Duration::from_secs(2));
+        match ready {
             Ok(Ok(ready)) if ready == READY => Ok(worker),
             _ => {
                 worker.failed = true;
@@ -218,8 +220,8 @@ impl Worker {
             .unwrap()
             .send(bytes)
             .map_err(worker_error)?;
-        self.replies
-            .recv_timeout(timeout)
+        let reply = self.replies.recv_timeout(timeout);
+        reply
             .map_err(|error| match error {
                 mpsc::RecvTimeoutError::Timeout => RuntimeError::RegexTimeout,
                 error => worker_error(error),
@@ -317,32 +319,40 @@ impl Worker {
 
 impl Drop for Worker {
     fn drop(&mut self) {
+        // A failed transaction can leave the I/O thread in its pipe read. On
+        // Windows, joining it from the error path can block forever even
+        // after terminating the private child. Close the sender so the I/O
+        // thread exits once that read wakes, then detach only this failed
+        // worker.
         #[cfg(windows)]
-        {
-            // `WORKER` is thread-local. Windows is already tearing down the
-            // parent thread here, so joining an I/O thread or starting a
-            // reaper can respectively abort or be denied by the OS. Terminate
-            // the private child and close its pipe channel without blocking;
-            // Windows releases the child handle directly and the detached I/O
-            // thread owns no state that can affect a later worker.
+        if self.failed {
             let _ = self.child.kill();
-            self.requests.take();
+            drop(self.requests.take());
             self.io_thread.take();
+            return;
         }
+
+        // Unix needs an explicit termination after an error to unblock a
+        // pending pipe read before the I/O thread can be joined.
         #[cfg(not(windows))]
-        {
-            // Unix needs an explicit wait to avoid leaving a zombie. Kill
-            // before joining on a failed transaction: the I/O thread only
-            // accesses pipes owned by this child, so termination unblocks it.
-            if self.failed {
-                let _ = self.child.kill();
-            }
-            self.requests.take();
-            if let Some(thread) = self.io_thread.take() {
-                let _ = thread.join();
-            }
-            let _ = self.child.wait();
+        if self.failed {
+            let _ = self.child.kill();
         }
+
+        // Closing stdin alone does not reliably wake a Windows pipe reader
+        // while a thread-local destructor is running. Ask a healthy worker
+        // to exit explicitly, then close the channel and join its I/O thread
+        // before reaping the private child on every platform.
+        if let Some(requests) = self.requests.as_ref() {
+            if let Ok(shutdown) = serde_json::to_vec(&Request::Shutdown) {
+                let _ = requests.send(shutdown);
+            }
+        }
+        drop(self.requests.take());
+        if let Some(thread) = self.io_thread.take() {
+            let _ = thread.join();
+        }
+        let _ = self.child.wait();
     }
 }
 
@@ -381,18 +391,49 @@ thread_local! { static WORKER: RefCell<Option<Worker>> = const { RefCell::new(No
 fn with_worker<T>(
     operation: impl FnOnce(&mut Worker) -> Result<T, RuntimeError>,
 ) -> Result<T, RuntimeError> {
-    WORKER.with(|slot| {
+    let (result, worker_to_drop) = WORKER.with(|slot| {
         let mut slot = slot.borrow_mut();
         if slot.is_none() {
-            *slot = Some(Worker::start().map_err(worker_error)?);
+            let worker = match Worker::start() {
+                Ok(worker) => worker,
+                Err(error) => return (Err(worker_error(error)), None),
+            };
+            *slot = Some(worker);
         }
         let result = operation(slot.as_mut().unwrap());
-        if result.is_err() {
-            let mut worker = slot.take().unwrap();
-            worker.failed = true;
+
+        #[cfg(windows)]
+        {
+            // Joining an I/O thread from a Windows TLS destructor can hang.
+            // Retire every worker outside `WORKER.with` instead, where the
+            // normal shutdown path can join and reap it deterministically.
+            if result
+                .as_ref()
+                .is_err_and(|error| !matches!(error, RuntimeError::SyntaxError(_)))
+            {
+                slot.as_mut().unwrap().failed = true;
+            }
+            (result, slot.take())
         }
-        result
-    })
+
+        #[cfg(not(windows))]
+        {
+            // A rejected pattern is an expected reply from a healthy worker.
+            // Keep that worker alive; transport and timeout failures require
+            // a fresh process for the next operation.
+            let worker_to_drop = result
+                .as_ref()
+                .is_err_and(|error| !matches!(error, RuntimeError::SyntaxError(_)))
+                .then(|| {
+                    let mut worker = slot.take().unwrap();
+                    worker.failed = true;
+                    worker
+                });
+            (result, worker_to_drop)
+        }
+    });
+    drop(worker_to_drop);
+    result
 }
 
 pub(crate) fn compile(
@@ -455,6 +496,7 @@ pub fn serve() -> io::Result<()> {
             }) => Request::Compile { source, flags },
         };
         let reply = match request {
+            Request::Shutdown => return Ok(()),
             Request::Compile { source, flags } => match cache_pattern(&mut cached, source, flags) {
                 Ok(()) => Reply::Compiled,
                 Err(message) => Reply::SyntaxError(message),
