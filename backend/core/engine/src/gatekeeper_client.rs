@@ -72,7 +72,7 @@ pub(crate) enum NavOutcome {
 }
 
 enum StageOutcome {
-    #[cfg(unix)]
+    #[cfg_attr(not(unix), allow(dead_code))]
     Cleared,
     Rejected {
         reason: String,
