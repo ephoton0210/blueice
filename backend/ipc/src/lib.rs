@@ -542,6 +542,18 @@ pub fn client_handshake<S: Read + Write>(stream: &mut S) -> io::Result<()> {
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::net::{TcpListener, TcpStream};
+
+    /// Exercises framing across a real OS socket on every supported platform.
+    /// TCP keeps this protocol-boundary seam available on Windows while the
+    /// Unix-domain-socket services themselves remain Unix-only.
+    fn tcp_pair() -> (TcpStream, TcpStream) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let client = TcpStream::connect(address).unwrap();
+        let (server, _) = listener.accept().unwrap();
+        (client, server)
+    }
 
     #[test]
     fn client_message_round_trips_through_the_wire_format() {
@@ -715,13 +727,12 @@ mod tests {
     }
 
     #[test]
-    fn real_unix_domain_socket_round_trip() {
+    fn real_socket_round_trip() {
         // TEST_PLAN.md's "UI testing strategy": core<->frontend IPC-
         // boundary tests should drive the real protocol with a test
         // client, not just an in-memory buffer -- this is that test,
         // now actionable since Phase 4 is underway.
-        use std::os::unix::net::UnixStream;
-        let (mut a, mut b) = UnixStream::pair().unwrap();
+        let (mut a, mut b) = tcp_pair();
 
         let sent = ClientMessage::Navigate {
             url: "https://example.com".to_string(),
@@ -873,8 +884,7 @@ mod tests {
 
     #[test]
     fn client_handshake_succeeds_against_a_matching_hello_reply() {
-        use std::os::unix::net::UnixStream;
-        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let (mut client, mut server) = tcp_pair();
         let responder = std::thread::spawn(move || {
             assert_eq!(
                 read_client_message(&mut server).unwrap(),
@@ -896,8 +906,7 @@ mod tests {
 
     #[test]
     fn client_handshake_surfaces_an_error_reply_as_an_io_error() {
-        use std::os::unix::net::UnixStream;
-        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let (mut client, mut server) = tcp_pair();
         let responder = std::thread::spawn(move || {
             let _ = read_client_message(&mut server).unwrap();
             write_server_message(
@@ -915,8 +924,7 @@ mod tests {
 
     #[test]
     fn client_handshake_rejects_an_unexpected_reply_type() {
-        use std::os::unix::net::UnixStream;
-        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let (mut client, mut server) = tcp_pair();
         let responder = std::thread::spawn(move || {
             let _ = read_client_message(&mut server).unwrap();
             write_server_message(
