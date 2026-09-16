@@ -34,7 +34,7 @@ pub fn handle_one_check<S: Read + Write>(stream: &mut S) -> io::Result<()> {
     write_gatekeeper_reply(stream, &GatekeeperReply::Cleared)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use blueice_ipc::gatekeeper::{

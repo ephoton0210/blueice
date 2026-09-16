@@ -20,11 +20,16 @@
 //! one hardcoded extension in this slice, so there's no concurrency to
 //! prove yet.
 
+#[cfg(unix)]
 use blueice_extension_host::{handle_extension_connection, ExtensionRegistry};
+#[cfg(unix)]
 use std::os::unix::net::UnixListener;
+#[cfg(unix)]
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::process::ExitCode;
 
+#[cfg(unix)]
 #[derive(Debug, PartialEq)]
 struct Args {
     socket: PathBuf,
@@ -34,6 +39,7 @@ struct Args {
 /// `std::env::args()` directly) so every flag-parsing branch is a plain
 /// unit test -- mirrors `blueice-core`'s own `parse_args` for the same
 /// reason (see that binary's docs).
+#[cfg(unix)]
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut socket = None;
 
@@ -50,6 +56,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     Ok(Args { socket })
 }
 
+#[cfg(unix)]
 fn main() -> ExitCode {
     let args = match parse_args(std::env::args().skip(1)) {
         Ok(args) => args,
@@ -85,7 +92,13 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-#[cfg(test)]
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("blueice-extension-host is currently supported only on Unix platforms");
+    std::process::exit(1);
+}
+
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 

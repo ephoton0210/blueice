@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! `blueice-mcp-server`: a thin MCP adapter over `core`'s existing
 //! IPC control-plane protocol, per `phase-12-mcp-server/PLAN.md`'s
 //! "MCP should be an adapter, not a fourth protocol" design decision.

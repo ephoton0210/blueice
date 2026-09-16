@@ -10,13 +10,22 @@
 //! end of -- excluded from the coverage gate for the same reason
 //! `frontend-reference/src/main.rs` is (see `CLAUDE.md`).
 
+#[cfg(unix)]
 use blueice_mcp_server::BlueIceMcpServer;
+#[cfg(unix)]
 use rmcp::{transport::stdio, ServiceExt};
 
+#[cfg(unix)]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let server = BlueIceMcpServer::spawn(800, 600)?;
     let service = server.serve(stdio()).await?;
     service.waiting().await?;
     Ok(())
+}
+
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("blueice-mcp-server is currently supported only on Unix platforms");
+    std::process::exit(1);
 }

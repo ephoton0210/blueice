@@ -78,6 +78,7 @@ pub trait ReadTimeout {
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
 }
 
+#[cfg(unix)]
 impl ReadTimeout for std::os::unix::net::UnixStream {
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         std::os::unix::net::UnixStream::set_read_timeout(self, dur)
@@ -755,7 +756,7 @@ fn write_unknown_tab_error<S: Write>(
     )
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::net::TcpListener;

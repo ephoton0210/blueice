@@ -22,10 +22,12 @@
 //! a runtime convention a differently-written caller could omit.
 
 use crate::TabId;
-use blueice_ipc::gatekeeper::{
-    read_gatekeeper_reply, write_gatekeeper_request, GatekeeperReply, GatekeeperRequest,
-};
+use blueice_ipc::gatekeeper::GatekeeperRequest;
+#[cfg(unix)]
+use blueice_ipc::gatekeeper::{read_gatekeeper_reply, write_gatekeeper_request, GatekeeperReply};
+#[cfg(unix)]
 use std::io;
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 
@@ -82,6 +84,7 @@ enum StageOutcome {
 /// `Rejected` -- an unreachable/down gatekeeper must never be
 /// mistaken for "safe," per the plan's already-settled failure-mode
 /// decision.
+#[cfg(unix)]
 fn check_stage(gatekeeper_socket: &Path, request: &GatekeeperRequest) -> StageOutcome {
     let attempt = (|| -> io::Result<GatekeeperReply> {
         let mut stream = UnixStream::connect(gatekeeper_socket)?;
@@ -97,6 +100,18 @@ fn check_stage(gatekeeper_socket: &Path, request: &GatekeeperRequest) -> StageOu
             reason: "the gatekeeper is unreachable".to_string(),
             category: "gatekeeper-unavailable".to_string(),
         },
+    }
+}
+
+/// The current gatekeeper service speaks over a Unix-domain socket.  On
+/// platforms without that transport, preserve the security invariant by
+/// rejecting the navigation rather than accidentally treating an unavailable
+/// review as clearance.
+#[cfg(not(unix))]
+fn check_stage(_gatekeeper_socket: &Path, _request: &GatekeeperRequest) -> StageOutcome {
+    StageOutcome::Rejected {
+        reason: "the gatekeeper is unavailable on this platform".to_string(),
+        category: "gatekeeper-unavailable".to_string(),
     }
 }
 
@@ -150,7 +165,7 @@ pub(crate) fn check_and_fetch(tab_id: TabId, url: String, gatekeeper_socket: &Pa
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use blueice_ipc::gatekeeper::{read_gatekeeper_request, write_gatekeeper_reply};

@@ -223,7 +223,7 @@ pub fn handle_extension_connection<S: Read + Write>(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use blueice_ipc::extension::{read_extension_reply, write_extension_request};

@@ -163,7 +163,7 @@ unsafe fn libc_getuid() -> u32 {
         .unwrap_or_else(std::process::id)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::os::unix::net::UnixStream;

@@ -17,11 +17,16 @@
 //! disconnects or sends `Shutdown` -- there is no multi-frontend
 //! support in this reference implementation.
 
+#[cfg(unix)]
 use blueice_engine::{session, TabManager};
+#[cfg(unix)]
 use std::os::unix::net::UnixListener;
+#[cfg(unix)]
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::process::ExitCode;
 
+#[cfg(unix)]
 #[derive(Debug, PartialEq)]
 struct Args {
     socket: PathBuf,
@@ -45,6 +50,7 @@ struct Args {
 /// `tests/core_binary.rs` covers `main`'s own process wiring (bind,
 /// accept, cleanup) instead, which this function deliberately knows
 /// nothing about.
+#[cfg(unix)]
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut socket = None;
     let mut width = 800.0;
@@ -83,6 +89,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     })
 }
 
+#[cfg(unix)]
 fn main() -> ExitCode {
     let args = match parse_args(std::env::args().skip(1)) {
         Ok(args) => args,
@@ -140,7 +147,13 @@ fn main() -> ExitCode {
     }
 }
 
-#[cfg(test)]
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("blueice-core is currently supported only on Unix platforms");
+    std::process::exit(1);
+}
+
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 
