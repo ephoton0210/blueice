@@ -4,6 +4,23 @@
 
 use super::*;
 
+/// Starts a process which exits immediately.  These transport-failure tests
+/// only need an owned [`Child`], not a shell or a POSIX utility.
+fn exited_child() -> Child {
+    #[cfg(windows)]
+    {
+        Command::new("cmd.exe")
+            .args(["/C", "exit", "0"])
+            .spawn()
+            .unwrap()
+    }
+
+    #[cfg(not(windows))]
+    {
+        Command::new("true").spawn().unwrap()
+    }
+}
+
 #[test]
 fn oversized_outgoing_protocol_frames_are_rejected_before_writing() {
     let mut output = Vec::new();
@@ -22,7 +39,7 @@ fn disconnected_transport_is_a_worker_failure_not_a_timeout() {
     let (reply, replies) = mpsc::channel();
     drop(reply);
     let mut worker = Worker {
-        child: Command::new("true").spawn().unwrap(),
+        child: exited_child(),
         requests: Some(sender),
         replies,
         io_thread: None,
@@ -42,7 +59,7 @@ fn closed_request_channel_fails_before_waiting() {
     drop(receiver);
     let (_reply, replies) = mpsc::channel();
     let mut worker = Worker {
-        child: Command::new("true").spawn().unwrap(),
+        child: exited_child(),
         requests: Some(sender),
         replies,
         io_thread: None,
