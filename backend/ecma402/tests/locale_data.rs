@@ -5,8 +5,10 @@
 //! Public contract coverage for the shared, pinned ECMA-402 locale data.
 
 use blueice_ecma402::{
-    canonicalize, locale_data_provider, IntlService, LocaleDataCategory,
-    ICU4X_LOCALE_DATA_REVISION, SUPPORTED_NUMBERING_SYSTEMS,
+    canonicalize, locale_data_provider, IntlService, LocaleDataCategory, NumberFormat,
+    NumberFormatOptions, NumberFormatPartKind, NumberFormatStyle, NumberFormatUnit,
+    NumberUnitDisplay, PluralCategory, PluralRules, PluralRulesOptions, ICU4X_LOCALE_DATA_REVISION,
+    SUPPORTED_NUMBERING_SYSTEMS,
 };
 
 #[test]
@@ -264,5 +266,77 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
         incomplete_locales.is_empty(),
         "NumberFormat simple-unit gaps by locale: {}",
         incomplete_locales.join(", ")
+    );
+}
+
+#[test]
+fn every_advertised_simple_unit_cell_formats_as_a_typed_unit() {
+    // The provider inventory above proves that every advertised raw cell is
+    // declared data-backed. Exercise those cells through the public formatter
+    // as well: a data row is only useful when its locale, plural selection,
+    // pattern parsing, and typed `formatToParts` boundary all remain usable.
+    // Integer candidates cover CLDR's integer cardinal families; the decimal
+    // candidate additionally reaches families (such as Manx) with a distinct
+    // fractional category.
+    let provider = locale_data_provider();
+    let mut exercised_cells = 0usize;
+    for &locale_name in provider.number_format_locales() {
+        let locale = canonicalize(locale_name).expect("advertised locale is structurally valid");
+        let plural_rules =
+            PluralRules::try_new(std::slice::from_ref(&locale), PluralRulesOptions::default())
+                .expect("advertised NumberFormat locale has cardinal rules");
+        let mut representatives = Vec::<(PluralCategory, f64)>::new();
+        for candidate in (0..=200).map(f64::from).chain([1_000.0, 1_000_000.0, 0.5]) {
+            let category = plural_rules
+                .select_f64(candidate)
+                .expect("finite plural candidate is valid");
+            if !representatives
+                .iter()
+                .any(|(existing, _)| *existing == category)
+            {
+                representatives.push((category, candidate));
+            }
+        }
+
+        for unit in NumberFormatUnit::ALL {
+            for unit_display in [
+                NumberUnitDisplay::Long,
+                NumberUnitDisplay::Short,
+                NumberUnitDisplay::Narrow,
+            ] {
+                let formatter = NumberFormat::try_new(
+                    std::slice::from_ref(&locale),
+                    NumberFormatOptions {
+                        style: NumberFormatStyle::Unit,
+                        unit: Some(*unit),
+                        unit_display,
+                        ..Default::default()
+                    },
+                )
+                .unwrap_or_else(|error| {
+                    panic!("{locale_name} {} {unit_display:?}: {error}", unit.as_str())
+                });
+                for &(category, value) in &representatives {
+                    let parts = formatter
+                        .format_to_parts_f64(value)
+                        .unwrap_or_else(|error| {
+                            panic!(
+                                "{locale_name} {} {unit_display:?} {category:?}: {error}",
+                                unit.as_str()
+                            )
+                        });
+                    assert!(
+                        parts.iter().any(|part| part.kind == NumberFormatPartKind::Unit),
+                        "{locale_name} {} {unit_display:?} {category:?} omitted its typed unit part",
+                        unit.as_str()
+                    );
+                    exercised_cells += 1;
+                }
+            }
+        }
+    }
+    assert!(
+        exercised_cells > 0,
+        "provider has advertised simple-unit cells"
     );
 }

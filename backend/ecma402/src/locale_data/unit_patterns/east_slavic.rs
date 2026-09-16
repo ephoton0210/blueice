@@ -4,10 +4,7 @@
 
 //! East Slavic raw CLDR unit-pattern families.
 
-use super::super::{
-    experimental_number_unit_pattern, number_unit_pattern_from_placeholder,
-    NumberGenericCompoundUnitPattern, NumberUnitPattern,
-};
+use super::super::{number_unit_pattern_from_placeholder, NumberUnitPattern};
 
 fn is_belarusian(locale: &str) -> bool {
     locale
@@ -174,120 +171,7 @@ pub(crate) fn cldr_belarusian_additional_unit_pattern(
     number_unit_pattern_from_placeholder(&raw.replace("{0}", "\u{fdd0}"))
 }
 
-/// Returns Belarusian denominator-specific pinned CLDR `perUnitPattern`
-/// records.
-pub(crate) fn cldr_belarusian_per_unit_pattern(
-    locale: &str,
-    denominator: crate::NumberFormatUnit,
-    display: crate::NumberUnitDisplay,
-) -> Option<&'static str> {
-    use crate::NumberUnitDisplay as Display;
+// Returns Belarusian denominator-specific pinned CLDR `perUnitPattern`
+// records.
 
-    if !is_belarusian(locale) {
-        return None;
-    }
-    const LONG: [&str; 18] = [
-        "{0} на сантыметр",
-        "{0} у суткі",
-        "{0} на фут",
-        "{0} на галон",
-        "{0} за грам",
-        "{0} у гадзіну",
-        "{0} на цалю",
-        "{0} за кілаграм",
-        "{0} на кіламетр",
-        "{0} на літр",
-        "{0} на метр",
-        "{0} у хвіліну",
-        "{0} у месяц",
-        "{0} на унцыю",
-        "{0} на фунт",
-        "{0} у секунду",
-        "{0} у тыдзень",
-        "{0} у год",
-    ];
-    const SHORT: [&str; 18] = [
-        "{0}/см",
-        "{0}/сут",
-        "{0}/фт",
-        "{0}/гал",
-        "{0}/г",
-        "{0}/гадз",
-        "{0}/цал",
-        "{0}/кг",
-        "{0}/км",
-        "{0}/л",
-        "{0}/м",
-        "{0}/хв",
-        "{0}/мес.",
-        "{0}/унц.",
-        "{0}/фунт",
-        "{0}/с",
-        "{0}/тыдз",
-        "{0}/г.",
-    ];
-    let patterns = match display {
-        Display::Long => &LONG,
-        Display::Short | Display::Narrow => &SHORT,
-    };
-    patterns
-        .get(super::per_unit_denominator_index(denominator)?)
-        .copied()
-}
-
-/// Composes Belarusian generic compounds containing an ICU4X-untyped unit.
-pub(crate) fn cldr_belarusian_generic_compound_unit_pattern(
-    locale: &str,
-    numerator: crate::NumberFormatUnit,
-    denominator: crate::NumberFormatUnit,
-    display: crate::NumberUnitDisplay,
-    plural: crate::PluralCategory,
-) -> Option<NumberGenericCompoundUnitPattern> {
-    use crate::NumberUnitDisplay as Display;
-
-    if !is_belarusian(locale) {
-        return None;
-    }
-    let denominator_unit = denominator;
-    let denominator_display = match display {
-        Display::Long => Display::Long,
-        Display::Short | Display::Narrow => Display::Narrow,
-    };
-    let numerator_raw = cldr_belarusian_additional_unit_pattern(locale, numerator, display, plural);
-    let denominator_raw = cldr_belarusian_additional_unit_pattern(
-        locale,
-        denominator_unit,
-        denominator_display,
-        crate::PluralCategory::One,
-    );
-    if numerator_raw.is_none() && denominator_raw.is_none() {
-        return None;
-    }
-    let numerator = numerator_raw
-        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
-    let denominator = denominator_raw
-        .or_else(|| {
-            experimental_number_unit_pattern(
-                locale,
-                denominator_unit,
-                denominator_display,
-                crate::PluralCategory::One,
-            )
-        })
-        .unwrap_or_else(|| {
-            crate::locale_data_provider().number_unit_pattern(
-                locale,
-                denominator_unit,
-                denominator_display,
-                crate::PluralCategory::One,
-            )
-        });
-    super::compose_generic_compound_unit_pattern(
-        locale,
-        denominator_unit,
-        display,
-        &numerator,
-        &denominator,
-        "{0}/{1}",
-    )
-}
+// Composes Belarusian generic compounds containing an ICU4X-untyped unit.

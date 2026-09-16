@@ -4,11 +4,7 @@
 
 //! Turkic raw CLDR unit-pattern families.
 
-use super::super::{
-    experimental_number_unit_pattern, localized_generic_compound_unit_label,
-    number_unit_pattern_from_placeholder, number_unit_pattern_label,
-    NumberGenericCompoundUnitPattern, NumberUnitPattern,
-};
+use super::super::{number_unit_pattern_from_placeholder, NumberUnitPattern};
 
 /// Returns pinned Turkish CLDR records for every ECMA-402 simple-unit
 /// category that ICU4X's typed markers do not cover. In particular, percent
@@ -108,64 +104,6 @@ pub(crate) fn cldr_turkish_additional_unit_pattern(
     number_unit_pattern_from_placeholder(&raw.replace("{0}", "\u{fdd0}"))
 }
 
-/// Composes Turkish generic compounds when an ICU4X-untyped unit category is
-/// present. Pinned Turkish CLDR `perUnitPattern` records use a slash without
-/// whitespace, including long width forms such as `gigabayt/saniye`.
-pub(crate) fn cldr_turkish_generic_compound_unit_pattern(
-    locale: &str,
-    numerator: crate::NumberFormatUnit,
-    denominator: crate::NumberFormatUnit,
-    display: crate::NumberUnitDisplay,
-    plural: crate::PluralCategory,
-) -> Option<NumberGenericCompoundUnitPattern> {
-    use crate::NumberUnitDisplay as Display;
-
-    if locale
-        .split_once("-u-")
-        .map_or(locale, |(base, _)| base)
-        .split('-')
-        .next()
-        != Some("tr")
-    {
-        return None;
-    }
-    let denominator_unit = denominator;
-    let numerator_raw = cldr_turkish_additional_unit_pattern(locale, numerator, display, plural);
-    let denominator_display = match display {
-        Display::Long => Display::Long,
-        Display::Short | Display::Narrow => Display::Narrow,
-    };
-    let denominator_raw = cldr_turkish_additional_unit_pattern(
-        locale,
-        denominator_unit,
-        denominator_display,
-        crate::PluralCategory::One,
-    );
-    if numerator_raw.is_none() && denominator_raw.is_none() {
-        return None;
-    }
-    let numerator = numerator_raw
-        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
-    let denominator = denominator_raw.or_else(|| {
-        experimental_number_unit_pattern(
-            locale,
-            denominator_unit,
-            denominator_display,
-            crate::PluralCategory::One,
-        )
-    })?;
-    let label = localized_generic_compound_unit_label(
-        locale,
-        denominator_unit,
-        display,
-        &number_unit_pattern_label(&numerator),
-        &number_unit_pattern_label(&denominator),
-        "{0}/{1}",
-    )?;
-    Some(NumberGenericCompoundUnitPattern {
-        prefix: String::new(),
-        prefix_separator: String::new(),
-        suffix_separator: numerator.suffix_separator,
-        suffix: label,
-    })
-}
+// Composes Turkish generic compounds when an ICU4X-untyped unit category is
+// present. Pinned Turkish CLDR `perUnitPattern` records use a slash without
+// whitespace, including long width forms such as `gigabayt/saniye`.

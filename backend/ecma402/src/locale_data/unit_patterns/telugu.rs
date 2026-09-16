@@ -4,10 +4,7 @@
 
 //! Telugu raw CLDR unit-pattern families.
 
-use super::super::{
-    experimental_number_unit_pattern, number_unit_pattern_from_placeholder,
-    NumberGenericCompoundUnitPattern, NumberUnitPattern,
-};
+use super::super::{number_unit_pattern_from_placeholder, NumberUnitPattern};
 
 fn is_telugu(locale: &str) -> bool {
     locale
@@ -111,121 +108,6 @@ pub(crate) fn cldr_telugu_additional_unit_pattern(
     number_unit_pattern_from_placeholder(&raw.replace("{0}", "\u{fdd0}"))
 }
 
-/// Returns Telugu denominator-specific pinned CLDR `perUnitPattern` records.
-pub(crate) fn cldr_telugu_per_unit_pattern(
-    locale: &str,
-    denominator: crate::NumberFormatUnit,
-    display: crate::NumberUnitDisplay,
-) -> Option<&'static str> {
-    use crate::NumberUnitDisplay as Display;
+// Returns Telugu denominator-specific pinned CLDR `perUnitPattern` records.
 
-    if !is_telugu(locale) {
-        return None;
-    }
-    const LONG: [&str; 18] = [
-        "సెంటీమీటరుకు {0}",
-        "రోజుకు {0}",
-        "అడుగుకి {0}",
-        "గ్యాలనుకు {0}",
-        "గ్రాముకు {0}",
-        "{0}/గంట",
-        "అంగుళానికి {0}",
-        "కిలోగ్రాముకు {0}",
-        "కిలోమీటరుకు {0}",
-        "లీటరుకు {0}",
-        "మీటరుకు {0}",
-        "నిమిషానికి {0}",
-        "నెలకు {0}",
-        "ఔన్సుకు {0}",
-        "పౌండుకు {0}",
-        "సెకనుకు {0}",
-        "వారానికి {0}",
-        "సంవత్సరానికి {0}",
-    ];
-    const SHORT: [&str; 18] = [
-        "{0}/సెం.మీ.",
-        "{0}/రో",
-        "{0}/అ.",
-        "{0}/గ్యా.",
-        "{0}/గ్రా.",
-        "{0}/గం",
-        "{0}/అం.",
-        "{0}/కి.గ్రా.",
-        "{0}/కి.మీ.",
-        "{0}/లీ.",
-        "{0}/మీ.",
-        "{0}/నిమి.",
-        "{0}/నె.",
-        "{0}/ ఔ.",
-        "{0}/పౌ.",
-        "{0}/సె",
-        "{0}/వా.",
-        "{0}/సం.",
-    ];
-    const NARROW: [&str; 18] = SHORT;
-    let patterns = match display {
-        Display::Long => &LONG,
-        Display::Short => &SHORT,
-        Display::Narrow => &NARROW,
-    };
-    patterns
-        .get(super::per_unit_denominator_index(denominator)?)
-        .copied()
-}
-
-/// Composes Telugu generic compounds containing an ICU4X-untyped unit.
-pub(crate) fn cldr_telugu_generic_compound_unit_pattern(
-    locale: &str,
-    numerator: crate::NumberFormatUnit,
-    denominator: crate::NumberFormatUnit,
-    display: crate::NumberUnitDisplay,
-    plural: crate::PluralCategory,
-) -> Option<NumberGenericCompoundUnitPattern> {
-    use crate::NumberUnitDisplay as Display;
-
-    if !is_telugu(locale) {
-        return None;
-    }
-    let denominator_unit = denominator;
-    let denominator_display = match display {
-        Display::Long => Display::Long,
-        Display::Short | Display::Narrow => Display::Narrow,
-    };
-    let numerator_raw = cldr_telugu_additional_unit_pattern(locale, numerator, display, plural);
-    let denominator_raw = cldr_telugu_additional_unit_pattern(
-        locale,
-        denominator_unit,
-        denominator_display,
-        crate::PluralCategory::One,
-    );
-    if numerator_raw.is_none() && denominator_raw.is_none() {
-        return None;
-    }
-    let numerator = numerator_raw
-        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
-    let denominator = denominator_raw
-        .or_else(|| {
-            experimental_number_unit_pattern(
-                locale,
-                denominator_unit,
-                denominator_display,
-                crate::PluralCategory::One,
-            )
-        })
-        .unwrap_or_else(|| {
-            crate::locale_data_provider().number_unit_pattern(
-                locale,
-                denominator_unit,
-                denominator_display,
-                crate::PluralCategory::One,
-            )
-        });
-    super::compose_generic_compound_unit_pattern(
-        locale,
-        denominator_unit,
-        display,
-        &numerator,
-        &denominator,
-        "{0}/{1}",
-    )
-}
+// Composes Telugu generic compounds containing an ICU4X-untyped unit.

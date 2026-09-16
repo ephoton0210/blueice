@@ -19,7 +19,7 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use flate2::read::GzDecoder;
 use std::{collections::HashMap, io::Read, sync::OnceLock};
 
-use super::{
+use super::super::{
     number_unit_pattern_from_placeholder, number_unit_pattern_label,
     NumberGenericCompoundUnitPattern, NumberUnitPattern,
 };

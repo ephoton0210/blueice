@@ -4,10 +4,7 @@
 
 //! Kabuverdianu raw CLDR unit-pattern families.
 
-use super::super::{
-    experimental_number_unit_pattern, number_unit_pattern_from_placeholder,
-    NumberGenericCompoundUnitPattern, NumberUnitPattern,
-};
+use super::super::{number_unit_pattern_from_placeholder, NumberUnitPattern};
 
 fn is_kabuverdianu(locale: &str) -> bool {
     locale
@@ -96,106 +93,7 @@ pub(crate) fn cldr_kabuverdianu_additional_unit_pattern(
     number_unit_pattern_from_placeholder(&raw.replace("{0}", "\u{fdd0}"))
 }
 
-/// Returns Kabuverdianu denominator-specific pinned CLDR `perUnitPattern`
-/// records.
-pub(crate) fn cldr_kabuverdianu_per_unit_pattern(
-    locale: &str,
-    denominator: crate::NumberFormatUnit,
-    display: crate::NumberUnitDisplay,
-) -> Option<&'static str> {
-    use crate::NumberUnitDisplay as Display;
+// Returns Kabuverdianu denominator-specific pinned CLDR `perUnitPattern`
+// records.
 
-    if !is_kabuverdianu(locale) {
-        return None;
-    }
-    const LONG: [&str; 18] = [
-        "{0} pur sentímetru",
-        "{0} pur dia",
-        "{0} pur pe",
-        "{0} pur galãu",
-        "{0} pur grama",
-        "{0} pur ora",
-        "{0} pur pulegada",
-        "{0} pur kilograma",
-        "{0} pur kilómetru",
-        "{0} pur litru",
-        "{0} pur metru",
-        "{0} pur minutu",
-        "{0} pur mes",
-        "{0} pur ónsa",
-        "{0} pur libra",
-        "{0} pur sigundu",
-        "{0} pur simana",
-        "{0} pur anu",
-    ];
-    const SHORT: [&str; 18] = [
-        "{0}/cm", "{0}/dia", "{0}/pe", "{0}/gal", "{0}/g", "{0}/h", "{0}/in", "{0}/kg", "{0}/km",
-        "{0}/l", "{0}/m", "{0}/min.", "{0}/mes", "{0}/oz", "{0}/lb", "{0}/s", "{0}/sim.",
-        "{0}/anu",
-    ];
-    const NARROW: [&str; 18] = SHORT;
-    let patterns = match display {
-        Display::Long => &LONG,
-        Display::Short => &SHORT,
-        Display::Narrow => &NARROW,
-    };
-    patterns
-        .get(super::per_unit_denominator_index(denominator)?)
-        .copied()
-}
-
-/// Composes Kabuverdianu generic compounds containing an ICU4X-untyped unit.
-pub(crate) fn cldr_kabuverdianu_generic_compound_unit_pattern(
-    locale: &str,
-    numerator: crate::NumberFormatUnit,
-    denominator: crate::NumberFormatUnit,
-    display: crate::NumberUnitDisplay,
-    plural: crate::PluralCategory,
-) -> Option<NumberGenericCompoundUnitPattern> {
-    use crate::NumberUnitDisplay as Display;
-
-    if !is_kabuverdianu(locale) {
-        return None;
-    }
-    let denominator_unit = denominator;
-    let denominator_display = match display {
-        Display::Long => Display::Long,
-        Display::Short | Display::Narrow => Display::Narrow,
-    };
-    let numerator =
-        cldr_kabuverdianu_additional_unit_pattern(locale, numerator, display, plural)
-            .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
-    let denominator = cldr_kabuverdianu_additional_unit_pattern(
-        locale,
-        denominator_unit,
-        denominator_display,
-        crate::PluralCategory::Other,
-    )
-    .or_else(|| {
-        experimental_number_unit_pattern(
-            locale,
-            denominator_unit,
-            denominator_display,
-            crate::PluralCategory::Other,
-        )
-    })
-    .unwrap_or_else(|| {
-        crate::locale_data_provider().number_unit_pattern(
-            locale,
-            denominator_unit,
-            denominator_display,
-            crate::PluralCategory::Other,
-        )
-    });
-    super::compose_generic_compound_unit_pattern(
-        locale,
-        denominator_unit,
-        display,
-        &numerator,
-        &denominator,
-        match display {
-            Display::Long => "{0} pur {1}",
-            Display::Short | Display::Narrow => "{0}/{1}",
-        },
-    )
-}
+// Composes Kabuverdianu generic compounds containing an ICU4X-untyped unit.

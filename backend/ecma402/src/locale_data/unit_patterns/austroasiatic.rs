@@ -4,10 +4,7 @@
 
 //! Austroasiatic raw CLDR unit-pattern families.
 
-use super::super::{
-    experimental_number_unit_pattern, number_unit_pattern_from_placeholder,
-    NumberGenericCompoundUnitPattern, NumberUnitPattern,
-};
+use super::super::{number_unit_pattern_from_placeholder, NumberUnitPattern};
 
 fn is_khmer(locale: &str) -> bool {
     locale
@@ -93,119 +90,6 @@ pub(crate) fn cldr_khmer_additional_unit_pattern(
     number_unit_pattern_from_placeholder(&raw.replace("{0}", "\u{fdd0}"))
 }
 
-/// Returns Khmer denominator-specific pinned CLDR `perUnitPattern` records.
-pub(crate) fn cldr_khmer_per_unit_pattern(
-    locale: &str,
-    denominator: crate::NumberFormatUnit,
-    display: crate::NumberUnitDisplay,
-) -> Option<&'static str> {
-    use crate::NumberUnitDisplay as Display;
+// Returns Khmer denominator-specific pinned CLDR `perUnitPattern` records.
 
-    if !is_khmer(locale) {
-        return None;
-    }
-    const LONG: [&str; 18] = [
-        "{0} ក្នុងមួយសង់ទីម៉ែត្រ",
-        "{0} ក្នុងមួយថ្ងៃ",
-        "{0} ក្នុងមួយហ្វីត",
-        "{0} ក្នុងមួយហ្គាឡុង",
-        "{0} ក្នុងមួយក្រាម",
-        "{0} ក្នុង\u{200b}មួយ\u{200b}ម៉ោង",
-        "{0} ក្នុងមួយអ៊ីញ",
-        "{0} ក្នុងមួយគីឡូក្រាម",
-        "{0} ក្នុងមួយគីឡូម៉ែត្រ",
-        "{0} ក្នុងមួយលីត្រ",
-        "{0} ក្នុងមួយម៉ែត្រ",
-        "{0} ក្នុងមួយនាទី",
-        "{0} ក្នុងមួយខែ",
-        "{0} ក្នុងមួយអោន",
-        "{0} ក្នុងមួយផោន",
-        "{0} ក្នុង\u{200b}មួយ\u{200b}វិនាទី",
-        "{0} ក្នុងមួយសប្តាហ៍",
-        "{0} ក្នុងមួយឆ្នាំ",
-    ];
-    const SHORT: [&str; 18] = [
-        "{0}/សម",
-        "{0}/ថ្ងៃ",
-        "{0}/ft",
-        "{0}/gal",
-        "{0}/g",
-        "{0}/ម៉ោង",
-        "{0}/in",
-        "{0}/kg",
-        "{0}/គម",
-        "{0}/l",
-        "{0}/ម",
-        "{0}/នាទី",
-        "{0}/ខែ",
-        "{0}/oz",
-        "{0}/lb",
-        "{0}/វិនាទី",
-        "{0}/សប្តាហ៍",
-        "{0}/ឆ្នាំ",
-    ];
-    const NARROW: [&str; 18] = SHORT;
-    let patterns = match display {
-        Display::Long => &LONG,
-        Display::Short => &SHORT,
-        Display::Narrow => &NARROW,
-    };
-    patterns
-        .get(super::per_unit_denominator_index(denominator)?)
-        .copied()
-}
-
-/// Composes Khmer generic compounds containing an ICU4X-untyped unit.
-pub(crate) fn cldr_khmer_generic_compound_unit_pattern(
-    locale: &str,
-    numerator: crate::NumberFormatUnit,
-    denominator: crate::NumberFormatUnit,
-    display: crate::NumberUnitDisplay,
-    plural: crate::PluralCategory,
-) -> Option<NumberGenericCompoundUnitPattern> {
-    use crate::NumberUnitDisplay as Display;
-
-    if !is_khmer(locale) {
-        return None;
-    }
-    let denominator_unit = denominator;
-    let denominator_display = match display {
-        Display::Long => Display::Long,
-        Display::Short | Display::Narrow => Display::Narrow,
-    };
-    let numerator = cldr_khmer_additional_unit_pattern(locale, numerator, display, plural)
-        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
-    let denominator = cldr_khmer_additional_unit_pattern(
-        locale,
-        denominator_unit,
-        denominator_display,
-        crate::PluralCategory::One,
-    )
-    .or_else(|| {
-        experimental_number_unit_pattern(
-            locale,
-            denominator_unit,
-            denominator_display,
-            crate::PluralCategory::One,
-        )
-    })
-    .unwrap_or_else(|| {
-        crate::locale_data_provider().number_unit_pattern(
-            locale,
-            denominator_unit,
-            denominator_display,
-            crate::PluralCategory::One,
-        )
-    });
-    super::compose_generic_compound_unit_pattern(
-        locale,
-        denominator_unit,
-        display,
-        &numerator,
-        &denominator,
-        match display {
-            Display::Long => "{0}\u{200b} ក្នុង\u{200b}មួយ\u{200b} {1}",
-            Display::Short | Display::Narrow => "{0}/{1}",
-        },
-    )
-}
+// Composes Khmer generic compounds containing an ICU4X-untyped unit.

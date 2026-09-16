@@ -4,10 +4,7 @@
 
 //! Malayalam raw CLDR unit-pattern families.
 
-use super::super::{
-    experimental_number_unit_pattern, number_unit_pattern_from_placeholder,
-    NumberGenericCompoundUnitPattern, NumberUnitPattern,
-};
+use super::super::{number_unit_pattern_from_placeholder, NumberUnitPattern};
 
 fn is_malayalam(locale: &str) -> bool {
     locale
@@ -96,117 +93,7 @@ pub(crate) fn cldr_malayalam_additional_unit_pattern(
     number_unit_pattern_from_placeholder(&raw.replace("{0}", "\u{fdd0}"))
 }
 
-/// Returns Malayalam denominator-specific pinned CLDR `perUnitPattern`
-/// records.
-pub(crate) fn cldr_malayalam_per_unit_pattern(
-    locale: &str,
-    denominator: crate::NumberFormatUnit,
-    display: crate::NumberUnitDisplay,
-) -> Option<&'static str> {
-    use crate::NumberUnitDisplay as Display;
+// Returns Malayalam denominator-specific pinned CLDR `perUnitPattern`
+// records.
 
-    if !is_malayalam(locale) {
-        return None;
-    }
-    const LONG: [&str; 18] = [
-        "{0} / സെന്റിമീറ്റർ",
-        "{0} / ദിവസം",
-        "{0} / അടി",
-        "{0} / ഗാലൺ",
-        "{0}/ഗ്രാം",
-        "{0} / മണിക്കൂർ",
-        "{0} / ഇഞ്ച്",
-        "{0}/കിലോഗ്രാം",
-        "{0} / കിലോമീറ്റർ",
-        "{0} / ലിറ്റർ",
-        "{0} / മീറ്റർ",
-        "{0} / മിനിറ്റ്",
-        "{0} / മാസം",
-        "{0}/ഔൺസ്",
-        "{0}/പൗണ്ട്",
-        "{0} / സെക്കൻഡ്",
-        "{0} / ആഴ്ച",
-        "{0} / വർഷം",
-    ];
-    const SHORT: [&str; 18] = [
-        "{0}/സെ.മീ.",
-        "{0}/ദി.",
-        "{0}/അടി",
-        "{0}/ഗാ.",
-        "{0}/ഗ്രാം",
-        "{0}/മ.",
-        "{0}/ഇഞ്ച്",
-        "{0}/കി.ഗ്രാം",
-        "{0}/കി.മീ.",
-        "{0}/ലി.",
-        "{0}/മീ.",
-        "{0}/മി.",
-        "{0}/മാ.",
-        "{0}/ഔ.",
-        "{0}/പൗ.",
-        "{0}/സെ.",
-        "{0}/ആ.",
-        "{0}/വ.",
-    ];
-    const NARROW: [&str; 18] = SHORT;
-    let patterns = match display {
-        Display::Long => &LONG,
-        Display::Short => &SHORT,
-        Display::Narrow => &NARROW,
-    };
-    patterns
-        .get(super::per_unit_denominator_index(denominator)?)
-        .copied()
-}
-
-/// Composes Malayalam generic compounds containing an ICU4X-untyped unit.
-pub(crate) fn cldr_malayalam_generic_compound_unit_pattern(
-    locale: &str,
-    numerator: crate::NumberFormatUnit,
-    denominator: crate::NumberFormatUnit,
-    display: crate::NumberUnitDisplay,
-    plural: crate::PluralCategory,
-) -> Option<NumberGenericCompoundUnitPattern> {
-    use crate::NumberUnitDisplay as Display;
-
-    if !is_malayalam(locale) {
-        return None;
-    }
-    let denominator_unit = denominator;
-    let denominator_display = match display {
-        Display::Long => Display::Long,
-        Display::Short | Display::Narrow => Display::Narrow,
-    };
-    let numerator = cldr_malayalam_additional_unit_pattern(locale, numerator, display, plural)
-        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
-    let denominator = cldr_malayalam_additional_unit_pattern(
-        locale,
-        denominator_unit,
-        denominator_display,
-        crate::PluralCategory::Other,
-    )
-    .or_else(|| {
-        experimental_number_unit_pattern(
-            locale,
-            denominator_unit,
-            denominator_display,
-            crate::PluralCategory::Other,
-        )
-    })
-    .unwrap_or_else(|| {
-        crate::locale_data_provider().number_unit_pattern(
-            locale,
-            denominator_unit,
-            denominator_display,
-            crate::PluralCategory::Other,
-        )
-    });
-    super::compose_generic_compound_unit_pattern(
-        locale,
-        denominator_unit,
-        display,
-        &numerator,
-        &denominator,
-        "{0}/{1}",
-    )
-}
+// Composes Malayalam generic compounds containing an ICU4X-untyped unit.

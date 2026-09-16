@@ -4,10 +4,7 @@
 
 //! Cantonese raw CLDR unit-pattern families.
 
-use super::super::{
-    experimental_number_unit_pattern, number_unit_pattern_from_placeholder,
-    NumberGenericCompoundUnitPattern, NumberUnitPattern,
-};
+use super::super::{number_unit_pattern_from_placeholder, NumberUnitPattern};
 
 fn is_cantonese(locale: &str) -> bool {
     locale
@@ -96,139 +93,7 @@ pub(crate) fn cldr_cantonese_additional_unit_pattern(
     number_unit_pattern_from_placeholder(&raw.replace("{0}", "\u{fdd0}"))
 }
 
-/// Returns Cantonese denominator-specific pinned CLDR `perUnitPattern`
-/// records.
-pub(crate) fn cldr_cantonese_per_unit_pattern(
-    locale: &str,
-    denominator: crate::NumberFormatUnit,
-    display: crate::NumberUnitDisplay,
-) -> Option<&'static str> {
-    use crate::NumberUnitDisplay as Display;
+// Returns Cantonese denominator-specific pinned CLDR `perUnitPattern`
+// records.
 
-    if !is_cantonese(locale) {
-        return None;
-    }
-    const LONG: [&str; 18] = [
-        "每厘米 {0}",
-        "每天 {0}",
-        "每英呎 {0}",
-        "每加侖 {0}",
-        "每克 {0}",
-        "每小時 {0}",
-        "每英吋 {0}",
-        "每公斤 {0}",
-        "每公里 {0}",
-        "每公升 {0}",
-        "每米 {0}",
-        "每分鐘 {0}",
-        "每月 {0}",
-        "每安士 {0}",
-        "每磅 {0}",
-        "每秒 {0}",
-        "每週 {0}",
-        "每年 {0}",
-    ];
-    const SHORT: [&str; 18] = [
-        "每厘米{0}",
-        "每天{0}",
-        "每英呎{0}",
-        "每加侖{0}",
-        "每克{0}",
-        "每小時{0}",
-        "每英吋{0}",
-        "每公斤{0}",
-        "每公里{0}",
-        "每公升{0}",
-        "每米{0}",
-        "每分鐘{0}",
-        "每月{0}",
-        "每安士{0}",
-        "每磅{0}",
-        "每秒{0}",
-        "每週{0}",
-        "每年{0}",
-    ];
-    const NARROW: [&str; 18] = [
-        "每厘米{0}",
-        "每天{0}",
-        "每英呎{0}",
-        "每加侖{0}",
-        "每克 {0}",
-        "每小時{0}",
-        "每英吋 {0}",
-        "每公斤 {0}",
-        "每公里{0}",
-        "每公升{0}",
-        "每米{0}",
-        "每分鐘{0}",
-        "每月{0}",
-        "每安士 {0}",
-        "每磅 {0}",
-        "每秒{0}",
-        "每週{0}",
-        "每年{0}",
-    ];
-    let patterns = match display {
-        Display::Long => &LONG,
-        Display::Short => &SHORT,
-        Display::Narrow => &NARROW,
-    };
-    patterns
-        .get(super::per_unit_denominator_index(denominator)?)
-        .copied()
-}
-
-/// Composes Cantonese generic compounds containing an ICU4X-untyped unit.
-pub(crate) fn cldr_cantonese_generic_compound_unit_pattern(
-    locale: &str,
-    numerator: crate::NumberFormatUnit,
-    denominator: crate::NumberFormatUnit,
-    display: crate::NumberUnitDisplay,
-    plural: crate::PluralCategory,
-) -> Option<NumberGenericCompoundUnitPattern> {
-    use crate::NumberUnitDisplay as Display;
-
-    if !is_cantonese(locale) {
-        return None;
-    }
-    let denominator_unit = denominator;
-    let denominator_display = match display {
-        Display::Long => Display::Long,
-        Display::Short | Display::Narrow => Display::Narrow,
-    };
-    let numerator = cldr_cantonese_additional_unit_pattern(locale, numerator, display, plural)
-        .or_else(|| experimental_number_unit_pattern(locale, numerator, display, plural))?;
-    let denominator = cldr_cantonese_additional_unit_pattern(
-        locale,
-        denominator_unit,
-        denominator_display,
-        crate::PluralCategory::Other,
-    )
-    .or_else(|| {
-        experimental_number_unit_pattern(
-            locale,
-            denominator_unit,
-            denominator_display,
-            crate::PluralCategory::Other,
-        )
-    })
-    .unwrap_or_else(|| {
-        crate::locale_data_provider().number_unit_pattern(
-            locale,
-            denominator_unit,
-            denominator_display,
-            crate::PluralCategory::Other,
-        )
-    });
-    super::compose_generic_compound_unit_pattern(
-        locale,
-        denominator_unit,
-        display,
-        &numerator,
-        &denominator,
-        match display {
-            Display::Long => "每 {1} {0}",
-            Display::Short | Display::Narrow => "{0}/{1}",
-        },
-    )
-}
+// Composes Cantonese generic compounds containing an ICU4X-untyped unit.
