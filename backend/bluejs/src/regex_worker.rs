@@ -317,21 +317,32 @@ impl Worker {
 
 impl Drop for Worker {
     fn drop(&mut self) {
-        // Close the input channel before waiting for the child. On the normal
-        // path this gives the worker an EOF; a failed transaction instead
-        // terminates it first so a blocked pipe operation is released.
-        if self.failed {
+        #[cfg(windows)]
+        {
+            // `WORKER` is thread-local. Windows is already tearing down the
+            // parent thread here, so joining an I/O thread or starting a
+            // reaper can respectively abort or be denied by the OS. Terminate
+            // the private child and close its pipe channel without blocking;
+            // Windows releases the child handle directly and the detached I/O
+            // thread owns no state that can affect a later worker.
             let _ = self.child.kill();
+            self.requests.take();
+            self.io_thread.take();
         }
-        self.requests.take();
-        let _ = self.child.wait();
-        // The I/O thread owns only this child's stdio handles. Dropping its
-        // JoinHandle detaches it after the child is reaped, so it can finish
-        // its final channel/pipe cleanup without making TLS teardown join a
-        // thread. In particular, Windows can report an unexpected thread
-        // termination while joining from a thread-local destructor, despite
-        // the child having already produced a valid reply.
-        self.io_thread.take();
+        #[cfg(not(windows))]
+        {
+            // Unix needs an explicit wait to avoid leaving a zombie. Kill
+            // before joining on a failed transaction: the I/O thread only
+            // accesses pipes owned by this child, so termination unblocks it.
+            if self.failed {
+                let _ = self.child.kill();
+            }
+            self.requests.take();
+            if let Some(thread) = self.io_thread.take() {
+                let _ = thread.join();
+            }
+            let _ = self.child.wait();
+        }
     }
 }
 

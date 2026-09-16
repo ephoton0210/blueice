@@ -526,9 +526,9 @@ fn evaluate_source(source: &str) -> String {
 }
 
 fn decode_utf16_hex(encoded: &str) -> String {
-    let code_units = encoded
-        .as_bytes()
-        .chunks_exact(4)
+    let (chunks, _) = encoded.as_bytes().as_chunks::<4>();
+    let code_units = chunks
+        .iter()
         .map(|chunk| {
             u16::from_str_radix(std::str::from_utf8(chunk).expect("hex is ASCII"), 16)
                 .expect("oracle string contains UTF-16 hex")
