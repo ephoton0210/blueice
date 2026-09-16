@@ -13,17 +13,26 @@
 //! test -- this file is just argument parsing and wiring a real
 //! `UnixListener` to that already-tested logic.
 
+#[cfg(unix)]
 use blueice_launcher::memory_pressure::{self, SystemMemorySource};
+#[cfg(unix)]
 use blueice_launcher::supervisor::{ProcessPolicy, ProcessRegistry};
+#[cfg(unix)]
 use blueice_launcher::{
     default_control_socket_path, default_rendezvous_socket_path, run_broker, SpawnedCore,
 };
+#[cfg(unix)]
 use std::os::unix::net::UnixListener;
+#[cfg(unix)]
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::process::ExitCode;
+#[cfg(unix)]
 use std::sync::{Arc, Mutex};
+#[cfg(unix)]
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
 #[derive(Debug, PartialEq)]
 struct Args {
     rendezvous_socket: PathBuf,
@@ -52,6 +61,7 @@ struct Args {
 /// `blueice-core.rs`'s `parse_args` does: every flag-parsing branch is a
 /// plain unit test, not something only exercisable by actually spawning
 /// the binary.
+#[cfg(unix)]
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut rendezvous_socket = None;
     let mut control_socket = None;
@@ -102,6 +112,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     })
 }
 
+#[cfg(unix)]
 fn main() -> ExitCode {
     let args = match parse_args(std::env::args().skip(1)) {
         Ok(args) => args,
@@ -213,7 +224,13 @@ fn main() -> ExitCode {
     }
 }
 
-#[cfg(test)]
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("blueice-launcher is currently supported only on Unix platforms");
+    std::process::exit(1);
+}
+
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 

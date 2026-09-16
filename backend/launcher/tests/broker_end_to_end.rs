@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! The concrete, checkable proof `phase-8-live-core-hotswap/PLAN.md`'s
 //! "Minimal first slice" checklist asks for: two independent client
 //! connections through the *same* real `blueice-launcher` subprocess

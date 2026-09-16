@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! `blueice-launcher`: the minimal first slice of
 //! `phase-8-live-core-hotswap/PLAN.md`'s supervisor role -- a rendezvous
 //! broker letting a human's `frontend` and an AI's `mcp-server` (or any

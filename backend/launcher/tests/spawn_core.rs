@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! Integration test for [`blueice_launcher::SpawnedCore`] -- spawns the
 //! *real* `blueice-core` binary and drives it over the real internal
 //! Unix socket, the same strategy `blueice-mcp-server`'s own
