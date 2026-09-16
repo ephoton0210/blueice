@@ -26,6 +26,7 @@ use super::{
 
 const FIELD_SEPARATOR: char = '\u{1f}';
 const GROUP_SEPARATOR: char = '\u{1e}';
+const CLDR_RESOLVED_LOCALE_COUNT: usize = 766;
 const SANCTIONED_UNIT_COUNT: usize = 45;
 const PLURAL_CATEGORY_COUNT: usize = 6;
 
@@ -92,7 +93,7 @@ fn full_cldr_compound_patterns() -> &'static FullCldrCompoundPatterns {
             .collect::<Vec<_>>();
         assert_eq!(
             records.len(),
-            2_298,
+            CLDR_RESOLVED_LOCALE_COUNT * 3,
             "embedded CLDR compound-unit record count must remain pinned"
         );
         assert!(records.iter().all(|pattern| {
@@ -132,6 +133,17 @@ fn full_cldr_compound_patterns() -> &'static FullCldrCompoundPatterns {
             );
             indices[display_index] = index;
         }
+        assert_eq!(
+            locale_indices.len(),
+            CLDR_RESOLVED_LOCALE_COUNT,
+            "embedded CLDR compound-unit table must retain every resolved locale"
+        );
+        assert!(
+            locale_indices
+                .values()
+                .all(|indices| indices.iter().all(|index| *index != usize::MAX)),
+            "every resolved CLDR locale must carry long, short, and narrow compound-unit data"
+        );
         FullCldrCompoundPatterns {
             records,
             locale_indices,
