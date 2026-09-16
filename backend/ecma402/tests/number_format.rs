@@ -910,6 +910,63 @@ fn selects_common_range_patterns_by_style_affix_and_sign_scope() {
     assert_eq!(range(&english_unit, -5.0, -3.0), "-5 – -3 meters");
     assert_eq!(range(&english_unit, -3.0, 5.0), "-3 – 5 meters");
 
+    // A `percent` unit shares the high-level percent-range semantics rather
+    // than behaving like an arbitrary unit suffix. A bare `%` remains on
+    // both unsigned endpoints, whereas a shared sign lets it collapse.
+    let english_percent_unit = formatter(
+        "en-US",
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::Percent),
+            unit_display: NumberUnitDisplay::Short,
+            ..Default::default()
+        },
+    );
+    assert_eq!(range(&english_percent_unit, 3.0, 5.0), "3% – 5%");
+    assert_eq!(range(&english_percent_unit, -5.0, -3.0), "-5–3%");
+    assert_eq!(range(&english_percent_unit, -3.0, 5.0), "-3% – 5%");
+
+    // The French localized-space affix makes the percent unit collapsible,
+    // preserving the language-specific contrast with English.
+    let french_percent_unit = formatter(
+        "fr",
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::Percent),
+            unit_display: NumberUnitDisplay::Short,
+            ..Default::default()
+        },
+    );
+    assert_eq!(range(&french_percent_unit, 3.0, 5.0), "3–5 %");
+
+    // Turkish locates the same bare marker before the number, so unsigned
+    // endpoints retain it rather than sharing a prefix unit marker.
+    let turkish_percent_unit = formatter(
+        "tr",
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::Percent),
+            unit_display: NumberUnitDisplay::Short,
+            ..Default::default()
+        },
+    );
+    assert_eq!(range(&turkish_percent_unit, 3.0, 5.0), "%3 – %5");
+
+    // Turkish short Celsius changes the placeholder-adjacent space between
+    // `one` and `other`. Treat that literal as part of the semantic unit
+    // affix so it is reconstructed once with the range plural category.
+    let turkish_celsius = formatter(
+        "tr",
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: Some(NumberFormatUnit::Celsius),
+            unit_display: NumberUnitDisplay::Short,
+            ..Default::default()
+        },
+    );
+    assert_eq!(range(&turkish_celsius, 1.0, 2.0), "1–2°C");
+    assert_eq!(range(&turkish_celsius, -5.0, -2.0), "-5 – -2°C");
+
     let japanese_celsius = formatter(
         "ja",
         NumberFormatOptions {

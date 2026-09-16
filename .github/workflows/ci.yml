@@ -51,6 +51,10 @@ jobs:
         run: >-
           cargo test -p blueice-bluejs --test node_differential
           number_format_matrix_matches_node -- --ignored
+      - name: NumberFormat interval Node differential matrix
+        run: >-
+          cargo test -p blueice-bluejs --test node_differential
+          number_format_range_matrix_matches_node -- --ignored
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Rustfmt

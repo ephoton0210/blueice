@@ -1319,7 +1319,14 @@ impl NumberFormat {
         let has_exact_compact_endpoint = self.resolved.notation == NumberNotation::Compact
             && (is_exact_compact_range_endpoint(&start_parts)
                 || is_exact_compact_range_endpoint(&end_parts));
-        let suffix_length = if can_collapse_affixes {
+        let semantic_affix_lengths = range_semantic_affix_suffix_lengths(&start_parts, &end_parts);
+        let semantic_affix_differs =
+            semantic_affix_lengths.is_some_and(|(start_length, end_length)| {
+                start_length != end_length
+                    || start_parts[start_parts.len() - start_length..]
+                        != end_parts[end_parts.len() - end_length..]
+            });
+        let suffix_length = if can_collapse_affixes && !semantic_affix_differs {
             common_number_affix_suffix_length(&start_parts, &end_parts)
         } else {
             0
@@ -1333,6 +1340,9 @@ impl NumberFormat {
             && range_affix_is_collapsible(
                 self.resolved.style,
                 self.resolved.notation,
+                self.resolved.style == NumberFormatStyle::Unit
+                    && self.resolved.unit == Some(NumberFormatUnit::Percent)
+                    && self.resolved.unit_display != NumberUnitDisplay::Long,
                 &start_parts[start_parts.len() - suffix_length..],
                 range_signs,
             );
@@ -1344,66 +1354,70 @@ impl NumberFormat {
             let start_at = start_parts.len() - suffix_length;
             end_parts.truncate(end_parts.len() - suffix_length);
             start_parts.split_off(start_at)
-        } else if can_collapse_affixes {
-            if let Some(suffix_length) = range_plural_affix_suffix_length(&start_parts, &end_parts)
-            {
-                range_affix_collapsed = true;
-                // Rebuild the trailing affix with the CLDR plural-range category
-                // over the rounded endpoint values. This normally matches the
-                // end category, but preserves locales with an explicit range
-                // rule as well as French `1–2 mètres`.
-                let start_at = start_parts.len() - suffix_length;
-                start_parts.truncate(start_at);
-                let end_at = end_parts.len() - suffix_length;
-                let end_suffix = end_parts.split_off(end_at);
-                let range_plural_category = start_plural_category
-                    .zip(end_plural_category)
-                    .and_then(|(start, end)| {
-                        crate::locale_data_provider().number_range_plural_category(
-                            &self.resolved.locale,
-                            start,
-                            end,
-                        )
-                    });
-                if let Some(range_plural_category) = range_plural_category {
-                    let mut end_with_range_affix = end_parts.clone();
-                    let rebuilt = match (
-                        self.resolved.style,
-                        self.resolved.unit,
-                        self.currency.as_ref(),
-                    ) {
-                        (NumberFormatStyle::Unit, Some(unit), _) => {
-                            apply_unit_pattern(
-                                &mut end_with_range_affix,
+        } else if can_collapse_affixes && semantic_affix_differs {
+            if let Some((start_suffix_length, end_suffix_length)) = semantic_affix_lengths {
+                if start_suffix_length >= start_parts.len() || end_suffix_length >= end_parts.len()
+                {
+                    Vec::new()
+                } else {
+                    range_affix_collapsed = true;
+                    // Rebuild the trailing affix with the CLDR plural-range category
+                    // over the rounded endpoint values. This normally matches the
+                    // end category, but preserves locales with an explicit range
+                    // rule as well as French `1–2 mètres`.
+                    let start_at = start_parts.len() - start_suffix_length;
+                    start_parts.truncate(start_at);
+                    let end_at = end_parts.len() - end_suffix_length;
+                    let end_suffix = end_parts.split_off(end_at);
+                    let range_plural_category = start_plural_category
+                        .zip(end_plural_category)
+                        .and_then(|(start, end)| {
+                            crate::locale_data_provider().number_range_plural_category(
                                 &self.resolved.locale,
-                                unit,
-                                self.resolved.unit_display,
-                                range_plural_category,
-                            );
-                            true
+                                start,
+                                end,
+                            )
+                        });
+                    if let Some(range_plural_category) = range_plural_category {
+                        let mut end_with_range_affix = end_parts.clone();
+                        let rebuilt = match (
+                            self.resolved.style,
+                            self.resolved.unit,
+                            self.currency.as_ref(),
+                        ) {
+                            (NumberFormatStyle::Unit, Some(unit), _) => {
+                                apply_unit_pattern(
+                                    &mut end_with_range_affix,
+                                    &self.resolved.locale,
+                                    unit,
+                                    self.resolved.unit_display,
+                                    range_plural_category,
+                                );
+                                true
+                            }
+                            (NumberFormatStyle::Currency, _, Some(currency)) => {
+                                let negative = end_with_range_affix
+                                    .iter()
+                                    .any(|part| part.kind == NumberFormatPartKind::MinusSign);
+                                apply_currency_pattern(
+                                    &mut end_with_range_affix,
+                                    currency,
+                                    &self.resolved.locale,
+                                    negative,
+                                    range_plural_category,
+                                );
+                                true
+                            }
+                            _ => false,
+                        };
+                        if rebuilt {
+                            end_with_range_affix.split_off(end_at)
+                        } else {
+                            end_suffix
                         }
-                        (NumberFormatStyle::Currency, _, Some(currency)) => {
-                            let negative = end_with_range_affix
-                                .iter()
-                                .any(|part| part.kind == NumberFormatPartKind::MinusSign);
-                            apply_currency_pattern(
-                                &mut end_with_range_affix,
-                                currency,
-                                &self.resolved.locale,
-                                negative,
-                                range_plural_category,
-                            );
-                            true
-                        }
-                        _ => false,
-                    };
-                    if rebuilt {
-                        end_with_range_affix.split_off(end_at)
                     } else {
                         end_suffix
                     }
-                } else {
-                    end_suffix
                 }
             } else {
                 Vec::new()
@@ -1479,6 +1493,9 @@ impl NumberFormat {
             && range_affix_collapsed
             && prefix_has_explicit_sign
             && (self.resolved.style == NumberFormatStyle::Percent
+                || (self.resolved.style == NumberFormatStyle::Unit
+                    && self.resolved.unit == Some(NumberFormatUnit::Percent)
+                    && self.resolved.unit_display != NumberUnitDisplay::Long)
                 || (self.resolved.style == NumberFormatStyle::Decimal
                     && self.resolved.notation == NumberNotation::Compact));
         // Prefix unit labels (such as Japanese `摂氏`) share independently of
@@ -1489,7 +1506,16 @@ impl NumberFormat {
         let unit_prefix_collapses = !currency_range
             && self.resolved.style == NumberFormatStyle::Unit
             && leading_affix_prefix_length > 0
-            && leading_affix_prefix_has_unit;
+            && leading_affix_prefix_has_unit
+            && (self.resolved.unit != Some(NumberFormatUnit::Percent)
+                || self.resolved.unit_display == NumberUnitDisplay::Long
+                || range_affix_is_collapsible(
+                    self.resolved.style,
+                    self.resolved.notation,
+                    true,
+                    &start_parts[..leading_affix_prefix_length],
+                    range_signs,
+                ));
         let direct_prefix_affix_collapses = !currency_range
             && prefix_is_non_numeric_affix
             && (self.resolved.style == NumberFormatStyle::Percent
@@ -1498,6 +1524,9 @@ impl NumberFormat {
             && range_affix_is_collapsible(
                 self.resolved.style,
                 self.resolved.notation,
+                self.resolved.style == NumberFormatStyle::Unit
+                    && self.resolved.unit == Some(NumberFormatUnit::Percent)
+                    && self.resolved.unit_display != NumberUnitDisplay::Long,
                 prefix,
                 range_signs,
             );
@@ -2558,10 +2587,12 @@ fn number_range_sign_context(
 fn range_affix_is_collapsible(
     style: NumberFormatStyle,
     notation: NumberNotation,
+    is_percent_unit: bool,
     suffix: &[NumberFormatPart],
     signs: (NumberRangeSignContext, NumberRangeSignContext),
 ) -> bool {
     let direct_percent_or_compact = style == NumberFormatStyle::Percent
+        || is_percent_unit
         || (style == NumberFormatStyle::Decimal && notation == NumberNotation::Compact);
     if !direct_percent_or_compact {
         return true;
@@ -2642,34 +2673,36 @@ fn common_number_affix_suffix_length(
         .count()
 }
 
-/// Returns a structurally shared trailing unit or currency-name affix whose
-/// localized label differs only because the two endpoints selected different
-/// cardinal forms. The default CLDR plural-range category is the end
-/// category, so the caller preserves this suffix from the end formatting.
-fn range_plural_affix_suffix_length(
+/// Returns the trailing semantic unit or currency affix lengths for each
+/// endpoint. A unit's immediately adjacent literal is part of that affix:
+/// plural forms may change or remove it (`1 °C` versus `2°C`) even when the
+/// unit label itself remains the same. The caller reuses the CLDR
+/// plural-range category to format one shared ending.
+fn range_semantic_affix_suffix_lengths(
     start: &[NumberFormatPart],
     end: &[NumberFormatPart],
-) -> Option<usize> {
+) -> Option<(usize, usize)> {
     let (start_last, end_last) = (start.last()?, end.last()?);
     if start_last.kind != end_last.kind
         || !matches!(
             start_last.kind,
             NumberFormatPartKind::Unit | NumberFormatPartKind::Currency
         )
-        || start_last.value == end_last.value
     {
         return None;
     }
 
-    let mut length = 1;
-    while length < start.len()
-        && length < end.len()
-        && start[start.len() - length - 1].kind == NumberFormatPartKind::Literal
-        && start[start.len() - length - 1] == end[end.len() - length - 1]
-    {
-        length += 1;
-    }
-    (length < start.len() && length < end.len()).then_some(length)
+    let affix_length = |parts: &[NumberFormatPart]| {
+        let mut length = 1;
+        while length < parts.len()
+            && parts[parts.len() - length - 1].kind == NumberFormatPartKind::Literal
+        {
+            length += 1;
+        }
+        length
+    };
+    let lengths @ (start_length, end_length) = (affix_length(start), affix_length(end));
+    (start_length < start.len() && end_length < end.len()).then_some(lengths)
 }
 
 fn currency_symbol(currency: &NumberCurrencyOptions, locale: &str) -> String {

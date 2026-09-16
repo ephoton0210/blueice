@@ -357,7 +357,107 @@ fn number_format_matrix_matches_node() {
     assert_matches_node(&corpus);
 }
 
+/// Currency and unit range output is governed by UTS 35's semantic-affix
+/// collapse algorithm, not by a separate CLDR `currencyInterval` table. Run
+/// selected provider locales through an independent Node 24 oracle so changes
+/// to range sharing or plural-range reconstruction cannot fix one locale
+/// family while regressing another. `formatRangeToParts()` source assignment
+/// stays in the host-neutral tests: ECMA-402 deliberately makes collapsing
+/// implementation-defined, so Node's source spans are not a portable oracle.
+#[test]
+#[ignore = "requires Node.js on PATH; run explicitly with --ignored"]
+fn number_format_range_matrix_matches_node() {
+    // Node 24's ICU data predates the pinned CLDR 48.2.1 provider for some
+    // currency symbols. These representatives use stable raw records while
+    // covering every range-connector and prefix/suffix-affix class.
+    const RANGE_LOCALES: &[&str] = &["en", "ja"];
+    const UNIT_CELLS: &[(&str, &str)] = &[
+        ("acre", "long"),
+        ("acre", "short"),
+        ("acre", "narrow"),
+        ("celsius", "long"),
+        ("celsius", "short"),
+        ("celsius", "narrow"),
+        ("gigabyte", "long"),
+        ("gigabyte", "short"),
+        ("gigabyte", "narrow"),
+        ("meter", "long"),
+        ("meter", "short"),
+        ("meter", "narrow"),
+        ("percent", "long"),
+        ("percent", "short"),
+        ("percent", "narrow"),
+        ("year", "long"),
+        ("year", "short"),
+        ("year", "narrow"),
+        ("gigabyte-per-acre", "long"),
+        ("gigabyte-per-acre", "short"),
+        ("gigabyte-per-acre", "narrow"),
+        ("celsius-per-liter", "long"),
+        ("celsius-per-liter", "short"),
+        ("celsius-per-liter", "narrow"),
+    ];
+    const RANGE_ENDPOINTS: &[(i8, i8)] = &[(1, 2), (2, 5), (-5, -2), (-3, 5)];
+
+    let mut corpus = Vec::new();
+    for &locale in RANGE_LOCALES {
+        let mut cells = Vec::new();
+        for currency_display in ["symbol", "code"] {
+            for &(start, end) in RANGE_ENDPOINTS {
+                cells.push(format!(
+                    "new Intl.NumberFormat('{locale}',{{style:'currency',currency:'USD',currencyDisplay:'{currency_display}',maximumFractionDigits:0}}).formatRange({start},{end})"
+                ));
+            }
+        }
+        for &(unit, unit_display) in UNIT_CELLS {
+            for &(start, end) in RANGE_ENDPOINTS {
+                cells.push(format!(
+                    "new Intl.NumberFormat('{locale}',{{style:'unit',unit:'{unit}',unitDisplay:'{unit_display}'}}).formatRange({start},{end})"
+                ));
+            }
+        }
+        // One primitive per locale keeps each fixture independent while
+        // amortizing realm creation across the complete interval matrix.
+        corpus.push(format!("[{}].join('\\u001f')", cells.join(",")));
+    }
+    let expected = node_oracle(&corpus);
+    for ((&locale, source), expected) in RANGE_LOCALES.iter().zip(&corpus).zip(expected) {
+        let actual = evaluate_source(source);
+        let actual = decode_utf16_hex(
+            actual
+                .strip_prefix("string:")
+                .expect("range matrix fixture returns a string"),
+        );
+        let expected = decode_utf16_hex(
+            expected
+                .strip_prefix("string:")
+                .expect("Node range matrix fixture returns a string"),
+        );
+        let actual_cells = actual.split('\u{1f}').collect::<Vec<_>>();
+        let expected_cells = expected.split('\u{1f}').collect::<Vec<_>>();
+        assert_eq!(
+            actual_cells.len(),
+            expected_cells.len(),
+            "{locale} range matrix cell count"
+        );
+        for (cell, (actual, expected)) in actual_cells.into_iter().zip(expected_cells).enumerate() {
+            assert_eq!(actual, expected, "{locale} range matrix cell {cell}");
+        }
+    }
+}
+
 fn assert_matches_node(corpus: &[String]) {
+    let expected = node_oracle(corpus);
+    println!(
+        "Comparing {} isolated scripts against Node.js",
+        corpus.len()
+    );
+    for (source, expected) in corpus.iter().zip(expected) {
+        assert_eq!(evaluate_source(source), expected, "{source}");
+    }
+}
+
+fn node_oracle(corpus: &[String]) -> Vec<String> {
     let mut node = Command::new("node")
         .args(["-e", include_str!("fixtures/node_oracle.js")])
         .stdin(Stdio::piped())
@@ -391,26 +491,35 @@ fn assert_matches_node(corpus: &[String]) {
         expected.len(),
         "oracle must return exactly one result per script"
     );
-    println!(
-        "Comparing {} isolated scripts against Node.js",
-        corpus.len()
-    );
-    for (source, expected) in corpus.iter().zip(expected) {
-        let result = match parse(source) {
-            Err(_) => "error:SyntaxError".into(),
-            Ok(ast) => match compile(&ast) {
-                Err(
-                    blueice_bluejs::CompileError::DuplicateBinding(_)
-                    | blueice_bluejs::CompileError::InvalidSyntax(_),
-                ) => "error:SyntaxError".into(),
-                Err(error) => panic!("fixture {source} cannot execute: {error}"),
-                // Intrinsics are mutable and VM-owned. Fresh bindings alone
-                // do not isolate prototype writes between oracle fixtures.
-                Ok(code) => canonical(Vm::default().execute(&code)),
-            },
-        };
-        assert_eq!(result, expected, "{source}");
+    expected.into_iter().map(str::to_owned).collect()
+}
+
+fn evaluate_source(source: &str) -> String {
+    match parse(source) {
+        Err(_) => "error:SyntaxError".into(),
+        Ok(ast) => match compile(&ast) {
+            Err(
+                blueice_bluejs::CompileError::DuplicateBinding(_)
+                | blueice_bluejs::CompileError::InvalidSyntax(_),
+            ) => "error:SyntaxError".into(),
+            Err(error) => panic!("fixture {source} cannot execute: {error}"),
+            // Intrinsics are mutable and VM-owned. Fresh bindings alone do
+            // not isolate prototype writes between oracle fixtures.
+            Ok(code) => canonical(Vm::default().execute(&code)),
+        },
     }
+}
+
+fn decode_utf16_hex(encoded: &str) -> String {
+    let code_units = encoded
+        .as_bytes()
+        .chunks_exact(4)
+        .map(|chunk| {
+            u16::from_str_radix(std::str::from_utf8(chunk).expect("hex is ASCII"), 16)
+                .expect("oracle string contains UTF-16 hex")
+        })
+        .collect::<Vec<_>>();
+    String::from_utf16_lossy(&code_units)
 }
 
 fn canonical(result: Result<Value, RuntimeError>) -> String {
