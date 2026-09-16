@@ -73,6 +73,6 @@ fn sources_tongan_cldr_number_after_label_per_and_generic_compounds() {
         )
         .format_f64(2.0)
         .unwrap(),
-        "kikapaiti ʻe 2 ʻi he ʻeka"
+        "kikapaiti ʻe 2 ʻi he ʻeka ʻe"
     );
 }
