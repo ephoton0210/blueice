@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![cfg(unix)]
+
 //! Integration test for [`blueice_mcp_server::CoreProcess`] -- spawns
 //! the *real* `blueice-core` binary (expected to sit next to this test
 //! binary in the workspace's shared `target/` dir, same assumption
