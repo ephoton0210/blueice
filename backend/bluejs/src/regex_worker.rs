@@ -317,16 +317,21 @@ impl Worker {
 
 impl Drop for Worker {
     fn drop(&mut self) {
-        // Kill before joining on a failed transaction: the IO thread only
-        // accesses pipes owned by this child, so termination unblocks it.
+        // Close the input channel before waiting for the child. On the normal
+        // path this gives the worker an EOF; a failed transaction instead
+        // terminates it first so a blocked pipe operation is released.
         if self.failed {
             let _ = self.child.kill();
         }
         self.requests.take();
-        if let Some(thread) = self.io_thread.take() {
-            let _ = thread.join();
-        }
         let _ = self.child.wait();
+        // The I/O thread owns only this child's stdio handles. Dropping its
+        // JoinHandle detaches it after the child is reaped, so it can finish
+        // its final channel/pipe cleanup without making TLS teardown join a
+        // thread. In particular, Windows can report an unexpected thread
+        // termination while joining from a thread-local destructor, despite
+        // the child having already produced a valid reply.
+        self.io_thread.take();
     }
 }
 
