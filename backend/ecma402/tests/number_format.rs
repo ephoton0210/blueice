@@ -1357,6 +1357,33 @@ fn uses_localized_per_unit_grammar_before_the_generic_connector() {
             (NumberFormatPartKind::Unit, "متر في الثانية".into()),
         ]
     );
+
+    // CLDR's Arabic long singular `acre` deliberately has no number
+    // placeholder. Generic composition must preserve that semantic instead
+    // of restoring a synthetic digit while adding the denominator.
+    let arabic_hidden_numerator = NumberFormat::try_new(
+        &[canonicalize("ar-u-nu-arab").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Unit,
+            unit: NumberFormatUnit::parse("acre-per-second"),
+            unit_display: NumberUnitDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        arabic_hidden_numerator.format_f64(1.0).unwrap(),
+        "فدان في الثانية"
+    );
+    assert_eq!(
+        arabic_hidden_numerator
+            .format_to_parts_f64(1.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![(NumberFormatPartKind::Unit, "فدان في الثانية".into())]
+    );
 }
 
 #[test]

@@ -2165,6 +2165,19 @@ fn apply_unit_pattern(
             display,
             plural,
         );
+        let hides_number = crate::locale_data_provider()
+            .generic_compound_unit_hides_number(locale, numerator, display, plural);
+        if hides_number {
+            parts.retain(|part| {
+                !matches!(
+                    part.kind,
+                    NumberFormatPartKind::Integer
+                        | NumberFormatPartKind::Group
+                        | NumberFormatPartKind::Decimal
+                        | NumberFormatPartKind::Fraction
+                )
+            });
+        }
         let mut prefix = Vec::new();
         if !pattern.prefix.is_empty() {
             prefix.push(NumberFormatPart {
@@ -2189,7 +2202,7 @@ fn apply_unit_pattern(
             kind: NumberFormatPartKind::Unit,
             value: pattern.suffix,
         });
-        return false;
+        return hides_number;
     }
 
     let pattern = crate::locale_data_provider().number_unit_pattern(locale, unit, display, plural);

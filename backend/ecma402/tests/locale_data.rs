@@ -167,6 +167,7 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
     let mut currency_patterns = (0, 0);
     let mut percent_patterns = (0, 0);
     let mut simple_unit_patterns = (0, 0);
+    let mut generic_compound_patterns = (0, 0);
     let mut incomplete_locales = Vec::new();
 
     for locale in provider.number_format_locales() {
@@ -183,6 +184,16 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
         percent_patterns.1 += coverage.percent_patterns.total;
         simple_unit_patterns.0 += coverage.simple_unit_patterns.data_backed;
         simple_unit_patterns.1 += coverage.simple_unit_patterns.total;
+        generic_compound_patterns.0 += coverage.generic_compound_patterns.data_backed;
+        generic_compound_patterns.1 += coverage.generic_compound_patterns.total;
+        assert_eq!(
+            coverage.generic_compound_patterns.total,
+            coverage
+                .simple_unit_patterns
+                .total
+                .saturating_mul(blueice_ecma402::NumberFormatUnit::ALL.len()),
+            "generic compound matrix must include every numerator/denominator pair for {locale}"
+        );
         if coverage.simple_unit_patterns.data_backed != coverage.simple_unit_patterns.total {
             incomplete_locales.push(format!(
                 "{locale} {}/{}",
@@ -200,8 +211,15 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
     assert_eq!(currency_patterns.0, currency_patterns.1);
     assert_eq!(percent_patterns.0, percent_patterns.1);
     assert_eq!(simple_unit_patterns.0, simple_unit_patterns.1);
+    assert_eq!(generic_compound_patterns.0, generic_compound_patterns.1);
+    assert_eq!(
+        generic_compound_patterns.1,
+        simple_unit_patterns
+            .1
+            .saturating_mul(blueice_ecma402::NumberFormatUnit::ALL.len())
+    );
     eprintln!(
-        "NumberFormat provider coverage: decimal {decimal_locales}/{}, currency {}/{}, percent {}/{}, simple units {}/{} ({}%)",
+        "NumberFormat provider coverage: decimal {decimal_locales}/{}, currency {}/{}, percent {}/{}, simple units {}/{} ({}%), generic compound denominators {}/{} ({}%)",
         provider.number_format_locales().len(),
         currency_patterns.0,
         currency_patterns.1,
@@ -212,6 +230,13 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
         blueice_ecma402::NumberFormatCoverageCount {
             data_backed: simple_unit_patterns.0,
             total: simple_unit_patterns.1,
+        }
+        .percentage(),
+        generic_compound_patterns.0,
+        generic_compound_patterns.1,
+        blueice_ecma402::NumberFormatCoverageCount {
+            data_backed: generic_compound_patterns.0,
+            total: generic_compound_patterns.1,
         }
         .percentage(),
     );

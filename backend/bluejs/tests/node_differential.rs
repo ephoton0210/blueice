@@ -302,7 +302,7 @@ fn primitive_completions_and_error_classes_match_node() {
 #[test]
 #[ignore = "requires Node.js on PATH; run explicitly with --ignored"]
 fn number_format_matrix_matches_node() {
-    let corpus = [
+    let mut corpus = [
         // Decimal symbols, grouping, and non-Latin numbering systems.
         "new Intl.NumberFormat('en',{maximumFractionDigits:3}).format(1234567.895)",
         "new Intl.NumberFormat('de',{useGrouping:false,minimumFractionDigits:2,maximumFractionDigits:2}).format(1007.5)",
@@ -337,6 +337,23 @@ fn number_format_matrix_matches_node() {
     .into_iter()
     .map(str::to_owned)
     .collect::<Vec<_>>();
+    // Generic compounds that formerly crossed the English compatibility
+    // boundary. These language/script/region representatives exercise the
+    // pinned full-CLDR denominator display-name and generic `per` paths;
+    // Rust's provider matrix separately covers every sanctioned pair.
+    corpus.extend(
+        [
+            "af", "am", "bo", "bs-Latn", "bs-Cyrl", "ceb", "chr", "cy", "dz", "ee", "ga",
+            "gv", "haw", "ig", "kl", "ln", "mn", "mt", "om", "se", "si", "so", "to", "ug",
+            "wae", "wo", "xh", "yi", "yo", "zu", "sr-Latn", "zh-TW",
+        ]
+        .into_iter()
+        .map(|locale| {
+            format!(
+                "new Intl.NumberFormat('{locale}',{{style:'unit',unit:'gigabyte-per-acre',unitDisplay:'long'}}).format(2)"
+            )
+        }),
+    );
     assert_matches_node(&corpus);
 }
 

@@ -271,6 +271,9 @@ pub struct NumberFormatProviderCoverage {
     pub percent_patterns: NumberFormatCoverageCount,
     /// Every simple unit, display width and reachable plural category.
     pub simple_unit_patterns: NumberFormatCoverageCount,
+    /// Every sanctioned denominator and display width. Each data-backed cell
+    /// composes every sanctioned numerator from its localized simple pattern.
+    pub generic_compound_patterns: NumberFormatCoverageCount,
 }
 
 /// The centralized locale-data provider.
@@ -754,6 +757,28 @@ impl LocaleDataProvider {
                 }
             }
         }
+        let mut generic_compound_patterns = NumberFormatCoverageCount::default();
+        let generic_cells_per_width = crate::NumberFormatUnit::ALL
+            .len()
+            .saturating_mul(crate::NumberFormatUnit::ALL.len())
+            .saturating_mul(plural_categories.len());
+        for display in [
+            crate::NumberUnitDisplay::Long,
+            crate::NumberUnitDisplay::Short,
+            crate::NumberUnitDisplay::Narrow,
+        ] {
+            generic_compound_patterns.total += generic_cells_per_width;
+            // A validated table record contains every numerator, denominator
+            // and plural form. Generic composition never delegates to the
+            // simple-unit compatibility path.
+            if unit_patterns::has_cldr_full_generic_compound_data(
+                locale_name,
+                crate::NumberFormatUnit::ALL[0],
+                display,
+            ) {
+                generic_compound_patterns.data_backed += generic_cells_per_width;
+            }
+        }
         let currency_patterns = [
             self.number_currency_pattern(
                 locale_name,
@@ -793,6 +818,7 @@ impl LocaleDataProvider {
                 total: percent_patterns.len(),
             },
             simple_unit_patterns,
+            generic_compound_patterns,
         })
     }
 
@@ -1854,38 +1880,21 @@ impl LocaleDataProvider {
                 suffix_separator: " ",
                 suffix: "公里",
             },
-            (_, Short) => NumberCompoundUnitPattern {
-                prefix: "",
-                prefix_separator: "",
-                suffix_separator: " ",
-                suffix: "km/h",
-            },
-            (_, Narrow) => NumberCompoundUnitPattern {
-                prefix: "",
-                prefix_separator: "",
-                suffix_separator: "",
-                suffix: "km/h",
-            },
-            (_, Long) => NumberCompoundUnitPattern {
-                prefix: "",
-                prefix_separator: "",
-                suffix_separator: " ",
-                suffix: if plural == One {
-                    "kilometer per hour"
-                } else {
-                    "kilometers per hour"
-                },
-            },
+            // The direct `speed-kilometer-per-hour` record is only an
+            // optimization for the explicitly localized shapes above. All
+            // other supported locales continue through the complete CLDR
+            // generic-compound table instead of receiving an English form.
+            _ => return None,
         })
     }
 
-    /// Returns the CLDR-composed generic `-per-` unit pattern when its two
-    /// simple-unit records are bundled, or the provider's bounded fallback.
+    /// Returns the CLDR-composed generic `-per-` unit pattern.
     ///
-    /// The public NumberFormat constructor must accept every sanctioned pair.
-    /// A partially generated unit category must not combine English labels
-    /// with a localized CLDR connector, so such a pair deliberately stays on
-    /// the complete English fallback.
+    /// Every resolved CLDR locale carries a generic `per` record and a
+    /// localized display name for each sanctioned denominator. Supported
+    /// NumberFormat locales therefore never cross this method's English
+    /// compatibility boundary merely because a direct `perUnitPattern` is
+    /// absent.
     pub(crate) fn number_generic_compound_unit_pattern(
         self,
         locale: &str,
@@ -1894,6 +1903,15 @@ impl LocaleDataProvider {
         display: crate::NumberUnitDisplay,
         plural: crate::PluralCategory,
     ) -> NumberGenericCompoundUnitPattern {
+        if let Some(pattern) = unit_patterns::cldr_full_generic_compound_unit_pattern(
+            locale,
+            numerator,
+            denominator,
+            display,
+            plural,
+        ) {
+            return pattern;
+        }
         if let Some(pattern) = cldr_french_generic_compound_unit_pattern(
             locale,
             numerator,
@@ -2012,59 +2030,23 @@ impl LocaleDataProvider {
             return pattern;
         }
 
-        let suffix = match display {
-            crate::NumberUnitDisplay::Long => format!(
-                "{} per {}",
-                english_number_unit_pattern(
-                    numerator,
-                    crate::NumberUnitDisplay::Long,
-                    plural == crate::PluralCategory::One,
-                )
-                .suffix,
-                english_number_unit_pattern(denominator, crate::NumberUnitDisplay::Long, true)
-                    .suffix,
-            ),
-            crate::NumberUnitDisplay::Short => {
-                format!(
-                    "{}/{}",
-                    english_number_unit_pattern(numerator, crate::NumberUnitDisplay::Short, false,)
-                        .suffix,
-                    english_number_unit_pattern(
-                        denominator,
-                        crate::NumberUnitDisplay::Narrow,
-                        true,
-                    )
-                    .suffix,
-                )
-            }
-            crate::NumberUnitDisplay::Narrow => {
-                format!(
-                    "{}/{}",
-                    english_number_unit_pattern(
-                        numerator,
-                        crate::NumberUnitDisplay::Narrow,
-                        false,
-                    )
-                    .suffix,
-                    english_number_unit_pattern(
-                        denominator,
-                        crate::NumberUnitDisplay::Narrow,
-                        true,
-                    )
-                    .suffix,
-                )
-            }
-        };
-        NumberGenericCompoundUnitPattern {
-            prefix: String::new(),
-            prefix_separator: String::new(),
-            suffix_separator: if display == crate::NumberUnitDisplay::Narrow {
-                String::new()
-            } else {
-                " ".into()
-            },
-            suffix,
-        }
+        unreachable!(
+            "every resolved NumberFormat locale must have pinned CLDR generic-compound data"
+        )
+    }
+
+    /// Whether a generic compound's full CLDR numerator pattern hides the
+    /// formatted number. This is a property of the selected plural form, not
+    /// a compatibility fallback.
+    pub(crate) fn generic_compound_unit_hides_number(
+        self,
+        locale: &str,
+        numerator: crate::NumberFormatUnit,
+        display: crate::NumberUnitDisplay,
+        plural: crate::PluralCategory,
+    ) -> bool {
+        unit_patterns::cldr_full_generic_compound_hides_number(locale, numerator, display, plural)
+            .unwrap_or(false)
     }
 
     /// Returns the CLDR compact-decimal scale and suffix for one magnitude.

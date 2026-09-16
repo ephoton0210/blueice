@@ -14,6 +14,7 @@ use super::{
 };
 
 mod full_cldr;
+mod full_cldr_compound;
 
 /// Composes a localized generic compound from the complete numerator pattern.
 ///
@@ -307,6 +308,10 @@ pub(super) use caucasian::{
 };
 pub(super) use east_slavic::{
     cldr_belarusian_additional_unit_pattern, cldr_belarusian_generic_compound_unit_pattern,
+};
+pub(super) use full_cldr_compound::{
+    cldr_full_generic_compound_hides_number, cldr_full_generic_compound_unit_pattern,
+    has_cldr_full_generic_compound_data,
 };
 pub(super) use greek::{
     cldr_greek_additional_unit_pattern, cldr_greek_generic_compound_unit_pattern,
