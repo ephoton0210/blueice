@@ -611,6 +611,56 @@ fn formats_provider_selected_compact_patterns_as_typed_parts() {
     )
     .unwrap();
     assert_eq!(korean.format_f64(98_765_432.0).unwrap(), "9877만");
+
+    let swahili = NumberFormat::try_new(
+        &[canonicalize("sw").unwrap()],
+        NumberFormatOptions {
+            notation: NumberNotation::Compact,
+            compact_display: NumberCompactDisplay::Long,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(swahili.format_f64(1_200.0).unwrap(), "elfu 1.2");
+    assert_eq!(
+        swahili
+            .format_to_parts_f64(1_200.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::Compact, "elfu".into()),
+            (NumberFormatPartKind::Literal, " ".into()),
+            (NumberFormatPartKind::Integer, "1".into()),
+            (NumberFormatPartKind::Decimal, ".".into()),
+            (NumberFormatPartKind::Fraction, "2".into()),
+        ]
+    );
+    let hebrew = NumberFormat::try_new(
+        &[canonicalize("he").unwrap()],
+        NumberFormatOptions {
+            notation: NumberNotation::Compact,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(hebrew.format_f64(1_200.0).unwrap(), "1.2K\u{200f}");
+    assert_eq!(
+        hebrew
+            .format_to_parts_f64(1_200.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::Integer, "1".into()),
+            (NumberFormatPartKind::Decimal, ".".into()),
+            (NumberFormatPartKind::Fraction, "2".into()),
+            (NumberFormatPartKind::Compact, "K".into()),
+            (NumberFormatPartKind::Literal, "\u{200f}".into()),
+        ]
+    );
 }
 
 #[test]
@@ -656,7 +706,7 @@ fn sources_non_english_range_glue_from_the_shared_provider() {
                 NumberFormatInput::Number(2.0),
             )
             .unwrap(),
-        "1–2\u{a0}JP¥"
+        "1–2\u{a0}JPY"
     );
 
     let japanese_dollar = NumberFormat::try_new_with_currency(
@@ -3347,6 +3397,66 @@ fn formats_currency_patterns_digits_and_parts_through_the_number_service() {
     assert_eq!(
         french.format_decimal("1234.5").unwrap(),
         "1\u{202f}234,50\u{a0}€"
+    );
+
+    let canadian_us_dollar = |display| {
+        NumberFormat::try_new_with_currency(
+            &[canonicalize("fr-CA").unwrap()],
+            NumberFormatOptions {
+                style: NumberFormatStyle::Currency,
+                ..Default::default()
+            },
+            1,
+            None,
+            None,
+            Default::default(),
+            Some(NumberCurrencyOptions {
+                code: "USD".into(),
+                display,
+                sign: NumberCurrencySign::Standard,
+            }),
+        )
+        .unwrap()
+    };
+    assert_eq!(
+        canadian_us_dollar(NumberCurrencyDisplay::Symbol)
+            .format_decimal("1234.5")
+            .unwrap(),
+        "1\u{a0}234,50\u{a0}$\u{a0}US"
+    );
+    assert_eq!(
+        canadian_us_dollar(NumberCurrencyDisplay::NarrowSymbol)
+            .format_decimal("1234.5")
+            .unwrap(),
+        "1\u{a0}234,50\u{a0}$"
+    );
+    assert_eq!(
+        canadian_us_dollar(NumberCurrencyDisplay::Code)
+            .format_decimal("1234.5")
+            .unwrap(),
+        "1\u{a0}234,50\u{a0}USD"
+    );
+
+    let arabic_code = NumberFormat::try_new_with_currency(
+        &[canonicalize("ar-u-nu-arab").unwrap()],
+        NumberFormatOptions {
+            style: NumberFormatStyle::Currency,
+            ..Default::default()
+        },
+        1,
+        None,
+        None,
+        Default::default(),
+        Some(NumberCurrencyOptions {
+            code: "USD".into(),
+            display: NumberCurrencyDisplay::Code,
+            sign: NumberCurrencySign::Standard,
+        }),
+    )
+    .unwrap();
+    assert_eq!(
+        arabic_code.format_decimal("1234").unwrap(),
+        "\u{200f}١٬٢٣٤٫٠٠\u{a0}USD"
     );
 }
 

@@ -132,6 +132,10 @@ fn carries_the_compact_exponent_and_supplemental_manx_rules_into_selection() {
         PluralCategory::Many
     );
     assert_eq!(
+        french_rules.select_decimal("1.2").unwrap(),
+        PluralCategory::One
+    );
+    assert_eq!(
         french_rules.select_compact_f64(0.0, false).unwrap(),
         PluralCategory::One
     );

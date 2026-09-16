@@ -902,10 +902,9 @@ pub struct NumberFormat {
     // `exponential` symbol. The shared provider keeps that typed record with
     // the exponent-minus bidi/sign shape selected for this formatter.
     scientific_symbols: crate::locale_data::NumberScientificSymbols,
-    // Unit and currency-name selection are CLDR cardinal-plural operations
-    // over the rounded decimal that is actually rendered. Keeping the shared
-    // service here avoids reducing every locale to an English one/other
-    // distinction while preserving the existing NumberFormat rounding path.
+    // Unit/currency-name selection and compact notation use CLDR plural
+    // operations over the rounded decimal. Compact additionally carries the
+    // provider-selected exponent into its plural operands.
     display_plural_rules: Option<PluralRules>,
     negotiation: NumberFormatLocaleNegotiation,
     resolved: ResolvedNumberFormatOptions,
@@ -1127,21 +1126,21 @@ impl NumberFormat {
             rounding_mode: options.rounding_mode,
             sign_display: options.sign_display,
         };
-        let display_plural_rules = matches!(
+        let display_plural_rules = (matches!(
             options.style,
             NumberFormatStyle::Unit | NumberFormatStyle::Currency
-        )
-        .then(|| {
-            PluralRules::try_new(
-                std::slice::from_ref(&selected),
-                PluralRulesOptions {
-                    locale_matcher: options.locale_matcher,
-                    ..Default::default()
-                },
-            )
-            .map_err(|_| NumberFormatError::DataUnavailable)
-        })
-        .transpose()?;
+        ) || options.notation == NumberNotation::Compact)
+            .then(|| {
+                PluralRules::try_new(
+                    std::slice::from_ref(&selected),
+                    PluralRulesOptions {
+                        locale_matcher: options.locale_matcher,
+                        ..Default::default()
+                    },
+                )
+                .map_err(|_| NumberFormatError::DataUnavailable)
+            })
+            .transpose()?;
         Ok(Self {
             formatter,
             decimal_digits,
@@ -1405,6 +1404,7 @@ impl NumberFormat {
                                     &mut end_with_range_affix,
                                     currency,
                                     &self.resolved.locale,
+                                    &self.resolved.numbering_system,
                                     negative,
                                     range_plural_category,
                                 );
@@ -1668,6 +1668,7 @@ impl NumberFormat {
         let compact_scale = (self.resolved.notation == NumberNotation::Compact).then(|| {
             crate::locale_data_provider().compact_number_pattern(
                 &self.resolved.locale,
+                &self.resolved.numbering_system,
                 compact_magnitude,
                 self.compact_display,
                 PluralCategory::Other,
@@ -1735,18 +1736,35 @@ impl NumberFormat {
             value.trim_end_if_integer();
         }
         value.pad_start(self.resolved.minimum_integer_digits.into());
-        let display_plural_category = self
-            .display_plural_rules
+        let display_plural_category = matches!(
+            self.resolved.style,
+            NumberFormatStyle::Unit | NumberFormatStyle::Currency
+        )
+        .then(|| {
+            self.display_plural_rules
+                .as_ref()
+                .expect("unit/currency formatting constructs plural rules")
+                .select_decimal(&value.to_string())
+        })
+        .transpose()
+        .map_err(|_| NumberFormatError::FormattingFailed)?;
+        let compact_plural_category = compact_scale
             .as_ref()
-            .map(|rules| rules.select_decimal(&value.to_string()))
+            .map(|_| {
+                self.display_plural_rules
+                    .as_ref()
+                    .expect("compact formatting constructs plural rules")
+                    .select_decimal(&value.to_string())
+            })
             .transpose()
             .map_err(|_| NumberFormatError::FormattingFailed)?;
         let compact = compact_scale.as_ref().and_then(|_| {
             crate::locale_data_provider().compact_number_pattern(
                 &self.resolved.locale,
+                &self.resolved.numbering_system,
                 compact_magnitude,
                 self.compact_display,
-                display_plural_category.unwrap_or(PluralCategory::Other),
+                compact_plural_category.unwrap_or(PluralCategory::Other),
                 matches!(
                     self.resolved.style,
                     NumberFormatStyle::Decimal | NumberFormatStyle::Unit
@@ -1813,10 +1831,70 @@ impl NumberFormat {
         // percent, and unit patterns therefore wrap the completed compact
         // number rather than leaving its suffix after a trailing affix.
         if let Some(pattern) = compact {
-            if !pattern.separator.is_empty() {
-                collector.push(NumberFormatPartKind::Literal, &pattern.separator);
+            if !pattern.prefix_leading_literal.is_empty() {
+                let index = collector
+                    .parts
+                    .iter()
+                    .take_while(|part| {
+                        matches!(
+                            part.kind,
+                            NumberFormatPartKind::MinusSign
+                                | NumberFormatPartKind::PlusSign
+                                | NumberFormatPartKind::Literal
+                        )
+                    })
+                    .count();
+                collector.parts.insert(
+                    index,
+                    NumberFormatPart {
+                        kind: NumberFormatPartKind::Literal,
+                        value: pattern.prefix_leading_literal,
+                    },
+                );
             }
-            collector.push(NumberFormatPartKind::Compact, &pattern.suffix);
+            if !pattern.prefix.is_empty() {
+                let index = collector
+                    .parts
+                    .iter()
+                    .take_while(|part| {
+                        matches!(
+                            part.kind,
+                            NumberFormatPartKind::MinusSign
+                                | NumberFormatPartKind::PlusSign
+                                | NumberFormatPartKind::Literal
+                        )
+                    })
+                    .count();
+                let mut prefix = vec![NumberFormatPart {
+                    kind: NumberFormatPartKind::Compact,
+                    value: pattern.prefix,
+                }];
+                if !pattern.prefix_separator.is_empty() {
+                    prefix.push(NumberFormatPart {
+                        kind: NumberFormatPartKind::Literal,
+                        value: pattern.prefix_separator,
+                    });
+                }
+                if !pattern.prefix_trailing_literal.is_empty() {
+                    prefix.push(NumberFormatPart {
+                        kind: NumberFormatPartKind::Literal,
+                        value: pattern.prefix_trailing_literal,
+                    });
+                }
+                collector.parts.splice(index..index, prefix);
+            }
+            if !pattern.suffix_separator.is_empty() {
+                collector.push(NumberFormatPartKind::Literal, &pattern.suffix_separator);
+            }
+            if !pattern.suffix.is_empty() {
+                collector.push(NumberFormatPartKind::Compact, &pattern.suffix);
+            }
+            if !pattern.suffix_trailing_literal.is_empty() {
+                collector.push(
+                    NumberFormatPartKind::Literal,
+                    &pattern.suffix_trailing_literal,
+                );
+            }
         }
         // Only a unit pattern that suppresses its numeric placeholder needs
         // the undecorated core later, when `formatRange` reconstructs the
@@ -1833,6 +1911,7 @@ impl NumberFormat {
                 &mut collector.parts,
                 currency,
                 &self.resolved.locale,
+                &self.resolved.numbering_system,
                 negative,
                 display_plural_category.unwrap_or(PluralCategory::Other),
             );
@@ -1941,6 +2020,7 @@ impl NumberFormat {
                 &mut parts,
                 currency,
                 &self.resolved.locale,
+                &self.resolved.numbering_system,
                 negative,
                 PluralCategory::Other,
             );
@@ -2355,90 +2435,49 @@ fn apply_currency_pattern(
     parts: &mut Vec<NumberFormatPart>,
     currency: &NumberCurrencyOptions,
     locale: &str,
+    numbering_system: &str,
     negative: bool,
     plural: PluralCategory,
 ) {
-    let mut used_provider_pattern = false;
-    if let Some(pattern) = crate::locale_data_provider().number_currency_pattern(
-        locale,
-        &currency.code,
-        currency.display,
-        currency.sign == NumberCurrencySign::Accounting
-            && currency.display != NumberCurrencyDisplay::Name,
-        negative,
-        plural,
-    ) {
-        used_provider_pattern = true;
-        if pattern.consumes_decimal_sign {
-            parts.retain(|part| part.kind != NumberFormatPartKind::MinusSign);
-        }
-        let index = parts
-            .iter()
-            .take_while(|part| {
-                matches!(
-                    part.kind,
-                    NumberFormatPartKind::MinusSign
-                        | NumberFormatPartKind::PlusSign
-                        | NumberFormatPartKind::Literal
-                )
-            })
-            .count();
-        let before = pattern
-            .before_number
-            .into_iter()
-            .map(number_currency_pattern_part);
-        parts.splice(index..index, before);
-        parts.extend(
-            pattern
-                .after_number
-                .into_iter()
-                .map(number_currency_pattern_part),
-        );
-    } else {
-        let symbol = currency_symbol(currency, locale);
-        let currency_part = NumberFormatPart {
-            kind: NumberFormatPartKind::Currency,
-            value: symbol,
-        };
-        if crate::locale_data_provider().fallback_currency_is_trailing(locale) {
-            parts.push(NumberFormatPart {
-                kind: NumberFormatPartKind::Literal,
-                value: "\u{a0}".into(),
-            });
-            parts.push(currency_part);
-        } else {
-            let index = parts
-                .iter()
-                .take_while(|part| {
-                    matches!(
-                        part.kind,
-                        NumberFormatPartKind::MinusSign
-                            | NumberFormatPartKind::PlusSign
-                            | NumberFormatPartKind::Literal
-                    )
-                })
-                .count();
-            parts.insert(index, currency_part);
-        }
-    }
-    let accounting_fallback = negative
-        && currency.sign == NumberCurrencySign::Accounting
-        && currency.display != NumberCurrencyDisplay::Name
-        && crate::locale_data_provider().fallback_accounting_uses_parentheses(locale);
-    if accounting_fallback && !used_provider_pattern {
-        parts.retain(|part| part.kind != NumberFormatPartKind::MinusSign);
-        parts.insert(
-            0,
-            NumberFormatPart {
-                kind: NumberFormatPartKind::Literal,
-                value: "(".into(),
+    let pattern = crate::locale_data_provider()
+        .number_currency_pattern(
+            locale,
+            crate::locale_data::NumberCurrencyPatternRequest {
+                numbering_system,
+                code: &currency.code,
+                display: currency.display,
+                accounting: currency.sign == NumberCurrencySign::Accounting
+                    && currency.display != NumberCurrencyDisplay::Name,
+                negative,
+                plural,
             },
-        );
-        parts.push(NumberFormatPart {
-            kind: NumberFormatPartKind::Literal,
-            value: ")".into(),
-        });
+        )
+        .expect("every resolved NumberFormat locale has pinned CLDR currency data");
+    if pattern.consumes_decimal_sign {
+        parts.retain(|part| part.kind != NumberFormatPartKind::MinusSign);
     }
+    let index = parts
+        .iter()
+        .take_while(|part| {
+            matches!(
+                part.kind,
+                NumberFormatPartKind::MinusSign
+                    | NumberFormatPartKind::PlusSign
+                    | NumberFormatPartKind::Literal
+            )
+        })
+        .count();
+    let before = pattern
+        .before_number
+        .into_iter()
+        .map(number_currency_pattern_part);
+    parts.splice(index..index, before);
+    parts.extend(
+        pattern
+            .after_number
+            .into_iter()
+            .map(number_currency_pattern_part),
+    );
 }
 
 fn number_currency_pattern_part(piece: NumberCurrencyPatternPiece) -> NumberFormatPart {
@@ -2711,20 +2750,6 @@ fn range_semantic_affix_suffix_lengths(
     };
     let lengths @ (start_length, end_length) = (affix_length(start), affix_length(end));
     (start_length < start.len() && end_length < end.len()).then_some(lengths)
-}
-
-fn currency_symbol(currency: &NumberCurrencyOptions, locale: &str) -> String {
-    match currency.display {
-        NumberCurrencyDisplay::Code => currency.code.clone(),
-        NumberCurrencyDisplay::Name => {
-            crate::locale_data_provider().fallback_currency_name(&currency.code)
-        }
-        NumberCurrencyDisplay::Symbol | NumberCurrencyDisplay::NarrowSymbol => {
-            crate::locale_data_provider()
-                .currency_symbol(locale, &currency.code, currency.display)
-                .unwrap_or_else(|| currency.code.clone())
-        }
-    }
 }
 
 /// The exact CLDR decimal symbols and digits selected before formatter

@@ -166,6 +166,7 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
     let mut decimal_locales = 0;
     let mut incomplete_decimal_locales = Vec::new();
     let mut scientific_symbols = (0, 0);
+    let mut compact_patterns = (0, 0);
     let mut currency_patterns = (0, 0);
     let mut percent_patterns = (0, 0);
     let mut simple_unit_patterns = (0, 0);
@@ -182,6 +183,8 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
         }
         scientific_symbols.0 += coverage.scientific_symbols.data_backed;
         scientific_symbols.1 += coverage.scientific_symbols.total;
+        compact_patterns.0 += coverage.compact_patterns.data_backed;
+        compact_patterns.1 += coverage.compact_patterns.total;
         currency_patterns.0 += coverage.currency_patterns.data_backed;
         currency_patterns.1 += coverage.currency_patterns.total;
         percent_patterns.0 += coverage.percent_patterns.data_backed;
@@ -213,6 +216,7 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
         incomplete_decimal_locales.join(", ")
     );
     assert_eq!(currency_patterns.0, currency_patterns.1);
+    assert_eq!(compact_patterns.0, compact_patterns.1);
     assert_eq!(percent_patterns.0, percent_patterns.1);
     assert_eq!(scientific_symbols.0, scientific_symbols.1);
     assert_eq!(
@@ -231,10 +235,12 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
             .saturating_mul(blueice_ecma402::NumberFormatUnit::ALL.len())
     );
     eprintln!(
-        "NumberFormat provider coverage: decimal {decimal_locales}/{}, scientific symbols {}/{}, currency {}/{}, percent {}/{}, simple units {}/{} ({}%), generic compound denominators {}/{} ({}%)",
+        "NumberFormat provider coverage: decimal {decimal_locales}/{}, scientific symbols {}/{}, compact {}/{}, currency {}/{}, percent {}/{}, simple units {}/{} ({}%), generic compound denominators {}/{} ({}%)",
         provider.number_format_locales().len(),
         scientific_symbols.0,
         scientific_symbols.1,
+        compact_patterns.0,
+        compact_patterns.1,
         currency_patterns.0,
         currency_patterns.1,
         percent_patterns.0,

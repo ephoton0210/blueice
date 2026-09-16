@@ -2,16 +2,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Pinned CLDR decimal-symbol data for every supported NumberFormat locale.
+//! Pinned CLDR decimal-symbol data for every resolved CLDR NumberFormat locale.
 //!
 //! ICU4X's compact baked decimal payload has intentionally sparse locale
 //! coverage. This table is generated from Unicode CLDR JSON 48.2.1 (commit
-//! 26a79cb42bfcc90def764102aa2af126d9ef3108), reading each advertised
+//! 26a79cb42bfcc90def764102aa2af126d9ef3108), reading every resolved
 //! `cldr-numbers-full/main/{locale}/numbers.json` symbols, scientific
-//! notation, and standard decimal-format records. It preserves every advertised locale and every
-//! direct language record that the former ICU4X provider exposed. It contains
-//! a row for every CLDR
-//! `symbols-numberSystem-*` record in that inventory. The derived data is
+//! notation, and standard decimal-format records. It contains a row for every
+//! CLDR `symbols-numberSystem-*` record in that inventory. The derived data is
 //! distributed under Unicode License V3; see `unit_patterns/LICENSE-CLDR`.
 
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -123,7 +121,7 @@ fn pinned_decimal_symbols() -> &'static [PinnedDecimalSymbols] {
                 .collect::<Vec<_>>();
             assert_eq!(
                 records.len(),
-                197,
+                910,
                 "embedded CLDR decimal-symbol record count must remain pinned"
             );
             records
@@ -131,12 +129,25 @@ fn pinned_decimal_symbols() -> &'static [PinnedDecimalSymbols] {
         .as_slice()
 }
 
-/// Returns the CLDR default numbering system for an advertised language.
+fn locale_candidates(locale: &str) -> Vec<&str> {
+    let locale = locale.split_once("-u-").map_or(locale, |(base, _)| base);
+    let mut candidates = vec![locale];
+    let mut candidate = locale;
+    while let Some((parent, _)) = candidate.rsplit_once('-') {
+        candidates.push(parent);
+        candidate = parent;
+    }
+    candidates
+}
+
+/// Returns the CLDR default numbering system for a resolved locale.
 pub(super) fn default_numbering_system(locale: &str) -> Option<&'static str> {
-    pinned_decimal_symbols()
-        .iter()
-        .find(|record| record.locale == locale)
-        .map(|record| record.default_numbering_system.as_str())
+    locale_candidates(locale).into_iter().find_map(|candidate| {
+        pinned_decimal_symbols()
+            .iter()
+            .find(|record| record.locale.eq_ignore_ascii_case(candidate))
+            .map(|record| record.default_numbering_system.as_str())
+    })
 }
 
 /// Returns a locale's CLDR symbols for an explicitly resolved numbering
@@ -147,14 +158,22 @@ pub(super) fn decimal_symbols(
     numbering_system: &str,
 ) -> Option<NumberDecimalSymbols> {
     let records = pinned_decimal_symbols();
-    let default_numbering_system = default_numbering_system(locale)?;
-    let record = records
-        .iter()
-        .find(|record| record.locale == locale && record.numbering_system == numbering_system)
-        .or_else(|| {
-            records.iter().find(|record| {
-                record.locale == locale && record.numbering_system == default_numbering_system
-            })
+    let record = locale_candidates(locale)
+        .into_iter()
+        .find_map(|candidate| {
+            let default_numbering_system = default_numbering_system(candidate)?;
+            records
+                .iter()
+                .find(|record| {
+                    record.locale.eq_ignore_ascii_case(candidate)
+                        && record.numbering_system == numbering_system
+                })
+                .or_else(|| {
+                    records.iter().find(|record| {
+                        record.locale.eq_ignore_ascii_case(candidate)
+                            && record.numbering_system == default_numbering_system
+                    })
+                })
         })?;
     let (primary_grouping, secondary_grouping) = grouping_sizes(&record.standard_pattern)?;
     Some(NumberDecimalSymbols {
@@ -228,5 +247,12 @@ mod tests {
         let estonian = decimal_symbols("et", "latn").expect("Estonian is pinned");
         assert_eq!(estonian.exponent_separator, "×10^");
         assert_eq!(estonian.exponent_minus_sign, "−");
+    }
+
+    #[test]
+    fn retains_region_specific_decimal_separators() {
+        let french_canadian = decimal_symbols("fr-CA", "latn").expect("fr-CA is pinned");
+        assert_eq!(french_canadian.grouping_separator, "\u{a0}");
+        assert_eq!(french_canadian.decimal_separator, ",");
     }
 }

@@ -309,10 +309,17 @@ fn number_format_matrix_matches_node() {
         "new Intl.NumberFormat('ar-u-nu-arab',{maximumFractionDigits:1}).format(1234.5)",
         "new Intl.NumberFormat('th-u-nu-thai',{useGrouping:false,minimumFractionDigits:2,maximumFractionDigits:2}).format(1007.5)",
         "new Intl.NumberFormat('hi-IN').format(1234567.89)",
-        // Currency and percent positive/negative pattern data.
+        // Full-CLDR currency display, alpha spacing, and positive/negative
+        // pattern data. These include a regional symbol distinction, narrow
+        // fallback, ISO-code alpha adjacency and Arabic digits/bidi controls.
         "new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',currencySign:'accounting'}).format(-987)",
         "new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(1234.5)",
         "new Intl.NumberFormat('ja-JP',{style:'currency',currency:'JPY'}).format(-1234.5)",
+        "new Intl.NumberFormat('fr-CA',{style:'currency',currency:'USD',currencyDisplay:'symbol'}).format(1234.5)",
+        "new Intl.NumberFormat('fr-CA',{style:'currency',currency:'USD',currencyDisplay:'narrowSymbol'}).format(1234.5)",
+        "new Intl.NumberFormat('fr-CA',{style:'currency',currency:'USD',currencyDisplay:'code'}).format(1234.5)",
+        "new Intl.NumberFormat('fr-CA',{style:'currency',currency:'USD',currencyDisplay:'name'}).format(2)",
+        "new Intl.NumberFormat('ar-u-nu-arab',{style:'currency',currency:'USD',currencyDisplay:'code'}).formatToParts(1234).map(function(part){return part.type+':'+part.value}).join('|')",
         "new Intl.NumberFormat('fr',{style:'percent',maximumFractionDigits:1}).format(-12.345)",
         // Simple and compound unit labels from raw unit data.
         "new Intl.NumberFormat('en',{style:'unit',unit:'meter',unitDisplay:'long'}).format(2)",
@@ -322,6 +329,8 @@ fn number_format_matrix_matches_node() {
         "new Intl.NumberFormat('ja',{style:'unit',unit:'liter',unitDisplay:'narrow'}).format(3)",
         // Compact/scientific output and typed part boundaries.
         "new Intl.NumberFormat('en',{notation:'compact'}).formatToParts(9876).map(function(part){return part.type+':'+part.value}).join('|')",
+        "new Intl.NumberFormat('sw',{notation:'compact',compactDisplay:'long'}).formatToParts(1200).map(function(part){return part.type+':'+part.value}).join('|')",
+        "new Intl.NumberFormat('he',{notation:'compact'}).formatToParts(1200).map(function(part){return part.type+':'+part.value}).join('|')",
         "new Intl.NumberFormat('de',{notation:'engineering'}).formatToParts(.000345).map(function(part){return part.type+':'+part.value}).join('|')",
         "new Intl.NumberFormat('en',{notation:'scientific'}).format(543211.1)",
         // CLDR scientific separators, mathematical minus signs, and bidi

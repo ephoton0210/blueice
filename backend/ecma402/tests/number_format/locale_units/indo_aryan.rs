@@ -37,7 +37,7 @@ fn sources_urdu_cldr_bidi_plural_and_per_patterns() {
         formatter("ur-IN", NumberFormatUnit::Celsius, NumberUnitDisplay::Short)
             .format_f64(2.0)
             .unwrap(),
-        "2\u{200e}°C"
+        "۲\u{200e}°C"
     );
     assert_eq!(
         formatter("ur", NumberFormatUnit::Byte, NumberUnitDisplay::Narrow)

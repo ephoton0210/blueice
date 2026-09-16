@@ -10,16 +10,11 @@
 //! does not negotiate locales: `ResolveLocale` remains a separate layer.
 
 use fixed_decimal::Decimal;
-use icu_decimal::provider::{Baked as DecimalData, DecimalCompactLongV1, DecimalCompactShortV1};
 use icu_experimental::{
     dimension::{
         currency::CurrencyType,
         provider::{
-            currency::{
-                essentials::CurrencyEssentialsV1, extended::CurrencyExtendedDataV1,
-                fractions::CurrencyFractionsV1, patterns::CurrencyPatternsDataV1,
-                symbols::CurrencySymbolsV1,
-            },
+            currency::fractions::CurrencyFractionsV1,
             percent::PercentEssentialsV1,
             units::{
                 categorized_display_names::{
@@ -47,6 +42,8 @@ use icu_provider::{
 };
 use writeable::Writeable;
 
+mod compact_patterns;
+mod currency_patterns;
 mod decimal_symbols;
 mod range_patterns;
 mod unit_patterns;
@@ -268,7 +265,10 @@ pub struct NumberFormatProviderCoverage {
     /// Scientific separator/minus records for every supported numbering
     /// system after the same locale-default resolution as decimal symbols.
     pub scientific_symbols: NumberFormatCoverageCount,
-    /// Standard and accounting USD pattern lookups.
+    /// Every pinned CLDR compact plural/magnitude/numbering-system record.
+    pub compact_patterns: NumberFormatCoverageCount,
+    /// Every currency code, display mode, pattern/sign form, plural-name
+    /// form, and supported numbering-system selection.
     pub currency_patterns: NumberFormatCoverageCount,
     /// Unsigned and signed percent-pattern lookups.
     pub percent_patterns: NumberFormatCoverageCount,
@@ -345,6 +345,16 @@ pub(crate) struct NumberCurrencyPattern {
     /// Whether the selected CLDR pattern supplied the negative presentation,
     /// so NumberFormat must not retain its decimal formatter minus part.
     pub(crate) consumes_decimal_sign: bool,
+}
+
+/// Currency-specific choices that jointly select one pinned CLDR pattern.
+pub(crate) struct NumberCurrencyPatternRequest<'a> {
+    pub(crate) numbering_system: &'a str,
+    pub(crate) code: &'a str,
+    pub(crate) display: crate::NumberCurrencyDisplay,
+    pub(crate) accounting: bool,
+    pub(crate) negative: bool,
+    pub(crate) plural: crate::PluralCategory,
 }
 
 /// The two provider-owned connectors used by a formatted numeric range.
@@ -439,10 +449,20 @@ const fn is_bidi_control(character: char) -> bool {
 pub(crate) struct CompactNumberPattern {
     /// Decimal power removed from the source magnitude before formatting.
     pub(crate) divisor: i16,
-    /// Literal text between the compact magnitude and suffix.
-    pub(crate) separator: String,
+    /// Directional controls before a leading compact label.
+    pub(crate) prefix_leading_literal: String,
+    /// Leading compact label before the formatted magnitude.
+    pub(crate) prefix: String,
+    /// Directional controls after a leading compact label.
+    pub(crate) prefix_trailing_literal: String,
+    /// Literal text between a leading compact label and the magnitude.
+    pub(crate) prefix_separator: String,
+    /// Literal text between the magnitude and a trailing compact label.
+    pub(crate) suffix_separator: String,
     /// The compact suffix as an ECMA-402 `compact` part.
     pub(crate) suffix: String,
+    /// Directional controls after a trailing compact label.
+    pub(crate) suffix_trailing_literal: String,
     /// Whether this CLDR pattern intentionally omits the numeric placeholder.
     ///
     /// Exact-value patterns such as French long `mille` carry the entire
@@ -456,9 +476,7 @@ pub const fn locale_data_provider() -> LocaleDataProvider {
     LocaleDataProvider
 }
 
-/// Splits a rendered ICU currency pattern around the two fixed placeholders.
-///
-/// `CurrencyEssentialsV1` patterns contain exactly the number and currency
+/// Splits a rendered pinned-CLDR currency pattern around the two fixed
 /// placeholders. Keeping the split here preserves its CLDR literals as
 /// `formatToParts()` literal records instead of flattening them into a
 /// service-local prefix/suffix rule.
@@ -503,6 +521,25 @@ fn split_number_currency_pattern(
         after_number,
         consumes_decimal_sign,
     })
+}
+
+/// Replaces CLDR's numeric skeleton and currency sign with fixed internal
+/// placeholders before the currency pattern is split into typed parts.
+fn currency_pattern_with_placeholders(raw: &str) -> Option<String> {
+    let first = raw.find(['0', '#'])?;
+    let mut end = first;
+    for (offset, character) in raw[first..].char_indices() {
+        if matches!(character, '0' | '#' | ',' | '.') {
+            end = first + offset + character.len_utf8();
+        } else {
+            break;
+        }
+    }
+    let mut rendered = raw.to_owned();
+    rendered.replace_range(first..end, "﷐");
+    let currency = rendered.find('¤')?;
+    rendered.replace_range(currency..currency + '¤'.len_utf8(), "﷑");
+    (!rendered.contains('¤')).then_some(rendered)
 }
 
 fn push_currency_literal(pieces: &mut Vec<NumberCurrencyPatternPiece>, literal: &str) {
@@ -826,24 +863,22 @@ impl LocaleDataProvider {
                 generic_compound_patterns.data_backed += generic_cells_per_width;
             }
         }
-        let currency_patterns = [
-            self.number_currency_pattern(
-                locale_name,
-                "USD",
-                crate::NumberCurrencyDisplay::Symbol,
-                false,
-                false,
-                crate::PluralCategory::Other,
-            ),
-            self.number_currency_pattern(
-                locale_name,
-                "USD",
-                crate::NumberCurrencyDisplay::Symbol,
-                true,
-                true,
-                crate::PluralCategory::Other,
-            ),
-        ];
+        let compact_patterns = compact_patterns::compact_coverage(locale_name);
+        // Symbol, narrow-symbol, and code each select standard/accounting
+        // positive/negative patterns (12 cells). Name selects all six CLDR
+        // plural unit patterns. Every sanctioned numbering-system request
+        // uses its direct currency record or the CLDR latn fallback.
+        let currency_cells = currency_patterns::currency_code_count()
+            .saturating_mul(SUPPORTED_NUMBERING_SYSTEMS.len())
+            .saturating_mul(18);
+        let currency_patterns = NumberFormatCoverageCount {
+            data_backed: if currency_patterns::has_full_cldr_currency_data(locale_name) {
+                currency_cells
+            } else {
+                0
+            },
+            total: currency_cells,
+        };
         let percent_patterns = [
             self.number_percent_pattern(locale_name, false),
             self.number_percent_pattern(locale_name, true),
@@ -867,13 +902,8 @@ impl LocaleDataProvider {
         Some(NumberFormatProviderCoverage {
             decimal_symbols: self.supports_decimal_locale(locale.locale()),
             scientific_symbols,
-            currency_patterns: NumberFormatCoverageCount {
-                data_backed: currency_patterns
-                    .iter()
-                    .filter(|pattern| pattern.is_some())
-                    .count(),
-                total: currency_patterns.len(),
-            },
+            compact_patterns,
+            currency_patterns,
             percent_patterns: NumberFormatCoverageCount {
                 data_backed: percent_patterns
                     .iter()
@@ -893,7 +923,7 @@ impl LocaleDataProvider {
     /// of this capability check: returning root symbols for a supported
     /// language would make the result depend on a compact-data omission.
     pub fn supports_decimal_locale(self, locale: &IcuLocale) -> bool {
-        decimal_symbols::default_numbering_system(locale.id.language.as_str()).is_some()
+        decimal_symbols::default_numbering_system(&locale.to_string()).is_some()
     }
 
     /// Returns the fixed CLDR decimal symbols for a supported locale and
@@ -903,7 +933,7 @@ impl LocaleDataProvider {
         locale: &IcuLocale,
         numbering_system: &str,
     ) -> Option<decimal_symbols::NumberDecimalSymbols> {
-        decimal_symbols::decimal_symbols(locale.id.language.as_str(), numbering_system)
+        decimal_symbols::decimal_symbols(&locale.to_string(), numbering_system)
     }
 
     /// Returns the ten pinned CLDR decimal digits for a sanctioned simple
@@ -931,22 +961,6 @@ impl LocaleDataProvider {
         .map(|response| response.payload.get().resolve(currency).digits)
     }
 
-    /// Returns the localized CLDR currency symbol selected for a requested
-    /// symbol width.
-    ///
-    /// A missing record is meaningful: ECMA-402 falls back to the ISO code
-    /// rather than inventing a symbol. Currency names use their own plural
-    /// pattern data and deliberately remain outside this symbol query.
-    pub(crate) fn currency_symbol(
-        self,
-        locale: &str,
-        code: &str,
-        display: crate::NumberCurrencyDisplay,
-    ) -> Option<String> {
-        self.currency_symbol_record(locale, code, display)
-            .map(|(symbol, _, _)| symbol)
-    }
-
     /// Resolves the CLDR currency pattern around a decimal formatter's output.
     ///
     /// The result deliberately excludes the number placeholder. NumberFormat
@@ -957,150 +971,35 @@ impl LocaleDataProvider {
     pub(crate) fn number_currency_pattern(
         self,
         locale: &str,
-        code: &str,
-        display: crate::NumberCurrencyDisplay,
-        accounting: bool,
-        negative: bool,
-        plural: crate::PluralCategory,
+        request: NumberCurrencyPatternRequest<'_>,
     ) -> Option<NumberCurrencyPattern> {
-        let (currency, starts_with_letter, ends_with_letter) = match display {
+        let (currency, starts_with_letter, ends_with_letter) = match request.display {
             crate::NumberCurrencyDisplay::Name => {
-                return self.currency_name_pattern(locale, code, plural);
+                let currency =
+                    currency_patterns::currency_name(locale, request.code, request.plural);
+                let rendered = currency_patterns::currency_name_pattern(
+                    locale,
+                    request.numbering_system,
+                    request.plural,
+                )?;
+                let rendered = rendered.replace("{0}", "﷐").replace("{1}", "﷑");
+                return split_number_currency_pattern(&rendered, currency, false);
             }
-            crate::NumberCurrencyDisplay::Code => (code.to_owned(), true, true),
+            crate::NumberCurrencyDisplay::Code => (request.code.to_owned(), true, true),
             crate::NumberCurrencyDisplay::Symbol | crate::NumberCurrencyDisplay::NarrowSymbol => {
-                self.currency_symbol_record(locale, code, display)
-                    .unwrap_or_else(|| (code.to_owned(), true, true))
+                currency_patterns::currency_symbol(locale, request.code, request.display)
             }
         };
-        let locale = crate::canonicalize(locale).ok()?;
-        let data_locale = icu_locale_core::DataLocale::from(locale.locale().clone());
-        let response = <ExperimentalData as DataProvider<CurrencyEssentialsV1>>::load(
-            &ExperimentalData,
-            DataRequest {
-                id: DataIdentifierBorrowed::for_locale(&data_locale),
-                metadata: Default::default(),
-            },
-        )
-        .ok()?;
-        let essentials = response.payload.get();
-        let (pattern, consumes_decimal_sign) = if negative && accounting {
-            match essentials.get_negative_accounting(starts_with_letter, ends_with_letter) {
-                Some(pattern) => (pattern, true),
-                None => (
-                    essentials.get_positive_accounting(starts_with_letter, ends_with_letter),
-                    false,
-                ),
-            }
-        } else if negative {
-            match essentials.get_negative(starts_with_letter, ends_with_letter) {
-                Some(pattern) => (pattern, true),
-                None => (
-                    essentials.get_positive(starts_with_letter, ends_with_letter),
-                    false,
-                ),
-            }
-        } else if accounting {
-            (
-                essentials.get_positive_accounting(starts_with_letter, ends_with_letter),
-                false,
-            )
-        } else {
-            (
-                essentials.get_positive(starts_with_letter, ends_with_letter),
-                false,
-            )
-        };
-        let rendered = pattern
-            .interpolate(["\u{fdd0}", "\u{fdd1}"])
-            .write_to_string()
-            .into_owned();
+        let (raw_pattern, consumes_decimal_sign) = currency_patterns::currency_pattern(
+            locale,
+            request.numbering_system,
+            request.accounting,
+            starts_with_letter,
+            ends_with_letter,
+            request.negative,
+        )?;
+        let rendered = currency_pattern_with_placeholders(&raw_pattern)?;
         split_number_currency_pattern(&rendered, currency, consumes_decimal_sign)
-    }
-
-    /// Resolves plural-sensitive CLDR currency display names and their number
-    /// patterns. Unlike symbols, names use a separate plural-pattern data
-    /// family; keeping the query in the provider prevents NumberFormat from
-    /// retaining English-only names or a second pattern table.
-    fn currency_name_pattern(
-        self,
-        locale: &str,
-        code: &str,
-        plural: crate::PluralCategory,
-    ) -> Option<NumberCurrencyPattern> {
-        let locale = crate::canonicalize(locale).ok()?;
-        let data_locale = icu_locale_core::DataLocale::from(locale.locale().clone());
-        let rules = IcuPluralRules::try_new_cardinal(locale.locale().into()).ok()?;
-        let operands = plural_category_sample(&rules, plural)?;
-        let attributes = DataMarkerAttributes::try_from_utf8(code.as_bytes()).ok()?;
-        let names = <ExperimentalData as DataProvider<CurrencyExtendedDataV1>>::load(
-            &ExperimentalData,
-            DataRequest {
-                id: DataIdentifierBorrowed::for_marker_attributes_and_locale(
-                    attributes,
-                    &data_locale,
-                ),
-                metadata: Default::default(),
-            },
-        )
-        .ok()?
-        .payload;
-        let patterns = <ExperimentalData as DataProvider<CurrencyPatternsDataV1>>::load(
-            &ExperimentalData,
-            DataRequest {
-                id: DataIdentifierBorrowed::for_locale(&data_locale),
-                metadata: Default::default(),
-            },
-        )
-        .ok()?
-        .payload;
-        let currency = names.get().get(operands.into(), &rules).to_owned();
-        let rendered = patterns
-            .get()
-            .get(operands.into(), &rules)
-            .interpolate(["\u{fdd0}", "\u{fdd1}"])
-            .write_to_string()
-            .into_owned();
-        split_number_currency_pattern(&rendered, currency, false)
-    }
-
-    /// Returns a symbol together with the CLDR alpha-adjacency metadata that
-    /// selects the correct `CurrencyEssentialsV1` pattern variant.
-    fn currency_symbol_record(
-        self,
-        locale: &str,
-        code: &str,
-        display: crate::NumberCurrencyDisplay,
-    ) -> Option<(String, bool, bool)> {
-        let width = match display {
-            crate::NumberCurrencyDisplay::Symbol => CurrencySymbolsV1::SHORT.as_str(),
-            crate::NumberCurrencyDisplay::NarrowSymbol => CurrencySymbolsV1::NARROW.as_str(),
-            crate::NumberCurrencyDisplay::Code | crate::NumberCurrencyDisplay::Name => {
-                return None;
-            }
-        };
-        let locale = crate::canonicalize(locale).ok()?;
-        let data_locale = icu_locale_core::DataLocale::from(locale.locale().clone());
-        let attributes = DataMarkerAttributes::try_from_string(format!("{width}/{code}")).ok()?;
-        <ExperimentalData as DataProvider<CurrencySymbolsV1>>::load(
-            &ExperimentalData,
-            DataRequest {
-                id: DataIdentifierBorrowed::for_marker_attributes_and_locale(
-                    &attributes,
-                    &data_locale,
-                ),
-                metadata: Default::default(),
-            },
-        )
-        .ok()
-        .map(|response| {
-            let symbol = response.payload.get();
-            (
-                symbol.as_str().into(),
-                symbol.starts_with_letter(),
-                symbol.ends_with_letter(),
-            )
-        })
     }
 
     /// Resolves the CLDR percent pattern for a number with or without an
@@ -1313,7 +1212,7 @@ impl LocaleDataProvider {
 
     /// Returns the locale's default decimal numbering system.
     pub fn default_numbering_system(self, locale: &IcuLocale) -> &'static str {
-        decimal_symbols::default_numbering_system(locale.id.language.as_str()).unwrap_or("latn")
+        decimal_symbols::default_numbering_system(&locale.to_string()).unwrap_or("latn")
     }
 
     /// Returns the locale's default hour cycle.
@@ -2084,45 +1983,20 @@ impl LocaleDataProvider {
     pub(crate) fn compact_number_pattern(
         self,
         locale: &str,
+        numbering_system: &str,
         magnitude: i16,
         display: crate::NumberCompactDisplay,
         plural: crate::PluralCategory,
         rounded_value: Option<&Decimal>,
     ) -> Option<CompactNumberPattern> {
-        if let Some(pattern) =
-            experimental_compact_number_pattern(locale, magnitude, display, plural, rounded_value)
-        {
-            return Some(pattern);
-        }
-
-        use crate::NumberCompactDisplay::{Long, Short};
-        let language = locale.split('-').next().unwrap_or(locale);
-        let pattern = match (language, display, magnitude) {
-            ("en", _, 5..) if locale.starts_with("en-IN") => (5, "", "L"),
-            ("en", _, 3..) if locale.starts_with("en-IN") => (3, "", "K"),
-            ("de", Short, 6..) => (6, "\u{a0}", "Mio."),
-            ("de", Short, _) => return None,
-            ("de", Long, 6..) => (6, " ", "Millionen"),
-            ("de", Long, 3..) => (3, " ", "Tausend"),
-            ("en", Short, 6..) => (6, "", "M"),
-            ("en", Long, 6..) => (6, " ", "million"),
-            ("en", Short, 3..) => (3, "", "K"),
-            ("en", Long, 3..) => (3, " ", "thousand"),
-            ("ja", _, 8..) => (8, "", "億"),
-            ("ja", _, 4..) => (4, "", "万"),
-            ("ko", _, 8..) => (8, "", "억"),
-            ("ko", _, 4..) => (4, "", "만"),
-            ("ko", _, 3..) => (3, "", "천"),
-            ("zh", _, 8..) => (8, "", "億"),
-            ("zh", _, 4..) => (4, "", "萬"),
-            _ => return None,
-        };
-        Some(CompactNumberPattern {
-            divisor: pattern.0,
-            separator: pattern.1.into(),
-            suffix: pattern.2.into(),
-            hides_number: false,
-        })
+        compact_patterns::compact_number_pattern(
+            locale,
+            numbering_system,
+            magnitude,
+            display,
+            plural,
+            rounded_value,
+        )
     }
 
     /// Resolves CLDR's cardinal plural category for a formatted numeric
@@ -2154,13 +2028,9 @@ impl LocaleDataProvider {
         range_patterns::number_range_pattern(locale)
     }
 
-    /// Whether the bounded currency-pattern fallback places its symbol after
-    /// the number for this locale family.
-    ///
-    /// Normal construction uses `CurrencyEssentialsV1`; this record exists
-    /// only for data that ICU4X has not generated. It lives here so that a
-    /// formatter cannot grow an independent locale-pattern table.
-    pub(crate) fn fallback_currency_is_trailing(self, locale: &str) -> bool {
+    /// Whether the legacy percent-only compatibility branch places its sign
+    /// after the number for this locale family.
+    pub(crate) fn fallback_percent_is_trailing(self, locale: &str) -> bool {
         matches!(
             locale.split('-').next().unwrap_or(locale),
             "ar" | "be"
@@ -2199,27 +2069,11 @@ impl LocaleDataProvider {
     /// Whether the bounded percent fallback adds a non-breaking space before
     /// its percent sign.
     pub(crate) fn fallback_percent_has_space(self, locale: &str) -> bool {
-        self.fallback_currency_is_trailing(locale)
+        self.fallback_percent_is_trailing(locale)
             && !matches!(
                 locale.split('-').next().unwrap_or(locale),
                 "ar" | "he" | "tr"
             )
-    }
-
-    /// Whether a missing accounting record uses the parenthesized fallback.
-    pub(crate) fn fallback_accounting_uses_parentheses(self, locale: &str) -> bool {
-        !locale.starts_with("de")
-    }
-
-    /// Returns the legacy currency-name fallback for a missing provider
-    /// record. All locale data remains owned by this provider even on that
-    /// narrow path.
-    pub(crate) fn fallback_currency_name(self, code: &str) -> String {
-        match code {
-            "USD" => "US dollars".into(),
-            "EUR" => "euros".into(),
-            _ => code.into(),
-        }
     }
 
     /// Returns whether the bundled relative-time data uses Polish patterns.
@@ -2625,86 +2479,6 @@ fn experimental_number_unit_pattern(
             UnitsNamesVolumeOutlierV1
         ),
     }
-}
-
-/// Resolves a compact decimal scale and typed suffix from ICU4X's generated
-/// CLDR compact-pattern data. The current NumberFormat part model represents
-/// ordinary suffix forms directly, and separately records exact-value forms
-/// that intentionally omit a number placeholder. A leading unit word remains
-/// outside that bounded typed shape.
-fn experimental_compact_number_pattern(
-    locale: &str,
-    magnitude: i16,
-    display: crate::NumberCompactDisplay,
-    plural: crate::PluralCategory,
-    rounded_value: Option<&Decimal>,
-) -> Option<CompactNumberPattern> {
-    let locale = crate::canonicalize(locale).ok()?;
-    let rules = IcuPluralRules::try_new_cardinal(locale.locale().into()).ok()?;
-    let operands = plural_category_sample(&rules, plural)?;
-    let data_locale = icu_locale_core::DataLocale::from(locale.locale().clone());
-
-    macro_rules! query_compact {
-        ($marker:ty) => {{
-            let payload = <DecimalData as DataProvider<$marker>>::load(
-                &DecimalData,
-                DataRequest {
-                    id: DataIdentifierBorrowed::for_locale(&data_locale),
-                    metadata: Default::default(),
-                },
-            )
-            .ok()?
-            .payload;
-            let entry = payload
-                .get()
-                .0
-                .iter()
-                .filter(|entry| i16::from(entry.sized) <= magnitude)
-                .last()?;
-            let divisor = i16::from(entry.sized) - i16::from(entry.variable.get_default().0.get());
-            let pattern = if let Some(value) = rounded_value {
-                entry.variable.get(value.into(), &rules).1
-            } else {
-                entry.variable.get(operands.into(), &rules).1
-            };
-            let rendered = pattern
-                .interpolate(["\u{fdd0}"])
-                .write_to_string()
-                .into_owned();
-            compact_number_pattern_from_placeholder(&rendered, divisor)
-        }};
-    }
-
-    match display {
-        crate::NumberCompactDisplay::Short => query_compact!(DecimalCompactShortV1),
-        crate::NumberCompactDisplay::Long => query_compact!(DecimalCompactLongV1),
-    }
-}
-
-fn compact_number_pattern_from_placeholder(
-    rendered: &str,
-    divisor: i16,
-) -> Option<CompactNumberPattern> {
-    let Some((prefix, suffix)) = rendered.split_once('\u{fdd0}') else {
-        return (!rendered.is_empty()).then(|| CompactNumberPattern {
-            divisor,
-            separator: String::new(),
-            suffix: rendered.into(),
-            hides_number: true,
-        });
-    };
-    // A prefix form needs insertion after a typed sign/currency prefix, which
-    // is deliberately not flattened into a `compact` suffix record here.
-    if !prefix.trim().is_empty() {
-        return None;
-    }
-    let suffix_label = suffix.trim_start();
-    (!suffix_label.is_empty()).then(|| CompactNumberPattern {
-        divisor,
-        separator: suffix[..suffix.len() - suffix_label.len()].into(),
-        suffix: suffix_label.into(),
-        hides_number: false,
-    })
 }
 
 fn experimental_number_unit_pattern_for_marker<M>(
