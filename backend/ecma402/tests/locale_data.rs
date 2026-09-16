@@ -5,7 +5,8 @@
 //! Public contract coverage for the shared, pinned ECMA-402 locale data.
 
 use blueice_ecma402::{
-    canonicalize, locale_data_provider, IntlService, LocaleDataCategory, ICU4X_LOCALE_DATA_REVISION,
+    canonicalize, locale_data_provider, IntlService, LocaleDataCategory,
+    ICU4X_LOCALE_DATA_REVISION, SUPPORTED_NUMBERING_SYSTEMS,
 };
 
 #[test]
@@ -164,6 +165,7 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
     let provider = locale_data_provider();
     let mut decimal_locales = 0;
     let mut incomplete_decimal_locales = Vec::new();
+    let mut scientific_symbols = (0, 0);
     let mut currency_patterns = (0, 0);
     let mut percent_patterns = (0, 0);
     let mut simple_unit_patterns = (0, 0);
@@ -178,6 +180,8 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
         if !coverage.decimal_symbols {
             incomplete_decimal_locales.push(*locale);
         }
+        scientific_symbols.0 += coverage.scientific_symbols.data_backed;
+        scientific_symbols.1 += coverage.scientific_symbols.total;
         currency_patterns.0 += coverage.currency_patterns.data_backed;
         currency_patterns.1 += coverage.currency_patterns.total;
         percent_patterns.0 += coverage.percent_patterns.data_backed;
@@ -210,6 +214,14 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
     );
     assert_eq!(currency_patterns.0, currency_patterns.1);
     assert_eq!(percent_patterns.0, percent_patterns.1);
+    assert_eq!(scientific_symbols.0, scientific_symbols.1);
+    assert_eq!(
+        scientific_symbols.1,
+        provider
+            .number_format_locales()
+            .len()
+            .saturating_mul(SUPPORTED_NUMBERING_SYSTEMS.len())
+    );
     assert_eq!(simple_unit_patterns.0, simple_unit_patterns.1);
     assert_eq!(generic_compound_patterns.0, generic_compound_patterns.1);
     assert_eq!(
@@ -219,8 +231,10 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
             .saturating_mul(blueice_ecma402::NumberFormatUnit::ALL.len())
     );
     eprintln!(
-        "NumberFormat provider coverage: decimal {decimal_locales}/{}, currency {}/{}, percent {}/{}, simple units {}/{} ({}%), generic compound denominators {}/{} ({}%)",
+        "NumberFormat provider coverage: decimal {decimal_locales}/{}, scientific symbols {}/{}, currency {}/{}, percent {}/{}, simple units {}/{} ({}%), generic compound denominators {}/{} ({}%)",
         provider.number_format_locales().len(),
+        scientific_symbols.0,
+        scientific_symbols.1,
         currency_patterns.0,
         currency_patterns.1,
         percent_patterns.0,

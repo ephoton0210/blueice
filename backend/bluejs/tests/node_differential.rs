@@ -324,6 +324,12 @@ fn number_format_matrix_matches_node() {
         "new Intl.NumberFormat('en',{notation:'compact'}).formatToParts(9876).map(function(part){return part.type+':'+part.value}).join('|')",
         "new Intl.NumberFormat('de',{notation:'engineering'}).formatToParts(.000345).map(function(part){return part.type+':'+part.value}).join('|')",
         "new Intl.NumberFormat('en',{notation:'scientific'}).format(543211.1)",
+        // CLDR scientific separators, mathematical minus signs, and bidi
+        // controls are provider data rather than a synthesized `E-` shape.
+        "new Intl.NumberFormat('ar-u-nu-arab',{notation:'scientific',maximumFractionDigits:1}).format(-.00123)",
+        "new Intl.NumberFormat('fa',{notation:'scientific',maximumFractionDigits:1}).format(-.00123)",
+        "new Intl.NumberFormat('et',{notation:'scientific',maximumFractionDigits:1}).format(-.00123)",
+        "new Intl.NumberFormat('ps-u-nu-arabext',{notation:'scientific',maximumFractionDigits:1}).format(-.00123)",
         // Exact StringIntlMV/BigInt values must bypass IEEE-754 rounding.
         "new Intl.NumberFormat('en',{useGrouping:false,maximumFractionDigits:20}).format('1.234567890123456789e0')",
         "new Intl.NumberFormat('en').format(' 987654321987654321 ')",

@@ -1097,6 +1097,10 @@ impl NumberFormat {
         let decimal_digits = locale_data_provider()
             .decimal_digits(&numbering_system)
             .ok_or(NumberFormatError::DataUnavailable)?;
+        let scientific_symbols = NumberScientificSymbols::from_cldr(
+            symbols.exponent_separator.clone(),
+            symbols.exponent_minus_sign.clone(),
+        );
         let provider = PinnedDecimalProvider::new(symbols, decimal_digits);
         let mut formatter_options = DecimalFormatterOptions::default();
         formatter_options.grouping_strategy = Some(options.use_grouping.into());
@@ -1109,8 +1113,6 @@ impl NumberFormat {
         let formatter =
             DecimalFormatter::try_new_unstable(&provider, preferences, formatter_options)
                 .map_err(|_| NumberFormatError::DataUnavailable)?;
-        let scientific_symbols =
-            locale_data_provider().number_scientific_symbols(selected.as_str(), &numbering_system);
         let resolved = ResolvedNumberFormatOptions {
             locale: selected.as_str().into(),
             numbering_system,
@@ -1852,19 +1854,25 @@ impl NumberFormat {
         if let Some(exponent) = exponent {
             collector.push(
                 NumberFormatPartKind::ExponentSeparator,
-                self.scientific_symbols.exponent_separator,
+                &self.scientific_symbols.exponent_separator,
             );
             if exponent < 0 {
                 if !self.scientific_symbols.exponent_minus_prefix.is_empty() {
                     collector.push(
                         NumberFormatPartKind::Literal,
-                        self.scientific_symbols.exponent_minus_prefix,
+                        &self.scientific_symbols.exponent_minus_prefix,
                     );
                 }
                 collector.push(
                     NumberFormatPartKind::ExponentMinusSign,
-                    self.scientific_symbols.exponent_minus_sign,
+                    &self.scientific_symbols.exponent_minus_sign,
                 );
+                if !self.scientific_symbols.exponent_minus_suffix.is_empty() {
+                    collector.push(
+                        NumberFormatPartKind::Literal,
+                        &self.scientific_symbols.exponent_minus_suffix,
+                    );
+                }
             }
             let exponent = exponent.unsigned_abs().to_string();
             collector.push(NumberFormatPartKind::ExponentInteger, &exponent);

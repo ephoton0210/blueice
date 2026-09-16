@@ -265,6 +265,9 @@ impl NumberFormatCoverageCount {
 pub struct NumberFormatProviderCoverage {
     /// Whether decimal symbols are loaded from this locale's provider data.
     pub decimal_symbols: bool,
+    /// Scientific separator/minus records for every supported numbering
+    /// system after the same locale-default resolution as decimal symbols.
+    pub scientific_symbols: NumberFormatCoverageCount,
     /// Standard and accounting USD pattern lookups.
     pub currency_patterns: NumberFormatCoverageCount,
     /// Unsigned and signed percent-pattern lookups.
@@ -380,11 +383,55 @@ pub(crate) struct NumberPercentPattern {
 /// separators but does not expose the CLDR `exponential` symbol. Keeping the
 /// missing record beside the other NumberFormat provider data prevents the
 /// host-neutral formatter from manufacturing ASCII `E-` for every locale.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct NumberScientificSymbols {
-    pub(crate) exponent_separator: &'static str,
-    pub(crate) exponent_minus_prefix: &'static str,
-    pub(crate) exponent_minus_sign: &'static str,
+    pub(crate) exponent_separator: String,
+    pub(crate) exponent_minus_prefix: String,
+    pub(crate) exponent_minus_sign: String,
+    pub(crate) exponent_minus_suffix: String,
+}
+
+impl NumberScientificSymbols {
+    /// Splits CLDR's complete negative-sign string into the ECMA-402
+    /// exponent-minus part and directional literal boundaries. CLDR carries
+    /// those controls in `minusSign`; retaining a trailing control is needed
+    /// for shapes such as Pashto `\u{200e}-\u{200e}` before exponent digits.
+    pub(crate) fn from_cldr(exponent_separator: String, exponent_minus_sign: String) -> Self {
+        let prefix_length = exponent_minus_sign
+            .chars()
+            .take_while(|character| is_bidi_control(*character))
+            .map(char::len_utf8)
+            .sum::<usize>();
+        let suffix_length = exponent_minus_sign
+            .chars()
+            .rev()
+            .take_while(|character| is_bidi_control(*character))
+            .map(char::len_utf8)
+            .sum::<usize>();
+        let sign_end = exponent_minus_sign.len().saturating_sub(suffix_length);
+        let (prefix, sign, suffix) = if prefix_length < sign_end {
+            (
+                exponent_minus_sign[..prefix_length].into(),
+                exponent_minus_sign[prefix_length..sign_end].into(),
+                exponent_minus_sign[sign_end..].into(),
+            )
+        } else {
+            (String::new(), exponent_minus_sign, String::new())
+        };
+        Self {
+            exponent_separator,
+            exponent_minus_prefix: prefix,
+            exponent_minus_sign: sign,
+            exponent_minus_suffix: suffix,
+        }
+    }
+}
+
+const fn is_bidi_control(character: char) -> bool {
+    matches!(
+        character,
+        '\u{61c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+    )
 }
 
 /// A data-owned compact decimal scaling pattern.
@@ -801,8 +848,25 @@ impl LocaleDataProvider {
             self.number_percent_pattern(locale_name, false),
             self.number_percent_pattern(locale_name, true),
         ];
+        let scientific_symbols = SUPPORTED_NUMBERING_SYSTEMS.iter().fold(
+            NumberFormatCoverageCount::default(),
+            |mut coverage, numbering_system| {
+                coverage.total += 1;
+                if self
+                    .number_decimal_symbols(locale.locale(), numbering_system)
+                    .is_some_and(|symbols| {
+                        !symbols.exponent_separator.is_empty()
+                            && !symbols.exponent_minus_sign.is_empty()
+                    })
+                {
+                    coverage.data_backed += 1;
+                }
+                coverage
+            },
+        );
         Some(NumberFormatProviderCoverage {
             decimal_symbols: self.supports_decimal_locale(locale.locale()),
+            scientific_symbols,
             currency_patterns: NumberFormatCoverageCount {
                 data_backed: currency_patterns
                     .iter()
@@ -1250,44 +1314,6 @@ impl LocaleDataProvider {
     /// Returns the locale's default decimal numbering system.
     pub fn default_numbering_system(self, locale: &IcuLocale) -> &'static str {
         decimal_symbols::default_numbering_system(locale.id.language.as_str()).unwrap_or("latn")
-    }
-
-    /// Returns the CLDR scientific-notation symbols for a resolved decimal
-    /// locale and numbering system.
-    ///
-    /// The default shape is the ordinary `E-` convention. Arabic decimal
-    /// data instead uses `أس` and an Arabic Letter Mark before a negative
-    /// exponent; Persian uses multiplication by ten raised to a power and a
-    /// mathematical minus sign. These records are pinned counterparts of the
-    /// CLDR `symbols-numberSystem-*.exponential` and `minusSign` values.
-    pub(crate) fn number_scientific_symbols(
-        self,
-        locale: &str,
-        numbering_system: &str,
-    ) -> NumberScientificSymbols {
-        let language = locale
-            .split_once("-u-")
-            .map_or(locale, |(base, _)| base)
-            .split('-')
-            .next()
-            .unwrap_or(locale);
-        match (language, numbering_system) {
-            ("ar", "arab") => NumberScientificSymbols {
-                exponent_separator: "أس",
-                exponent_minus_prefix: "\u{61c}",
-                exponent_minus_sign: "-",
-            },
-            ("fa", "arabext") => NumberScientificSymbols {
-                exponent_separator: "×۱۰^",
-                exponent_minus_prefix: "\u{200e}",
-                exponent_minus_sign: "−",
-            },
-            _ => NumberScientificSymbols {
-                exponent_separator: "E",
-                exponent_minus_prefix: "",
-                exponent_minus_sign: "-",
-            },
-        }
     }
 
     /// Returns the locale's default hour cycle.

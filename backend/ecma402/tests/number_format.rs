@@ -369,6 +369,55 @@ fn emits_localized_scientific_and_engineering_exponent_parts() {
     .unwrap();
     assert_eq!(persian.format_f64(123_000.0).unwrap(), "۱٫۲×۱۰^۵");
     assert_eq!(persian.format_f64(-0.001_23).unwrap(), "‎−۱٫۲×۱۰^‎−۳");
+
+    let greek = NumberFormat::try_new(
+        &[canonicalize("el").unwrap()],
+        NumberFormatOptions {
+            notation: NumberNotation::Scientific,
+            maximum_fraction_digits: Some(1),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(greek.format_f64(-0.001_23).unwrap(), "-1,2e-3");
+
+    let estonian = NumberFormat::try_new(
+        &[canonicalize("et").unwrap()],
+        NumberFormatOptions {
+            notation: NumberNotation::Scientific,
+            maximum_fraction_digits: Some(1),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(estonian.format_f64(-0.001_23).unwrap(), "−1,2×10^−3");
+
+    let pashto = NumberFormat::try_new(
+        &[canonicalize("ps-u-nu-arabext").unwrap()],
+        NumberFormatOptions {
+            notation: NumberNotation::Scientific,
+            maximum_fraction_digits: Some(1),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(pashto.format_f64(-0.001_23).unwrap(), "‎-‎۱٫۲×۱۰^‎-‎۳");
+    assert_eq!(
+        pashto
+            .format_to_parts_f64(-0.001_23)
+            .unwrap()
+            .into_iter()
+            .skip(4)
+            .map(|part| (part.kind, part.value))
+            .collect::<Vec<_>>(),
+        vec![
+            (NumberFormatPartKind::ExponentSeparator, "×۱۰^".into()),
+            (NumberFormatPartKind::Literal, "‎".into()),
+            (NumberFormatPartKind::ExponentMinusSign, "-".into()),
+            (NumberFormatPartKind::Literal, "‎".into()),
+            (NumberFormatPartKind::ExponentInteger, "۳".into()),
+        ]
+    );
 }
 
 #[test]
@@ -1524,6 +1573,63 @@ fn resolves_every_advertised_numbering_system() {
         }
     }
     assert!(unavailable.is_empty(), "unavailable: {unavailable:?}");
+}
+
+#[test]
+fn scientific_notation_covers_every_advertised_locale_and_numbering_system() {
+    let provider = locale_data_provider();
+    let mut unavailable = Vec::new();
+    let mut malformed = Vec::new();
+    for locale in provider.number_format_locales() {
+        let requested = canonicalize(locale).expect("advertised locale is structurally valid");
+        for numbering_system in SUPPORTED_NUMBERING_SYSTEMS {
+            let requested = locale_with_numbering_system(&requested, numbering_system, false);
+            let formatter = match NumberFormat::try_new(
+                &[requested],
+                NumberFormatOptions {
+                    notation: NumberNotation::Scientific,
+                    maximum_fraction_digits: Some(1),
+                    ..Default::default()
+                },
+            ) {
+                Ok(formatter) => formatter,
+                Err(error) => {
+                    unavailable.push(format!("{locale}-u-nu-{numbering_system}: {error}"));
+                    continue;
+                }
+            };
+            let parts = match formatter.format_to_parts_f64(-0.001_23) {
+                Ok(parts) => parts,
+                Err(error) => {
+                    unavailable.push(format!("{locale}-u-nu-{numbering_system}: {error}"));
+                    continue;
+                }
+            };
+            if ![
+                NumberFormatPartKind::ExponentSeparator,
+                NumberFormatPartKind::ExponentMinusSign,
+                NumberFormatPartKind::ExponentInteger,
+            ]
+            .into_iter()
+            .all(|kind| {
+                parts
+                    .iter()
+                    .any(|part| part.kind == kind && !part.value.is_empty())
+            }) {
+                malformed.push(format!("{locale}-u-nu-{numbering_system}: {parts:?}"));
+            }
+        }
+    }
+    assert!(
+        unavailable.is_empty(),
+        "scientific locale/numbering-system construction gaps: {}",
+        unavailable.join(", ")
+    );
+    assert!(
+        malformed.is_empty(),
+        "scientific locale/numbering-system part gaps: {}",
+        malformed.join(", ")
+    );
 }
 
 #[test]

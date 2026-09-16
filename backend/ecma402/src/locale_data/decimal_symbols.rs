@@ -7,8 +7,8 @@
 //! ICU4X's compact baked decimal payload has intentionally sparse locale
 //! coverage. This table is generated from Unicode CLDR JSON 48.2.1 (commit
 //! 26a79cb42bfcc90def764102aa2af126d9ef3108), reading each advertised
-//! `cldr-numbers-full/main/{locale}/numbers.json` symbols and standard
-//! decimal-format records. It preserves every advertised locale and every
+//! `cldr-numbers-full/main/{locale}/numbers.json` symbols, scientific
+//! notation, and standard decimal-format records. It preserves every advertised locale and every
 //! direct language record that the former ICU4X provider exposed. It contains
 //! a row for every CLDR
 //! `symbols-numberSystem-*` record in that inventory. The derived data is
@@ -26,6 +26,13 @@ pub(crate) struct NumberDecimalSymbols {
     pub(crate) grouping_separator: String,
     pub(crate) plus_sign: String,
     pub(crate) minus_sign: String,
+    /// CLDR's `exponential` symbol for the selected symbols record.
+    pub(crate) exponent_separator: String,
+    /// CLDR's complete `minusSign` for a negative scientific exponent.
+    ///
+    /// Directional controls remain attached here until the NumberFormat
+    /// typed-parts layer splits them into literal prefix/suffix parts.
+    pub(crate) exponent_minus_sign: String,
     pub(crate) primary_grouping: u8,
     pub(crate) secondary_grouping: u8,
     pub(crate) minimum_grouping: u8,
@@ -41,6 +48,8 @@ struct PinnedDecimalSymbols {
     plus_sign: String,
     minus_sign: String,
     standard_pattern: String,
+    exponent_separator: String,
+    exponent_minus_sign: String,
     minimum_grouping: u8,
 }
 
@@ -62,7 +71,7 @@ fn pinned_decimal_symbols() -> &'static [PinnedDecimalSymbols] {
             let records = tsv
                 .lines()
                 .map(|line| {
-                    let mut fields = line.splitn(9, '\t');
+                    let mut fields = line.splitn(11, '\t');
                     PinnedDecimalSymbols {
                         locale: fields
                             .next()
@@ -95,6 +104,14 @@ fn pinned_decimal_symbols() -> &'static [PinnedDecimalSymbols] {
                         standard_pattern: fields
                             .next()
                             .expect("embedded CLDR decimal-symbol row has standard pattern")
+                            .into(),
+                        exponent_separator: fields
+                            .next()
+                            .expect("embedded CLDR decimal-symbol row has exponent separator")
+                            .into(),
+                        exponent_minus_sign: fields
+                            .next()
+                            .expect("embedded CLDR decimal-symbol row has exponent minus sign")
                             .into(),
                         minimum_grouping: fields
                             .next()
@@ -146,6 +163,8 @@ pub(super) fn decimal_symbols(
         grouping_separator: record.grouping_separator.clone(),
         plus_sign: record.plus_sign.clone(),
         minus_sign: record.minus_sign.clone(),
+        exponent_separator: record.exponent_separator.clone(),
+        exponent_minus_sign: record.exponent_minus_sign.clone(),
         primary_grouping,
         secondary_grouping,
         minimum_grouping: record.minimum_grouping,
@@ -194,5 +213,20 @@ mod tests {
         let tamil = decimal_symbols("ta", "thai").expect("Tamil is pinned");
         assert_eq!(tamil.numbering_system, "latn");
         assert_eq!(tamil.decimal_separator, ".");
+    }
+
+    #[test]
+    fn retains_cldr_scientific_symbols_and_full_bidi_minus_shape() {
+        let arabic = decimal_symbols("ar", "arab").expect("Arabic is pinned");
+        assert_eq!(arabic.exponent_separator, "أس");
+        assert_eq!(arabic.exponent_minus_sign, "\u{61c}-");
+
+        let pashto = decimal_symbols("ps", "arabext").expect("Pashto is pinned");
+        assert_eq!(pashto.exponent_separator, "×۱۰^");
+        assert_eq!(pashto.exponent_minus_sign, "\u{200e}-\u{200e}");
+
+        let estonian = decimal_symbols("et", "latn").expect("Estonian is pinned");
+        assert_eq!(estonian.exponent_separator, "×10^");
+        assert_eq!(estonian.exponent_minus_sign, "−");
     }
 }
