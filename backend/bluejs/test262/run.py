@@ -607,6 +607,7 @@ class Worker:
 
     def close(self):
         if self.process is not None:
+            process = self.process
             # The group also contains any isolated regex helper. This is needed
             # for crashes/whole-case timeouts outside the regex API deadline.
             try:
@@ -614,14 +615,23 @@ class Worker:
                     # Windows has neither process groups nor `killpg`. Killing
                     # the adapter still closes its inherited worker handles;
                     # it is enough to unblock the supervised exchange below.
-                    self.process.kill()
+                    process.kill()
                 else:
-                    os.killpg(self.process.pid, signal.SIGKILL)
+                    os.killpg(process.pid, signal.SIGKILL)
+            except PermissionError:
+                # macOS can reject a process-group signal after the adapter has
+                # changed group state. The direct child is still ours and its
+                # termination closes the worker IPC, so retain the supervisor's
+                # restart guarantee instead of aborting the whole inventory.
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
             except ProcessLookupError:
                 pass
-            self.process.wait()
-            self.process.stdin.close()
-            self.process.stdout.close()
+            process.wait()
+            process.stdin.close()
+            process.stdout.close()
             self.process = None
 
     def exchange(self, payload, timeout):

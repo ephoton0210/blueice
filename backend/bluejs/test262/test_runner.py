@@ -333,6 +333,26 @@ class RunnerTests(unittest.TestCase):
             finally:
                 worker.close()
 
+    def test_supervisor_falls_back_to_direct_kill_when_group_signal_is_denied(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            executable = Path(temporary) / "adapter"
+            executable.write_text(
+                "#!/usr/bin/env python3\nimport json,sys,time\n"
+                "print('{\"ready\":1}',flush=True)\nfor line in sys.stdin:\n"
+                " request=json.loads(line)\n if request.get('stall'): time.sleep(10)\n"
+                " print('{\"kind\":\"ok\"}',flush=True)\n"
+            )
+            executable.chmod(0o755)
+            worker = Worker(executable, 0.05)
+            try:
+                # macOS may reject killpg after an adapter changes group state.
+                # The directly-owned adapter must still be restartable.
+                with mock.patch.object(run.os, "killpg", side_effect=PermissionError):
+                    self.assertEqual(worker.run({"stall": True})["kind"], "timeout")
+                    self.assertEqual(worker.run({})["kind"], "ok")
+            finally:
+                worker.close()
+
 
 if __name__ == "__main__":
     unittest.main()
