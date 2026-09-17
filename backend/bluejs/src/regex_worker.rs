@@ -17,6 +17,11 @@ use std::time::Duration;
 use crate::RuntimeError;
 
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_millis(250);
+// Process creation and cold DLL loading are host work, not regex execution.
+// Keep this separate from the short per-operation deadline so a loaded or
+// resource-constrained Windows VM cannot turn a valid regex into a harness
+// error before its worker can announce readiness.
+const STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_FRAME: usize = 16 * 1024 * 1024;
 const READY: &[u8] = b"bluejs-regexp-worker/1";
 
@@ -202,13 +207,13 @@ impl Worker {
         };
         // Process startup is separately bounded; cold executable loading must
         // not consume a short budget intended for a regex operation.
-        let ready = worker.replies.recv_timeout(Duration::from_secs(2));
+        let ready = worker.replies.recv_timeout(STARTUP_TIMEOUT);
         match ready {
             Ok(Ok(ready)) if ready == READY => Ok(worker),
             _ => {
                 worker.failed = true;
                 Err(io::Error::other(
-                    "regex worker startup failed or exceeded two seconds",
+                    "regex worker startup failed or exceeded fifteen seconds",
                 ))
             }
         }
