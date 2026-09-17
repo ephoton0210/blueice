@@ -1431,7 +1431,7 @@ fn sources_localized_temperature_and_angle_units_from_the_shared_provider() {
             NumberUnitDisplay::Long,
             2.0,
         ),
-        "٢ ٪"
+        "٢٪"
     );
     let arabic_compound = NumberFormat::try_new(
         &[canonicalize("ar-u-nu-arab").unwrap()],

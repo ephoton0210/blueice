@@ -194,14 +194,31 @@ fn test262_agents_share_bytes_wait_and_report_in_notify_order() {
         `);
         $262.agent.broadcast(buffer);
         while (Atomics.load(ints, 0) !== 1) {}
-        $262.agent.sleep(10);
-        Atomics.notify(ints, 1, 1) === 1
+        let woken = 0;
+        while (woken === 0) {
+            woken = Atomics.notify(ints, 1, 1);
+            if (woken === 0) $262.agent.sleep(1);
+        }
+        woken === 1
     "#;
     assert_eq!(
         vm.execute(&compile(&parse(source).unwrap()).unwrap()),
         Ok(Value::Bool(true))
     );
-    let report = compile(&parse("$262.agent.sleep(10);$262.agent.getReport()").unwrap()).unwrap();
+    let report = compile(
+        &parse(
+            r#"
+                let report = null;
+                while (report === null) {
+                    report = $262.agent.getReport();
+                    if (report === null) $262.agent.sleep(1);
+                }
+                report
+            "#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
     assert_eq!(vm.execute(&report), Ok(Value::String("ok".into())));
     assert_eq!(vm.shutdown_test262_agents(), Ok(()));
 }
@@ -227,15 +244,30 @@ fn test262_agents_broadcast_before_wait_preserves_shared_spin_protocol() {
         $262.agent.broadcast(buffer);
         while (Atomics.load(ints, 2) !== 1) {}
         Atomics.store(ints, 1, 1);
-        $262.agent.sleep(10);
-        Atomics.notify(ints, 0, 1) === 1
+        let woken = 0;
+        while (woken === 0) {
+            woken = Atomics.notify(ints, 0, 1);
+            if (woken === 0) $262.agent.sleep(1);
+        }
+        woken === 1
     "#;
     assert_eq!(
         vm.execute(&compile(&parse(source).unwrap()).unwrap()),
         Ok(Value::Bool(true))
     );
     let report = compile(
-        &parse("$262.agent.sleep(10);$262.agent.getReport()+$262.agent.getReport()").unwrap(),
+        &parse(
+            r#"
+                let reports = [];
+                while (reports.length !== 2) {
+                    let report = $262.agent.getReport();
+                    if (report === null) $262.agent.sleep(1);
+                    else reports.push(report);
+                }
+                reports.join('')
+            "#,
+        )
+        .unwrap(),
     )
     .unwrap();
     assert_eq!(vm.execute(&report), Ok(Value::String("78".into())));
@@ -301,10 +333,18 @@ fn test262_agents_notify_wakes_fifo_waiters() {
         while (Atomics.load(ints, 4) !== 3) {}
         for (let i = 0; i < 3; i++) {
             Atomics.store(ints, 1 + i, 1);
-            $262.agent.sleep(10);
-            $262.agent.getReport();
+            let report = null;
+            while (report === null) {
+                report = $262.agent.getReport();
+                if (report === null) $262.agent.sleep(1);
+            }
         }
-        Atomics.notify(ints, 0, 1) + Atomics.notify(ints, 0, 1) + Atomics.notify(ints, 0, 1)
+        let woken = 0;
+        while (woken !== 3) {
+            woken += Atomics.notify(ints, 0, 3 - woken);
+            if (woken !== 3) $262.agent.sleep(1);
+        }
+        woken
     "#;
     assert_eq!(
         vm.execute(&compile(&parse(source).unwrap()).unwrap()),
@@ -459,8 +499,13 @@ fn test262_agent_reports_immediate_bigint_wait_async_result() {
         `);
         $262.agent.broadcast(buffer);
         while (Atomics.load(view, 1) !== 1n) {}
-        $262.agent.sleep(10);
-        [$262.agent.getReport(), $262.agent.getReport()].join(',')
+        let reports = [];
+        while (reports.length !== 2) {
+            let report = $262.agent.getReport();
+            if (report === null) $262.agent.sleep(1);
+            else reports.push(report);
+        }
+        reports.join(',')
     "#;
     assert_eq!(
         vm.execute_script(&compile(&parse(source).unwrap()).unwrap()),

@@ -5,10 +5,10 @@
 //! Public contract coverage for the shared, pinned ECMA-402 locale data.
 
 use blueice_ecma402::{
-    canonicalize, locale_data_provider, IntlService, LocaleDataCategory, NumberFormat,
-    NumberFormatOptions, NumberFormatPartKind, NumberFormatStyle, NumberFormatUnit,
-    NumberUnitDisplay, PluralCategory, PluralRules, PluralRulesOptions, ICU4X_LOCALE_DATA_REVISION,
-    SUPPORTED_NUMBERING_SYSTEMS,
+    canonicalize, locale_data_provider, DurationFormat, DurationFormatOptions, DurationRecord,
+    IntlService, LocaleDataCategory, NumberFormat, NumberFormatOptions, NumberFormatPartKind,
+    NumberFormatStyle, NumberFormatUnit, NumberUnitDisplay, PluralCategory, PluralRules,
+    PluralRulesOptions, ICU4X_LOCALE_DATA_REVISION, SUPPORTED_NUMBERING_SYSTEMS,
 };
 
 #[test]
@@ -17,10 +17,12 @@ fn provider_exposes_one_pinned_registry_for_static_and_tzdb_data() {
     assert_eq!(provider.revision(), ICU4X_LOCALE_DATA_REVISION);
     assert_eq!(provider.revisions().icu4x, ICU4X_LOCALE_DATA_REVISION);
     assert_eq!(provider.revisions().tzdb, "2026c");
-    assert_eq!(
-        provider.values(LocaleDataCategory::Currency),
-        ["EUR", "JPY", "USD"]
-    );
+    let currencies = provider.values(LocaleDataCategory::Currency);
+    assert_eq!(currencies.len(), 307);
+    assert!(currencies.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!(currencies.contains(&"AFA"));
+    assert!(currencies.contains(&"XCG"));
+    assert!(currencies.contains(&"XXX"));
     assert!(provider
         .values(LocaleDataCategory::Calendar)
         .contains(&"gregory"));
@@ -68,7 +70,7 @@ fn provider_owns_decimal_and_collation_data_availability() {
     assert!(provider.supports_decimal_locale(german.locale()));
     assert!(provider.supports_decimal_locale(cantonese.locale()));
     assert!(provider.supports_service_locale(IntlService::NumberFormat, cantonese.locale()));
-    assert!(!provider.supports_service_locale(IntlService::DurationFormat, cantonese.locale()));
+    assert!(provider.supports_service_locale(IntlService::DurationFormat, cantonese.locale()));
     assert!(!provider.supports_decimal_locale(unsupported.locale()));
     assert!(provider.supports_collation(german.locale(), "phonebk"));
     assert!(!provider.supports_collation(german.locale(), "zhuyin"));
@@ -128,6 +130,49 @@ fn advertised_number_format_locales_do_not_resolve_decimal_symbols_from_root() {
 }
 
 #[test]
+fn resolved_cldr_number_and_duration_locale_inventory_is_complete() {
+    let provider = locale_data_provider();
+    let locales = provider.number_format_resolved_locales();
+    assert_eq!(locales.len(), 766);
+    assert!(locales.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!(locales.contains(&"ak".into()));
+    assert!(locales.contains(&"fr-CA".into()));
+    assert!(locales.contains(&"zh-Hant".into()));
+    for locale_name in locales {
+        let locale = canonicalize(&locale_name).expect("pinned CLDR locale is structurally valid");
+        assert!(
+            provider.supports_service_locale(IntlService::NumberFormat, locale.locale()),
+            "NumberFormat lacks pinned decimal data for {locale_name}"
+        );
+        assert!(
+            provider.supports_service_locale(IntlService::DurationFormat, locale.locale()),
+            "DurationFormat lacks shared pinned unit data for {locale_name}"
+        );
+    }
+}
+
+#[test]
+fn every_resolved_duration_locale_constructs_and_formats_with_pinned_data() {
+    let provider = locale_data_provider();
+    let record = DurationRecord::try_new(1, 2, 0, 0, 0, 0, 0, 0, 0, 0).unwrap();
+    for locale_name in provider.number_format_resolved_locales() {
+        let locale = canonicalize(&locale_name).expect("pinned CLDR locale is structurally valid");
+        let formatter = DurationFormat::try_new(
+            std::slice::from_ref(&locale),
+            DurationFormatOptions::default(),
+        )
+        .unwrap_or_else(|error| {
+            panic!("DurationFormat data unavailable for {locale_name}: {error}")
+        });
+        assert_eq!(formatter.resolved_options().locale, locale_name);
+        assert!(
+            !formatter.format(record).unwrap().is_empty(),
+            "DurationFormat produced an empty result for {locale_name}"
+        );
+    }
+}
+
+#[test]
 fn former_direct_icu_decimal_locales_remain_backed_by_pinned_symbols() {
     // This is the direct-language inventory from the previous ICU4X baked
     // DecimalSymbols provider at the pinned revision. Keeping it verifies that
@@ -165,6 +210,7 @@ fn former_direct_icu_decimal_locales_remain_backed_by_pinned_symbols() {
 #[test]
 fn number_format_provider_coverage_inventory_is_complete_and_localized() {
     let provider = locale_data_provider();
+    let locales = provider.number_format_resolved_locales();
     let mut decimal_locales = 0;
     let mut incomplete_decimal_locales = Vec::new();
     let mut scientific_symbols = (0, 0);
@@ -175,13 +221,13 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
     let mut generic_compound_patterns = (0, 0);
     let mut incomplete_locales = Vec::new();
 
-    for locale in provider.number_format_locales() {
+    for locale in &locales {
         let coverage = provider
             .number_format_coverage(locale)
             .unwrap_or_else(|| panic!("advertised NumberFormat locale lacks coverage: {locale}"));
         decimal_locales += usize::from(coverage.decimal_symbols);
         if !coverage.decimal_symbols {
-            incomplete_decimal_locales.push(*locale);
+            incomplete_decimal_locales.push(locale.clone());
         }
         scientific_symbols.0 += coverage.scientific_symbols.data_backed;
         scientific_symbols.1 += coverage.scientific_symbols.total;
@@ -213,7 +259,7 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
 
     assert_eq!(
         decimal_locales,
-        provider.number_format_locales().len(),
+        locales.len(),
         "NumberFormat decimal-symbol gaps by locale: {}",
         incomplete_decimal_locales.join(", ")
     );
@@ -224,7 +270,7 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
     assert_eq!(
         scientific_symbols.1,
         provider
-            .number_format_locales()
+            .number_format_resolved_locales()
             .len()
             .saturating_mul(SUPPORTED_NUMBERING_SYSTEMS.len())
     );
@@ -238,7 +284,7 @@ fn number_format_provider_coverage_inventory_is_complete_and_localized() {
     );
     eprintln!(
         "NumberFormat provider coverage: decimal {decimal_locales}/{}, scientific symbols {}/{}, compact {}/{}, currency {}/{}, percent {}/{}, simple units {}/{} ({}%), generic compound denominators {}/{} ({}%)",
-        provider.number_format_locales().len(),
+        locales.len(),
         scientific_symbols.0,
         scientific_symbols.1,
         compact_patterns.0,

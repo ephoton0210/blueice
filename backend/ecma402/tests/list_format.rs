@@ -56,6 +56,52 @@ fn formats_disjunction_and_unit_lists_with_requested_styles() {
 }
 
 #[test]
+fn falls_back_to_pinned_cldr_patterns_for_a_locale_missing_from_icu_data() {
+    let akan = canonicalize("ak").unwrap();
+    let formatter = ListFormat::try_new(
+        std::slice::from_ref(&akan),
+        ListFormatOptions {
+            list_type: ListType::Unit,
+            style: ListStyle::Short,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(formatter.resolved_options().locale, "ak");
+    assert_eq!(
+        formatter.format(["1 mfe", "2 bos"].iter()),
+        "1 mfe ne 2 bos"
+    );
+    assert_eq!(
+        formatter
+            .format_to_parts(["1 mfe", "2 bos"].iter())
+            .unwrap(),
+        vec![
+            ListPart {
+                kind: ListPartKind::Element,
+                value: "1 mfe".into(),
+            },
+            ListPart {
+                kind: ListPartKind::Literal,
+                value: " ne ".into(),
+            },
+            ListPart {
+                kind: ListPartKind::Element,
+                value: "2 bos".into(),
+            },
+        ]
+    );
+    assert_eq!(
+        supported_list_format_locales(&[akan], LocaleMatcher::Lookup)
+            .iter()
+            .map(|locale| locale.as_str())
+            .collect::<Vec<_>>(),
+        ["ak"]
+    );
+}
+
+#[test]
 fn exposes_locale_negotiation_and_default_fallback() {
     let unavailable = canonicalize("zz").unwrap();
     let japanese = canonicalize("ja").unwrap();
@@ -106,6 +152,34 @@ fn exposes_locale_literals_and_input_elements_as_parts() {
             ListPart {
                 kind: ListPartKind::Element,
                 value: "C".into(),
+            },
+        ]
+    );
+}
+
+#[test]
+fn preserves_adjacent_element_parts_when_cldr_has_no_separator() {
+    let chinese = canonicalize("zh").unwrap();
+    let formatter = ListFormat::try_new(
+        &[chinese],
+        ListFormatOptions {
+            list_type: ListType::Unit,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(formatter.format(["A", "B"].iter()), "AB");
+    assert_eq!(
+        formatter.format_to_parts(["A", "B"].iter()).unwrap(),
+        vec![
+            ListPart {
+                kind: ListPartKind::Element,
+                value: "A".into(),
+            },
+            ListPart {
+                kind: ListPartKind::Element,
+                value: "B".into(),
             },
         ]
     );

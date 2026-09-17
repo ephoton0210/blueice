@@ -84,6 +84,51 @@ fn selects_polish_patterns_and_numbering_system_overrides() {
         .format(12.0, RelativeTimeUnit::Second)
         .unwrap()
         .contains('١'));
+
+    let arabic_words = RelativeTimeFormat::try_new(
+        &[canonicalize("ar").unwrap()],
+        RelativeTimeFormatOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        arabic_words.format(-2.0, RelativeTimeUnit::Second).unwrap(),
+        "قبل ثانيتين"
+    );
+    assert_eq!(
+        arabic_words
+            .format_to_parts(-2.0, RelativeTimeUnit::Second)
+            .unwrap(),
+        vec![blueice_ecma402::RelativeTimePart {
+            kind: RelativeTimePartKind::Literal,
+            value: "قبل ثانيتين".into(),
+        }]
+    );
+}
+
+#[test]
+fn shares_script_parent_and_supplemental_cardinal_rules_with_other_intl_services() {
+    let serbian_latin = RelativeTimeFormat::try_new(
+        &[canonicalize("sr-Latn").unwrap()],
+        RelativeTimeFormatOptions::default(),
+    )
+    .unwrap();
+    let bosnian_cyrillic = RelativeTimeFormat::try_new(
+        &[canonicalize("bs-Cyrl").unwrap()],
+        RelativeTimeFormatOptions::default(),
+    )
+    .unwrap();
+    // `21` selects the language-parent `one` category rather than the raw
+    // provider's mandatory `other` fallback form in both script records.
+    assert_eq!(
+        serbian_latin.format(21.0, RelativeTimeUnit::Day).unwrap(),
+        "za 21 dan"
+    );
+    assert_eq!(
+        bosnian_cyrillic
+            .format(21.0, RelativeTimeUnit::Day)
+            .unwrap(),
+        "за 21 дан"
+    );
 }
 
 #[test]
@@ -168,7 +213,7 @@ fn formats_every_english_width_and_qualitative_pattern() {
         (RelativeTimeUnit::Quarter, "q"),
         (RelativeTimeUnit::Year, "y"),
     ] {
-        assert_eq!(narrow.format(3.0, unit).unwrap(), format!("in 3 {label}"));
+        assert_eq!(narrow.format(3.0, unit).unwrap(), format!("in 3{label}"));
     }
 
     let automatic = RelativeTimeFormat::try_new(
@@ -261,6 +306,110 @@ fn covers_relative_time_locale_fallback_number_parts_and_errors() {
             RelativeTimePartKind::Literal,
         ]
     );
+
+    let numeric = RelativeTimeFormat::try_new(
+        &[canonicalize("en").unwrap()],
+        RelativeTimeFormatOptions::default(),
+    )
+    .unwrap();
+    // The sign bit remains observable for relative-time direction selection.
+    assert_eq!(
+        numeric.format(-0.0, RelativeTimeUnit::Second).unwrap(),
+        "0 seconds ago"
+    );
+    assert_eq!(
+        numeric.format(0.0, RelativeTimeUnit::Second).unwrap(),
+        "in 0 seconds"
+    );
+}
+
+#[test]
+fn every_pinned_relative_time_locale_constructs_and_formats_every_public_cell() {
+    let provider = blueice_ecma402::locale_data_provider();
+    let locales = provider.number_format_resolved_locales();
+    let styles = [
+        RelativeTimeStyle::Long,
+        RelativeTimeStyle::Short,
+        RelativeTimeStyle::Narrow,
+    ];
+    let units = [
+        RelativeTimeUnit::Second,
+        RelativeTimeUnit::Minute,
+        RelativeTimeUnit::Hour,
+        RelativeTimeUnit::Day,
+        RelativeTimeUnit::Week,
+        RelativeTimeUnit::Month,
+        RelativeTimeUnit::Quarter,
+        RelativeTimeUnit::Year,
+    ];
+    let mut formatted = 0usize;
+
+    for locale_name in locales {
+        let requested = canonicalize(&locale_name).expect("pinned CLDR locale must canonicalize");
+        assert_eq!(
+            supported_relative_time_format_locales(
+                std::slice::from_ref(&requested),
+                blueice_ecma402::LocaleMatcher::Lookup,
+            ),
+            vec![requested.clone()],
+            "{locale_name} must be advertised by RelativeTimeFormat",
+        );
+        for style in styles {
+            let formatter = RelativeTimeFormat::try_new(
+                std::slice::from_ref(&requested),
+                RelativeTimeFormatOptions {
+                    locale_matcher: blueice_ecma402::LocaleMatcher::Lookup,
+                    style,
+                    ..Default::default()
+                },
+            )
+            .unwrap_or_else(|error| {
+                panic!("RelativeTimeFormat data unavailable for {locale_name} ({style:?}): {error}")
+            });
+            assert_eq!(formatter.resolved_options().locale, requested.as_str());
+            let automatic = RelativeTimeFormat::try_new(
+                std::slice::from_ref(&requested),
+                RelativeTimeFormatOptions {
+                    locale_matcher: blueice_ecma402::LocaleMatcher::Lookup,
+                    style,
+                    numeric: RelativeTimeNumeric::Auto,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            for unit in units {
+                for value in [-2.0, 2.0] {
+                    let parts = formatter.format_to_parts(value, unit).unwrap_or_else(|error| {
+                        panic!(
+                            "RelativeTimeFormat data unavailable for {locale_name} ({style:?}, {unit:?}, {value}): {error}"
+                        )
+                    });
+                    assert!(
+                        !parts.is_empty() && parts.iter().any(|part| !part.value.is_empty()),
+                        "RelativeTimeFormat produced no text for {locale_name} ({style:?}, {unit:?}, {value})"
+                    );
+                    assert_eq!(
+                        formatter.format(value, unit).unwrap(),
+                        parts.into_iter().map(|part| part.value).collect::<String>(),
+                        "format and formatToParts disagree for {locale_name} ({style:?}, {unit:?}, {value})"
+                    );
+                    formatted += 1;
+                }
+                for value in [-1.0, 0.0, 1.0] {
+                    assert!(
+                        !automatic.format(value, unit).unwrap().is_empty(),
+                        "numeric:auto produced no text for {locale_name} ({style:?}, {unit:?}, {value})"
+                    );
+                    formatted += 1;
+                }
+            }
+        }
+    }
+
+    // 766 locales × 3 styles × 8 units × (two numeric directions + three
+    // qualitative offsets). This is the public API coverage matrix, not a
+    // merely decompression-level provider check.
+    assert_eq!(formatted, 766 * 3 * 8 * 5);
 }
 
 #[test]

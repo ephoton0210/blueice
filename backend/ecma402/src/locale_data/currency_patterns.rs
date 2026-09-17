@@ -387,6 +387,16 @@ pub(super) fn currency_name(locale: &str, code: &str, plural: crate::PluralCateg
         .unwrap_or_else(|| code.into())
 }
 
+/// Resolves the locale's ordinary currency display name for `Intl.DisplayNames`.
+///
+/// Unlike NumberFormat's name display, DisplayNames does not select a plural
+/// form. An empty CLDR display name is genuine data absence and lets the
+/// caller apply ECMA-402's requested `code`/`none` fallback.
+pub(super) fn currency_display_name(locale: &str, code: &str) -> Option<String> {
+    name_record_for_locale(pinned_currency_data(), locale, code)
+        .and_then(|record| (!record.display_name.is_empty()).then(|| record.display_name.clone()))
+}
+
 /// Returns the selected standard/accounting pattern and whether its negative
 /// subpattern owns the decimal minus sign.
 pub(super) fn currency_pattern(

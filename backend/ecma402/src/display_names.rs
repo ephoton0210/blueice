@@ -173,6 +173,7 @@ impl DisplayNames {
             self.resolved.display_type,
             self.resolved.style,
             self.resolved.language_display,
+            self.resolved.fallback,
             &code,
         );
         Ok(localized.or(match self.resolved.fallback {

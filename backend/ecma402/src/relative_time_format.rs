@@ -153,9 +153,9 @@ impl std::error::Error for RelativeTimeFormatError {}
 
 /// Returns whether the bundled relative-time patterns support this locale.
 ///
-/// The service intentionally advertises only languages with bundled patterns;
-/// NumberFormat's broader data coverage must not be mistaken for relative-time
-/// data coverage.
+/// The pinned CLDR provider supplies patterns for every resolved locale in its
+/// 766-locale inventory. A locale is advertised only after its mandatory
+/// numeric `other` pattern has been found in that provider.
 pub fn supports_relative_time_format_locale(locale: &IcuLocale) -> bool {
     locale_data_provider().supports_service_locale(IntlService::RelativeTimeFormat, locale)
 }
@@ -227,41 +227,44 @@ impl RelativeTimeFormat {
         let provider = crate::locale_data_provider();
         if let Some(term) = provider.relative_time_qualitative_term(
             &self.resolved.locale,
+            self.resolved.style,
             self.resolved.numeric,
             value,
             unit,
         ) {
             return Ok(vec![RelativeTimePart {
                 kind: RelativeTimePartKind::Literal,
-                value: term.into(),
+                value: term,
             }]);
         }
+        // ECMA-402 uses the mathematical sign of the original Number when
+        // selecting `past` or `future`; -0 is consequently a past value even
+        // though its formatted magnitude is zero.
         let past = value.is_sign_negative();
+        let plural = provider.relative_time_plural_category(&self.resolved.locale, value.abs());
+        let pattern = provider
+            .relative_time_pattern(
+                &self.resolved.locale,
+                self.resolved.style,
+                unit,
+                past,
+                plural,
+            )
+            .or_else(|| {
+                provider.relative_time_pattern(
+                    &self.resolved.locale,
+                    self.resolved.style,
+                    unit,
+                    past,
+                    crate::PluralCategory::Other,
+                )
+            })
+            .ok_or(RelativeTimeFormatError::DataUnavailable)?;
         let number = self
             .number_format
-            .format_f64(value.abs())
+            .format_to_parts_f64(value.abs())
             .map_err(|_| RelativeTimeFormatError::NonFiniteNumber)?;
-        let mut parts = Vec::new();
-        let polish = provider.relative_time_uses_polish(&self.resolved.locale);
-        let label = provider.relative_time_unit_label(
-            &self.resolved.locale,
-            self.resolved.style,
-            unit,
-            value.abs(),
-        );
-        let (prefix, suffix) = provider.relative_time_affixes(&self.resolved.locale, past, label);
-        if !past {
-            parts.push(RelativeTimePart {
-                kind: RelativeTimePartKind::Literal,
-                value: prefix.into(),
-            });
-        }
-        parts.extend(relative_time_number_parts(&number, polish));
-        parts.push(RelativeTimePart {
-            kind: RelativeTimePartKind::Literal,
-            value: suffix,
-        });
-        Ok(parts)
+        relative_time_pattern_parts(&pattern, number)
     }
 
     /// Formats a finite relative-time quantity into a string.
@@ -291,40 +294,53 @@ impl RelativeTimeFormat {
     }
 }
 
-fn relative_time_number_parts(number: &str, polish: bool) -> Vec<RelativeTimePart> {
-    let mut parts = Vec::new();
-    let mut kind = RelativeTimePartKind::Integer;
-    let mut buffer = String::new();
-    let flush = |parts: &mut Vec<RelativeTimePart>, buffer: &mut String, kind| {
-        if !buffer.is_empty() {
-            parts.push(RelativeTimePart {
-                kind,
-                value: std::mem::take(buffer),
-            });
-        }
+fn relative_time_pattern_parts(
+    pattern: &str,
+    number: Vec<crate::NumberFormatPart>,
+) -> Result<Vec<RelativeTimePart>, RelativeTimeFormatError> {
+    // Some CLDR plural forms (for example Arabic `one` and `two`) express the
+    // quantity in words and intentionally omit `{0}`. ECMA-402 exposes those
+    // complete patterns as one literal part rather than synthesizing digits.
+    let Some((prefix, suffix)) = pattern.split_once("{0}") else {
+        return Ok(vec![RelativeTimePart {
+            kind: RelativeTimePartKind::Literal,
+            value: pattern.into(),
+        }]);
     };
-    for character in number.chars() {
-        let separator = match character {
-            ',' if polish => Some(RelativeTimePartKind::Decimal),
-            ',' | '\u{a0}' | '\u{202f}' | '\u{66c}' => Some(RelativeTimePartKind::Group),
-            '.' | '\u{66b}' => Some(RelativeTimePartKind::Decimal),
-            _ => None,
-        };
-        if let Some(separator) = separator {
-            flush(&mut parts, &mut buffer, kind);
-            parts.push(RelativeTimePart {
-                kind: separator,
-                value: character.into(),
-            });
-            kind = if separator == RelativeTimePartKind::Decimal {
-                RelativeTimePartKind::Fraction
-            } else {
-                RelativeTimePartKind::Integer
-            };
-        } else {
-            buffer.push(character);
-        }
+    let mut parts = Vec::new();
+    if !prefix.is_empty() {
+        parts.push(RelativeTimePart {
+            kind: RelativeTimePartKind::Literal,
+            value: prefix.into(),
+        });
     }
-    flush(&mut parts, &mut buffer, kind);
-    parts
+    parts.extend(number.into_iter().map(|part| RelativeTimePart {
+        kind: match part.kind {
+            crate::NumberFormatPartKind::Integer => RelativeTimePartKind::Integer,
+            crate::NumberFormatPartKind::Group => RelativeTimePartKind::Group,
+            crate::NumberFormatPartKind::Decimal => RelativeTimePartKind::Decimal,
+            crate::NumberFormatPartKind::Fraction => RelativeTimePartKind::Fraction,
+            crate::NumberFormatPartKind::MinusSign
+            | crate::NumberFormatPartKind::PlusSign
+            | crate::NumberFormatPartKind::ApproximatelySign
+            | crate::NumberFormatPartKind::ExponentSeparator
+            | crate::NumberFormatPartKind::ExponentMinusSign
+            | crate::NumberFormatPartKind::ExponentInteger
+            | crate::NumberFormatPartKind::Literal
+            | crate::NumberFormatPartKind::Unit
+            | crate::NumberFormatPartKind::Currency
+            | crate::NumberFormatPartKind::PercentSign
+            | crate::NumberFormatPartKind::Compact
+            | crate::NumberFormatPartKind::Nan
+            | crate::NumberFormatPartKind::Infinity => RelativeTimePartKind::Literal,
+        },
+        value: part.value,
+    }));
+    if !suffix.is_empty() {
+        parts.push(RelativeTimePart {
+            kind: RelativeTimePartKind::Literal,
+            value: suffix.into(),
+        });
+    }
+    Ok(parts)
 }

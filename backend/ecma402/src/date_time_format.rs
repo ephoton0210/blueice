@@ -301,24 +301,264 @@ fn basic_time_zone_name_score(requested: &str, available: &str) -> i32 {
     }
 }
 
-fn resolve_basic_semantic_format(options: &mut DateTimeFormatOptions) {
+fn resolve_basic_semantic_format(
+    locale: &str,
+    options: &mut DateTimeFormatOptions,
+) -> Option<BasicAppendPlan> {
     if options.format_matcher != DateTimeFormatMatcher::Basic
         || options.date_style.is_some()
         || options.time_style.is_some()
     {
-        return;
+        return None;
     }
-    // ICU4X's public dynamic formatter accepts the exact semantic field set
-    // requested by this service. Treat that generated pattern as an available
-    // format record, then run the standard scorer before construction. This
-    // keeps BasicFormatMatcher observable in the service path without
-    // inventing a locale-independent CLDR fallback record. A future ICU4X
-    // available-format enumeration can provide additional ordered records to
-    // this call without changing the scorer.
-    let formats = [DateTimeFormatRecord::from_options(options)];
-    let selected = basic_format_matcher(options, &formats)
-        .expect("the dynamic semantic formatter always supplies one format");
-    formats[selected].apply_to(options);
+    let formats = locale_data_provider().date_time_format_records(locale);
+    let selected = basic_format_matcher(options, &formats)?;
+    let requested = DateTimeFormatRecord::from_options(options);
+    let selected = &formats[selected];
+
+    // A raw CLDR `availableFormats` record is directly renderable only when
+    // it contains every requested component.  ICU4X's dynamic formatter
+    // already combines date and time records through the locale's complete
+    // date-time glue table. Replacing its requested field set with an
+    // incomplete raw record would discard that glue and can expose a pattern
+    // field (for example a literal `Y`) instead of a localized year.
+    if basic_record_covers(selected, &requested) {
+        selected.apply_to(options);
+        return None;
+    }
+
+    let mut base_options = options.clone();
+    selected.apply_to(&mut base_options);
+    if let Some(plan) = basic_append_plan(locale, options, &requested, selected, base_options) {
+        return Some(plan);
+    } else {
+        // Never discard requested fields if a malformed provider row cannot
+        // be synthesized. The complete pinned provider makes this defensive
+        // fallback unreachable in normal builds.
+        debug_assert!(missing_basic_components_have_append_items(
+            locale, &requested, selected
+        ));
+    }
+    None
+}
+
+fn basic_record_covers(selected: &DateTimeFormatRecord, requested: &DateTimeFormatRecord) -> bool {
+    [
+        (requested.weekday.is_some(), selected.weekday.is_some()),
+        (requested.era.is_some(), selected.era.is_some()),
+        (requested.year.is_some(), selected.year.is_some()),
+        (requested.month.is_some(), selected.month.is_some()),
+        (requested.day.is_some(), selected.day.is_some()),
+        (
+            requested.day_period.is_some(),
+            selected.day_period.is_some(),
+        ),
+        (requested.hour.is_some(), selected.hour.is_some()),
+        (requested.minute.is_some(), selected.minute.is_some()),
+        (requested.second.is_some(), selected.second.is_some()),
+        (
+            requested.fractional_second_digits.is_some(),
+            selected.fractional_second_digits.is_some(),
+        ),
+        (
+            requested.time_zone_name.is_some(),
+            selected.time_zone_name.is_some(),
+        ),
+    ]
+    .into_iter()
+    .all(|(requested, selected)| !requested || selected)
+}
+
+fn missing_basic_components_have_append_items(
+    locale: &str,
+    requested: &DateTimeFormatRecord,
+    selected: &DateTimeFormatRecord,
+) -> bool {
+    let has_append_item = |field| {
+        locale_data_provider()
+            .date_time_append_item(locale, field)
+            .is_some_and(|item| item.pattern.contains("{0}") && item.pattern.contains("{1}"))
+    };
+    [
+        (
+            requested.weekday.is_some() && selected.weekday.is_none(),
+            "Day-Of-Week",
+        ),
+        (requested.era.is_some() && selected.era.is_none(), "Era"),
+        (requested.year.is_some() && selected.year.is_none(), "Year"),
+        (
+            requested.month.is_some() && selected.month.is_none(),
+            "Month",
+        ),
+        (requested.day.is_some() && selected.day.is_none(), "Day"),
+        (
+            requested.day_period.is_some() && selected.day_period.is_none(),
+            "Hour",
+        ),
+        (requested.hour.is_some() && selected.hour.is_none(), "Hour"),
+        (
+            requested.minute.is_some() && selected.minute.is_none(),
+            "Minute",
+        ),
+        (
+            requested.second.is_some() && selected.second.is_none(),
+            "Second",
+        ),
+        (
+            requested.fractional_second_digits.is_some()
+                && selected.fractional_second_digits.is_none(),
+            "Second",
+        ),
+        (
+            requested.time_zone_name.is_some() && selected.time_zone_name.is_none(),
+            "Timezone",
+        ),
+    ]
+    .into_iter()
+    .all(|(missing, field)| !missing || has_append_item(field))
+}
+
+fn basic_append_plan(
+    locale: &str,
+    original_options: &DateTimeFormatOptions,
+    requested: &DateTimeFormatRecord,
+    selected: &DateTimeFormatRecord,
+    base_options: DateTimeFormatOptions,
+) -> Option<BasicAppendPlan> {
+    let missing_date = DateTimeFormatRecord {
+        weekday: requested.weekday.filter(|_| selected.weekday.is_none()),
+        era: requested.era.filter(|_| selected.era.is_none()),
+        year: requested.year.filter(|_| selected.year.is_none()),
+        month: requested.month.filter(|_| selected.month.is_none()),
+        day: requested.day.filter(|_| selected.day.is_none()),
+        ..Default::default()
+    };
+    let missing_time = DateTimeFormatRecord {
+        day_period: requested
+            .day_period
+            .filter(|_| selected.day_period.is_none()),
+        hour: requested.hour.filter(|_| selected.hour.is_none()),
+        minute: requested.minute.filter(|_| selected.minute.is_none()),
+        second: requested.second.filter(|_| selected.second.is_none()),
+        fractional_second_digits: requested
+            .fractional_second_digits
+            .filter(|_| selected.fractional_second_digits.is_none()),
+        time_zone_name: requested
+            .time_zone_name
+            .clone()
+            .filter(|_| selected.time_zone_name.is_none()),
+        ..Default::default()
+    };
+    let date_item = basic_append_item(locale, original_options, &missing_date, true);
+    let time_item = basic_append_item(locale, original_options, &missing_time, false);
+    if date_item.is_none() && time_item.is_none() {
+        return None;
+    }
+
+    let selected_has_date = record_has_date_fields(selected);
+    let selected_has_time = record_has_time_fields(selected);
+    let mut items = Vec::with_capacity(2);
+    if !selected_has_date && selected_has_time {
+        items.extend(time_item);
+        items.extend(date_item);
+    } else {
+        items.extend(date_item);
+        items.extend(time_item);
+    }
+    Some(BasicAppendPlan {
+        base_options,
+        items,
+    })
+}
+
+fn basic_append_item(
+    locale: &str,
+    original_options: &DateTimeFormatOptions,
+    record: &DateTimeFormatRecord,
+    is_date: bool,
+) -> Option<BasicAppendItem> {
+    let field = if is_date {
+        append_date_field(record)
+    } else {
+        append_time_field(record)
+    }?;
+    let append = locale_data_provider().date_time_append_item(locale, field)?;
+    if append.field_name.is_empty()
+        || !append.pattern.contains("{0}")
+        || !append.pattern.contains("{1}")
+    {
+        return None;
+    }
+    Some(BasicAppendItem {
+        pattern: append.pattern,
+        field_name: append.field_name,
+        component_options: component_options_for_record(original_options, record),
+    })
+}
+
+fn append_date_field(record: &DateTimeFormatRecord) -> Option<&'static str> {
+    if record.era.is_some() {
+        Some("Era")
+    } else if record.year.is_some() {
+        Some("Year")
+    } else if record.month.is_some() {
+        Some("Month")
+    } else if record.day.is_some() {
+        Some("Day")
+    } else {
+        record.weekday.is_some().then_some("Day-Of-Week")
+    }
+}
+
+fn append_time_field(record: &DateTimeFormatRecord) -> Option<&'static str> {
+    if record.day_period.is_some() || record.hour.is_some() {
+        Some("Hour")
+    } else if record.minute.is_some() {
+        Some("Minute")
+    } else if record.second.is_some() || record.fractional_second_digits.is_some() {
+        Some("Second")
+    } else {
+        record.time_zone_name.is_some().then_some("Timezone")
+    }
+}
+
+fn record_has_date_fields(record: &DateTimeFormatRecord) -> bool {
+    record.weekday.is_some()
+        || record.era.is_some()
+        || record.year.is_some()
+        || record.month.is_some()
+        || record.day.is_some()
+}
+
+fn record_has_time_fields(record: &DateTimeFormatRecord) -> bool {
+    record.day_period.is_some()
+        || record.hour.is_some()
+        || record.minute.is_some()
+        || record.second.is_some()
+        || record.fractional_second_digits.is_some()
+        || record.time_zone_name.is_some()
+}
+
+fn component_options_for_record(
+    original: &DateTimeFormatOptions,
+    record: &DateTimeFormatRecord,
+) -> DateTimeFormatOptions {
+    let mut options = original.clone();
+    options.date_style = None;
+    options.time_style = None;
+    options.weekday = None;
+    options.era = None;
+    options.year = None;
+    options.month = None;
+    options.day = None;
+    options.day_period = None;
+    options.hour = None;
+    options.minute = None;
+    options.second = None;
+    options.fractional_second_digits = None;
+    options.time_zone_name = None;
+    record.apply_to(&mut options);
+    options
 }
 
 /// The `dateStyle` and `timeStyle` values prescribed by ECMA-402.
@@ -412,6 +652,7 @@ pub struct DateTimeFormat {
     locale: CanonicalLocale,
     format_locale: CanonicalLocale,
     options: DateTimeFormatOptions,
+    basic_append_plan: Option<BasicAppendPlan>,
     calendar: String,
     numbering_system: String,
     hour_cycle: String,
@@ -421,6 +662,55 @@ pub struct DateTimeFormat {
     // identifier instead of trying to synthesize an `Etc/GMT` name: those
     // names only cover whole-hour offsets and reverse their sign.
     fixed_offset_seconds: Option<i32>,
+}
+
+/// A CLDR `appendItems` synthesis selected by BasicFormatMatcher.
+///
+/// `options` remains the original, JavaScript-observable component request.
+/// The plan separately carries the raw matched skeleton's field boundary so
+/// an incomplete CLDR record can be combined through its literal pattern
+/// without exposing ICU4X's incomplete raw-skeleton renderer.
+#[derive(Clone, Debug)]
+struct BasicAppendPlan {
+    base_options: DateTimeFormatOptions,
+    items: Vec<BasicAppendItem>,
+}
+
+#[derive(Clone, Debug)]
+struct BasicAppendItem {
+    pattern: String,
+    field_name: String,
+    component_options: DateTimeFormatOptions,
+}
+
+fn date_time_options_bytes(options: &DateTimeFormatOptions) -> usize {
+    [
+        options.calendar.as_ref(),
+        options.numbering_system.as_ref(),
+        options.hour_cycle.as_ref(),
+        options.time_zone.as_ref(),
+        options.time_zone_name.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    .map(String::len)
+    .sum()
+}
+
+impl BasicAppendPlan {
+    fn bytes(&self) -> usize {
+        self.items.capacity() * std::mem::size_of::<BasicAppendItem>()
+            + date_time_options_bytes(&self.base_options)
+            + self
+                .items
+                .iter()
+                .map(|item| {
+                    item.pattern.len()
+                        + item.field_name.len()
+                        + date_time_options_bytes(&item.component_options)
+                })
+                .sum::<usize>()
+    }
 }
 
 /// The locale data resolved by `CreateDateTimeFormat`.
@@ -452,11 +742,11 @@ fn canonical_calendar(value: &str) -> Result<Option<&'static str>, DateTimeForma
     let value = value.to_ascii_lowercase();
     let value = match value.as_str() {
         "ethiopic-amete-alem" => "ethioaa",
-        "islamicc" => "islamic-civil",
-        // ECMA-402 requires these aliases to select an available calendar.
-        // ICU4X resolves them through regional data; BlueIce's deterministic
-        // locale bundle uses the civil tabular calendar as the fallback.
-        "islamic" | "islamic-rgsa" => "islamic-civil",
+        // ECMA-402 accepts the two deprecated Islamic identifiers for
+        // DateTimeFormat, but requires their observable calendar to be a
+        // supported fallback. The provider's civil calendar is the stable,
+        // advertised fallback for both.
+        "islamic" | "islamic-rgsa" | "islamicc" => "islamic-civil",
         _ => value.as_str(),
     };
     if !SUPPORTED_CALENDARS.contains(&value) {
@@ -620,7 +910,6 @@ impl DateTimeFormat {
         requested: &[CanonicalLocale],
         mut options: DateTimeFormatOptions,
     ) -> Result<Self, DateTimeFormatError> {
-        resolve_basic_semantic_format(&mut options);
         let selected_locale = crate::resolve_locale(
             crate::IntlService::DateTimeFormat,
             requested,
@@ -628,6 +917,8 @@ impl DateTimeFormat {
         )
         .selected()
         .clone();
+        let basic_append_plan =
+            resolve_basic_semantic_format(selected_locale.as_str(), &mut options);
         let requested_time_zone = options.time_zone.clone().unwrap_or_else(|| "UTC".into());
         let (time_zone, fixed_offset_seconds) = match parse_time_zone_offset(&requested_time_zone) {
             Some((identifier, seconds)) => (identifier, Some(seconds)),
@@ -651,6 +942,7 @@ impl DateTimeFormat {
             locale: resolved_locale.locale,
             format_locale: resolved_locale.format_locale,
             options,
+            basic_append_plan,
             calendar: resolved_locale.calendar,
             numbering_system: resolved_locale.numbering_system,
             hour_cycle: resolved_locale.hour_cycle,
@@ -952,11 +1244,49 @@ impl DateTimeFormat {
         ))
     }
 
+    fn rendering_with_options(&self, options: DateTimeFormatOptions) -> Self {
+        let mut formatter = self.clone();
+        formatter.options = options;
+        formatter.basic_append_plan = None;
+        formatter
+    }
+
+    fn format_basic_append_to_parts_from_milliseconds(
+        &self,
+        milliseconds: i64,
+        include_time_zone_name: bool,
+    ) -> Result<Vec<DateTimePart>, DateTimeFormatError> {
+        let plan = self
+            .basic_append_plan
+            .clone()
+            .expect("Basic append formatter has a synthesis plan");
+        let complete = self
+            .rendering_with_options(self.options.clone())
+            .format_to_parts_from_milliseconds(milliseconds, include_time_zone_name)?;
+        let mut parts = self
+            .rendering_with_options(plan.base_options)
+            .filter_unrequested_parts(complete);
+        for item in plan.items {
+            let appended = self
+                .rendering_with_options(item.component_options)
+                .format_to_parts_from_milliseconds(milliseconds, include_time_zone_name)?;
+            parts = append_datetime_parts(&item.pattern, &item.field_name, parts, appended)
+                .ok_or(DateTimeFormatError::Formatter)?;
+        }
+        Ok(parts)
+    }
+
     fn format_to_parts_from_milliseconds(
         &self,
         milliseconds: i64,
         include_time_zone_name: bool,
     ) -> Result<Vec<DateTimePart>, DateTimeFormatError> {
+        if self.basic_append_plan.is_some() {
+            return self.format_basic_append_to_parts_from_milliseconds(
+                milliseconds,
+                include_time_zone_name,
+            );
+        }
         let (datetime, offset_seconds) = self.datetime_from_milliseconds(milliseconds)?;
         if include_time_zone_name && self.effective_time_zone_name().is_some() {
             return self.format_range_endpoint_to_parts(&datetime, offset_seconds);
@@ -975,6 +1305,7 @@ impl DateTimeFormat {
             writer.into_parts(),
             self.options.fractional_second_digits,
         ));
+        self.trim_numeric_date_part_padding(&mut parts);
         self.apply_numbering_system_punctuation(&mut parts);
         self.apply_style_part_widths(&mut parts);
         self.apply_flexible_day_period(&mut parts, datetime.time.hour.number());
@@ -1006,6 +1337,7 @@ impl DateTimeFormat {
             writer.into_parts(),
             self.options.fractional_second_digits,
         ));
+        self.trim_numeric_date_part_padding(&mut parts);
         self.apply_numbering_system_punctuation(&mut parts);
         self.apply_style_part_widths(&mut parts);
         self.apply_flexible_day_period(&mut parts, datetime.time.hour.number());
@@ -1207,6 +1539,7 @@ impl DateTimeFormat {
             "minute" => self.options.time_style.is_some() || self.options.minute.is_some(),
             "second" => self.options.time_style.is_some() || self.options.second.is_some(),
             "fractionalSecond" => self.options.fractional_second_digits.is_some(),
+            "timeZoneName" => self.effective_time_zone_name().is_some(),
             _ => true,
         }
     }
@@ -1284,15 +1617,45 @@ impl DateTimeFormat {
             }
         }
 
-        // CLDR's hanidec time pattern contains a narrow no-break space before
-        // the English AM/PM marker. ECMA-402's en-US pattern uses a regular
-        // space; normalize only this data mismatch, without touching spacing
-        // rules for other locales or number systems.
-        if self.numbering_system == "hanidec" && self.locale.locale().id.language.as_str() == "en" {
-            for part in parts {
-                if part.kind == "literal" {
-                    part.value = part.value.replace('\u{202f}', " ");
+        // ICU4X's English time skeleton emits a narrow no-break space before
+        // an AM/PM field. ECMA-402's en-US-compatible result uses a regular
+        // space, including under a Unicode numbering-system override. Limit
+        // this to the literal directly preceding the day period so other
+        // locale-specific narrow spaces remain data-owned.
+        if self.locale.locale().id.language.as_str() == "en" {
+            for index in 1..parts.len() {
+                if parts[index].kind == "dayPeriod" && parts[index - 1].kind == "literal" {
+                    parts[index - 1].value = parts[index - 1].value.replace('\u{202f}', " ");
                 }
+            }
+        }
+    }
+
+    /// `Alignment::Column` is required for a requested two-digit clock
+    /// component, but ICU4X applies it to date fields in the same dynamic
+    /// field set as well. ECMA-402 treats widths independently: a numeric
+    /// month/day must not gain a leading localized zero merely because the
+    /// caller requested `minute: "2-digit"`. Remove only that provider-added
+    /// zero from explicitly numeric date fields.
+    fn trim_numeric_date_part_padding(&self, parts: &mut [DateTimePart]) {
+        let zero = locale_data_provider()
+            .decimal_digits(&self.numbering_system)
+            .map_or('0', |digits| digits[0]);
+        for part in parts {
+            let numeric_width = match part.kind.as_str() {
+                "month" => self.options.month,
+                "day" => self.options.day,
+                _ => continue,
+            };
+            if numeric_width != Some(DateTimeWidth::Numeric) {
+                continue;
+            }
+            if let Some(unpadded) = part
+                .value
+                .strip_prefix(zero)
+                .filter(|value| !value.is_empty())
+            {
+                part.value = unpadded.into();
             }
         }
     }
@@ -1364,6 +1727,7 @@ impl DateTimeFormat {
     /// CLDR's range-owned fields without discarding their endpoint sources.
     fn apply_range_part_formatting(&self, parts: &mut Vec<DateTimeRangePart>) {
         self.repair_time_only_range_delimiter(parts);
+        self.trim_numeric_date_range_part_padding(parts);
 
         if matches!(self.calendar.as_str(), "chinese" | "dangi") {
             for part in parts.iter_mut() {
@@ -1398,11 +1762,34 @@ impl DateTimeFormat {
             }
         }
 
-        if self.numbering_system == "hanidec" && self.locale.locale().id.language.as_str() == "en" {
-            for part in parts.iter_mut() {
-                if part.kind == "literal" {
-                    part.value = part.value.replace('\u{202f}', " ");
+        if self.locale.locale().id.language.as_str() == "en" {
+            for index in 1..parts.len() {
+                if parts[index].kind == "dayPeriod" && parts[index - 1].kind == "literal" {
+                    parts[index - 1].value = parts[index - 1].value.replace('\u{202f}', " ");
                 }
+            }
+        }
+    }
+
+    fn trim_numeric_date_range_part_padding(&self, parts: &mut [DateTimeRangePart]) {
+        let zero = locale_data_provider()
+            .decimal_digits(&self.numbering_system)
+            .map_or('0', |digits| digits[0]);
+        for part in parts {
+            let numeric_width = match part.kind.as_str() {
+                "month" => self.options.month,
+                "day" => self.options.day,
+                _ => continue,
+            };
+            if numeric_width != Some(DateTimeWidth::Numeric) {
+                continue;
+            }
+            if let Some(unpadded) = part
+                .value
+                .strip_prefix(zero)
+                .filter(|value| !value.is_empty())
+            {
+                part.value = unpadded.into();
             }
         }
     }
@@ -1581,11 +1968,165 @@ impl DateTimeFormat {
         std::mem::size_of::<Self>()
             + self.locale.as_str().len()
             + self.format_locale.as_str().len()
+            + date_time_options_bytes(&self.options)
+            + self
+                .basic_append_plan
+                .as_ref()
+                .map_or(0, BasicAppendPlan::bytes)
             + self.calendar.len()
             + self.numbering_system.len()
             + self.hour_cycle.len()
             + self.time_zone.len()
-            + self.options.time_zone_name.as_ref().map_or(0, String::len)
+    }
+}
+
+/// Expands one CLDR `appendItems` pattern while preserving the existing typed
+/// DateTimeFormat parts. `{0}` is the matched base skeleton, `{1}` is the
+/// formatter built for missing requested fields, and `{2}` is CLDR's localized
+/// display name for that field.
+fn append_datetime_parts(
+    pattern: &str,
+    field_name: &str,
+    base: Vec<DateTimePart>,
+    appended: Vec<DateTimePart>,
+) -> Option<Vec<DateTimePart>> {
+    let mut parts = Vec::with_capacity(base.len() + appended.len() + 3);
+    let mut literal = String::new();
+    let mut index = 0usize;
+    let mut quoted = false;
+    let mut inserted_base = false;
+    let mut inserted_appended = false;
+
+    let push_literal = |value: &str, parts: &mut Vec<DateTimePart>| {
+        if value.is_empty() {
+            return;
+        }
+        if let Some(previous) = parts.last_mut().filter(|part| part.kind == "literal") {
+            previous.value.push_str(value);
+        } else {
+            parts.push(DateTimePart {
+                kind: "literal".into(),
+                value: value.into(),
+            });
+        }
+    };
+    let push_parts = |source: &[DateTimePart], parts: &mut Vec<DateTimePart>| {
+        for part in source {
+            if part.kind == "literal" {
+                push_literal(&part.value, parts);
+            } else {
+                parts.push(part.clone());
+            }
+        }
+    };
+
+    while index < pattern.len() {
+        let remaining = &pattern[index..];
+        if remaining.starts_with("''") {
+            literal.push('\'');
+            index += 2;
+            continue;
+        }
+        if remaining.starts_with('\'') {
+            quoted = !quoted;
+            index += 1;
+            continue;
+        }
+        if !quoted && remaining.starts_with("{0}") {
+            push_literal(&literal, &mut parts);
+            literal.clear();
+            push_parts(&base, &mut parts);
+            inserted_base = true;
+            index += 3;
+            continue;
+        }
+        if !quoted && remaining.starts_with("{1}") {
+            push_literal(&literal, &mut parts);
+            literal.clear();
+            push_parts(&appended, &mut parts);
+            inserted_appended = true;
+            index += 3;
+            continue;
+        }
+        if !quoted && remaining.starts_with("{2}") {
+            literal.push_str(field_name);
+            index += 3;
+            continue;
+        }
+        let character = remaining.chars().next()?;
+        literal.push(character);
+        index += character.len_utf8();
+    }
+    (!quoted && inserted_base && inserted_appended).then(|| {
+        push_literal(&literal, &mut parts);
+        parts
+    })
+}
+
+#[cfg(test)]
+mod append_datetime_parts_tests {
+    use super::{append_datetime_parts, DateTimePart};
+
+    fn part(kind: &str, value: &str) -> DateTimePart {
+        DateTimePart {
+            kind: kind.into(),
+            value: value.into(),
+        }
+    }
+
+    #[test]
+    fn substitutes_cldr_fields_and_preserves_typed_boundaries() {
+        let parts = append_datetime_parts(
+            "{0} ({2}: {1})",
+            "hour",
+            vec![part("year", "1970")],
+            vec![part("hour", "00")],
+        )
+        .unwrap();
+        assert_eq!(
+            parts
+                .iter()
+                .map(|part| (&part.kind[..], &part.value[..]))
+                .collect::<Vec<_>>(),
+            vec![
+                ("year", "1970"),
+                ("literal", " (hour: "),
+                ("hour", "00"),
+                ("literal", ")"),
+            ]
+        );
+    }
+
+    #[test]
+    fn handles_escaped_apostrophes_and_rejects_malformed_patterns() {
+        let parts = append_datetime_parts(
+            "{0} ''{1}''",
+            "unused",
+            vec![part("year", "1970")],
+            vec![part("hour", "00")],
+        )
+        .unwrap();
+        assert_eq!(
+            parts
+                .iter()
+                .map(|part| part.value.as_str())
+                .collect::<String>(),
+            "1970 '00'"
+        );
+        assert!(append_datetime_parts(
+            "{0} '{1}",
+            "hour",
+            vec![part("year", "1970")],
+            vec![part("hour", "00")],
+        )
+        .is_none());
+        assert!(append_datetime_parts(
+            "{0} only",
+            "hour",
+            vec![part("year", "1970")],
+            vec![part("hour", "00")],
+        )
+        .is_none());
     }
 }
 

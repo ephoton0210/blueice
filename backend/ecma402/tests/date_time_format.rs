@@ -161,6 +161,26 @@ fn resolves_every_advertised_numbering_system() {
 }
 
 #[test]
+fn resolves_deprecated_islamic_calendars_to_the_advertised_fallback() {
+    for calendar in ["islamic", "islamic-rgsa", "islamic-civil"] {
+        let formatter = DateTimeFormat::try_new(
+            &[canonicalize("en-US").unwrap()],
+            DateTimeFormatOptions {
+                calendar: Some(calendar.into()),
+                time_zone: Some("UTC".into()),
+                year: Some(DateTimeWidth::Numeric),
+                month: Some(DateTimeWidth::Numeric),
+                day: Some(DateTimeWidth::Numeric),
+                ..Default::default()
+            },
+        )
+        .unwrap_or_else(|error| panic!("could not construct {calendar}: {error}"));
+        assert_eq!(formatter.calendar(), "islamic-civil");
+        assert!(!formatter.format(0.0).unwrap().is_empty(), "{calendar}");
+    }
+}
+
+#[test]
 fn retains_the_requested_format_matcher_policy() {
     let basic = DateTimeFormat::try_new(
         &[canonicalize("en-US").unwrap()],
@@ -242,6 +262,189 @@ fn basic_format_matcher_uses_the_ecma402_penalties_and_stable_ties() {
         ),
         Some(0)
     );
+}
+
+#[test]
+fn every_pinned_datetime_locale_constructs_and_formats_from_provider_data() {
+    let provider = blueice_ecma402::locale_data_provider();
+    let locales = provider.number_format_resolved_locales();
+    let mut formatted = 0usize;
+
+    for locale_name in locales {
+        let locale = canonicalize(&locale_name).expect("pinned CLDR locale must canonicalize");
+        assert!(
+            provider.supports_service_locale(
+                blueice_ecma402::IntlService::DateTimeFormat,
+                locale.locale()
+            ),
+            "DateTimeFormat must advertise its complete provider locale {locale_name}"
+        );
+        let formatter = DateTimeFormat::try_new(
+            std::slice::from_ref(&locale),
+            DateTimeFormatOptions {
+                format_matcher: DateTimeFormatMatcher::Basic,
+                time_zone: Some("UTC".into()),
+                year: Some(DateTimeWidth::Numeric),
+                month: Some(DateTimeWidth::Short),
+                day: Some(DateTimeWidth::Numeric),
+                ..Default::default()
+            },
+        )
+        .unwrap_or_else(|error| {
+            panic!("DateTimeFormat could not construct {locale_name}: {error}")
+        });
+        assert!(
+            !formatter.format(0.0).unwrap().is_empty(),
+            "DateTimeFormat produced no localized text for {locale_name}"
+        );
+        formatted += 1;
+    }
+
+    assert_eq!(formatted, 766);
+}
+
+#[test]
+fn every_pinned_datetime_locale_retains_missing_basic_components_via_append_items() {
+    let provider = blueice_ecma402::locale_data_provider();
+    let options = DateTimeFormatOptions {
+        format_matcher: DateTimeFormatMatcher::Basic,
+        time_zone: Some("UTC".into()),
+        weekday: Some(DateTimeWidth::Long),
+        era: Some(DateTimeWidth::Short),
+        year: Some(DateTimeWidth::Numeric),
+        month: Some(DateTimeWidth::Long),
+        day: Some(DateTimeWidth::TwoDigit),
+        hour: Some(DateTimeWidth::TwoDigit),
+        minute: Some(DateTimeWidth::TwoDigit),
+        second: Some(DateTimeWidth::TwoDigit),
+        fractional_second_digits: Some(3),
+        time_zone_name: Some("short".into()),
+        ..Default::default()
+    };
+    for locale_name in provider.number_format_resolved_locales() {
+        let locale = canonicalize(&locale_name).expect("pinned CLDR locale must canonicalize");
+        let formatter = DateTimeFormat::try_new(std::slice::from_ref(&locale), options.clone())
+            .unwrap_or_else(|error| {
+                panic!("DateTimeFormat could not construct {locale_name}: {error}")
+            });
+        // ICU4X's selected raw skeleton may be missing one or more of these
+        // fields. The pinned appendItems pattern must retain each requested
+        // component in the actual public typed output, not merely in the
+        // formatter's stored option record.
+        assert!(formatter.options().weekday.is_some(), "{locale_name}");
+        assert!(formatter.options().era.is_some(), "{locale_name}");
+        assert!(formatter.options().year.is_some(), "{locale_name}");
+        assert!(formatter.options().month.is_some(), "{locale_name}");
+        assert!(formatter.options().day.is_some(), "{locale_name}");
+        assert!(formatter.options().hour.is_some(), "{locale_name}");
+        assert!(formatter.options().minute.is_some(), "{locale_name}");
+        assert!(formatter.options().second.is_some(), "{locale_name}");
+        assert!(
+            formatter.options().fractional_second_digits.is_some(),
+            "{locale_name}"
+        );
+        assert!(
+            formatter.options().time_zone_name.is_some(),
+            "{locale_name}"
+        );
+        let parts = formatter.format_to_parts(0.0).unwrap_or_else(|error| {
+            panic!("DateTimeFormat could not format {locale_name}: {error}")
+        });
+        for kind in [
+            "weekday",
+            "era",
+            "year",
+            "month",
+            "day",
+            "hour",
+            "minute",
+            "second",
+            "fractionalSecond",
+            "timeZoneName",
+        ] {
+            assert!(
+                parts.iter().any(|part| part.kind == kind),
+                "DateTimeFormat dropped {kind} while appending {locale_name}"
+            );
+        }
+    }
+}
+
+#[test]
+fn basic_matcher_renders_appended_components_with_cldr_literals() {
+    let formatter = DateTimeFormat::try_new(
+        &[canonicalize("de-CH").unwrap()],
+        DateTimeFormatOptions {
+            format_matcher: DateTimeFormatMatcher::Basic,
+            time_zone: Some("UTC".into()),
+            weekday: Some(DateTimeWidth::Long),
+            era: Some(DateTimeWidth::Short),
+            year: Some(DateTimeWidth::Numeric),
+            month: Some(DateTimeWidth::Long),
+            day: Some(DateTimeWidth::TwoDigit),
+            hour: Some(DateTimeWidth::TwoDigit),
+            minute: Some(DateTimeWidth::TwoDigit),
+            second: Some(DateTimeWidth::TwoDigit),
+            fractional_second_digits: Some(3),
+            time_zone_name: Some("short".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    let parts = formatter.format_to_parts(0.0).unwrap();
+    assert_eq!(
+        parts
+            .iter()
+            .map(|part| part.value.as_str())
+            .collect::<String>(),
+        "Donnerstag, 01. Januar 1970 n. Chr. (Stunde: 00:00:00.000 UTC)"
+    );
+    assert!(parts
+        .iter()
+        .any(|part| part.kind == "literal" && part.value == " (Stunde: "));
+    for kind in [
+        "weekday",
+        "era",
+        "year",
+        "month",
+        "day",
+        "hour",
+        "minute",
+        "second",
+        "fractionalSecond",
+        "timeZoneName",
+    ] {
+        assert!(parts.iter().any(|part| part.kind == kind), "missing {kind}");
+    }
+
+    // Ranges deliberately continue through ICU4X's complete dynamic
+    // interval skeleton rather than trying to render an incomplete raw
+    // availableFormats record. That path must retain every Basic request and
+    // avoid the raw renderer's literal `Y` failure as well.
+    let range = formatter.format_range_to_parts(0.0, 86_400_000.0).unwrap();
+    assert!(
+        !range.iter().any(|part| part.value.contains('Y')),
+        "{range:?}"
+    );
+    for kind in [
+        "weekday",
+        "era",
+        "year",
+        "month",
+        "day",
+        "hour",
+        "minute",
+        "second",
+        "fractionalSecond",
+        "timeZoneName",
+    ] {
+        assert!(
+            range.iter().any(|part| part.kind == kind),
+            "range missing {kind}: {range:?}"
+        );
+    }
+    assert!(formatter.bytes() > std::mem::size_of::<DateTimeFormat>());
 }
 
 #[test]

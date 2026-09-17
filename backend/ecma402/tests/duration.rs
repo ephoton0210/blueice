@@ -25,10 +25,12 @@ fn supported_values_advertises_only_data_backed_service_values() {
     assert!(supported_values_of("collation")
         .unwrap()
         .contains(&"phonebk".into()));
-    assert_eq!(
-        supported_values_of("currency").unwrap(),
-        ["EUR", "JPY", "USD"]
-    );
+    let currencies = supported_values_of("currency").unwrap();
+    assert_eq!(currencies.len(), 307);
+    assert!(currencies.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!(currencies.contains(&"AFA".into()));
+    assert!(currencies.contains(&"XCG".into()));
+    assert!(currencies.contains(&"XXX".into()));
     assert_eq!(
         supported_values_of("unit").unwrap(),
         NumberFormatUnit::ALL

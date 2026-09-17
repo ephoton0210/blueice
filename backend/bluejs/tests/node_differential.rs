@@ -461,6 +461,46 @@ fn number_format_range_matrix_matches_node() {
     }
 }
 
+/// Cross-service locale-data oracle matrix. These cells intentionally use
+/// stable ECMA-402 values rather than a host default locale, current time, or
+/// a mutable system time-zone database. The output includes parts where their
+/// boundaries are observable, so a platform-specific locale-data regression
+/// cannot be hidden by an equal-looking rendered string.
+#[test]
+#[ignore = "requires Node.js on PATH; run explicitly with --ignored"]
+fn intl_locale_data_matrix_matches_node() {
+    let corpus = [
+        // DateTimeFormat: a full locale pattern, non-Latin digits, and a
+        // range with observable source ownership. The raw-CLDR Basic
+        // appendItems path has its own pinned-data regression: its selected
+        // skeleton inventory is an implementation-defined locale-data choice
+        // and therefore is not a byte-for-byte Node oracle contract.
+        "new Intl.DateTimeFormat('en-US',{timeZone:'UTC',weekday:'long',year:'numeric',month:'long',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',fractionalSecondDigits:3,timeZoneName:'short'}).formatToParts(0).map(function(part){return part.type+':'+part.value}).join('|')",
+        "new Intl.DateTimeFormat('ar-u-nu-arab',{timeZone:'UTC',year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'}).formatToParts(0).map(function(part){return part.type+':'+part.value}).join('|')",
+        "new Intl.DateTimeFormat('en-US',{timeZone:'UTC',year:'numeric',month:'long',day:'numeric'}).formatRangeToParts(0,86400000).map(function(part){return part.type+':'+part.value+':'+part.source}).join('|')",
+        // DurationFormat: localized unit patterns, digital precision,
+        // numbering-system digits, and typed part boundaries.
+        "new Intl.DurationFormat('en').format({years:1,months:2,hours:3,minutes:4,seconds:5})",
+        "new Intl.DurationFormat('en',{style:'digital',fractionalDigits:3}).format({hours:1,minutes:2,seconds:3,milliseconds:4})",
+        "new Intl.DurationFormat('es',{style:'long'}).format({years:1,months:2})",
+        "new Intl.DurationFormat('ar-u-nu-arab',{style:'short'}).format({hours:1,minutes:2})",
+        "new Intl.DurationFormat('ja',{style:'narrow'}).formatToParts({hours:1,minutes:2,seconds:3}).map(function(part){return part.type+':'+part.value+(part.unit?':'+part.unit:'')}).join('|')",
+        // `unit` is a closed standard registry. Calendar enumeration follows
+        // the current ECMA-402 required-calendar list, which intentionally
+        // differs from Node's legacy inclusion of deprecated `islamic` and
+        // `islamic-rgsa`; that contract is covered by pinned Test262. Time-
+        // zone rules are a versioned IANA dataset, so assert the required
+        // canonicalization/sort/dedup invariants instead of comparing a host
+        // release-specific full list.
+        "Intl.supportedValuesOf('unit').join('|')",
+        "let zones=Intl.supportedValuesOf('timeZone');zones.includes('UTC')&&!zones.includes('Etc/UTC')&&zones.join()===zones.slice().sort().join('|')&&new Set(zones).size===zones.length",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect::<Vec<_>>();
+    assert_matches_node(&corpus);
+}
+
 fn assert_matches_node(corpus: &[String]) {
     let expected = node_oracle(corpus);
     println!(

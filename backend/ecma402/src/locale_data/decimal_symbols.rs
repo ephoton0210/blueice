@@ -14,7 +14,7 @@
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use flate2::read::GzDecoder;
-use std::{io::Read, sync::OnceLock};
+use std::{collections::BTreeSet, io::Read, sync::OnceLock};
 
 /// Decimal symbols and grouping metadata ready to construct an ICU4X payload.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -148,6 +148,25 @@ pub(super) fn default_numbering_system(locale: &str) -> Option<&'static str> {
             .find(|record| record.locale.eq_ignore_ascii_case(candidate))
             .map(|record| record.default_numbering_system.as_str())
     })
+}
+
+/// Returns every resolved CLDR locale represented in the pinned decimal data.
+///
+/// Each locale can carry several numbering-system records, so this is a
+/// deduplicated locale inventory rather than the underlying row count.
+pub(super) fn resolved_locales() -> Vec<String> {
+    let locales = pinned_decimal_symbols()
+        .iter()
+        .map(|record| record.locale.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        locales.len(),
+        766,
+        "embedded decimal-symbol locale inventory must retain every resolved CLDR locale"
+    );
+    locales
 }
 
 /// Returns a locale's CLDR symbols for an explicitly resolved numbering

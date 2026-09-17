@@ -300,7 +300,7 @@ fn adapter_executes_number_format_through_the_json_lines_interface() {
 fn adapter_executes_supported_values_through_the_json_lines_interface() {
     let replies = adapter(
         &[json!({
-            "source": "assert(Intl.supportedValuesOf('numberingSystem').includes('latn'));assert.sameValue(Intl.supportedValuesOf('currency').join(','),'EUR,JPY,USD')",
+            "source": "assert(Intl.supportedValuesOf('numberingSystem').includes('latn'));let currencies=Intl.supportedValuesOf('currency');assert.sameValue(currencies.length,307);assert.sameValue(currencies[0],'ADP');assert.sameValue(currencies[currencies.length-1],'ZWR');assert(currencies.includes('EUR')&&currencies.includes('JPY')&&currencies.includes('USD'))",
             "mode": "sloppy",
         })],
         None,
@@ -360,7 +360,7 @@ fn adapter_executes_segmenter_through_the_json_lines_interface() {
 fn adapter_executes_display_names_through_the_json_lines_interface() {
     let replies = adapter(
         &[json!({
-            "source": "let d=new Intl.DisplayNames('en',{type:'language'});assert.sameValue(d.of('fr'),'French');assert.sameValue(d.of('cde-ab-abcde'),'cde-AB-abcde');assert.sameValue(d.resolvedOptions().type,'language');assert.sameValue(Intl.DisplayNames.supportedLocalesOf(['zz','en']).join(','),'en')",
+            "source": "let d=new Intl.DisplayNames('en',{type:'language'});assert.sameValue(d.of('fr'),'French');assert.sameValue(d.of('cde-ab-abcde'),'cde (AB, ABCDE)');assert.sameValue(d.resolvedOptions().type,'language');assert.sameValue(Intl.DisplayNames.supportedLocalesOf(['zz','en']).join(','),'en')",
             "mode": "sloppy",
         })],
         None,

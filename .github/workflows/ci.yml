@@ -25,6 +25,21 @@ jobs:
           repository: tc39/test262
           ref: 72faf8ec1445c55149615e8b35187830783aba1a
           path: development/browser_core/reference/test262
+      # The checked-in .b64 provider is a source input, not a build cache.
+      # Rebuild it from its exact CLDR source on all three CI platforms so a
+      # provider update cannot be generated on one OS and silently diverge on
+      # another.
+      - name: Checkout pinned CLDR JSON provider source
+        uses: actions/checkout@v4
+        with:
+          repository: unicode-org/cldr-json
+          ref: 26a79cb42bfcc90def764102aa2af126d9ef3108
+          path: development/browser_core/reference/cldr-json
+          sparse-checkout: |
+            cldr-bcp47/bcp47
+            cldr-core
+            cldr-localenames-full/main
+            cldr-dates-full/main
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -33,6 +48,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Verify pinned CLDR provider is reproducible
+        shell: bash
+        run: |
+          node backend/ecma402/tools/generate_cldr_display_names.mjs \
+            development/browser_core/reference/cldr-json \
+            development/browser_core/reference/cldr-json/display_names_data.verify.b64
+          cmp -s backend/ecma402/src/locale_data/display_names_data.b64 \
+            development/browser_core/reference/cldr-json/display_names_data.verify.b64
+          node backend/ecma402/tools/generate_cldr_date_time_formats.mjs \
+            development/browser_core/reference/cldr-json \
+            development/browser_core/reference/cldr-json/date_time_formats_data.verify.b64 \
+            development/browser_core/reference/cldr-json/date_time_append_items_data.verify.b64
+          cmp -s backend/ecma402/src/locale_data/date_time_formats_data.b64 \
+            development/browser_core/reference/cldr-json/date_time_formats_data.verify.b64
+          cmp -s backend/ecma402/src/locale_data/date_time_append_items_data.b64 \
+            development/browser_core/reference/cldr-json/date_time_append_items_data.verify.b64
+          node backend/ecma402/tools/generate_cldr_locale_information.mjs \
+            development/browser_core/reference/cldr-json \
+            development/browser_core/reference/cldr-json/locale_information_data.verify.b64
+          cmp -s backend/ecma402/src/locale_data/locale_information_data.b64 \
+            development/browser_core/reference/cldr-json/locale_information_data.verify.b64
       - uses: Swatinem/rust-cache@v2
       # `backend/core/html/tests/wpt_corpus.rs`'s WPT tree-construction
       # gate (see `testing/TEST_PLAN.md`) needs this checked out or it
@@ -55,6 +91,10 @@ jobs:
         run: >-
           cargo test -p blueice-bluejs --test node_differential
           number_format_range_matrix_matches_node -- --ignored
+      - name: Intl locale-data Node differential matrix
+        run: >-
+          cargo test -p blueice-bluejs --test node_differential
+          intl_locale_data_matrix_matches_node -- --ignored
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Rustfmt
@@ -80,7 +120,7 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
       # See development/browser_core/testing/TEST_PLAN.md for the policy
-      # this enforces. Two files are excluded, both for the same reason:
+      # this enforces. Four files are excluded, all for the same reason:
       # a real (non-stub) process entry point whose own logic is already
       # unit-tested elsewhere, leaving only GUI/OS wiring that can't run
       # headlessly in CI. `extension/src/main.rs` is the placeholder
@@ -94,11 +134,15 @@ jobs:
       # socket server has no display dependency, so
       # `engine/tests/core_binary.rs` drives the actual compiled binary
       # as a subprocess and gets real coverage of it in CI.
+      # `mcp-server`'s main and server modules are the corresponding MCP
+      # process/stdio and rmcp macro glue. Their behavior requires a real MCP
+      # wire client and is verified manually; the testable sequencing and
+      # process logic lives in its lib.rs and remains covered.
       - name: Generate coverage and enforce threshold
         run: |
           set -o pipefail
           cargo llvm-cov --workspace \
-            --ignore-filename-regex 'extension/src/main\.rs$|frontend-reference/src/main\.rs$' \
+            --ignore-filename-regex 'extension/src/main\.rs$|frontend-reference/src/main\.rs$|mcp-server/src/main\.rs$|mcp-server/src/server\.rs$' \
             --fail-under-lines 90 \
             --summary-only \
             | tee coverage-summary.txt

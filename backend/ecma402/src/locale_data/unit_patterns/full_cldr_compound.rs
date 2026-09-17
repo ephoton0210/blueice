@@ -254,6 +254,23 @@ fn unit_pattern(
     number_unit_pattern_from_placeholder(&raw.replace("{0}", "\u{fdd0}"))
 }
 
+/// Returns one exact pinned CLDR simple-unit pattern.
+///
+/// The complete compound table carries every simple unit because generic
+/// `-per-` composition needs its localized numerator and denominator forms.
+/// Exposing that shared record avoids maintaining a second, narrower table
+/// for services such as DurationFormat.
+pub(crate) fn cldr_full_unit_pattern(
+    locale: &str,
+    unit: crate::NumberFormatUnit,
+    display: crate::NumberUnitDisplay,
+    plural: crate::PluralCategory,
+) -> Option<NumberUnitPattern> {
+    let unit = sanctioned_unit_index(unit)?;
+    let record = locale_record(locale, display)?;
+    unit_pattern(record, unit, plural)
+}
+
 /// Applies the exact CLDR direct or generic `per` pattern to a complete
 /// localized numerator pattern.  The input retains the private number
 /// placeholder until after composition, which preserves both number-first

@@ -118,7 +118,7 @@ pub fn locale_information(locale: &CanonicalLocale) -> LocaleInformation {
 }
 
 /// Selects a region according to ECMA-402's `RegionPreference` record.
-fn locale_preference_region(locale: &IcuLocale) -> String {
+pub(crate) fn locale_preference_region(locale: &IcuLocale) -> String {
     let region = locale
         .id
         .region

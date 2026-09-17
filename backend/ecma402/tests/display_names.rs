@@ -5,9 +5,9 @@
 //! Public, host-neutral `Intl.DisplayNames` coverage.
 
 use blueice_ecma402::{
-    canonicalize, supported_display_names_locales, DisplayNames, DisplayNamesError,
-    DisplayNamesFallback, DisplayNamesLanguageDisplay, DisplayNamesOptions, DisplayNamesStyle,
-    DisplayNamesType,
+    canonicalize, locale_data_provider, supported_display_names_locales, DisplayNames,
+    DisplayNamesError, DisplayNamesFallback, DisplayNamesLanguageDisplay, DisplayNamesOptions,
+    DisplayNamesStyle, DisplayNamesType, LocaleMatcher,
 };
 
 fn display_names(
@@ -51,7 +51,7 @@ fn canonicalizes_codes_and_uses_localized_or_code_fallback_data() {
     );
     assert_eq!(
         display_names.of("cde-ab-abcde").unwrap().as_deref(),
-        Some("cde-AB-abcde")
+        Some("cde (AB, ABCDE)")
     );
     assert_eq!(display_names.resolved_options().locale, "en-US");
 }
@@ -70,11 +70,13 @@ fn validates_type_specific_codes_and_honors_none_fallback() {
     )
     .unwrap();
 
+    assert_eq!(display_names.of("US").unwrap().as_deref(), Some("US"));
+    // `ZZ` is a valid CLDR region code with a localized "Unknown Region"
+    // record, so `fallback: "none"` does not suppress it.
     assert_eq!(
-        display_names.of("US").unwrap().as_deref(),
-        Some("United States")
+        display_names.of("ZZ").unwrap().as_deref(),
+        Some("Unknown Region")
     );
-    assert_eq!(display_names.of("ZZ").unwrap(), None);
     assert_eq!(
         display_names.of("U").unwrap_err(),
         DisplayNamesError::InvalidCode
@@ -134,7 +136,10 @@ fn resolves_every_bundled_name_type_and_parent_width_fallback() {
         DisplayNamesFallback::Code,
         DisplayNamesLanguageDisplay::Standard,
     );
-    assert_eq!(standard.of("en-US").unwrap().as_deref(), Some("en-US"));
+    assert_eq!(
+        standard.of("en-US").unwrap().as_deref(),
+        Some("English (US)")
+    );
     assert_eq!(standard.of("fr").unwrap().as_deref(), Some("French"));
 
     let french = display_names(
@@ -169,7 +174,7 @@ fn resolves_every_bundled_name_type_and_parent_width_fallback() {
         let names = display_names(
             "en",
             display_type,
-            DisplayNamesStyle::Narrow,
+            DisplayNamesStyle::Long,
             DisplayNamesFallback::Code,
             DisplayNamesLanguageDisplay::Standard,
         );
@@ -204,7 +209,7 @@ fn validates_grammar_fallback_and_locale_negotiation_at_the_public_boundary() {
     assert_eq!(fallback.resolved_options().locale, "en-US");
     assert_eq!(
         fallback.of("QAA-lAtN-419-1ABC-ABCDE").unwrap().as_deref(),
-        Some("qaa-Latn-419-1abc-abcde")
+        Some("qaa (Latin, Latin America, 1ABC_ABCDE)")
     );
 
     let cases = [
@@ -236,4 +241,45 @@ fn validates_grammar_fallback_and_locale_negotiation_at_the_public_boundary() {
         DisplayNamesError::InvalidCode.to_string(),
         "invalid display-name code"
     );
+}
+
+#[test]
+fn resolves_every_pinned_display_names_locale_through_the_public_service() {
+    let provider = locale_data_provider();
+    let locales = provider.number_format_resolved_locales();
+    let mut resolved = 0usize;
+
+    for locale in locales {
+        let requested = canonicalize(&locale).expect("pinned CLDR locale must canonicalize");
+        assert_eq!(
+            supported_display_names_locales(
+                std::slice::from_ref(&requested),
+                LocaleMatcher::Lookup
+            ),
+            vec![requested.clone()],
+            "{locale} must be advertised by DisplayNames"
+        );
+        let names = DisplayNames::try_new(
+            std::slice::from_ref(&requested),
+            DisplayNamesOptions {
+                locale_matcher: LocaleMatcher::Lookup,
+                display_type: DisplayNamesType::DateTimeField,
+                style: DisplayNamesStyle::Long,
+                fallback: DisplayNamesFallback::None,
+                language_display: DisplayNamesLanguageDisplay::Dialect,
+            },
+        )
+        .expect("pinned DisplayNames locale must construct");
+        assert_eq!(names.resolved_options().locale, requested.as_str());
+        assert!(
+            names
+                .of("year")
+                .expect("year is a valid date-time field")
+                .is_some(),
+            "{locale} must resolve a localized date-time-field name"
+        );
+        resolved += 1;
+    }
+
+    assert_eq!(resolved, 766);
 }

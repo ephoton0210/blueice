@@ -368,6 +368,7 @@ impl ResolvedDurationFormatServiceOptions {
 /// strings enter through the VM's single duration-record bridge.
 pub struct DurationFormat {
     list_format: crate::ListFormat,
+    plural_rules: crate::PluralRules,
     decimal_digits: [char; 10],
     resolved: ResolvedDurationFormatServiceOptions,
 }
@@ -383,6 +384,9 @@ impl DurationFormat {
             .into_iter()
             .map(|locale| crate::resolve_numbering_system_locale(&locale, None))
             .collect::<Vec<_>>();
+        let selected = requested
+            .first()
+            .expect("duration locale resolution always selects a default");
         let list_format = crate::ListFormat::try_new(
             &requested,
             crate::ListFormatOptions {
@@ -392,8 +396,15 @@ impl DurationFormat {
             },
         )
         .map_err(|_| DurationFormatError::ListFormattingUnavailable)?;
-        let selected = list_format.negotiation().selected();
         let locale = selected.as_str().to_owned();
+        let plural_rules = crate::PluralRules::try_new(
+            std::slice::from_ref(selected),
+            crate::PluralRulesOptions {
+                locale_matcher: options.locale_matcher,
+                rule_type: crate::PluralRuleType::Cardinal,
+            },
+        )
+        .map_err(|_| DurationFormatError::ListFormattingUnavailable)?;
         let numbering_system = crate::unicode_keyword(selected.locale(), "nu")
             .filter(|value| crate::supports_numbering_system(value))
             .unwrap_or_else(|| {
@@ -408,6 +419,7 @@ impl DurationFormat {
             .map_err(DurationFormatError::InvalidOptions)?;
         Ok(Self {
             list_format,
+            plural_rules,
             decimal_digits,
             resolved: ResolvedDurationFormatServiceOptions {
                 locale,
@@ -504,6 +516,7 @@ impl DurationFormat {
             + self.resolved.locale.len()
             + self.resolved.numbering_system.len()
             + self.list_format.bytes()
+            + self.plural_rules.bytes()
     }
 
     fn format_standalone_integer(
@@ -514,6 +527,7 @@ impl DurationFormat {
         duration_is_negative: bool,
         sign_displayed: &mut bool,
     ) -> Vec<DurationPart> {
+        let pattern = self.duration_unit_pattern(unit, style, &value.unsigned_abs().to_string());
         let mut result = self.integer_parts(
             value,
             unit,
@@ -522,7 +536,7 @@ impl DurationFormat {
             duration_should_display_sign(value, duration_is_negative, sign_displayed),
         );
         *sign_displayed = true;
-        self.append_unit_pattern(&mut result, unit, style, value.unsigned_abs() == 1);
+        self.append_unit_pattern(&mut result, unit, pattern);
         result
     }
 
@@ -535,6 +549,11 @@ impl DurationFormat {
         duration_is_negative: bool,
         sign_displayed: &mut bool,
     ) -> Vec<DurationPart> {
+        let pattern = self.duration_unit_pattern(
+            unit,
+            style,
+            &duration_fraction_decimal(total, exponent, self.resolved.fractional_digits),
+        );
         let mut result = self.fractional_parts(
             total,
             exponent,
@@ -544,12 +563,7 @@ impl DurationFormat {
             duration_should_display_sign(total, duration_is_negative, sign_displayed),
         );
         *sign_displayed = true;
-        self.append_unit_pattern(
-            &mut result,
-            unit,
-            style,
-            duration_fraction_is_one(total, exponent),
-        );
+        self.append_unit_pattern(&mut result, unit, pattern);
         result
     }
 
@@ -721,27 +735,68 @@ impl DurationFormat {
         &self,
         parts: &mut Vec<DurationPart>,
         unit: DurationUnit,
-        style: DurationUnitStyle,
-        singular: bool,
+        pattern: crate::locale_data::NumberUnitPattern,
     ) {
-        let (separator, label) = crate::locale_data_provider().duration_unit_pattern(
-            &self.resolved.locale,
-            unit,
-            style,
-            singular,
-        );
-        if !separator.is_empty() {
-            parts.push(DurationPart {
-                kind: DurationPartKind::Literal,
-                value: separator.into(),
+        if pattern.hides_number {
+            parts.retain(|part| {
+                !matches!(
+                    part.kind,
+                    DurationPartKind::Integer
+                        | DurationPartKind::Decimal
+                        | DurationPartKind::Fraction
+                )
+            });
+        }
+        let mut prefix = Vec::new();
+        if !pattern.prefix.is_empty() {
+            prefix.push(DurationPart {
+                kind: DurationPartKind::Unit,
+                value: pattern.prefix,
                 unit: Some(unit),
             });
         }
-        parts.push(DurationPart {
-            kind: DurationPartKind::Unit,
-            value: label.into(),
-            unit: Some(unit),
-        });
+        if !pattern.prefix_separator.is_empty() {
+            prefix.push(DurationPart {
+                kind: DurationPartKind::Literal,
+                value: pattern.prefix_separator,
+                unit: Some(unit),
+            });
+        }
+        parts.splice(..0, prefix);
+        if !pattern.suffix_separator.is_empty() {
+            parts.push(DurationPart {
+                kind: DurationPartKind::Literal,
+                value: pattern.suffix_separator,
+                unit: Some(unit),
+            });
+        }
+        if !pattern.suffix.is_empty() {
+            parts.push(DurationPart {
+                kind: DurationPartKind::Unit,
+                value: pattern.suffix,
+                unit: Some(unit),
+            });
+        }
+    }
+
+    fn duration_unit_pattern(
+        &self,
+        unit: DurationUnit,
+        style: DurationUnitStyle,
+        decimal: &str,
+    ) -> crate::locale_data::NumberUnitPattern {
+        let plural = self
+            .plural_rules
+            .select_decimal(decimal)
+            // The duration renderer itself forms finite base-10 records, so
+            // this branch is defensive rather than a provider fallback.
+            .unwrap_or(crate::PluralCategory::Other);
+        crate::locale_data_provider().duration_unit_pattern(
+            &self.resolved.locale,
+            unit,
+            style,
+            plural,
+        )
     }
 
     fn list_format_parts(
@@ -774,7 +829,11 @@ impl DurationFormat {
                 flattened.push(duration_literal(&part.value));
             }
         }
-        debug_assert!(next_element.next().is_none());
+        debug_assert!(
+            next_element.next().is_none(),
+            "list formatter emitted fewer elements than duration units for {}",
+            self.resolved.locale
+        );
         Ok(flattened)
     }
 }
@@ -883,8 +942,19 @@ fn duration_fraction_digits(fraction: &str, exponent: u8, fixed: Option<u8>) -> 
     digits
 }
 
-fn duration_fraction_is_one(total: i128, exponent: u8) -> bool {
-    total.unsigned_abs() == 10_u128.pow(exponent.into())
+/// Returns the exact ASCII decimal operand used for DurationFormat's CLDR
+/// plural selection after its fractional-digit policy has been applied.
+fn duration_fraction_decimal(total: i128, exponent: u8, fixed: Option<u8>) -> String {
+    let scale = 10_u128.pow(exponent.into());
+    let total = total.unsigned_abs();
+    let integer = total / scale;
+    let fraction = format!("{:0width$}", total % scale, width = usize::from(exponent));
+    let fraction = duration_fraction_digits(&fraction, exponent, fixed);
+    if fraction.is_empty() {
+        integer.to_string()
+    } else {
+        format!("{integer}.{fraction}")
+    }
 }
 
 fn english_group_digits(digits: &str) -> String {
@@ -1292,14 +1362,16 @@ mod implementation_tests {
 
         // The service cannot route numeric styles here, but the total data
         // lookup remains defensive for a future host adapter.
-        assert_eq!(
-            crate::locale_data_provider().duration_unit_pattern(
-                "en",
-                DurationUnit::Seconds,
-                DurationUnitStyle::Numeric,
-                false,
-            ),
-            ("", "")
+        let pattern = crate::locale_data_provider().duration_unit_pattern(
+            "en",
+            DurationUnit::Seconds,
+            DurationUnitStyle::Numeric,
+            crate::PluralCategory::Other,
         );
+        assert!(pattern.prefix.is_empty());
+        assert!(pattern.prefix_separator.is_empty());
+        assert!(pattern.suffix_separator.is_empty());
+        assert!(pattern.suffix.is_empty());
+        assert!(!pattern.hides_number);
     }
 }

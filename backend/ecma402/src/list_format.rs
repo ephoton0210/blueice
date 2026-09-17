@@ -195,9 +195,25 @@ impl std::error::Error for ListFormatError {}
 /// resulting strings using the negotiated CLDR list patterns and exposes their
 /// literal/element boundaries without needing a JavaScript Realm.
 pub struct ListFormat {
-    formatter: IcuListFormatter,
+    formatter: ListFormatterBackend,
     negotiation: ListFormatLocaleNegotiation,
     resolved: ResolvedListFormatOptions,
+}
+
+enum ListFormatterBackend {
+    /// ICU4X retains contextual variants such as Spanish `y` → `e`.
+    Icu(IcuListFormatter),
+    /// Pinned raw CLDR data fills locales absent from the compact ICU bundle.
+    Pinned(crate::locale_data::list_patterns::PinnedListPatterns),
+}
+
+impl ListFormatterBackend {
+    fn bytes(&self) -> usize {
+        match self {
+            Self::Icu(_) => 0,
+            Self::Pinned(patterns) => patterns.bytes(),
+        }
+    }
 }
 
 impl ListFormat {
@@ -212,12 +228,30 @@ impl ListFormat {
         let preferences: ListFormatterPreferences = selected.locale().into();
         let formatter_options =
             IcuListFormatterOptions::default().with_length(options.style.into());
-        let formatter = match options.list_type {
+        let icu_formatter = match options.list_type {
             ListType::Conjunction => IcuListFormatter::try_new_and(preferences, formatter_options),
             ListType::Disjunction => IcuListFormatter::try_new_or(preferences, formatter_options),
             ListType::Unit => IcuListFormatter::try_new_unit(preferences, formatter_options),
-        }
-        .map_err(|_| ListFormatError::DataUnavailable)?;
+        };
+        let provider = crate::locale_data_provider();
+        let pinned = || {
+            provider
+                .list_patterns(selected.as_str(), options.list_type, options.style)
+                .map(ListFormatterBackend::Pinned)
+                .ok_or(ListFormatError::DataUnavailable)
+        };
+        let formatter = if provider.supports_language(selected.locale()) {
+            match icu_formatter {
+                Ok(formatter) => ListFormatterBackend::Icu(formatter),
+                Err(_) => pinned()?,
+            }
+        } else {
+            // ICU's compact bundle can incidentally carry individual records
+            // outside its declared language inventory. Select the pinned CLDR
+            // table for those locales so their observable output is tied to
+            // this provider revision rather than a changing ICU subset.
+            pinned()?
+        };
         Ok(Self {
             formatter,
             negotiation,
@@ -239,9 +273,15 @@ impl ListFormat {
             .into_iter()
             .map(|value| value.as_ref().to_owned())
             .collect::<Vec<_>>();
-        self.formatter
-            .format(values.iter().map(String::as_str))
-            .to_string()
+        match &self.formatter {
+            ListFormatterBackend::Icu(formatter) => formatter
+                .format(values.iter().map(String::as_str))
+                .to_string(),
+            ListFormatterBackend::Pinned(patterns) => format_pinned_list(patterns, values)
+                .into_iter()
+                .map(|part| part.value)
+                .collect(),
+        }
     }
 
     /// Formats a sequence of already-coerced string items into ECMA-402 parts.
@@ -254,12 +294,17 @@ impl ListFormat {
             .into_iter()
             .map(|value| value.as_ref().to_owned())
             .collect::<Vec<_>>();
-        let mut collector = ListPartCollector::default();
-        self.formatter
-            .format(values.iter().map(String::as_str))
-            .write_to_parts(&mut collector)
-            .map_err(|_| ListFormatError::FormattingFailed)?;
-        Ok(collector.parts)
+        match &self.formatter {
+            ListFormatterBackend::Icu(formatter) => {
+                let mut collector = ListPartCollector::default();
+                formatter
+                    .format(values.iter().map(String::as_str))
+                    .write_to_parts(&mut collector)
+                    .map_err(|_| ListFormatError::FormattingFailed)?;
+                Ok(collector.parts)
+            }
+            ListFormatterBackend::Pinned(patterns) => Ok(format_pinned_list(patterns, values)),
+        }
     }
 
     /// Returns the data selected during construction.
@@ -274,14 +319,107 @@ impl ListFormat {
 
     /// Returns the heap storage directly owned by this service.
     pub fn bytes(&self) -> usize {
-        std::mem::size_of::<Self>() + self.resolved.locale.len()
+        std::mem::size_of::<Self>() + self.resolved.locale.len() + self.formatter.bytes()
     }
+}
+
+fn format_pinned_list(
+    patterns: &crate::locale_data::list_patterns::PinnedListPatterns,
+    values: Vec<String>,
+) -> Vec<ListPart> {
+    let mut values = values
+        .into_iter()
+        .map(|value| {
+            vec![ListPart {
+                kind: ListPartKind::Element,
+                value,
+            }]
+        })
+        .collect::<Vec<_>>();
+    match values.len() {
+        0 => Vec::new(),
+        1 => values.pop().expect("one list element remains"),
+        2 => join_pinned_list_parts(patterns.two.as_str(), values.remove(0), values.remove(0)),
+        _ => {
+            let mut result =
+                join_pinned_list_parts(patterns.start.as_str(), values.remove(0), values.remove(0));
+            while values.len() > 1 {
+                result = join_pinned_list_parts(patterns.middle.as_str(), result, values.remove(0));
+            }
+            join_pinned_list_parts(
+                patterns.end.as_str(),
+                result,
+                values.pop().expect("final list element remains"),
+            )
+        }
+    }
+}
+
+fn join_pinned_list_parts(
+    pattern: &str,
+    first: Vec<ListPart>,
+    second: Vec<ListPart>,
+) -> Vec<ListPart> {
+    let mut result = Vec::new();
+    let mut remainder = pattern;
+    let mut first = Some(first);
+    let mut second = Some(second);
+    while let Some(index) = remainder.find(['{', '}']) {
+        if index > 0 {
+            push_list_part(&mut result, ListPartKind::Literal, &remainder[..index]);
+        }
+        let placeholder = remainder
+            .get(index..index + 3)
+            .expect("validated CLDR list pattern has complete placeholder");
+        let parts = match placeholder {
+            "{0}" => first.take().expect("CLDR list pattern contains {{0}} once"),
+            "{1}" => second
+                .take()
+                .expect("CLDR list pattern contains {{1}} once"),
+            _ => unreachable!("validated CLDR list pattern only has {{0}}/{{1}} placeholders"),
+        };
+        for part in parts {
+            push_list_part(&mut result, part.kind, &part.value);
+        }
+        remainder = &remainder[index + 3..];
+    }
+    if !remainder.is_empty() {
+        push_list_part(&mut result, ListPartKind::Literal, remainder);
+    }
+    debug_assert!(first.is_none() && second.is_none());
+    result
+}
+
+fn push_list_part(parts: &mut Vec<ListPart>, kind: ListPartKind, value: &str) {
+    if value.is_empty() {
+        return;
+    }
+    // ECMA-402 `formatToParts` must retain an individual element boundary for
+    // every input.  Narrow CLDR patterns such as Chinese's `{0}{1}` have no
+    // literal between the placeholders, so coalescing neighbouring elements
+    // would incorrectly turn two inputs into one part.
+    if kind == ListPartKind::Literal {
+        if let Some(previous) = parts
+            .last_mut()
+            .filter(|previous| previous.kind == ListPartKind::Literal)
+        {
+            previous.value.push_str(value);
+            return;
+        }
+    }
+    parts.push(ListPart {
+        kind,
+        value: value.into(),
+    });
 }
 
 #[derive(Default)]
 pub(crate) struct ListPartCollector {
     pub(crate) parts: Vec<ListPart>,
     stack: Vec<ListPartKind>,
+    /// The next write inside an ICU element part begins a distinct ECMA-402
+    /// element, even when it immediately follows another element.
+    next_element_write_starts_part: bool,
 }
 
 impl std::fmt::Write for ListPartCollector {
@@ -290,14 +428,18 @@ impl std::fmt::Write for ListPartCollector {
             return Ok(());
         }
         let kind = self.stack.last().copied().unwrap_or(ListPartKind::Literal);
-        if let Some(part) = self.parts.last_mut().filter(|part| part.kind == kind) {
-            part.value.push_str(value);
-        } else {
-            self.parts.push(ListPart {
-                kind,
-                value: value.into(),
-            });
+        let must_start_element = kind == ListPartKind::Element
+            && std::mem::take(&mut self.next_element_write_starts_part);
+        if !must_start_element {
+            if let Some(part) = self.parts.last_mut().filter(|part| part.kind == kind) {
+                part.value.push_str(value);
+                return Ok(());
+            }
         }
+        self.parts.push(ListPart {
+            kind,
+            value: value.into(),
+        });
         Ok(())
     }
 }
@@ -315,9 +457,39 @@ impl PartsWrite for ListPartCollector {
         } else {
             ListPartKind::Literal
         };
+        if kind == ListPartKind::Element {
+            self.next_element_write_starts_part = true;
+        }
         self.stack.push(kind);
         let result = write(self);
         self.stack.pop();
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pinned_patterns_preserve_adjacent_input_boundaries() {
+        let patterns =
+            crate::locale_data::list_patterns::patterns("zh", ListType::Unit, ListStyle::Wide)
+                .expect("Chinese unit list patterns are pinned");
+
+        assert_eq!(patterns.two, "{0}{1}");
+        assert_eq!(
+            format_pinned_list(&patterns, vec!["A".into(), "B".into()]),
+            vec![
+                ListPart {
+                    kind: ListPartKind::Element,
+                    value: "A".into(),
+                },
+                ListPart {
+                    kind: ListPartKind::Element,
+                    value: "B".into(),
+                },
+            ]
+        );
     }
 }

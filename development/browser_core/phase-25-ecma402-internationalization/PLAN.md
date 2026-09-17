@@ -241,35 +241,40 @@ On 2026-09-14, the Test262 pin was advanced from the June snapshot to public
 `main` revision `72faf8ec1445c55149615e8b35187830783aba1a` (2026-09-10). The
 archive and every unpacked file are SHA-256 verified by
 `backend/bluejs/test262/run.py`; the fixed hashes are in its `snapshot.json`.
-The full `intl402/` inventory scheduled 6,714 modes: 1,786 pass, 4,922 fail
-and 6 timeout. Excluding the 4,058 currently blocked Temporal modes leaves
-1,786 pass, 864 fail and 6 timeout. DisplayNames (114), RelativeTimeFormat
-(160), Collator (130), ListFormat (162), PluralRules (106) and Segmenter (158)
-are individually clean in this snapshot. Collator, ListFormat, Segmenter,
-DurationFormat, DisplayNames and PluralRules are now physical host-service
-modules re-exported by the stable facade; the remaining service extractions
-are tracked in the source-modularity audit above.
-After clearing the rebuildable `target/llvm-cov-target` artifacts, `cargo
-llvm-cov -p blueice-ecma402 --tests --fail-under-lines 100 --summary-only`
-measured **2,815 / 2,829 lines (99.51%)**, 305 / 309 functions (98.71%) and
-98.01% regions. The raw no-exclusion gate remains failing: LLVM's LCOV source
-records have no zero-count mapped lines, but the summary retains 14 unmapped
-generic/closure-instantiation counters in its line denominator. This is logged
-as an open real-coverage/toolchain issue, not hidden through an exclusion or
-called 100%.
+The full `intl402/` inventory contains 6,714 modes, of which 4,058 sit below
+the separately blocked `intl402/Temporal/` subtree. The current non-Temporal
+inventory was rerun from the current workspace build on 2026-09-17 with
+`python backend/bluejs/test262/run.py --filter intl402/ --exclude Temporal
+--jobs 1`: it scheduled **2,656 modes from 1,328 files and passed 2,656/2,656**
+in 216.270 seconds. This includes DateTimeFormat (488), DurationFormat (220),
+NumberFormat (498), Locale (336), `Intl` (132, including
+`supportedValuesOf`), DisplayNames (114), RelativeTimeFormat (160), Collator
+(130), ListFormat (162), PluralRules (106) and Segmenter (158). This focused
+success does not erase the Temporal subtree from the full denominator or make
+the phase complete. Collator, ListFormat, Segmenter, DurationFormat,
+DisplayNames and PluralRules are physical host-service modules re-exported by
+the stable facade; the remaining service extractions are tracked in the
+source-modularity audit above.
+On 2026-09-17, the required standalone `cargo llvm-cov -p blueice-ecma402
+--fail-under-lines 100 --summary-only` command measured **9,085 / 10,058
+lines (90.33%)**, 887 / 937 functions (94.66%) and 89.51% regions, then exited
+1 as required. The regenerated complete provider adds real decoder, fallback,
+and formatting branches, and the report has 973 uncovered denominator lines
+(including six instrumented Rust-std thread-local lines). This supersedes the
+old 14-line mapping discrepancy: the no-exclusion gate is now a substantive
+public-boundary coverage task, not a toolchain exception, and cannot be called
+100% or hidden through an exclusion.
 
-The newly wired `intl402/DurationFormat` filter scheduled 220 current Test262
-modes: **192 pass and 28 fail**. The additional passes use the actual upstream
-`testIntl.js` DurationFormat pattern helper: BlueJS now executes the helper's
-BigInt addition, multiplication, division, remainder and BigInt/Number
-relational operations, while the host-neutral NumberFormat service supplies
-the duration-unit formatting and parts boundary. The leading-zero negative
-zero case, exact Number-visible fraction conversion and `BigInt(Number)` above
-the `i64` range are also covered by direct regressions. The 28 retained
-failures are visible and concrete: locale unit/numbering-system data,
-Temporal input conversion, a DateTimeFormat descriptor, and three cases which
-first require missing general ECMAScript object helpers. This is progress
-evidence, not a completion claim.
+The complete `intl402/DurationFormat` filter now schedules **220 modes, all of
+which pass** in the 2026-09-17 non-Temporal inventory. It uses the actual
+upstream `testIntl.js` DurationFormat pattern helper: BlueJS executes the
+helper's BigInt addition, multiplication, division, remainder and
+BigInt/Number relational operations, while the host-neutral NumberFormat
+service supplies the duration-unit formatting and parts boundary. The
+leading-zero negative-zero case, exact Number-visible fraction conversion and
+`BigInt(Number)` above the `i64` range are covered by direct regressions. This
+is Test262 evidence for DurationFormat's current public non-Temporal surface,
+not a completion claim for the phase or its 100% coverage gate.
 
 The latest `intl402/Locale` filter scheduled **168 files and 336 modes**, all
 of which pass. `locale_information.rs` now owns `Intl.Locale` information
