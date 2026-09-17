@@ -23,6 +23,16 @@ from run import (
 
 
 class RunnerTests(unittest.TestCase):
+    def test_regex_worker_binary_preserves_adapter_suffix(self):
+        self.assertEqual(
+            run.regex_worker_binary(Path("/tmp/bluejs-test262")),
+            Path("/tmp/bluejs-regexp-worker"),
+        )
+        self.assertEqual(
+            run.regex_worker_binary(Path("C:/test/bluejs-test262.exe")),
+            Path("C:/test/bluejs-regexp-worker.exe"),
+        )
+
     def test_progress_reports_completed_counts_and_current_modes(self):
         report = format_progress(
             3,
