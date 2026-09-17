@@ -149,6 +149,30 @@ fn primitive_string_formatting_and_utf16_comparison_cover_boundaries() {
 }
 
 #[test]
+fn string_pattern_methods_ignore_symbol_hooks_on_primitive_arguments() {
+    assert_eq!(
+        evaluate("Number.prototype[Symbol.match]=function(s){return s+this;}; 'a'.match(3)===null",),
+        Ok(Value::Bool(true))
+    );
+    assert_eq!(
+        evaluate("Number.prototype[Symbol.search]=function(){return 99;}; 'a'.search(3)===-1",),
+        Ok(Value::Bool(true))
+    );
+    assert_eq!(
+        evaluate("let p={[Symbol.match](s){return s+'!'}}; 'a'.match(p)==='a!'"),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn array_length_assignment_performs_both_required_numeric_conversions() {
+    assert_eq!(
+        evaluate("let n=0; let a=[]; a.length={valueOf(){n++;return 2;}}; a.length===2&&n===2",),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
 fn every_compound_store_and_prototype_literal_form_executes() {
     for (source, expected) in [
         ("let x=8; x-=2; x*=3; x/=2; x%=4; x", 1.0),

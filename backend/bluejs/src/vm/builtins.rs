@@ -1546,8 +1546,10 @@ impl Vm {
 
     pub(super) fn array_length_value(&mut self, value: &Value) -> Result<Value, RuntimeError> {
         // ArraySetLength performs ToUint32 followed by a separate ToNumber.
+        // These must remain separate observable conversions: an object can
+        // supply a stateful `valueOf` implementation.
+        let length = native::uint32(&Value::Number(self.coerce_number(value)?))?;
         let number = self.coerce_number(value)?;
-        let length = native::uint32(&Value::Number(number))?;
         if f64::from(length) != number {
             return Err(RuntimeError::RangeError("invalid array length".into()));
         }
@@ -2524,7 +2526,12 @@ impl Vm {
             PatternMethod::MatchAll => "matchAll",
             PatternMethod::Search => "search",
         };
-        if !matches!(pattern, Value::Null | Value::Undefined) {
+        // `String.prototype.{match,matchAll,search}` only obtains a symbol
+        // hook from an Object argument. `GetMethod` would box a primitive and
+        // incorrectly observe a hook installed on (for example)
+        // `Number.prototype[Symbol.match]`; the standard methods must instead
+        // create a RegExp from that primitive.
+        if matches!(pattern, Value::Object(_)) {
             if method == PatternMethod::MatchAll {
                 self.require_global_pattern(pattern)?;
             }
