@@ -5,7 +5,9 @@
 import tempfile
 from pathlib import Path
 import unittest
+from unittest import mock
 
+import run
 from run import (
     Worker,
     case_timeout,
@@ -306,6 +308,28 @@ class RunnerTests(unittest.TestCase):
             try:
                 self.assertEqual(worker.run({"stall": True})["kind"], "timeout")
                 self.assertEqual(worker.run({})["kind"], "ok")
+            finally:
+                worker.close()
+
+    def test_windows_supervisor_uses_pipe_thread_and_process_kill(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            executable = Path(temporary) / "adapter"
+            executable.write_text(
+                "#!/usr/bin/env python3\nimport json,sys,time\n"
+                "print('{\"ready\":1}',flush=True)\nfor line in sys.stdin:\n"
+                " request=json.loads(line)\n if request.get('stall'): time.sleep(10)\n"
+                " print('{\"kind\":\"ok\"}',flush=True)\n"
+            )
+            executable.chmod(0o755)
+            worker = Worker(executable, 0.05)
+            try:
+                # Exercise the Windows-specific pipe exchange on the portable
+                # fixture; native Windows has no `os.killpg` or selectable
+                # subprocess pipes.
+                with mock.patch.object(run.os, "name", "nt"):
+                    result = worker.run({"stall": True})
+                    self.assertEqual(result["kind"], "timeout", result)
+                    self.assertEqual(worker.run({})["kind"], "ok")
             finally:
                 worker.close()
 

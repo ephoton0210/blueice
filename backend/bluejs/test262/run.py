@@ -17,6 +17,7 @@ import io
 import json
 import os
 from pathlib import Path
+import queue
 import re
 import selectors
 import signal
@@ -609,7 +610,13 @@ class Worker:
             # The group also contains any isolated regex helper. This is needed
             # for crashes/whole-case timeouts outside the regex API deadline.
             try:
-                os.killpg(self.process.pid, signal.SIGKILL)
+                if os.name == "nt":
+                    # Windows has neither process groups nor `killpg`. Killing
+                    # the adapter still closes its inherited worker handles;
+                    # it is enough to unblock the supervised exchange below.
+                    self.process.kill()
+                else:
+                    os.killpg(self.process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
             self.process.wait()
@@ -619,6 +626,39 @@ class Worker:
 
     def exchange(self, payload, timeout):
         process = self.process
+        if os.name == "nt":
+            # Windows' SelectSelector only accepts sockets, not subprocess
+            # pipes. A daemon transfer thread preserves the same deadline
+            # semantics as the POSIX selector path; on timeout `close()` kills
+            # the adapter and unblocks its outstanding pipe operation.
+            result = queue.Queue(maxsize=1)
+
+            def transfer():
+                try:
+                    outgoing = memoryview(payload)
+                    while outgoing:
+                        size = process.stdin.write(outgoing)
+                        if not size:
+                            raise BrokenPipeError("adapter stdin closed")
+                        outgoing = outgoing[size:]
+                    process.stdin.flush()
+                    response = process.stdout.readline(1024 * 1024 + 1)
+                    if not response:
+                        raise EOFError(f"adapter exited with code {process.poll()}")
+                    if len(response) > 1024 * 1024:
+                        raise ValueError("adapter response exceeds limit")
+                    result.put((True, json.loads(response)))
+                except (BrokenPipeError, EOFError, OSError, ValueError) as error:
+                    result.put((False, error))
+
+            threading.Thread(target=transfer, daemon=True).start()
+            try:
+                success, response = result.get(timeout=timeout)
+            except queue.Empty as error:
+                raise TimeoutError("whole-case wall deadline exceeded") from error
+            if success:
+                return response
+            raise response
         outgoing = memoryview(payload)
         result = bytearray()
         deadline = time.monotonic() + timeout
@@ -650,8 +690,9 @@ class Worker:
         try:
             if self.process is None:
                 self.process = subprocess.Popen([str(self.executable)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True, bufsize=0)
-                os.set_blocking(self.process.stdin.fileno(), False)
-                os.set_blocking(self.process.stdout.fileno(), False)
+                if os.name != "nt":
+                    os.set_blocking(self.process.stdin.fileno(), False)
+                    os.set_blocking(self.process.stdout.fileno(), False)
                 if self.exchange(b"", 5) != {"ready": 1}:
                     raise ValueError("invalid adapter handshake")
             return self.exchange(
