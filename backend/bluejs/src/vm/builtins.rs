@@ -1525,7 +1525,7 @@ impl Vm {
     /// ToBigInt ( argument ). `coerce_primitive` performs the single
     /// observable ToPrimitive(argument, number) call; everything after that
     /// is non-observable dispatch on the resulting primitive's type.
-    pub(super) fn to_bigint(&mut self, value: &Value) -> Result<BigInt, RuntimeError> {
+    pub(super) fn coerce_bigint(&mut self, value: &Value) -> Result<BigInt, RuntimeError> {
         match self.coerce_primitive(value, "number")? {
             Value::BigInt(value) => Ok(value),
             Value::Bool(value) => Ok(BigInt::from(u8::from(value))),
@@ -1549,7 +1549,7 @@ impl Vm {
     /// The upper bound is the abstract operation's own 2**53-1, independent
     /// of any host object's storage capacity (contrast `buffer_index`, which
     /// bounds by `usize::MAX` for byte offsets/lengths instead).
-    pub(super) fn to_bigint_index(&mut self, value: &Value) -> Result<usize, RuntimeError> {
+    pub(super) fn coerce_bigint_index(&mut self, value: &Value) -> Result<usize, RuntimeError> {
         let integer = self.coerce_number(value)?;
         let integer = if integer.is_nan() { 0.0 } else { integer.trunc() };
         if !(0.0..=9_007_199_254_740_991.0).contains(&integer) {

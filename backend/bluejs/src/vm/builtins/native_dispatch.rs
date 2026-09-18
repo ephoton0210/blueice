@@ -1664,15 +1664,15 @@ impl Vm {
                     Value::Number(_) => Err(RuntimeError::RangeError(
                         "BigInt conversion requires an integral Number".into(),
                     )),
-                    value => Ok(Value::BigInt(self.to_bigint(&value)?)),
+                    value => Ok(Value::BigInt(self.coerce_bigint(&value)?)),
                 }
             }
             NativeFunction::BigIntAsIntN | NativeFunction::BigIntAsUintN => {
                 // 1. Let bits be ? ToIndex(bits). 2. Let bigint be ?
                 // ToBigInt(bigint). Both are observable coercions, evaluated
                 // in this order before any arithmetic.
-                let bits = self.to_bigint_index(native::argument(&args, 0))?;
-                let bigint = self.to_bigint(native::argument(&args, 1))?;
+                let bits = self.coerce_bigint_index(native::argument(&args, 0))?;
+                let bigint = self.coerce_bigint(native::argument(&args, 1))?;
                 if bits == 0 {
                     return Ok(Value::BigInt(BigInt::zero()));
                 }

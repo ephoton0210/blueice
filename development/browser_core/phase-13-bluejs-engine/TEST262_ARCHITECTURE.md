@@ -2390,3 +2390,115 @@ new BlueJS-side regression test
 (`iterator_zip_closes_already_opened_records_in_order_on_abrupt_completion`)
 pins the exact close ordering for all four cases independently of the
 upstream corpus.
+
+## BigInt closure: StringToBigInt, asIntN/asUintN, toString(radix), and ++/-- typing
+
+Implemented 2026-09-18, against the pinned `72faf8ec1445c55149615e8b35187830783aba1a`
+snapshot's full `built-ins/BigInt/` inventory (154 scheduled modes, 77 files):
+
+| Stage | Result | Evidence |
+| --- | ---: | --- |
+| Session baseline (before this work) | 72 pass / 82 fail | `/tmp/bigint-baseline` |
+| After `asIntN`/`asUintN`, `StringToBigInt`, `ToBigInt`, and Number/String equality/comparison mixing | 138 pass / 16 fail | first commit below |
+| After `toString(radix)`, the ordinary (non-boxed) BigInt prototype, and BigInt's constructor whitelisting | 152 pass / 2 fail | second commit below |
+| After the Object/BigInt equality fallback and `++`/`--` BigInt typing | **154 / 154 pass** | `/tmp/bigint-after4` |
+
+`BigInt.asIntN`/`BigInt.asUintN` did not exist at all — no `NativeFunction`
+variant, nothing installed on the constructor — so every test under
+`built-ins/BigInt/asIntN` and `asUintN` failed outright. Implemented per
+sec-bigint.asintn/sec-bigint.asuintn: `ToIndex(bits)` then `ToBigInt(bigint)`
+in that order, each a single observable coercion; the result is wrapped into
+`[0, 2**bits)` via BigInt's truncating `%` corrected to a mathematical
+modulo (`asIntN` additionally reflects values at or above `2**(bits-1)` into
+the negative half). `bits` is capped at 1,000,000 — the same
+"implementation capacity" convention `bigint_shift`/`bigint_exponentiate`
+already use — so a ToIndex-valid but absurd `bits` (up to `2**53-1`) can't
+try to allocate an astronomically large BigInt.
+
+`BigInt(value)`'s own coercion had three real gaps: `BigInt(true)`/
+`BigInt(false)` threw `TypeError` instead of returning `1n`/`0n`; string
+coercion parsed only plain decimal digits via `BigInt::parse_bytes(_, 10)`,
+rejecting every `0x`/`0o`/`0b`-prefixed string and an empty/all-whitespace
+string (StringToBigInt says empty is `0n`); and the constructor duplicated
+its own coercion logic instead of sharing it with anything else that needs
+`ToBigInt`. Added `primitive::string_to_bigint` (a real StringToBigInt: an
+unsigned `0x`/`0o`/`0b` literal, or a signed decimal, `StrWhiteSpace`-trimmed
+on both ends, empty is `0n`) and a VM `to_bigint` helper (the `ToBigInt`
+abstract operation proper: Boolean/BigInt/String primitives convert, Number/
+Symbol/Null/Undefined/Object throw), both shared by the constructor and by
+`asIntN`/`asUintN`'s own `ToBigInt(bigint)` step.
+
+`primitive::compare` and `vm::operations::loose_equal` did not handle a
+BigInt operand against a String at all (fell through to `Ok(false)`/no
+match), and `loose_equal` didn't handle BigInt against Number either (`1n ==
+1` was `false`). Both now follow Abstract Relational Comparison/Abstract
+Equality Comparison's BigInt cases exactly. A second, later equality bug: the
+Object↔primitive `ToPrimitive`-unwrap fallback in `loose_equal` listed
+Number/String/Symbol as valid companions for an Object operand but not
+BigInt, so `Object(1n) == 1n` fell through to `false` instead of unwrapping
+the object first — caught by `wrapper-object-ordinary-toprimitive.js`, whose
+whole point is exercising an overridden `valueOf`/`toString` pair through
+several different `ToPrimitive` hints.
+
+`BigInt.prototype` was allocated as a boxed-primitive object holding `0n`,
+the same as `%Number.prototype%`/`%Boolean.prototype%` — but "Properties of
+the BigInt Prototype Object" explicitly says the BigInt prototype does *not*
+have a `[[BigIntData]]` internal slot. That made `BigInt.prototype.toString(1)`
+(and any other direct call on the bare prototype) silently treat it as `0n`
+instead of throwing `TypeError`. It's now allocated as a plain object;
+Number/Boolean keep their existing boxed-primitive prototypes.
+`BigInt.prototype.toString`/`valueOf` also didn't fall back to
+`test262_foreign_boxed_primitive` the way `Symbol.prototype`'s own methods
+already do, so a cross-realm-created boxed BigInt threw instead of reading
+the other realm's internal slot. Separately, `BigInt.prototype.toString(
+[radix])` never accepted a radix argument at all (always base 10); added
+`ToIntegerOrInfinity`-then-range-check handling for the optional radix
+(2-36, `RangeError` outside that range, `TypeError` for a Symbol/BigInt
+radix via the existing `ToNumber` rejection), backed by num-bigint's own
+`to_str_radix` for the a-z digit conversion. `BigInt` itself was also
+missing from both constructor whitelists (`is_constructor` and the generic
+`new`-gate in `vm.rs`), so `isConstructor(BigInt)` incorrectly reported
+`false` even though BigInt does have `[[Construct]]` (only failing once
+NewTarget is observed defined) — a distinction the existing, previously
+unreachable check inside BigInt's own native dispatch already encoded
+correctly once actually reached.
+
+The highest-leverage fix, by scope rather than by BigInt-directory mode
+count: `++`/`--` on a plain identifier compiled to a `ToNumber` opcode
+followed by adding a fixed `Number(1.0)` constant — `ToNumber` rejects
+BigInt outright, and even bypassing that, adding a Number to a BigInt is
+itself a rejected mix. Added a `ToNumeric` opcode (`ToNumber`'s
+BigInt-preserving sibling; unary `+` keeps using plain `ToNumber`, since it
+must still throw on BigInt) and a `PushOne` opcode that pushes a `1` of
+whichever numeric type `ToNumeric` just produced, so the following Add/
+Subtract never mixes types. `UpdateProperty`/`SuperUpdate` (member/super
+`++`/`--`) had the identical bug in their own Rust implementation and now
+share a new `numeric_step` VM helper instead. This is a core interpreter
+fix, not `built-ins/BigInt/`-local, so it also corrects `i++`/`obj.x--`/
+`super.x++` wherever a BigInt operand reaches them — e.g. it was the actual
+cause behind `built-ins/BigInt/prototype/toString/a-z.js`'s failure, whose
+own assertion is about `toString`'s digit set, not increment.
+
+`backend/bluejs/tests/bigint.rs` (30 tests) covers all of the above
+end-to-end through parse/compile/execute: `BigInt()`'s Number/Boolean/String/
+Symbol/null/undefined coercion paths (including the single-ToPrimitive-call
+guarantee), `StringToBigInt`'s full grammar (radix prefixes, blank-string
+zero, syntax-error rejections), BigInt mixing with Number/String in both
+`==` and relational operators (including through a boxed wrapper object),
+`asIntN`/`asUintN`'s wrap-around arithmetic, argument-coercion order,
+not-a-constructor status and property descriptors, `toString`'s radix range/
+digit-set/error paths, the now-ordinary BigInt prototype, BigInt's
+is-a-constructor-but-always-throws status, and `++`/`--` on BigInt
+identifiers/properties/super properties.
+
+Explicitly out of scope for this pass (left for the sibling TypedArray
+work): `BigInt64Array`/`BigUint64Array` construction and indexing,
+`DataView.prototype.{get,set}BigInt64`/`BigUint64`, and Atomics on BigInt
+typed arrays. Also not attempted: a systematic sweep of the ~215
+`features: [BigInt]`-tagged files under `test/language/` (as opposed to
+`test/built-ins/BigInt/`) beyond spot-checking that the `++`/`--` and
+equality fixes above don't regress the surrounding non-BigInt
+`postfix-increment`/`prefix-increment`/`equality` suites (291/323 passing
+there, with the 32 failures being pre-existing, non-BigInt reference/
+`putValue`-ordering/line-terminator gaps unrelated to this session's
+changes).
