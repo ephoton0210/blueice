@@ -305,16 +305,21 @@ Nothing downstream is stable until this lands. Scope:
 Each track's Gecko evidence for independence is stated explicitly so this
 isn't an assumption:
 
-- **Track A — Calendar systems** (`calendar.rs`, split further by calendar
-  cluster if useful, e.g. one agent for the three `Islamic*` variants
-  together since they share era logic, one for `Chinese`/`Dangi`, one for
-  the rest). Evidence: `CalendarId` is a closed enum dispatching to
-  independent per-calendar conversion logic (Gecko's `Calendar.cpp`, 4,016
-  lines, is a dispatch service, not per-type logic); this codebase already
-  proved the same calendars work through `icu_calendar` for DateTimeFormat,
-  so most of this track is wiring existing ICU4X calendar math into the
-  `CalendarFields` foundation and validating against Test262's per-calendar
-  fixtures, not new algorithm design.
+- **Track A — Calendar systems: corrected 2026-09-18, folded into Stage 2
+  rather than a standalone Stage 1 track.** The pinned Test262 revision has
+  **no `built-ins/Temporal/Calendar/` directory at all** (confirmed by
+  direct search) — consistent with the Gecko finding above that the current
+  spec dropped the object-protocol calendar design for a closed identifier
+  set. `calendar.rs`'s recognition table and `temporal_calendar_fields`'s
+  ISO↔any-calendar conversion (via `icu_calendar`) already exist from Stage
+  0 and already pass real Test262 evidence
+  (`temporal_calendar_fields_round_trip_through_iso_and_lunisolar_months`).
+  There is no freestanding Stage 1 Test262 surface left to drive a separate
+  track against — Calendar's remaining work (deeper per-calendar edge
+  cases, era/monthCode handling for less-common calendars) only has real
+  test coverage through `PlainDate`/`PlainDateTime`/etc., which are Stage
+  2's calendar-aware composite types. Do not dispatch a standalone "Track
+  A" agent; calendar correctness gets exercised as part of Stage 2 instead.
 - **Track B — Duration arithmetic** (`duration.rs`, the JS-visible wrapper;
   building on Stage 0's `duration_math.rs`). Evidence: Gecko's core
   add/subtract/negate/abs/compare path does not depend on `Calendar.cpp`
