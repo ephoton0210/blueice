@@ -2886,3 +2886,227 @@ parsing rather than dedicated grammar) -- this predates this session and
 explains both `import-defer`'s nonzero 13-pass baseline and this session's
 deliberate choice not to tighten bare-`import` rejection any further than
 the narrow "no `(` and no `.`" case.
+
+## JSON modules, a dynamic-import promise-rejection classification bug, and the `eval-script-code-target` finding
+
+Implemented 2026-09-18, continuing the same-day session above per specific
+follow-up direction: (1) implement JSON modules (confirmed in-scope for
+edition 17, previously deferred as "a separate, larger unit of work"), (2)
+finish the general `dynamic-import` deep dive the first pass didn't reach,
+(3) look at the 16 `eval-script-code-target` failures without over-investing.
+
+### 1. JSON modules (`ParseJSONModule` / `CreateDefaultExportSyntheticModule`)
+
+Official clauses read: the Import Attributes proposal's own §1.4
+`ParseJSONModule` / §1.5 `CreateDefaultExportSyntheticModule` (merged into
+the mainline spec text this proposal now lives in, confirmed non-proposal
+per `features.txt`'s `json-modules` entry, same authority check as the
+session above) -- `json = ? Call(%JSON.parse%, undefined, «source»)`, then
+a Synthetic Module Record whose sole export is an already-initialized,
+immutable `default` binding to `json`.
+
+**Root cause.** `parser/module_items.rs::parse_import_attributes` validated
+`with {...}` syntax but discarded every attribute's value (a deliberate,
+documented scope limit from the prior `import(specifier, options)` slice);
+nothing anywhere routed a `type: "json"` request differently from an
+ordinary Source Text Module request, and the `.json` fixture files
+themselves were never even collected by the Python harness (`module_sources()`
+explicitly excluded non-`.js` siblings, by original design, "left to the
+adapter's normal module-resolution result").
+
+**Fix**, across five layers:
+
+1. **Attribute plumbing** (`ast.rs`, `parser/module_items.rs`,
+   `compiler.rs`, `bytecode.rs`): `ImportEntry` and the `ExportEntry`/
+   `ModuleExport` variants that reference another module (`Indirect`,
+   `Star`, `Namespace`) gained a `json: bool`, set from
+   `parse_import_attributes`'s now-`bool`-returning result (true iff a
+   `type: "json"` entry was present) and threaded through compilation
+   unchanged. `Bytecode.module_requests`/`ModuleRequest` deliberately did
+   *not* need this flag: it only matters at the one-time registration step
+   below, never at ordinary dependency-evaluation-order traversal.
+2. **Synthesis** (`vm/modules.rs::ensure_json_module`): given a *resolved*
+   module name, looks up raw JSON text in a new host-supplied
+   `Vm::json_module_sources` registry (installed via the new
+   `Vm::set_json_module_sources`, mirroring `set_module_source_loader_context`'s
+   existing pattern for source-phase records), calls the engine's own
+   `json_parse` (the exact `JSON.parse` implementation, not a
+   reimplementation), and builds a trivial real `Bytecode`: one binding
+   (`default`), one scope, `module_exports: [Local{"default", slot 0}]`,
+   and a new `Bytecode.json_module_value: Option<Value>` field carrying the
+   already-parsed value. This is a deliberate, documented, narrow exception
+   to "`Bytecode`... can execute repeatedly in the same or independent
+   VMs... runtime object handles are never stored in its constant pool" --
+   a JSON module's synthesized `Bytecode` is per-`Vm`, built fresh from raw
+   text each time `ensure_json_module` first sees a given resolved path,
+   and never shared across realms. Idempotent (a second call for the same
+   resolved path is a no-op), which is what gives repeated imports of one
+   JSON file the required object identity.
+3. **Linking integration** (`vm/modules.rs::execute_module_graph_inner`):
+   two call sites of `ensure_json_module`, both running before the
+   function's existing major GC collection (rooting the freshly parsed
+   value through the same `roots: Vec<RootId>` the rest of the function
+   already threads through, so nothing before it has a cell yet to keep it
+   alive) --
+   `register_static_json_modules` scans a *fresh* graph's own
+   `with`-attributed requests once (a JSON module never itself requests
+   further modules, so one pass is exhaustive) and registers each target;
+   a new `entry_json: bool` parameter (from a dynamic import's own
+   attribute check) registers `entry` itself directly, covering a pure
+   `import(spec, {with:{type:"json"}})` with no static import anywhere in
+   the graph, on both a fresh and an *already-linked* existing graph (the
+   latter needs a hand-built single `LinkedModule` entry, since fresh-graph
+   linking's own per-`order` loops never run for it). A JSON module's slot-0
+   cell is created by the *same* generic non-lexical-binding loop every
+   other module's cells go through (getting an ordinary `Undefined` value
+   first), then a short follow-up pass overwrites it with the real parsed
+   value and marks the record `evaluated: true` -- so `evaluate_module_record`'s
+   existing `if record.evaluated { return Ok(Undefined) }` short-circuit
+   means the module's (empty) instruction stream is never actually
+   interpreted; `resolve_export`/`module_namespace`/`exported_names` needed
+   no changes at all, since they only ever consult `module_exports` +
+   `linked[..].cells`, uniformly for any `Bytecode`, synthesized or not.
+4. **Dynamic import attribute plumbing** (`vm/modules.rs`, `vm.rs`):
+   `evaluate_import_call_arguments` (from the prior slice) now also
+   extracts the enumerated `type` attribute's value, returning
+   `(specifier, json)`; `PromiseJob::DynamicImport` gained a `json: bool`
+   field threaded through to `dynamic_import_job`, which passes it to
+   `execute_module_graph_inner` as `entry_json`.
+5. **Harness** (`backend/bluejs/test262/run.py`, `bluejs-test262.rs`):
+   `module_sources()` now returns `(sources, json_sources)` -- `.json`
+   siblings (found via the *same* existing static/dynamic-import-reference
+   regexes) are collected as raw text into the new `json_sources` return
+   value instead of being skipped, and a new `module_json_sources` request
+   field carries them to `Vm::set_json_module_sources`.
+
+**A real, load-bearing harness bug found and fixed along the way**: for a
+plain-script (non-`module`) test whose only dynamic import references were
+`.json` fixtures, `module_codes` (compiled `.js` siblings) ended up empty,
+and the adapter's `vm.set_module_loader_context(...)` call was gated on
+`!module_codes.is_empty()` -- skipping it entirely, so `dynamic_import`'s
+referrer fell back to the resolution-breaking `"<script>"` default instead
+of the test's own path, and every such JSON-only dynamic import failed to
+resolve. Fixed by gating on `request.module_path.is_some()` instead (set
+whenever the harness detected any dynamic import at all, `.json`-only or
+not) -- an empty module registry is a perfectly valid, already-supported
+`set_module_loader_context` call; only the *referrer* was missing.
+
+**Evidence** (`--filter "language/import/import-attributes/,language/expressions/dynamic-import/import-attributes/"`, 61 modes, both known-in-scope JSON areas from the prior slice's "remaining gaps"):
+
+| Stage | Pass / fail |
+| --- | ---: |
+| Before this slice (round 1 baseline) | 42 / 19 |
+| After JSON module synthesis, before the harness referrer fix | 52 / 9 |
+| After the harness referrer fix | **54 / 7** |
+
+The remaining 7 all need the separate, unmerged `import-text` proposal
+(`type: "text"`/self-referencing-module-as-text fixtures) -- confirmed via
+the same `features.txt` "Proposed language features" check as
+source-phase-imports/import-defer, out of scope for the same reason.
+`backend/bluejs/tests/test262_host.rs` gained eight new regression tests
+(default-export value across every JSON type, namespace shape, extensibility,
+named-binding/malformed-JSON resolution errors, cross-site identity
+including through a dynamic import, a pure-dynamic no-static-import case,
+a missing-host-source `TypeError`, and a Proxy-based `with` attributes
+object exercising the same `EnumerableOwnPropertyNames` path
+`Object.keys` uses) plus two new Python tests in
+`backend/bluejs/test262/test_runner.py` for `module_sources()`'s new
+`(sources, json_sources)` return shape.
+
+### 2. General `dynamic-import` deep dive: a real promise-rejection misclassification
+
+Reading the plain (non-`source-phase`/`import-defer`-tagged)
+`dynamic-import` failures remaining after the JSON work, a large cluster (34
+files, `catch/*-instn-iee-err-{ambiguous-import,circular}*.js`) all showed
+an *uncaught* `Test262Error` where the test's own `.catch(error => {
+assert.sameValue(error.name, 'SyntaxError') })` handler should have run
+cleanly -- meaning the promise rejected with something whose `.name` wasn't
+`"SyntaxError"`, failing that assertion and producing an uncaught rejection
+from the outer `.then($DONE, $DONE)`.
+
+**Root cause**: `vm/builtins/promises.rs`'s dynamic-import job drain had a
+special case, `Err(RuntimeError::ModuleResolution(message)) => "TypeError"`,
+present specifically for dynamic imports (every other context --
+`error_value`, used for static `execute_module_graph` failures and every
+other promise rejection -- already mapped `ModuleResolution` to a real
+`SyntaxError`, matching `resolve_export`'s own ambiguous/missing-export
+`ModuleResolution` errors, which per spec's `ResolveExport`/module
+instantiation steps must be `SyntaxError`s, not `TypeError`s). This override
+predates this session; grepping the whole `dynamic-import` test directory
+found zero tests checking `instanceof TypeError`/`.constructor===TypeError`
+for a resolution-style dynamic-import failure, and 80 checking
+`error.name==='SyntaxError'`. The one `TypeError`-observing test that does
+exist for dynamic import (`catch/*-eval-rqstd-abrupt-typeerror.js`, and its
+`eval-rqstd-abrupt-err-type_FIXTURE.js`, `throw new TypeError()`) goes
+through a completely different path -- a real thrown value
+(`RuntimeError::Thrown`), never `ModuleResolution` -- so it was never
+reached by, and is unaffected by, removing the override.
+
+**Fix**: deleted the override; `Err(error) => { let error = self.error_value(error)?; ... }`'s
+existing generic arm now handles `ModuleResolution` for dynamic imports the
+same way it already did everywhere else.
+
+**Evidence** (`--filter "language/module-code/,language/expressions/dynamic-import/,language/import/,built-ins/ImportAttributes"`, 2,637 modes, same scope as the prior session's full-tree regression check):
+
+| Stage | Pass / fail |
+| --- | ---: |
+| Prior session's end state | 1,977 / 660 |
+| After JSON modules (this session) | 1,990 / 647 |
+| After the promise-rejection fix | **2,053 / 584** |
+
+Zero regressions at every stage (`module-code-other`, `static-import-attrs`,
+`import-defer`, `import-bytes` all held constant throughout; verified with
+a full `cargo test -p blueice-bluejs --test test262_host`, 95/95, including
+the two existing tests -- `async_test_style_chain_handles_a_rejected_dynamic_import`,
+`source_and_defer_dynamic_imports_reject_through_the_promise_path` -- whose
+own rejections never went through `ModuleResolution` to begin with and so
+were never exercising the removed branch).
+
+Plain `dynamic-import` failures (excluding `import-attributes`/
+`import-defer`/`source-phase-imports`-tagged) fell from 131 to 68 across
+this session's two fixes. The residue is almost entirely accounted for:
+42 are the already-documented `import.UNKNOWN(...)`/bare-`typeof import`-adjacent
+cases blocked on the pre-existing `import.source`/`import.defer` global-object
+mechanism (see the applicability note above), 16 are the
+`eval-script-code-target` finding below, and the remaining ~10 are
+individually distinct (an instruction-budget case, a `sameValue` mismatch,
+a handful of other single-file diagnostics) with no shared root cause found
+worth chasing further this session.
+
+### 3. `eval-script-code-target`: a real gap, not a quick fix
+
+The 16 `catch/*-eval-script-code-target.js` failures (e.g.
+`top-level-import-catch-eval-script-code-target.js`) all dynamically import
+`script-code_FIXTURE.js`, whose content (`var smoosh; function smoosh(){}`)
+is valid script code but a genuine early `SyntaxError` as module code (a
+lexically-declared function name colliding with a `var`) -- and the test
+expects that failure to surface *lazily*, as a promise rejection caught by
+`.catch(error => assert.sameValue(error.name, 'SyntaxError'))`, since the
+fixture is reachable only through a dynamic import, never statically.
+
+BlueJS's own module-graph engine already gets this right in principle: a
+genuine linking-time failure for a module reached only via dynamic import
+correctly becomes a promise rejection (this is exactly the machinery the
+fix above relies on). The actual failure is architectural, in the
+**Test262 harness adapter**, not the engine: `bluejs-test262.rs` compiles
+every entry of `request.module_sources` -- both modules statically
+reachable from the entry and ones reachable only through a dynamic
+import -- into one `HashMap<String, Bytecode>` *before* any execution
+starts, and a `parse_module`/`compile_module_with_limit` failure on *any*
+of them (lines ~136-174) immediately returns a whole-test-run
+`{"phase":"resolution",...}` result. That is correct for a module the
+static entry graph actually needs, but wrong for one intentionally invalid
+*only as a module* that a real host would parse lazily, at the moment a
+dynamic import actually resolves it.
+
+Fixing this properly needs new machinery analogous to this session's JSON
+work: a raw-source registry for modules reachable only dynamically, with
+`ensure_json_module`'s dynamically-imported sibling parsing raw text
+on demand (via `parse_module`/`compile_module_with_limit`, already
+crate-visible) and turning a compile failure into a `RuntimeError` that
+flows through the same promise-rejection path, rather than being resolved
+eagerly by the harness. That is a distinct unit of work from anything in
+this session's three tasks, not a quick fix, so it was intentionally left
+unimplemented per this session's explicit "don't burn a lot of budget here"
+guidance -- documented here as a real, scoped, and reproducible gap for a
+future session rather than attempted partially.

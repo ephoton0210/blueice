@@ -237,6 +237,11 @@ pub(crate) struct ModuleImport {
     pub module_request: String,
     pub import_name: ModuleImportName,
     pub local_slot: Option<u32>,
+    /// Whether this request's `with` clause specified `type: "json"`.
+    /// Drives ParseJSONModule routing instead of ordinary Source Text
+    /// Module linking; other attribute keys/values are accepted but not
+    /// yet otherwise acted on (see `parser/module_items.rs`).
+    pub json: bool,
 }
 
 /// One executable [[RequestedModules]] entry, in source-text order.
@@ -257,13 +262,16 @@ pub(crate) enum ModuleExport {
         export_name: String,
         module_request: String,
         import_name: String,
+        json: bool,
     },
     Star {
         module_request: String,
+        json: bool,
     },
     Namespace {
         export_name: String,
         module_request: String,
+        json: bool,
     },
     /// A local re-export of a source-phase import. It resolves to the
     /// source record's Module Source Object rather than a lexical cell.
@@ -381,6 +389,15 @@ pub struct Bytecode {
     pub(crate) module_imports: Vec<ModuleImport>,
     pub(crate) module_exports: Vec<ModuleExport>,
     pub(crate) module_requests: Vec<ModuleRequest>,
+    /// Set only for a host-synthesized JSON module (`ParseJSONModule` /
+    /// `CreateDefaultExportSyntheticModule`): the already-parsed value of
+    /// its sole `default` export. This is a deliberate, narrow exception to
+    /// "runtime object handles are never stored in its constant pool" above
+    /// -- a JSON module's Bytecode is synthesized fresh per-`Vm` by
+    /// `vm/modules.rs::ensure_json_module` from host-supplied raw JSON text,
+    /// never shared across independent VMs, so a live heap value tied to
+    /// this realm is safe to carry here (never in `constants`).
+    pub(crate) json_module_value: Option<Value>,
 }
 
 impl Bytecode {
@@ -422,6 +439,7 @@ impl Bytecode {
             module_imports: Vec::new(),
             module_exports: Vec::new(),
             module_requests: Vec::new(),
+            json_module_value: None,
         }
     }
 

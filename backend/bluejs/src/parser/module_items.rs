@@ -6,25 +6,32 @@ use super::module::pattern_bound_names;
 use super::*;
 
 impl Parser {
-    /// Parse the import-attributes `with { ... }` clause.  Module records in
-    /// this host currently retain only the module-request string, but the
-    /// grammar and duplicate-key early error are observable before host
-    /// resolution and therefore belong in the parser rather than in the
-    /// Test262 adapter.
-    pub(super) fn parse_import_attributes(&mut self) -> Result<(), ParseError> {
+    /// Parse the import-attributes `with { ... }` clause. Returns whether a
+    /// `type: "json"` attribute was present -- the one attribute value this
+    /// host currently acts on (routing to `ParseJSONModule` instead of
+    /// ordinary Source Text Module linking; see `vm/modules.rs`). Every
+    /// other attribute key/value is validated (string-valued, no duplicate
+    /// keys) but otherwise only retained as the module-request string, per
+    /// this function's original scope.
+    pub(super) fn parse_import_attributes(&mut self) -> Result<bool, ParseError> {
         if !self.eat_identifier("with") {
-            return Ok(());
+            return Ok(false);
         }
         self.expect_punct(Punct::LBrace)?;
         let mut keys = std::collections::HashSet::new();
+        let mut json = false;
         while !self.check_punct(Punct::RBrace) {
             let key = self.expect_module_export_name()?;
-            if !keys.insert(key) {
+            if !keys.insert(key.clone()) {
                 return Err(self.syntax_error("duplicate import attribute key"));
             }
             self.expect_punct(Punct::Colon)?;
             match self.advance() {
-                Token::String(_) => {}
+                Token::String(value) => {
+                    if key == "type" {
+                        json = value.to_utf8().is_ok_and(|value| value == "json");
+                    }
+                }
                 _ => return Err(self.syntax_error("import attribute values must be strings")),
             }
             if self.eat_punct(Punct::Comma) {
@@ -35,7 +42,8 @@ impl Parser {
                 break;
             }
         }
-        self.expect_punct(Punct::RBrace)
+        self.expect_punct(Punct::RBrace)?;
+        Ok(json)
     }
 
     /// Consumes a statement-terminating `;`, or applies automatic
@@ -64,13 +72,14 @@ impl Parser {
         self.advance();
         if matches!(self.peek(), Token::String(_)) {
             let module_request = self.expect_module_name()?;
-            self.parse_import_attributes()?;
+            let json = self.parse_import_attributes()?;
             self.consume_semicolon()?;
             // A side-effect-only import still creates a requested module.
             return Ok(vec![ImportEntry {
                 module_request,
                 import_name: ImportName::Named(String::new()),
                 local_name: None,
+                json,
             }]);
         }
 
@@ -89,12 +98,13 @@ impl Parser {
                 return Err(self.syntax_error("source import requires 'from'"));
             }
             let module_request = self.expect_module_name()?;
-            self.parse_import_attributes()?;
+            let json = self.parse_import_attributes()?;
             self.consume_semicolon()?;
             return Ok(vec![ImportEntry {
                 module_request,
                 import_name: ImportName::Source,
                 local_name: Some(local_name),
+                json,
             }]);
         }
 
@@ -133,13 +143,14 @@ impl Parser {
             return Err(self.syntax_error("import declaration requires 'from'"));
         }
         let module_request = self.expect_module_name()?;
-        self.parse_import_attributes()?;
+        let json = self.parse_import_attributes()?;
         self.consume_semicolon()?;
         if entries.is_empty() {
             return Ok(vec![ImportEntry {
                 module_request,
                 import_name: ImportName::Named(String::new()),
                 local_name: None,
+                json,
             }]);
         }
         Ok(entries
@@ -148,6 +159,7 @@ impl Parser {
                 module_request: module_request.clone(),
                 import_name,
                 local_name: Some(local_name),
+                json,
             })
             .collect())
     }
@@ -169,15 +181,16 @@ impl Parser {
                 return Err(self.syntax_error("star export requires 'from'"));
             }
             let module_request = self.expect_module_name()?;
-            self.parse_import_attributes()?;
+            let json = self.parse_import_attributes()?;
             self.consume_semicolon()?;
             let request = module_request.clone();
             exports.push(match export_name {
                 Some(export_name) => ExportEntry::Namespace {
                     export_name,
                     module_request,
+                    json,
                 },
-                None => ExportEntry::Star { module_request },
+                None => ExportEntry::Star { module_request, json },
             });
             return Ok(Some(request));
         }
@@ -271,12 +284,13 @@ impl Parser {
             self.expect_punct(Punct::RBrace)?;
             let request = if self.eat_identifier("from") {
                 let module_request = self.expect_module_name()?;
-                self.parse_import_attributes()?;
+                let json = self.parse_import_attributes()?;
                 for (import_name, export_name, _) in specifiers {
                     exports.push(ExportEntry::Indirect {
                         export_name,
                         module_request: module_request.clone(),
                         import_name,
+                        json,
                     });
                 }
                 Some(module_request)

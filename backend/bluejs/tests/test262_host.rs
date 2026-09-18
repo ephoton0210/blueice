@@ -1358,6 +1358,185 @@ fn module_graph_rejects_invalid_indirect_exports_before_evaluation() {
     ));
 }
 
+/// ParseJSONModule + CreateDefaultExportSyntheticModule
+/// (`vm/modules.rs::ensure_json_module`): a static `import ... with
+/// {type:"json"}` exposes `JSON.parse`'s result as the sole `default`
+/// export, for every JSON value type.
+#[test]
+fn json_module_static_import_exposes_parsed_default_export() {
+    for (json_text, check) in [
+        ("262", "value===262"),
+        ("true", "value===true"),
+        ("null", "value===null"),
+        ("\"a string value\"", "value===\"a string value\""),
+        ("[1,2,3]", "Array.isArray(value)&&value.length===3&&value[1]===2"),
+        ("{\"a\":1}", "value.a===1"),
+    ] {
+        let source = format!(
+            "import value from './data.json' with {{ type: 'json' }}; {check}"
+        );
+        let modules = HashMap::from([(
+            "json-static/main.js".to_string(),
+            compile_module(&parse_module(&source).unwrap()).unwrap(),
+        )]);
+        let mut vm = Vm::default();
+        vm.set_json_module_sources(HashMap::from([(
+            "json-static/data.json".to_string(),
+            json_text.to_string(),
+        )]));
+        assert_eq!(
+            vm.execute_module_graph("json-static/main.js", &modules),
+            Ok(Value::Bool(true)),
+            "{json_text}"
+        );
+    }
+}
+
+/// A JSON module's namespace has exactly one own property, "default" --
+/// matching `CreateDefaultExportSyntheticModule`'s single export list, not
+/// the properties of the parsed object itself.
+#[test]
+fn json_module_namespace_has_only_a_default_export() {
+    let source = "import * as ns from './data.json' with { type: 'json' }; Object.getOwnPropertyNames(ns).length===1&&ns.default.a===1";
+    let modules = HashMap::from([(
+        "json-namespace/main.js".to_string(),
+        compile_module(&parse_module(source).unwrap()).unwrap(),
+    )]);
+    let mut vm = Vm::default();
+    vm.set_json_module_sources(HashMap::from([(
+        "json-namespace/data.json".to_string(),
+        "{\"a\":1}".to_string(),
+    )]));
+    assert_eq!(
+        vm.execute_module_graph("json-namespace/main.js", &modules),
+        Ok(Value::Bool(true))
+    );
+}
+
+/// A JSON module's parsed object/array export is an ordinary, extensible
+/// heap object -- not frozen/sealed by virtue of coming from JSON.parse.
+#[test]
+fn json_module_default_export_values_are_extensible() {
+    let source = "import value from './data.json' with { type: 'json' }; value.extra='added'; value.extra==='added'&&Object.isExtensible(value)";
+    let modules = HashMap::from([(
+        "json-extensible/main.js".to_string(),
+        compile_module(&parse_module(source).unwrap()).unwrap(),
+    )]);
+    let mut vm = Vm::default();
+    vm.set_json_module_sources(HashMap::from([(
+        "json-extensible/data.json".to_string(),
+        "{}".to_string(),
+    )]));
+    assert_eq!(
+        vm.execute_module_graph("json-extensible/main.js", &modules),
+        Ok(Value::Bool(true))
+    );
+}
+
+/// A named (non-"default") binding was never a real proposal for JSON
+/// modules: importing one is a linking (resolution) failure, exactly like
+/// naming an export that doesn't exist on any other module.
+#[test]
+fn json_module_named_binding_import_is_a_resolution_error() {
+    let source = "$DONOTEVALUATE(); import { name } from './data.json' with { type: 'json' };";
+    let modules = HashMap::from([(
+        "json-named/main.js".to_string(),
+        compile_module(&parse_module(source).unwrap()).unwrap(),
+    )]);
+    let mut vm = Vm::default();
+    vm.set_json_module_sources(HashMap::from([(
+        "json-named/data.json".to_string(),
+        "{\"name\":\"x\"}".to_string(),
+    )]));
+    assert!(matches!(
+        vm.execute_module_graph("json-named/main.js", &modules),
+        Err(RuntimeError::ModuleResolution(_))
+    ));
+}
+
+/// ParseJSONModule's own `Call(%JSON.parse%, undefined, «source»)` step can
+/// itself abruptly complete; that must surface the same way any other
+/// linking failure does (a resolution-phase failure), not as a step
+/// unrelated to module resolution.
+#[test]
+fn json_module_malformed_json_text_is_a_resolution_error() {
+    let source = "$DONOTEVALUATE(); import value from './data.json' with { type: 'json' };";
+    let modules = HashMap::from([(
+        "json-invalid/main.js".to_string(),
+        compile_module(&parse_module(source).unwrap()).unwrap(),
+    )]);
+    let mut vm = Vm::default();
+    vm.set_json_module_sources(HashMap::from([(
+        "json-invalid/data.json".to_string(),
+        "{not valid json".to_string(),
+    )]));
+    assert!(matches!(
+        vm.execute_module_graph("json-invalid/main.js", &modules),
+        Err(RuntimeError::ModuleResolution(_))
+    ));
+}
+
+/// The same resolved JSON module path returns the identical object to every
+/// import site -- two static bindings in the same module, and a further
+/// dynamic `import()` of the same path -- matching ordinary Source Text
+/// Module singleton semantics (`language/import/import-attributes/
+/// json-idempotency.js`).
+#[test]
+fn json_module_import_sites_share_object_identity() {
+    let source = "import value1 from './data.json' with { type: 'json' }; import { default as value2 } from './data.json' with { type: 'json' }; function asyncTest(test){test().then(function(){$DONE()},function(error){$DONE(error)})} asyncTest(async function(){ if(value1!==value2) throw new Test262Error('static sites disagree'); let viaDynamic=await import('./data.json',{with:{type:'json'}}); if(viaDynamic.default!==value1) throw new Test262Error('dynamic site disagrees'); })";
+    let modules = HashMap::from([(
+        "json-idempotency/main.js".to_string(),
+        compile_module(&parse_module(source).unwrap()).unwrap(),
+    )]);
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    vm.install_test262_done().unwrap();
+    vm.set_json_module_sources(HashMap::from([(
+        "json-idempotency/data.json".to_string(),
+        "{\"a\":1}".to_string(),
+    )]));
+    vm.execute_module_graph("json-idempotency/main.js", &modules)
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
+}
+
+/// A pure dynamic `import(spec, {with:{type:'json'}})`, with no static
+/// import anywhere in the graph, still resolves through
+/// `ensure_json_module` (the `execute_module_graph_inner` "entry_json" path
+/// rather than the static-scan path).
+#[test]
+fn json_module_dynamic_import_with_no_static_import_fulfills() {
+    let mut vm = Vm::default();
+    vm.install_test262_done().unwrap();
+    vm.set_json_module_sources(HashMap::from([(
+        "json-dynamic-only/data.json".to_string(),
+        "262".to_string(),
+    )]));
+    vm.set_module_loader_context("json-dynamic-only/main.js", HashMap::new());
+    let source = "import('./data.json',{with:{type:'json'}}).then(function(ns){if(ns.default===262)$DONE();else $DONE(new Error('wrong value'))},$DONE)";
+    vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
+}
+
+/// A `type: "json"` request the host never supplied text for rejects
+/// (dynamically) or fails linking (statically) with the same "host did not
+/// provide" TypeError `module_source_object`'s source-phase counterpart
+/// uses, rather than silently falling through to ordinary JS parsing.
+#[test]
+fn json_module_missing_host_source_is_a_type_error() {
+    let mut vm = Vm::default();
+    vm.install_test262_done().unwrap();
+    vm.set_module_loader_context("json-missing/main.js", HashMap::new());
+    let source = "import('./absent.json',{with:{type:'json'}}).then(function(){$DONE(new Error('fulfilled'))},function(error){if(error.constructor===TypeError)$DONE();else $DONE(error)})";
+    vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
+}
+
 #[test]
 fn module_graph_links_source_phase_imports_without_evaluating_the_source_record() {
     let sources = [
@@ -2265,4 +2444,26 @@ fn test262_eval_script_enters_the_current_realm_without_discarding_the_caller() 
         ),
         Ok(Value::Bool(true))
     );
+}
+
+/// `import(spec, {with: attributesProxy})`'s attribute enumeration goes
+/// through the same Proxy-observant `EnumerableOwnPropertyNames` path as
+/// `Object.keys`/etc (round 1's `evaluate_import_call_arguments`), and that
+/// enumerated `type` value must actually reach `ensure_json_module`'s
+/// routing decision -- not just be validated and discarded.
+#[test]
+fn json_module_dynamic_import_reads_type_attribute_through_a_proxy() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    vm.install_test262_done().unwrap();
+    vm.set_json_module_sources(HashMap::from([(
+        "json-proxy-attrs/data.json".to_string(),
+        "262".to_string(),
+    )]));
+    vm.set_module_loader_context("json-proxy-attrs/main.js", HashMap::new());
+    let source = "var log = [];\nvar options = {\n  with: new Proxy({}, {\n    ownKeys: function() {\n      return [\"type\"];\n    },\n    get(_, name) {\n      log.push(name);\n      return \"json\";\n    },\n    getOwnPropertyDescriptor(target, name) {\n      return {configurable: true, enumerable: true, value: \"json\"};\n    },\n  })\n};\n\nimport('./data.json', options)\n  .then(function(module) {\n    assert.sameValue(module.default, 262);\n  })\n  .then($DONE, $DONE);\n\nassert.sameValue(log.length, 1);\nassert.sameValue(log[0], \"type\");\n";
+    vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
 }

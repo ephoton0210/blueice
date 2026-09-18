@@ -451,14 +451,25 @@ def module_sources(entry, test_root, include_dynamic_string_roots=False):
     Test262 fixtures conventionally retain its relative candidate strings in
     the test source, so a caller may opt into supplying existing sibling
     files without making unrelated ordinary module tests over-inclusive.
+
+    Returns `(sources, json_sources)`: `.js` fixtures are parser input for
+    the adapter's own JavaScript module graph, while `.json` fixtures are
+    raw text for its separate `type: "json"` module-record path (neither a
+    parser input nor decoded/validated here). Other import-attribute-named
+    fixture kinds (Wasm, binary text) are left to the adapter's normal
+    module-resolution result, per this function's original scope.
     """
     test_root = test_root.resolve()
     pending = [entry.resolve()]
     sources = {}
+    json_sources = {}
     while pending:
         path = pending.pop()
         relative = path.relative_to(test_root).as_posix()
-        if relative in sources:
+        if relative in sources or relative in json_sources:
+            continue
+        if path.suffix == ".json":
+            json_sources[relative] = path.read_text(encoding="utf-8")
             continue
         source = path.read_text(encoding="utf-8")
         sources[relative] = source
@@ -476,14 +487,13 @@ def module_sources(entry, test_root, include_dynamic_string_roots=False):
                 candidate.relative_to(test_root)
             except ValueError:
                 continue
-            # Module source collection is a JavaScript module graph for the
-            # adapter. Import attributes can name JSON, Wasm, or binary
-            # fixtures; those are not parser inputs and must be left to the
-            # adapter's normal module-resolution result rather than making the
-            # inventory runner attempt UTF-8 decoding and abort the whole run.
-            if candidate.is_file() and candidate.suffix == ".js":
+            # Other import-attribute-named fixture kinds (Wasm, binary text)
+            # are not parser inputs and must be left to the adapter's normal
+            # module-resolution result rather than making the inventory
+            # runner attempt UTF-8 decoding and abort the whole run.
+            if candidate.is_file() and candidate.suffix in (".js", ".json"):
                 pending.append(candidate)
-    return sources
+    return sources, json_sources
 
 
 def selected_files(all_files, corpus, pattern, excluded=""):
@@ -939,13 +949,14 @@ def main():
                 if relative == STRING_CASE_MAPPING_FIXTURE:
                     request["heap_limit"] = STRING_CASE_MAPPING_HEAP_LIMIT
                 if mode == "module" or DYNAMIC_IMPORT_EXPRESSION.search(source_for_execution):
-                    sources = module_sources(
+                    sources, json_sources = module_sources(
                         path,
                         args.corpus / "test",
                         include_dynamic_string_roots=bool(DYNAMIC_IMPORT_EXPRESSION.search(source_for_execution)),
                     )
                     request["module_path"] = relative
                     request["module_sources"] = sources
+                    request["module_json_sources"] = json_sources
                     request["module_source_requests"] = sorted(
                         {
                             match.group(1)

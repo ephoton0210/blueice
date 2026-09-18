@@ -49,6 +49,9 @@ pub struct ImportEntry {
     /// `None` represents `import "specifier";`, which participates in
     /// dependency evaluation but creates no local binding.
     pub local_name: Option<String>,
+    /// Whether this request's `with` clause specified `type: "json"`,
+    /// routing it to ParseJSONModule instead of ordinary module linking.
+    pub json: bool,
 }
 
 /// One declarative export.  Local entries point at a binding in this module;
@@ -63,13 +66,16 @@ pub enum ExportEntry {
         export_name: String,
         module_request: String,
         import_name: String,
+        json: bool,
     },
     Star {
         module_request: String,
+        json: bool,
     },
     Namespace {
         export_name: String,
         module_request: String,
+        json: bool,
     },
 }
 
