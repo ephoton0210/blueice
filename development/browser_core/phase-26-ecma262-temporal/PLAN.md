@@ -322,13 +322,34 @@ isn't an assumption:
   calendar-independent arithmetic can be built and tested (Test262's
   combined `Duration/`, 1,122 modes across both trees) before Track A
   finishes.
-- **Track C — Instant + Now** (`instant.rs`, `now.rs`). Evidence: epoch
-  nanoseconds are calendar-agnostic by construction; Gecko's `Instant.cpp`
-  has no calendar dependency. Combined Test262: `Instant/` 968 modes,
-  `Now/` 138 modes — `Now/` is the smallest single group in the entire
-  combined denominator (currently 0% — no `Temporal.Now` object exists at
-  all) and is a reasonable first slice to land as a template for the
-  others' Test262-driven TDD rhythm.
+- **Track C — Instant + Now.** Evidence: epoch nanoseconds are
+  calendar-agnostic by construction; Gecko's `Instant.cpp` has no calendar
+  dependency. **`Instant` arithmetic done 2026-09-18** (kept inside
+  `vm/temporal.rs` rather than a new `instant.rs` file — the method bodies
+  are adapter-layer `impl Vm` code coupled to `Value`/heap, matching the
+  existing `temporal_getter`/`temporal_with_calendar` style, not
+  foundation code; only `iso`/`epoch`/`calendar`/`rounding`/`duration_math`
+  are the host-neutral split). `add`/`subtract`/`round`/`until`/`since`/
+  `equals`/`compare`/`toString`/`toJSON`/`valueOf`/`fromEpochMilliseconds`/
+  `fromEpochNanoseconds` plus the previously-missing `epochMilliseconds`/
+  `epochNanoseconds` getters are implemented and TDD-verified against the
+  real pinned Test262 corpus: `Temporal/Instant/` went from 86/968 (8.88%,
+  Stage 0's read-only-construction baseline) to **646/968 (66.7%)**.
+  Remaining known gaps, not yet closed: `toZonedDateTimeISO` (0/38, not
+  implemented — needs Track E's `TimeZone` first), some `toString`/`round`
+  edge cases, and `Temporal.Now` itself (still entirely unimplemented,
+  0/138 — a real, separate slice from `Instant`'s own arithmetic, despite
+  being grouped in the same track). `duration_math.rs`/`rounding.rs` were
+  finally landed as real files here (not speculative — Instant's arithmetic
+  is their first real caller): `TimeDuration` (exact-nanosecond combinator,
+  `round`/`balance_to`), `TimeUnit` + `parse_time_unit`, `round_to_increment`
+  (verified against Test262's exact expected values in
+  `rounding-increments.js`/`round-to-days.js`, not just self-consistency),
+  and reuse of `blueice_ecma402::NumberRoundingMode` rather than a
+  redefinition. `since(a,b)`'s rounding-mode semantics were confirmed via
+  Test262 (`since/roundingmode-ceil.js`) to be a literal signed-difference
+  computation with the given mode applied as-is — no `NegateRoundingMode`
+  step needed, contrary to an initial assumption.
 - **Track D — PlainTime** (`plain_time.rs`). Evidence: time-of-day has no
   calendar-field dependency; Gecko's `PlainTime.cpp` (1,644 lines) is the
   smallest of the calendar-adjacent per-type files. Combined Test262:

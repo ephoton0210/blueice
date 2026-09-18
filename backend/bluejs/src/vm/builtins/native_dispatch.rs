@@ -994,6 +994,39 @@ impl Vm {
             NativeFunction::TemporalZonedDateTimeToLocaleString => {
                 self.temporal_zoned_date_time_to_locale_string(&receiver, &args)
             }
+            NativeFunction::TemporalInstantAdd => {
+                self.temporal_instant_add(&receiver, first, false)
+            }
+            NativeFunction::TemporalInstantSubtract => {
+                self.temporal_instant_add(&receiver, first, true)
+            }
+            NativeFunction::TemporalInstantRound => self.temporal_instant_round(&receiver, first),
+            NativeFunction::TemporalInstantUntil => self.temporal_instant_difference(
+                &receiver,
+                first,
+                native::argument(&args, 1),
+                false,
+            ),
+            NativeFunction::TemporalInstantSince => {
+                self.temporal_instant_difference(&receiver, first, native::argument(&args, 1), true)
+            }
+            NativeFunction::TemporalInstantEquals => self.temporal_instant_equals(&receiver, first),
+            NativeFunction::TemporalInstantCompare => {
+                self.temporal_instant_compare(first, native::argument(&args, 1))
+            }
+            NativeFunction::TemporalInstantToString => {
+                self.temporal_instant_to_string(&receiver, first)
+            }
+            NativeFunction::TemporalInstantToJson => {
+                self.temporal_instant_to_string(&receiver, &Value::Undefined)
+            }
+            NativeFunction::TemporalInstantValueOf => self.temporal_instant_value_of(),
+            NativeFunction::TemporalFromEpochMilliseconds => {
+                self.temporal_from_epoch_milliseconds(first)
+            }
+            NativeFunction::TemporalFromEpochNanoseconds => {
+                self.temporal_from_epoch_nanoseconds(first)
+            }
             NativeFunction::ListFormatSupportedLocales => self.list_format_supported_locales(&args),
             NativeFunction::ListFormatFormat => self.list_format_format(&receiver, first),
             NativeFunction::ListFormatFormatToParts => {

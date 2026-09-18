@@ -153,6 +153,18 @@ pub(crate) enum NativeFunction {
     TemporalPlainToZonedDateTime,
     TemporalGetter(TemporalGetter),
     TemporalZonedDateTimeToLocaleString,
+    TemporalInstantAdd,
+    TemporalInstantSubtract,
+    TemporalInstantRound,
+    TemporalInstantUntil,
+    TemporalInstantSince,
+    TemporalInstantEquals,
+    TemporalInstantCompare,
+    TemporalInstantToString,
+    TemporalInstantToJson,
+    TemporalInstantValueOf,
+    TemporalFromEpochMilliseconds,
+    TemporalFromEpochNanoseconds,
     ArrayBuffer,
     ArrayBufferByteLength,
     ArrayBufferMaxByteLength,
@@ -639,6 +651,7 @@ pub(crate) enum TemporalGetter {
     EraYear,
     MonthsInYear,
     EpochMilliseconds,
+    EpochNanoseconds,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
