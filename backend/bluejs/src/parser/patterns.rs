@@ -169,6 +169,14 @@ impl Parser {
                 self.advance();
                 Ok(PropertyKey::Number(n))
             }
+            Token::BigInt(n) => {
+                // LiteralPropertyName: NumericLiteral -- "Let nbr be the
+                // NumericValue of NumericLiteral. Return ! ToString(nbr)."
+                // BigInt's ToString is exactly its decimal `Display`, so
+                // this needs no further numeric formatting pass.
+                self.advance();
+                Ok(PropertyKey::String(n.to_string().into()))
+            }
             Token::Punct(Punct::LBracket) => {
                 self.advance();
                 let expr = self.parse_assignment()?;

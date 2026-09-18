@@ -17,6 +17,16 @@ fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap())
 }
 
+fn assert_true_with_test262_harness(source: &str) {
+    let mut vm = Vm::default();
+    vm.install_test262_harness()
+        .expect("test262 harness installs");
+    let result = vm
+        .execute_script(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap();
+    assert_eq!(result, Value::Bool(true), "{source}");
+}
+
 fn assert_true(source: &str) {
     assert_eq!(evaluate(source).unwrap(), Value::Bool(true), "{source}");
 }
@@ -257,6 +267,102 @@ fn increment_and_decrement_operators_preserve_bigint_on_properties() {
     assert_true(
         "class Base{} Base.prototype.x=1n; class Derived extends Base{bump(){super.x++;return this.x}} new Derived().bump() === 2n",
     );
+}
+
+#[test]
+fn relational_comparison_converts_a_boolean_operand_to_number_not_bigint() {
+    // Regression: primitive::compare had no Bool<->BigInt case and fell
+    // through to `number(&value)`, which throws for a BigInt operand.
+    // ToNumeric(Boolean) is Number (0/1), never BigInt, matching the
+    // Abstract Relational Comparison algorithm's own ToNumeric step.
+    assert_true("!(0n > false) && !(false > 0n) && !(0n > true)");
+    assert_true("(true > 0n) && (1n > false) && !(false > 1n) && !(1n > true) && !(true > 1n)");
+    assert_true("(31n > true) && !(true > 31n) && !(-3n > true) && (true > -3n)");
+    assert_true("!(-3n > false) && (false > -3n)");
+}
+
+#[test]
+fn bigint_literal_is_a_valid_property_name_converted_to_its_decimal_string() {
+    // LiteralPropertyName: NumericLiteral -- "Let nbr be the NumericValue of
+    // NumericLiteral. Return ! ToString(nbr)." BigInt's ToString is its
+    // plain decimal representation, with no scientific-notation subtlety
+    // (unlike a large Number literal used as a property name).
+    assert_true("let o={999999999999999999n: true}; o['999999999999999999'] === true");
+    assert_true("let o={1n(){return 'bar'}}; o['1']() === 'bar'");
+    assert_true(
+        "class C{1n(){return 'baz'}} new C()['1']() === 'baz'",
+    );
+    assert_true("let {1n: a} = {'1': 'foo'}; a === 'foo'");
+}
+
+#[test]
+fn json_stringify_throws_on_a_cross_realm_boxed_bigint_without_tojson() {
+    // Regression: JSON's Object branch only unwrapped a boxed Number/
+    // String/BigInt via this realm's own `boxed_primitive`, so a wrapper
+    // object built by a *different* Test262 realm (via $262.createRealm())
+    // fell through to ordinary-object serialization ("{}") instead of
+    // unwrapping to its [[BigIntData]] and throwing TypeError, per
+    // SerializeJSONProperty's internal-slot-unwrap step.
+    assert_true_with_test262_harness(
+        "var other = $262.createRealm().global; \
+         var wrapped = other.Object(other.BigInt(100)); \
+         var threw = false; \
+         try { JSON.stringify(wrapped); } catch (e) { threw = e instanceof TypeError; } \
+         threw",
+    );
+    assert_true_with_test262_harness(
+        "var other = $262.createRealm().global; \
+         var wrapped = other.Object(other.BigInt(100)); \
+         other.BigInt.prototype.toJSON = function () { return this.toString(); }; \
+         JSON.stringify(wrapped) === '\"100\"'",
+    );
+}
+
+#[test]
+fn bigint_values_pass_through_proxy_traps_and_reflect_operations_unchanged() {
+    // Test262 has no built-ins/Proxy or built-ins/Reflect tests tagged
+    // BigInt: neither operates on a value's type, only on property keys and
+    // trap results, so a BigInt payload is not special-cased by either.
+    // These are our own end-to-end checks of that boundary.
+    assert_true(
+        "let target={x:1n}; let seen; let p=new Proxy(target,{get(t,k,r){seen=k;return Reflect.get(t,k,r)}}); p.x === 1n && seen === 'x'",
+    );
+    assert_true(
+        "let target={}; let p=new Proxy(target,{set(t,k,v,r){return Reflect.set(t,k,v,r)}}); p.x=5n; target.x === 5n",
+    );
+    assert_true("Reflect.apply(function(a,b){return a+b}, null, [1n, 2n]) === 3n");
+    assert_true(
+        "function F(a){this.v=a} let inst=Reflect.construct(F,[7n]); inst.v === 7n",
+    );
+    // `in`'s left operand goes through ToPropertyKey, which (being a
+    // non-Symbol primitive) just means ToString: a BigInt key and its
+    // decimal-string equivalent reach the `has` trap identically.
+    assert_true(
+        "let p=new Proxy({}, {has(t,k){return k === (5n).toString()}}); (5n in p) === true && ('5' in p) === true",
+    );
+    // A revocable Proxy's ownKeys trap returning a BigInt-keyed property
+    // name (as its decimal string, since property keys are never BigInt
+    // themselves) round-trips through Reflect.ownKeys.
+    assert_true(
+        "let target={}; Object.defineProperty(target,'9',{value:1n,enumerable:true,configurable:true}); let p=new Proxy(target,{}); Reflect.ownKeys(p)[0] === '9' && p['9'] === 1n",
+    );
+}
+
+#[test]
+fn as_int_n_and_as_uint_n_enforce_an_explicit_bit_width_cap_rather_than_truncating() {
+    // ToIndex alone permits `bits` up to 2**53-1, far beyond what a real
+    // 2**bits-sized BigInt allocation could ever be. `asIntN`/`asUintN`
+    // enforce a hard, explicit 1,000,000-bit implementation-capacity limit
+    // (a RangeError, matching bigint_shift/bigint_exponentiate's existing
+    // convention) -- this is a real deliberate ceiling, not a value that
+    // gets silently narrowed/wrapped/truncated before use.
+    assert_true("BigInt.asIntN(1000000, 1n) === 1n"); // exactly at the cap: still succeeds
+    for source in [
+        "(()=>{try{BigInt.asIntN(1000001, 1n);return false}catch(e){return e instanceof RangeError}})()",
+        "(()=>{try{BigInt.asUintN(1000001, 1n);return false}catch(e){return e instanceof RangeError}})()",
+    ] {
+        assert_true(source);
+    }
 }
 
 #[test]

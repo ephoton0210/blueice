@@ -204,6 +204,13 @@ pub(crate) fn compare(left: &Value, right: &Value) -> Result<Option<Ordering>, R
             .ok()
             .and_then(|text| string_to_bigint(&text))
             .map(|other| other.cmp(bigint)))
+    } else if let (Value::BigInt(_), Value::Bool(right)) = (left, right) {
+        // ToNumeric(Boolean) is Number, not BigInt: a Boolean operand
+        // converts to 0/1 before Abstract Relational Comparison, the same
+        // as it would against a Number -- it never becomes a BigInt itself.
+        compare(left, &Value::Number(f64::from(u8::from(*right))))
+    } else if let (Value::Bool(left), Value::BigInt(_)) = (left, right) {
+        compare(&Value::Number(f64::from(u8::from(*left))), right)
     } else {
         Ok(number(left)?.partial_cmp(&number(right)?))
     }
