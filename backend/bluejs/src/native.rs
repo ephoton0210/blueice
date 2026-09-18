@@ -151,6 +151,7 @@ pub(crate) enum NativeFunction {
     TemporalFrom(TemporalKind),
     TemporalWithCalendar,
     TemporalPlainToZonedDateTime,
+    TemporalInstantToZonedDateTimeIso,
     TemporalGetter(TemporalGetter),
     TemporalZonedDateTimeToLocaleString,
     TemporalInstantAdd,
@@ -652,6 +653,7 @@ pub(crate) enum TemporalGetter {
     MonthsInYear,
     EpochMilliseconds,
     EpochNanoseconds,
+    TimeZoneId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

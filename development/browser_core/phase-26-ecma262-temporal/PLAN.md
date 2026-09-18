@@ -2,11 +2,15 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: Design, Stage 0 done — first version written 2026-09-17; Stage 0
-(shared foundation) completed 2026-09-18, see its own checklist below for
-exactly what that means and what remains open within it (a full spec-grammar
-audit beyond Test262's coverage, and Track E's open TimeZone/`icu_time`
-question). Stage 1 (parallel tracks) has not started. It exists because
+**Status**: Stage 0 done, Stage 1 partly done — first version written
+2026-09-17; Stage 0 (shared foundation) completed 2026-09-18, see its own
+checklist below for exactly what that means and what remains open within it (a
+full spec-grammar audit beyond Test262's coverage). Stage 1: Track C's
+`Temporal.Instant` arithmetic and Track E's time-zone
+identifier/offset/disambiguation foundation are done (both 2026-09-18);
+Track E's own former blocker — whether `icu_time` carries real IANA
+transition data — is **resolved**, see "Open questions" below. It exists
+because
 completing Phase 25 (ECMA-402) surfaced a real gap in `intl402/`'s
 `Temporal/` subtree. **Correction (2026-09-17, same day):** the plan's first
 version only measured `intl402/Temporal/` (4,058 modes, 6.55% pass) — see
@@ -150,15 +154,24 @@ Stage 1 below actually parallelizable: each track owns files with a clean,
 narrow dependency edge onto this foundation and no dependency on the other
 Stage 1 tracks' files.
 
+`iso.rs`, `epoch.rs`, `calendar.rs`, `rounding.rs`, `duration_math.rs` and
+`time_zone.rs` all exist as of 2026-09-18. The per-type JS-visible adapters do
+not: Track C and Track E both kept their `impl Vm` method bodies in
+`vm/temporal.rs` alongside the existing `temporal_getter`/`temporal_from`
+style, because that layer is `Value`/heap-coupled adapter code rather than
+foundation code. Only the host-neutral modules above are split out.
+
 `Calendar` and `TimeZone` are **not** general object protocols. Confirmed
 directly from Gecko's `Calendar.h`: `CalendarId` is a closed 16-value enum
 (`ISO8601`, `Buddhist`, `Chinese`, `Coptic`, `Dangi`, `Ethiopian`,
 `EthiopianAmeteAlem`, `Gregorian`, `Hebrew`, `Indian`, `IslamicCivil`,
 `IslamicTabular`, `IslamicUmmAlQura`, `Japanese`, `Persian`, `ROC`) — the
 current Temporal spec revision dropped the earlier arbitrary-object-calendar
-design. `TimeZone` still needs more machinery (a fixed UTC-offset string vs.
-a named IANA identifier with real transition-rule lookups), but is likewise
-not user-pluggable. Neither needs a new `heap.rs` `TemporalKind` variant.
+design. `TimeZone` is likewise not user-pluggable, and — confirmed against the
+pinned Test262 corpus during Track E, which has no `built-ins/Temporal/
+TimeZone/` directory at all — is not an object type in the current spec
+revision either: it is a string, either a fixed UTC offset or a named IANA
+identifier. Neither needs a new `heap.rs` `TemporalKind` variant.
 
 ## Parallel development plan
 
@@ -283,8 +296,9 @@ Nothing downstream is stable until this lands. Scope:
       (`Duration`, `Instant`, `PlainDate`, `PlainDateTime`,
       `PlainMonthDay`, `PlainTime`, `PlainYearMonth`, `ZonedDateTime`); no
       Stage 0 record needs direct heap representation of its own. Whether
-      `TimeZone` needs its own variant remains Track E's open question
-      (see below), not a Stage 0 blocker.
+      `TimeZone` needs its own variant was Track E's open question, and was
+      answered "no" on 2026-09-18 (see below) — it is a string in a
+      `ZonedDateTime`'s existing `time_zone` field, never a heap object.
 - [x] Full ISO 8601 grammar coverage: spot-checked rather than exhaustively
       audited, given the size of the full grammar. Confirmed working: the
       six-digit signed extended-year form (`+002020-06-01`, exercised by an
@@ -335,8 +349,9 @@ isn't an assumption:
   `epochNanoseconds` getters are implemented and TDD-verified against the
   real pinned Test262 corpus: `Temporal/Instant/` went from 86/968 (8.88%,
   Stage 0's read-only-construction baseline) to **646/968 (66.7%)**.
-  Remaining known gaps, not yet closed: `toZonedDateTimeISO` (0/38, not
-  implemented — needs Track E's `TimeZone` first), some `toString`/`round`
+  Remaining known gaps at the time: `toZonedDateTimeISO` (0/38, needing
+  Track E's `TimeZone` first — **closed by Track E on 2026-09-18, now
+  38/38**, taking `Instant` to 684/968), some `toString`/`round`
   edge cases, and `Temporal.Now` itself (still entirely unimplemented,
   0/138 — a real, separate slice from `Instant`'s own arithmetic, despite
   being grouped in the same track). `duration_math.rs`/`rounding.rs` were
@@ -354,14 +369,60 @@ isn't an assumption:
   calendar-field dependency; Gecko's `PlainTime.cpp` (1,644 lines) is the
   smallest of the calendar-adjacent per-type files. Combined Test262:
   `PlainTime/` 1,010 modes.
-- **Track E — TimeZone** (`time_zone.rs`). Fixed-offset resolution is
-  self-contained; named-IANA-identifier transition-rule lookup needs its own
-  investigation first — **check whether `icu_time` (already a pinned
-  dependency in `backend/ecma402/Cargo.toml`) provides real historical
-  transition data before assuming it does**, since `Intl.DateTimeFormat`'s
-  existing IANA zone handling may only need current-offset/display-name
-  data, not the full transition history `getOffsetNanosecondsFor` requires
-  at arbitrary points in time.
+- **Track E — TimeZone** (`time_zone.rs`) — **done 2026-09-18** for the
+  identifier/offset foundation and the surfaces that need only it; see
+  "Open questions" below for the resolved `icu_time` answer and the
+  `TemporalKind` decision. What landed:
+  - `backend/bluejs/src/vm/temporal/time_zone.rs`, host-neutral (no
+    `Value`/heap/Realm coupling, 14 standalone unit tests):
+    `TimeZone::{Offset(minutes), Iana(&'static str)}`, `parse_identifier`
+    (`ToTemporalTimeZoneIdentifier`'s string grammar), `identifier`,
+    `offset_nanoseconds_for` (`GetOffsetNanosecondsFor`),
+    `possible_epoch_nanoseconds` (`GetPossibleEpochNanoseconds`),
+    `epoch_nanoseconds_for` (`GetEpochNanosecondsFor` +
+    `DisambiguatePossibleEpochNanoseconds`), `start_of_day`
+    (`GetStartOfDay`), `Disambiguation` and `parse_disambiguation`
+    (`ToTemporalDisambiguation`).
+  - **There is no `Temporal.TimeZone` class to implement.** Verified against
+    the pinned corpus, not assumed: `test/built-ins/Temporal/` contains
+    `Duration`, `Instant`, `Now`, `PlainDate`, `PlainDateTime`,
+    `PlainMonthDay`, `PlainTime`, `PlainYearMonth`, `ZonedDateTime` and
+    nothing else. The spec revision folded time zones into plain
+    IANA-identifier/offset *strings*, so Track E's JS-visible surface is
+    identifier resolution plus a `ZonedDateTime.prototype.timeZoneId`
+    getter, not a constructor.
+  - JS-visible: `Temporal.Instant.prototype.toZonedDateTimeISO` (the gap
+    Track C left open), `Temporal.ZonedDateTime.prototype.timeZoneId`,
+    zone validation/normalization in the `Temporal.ZonedDateTime`
+    constructor, and real IANA + `disambiguation` support in
+    `Temporal.PlainDate/PlainDateTime.prototype.toZonedDateTime` (which
+    previously hard-rejected every zone but `"UTC"`). A resulting
+    `ZonedDateTime`'s stored ISO fields are now the *resolved local*
+    wall-clock fields, derived from the zone's real offset at that instant.
+  - Test262, measured on the pinned corpus with the same filter before and
+    after (not estimated): combined `built-ins/` + `intl402/` `Temporal/`
+    **2,218 -> 2,364 of 13,268 (16.72% -> 17.82%)** with **zero
+    regressions** (every mode passing before still passes). Per type:
+    `Instant` 646 -> 684, `PlainDate` 342 -> 366, `PlainDateTime` 312 ->
+    362, `ZonedDateTime` 206 -> 240. `Instant/prototype/toZonedDateTimeISO/`
+    specifically went 2/38 -> **38/38**.
+  - Deliberately *not* done, and why: `Temporal.PlainTime` string
+    conversion, which `PlainDate.prototype.toZonedDateTime`'s
+    `{ timeZone, plainTime }` property bag needs for a string `plainTime`
+    (`temporal_value_from_string` requires a date, so no time-only parser
+    exists yet) — that is Track D's own scope, so this fails closed with the
+    `RangeError` the spec raises for an invalid time string rather than
+    mis-parsing one. Note that several
+    `PlainDate/prototype/toZonedDateTime/argument-string-*` fixtures pass
+    *because* of that fail-closed path (they assert a `RangeError`), exactly
+    as they did before this work; they are not counted as Track E wins.
+  - Also found but deliberately left alone, as it belongs to Track C's
+    shared helper rather than Track E: `temporal_options`
+    (`vm/temporal.rs`) implements `GetOptionsObject` with
+    `coerce_object`, so a primitive options argument is boxed instead of
+    throwing a `TypeError`. That is the only remaining failure in
+    `PlainDateTime/prototype/toZonedDateTime/` (`options-wrong-type.js`) and
+    presumably costs Instant's option-taking methods the same fixtures.
 
 That is 5 tracks as directly evidenced; Track A may reasonably split into 2
 (ISO-adjacent solar calendars vs. lunisolar/Islamic-era calendars) to reach
@@ -399,6 +460,14 @@ once). One owner:
       186/2,968, `PlainDate` 332/2,290, `PlainDateTime` 302/2,512,
       `PlainYearMonth` 186/1,672, `PlainMonthDay` 158/578, `Duration`
       232/1,122, `PlainTime` 102/1,010, `Instant` 86/968, `Now` 0/138).
+      Latest measured combined figure, after Stage 1 Tracks C and E
+      (2026-09-18): **2,364/13,268 (17.82%)** — `Instant` 684/968,
+      `PlainDate` 366/2,290, `PlainDateTime` 362/2,512, `ZonedDateTime`
+      240/2,968, `PlainYearMonth` 196/1,672, `PlainMonthDay` 168/578,
+      `Duration` 232/1,122, `PlainTime` 108/1,010, `Now` 0/138. Reproduce
+      with `python backend/bluejs/test262/run.py --filter
+      "built-ins/Temporal/,intl402/Temporal/"` and group
+      `target/test262/results.jsonl` by `path.split("/")[2]`.
 - [ ] TDD throughout, per this repo's Definition of Done: a failing test
       before the implementation that makes it pass, not tests bolted on
       after.
@@ -417,11 +486,71 @@ once). One owner:
 
 - The ISO 8601 duration parser question above (may already exist and be
   reusable, or may not exist at all).
-- Whether `icu_time`'s bundled data actually includes full IANA transition
-  history, or only current offsets — determines Track E's real scope.
-- Whether `TimeZone` needs a new `TemporalKind`/`ObjectKind` heap variant
-  (Gecko's `TimeZoneObject : NativeObject` suggests yes, unlike `Calendar`)
-  — confirm during Track E rather than assuming either way here.
+- ~~Whether `icu_time`'s bundled data actually includes full IANA transition
+  history, or only current offsets~~ — **resolved 2026-09-18: it does not,
+  and a better source was already in the workspace.** Exactly what was
+  checked, so nobody has to re-derive it:
+  - `icu_time` is pinned at the same vendored fork rev as every other
+    `icu_*` crate (`ephoton0210/icu4x`, rev
+    `31dcf42731d45cb191cdbd5bb92b669b5be12b57`); its source is
+    `~/.cargo/git/checkouts/icu4x-*/31dcf42/components/time/`.
+  - Its **only** offset-computing API is
+    `icu_time::zone::VariantOffsetsCalculator::compute_offsets_from_time_zone_and_name_timestamp`,
+    and ICU4X marks it
+    `#[deprecated(since = "2.1.0", note = "this API is a bad approximation
+    of a time zone database")]`. It returns a
+    `VariantOffsets { standard, daylight }` pair for a display-name *era*,
+    not the offset in effect at an instant — it cannot say whether DST was
+    actually observed then.
+  - Its key type, `ZoneNameTimestamp`, documents the design directly:
+    "Most software deals with _time zone transitions_, computing the UTC
+    offset on a given point in time. In ICU4X, we deal with _time zone
+    display names_", representable only after 1970 and only to a coarse
+    15-minute granularity. `grep -rn transition` across
+    `components/time/src/` finds no transition API at all, and
+    `provider/mod.rs` even notes "transitions at different times, not
+    implemented yet".
+  - `icu_time::zone::{IanaParser, IanaParserExtended}` *is* real and does
+    give case-insensitive IANA validation plus canonicalization — the
+    "partial win" fallback this question anticipated. It was not needed:
+    `blueice-ecma402` already pins `jiff = "=0.2.35"` with
+    `tzdb-bundle-always` plus `jiff-tzdb = "=0.1.8"`, i.e. **the complete,
+    pinned, real IANA Time Zone Database**, and
+    `date_time_format.rs`'s `datetime_from_milliseconds` already resolves
+    genuine historical offsets for arbitrary instants from it
+    (`TimeZone::to_offset_info(timestamp)`), with `jiff_tzdb::get` supplying
+    the case-normalized identifier. Track E therefore added `jiff`/
+    `jiff-tzdb` to `backend/bluejs/Cargo.toml` (both already in
+    `Cargo.lock` at those versions) and reads that same database directly
+    from `vm/temporal/time_zone.rs`, the way `vm/temporal/calendar.rs`
+    already reads `icu_calendar` directly rather than through the ECMA-402
+    crate. A Temporal offset and an `Intl.DateTimeFormat` offset for the
+    same zone and instant consequently come from one source and cannot
+    diverge.
+  - Two real Jiff-boundary details this surfaced, both now handled and
+    unit-tested, and both worth knowing for `ZonedDateTime` (Stage 2):
+    (1) Jiff's civil `Timestamp` stops at ISO year ±9999 while Temporal's
+    Instant range reaches ±273,972 years, and `Timestamp::from_nanosecond`
+    trips an *internal debug assertion* rather than returning `Err` for
+    inputs far outside it — so the range must be checked before calling it.
+    Out-of-range instants use `to_fixed_offset()` for a fixed IANA zone and
+    a Gregorian 400-year-cycle projection otherwise, mirroring
+    `blueice-ecma402`. (2) A Jiff `Timestamp` stores its second and
+    sub-second parts with a *shared* sign, so for a pre-1970 instant with a
+    sub-second part the second field is the **ceiling**; looking an offset
+    up from it can therefore read the wrong side of a transition falling in
+    that second. `offset_nanoseconds_for` floors nanoseconds to whole
+    seconds first, which is exact because offsets only change on second
+    boundaries. `blueice-ecma402`'s millisecond-based path has the same
+    latent off-by-one-second for negative sub-second instants and was not
+    changed here.
+- ~~Whether `TimeZone` needs a new `TemporalKind`/`ObjectKind` heap
+  variant~~ — **resolved 2026-09-18: no.** Gecko's `TimeZoneObject`
+  predates the spec revision that removed `Temporal.TimeZone` as an object
+  type; the pinned Test262 corpus has no `built-ins/Temporal/TimeZone/`
+  directory at all. A time zone is a string in a `ZonedDateTime`'s existing
+  `TemporalValue::time_zone` field, and `time_zone::TimeZone` is a
+  transient host-neutral parse of it, never heap-allocated.
 
 ## Relationship to other phases
 

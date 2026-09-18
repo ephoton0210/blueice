@@ -25,6 +25,7 @@ mod duration_math;
 mod epoch;
 mod iso;
 mod rounding;
+mod time_zone;
 
 /// The calendar fields exposed by Temporal are derived from its ISO internal
 /// date. Keeping ISO fields in `TemporalValue` preserves the invariant used
@@ -181,6 +182,7 @@ impl Vm {
                             native::TemporalGetter::EpochMilliseconds,
                         ),
                         ("epochNanoseconds", native::TemporalGetter::EpochNanoseconds),
+                        ("timeZoneId", native::TemporalGetter::TimeZoneId),
                     ],
                     TemporalKind::Instant => &[
                         (
@@ -221,6 +223,11 @@ impl Vm {
                         ("toJSON", 0, NativeFunction::TemporalInstantToJson),
                         ("toLocaleString", 0, NativeFunction::TemporalInstantToString),
                         ("valueOf", 0, NativeFunction::TemporalInstantValueOf),
+                        (
+                            "toZonedDateTimeISO",
+                            1,
+                            NativeFunction::TemporalInstantToZonedDateTimeIso,
+                        ),
                     ] {
                         self.install_native(prototype, function_prototype, name, arity, method)?;
                     }
@@ -570,9 +577,8 @@ impl Vm {
                     ));
                 }
                 value.time_zone = self
-                    .coerce_string(native::argument(args, 1))?
-                    .to_utf8()
-                    .map_err(|_| RuntimeError::RangeError("invalid Temporal time zone".into()))?;
+                    .temporal_time_zone(native::argument(args, 1))?
+                    .identifier();
             }
             TemporalKind::PlainDate | TemporalKind::PlainDateTime => {
                 value.year = number(self, 0, -271_821, 275_760, "year")?;
@@ -926,6 +932,12 @@ impl Vm {
                 Ok(Value::Number(field as f64))
             }
             native::TemporalGetter::CalendarId => Ok(Value::String(value.calendar.into())),
+            native::TemporalGetter::TimeZoneId if value.kind == TemporalKind::ZonedDateTime => {
+                Ok(Value::String(value.time_zone.into()))
+            }
+            native::TemporalGetter::TimeZoneId => Err(RuntimeError::TypeError(
+                "Temporal timeZoneId requires a ZonedDateTime receiver".into(),
+            )),
             native::TemporalGetter::EpochMilliseconds
                 if matches!(
                     value.kind,
@@ -1037,6 +1049,7 @@ impl Vm {
         &mut self,
         receiver: &Value,
         time_zone: &Value,
+        options: &Value,
     ) -> Result<Value, RuntimeError> {
         let object = receiver.object_id().ok_or_else(|| {
             RuntimeError::TypeError("Temporal.toZonedDateTime requires a plain receiver".into())
@@ -1052,34 +1065,57 @@ impl Vm {
                 "Temporal.toZonedDateTime requires a plain receiver".into(),
             ));
         }
-        let time_zone = self
-            .coerce_string(time_zone)?
-            .to_utf8()
-            .map_err(|_| RuntimeError::RangeError("invalid Temporal time zone".into()))?;
-        // DateTimeFormat's current Temporal bridge supplies a fully pinned
-        // IANA implementation, but Temporal's compact object slice has not
-        // yet exposed its disambiguation options. UTC has no ambiguity and is
-        // the portable conversion required to carry ISO fields into an epoch
-        // value; reject other zones rather than silently applying UTC.
-        if time_zone != "UTC" {
+        // `Temporal.PlainDate.prototype.toZonedDateTime` takes one `item`
+        // argument (a bare identifier or a `{ timeZone, plainTime }` bag) and
+        // no options object; `Temporal.PlainDateTime.prototype` takes a bare
+        // identifier plus an options object carrying `disambiguation`.
+        let (zone, time, disambiguation) = if value.kind == TemporalKind::PlainDateTime {
+            let zone = self.temporal_time_zone(time_zone)?;
+            let disambiguation = self.temporal_disambiguation(options)?;
+            (zone, None, disambiguation)
+        } else {
+            let (zone, time) = self.temporal_plain_date_zone_and_time(time_zone)?;
+            (zone, time, time_zone::Disambiguation::Compatible)
+        };
+        value.epoch_nanoseconds = if value.kind == TemporalKind::PlainDate && time.is_none() {
+            // A `PlainDate` with no time of day becomes the zone's start of
+            // day, which is not always local midnight.
+            zone.start_of_day((value.year, value.month, value.day))
+        } else {
+            if let Some((hour, minute, second, millisecond, microsecond, nanosecond)) = time {
+                value.hour = hour;
+                value.minute = minute;
+                value.second = second;
+                value.millisecond = millisecond;
+                value.microsecond = microsecond;
+                value.nanosecond = nanosecond;
+            }
+            zone.epoch_nanoseconds_for(
+                (value.year, value.month, value.day),
+                (
+                    value.hour,
+                    value.minute,
+                    value.second,
+                    value.millisecond,
+                    value.microsecond,
+                    value.nanosecond,
+                ),
+                disambiguation,
+            )
+            .map_err(temporal_resolution_error)?
+        };
+        if !epoch::is_in_instant_range(&value.epoch_nanoseconds) {
             return Err(RuntimeError::RangeError(
-                "Temporal.toZonedDateTime currently supports UTC".into(),
+                "Temporal.ZonedDateTime epoch nanoseconds are outside the supported range".into(),
             ));
         }
-        value.epoch_nanoseconds = epoch::nanoseconds_since_epoch(
-            (value.year, value.month, value.day),
-            (
-                value.hour,
-                value.minute,
-                value.second,
-                value.millisecond,
-                value.microsecond,
-                value.nanosecond,
-            ),
-            0,
-        );
+        // The stored ISO fields are the *resolved* local wall-clock ones, not
+        // the requested ones: a skipped local time resolves to the shifted
+        // time, and a start-of-day resolution to the zone's real first
+        // wall-clock time of the day.
+        temporal_set_local_fields(&mut value, &zone);
         value.kind = TemporalKind::ZonedDateTime;
-        value.time_zone = time_zone;
+        value.time_zone = zone.identifier();
         self.alloc_temporal_value(value, false)
     }
 
@@ -1666,4 +1702,167 @@ impl Vm {
         };
         self.instant_from_epoch_nanoseconds(nanoseconds)
     }
+
+    // ---- Stage 1 Track E: time-zone identifiers and offsets -------------
+
+    /// `ToTemporalTimeZoneIdentifier`: a `ZonedDateTime` contributes its own
+    /// stored zone; every other object — and every non-string primitive — is
+    /// a `TypeError`, because Temporal deliberately does not run `ToString`
+    /// on a time-zone argument. An unparseable string is a `RangeError`.
+    fn temporal_time_zone(&mut self, value: &Value) -> Result<time_zone::TimeZone, RuntimeError> {
+        let invalid = |source: &str| {
+            RuntimeError::RangeError(format!("invalid Temporal time zone: {source}"))
+        };
+        if let Some(object) = value.object_id() {
+            if let Some(temporal) = self.heap.temporal_value(object)? {
+                if temporal.kind == TemporalKind::ZonedDateTime {
+                    return time_zone::parse_identifier(&temporal.time_zone)
+                        .ok_or_else(|| invalid(&temporal.time_zone));
+                }
+            }
+        }
+        let Value::String(source) = value else {
+            return Err(RuntimeError::TypeError(
+                "Temporal time zone must be a string or a Temporal.ZonedDateTime".into(),
+            ));
+        };
+        let source = source
+            .to_utf8()
+            .map_err(|_| RuntimeError::RangeError("invalid Temporal time zone".into()))?;
+        time_zone::parse_identifier(&source).ok_or_else(|| invalid(&source))
+    }
+
+    /// `Temporal.PlainDate.prototype.toZonedDateTime`'s single `item`
+    /// argument: either a bare time-zone identifier, or a property bag whose
+    /// `timeZone` names the zone and whose optional `plainTime` supplies the
+    /// time of day (absent meaning the zone's start of day).
+    fn temporal_plain_date_zone_and_time(
+        &mut self,
+        item: &Value,
+    ) -> Result<(time_zone::TimeZone, Option<epoch::CivilTime>), RuntimeError> {
+        if item.object_id().is_none() {
+            return Ok((self.temporal_time_zone(item)?, None));
+        }
+        let requested = self.get_property(item, &"timeZone".into())?;
+        if requested == Value::Undefined {
+            // No `timeZone` property: the item itself has to be the zone,
+            // which only a `ZonedDateTime` can satisfy — a plain object is a
+            // `TypeError`, exactly as `ToTemporalTimeZoneIdentifier` says.
+            return Ok((self.temporal_time_zone(item)?, None));
+        }
+        let zone = self.temporal_time_zone(&requested)?;
+        let plain_time = self.get_property(item, &"plainTime".into())?;
+        Ok((zone, self.temporal_time_of_day(&plain_time)?))
+    }
+
+    /// A narrowed `ToTemporalTime`: `undefined` means "start of day", and an
+    /// existing `Temporal.PlainTime`/`PlainDateTime` contributes its own time
+    /// fields.
+    ///
+    /// Converting a *string* to a `Temporal.PlainTime` is deliberately not
+    /// implemented here — `Temporal.PlainTime` is Phase 26 Stage 1 Track D's
+    /// own scope, and this engine has no time-only string parser yet
+    /// (`temporal_value_from_string` requires a date). Rather than accept a
+    /// time string and silently mis-parse it, this fails closed with the
+    /// `RangeError` the spec raises for an invalid one.
+    fn temporal_time_of_day(
+        &mut self,
+        value: &Value,
+    ) -> Result<Option<epoch::CivilTime>, RuntimeError> {
+        if *value == Value::Undefined {
+            return Ok(None);
+        }
+        if let Some(object) = value.object_id() {
+            if let Some(temporal) = self.heap.temporal_value(object)? {
+                if matches!(
+                    temporal.kind,
+                    TemporalKind::PlainTime | TemporalKind::PlainDateTime
+                ) {
+                    return Ok(Some((
+                        temporal.hour,
+                        temporal.minute,
+                        temporal.second,
+                        temporal.millisecond,
+                        temporal.microsecond,
+                        temporal.nanosecond,
+                    )));
+                }
+            }
+        }
+        if matches!(value, Value::String(_)) || value.object_id().is_some() {
+            return Err(RuntimeError::RangeError(
+                "Temporal.PlainTime conversion from this value is not supported yet".into(),
+            ));
+        }
+        Err(RuntimeError::TypeError(
+            "Temporal.PlainTime cannot be created from this value".into(),
+        ))
+    }
+
+    /// `ToTemporalDisambiguation`: a `"compatible"`-defaulted string option.
+    fn temporal_disambiguation(
+        &mut self,
+        options: &Value,
+    ) -> Result<time_zone::Disambiguation, RuntimeError> {
+        let options = self.temporal_options(options)?;
+        let Some(name) = self.temporal_string_option(&options, "disambiguation", &[])? else {
+            return Ok(time_zone::Disambiguation::Compatible);
+        };
+        time_zone::parse_disambiguation(&name)
+            .ok_or_else(|| RuntimeError::RangeError("invalid disambiguation option".into()))
+    }
+
+    pub(super) fn temporal_instant_to_zoned_date_time_iso(
+        &mut self,
+        receiver: &Value,
+        time_zone: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let epoch_nanoseconds = self.temporal_instant_epoch(receiver)?;
+        let zone = self.temporal_time_zone(time_zone)?;
+        let mut value = TemporalValue {
+            kind: TemporalKind::ZonedDateTime,
+            duration: None,
+            year: 1970,
+            month: 1,
+            day: 1,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            millisecond: 0,
+            microsecond: 0,
+            nanosecond: 0,
+            epoch_nanoseconds,
+            calendar: "iso8601".into(),
+            time_zone: zone.identifier(),
+        };
+        temporal_set_local_fields(&mut value, &zone);
+        self.alloc_temporal_value(value, false)
+    }
+}
+
+/// Rewrites a value's ISO fields to the local wall-clock fields its
+/// `epoch_nanoseconds` really has in `zone`. The ISO fields a `ZonedDateTime`
+/// carries are local, so they need the offset the zone was really observing at
+/// that instant — Track E's whole reason for existing.
+fn temporal_set_local_fields(value: &mut TemporalValue, zone: &time_zone::TimeZone) {
+    let offset = zone.offset_nanoseconds_for(&value.epoch_nanoseconds);
+    let ((year, month, day), (hour, minute, second, millisecond, microsecond, nanosecond)) =
+        epoch::instant_fields(&(&value.epoch_nanoseconds + BigInt::from(offset)));
+    value.year = year;
+    value.month = month;
+    value.day = day;
+    value.hour = hour;
+    value.minute = minute;
+    value.second = second;
+    value.millisecond = millisecond;
+    value.microsecond = microsecond;
+    value.nanosecond = nanosecond;
+}
+
+/// Maps a host-neutral zone-resolution failure onto the `RangeError` the spec
+/// raises for it.
+fn temporal_resolution_error(_: time_zone::AmbiguousLocalTime) -> RuntimeError {
+    RuntimeError::RangeError(
+        "the local time is ambiguous or does not exist in this time zone".into(),
+    )
 }
