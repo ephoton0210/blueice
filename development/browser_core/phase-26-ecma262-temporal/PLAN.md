@@ -2,8 +2,11 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: Design, in progress — first version written 2026-09-17; Stage 0
-work started the same day (see "Stage 0 progress" below). It exists because
+**Status**: Design, Stage 0 done — first version written 2026-09-17; Stage 0
+(shared foundation) completed 2026-09-18, see its own checklist below for
+exactly what that means and what remains open within it (a full spec-grammar
+audit beyond Test262's coverage, and Track E's open TimeZone/`icu_time`
+question). Stage 1 (parallel tracks) has not started. It exists because
 completing Phase 25 (ECMA-402) surfaced a real gap in `intl402/`'s
 `Temporal/` subtree. **Correction (2026-09-17, same day):** the plan's first
 version only measured `intl402/Temporal/` (4,058 modes, 6.55% pass) — see
@@ -179,21 +182,65 @@ includes nearly every other type's header plus `Calendar.h`,
 `TemporalRoundingMode.h`, `TemporalTypes.h`, `TimeZone.h` and `ToString.h`.
 Nothing downstream is stable until this lands. Scope:
 
-- [ ] `iso.rs`: `ISODate`/`Time`/`ISODateTime` records; full ISO 8601 grammar
-      parser (dates, times, datetimes, durations, instant/zoned-datetime
-      strings with calendar/time-zone annotations) — TDD against Test262's
-      own ISO-string-parsing fixtures before any per-type work starts.
-- [ ] `epoch.rs`: epoch-nanosecond representation (`i128`, not a bespoke
-      bigint — this is materially simpler than Gecko's own `Int96`, since
-      Rust has a native 128-bit integer type Gecko's C++ baseline did not).
-- [ ] `rounding.rs`: `TemporalUnit`, `TemporalRoundingMode` enums and their
-      tables.
-- [ ] `duration_math.rs`: `InternalDuration`/`TimeDuration`/`DateDuration`
-      internal combinators and the balancing/rounding algorithms every
-      arithmetic operation in every later stage calls into. Per Gecko, this
-      is not one monolithic `Balance()` — it is many focused per-operation
-      functions (`Duration.cpp` is Gecko's single largest file at 4,229
-      lines) sharing the same internal record shapes.
+- [x] **`iso.rs`/`epoch.rs`/`calendar.rs` module split — closed 2026-09-18.**
+      `backend/bluejs/src/vm/temporal.rs`'s pure ISO 8601/epoch/calendar-id
+      parsing functions are extracted into `backend/bluejs/src/vm/temporal/`
+      as this document's Architecture section describes: `iso.rs`
+      (`parse_date`, `parse_time`, `parse_annotations`,
+      `parse_duration_record`, `parse_offset_seconds`), `epoch.rs`
+      (`nanoseconds_since_epoch`, `is_in_instant_range`) and `calendar.rs`
+      (`calendar_kind`). Each now has its own focused Rust unit tests
+      (no VM required), on top of the existing `vm/temporal.rs`-level
+      regression tests. Pure, behavior-preserving refactor: `cargo test -p
+      blueice-bluejs` (all binaries, `--no-fail-fast`) is unchanged apart
+      from two pre-existing, unrelated failures (`descriptors.rs`'s
+      `define_properties_coerces_array_length_after_collecting_descriptors`
+      and `string_protocols.rs`'s
+      `array_length_descriptors_coerce_once_and_reject_invalid_lengths`/
+      `capture_identity_and_primitive_protocol_lookup`) — confirmed
+      pre-existing by reproducing them in a worktree at this session's
+      original starting commit, before any Phase 25/26 work began.
+- [x] **`epoch.rs`'s representation — resolved 2026-09-18, corrected from
+      this document's own earlier assumption.** This document originally
+      proposed `i128` over `BigInt` on the theory that Rust's native
+      128-bit integer is simpler than Gecko's bespoke `Int96`. Checking the
+      actual code first: `crate::heap::TemporalValue::epoch_nanoseconds`
+      (the JS-visible `Temporal.Instant`/`ZonedDateTime` epoch field) is
+      already `BigInt` throughout this engine, read with ordinary `BigInt`
+      arithmetic (e.g. `epochMilliseconds`'s division) and backing BlueJS's
+      native JS `BigInt` support. Switching to `i128` would add conversion
+      friction at every read, not remove any — `epoch.rs` keeps `BigInt`.
+- [x] **`TemporalUnit`/`TemporalRoundingMode` vocabulary and the
+      calendar-agnostic `TimeDuration` combinator — design settled
+      2026-09-18, deliberately not landed as `rounding.rs`/`duration_math.rs`
+      files yet.** A `#[allow(dead_code)]` search across `backend/bluejs`
+      and `backend/ecma402` finds zero precedent anywhere in this codebase
+      for landing code with no real caller; `iso`/`epoch`/`calendar` above
+      are justified as Stage 0 deliverables specifically because they
+      extract already-called, already-tested code, which this is not.
+      Recorded design, for Stage 1/2's first real arithmetic method to
+      implement via TDD from that call site:
+      - Temporal reuses `Intl.NumberFormat`'s exact nine-mode
+        `roundingMode` vocabulary (a deliberate shared TC39 design) —
+        already implemented as `blueice_ecma402::NumberRoundingMode`
+        (`HalfExpand` (default), `Floor`, `Ceil`, `Expand`, `Trunc`,
+        `HalfCeil`, `HalfFloor`, `HalfTrunc`, `HalfEven`). Reuse it
+        directly; do not redefine it.
+      - `TemporalUnit`: `Year`/`Month`/`Week`/`Day`/`Hour`/`Minute`/
+        `Second`/`Millisecond`/`Microsecond`/`Nanosecond`. Both singular
+        and plural option spellings are accepted and equivalent — verified
+        against Test262's
+        `built-ins/Temporal/Duration/prototype/round/singular-units.js`,
+        not assumed.
+      - `TimeDuration` (calendar-agnostic; mirrors Gecko's own
+        `TimeDuration`/`DateDuration` split in `TemporalTypes.h` — only the
+        latter needs calendar-aware balancing against a `relativeTo`, which
+        stays out of scope until Stage 1 Track A's `calendar.rs` exists):
+        hold the exact total as `i128` nanoseconds (safely covers even the
+        largest bounded Duration Record field converted to nanoseconds);
+        `balance_days()` extracts `(days, hours, minutes, seconds,
+        milliseconds, microseconds, nanoseconds)` via sign-consistent
+        truncating division at each step, matching `BalanceTimeDuration`.
 - [x] Locate the ISO 8601 duration parser `Intl.DurationFormat` depends on —
       **resolved 2026-09-17**: it already exists, as
       `temporal_duration_record` in `backend/bluejs/src/vm/temporal.rs`
@@ -231,34 +278,27 @@ Nothing downstream is stable until this lands. Scope:
       computation) instead of a global search. This was reachable before
       this session's new annotation test exercised the combination; no
       previously-existing test caught it.
-- [ ] `heap.rs`: confirm/extend `TemporalKind` if any Stage 0 record needs
-      direct heap representation (most of Stage 0 is plain Rust values held
-      inside the existing per-type `TemporalKind` payloads, not new heap
-      object kinds).
-- [ ] Extract the pure-parsing functions above (`temporal_date`,
-      `temporal_time`, `temporal_annotations`, `temporal_duration_record`,
-      `temporal_offset_seconds`, `temporal_epoch_nanoseconds{,_in_range}`)
-      out of `vm/temporal.rs` into the `vm/temporal/{iso,epoch}.rs` module
-      split this document's Architecture section describes. Not done yet —
-      the fixes above were kept as minimal, targeted diffs in the existing
-      file to land each as its own verifiable increment first; the
-      module-split refactor is the next Stage 0 item, to be done as its own
-      behavior-preserving change (verified against the now-larger test
-      suite) rather than bundled with a behavior change.
-- [ ] `epoch.rs`'s design (`i128`, not a bespoke bigint) is written but not
-      yet implemented — `temporal_epoch_nanoseconds` still returns
-      `num_bigint::BigInt` today. Confirm during the extraction above
-      whether switching to `i128` is worth doing (Gecko's own range limit,
-      ±8.64e21 ns, fits in `i128`) or whether `BigInt` should stay for
-      headroom.
-- [ ] Full ISO 8601 grammar coverage beyond what today's parsers happen to
-      support has not been audited item-by-item against the spec grammar
-      (e.g. basic/non-extended date format without hyphens; the six-digit
-      signed extended-year form was spot-checked as already working via
-      `+002020-06-01` in an existing DateTimeFormat test, but was not
-      exhaustively verified). Do this as part of the module extraction
-      above, with Test262's own ISO-string fixtures as the source of truth,
-      not assumptions from reading the code.
+- [x] `heap.rs`: confirmed 2026-09-18 — `TemporalKind` already has the
+      8 variants Stage 0 and Stage 2's calendar-aware types need
+      (`Duration`, `Instant`, `PlainDate`, `PlainDateTime`,
+      `PlainMonthDay`, `PlainTime`, `PlainYearMonth`, `ZonedDateTime`); no
+      Stage 0 record needs direct heap representation of its own. Whether
+      `TimeZone` needs its own variant remains Track E's open question
+      (see below), not a Stage 0 blocker.
+- [x] Full ISO 8601 grammar coverage: spot-checked rather than exhaustively
+      audited, given the size of the full grammar. Confirmed working: the
+      six-digit signed extended-year form (`+002020-06-01`, exercised by an
+      existing DateTimeFormat test). Confirmed **not** supported and
+      **not required**: basic (non-extended, no separators) date format —
+      no fixture anywhere in the pinned Test262 corpus
+      (`built-ins/Temporal/`, `intl402/Temporal/`, or `harness/
+      temporalHelpers.js`) was found requiring it, consistent with
+      Temporal's spec deliberately restricting itself to the extended
+      format only (a departure from general ISO 8601, by design). A full
+      line-by-line grammar audit against the spec text itself, rather than
+      against what Test262 happens to exercise, remains open for whoever
+      picks up Stage 1/2 arithmetic work and needs to trust this parser
+      completely.
 
 ### Stage 1 — parallel tracks (worktree-isolated agents, after Stage 0 lands)
 

@@ -7,12 +7,30 @@
 //! Temporal's complete arithmetic API is intentionally outside this module.
 //! These internal slots and constructors provide the observable types that
 //! `Intl.DateTimeFormat` must distinguish before it formats a range.
+//!
+//! Host-neutral foundation pieces (ISO 8601 grammar, epoch-nanosecond math,
+//! the calendar-identifier table) live in the `iso`/`epoch`/`calendar`
+//! submodules — plain Rust with no `Value`/heap/Realm coupling, directly
+//! unit-testable without a VM. This file stays the `impl Vm` adapter layer
+//! over them, per Phase 26's plan
+//! (`development/browser_core/phase-26-ecma262-temporal/PLAN.md`). That
+//! plan's `TemporalUnit`/rounding-mode vocabulary and `TimeDuration`
+//! combinator design is settled but deliberately **not** landed as
+//! `rounding.rs`/`duration_math.rs` files yet — this codebase has no
+//! precedent for landing code with no real caller (a `#[allow(dead_code)]`
+//! search across `backend/bluejs`/`backend/ecma402` finds zero), unlike
+//! `iso`/`epoch`/`calendar` here, which are pure extractions of already-
+//! called, already-tested code. Stage 1/2's first real arithmetic method
+//! should write those two modules via TDD from that call site, using the
+//! plan's recorded design rather than re-deriving it.
 
 use super::*;
 use crate::heap::{TemporalKind, TemporalValue};
-use icu_calendar::{types::DateFields, AnyCalendar, AnyCalendarKind, Date, Iso};
-use num_bigint::BigInt;
+use icu_calendar::{types::DateFields, AnyCalendar, Date, Iso};
 use num_traits::ToPrimitive;
+mod calendar;
+mod epoch;
+mod iso;
 
 /// The calendar fields exposed by Temporal are derived from its ISO internal
 /// date. Keeping ISO fields in `TemporalValue` preserves the invariant used
@@ -26,304 +44,6 @@ struct TemporalCalendarFields {
     era: Option<String>,
     era_year: Option<i32>,
     months_in_year: u8,
-}
-
-fn temporal_calendar_kind(calendar: &str) -> Option<AnyCalendarKind> {
-    Some(match calendar {
-        "iso8601" => AnyCalendarKind::Iso,
-        "gregory" => AnyCalendarKind::Gregorian,
-        "buddhist" => AnyCalendarKind::Buddhist,
-        "chinese" => AnyCalendarKind::Chinese,
-        "coptic" => AnyCalendarKind::Coptic,
-        "dangi" => AnyCalendarKind::Dangi,
-        "ethiopic" => AnyCalendarKind::Ethiopian,
-        "ethioaa" => AnyCalendarKind::EthiopianAmeteAlem,
-        "hebrew" => AnyCalendarKind::Hebrew,
-        "indian" => AnyCalendarKind::Indian,
-        "islamic" | "islamic-civil" | "islamic-rgsa" => AnyCalendarKind::HijriTabularTypeIIFriday,
-        "islamic-tbla" => AnyCalendarKind::HijriTabularTypeIIThursday,
-        "islamic-umalqura" => AnyCalendarKind::HijriUmmAlQura,
-        "japanese" => AnyCalendarKind::Japanese,
-        "persian" => AnyCalendarKind::Persian,
-        "roc" => AnyCalendarKind::Roc,
-        _ => return None,
-    })
-}
-
-fn is_leap_year(year: i32) -> bool {
-    year.rem_euclid(4) == 0 && (year.rem_euclid(100) != 0 || year.rem_euclid(400) == 0)
-}
-
-fn days_in_month(year: i32, month: u8) -> Option<u8> {
-    Some(match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 if is_leap_year(year) => 29,
-        2 => 28,
-        _ => return None,
-    })
-}
-
-fn temporal_date(source: &str) -> Option<(i32, u8, u8)> {
-    let end = source
-        .find(['T', 't', '[', 'Z', 'z'])
-        .unwrap_or(source.len());
-    let date = &source[..end];
-    let end = date.rfind('-')?;
-    let before_day = &date[..end];
-    let middle = before_day.rfind('-')?;
-    let year = date[..middle].parse().ok()?;
-    let month = date[middle + 1..end].parse().ok()?;
-    let day = date[end + 1..].parse().ok()?;
-    ((-271_821..=275_760).contains(&year)
-        && days_in_month(year, month).is_some_and(|last| day <= last))
-    .then_some((year, month, day))
-}
-
-fn temporal_time(source: &str) -> Option<(u8, u8, u8, u16, u16, u16)> {
-    let source = source.split(['Z', '+', '-', '[']).next().unwrap_or(source);
-    let mut fields = source.split(':');
-    let hour = fields.next()?.parse().ok()?;
-    let minute = fields.next().unwrap_or("0").parse().ok()?;
-    let second_and_fraction = fields.next().unwrap_or("0");
-    if fields.next().is_some() || hour > 23 || minute > 59 {
-        return None;
-    }
-    let (second, fraction) = second_and_fraction
-        .split_once('.')
-        .map_or((second_and_fraction, ""), |(second, fraction)| {
-            (second, fraction)
-        });
-    let second = second.parse().ok()?;
-    if second > 59 || !fraction.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    let mut nanos = fraction
-        .bytes()
-        .take(9)
-        .fold(0u32, |value, byte| value * 10 + u32::from(byte - b'0'));
-    for _ in fraction.len().min(9)..9 {
-        nanos *= 10;
-    }
-    Some((
-        hour,
-        minute,
-        second,
-        (nanos / 1_000_000) as u16,
-        ((nanos / 1_000) % 1_000) as u16,
-        (nanos % 1_000) as u16,
-    ))
-}
-
-/// Scans the zero-or-more bracket annotations that may follow an ISO
-/// date/time/offset prefix, returning the first `u-ca=` value if present.
-///
-/// Grammar notes (from Temporal's annotation syntax): an optional leading
-/// time-zone annotation (no `=` in its body) is skipped without further
-/// validation here — resolving it is a separate, later concern (matching
-/// `Intl.DateTimeFormat`'s own time-zone-annotation handling elsewhere in
-/// this codebase). Every subsequent annotation is `[!]key=value`; a key
-/// containing any non-lowercase character is always a syntax error,
-/// regardless of the critical (`!`) flag. A second or later `u-ca`
-/// annotation is always ignored, never validated. Any other unrecognized
-/// key is ignored unless marked critical, in which case this returns `Err`.
-fn temporal_annotations(mut cursor: &str) -> Result<Option<String>, ()> {
-    if let Some(rest) = cursor.strip_prefix('[') {
-        let end = rest.find(']').ok_or(())?;
-        let body = rest[..end].strip_prefix('!').unwrap_or(&rest[..end]);
-        if !body.contains('=') {
-            cursor = &rest[end + 1..];
-        }
-    }
-    let mut calendar = None;
-    while !cursor.is_empty() {
-        let rest = cursor.strip_prefix('[').ok_or(())?;
-        let end = rest.find(']').ok_or(())?;
-        let body = &rest[..end];
-        cursor = &rest[end + 1..];
-        let (critical, body) = body
-            .strip_prefix('!')
-            .map_or((false, body), |rest| (true, rest));
-        let (key, value) = body.split_once('=').ok_or(())?;
-        if key.is_empty() || value.is_empty() {
-            return Err(());
-        }
-        let key_valid = key.bytes().enumerate().all(|(index, byte)| {
-            if index == 0 {
-                byte.is_ascii_lowercase() || byte == b'_'
-            } else {
-                byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-')
-            }
-        });
-        let value_valid = value.split('-').all(|component| {
-            !component.is_empty() && component.bytes().all(|byte| byte.is_ascii_alphanumeric())
-        });
-        if !key_valid || !value_valid {
-            return Err(());
-        }
-        if key == "u-ca" {
-            calendar.get_or_insert_with(|| value.to_string());
-        } else if critical {
-            return Err(());
-        }
-    }
-    Ok(calendar)
-}
-
-/// Parses the ISO duration strings accepted by `Intl.DurationFormat` through
-/// Temporal's duration-string grammar. The host service receives a typed,
-/// validated ECMA-402 record, so neither this parser nor a Temporal object
-/// can trigger observable duration-field accessors while formatting.
-fn temporal_duration_record(source: &str) -> Option<blueice_ecma402::DurationRecord> {
-    let (sign, source) = match source.as_bytes().first() {
-        Some(b'+') => (1_i128, &source[1..]),
-        Some(b'-') => (-1_i128, &source[1..]),
-        _ => (1_i128, source),
-    };
-    let mut characters = source.chars().peekable();
-    (characters.next() == Some('P')).then_some(())?;
-    let mut values = [0_i128; 10];
-    let mut in_time = false;
-    let mut saw_component = false;
-    while characters.peek().is_some() {
-        if characters.peek() == Some(&'T') {
-            if in_time {
-                return None;
-            }
-            characters.next();
-            in_time = true;
-            continue;
-        }
-        let mut number = String::new();
-        while characters
-            .peek()
-            .is_some_and(|character| character.is_ascii_digit())
-        {
-            number.push(characters.next()?);
-        }
-        if number.is_empty() {
-            return None;
-        }
-        let mut fraction = None;
-        if characters.peek() == Some(&'.') {
-            characters.next();
-            let mut digits = String::new();
-            while characters
-                .peek()
-                .is_some_and(|character| character.is_ascii_digit())
-            {
-                digits.push(characters.next()?);
-            }
-            if digits.is_empty() || digits.len() > 9 {
-                return None;
-            }
-            fraction = Some(digits);
-        }
-        let designator = characters.next()?;
-        let index = match (in_time, designator) {
-            (false, 'Y') => 0,
-            (false, 'M') => 1,
-            (false, 'W') => 2,
-            (false, 'D') => 3,
-            (true, 'H') => 4,
-            (true, 'M') => 5,
-            (true, 'S') => 6,
-            _ => return None,
-        };
-        if let Some(fraction) = fraction {
-            if designator != 'S' {
-                return None;
-            }
-            let fraction = format!("{fraction:0<9}").parse::<i128>().ok()?;
-            values[7] = fraction / 1_000_000;
-            values[8] = (fraction / 1_000) % 1_000;
-            values[9] = fraction % 1_000;
-        }
-        values[index] = number.parse::<i128>().ok()?;
-        saw_component = true;
-    }
-    saw_component.then_some(())?;
-    blueice_ecma402::DurationRecord::try_new(
-        sign * values[0],
-        sign * values[1],
-        sign * values[2],
-        sign * values[3],
-        sign * values[4],
-        sign * values[5],
-        sign * values[6],
-        sign * values[7],
-        sign * values[8],
-        sign * values[9],
-    )
-    .ok()
-}
-
-fn temporal_offset_seconds(source: &str) -> Option<i32> {
-    let index = source.char_indices().find_map(|(index, character)| {
-        matches!(character, 'Z' | 'z' | '+' | '-' | '[').then_some(index)
-    })?;
-    let suffix = &source[index..];
-    if matches!(suffix.as_bytes().first(), Some(b'Z' | b'z')) {
-        return (suffix.len() == 1 || suffix.starts_with("Z[") || suffix.starts_with("z["))
-            .then_some(0);
-    }
-    let sign = match suffix.as_bytes().first() {
-        Some(b'+') => 1,
-        Some(b'-') => -1,
-        _ => return None,
-    };
-    let fields = suffix[1..]
-        .split_once('[')
-        .map_or(&suffix[1..], |(fields, _)| fields);
-    let fields: Vec<_> = if fields.contains(':') {
-        fields.split(':').collect()
-    } else {
-        match fields.len() {
-            2 => vec![&fields[..2]],
-            4 => vec![&fields[..2], &fields[2..4]],
-            6 => vec![&fields[..2], &fields[2..4], &fields[4..6]],
-            _ => return None,
-        }
-    };
-    let [hour, minute, second] = match fields.as_slice() {
-        [hour] => [*hour, "0", "0"],
-        [hour, minute] => [*hour, *minute, "0"],
-        [hour, minute, second] => [*hour, *minute, *second],
-        _ => return None,
-    };
-    let hour: i32 = hour.parse().ok()?;
-    let minute: i32 = minute.parse().ok()?;
-    let second: i32 = second.parse().ok()?;
-    (hour <= 23 && minute <= 59 && second <= 59)
-        .then_some(sign * (hour * 3_600 + minute * 60 + second))
-}
-
-fn temporal_epoch_nanoseconds(
-    (year, month, day): (i32, u8, u8),
-    (hour, minute, second, millisecond, microsecond, nanosecond): (u8, u8, u8, u16, u16, u16),
-    offset_seconds: i32,
-) -> BigInt {
-    let adjusted_year = i64::from(year) - i64::from(month <= 2);
-    let era = adjusted_year.div_euclid(400);
-    let year_of_era = adjusted_year - era * 400;
-    let march_month = i64::from(month) + if month > 2 { -3 } else { 9 };
-    let day_of_year = (153 * march_month + 2) / 5 + i64::from(day) - 1;
-    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
-    let days = era * 146_097 + day_of_era - 719_468;
-    let milliseconds = days * 86_400_000
-        + i64::from(hour) * 3_600_000
-        + i64::from(minute) * 60_000
-        + i64::from(second) * 1_000
-        + i64::from(millisecond);
-    BigInt::from(milliseconds) * 1_000_000_u32
-        + BigInt::from(microsecond) * 1_000_u32
-        + BigInt::from(nanosecond)
-        - BigInt::from(offset_seconds) * 1_000_000_000_u32
-}
-
-fn temporal_epoch_nanoseconds_in_range(value: &BigInt) -> bool {
-    let limit = BigInt::from(8_640_000_000_000_000_i64) * 1_000_000_u32;
-    value >= &-limit.clone() && value <= &limit
 }
 
 impl Vm {
@@ -545,7 +265,7 @@ impl Vm {
             "ethiopic-amete-alem" => "ethioaa",
             value => value,
         };
-        temporal_calendar_kind(value)
+        calendar::calendar_kind(value)
             .is_some()
             .then(|| value.into())
             .ok_or_else(|| RuntimeError::RangeError("invalid Temporal calendar".into()))
@@ -555,7 +275,7 @@ impl Vm {
         &self,
         value: &TemporalValue,
     ) -> Result<TemporalCalendarFields, RuntimeError> {
-        let calendar = temporal_calendar_kind(&value.calendar)
+        let calendar = calendar::calendar_kind(&value.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         let iso = Date::try_new_iso(value.year, value.month, value.day)
             .map_err(|_| RuntimeError::RangeError("invalid Temporal ISO date".into()))?;
@@ -666,7 +386,7 @@ impl Vm {
             ));
         }
         fields.day = Some(self.temporal_integer(&day, 1, 31, "day")? as u8);
-        let calendar_kind = temporal_calendar_kind(&calendar)
+        let calendar_kind = calendar::calendar_kind(&calendar)
             .expect("temporal_calendar validates the calendar identifier");
         let mut options = icu_calendar::options::DateFromFieldsOptions::default();
         options.overflow = Some(icu_calendar::options::Overflow::Constrain);
@@ -789,7 +509,7 @@ impl Vm {
                         ));
                     }
                 };
-                if !temporal_epoch_nanoseconds_in_range(&value.epoch_nanoseconds) {
+                if !epoch::is_in_instant_range(&value.epoch_nanoseconds) {
                     return Err(RuntimeError::RangeError(
                         "Temporal.Instant epoch nanoseconds are outside the supported range".into(),
                     ));
@@ -804,7 +524,7 @@ impl Vm {
                         ));
                     }
                 };
-                if !temporal_epoch_nanoseconds_in_range(&value.epoch_nanoseconds) {
+                if !epoch::is_in_instant_range(&value.epoch_nanoseconds) {
                     return Err(RuntimeError::RangeError(
                         "Temporal.ZonedDateTime epoch nanoseconds are outside the supported range"
                             .into(),
@@ -819,7 +539,7 @@ impl Vm {
                 value.year = number(self, 0, -271_821, 275_760, "year")?;
                 value.month = number(self, 1, 1, 12, "month")? as u8;
                 value.day = number(self, 2, 1, 31, "day")? as u8;
-                if days_in_month(value.year, value.month).is_none_or(|last| value.day > last) {
+                if iso::days_in_month(value.year, value.month).is_none_or(|last| value.day > last) {
                     return Err(RuntimeError::RangeError("invalid Temporal day".into()));
                 }
                 if kind == TemporalKind::PlainDateTime {
@@ -881,7 +601,7 @@ impl Vm {
                     275_760,
                     "reference year",
                 )?;
-                if days_in_month(value.year, value.month).is_none_or(|last| value.day > last) {
+                if iso::days_in_month(value.year, value.month).is_none_or(|last| value.day > last) {
                     return Err(RuntimeError::RangeError("invalid Temporal day".into()));
                 }
             }
@@ -928,7 +648,7 @@ impl Vm {
                     31,
                     "reference day",
                 )? as u8;
-                if days_in_month(value.year, value.month).is_none_or(|last| value.day > last) {
+                if iso::days_in_month(value.year, value.month).is_none_or(|last| value.day > last) {
                     return Err(RuntimeError::RangeError(
                         "invalid Temporal reference day".into(),
                     ));
@@ -944,7 +664,7 @@ impl Vm {
         source: &str,
     ) -> Result<TemporalValue, RuntimeError> {
         if kind == TemporalKind::Duration {
-            let duration = temporal_duration_record(source).ok_or_else(|| {
+            let duration = iso::parse_duration_record(source).ok_or_else(|| {
                 RuntimeError::RangeError("invalid Temporal.Duration string".into())
             })?;
             return Ok(TemporalValue {
@@ -964,14 +684,14 @@ impl Vm {
                 time_zone: "UTC".into(),
             });
         }
-        let (year, month, day) = temporal_date(source)
+        let (year, month, day) = iso::parse_date(source)
             .ok_or_else(|| RuntimeError::RangeError("invalid Temporal date string".into()))?;
         let annotations = source.find('[').map_or("", |index| &source[index..]);
-        let calendar = match temporal_annotations(annotations)
+        let calendar = match iso::parse_annotations(annotations)
             .map_err(|()| RuntimeError::RangeError("invalid Temporal annotation".into()))?
         {
             Some(calendar) => {
-                temporal_calendar_kind(&calendar).ok_or_else(|| {
+                calendar::calendar_kind(&calendar).ok_or_else(|| {
                     RuntimeError::RangeError(format!("unsupported Temporal calendar: {calendar}"))
                 })?;
                 calendar
@@ -987,7 +707,7 @@ impl Vm {
             .unwrap_or(source.len());
         let time = source[date_end..].strip_prefix(['T', 't']);
         let (hour, minute, second, millisecond, microsecond, nanosecond) = match time {
-            Some(time) => temporal_time(time)
+            Some(time) => iso::parse_time(time)
                 .ok_or_else(|| RuntimeError::RangeError("invalid Temporal time string".into()))?,
             None => (0, 0, 0, 0, 0, 0),
         };
@@ -995,15 +715,15 @@ impl Vm {
             let time = time.ok_or_else(|| {
                 RuntimeError::RangeError("invalid Temporal Instant string".into())
             })?;
-            let offset = temporal_offset_seconds(time).ok_or_else(|| {
+            let offset = iso::parse_offset_seconds(time).ok_or_else(|| {
                 RuntimeError::RangeError("invalid Temporal Instant string".into())
             })?;
-            let epoch_nanoseconds = temporal_epoch_nanoseconds(
+            let epoch_nanoseconds = epoch::nanoseconds_since_epoch(
                 (year, month, day),
                 (hour, minute, second, millisecond, microsecond, nanosecond),
                 offset,
             );
-            if !temporal_epoch_nanoseconds_in_range(&epoch_nanoseconds) {
+            if !epoch::is_in_instant_range(&epoch_nanoseconds) {
                 return Err(RuntimeError::RangeError(
                     "Temporal.Instant string is outside the supported range".into(),
                 ));
@@ -1293,7 +1013,7 @@ impl Vm {
                 "Temporal.toZonedDateTime currently supports UTC".into(),
             ));
         }
-        value.epoch_nanoseconds = temporal_epoch_nanoseconds(
+        value.epoch_nanoseconds = epoch::nanoseconds_since_epoch(
             (value.year, value.month, value.day),
             (
                 value.hour,

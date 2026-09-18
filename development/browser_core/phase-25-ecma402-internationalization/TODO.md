@@ -124,3 +124,19 @@ Current: 9,657 / 10,237 lines (94.33%). Ranked by missed-line count:
       lookup via a second locale-negotiated `PluralRulesWithRanges` service.
       106 / 106 pinned `intl402/PluralRules` Test262 modes still pass.
       (`backend/ecma402/src/plural_rules.rs`, `backend/bluejs/src/vm/intl.rs`)
+      **Follow-up regression found and fixed 2026-09-18**: a full
+      `cargo test -p blueice-bluejs --no-fail-fast` run (only run for the
+      first time while unrelated Phase 26/Temporal work was in progress —
+      a normal `cargo test` stops at the first failing test *binary* and
+      had been masking this) turned up
+      `process_hosts.rs::adapter_executes_plural_rules_through_the_json_lines_interface`
+      failing. Its hardcoded expectation,
+      `new Intl.PluralRules('en',{type:'ordinal'}).selectRange(1,2) === 'other'`,
+      was written against the *old, broken* stub (which always returned
+      `"other"` for any non-identity range) and was never updated for the
+      real fix above. Verified directly against the host crate that the
+      correct value is `'two'` (English ordinal has no explicit CLDR
+      `pluralRanges` override, so it falls back to the end category — `2`
+      is `"two"` — matching the documented default). Updated the test's
+      expectation; this was a stale-test issue, not a logic bug in the
+      `selectRange` fix itself.

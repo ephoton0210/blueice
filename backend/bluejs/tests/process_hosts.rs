@@ -336,7 +336,7 @@ fn adapter_executes_duration_format_through_the_json_lines_interface() {
 fn adapter_executes_plural_rules_through_the_json_lines_interface() {
     let replies = adapter(
         &[json!({
-            "source": "let p=new Intl.PluralRules('en',{type:'ordinal'});assert.sameValue(p.select(2),'two');assert.sameValue(p.selectRange(1,2),'other');assert.sameValue(p.resolvedOptions().type,'ordinal');assert.sameValue(Intl.PluralRules.supportedLocalesOf(['zz','en']).join(','),'en')",
+            "source": "let p=new Intl.PluralRules('en',{type:'ordinal'});assert.sameValue(p.select(2),'two');assert.sameValue(p.selectRange(1,2),'two');assert.sameValue(p.resolvedOptions().type,'ordinal');assert.sameValue(Intl.PluralRules.supportedLocalesOf(['zz','en']).join(','),'en')",
             "mode": "sloppy",
         })],
         None,
