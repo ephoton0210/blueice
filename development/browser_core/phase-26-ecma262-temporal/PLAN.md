@@ -3,10 +3,16 @@
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
 **Status**: Design, Stage 0 done. Stage 1 (Tracks B/C/D/E) is done and closed
-to its practical limit. Stage 2's first slice (`PlainDate`/`PlainDateTime`)
-is done. Chronological closure record, each step's Test262 delta measured on
-the pinned corpus (`python3 backend/bluejs/test262/run.py --filter
-"Temporal/" --jobs 8`), diffed per path+mode against the step before it:
+to its practical limit. Stage 2's `PlainDate`/`PlainDateTime` slice has had
+two passes now — combined `Temporal/` is **7,870/13,272 (59.3%)**
+(`PlainDate` 1,996/2,290 87.2%, `PlainDateTime` 2,206/2,512 87.8%) — and the
+single largest remaining gap in both types is the `with()` era/eraYear
+mutual-exclusivity feature (not yet attempted, see the second pass's own
+bullet below for what it needs). `plain_year_month.rs`/`plain_month_day.rs`
+and `zoned_date_time.rs` remain fully unstarted. Chronological closure
+record, each step's Test262 delta measured on the pinned corpus (`python3
+backend/bluejs/test262/run.py --filter "Temporal/" --jobs 8`), diffed per
+path+mode against the step before it:
 
 - **Stage 0 (shared foundation) — done 2026-09-18.** Includes a same-day
   exhaustive ISO 8601 grammar audit (11 real bugs; see its own bullet below)
@@ -1426,6 +1432,110 @@ once). One owner:
         `ZonedDateTime`/`Instant`/`PlainTime`/`Duration`/`Now` all moved
         the same direction as `PlainDate`/`PlainDateTime` (flat or
         improved) on the same full-tree run.
+- [x] **`PlainDate`/`PlainDateTime` second pass — closed 2026-09-18.** Six
+      real bugs found and fixed via TDD (each pinned to the Test262
+      fixture(s) that caught it), zero regressions on any full-`Temporal/`
+      run (diffed per path+mode against the state before each commit):
+
+      | Metric | Before this pass | After |
+      | --- | ---: | ---: |
+      | `PlainDate` | 1,892/2,290 (82.6%) | **1,996/2,290 (87.2%)** |
+      | `PlainDateTime` | 2,064/2,512 (82.2%) | **2,206/2,512 (87.8%)** |
+      | Combined `Temporal/` | 7,624/13,272 (57.4%) | **7,870/13,272 (59.3%)** |
+
+      Reproduce: `python3 backend/bluejs/test262/run.py --corpus
+      /tmp/blueice-test262-72faf8ec --filter "Temporal/" --jobs 8`.
+
+      1. **`since()` swapped which date anchored the calendar-difference
+         algorithm instead of negating the result.** `DifferenceTemporalPlainDate`/
+         `PlainDateTime` always compute `CalendarDateUntil(receiver, other,
+         largestUnit)` — the same direction as `until` — and only negate the
+         *finished* `Duration` for `since`. This engine instead swapped
+         `from`/`to` (`from = other, to = existing` for `since`) and skipped
+         the negation. Not equivalent: `CalendarDateUntil`'s algorithm
+         anchors its year/month bubbling on its *first* argument's
+         day-of-month, so it is not anti-symmetric
+         (`f(other, existing) != -f(existing, other)` in general) —
+         `intl402/Temporal/PlainDate/prototype/since/basic-gregory.js`'s "23
+         years, 11 months and 29 days" case computed 30 days instead of 29.
+         Fixed in `Vm::temporal_date_difference`
+         (`backend/bluejs/src/vm/temporal.rs`): always compute
+         receiver-to-argument, negate every field of the result for
+         `since`. See `backend/bluejs/tests/temporal_since_until_direction.rs`.
+      2. **`difference_iso_date`/`calendar_difference_date` used the wrong
+         algorithm shape.** The prior estimate-via-day-span-then-bubble-one-
+         month-at-a-time implementation compared each candidate only *after*
+         constraining it through `calendar_add_date`/`regulate_iso_date`.
+         Wrong: Test262's `wrapping-at-end-of-month-*.js` fixtures require
+         `Jan 29 -> Feb 28` to report `{ days: -30 }`, not `{ months: -1 }`,
+         because the *unconstrained* `Jan 29 + 1 month = Feb 29` candidate
+         surpasses `Feb 28`, even though `Feb 29` constrained down to `Feb
+         28` would not. Rewrote `vm/temporal/plain_date.rs` to port Gecko's
+         real `DifferenceISODate`/`DifferenceNonISODate`
+         (`js/src/builtin/temporal/Calendar.cpp`, fetched directly since
+         this session's worktree had no local Gecko checkout): direct
+         `years`/`months` field subtraction, corrected by at most one step
+         apiece via an *unconstrained* candidate-vs-target comparison.
+         Three-way dispatch matching Gecko's own `NonISODateUntil`: ISO-
+         aligned calendars (`iso8601`/`gregory`/`buddhist`/`japanese`/`roc`)
+         use the raw ISO fields directly; fixed-12-month calendars
+         (`coptic`/`ethiopic`/`ethioaa`/`indian`/the three Hijri
+         variants/`persian`) get a new `calendar_difference_date_fixed_months`;
+         the three leap-month calendars (`chinese`/`dangi`/`hebrew`) keep
+         the prior estimate-then-bubble shape with only the same
+         constrain-before-compare fix applied, **documented as a narrower
+         remaining gap**: it compares by ordinal month rather than Gecko's
+         own `monthCode`, which can misorder across a year boundary when
+         the two years being compared have different leap-month positions.
+      3. **A second real bug found while building fix 2**: the fixed-months
+         path's single-step year/month normalization (mirroring Gecko's own
+         single `if > monthsPerYear {} else if < 1 {}`) is not sound for
+         every date pair this engine's calendar-ordinal conversion can
+         produce — a real panic on `intl402/Temporal/PlainDate/prototype/since/
+         basic-indian.js`. Replaced with a full `div_euclid`/`rem_euclid`
+         normalize. Both bugs' regression tests live in `plain_date.rs`'s
+         own `#[cfg(test)]` module.
+      4. **`PlainDateTime.prototype.round` rejected `smallestUnit: "day"`.**
+         Validated against the `hour`..`nanosecond` time-unit vocabulary
+         only, but `RoundISODateTime`'s actual range is `day`..`nanosecond`
+         — every `round/roundingmode-*.js`/`round/balance.js`/
+         `round/roundingincrement-one-day.js`/`round/limits.js` fixture uses
+         `"day"`. Fixed with a dedicated day-unit branch in
+         `Vm::temporal_date_time_round`: `roundingIncrement` must be exactly
+         `1` for day granularity, and the whole time-of-day rounds to the
+         nearest whole day via `rounding::round_to_increment` directly.
+      5. **Found fixing 4: no method checked its result against Temporal's
+         exact representable range.** `round`'s (and, found the same way,
+         `add`/`subtract`'s) computed date/time was never checked against
+         `epoch::is_date_time_within_limits` — only the calendar date's
+         year/month/day range via `calendar_add_date`. `round/limits.js`/
+         `add/limits.js` require flooring/ceiling or adding/subtracting
+         across the exact day-and-nanosecond boundary to throw `RangeError`;
+         `alloc_temporal_value` performs no range validation of its own.
+         Fixed both `temporal_date_time_round` and `temporal_date_add` with
+         an explicit boundary check before constructing the result.
+      6. **`ToTemporalCalendarIdentifier` only recognized a calendar string
+         with a `[u-ca=...]` bracket.** An unannotated ISO string like
+         `"2020-01-01"` has no bracket, so it fell through to a bare-
+         calendar-ID lookup and threw — but an unannotated ISO string always
+         means `iso8601`. Test262's `equals/argument-propertybag-calendar-
+         iso-string.js` passes eight unannotated/annotated ISO string
+         shapes. Fixed `temporal_calendar_identifier` to try every ISO
+         string production this crate has a parser for (date-time,
+         year-month, month-day, time) before the bare-ID fallback.
+
+      **Deliberately still open** (documented, not silently glossed over):
+      the `chinese`/`dangi`/`hebrew` ordinal-vs-monthCode gap from fix 2
+      above; the era/eraYear `with()` mutual-exclusivity validation this
+      document's first `PlainDate`/`PlainDateTime` pass already flagged
+      (`intl402/.../with/mutually-exclusive-fields-*.js`,
+      `calendarresolvefields-error-ordering-*.js` — now the single largest
+      remaining cluster, ~94 modes, needing real era-to-year resolution via
+      `icu_calendar` for every non-ISO calendar, not yet attempted); and
+      `Temporal.Duration`'s `relativeTo`-anchored `round`/`total`/`compare`
+      (Track B's own deferred scope, still blocked pending this stage's
+      later `PlainYearMonth`/`PlainMonthDay`/`ZonedDateTime` work per this
+      document's own stated final-pass ordering).
 - [ ] `plain_year_month.rs`, `plain_month_day.rs` next, reusing the
       calendar-field pattern `plain_date.rs` establishes (combined Test262:
       `PlainYearMonth/` 1,672, `PlainMonthDay/` 578 modes).

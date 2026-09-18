@@ -637,17 +637,22 @@ impl Vm {
     /// constructor's own positional `calendar` argument: a property-bag
     /// `calendar` field (`Temporal.PlainDate.from({..., calendar})`) or a
     /// `Temporal.PlainDate.prototype.withCalendar` argument may themselves
-    /// be a full date/date-time/offset/time string carrying a `[u-ca=...]`
-    /// annotation, not only a bare calendar ID — Test262's
-    /// `since/calendar-id-match.js` passes `"2024-05-16[u-ca=iso8601]"` as a
-    /// property-bag `calendar` value, and `withCalendar/calendar-time-string.js`
-    /// passes `"T11:30[u-ca=hebrew]"` to `withCalendar`. Rather than
-    /// re-deriving the full `ParseISODateTime` grammar here, this reuses
-    /// [`iso::parse_annotation_suffix`] on the text starting at the first
-    /// `[`, which is exactly the annotation-suffix grammar every one of
-    /// Temporal's string shapes shares: a bare calendar ID has no `[` at
-    /// all, so it falls straight through to the same bare-ID lookup
-    /// [`Self::temporal_calendar`] uses.
+    /// be a full date/date-time/offset/time/year-month/month-day string,
+    /// not only a bare calendar ID — Test262's `since/calendar-id-match.js`
+    /// passes `"2024-05-16[u-ca=iso8601]"` as a property-bag `calendar`
+    /// value, `withCalendar/calendar-time-string.js` passes
+    /// `"T11:30[u-ca=hebrew]"` to `withCalendar`, and (found via a real
+    /// `equals/argument-propertybag-calendar-iso-string.js` failure) an
+    /// *unannotated* ISO string like `"2020-01-01"` or `"2020-01"` is
+    /// equally valid and always means `"iso8601"` — the calendar defaults
+    /// to `iso8601` whenever no `[u-ca=...]` annotation is present, per
+    /// `ParseISODateTime`. Tries every ISO string production this crate has
+    /// a parser for (date-time, year-month, month-day, time — matching
+    /// `TemporalCalendarString`'s own grammar alternation), extracting the
+    /// first `u-ca=` annotation from whichever one matches; only when
+    /// *none* of them parse does this fall back to a bare calendar ID
+    /// lookup (an actual calendar ID like `"gregory"` never matches any of
+    /// those productions, so the two paths never compete).
     fn temporal_calendar_identifier(&mut self, value: &Value) -> Result<String, RuntimeError> {
         if *value == Value::Undefined {
             return Ok("iso8601".into());
@@ -656,12 +661,15 @@ impl Vm {
         let value = value
             .to_utf8()
             .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar".into()))?;
-        if let Some(bracket) = value.find('[') {
-            if let Ok(annotations) = iso::parse_annotation_suffix(&value[bracket..]) {
-                let calendar = annotations.calendar.as_deref().unwrap_or("iso8601");
-                return canonical_calendar_id(calendar)
-                    .ok_or_else(|| RuntimeError::RangeError("invalid Temporal calendar".into()));
-            }
+        let parsed_calendar = iso::parse_date_time(&value)
+            .or_else(|| iso::parse_year_month(&value))
+            .or_else(|| iso::parse_month_day(&value))
+            .or_else(|| iso::parse_time(&value))
+            .map(|parsed| parsed.calendar);
+        if let Some(calendar) = parsed_calendar {
+            let calendar = calendar.as_deref().unwrap_or("iso8601");
+            return canonical_calendar_id(calendar)
+                .ok_or_else(|| RuntimeError::RangeError("invalid Temporal calendar".into()));
         }
         canonical_calendar_id(&value)
             .ok_or_else(|| RuntimeError::RangeError("invalid Temporal calendar".into()))
@@ -3808,6 +3816,25 @@ impl Vm {
             reject,
         )
         .ok_or_else(|| RuntimeError::RangeError("Temporal date arithmetic is out of range".into()))?;
+        // `calendar_add_date` only range-checks via `regulate_iso_date`/
+        // `balance_iso_date` (an i32-year/valid-month-day check), not
+        // Temporal's own narrower representable range
+        // (`-271821-04-19`..`+275760-09-13`, exclusive at the exact
+        // day-and-nanosecond boundary for `PlainDateTime`) -- confirmed by a
+        // real `add/limits.js` failure: subtracting one day from the exact
+        // minimum `PlainDate` silently produced a valid-but-unrepresentable
+        // `-271821-04-18` instead of throwing. `alloc_temporal_value`
+        // performs no range validation of its own, matching the same gap
+        // `Temporal.PlainDateTime.prototype.round` had.
+        let in_range = match &time_fields {
+            Some(time) => epoch::is_date_time_within_limits(result_date, *time),
+            None => epoch::is_date_within_limits(result_date),
+        };
+        if !in_range {
+            return Err(RuntimeError::RangeError(
+                "Temporal date arithmetic is out of range".into(),
+            ));
+        }
         let value = match time_fields {
             Some(time) => {
                 Self::temporal_date_time_value(existing.kind, existing.calendar.clone(), result_date, time)
@@ -3878,40 +3905,31 @@ impl Vm {
 
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
-        let (from, to) = if since {
-            (
-                (other.year, other.month, other.day),
-                (existing.year, existing.month, existing.day),
-            )
-        } else {
-            (
-                (existing.year, existing.month, existing.day),
-                (other.year, other.month, other.day),
-            )
-        };
-        let (from_time, to_time) = if since {
-            (
-                (
-                    other.hour, other.minute, other.second, other.millisecond, other.microsecond,
-                    other.nanosecond,
-                ),
-                (
-                    existing.hour, existing.minute, existing.second, existing.millisecond,
-                    existing.microsecond, existing.nanosecond,
-                ),
-            )
-        } else {
-            (
-                (
-                    existing.hour, existing.minute, existing.second, existing.millisecond,
-                    existing.microsecond, existing.nanosecond,
-                ),
-                (
-                    other.hour, other.minute, other.second, other.millisecond, other.microsecond,
-                    other.nanosecond,
-                ),
-            )
-        };
+        // `DifferenceTemporalPlainDate`/`DifferenceTemporalPlainDateTime`
+        // always compute `CalendarDateUntil(calendar, temporalDate, other,
+        // largestUnit)` — i.e. always in the fixed receiver-to-argument
+        // direction, exactly like `until` — and only negate the *resulting*
+        // Duration afterward for `since` (step 10). This must not be
+        // implemented by swapping which date is `from`/`to` and skipping the
+        // negation: `CalendarDateUntil`'s own algorithm anchors on `from`'s
+        // day-of-month while walking years/months, so it is not
+        // anti-symmetric (`f(other, existing) != -f(existing, other)` in
+        // general — verified against Test262's
+        // `PlainDate/prototype/since/basic-gregory.js`, whose "23 years, 11
+        // months and 29 days" case a swap-based `from`/`to` computes as 30
+        // days instead of 29, because it anchors on the wrong date's day
+        // field). `from`/`to` are therefore always `existing`/`other`, and
+        // the whole result is negated below when `since` is true.
+        let from = (existing.year, existing.month, existing.day);
+        let to = (other.year, other.month, other.day);
+        let from_time = (
+            existing.hour, existing.minute, existing.second, existing.millisecond,
+            existing.microsecond, existing.nanosecond,
+        );
+        let to_time = (
+            other.hour, other.minute, other.second, other.millisecond, other.microsecond,
+            other.nanosecond,
+        );
 
         const DAY_NS: i128 = 86_400_000_000_000;
         let from_ns = duration_math::time_fields_to_nanoseconds(
@@ -4003,6 +4021,23 @@ impl Vm {
             time_fields.map_or((0, 0, 0, 0, 0, 0), |fields: [i64; 6]| {
                 (fields[0], fields[1], fields[2], fields[3], fields[4], fields[5])
             });
+        // Step 10 of `DifferenceTemporalPlainDate`/`DifferenceTemporalPlainDateTime`:
+        // the whole `years`..`nanoseconds` computation above is always in the
+        // fixed `existing` (receiver) -> `other` (argument) direction — see
+        // the comment on `from`/`to` above — so `since` negates every field
+        // of the finished result rather than the inputs to the computation.
+        let (years, months, weeks, days, hours, minutes, seconds, milliseconds, microseconds, nanoseconds) =
+            if since {
+                (
+                    -years, -months, -weeks, -days, -hours, -minutes, -seconds, -milliseconds,
+                    -microseconds, -nanoseconds,
+                )
+            } else {
+                (
+                    years, months, weeks, days, hours, minutes, seconds, milliseconds,
+                    microseconds, nanoseconds,
+                )
+            };
         let record = blueice_ecma402::DurationRecord::try_new(
             i128::from(years),
             i128::from(months),
@@ -4354,14 +4389,20 @@ impl Vm {
                 mode.as_deref(),
                 blueice_ecma402::NumberRoundingMode::HalfExpand,
             )?;
-            let smallest_unit =
-                Self::temporal_validated_time_unit(smallest_unit.as_deref(), "smallestUnit")?
-                    .ok_or_else(|| {
-                        RuntimeError::RangeError(
-                            "Temporal.PlainDateTime.round requires smallestUnit".into(),
-                        )
-                    })?;
-            Self::temporal_validated_plain_time_increment(increment, smallest_unit)?;
+            // `PlainDateTime.prototype.round`'s `smallestUnit` spans
+            // `"day"`..`"nanosecond"` (`RoundISODateTime`'s own unit range),
+            // one wider than a bare `PlainTime`'s `"hour"`..`"nanosecond"` —
+            // a real gap this fixed: every `smallestUnit: "day"` call
+            // (`round/roundingmode-*.js`, `round/balance.js`,
+            // `round/roundingincrement-one-day.js`, `round/limits.js`)
+            // threw "invalid smallestUnit option" before this, since only
+            // the narrower time-unit vocabulary was ever accepted.
+            let smallest_unit_text = smallest_unit.as_deref().ok_or_else(|| {
+                RuntimeError::RangeError(
+                    "Temporal.PlainDateTime.round requires smallestUnit".into(),
+                )
+            })?;
+            const DAY_NS: i128 = 86_400_000_000_000;
             let time_ns = duration_math::time_fields_to_nanoseconds(
                 existing.hour,
                 existing.minute,
@@ -4370,12 +4411,29 @@ impl Vm {
                 existing.microsecond,
                 existing.nanosecond,
             );
-            let rounded = duration_math::TimeDuration::from_nanoseconds(time_ns)
-                .round(smallest_unit, increment, mode)
-                .total_nanoseconds();
-            const DAY_NS: i128 = 86_400_000_000_000;
-            let day_carry = rounded.div_euclid(DAY_NS);
-            let ns_of_day = rounded.rem_euclid(DAY_NS);
+            let (day_carry, ns_of_day) = if matches!(smallest_unit_text, "day" | "days") {
+                // `ValidateTemporalRoundingIncrement(increment, 1, true)`:
+                // day granularity has no finer subdivision to increment by
+                // within this call (unlike `Temporal.Instant.round`'s own
+                // day rule, which allows any divisor of a day) — only `1`
+                // is ever valid.
+                if increment != 1 {
+                    return Err(RuntimeError::RangeError(
+                        "roundingIncrement must be 1 when smallestUnit is \"day\"".into(),
+                    ));
+                }
+                let rounded = rounding::round_to_increment(time_ns, DAY_NS, mode);
+                (rounded.div_euclid(DAY_NS), 0_i128)
+            } else {
+                let smallest_unit = rounding::parse_time_unit(smallest_unit_text).ok_or_else(|| {
+                    RuntimeError::RangeError("invalid smallestUnit option".into())
+                })?;
+                Self::temporal_validated_plain_time_increment(increment, smallest_unit)?;
+                let rounded = duration_math::TimeDuration::from_nanoseconds(time_ns)
+                    .round(smallest_unit, increment, mode)
+                    .total_nanoseconds();
+                (rounded.div_euclid(DAY_NS), rounded.rem_euclid(DAY_NS))
+            };
             let calendar_kind = calendar::calendar_kind(&existing.calendar)
                 .expect("Temporal values retain a validated calendar identifier");
             let date = plain_date::calendar_add_date(
@@ -4391,6 +4449,24 @@ impl Vm {
                 RuntimeError::RangeError("Temporal.PlainDateTime.round is out of range".into())
             })?;
             let time = duration_math::time_fields_from_nanoseconds(ns_of_day);
+            // `calendar_add_date` only range-checks the *calendar date*
+            // (year/month/day); a rounded result can still fall outside
+            // Temporal's exact day-and-nanosecond `PlainDateTime` boundary
+            // while landing on an otherwise-representable date -- e.g.
+            // flooring `-271821-04-19T00:00:00.000000001` (the actual
+            // minimum representable `PlainDateTime`) to any unit rounds
+            // its single nanosecond away, landing exactly on
+            // `-271821-04-19T00:00:00.000000000`, a representable *date*
+            // but not a representable `PlainDateTime` (`PlainDateTime/
+            // from/argument-string-limits.js`'s own boundary). Confirmed
+            // by a real `round/limits.js` failure — `alloc_temporal_value`
+            // performs no range validation of its own, unlike
+            // `temporal_value_from_args`'s construction path.
+            if !epoch::is_date_time_within_limits(date, time) {
+                return Err(RuntimeError::RangeError(
+                    "Temporal.PlainDateTime.round is out of range".into(),
+                ));
+            }
             let value = Self::temporal_date_time_value(
                 TemporalKind::PlainDateTime,
                 existing.calendar.clone(),
