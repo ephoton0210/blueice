@@ -1927,8 +1927,9 @@ impl Vm {
                     target,
                     referrer,
                     specifier,
+                    json,
                 } => {
-                    let result = self.dynamic_import_job(&referrer, &specifier);
+                    let result = self.dynamic_import_job(&referrer, &specifier, json);
                     match result {
                         Ok(DynamicImportResult::Fulfilled(namespace)) => {
                             self.settle_promise(target, PromiseStatus::Fulfilled(namespace))?
@@ -1938,14 +1939,6 @@ impl Vm {
                                 .entry(module)
                                 .or_default()
                                 .push(target);
-                        }
-                        // Dynamic import delegates loading and linking to the
-                        // host. A host module-resolution failure rejects the
-                        // capability with its host error rather than leaking
-                        // the static-module SyntaxError classification.
-                        Err(RuntimeError::ModuleResolution(message)) => {
-                            let error = self.error_object("TypeError", message)?;
-                            self.settle_promise(target, PromiseStatus::Rejected(error))?;
                         }
                         Err(error) => {
                             let error = self.error_value(error)?;

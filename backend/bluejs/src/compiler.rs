@@ -200,6 +200,7 @@ fn compile_with_limit_and_mode(
                         ImportName::Source => CompiledModuleImportName::Source,
                     },
                     local_slot,
+                    json: import.json,
                 }
             })
             .collect();
@@ -229,19 +230,23 @@ fn compile_with_limit_and_mode(
                     Some(ImportEntry {
                         module_request,
                         import_name: ImportName::Named(import_name),
+                        json,
                         ..
                     }) => Ok(CompiledModuleExport::Indirect {
                         export_name: export_name.clone(),
                         module_request: module_request.clone(),
                         import_name: import_name.clone(),
+                        json: *json,
                     }),
                     Some(ImportEntry {
                         module_request,
                         import_name: ImportName::Namespace,
+                        json,
                         ..
                     }) => Ok(CompiledModuleExport::Namespace {
                         export_name: export_name.clone(),
                         module_request: module_request.clone(),
+                        json: *json,
                     }),
                     Some(ImportEntry {
                         module_request,
@@ -264,20 +269,25 @@ fn compile_with_limit_and_mode(
                     export_name,
                     module_request,
                     import_name,
+                    json,
                 } => Ok(CompiledModuleExport::Indirect {
                     export_name: export_name.clone(),
                     module_request: module_request.clone(),
                     import_name: import_name.clone(),
+                    json: *json,
                 }),
-                ExportEntry::Star { module_request } => Ok(CompiledModuleExport::Star {
+                ExportEntry::Star { module_request, json } => Ok(CompiledModuleExport::Star {
                     module_request: module_request.clone(),
+                    json: *json,
                 }),
                 ExportEntry::Namespace {
                     export_name,
                     module_request,
+                    json,
                 } => Ok(CompiledModuleExport::Namespace {
                     export_name: export_name.clone(),
                     module_request: module_request.clone(),
+                    json: *json,
                 }),
             })
             .collect::<Result<Vec<_>, CompileError>>()?;

@@ -516,6 +516,9 @@ enum PromiseJob {
         target: ObjectId,
         referrer: String,
         specifier: String,
+        /// Whether `import(specifier, { with: { type: "json" } })` was
+        /// requested, routing resolution to `ensure_json_module`.
+        json: bool,
     },
     ModuleAwait {
         continuation: u64,
@@ -660,6 +663,10 @@ pub struct Vm {
     /// Bytecodes supplied by the host for this realm's module loader.
     /// Dynamic imports resolve only inside this explicit registry.
     module_registry: HashMap<String, Bytecode>,
+    /// Host-provided raw JSON text for `type: "json"` module requests, keyed
+    /// by resolved module name. `ensure_json_module` (`vm/modules.rs`) reads
+    /// this lazily, on the first request for a given resolved path.
+    json_module_sources: HashMap<String, String>,
     /// Host-provided source-phase module records. Their opaque identities are
     /// intentionally separate from executable module bytecode.
     module_source_registry: HashSet<String>,
@@ -866,6 +873,7 @@ impl Vm {
             remaining_instructions: 0,
             cells: HashMap::new(),
             module_registry: HashMap::new(),
+            json_module_sources: HashMap::new(),
             module_source_registry: HashSet::new(),
             module_source_cache: HashMap::new(),
             module_source_roots: HashMap::new(),
@@ -999,6 +1007,15 @@ impl Vm {
         self.module_source_registry = sources.into_iter().collect();
     }
 
+    /// Installs the host's raw JSON text for `type: "json"` module requests,
+    /// keyed by resolved module name (the same resolution `set_module_loader_context`'s
+    /// `modules` map keys use). `ensure_json_module` (`vm/modules.rs`) parses
+    /// and synthesizes a Synthetic Module Record from this text the first
+    /// time each resolved path is actually requested.
+    pub fn set_json_module_sources(&mut self, sources: HashMap<String, String>) {
+        self.json_module_sources = sources;
+    }
+
     /// Links and synchronously evaluates one static module graph.
     ///
     /// Keys in `modules` are host-resolved module names. Relative requests
@@ -1013,7 +1030,7 @@ impl Vm {
         entry: &str,
         modules: &HashMap<String, Bytecode>,
     ) -> Result<Value, RuntimeError> {
-        self.execute_module_graph_inner(entry, modules, true)
+        self.execute_module_graph_inner(entry, modules, true, false)
     }
 }
 

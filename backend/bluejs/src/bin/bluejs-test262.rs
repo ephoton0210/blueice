@@ -24,6 +24,12 @@ struct Request {
     module_path: Option<String>,
     #[serde(default)]
     module_sources: HashMap<String, String>,
+    /// Raw text for non-`.js` module fixtures (currently JSON only), keyed
+    /// by the same test-root-relative path `module_sources`/`module_path`
+    /// use. Kept separate from `module_sources` because those entries are
+    /// parsed as JavaScript module source unconditionally.
+    #[serde(default)]
+    module_json_sources: HashMap<String, String>,
     #[serde(default)]
     module_source_requests: Vec<String>,
     #[serde(default)]
@@ -241,6 +247,7 @@ fn evaluate(request: Request) -> Value {
         Err(error) => return json!({"kind":"harness_error", "message":error.to_string()}),
     };
     vm.set_module_source_loader_context(request.module_source_requests);
+    vm.set_json_module_sources(request.module_json_sources.clone());
     if request.mode != "raw" {
         if let Err(error) = vm.install_test262_harness() {
             return json!({"kind":"harness_error", "message":error.to_string()});
@@ -256,7 +263,13 @@ fn evaluate(request: Request) -> Value {
             return json!({"kind":"harness_error", "message":error.to_string()});
         }
     }
-    if request.mode != "module" && !module_codes.is_empty() {
+    // A referrer context is needed whenever the harness detected a dynamic
+    // import at all (`request.module_path` is set), even when it resolves
+    // only `.json`/other non-`.js` fixtures and `module_codes` ends up
+    // empty -- an empty registry still fixes `dynamic_import`'s referrer to
+    // this test's own path, rather than the resolution-breaking `"<script>"`
+    // default `resolve_module_request` falls back to otherwise.
+    if request.mode != "module" && (request.module_path.is_some() || !module_codes.is_empty()) {
         vm.set_module_loader_context(
             request
                 .module_path
