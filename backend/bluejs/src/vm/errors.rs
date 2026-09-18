@@ -110,6 +110,7 @@ impl Vm {
             "EvalError" => "EvalError",
             "URIError" => "URIError",
             "AggregateError" => "AggregateError",
+            "SuppressedError" => "SuppressedError",
             "Test262Error" => "Test262Error",
             _ => "Error",
         };
@@ -154,7 +155,13 @@ impl Vm {
             self.define_data(
                 constructor,
                 "length",
-                Value::Number(if name == "AggregateError" { 2.0 } else { 1.0 }),
+                Value::Number(if name == "AggregateError" {
+                    2.0
+                } else if name == "SuppressedError" {
+                    3.0
+                } else {
+                    1.0
+                }),
                 false,
                 false,
                 true,
@@ -230,6 +237,7 @@ impl Vm {
         self.stack.push(Value::Object(object));
         let result = (|| {
             let aggregate = name == "AggregateError";
+            let suppressed_error = name == "SuppressedError";
             if aggregate {
                 self.define_data(
                     object,
@@ -239,6 +247,34 @@ impl Vm {
                     false,
                     true,
                 )?;
+            }
+            // `SuppressedError(error, suppressed, message)` has its own
+            // positional shape: `message` is the third argument (installed
+            // first, matching Error's own message-before-cause ordering),
+            // and there is no `cause`/options argument at all.
+            if suppressed_error {
+                let message = native::argument(args, 2);
+                if *message != Value::Undefined {
+                    let message = self.coerce_string(message)?;
+                    self.define_data(object, "message", Value::String(message), true, false, true)?;
+                }
+                self.define_data(
+                    object,
+                    "error",
+                    native::argument(args, 0).clone(),
+                    true,
+                    false,
+                    true,
+                )?;
+                self.define_data(
+                    object,
+                    "suppressed",
+                    native::argument(args, 1).clone(),
+                    true,
+                    false,
+                    true,
+                )?;
+                return Ok(Value::Object(object));
             }
             let message = native::argument(args, if aggregate { 1 } else { 0 });
             if *message != Value::Undefined {

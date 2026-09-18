@@ -56,6 +56,9 @@ impl Parser {
                 }
                 Ok(Stmt::ClassDecl(class))
             }
+            Token::Identifier(name) if name == "using" && self.using_declaration_follows() => {
+                self.parse_var_decl_stmt(DeclKind::Using)
+            }
             Token::Identifier(name) if name == "with" => self.parse_with_stmt(),
             Token::Keyword(Keyword::If) => self.parse_if_stmt(),
             Token::Keyword(Keyword::For) => self.parse_for_stmt(),

@@ -10,6 +10,54 @@ impl Compiler {
         self.statements_after_function_declarations(statements)
     }
 
+    /// Like `statements`, but when `statements` directly declares a `using`/
+    /// `await using` binding, arranges for every such binding's value to be
+    /// disposed (reverse declaration order, `SuppressedError` on a second
+    /// error) when this statement list's block exits -- normally or via an
+    /// early return/break/continue/throw. Implemented as a synthetic
+    /// `try { <statements> } finally { <native DisposeResources> }`, reusing
+    /// the same handler-stack machinery `try_statement` uses for a real
+    /// `finally` clause; see that function and `Opcode::DisposeResources`'s
+    /// own doc comment.
+    ///
+    /// Every caller that can introduce a new using-eligible statement list
+    /// (block statements, `try`/`catch`/`finally` bodies, function bodies)
+    /// must call this instead of `statements` for the disposal to take
+    /// effect; the common no-`using` case is exactly as cheap as before.
+    pub(super) fn statements_with_disposal(
+        &mut self,
+        statements: &[Stmt],
+    ) -> Result<(), CompileError> {
+        self.function_declarations(statements)?;
+        if !has_using_declaration(statements) {
+            return self.statements_after_function_declarations(statements);
+        }
+        let handler_index = u32::try_from(self.bytecode.handlers.len())
+            .map_err(|_| CompileError::ProgramTooLarge)?;
+        self.bytecode.handlers.push(Handler {
+            try_start: 0,
+            try_end: 0,
+            catch: None,
+            catch_end: None,
+            finally: None,
+        });
+        self.emit(Opcode::PushHandler, handler_index)?;
+        self.emit(Opcode::MarkDisposables, 0)?;
+        self.emit(Opcode::ClearCompletion, 0)?;
+        self.bytecode.handlers[handler_index as usize].try_start = self.offset()?;
+        self.statements_after_function_declarations(statements)?;
+        self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
+        self.emit(Opcode::PopHandler, 0)?;
+        self.emit(Opcode::SaveCompletion, 0)?;
+        let normal_exit = self.emit(Opcode::Jump, 0)?;
+        let finally_start = self.offset()?;
+        self.bytecode.handlers[handler_index as usize].finally = Some(finally_start);
+        self.emit(Opcode::DisposeResources, handler_index)?;
+        self.emit(Opcode::ResumeCompletion, handler_index)?;
+        self.patch(normal_exit, finally_start);
+        Ok(())
+    }
+
     /// Module linking separates declaration instantiation from evaluation.
     /// Keeping the declaration prefix explicit lets the VM run it for every
     /// member of a cyclic graph before it starts evaluating any body.
@@ -181,7 +229,7 @@ impl Compiler {
             }
             Stmt::Block(body) => {
                 self.enter_scope(block_lexical_names(body)?, &var_names(body)?, false)?;
-                self.statements(body)?;
+                self.statements_with_disposal(body)?;
                 self.leave_scope()?;
             }
             Stmt::VarDecl(kind, declarations) => {
@@ -451,7 +499,7 @@ impl Compiler {
             &var_names(statements)?,
             false,
         )?;
-        self.statements(statements)?;
+        self.statements_with_disposal(statements)?;
         self.leave_scope()
     }
 
@@ -613,7 +661,7 @@ impl Compiler {
                 &var_names(&catch.body)?,
                 false,
             )?;
-            self.statements(&catch.body)?;
+            self.statements_with_disposal(&catch.body)?;
             self.leave_scope()?;
             self.catch_var_slots
                 .pop()
@@ -661,9 +709,22 @@ impl Compiler {
         kind: DeclKind,
         declarations: &[VarDeclarator],
     ) -> Result<(), CompileError> {
+        let is_using = matches!(kind, DeclKind::Using | DeclKind::AwaitUsing);
         for declaration in declarations {
             if kind == DeclKind::Const && declaration.init.is_none() {
                 return Err(CompileError::InvalidSyntax("const requires an initializer"));
+            }
+            if is_using {
+                if !matches!(declaration.pattern, Pattern::Identifier(_)) {
+                    return Err(CompileError::InvalidSyntax(
+                        "a using declaration cannot use a destructuring pattern",
+                    ));
+                }
+                if declaration.init.is_none() {
+                    return Err(CompileError::InvalidSyntax(
+                        "a using declaration requires an initializer",
+                    ));
+                }
             }
             if matches!(declaration.pattern, Pattern::Identifier(_))
                 && kind == DeclKind::Var
@@ -687,7 +748,17 @@ impl Compiler {
                 }
                 self.constant(Value::Undefined)?
             }
+            if is_using {
+                // BindingInitialization happens before AddDisposableResource
+                // observes the value (`using` LexicalBinding Evaluation);
+                // keep a second copy on the stack for it.
+                self.emit(Opcode::Dup, 0)?;
+            }
             self.bind_pattern(&declaration.pattern, kind)?;
+            if is_using {
+                let hint = u32::from(kind == DeclKind::AwaitUsing);
+                self.emit(Opcode::AddDisposableResource, hint)?;
+            }
         }
         Ok(())
     }

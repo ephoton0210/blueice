@@ -429,6 +429,49 @@ struct PromiseRecord {
     reactions: Vec<PromiseReaction>,
 }
 
+/// Whether a disposable resource was added by a `using` declaration/
+/// `DisposableStack` (synchronous) or an `await using` declaration/
+/// `AsyncDisposableStack` (asynchronous). Mirrors the spec's `sync-dispose`/
+/// `async-dispose` hint on a DisposableResource Record.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum DisposeHint {
+    Sync,
+    Async,
+}
+
+/// A single entry of a DisposeCapability Record's `[[DisposableResourceStack]]`.
+///
+/// `receiver` is the value `method` is called on; `argument`, when present,
+/// is passed as the sole call argument instead of being used as the
+/// receiver. This lets `DisposableStack.prototype.adopt`'s synthetic
+/// `() => onDispose(value)` closure (spec `CreateDisposableResource`'s
+/// captured Abstract Closure) collapse into an ordinary call description
+/// rather than needing its own heap-allocated closure object: `defer`/plain
+/// resources call `method` on `receiver` with no arguments, while `adopt`
+/// calls `method` on `undefined` with `argument` as the one parameter.
+pub(super) struct DisposableResource {
+    pub(super) receiver: Value,
+    pub(super) argument: Option<Value>,
+    pub(super) method: Option<Value>,
+    // Not yet read: `dispose_resources_sync` treats every resource
+    // uniformly (see its own doc comment for the one case, a method-less
+    // `async-dispose` resource, where the real algorithm's behavior
+    // depends on this field and this implementation's does not).
+    #[allow(dead_code)]
+    pub(super) hint: DisposeHint,
+}
+
+/// The DisposeCapability Record backing one `DisposableStack`/
+/// `AsyncDisposableStack` instance's `[[DisposeCapability]]` internal slot.
+/// Kept in a side table (like `PromiseRecord`) rather than as ordinary
+/// object properties, so a stack's pending resources are never observable
+/// through `Object.getOwnPropertySymbols`/`Reflect.ownKeys`.
+#[derive(Default)]
+pub(super) struct DisposeCapabilityState {
+    pub(super) resources: Vec<DisposableResource>,
+    pub(super) disposed: bool,
+}
+
 /// Aggregation bookkeeping for `Promise.all`. Each input observes its own
 /// resolution job; the target is fulfilled only after every indexed slot has
 /// settled, so a pending dependency never becomes a host-level unsupported
@@ -737,6 +780,32 @@ pub struct Vm {
     weak_set_prototype: Option<ObjectId>,
     weak_ref_prototype: Option<ObjectId>,
     finalization_registry_prototype: Option<ObjectId>,
+    disposable_stack_prototype: Option<ObjectId>,
+    async_disposable_stack_prototype: Option<ObjectId>,
+    /// `[[DisposeCapability]]` state for each live `DisposableStack`
+    /// instance, keyed by its object identity.
+    disposable_stacks: HashMap<ObjectId, DisposeCapabilityState>,
+    /// Same, for `AsyncDisposableStack`. Kept separate from
+    /// `disposable_stacks` because the two constructors are distinct
+    /// brands: a `DisposableStack` method called on an `AsyncDisposableStack`
+    /// instance (or vice versa) must observe a missing internal slot.
+    async_disposable_stacks: HashMap<ObjectId, DisposeCapabilityState>,
+    /// Pending `using`/`await using` declaration resources for every
+    /// currently-open using-declaring block, across every active call frame.
+    /// `Opcode::MarkDisposables`/`DisposeResources` push/pop `dispose_marks`
+    /// in strict LIFO order matching lexical nesting and ordinary
+    /// (synchronous) call/return, so a flat, VM-wide stack is sufficient
+    /// for that case, including recursion. It is *not* isolated per
+    /// generator/async-function suspension the way `iterators` is: a
+    /// `yield`/`await` that suspends execution while directly inside a
+    /// `using`-declaring block, with unrelated code running more `using`
+    /// declarations before that generator/async function resumes, is not
+    /// supported correctly. Plain synchronous functions/blocks (the
+    /// overwhelming common case, and the only shape `using` -- as opposed
+    /// to the unimplemented `await using` -- realistically appears in) are
+    /// unaffected.
+    disposables: Vec<DisposableResource>,
+    dispose_marks: Vec<usize>,
     /// Targets passed to WeakRef or returned by `deref` must survive the
     /// current ECMAScript job. The list is cleared at the outer execution
     /// boundary and registered by every allocation safepoint.
@@ -860,6 +929,12 @@ impl Vm {
             weak_set_prototype: None,
             weak_ref_prototype: None,
             finalization_registry_prototype: None,
+            disposable_stack_prototype: None,
+            async_disposable_stack_prototype: None,
+            disposable_stacks: HashMap::new(),
+            async_disposable_stacks: HashMap::new(),
+            disposables: Vec::new(),
+            dispose_marks: Vec::new(),
             kept_weak_objects: Vec::new(),
             promises: HashMap::new(),
             promise_all: HashMap::new(),
@@ -1825,6 +1900,7 @@ impl Vm {
                     | NativeFunction::WeakSet
                     | NativeFunction::WeakRef
                     | NativeFunction::FinalizationRegistry
+                    | NativeFunction::DisposableStack { .. }
                     | NativeFunction::Object
                     | NativeFunction::RegExp
                     | NativeFunction::Collator

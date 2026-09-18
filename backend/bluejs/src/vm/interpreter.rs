@@ -1416,6 +1416,45 @@ impl Vm {
                         .completion_saves
                         .push((self.completion.clone(), self.completion_empty)),
                     Opcode::ResumeCompletion => return Ok(Some(Completion::Resume(operand))),
+                    Opcode::MarkDisposables => {
+                        self.dispose_marks.push(self.disposables.len());
+                    }
+                    Opcode::AddDisposableResource => {
+                        let value = self.pop();
+                        let hint = if operand == 0 {
+                            DisposeHint::Sync
+                        } else {
+                            DisposeHint::Async
+                        };
+                        let mut disposables = std::mem::take(&mut self.disposables);
+                        let result = self.add_disposable_resource(&mut disposables, value, hint, None);
+                        self.disposables = disposables;
+                        result?;
+                    }
+                    Opcode::DisposeResources => {
+                        let mark = self
+                            .dispose_marks
+                            .pop()
+                            .expect("compiler matches every DisposeResources with a mark");
+                        let resources = self.disposables.split_off(mark);
+                        // An abrupt entry leaves this handler's frame on the
+                        // runtime handler stack (in `Finally` state) until
+                        // `ResumeCompletion` runs after this opcode; a
+                        // normal-completion entry already popped it via
+                        // `PopHandler`; see `Opcode::DisposeResources`'s
+                        // definition.
+                        let prior = match handlers.last() {
+                            Some(frame) if frame.metadata == operand => frame
+                                .pending
+                                .map(|index| self.pending_completions[index].clone()),
+                            _ => None,
+                        };
+                        let prior = match prior {
+                            Some(Completion::Throw(error)) => Some(error),
+                            _ => None,
+                        };
+                        self.dispose_resources_sync(resources, prior)?;
+                    }
                     Opcode::AbruptJump => {
                         let jump = &code.abrupt_jumps[operand];
                         return Ok(Some(Completion::Jump {

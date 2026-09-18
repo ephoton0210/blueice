@@ -78,6 +78,16 @@ pub enum DeclKind {
     Var,
     Let,
     Const,
+    /// `using x = value;` (Explicit Resource Management, synchronous
+    /// disposal). Scoping/TDZ/immutability behave like `const`; the
+    /// distinguishing behavior is that the compiler arranges for the bound
+    /// value's `[Symbol.dispose]` to run when the enclosing block exits.
+    Using,
+    /// `await using x = value;` -- same, but disposal happens through
+    /// `[Symbol.asyncDispose]` and is awaited. Parsing/compiling for this
+    /// form is not yet implemented; the variant exists so `DeclKind`
+    /// already distinguishes the two hints where later code needs to.
+    AwaitUsing,
 }
 
 #[derive(Debug, Clone, PartialEq)]

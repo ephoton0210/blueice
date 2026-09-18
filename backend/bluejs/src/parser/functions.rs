@@ -427,6 +427,19 @@ impl Parser {
             })
     }
 
+    /// `using` is a contextual keyword: `using [no LineTerminator here]
+    /// BindingIdentifier` starts a using declaration only in statement
+    /// position (not yet supported: a `ForBinding`'s own `using` form).
+    /// Anything else (`using;`, `using.foo()`, `using = 1`, `using\nx = 1`)
+    /// leaves `using` as an ordinary identifier reference.
+    pub(super) fn using_declaration_follows(&self) -> bool {
+        self.check_identifier("using")
+            && !self.current_identifier_escaped()
+            && self.tokens.get(self.pos + 1).is_some_and(|token| {
+                !token.newline_before && matches!(token.token, Token::Identifier(_))
+            })
+    }
+
     /// Object literals use the same contextual `async` modifier as class
     /// methods, but an unmodified `async()` remains an ordinary method name
     /// and `async: value` remains a data property.

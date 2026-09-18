@@ -2886,3 +2886,227 @@ parsing rather than dedicated grammar) -- this predates this session and
 explains both `import-defer`'s nonzero 13-pass baseline and this session's
 deliberate choice not to tighten bare-`import` rejection any further than
 the narrow "no `(` and no `.`" case.
+
+## Explicit Resource Management: `using`/`await using`, `DisposableStack`/`AsyncDisposableStack`, `SuppressedError` (2026-09-18)
+
+Edition applicability checked first, per this doc's own standing instruction
+not to invest in a feature before confirming it targets the published
+edition rather than the living draft. Explicit Resource Management reached
+Stage 4 and is part of the officially published **ECMA-262 edition 17**
+(ECMAScript 2026, ratified 2026-06-30) — not a draft-only addition. This
+matches the pinned Test262 snapshot placing its tests under
+`test/built-ins/DisposableStack/`, `test/built-ins/AsyncDisposableStack/`,
+`test/built-ins/SuppressedError/` and `test/language/statements/using/`
+(real, non-`staging/` directories) rather than `test/staging/`.
+
+**Before**: the feature was wholesale missing. `Symbol.dispose`/
+`Symbol.asyncDispose` were already reserved as well-known symbols (unused)
+and `Iterator.prototype[Symbol.dispose]` already existed as part of the
+Iterator Helpers surface, but `DisposableStack`, `AsyncDisposableStack`,
+`SuppressedError` and the `using`/`await using` grammar did not exist at
+all: `DisposableStack is not defined`/`AsyncDisposableStack is not
+defined` were the dominant Test262 diagnostics, and the
+`explicit-resource-management` feature tag stood at 148 pass / 799 fail
+(84.4% failing).
+
+**After** (filtered slice: `built-ins/DisposableStack/`,
+`built-ins/AsyncDisposableStack/`, `built-ins/SuppressedError/`,
+`language/statements/using/`, `language/statements/await-using/`; 397 test
+files, 780 scheduled modes):
+
+| | pass | fail | timeout |
+| --- | ---: | ---: | ---: |
+| Before | 106 | 674 | 0 |
+| After | 592 | 187 | 1 |
+
+By directory, remaining failures are concentrated exactly where the
+implementation is incomplete, not spread across what's supposedly done:
+
+| Directory | Fail | Why |
+| --- | ---: | --- |
+| `built-ins/DisposableStack/` | 0/93 | fully passing |
+| `built-ins/SuppressedError/` | 2/22 (both modes of one file) | `proto-from-ctor-realm.js`, a `$262` cross-realm `new.target` case, out of scope here |
+| `built-ins/AsyncDisposableStack/` | 10/104 | the documented `disposeAsync` simplification below |
+| `language/statements/using/` | 45/~184 | for-statement/for-of `using` heads, switch-case placement, module-top-level disposal timing, function-name inference for a `using`-bound anonymous function -- all unimplemented, not incorrect |
+| `language/statements/await-using/` | 135/~184 | `await using` syntax itself is not implemented (see below) |
+
+### What was implemented
+
+**`Symbol.dispose`/`Symbol.asyncDispose`**: already-reserved well-known
+symbols, now actually exposed as `Symbol.dispose`/`Symbol.asyncDispose`
+(they iterate the same `WELL_KNOWN` table `Symbol.iterator` etc. already
+use, so no separate wiring was needed there) and consumed for real by
+everything below.
+
+**`SuppressedError`**: added as a fourth argument shape
+(`error, suppressed, message`) alongside `Error`/`AggregateError`'s
+existing shared constructor path in `backend/bluejs/src/vm/errors.rs`
+(`error_global`/`error_constructor`), rather than a separate constructor
+implementation -- `SuppressedError.prototype`'s `[[Prototype]]` is
+`Error.prototype`, and its own-property shape (`message` only if not
+`undefined`, then `error`, then `suppressed`, each
+`{writable:true,enumerable:false,configurable:true}`) is exactly the
+existing generic error-object machinery with one extra branch.
+
+**`DisposableStack`/`AsyncDisposableStack`**: new
+`backend/bluejs/src/vm/builtins/resource_management.rs`, implementing the
+spec's "Operations on Disposable Objects" abstract operations
+(`GetDisposeMethod`, `CreateDisposableResource`, `AddDisposableResource`,
+`Dispose`, `DisposeResources`) as `Vm` methods shared by both the
+`DisposableStack` builtin and `using` declarations (below) — the same
+abstract operations, not two parallel implementations. Each
+`DisposableStack`/`AsyncDisposableStack` instance's `[[DisposeCapability]]`
+lives in a `HashMap<ObjectId, DisposeCapabilityState>` side table
+(`Vm::disposable_stacks`/`async_disposable_stacks`, one map per brand, so a
+`DisposableStack` method invoked on an `AsyncDisposableStack` instance
+correctly observes a missing internal slot and vice versa) rather than as
+ordinary object properties, matching the existing `PromiseRecord` side-table
+precedent and keeping the pending resource list unobservable through
+`Object.getOwnPropertySymbols`. `adopt`'s spec-mandated synthetic
+`() => onDispose(value)` closure collapses into a plain
+`{receiver, argument}` pair on the `DisposableResource` record instead of
+an actual heap-allocated closure object (`argument: Some(value)` means
+"call `method` on `undefined` with `value` as the one argument" instead of
+"call `method` on `receiver` with no arguments") -- observably identical,
+since the spec's own closure is never exposed to script. `move`'s
+`OrdinaryCreateFromConstructor(%DisposableStack%, ...)` names the intrinsic
+constructor directly rather than `new.target` (there is none -- `move` is
+an ordinary method call), a distinction a first draft got wrong by reusing
+the `constructor_prototype`/`new.target` helper meant for actual `[[Construct]]`
+dispatch, throwing `TypeError: cannot access a property of null or
+undefined` from a stray `self.new_target` read; the regression test
+(`disposable_stack_move_transfers_resources_and_disposes_the_source`)
+caught it before it shipped.
+
+**`using` declarations (synchronous)**: full parser + compiler + VM support.
+`using` is a contextual keyword (`DeclKind::Using` alongside
+`Var`/`Let`/`Const`/`AwaitUsing` in `ast.rs`); `using_declaration_follows`
+in `parser/functions.rs` recognizes it only when immediately (no line
+terminator) followed by an identifier, so `using;`, `using.foo()`,
+`using = 1`, `using[x] = null` and `using` followed by a newline all remain
+ordinary identifier references — verified directly against
+`using-invalid-arraybindingpattern-does-not-break-element-access.js`'s own
+scenario. Bindings are const-like (immutable, TDZ) via the same
+`enter_scope` mutability check `Const` already used. Disposal-at-scope-exit
+reuses `try_statement`'s own handler-stack machinery rather than inventing
+parallel control-flow plumbing: `Compiler::statements_with_disposal`
+(compiler/statements.rs) wraps a `using`-declaring block/function body/
+try-catch-finally body in a synthetic `try { <statements> } finally {
+<DisposeResources> }`, so `return`/`break`/`continue`/`throw` crossing the
+block already run the disposal exactly once via the *existing*,
+already-correct try/finally abrupt-completion path — no new completion
+tracking was written. Three new opcodes carry this: `MarkDisposables`
+(records the current depth of a VM-wide `Vec<DisposableResource>` when the
+block is entered), `AddDisposableResource` (what a `using x = expr;`
+declaration's `InitializeBinding` is immediately followed by), and
+`DisposeResources` (the synthetic finally body, draining back to the mark
+in reverse order). `DisposeResources`'s operand is the enclosing handler's
+static index so the interpreter can tell an abrupt entry (handler frame
+still present, in `Finally` state, with a pending completion to fold into a
+`SuppressedError` on a second error) apart from a normal-completion entry
+(the frame was already popped by `PopHandler`) — this is what makes
+`SuppressedError` merging *not* reuse the generic try/finally
+override-on-second-throw behavior, which would have silently dropped the
+first error instead of wrapping it.
+
+The no-`using` case (the overwhelming majority of code) is unaffected:
+`statements_with_disposal` checks `has_using_declaration` (a shallow,
+non-recursive scan matching the existing `block_lexical_names`/`var_names`
+convention) and falls straight through to the original `statements` call
+with zero additional opcodes when it finds none.
+
+A `using`/`await using` directly at Script or eval top level (no enclosing
+Block/FunctionBody/etc. to dispose it at the end of) is now a
+`CompileError::InvalidSyntax`, matching
+`using-not-allowed-at-top-level-of-script.js`/`-of-eval.js`.
+
+**Known, deliberate simplification -- `AsyncDisposableStack.prototype.disposeAsync`**:
+implemented via the *same* `dispose_resources_sync` used for the
+synchronous path (all dispose calls run back-to-back, synchronously, then
+the aggregate outcome resolves/rejects a real `Promise`), not the spec's
+per-resource `Await(Call(method, V))` chain. This is observably identical
+whenever every dispose method is an ordinary (non-thenable-returning)
+function -- call order, thrown errors, and `SuppressedError` chaining all
+match -- but a dispose method that returns a promise which later *rejects*
+is not awaited before `disposeAsync` resolves, so that specific
+interleaving is not observed. This accounts for essentially all 10 of
+`AsyncDisposableStack`'s remaining failures.
+
+### What remains
+
+- **`await using` declaration syntax** is not implemented at all (parser or
+  compiler). This is the largest remaining gap (135 failing modes). It
+  needs real bytecode-level `Await` suspension interleaved with each
+  resource's disposal (`DisposeResources`'s `needsAwait`/`hasAwaited`
+  dance), which the current single-opcode, all-synchronous
+  `DisposeResources` design cannot express — unlike `disposeAsync` above,
+  an `await using` declaration's disposal happens interleaved with the rest
+  of an ordinary function body, not behind a single Promise-returning
+  native method, so the "run it synchronously, wrap the outcome" shortcut
+  used for `disposeAsync` does not apply here.
+- `using`/`await using` in a `for (...)`/`for-of`/`for-in` head (own
+  grammar production, `ForBinding : using ForBinding`) is not parsed.
+- The Script/eval top-level restriction is enforced; the analogous
+  restriction inside a `switch` `case`/`default` clause list (without an
+  enclosing block) is not.
+- Module top-level `using` (explicitly *allowed*, unlike Script) is not
+  wired to dispose at module-evaluation completion; the one Test262
+  `timeout` in the after-slice above
+  (`initializer-disposed-at-end-of-module.js`) is this gap surfacing as an
+  async test that never calls `$DONE`, not a hang or crash.
+- Anonymous function/class name inference for a `using`-bound initializer
+  (`using arrow = () => {}` should get `.name === 'arrow'`) is not wired,
+  since `using`'s compiler path was not connected to
+  `expression_with_name`'s existing inferred-name plumbing.
+- **A narrow, pre-existing gap this feature inherits rather than causes**:
+  an empty (or otherwise `undefined`-completion) `try{}finally{}` already
+  does not restore the *preceding* statement's completion value in this
+  engine (`eval('4;try{}finally{}')` evaluates to `undefined`, not `4`,
+  independent of this feature). Because `using` disposal is compiled as a
+  synthetic try/finally, `using`'s own completion-value test
+  (`language/statements/using/cptn-value.js`) inherits the same gap
+  (`eval('4;{using x=null;}')` also evaluates to `undefined` instead of
+  `4`). Fixing the general try/finally completion-value/`UpdateEmpty`
+  behavior is out of scope for this slice.
+- A generator/async-function body that `yield`/`await`-suspends *while
+  still inside* a `using`-declaring block, with unrelated code running its
+  own `using` declarations before that generator/async function resumes,
+  is not isolated correctly: `Vm::disposables`/`dispose_marks` are flat,
+  VM-wide stacks (matching lexical nesting and ordinary synchronous
+  call/return, including recursion, exactly) rather than per-suspension
+  state threaded through `InterpreterExit::Yield`/`Await` the way
+  `iterators` already is. This is a deliberate, documented scope cut (see
+  `Vm::disposables`'s own doc comment in `vm.rs`): plain `using` (as opposed
+  to the unimplemented `await using`) realistically only appears in plain
+  synchronous functions/blocks, where no suspension is possible at all.
+
+### Verification
+
+`backend/bluejs/tests/resource_management.rs` (new, 18 tests): well-known
+symbol exposure; `DisposableStack` `use`/`adopt`/`defer`/`move`/`dispose`/
+`disposed` including reverse-order disposal, idempotent dispose,
+already-disposed errors, nullish/non-object `use` handling, and the
+`adopt`/`defer` receiver-and-argument contract (`'use strict'` in that one
+test specifically, so sloppy-mode `this`-substitution to `globalThis`
+doesn't mask a wrong receiver); `SuppressedError`'s own constructor shape;
+disposal-error suppression both via direct `DisposableStack.dispose()` and
+via a `using` declaration racing a thrown error in the block body; `using`
+disposal ordering, early return/break/throw, null/undefined resources,
+const-like immutability, the destructuring-pattern/missing-initializer
+early errors, `using` remaining a plain identifier outside declaration
+position (including the newline-suppresses-the-declaration case), the
+zero-`using` fast path producing the same result as before this feature
+existed, and `AsyncDisposableStack.prototype.disposeAsync` resolving and
+rejecting correctly. All 18 pass; each failed against `unimplemented!`/
+`ReferenceError`/wrong-behavior stubs before the corresponding
+implementation piece landed (TDD, not written after the fact to match
+already-working code).
+
+Every fix above was caught by first writing (or already having, for the
+`move`/`constructor_prototype` bug) a failing check and then correcting the
+implementation, not by tightening a test to match observed behavior; the
+`using-invalid-arraybindingpattern-does-not-break-element-access.js`-derived
+test is a direct example -- the temptation was to write the more obvious
+"a bracketed pattern after `using` is a syntax error" test, until the
+real Test262 case revealed that the correct grammar decision is exactly the
+opposite when the token after `using` isn't a plain identifier.

@@ -13,6 +13,7 @@ mod math;
 mod native_dispatch;
 mod object;
 mod promises;
+mod resource_management;
 mod typed_arrays;
 use crate::heap::{
     f16_bits_to_f64, f64_to_f16_bits, same_value, ArrayIteratorKind, AsyncGeneratorCompletion,

@@ -170,6 +170,16 @@ fn compile_with_limit_and_mode(
         compiler.bytecode.module_evaluate_entry = Some(compiler.offset()?);
         compiler.statements_after_function_declarations(&program.body)?;
     } else {
+        // "It is a Syntax Error if the goal symbol is Script and
+        // UsingDeclaration is not contained, either directly or
+        // indirectly, within a Block, ...": a `using`/`await using`
+        // directly at Script top level (not module) has no enclosing
+        // block to dispose it at the end of.
+        if has_using_declaration(&program.body) {
+            return Err(CompileError::InvalidSyntax(
+                "a using declaration is not allowed directly at the top level of a Script",
+            ));
+        }
         compiler.statements(&program.body)?;
     }
     compiler.emit(Opcode::Halt, 0)?;
@@ -396,6 +406,11 @@ pub(crate) fn compile_eval(
             })
             .collect();
     }
+    if has_using_declaration(&program.body) {
+        return Err(CompileError::InvalidSyntax(
+            "a using declaration is not allowed directly at the top level of eval'd code",
+        ));
+    }
     compiler.statements(&program.body)?;
     compiler.emit(Opcode::Halt, 0)?;
     Ok(compiler.bytecode)
@@ -527,8 +542,14 @@ impl Compiler {
                 .map_err(|_| CompileError::ProgramTooLarge)?;
             self.bytecode.bindings.push(Binding {
                 name: name.clone(),
-                mutable: kind != DeclKind::Const,
-                strict_immutable: kind == DeclKind::Const,
+                mutable: !matches!(
+                    kind,
+                    DeclKind::Const | DeclKind::Using | DeclKind::AwaitUsing
+                ),
+                strict_immutable: matches!(
+                    kind,
+                    DeclKind::Const | DeclKind::Using | DeclKind::AwaitUsing
+                ),
                 lexical: kind != DeclKind::Var,
                 catch_parameter: false,
             });
@@ -1224,6 +1245,21 @@ fn lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, Compile
         }
     }
     Ok(names)
+}
+
+/// Whether `statements` directly (not through a nested block/function)
+/// declares at least one `using`/`await using` binding, the trigger for
+/// wrapping this statement list's evaluation in disposal-at-exit handling.
+/// `statements_with_disposal` uses this to keep the zero-`using` case
+/// (the overwhelming majority of blocks/function bodies) exactly as cheap
+/// as before this feature existed.
+pub(super) fn has_using_declaration(statements: &[Stmt]) -> bool {
+    statements.iter().any(|statement| {
+        matches!(
+            statement,
+            Stmt::VarDecl(DeclKind::Using | DeclKind::AwaitUsing, _)
+        )
+    })
 }
 
 fn block_lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, CompileError> {

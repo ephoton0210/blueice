@@ -158,6 +158,26 @@ opcodes! {
     PopHandler: 1, 0;
     ResumeCompletion: 5, 0;
     SaveCompletion: 1, 0;
+    // Explicit Resource Management: `MarkDisposables` records the current
+    // depth of the VM's disposable-resource stack when a `using`-declaring
+    // block/function body is entered; `AddDisposableResource` (operand 0 =
+    // sync-dispose, 1 = async-dispose) pops an initialized `using` binding's
+    // value and appends its disposal record; `DisposeResources` drains back
+    // down to the last mark, disposing in reverse order and merging a
+    // disposal error with any already-pending completion as a
+    // `SuppressedError`. Always compiled as a matched Mark/Dispose pair
+    // around a synthetic try/finally (see `statements_with_disposal`), so
+    // depths never need cross-checking at runtime.
+    MarkDisposables: 1, 0;
+    AddDisposableResource: 5, 0;
+    // Operand: the static index (into `Bytecode::handlers`) of the
+    // synthetic try/finally this disposal is the finally clause of. Lets
+    // the interpreter tell an abrupt entry (the handler frame is still on
+    // the runtime handler stack, in `Finally` state, with a pending
+    // completion to merge a disposal error into as a `SuppressedError`)
+    // apart from a normal-completion entry (the frame was already popped
+    // by `PopHandler`, so no prior error can exist to merge with).
+    DisposeResources: 5, 0;
     AbruptJump: 5, 0;
     DefineData: 1, 0;
     DefineAccessor: 5, 0;
