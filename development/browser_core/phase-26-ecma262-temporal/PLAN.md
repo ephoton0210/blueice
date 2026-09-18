@@ -1074,16 +1074,161 @@ once). One owner:
 - [ ] TDD throughout, per this repo's Definition of Done: a failing test
       before the implementation that makes it pass, not tests bolted on
       after.
-- [ ] Add host-neutral Rust tests for Stage 0's foundation modules directly
-      (no VM required) — today's zero host-neutral Temporal test coverage
-      (everything lives only in `backend/bluejs/tests/intl.rs`) should not
-      continue once `iso.rs`/`duration_math.rs`/`calendar.rs` exist as
-      pure-Rust modules.
-- [ ] This phase does not get its own `cargo llvm-cov` gate distinct from
+- [x] Add host-neutral Rust tests for Stage 0's foundation modules directly
+      (no VM required) — **closed 2026-09-18** with a dedicated test-review
+      pass over all seven `vm/temporal/{iso,epoch,calendar,duration_math,
+      rounding,time_zone,time_zone_id}.rs` modules (built via TDD across
+      Stage 0/1, but not yet given this phase's own review/close-the-gaps
+      pass CLAUDE.md's Definition of Done requires). Measured with
+      `cargo llvm-cov -p blueice-bluejs --ignore-run-fail --summary-only`
+      (`--ignore-run-fail` needed only because two pre-existing, wholly
+      unrelated `blueice-bluejs` test failures — `descriptors.rs`'s
+      `define_properties_coerces_array_length_after_collecting_descriptors`
+      and `string_protocols.rs`'s `array_length_descriptors_coerce_once_and_
+      reject_invalid_lengths`/`capture_identity_and_primitive_protocol_
+      lookup` — would otherwise abort the whole run before it reaches a
+      report; confirmed pre-existing and out of this phase's scope, not
+      introduced by this pass). Before: `calendar.rs`/`duration_math.rs`/
+      `epoch.rs` 100% lines; `iso.rs` 99.24% (1,319/1,329 lines); `time_zone.rs`
+      98.98% (394/398); `rounding.rs` 100% lines but 99.53% regions;
+      `time_zone_id.rs` 100% lines but 98.24% regions. Real gaps found and
+      closed with fixture/contract-grounded tests (TDD: each written before
+      confirming it failed against the uncovered line, per this repo's
+      Definition of Done) rather than invented cases:
+      - `iso.rs`: the Gregorian century leap-year exception (divisible by
+        100 is not a leap year, divisible by 400 is) was implemented
+        correctly but never directly tested — only the plain "divisible by
+        4" rule was (`2020`/`2021`); added `leap_year_follows_the_full_
+        gregorian_century_rule` (1900/2000/2100/2400, plus `2000-02-29`
+        valid vs `1900-02-29` rejected).
+      - `iso.rs`: `parse_time_spec` (the string-split time parser
+        `parse_iso_time_prefix`/`parse_utc_offset_prefix` share, distinct
+        from the `Cursor`-based `scan_time`) had two of its own error arms
+        never reached by any existing case — a fourth colon-separated field,
+        and a decimal fraction on a bare `hour:minute` with no seconds field
+        at all — closed via two new `parse_instant` rejection cases.
+      - `iso.rs`: `parse_offset_seconds` had **zero** direct tests at all
+        (only reachable incidentally through `temporal.rs`'s
+        `temporal_duration_relative_to`); added a dedicated test — which
+        itself caught a wrong assumption in the first draft (see the test
+        review paragraph below) — plus closed its own untested trailing-
+        junk-after-a-`Z`-designator branch.
+      - `iso.rs`: `parse_annotation_suffix`'s empty-key/empty-value rejection
+        (`[=bar]`/`[foo=]`) had no test.
+      - `iso.rs`: the `Cursor`-based `scan_offset` (shared by
+        `scan_utc_offset_suffix` and `is_valid_time_zone_identifier`) has its
+        *own* minute/second range checks, separate from `parse_time_spec`'s
+        — every existing full-`AnnotatedDateTime`-grammar case used a
+        valid offset, so its minute-over-59 and second-over-59 rejection
+        arms, plus the completion path for a valid offset that *does* carry
+        an unfractioned seconds field, were untested.
+      - `iso.rs`: `scan_annotations`' leading-time-zone-annotation check
+        rejecting a non-identifier, non-`key=value` bracket body (e.g.
+        `[123]`) was untested through this copy of the rule (the separate,
+        already-covered copy in `parse_annotation_suffix` is a distinct
+        source line).
+      - `time_zone.rs`: `parse_minute_offset`'s leading-sign guard is
+        defensive against a byte its two current callers already both
+        filter out before calling it; added a direct test since the
+        function is itself part of this module's test-reachable surface.
+      - `time_zone.rs`: the `offset_minutes`/`iana` test helpers' own
+        mismatched-variant fallback arms were never exercised by any
+        existing call.
+      Test-review findings (re-reading, not just adding): the first draft of
+      `parse_offset_seconds`'s new test used full ISO date-time strings
+      (`"2020-01-01T00:00Z"`) and failed immediately — `parse_offset_seconds`
+      searches the *whole* input for its first `Z`/`z`/`+`/`-`/`[`, so a
+      date's own `-` separators are found before the intended designator.
+      Checking the one real call site (`temporal.rs:3483`) confirmed it is
+      only ever invoked on an already-resolved bare identifier
+      (`TimeZone::identifier()`'s own spelling), never a full date-time
+      string, so the test was rewritten to that actual contract rather than
+      the function being changed to match an invented one. After:
+      `iso.rs` 99.85% lines (1,353/1,355), `time_zone.rs` 99.75% (400/401);
+      `calendar.rs`/`duration_math.rs`/`epoch.rs` stayed at 100%. The
+      remaining sub-100% region (not line) coverage in `rounding.rs`/
+      `time_zone_id.rs`/`iso.rs`/`time_zone.rs` is `?`-operator early-return
+      sub-expression regions on otherwise-covered, otherwise-exercised
+      lines (llvm-cov's region granularity is finer than line granularity),
+      not an unreached statement — consistent with this item's "near-100%"
+      bar rather than a literal 100% claim. No production logic in these
+      seven files changed as part of this item; all findings were test-only
+      except the separately-tracked `calendar.rs`/`temporal.rs` fix below.
+- [x] This phase does not get its own `cargo llvm-cov` gate distinct from
       `blueice-bluejs`'s existing 88%-floor gate (`vm/temporal/` is part of
       that crate) — but each new module should individually be near-100%
       given TDD discipline, the same way `blueice-ecma402`'s per-service
-      modules already are.
+      modules already are. **Confirmed 2026-09-18**: see the measurements
+      above (all seven modules at 99.24%+ lines before this pass, 99.75%+
+      after, several already or now at 100%).
+- [x] **Calendar year-range getter bug (found during Stage 0's audit,
+      closed 2026-09-18)**: `icu_calendar`'s `Date::try_new_iso` enforces
+      its own internal `CONSTRUCTOR_YEAR_RANGE` (`-9999..=9999` in the
+      pinned `icu_calendar` fork), far narrower than Temporal's own
+      representable range (`-271821-04-19` to `+275760-09-13`, itself
+      correctly enforced independently by `epoch::is_date_within_limits`/
+      `is_date_time_within_limits` at construction time). `temporal.rs`'s
+      `temporal_calendar_fields` — the getter dispatch behind `.year`/
+      `.month`/`.monthCode`/`.day`/`.era`/`.eraYear`/`.monthsInYear` for
+      `PlainDate`/`PlainDateTime`/`PlainYearMonth`/`PlainMonthDay` — routed
+      *every* calendar, including `"iso8601"`, through that constructor, so
+      an in-range extreme-year ISO-calendar value constructed successfully
+      but every calendar-field getter on it threw a spurious `RangeError`.
+      Fixed with a dedicated `"iso8601"` fast path at the top of
+      `temporal_calendar_fields` (`backend/bluejs/src/vm/temporal.rs`) that
+      reads the value's own already-stored ISO `year`/`month`/`day` fields
+      directly — `month_code` as `format!("M{:02}", month)` (verified
+      against `icu_calendar`'s own `MonthInfo::code()` format for the ISO
+      calendar, which never has a leap-month suffix), `era`/`era_year` as
+      `None` (the ISO calendar has no eras), `months_in_year` as `12` —
+      never calling `icu_calendar::Date::try_new_iso`/`AnyCalendar` at all
+      for that calendar, rather than special-casing its error path. This is
+      not merely a workaround for the year-range mismatch: it is also
+      *more correct* than the pre-fix ICU4X-routed path even for in-range
+      years, because it directly closes a second, separately documented
+      Stage 0 "deliberately left alone" bug for free — `era`/`eraYear`
+      previously returned ICU4X's `"default"` era / the plain year instead
+      of `undefined` for the ISO calendar (`icu_calendar::cal::iso::Iso`'s
+      `era_year_from_extended` unconditionally reports an era named
+      `"default"`, which is not what Temporal's ISO calendar — which has no
+      eras at all — specifies), failing every `TemporalHelpers.
+      assertPlainDate`/`assertPlainDateTime` call and directly contradicting
+      Test262's own `PlainDate/prototype/era/basic.js`
+      (`instance.era === undefined`). Non-ISO calendars are unaffected and
+      still route through `icu_calendar` as before — deliberately out of
+      this narrow fix's scope (general non-ISO calendar-system work belongs
+      to Stage 2's `PlainDate`/`PlainDateTime` track, worked concurrently in
+      a sibling worktree). Verified with a new `backend/bluejs/tests/
+      temporal_calendar_extreme_years.rs` (5 tests, through the real public
+      `Temporal.PlainDate`/`PlainDateTime`/`PlainYearMonth` surface, not
+      `vm/temporal/calendar.rs`'s internals — that file is only the closed
+      calendar-identifier recognition table and was not itself the site of
+      this bug) using the pinned Test262 corpus's own boundary values:
+      `PlainDate/from/argument-string-limits.js`'s `-271821-04-19`/
+      `+275760-09-13` endpoints, and `PlainYearMonth/from/limits.js`'s own
+      `year`/`month`/`monthCode` getter-triple assertion at
+      `{year: -271821, month: 4}`/`{year: 275760, month: 9}` — exactly the
+      getter path this bug broke. Also discovered along the way (documented
+      here, not fixed, genuinely out of this narrow item's scope):
+      `PlainDateTime`'s `hour`/`minute`/`second`/etc. getters are not wired
+      to any prototype at all yet (only `PlainTime` gets that getter table
+      in `temporal.rs`'s constructor-time `getters` match) — a separate,
+      pre-existing Stage 0/1 gap unrelated to calendars; and the numeric
+      `new Temporal.PlainDate(...)`/`PlainYearMonth(...)` constructors use a
+      coarser, purely-per-field `-271821..=275760` range check rather than
+      the exact `epoch::is_date_within_limits`/`iso::is_year_month_within_
+      limits` boundary the string-parsing path already enforces, so e.g.
+      `new Temporal.PlainDate(-271821, 4, 18)` (exactly one day past the
+      true minimum) does not yet throw the way `Temporal.PlainDate.from(
+      "-271821-04-18")` correctly does — again a separate, pre-existing gap
+      in the numeric-constructor path, not this fix's own regression.
+      Test262 effect, measured with `backend/bluejs/test262/run.py --filter
+      "Temporal/"` against the pinned corpus (baseline 4,396/13,272; see
+      this document's own header table): **4,458/13,272 (+62 modes, zero
+      regressions anywhere else)** — `PlainDate` 384→438 (+54), `PlainDateTime`
+      382→386 (+4), `PlainYearMonth` 222→226 (+4); `Instant`/`PlainTime`/
+      `Now`/`Duration`/`PlainMonthDay`/`ZonedDateTime` unchanged, confirming
+      the fix's effect is exactly as narrow as intended.
 
 ## Open questions to resolve before or during Stage 0
 

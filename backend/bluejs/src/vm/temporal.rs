@@ -513,6 +513,32 @@ impl Vm {
         &self,
         value: &TemporalValue,
     ) -> Result<TemporalCalendarFields, RuntimeError> {
+        // The `"iso8601"` calendar is a fast path that deliberately never
+        // reaches `icu_calendar::Date::try_new_iso` below: that constructor
+        // enforces `icu_calendar`'s own `CONSTRUCTOR_YEAR_RANGE` (-9999..=9999
+        // in the pinned `icu_calendar`), which is far narrower than
+        // Temporal's own representable range (roughly ±271,821 years,
+        // enforced separately by `epoch::is_date_within_limits` at
+        // construction time). Without this fast path, `.year`/`.month`/
+        // `.day`/etc. getters on an in-range extreme-year ISO date -- one
+        // that *constructed* successfully -- would throw a spurious
+        // `RangeError` from this getter dispatch alone. ISO fields are
+        // exactly the value's own stored ISO date by definition (no
+        // conversion needed), and the ISO calendar has no eras and always
+        // twelve months, so this bypasses `icu_calendar` entirely rather
+        // than special-casing its error path.
+        // See development/browser_core/phase-26-ecma262-temporal/PLAN.md.
+        if value.calendar == "iso8601" {
+            return Ok(TemporalCalendarFields {
+                year: value.year,
+                month: value.month,
+                month_code: format!("M{:02}", value.month),
+                day: value.day,
+                era: None,
+                era_year: None,
+                months_in_year: 12,
+            });
+        }
         let calendar = calendar::calendar_kind(&value.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         let iso = Date::try_new_iso(value.year, value.month, value.day)
