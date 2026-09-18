@@ -18,11 +18,13 @@ BlueJS targets [ECMAScript 2026 edition 17](development/browser_core/phase-13-bl
 
 The complete, unfiltered Test262 revision `72faf8ec1445c55149615e8b35187830783aba1a` was run with eight workers on macOS, Linux, and Windows. The inventory includes Test262 `main`, proposals, and staging: 53,582 test files and 102,926 modes. Pass rate means `pass / scheduled modes`; failures and timeouts remain in the denominator. The engine runs used `fccb017`; `7630360` subsequently fixed only the Windows `.exe` summary-artifact path and was validated against the real Windows adapter.
 
-| Platform | All modes: pass / fail / timeout | Pass rate | `intl402/` pass rate | Other Test262 pass rate | Result |
-| --- | ---: | ---: | ---: | ---: | --- |
-| macOS 26.6.2 (arm64) | 81,740 / 21,146 / 40 | 79.416% | 2,922 / 6,714 (43.521%) | 78,818 / 96,212 (81.921%) | Complete |
-| Ubuntu 24.04.4 LTS (x86_64) | 81,718 / 21,136 / 72 | 79.395% | 2,912 / 6,714 (43.372%) | 78,806 / 96,212 (81.909%) | Complete |
-| Windows 11 24H2 (x86_64 VM) | 81,077 / 21,041 / 808 | 78.772% | 2,802 / 6,714 (41.734%) | 78,275 / 96,212 (81.357%) | Complete |
+Test262 does not provide an official "Core" switch, so the reports use explicit top-level-directory scopes: **ECMA-262 Core** is `language/` + `built-ins/` (91,820 modes); **complete ECMA-262 Test262 scope** adds `annexB/` and `staging/` (95,980 modes); and **ECMA-402** is `intl402/` (6,714 modes). `harness/` (232 modes) validates Test262 support code and is retained only in the all-inventory total. Every scope is calculated from the same unfiltered complete run, not from separately filtered invocations. The complete ECMA-262 scope is an inventory label, not an assertion that time-based staging/proposal tests belong to one published ECMA edition.
+
+| Platform | ECMA-262 Core | Complete ECMA-262 scope | ECMA-402 | All modes: pass / fail / timeout |
+| --- | ---: | ---: | ---: | ---: |
+| macOS 26.6.2 (arm64) | 75,683 / 91,820 (82.425%) | 78,612 / 95,980 (81.905%) | 2,922 / 6,714 (43.521%) | 81,740 / 21,146 / 40 (79.416%) |
+| Ubuntu 24.04.4 LTS (x86_64) | 75,680 / 91,820 (82.422%) | 78,600 / 95,980 (81.892%) | 2,912 / 6,714 (43.372%) | 81,718 / 21,136 / 72 (79.395%) |
+| Windows 11 24H2 (x86_64 VM) | 75,274 / 91,820 (81.980%) | 78,079 / 95,980 (81.349%) | 2,802 / 6,714 (41.734%) | 81,077 / 21,041 / 808 (78.772%) |
 
 Windows has a materially higher timeout count because the four-vCPU VM executes CPU-heavy Unicode RegExp and Intl fixtures much more slowly; its final JSONL contains zero `harness_error` records. These are conformance progress measurements, not a claim of full ECMAScript conformance. See the independent [macOS report](development/browser_core/phase-13-bluejs-engine/TEST262_MACOS_REPORT.md), [Linux report](development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md), and [Windows report](development/browser_core/phase-13-bluejs-engine/TEST262_WINDOWS_REPORT.md).
 
