@@ -99,6 +99,16 @@ fn loose_equality_compares_bigint_with_number_by_mathematical_value() {
 }
 
 #[test]
+fn loose_equality_unwraps_a_boxed_object_against_a_bigint_operand() {
+    // Regression: the Object<->primitive ToPrimitive fallback in
+    // loose_equal only listed Number/String/Symbol as valid companions for
+    // an Object operand, so `Object(1n) == 2n` fell through to `false`
+    // instead of unwrapping the object via ToPrimitive first.
+    assert_true("Object(1n) == 1n && 1n == Object(1n) && !(Object(1n) == 2n)");
+    assert_true("Object(5n) == '5' && '5' == Object(5n)");
+}
+
+#[test]
 fn loose_equality_compares_bigint_with_string_via_string_to_bigint() {
     assert_true("1n == '1' && '1' == 1n && 10n == '0xa' && '0xa' == 10n");
     assert_true("!(1n == '1.5') && !(1n == 'abc') && !('' == 1n) && 0n == ''");
@@ -163,6 +173,90 @@ fn as_int_n_and_as_uint_n_are_not_constructors() {
     ] {
         assert_true(source);
     }
+}
+
+#[test]
+fn to_string_supports_radix_and_a_through_z_digits() {
+    assert_true("(-100n).toString() === '-100' && (0n).toString() === '0' && (255n).toString(16) === 'ff'");
+    assert_true("(-255n).toString(16) === '-ff' && (8n).toString(2) === '1000'");
+    assert_true("(35n).toString(36) === 'z' && (10n).toString(11) === 'a'");
+    for radix in 2..=36 {
+        assert_true(&format!(
+            "(0n).toString({radix}) === '0' && (-1n).toString({radix}) === '-1' && (1n).toString({radix}) === '1'"
+        ));
+    }
+}
+
+#[test]
+fn to_string_rejects_out_of_range_or_non_numeric_radix() {
+    for source in [
+        "(()=>{try{(0n).toString(0);return false}catch(e){return e instanceof RangeError}})()",
+        "(()=>{try{(0n).toString(1);return false}catch(e){return e instanceof RangeError}})()",
+        "(()=>{try{(0n).toString(37);return false}catch(e){return e instanceof RangeError}})()",
+        "(()=>{try{(0n).toString(Symbol());return false}catch(e){return e instanceof TypeError}})()",
+        "(()=>{try{(0n).toString(0n);return false}catch(e){return e instanceof TypeError}})()",
+    ] {
+        assert_true(source);
+    }
+}
+
+#[test]
+fn prototype_is_an_ordinary_object_without_bigint_data() {
+    // Unlike Number.prototype/Boolean.prototype, BigInt.prototype must not
+    // itself behave like a boxed 0n: calling a BigInt.prototype method
+    // directly on it (rather than on a real BigInt/boxed BigInt) throws.
+    for source in [
+        "(()=>{try{BigInt.prototype.toString(1);return false}catch(e){return e instanceof TypeError}})()",
+        "(()=>{try{BigInt.prototype.valueOf();return false}catch(e){return e instanceof TypeError}})()",
+        "(()=>{try{BigInt.prototype.toString.call({x:1n});return false}catch(e){return e instanceof TypeError}})()",
+    ] {
+        assert_true(source);
+    }
+}
+
+#[test]
+fn bigint_is_a_constructor_that_always_throws_when_constructed() {
+    // BigInt has [[Construct]] (legal as an `extends` target, and accepted
+    // by Reflect.construct's IsConstructor check) even though invoking it
+    // with `new`/`super` always throws once NewTarget is observed defined.
+    assert_true("(()=>{try{new BigInt(5);return false}catch(e){return e instanceof TypeError}})()");
+    assert_true(
+        "(()=>{try{Reflect.construct(BigInt,[5]);return false}catch(e){return e instanceof TypeError}})()",
+    );
+    assert_true(
+        "class Foo extends BigInt {};(()=>{try{new Foo(5);return false}catch(e){return e instanceof TypeError}})()",
+    );
+}
+
+#[test]
+fn increment_and_decrement_operators_preserve_bigint() {
+    // Regression: `++`/`--` compiled a plain identifier's update through
+    // ToNumber (which throws on BigInt) and a fixed Number(1.0) addend
+    // (which would then throw "cannot mix BigInt and other types" even if
+    // ToNumber were bypassed). ToNumeric must round-trip BigInt, and the
+    // "one" added/subtracted must match its type.
+    assert_true("let i=1n; i++; i === 2n");
+    assert_true("let i=1n; ++i; i === 2n");
+    assert_true("let i=5n; i--; i === 4n");
+    assert_true("let i=5n; --i; i === 4n");
+    assert_true("let i=1n; let r=i++; r === 1n && i === 2n");
+    assert_true("let i=1n; let r=++i; r === 2n && i === 2n");
+    // Regular Number identifiers must still behave exactly as before.
+    assert_true("let i=1; i++; i === 2 && typeof i === 'number'");
+}
+
+#[test]
+fn increment_and_decrement_operators_preserve_bigint_on_properties() {
+    assert_true("let o={x:1n}; o.x++; o.x === 2n");
+    assert_true("let o={x:1n}; let r=o.x++; r === 1n && o.x === 2n");
+    assert_true("let o={x:1n}; let r=++o.x; r === 2n && o.x === 2n");
+    assert_true("let o={x:5n}; o.x--; o.x === 4n");
+    // `super.x++` reads through the prototype but its `[[Set]]` creates an
+    // own shadowing property on `this`, so the update is observed via
+    // `this.x` afterward, not by reading `super.x` again.
+    assert_true(
+        "class Base{} Base.prototype.x=1n; class Derived extends Base{bump(){super.x++;return this.x}} new Derived().bump() === 2n",
+    );
 }
 
 #[test]

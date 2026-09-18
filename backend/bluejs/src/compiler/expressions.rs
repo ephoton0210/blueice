@@ -434,11 +434,16 @@ impl Compiler {
                     } else {
                         self.emit(Opcode::UnboundName, name_index.unwrap())?;
                     }
-                    self.emit(Opcode::ToNumber, 0)?;
+                    // ToNumeric, not ToNumber: `++`/`--` must round-trip a
+                    // BigInt operand rather than throwing on it, and
+                    // `PushOne` (matching the just-computed numeric type)
+                    // keeps the following Add/Subtract from mixing BigInt
+                    // with Number.
+                    self.emit(Opcode::ToNumeric, 0)?;
                     if !prefix {
                         self.emit(Opcode::Dup, 0)?;
                     }
-                    self.constant(Value::Number(1.0))?;
+                    self.emit(Opcode::PushOne, 0)?;
                     self.emit(
                         if *op == UpdateOp::Inc {
                             Opcode::Add

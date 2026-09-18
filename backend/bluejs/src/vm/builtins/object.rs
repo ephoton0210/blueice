@@ -642,6 +642,13 @@ impl Vm {
                     | NativeFunction::Locale
                     | NativeFunction::Error(_)
                     | NativeFunction::PrimitiveConstructor(_)
+                    // BigInt has [[Construct]] (`class Foo extends BigInt`
+                    // is legal, and Reflect.construct(BigInt, ...) doesn't
+                    // fail the IsConstructor check) even though invoking it
+                    // always throws once NewTarget is observed not to be
+                    // undefined -- "is a constructor" and "constructing it
+                    // never actually succeeds" are independent facts.
+                    | NativeFunction::BigInt
             )
         ))
     }

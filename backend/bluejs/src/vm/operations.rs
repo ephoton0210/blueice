@@ -217,6 +217,32 @@ impl Vm {
         Ok(())
     }
 
+    /// The shared core of `++`/`--` on a property reference (`UpdateProperty`,
+    /// `SuperUpdate`): ToNumeric the current value, then add or subtract 1
+    /// while staying in the same numeric type, returning `(old, new)`.
+    /// A plain-identifier update instead compiles to `ToNumeric`/`PushOne`/
+    /// `Add`/`Subtract` directly, since it has no single opcode of its own.
+    pub(super) fn numeric_step(
+        &mut self,
+        value: &Value,
+        decrement: bool,
+    ) -> Result<(Value, Value), RuntimeError> {
+        Ok(match self.coerce_numeric(value)? {
+            primitive::Numeric::Number(old) => (
+                Value::Number(old),
+                Value::Number(if decrement { old - 1.0 } else { old + 1.0 }),
+            ),
+            primitive::Numeric::BigInt(old) => {
+                let new = if decrement {
+                    &old - BigInt::one()
+                } else {
+                    &old + BigInt::one()
+                };
+                (Value::BigInt(old), Value::BigInt(new))
+            }
+        })
+    }
+
     /// Applies the arithmetic operators shared by Number and BigInt.
     ///
     /// Arithmetic is deliberately separate from bitwise operations because
@@ -423,13 +449,13 @@ impl Vm {
             }
             (
                 Value::Object(left),
-                right @ (Value::Number(_) | Value::String(_) | Value::Symbol(_)),
+                right @ (Value::Number(_) | Value::String(_) | Value::Symbol(_) | Value::BigInt(_)),
             ) => {
                 let left = self.coerce_primitive(&Value::Object(left), "default")?;
                 self.loose_equal(left, right)
             }
             (
-                left @ (Value::Number(_) | Value::String(_) | Value::Symbol(_)),
+                left @ (Value::Number(_) | Value::String(_) | Value::Symbol(_) | Value::BigInt(_)),
                 Value::Object(right),
             ) => {
                 let right = self.coerce_primitive(&Value::Object(right), "default")?;

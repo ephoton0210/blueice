@@ -1761,8 +1761,17 @@ impl Vm {
                 Ok(symbol.description.map_or(Value::Undefined, Value::String))
             }
             NativeFunction::BigIntToString | NativeFunction::BigIntValueOf => {
+                // thisBigIntValue(this value): a bare BigInt returns itself;
+                // an object needs its own [[BigIntData]] slot (a cross-realm
+                // wrapper's own heap is checked as a fallback, the same way
+                // Symbol's methods already do above); anything else,
+                // including the BigInt prototype object itself (which has
+                // no such slot), is a TypeError.
                 let value = if let Value::Object(id) = receiver {
-                    self.heap.boxed_primitive(id)?.unwrap_or(Value::Undefined)
+                    self.heap
+                        .boxed_primitive(id)?
+                        .or(self.test262_foreign_boxed_primitive(id)?)
+                        .unwrap_or(Value::Undefined)
                 } else {
                     receiver
                 };
@@ -1771,15 +1780,31 @@ impl Vm {
                         "BigInt method requires a BigInt".into(),
                     ));
                 };
-                if function == NativeFunction::BigIntToString {
-                    Ok(Value::String(value.to_string().into()))
-                } else {
-                    Ok(Value::BigInt(value))
+                if function == NativeFunction::BigIntValueOf {
+                    return Ok(Value::BigInt(value));
                 }
+                // BigInt.prototype.toString ( [ radix ] )
+                let radix_arg = native::argument(&args, 0);
+                let radix = if matches!(radix_arg, Value::Undefined) {
+                    10
+                } else {
+                    let radix = self.coerce_number(radix_arg)?;
+                    let radix = if radix.is_nan() { 0.0 } else { radix.trunc() };
+                    if !(2.0..=36.0).contains(&radix) {
+                        return Err(RuntimeError::RangeError(
+                            "toString radix must be between 2 and 36".into(),
+                        ));
+                    }
+                    radix as u32
+                };
+                Ok(Value::String(value.to_str_radix(radix).into()))
             }
             NativeFunction::BigIntToLocaleString => {
                 let value = if let Value::Object(id) = receiver {
-                    self.heap.boxed_primitive(id)?.unwrap_or(Value::Undefined)
+                    self.heap
+                        .boxed_primitive(id)?
+                        .or(self.test262_foreign_boxed_primitive(id)?)
+                        .unwrap_or(Value::Undefined)
                 } else {
                     receiver
                 };
