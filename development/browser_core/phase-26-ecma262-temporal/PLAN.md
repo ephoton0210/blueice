@@ -2,13 +2,37 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: Design — this is the first version of this phase's plan, written
-2026-09-17 before any of its own implementation work started. It exists
-because completing Phase 25 (ECMA-402) surfaced a real gap: `intl402/`'s
-`Temporal/` subtree is 4,058 of the full 6,714 modes (60%+ of the corpus) and
-sits at 6.55% pass — see
-[Phase 25's `CONFORMANCE.md`](../phase-25-ecma402-internationalization/CONFORMANCE.md#reproducible-current-inventory)
-for the exact per-type breakdown. Temporal is **ECMA-262** (a core language
+**Status**: Design, in progress — first version written 2026-09-17; Stage 0
+work started the same day (see "Stage 0 progress" below). It exists because
+completing Phase 25 (ECMA-402) surfaced a real gap in `intl402/`'s
+`Temporal/` subtree. **Correction (2026-09-17, same day):** the plan's first
+version only measured `intl402/Temporal/` (4,058 modes, 6.55% pass) — see
+[Phase 25's `CONFORMANCE.md`](../phase-25-ecma402-internationalization/CONFORMANCE.md#reproducible-current-inventory).
+Test262 also has a **separate, larger `built-ins/Temporal/` tree** (4,605
+files, 9,210 modes) not counted there, since it is correctly out of scope for
+an *ECMA-402* denominator — but it is very much in scope for *this* phase,
+since it is ECMA-262 Temporal's actual primary test surface. The true
+combined Temporal denominator this phase is accountable to is
+**13,268 modes, currently 1,592 passing (12.00%)**, not the 4,058/6.55%
+figure the first version of this document cited. Per-type combined totals
+(`built-ins/` + `intl402/`, 2026-09-17):
+
+| Type | Combined modes | Combined pass | Rate |
+| --- | ---: | ---: | ---: |
+| `ZonedDateTime` | 2,968 | 186 | 6.27% |
+| `PlainDateTime` | 2,512 | 302 | 12.02% |
+| `PlainDate` | 2,290 | 332 | 14.50% |
+| `Duration` | 1,122 | 232 | 20.68% |
+| `PlainYearMonth` | 1,672 | 186 | 11.12% |
+| `PlainTime` | 1,010 | 102 | 10.10% |
+| `Instant` | 968 | 86 | 8.88% |
+| `PlainMonthDay` | 578 | 158 | 27.34% |
+| `Now` | 138 | 0 | 0% |
+| **Total** | **13,268** | **1,592** | **12.00%** |
+
+(Reproduce with `python backend/bluejs/test262/run.py --filter "built-ins/Temporal/"`
+and the existing `--filter "intl402/Temporal/"` run, grouped by
+`path.split("/")[2]` each.) Temporal is **ECMA-262** (a core language
 built-in, like `Date`), not an ECMA-402 service, so it does not belong inside
 `blueice-ecma402`; it is scoped here as its own phase, owned by BlueJS
 (Phase 13), the same way Gecko implements it inside SpiderMonkey rather than
@@ -198,16 +222,19 @@ isn't an assumption:
   add/subtract/negate/abs/compare path does not depend on `Calendar.cpp`
   except for calendar-aware rounding against an optional `relativeTo` —
   calendar-independent arithmetic can be built and tested (Test262's
-  `intl402/Temporal/Duration/`, 42 modes) before Track A finishes.
+  combined `Duration/`, 1,122 modes across both trees) before Track A
+  finishes.
 - **Track C — Instant + Now** (`instant.rs`, `now.rs`). Evidence: epoch
   nanoseconds are calendar-agnostic by construction; Gecko's `Instant.cpp`
-  has no calendar dependency. Smallest track (Test262: `Instant/` 34 modes,
-  `Now/` 6 modes) — a reasonable first track to land as a template for the
+  has no calendar dependency. Combined Test262: `Instant/` 968 modes,
+  `Now/` 138 modes — `Now/` is the smallest single group in the entire
+  combined denominator (currently 0% — no `Temporal.Now` object exists at
+  all) and is a reasonable first slice to land as a template for the
   others' Test262-driven TDD rhythm.
 - **Track D — PlainTime** (`plain_time.rs`). Evidence: time-of-day has no
   calendar-field dependency; Gecko's `PlainTime.cpp` (1,644 lines) is the
-  smallest of the calendar-adjacent per-type files. Test262: `PlainTime/` 24
-  modes.
+  smallest of the calendar-adjacent per-type files. Combined Test262:
+  `PlainTime/` 1,010 modes.
 - **Track E — TimeZone** (`time_zone.rs`). Fixed-offset resolution is
   self-contained; named-IANA-identifier transition-rule lookup needs its own
   investigation first — **check whether `icu_time` (already a pinned
@@ -233,24 +260,26 @@ of `Calendar.h`/`CalendarFields.h`/`Duration.h`/`TemporalParser.h`/
 `TemporalRoundingMode.h`/`TemporalTypes.h`/`TimeZone.h`/`ToString.h` at
 once). One owner:
 
-- [ ] `plain_date.rs`, `plain_date_time.rs` first (Test262: `PlainDate/` 986,
-      `PlainDateTime/` 966 modes — the two largest non-`ZonedDateTime` types).
+- [ ] `plain_date.rs`, `plain_date_time.rs` first (combined Test262:
+      `PlainDate/` 2,290, `PlainDateTime/` 2,512 modes — the two largest
+      non-`ZonedDateTime` types).
 - [ ] `plain_year_month.rs`, `plain_month_day.rs` next, reusing the
-      calendar-field pattern `plain_date.rs` establishes (Test262:
-      `PlainYearMonth/` 654, `PlainMonthDay/` 180 modes).
+      calendar-field pattern `plain_date.rs` establishes (combined Test262:
+      `PlainYearMonth/` 1,672, `PlainMonthDay/` 578 modes).
 - [ ] `zoned_date_time.rs` last — composes `PlainDateTime` + `TimeZone` +
       `Instant`, so it must come after all three are solid. Gecko's largest
       per-type file (`ZonedDateTime.cpp`, 3,180 lines) and Test262's largest
-      single group (1,166 modes) — expect this to be the longest-running
+      combined group (2,968 modes) — expect this to be the longest-running
       single piece of work in the phase.
 
 ### Stage 3 — Test262-evidence closure and coverage
 
-- [ ] Re-run `intl402/Temporal/` after each stage lands, tracked per-type
-      against the 2026-09-17 baseline in Phase 25's `CONFORMANCE.md`
-      (`ZonedDateTime` 32/1,166, `PlainDate` 100/986, `PlainDateTime`
-      66/966, `PlainYearMonth` 18/654, `PlainMonthDay` 48/180, `Duration`
-      2/42, `Instant`/`PlainTime`/`Now` 0/34, 0/24, 0/6).
+- [ ] Re-run both `intl402/Temporal/` and `built-ins/Temporal/` after each
+      stage lands, tracked per-type against the corrected 2026-09-17 combined
+      baseline in the table near the top of this document (`ZonedDateTime`
+      186/2,968, `PlainDate` 332/2,290, `PlainDateTime` 302/2,512,
+      `PlainYearMonth` 186/1,672, `PlainMonthDay` 158/578, `Duration`
+      232/1,122, `PlainTime` 102/1,010, `Instant` 86/968, `Now` 0/138).
 - [ ] TDD throughout, per this repo's Definition of Done: a failing test
       before the implementation that makes it pass, not tests bolted on
       after.

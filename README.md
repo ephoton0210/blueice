@@ -28,6 +28,46 @@ Test262 does not provide an official "Core" switch, so the reports use explicit 
 
 Windows has a materially higher timeout count because the four-vCPU VM executes CPU-heavy Unicode RegExp and Intl fixtures much more slowly; its final JSONL contains zero `harness_error` records. These are conformance progress measurements, not a claim of full ECMAScript conformance. See the independent [macOS report](development/browser_core/phase-13-bluejs-engine/TEST262_MACOS_REPORT.md), [Linux report](development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md), and [Windows report](development/browser_core/phase-13-bluejs-engine/TEST262_WINDOWS_REPORT.md).
 
+### ECMA-402 breakdown and Temporal
+
+The ECMA-402 column above (`intl402/`, 43.372%–43.521% depending on platform) is not evenly distributed: it is a single number across eleven independent services plus the `Temporal/` subtree, and only `Temporal/` is failing. The 2026-09-17 per-service breakdown (reproducible with `python backend/bluejs/test262/run.py --filter intl402/ --jobs 8`, grouped by `path.split("/")[1]`):
+
+| `intl402/` group | Modes | Pass | Fail | Pass rate |
+| --- | ---: | ---: | ---: | ---: |
+| `Temporal/` | 4,058 | 266 | 3,792 | 6.55% |
+| `NumberFormat/` | 498 | 498 | 0 | 100% |
+| `DateTimeFormat/` | 488 | 488 | 0 | 100% |
+| `Locale/` | 336 | 336 | 0 | 100% |
+| `DurationFormat/` | 220 | 220 | 0 | 100% |
+| `ListFormat/` | 162 | 162 | 0 | 100% |
+| `RelativeTimeFormat/` | 160 | 160 | 0 | 100% |
+| `Segmenter/` | 158 | 158 | 0 | 100% |
+| `Intl/` | 132 | 132 | 0 | 100% |
+| `Collator/` | 130 | 130 | 0 | 100% |
+| `DisplayNames/` | 114 | 114 | 0 | 100% |
+| `PluralRules/` | 106 | 106 | 0 | 100% |
+| `intl402/*.js` (top-level) + `String/`/`Date/`/`BigInt/`/`Number/`/`Array/`/`FallbackSymbol/`/`TypedArray/` (`toLocale*`/`localeCompare`) | 152 | 152 | 0 | 100% |
+| **Total** | **6,714** | **2,922** | **3,792** | **43.52%** |
+
+Every group other than `Temporal/` is at 100%. `Temporal/` is ECMA-262 (a core language built-in, like `Date`), not an ECMA-402 service — it is scoped and tracked as its own effort, [Phase 26](development/browser_core/phase-26-ecma262-temporal/PLAN.md), rather than inside ECMA-402's own [Phase 25](development/browser_core/phase-25-ecma402-internationalization/PLAN.md).
+
+Test262 also has a **separate, larger `built-ins/Temporal/` tree** (9,210 modes) that is correctly excluded from the `intl402/`-scoped ECMA-402 numbers above, but is Temporal's actual primary test surface. The true combined Temporal denominator Phase 26 is accountable to is **13,268 modes, 1,592 passing (12.00%)** as of 2026-09-17 (single-platform measurement; not yet run across all three platforms above):
+
+| Temporal type | Combined modes (`built-ins/` + `intl402/`) | Combined pass | Pass rate |
+| --- | ---: | ---: | ---: |
+| `ZonedDateTime` | 2,968 | 186 | 6.27% |
+| `PlainDateTime` | 2,512 | 302 | 12.02% |
+| `PlainDate` | 2,290 | 332 | 14.50% |
+| `Duration` | 1,122 | 232 | 20.68% |
+| `PlainYearMonth` | 1,672 | 186 | 11.12% |
+| `PlainTime` | 1,010 | 102 | 10.10% |
+| `Instant` | 968 | 86 | 8.88% |
+| `PlainMonthDay` | 578 | 158 | 27.34% |
+| `Now` | 138 | 0 | 0% |
+| **Total** | **13,268** | **1,592** | **12.00%** |
+
+Today's Temporal slice is read-only construction plus one-way `Intl.DateTimeFormat` formatting (`backend/bluejs/src/vm/temporal.rs`); no arithmetic (`add`/`subtract`/`until`/`since`/`compare`/`round`/`equals`/`toString`/etc.) exists yet, which is what these pass rates reflect. See Phase 26's plan for the parallel-development structure this is being built under.
+
 Design and planning documents live under [`development/`](development/); it is not source code. Each subdirectory covers one major component of the project, following the same design-first workflow: a plan is drafted before implementation starts, and updated as the design evolves.
 
 - **[`development/browser_core/`](development/browser_core/)** — the browser engine itself. See [`BROWSER_CORE_PLAN.md`](development/browser_core/BROWSER_CORE_PLAN.md) for the current plan, open design decisions, and progress tracking.
