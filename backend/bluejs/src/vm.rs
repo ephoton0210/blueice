@@ -624,6 +624,12 @@ pub struct Vm {
     /// by resolved module name. `ensure_json_module` (`vm/modules.rs`) reads
     /// this lazily, on the first request for a given resolved path.
     json_module_sources: HashMap<String, String>,
+    /// Host-provided raw JavaScript text for modules the host did not (or,
+    /// per `ensure_dynamic_module_compiled`'s own reason for existing,
+    /// deliberately did not) pre-compile, keyed by resolved module name.
+    /// Read lazily, only when a dynamic import actually resolves to a path
+    /// not already present in `module_registry`.
+    dynamic_module_sources: HashMap<String, String>,
     /// Host-provided source-phase module records. Their opaque identities are
     /// intentionally separate from executable module bytecode.
     module_source_registry: HashSet<String>,
@@ -805,6 +811,7 @@ impl Vm {
             cells: HashMap::new(),
             module_registry: HashMap::new(),
             json_module_sources: HashMap::new(),
+            dynamic_module_sources: HashMap::new(),
             module_source_registry: HashSet::new(),
             module_source_cache: HashMap::new(),
             module_source_roots: HashMap::new(),
@@ -941,6 +948,19 @@ impl Vm {
         self.json_module_sources = sources;
     }
 
+    /// Installs the host's raw JavaScript text for modules it did not
+    /// pre-compile into `set_module_loader_context`'s `modules` map, keyed
+    /// by resolved module name. `ensure_dynamic_module_compiled`
+    /// (`vm/modules.rs`) parses and compiles this text on demand, only when
+    /// a dynamic import actually resolves to a path not already present in
+    /// the registry -- so a module invalid *only as a module* (but valid,
+    /// and reachable only, as something a dynamic import happens to target)
+    /// fails lazily as that import's own promise rejection, rather than
+    /// eagerly before any code has even run.
+    pub fn set_dynamic_module_sources(&mut self, sources: HashMap<String, String>) {
+        self.dynamic_module_sources = sources;
+    }
+
     /// Links and synchronously evaluates one static module graph.
     ///
     /// Keys in `modules` are host-resolved module names. Relative requests
@@ -955,7 +975,7 @@ impl Vm {
         entry: &str,
         modules: &HashMap<String, Bytecode>,
     ) -> Result<Value, RuntimeError> {
-        self.execute_module_graph_inner(entry, modules, true, false)
+        self.execute_module_graph_inner(entry, modules, true, false, false)
     }
 }
 

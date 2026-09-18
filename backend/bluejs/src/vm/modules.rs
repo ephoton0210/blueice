@@ -14,31 +14,38 @@ impl Vm {
         entry: &str,
         modules: &HashMap<String, Bytecode>,
         drain_jobs: bool,
+        is_dynamic_import: bool,
         entry_json: bool,
     ) -> Result<Value, RuntimeError> {
         let (mut linked, mut roots, fresh_graph) = match self.module_graph.take() {
             Some(graph) => (graph.linked, graph.roots, false),
             None => (HashMap::new(), Vec::new(), true),
         };
-        // `ensure_json_module` (below, via `json_parse`) charges VM steps;
-        // give it a real budget before it can run; the closure below resets
-        // this again for the graph's own execution regardless.
+        // `ensure_json_module`/`ensure_dynamic_module_compiled` (below) can
+        // charge VM steps or allocate; give them a real budget before either
+        // can run. The closure below resets this again for the graph's own
+        // execution regardless.
         self.remaining_instructions = self.config.instruction_budget;
-        // Own the supplied module set so a JSON module request -- either
-        // `entry` itself (a direct `import(spec, {with:{type:"json"}})`) or
-        // one discovered while scanning a fresh static graph's own
-        // `with`-attributed requests -- can be synthesized into it via
-        // `ensure_json_module` before anything below reads `modules`. Rooted
-        // through the same `roots` this function already threads through
-        // its whole closure, so a parsed JSON value survives the major
-        // collection a few lines below before its cell exists.
+        // Own the supplied module set so a request needing on-demand
+        // synthesis or compilation -- `entry` itself (a direct dynamic
+        // `import()`, JSON-attributed or an ordinary module reachable only
+        // dynamically) or one discovered while scanning a fresh static
+        // graph's own `with`-attributed requests -- can be resolved into it
+        // before anything below reads `modules`. Rooted through the same
+        // `roots` this function already threads through its whole closure,
+        // so a freshly parsed/compiled value survives the major collection
+        // a few lines below before its cell exists.
         let mut owned_modules;
-        let modules: &HashMap<String, Bytecode> = if entry_json || fresh_graph {
+        let modules: &HashMap<String, Bytecode> = if is_dynamic_import || fresh_graph {
             owned_modules = modules.clone();
-            if entry_json {
+            if is_dynamic_import {
                 // `entry` is already the resolved target: `dynamic_import_job`
                 // resolves the specifier against its referrer before this call.
-                self.ensure_json_module(entry, &mut owned_modules, &mut roots)?;
+                if entry_json {
+                    self.ensure_json_module(entry, &mut owned_modules, &mut roots)?;
+                } else {
+                    self.ensure_dynamic_module_compiled(entry, &mut owned_modules)?;
+                }
             }
             if fresh_graph {
                 self.register_static_json_modules(&mut owned_modules, &mut roots)?;
@@ -47,50 +54,42 @@ impl Vm {
         } else {
             modules
         };
-        // A fresh graph's own per-order loops (below, inside the closure)
-        // link every module uniformly, JSON or not. A JSON module reached
-        // through `entry_json` on an *existing* graph has no such loop to
-        // run in, so give it a fully-linked, already-evaluated record here,
-        // exactly matching what that generic path would have built for it.
-        if entry_json && !fresh_graph && !linked.contains_key(entry) {
-            let code = modules
-                .get(entry)
-                .expect("ensure_json_module inserted this entry");
-            let value = code
-                .json_module_value
-                .clone()
-                .expect("json module carries its parsed value");
-            let cell = self.with_roots(|heap| heap.alloc_object(None))?;
-            roots.push(self.heap.root(cell)?);
-            self.with_roots(|heap| heap.set(cell, "value", value))?;
-            let mut cells = HashMap::new();
-            cells.insert(0, cell);
-            linked.insert(
-                entry.to_string(),
-                LinkedModule {
-                    cells,
-                    namespace: None,
-                    evaluated: true,
-                    evaluating: false,
-                    suspended: false,
-                    completion: None,
-                    error: None,
-                },
-            );
-        }
+        // Every module in `modules` not already in `linked` is new to this
+        // graph -- either every one of them, on a fresh graph, or just the
+        // one(s) `ensure_json_module`/`ensure_dynamic_module_compiled` (or a
+        // fresh static scan) added just above to an *existing* graph. The
+        // per-`new_names` linking pass below (inside the closure) treats
+        // both cases identically, so a JSON module or an ordinary module
+        // compiled on demand for a dynamic import gets exactly the same
+        // real linking (cell creation, export validation, import aliasing,
+        // declaration instantiation) a fresh graph's own modules get.
+        let mut order: Vec<_> = modules.keys().cloned().collect();
+        order.sort_unstable();
+        let new_names: Vec<String> = order
+            .iter()
+            .filter(|name| !linked.contains_key(name.as_str()))
+            .cloned()
+            .collect();
+        // Roots pushed from here on, until this call's own success/failure
+        // is known, belong only to `new_names`'s delta -- on a linking
+        // failure for that delta (not a fresh graph, which instead discards
+        // every root wholesale below), only these need unrooting, and only
+        // `new_names` need removing from `linked`, so a distinct later
+        // operation on the rest of an existing graph is unaffected and a
+        // retried dynamic import of the same specifier is treated as new
+        // again rather than silently resuming a half-linked record.
+        let roots_checkpoint = roots.len();
         let mut result = (|| {
             self.module_registry = modules.clone();
             // Resolution errors can be converted to a dynamic-import Promise
             // rejection before graph setup reaches the usual execution reset.
             // Give that host-visible error construction a fresh budget too.
             self.remaining_instructions = self.config.instruction_budget;
-            // The host supplies the closed source set for this realm. Link
-            // every supplied record once so a later dynamic import shares a
+            // The host supplies the closed source set for this realm; `order`/
+            // `new_names` (computed above, before this closure) link every
+            // newly-supplied record once so a later dynamic import shares a
             // static import's cells instead of constructing a second module
             // instance for the same canonical path.
-            let mut order: Vec<_> = modules.keys().cloned().collect();
-            order.sort_unstable();
-
             if let Some(root) = self.result_root.take() {
                 self.heap.unroot(root)?;
             }
@@ -120,30 +119,26 @@ impl Vm {
             self.this = Value::Undefined;
             self.top_level_module = true;
 
-            if fresh_graph {
-                linked = order
-                    .iter()
-                    .cloned()
-                    .map(|name| {
-                        (
-                            name,
-                            LinkedModule {
-                                cells: HashMap::new(),
-                                namespace: None,
-                                evaluated: false,
-                                evaluating: false,
-                                suspended: false,
-                                completion: None,
-                                error: None,
-                            },
-                        )
-                    })
-                    .collect();
+            if !new_names.is_empty() {
+                linked.extend(new_names.iter().cloned().map(|name| {
+                    (
+                        name,
+                        LinkedModule {
+                            cells: HashMap::new(),
+                            namespace: None,
+                            evaluated: false,
+                            evaluating: false,
+                            suspended: false,
+                            completion: None,
+                            error: None,
+                        },
+                    )
+                }));
 
                 // ModuleDeclarationInstantiation creates all own bindings before
                 // wiring imports.  A `var` binding is initialized immediately;
                 // lexical bindings deliberately have no `value` property yet.
-                for name in &order {
+                for name in &new_names {
                     let code = modules
                         .get(name)
                         .expect("reachable module was checked during collection");
@@ -183,7 +178,7 @@ impl Vm {
                 // mark it evaluated -- `evaluate_module_record` never touches
                 // its (empty) instruction stream for a record already
                 // marked evaluated.
-                for name in &order {
+                for name in &new_names {
                     let code = modules
                         .get(name)
                         .expect("reachable module was checked during collection");
@@ -206,7 +201,7 @@ impl Vm {
                 // body would otherwise call $DONOTEVALUATE().  Star exports do
                 // not themselves fail here; their ambiguity matters only when a
                 // particular name is resolved by an import or indirect export.
-                for name in &order {
+                for name in &new_names {
                     let code = modules
                         .get(name)
                         .expect("reachable module was checked during collection");
@@ -257,7 +252,7 @@ impl Vm {
                 // Import bindings are immutable aliases.  The importer stores the
                 // exporter's *cell*, so later stores in the exporting module are
                 // visible without any copy or notification mechanism.
-                for name in &order {
+                for name in &new_names {
                     let code = modules
                         .get(name)
                         .expect("reachable module was checked during collection");
@@ -342,7 +337,7 @@ impl Vm {
                 // Run declaration instantiation for every reachable module before
                 // evaluating any body.  This makes function exports callable
                 // across a cycle, while lexical exports remain in their TDZ.
-                for name in &order {
+                for name in &new_names {
                     let code = modules
                         .get(name)
                         .expect("reachable module was checked during collection");
@@ -371,9 +366,26 @@ impl Vm {
             self.result_root = Some(self.heap.root(*id)?);
         }
 
-        if fresh_graph && result.is_err() {
-            for root in roots {
-                self.heap.unroot(root)?;
+        if result.is_err() {
+            if fresh_graph {
+                // The whole graph never became usable; discard everything.
+                for root in roots {
+                    self.heap.unroot(root)?;
+                }
+            } else {
+                // Only `new_names`'s delta was attempted against an existing,
+                // still-otherwise-valid graph: roll back just that delta (see
+                // `roots_checkpoint`'s own comment above) and keep the rest,
+                // so an unrelated later operation on the existing graph is
+                // unaffected and a retried dynamic import of the same
+                // specifier is treated as new again.
+                for name in &new_names {
+                    linked.remove(name);
+                }
+                for root in roots.split_off(roots_checkpoint) {
+                    self.heap.unroot(root)?;
+                }
+                self.module_graph = Some(ModuleGraphState { linked, roots });
             }
         } else {
             self.module_graph = Some(ModuleGraphState { linked, roots });
@@ -549,6 +561,54 @@ impl Vm {
         for target in targets {
             self.ensure_json_module(&target, modules, roots)?;
         }
+        Ok(())
+    }
+
+    /// Compiles a module reachable only through a dynamic import, on
+    /// demand, from host-supplied raw JavaScript text -- the counterpart to
+    /// `ensure_json_module` for ordinary (non-JSON) modules the host could
+    /// not (or, per the Test262 harness's own reason for this function,
+    /// deliberately did not) supply as pre-compiled `Bytecode` up front.
+    ///
+    /// This exists for exactly one reason: a module that is syntactically
+    /// or semantically invalid *only as a module* (e.g. a lexical/`var`
+    /// name conflict that is perfectly valid script code) must still fail
+    /// lazily, as this dynamic import's own promise rejection, not as an
+    /// eager failure before the importing code ever runs -- which is
+    /// exactly what happens if a host eagerly parses/compiles every
+    /// transitively-reachable sibling before execution starts, whether or
+    /// not the entry's own static graph actually needs it. A host that
+    /// already has every module pre-compiled (the common case: an ordinary
+    /// static or dynamic import of a module also reachable statically)
+    /// never reaches this at all, since `modules.contains_key` is checked
+    /// first.
+    ///
+    /// A parse or compile failure becomes a real `RuntimeError::SyntaxError`
+    /// (matching `indirect_eval`'s own parse/compile-error mapping), which
+    /// -- reached only through a dynamic import's own job -- rejects that
+    /// import's promise with a real `SyntaxError` object via `error_value`,
+    /// never surfacing as a harness-level or whole-graph failure. `target`
+    /// must already be the *resolved* module name. A target this host has
+    /// no raw source for at all is left alone (not an error here): the
+    /// existing "module was not linked" `ModuleResolution` fallback
+    /// (`evaluate_module_record`) still applies exactly as before this
+    /// function existed.
+    fn ensure_dynamic_module_compiled(
+        &mut self,
+        target: &str,
+        modules: &mut HashMap<String, Bytecode>,
+    ) -> Result<(), RuntimeError> {
+        if modules.contains_key(target) {
+            return Ok(());
+        }
+        let Some(source) = self.dynamic_module_sources.get(target).cloned() else {
+            return Ok(());
+        };
+        let program =
+            crate::parse_module(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let code = crate::compile_module_with_limit(&program, u32::MAX)
+            .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+        modules.insert(target.to_string(), code);
         Ok(())
     }
 
@@ -804,7 +864,7 @@ impl Vm {
             }
         }
         let modules = self.module_registry.clone();
-        self.execute_module_graph_inner(&entry, &modules, false, json)?;
+        self.execute_module_graph_inner(&entry, &modules, false, true, json)?;
         if self
             .module_graph
             .as_ref()

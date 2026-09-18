@@ -856,6 +856,18 @@ impl Vm {
     }
 
     pub(in super::super) fn new_promise(&mut self) -> Result<ObjectId, RuntimeError> {
+        // `promise_prototype()` alone builds the prototype object (`then`/
+        // `catch`/`finally`/`@@toStringTag`) but not its "constructor" link
+        // back to the `Promise` function -- that property is only added
+        // when the `Promise` *global* itself is materialized (`globals.rs`).
+        // An internally created promise (dynamic import, `await`,
+        // `Promise.all`/`race`/etc., Atomics.waitAsync, ...) must still
+        // observe `promise.constructor === Promise` even when nothing has
+        // referenced the bare `Promise` identifier yet. `self.global` is
+        // idempotent/cached, so this is a cheap no-op once materialized
+        // (including when called *from* that very materialization, via
+        // `promise_prototype()`'s own cache check -- no circularity).
+        self.global("Promise")?;
         let prototype = self.promise_prototype()?;
         self.new_promise_with_prototype(prototype)
     }
