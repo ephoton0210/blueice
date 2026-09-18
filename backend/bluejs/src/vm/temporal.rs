@@ -637,17 +637,22 @@ impl Vm {
     /// constructor's own positional `calendar` argument: a property-bag
     /// `calendar` field (`Temporal.PlainDate.from({..., calendar})`) or a
     /// `Temporal.PlainDate.prototype.withCalendar` argument may themselves
-    /// be a full date/date-time/offset/time string carrying a `[u-ca=...]`
-    /// annotation, not only a bare calendar ID — Test262's
-    /// `since/calendar-id-match.js` passes `"2024-05-16[u-ca=iso8601]"` as a
-    /// property-bag `calendar` value, and `withCalendar/calendar-time-string.js`
-    /// passes `"T11:30[u-ca=hebrew]"` to `withCalendar`. Rather than
-    /// re-deriving the full `ParseISODateTime` grammar here, this reuses
-    /// [`iso::parse_annotation_suffix`] on the text starting at the first
-    /// `[`, which is exactly the annotation-suffix grammar every one of
-    /// Temporal's string shapes shares: a bare calendar ID has no `[` at
-    /// all, so it falls straight through to the same bare-ID lookup
-    /// [`Self::temporal_calendar`] uses.
+    /// be a full date/date-time/offset/time/year-month/month-day string,
+    /// not only a bare calendar ID — Test262's `since/calendar-id-match.js`
+    /// passes `"2024-05-16[u-ca=iso8601]"` as a property-bag `calendar`
+    /// value, `withCalendar/calendar-time-string.js` passes
+    /// `"T11:30[u-ca=hebrew]"` to `withCalendar`, and (found via a real
+    /// `equals/argument-propertybag-calendar-iso-string.js` failure) an
+    /// *unannotated* ISO string like `"2020-01-01"` or `"2020-01"` is
+    /// equally valid and always means `"iso8601"` — the calendar defaults
+    /// to `iso8601` whenever no `[u-ca=...]` annotation is present, per
+    /// `ParseISODateTime`. Tries every ISO string production this crate has
+    /// a parser for (date-time, year-month, month-day, time — matching
+    /// `TemporalCalendarString`'s own grammar alternation), extracting the
+    /// first `u-ca=` annotation from whichever one matches; only when
+    /// *none* of them parse does this fall back to a bare calendar ID
+    /// lookup (an actual calendar ID like `"gregory"` never matches any of
+    /// those productions, so the two paths never compete).
     fn temporal_calendar_identifier(&mut self, value: &Value) -> Result<String, RuntimeError> {
         if *value == Value::Undefined {
             return Ok("iso8601".into());
@@ -656,12 +661,15 @@ impl Vm {
         let value = value
             .to_utf8()
             .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar".into()))?;
-        if let Some(bracket) = value.find('[') {
-            if let Ok(annotations) = iso::parse_annotation_suffix(&value[bracket..]) {
-                let calendar = annotations.calendar.as_deref().unwrap_or("iso8601");
-                return canonical_calendar_id(calendar)
-                    .ok_or_else(|| RuntimeError::RangeError("invalid Temporal calendar".into()));
-            }
+        let parsed_calendar = iso::parse_date_time(&value)
+            .or_else(|| iso::parse_year_month(&value))
+            .or_else(|| iso::parse_month_day(&value))
+            .or_else(|| iso::parse_time(&value))
+            .map(|parsed| parsed.calendar);
+        if let Some(calendar) = parsed_calendar {
+            let calendar = calendar.as_deref().unwrap_or("iso8601");
+            return canonical_calendar_id(calendar)
+                .ok_or_else(|| RuntimeError::RangeError("invalid Temporal calendar".into()));
         }
         canonical_calendar_id(&value)
             .ok_or_else(|| RuntimeError::RangeError("invalid Temporal calendar".into()))
