@@ -39,6 +39,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 mod binary_data;
+pub(crate) use binary_data::{f16_bits_to_f64, f64_to_f16_bits};
 mod lifecycle;
 mod object_storage;
 #[cfg(test)]
@@ -1114,6 +1115,7 @@ pub(crate) enum TypedArrayKind {
     Uint16,
     Int32,
     Uint32,
+    Float16,
     Float32,
     Float64,
     BigInt64,
@@ -1133,7 +1135,7 @@ impl TypedArrayKind {
     pub(crate) const fn byte_width(self) -> usize {
         match self {
             Self::Int8 | Self::Uint8 | Self::Uint8Clamped => 1,
-            Self::Int16 | Self::Uint16 => 2,
+            Self::Int16 | Self::Uint16 | Self::Float16 => 2,
             Self::Int32 | Self::Uint32 | Self::Float32 => 4,
             Self::Float64 | Self::BigInt64 | Self::BigUint64 => 8,
         }
@@ -1148,6 +1150,7 @@ impl TypedArrayKind {
             Self::Uint16 => "Uint16Array",
             Self::Int32 => "Int32Array",
             Self::Uint32 => "Uint32Array",
+            Self::Float16 => "Float16Array",
             Self::Float32 => "Float32Array",
             Self::Float64 => "Float64Array",
             Self::BigInt64 => "BigInt64Array",

@@ -1392,6 +1392,15 @@ impl Vm {
             NativeFunction::TypedArraySet => self.typed_array_set(&receiver, &args),
             NativeFunction::TypedArraySubarray => self.typed_array_subarray(&receiver, &args),
             NativeFunction::TypedArraySpecies => Ok(receiver),
+            NativeFunction::TypedArrayToStringTag => Ok(match receiver.object_id() {
+                Some(object) => match self.heap.typed_array_info(object) {
+                    Ok((_, _, _, kind)) => Value::String(kind.name().into()),
+                    Err(_) => Value::Undefined,
+                },
+                None => Value::Undefined,
+            }),
+            NativeFunction::TypedArrayFrom => self.typed_array_from(&receiver, &args),
+            NativeFunction::TypedArrayOf => self.typed_array_of(&receiver, &args),
             NativeFunction::TypedArrayIterator(kind) => {
                 self.typed_array_receiver(&receiver)?;
                 let object = receiver

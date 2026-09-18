@@ -2502,3 +2502,126 @@ equality fixes above don't regress the surrounding non-BigInt
 there, with the 32 failures being pre-existing, non-BigInt reference/
 `putValue`-ordering/line-terminator gaps unrelated to this session's
 changes).
+
+## P1.5 continuation: `%TypedArray%.from`/`of`, shared `toStringTag`,
+Float16Array, and non-shared Atomics
+
+Implemented 2026-09-18. Fresh baseline against the pinned snapshot
+`72faf8ec1445c55149615e8b35187830783aba1a`, filtered over
+`built-ins/TypedArray/,built-ins/TypedArrayConstructors/,built-ins/ArrayBuffer/,built-ins/DataView/,built-ins/Atomics/`
+(6,666 scheduled modes; this session's own baseline, since the numbers
+above predate the Temporal/PluralRules merges this branch since picked
+up): **5,448 pass / 1,212 fail / 6 timeout**. After the four changes
+below: **5,716 pass / 944 fail / 6 timeout** -- 268 additional passing
+modes, zero regressions (verified by diffing every `(path, mode)` key
+between the two full result sets, not just aggregate counts).
+
+`%TypedArray%.from` and `%TypedArray%.of` were entirely unimplemented --
+every concrete constructor (`Int8Array.from`, etc.) inherits them from the
+abstract `%TypedArray%`, so their absence meant `X.from`/`X.of` was
+`undefined` for every numeric and BigInt kind. Implemented per spec
+(`built-ins/TypedArray/from/`, `built-ins/TypedArray/of/`, and each
+constructor's own `from`/`of` inheritance tests): `from` collects the
+source's values in full (via its `@@iterator` when one exists, else as an
+array-like) before `TypedArrayCreate` ever runs the `this` constructor,
+then maps each raw (not-yet-numerically-coerced) value and writes it with
+an ordinary `[[Set]]` (silently ignoring an out-of-bounds index, per spec,
+rather than treating it as an error -- exercised by
+`from-array-mapper-detaches-result.js`, where the mapper detaches the
+result mid-loop); `of` does the same for its argument list without the
+iterator/array-like branch. Both share a new `typed_array_create` helper
+in `typed_arrays.rs`, factored out of the existing species-aware
+`typed_array_species_create` as its post-species-resolution
+construct-and-validate tail (`TypedArrayCreate` is exactly that operation
+without the species-resolution step `from`/`of` skip, since their `this`
+value is already the target constructor).
+
+`%TypedArray%.prototype[Symbol.toStringTag]` was a plain data property
+defined separately on each concrete prototype (`Int8Array.prototype`,
+etc.) instead of the spec's single accessor on the shared
+`%TypedArray%.prototype`. Test262's own `Symbol.toStringTag` suite
+(`built-ins/TypedArray/prototype/Symbol.toStringTag/*`,
+`built-ins/TypedArrayConstructors/prototype/Symbol.toStringTag/*`) checks
+exactly the properties that distinction breaks: `TA.prototype.hasOwnProperty
+(Symbol.toStringTag)` must be `false` (inherited, not own), the property
+descriptor must be `{get, set: undefined, enumerable: false, configurable:
+true}` (an accessor, not a data property), and calling the getter directly
+on a receiver with no `[[TypedArrayName]]` internal slot (a plain object,
+an `Array`, a `DataView`, or a non-object `this`) must return `undefined`
+rather than throw. Replaced with one `get [Symbol.toStringTag]` installed
+on the shared prototype (`typed_array_intrinsics`) that resolves the
+receiver's kind through `Heap::typed_array_info` -- which reports a
+`TypedArray`'s kind independent of its buffer/index bounds, so a detached
+view still reports its constructor name, matching
+`Symbol.toStringTag/detached-buffer.js` -- and returns `Value::Undefined`
+for anything without that internal slot.
+
+`Float16Array` and `DataView.prototype.{getFloat16,setFloat16}` (the
+newer, additive ES2024 half-precision typed-array kind) were entirely
+unimplemented. This is purely additive from a regression-risk standpoint:
+Test262's `testTypedArray.js` harness only adds `Float16Array` to its
+`floatArrayConstructors` list when `typeof Float16Array !== "undefined"`,
+so every existing generic `TypedArray/prototype/*` test that loops over
+all float constructors gains an extra, correctly-handled iteration rather
+than breaking. Implementation adds `TypedArrayKind::Float16` (2-byte
+width) alongside the existing kinds, and a hand-written IEEE 754 binary16
+codec (`heap::binary_data::f16_bits_to_f64`/`f64_to_f16_bits`) since
+Rust's `f16` primitive type is still unstable on this project's pinned
+1.95.0 toolchain (rust-lang/rust#116909). The decode direction is a
+direct sign/exponent/mantissa reconstruction; the encode direction
+extracts the f64's own 64-bit representation (11-bit exponent, 52-bit
+mantissa) and rounds to binary16's 10-bit mantissa with round-to-nearest-
+even, handling the normal, subnormal (down to the exact 2^-25
+round-to-even threshold against zero), overflow-to-infinity, and NaN
+cases explicitly -- verified by new `heap::tests` unit tests pinned to
+Test262's own exact DataView Float16 fixture byte patterns (`42` <->
+`0x5140`, `2.158203125` <-> `0x4051`, `3.078125` <-> `0x4228`, read
+2026-09-18 from `built-ins/DataView/prototype/{get,set}Float16/*.js`)
+plus signed-zero/infinity/NaN/subnormal-boundary round-trips no fixture
+in the corpus currently exercises. `Float16Array`/`typeof Float16Array`
+also needed adding to the compiler's and interpreter's global-identifier
+recognition lists (`compiler/expressions.rs`, `vm/execution.rs`) --
+without that, a bare `Float16Array` reference compiled to an unconditional
+unbound-name lookup instead of a global lookup, so `new Float16Array(...)`
+threw `ReferenceError` even after the constructor itself was wired up.
+
+Atomics' `atomics_access` validation unconditionally required a
+`SharedArrayBuffer` for every operation, but the current spec's
+`ValidateIntegerTypedArray` only requires that for `Atomics.wait`/
+`waitAsync`; the ordinary read-modify-write operations
+(`load`/`store`/`add`/`and`/`or`/`sub`/`xor`/`exchange`/`compareExchange`)
+work on any integer TypedArray, and `Atomics.notify` returns `0` for a
+non-shared buffer instead of throwing (`built-ins/Atomics/*/non-shared-
+bufferdata*.js`, `built-ins/Atomics/notify/non-shared-bufferdata-
+returns-0.js`). Fixed with a new non-locking `Heap::typed_array_atomic_
+modify` (a plain `ArrayBuffer` is never visible to more than one agent, so
+ordinary synchronous byte access already gives it the atomicity the
+shared, locked path provides for `SharedArrayBuffer`), dispatched
+alongside the existing shared path via a new `atomics_modify` helper.
+`Atomics.wait`/`waitAsync` keep a separate `atomics_wait_access` doing the
+older combined `ValidateSharedIntegerTypedArray`-style check, because --
+unlike `notify`, which per spec coerces its `index` argument before ever
+consulting shared-ness -- `wait`/`waitAsync` must reject a non-shared
+buffer *before* touching `index`/`value`/`timeout` at all;
+`non-shared-bufferdata-throws.js`'s second assertion passes a poisoned
+`valueOf` for every argument specifically to catch a reordering that
+evaluates any of them first. `Atomics.notify` itself is restructured to
+coerce `index` then `count` (both observable, matching
+`retrieve-length-before-index-coercion-non-shared*.js` and
+`non-shared-bufferdata-*-evaluation-throws.js`) and only then check
+shared-ness, returning `0` rather than calling into the shared backing
+store.
+
+Remaining gaps this session left open, all confirmed via the same
+before/after diff to be pre-existing (not newly exposed) failures: the
+"Immutable ArrayBuffer" proposal (`ArrayBuffer.prototype.{transferToImmutable,
+sliceToImmutable}`, ~114 modes across `ArrayBuffer`/`DataView`/`Atomics`,
+ignored uniformly by `Atomics/*/immutable-buffer*.js`), `Atomics.wait`'s
+"cannot suspend" main-thread restriction (4 modes), and one still-uninvestigated
+`built-ins/Atomics/{load,store,add,and,or,sub,xor,exchange,compareExchange}
+/bigint/non-shared-bufferdata.js` failure specific to the BigInt64/
+BigUint64 + non-shared-buffer combination driven through Test262's full
+`testWithBigIntTypedArrayConstructors` harness (every individual
+buffer-factory/kind combination reproduced by hand in isolation passes;
+the failure only appears when Test262's own harness loop runs all of
+them together, so it was not chased further this session).

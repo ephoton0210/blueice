@@ -56,9 +56,20 @@ impl Vm {
                 species
             }
         };
+        self.typed_array_create(constructor, length)
+    }
+
+    /// TypedArrayCreate(constructor, argumentList) for the single-length-
+    /// argument case: constructs, then validates the result is a
+    /// non-detached TypedArray whose length is at least the requested one.
+    pub(super) fn typed_array_create(
+        &mut self,
+        constructor: Value,
+        length: usize,
+    ) -> Result<(ObjectId, TypedArrayKind), RuntimeError> {
         if !self.is_constructor(&constructor)? {
             return Err(RuntimeError::TypeError(
-                "TypedArray species must be a constructor".into(),
+                "TypedArray constructor must be a constructor".into(),
             ));
         }
         let result = self.call_with_target(
@@ -106,7 +117,7 @@ impl Vm {
             .ok_or_else(|| RuntimeError::TypeError("TypedArray is out of bounds".into()))
     }
 
-    fn typed_array_write_values(
+    pub(super) fn typed_array_write_values(
         &mut self,
         object: ObjectId,
         kind: TypedArrayKind,

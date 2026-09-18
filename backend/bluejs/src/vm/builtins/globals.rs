@@ -67,6 +67,7 @@ impl Vm {
             "Uint16Array" => NativeFunction::TypedArray(TypedArrayKind::Uint16),
             "Int32Array" => NativeFunction::TypedArray(TypedArrayKind::Int32),
             "Uint32Array" => NativeFunction::TypedArray(TypedArrayKind::Uint32),
+            "Float16Array" => NativeFunction::TypedArray(TypedArrayKind::Float16),
             "Float32Array" => NativeFunction::TypedArray(TypedArrayKind::Float32),
             "Float64Array" => NativeFunction::TypedArray(TypedArrayKind::Float64),
             "BigInt64Array" => NativeFunction::TypedArray(TypedArrayKind::BigInt64),
@@ -601,6 +602,7 @@ impl Vm {
                     ("getInt16", 2, true, false, false),
                     ("getUint32", 4, false, false, false),
                     ("getInt32", 4, true, false, false),
+                    ("getFloat16", 2, false, true, false),
                     ("getFloat32", 4, false, true, false),
                     ("getFloat64", 8, false, true, false),
                     ("getBigUint64", 8, false, false, true),
@@ -649,14 +651,6 @@ impl Vm {
                     "constructor",
                     Value::Object(id),
                     true,
-                    false,
-                    true,
-                )?;
-                self.define_data(
-                    typed_prototype,
-                    JsSymbol::well_known("toStringTag"),
-                    Value::String(kind.name().into()),
-                    false,
                     false,
                     true,
                 )?;
