@@ -123,20 +123,18 @@ impl Vm {
         }
     }
 
-    /// `DisposeResources ( disposeCapability, completion )`, calling every
-    /// resource's dispose method synchronously and folding a disposal error
-    /// into any already-pending error as a `SuppressedError`. Disposes in
-    /// reverse declaration order and returns the final completion as an
-    /// ordinary `Result`.
+    /// `DisposeResources ( disposeCapability, completion )` for the
+    /// `sync-dispose`-only case (`using` declarations and
+    /// `DisposableStack.prototype.dispose`, which by construction never add
+    /// an `async-dispose` resource to this list): calls every resource's
+    /// dispose method synchronously and folds a disposal error into any
+    /// already-pending error as a `SuppressedError`, in reverse declaration
+    /// order, returning the final completion as an ordinary `Result`.
     ///
-    /// For a `sync-dispose` resource this is exactly `DisposeResources`.
-    /// `disposable_stack_dispose_async` also uses it for `async-dispose`
-    /// resources as a deliberate simplification: a dispose method's *own*
-    /// returned promise is never awaited before moving on to the next
-    /// resource (unlike the spec's `Await(Call(method, V))` per entry), so a
-    /// genuinely-async dispose method that rejects after this call returns
-    /// is not observed. Every other outcome -- call order, thrown errors,
-    /// `SuppressedError` chaining -- matches an all-synchronous capability.
+    /// `await using`/`AsyncDisposableStack.prototype.disposeAsync` need
+    /// real per-resource `Await` interleaving instead and do not use this;
+    /// see `Compiler::compile_async_dispose_finally` and
+    /// `Vm::async_dispose_helper`.
     pub(in super::super) fn dispose_resources_sync(
         &mut self,
         mut resources: Vec<DisposableResource>,
@@ -174,6 +172,115 @@ impl Vm {
             }
         }
         completion.map_or(Ok(()), Err)
+    }
+
+    /// Converts a drained resource list plus any prior pending error into
+    /// the plain JS value `[hasError, pendingError, entries]` that
+    /// `Compiler::compile_async_dispose_finally`'s synthesized `while`/
+    /// `try`/`catch` loop destructures and iterates. `entries` is a real
+    /// Array of `[receiver, method, hasArgument, argument, isAsync]`
+    /// records, one per resource, in declaration order (the loop walks it
+    /// back to front, i.e. reverse declaration order).
+    pub(in super::super) fn build_async_dispose_state(
+        &mut self,
+        resources: Vec<DisposableResource>,
+        prior: Option<RuntimeError>,
+    ) -> Result<Value, RuntimeError> {
+        let (has_error, pending_error) = match prior {
+            None => (false, Value::Undefined),
+            Some(error) => {
+                if !error.is_catchable() {
+                    return Err(error);
+                }
+                (true, self.error_value(error)?)
+            }
+        };
+        let base = self.stack.len();
+        self.stack.push(pending_error.clone());
+        let result = (|| {
+            let entries = self.entries_array_from_resources(resources)?;
+            self.stack.push(entries.clone());
+            self.array_from(vec![Value::Bool(has_error), pending_error, entries])
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// The `entries` half of `build_async_dispose_state`'s return value:
+    /// a real Array of `[receiver, method, hasArgument, argument, isAsync]`
+    /// records, one per resource, in declaration order.
+    fn entries_array_from_resources(
+        &mut self,
+        resources: Vec<DisposableResource>,
+    ) -> Result<Value, RuntimeError> {
+        let base = self.stack.len();
+        let result = (|| {
+            let mut entry_values = Vec::with_capacity(resources.len());
+            for resource in resources {
+                let entry = self.array_from(vec![
+                    resource.receiver,
+                    resource.method.unwrap_or(Value::Undefined),
+                    Value::Bool(resource.argument.is_some()),
+                    resource.argument.unwrap_or(Value::Undefined),
+                    Value::Bool(resource.hint == DisposeHint::Async),
+                ])?;
+                // Keep every already-built entry array reachable while
+                // building the rest: each is otherwise held only by this
+                // Rust-local `Vec`, which the GC cannot see.
+                self.stack.push(entry.clone());
+                entry_values.push(entry);
+            }
+            self.array_from(entry_values)
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// Lazily compiles (once) and caches an internal async function
+    /// implementing the exact same `Await`-interleaved disposal loop as
+    /// `Compiler::compile_async_dispose_finally`'s synthesized bytecode --
+    /// `(hasError, pendingError, entries) => { ...loop...; if (hasError)
+    /// throw pendingError; }` -- reused by `AsyncDisposableStack.prototype.disposeAsync`.
+    /// A *native* method cannot itself contain a bytecode `Await`, so
+    /// calling this real (compiled, not hand-emitted) async function is how
+    /// `disposeAsync` gets a real per-resource `Await` -- a dispose method's
+    /// own returned promise is genuinely awaited, and one that later
+    /// rejects becomes `disposeAsync`'s own rejection -- rather than a
+    /// weaker synchronous approximation.
+    fn async_dispose_helper(&mut self) -> Result<Value, RuntimeError> {
+        if let Some(helper) = &self.async_dispose_helper {
+            return Ok(helper.clone());
+        }
+        const SOURCE: &str = r#"(async function (hasError, pendingError, entries) {
+            let i = entries.length;
+            while (i > 0) {
+                i = i - 1;
+                let entry = entries[i];
+                try {
+                    if (entry[1] !== undefined) {
+                        let result = entry[2] ? entry[1].call(entry[0], entry[3]) : entry[1].call(entry[0]);
+                        if (entry[4]) { await result; }
+                    } else if (entry[4]) {
+                        await undefined;
+                    }
+                } catch (e) {
+                    if (hasError) {
+                        pendingError = new SuppressedError(e, pendingError);
+                    } else {
+                        pendingError = e;
+                        hasError = true;
+                    }
+                }
+            }
+            if (hasError) throw pendingError;
+        })"#;
+        let program = crate::parse(SOURCE)
+            .map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let code = crate::compiler::compile_eval(&program, &[], &[], &[], false, false, 0)
+            .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+        let helper = self.execute_eval(&code, Vec::new(), !code.strict)?;
+        self.async_dispose_helper = Some(helper.clone());
+        Ok(helper)
     }
 
     /// Builds a `new SuppressedError(error, suppressed)` object (no message).
@@ -552,16 +659,24 @@ impl Vm {
     }
 
     /// `AsyncDisposableStack.prototype.disposeAsync`. Always returns a
-    /// genuine Promise; see `dispose_resources_sync`'s doc comment for the
-    /// one deliberate simplification this takes versus the full spec
-    /// algorithm (per-resource `Await` chaining).
+    /// genuine Promise -- including when `this` fails `RequireInternalSlot`,
+    /// which rejects the returned promise rather than throwing
+    /// synchronously (confirmed against `this-not-object-rejects.js`/
+    /// `this-does-not-have-internal-asyncdisposablestate-rejects.js`).
+    /// Disposal itself runs through `async_dispose_helper`, a real compiled
+    /// async function, so this gets the exact same per-resource `Await`
+    /// semantics as `await using` -- not a separate, weaker
+    /// implementation.
     pub(in super::super) fn disposable_stack_dispose_async(
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
-        let id = self.dispose_capability_id(receiver, true)?;
-        let promise_id = self.new_promise()?;
+        let id = match self.dispose_capability_id(receiver, true) {
+            Ok(id) => id,
+            Err(error) => return self.reject_with(error),
+        };
         if self.async_disposable_stacks[&id].disposed {
+            let promise_id = self.new_promise()?;
             self.resolve_promise(promise_id, Value::Undefined)?;
             return Ok(Value::Object(promise_id));
         }
@@ -573,16 +688,26 @@ impl Vm {
             state.disposed = true;
             std::mem::take(&mut state.resources)
         };
-        match self.dispose_resources_sync(resources, None) {
-            Ok(()) => self.resolve_promise(promise_id, Value::Undefined)?,
-            Err(error) => {
-                if !error.is_catchable() {
-                    return Err(error);
-                }
-                let value = self.error_value(error)?;
-                self.settle_promise(promise_id, PromiseStatus::Rejected(value))?;
-            }
+        let entries = match self.entries_array_from_resources(resources) {
+            Ok(entries) => entries,
+            Err(error) => return self.reject_with(error),
+        };
+        let helper = self.async_dispose_helper()?;
+        self.call_native(
+            helper,
+            Value::Undefined,
+            vec![Value::Bool(false), Value::Undefined, entries],
+            false,
+        )
+    }
+
+    /// A catchable `RuntimeError` becomes a rejected Promise (the caller's
+    /// own return value); a host resource error still propagates raw.
+    fn reject_with(&mut self, error: RuntimeError) -> Result<Value, RuntimeError> {
+        if !error.is_catchable() {
+            return Err(error);
         }
-        Ok(Value::Object(promise_id))
+        let value = self.error_value(error)?;
+        self.promise_reject(value)
     }
 }

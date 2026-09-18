@@ -32,6 +32,28 @@ impl Compiler {
         if !has_using_declaration(statements) {
             return self.statements_after_function_declarations(statements);
         }
+        let is_async = has_await_using_declaration(statements);
+        self.wrap_with_disposal(is_async, |this| {
+            this.statements_after_function_declarations(statements)
+        })
+    }
+
+    /// Wraps `compile_body` in a synthetic
+    /// `try { <compile_body> } finally { <dispose> }`, reusing the same
+    /// handler-stack machinery `try_statement` uses for a real `finally`
+    /// clause. `statements_with_disposal` uses this for a using-declaring
+    /// block/function body; `for_each` uses it for a per-iteration
+    /// `using`/`await using` `ForBinding` (`for (using x of iterable)`),
+    /// wrapping just the current iteration's bind-and-body so the bound
+    /// value is disposed at the end of *that* iteration rather than only
+    /// once the whole loop exits. `is_async` selects
+    /// `compile_async_dispose_finally`'s `Await`-capable loop over the
+    /// plain, single-native-opcode `DisposeResources` fast path.
+    pub(super) fn wrap_with_disposal(
+        &mut self,
+        is_async: bool,
+        compile_body: impl FnOnce(&mut Self) -> Result<(), CompileError>,
+    ) -> Result<(), CompileError> {
         let handler_index = u32::try_from(self.bytecode.handlers.len())
             .map_err(|_| CompileError::ProgramTooLarge)?;
         self.bytecode.handlers.push(Handler {
@@ -45,16 +67,241 @@ impl Compiler {
         self.emit(Opcode::MarkDisposables, 0)?;
         self.emit(Opcode::ClearCompletion, 0)?;
         self.bytecode.handlers[handler_index as usize].try_start = self.offset()?;
-        self.statements_after_function_declarations(statements)?;
+        compile_body(self)?;
         self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
         self.emit(Opcode::PopHandler, 0)?;
         self.emit(Opcode::SaveCompletion, 0)?;
         let normal_exit = self.emit(Opcode::Jump, 0)?;
         let finally_start = self.offset()?;
         self.bytecode.handlers[handler_index as usize].finally = Some(finally_start);
-        self.emit(Opcode::DisposeResources, handler_index)?;
+        if is_async {
+            self.compile_async_dispose_finally(handler_index)?;
+        } else {
+            self.emit(Opcode::DisposeResources, handler_index)?;
+        }
         self.emit(Opcode::ResumeCompletion, handler_index)?;
         self.patch(normal_exit, finally_start);
+        Ok(())
+    }
+
+    /// The `await using`-capable disposal finally body: `Opcode::DisposeResources`
+    /// runs the entire disposal loop as one atomic native step, which cannot
+    /// suspend mid-loop the way a real `await` must. This compiles a
+    /// synthesized (never user-visible) `while`/`try`/`catch` loop instead,
+    /// built from ordinary AST nodes and compiled through the normal
+    /// statement/expression pipeline -- `Await` included -- so a resource
+    /// that needs awaiting suspends exactly like any other `await`
+    /// expression, resuming and continuing the loop correctly. Only the
+    /// initial drain (turning the native disposable-resource list into a
+    /// plain JS value) is a native primitive; see `Opcode::DrainAsyncDisposables`
+    /// and `Vm::build_async_dispose_state`.
+    ///
+    /// Equivalent, if it were written as source (`*name*` bindings are
+    /// compiler-internal and cannot collide with user identifiers):
+    /// ```text
+    /// let [*hasError*, *pendingError*, *entries*] = <drain>;
+    /// let *i* = *entries*.length;
+    /// while (*i* > 0) {
+    ///     *i* = *i* - 1;
+    ///     let *entry* = *entries*[*i*];
+    ///     try {
+    ///         if (*entry*[1] !== undefined) {
+    ///             let *result* = *entry*[2]
+    ///                 ? *entry*[1].call(*entry*[0], *entry*[3])
+    ///                 : *entry*[1].call(*entry*[0]);
+    ///             if (*entry*[4]) { await *result*; }
+    ///         } else if (*entry*[4]) {
+    ///             await undefined;
+    ///         }
+    ///     } catch (*caught*) {
+    ///         if (*hasError*) {
+    ///             *pendingError* = new SuppressedError(*caught*, *pendingError*);
+    ///         } else {
+    ///             *pendingError* = *caught*;
+    ///             *hasError* = true;
+    ///         }
+    ///     }
+    /// }
+    /// if (*hasError*) throw *pendingError*;
+    /// ```
+    fn compile_async_dispose_finally(&mut self, handler_index: u32) -> Result<(), CompileError> {
+        fn ident(name: &str) -> Expr {
+            Expr::Identifier(name.to_owned())
+        }
+        fn index(object: &str, at: f64) -> Expr {
+            Expr::Member {
+                object: Box::new(ident(object)),
+                property: Box::new(Expr::Number(at)),
+                computed: true,
+            }
+        }
+        fn assign(target: &str, value: Expr) -> Stmt {
+            Stmt::Expr(Expr::Assign {
+                op: AssignOp::Assign,
+                target: Box::new(ident(target)),
+                value: Box::new(value),
+            })
+        }
+        fn array_ident_pattern(names: &[&str]) -> Pattern {
+            Pattern::Array(
+                names
+                    .iter()
+                    .map(|name| {
+                        Some(ArrayPatternElement {
+                            pattern: Pattern::Identifier((*name).to_owned()),
+                            default: None,
+                            rest: false,
+                        })
+                    })
+                    .collect(),
+            )
+        }
+        fn let_decl(name: &str, init: Expr) -> Stmt {
+            Stmt::VarDecl(
+                DeclKind::Let,
+                vec![VarDeclarator {
+                    pattern: Pattern::Identifier(name.to_owned()),
+                    init: Some(init),
+                }],
+            )
+        }
+
+        self.enter_scope(
+            vec![
+                ("*hasError*".to_owned(), DeclKind::Let),
+                ("*pendingError*".to_owned(), DeclKind::Let),
+                ("*entries*".to_owned(), DeclKind::Let),
+                ("*i*".to_owned(), DeclKind::Let),
+            ],
+            &BTreeSet::new(),
+            false,
+        )?;
+        self.emit(Opcode::DrainAsyncDisposables, handler_index)?;
+        self.bind_pattern(
+            &array_ident_pattern(&["*hasError*", "*pendingError*", "*entries*"]),
+            DeclKind::Let,
+        )?;
+        self.expression(&Expr::Member {
+            object: Box::new(ident("*entries*")),
+            property: Box::new(ident("length")),
+            computed: false,
+        })?;
+        let i_slot = self.resolve("*i*").expect("just declared above");
+        self.emit(Opcode::InitializeBinding, i_slot)?;
+
+        let call_entry = |with_argument: bool| Expr::Call {
+            callee: Box::new(Expr::Member {
+                object: Box::new(index("*entry*", 1.0)),
+                property: Box::new(ident("call")),
+                computed: false,
+            }),
+            args: if with_argument {
+                vec![
+                    Argument::Normal(index("*entry*", 0.0)),
+                    Argument::Normal(index("*entry*", 3.0)),
+                ]
+            } else {
+                vec![Argument::Normal(index("*entry*", 0.0))]
+            },
+        };
+        let await_stmt = |value: Expr| Stmt::Expr(Expr::Await(Box::new(value)));
+        let is_async_test = index("*entry*", 4.0);
+
+        let try_block = vec![Stmt::If {
+            test: Expr::Binary {
+                op: BinaryOp::StrictNotEq,
+                left: Box::new(index("*entry*", 1.0)),
+                right: Box::new(ident("undefined")),
+            },
+            consequent: Box::new(Stmt::Block(vec![
+                let_decl(
+                    "*result*",
+                    Expr::Conditional {
+                        test: Box::new(index("*entry*", 2.0)),
+                        consequent: Box::new(call_entry(true)),
+                        alternate: Box::new(call_entry(false)),
+                    },
+                ),
+                Stmt::If {
+                    test: is_async_test.clone(),
+                    consequent: Box::new(await_stmt(ident("*result*"))),
+                    alternate: None,
+                },
+            ])),
+            alternate: Some(Box::new(Stmt::If {
+                test: is_async_test,
+                consequent: Box::new(await_stmt(ident("undefined"))),
+                alternate: None,
+            })),
+        }];
+        let catch_clause = CatchClause {
+            param: Some(Pattern::Identifier("*caught*".to_owned())),
+            body: vec![Stmt::If {
+                test: ident("*hasError*"),
+                consequent: Box::new(assign(
+                    "*pendingError*",
+                    Expr::New {
+                        callee: Box::new(ident("SuppressedError")),
+                        args: vec![
+                            Argument::Normal(ident("*caught*")),
+                            Argument::Normal(ident("*pendingError*")),
+                        ],
+                    },
+                )),
+                alternate: Some(Box::new(Stmt::Block(vec![
+                    assign("*pendingError*", ident("*caught*")),
+                    assign("*hasError*", Expr::Bool(true)),
+                ]))),
+            }],
+        };
+
+        let loop_body = Stmt::Block(vec![
+            assign(
+                "*i*",
+                Expr::Binary {
+                    op: BinaryOp::Sub,
+                    left: Box::new(ident("*i*")),
+                    right: Box::new(Expr::Number(1.0)),
+                },
+            ),
+            let_decl(
+                "*entry*",
+                Expr::Member {
+                    object: Box::new(ident("*entries*")),
+                    property: Box::new(ident("*i*")),
+                    computed: true,
+                },
+            ),
+            Stmt::Try {
+                block: try_block,
+                handler: Some(catch_clause),
+                finalizer: None,
+            },
+        ]);
+
+        self.loop_statement(
+            None,
+            Some(&Expr::Binary {
+                op: BinaryOp::Gt,
+                left: Box::new(ident("*i*")),
+                right: Box::new(Expr::Number(0.0)),
+            }),
+            None,
+            &loop_body,
+            false,
+            Vec::new(),
+        )?;
+
+        self.statement(
+            &Stmt::If {
+                test: ident("*hasError*"),
+                consequent: Box::new(Stmt::Throw(ident("*pendingError*"))),
+                alternate: None,
+            },
+            true,
+        )?;
+
+        self.leave_scope()?;
         Ok(())
     }
 
@@ -267,14 +514,39 @@ impl Compiler {
                 test,
                 update,
                 body,
-            } => self.loop_statement(
-                init.as_ref(),
-                test.as_ref(),
-                update.as_ref(),
-                body,
-                false,
-                Vec::new(),
-            )?,
+            } => {
+                // `using`/`await using` in a C-style for-head disposes once,
+                // when the whole ForStatement completes (confirmed against
+                // `initializer-disposed-at-end-of-forstatement.js`'s own
+                // naming) -- unlike the ForOf `using ForBinding` production
+                // in `for_each`, which disposes each iteration's own
+                // binding at the end of *that* iteration.
+                let is_async_using = matches!(
+                    init,
+                    Some(ForInit::VarDecl(DeclKind::AwaitUsing, _))
+                );
+                if is_async_using || matches!(init, Some(ForInit::VarDecl(DeclKind::Using, _))) {
+                    self.wrap_with_disposal(is_async_using, |this| {
+                        this.loop_statement(
+                            init.as_ref(),
+                            test.as_ref(),
+                            update.as_ref(),
+                            body,
+                            false,
+                            Vec::new(),
+                        )
+                    })?;
+                } else {
+                    self.loop_statement(
+                        init.as_ref(),
+                        test.as_ref(),
+                        update.as_ref(),
+                        body,
+                        false,
+                        Vec::new(),
+                    )?;
+                }
+            }
             Stmt::ForIn { left, right, body } => self.for_in(left, right, body, Vec::new())?,
             Stmt::ForOf {
                 left,
@@ -733,10 +1005,17 @@ impl Compiler {
                 continue;
             }
             if let Some(value) = &declaration.init {
-                let inferred_name = match (&declaration.pattern, self.bytecode.module) {
-                    (Pattern::Identifier(name), true) if name == MODULE_DEFAULT_BINDING => {
+                // "IsAnonymousFunctionDefinition(Initializer)" NamedEvaluation
+                // applies to any `var`/`let`/`const`/`using`/`await using`
+                // declarator whose target is a single BindingIdentifier --
+                // not just a module's default-export binding.
+                let inferred_name = match &declaration.pattern {
+                    Pattern::Identifier(name)
+                        if self.bytecode.module && name == MODULE_DEFAULT_BINDING =>
+                    {
                         Some("default")
                     }
+                    Pattern::Identifier(name) => Some(name.as_str()),
                     _ => None,
                 };
                 self.expression_with_name(value, inferred_name)?

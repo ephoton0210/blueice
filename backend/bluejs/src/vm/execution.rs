@@ -1011,6 +1011,9 @@ impl Vm {
                     roots.push(self.heap.root(*id)?);
                 }
             }
+            if let Some(Value::Object(id)) = &self.async_dispose_helper {
+                roots.push(self.heap.root(*id)?);
+            }
             for job in &self.promise_jobs {
                 match job {
                     PromiseJob::Reaction {

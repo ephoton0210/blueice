@@ -1455,6 +1455,28 @@ impl Vm {
                         };
                         self.dispose_resources_sync(resources, prior)?;
                     }
+                    Opcode::DrainAsyncDisposables => {
+                        let mark = self
+                            .dispose_marks
+                            .pop()
+                            .expect("compiler matches every DrainAsyncDisposables with a mark");
+                        let resources = self.disposables.split_off(mark);
+                        // See `Opcode::DisposeResources`'s own comment: same
+                        // abrupt-vs-normal-entry distinction, same handler
+                        // index trick.
+                        let prior = match handlers.last() {
+                            Some(frame) if frame.metadata == operand => frame
+                                .pending
+                                .map(|index| self.pending_completions[index].clone()),
+                            _ => None,
+                        };
+                        let prior = match prior {
+                            Some(Completion::Throw(error)) => Some(error),
+                            _ => None,
+                        };
+                        let value = self.build_async_dispose_state(resources, prior)?;
+                        self.stack.push(value);
+                    }
                     Opcode::AbruptJump => {
                         let jump = &code.abrupt_jumps[operand];
                         return Ok(Some(Completion::Jump {

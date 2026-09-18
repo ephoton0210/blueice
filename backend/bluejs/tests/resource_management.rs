@@ -342,3 +342,260 @@ fn async_disposable_stack_dispose_async_rejects_with_dispose_error() {
     vm.run_promise_jobs().unwrap();
     assert_eq!(execute(&mut vm, "result"), Ok(Value::Bool(true)));
 }
+
+#[test]
+fn using_declaration_infers_anonymous_function_name_from_its_binding() {
+    let mut vm = Vm::default();
+    // NamedEvaluation applies to any single-identifier lexical binding with
+    // an anonymous function/arrow/class initializer, `using` included; the
+    // dispose call is patched to a no-op afterward so this only exercises
+    // name inference, not disposal.
+    let source = r#"
+        Function.prototype[Symbol.dispose] = function () {};
+        let arrowName, fnExprName;
+        {
+            using arrow = () => {};
+            arrowName = arrow.name;
+        }
+        {
+            using fn = function () {};
+            fnExprName = fn.name;
+        }
+        arrowName === 'arrow' && fnExprName === 'fn'
+    "#;
+    assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn using_directly_in_a_switch_case_is_a_compile_error() {
+    assert!(matches!(
+        compile_error("switch (0) { case 0: using x = null; break; }"),
+        CompileError::InvalidSyntax(_)
+    ));
+    assert!(matches!(
+        compile_error("switch (0) { default: using x = null; }"),
+        CompileError::InvalidSyntax(_)
+    ));
+    // A `using` inside its own block within a case is fine -- only a
+    // *direct* case-body declaration is rejected.
+    let mut vm = Vm::default();
+    let source = r#"
+        let disposed = false;
+        switch (0) {
+            case 0: {
+                using x = { [Symbol.dispose]() { disposed = true; } };
+                break;
+            }
+        }
+        disposed
+    "#;
+    assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)));
+}
+
+fn run_async(vm: &mut Vm, setup: &str) -> Value {
+    vm.execute_script(&compile(&parse(setup).unwrap()).unwrap())
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    execute(vm, "result").unwrap()
+}
+
+#[test]
+fn await_using_awaits_the_dispose_methods_own_returned_promise() {
+    let mut vm = Vm::default();
+    // Proves this goes through a real `Await` (suspend/resume), not just a
+    // synchronous call: the disposing function only settles once the
+    // dispose method's own promise resolves, so `log` observes the
+    // dispose-triggered work interleaved correctly rather than skipped.
+    let setup = r#"
+        var result = 'pending';
+        var log = [];
+        async function run() {
+            await using a = { [Symbol.asyncDispose]() {
+                return Promise.resolve().then(function () { log.push('a-resolved'); });
+            } };
+            log.push('body');
+        }
+        run().then(function () { result = log.join(','); });
+    "#;
+    assert_eq!(run_async(&mut vm, setup), Value::String("body,a-resolved".into()));
+}
+
+#[test]
+fn await_using_disposes_sync_and_async_resources_in_reverse_declaration_order() {
+    let mut vm = Vm::default();
+    let setup = r#"
+        var result = 'pending';
+        var log = [];
+        async function run() {
+            await using a = { [Symbol.asyncDispose]() { log.push('a'); } };
+            using b = { [Symbol.dispose]() { log.push('b'); } };
+            log.push('body');
+            return 'value';
+        }
+        run().then(function (value) { result = JSON.stringify([value, log.join(',')]); });
+    "#;
+    assert_eq!(
+        run_async(&mut vm, setup),
+        Value::String("[\"value\",\"body,b,a\"]".into())
+    );
+}
+
+#[test]
+fn await_using_propagates_a_rejected_dispose_promise_as_a_real_rejection() {
+    let mut vm = Vm::default();
+    let setup = r#"
+        var result = 'pending';
+        async function run() {
+            await using a = { [Symbol.asyncDispose]() { return Promise.reject(new Error('later-fail')); } };
+        }
+        run().then(
+            function (value) { result = ['fulfilled', value]; },
+            function (error) { result = ['rejected', error.message]; }
+        );
+    "#;
+    vm.execute_script(&compile(&parse(setup).unwrap()).unwrap())
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(&mut vm, "JSON.stringify(result)"),
+        Ok(Value::String("[\"rejected\",\"later-fail\"]".into()))
+    );
+}
+
+#[test]
+fn await_using_wraps_dispose_and_body_errors_in_suppressed_error() {
+    let mut vm = Vm::default();
+    let setup = r#"
+        var result = 'pending';
+        async function run() {
+            await using a = { [Symbol.asyncDispose]() { throw new Error('dispose-fail'); } };
+            throw new Error('body-fail');
+        }
+        run().then(
+            function () { result = false; },
+            function (error) {
+                result = error instanceof SuppressedError &&
+                    error.error.message === 'dispose-fail' &&
+                    error.suppressed.message === 'body-fail';
+            }
+        );
+    "#;
+    assert_eq!(run_async(&mut vm, setup), Value::Bool(true));
+}
+
+#[test]
+fn await_using_null_resource_still_resolves_without_error() {
+    let mut vm = Vm::default();
+    let setup = r#"
+        var result = 'pending';
+        async function run() {
+            await using a = null;
+            return 'ok';
+        }
+        run().then(function (value) { result = value; });
+    "#;
+    assert_eq!(run_async(&mut vm, setup), Value::String("ok".into()));
+}
+
+#[test]
+fn await_using_requires_async_context() {
+    // Outside an async context `await` is an ordinary identifier
+    // (`await_using_declaration_follows` requires `async_depth != 0 ||
+    // module_await`, matching a plain `await` expression's own gate), so
+    // `await using x = null;` is rejected already at parse time -- `await`
+    // followed immediately by another primary expression (`using`) with no
+    // operator between them is not valid grammar for a non-async `await`
+    // identifier reference either.
+    assert!(parse_only("function f() { await using x = null; }").is_err());
+}
+
+#[test]
+fn using_in_a_c_style_for_head_disposes_once_at_loop_exit_not_per_iteration() {
+    let mut vm = Vm::default();
+    let source = r#"
+        let log = [];
+        for (using a = { [Symbol.dispose]() { log.push('dispose'); } }; log.length < 3;) {
+            log.push('iter');
+        }
+        log.join(',')
+    "#;
+    assert_eq!(
+        execute(&mut vm, source),
+        Ok(Value::String("iter,iter,iter,dispose".into()))
+    );
+}
+
+#[test]
+fn using_in_a_for_of_head_disposes_each_iterations_own_binding() {
+    let mut vm = Vm::default();
+    let source = r#"
+        let log = [];
+        function resource(name) {
+            return { [Symbol.dispose]() { log.push('dispose:' + name); } };
+        }
+        for (using r of [resource('a'), resource('b')]) {
+            log.push('iter');
+        }
+        log.join(',')
+    "#;
+    assert_eq!(
+        execute(&mut vm, source),
+        Ok(Value::String(
+            "iter,dispose:a,iter,dispose:b".into()
+        ))
+    );
+}
+
+#[test]
+fn using_for_in_is_rejected_and_using_of_disambiguates_as_a_bare_identifier() {
+    assert!(parse_only("for (using x in [1, 2, 3]) {}").is_err());
+    // `for (using of expr)`: `using` is an ordinary identifier (the loop
+    // variable), not a declaration -- confirmed directly against
+    // `using-for-using-of-of.js`.
+    let mut vm = Vm::default();
+    let source = r#"
+        var using, of = [[9], [8], [7]], result = [];
+        for (using of of [0, 1, 2]) {
+            result.push(using);
+        }
+        result.length === 1 && result[0] === 7
+    "#;
+    assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn async_disposable_stack_dispose_async_rejects_instead_of_throwing_for_a_bad_receiver() {
+    let mut vm = Vm::default();
+    let setup = r#"
+        var result = 'pending';
+        var disposeAsync = AsyncDisposableStack.prototype.disposeAsync;
+        disposeAsync.call(null).then(
+            function () { result = false; },
+            function (error) { result = error instanceof TypeError; }
+        );
+    "#;
+    assert_eq!(run_async(&mut vm, setup), Value::Bool(true));
+}
+
+#[test]
+fn async_disposable_stack_dispose_async_rejects_with_the_error_as_is_when_only_one_dispose_fails() {
+    let mut vm = Vm::default();
+    // A `defer`red *async* callback that throws synchronously actually
+    // returns a rejected promise (calling an async function never throws
+    // synchronously), so this specifically exercises `disposeAsync`'s real
+    // `Await` of each dispose call's own result rather than the plain
+    // synchronous call the disposal loop used before it reused the same
+    // compiled helper `await using` does.
+    let setup = r#"
+        var result = 'pending';
+        class MyError extends Error {}
+        var stack = new AsyncDisposableStack();
+        stack.defer(async function () { throw new MyError('boom'); });
+        stack.defer(function () {});
+        stack.disposeAsync().then(
+            function () { result = false; },
+            function (error) { result = error instanceof MyError && !(error instanceof SuppressedError); }
+        );
+    "#;
+    assert_eq!(run_async(&mut vm, setup), Value::Bool(true));
+}

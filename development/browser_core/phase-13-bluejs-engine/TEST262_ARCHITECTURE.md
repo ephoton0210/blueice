@@ -3553,3 +3553,240 @@ and `importValue`'s resolve/reject paths through
 known-flaky `observable_conversion_order_and_gc_pressure` in
 `tests/string_protocols.rs` (intermittent `HeapLimitExceeded`, unrelated to
 this work).
+
+## Explicit Resource Management closure: `await using`, for-loop heads, module top level, and real per-resource `Await` in `disposeAsync` (2026-09-18, continued)
+
+Follow-up to the same day's slice above, closing the gaps that slice's own
+report flagged as remaining, in the priority order requested: `await
+using` syntax first (the largest gap by far), then `for`/`for-of` `using`
+heads, the switch-case restriction (already done in the same pass as the
+name-inference fix, see below), module-top-level disposal timing, and
+anonymous-function-name inference (also already closed alongside the
+switch-case fix). Filtered-slice evidence (same filter as before; 397
+test files, 780 modes):
+
+| | pass | fail | timeout |
+| --- | ---: | ---: | ---: |
+| Start of this continuation | 592 | 187 | 1 |
+| After `await using` | 716 | 61 | 3 |
+| After for/for-of `using` heads | 748 | 29 | 3 |
+| After module top-level disposal | 766 | 14 | 0 |
+| After real per-resource `Await` in `disposeAsync` + for-await-of-of fix | 768 | 12 | 0 |
+
+**98.5% of the filtered slice now passes** (768/780); the 3 timeouts (all
+module-related, "disposed at end of Module" tests whose `$DONE()` lived
+inside the never-called dispose method) are gone entirely, not just turned
+into ordinary failures.
+
+### `await using` declarations (the priority-1 item)
+
+The blocking design question from the prior slice was real: `DisposeResources`
+as a single atomic native opcode cannot express the spec's per-resource
+`Await(Call(method, V))`, because only compiled bytecode can suspend and
+resume through the VM's existing `Await`/generator machinery -- a native
+Rust function call cannot yield control back to the event loop mid-call.
+The resolution avoids inventing new suspension plumbing entirely: a
+using-declaring block/function body/for-head that contains at least one
+`await using` (`has_await_using_declaration`) compiles a *different*
+finally body than the plain-synchronous fast path.
+
+`Opcode::DrainAsyncDisposables` (one native step, mirroring
+`DisposeResources`'s own abrupt-vs-normal-entry handler-index trick for
+merging a pending error) converts the block's native disposable-resource
+list into a plain JS value `[hasError, pendingError, entries]`, where
+`entries` is a real Array of `[receiver, method, hasArgument, argument,
+isAsync]` records, one per resource, in declaration order.
+`Compiler::compile_async_dispose_finally` (`backend/bluejs/src/compiler/statements.rs`)
+then synthesizes an ordinary `while`/`try`/`catch` loop over that array --
+built from real `ast.rs` nodes (`Identifier`/`Member`/`Call`/`Await`/`New`/
+`Assign`/`If`/`Try`) and compiled through the *normal* statement/expression
+pipeline, `try_statement`/`loop_statement` included -- so a resource that
+needs awaiting suspends and resumes through the already-correct,
+already-tested `Await` path, not a new one. `SuppressedError` merging is
+just the synthesized catch clause's `new SuppressedError(...)`, an
+ordinary compiled expression, not new merge logic.
+
+This bought real per-resource `Await` semantics essentially for free,
+verified directly (not just inferred): a dispose method's own returned
+promise is genuinely awaited before the next resource is disposed
+(`await_using_awaits_the_dispose_methods_own_returned_promise`), and a
+promise it returns which *later rejects* becomes the disposing async
+function's own rejection
+(`await_using_propagates_a_rejected_dispose_promise_as_a_real_rejection`)
+-- exactly the case the prior slice's `AsyncDisposableStack.prototype.disposeAsync`
+simplification documented as unable to observe.
+
+Parser: `await_using_declaration_follows` (`parser/functions.rs`) mirrors
+`using_declaration_follows`'s no-LineTerminator lookahead across both
+contextual keywords, gated on the same `async_depth`/`module_await` check
+an ordinary `await` expression already uses.
+
+### `for`/`for-of` `using` heads (priority 2)
+
+Two genuinely different disposal timings, both confirmed directly against
+Test262's own file naming before implementing either:
+
+- **C-style `for (using x = v; ...; ...)`** disposes once, when the whole
+  `ForStatement` completes (`initializer-disposed-at-end-of-forstatement.js`,
+  singular) -- handled by wrapping the *entire* `loop_statement` call in
+  the same disposal machinery a block uses, via a new shared
+  `Compiler::wrap_with_disposal` helper factored out of
+  `statements_with_disposal` (which now just calls it).
+- **`for (using x of iterable)`** (`ForBinding : using ForBinding`, a
+  distinct for-of-only production) disposes *each iteration's own binding*
+  at the end of *that* iteration
+  (`initializer-Symbol.dispose-called-at-end-of-each-iteration-of-forofstatement.js`)
+  -- handled inside `for_each` (`compiler/expressions.rs`) by wrapping just
+  the current iteration's bind-and-body in `wrap_with_disposal`, inside the
+  per-iteration lexical scope `for_each` already creates for `let`-style
+  bindings. Both reuse the exact same handler-stack machinery as the block
+  case, so break/continue/return crossing either one already dispose
+  correctly via the generic abrupt-completion path, with no new tracking
+  written for it.
+
+Parser disambiguation turned out to be the fiddly part, resolved by
+checking each case directly against its own named Test262 file rather than
+guessing: `using`/`await using` is rejected outright in a for-in head
+(`using-invalid-for-in.js`; ForBinding has no ForIn production);
+`for (using of expr)` treats `using` as a bare identifier being iterated,
+*not* a declaration, since `using` alone can validly stand as an ordinary
+for-of loop variable (`using-for-using-of-of.js`); but
+`for (using of = expr;;)` (a using declaration whose bound identifier's
+*name* is `of`) and `for (await using of of expr)` are both still
+declarations -- for the first because the disambiguating token after the
+second identifier is `=`, not the for-of separator
+(`using-for-statement.js`, "`for (using of =` are interpreted as for
+loop"); for `await using` specifically, the bare-identifier reading is
+never even grammatically available (`await using` alone would have to
+parse as an `AwaitExpression` wrapping `using`, which is not a valid for-of
+assignment target), so `await_using_declaration_follows_in_for_head` needs
+no `of`-exclusion at all, unlike its plain-`using` counterpart
+(`await-using-valid-for-await-using-of-of.js`).
+
+### Module top-level disposal (priority 4)
+
+Unlike a Script (where `using`/`await using` is rejected outright at the
+top level -- no enclosing block to dispose it at, per the prior slice), a
+Module's top level *is* one of the spec's permitted contexts, and disposes
+when the module's own evaluation completes. Before this fix, module
+top-level `statements_after_function_declarations` never went through
+`statements_with_disposal` at all, so the resource was simply never
+disposed -- concretely, in the `[module, async]`-flagged Test262 tests,
+the dispose method that calls `$DONE()` was never invoked, hanging the
+async test harness forever (the three timeouts in the table above, not
+merely failures). Fixed with the same one-line-shaped change as the
+for-loop case: wrap the module top-level's statement compiling in
+`wrap_with_disposal` when it directly declares a `using`/`await using`.
+
+### Real per-resource `Await` in `AsyncDisposableStack.prototype.disposeAsync`
+
+Not on the original priority list, but directly exposed by writing the
+`await using` tests above: `disposeAsync`'s prior "run every dispose call
+synchronously, then wrap the aggregate outcome in a Promise" simplification
+was not just slower than the spec algorithm, it was observably wrong for a
+*genuinely* async dispose method. `stack.defer(async function () { throw
+new MyError(); })` calls an async function, which never throws
+synchronously -- it always returns a (here, rejected) Promise -- so the
+prior implementation's synchronous call saw no error at all and silently
+lost the rejection (`rejects-with-error-as-is-if-only-one-error-during-disposal.js`).
+Separately, `this-not-object-rejects.js`/
+`this-does-not-have-internal-asyncdisposablestate-rejects.js` expect a
+*rejected Promise*, not a synchronous `TypeError` throw, from a bad
+receiver -- `assert.throwsAsync` calls `disposeAsync.call(badThis)` and
+awaits its *return value* rejecting, which a synchronous throw before ever
+returning a Promise cannot satisfy.
+
+Both are fixed together: `Vm::async_dispose_helper`
+(`vm/builtins/resource_management.rs`) lazily compiles and caches, once,
+an internal async function with the *exact* same algorithm as
+`compile_async_dispose_finally`'s synthesized loop (parsed from a literal
+source string via `crate::parse`/`crate::compiler::compile_eval`/
+`Vm::execute_eval` -- the same reentrant-safe internal-compilation pattern
+`indirect_eval` already uses, not a new one), and `disposeAsync` calls it
+with `(false, undefined, entries)`, returning its result Promise directly.
+A `RequireInternalSlot`-style precondition failure now goes through a new
+`Vm::reject_with` (a catchable `RuntimeError` becomes a rejected Promise
+via the existing `promise_reject`, a host resource error still propagates
+raw) instead of the native call's own `?`-propagated synchronous throw.
+This closed all 10 of the slice's `AsyncDisposableStack/prototype/disposeAsync`
+failures, including the two `explicit-await-for-{null,undefined}.js` tests
+checking the spec's "an `await using`/`disposeAsync`-adopted null/undefined
+resource still costs one real microtask tick" behavior -- observable only
+with genuine `Await` interleaving, which `disposeAsync` now has.
+
+`dispose_resources_sync`'s doc comment is updated to stop claiming
+`disposeAsync` reuses it (it no longer does); the sync-only fast path
+remains exactly as before for `using` declarations and
+`DisposableStack.prototype.dispose`, which by construction never add an
+`async-dispose` resource.
+
+### What remains, and why each is being left alone
+
+The filtered slice's 12 remaining failures split into three groups, none
+of which block anything else in this feature:
+
+- **Two, genuinely out of scope**: `built-ins/SuppressedError/proto-from-ctor-realm.js`
+  needs `$262` cross-realm `new.target` support unrelated to resource
+  management itself.
+- **Six, pre-existing engine gaps this feature's tests merely happen to
+  also exercise, confirmed directly rather than assumed**:
+  - `using`/`await-using-declaring-let-split-across-two-lines.js` (2
+    modes): needs sloppy-mode `let` to fall back to an ordinary identifier
+    reference when not followed by a valid binding start (`let =
+    "value";`). Verified this is not `using`-specific: plain
+    `class C { static { let await = null; } }`-style sloppy `let`-as-identifier
+    already parses wrong today, independent of this feature.
+  - `using`/`await-using-invalid-arraybindingpattern.js` (4 modes, both
+    strict/sloppy): `using [] = null;` already fails to parse (`using[]`
+    is an empty computed-member-access, itself invalid), but through the
+    generic "expected an expression" primary-expression fallback used by
+    dozens of unrelated grammar positions, which is deliberately never
+    marked `known_syntax` ("never let \[the subset parser's\] arbitrary
+    rejection satisfy a negative test", per that flag's own doc comment).
+    The engine's rejection is correct; only the Test262 adapter's
+    conservative classification of *which* rejections count as confirmed
+    `SyntaxError`s doesn't credit it, and broadening that flag's use at a
+    shared, heavily-hit error site was judged too risky to justify a
+    2-test-file gain.
+  - `using/static-init-await-binding-invalid.js` (2 modes): a class static
+    block must reject `await` as any BindingIdentifier's name, `using`
+    included; verified `class C { static { let await = null; } }` already
+    incorrectly parses today too, so this is the general restriction never
+    having been implemented, not a `using`-specific gap.
+- **One, an inherited (not newly caused) bug, reconsidered and still left
+  alone**: `using/cptn-value.js` (2 modes, `eval('4;{using x=null;}')`
+  should be `4`, not `undefined`). Traced to `try_statement`'s unconditional
+  `ClearCompletion` at try-entry: it overwrites `self.completion` with no
+  prior save, so an empty try/finally already loses the *preceding*
+  statement's completion value before this feature existed
+  (`eval('4;try{}finally{}')` is `undefined` today, independent of
+  `using`). A real fix belongs in the general statement-list/`UpdateEmpty`
+  completion-value machinery (likely how `ClearCompletion` interacts with
+  every construct that can complete empty, `if` included, not just
+  `try`/`finally`), which is far more central and heavily depended-upon
+  than this feature's own code; given the working-tree's own completion
+  regressions (`tests/try_completion.rs`) already pass extensively today,
+  a wrong fix risks a much wider regression than the two tests it would
+  close. Left as a documented, pre-existing, unrelated gap rather than
+  risked in this pass.
+
+### Verification
+
+`backend/bluejs/tests/resource_management.rs` grew from 18 to 31 tests,
+covering (new in this pass): `await using` disposal ordering mixed with
+plain `using`, real dispose-promise awaiting and rejection propagation,
+`SuppressedError` wrapping across the async path, null/undefined `await
+using` resources, the async-context requirement, C-style-for-head disposal
+timing (once, at loop exit, not per-iteration), for-of-head per-iteration
+disposal, the for-in rejection and for-of `using`/`of` disambiguation
+(`using-for-using-of-of.js`'s own scenario, reproduced directly), and
+`disposeAsync`'s corrected bad-receiver rejection and real
+error-as-is-when-only-one-disposal-fails behavior. All 31 pass; every one
+of this pass's fixes was caught by a test failing first against the prior
+(missing or simplified) behavior.
+
+`cargo build --workspace --all-targets`, `cargo test --workspace --no-fail-fast`
+(only the pre-declared, unrelated, already-known-flaky
+`observable_conversion_order_and_gc_pressure` fails, `HeapLimitExceeded`,
+same as before this work) and `cargo clippy --workspace --all-targets --
+-D warnings` all pass.

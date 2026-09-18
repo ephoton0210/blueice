@@ -168,7 +168,17 @@ fn compile_with_limit_and_mode(
     if module {
         compiler.function_declarations(&program.body)?;
         compiler.bytecode.module_evaluate_entry = Some(compiler.offset()?);
-        compiler.statements_after_function_declarations(&program.body)?;
+        // Unlike a Script, a Module's top level *is* one of the
+        // UsingDeclaration-permitted contexts: a `using`/`await using`
+        // there disposes when the module's own evaluation completes.
+        if has_using_declaration(&program.body) {
+            let is_async = has_await_using_declaration(&program.body);
+            compiler.wrap_with_disposal(is_async, |this| {
+                this.statements_after_function_declarations(&program.body)
+            })?;
+        } else {
+            compiler.statements_after_function_declarations(&program.body)?;
+        }
     } else {
         // "It is a Syntax Error if the goal symbol is Script and
         // UsingDeclaration is not contained, either directly or
@@ -1272,6 +1282,18 @@ pub(super) fn has_using_declaration(statements: &[Stmt]) -> bool {
     })
 }
 
+/// Whether `statements` directly declares at least one `await using`
+/// binding, the trigger for `statements_with_disposal` to compile the
+/// `Await`-capable disposal loop (`compile_async_dispose_finally`) instead
+/// of the plain-synchronous, single-native-opcode `DisposeResources` path.
+/// A block with only plain `using` declarations never needs this, even
+/// nested inside an async function.
+pub(super) fn has_await_using_declaration(statements: &[Stmt]) -> bool {
+    statements
+        .iter()
+        .any(|statement| matches!(statement, Stmt::VarDecl(DeclKind::AwaitUsing, _)))
+}
+
 fn block_lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, CompileError> {
     let mut names = lexical_names(statements)?;
     for statement in statements {
@@ -1349,6 +1371,27 @@ fn validate_switch_case_declarations(
     if lexical.iter().any(|(name, _, _)| vars.contains(name)) {
         return Err(CompileError::InvalidSyntax(
             "a switch lexical declaration conflicts with a var declaration",
+        ));
+    }
+    // "It is a Syntax Error if UsingDeclaration is contained directly
+    // within the StatementList of either a CaseClause or DefaultClause":
+    // unlike an ordinary `let`/`const`, a `using`/`await using` directly in
+    // a case's statement list has no block of its own to dispose it at the
+    // end of (the switch's own case-block environment spans every case, not
+    // one case's statements), so it is rejected outright rather than wired
+    // up to dispose at the switch's exit.
+    if cases
+        .iter()
+        .flat_map(|case| &case.consequent)
+        .any(|statement| {
+            matches!(
+                statement,
+                Stmt::VarDecl(DeclKind::Using | DeclKind::AwaitUsing, _)
+            )
+        })
+    {
+        return Err(CompileError::InvalidSyntax(
+            "a using declaration cannot appear directly in a switch case",
         ));
     }
     Ok(())
