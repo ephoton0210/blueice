@@ -15,9 +15,9 @@ mod object;
 mod promises;
 mod typed_arrays;
 use crate::heap::{
-    same_value, ArrayIteratorKind, AsyncGeneratorCompletion, AsyncGeneratorDelegate,
-    AsyncGeneratorRequest, AsyncGeneratorStatus, GeneratorState, IteratorHelperKind,
-    IteratorHelperState, TypedArrayKind, TypedArrayNumericKey,
+    f16_bits_to_f64, f64_to_f16_bits, same_value, ArrayIteratorKind, AsyncGeneratorCompletion,
+    AsyncGeneratorDelegate, AsyncGeneratorRequest, AsyncGeneratorStatus, GeneratorState,
+    IteratorHelperKind, IteratorHelperState, TypedArrayKind, TypedArrayNumericKey,
 };
 use crate::native::{
     AtomicOp, MapMethod, MathMethod, NumberMethod, ObjectMethod, PatternMethod, SetMethod,
@@ -232,6 +232,7 @@ fn typed_array_kind(name: &str) -> Option<TypedArrayKind> {
         "Uint16Array" => TypedArrayKind::Uint16,
         "Int32Array" => TypedArrayKind::Int32,
         "Uint32Array" => TypedArrayKind::Uint32,
+        "Float16Array" => TypedArrayKind::Float16,
         "Float32Array" => TypedArrayKind::Float32,
         "Float64Array" => TypedArrayKind::Float64,
         "BigInt64Array" => TypedArrayKind::BigInt64,
@@ -243,11 +244,13 @@ fn typed_array_kind(name: &str) -> Option<TypedArrayKind> {
 fn data_view_number(bytes: &[u8], signed: bool, floating: bool, little_endian: bool) -> f64 {
     if floating {
         return match (bytes.len(), little_endian) {
+            (2, true) => f16_bits_to_f64(u16::from_le_bytes(bytes.try_into().unwrap())),
+            (2, false) => f16_bits_to_f64(u16::from_be_bytes(bytes.try_into().unwrap())),
             (4, true) => f32::from_le_bytes(bytes.try_into().unwrap()) as f64,
             (4, false) => f32::from_be_bytes(bytes.try_into().unwrap()) as f64,
             (8, true) => f64::from_le_bytes(bytes.try_into().unwrap()),
             (8, false) => f64::from_be_bytes(bytes.try_into().unwrap()),
-            _ => unreachable!("DataView floating-point access is 32 or 64 bits"),
+            _ => unreachable!("DataView floating-point access is 16, 32, or 64 bits"),
         };
     }
     match (bytes.len(), signed, little_endian) {
@@ -322,11 +325,13 @@ fn data_view_bytes(
     let value = *value;
     if floating {
         return match (width, little_endian) {
+            (2, true) => f64_to_f16_bits(value).to_le_bytes().to_vec(),
+            (2, false) => f64_to_f16_bits(value).to_be_bytes().to_vec(),
             (4, true) => (value as f32).to_le_bytes().to_vec(),
             (4, false) => (value as f32).to_be_bytes().to_vec(),
             (8, true) => value.to_le_bytes().to_vec(),
             (8, false) => value.to_be_bytes().to_vec(),
-            _ => unreachable!("DataView floating-point access is 32 or 64 bits"),
+            _ => unreachable!("DataView floating-point access is 16, 32, or 64 bits"),
         };
     }
     let integer = (if value.is_finite() {

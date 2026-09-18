@@ -156,6 +156,26 @@ impl Vm {
                 "get [Symbol.species]",
                 NativeFunction::TypedArraySpecies,
             )?;
+            self.install_symbol_native_getter(
+                typed_prototype,
+                function_prototype,
+                "toStringTag",
+                NativeFunction::TypedArrayToStringTag,
+            )?;
+            self.install_native(
+                constructor,
+                function_prototype,
+                "of",
+                0,
+                NativeFunction::TypedArrayOf,
+            )?;
+            self.install_native(
+                constructor,
+                function_prototype,
+                "from",
+                1,
+                NativeFunction::TypedArrayFrom,
+            )?;
             let values = self
                 .heap
                 .get(typed_prototype, "values")
@@ -1223,6 +1243,114 @@ impl Vm {
                 values.push(self.typed_array_element_value(kind, &value)?);
             }
             Ok(values)
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// `%TypedArray%.from ( source [ , mapfn [ , thisArg ] ] )`. `source`'s
+    /// values are collected in full -- via its iterator when one exists,
+    /// else as an array-like -- before `TypedArrayCreate` runs, matching the
+    /// spec's strict "collect, then create, then map+set" ordering. Mapping
+    /// (when present) observes each raw, not-yet-numeric-coerced source
+    /// value, exactly like `Array.from`.
+    pub(super) fn typed_array_from(
+        &mut self,
+        this: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        if !self.is_constructor(this)? {
+            return Err(RuntimeError::TypeError(
+                "TypedArray.from requires a constructor this value".into(),
+            ));
+        }
+        let mapfn = native::argument(args, 1).clone();
+        let mapping = mapfn != Value::Undefined;
+        if mapping && !self.is_callable(&mapfn)? {
+            return Err(RuntimeError::TypeError(
+                "TypedArray.from mapfn must be callable".into(),
+            ));
+        }
+        let this_arg = native::argument(args, 2).clone();
+        let source = native::argument(args, 0).clone();
+        let base = self.stack.len();
+        self.stack.push(this.clone());
+        self.stack.push(source.clone());
+        self.stack.push(mapfn.clone());
+        self.stack.push(this_arg.clone());
+        let result = (|| {
+            let iterator_method =
+                self.get_method(&source, &JsSymbol::well_known("iterator").into())?;
+            let values = if iterator_method != Value::Undefined {
+                let record = self.get_iterator_from_method(&source, iterator_method)?;
+                self.stack.push(record.clone());
+                let mut values = Vec::new();
+                while let Some(value) = self.iterator_step(&record, true)? {
+                    values.push(value);
+                }
+                values
+            } else {
+                let object = self.coerce_object(&source)?;
+                self.stack.push(Value::Object(object));
+                let length_value = self.get_property(&Value::Object(object), &"length".into())?;
+                let length = self.coerce_length(&length_value)? as usize;
+                let mut values = Vec::with_capacity(length);
+                for index in 0..length {
+                    values.push(
+                        self.get_property(&Value::Object(object), &index.to_string().into())?,
+                    );
+                }
+                values
+            };
+            let length = values.len();
+            let (target, target_kind) = self.typed_array_create(this.clone(), length)?;
+            self.stack.push(Value::Object(target));
+            for (index, value) in values.into_iter().enumerate() {
+                let mapped = if mapping {
+                    self.call_native(
+                        mapfn.clone(),
+                        this_arg.clone(),
+                        vec![value, Value::Number(index as f64)],
+                        false,
+                    )?
+                } else {
+                    value
+                };
+                self.typed_array_write_values(target, target_kind, index, &[mapped])?;
+            }
+            Ok(Value::Object(target))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// `%TypedArray%.of ( ...items )`. Unlike `from`, every argument is
+    /// already the exact element list, so no iteration/array-like probing is
+    /// needed before `TypedArrayCreate`.
+    pub(super) fn typed_array_of(
+        &mut self,
+        this: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        if !self.is_constructor(this)? {
+            return Err(RuntimeError::TypeError(
+                "TypedArray.of requires a constructor this value".into(),
+            ));
+        }
+        let base = self.stack.len();
+        self.stack.push(this.clone());
+        let result = (|| {
+            let (target, target_kind) = self.typed_array_create(this.clone(), args.len())?;
+            self.stack.push(Value::Object(target));
+            for (index, value) in args.iter().enumerate() {
+                self.typed_array_write_values(
+                    target,
+                    target_kind,
+                    index,
+                    std::slice::from_ref(value),
+                )?;
+            }
+            Ok(Value::Object(target))
         })();
         self.stack.truncate(base);
         result

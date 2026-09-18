@@ -401,3 +401,64 @@ fn temporal_payload_is_accounted() {
         .unwrap();
     assert_eq!(bytes_added, expected);
 }
+
+/// Exact IEEE 754 binary16 bit patterns pinned from Test262's
+/// `built-ins/DataView/prototype/{get,set}Float16` fixtures (read 2026-09-18):
+/// `set-values-little-endian-order.js` (42 <-> 0x5140, 2.158203125 <->
+/// 0x4051 -- the latter is what writing 42 little-endian and reading it back
+/// big-endian observes) and `return-values.js` (3.078125 <-> 0x4228).
+#[test]
+fn float16_bits_round_trip_pinned_test262_vectors() {
+    assert_eq!(binary_data::f16_bits_to_f64(0x5140), 42.0);
+    assert_eq!(binary_data::f64_to_f16_bits(42.0), 0x5140);
+    assert_eq!(binary_data::f16_bits_to_f64(0x4051), 2.158203125);
+    assert_eq!(binary_data::f64_to_f16_bits(2.158203125), 0x4051);
+    assert_eq!(binary_data::f16_bits_to_f64(0x4228), 3.078125);
+    assert_eq!(binary_data::f64_to_f16_bits(3.078125), 0x4228);
+}
+
+#[test]
+fn float16_bits_handle_signed_zero_infinity_and_nan() {
+    assert_eq!(binary_data::f64_to_f16_bits(0.0), 0x0000);
+    assert_eq!(binary_data::f64_to_f16_bits(-0.0), 0x8000);
+    assert_eq!(
+        binary_data::f16_bits_to_f64(0x0000).to_bits(),
+        0.0f64.to_bits()
+    );
+    assert_eq!(
+        binary_data::f16_bits_to_f64(0x8000).to_bits(),
+        (-0.0f64).to_bits()
+    );
+
+    assert_eq!(binary_data::f64_to_f16_bits(f64::INFINITY), 0x7c00);
+    assert_eq!(binary_data::f64_to_f16_bits(f64::NEG_INFINITY), 0xfc00);
+    assert_eq!(binary_data::f16_bits_to_f64(0x7c00), f64::INFINITY);
+    assert_eq!(binary_data::f16_bits_to_f64(0xfc00), f64::NEG_INFINITY);
+
+    // Any input that overflows binary16's finite range rounds to infinity.
+    assert_eq!(binary_data::f64_to_f16_bits(1.0e10), 0x7c00);
+
+    assert!(binary_data::f16_bits_to_f64(0x7e00).is_nan());
+    assert!(binary_data::f64_to_f16_bits(f64::NAN) == 0x7e00);
+}
+
+#[test]
+fn float16_bits_round_trip_subnormals_and_min_normal() {
+    // Smallest subnormal: 2^-24.
+    let smallest_subnormal = 2f64.powi(-24);
+    assert_eq!(binary_data::f16_bits_to_f64(0x0001), smallest_subnormal);
+    assert_eq!(binary_data::f64_to_f16_bits(smallest_subnormal), 0x0001);
+
+    // Largest subnormal (mantissa 0x3ff, exponent field 0) rounds up to the
+    // smallest normal (exponent field 1, mantissa 0) exactly at the boundary.
+    let smallest_normal = 2f64.powi(-14);
+    assert_eq!(binary_data::f16_bits_to_f64(0x0400), smallest_normal);
+    assert_eq!(binary_data::f64_to_f16_bits(smallest_normal), 0x0400);
+
+    // A value strictly below the halfway point to the smallest subnormal
+    // flushes to zero; a value strictly above it rounds up to that
+    // subnormal.
+    let halfway = 2f64.powi(-25);
+    assert_eq!(binary_data::f64_to_f16_bits(halfway * 0.5), 0x0000);
+    assert_eq!(binary_data::f64_to_f16_bits(halfway * 1.5), 0x0001);
+}

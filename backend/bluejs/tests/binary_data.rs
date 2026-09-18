@@ -175,8 +175,36 @@ fn fixed_length_array_buffers_views_and_typed_indices_share_backing_bytes() {
             "let typed=new Uint8Array([1,2]);let calls=0;let holder={};holder[Symbol.species]=function(length){calls++;return new Int16Array(length)};typed.constructor=holder;let mapped=typed.map(function(value){return value+1});let filtered=typed.filter(function(value){return value>1});let sliced=typed.slice(0,1);calls===3&&mapped instanceof Int16Array&&mapped.join()==='2,3'&&filtered instanceof Int16Array&&filtered[0]===2&&sliced instanceof Int16Array&&sliced[0]===1",
             Value::Bool(true),
         ),
+        (
+            "let fromArrayLike=Int32Array.from({length:3,0:1,1:2,2:3});let fromIterable=Int32Array.from([4,5]);let mapped=Int32Array.from([1,2,3],function(value,index){return value*10+index});let withThis=Uint8Array.from([1],function(value){return value+this.offset},{offset:5});let of=Int16Array.of(7,8,9);fromArrayLike.join()==='1,2,3'&&fromIterable.join()==='4,5'&&mapped.join()==='10,21,32'&&withThis.join()==='6'&&of.join()==='7,8,9'&&Int32Array.from.length===1&&Int32Array.of.length===0",
+            Value::Bool(true),
+        ),
+        (
+            "let caught=false;try{Int32Array.from.call({},[1])}catch(error){caught=error instanceof TypeError}let caughtOf=false;try{Int32Array.of.call(null)}catch(error){caughtOf=error instanceof TypeError}caught&&caughtOf",
+            Value::Bool(true),
+        ),
+        (
+            "let TypedArray=Object.getPrototypeOf(Int8Array);let descriptor=Object.getOwnPropertyDescriptor(TypedArray.prototype,Symbol.toStringTag);let getter=descriptor.get;let typed=new Uint8Array(2);let buffer=new ArrayBuffer(1);let tagged=Object.prototype.toString.call(typed)==='[object Uint8Array]'&&Object.prototype.toString.call(new Float64Array())==='[object Float64Array]';let inherited=!Int8Array.prototype.hasOwnProperty(Symbol.toStringTag)&&typed[Symbol.toStringTag]==='Uint8Array';let undef=getter.call({})===undefined&&getter.call(null)===undefined&&getter.call(42)===undefined&&getter.call(buffer)===undefined;let shape=descriptor.set===undefined&&descriptor.enumerable===false&&descriptor.configurable===true&&getter.length===0&&getter.name==='get [Symbol.toStringTag]';tagged&&inherited&&undef&&shape",
+            Value::Bool(true),
+        ),
+        (
+            "let buffer=new ArrayBuffer(4);let view=new DataView(buffer);view.setFloat16(0,2.158203125,false);let bytes=[view.getUint8(0),view.getUint8(1)];view.setFloat16(0,42,true);let roundTrip=view.getFloat16(0,true)===42;let crossEndian=view.getFloat16(0,false)===2.158203125;let inf=(view.setFloat16(2,Infinity,true),view.getFloat16(2,true))===Infinity;let nan=(view.setFloat16(2,NaN,true),view.getFloat16(2,true)!==view.getFloat16(2,true));let typed=new Float16Array([1.5,-2.5,65504]);let tagged=Object.prototype.toString.call(typed)==='[object Float16Array]';bytes[0]===0x40&&bytes[1]===0x51&&roundTrip&&crossEndian&&inf&&nan&&typed.join()==='1.5,-2.5,65504'&&typed.BYTES_PER_ELEMENT===2&&Float16Array.BYTES_PER_ELEMENT===2&&tagged",
+            Value::Bool(true),
+        ),
     ] {
         let actual = evaluate(source).unwrap_or_else(|error| panic!("{source}: {error}"));
         assert_eq!(actual, expected, "{source}");
     }
+}
+
+#[test]
+fn typed_array_prototype_tostringtag_getter_reports_the_kind_of_a_detached_view() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = "let typed=new Uint8Array(new ArrayBuffer(2));let before=typed[Symbol.toStringTag];$262.detachArrayBuffer(typed.buffer);before==='Uint8Array'&&typed[Symbol.toStringTag]==='Uint8Array'&&typed.length===0";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
 }
