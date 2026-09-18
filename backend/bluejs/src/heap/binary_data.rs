@@ -685,6 +685,34 @@ impl Heap {
             .ok_or(HeapError::InvalidBufferRange)
     }
 
+    /// Non-shared counterpart to `shared_typed_array_atomic_modify`. Per the
+    /// current Atomics spec, `ValidateIntegerTypedArray` no longer requires a
+    /// `SharedArrayBuffer` for ordinary read-modify-write operations (only
+    /// `Atomics.wait`/`waitAsync` still do, and `Atomics.notify` special-cases
+    /// a non-shared buffer to return 0 without ever reaching this helper). A
+    /// plain `ArrayBuffer` is never visible to more than one agent, so
+    /// ordinary synchronous byte access already gives read-modify-write
+    /// operations their required atomicity here -- no lock is needed.
+    pub(crate) fn typed_array_atomic_modify<T>(
+        &mut self,
+        object: ObjectId,
+        index: usize,
+        modify: impl FnOnce(Value) -> (Option<Value>, T),
+    ) -> Result<T, HeapError> {
+        let (buffer, byte_offset, length, kind) = self.typed_array_info(object)?;
+        if index >= length {
+            return Err(HeapError::InvalidBufferRange);
+        }
+        let start = byte_offset + index * kind.byte_width();
+        let bytes = self.buffer_bytes_mut(buffer)?;
+        let current = typed_read(kind, &bytes[start..]);
+        let (replacement, result) = modify(current);
+        if let Some(replacement) = replacement {
+            typed_write(kind, &mut bytes[start..], &replacement);
+        }
+        Ok(result)
+    }
+
     pub(crate) fn typed_array_normalize_value(&self, kind: TypedArrayKind, value: &Value) -> Value {
         let mut bytes = vec![0; kind.byte_width()];
         typed_write(kind, &mut bytes, value);
@@ -836,12 +864,99 @@ pub(super) fn integer_for_typed_array(value: f64) -> f64 {
     }
 }
 
+/// IEEE 754 binary16 -> f64. Rust's `f16` primitive remains unstable on this
+/// toolchain (rust-lang/rust#116909), so Float16Array/DataView Float16
+/// access decodes the raw `u16` bit pattern by hand instead.
+pub(crate) fn f16_bits_to_f64(bits: u16) -> f64 {
+    let sign = if bits & 0x8000 != 0 { -1.0 } else { 1.0 };
+    let exponent = (bits >> 10) & 0x1f;
+    let fraction = f64::from(bits & 0x3ff);
+    match exponent {
+        0 => sign * fraction * 2f64.powi(-24),
+        0x1f => {
+            if fraction == 0.0 {
+                sign * f64::INFINITY
+            } else {
+                f64::NAN
+            }
+        }
+        _ => sign * (1.0 + fraction / 1024.0) * 2f64.powi(i32::from(exponent) - 15),
+    }
+}
+
+/// f64 -> IEEE 754 binary16, round-to-nearest-even, matching `ToFloat16` /
+/// `Number::toString` narrowing semantics. Operates directly on the f64's
+/// own 64-bit representation (sign:1, exponent:11, mantissa:52) rather than
+/// double-rounding through `f32`, so the single rounding step is exact.
+pub(crate) fn f64_to_f16_bits(value: f64) -> u16 {
+    if value.is_nan() {
+        return 0x7e00;
+    }
+    let bits = value.to_bits();
+    let sign = ((bits >> 63) & 1) as u16;
+    if value == 0.0 {
+        return sign << 15;
+    }
+    let exp_field = ((bits >> 52) & 0x7ff) as i32;
+    let mantissa52 = bits & 0x000f_ffff_ffff_ffff;
+    if exp_field == 0 {
+        // A subnormal f64 is astronomically smaller than the smallest f16
+        // subnormal (2^-24); it always flushes to a signed zero.
+        return sign << 15;
+    }
+    let unbiased = exp_field - 1023;
+    if unbiased > 15 {
+        return (sign << 15) | 0x7c00;
+    }
+    if unbiased < -25 {
+        // Strictly below the round-to-nearest-even threshold for the
+        // smallest subnormal (2^-25 is its exact halfway point to zero).
+        return sign << 15;
+    }
+    if unbiased >= -14 {
+        let shift: u32 = 42;
+        let mut half_mantissa = (mantissa52 >> shift) as u16;
+        let remainder = mantissa52 & ((1u64 << shift) - 1);
+        let halfway = 1u64 << (shift - 1);
+        let round_up = remainder > halfway || (remainder == halfway && (half_mantissa & 1) == 1);
+        let mut exponent16 = unbiased + 15;
+        if round_up {
+            half_mantissa += 1;
+            if half_mantissa == 0x400 {
+                half_mantissa = 0;
+                exponent16 += 1;
+            }
+        }
+        if exponent16 >= 0x1f {
+            return (sign << 15) | 0x7c00;
+        }
+        (sign << 15) | ((exponent16 as u16) << 10) | half_mantissa
+    } else {
+        let full_mantissa = mantissa52 | (1u64 << 52);
+        let shift = (28 - unbiased) as u32;
+        let mut half_mantissa = (full_mantissa >> shift) as u16;
+        let remainder = full_mantissa & ((1u64 << shift) - 1);
+        let halfway = 1u64 << (shift - 1);
+        let round_up = remainder > halfway || (remainder == halfway && (half_mantissa & 1) == 1);
+        if round_up {
+            half_mantissa += 1;
+        }
+        // A subnormal rounding up to 0x400 lands exactly on the bit pattern
+        // for the smallest normal number (exponent field 1, mantissa 0),
+        // which is numerically correct with no extra carry handling.
+        (sign << 15) | half_mantissa
+    }
+}
+
 pub(super) fn typed_read(kind: TypedArrayKind, bytes: &[u8]) -> Value {
     Value::Number(match kind {
         TypedArrayKind::Int8 => i8::from_le_bytes([bytes[0]]) as f64,
         TypedArrayKind::Uint8 | TypedArrayKind::Uint8Clamped => bytes[0] as f64,
         TypedArrayKind::Int16 => i16::from_le_bytes(bytes[..2].try_into().unwrap()) as f64,
         TypedArrayKind::Uint16 => u16::from_le_bytes(bytes[..2].try_into().unwrap()) as f64,
+        TypedArrayKind::Float16 => {
+            f16_bits_to_f64(u16::from_le_bytes(bytes[..2].try_into().unwrap()))
+        }
         TypedArrayKind::Int32 => i32::from_le_bytes(bytes[..4].try_into().unwrap()) as f64,
         TypedArrayKind::Uint32 => u32::from_le_bytes(bytes[..4].try_into().unwrap()) as f64,
         TypedArrayKind::Float32 => f32::from_le_bytes(bytes[..4].try_into().unwrap()) as f64,
@@ -903,6 +1018,9 @@ pub(super) fn typed_write(kind: TypedArrayKind, bytes: &mut [u8], value: &Value)
         TypedArrayKind::Int32 => bytes[..4].copy_from_slice(&(integer as i64 as i32).to_le_bytes()),
         TypedArrayKind::Uint32 => {
             bytes[..4].copy_from_slice(&(integer as i64 as u32).to_le_bytes())
+        }
+        TypedArrayKind::Float16 => {
+            bytes[..2].copy_from_slice(&f64_to_f16_bits(value).to_le_bytes())
         }
         TypedArrayKind::Float32 => bytes[..4].copy_from_slice(&(value as f32).to_le_bytes()),
         TypedArrayKind::Float64 => bytes[..8].copy_from_slice(&value.to_le_bytes()),
