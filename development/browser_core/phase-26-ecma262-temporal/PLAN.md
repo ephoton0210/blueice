@@ -32,7 +32,35 @@ covers) and `Now` to 138/138 (100%); combined `Temporal/` is now
 4,406/13,272, +10 over the 4,396 baseline above with zero regressions,
 diffed per path+mode against a freshly-built pristine pre-change worktree at
 the same commit. See Track C's and Track E's own bullets below for the
-detail.** It exists because completing Phase 25 (ECMA-402) surfaced a real
+detail.** **A third, concurrent gap-closure pass (2026-09-18) landed in the
+same round**: `Temporal.PlainTime.prototype.toLocaleString` (previously
+aliased to `toJSON`) now goes through the same `Intl.DateTimeFormat` bridge
+every other Temporal `toLocaleString` uses, closing all 22 of its remaining
+fixtures, and a related `Intl.DateTimeFormat` `hourCycle: "h24"` rendering
+bug (midnight rendered as `"00"` instead of `"24"`, a pre-existing
+`blueice-ecma402` bug unrelated to Temporal — see
+[Phase 25's `CONFORMANCE.md`](../phase-25-ecma402-internationalization/CONFORMANCE.md))
+was fixed alongside it, closing `Instant`'s own 2 remaining
+`toLocaleString/hourcycle.js` modes. **All three of these concurrent,
+worktree-isolated gap-closure passes — the `Instant`/`Now` timezone-wiring
+pass above, this `PlainTime`/`hourCycle` pass, and a fourth foundation
+test-hardening + `calendar.rs` year-range fix (below) — merged into one tree
+with zero textual conflicts** (each touched disjoint regions of the shared
+`vm/temporal.rs`/`PLAN.md` files), verified afterward with a full
+`cargo build --workspace --all-targets` / `cargo clippy --workspace
+--all-targets -- -D warnings` / `cargo test --workspace` pass (clean except
+the same 2 pre-existing, Temporal-unrelated `descriptors.rs`/
+`string_protocols.rs` failures every one of these passes independently
+confirmed pre-existing on `ba16c16`) and a fresh Test262 run on the merged
+tree: **`Instant` 968/968 (100%), `Now` 138/138 (100%), `PlainTime` 1,010/1,010
+(100%)** — Stage 1's `Instant`/`Now`/`PlainTime`/`TimeZone` tracks are now
+Test262-complete. Combined `Temporal/` is **4,492/13,272 (33.85%)**, +96 over
+the 4,396 baseline, zero regressions (per-type diff, not just the total).
+`Duration` remains at 870/1,122 (77.4%) — every one of its 252 remaining
+failures was individually checked against the pinned corpus and needs
+calendar-aware `relativeTo`/year-month-week arithmetic, i.e. is structurally
+blocked on Stage 2's `PlainDate`, not further closeable within Stage 1's own
+scope. It exists because completing Phase 25 (ECMA-402) surfaced a real
 gap in `intl402/`'s
 `Temporal/` subtree. **Correction (2026-09-17, same day):** the plan's first
 version only measured `intl402/Temporal/` (4,058 modes, 6.55% pass) — see
