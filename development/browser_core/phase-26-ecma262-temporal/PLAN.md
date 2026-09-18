@@ -4,9 +4,13 @@
 
 **Status**: Design, Stage 0 done. Stage 1 (Tracks B/C/D/E) is done and closed
 to its practical limit. Stage 2's first slice (`PlainDate`/`PlainDateTime`)
-is done. Chronological closure record, each step's Test262 delta measured on
-the pinned corpus (`python3 backend/bluejs/test262/run.py --filter
-"Temporal/" --jobs 8`), diffed per path+mode against the step before it:
+is done. Track B's own `relativeTo`-dependent Duration follow-up (the
+stable-today subset — `PlainDate`/`PlainDateTime`/fixed-offset-or-UTC-
+`ZonedDateTime` anchors, not `PlainYearMonth`/`PlainMonthDay`/named-zone
+anchors) is done. Chronological closure record, each step's Test262 delta
+measured on the pinned corpus (`python3 backend/bluejs/test262/run.py
+--filter "Temporal/" --jobs 8`), diffed per path+mode against the step
+before it:
 
 - **Stage 0 (shared foundation) — done 2026-09-18.** Includes a same-day
   exhaustive ISO 8601 grammar audit (11 real bugs; see its own bullet below)
@@ -80,6 +84,19 @@ the pinned corpus (`python3 backend/bluejs/test262/run.py --filter
     regressions anywhere else in `Temporal/` on the same full-tree run.
   - `plain_year_month.rs`/`plain_month_day.rs` and `zoned_date_time.rs`
     remain open, in that order, per Stage 2's own stated sequencing.
+- **Track B's own `relativeTo`-dependent Duration follow-up — closed
+  2026-09-18** (single owner, sequential, worktree-isolated from the
+  concurrent `PlainDate` bugfix and `plain_year_month.rs`/
+  `plain_month_day.rs` work; see Track B's own entry below for the full
+  account, including four real bugs found and fixed and the specific,
+  still-open `PlainYearMonth`/`PlainMonthDay`/named-zone-`ZonedDateTime`
+  boundary). `Duration`: 870→1,028/1,122 (91.6%). `PlainDate`/
+  `PlainDateTime` each also moved +32 (1,886→1,918/2,290 and
+  2,056→2,088/2,512) as a side effect of one shared-function bug fix
+  (`temporal_calendar_identifier` wrongly `ToString`-coerced a wrong-type
+  `calendar` value instead of throwing `TypeError`). Whole-tree `Temporal/`:
+  **7,832/13,272 (59.0%)**, zero regressions anywhere else in `Temporal/` on
+  the same full-tree run.
 
 This phase exists because completing Phase 25 (ECMA-402) surfaced a real gap
 in `intl402/`'s
@@ -644,9 +661,10 @@ isn't an assumption:
   and `toLocaleString` is ECMA-402's `Intl.DurationFormat` path, not the ISO
   string `toString` returns.
 
-  **Deferred to Stage 2, precisely.** Everything below throws a `RangeError`
-  (or, where the specification's own conversion would, a `TypeError`) instead
-  of returning an approximate answer:
+  **Deferred to Stage 2, precisely, at the time this bullet was first
+  written.** Everything below threw a `RangeError` (or, where the
+  specification's own conversion would, a `TypeError`) instead of returning
+  an approximate answer:
   - Any `add`/`subtract`/`round`/`total`/`compare` where the receiver, the
     argument, or a requested `largestUnit`/`smallestUnit`/`unit` involves
     `year`, `month` or `week`. Without `relativeTo` the specification throws
@@ -670,6 +688,179 @@ isn't an assumption:
     rest. That is the whole of the remaining 254 failing modes apart from
     `round/case-where-relativeto-affects-rounding-mode-half-even.js` and
     `round/next-day-out-of-range.js`, which are calendar-anchored too.
+
+  **`relativeTo`-dependent arithmetic, the stable-today subset — closed
+  2026-09-18** (single owner, sequential follow-up to the slice above, in a
+  worktree isolated from the concurrent `PlainDate`-bugfix and
+  `plain_year_month.rs`/`plain_month_day.rs` work this same document tracks
+  elsewhere). `Temporal/Duration/`: **870/1,122 (77.5%) → 1,028/1,122
+  (91.6%)**, +158 modes, zero regressions anywhere else in `Temporal/`
+  (whole-tree `Temporal/` 7,576/13,272 → 7,832/13,272 on the same full-tree
+  run, with `PlainDate`/`PlainDateTime` themselves picking up a further +32
+  each as a side effect of one shared-function bug fix — see below).
+  Reproduce with `python3 backend/bluejs/test262/run.py --corpus
+  /tmp/blueice-test262-72faf8ec --filter "Temporal/Duration/" --jobs 8`.
+
+  - **What now resolves for real**, via a new `temporal_duration_relative_to`
+    (`vm/temporal.rs`) returning an actual `(AnyCalendarKind, CivilDate)`
+    anchor instead of the old bare `bool`: a `Temporal.PlainDate`/
+    `PlainDateTime` object (the time-of-day is read/validated where present
+    but never consulted, matching `total/relativeto-plaindatetime.js`'s own
+    "identical to the PlainDate made from just its date fields" check); a
+    `Temporal.ZonedDateTime` object in `UTC` or a fixed offset; a date-only
+    ISO string; a **zoned ISO string** whose time-zone annotation (or bare
+    `Z`) is `UTC`/a fixed offset (`relativeto-string.js`'s
+    `"2000-01-01[UTC]"`/`"...Z[-07:00]"`/etc. cases — a bracket-annotated `Z`
+    is *not* forced to mean "offset zero" for the offset-vs-annotation
+    consistency check, since `Z` alone carries no numeric offset;
+    `relativeto-sub-minute-offset.js`'s consistency check is real, comparing
+    the string's own explicit offset against the resolved zone's); and a
+    **property bag** (`{ year, month, day, ..., calendar? }`, or the same
+    plus `timeZone`/`offset` for a `UTC`/fixed-offset zoned bag — resolved
+    through the existing `temporal_plain_date_from_fields`, so it shares
+    `PlainDate.from`'s own field semantics exactly). A bare `Z` with **no**
+    bracket annotation is a `RangeError` (`relativeto-string-invalid.js`):
+    it names no real zone and can't resolve to a wall-clock type either.
+  - **Real calendar-aware `round`/`total`/`compare`**, using only the
+    already-merged, already-stable `plain_date::{calendar_add_date,
+    calendar_difference_date}` (no changes to `plain_date.rs` itself, per
+    this pass's own file-scope boundary — see "Deliberately not touched"
+    below): `round` gained `temporal_duration_round_calendar_exact`
+    (day/week/month/year granularity, sharing one `temporal_duration_
+    intermediate` helper with `total`/`compare` for the sub-day-granularity
+    and comparison cases); `total` gained `temporal_duration_total_relative`
+    (day/week as one exact integer-ratio division via
+    `rounding::exact_ratio_to_f64`, never an intermediate float — see the
+    bug below — and month/year via the same anchor-relative bracketing
+    `plain_date::round_month_or_year` uses, reimplemented locally as a
+    continuous fraction rather than rounded to an increment, since that
+    function is private to `plain_date.rs`); `compare` resolves both
+    operands against the *same* anchor and compares their exact `(whole
+    days, sub-day nanoseconds)` pairs lexicographically.
+  - **Real bugs found and fixed, each pinned to the Test262 fixture that
+    caught it** (all in `vm/temporal.rs`, none in `plain_date.rs`/
+    `calendar.rs`/`rounding.rs`/`duration_math.rs`):
+    1. A calendar-aware `round` that pre-folded the time-of-day into a
+       (possibly truncated) whole-day count *before* rounding, so a
+       duration whose only remaining content below `largestUnit` was a
+       sub-day remainder lost exactly the precision `ceil`/`floor`/
+       `halfEven`/etc. need to decide whether to round up
+       (`round/roundingmode-{ceil,floor,expand,trunc,half*}.js`, all ten
+       modes). Fixed by carrying the exact nanosecond remainder all the way
+       through the rounding decision instead (`temporal_duration_round_
+       calendar_exact`'s day/week branch rounds one exact integer via
+       `rounding::round_to_increment`, never a pre-truncated day count).
+    2. `round_calendar_duration`'s own `Week` branch (already-merged,
+       unmodified here) places its rounded value in the `weeks` output
+       field only when `largestUnit` is itself `"weeks"`, folding it into
+       `days` (always a multiple of 7) otherwise — but Temporal's actual
+       rule is that `weeks` appears whenever `smallestUnit` is `"weeks"`,
+       regardless of `largestUnit` (`{ largestUnit: "years", smallestUnit:
+       "weeks" }` on a multi-year duration still reports a real `weeks`
+       field, never a three-digit `days`). `round/roundingmode-ceil.js`'s
+       own `weeks` case and `round/balances-up-to-weeks.js` are what catch
+       this. Corrected locally in `temporal_duration_round_calendar_exact`
+       rather than in the shared, already-merged function — flagged below
+       for `temporal_date_difference` (`PlainDate`/`PlainDateTime.prototype.
+       since`/`until`), which calls the unmodified original directly and
+       likely has the identical gap for the same option combination.
+    3. `temporal_calendar_identifier` (`ToTemporalCalendarIdentifier`,
+       shared by every property-bag `calendar` field and `withCalendar`)
+       coerced *any* value via `ToString` before checking it, so `{
+       calendar: null }`/`true`/a Number/a BigInt/a Symbol resolved (via
+       stringification) to a `RangeError` instead of the spec's `TypeError`
+       for a non-`String`, non-Temporal-object value
+       (`round/relativeto-propertybag-calendar-wrong-type.js`). This is a
+       shared function with three *other* call sites having nothing to do
+       with `relativeTo`, and all three were independently already broken
+       on the pinned corpus before this fix: `PlainDate/calendar-wrong-
+       type.js`, `PlainDate/from/argument-propertybag-calendar-wrong-
+       type.js`, `PlainDate/prototype/withCalendar/calendar-wrong-type.js`
+       (confirmed failing on the unmodified tree, not a regression risk).
+       Fixing it is what moved `PlainDate`/`PlainDateTime` by +32 modes
+       each as a side effect of this pass, on top of the `Duration` numbers
+       above.
+    4. `total`'s day/week granularity computed the exact total as `(whole
+       days as f64) + (fraction as f64)` then divided by 7 for weeks — two
+       chained float operations where the spec's `TotalTimeDuration` does
+       one correctly-rounded division of an exact ratio. Bit-identical for
+       every other unit, but `total/relativeto-total-of-each-unit.js`'s own
+       `weeks` case drifted by one ULP. Fixed by computing the exact
+       numerator in `i128` nanoseconds and calling
+       `rounding::exact_ratio_to_f64` once, matching every other unit's own
+       shape.
+  - **Deliberately still out of scope, verified still spec-correct to
+    reject** (a Test262 fixture confirms each, not just "left alone"):
+    - `relativeTo` naming a `Temporal.PlainYearMonth`/`PlainMonthDay`
+      object is a `TypeError` (`relativeto-wrong-type.js` — those two types
+      simply aren't in `ToRelativeTemporalObject`'s accepted-object list).
+      No dependency on this phase's own still-open `plain_year_month.rs`/
+      `plain_month_day.rs` deliverable exists here; closing that phase item
+      does not, by itself, change this boundary.
+    - `relativeTo` naming a `Temporal.ZonedDateTime` in a **named IANA
+      zone** (object or string annotation) is a `RangeError`
+      (`intl402/.../twenty-five-hour-day.js`, `dst-*`/`relativeto-dst-*`):
+      a real day can be 23–25 hours long there, which needs
+      `zoned_date_time.rs`'s own (not yet built) transition-data
+      resolution — this pass's `temporal_duration_fixed_zone_offset` helper
+      is exactly the gate that keeps it a hard `RangeError` rather than a
+      silent 24-hour approximation.
+    - `round/case-where-relativeto-affects-rounding-mode-half-even.js` and
+      `round/next-day-out-of-range.js` (the latter's own `esid` names
+      `Temporal.ZonedDateTime.prototype.hoursInDay` directly) both need a
+      real `hoursInDay` concept even for a duration with **no** calendar
+      units at all in its own fields, whenever the anchor specifically is a
+      `ZonedDateTime` (a `PlainDate`/no-anchor answer is provably
+      different) — structurally the same `zoned_date_time.rs` dependency
+      as the point above, not something a Duration-side fix can close on
+      its own.
+    - `order-of-operations.js` (round/total/compare) and a related cluster
+      (`relativeto-infinity-throws-rangeerror.js`,
+      `relativeto-*-large-time-component-out-of-range.js`) all trace to one
+      real, narrower gap this pass did *not* close: `GetTemporalRelativeToOption`'s
+      real algorithm reads and validates a plain (non-`timeZone`) property
+      bag's `hour`/`minute`/`second`/`millisecond`/`microsecond`/
+      `nanosecond`/`offset` fields too — in strict alphabetical order
+      alongside `calendar`/`day`/`month`/`monthCode`/`year` — even though
+      their *values* are discarded once a `PlainDate` (not a
+      `ZonedDateTime`) is what gets built; `temporal_duration_relative_to_
+      property_bag` here only reads the fields `temporal_plain_date_from_
+      fields` itself needs, skipping that read-but-discard step, so a
+      bag like `{ ...validDateFields, hour: Infinity }` (which should throw)
+      currently doesn't, and the exact read order the `order-of-operations.js`
+      fixtures assert differs from what real property-bag consumers
+      observe. Left open rather than partially patched, since getting the
+      exact interleave right needs its own dedicated pass, not a corner cut
+      here.
+  - **Shared-file additions, exactly as much as needed** (per this pass's
+    own scope boundary — `calendar.rs`, `duration_math.rs`, `rounding.rs`
+    are allowed narrow additions; `plain_date.rs` is not touched at all):
+    none were needed. Every new algorithm above is implemented directly in
+    `vm/temporal.rs` against the already-`pub(crate)` `plain_date::
+    {calendar_add_date, calendar_difference_date, compare_iso_date,
+    iso_date_to_epoch_days, DateUnit}` and `rounding::{round_to_increment,
+    exact_ratio_to_f64}` surfaces, which were already sufficient. One
+    small, now-dead foundation function was removed rather than
+    `#[allow(dead_code)]`-suppressed, per this codebase's own standing
+    "zero precedent for landing dead code" convention: `iso.rs`'s
+    `parse_offset_seconds` had exactly one caller, the old boolean-only
+    `temporal_duration_relative_to`'s `ZonedDateTime` fixed-offset check,
+    which this pass's rewrite replaced with the already-existing, more
+    precise `time_zone::parse_identifier`.
+  - **Test coverage**: a new regression test,
+    `temporal_duration_relative_to_resolves_calendar_aware_arithmetic`
+    (`backend/bluejs/tests/intl.rs`), covers every accepted anchor shape and
+    the real calendar-aware `round`/`total`/`compare` results above, each
+    value taken from a real Test262 fixture. The pre-existing
+    `relative_to_is_accepted_only_where_it_cannot_change_the_answer`
+    (`backend/bluejs/tests/temporal_duration.rs`, dating to this same
+    track's original Stage-1 slice) asserted the *old* deferred-and-rejected
+    boundary for three cases that are real answers now (a `years`-bearing
+    duration totalled in days relative to a `PlainDate`, a one-day duration
+    totalled in months, and a property-bag `relativeTo`) — updated in place
+    to assert the actual computed values instead of a thrown error, per this
+    project's own test-review-pass policy, with the file's own module-level
+    doc comment updated to match.
 - **Track C — Instant + Now.** Evidence: epoch nanoseconds are
   calendar-agnostic by construction; Gecko's `Instant.cpp` has no calendar
   dependency. (**Final numbers, second gap-closure pass, 2026-09-18: `Instant`

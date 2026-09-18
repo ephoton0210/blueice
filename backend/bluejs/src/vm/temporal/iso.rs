@@ -361,20 +361,6 @@ pub(crate) fn parse_date(source: &str) -> Option<(i32, u8, u8)> {
     rest.is_empty().then_some(date)
 }
 
-/// Parses the UTC offset (or `Z`/`z` designator) found within `source` into
-/// signed whole seconds, dropping any sub-second fraction: no real zone
-/// offset has sub-second precision, and `Temporal.PlainTime` ignores the
-/// offset entirely — it is parsed only so a malformed one is still a syntax
-/// error.
-pub(crate) fn parse_offset_seconds(source: &str) -> Option<i32> {
-    let index = source.find(['Z', 'z', '+', '-', '['])?;
-    let (offset, rest) = parse_utc_offset_prefix(&source[index..])?;
-    if !(rest.is_empty() || rest.starts_with('[')) {
-        return None;
-    }
-    i32::try_from(offset.nanoseconds / 1_000_000_000).ok()
-}
-
 /// The annotation suffix of an ISO date/time/offset string: an optional
 /// leading time-zone annotation followed by zero or more `[key=value]`
 /// annotations.
@@ -1713,36 +1699,6 @@ mod tests {
         ] {
             assert_eq!(parse_instant(source), None, "{source:?}");
         }
-    }
-
-    /// [`parse_offset_seconds`] has no other direct test: every other test
-    /// in this module reaches its shared grammar through a different public
-    /// entry point ([`parse_date_time`]/[`parse_instant`]/etc.), never this
-    /// one directly. It backs `temporal.rs`'s check of whether a
-    /// `Temporal.ZonedDateTime`'s stored `[[TimeZone]]` slot is a fixed
-    /// offset -- called there only on an already-resolved bare identifier
-    /// (`TimeZone::identifier()`'s own `±HH:MM`/`"UTC"` spelling), never a
-    /// full date-time string, which matters here: `source.find([..])`
-    /// searches the *whole* input for its first `Z`/`z`/`+`/`-`/`[`, so a
-    /// full date-time string's own `-` date separators would be found
-    /// first -- these cases stick to the identifier-shaped inputs the
-    /// function is actually called with.
-    #[test]
-    fn parse_offset_seconds_resolves_the_designator_or_a_numeric_offset() {
-        assert_eq!(parse_offset_seconds("Z"), Some(0));
-        assert_eq!(parse_offset_seconds("+05:30"), Some(19_800));
-        assert_eq!(parse_offset_seconds("-05:30"), Some(-19_800));
-        // A trailing annotation bracket after the offset/designator is fine
-        // (its own contents are never inspected here)...
-        assert_eq!(parse_offset_seconds("Z[UTC]"), Some(0));
-        assert_eq!(parse_offset_seconds("+05:30[Asia/Kolkata]"), Some(19_800));
-        // ...but any other trailing text is not.
-        assert_eq!(parse_offset_seconds("Zjunk"), None);
-        assert_eq!(parse_offset_seconds("+05:30extra"), None);
-        // No `Z`/`z`/`+`/`-`/`[` anywhere in the source at all is not a time
-        // zone designator or offset in the first place.
-        assert_eq!(parse_offset_seconds("UTC"), None);
-        assert_eq!(parse_offset_seconds(""), None);
     }
 
     /// [`parse_annotation_suffix`]'s `key.is_empty() || value.is_empty()`
