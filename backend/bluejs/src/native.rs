@@ -176,6 +176,12 @@ pub(crate) enum NativeFunction {
     TemporalPlainTimeToString,
     TemporalPlainTimeToJson,
     TemporalPlainTimeValueOf,
+    TemporalNowInstant,
+    TemporalNowTimeZoneId,
+    TemporalNowPlainDateIso,
+    TemporalNowPlainDateTimeIso,
+    TemporalNowPlainTimeIso,
+    TemporalNowZonedDateTimeIso,
     ArrayBuffer,
     ArrayBufferByteLength,
     ArrayBufferMaxByteLength,
@@ -669,6 +675,7 @@ pub(crate) enum TemporalGetter {
     Millisecond,
     Microsecond,
     Nanosecond,
+    TimeZoneId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

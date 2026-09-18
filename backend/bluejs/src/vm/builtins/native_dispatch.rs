@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::heap::TemporalKind;
 use num_traits::FromPrimitive;
 
 fn days_from_civil(year: i128, month: i128, day: i128) -> i128 {
@@ -1066,6 +1067,18 @@ impl Vm {
                 self.temporal_plain_time_to_string(&receiver, &Value::Undefined)
             }
             NativeFunction::TemporalPlainTimeValueOf => self.temporal_plain_time_value_of(),
+            NativeFunction::TemporalNowInstant => self.temporal_now_instant(),
+            NativeFunction::TemporalNowTimeZoneId => self.temporal_now_time_zone_id(),
+            NativeFunction::TemporalNowPlainDateIso => {
+                self.temporal_now_plain(TemporalKind::PlainDate, first)
+            }
+            NativeFunction::TemporalNowPlainDateTimeIso => {
+                self.temporal_now_plain(TemporalKind::PlainDateTime, first)
+            }
+            NativeFunction::TemporalNowPlainTimeIso => {
+                self.temporal_now_plain(TemporalKind::PlainTime, first)
+            }
+            NativeFunction::TemporalNowZonedDateTimeIso => self.temporal_now_zoned_date_time(first),
             NativeFunction::ListFormatSupportedLocales => self.list_format_supported_locales(&args),
             NativeFunction::ListFormatFormat => self.list_format_format(&receiver, first),
             NativeFunction::ListFormatFormatToParts => {

@@ -97,6 +97,8 @@ Do not re-derive or duplicate any of this:
 arithmetic/comparison/serialization operation — `add`, `subtract`, `until`,
 `since`, `compare`, `round`, `equals`, `toString`, `toJSON`, `negated`, `abs`,
 `total` — on every type; `Temporal.Now`; `Temporal.TimeZone` as a real object.
+(Since this audit: Stage 1 Track C has closed `Temporal.Instant`'s arithmetic
+and all of `Temporal.Now` — see that track's entry below.)
 Today's slice is read-only construction plus one-way `Intl.DateTimeFormat`
 formatting. This matches the 6.55% Test262 pass rate exactly: the passes that
 already occur are essentially all construction/getter/formatting cases.
@@ -360,10 +362,8 @@ isn't an assumption:
   real pinned Test262 corpus: `Temporal/Instant/` went from 86/968 (8.88%,
   Stage 0's read-only-construction baseline) to **646/968 (66.7%)**.
   Remaining known gaps, not yet closed: `toZonedDateTimeISO` (0/38, not
-  implemented — needs Track E's `TimeZone` first), some `toString`/`round`
-  edge cases, and `Temporal.Now` itself (still entirely unimplemented,
-  0/138 — a real, separate slice from `Instant`'s own arithmetic, despite
-  being grouped in the same track). `duration_math.rs`/`rounding.rs` were
+  implemented — needs Track E's `TimeZone` first) and some `toString`/`round`
+  edge cases. `duration_math.rs`/`rounding.rs` were
   finally landed as real files here (not speculative — Instant's arithmetic
   is their first real caller): `TimeDuration` (exact-nanosecond combinator,
   `round`/`balance_to`), `TimeUnit` + `parse_time_unit`, `round_to_increment`
@@ -374,6 +374,69 @@ isn't an assumption:
   Test262 (`since/roundingmode-ceil.js`) to be a literal signed-difference
   computation with the given mode applied as-is — no `NegateRoundingMode`
   step needed, contrary to an initial assumption.
+  **`Temporal.Now` done 2026-09-18**, this track's own second slice —
+  `Temporal/Now/` goes from 0/138 (0%) to **136/138 (98.55%)** against the
+  pinned corpus (both `built-ins/Temporal/Now/`, 66 files, and the three
+  `intl402/Temporal/Now/` files). All six members are implemented:
+  `instant`, `plainDateISO`, `plainDateTimeISO`, `plainTimeISO`,
+  `zonedDateTimeISO`, `timeZoneId`.
+  - `Temporal.Now` is a plain namespace object installed directly under the
+    `Temporal` object, **not** a ninth `TemporalKind` — it is not a
+    constructor, has no `prototype`, and carries its own
+    `Symbol.toStringTag` of `"Temporal.Now"`. Its methods are ordinary
+    `install_native` functions, so `is_constructor`'s existing whitelist
+    already makes `new Temporal.Now.instant()` a `TypeError` with no extra
+    work.
+  - The wall clock is `Date.now()`'s own `Vm::current_time` `SystemTime`
+    read, deliberately reused rather than duplicated, so the two can never
+    disagree — exactly what `Now/instant/return-value-value.js` checks by
+    bracketing the call between two `Date.now()` reads. Resolution is
+    therefore milliseconds, not nanoseconds; the spec leaves the clock's
+    granularity implementation-defined and explicitly permits coarsening it.
+  - `ToTemporalTimeZoneIdentifier` and the `TimeZoneIdentifier` grammar
+    landed as a new host-neutral `vm/temporal/time_zone_id.rs`, kept
+    deliberately separate from Track E's `time_zone.rs` so the two tracks
+    own disjoint files: minute-precision `±HH`/`±HHMM`/`±HH:MM` offsets,
+    IANA-name syntax, `ParseTemporalTimeZoneString`'s fallback that reads a
+    zone out of a full ISO date-time string (the bracketed annotation wins,
+    then `Z` → `UTC`, then a trailing minute-precision offset; a bare
+    date-time naming no zone is a `RangeError`, and a sub-minute offset is
+    never a valid identifier even though it is valid inside an instant
+    string), and negative-zero extended-year rejection. Named zones are
+    validated and case-normalized against
+    `blueice_ecma402::supported_values_of("timeZone")` — the same pinned
+    `jiff-tzdb` Zone-and-Link registry `Intl.supportedValuesOf` exposes — so
+    Temporal and ECMA-402 can never disagree about which zone names exist.
+    No `ToString` coercion happens on the argument at all: only a
+    `Temporal.ZonedDateTime` is accepted as an object and every other
+    non-string is a `TypeError`, matching the spec's own step order.
+  - The system default zone is `UTC`, matching the default
+    `Intl.DateTimeFormat` already applies when no `timeZone` option is
+    given. The two must agree, since a `Now.zonedDateTimeISO()` value
+    formatted through `toLocaleString()` routes through DateTimeFormat.
+  - **Deferred, and the reason for the 2 remaining failures** (both modes of
+    `intl402/Temporal/Now/plainDateTimeISO/timezone-string-datetime.js`): a
+    *named* IANA zone's UTC offset at a given instant needs the transition
+    history, which is Track E's scope. `zonedDateTimeISO` and `timeZoneId`
+    need only a valid identifier, so they accept named zones and are exactly
+    correct for them; `plainDateISO`/`plainDateTimeISO`/`plainTimeISO`
+    genuinely need an offset, so a named zone other than `UTC` raises a
+    specific `RangeError` there rather than silently reporting a UTC wall
+    clock. That is the deliberate trade — one lost Test262 file instead of a
+    wrong date — and closing it is a one-line change in
+    `time_zone_id::offset_seconds` once Track E lands a
+    `(zone, instant) -> offset` lookup.
+  - Also added, because `Now/zonedDateTimeISO`'s own fixtures require it:
+    the `Temporal.ZonedDateTime.prototype.timeZoneId` getter, which was
+    missing. Independently of `Now` that moved `ZonedDateTime/` from
+    206/2,968 (6.94%) to 228/2,968 (7.68%) and `PlainDateTime/` from
+    312/2,512 to 314/2,512 — measured before/after on the same commit, not
+    inferred. Whole-Temporal total: 2,218 → 2,382 of 13,272 (16.71% →
+    17.95%), with no per-type regression anywhere. Note that the combined
+    table near the top of this document is the 2026-09-17 Stage 0 baseline
+    and is already stale for several rows after Track C's `Instant` slice;
+    the numbers here are the ones measured on this slice's own commit.
+
 - **Track D — PlainTime.** Evidence: time-of-day has no calendar-field
   dependency; Gecko's `PlainTime.cpp` (1,644 lines) is the smallest of the
   calendar-adjacent per-type files. **Done 2026-09-18** — kept inside
