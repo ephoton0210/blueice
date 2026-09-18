@@ -13,6 +13,7 @@ use icu_decimal::{
 use icu_plurals::{
     PluralCategory as IcuPluralCategory, PluralRuleType as IcuPluralRuleType,
     PluralRules as IcuPluralRules, PluralRulesOptions as IcuPluralRulesOptions,
+    PluralRulesWithRanges as IcuPluralRulesWithRanges,
 };
 
 /// The CLDR plural-rule family selected by `Intl.PluralRules`.
@@ -60,6 +61,19 @@ impl From<IcuPluralCategory> for PluralCategory {
             IcuPluralCategory::Few => Self::Few,
             IcuPluralCategory::Many => Self::Many,
             IcuPluralCategory::Other => Self::Other,
+        }
+    }
+}
+
+impl From<PluralCategory> for IcuPluralCategory {
+    fn from(value: PluralCategory) -> Self {
+        match value {
+            PluralCategory::Zero => Self::Zero,
+            PluralCategory::One => Self::One,
+            PluralCategory::Two => Self::Two,
+            PluralCategory::Few => Self::Few,
+            PluralCategory::Many => Self::Many,
+            PluralCategory::Other => Self::Other,
         }
     }
 }
@@ -248,6 +262,7 @@ impl SupplementalPluralRules {
 /// boundary.
 pub struct PluralRules {
     rules: IcuPluralRules,
+    ranges: IcuPluralRulesWithRanges<IcuPluralRules>,
     data_locale: IcuLocale,
     supplemental: Option<SupplementalPluralRules>,
     negotiation: PluralRulesLocaleNegotiation,
@@ -286,8 +301,17 @@ impl PluralRules {
             IcuPluralRulesOptions::from(IcuPluralRuleType::from(options.rule_type)),
         )
         .map_err(|_| PluralRulesError::DataUnavailable)?;
+        let range_preferences = (&data_locale).into();
+        let ranges = match options.rule_type {
+            PluralRuleType::Cardinal => {
+                IcuPluralRulesWithRanges::try_new_cardinal(range_preferences)
+            }
+            PluralRuleType::Ordinal => IcuPluralRulesWithRanges::try_new_ordinal(range_preferences),
+        }
+        .map_err(|_| PluralRulesError::DataUnavailable)?;
         Ok(Self {
             rules,
+            ranges,
             data_locale,
             supplemental: (selected.locale().id.language.as_str() == "gv")
                 .then_some(SupplementalPluralRules::Manx),
@@ -350,6 +374,40 @@ impl PluralRules {
         let exponent = formatter.compact_exponent_for_magnitude(decimal.nonzero_magnitude_start());
         let compact = CompactDecimal::from_significand_and_exponent(decimal, exponent);
         Ok(self.rules.category_for(&compact).into())
+    }
+
+    /// Resolves the plural category for a numeric range from its endpoints'
+    /// own selected categories, using this service's locale-negotiated CLDR
+    /// `pluralRanges` table.
+    ///
+    /// A locale without explicit range data falls back to the end category,
+    /// matching CLDR's documented default.
+    pub fn select_range(&self, start: PluralCategory, end: PluralCategory) -> PluralCategory {
+        self.ranges.resolve_range(start.into(), end.into()).into()
+    }
+
+    /// Selects a plural category for a range between two finite base-10
+    /// decimal strings.
+    pub fn select_range_decimal(
+        &self,
+        start: &str,
+        end: &str,
+    ) -> Result<PluralCategory, PluralRulesError> {
+        let start = self.select_decimal(start)?;
+        let end = self.select_decimal(end)?;
+        Ok(self.select_range(start, end))
+    }
+
+    /// Selects a plural category for a range between two finite IEEE-754
+    /// numbers.
+    pub fn select_range_f64(
+        &self,
+        start: f64,
+        end: f64,
+    ) -> Result<PluralCategory, PluralRulesError> {
+        let start = self.select_f64(start)?;
+        let end = self.select_f64(end)?;
+        Ok(self.select_range(start, end))
     }
 
     /// Returns the data selected during construction.

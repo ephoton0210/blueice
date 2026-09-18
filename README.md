@@ -28,6 +28,18 @@ Test262 does not provide an official "Core" switch, so the reports use explicit 
 
 The macOS and Linux remediation runs each have zero `timeout` and zero `harness_error` records. Their remaining 21,120 records are semantic failures, not suppressed timeout outcomes. Windows retains its older four-vCPU baseline until its separately deferred validation is resumed. These are conformance progress measurements, not a claim of full ECMAScript conformance. See the independent [macOS report](development/browser_core/phase-13-bluejs-engine/TEST262_MACOS_REPORT.md), [Linux report](development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md), and [Windows report](development/browser_core/phase-13-bluejs-engine/TEST262_WINDOWS_REPORT.md).
 
+### ECMA-402 breakdown and Temporal
+
+The ECMA-402 column above (`intl402/`) is not evenly distributed: every service other than the `Temporal/` subtree is at 100%; `Temporal/` alone (4,058 of the 6,714 `intl402/` modes) is what drags the aggregate down to ~43%. `Temporal/` is ECMA-262 (a core language built-in, like `Date`), not an ECMA-402 service, and is scoped as its own effort — [Phase 26](development/browser_core/phase-26-ecma262-temporal/PLAN.md) — separate from ECMA-402's [Phase 25](development/browser_core/phase-25-ecma402-internationalization/PLAN.md). Test262 also has a larger, separate `built-ins/Temporal/` tree (9,210 modes) that is correctly excluded from the `intl402/`-scoped column above but is Temporal's actual primary test surface.
+
+| Platform | `intl402/` non-`Temporal` (11 services) | `intl402/Temporal/` | Combined Temporal (`built-ins/` + `intl402/`) |
+| --- | ---: | ---: | ---: |
+| macOS 26.6.2 (arm64) | pending — not yet run | pending — not yet run | pending — not yet run |
+| Ubuntu 24.04.4 LTS (x86_64) | 2,656 / 2,656 (100%) | 266 / 4,058 (6.55%) | 1,592 / 13,268 (12.00%) |
+| Windows 11 24H2 (x86_64 VM) | pending — not yet run | pending — not yet run | pending — not yet run |
+
+The Linux row is a filtered rerun on this development environment's own working tree, not the pinned unfiltered `fccb017` run the main matrix above reports (see the caveat in the Linux report linked below); macOS and Windows cells are left as pending rather than guessed or backfilled from the Linux numbers, and should be filled in from a real run on each platform. The full per-service and per-Temporal-type breakdown, with exact reproduction commands, is in the [Linux report](development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md#ecma-402-and-temporal-breakdown-this-linuxwsl-environment-2026-09-17).
+
 Design and planning documents live under [`development/`](development/); it is not source code. Each subdirectory covers one major component of the project, following the same design-first workflow: a plan is drafted before implementation starts, and updated as the design evolves.
 
 - **[`development/browser_core/`](development/browser_core/)** — the browser engine itself. See [`BROWSER_CORE_PLAN.md`](development/browser_core/BROWSER_CORE_PLAN.md) for the current plan, open design decisions, and progress tracking.

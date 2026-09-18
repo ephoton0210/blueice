@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::heap::TemporalKind;
 use num_traits::FromPrimitive;
 
 fn days_from_civil(year: i128, month: i128, day: i128) -> i128 {
@@ -985,15 +986,133 @@ impl Vm {
             NativeFunction::TemporalConstructor(kind) => {
                 self.temporal_constructor(kind, &args, construct)
             }
-            NativeFunction::TemporalFrom(kind) => self.temporal_from(kind, first),
+            NativeFunction::TemporalFrom(kind) => {
+                self.temporal_from(kind, first, native::argument(&args, 1))
+            }
             NativeFunction::TemporalWithCalendar => self.temporal_with_calendar(&receiver, first),
             NativeFunction::TemporalPlainToZonedDateTime => {
-                self.temporal_plain_to_zoned_date_time(&receiver, first)
+                self.temporal_plain_to_zoned_date_time(&receiver, first, native::argument(&args, 1))
+            }
+            NativeFunction::TemporalInstantToZonedDateTimeIso => {
+                self.temporal_instant_to_zoned_date_time_iso(&receiver, first)
             }
             NativeFunction::TemporalGetter(getter) => self.temporal_getter(&receiver, getter),
             NativeFunction::TemporalZonedDateTimeToLocaleString => {
                 self.temporal_zoned_date_time_to_locale_string(&receiver, &args)
             }
+            NativeFunction::TemporalInstantAdd => {
+                self.temporal_instant_add(&receiver, first, false)
+            }
+            NativeFunction::TemporalInstantSubtract => {
+                self.temporal_instant_add(&receiver, first, true)
+            }
+            NativeFunction::TemporalInstantRound => self.temporal_instant_round(&receiver, first),
+            NativeFunction::TemporalInstantUntil => self.temporal_instant_difference(
+                &receiver,
+                first,
+                native::argument(&args, 1),
+                false,
+            ),
+            NativeFunction::TemporalInstantSince => {
+                self.temporal_instant_difference(&receiver, first, native::argument(&args, 1), true)
+            }
+            NativeFunction::TemporalInstantEquals => self.temporal_instant_equals(&receiver, first),
+            NativeFunction::TemporalInstantCompare => {
+                self.temporal_instant_compare(first, native::argument(&args, 1))
+            }
+            NativeFunction::TemporalInstantToString => {
+                self.temporal_instant_to_string(&receiver, first)
+            }
+            NativeFunction::TemporalInstantToLocaleString => {
+                self.temporal_instant_to_locale_string(&receiver, &args)
+            }
+            NativeFunction::TemporalInstantToJson => {
+                self.temporal_instant_to_string(&receiver, &Value::Undefined)
+            }
+            NativeFunction::TemporalInstantValueOf => self.temporal_instant_value_of(),
+            NativeFunction::TemporalFromEpochMilliseconds => {
+                self.temporal_from_epoch_milliseconds(first)
+            }
+            NativeFunction::TemporalFromEpochNanoseconds => {
+                self.temporal_from_epoch_nanoseconds(first)
+            }
+            NativeFunction::TemporalPlainTimeAdd => {
+                self.temporal_plain_time_add(&receiver, first, false)
+            }
+            NativeFunction::TemporalPlainTimeSubtract => {
+                self.temporal_plain_time_add(&receiver, first, true)
+            }
+            NativeFunction::TemporalPlainTimeRound => {
+                self.temporal_plain_time_round(&receiver, first)
+            }
+            NativeFunction::TemporalPlainTimeUntil => self.temporal_plain_time_difference(
+                &receiver,
+                first,
+                native::argument(&args, 1),
+                false,
+            ),
+            NativeFunction::TemporalPlainTimeSince => self.temporal_plain_time_difference(
+                &receiver,
+                first,
+                native::argument(&args, 1),
+                true,
+            ),
+            NativeFunction::TemporalPlainTimeEquals => {
+                self.temporal_plain_time_equals(&receiver, first)
+            }
+            NativeFunction::TemporalPlainTimeCompare => {
+                self.temporal_plain_time_compare(first, native::argument(&args, 1))
+            }
+            NativeFunction::TemporalPlainTimeWith => {
+                self.temporal_plain_time_with(&receiver, first, native::argument(&args, 1))
+            }
+            NativeFunction::TemporalPlainTimeToString => {
+                self.temporal_plain_time_to_string(&receiver, first)
+            }
+            NativeFunction::TemporalPlainTimeToJson => {
+                self.temporal_plain_time_to_string(&receiver, &Value::Undefined)
+            }
+            NativeFunction::TemporalPlainTimeValueOf => self.temporal_plain_time_value_of(),
+            NativeFunction::TemporalNowInstant => self.temporal_now_instant(),
+            NativeFunction::TemporalNowTimeZoneId => self.temporal_now_time_zone_id(),
+            NativeFunction::TemporalNowPlainDateIso => {
+                self.temporal_now_plain(TemporalKind::PlainDate, first)
+            }
+            NativeFunction::TemporalNowPlainDateTimeIso => {
+                self.temporal_now_plain(TemporalKind::PlainDateTime, first)
+            }
+            NativeFunction::TemporalNowPlainTimeIso => {
+                self.temporal_now_plain(TemporalKind::PlainTime, first)
+            }
+            NativeFunction::TemporalNowZonedDateTimeIso => self.temporal_now_zoned_date_time(first),
+            NativeFunction::TemporalDurationWith => self.temporal_duration_with(&receiver, first),
+            NativeFunction::TemporalDurationNegated => {
+                self.temporal_duration_negated(&receiver, false)
+            }
+            NativeFunction::TemporalDurationAbs => self.temporal_duration_negated(&receiver, true),
+            NativeFunction::TemporalDurationAdd => {
+                self.temporal_duration_add(&receiver, first, false)
+            }
+            NativeFunction::TemporalDurationSubtract => {
+                self.temporal_duration_add(&receiver, first, true)
+            }
+            NativeFunction::TemporalDurationRound => self.temporal_duration_round(&receiver, first),
+            NativeFunction::TemporalDurationTotal => self.temporal_duration_total(&receiver, first),
+            NativeFunction::TemporalDurationCompare => self.temporal_duration_compare(
+                first,
+                native::argument(&args, 1),
+                native::argument(&args, 2),
+            ),
+            NativeFunction::TemporalDurationToString => {
+                self.temporal_duration_to_string(&receiver, first)
+            }
+            NativeFunction::TemporalDurationToJson => {
+                self.temporal_duration_to_string(&receiver, &Value::Undefined)
+            }
+            NativeFunction::TemporalDurationToLocaleString => {
+                self.temporal_duration_to_locale_string(&receiver, &args)
+            }
+            NativeFunction::TemporalDurationValueOf => self.temporal_duration_value_of(),
             NativeFunction::ListFormatSupportedLocales => self.list_format_supported_locales(&args),
             NativeFunction::ListFormatFormat => self.list_format_format(&receiver, first),
             NativeFunction::ListFormatFormatToParts => {

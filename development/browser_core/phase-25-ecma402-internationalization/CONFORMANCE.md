@@ -77,15 +77,40 @@ Phase 25 can be called complete only when all of the following are true:
    is **not** a substitute for points 1–3 or branch/specification coverage.
 
 The current standalone no-exclusion host-crate measurement on 2026-09-17 is
-**9,085 / 10,058 lines (90.33%)**, 887 / 937 functions (94.66%) and 89.51%
+**9,657 / 10,237 lines (94.33%)**, 897 / 942 functions (95.22%) and 91.90%
 regions, from `cargo llvm-cov -p blueice-ecma402 --fail-under-lines 100
---summary-only`. The raw command exits 1, as it must: the full pinned-provider
-migration adds real decoder, fallback, and formatting branches that now belong
-to the measured surface. The report has 973 uncovered denominator lines
-(including six instrumented Rust-std thread-local lines), so this is no longer
-the former 14-line mapping discrepancy. It must be improved with public-boundary
-tests rather than rounded up or hidden by an exclusion; the service inventory
-below is also incomplete.
+--summary-only`. The raw command still exits 1, as it must until the gate
+genuinely passes. The two largest remaining files by missed-line count are
+`date_time_format.rs` (243 of 1,820 lines missed, 86.65%) and
+`number_format.rs` (125 of 1,751 lines missed, 92.86%); together they account
+for roughly two-thirds of the crate's entire coverage gap. Every other source
+file is at or above 90%, and `collator.rs` and `locale_data/range_patterns.rs`
+are already at 100%. It must be improved with public-boundary tests rather
+than rounded up or hidden by an exclusion; the service inventory below is also
+incomplete. See [`TODO.md`](TODO.md) for the current ranked worklist.
+
+**This line-coverage number is not a Test262 pass rate and the two must not be
+quoted interchangeably.** It measures what fraction of `blueice-ecma402`'s own
+Rust source lines execute during the crate's own test suite — a measure of how
+thoroughly the *already-written* implementation is exercised, independent of
+how much of the ECMA-402 specification that implementation actually covers.
+[`development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md`](../phase-13-bluejs-engine/TEST262_LINUX_REPORT.md)
+reports a separate, unrelated number: the unfiltered upstream Test262
+`intl402/` pass rate through BlueJS end-to-end, **43.372% (2,912 / 6,714
+modes)** on that report's pinned revision (a rerun below measures 2,922/6,714,
+43.52% — the small difference is run-to-run timeout-classification variance
+on `Temporal/` modes, not a regression). That figure is dominated by the
+4,058 `intl402/Temporal/` modes (over 60% of the full `intl402/` corpus),
+which fail almost entirely because ECMA-262 Temporal itself does not exist
+yet in BlueJS — a separate phase's blocker, not an ECMA-402 host-crate gap.
+The full per-service breakdown of this denominator is in "Reproducible
+current inventory" below. The filtered, non-Temporal Test262 run this
+document already tracks (2,656 / 2,656 passing) is the correct scoped
+conformance figure for what Phase 25 actually claims to support; the
+unfiltered report's ~43% is the honest, unscoped figure across the complete
+current-public `intl402/` corpus, including the parts this phase has not
+attempted. All three numbers are real and simultaneously true; they answer
+different questions.
 
 ## Reproducible current inventory
 
@@ -96,18 +121,77 @@ the GitHub archive SHA-256 and a file manifest SHA-256 in
 It was the current public Test262 `main` revision fetched on 2026-09-14; it is
 not a remembered Edition 12-era corpus.
 
-The full `intl402/` selection contains 6,714 strict/sloppy modes. The
-current non-Temporal execution is reproducible with
-`python backend/bluejs/test262/run.py --filter intl402/ --exclude Temporal
---jobs 1`: on 2026-09-17 it scheduled **2,656 modes from 1,328 files and
-passed all 2,656** in 216.270 seconds. That execution includes the full
-DateTimeFormat (488), DurationFormat (220), `Intl` (132), NumberFormat (498)
-and `supportedValuesOf` paths; its complete JSON report is an ephemeral test
-artifact, not a source of truth checked into this repository. The remaining
-4,058 modes are in `intl402/Temporal/`; they require the separate ECMA-262
-Temporal implementation and must remain visible in a full-inventory report,
-not be silently counted as passing. A filtered run is evidence only for the
-non-Temporal service boundary and never a phase-completion claim.
+The full `intl402/` selection contains 6,714 strict/sloppy modes. It is
+reproducible with `python backend/bluejs/test262/run.py --filter intl402/
+--jobs 8`, writing one `{path, status, ...}` JSON line per mode to
+`<output>/results.jsonl`. Grouping that file by the path segment directly
+under `intl402/` (`path.split("/")[1]`) gives the complete denominator,
+broken out by service, from the 2026-09-17 run:
+
+| `intl402/` group | Modes | Pass | Fail | Pass rate |
+| --- | ---: | ---: | ---: | ---: |
+| `Temporal/` | 4,058 | 266 | 3,792 | 6.55% |
+| `NumberFormat/` | 498 | 498 | 0 | 100% |
+| `DateTimeFormat/` | 488 | 488 | 0 | 100% |
+| `Locale/` | 336 | 336 | 0 | 100% |
+| `DurationFormat/` | 220 | 220 | 0 | 100% |
+| `ListFormat/` | 162 | 162 | 0 | 100% |
+| `RelativeTimeFormat/` | 160 | 160 | 0 | 100% |
+| `Segmenter/` | 158 | 158 | 0 | 100% |
+| `Intl/` | 132 | 132 | 0 | 100% |
+| `Collator/` | 130 | 130 | 0 | 100% |
+| `DisplayNames/` | 114 | 114 | 0 | 100% |
+| `PluralRules/` | 106 | 106 | 0 | 100% |
+| `intl402/*.js` (top-level, e.g. `fallback-locales-are-supported.js`) | 44 | 44 | 0 | 100% |
+| `String/` (`localeCompare`, `toLocaleUpperCase`/`LowerCase`) | 38 | 38 | 0 | 100% |
+| `Date/` (`toLocale*String`) | 24 | 24 | 0 | 100% |
+| `BigInt/` (`toLocaleString`) | 22 | 22 | 0 | 100% |
+| `Number/` (`toLocaleString`) | 14 | 14 | 0 | 100% |
+| `Array/` (`toLocaleString`) | 4 | 4 | 0 | 100% |
+| `FallbackSymbol/` | 4 | 4 | 0 | 100% |
+| `TypedArray/` (`toLocaleString`) | 2 | 2 | 0 | 100% |
+| **Total** | **6,714** | **2,922** | **3,792** | **43.52%** |
+
+Every group other than `Temporal/` is at **100%**; the 2,656 non-Temporal
+modes summed above match the previously-reported filtered-run total exactly
+(`--exclude Temporal` reproduces the same 2,656/2,656). `Temporal/`'s 266
+passes are almost entirely feature-detection and negative-assertion tests
+that do not require an actual Temporal implementation to satisfy; it requires
+the separate, not-yet-started ECMA-262 Temporal implementation and must
+remain visible in a full-inventory report, not be silently counted as
+passing or excluded from the denominator. The complete per-mode JSON report
+is an ephemeral test artifact, not a source of truth checked into this
+repository — regenerate it with the command above rather than trusting a
+stale copy. A `--exclude Temporal` run is evidence only for the non-Temporal
+service boundary and never a phase-completion claim by itself.
+
+`intl402/Temporal/` itself further subdivides by Temporal type
+(`path.split("/")[2]`), from the same 2026-09-17 run. **No dedicated Temporal
+phase or plan document exists yet anywhere under `development/browser_core/`**
+— this table is purely descriptive of the Test262 corpus, not a claim that
+any of this work is scheduled or owned:
+
+| `Temporal/` type | Modes | Pass | Fail | Pass rate |
+| --- | ---: | ---: | ---: | ---: |
+| `ZonedDateTime/` | 1,166 | 32 | 1,134 | 2.74% |
+| `PlainDate/` | 986 | 100 | 886 | 10.14% |
+| `PlainDateTime/` | 966 | 66 | 900 | 6.83% |
+| `PlainYearMonth/` | 654 | 18 | 636 | 2.75% |
+| `PlainMonthDay/` | 180 | 48 | 132 | 26.67% |
+| `Duration/` | 42 | 2 | 40 | 4.76% |
+| `Instant/` | 34 | 0 | 34 | 0% |
+| `PlainTime/` | 24 | 0 | 24 | 0% |
+| `Now/` | 6 | 0 | 6 | 0% |
+| **Total** | **4,058** | **266** | **3,792** | **6.55%** |
+
+No Temporal type clears even 27%; `Instant/`, `PlainTime/` and `Now/` are at
+literally 0%. This is consistent with "no Temporal implementation exists" —
+the scattered passes across the other types are individual
+feature-detection/negative tests, not partial type support. Sub-dividing
+further (e.g. by method, `prototype/with` vs `prototype/toString`) would only
+be useful once a Temporal implementation is actually being planned; at 0–27%
+across the board there is no meaningful "smallest first slice" signal to
+extract from finer-grained Test262 buckets alone.
 
 ## Boundary ownership
 
@@ -134,7 +218,7 @@ means no conforming public service exists yet. No row is currently complete.
 | 14 | `Intl.ListFormat`, parts | List/parts and negotiation | Constructor, iterable `format`/`formatToParts`, `resolvedOptions` and `supportedLocalesOf`; all 162 current Test262 modes pass | partial |
 | 15 | `Intl.Locale`, option update, accessors, information methods | Canonical locale/options/information, including `RegionPreference` | Constructor and listed accessors/information methods; all 336 current Test262 modes pass | partial |
 | 16 | `Intl.NumberFormat`, all styles, rounding, parts/ranges | Full pinned decimal/currency/unit/compact provider with typed ranges and parts | Constructor/prototype adapter; 498 / 498 current direct Test262 modes pass | partial |
-| 17 | `Intl.PluralRules`, rounding and `selectRange` | Cardinal/ordinal selection and range boundary | Constructor, `select`, `selectRange`, `resolvedOptions` and `supportedLocalesOf`; all 106 current Test262 modes pass | partial |
+| 17 | `Intl.PluralRules`, rounding and `selectRange` | Cardinal/ordinal selection and a real CLDR `pluralRanges`-table range boundary | Constructor, `select`, `selectRange` (resolves each endpoint's category against the bundled CLDR range table, not an `"other"` stub), `resolvedOptions` and `supportedLocalesOf`; all 106 current Test262 modes pass | partial |
 | 18 | `Intl.RelativeTimeFormat` | Host-neutral patterns, numeric parts and locale/numbering-system resolution | Constructor, `format`, `formatToParts`, `resolvedOptions` and `supportedLocalesOf`; all 160 current Test262 modes pass | partial |
 | 19 | `Intl.Segmenter`, segment iterator and segments objects | UTF-16 segment boundaries | Full constructor/segments iterator adapter; all 158 current Test262 modes pass | partial |
 

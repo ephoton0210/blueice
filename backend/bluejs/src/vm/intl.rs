@@ -3470,6 +3470,29 @@ impl Vm {
         )
     }
 
+    /// Builds an `Intl.DurationFormat` for a caller that is *not* a `new`
+    /// expression — `Temporal.Duration.prototype.toLocaleString`, whose
+    /// ECMA-402 definition formats through one. The instance takes
+    /// `Intl.DurationFormat.prototype` directly, since there is no
+    /// `new.target` to derive a prototype from.
+    pub(super) fn duration_format_for_locale_string(
+        &mut self,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        self.intl_global()?;
+        let constructor = self.globals["%Intl.DurationFormat%"];
+        let prototype = self
+            .heap
+            .get(constructor, "prototype")?
+            .object_id()
+            .expect("Intl.DurationFormat.prototype is an object");
+        self.stack.push(Value::Object(prototype));
+        let data =
+            self.resolve_duration_format(native::argument(args, 0), native::argument(args, 1))?;
+        self.with_roots(|heap| heap.alloc_duration_format(data, prototype))
+            .map(Value::Object)
+    }
+
     fn create_duration_format(
         &mut self,
         args: &[Value],
@@ -4023,22 +4046,24 @@ impl Vm {
                 "Intl.PluralRules selectRange arguments must be finite".into(),
             ));
         }
-        // The host service does not yet expose CLDR plural-range tables. The
-        // identity range is exact; the non-identity fallback is the required
-        // default for English and remains tracked as a host-service gap.
-        if start == end {
-            let category = if data.notation == "compact" {
+        let category_for = |value: f64| {
+            if data.notation == "compact" {
                 data.data
-                    .select_compact_f64(start, data.compact_display.as_deref() == Some("long"))
+                    .select_compact_f64(value, data.compact_display.as_deref() == Some("long"))
             } else {
-                data.data.select_f64(start)
-            };
-            return category
-                .map(Self::plural_category_name)
-                .map(|category| Value::String(category.into()))
-                .map_err(|error| RuntimeError::RangeError(error.to_string()));
-        }
-        Ok(Value::String("other".into()))
+                data.data.select_f64(value)
+            }
+        };
+        let category = if start == end {
+            category_for(start)
+        } else {
+            category_for(start)
+                .and_then(|start| category_for(end).map(|end| data.data.select_range(start, end)))
+        };
+        category
+            .map(Self::plural_category_name)
+            .map(|category| Value::String(category.into()))
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))
     }
 
     pub(super) fn plural_rules_resolved_options(
