@@ -3816,6 +3816,25 @@ impl Vm {
             reject,
         )
         .ok_or_else(|| RuntimeError::RangeError("Temporal date arithmetic is out of range".into()))?;
+        // `calendar_add_date` only range-checks via `regulate_iso_date`/
+        // `balance_iso_date` (an i32-year/valid-month-day check), not
+        // Temporal's own narrower representable range
+        // (`-271821-04-19`..`+275760-09-13`, exclusive at the exact
+        // day-and-nanosecond boundary for `PlainDateTime`) -- confirmed by a
+        // real `add/limits.js` failure: subtracting one day from the exact
+        // minimum `PlainDate` silently produced a valid-but-unrepresentable
+        // `-271821-04-18` instead of throwing. `alloc_temporal_value`
+        // performs no range validation of its own, matching the same gap
+        // `Temporal.PlainDateTime.prototype.round` had.
+        let in_range = match &time_fields {
+            Some(time) => epoch::is_date_time_within_limits(result_date, *time),
+            None => epoch::is_date_within_limits(result_date),
+        };
+        if !in_range {
+            return Err(RuntimeError::RangeError(
+                "Temporal date arithmetic is out of range".into(),
+            ));
+        }
         let value = match time_fields {
             Some(time) => {
                 Self::temporal_date_time_value(existing.kind, existing.calendar.clone(), result_date, time)
