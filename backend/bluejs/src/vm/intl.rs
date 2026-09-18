@@ -3470,6 +3470,29 @@ impl Vm {
         )
     }
 
+    /// Builds an `Intl.DurationFormat` for a caller that is *not* a `new`
+    /// expression — `Temporal.Duration.prototype.toLocaleString`, whose
+    /// ECMA-402 definition formats through one. The instance takes
+    /// `Intl.DurationFormat.prototype` directly, since there is no
+    /// `new.target` to derive a prototype from.
+    pub(super) fn duration_format_for_locale_string(
+        &mut self,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        self.intl_global()?;
+        let constructor = self.globals["%Intl.DurationFormat%"];
+        let prototype = self
+            .heap
+            .get(constructor, "prototype")?
+            .object_id()
+            .expect("Intl.DurationFormat.prototype is an object");
+        self.stack.push(Value::Object(prototype));
+        let data =
+            self.resolve_duration_format(native::argument(args, 0), native::argument(args, 1))?;
+        self.with_roots(|heap| heap.alloc_duration_format(data, prototype))
+            .map(Value::Object)
+    }
+
     fn create_duration_format(
         &mut self,
         args: &[Value],

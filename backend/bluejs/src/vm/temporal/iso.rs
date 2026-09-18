@@ -144,24 +144,51 @@ pub(crate) fn parse_annotations(mut cursor: &str) -> Result<Option<String>, ()> 
 /// service receives a typed, validated ECMA-402 record, so neither this
 /// parser nor a Temporal object can trigger observable duration-field
 /// accessors while formatting.
+///
+/// Temporal's grammar, as this implements it (each rule checked against a
+/// named fixture in the pinned Test262 corpus rather than assumed — see
+/// `built-ins/Temporal/Duration/from/argument-string*.js`):
+///
+/// - the designators and the `P`/`T` markers are case-insensitive, and an
+///   optional leading sign may be `+`, `-` or U+2212 MINUS SIGN;
+/// - components must appear in descending order and at most once each;
+/// - a decimal fraction (`.` or `,`, one to nine digits) may appear on *any*
+///   time component, not only on seconds, but then nothing smaller may
+///   follow. `PT0.5H` is 30 minutes, not an error. Its value is carried down
+///   through the smaller fields exactly: a fraction of an hour, minute or
+///   second is always a whole number of nanoseconds.
 pub(crate) fn parse_duration_record(source: &str) -> Option<blueice_ecma402::DurationRecord> {
-    let (sign, source) = match source.as_bytes().first() {
-        Some(b'+') => (1_i128, &source[1..]),
-        Some(b'-') => (-1_i128, &source[1..]),
-        _ => (1_i128, source),
-    };
     let mut characters = source.chars().peekable();
-    (characters.next() == Some('P')).then_some(())?;
+    let sign = match characters.peek() {
+        Some('+') => {
+            characters.next();
+            1_i128
+        }
+        Some('-' | '\u{2212}') => {
+            characters.next();
+            -1_i128
+        }
+        _ => 1_i128,
+    };
+    matches!(characters.next(), Some('P' | 'p')).then_some(())?;
     let mut values = [0_i128; 10];
     let mut in_time = false;
     let mut saw_component = false;
-    while characters.peek().is_some() {
-        if characters.peek() == Some(&'T') {
+    let mut saw_time_component = false;
+    let mut previous: Option<usize> = None;
+    let mut fraction_seen = false;
+    while let Some(&character) = characters.peek() {
+        // A fractional component must be the last one in the string.
+        if fraction_seen {
+            return None;
+        }
+        if matches!(character, 'T' | 't') {
             if in_time {
                 return None;
             }
             characters.next();
             in_time = true;
+            previous = None;
             continue;
         }
         let mut number = String::new();
@@ -175,7 +202,7 @@ pub(crate) fn parse_duration_record(source: &str) -> Option<blueice_ecma402::Dur
             return None;
         }
         let mut fraction = None;
-        if characters.peek() == Some(&'.') {
+        if matches!(characters.peek(), Some('.' | ',')) {
             characters.next();
             let mut digits = String::new();
             while characters
@@ -189,8 +216,7 @@ pub(crate) fn parse_duration_record(source: &str) -> Option<blueice_ecma402::Dur
             }
             fraction = Some(digits);
         }
-        let designator = characters.next()?;
-        let index = match (in_time, designator) {
+        let index = match (in_time, characters.next()?.to_ascii_uppercase()) {
             (false, 'Y') => 0,
             (false, 'M') => 1,
             (false, 'W') => 2,
@@ -200,19 +226,41 @@ pub(crate) fn parse_duration_record(source: &str) -> Option<blueice_ecma402::Dur
             (true, 'S') => 6,
             _ => return None,
         };
-        if let Some(fraction) = fraction {
-            if designator != 'S' {
-                return None;
-            }
-            let fraction = format!("{fraction:0<9}").parse::<i128>().ok()?;
-            values[7] = fraction / 1_000_000;
-            values[8] = (fraction / 1_000) % 1_000;
-            values[9] = fraction % 1_000;
+        if previous.is_some_and(|previous| index <= previous) {
+            return None;
         }
-        values[index] = number.parse::<i128>().ok()?;
+        previous = Some(index);
         saw_component = true;
+        saw_time_component |= in_time;
+        values[index] = number.parse::<i128>().ok()?;
+        if let Some(digits) = fraction {
+            // A fraction of an hour, minute or second is an exact whole
+            // number of nanoseconds, so this carries down without rounding.
+            let unit_nanoseconds: i128 = match index {
+                4 => 3_600_000_000_000,
+                5 => 60_000_000_000,
+                6 => 1_000_000_000,
+                _ => return None,
+            };
+            let scale = 10_i128.pow(digits.len() as u32);
+            let mut remaining = digits.parse::<i128>().ok()? * unit_nanoseconds / scale;
+            for (slot, unit) in [
+                (5_usize, 60_000_000_000_i128),
+                (6, 1_000_000_000),
+                (7, 1_000_000),
+                (8, 1_000),
+                (9, 1),
+            ] {
+                if slot <= index {
+                    continue;
+                }
+                values[slot] = remaining / unit;
+                remaining %= unit;
+            }
+            fraction_seen = true;
+        }
     }
-    saw_component.then_some(())?;
+    (saw_component && (!in_time || saw_time_component)).then_some(())?;
     blueice_ecma402::DurationRecord::try_new(
         sign * values[0],
         sign * values[1],
@@ -320,11 +368,100 @@ mod tests {
         assert_eq!(parse_annotations("[u-CA=iso8601]"), Err(()));
     }
 
+    fn duration(source: &str) -> Option<[i128; 10]> {
+        let record = parse_duration_record(source)?;
+        Some([
+            record.years,
+            record.months,
+            record.weeks,
+            record.days,
+            record.hours,
+            record.minutes,
+            record.seconds,
+            record.milliseconds,
+            record.microseconds,
+            record.nanoseconds,
+        ])
+    }
+
     #[test]
-    fn parses_duration_strings_with_the_seconds_only_fraction_rule() {
-        assert!(parse_duration_record("P1Y2M3W4DT5H6M7.008009010S").is_some());
-        assert!(parse_duration_record("P1DT2H30.5M").is_none());
-        assert!(parse_duration_record("not-a-duration").is_none());
+    fn parses_duration_strings_including_a_fraction_on_any_time_component() {
+        // Every case here is taken from Test262's
+        // built-ins/Temporal/Duration/from/argument-string.js.
+        assert_eq!(duration("P1D"), Some([0, 0, 0, 1, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(
+            duration("p1y1m1dt1h1m1s"),
+            Some([1, 1, 0, 1, 1, 1, 1, 0, 0, 0]),
+            "designators are case-insensitive"
+        );
+        assert_eq!(
+            duration("P1Y1M1W1DT1H1M1.1S"),
+            Some([1, 1, 1, 1, 1, 1, 1, 100, 0, 0])
+        );
+        assert_eq!(
+            duration("P1Y1M1W1DT1H1M1.1234567S"),
+            Some([1, 1, 1, 1, 1, 1, 1, 123, 456, 700])
+        );
+        assert_eq!(
+            duration("P1Y1M1W1DT1H1M1,12S"),
+            Some([1, 1, 1, 1, 1, 1, 1, 120, 0, 0]),
+            "a comma is a decimal separator"
+        );
+        assert_eq!(
+            duration("P1DT0.5M"),
+            Some([0, 0, 0, 1, 0, 0, 30, 0, 0, 0]),
+            "half a minute is thirty seconds"
+        );
+        assert_eq!(
+            duration("P1DT0,5H"),
+            Some([0, 0, 0, 1, 0, 30, 0, 0, 0, 0]),
+            "half an hour is thirty minutes"
+        );
+        assert_eq!(
+            duration("P1DT2H30.5M"),
+            Some([0, 0, 0, 1, 2, 30, 30, 0, 0, 0]),
+            "a fraction is valid on the last component present"
+        );
+        assert_eq!(
+            duration("PT0.999999999H"),
+            Some([0, 0, 0, 0, 0, 59, 59, 999, 996, 400]),
+            "nine fractional hour digits are 3,599,999,996,400 ns, carried down exactly"
+        );
+        assert_eq!(duration("-P1D"), Some([0, 0, 0, -1, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(
+            duration("\u{2212}P1D"),
+            Some([0, 0, 0, -1, 0, 0, 0, 0, 0, 0]),
+            "U+2212 MINUS SIGN is a sign"
+        );
+        assert_eq!(duration("+P1D"), Some([0, 0, 0, 1, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(duration("PT100M"), Some([0, 0, 0, 0, 0, 100, 0, 0, 0, 0]));
+    }
+
+    #[test]
+    fn rejects_duration_strings_outside_the_grammar() {
+        assert_eq!(duration("not-a-duration"), None);
+        assert_eq!(duration("P"), None, "at least one component is required");
+        assert_eq!(duration("PT"), None, "a time designator needs a component");
+        assert_eq!(duration("P1DT"), None);
+        assert_eq!(duration("P1.5D"), None, "a date component has no fraction");
+        assert_eq!(
+            duration("PT0.5H30M"),
+            None,
+            "nothing smaller may follow a fraction"
+        );
+        assert_eq!(
+            duration("P1M1Y"),
+            None,
+            "components are in descending order"
+        );
+        assert_eq!(duration("P1D1D"), None, "a component appears at most once");
+        assert_eq!(duration("P1H"), None, "hours require the time designator");
+        assert_eq!(duration("PT1D"), None, "days precede the time designator");
+        assert_eq!(duration("PT1.1234567890S"), None, "at most nine digits");
+        assert_eq!(duration("PT1.S"), None, "a fraction needs a digit");
+        assert_eq!(duration("PT1HT1M"), None, "only one time designator");
+        assert_eq!(duration("PD"), None, "a designator needs a number");
+        assert_eq!(duration("P-1D"), None, "a component may not carry a sign");
     }
 
     #[test]

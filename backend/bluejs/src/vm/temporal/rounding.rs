@@ -38,6 +38,168 @@ impl TimeUnit {
     }
 }
 
+/// One of the ten units Temporal's `largestUnit`/`smallestUnit`/`unit`
+/// options accept — [`TimeUnit`] plus `Day` and the three calendar-dependent
+/// units. `Temporal.Duration` needs the wider vocabulary even though it can
+/// only *evaluate* the `Day`-and-below part without a `relativeTo` anchor:
+/// the calendar units still have to be recognised as valid option values so
+/// that requesting one throws the `RangeError` the specification requires
+/// rather than the "unknown unit" `RangeError`.
+///
+/// Declared smallest-span-first so the derived `Ord` directly means
+/// "represents less or equal time" — exactly what `LargerOfTwoTemporalUnits`
+/// and the `smallestUnit <= largestUnit` check need.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub(crate) enum TemporalUnit {
+    Nanosecond,
+    Microsecond,
+    Millisecond,
+    Second,
+    Minute,
+    Hour,
+    Day,
+    Week,
+    Month,
+    Year,
+}
+
+impl TemporalUnit {
+    /// The exact length of this unit in nanoseconds, or `None` for the
+    /// calendar-dependent units (week/month/year) whose length is only
+    /// defined relative to an anchor date.
+    ///
+    /// `Day` is exactly 24 hours here. That is not an approximation: with no
+    /// `relativeTo`, or with a `Temporal.PlainDate`/`PlainDateTime` one,
+    /// Temporal defines a day as 86,400 seconds. Only a
+    /// `Temporal.ZonedDateTime` anchor can make a day a different length.
+    pub(crate) fn nanoseconds(self) -> Option<i128> {
+        Some(match self {
+            Self::Day => 86_400_000_000_000,
+            Self::Hour => 3_600_000_000_000,
+            Self::Minute => 60_000_000_000,
+            Self::Second => 1_000_000_000,
+            Self::Millisecond => 1_000_000,
+            Self::Microsecond => 1_000,
+            Self::Nanosecond => 1,
+            Self::Week | Self::Month | Self::Year => return None,
+        })
+    }
+
+    /// `IsCalendarUnit`: whether this unit's length depends on a calendar.
+    pub(crate) fn is_calendar(self) -> bool {
+        matches!(self, Self::Week | Self::Month | Self::Year)
+    }
+
+    /// `MaximumTemporalDurationRoundingIncrement`: the exclusive upper bound a
+    /// `roundingIncrement` must both stay under and divide evenly into, or
+    /// `None` for the date-category units, which only have the general
+    /// `1..=1e9` bound.
+    pub(crate) fn maximum_rounding_increment(self) -> Option<i128> {
+        match self {
+            Self::Year | Self::Month | Self::Week | Self::Day => None,
+            Self::Hour => Some(24),
+            Self::Minute | Self::Second => Some(60),
+            Self::Millisecond | Self::Microsecond | Self::Nanosecond => Some(1_000),
+        }
+    }
+}
+
+/// Parses a `TemporalUnit` option value, accepting both spellings the same way
+/// [`parse_time_unit`] does (verified against Test262's
+/// `built-ins/Temporal/Duration/prototype/round/{singular-units,largestunit-plurals-accepted}.js`).
+pub(crate) fn parse_temporal_unit(value: &str) -> Option<TemporalUnit> {
+    Some(match value {
+        "year" | "years" => TemporalUnit::Year,
+        "month" | "months" => TemporalUnit::Month,
+        "week" | "weeks" => TemporalUnit::Week,
+        "day" | "days" => TemporalUnit::Day,
+        "hour" | "hours" => TemporalUnit::Hour,
+        "minute" | "minutes" => TemporalUnit::Minute,
+        "second" | "seconds" => TemporalUnit::Second,
+        "millisecond" | "milliseconds" => TemporalUnit::Millisecond,
+        "microsecond" | "microseconds" => TemporalUnit::Microsecond,
+        "nanosecond" | "nanoseconds" => TemporalUnit::Nanosecond,
+        _ => return None,
+    })
+}
+
+/// Every spelling [`parse_temporal_unit`] accepts, in the order Temporal's own
+/// unit table lists them. Option readers validate against this before parsing,
+/// so an unrecognised spelling is rejected once, in one place.
+pub(crate) const TEMPORAL_UNIT_NAMES: &[&str] = &[
+    "year",
+    "years",
+    "month",
+    "months",
+    "week",
+    "weeks",
+    "day",
+    "days",
+    "hour",
+    "hours",
+    "minute",
+    "minutes",
+    "second",
+    "seconds",
+    "millisecond",
+    "milliseconds",
+    "microsecond",
+    "microseconds",
+    "nanosecond",
+    "nanoseconds",
+];
+
+/// Correctly-rounded `𝔽(numerator / denominator)` for exact integer inputs.
+///
+/// `Temporal.Duration.prototype.total` returns the *exact* mathematical ratio
+/// of a nanosecond count to a unit length, converted to a Number once at the
+/// end. Dividing in `f64` instead would round twice; this does the division as
+/// binary long division on exact integers and rounds a single time, to nearest
+/// with ties to even, exactly as `𝔽` does.
+pub(crate) fn exact_ratio_to_f64(numerator: i128, denominator: i128) -> f64 {
+    debug_assert!(denominator > 0);
+    if numerator == 0 {
+        return 0.0;
+    }
+    let negative = numerator < 0;
+    let magnitude = numerator.unsigned_abs();
+    let denominator = denominator.unsigned_abs();
+    // Scale the divisor up front when the integer quotient already carries
+    // more than a mantissa's worth of bits, so the long-division loop below
+    // never has to shift `accumulator` back down (which would discard the
+    // remainder it needs for the final rounding decision).
+    let quotient_bits = 128 - (magnitude / denominator).leading_zeros() as i32;
+    let mut exponent = 0_i32;
+    let mut divisor = denominator;
+    if quotient_bits > 53 {
+        exponent = quotient_bits - 53;
+        divisor <<= exponent as u32;
+    }
+    let mut accumulator = magnitude / divisor;
+    let mut remainder = magnitude % divisor;
+    while accumulator < (1_u128 << 52) && remainder != 0 {
+        accumulator <<= 1;
+        remainder <<= 1;
+        if remainder >= divisor {
+            remainder -= divisor;
+            accumulator += 1;
+        }
+        exponent -= 1;
+    }
+    if remainder != 0 {
+        let doubled = remainder << 1;
+        if doubled > divisor || (doubled == divisor && !accumulator.is_multiple_of(2)) {
+            accumulator += 1;
+        }
+    }
+    let value = accumulator as f64 * 2_f64.powi(exponent);
+    if negative {
+        -value
+    } else {
+        value
+    }
+}
+
 /// Parses a time-unit option value, accepting both the singular and plural
 /// spelling (Temporal treats them as equivalent — see e.g. Test262's
 /// `built-ins/Temporal/Duration/prototype/round/singular-units.js`, and
@@ -278,5 +440,106 @@ mod tests {
     fn half_trunc_breaks_ties_toward_zero() {
         assert_eq!(round_to_increment(15, 10, Mode::HalfTrunc), 10);
         assert_eq!(round_to_increment(-15, 10, Mode::HalfTrunc), -10);
+        // Past the midpoint it still rounds away from zero.
+        assert_eq!(round_to_increment(19, 10, Mode::HalfTrunc), 20);
+        assert_eq!(round_to_increment(-19, 10, Mode::HalfTrunc), -20);
+    }
+
+    #[test]
+    fn temporal_units_order_by_the_time_they_represent() {
+        assert!(TemporalUnit::Nanosecond < TemporalUnit::Day);
+        assert!(TemporalUnit::Day < TemporalUnit::Week);
+        assert!(TemporalUnit::Week < TemporalUnit::Month);
+        assert!(TemporalUnit::Month < TemporalUnit::Year);
+        assert!(TemporalUnit::Hour < TemporalUnit::Day);
+    }
+
+    #[test]
+    fn only_the_calendar_dependent_units_lack_an_exact_length() {
+        assert_eq!(
+            TemporalUnit::Day.nanoseconds(),
+            Some(86_400_000_000_000),
+            "a day is 24 hours without a ZonedDateTime anchor"
+        );
+        assert_eq!(TemporalUnit::Nanosecond.nanoseconds(), Some(1));
+        for unit in [TemporalUnit::Week, TemporalUnit::Month, TemporalUnit::Year] {
+            assert_eq!(unit.nanoseconds(), None, "{unit:?}");
+            assert!(unit.is_calendar(), "{unit:?}");
+        }
+        for unit in [
+            TemporalUnit::Day,
+            TemporalUnit::Hour,
+            TemporalUnit::Nanosecond,
+        ] {
+            assert!(!unit.is_calendar(), "{unit:?}");
+        }
+    }
+
+    #[test]
+    fn maximum_rounding_increments_match_the_next_larger_unit() {
+        // Test262's round/invalid-increments.js rejects exactly these
+        // boundaries: 24 hours, 60 minutes/seconds, 1000 sub-second units.
+        assert_eq!(TemporalUnit::Hour.maximum_rounding_increment(), Some(24));
+        assert_eq!(TemporalUnit::Minute.maximum_rounding_increment(), Some(60));
+        assert_eq!(TemporalUnit::Second.maximum_rounding_increment(), Some(60));
+        assert_eq!(
+            TemporalUnit::Millisecond.maximum_rounding_increment(),
+            Some(1_000)
+        );
+        assert_eq!(
+            TemporalUnit::Nanosecond.maximum_rounding_increment(),
+            Some(1_000)
+        );
+        // round/roundingincrement-days-large.js accepts 1e7 days, so the
+        // date-category units carry no per-unit maximum of their own.
+        for unit in [
+            TemporalUnit::Day,
+            TemporalUnit::Week,
+            TemporalUnit::Month,
+            TemporalUnit::Year,
+        ] {
+            assert_eq!(unit.maximum_rounding_increment(), None, "{unit:?}");
+        }
+    }
+
+    #[test]
+    fn every_temporal_unit_name_parses_and_only_those() {
+        for name in TEMPORAL_UNIT_NAMES {
+            assert!(parse_temporal_unit(name).is_some(), "{name}");
+        }
+        assert_eq!(parse_temporal_unit("year"), Some(TemporalUnit::Year));
+        assert_eq!(parse_temporal_unit("weeks"), Some(TemporalUnit::Week));
+        assert_eq!(parse_temporal_unit("auto"), None);
+        assert_eq!(parse_temporal_unit("era"), None);
+        assert_eq!(parse_temporal_unit("Day"), None);
+    }
+
+    #[test]
+    fn exact_ratios_round_once_to_the_nearest_double() {
+        assert_eq!(exact_ratio_to_f64(0, 1_000_000_000), 0.0);
+        assert_eq!(exact_ratio_to_f64(1_000_000_000, 1_000_000_000), 1.0);
+        assert_eq!(exact_ratio_to_f64(-60_000_000_000, 60_000_000_000), -1.0);
+        assert_eq!(exact_ratio_to_f64(3, 2), 1.5);
+        assert_eq!(exact_ratio_to_f64(-3, 2), -1.5);
+        // Exactly representable sub-unit ratios (nanoseconds per day/hour).
+        assert_eq!(exact_ratio_to_f64(1, 86_400_000_000_000), 1.0 / 86.4e12);
+        // Test262's total/total-of-each-unit.js case: 5d5h5m5.005005005s
+        // totalled in each unit. The nanosecond total is exact; the coarser
+        // units are the correctly-rounded value of the same exact ratio.
+        let total = 450_305_005_005_005_i128;
+        assert_eq!(exact_ratio_to_f64(total, 1), 450_305_005_005_005.0);
+        assert_eq!(
+            exact_ratio_to_f64(total, 1_000),
+            450_305_005_005_005.0 / 1_000.0
+        );
+        assert_eq!(
+            exact_ratio_to_f64(total, 86_400_000_000_000),
+            5.0 + 18_305_005.005_005 / 86_400_000.0
+        );
+        // A quotient wider than a mantissa still rounds to nearest-even
+        // rather than truncating.
+        let wide = (1_i128 << 60) + 1;
+        assert_eq!(exact_ratio_to_f64(wide, 1), wide as f64);
+        assert_eq!(exact_ratio_to_f64(2 * wide + 1, 2), (wide as f64) + 0.5);
     }
 }
