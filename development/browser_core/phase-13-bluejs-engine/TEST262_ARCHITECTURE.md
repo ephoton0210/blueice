@@ -2932,3 +2932,174 @@ and `importValue`'s resolve/reject paths through
 known-flaky `observable_conversion_order_and_gc_pressure` in
 `tests/string_protocols.rs` (intermittent `HeapLimitExceeded`, unrelated to
 this work).
+
+## ShadowRealm follow-up: closing three of the five remaining gaps
+
+Implemented 2026-09-18, same-day follow-up to the slice above, requested to
+push `built-ins/ShadowRealm/` as close to 100% as genuinely achievable.
+**Result: 114/124 -> 122/124** (up from 0/124 at the start of the original
+slice). Two of the three previously-identified causes turned out to be real,
+general, pre-existing engine bugs (not ShadowRealm-specific, and not
+"someone else's shared infrastructure to leave alone") and are now fixed
+with their own regression tests; the third is now understood in full
+mechanical detail and partially fixed, closing 3 of its 4 modes.
+
+### `Object.prototype.hasOwnProperty`/`propertyIsEnumerable` bypassed lazy-global materialization and Proxy traps
+
+Root cause, not just a workaround: `native::ObjectMethod::HasOwnProperty`
+and `PropertyIsEnumerable` (`vm/builtins.rs`) called
+`self.heap.get_own_property_descriptor(object, key)` -- the *raw* heap
+record -- directly, while every other own-property reflection operation
+(`Object.hasOwn`, `Object.getOwnPropertyDescriptor`, `Object.keys`/
+`getOwnPropertyNames` internally) goes through `Vm::object_get_own_property`,
+which first calls `materialize_global_object_property` (creating a
+not-yet-touched lazy intrinsic global as a real property before observing
+it) and correctly dispatches a Proxy's own `[[GetOwnProperty]]` trap. Fixed
+by routing both through `object_get_own_property` like everything else.
+Regression test added first (TDD): `Object.prototype.hasOwnProperty.call(
+globalThis, 'Array')` on a fresh `Vm` returned `false` before the fix
+(`'JSON'`/`'isFinite'` happened to already read `true`, because *something*
+else had touched them first in the exact same script -- this was never a
+uniformly-broken operation, which is what took the longest to pin down).
+This is reproducible with no ShadowRealm involved at all: it explains
+`globalthis-available-properties.js` fully.
+
+`backend/bluejs/tests/descriptors.rs` gained
+`has_own_property_and_property_is_enumerable_materialize_lazy_globals`,
+checking five different lazy globals (including `ShadowRealm` itself)
+through both methods on independent fresh `Vm`s. Verified no regression: the
+full `built-ins/Object/` directory (3,414 files, 6,808 modes),
+`built-ins/Object/prototype/{hasOwnProperty,propertyIsEnumerable}` plus
+`built-ins/Object/hasOwn` (141 files, 282 modes) and `built-ins/Proxy/` (311
+files, 607 modes) are all still 100% passing after the change.
+
+### `Number.isNaN` was never implemented
+
+A plain gap, not a bug: `Number.isFinite`/`isInteger`/`isSafeInteger` all
+existed as `NativeFunction` variants installed on the `Number` constructor;
+`isNaN` did not (only the *global* `isNaN`, which coerces its argument,
+existed). Added `NativeFunction::NumberIsNaN` following the exact existing
+pattern of its siblings: `matches!(first, Value::Number(number) if
+number.is_nan())`, with **no** coercion (`Number.isNaN('NaN')` is `false`,
+unlike the coercing global). Test-first in
+`backend/bluejs/tests/conformance_edges.rs`
+(`number_is_nan_requires_a_number_type_with_no_coercion_unlike_global_is_nan`),
+covering the coercion boundary, `length`/`name`, and its property
+attributes. This explains `returns-primitive-values.js` fully, with no
+ShadowRealm involvement.
+
+### A third, ShadowRealm-specific bug this work also found and fixed: no fresh lexical scope per `evaluate()` call
+
+Not one of the three originally-identified causes -- found while
+re-investigating `globalthis-config-only-properties.js` after the
+`hasOwnProperty` fix only got it to 3/4 of the way there. Its second
+`r.evaluate(...)` call declares a top-level `const` with the same name
+(`esNonConfigValues`) the *first* call also declared, and failed with
+`SyntaxError("global binding esNonConfigValues cannot be redeclared")`
+-- an opaque `TypeError` at the ShadowRealm boundary, since any abrupt
+`evaluate()` completion is deliberately opaque (see the slice above).
+
+This is a real semantic gap, confirmed against the actual proposal text
+fetched for `GetShadowRealmContext ( shadowRealmRecord, strictEval )`:
+"1. Let lexEnv be NewDeclarativeEnvironment(shadowRealmRecord.[[GlobalEnv]])."
+*Every single* `evaluate()` call gets its own fresh declarative
+environment for top-level `let`/`const` -- unlike an ordinary repeated
+top-level Script (e.g. two `<script>` tags, or two `$262.evalScript` calls),
+which runs `GlobalDeclarationInstantiation` directly against the realm's
+one persistent Global Environment Record, so a second `let x` genuinely
+does conflict with an earlier one there, matching real engines. This Vm's
+`execute_script` only implements that latter, ordinary case: `global_bindings`
+is one persistent, never-cleared map. Fixed with a new general primitive,
+`Vm::reset_lexical_global_bindings` (`vm/execution.rs`) -- drops every
+purely-lexical (non-property) `global_bindings` entry and releases its GC
+root, leaving `var`/function declarations (real, persistent `globalThis`
+properties) untouched -- called by `shadow_realm.rs`'s `run_evaluate`
+before every `evaluate()` script runs. Deliberately *not* a change to
+`execute_script`/`prepare_global_declarations` themselves: ordinary repeated
+top-level scripts (`$262.evalScript`, multiple classic scripts on the same
+`Vm`) are confirmed, by reading the actual spec clause, to *correctly* keep
+conflicting on lexical redeclaration, and `language/eval-code` (1,011 files,
+1,152 modes) plus `language/global-code` stayed 100% passing throughout,
+confirming this fix did not touch that ordinary case at all.
+
+Test-first: `evaluate_gives_each_call_a_fresh_lexical_scope_that_does_not_conflict_with_earlier_ones`
+in `tests/shadow_realm.rs`, covering both the fresh-`let`-scope case and
+that `var` declarations still correctly persist across calls.
+
+### The remaining Test262-membrane gap, revisited: partially fixed, and now fully understood
+
+The original slice's brand-check explanation was correct but incomplete: a
+`ShadowRealm` instance crossing between two Test262 realms neither of which
+is the immediate caller previously arrived as `test262_transport_value`'s
+ordinary opaque, brand-less stand-in, so `require_shadow_realm` correctly
+(if unhelpfully) rejected it. Investigated whether the membrane could be
+taught to preserve identity for this one exotic-object kind specifically,
+rather than assuming it could not.
+
+It can, with one architectural change: a `ShadowRealm`'s child realm was
+owned exclusively (`ShadowRealmRecord { vm: Box<Vm> }`), so only the one
+realm that created it could ever reach it. Changed to shared ownership,
+`ShadowRealmRecord { vm: Rc<RefCell<Vm>> }` -- cheap to clone, and a second
+owner can now hold the exact same live child. `test262_export_foreign_value`
+now recognizes (via a new `export_foreign_shadow_realm` step) when the
+value crossing into a realm is itself a `ShadowRealm` instance owned by a
+*different* Test262 realm, and re-exports it as a genuine new `ShadowRealm`
+instance object in the destination realm's own `shadow_realms`/
+`shadow_realm_by_heap` maps, backed by an `Rc` clone of the identical child
+-- rather than falling through to the ordinary opaque stand-in. A new
+per-destination-realm `shadow_realm_reexports` map (deliberately separate
+from `imported_sources`/`imported_values`, which back a brand-less stand-in
+with no meaning of its own) deduplicates re-exporting the same target
+twice. `evaluate`/`importValue`/a wrapped-function call reached through the
+re-exported instance now observes the identical realm -- same `globalThis`,
+same prior `evaluate()` side effects -- as reaching it the original way.
+
+Switching to `Rc<RefCell<Vm>>` also required reworking how
+`shadow_call_wrapped`/`shadow_realm_evaluate` detect "this exact child realm
+is already mid-call further up this same synchronous chain" (previously
+signaled by the child's absence from `shadow_realms`, since it was
+temporarily removed for the borrow's duration; now, since it is never
+removed, signaled by `RefCell::try_borrow_mut` failing instead) -- both now
+try a direct, fresh borrow of a realm `self` owns first, and fall back to
+the existing `ACTIVE` thread-local (ancestor-tracing) lookup only when that
+borrow fails or `self` does not own the realm directly. The `ACTIVE`
+mechanism itself, and its safety argument, are unchanged: it remains the
+only way to reach a caller `Vm` that is not itself a `ShadowRealm` child
+(the embedder's own top-level `Vm`, never wrapped in `Rc<RefCell>`), and
+`Rc<RefCell<Vm>>` was chosen specifically to enable this shared-identity
+case, not as a general aliasing-safety improvement -- the `ACTIVE`-reached
+path still resolves a raw pointer outside `RefCell`'s own tracking, exactly
+as before.
+
+This closes 3 of `wrapped-function-proto-from-caller-realm.js`'s 4
+assertions and **all** of `wrapped-function-throws-typeerror-from-caller-realm.js`
+(now fully passing). The one remaining assertion
+(`checkArgWrapperFn(() => {})`, in `wrapped-function-proto-from-caller-realm.js`)
+is a *different*, deeper limitation: `checkArgWrapperFn` is a `ShadowRealm`
+wrapped function that itself arrived at the caller only as a Test262
+foreign-value facade (double-wrapped: ShadowRealm's own wrapping, then
+Test262's own membrane import of that result). Calling it forwards the
+`() => {}` argument through `test262_foreign_call`, which exports it via
+the *ordinary*, unconditionally brand-less-and-non-callable
+`test262_transport_value` (verified by tracing the exact dispatch: the
+opaque stand-in reaches `shadow_wrap_into`'s own `is_callable` check and
+fails it) -- a **general** Test262-membrane limitation, not specific to
+ShadowRealm and not touched by this session's fix: passing *any* callable
+as an argument through `test262_foreign_call` produces a non-callable
+stand-in on the far side, exactly the "property forwarding needs a
+resumable cross-VM operation" limitation `test262_transport_value`'s own
+comment already documents. Fixing it generally would mean giving Test262's
+membrane itself the same bidirectional-calling capability
+`shadow_realm.rs` has for its own boundary -- a substantially larger,
+independently-risky change to code several hundred other, unrelated Test262
+fixtures already depend on, not a small extension of the ShadowRealm-specific
+fix above. Left as a known, now precisely-diagnosed limitation.
+
+Verified no regression from the `Rc<RefCell<Vm>>` change:
+`backend/bluejs/tests/shadow_realm.rs` grew to 14 tests (added
+`a_shadowrealm_instance_keeps_its_identity_across_a_test262_realm_transport`,
+using `$262.createRealm()` directly, mirroring the Test262 scenario);
+`built-ins/Reflect/` + `built-ins/Proxy/` (465 files, 915 modes) stayed 100%
+passing. `cargo build --workspace --all-targets`, `cargo test --workspace
+--no-fail-fast` (only the same pre-declared `string_protocols.rs` flake) and
+`cargo clippy --workspace --all-targets -- -D warnings` all pass.
