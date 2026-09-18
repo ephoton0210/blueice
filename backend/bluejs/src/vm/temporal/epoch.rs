@@ -54,6 +54,33 @@ pub(crate) fn is_in_instant_range(value: &BigInt) -> bool {
     value >= &-limit.clone() && value <= &limit
 }
 
+/// `ISODateTimeWithinLimits`: whether a wall-clock date and time is
+/// representable as a `Temporal.PlainDateTime`. That range is exactly one
+/// day wider at each end than [`is_in_instant_range`]'s, exclusive at both
+/// ends, so that every `Instant` still has a representable local
+/// `PlainDateTime` in any time zone.
+///
+/// Verified against Test262's
+/// `built-ins/Temporal/PlainDateTime/from/argument-string-limits.js`:
+/// `-271821-04-19T00:00:00.000000001` is representable while
+/// `-271821-04-19T00:00` is not.
+pub(crate) fn is_date_time_within_limits(date: CivilDate, time: CivilTime) -> bool {
+    let day = BigInt::from(86_400_000_000_000_i64);
+    let limit = BigInt::from(8_640_000_000_000_000_i64) * 1_000_000_u32;
+    let value = nanoseconds_since_epoch(date, time, 0);
+    value > -limit.clone() - &day && value < limit + day
+}
+
+/// `ISODateWithinLimits`: whether a calendar date is representable as a
+/// `Temporal.PlainDate`, which the specification defines as its *noon*
+/// being a representable `PlainDateTime` — one fixture-visible day looser
+/// than [`is_date_time_within_limits`] at midnight
+/// (`PlainDate/from/argument-string-limits.js` accepts `-271821-04-19`,
+/// which `PlainDateTime` rejects).
+pub(crate) fn is_date_within_limits(date: CivilDate) -> bool {
+    is_date_time_within_limits(date, (12, 0, 0, 0, 0, 0))
+}
+
 /// The inverse of [`nanoseconds_since_epoch`]'s date/time steps: decomposes
 /// an epoch-nanosecond value (UTC) into `(year, month, day)` and
 /// `(hour, minute, second, millisecond, microsecond, nanosecond)`, via the
@@ -126,6 +153,37 @@ mod tests {
         assert!(is_in_instant_range(&limit));
         assert!(is_in_instant_range(&-limit.clone()));
         assert!(!is_in_instant_range(&(limit + 1)));
+    }
+
+    #[test]
+    fn brackets_the_representable_date_time_range_one_day_outside_the_instant_range() {
+        // Temporal/PlainDateTime/from/argument-string-limits.js.
+        assert!(is_date_time_within_limits(
+            (-271_821, 4, 19),
+            (0, 0, 0, 0, 0, 1)
+        ));
+        assert!(!is_date_time_within_limits(
+            (-271_821, 4, 19),
+            (0, 0, 0, 0, 0, 0)
+        ));
+        assert!(is_date_time_within_limits(
+            (-271_821, 4, 20),
+            (0, 0, 0, 0, 0, 0)
+        ));
+        assert!(is_date_time_within_limits(
+            (275_760, 9, 13),
+            (23, 59, 59, 999, 999, 999)
+        ));
+        assert!(!is_date_time_within_limits(
+            (275_760, 9, 14),
+            (0, 0, 0, 0, 0, 0)
+        ));
+        // Temporal/PlainDate/from/argument-string-limits.js: a date is
+        // judged at noon, so it reaches one day further at each end.
+        assert!(is_date_within_limits((-271_821, 4, 19)));
+        assert!(!is_date_within_limits((-271_821, 4, 18)));
+        assert!(is_date_within_limits((275_760, 9, 13)));
+        assert!(!is_date_within_limits((275_760, 9, 14)));
     }
 
     #[test]

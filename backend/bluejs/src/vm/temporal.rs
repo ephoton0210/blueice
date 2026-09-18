@@ -40,6 +40,28 @@ struct TemporalCalendarFields {
     months_in_year: u8,
 }
 
+/// Canonicalizes a calendar identifier, from wherever it was written: a
+/// property bag, a constructor argument, or an ISO string's `[u-ca=...]`
+/// annotation. All three spellings are case-insensitive and share the same
+/// alias table, so they all resolve here rather than only on the paths that
+/// happened to be written first.
+fn canonical_calendar_id(value: &str) -> Option<String> {
+    if value.is_empty() {
+        return None;
+    }
+    let lower = value.to_ascii_lowercase();
+    let canonical = match lower.as_str() {
+        // ECMA-402-visible aliases must carry the canonical calendar
+        // identifier through Temporal as well as Intl.Locale.
+        "islamicc" => "islamic-civil",
+        "ethiopic-amete-alem" => "ethioaa",
+        value => value,
+    };
+    calendar::calendar_kind(canonical)
+        .is_some()
+        .then(|| canonical.to_string())
+}
+
 impl Vm {
     pub(super) fn temporal_global(&mut self) -> Result<Value, RuntimeError> {
         if let Some(&id) = self.globals.get("Temporal") {
@@ -324,20 +346,7 @@ impl Vm {
         let value = value
             .to_utf8()
             .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar".into()))?;
-        if value.is_empty() {
-            return Err(RuntimeError::RangeError("invalid Temporal calendar".into()));
-        }
-        let lower = value.to_ascii_lowercase();
-        let value = match lower.as_str() {
-            // ECMA-402-visible aliases must carry the canonical calendar
-            // identifier through Temporal as well as Intl.Locale.
-            "islamicc" => "islamic-civil",
-            "ethiopic-amete-alem" => "ethioaa",
-            value => value,
-        };
-        calendar::calendar_kind(value)
-            .is_some()
-            .then(|| value.into())
+        canonical_calendar_id(&value)
             .ok_or_else(|| RuntimeError::RangeError("invalid Temporal calendar".into()))
     }
 
@@ -752,54 +761,103 @@ impl Vm {
                 time_zone: "UTC".into(),
             });
         }
-        if kind == TemporalKind::PlainTime {
-            // A PlainTime string has its own grammar: it may carry no date at
-            // all, and must reject a date-only string rather than treating it
-            // as midnight. See `iso::parse_plain_time`.
-            let fields = iso::parse_plain_time(source).ok_or_else(|| {
-                RuntimeError::RangeError("invalid Temporal.PlainTime string".into())
-            })?;
-            return Ok(Self::plain_time_value(fields));
+        // Each Temporal type reads a different production of the same
+        // grammar: a year-month string may omit the day, a month-day string
+        // the year, and a time string the date entirely.
+        let invalid =
+            || RuntimeError::RangeError(format!("invalid Temporal.{} string", kind.name()));
+        let parsed = match kind {
+            TemporalKind::PlainYearMonth => iso::parse_year_month(source),
+            TemporalKind::PlainMonthDay => iso::parse_month_day(source),
+            TemporalKind::PlainTime => iso::parse_time(source),
+            _ => iso::parse_date_time(source),
         }
-        let (year, month, day) = iso::parse_date(source)
-            .ok_or_else(|| RuntimeError::RangeError("invalid Temporal date string".into()))?;
-        let annotations = source.find('[').map_or("", |index| &source[index..]);
-        let calendar = match iso::parse_annotations(annotations)
-            .map_err(|()| RuntimeError::RangeError("invalid Temporal annotation".into()))?
-        {
-            Some(calendar) => {
-                calendar::calendar_kind(&calendar).ok_or_else(|| {
-                    RuntimeError::RangeError(format!("unsupported Temporal calendar: {calendar}"))
-                })?;
-                calendar
-            }
+        .ok_or_else(invalid)?;
+        // A type with no calendar slot ignores the annotation outright — even
+        // an unrecognized or critical one
+        // (`Instant/from/argument-string-calendar-annotation.js`,
+        // `PlainTime/from/argument-string-calendar-annotation.js`).
+        let calendar_slot = !matches!(kind, TemporalKind::Instant | TemporalKind::PlainTime);
+        let calendar = match parsed.calendar.as_deref().filter(|_| calendar_slot) {
+            Some(calendar) => canonical_calendar_id(calendar).ok_or_else(|| {
+                RuntimeError::RangeError(format!("unsupported Temporal calendar: {calendar}"))
+            })?,
             None => "iso8601".to_string(),
         };
-        // Bound the search to the character immediately after the date
-        // portion (mirroring `temporal_date`'s own boundary computation):
-        // a global `split_once(['T', 't'])` would wrongly match the 'T' in
-        // a `[UTC]` time-zone annotation on a date-only string.
-        let date_end = source
-            .find(['T', 't', '[', 'Z', 'z'])
-            .unwrap_or(source.len());
-        let time = source[date_end..].strip_prefix(['T', 't']);
-        let (hour, minute, second, millisecond, microsecond, nanosecond) = match time {
-            Some(time) => iso::parse_time(time)
-                .ok_or_else(|| RuntimeError::RangeError("invalid Temporal time string".into()))?,
-            None => (0, 0, 0, 0, 0, 0),
-        };
+        // The UTC designator asserts an exact instant, which a wall-clock
+        // type has no way to represent, so it is a syntax error there rather
+        // than something to ignore.
+        if parsed.utc_designator
+            && !matches!(kind, TemporalKind::Instant | TemporalKind::ZonedDateTime)
+        {
+            return Err(invalid());
+        }
+        let (year, month, day) = (parsed.year, parsed.month, parsed.day);
+        let time = parsed.time.unwrap_or((0, 0, 0, 0, 0, 0));
+        if kind == TemporalKind::PlainTime {
+            return Ok(Self::plain_time_value(time));
+        }
+        let (hour, minute, second, millisecond, microsecond, nanosecond) = time;
+        // A year-month or month-day string that never spelled the missing
+        // half cannot be resolved in a calendar whose months do not line up
+        // with ISO's, so those combinations are out of range rather than
+        // silently reinterpreted.
+        let non_iso = calendar != "iso8601";
+        match kind {
+            TemporalKind::PlainYearMonth => {
+                if non_iso && !parsed.day_present {
+                    return Err(RuntimeError::RangeError(
+                        "a Temporal.PlainYearMonth string without a day requires the ISO calendar"
+                            .into(),
+                    ));
+                }
+                if !iso::is_year_month_within_limits(year, month) {
+                    return Err(RuntimeError::RangeError(
+                        "Temporal.PlainYearMonth string is outside the supported range".into(),
+                    ));
+                }
+            }
+            TemporalKind::PlainMonthDay => {
+                if non_iso && !parsed.year_present {
+                    return Err(RuntimeError::RangeError(
+                        "a Temporal.PlainMonthDay string without a year requires the ISO calendar"
+                            .into(),
+                    ));
+                }
+                // The reference year carries no range of its own, but a
+                // non-ISO calendar still has to convert the spelled date.
+                if non_iso && !epoch::is_date_within_limits((year, month, day)) {
+                    return Err(RuntimeError::RangeError(
+                        "Temporal.PlainMonthDay string is outside the supported range".into(),
+                    ));
+                }
+            }
+            // A `PlainDate`'s range is judged at noon, so it reaches one day
+            // further at each end than a `PlainDateTime`'s at midnight.
+            TemporalKind::PlainDate if !epoch::is_date_within_limits((year, month, day)) => {
+                return Err(RuntimeError::RangeError(
+                    "Temporal.PlainDate string is outside the supported range".into(),
+                ));
+            }
+            TemporalKind::PlainDateTime
+                if !epoch::is_date_time_within_limits((year, month, day), time) =>
+            {
+                return Err(RuntimeError::RangeError(
+                    "Temporal.PlainDateTime string is outside the supported range".into(),
+                ));
+            }
+            _ => {}
+        }
         let epoch_nanoseconds = if kind == TemporalKind::Instant {
-            let time = time.ok_or_else(|| {
-                RuntimeError::RangeError("invalid Temporal Instant string".into())
-            })?;
-            let offset = iso::parse_offset_seconds(time).ok_or_else(|| {
-                RuntimeError::RangeError("invalid Temporal Instant string".into())
-            })?;
-            let epoch_nanoseconds = epoch::nanoseconds_since_epoch(
-                (year, month, day),
-                (hour, minute, second, millisecond, microsecond, nanosecond),
-                offset,
-            );
+            // An instant string must pin its offset: a wall-clock reading
+            // alone does not identify one.
+            if parsed.time.is_none()
+                || (!parsed.utc_designator && parsed.offset_nanoseconds.is_none())
+            {
+                return Err(invalid());
+            }
+            let epoch_nanoseconds = epoch::nanoseconds_since_epoch((year, month, day), time, 0)
+                - parsed.offset_nanoseconds.unwrap_or(0);
             if !epoch::is_in_instant_range(&epoch_nanoseconds) {
                 return Err(RuntimeError::RangeError(
                     "Temporal.Instant string is outside the supported range".into(),
@@ -831,7 +889,7 @@ impl Vm {
             nanosecond,
             epoch_nanoseconds,
             calendar,
-            time_zone: "UTC".into(),
+            time_zone: parsed.time_zone.unwrap_or_else(|| "UTC".into()),
         })
     }
 
@@ -2022,15 +2080,15 @@ impl Vm {
                         let offset = if temporal.time_zone == "UTC" {
                             0
                         } else {
-                            iso::parse_offset_seconds(&temporal.time_zone).ok_or_else(|| {
-                                RuntimeError::RangeError(
+                            iso::parse_offset_identifier_nanoseconds(&temporal.time_zone)
+                                .ok_or_else(|| {
+                                    RuntimeError::RangeError(
                                     "Temporal.PlainTime conversion supports UTC and fixed offsets"
                                         .into(),
                                 )
-                            })?
+                                })?
                         };
-                        let local = &temporal.epoch_nanoseconds
-                            + BigInt::from(i64::from(offset) * 1_000_000_000);
+                        let local = &temporal.epoch_nanoseconds + BigInt::from(offset);
                         Some(epoch::instant_fields(&local).1)
                     }
                     // Every other Temporal type lacks the singular time

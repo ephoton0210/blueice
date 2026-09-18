@@ -9,6 +9,81 @@
 //! split (`development/browser_core/phase-26-ecma262-temporal/PLAN.md`).
 //! `vm/temporal.rs`'s `impl Vm` methods are the only callers that bridge
 //! these results into JavaScript-visible values.
+//!
+//! This is a strict recursive-descent scan of Temporal's own grammar
+//! (`ISODateTime`, `AnnotatedDateTime`, `TemporalYearMonthString`,
+//! `TemporalMonthDayString`, `TemporalTimeString`, `TemporalDurationString`),
+//! not a lenient split-on-separators approximation:
+//!
+//! - Both the extended (`1976-11-18`, `15:23:30`) and basic (`19761118`,
+//!   `152330`) forms are accepted, and the separator choice must be
+//!   consistent within one date or one time (`2020-0101` and `00:0000` are
+//!   syntax errors).
+//! - Every numeric field has an exact digit count: a year is 4 digits, or a
+//!   sign plus exactly 6 (`+002020`, with `-000000` rejected outright);
+//!   months, days, hours, minutes and seconds are exactly 2.
+//! - A decimal fraction may be written with `.` or `,` and holds 1 to 9
+//!   digits — a 10th digit is a syntax error rather than silently truncated.
+//! - The date/time separator is `T`, `t` or a single space.
+//! - A `60` seconds field (a leap second) parses and is clamped to `59`.
+//! - A UTC offset may carry sub-minute precision with its own fraction
+//!   (`+00:19:32.37`), so offsets are returned in nanoseconds; a time-zone
+//!   *annotation*, by contrast, is restricted to minute precision.
+//! - Parsing never applies Temporal's per-type representable-range limits:
+//!   the same `-999999-10-01` that is out of range for a `PlainDate` is a
+//!   perfectly valid `PlainMonthDay` string. Callers apply the range rule
+//!   their type actually has (see `epoch::is_date_time_within_limits` and
+//!   `is_year_month_within_limits`).
+//!
+//! The rules above are read off the pinned Test262 corpus rather than
+//! assumed; the unit tests below cite the fixture each case comes from.
+
+/// A time of day: `(hour, minute, second, millisecond, microsecond,
+/// nanosecond)`.
+pub(crate) type Time = (u8, u8, u8, u16, u16, u16);
+
+/// The result of scanning one Temporal date/time string.
+///
+/// Which fields are meaningful depends on the entry point that produced it:
+/// [`parse_year_month`] can report a source that never spelled a day, and
+/// [`parse_month_day`] one that never spelled a year, so the presence flags
+/// are part of the result rather than something a caller can re-derive.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Parsed {
+    pub(crate) year: i32,
+    pub(crate) month: u8,
+    pub(crate) day: u8,
+    /// Whether the source spelled a year (false for `--11-18`/`11-18`).
+    pub(crate) year_present: bool,
+    /// Whether the source spelled a day (false for `1976-11`).
+    pub(crate) day_present: bool,
+    pub(crate) time: Option<Time>,
+    /// Whether the source ended its time with the UTC designator `Z`/`z`.
+    pub(crate) utc_designator: bool,
+    /// A numeric UTC offset, in nanoseconds east of UTC.
+    pub(crate) offset_nanoseconds: Option<i64>,
+    /// The time-zone annotation's identifier, if one was present.
+    pub(crate) time_zone: Option<String>,
+    /// The first `u-ca=` annotation's value, if one was present.
+    pub(crate) calendar: Option<String>,
+}
+
+impl Default for Parsed {
+    fn default() -> Self {
+        Self {
+            year: 1970,
+            month: 1,
+            day: 1,
+            year_present: false,
+            day_present: false,
+            time: None,
+            utc_designator: false,
+            offset_nanoseconds: None,
+            time_zone: None,
+            calendar: None,
+        }
+    }
+}
 
 /// Returns whether `year` is a leap year in the proleptic Gregorian
 /// calendar (the ISO 8601 calendar).
@@ -28,394 +103,590 @@ pub(crate) fn days_in_month(year: i32, month: u8) -> Option<u8> {
     })
 }
 
-/// A two-digit, all-ASCII-digit field. Every ISO date and time component
-/// Temporal accepts is exactly two digits wide (the extended year being the
-/// sole exception), so rejecting any other width here is what makes
-/// `00:0000` and `0000:00` the syntax errors the grammar says they are.
-fn two_digit_field(text: &str) -> Option<u8> {
-    (text.len() == 2 && text.bytes().all(|byte| byte.is_ascii_digit()))
-        .then(|| text.parse().expect("two ASCII digits always fit in a u8"))
+/// `ISOYearMonthWithinLimits`: the representable range of a
+/// `Temporal.PlainYearMonth`, which is one month wider at each end than the
+/// `PlainDate` range so that every in-range date's year-month is itself
+/// in range.
+pub(crate) fn is_year_month_within_limits(year: i32, month: u8) -> bool {
+    match year {
+        -271_821 => month >= 4,
+        275_760 => month <= 9,
+        _ => (-271_821..=275_760).contains(&year),
+    }
 }
 
-/// Parses `Hour[[:]Minute[[:]Second[('.'|',')Fraction]]]`, returning
-/// `(hour, minute, second, nanoseconds)`.
-///
-/// Shared by the time-of-day parser and the UTC-offset parser, which have
-/// the same shape in Temporal's grammar. Two rules it enforces that a
-/// field-splitting parser easily misses: the `:` separators are either all
-/// present or all absent (`00:0000` mixes the two and is invalid), and a
-/// fraction belongs to the *seconds* field only — so `05:07.123`
-/// (fractional minutes) and `12.5` (fractional hours) are syntax errors,
-/// not roundable values.
-fn parse_time_spec(source: &str) -> Option<(u8, u8, u8, u32)> {
-    let (body, fraction) = match source.split_once(['.', ',']) {
-        Some((body, fraction)) => (body, Some(fraction)),
-        None => (source, None),
-    };
-    let (hour, minute, second) = if body.contains(':') {
-        let mut fields = body.split(':');
-        let hour = two_digit_field(fields.next()?)?;
-        let minute = two_digit_field(fields.next()?)?;
-        let second = match fields.next() {
-            Some(field) => Some(two_digit_field(field)?),
-            None => None,
-        };
-        if fields.next().is_some() {
+/// A byte cursor over an ISO string. Every character in Temporal's grammar
+/// is ASCII, so byte-wise scanning both matches the grammar exactly and
+/// rejects look-alikes such as the Unicode minus sign U+2212 for free.
+struct Cursor<'a> {
+    source: &'a str,
+    index: usize,
+}
+
+impl<'a> Cursor<'a> {
+    fn new(source: &'a str) -> Self {
+        Self { source, index: 0 }
+    }
+
+    fn peek(&self) -> Option<u8> {
+        self.source.as_bytes().get(self.index).copied()
+    }
+
+    fn peek_digit(&self) -> bool {
+        self.peek().is_some_and(|byte| byte.is_ascii_digit())
+    }
+
+    fn done(&self) -> bool {
+        self.index >= self.source.len()
+    }
+
+    fn eat(&mut self, byte: u8) -> bool {
+        let matched = self.peek() == Some(byte);
+        if matched {
+            self.index += 1;
+        }
+        matched
+    }
+
+    fn eat_any(&mut self, bytes: &[u8]) -> Option<u8> {
+        let byte = self.peek()?;
+        bytes.contains(&byte).then(|| {
+            self.index += 1;
+            byte
+        })
+    }
+
+    /// Consumes exactly `count` ASCII digits, or nothing.
+    fn digits(&mut self, count: usize) -> Option<u32> {
+        let text = self.source.get(self.index..self.index + count)?;
+        if !text.bytes().all(|byte| byte.is_ascii_digit()) {
             return None;
         }
-        (hour, minute, second)
-    } else {
-        match body.len() {
-            2 => (two_digit_field(body)?, 0, None),
-            4 => (
-                two_digit_field(&body[..2])?,
-                two_digit_field(&body[2..])?,
-                None,
-            ),
-            6 => (
-                two_digit_field(&body[..2])?,
-                two_digit_field(&body[2..4])?,
-                Some(two_digit_field(&body[4..])?),
-            ),
-            _ => return None,
+        self.index += count;
+        text.parse().ok()
+    }
+
+    /// Consumes a `TemporalDecimalFraction`'s digits (1 to 9 of them, a
+    /// 10th being a syntax error) and returns them scaled to nanoseconds.
+    fn fraction_nanoseconds(&mut self) -> Option<u32> {
+        let start = self.index;
+        while self.peek_digit() {
+            self.index += 1;
         }
-    };
-    let nanoseconds = match (second, fraction) {
-        (_, None) => 0,
-        (None, Some(_)) => return None,
-        (Some(_), Some(fraction)) => {
-            if fraction.is_empty()
-                || fraction.len() > 9
-                || !fraction.bytes().all(|byte| byte.is_ascii_digit())
-            {
+        let digits = &self.source[start..self.index];
+        if digits.is_empty() || digits.len() > 9 {
+            return None;
+        }
+        let mut nanoseconds: u32 = digits.parse().ok()?;
+        for _ in digits.len()..9 {
+            nanoseconds *= 10;
+        }
+        Some(nanoseconds)
+    }
+
+    /// Reads the body of the bracketed annotation at the cursor without
+    /// consuming it.
+    fn peek_bracket(&self) -> Option<&'a str> {
+        let rest = self.source.get(self.index..)?.strip_prefix('[')?;
+        rest.find(']').map(|end| &rest[..end])
+    }
+
+    /// Consumes the bracketed annotation at the cursor, returning its body.
+    fn take_bracket(&mut self) -> Option<&'a str> {
+        let body = self.peek_bracket()?;
+        self.index += body.len() + 2;
+        Some(body)
+    }
+}
+
+/// `DateYear`: 4 digits, or a sign and exactly 6. A signed zero year is
+/// rejected (`Temporal/PlainDate/from/year-zero.js`).
+fn scan_year(cursor: &mut Cursor) -> Option<i32> {
+    match cursor.peek() {
+        Some(sign @ (b'+' | b'-')) => {
+            cursor.index += 1;
+            let value = cursor.digits(6)? as i32;
+            if sign == b'-' {
+                (value != 0).then_some(-value)
+            } else {
+                Some(value)
+            }
+        }
+        _ => cursor.digits(4).map(|value| value as i32),
+    }
+}
+
+/// `ISODate`: `DateYear ['-'] DateMonth ['-'] DateDay`, with the same
+/// separator choice on both sides.
+fn scan_date(cursor: &mut Cursor) -> Option<(i32, u8, u8)> {
+    let year = scan_year(cursor)?;
+    let extended = cursor.eat(b'-');
+    let month = cursor.digits(2)? as u8;
+    if cursor.eat(b'-') != extended {
+        return None;
+    }
+    let day = cursor.digits(2)? as u8;
+    is_valid_date(year, month, day).then_some((year, month, day))
+}
+
+fn is_valid_date(year: i32, month: u8, day: u8) -> bool {
+    day >= 1 && days_in_month(year, month).is_some_and(|last| day <= last)
+}
+
+/// `TimeSpec`: `Hour [[':'] Minute [[':'] Second [Fraction]]]`, with the
+/// separator choice consistent throughout. A `60` seconds field is a leap
+/// second and parses as `59`, per `ParseISODateTime`.
+fn scan_time(cursor: &mut Cursor) -> Option<Time> {
+    let hour = cursor.digits(2)?;
+    if hour > 23 {
+        return None;
+    }
+    let mut minute = 0;
+    let mut second = 0;
+    let mut nanoseconds = 0;
+    let extended = cursor.eat(b':');
+    if extended || cursor.peek_digit() {
+        minute = cursor.digits(2)?;
+        if minute > 59 {
+            return None;
+        }
+        let seconds_follow = if extended {
+            cursor.eat(b':')
+        } else {
+            cursor.peek_digit()
+        };
+        if seconds_follow {
+            second = cursor.digits(2)?;
+            if second > 60 {
                 return None;
             }
-            let mut nanos = fraction
-                .bytes()
-                .fold(0u32, |value, byte| value * 10 + u32::from(byte - b'0'));
-            for _ in fraction.len()..9 {
-                nanos *= 10;
+            second = second.min(59);
+            if cursor.eat_any(b".,").is_some() {
+                nanoseconds = cursor.fraction_nanoseconds()?;
             }
-            nanos
         }
-    };
-    (hour <= 23 && minute <= 59).then_some((hour, minute, second.unwrap_or(0), nanoseconds))
-}
-
-/// Parses the `YYYY-MM-DD` date portion at the start of an ISO
-/// date/date-time/instant string, in either the extended (separated) or the
-/// basic (separator-less) form, with a four-digit unsigned year or a
-/// sign-plus-six-digit extended year.
-pub(crate) fn parse_date(source: &str) -> Option<(i32, u8, u8)> {
-    let end = source
-        .find(['T', 't', '[', 'Z', 'z'])
-        .unwrap_or(source.len());
-    let date = &source[..end];
-    let (sign, rest) = match date.as_bytes().first() {
-        Some(b'+') => (1_i32, &date[1..]),
-        Some(b'-') => (-1_i32, &date[1..]),
-        _ => (1, date),
-    };
-    // A sign is exactly what distinguishes the six-digit extended year from
-    // the plain four-digit one; neither form may borrow the other's width.
-    let signed = date.len() != rest.len();
-    let year_width = if signed { 6 } else { 4 };
-    let (year, month, day) = if rest.contains('-') {
-        let mut fields = rest.split('-');
-        let year = fields.next()?;
-        let month = fields.next()?;
-        let day = fields.next()?;
-        if fields.next().is_some() {
-            return None;
-        }
-        (year, month, day)
-    } else {
-        (
-            rest.get(..year_width)?,
-            rest.get(year_width..year_width + 2)?,
-            rest.get(year_width + 2..)?,
-        )
-    };
-    if year.len() != year_width || !year.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
     }
-    let magnitude: i32 = year.parse().ok()?;
-    // `-000000` is a negative zero year, which the grammar rejects outright.
-    if sign < 0 && magnitude == 0 {
-        return None;
-    }
-    let year = sign * magnitude;
-    let month = two_digit_field(month)?;
-    let day = two_digit_field(day)?;
-    ((-271_821..=275_760).contains(&year)
-        && day >= 1
-        && days_in_month(year, month).is_some_and(|last| day <= last))
-    .then_some((year, month, day))
-}
-
-/// Parses an `HH:MM:SS.fraction` time-of-day (ignoring any UTC offset,
-/// designator or annotation that follows it), returning
-/// `(hour, minute, second, millisecond, microsecond, nanosecond)`.
-pub(crate) fn parse_time(source: &str) -> Option<(u8, u8, u8, u16, u16, u16)> {
-    let body = source
-        .split(['Z', 'z', '+', '-', '['])
-        .next()
-        .unwrap_or(source);
-    let (hour, minute, second, nanos) = parse_time_spec(body)?;
-    if second > 60 {
-        return None;
-    }
-    // `ParseISODateTime` accepts a `:60` leap second in the grammar and
-    // immediately constrains it to `:59` (there is no leap second in
-    // Temporal's time record) — Test262's
-    // `PlainTime/from/argument-string-leap-second.js`.
-    let second = second.min(59);
     Some((
-        hour,
-        minute,
-        second,
-        (nanos / 1_000_000) as u16,
-        ((nanos / 1_000) % 1_000) as u16,
-        (nanos % 1_000) as u16,
+        hour as u8,
+        minute as u8,
+        second as u8,
+        (nanoseconds / 1_000_000) as u16,
+        ((nanoseconds / 1_000) % 1_000) as u16,
+        (nanoseconds % 1_000) as u16,
     ))
 }
 
-/// Scans the zero-or-more bracket annotations that may follow an ISO
-/// date/time/offset prefix, returning the first `u-ca=` value if present.
-///
-/// Grammar notes (from Temporal's annotation syntax): an optional leading
-/// time-zone annotation (no `=` in its body) is skipped without further
-/// validation here — resolving it is a separate, later concern (Stage 1
-/// Track E's `time_zone.rs`, and matching `Intl.DateTimeFormat`'s own
-/// time-zone-annotation handling elsewhere in this codebase). Every
-/// subsequent annotation is `[!]key=value`; a key containing any
-/// non-lowercase character is always a syntax error, regardless of the
-/// critical (`!`) flag. A second or later `u-ca` annotation is always
-/// ignored, never validated. Any other unrecognized key is ignored unless
-/// marked critical, in which case this returns `Err`.
-pub(crate) fn parse_annotations(mut cursor: &str) -> Result<Option<String>, ()> {
-    if let Some(rest) = cursor.strip_prefix('[') {
-        let end = rest.find(']').ok_or(())?;
-        let body = rest[..end].strip_prefix('!').unwrap_or(&rest[..end]);
-        if !body.contains('=') {
-            cursor = &rest[end + 1..];
+/// `UTCOffset`: a sign, then the same shape as a time. With
+/// `sub_minute` cleared this is `UTCOffsetMinutePrecision`, the only form a
+/// time-zone annotation may use
+/// (`Temporal/Instant/from/instant-string-sub-minute-offset.js`).
+/// Returns nanoseconds east of UTC.
+fn scan_offset(cursor: &mut Cursor, sub_minute: bool) -> Option<i64> {
+    let sign = match cursor.eat_any(b"+-")? {
+        b'-' => -1,
+        _ => 1,
+    };
+    let hour = i64::from(cursor.digits(2)?);
+    if hour > 23 {
+        return None;
+    }
+    let mut minute = 0;
+    let mut second = 0;
+    let mut nanoseconds = 0;
+    let extended = cursor.eat(b':');
+    if extended || cursor.peek_digit() {
+        minute = i64::from(cursor.digits(2)?);
+        if minute > 59 {
+            return None;
+        }
+        let seconds_follow = if extended {
+            cursor.eat(b':')
+        } else {
+            cursor.peek_digit()
+        };
+        if seconds_follow {
+            if !sub_minute {
+                return None;
+            }
+            second = i64::from(cursor.digits(2)?);
+            if second > 59 {
+                return None;
+            }
+            if cursor.eat_any(b".,").is_some() {
+                nanoseconds = i64::from(cursor.fraction_nanoseconds()?);
+            }
         }
     }
-    let mut calendar = None;
-    let mut calendar_count = 0_usize;
-    let mut any_critical = false;
-    while !cursor.is_empty() {
-        let rest = cursor.strip_prefix('[').ok_or(())?;
-        let end = rest.find(']').ok_or(())?;
-        let body = &rest[..end];
-        cursor = &rest[end + 1..];
-        let (critical, body) = body
-            .strip_prefix('!')
-            .map_or((false, body), |rest| (true, rest));
-        let (key, value) = body.split_once('=').ok_or(())?;
-        if key.is_empty() || value.is_empty() {
-            return Err(());
-        }
-        let key_valid = key.bytes().enumerate().all(|(index, byte)| {
+    Some(sign * (((hour * 60 + minute) * 60 + second) * 1_000_000_000 + nanoseconds))
+}
+
+/// `DateTimeUTCOffset`: the UTC designator or a numeric offset, both
+/// optional — but only ever after a time of day, which is why this is only
+/// reached from the time-carrying branches.
+fn scan_utc_offset_suffix(cursor: &mut Cursor, parsed: &mut Parsed) -> Option<()> {
+    if cursor.eat_any(b"Zz").is_some() {
+        parsed.utc_designator = true;
+    } else if matches!(cursor.peek(), Some(b'+' | b'-')) {
+        parsed.offset_nanoseconds = Some(scan_offset(cursor, true)?);
+    }
+    Some(())
+}
+
+/// `TimeZoneIdentifier`: either a minute-precision UTC offset, or an IANA
+/// name whose *shape* is checked here — whether the name denotes a real
+/// zone is a time-zone-resolution concern, not a grammar one
+/// (`Temporal/Instant/from/argument-string.js` accepts
+/// `[NotATimeZone]`).
+fn is_valid_time_zone_identifier(body: &str) -> bool {
+    if matches!(body.as_bytes().first(), Some(b'+' | b'-')) {
+        let mut cursor = Cursor::new(body);
+        return scan_offset(&mut cursor, false).is_some() && cursor.done();
+    }
+    !body.is_empty()
+        && body.split('/').all(|component| {
+            (1..=14).contains(&component.len())
+                && component != "."
+                && component != ".."
+                && component
+                    .bytes()
+                    .next()
+                    .is_some_and(|byte| byte.is_ascii_alphabetic() || matches!(byte, b'.' | b'_'))
+                && component.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'+' | b'-')
+                })
+        })
+}
+
+fn is_valid_annotation_key(key: &str) -> bool {
+    !key.is_empty()
+        && key.bytes().enumerate().all(|(index, byte)| {
             if index == 0 {
                 byte.is_ascii_lowercase() || byte == b'_'
             } else {
                 byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-')
             }
-        });
-        let value_valid = value.split('-').all(|component| {
+        })
+}
+
+fn is_valid_annotation_value(value: &str) -> bool {
+    !value.is_empty()
+        && value.split('-').all(|component| {
             !component.is_empty() && component.bytes().all(|byte| byte.is_ascii_alphanumeric())
-        });
-        if !key_valid || !value_valid {
+        })
+}
+
+/// `TimeZoneAnnotation? Annotations?`: an optional leading time-zone
+/// annotation followed by zero or more `[!]key=value` annotations.
+///
+/// Grammar notes, each taken from a pinned fixture rather than assumed:
+/// the time-zone annotation must come first, so a second one anywhere later
+/// is a syntax error (`Instant/from/argument-string-multiple-time-zone.js`);
+/// an annotation key must be entirely lowercase regardless of the critical
+/// (`!`) flag; an unrecognized key is ignored unless critical, in which case
+/// this returns `Err`
+/// (`PlainDateTime/from/argument-string-critical-unknown-annotation.js`); a
+/// repeated `u-ca` annotation is ignored, but only when *no* `u-ca`
+/// annotation is critical
+/// (`PlainDateTime/from/argument-string-multiple-calendar.js`).
+fn scan_annotations(cursor: &mut Cursor) -> Result<(Option<String>, Option<String>), ()> {
+    let mut time_zone = None;
+    if cursor.peek() == Some(b'[') {
+        let body = cursor.peek_bracket().ok_or(())?;
+        let name = body.strip_prefix('!').unwrap_or(body);
+        if !name.contains('=') {
+            if !is_valid_time_zone_identifier(name) {
+                return Err(());
+            }
+            time_zone = Some(name.to_string());
+            cursor.take_bracket().ok_or(())?;
+        }
+    }
+    let mut calendar = None;
+    let mut calendars = 0_usize;
+    let mut critical_calendar = false;
+    while cursor.peek() == Some(b'[') {
+        let body = cursor.take_bracket().ok_or(())?;
+        let (critical, body) = body
+            .strip_prefix('!')
+            .map_or((false, body), |rest| (true, rest));
+        let (key, value) = body.split_once('=').ok_or(())?;
+        if !is_valid_annotation_key(key) || !is_valid_annotation_value(value) {
             return Err(());
         }
         if key == "u-ca" {
-            calendar_count += 1;
-            any_critical |= critical;
-            calendar.get_or_insert_with(|| value.to_string());
+            calendars += 1;
+            critical_calendar |= critical;
+            if calendar.is_none() {
+                calendar = Some(value.to_string());
+            }
         } else if critical {
             return Err(());
         }
     }
-    // A repeated calendar annotation is ordinarily ignored, but repeating it
-    // with the critical flag anywhere in the set is a syntax error.
-    if calendar_count > 1 && any_critical {
+    if calendars > 1 && critical_calendar {
         return Err(());
     }
-    Ok(calendar)
+    Ok((time_zone, calendar))
 }
 
-/// Parses the `TemporalTimeString` grammar — the string form
-/// `Temporal.PlainTime.from`/`ToTemporalTime` accept.
-///
-/// This is deliberately not `parse_time` on its own: a PlainTime string may
-/// carry a full date prefix (`1976-11-18T12:34`, including a bare space as
-/// the separator), a leading `T`/`t` time designator, a UTC offset and
-/// bracket annotations — while a *date-only* string must be rejected rather
-/// than implicitly meaning midnight, and a UTC designator (`Z`) is not valid
-/// on a PlainTime at all. Every one of those rules is pinned by Test262
-/// fixtures under `built-ins/Temporal/PlainTime/` (`argument-string-*`).
-///
-/// Known gap: the basic (separator-less) format — `T1214` for `12:14` — is
-/// not accepted, consistent with the rest of this parser and with Phase 26's
-/// Stage 0 note that Temporal restricts itself to the extended format. The
-/// separator-less strings Test262 exercises here are the *ambiguous* ones a
-/// PlainTime must reject anyway (`1214`, `202112`), which this does; only
-/// their `T`-prefixed unambiguous counterparts are missed.
-/// Whether `body` would *also* parse as a PlainMonthDay or PlainYearMonth,
-/// which the grammar calls ambiguous: a bare (un-`T`-prefixed) PlainTime
-/// string may not shadow one, so it has to be rejected rather than silently
-/// read as a time.
-///
-/// The four shapes, in both the extended and the basic form (`MM-DD`/`MMDD`
-/// against `HH-UU`/`HHMM`, and `YYYY-MM`/`YYYYMM` against `HHMM-UU`/
-/// `HHMMSS`), are exactly the ones Test262's
-/// `TemporalHelpers.ISO.plainTimeStringsAmbiguous()` lists; its
-/// `plainTimeStringsUnambiguous()` counterpart is what pins the *validity*
-/// checks here (`0230` is February 30th, so it is not a real date and stays a
-/// valid time; `0229` is, so it is ambiguous).
-fn is_ambiguous_with_a_date(body: &str) -> bool {
-    let month_day = |month: u8, day: u8| {
-        // 1972 is Test262's own reference year for a PlainMonthDay, which
-        // matters for exactly one case: February 29th exists there.
-        days_in_month(1972, month).is_some_and(|last| (1..=last).contains(&day))
+/// `AnnotatedDateTime`: a required `ISODate`, an optional time of day (and,
+/// only then, an optional UTC offset), and optional annotations. This is
+/// the form `Temporal.PlainDate`, `PlainDateTime`, `Instant` and
+/// `ZonedDateTime` strings are built from.
+pub(crate) fn parse_date_time(source: &str) -> Option<Parsed> {
+    let mut cursor = Cursor::new(source);
+    let (year, month, day) = scan_date(&mut cursor)?;
+    let mut parsed = Parsed {
+        year,
+        month,
+        day,
+        year_present: true,
+        day_present: true,
+        ..Parsed::default()
     };
-    let is_month = |month: u8| (1..=12).contains(&month);
-    let digits = |text: &str| text.bytes().all(|byte| byte.is_ascii_digit());
-    match body.split_once('-') {
-        Some((left, right)) => match (left.len(), two_digit_field(right)) {
-            (2, Some(right)) => two_digit_field(left).is_some_and(|left| month_day(left, right)),
-            (4, Some(right)) => digits(left) && is_month(right),
-            _ => false,
-        },
-        None if digits(body) => match body.len() {
-            4 => matches!(
-                (two_digit_field(&body[..2]), two_digit_field(&body[2..])),
-                (Some(month), Some(day)) if month_day(month, day)
-            ),
-            6 => two_digit_field(&body[4..]).is_some_and(is_month),
-            _ => false,
-        },
-        None => false,
+    if cursor.eat_any(b"Tt ").is_some() {
+        parsed.time = Some(scan_time(&mut cursor)?);
+        scan_utc_offset_suffix(&mut cursor, &mut parsed)?;
     }
+    let (time_zone, calendar) = scan_annotations(&mut cursor).ok()?;
+    parsed.time_zone = time_zone;
+    parsed.calendar = calendar;
+    cursor.done().then_some(parsed)
 }
 
-pub(crate) fn parse_plain_time(source: &str) -> Option<(u8, u8, u8, u16, u16, u16)> {
-    let (body, annotations) = match source.find('[') {
-        Some(index) => (&source[..index], &source[index..]),
-        None => (source, ""),
-    };
-    // A PlainTime ignores any calendar the annotation names (even an unknown
-    // one), but its *syntax* is still validated.
-    parse_annotations(annotations).ok()?;
-    let time = if let Some(rest) = body.strip_prefix(['T', 't']) {
-        rest
-    } else {
-        match body.find(['T', 't', ' ']) {
-            Some(index) if parse_date(&body[..index]).is_some() => &body[index + 1..],
-            // No date prefix: the whole body is the time of day. A date-only
-            // body falls here too and fails `parse_time` below, which is
-            // exactly the "no implicit midnight" rule.
-            _ => {
-                // ...except where a time-shaped body would *also* be a valid
-                // PlainMonthDay, which the grammar calls ambiguous and
-                // requires a `T` designator to resolve: `12-14` could be
-                // December 14th or 12:00 at offset -14:00, so a PlainTime
-                // must reject it rather than silently pick the latter
-                // (Test262's
-                // `argument-string-time-designator-required-for-disambiguation.js`).
-                if is_ambiguous_with_a_date(body) {
-                    return None;
-                }
-                body
-            }
-        }
-    };
-    if time.contains(['Z', 'z']) {
+/// The `DateYear ['-'] DateMonth` half of `TemporalYearMonthString` — the
+/// form that carries no day at all.
+fn parse_year_month_only(source: &str) -> Option<Parsed> {
+    let mut cursor = Cursor::new(source);
+    let year = scan_year(&mut cursor)?;
+    cursor.eat(b'-');
+    let month = cursor.digits(2)? as u8;
+    if !(1..=12).contains(&month) {
         return None;
     }
-    // The offset itself is ignored by a PlainTime, but a malformed one (or
-    // trailing junk after it) is still a syntax error.
-    if time.contains(['+', '-']) && parse_offset_seconds(time).is_none() {
+    let (time_zone, calendar) = scan_annotations(&mut cursor).ok()?;
+    cursor.done().then_some(Parsed {
+        year,
+        month,
+        day: 1,
+        year_present: true,
+        day_present: false,
+        time_zone,
+        calendar,
+        ..Parsed::default()
+    })
+}
+
+/// `TemporalYearMonthString`: the day-less form, or any full
+/// `AnnotatedDateTime`.
+pub(crate) fn parse_year_month(source: &str) -> Option<Parsed> {
+    parse_year_month_only(source).or_else(|| parse_date_time(source))
+}
+
+/// The `['--'] DateMonth ['-'] DateDay` half of `TemporalMonthDayString` —
+/// the form that carries no year at all, so day validity is judged against
+/// the ISO reference year 1972 (a leap year, which is why `02-29` is a
+/// valid month-day).
+fn parse_month_day_only(source: &str) -> Option<Parsed> {
+    let mut cursor = Cursor::new(source);
+    if cursor.eat(b'-') && !cursor.eat(b'-') {
         return None;
     }
-    parse_time(time)
+    let month = cursor.digits(2)? as u8;
+    cursor.eat(b'-');
+    let day = cursor.digits(2)? as u8;
+    if !is_valid_date(1972, month, day) {
+        return None;
+    }
+    let (time_zone, calendar) = scan_annotations(&mut cursor).ok()?;
+    cursor.done().then_some(Parsed {
+        year: 1972,
+        month,
+        day,
+        year_present: false,
+        day_present: true,
+        time_zone,
+        calendar,
+        ..Parsed::default()
+    })
+}
+
+/// `TemporalMonthDayString`: the year-less form, or any full
+/// `AnnotatedDateTime`.
+pub(crate) fn parse_month_day(source: &str) -> Option<Parsed> {
+    parse_month_day_only(source).or_else(|| parse_date_time(source))
+}
+
+/// Whether a bare (undesignated) time string would also read as a
+/// year-month or month-day string. Temporal resolves that ambiguity by
+/// requiring the `T` designator rather than by preferring one reading:
+/// `1130` is a syntax error as a time, while `1314` (no such month) is
+/// 13:14 — see `TemporalHelpers.ISO.plainTimeStringsAmbiguous()`.
+fn is_ambiguous_with_a_date(source: &str) -> bool {
+    parse_year_month_only(source).is_some() || parse_month_day_only(source).is_some()
+}
+
+/// `AnnotatedTime`: a time of day, optionally introduced by the `T`/`t`
+/// designator, with an optional UTC offset and annotations.
+fn parse_time_only(source: &str) -> Option<Parsed> {
+    let mut cursor = Cursor::new(source);
+    let designated = cursor.eat_any(b"Tt").is_some();
+    let mut parsed = Parsed {
+        time: Some(scan_time(&mut cursor)?),
+        ..Parsed::default()
+    };
+    scan_utc_offset_suffix(&mut cursor, &mut parsed)?;
+    let (time_zone, calendar) = scan_annotations(&mut cursor).ok()?;
+    parsed.time_zone = time_zone;
+    parsed.calendar = calendar;
+    if !cursor.done() || (!designated && is_ambiguous_with_a_date(source)) {
+        return None;
+    }
+    Some(parsed)
+}
+
+/// `TemporalTimeString`: a time-only string, or a full
+/// `AnnotatedDateTime` that actually carries a time (a date alone never
+/// implies midnight —
+/// `PlainTime/from/argument-string-no-implicit-midnight.js`).
+pub(crate) fn parse_time(source: &str) -> Option<Parsed> {
+    if let Some(parsed) = parse_time_only(source) {
+        return Some(parsed);
+    }
+    let parsed = parse_date_time(source)?;
+    parsed.time.is_some().then_some(parsed)
+}
+
+/// `TemporalTimeString` reduced to just its time of day, which is all a
+/// `Temporal.PlainTime` retains. A UTC designator asserts an exact instant,
+/// so it is not valid on a wall-clock time
+/// (`PlainTime/from/argument-string-with-utc-designator.js`).
+pub(crate) fn parse_plain_time(source: &str) -> Option<Time> {
+    let parsed = parse_time(source)?;
+    if parsed.utc_designator {
+        return None;
+    }
+    parsed.time
+}
+
+/// A whole-string, minute-precision UTC offset, as a fixed-offset time-zone
+/// identifier is spelled. Returns nanoseconds east of UTC.
+pub(crate) fn parse_offset_identifier_nanoseconds(source: &str) -> Option<i64> {
+    let mut cursor = Cursor::new(source);
+    let offset = scan_offset(&mut cursor, false)?;
+    cursor.done().then_some(offset)
+}
+
+/// One `DurationDate`/`DurationTime` term: a digit run, an optional
+/// fraction, and the unit designator that closes it.
+struct DurationTerm {
+    number: i128,
+    fraction: Option<u32>,
+    designator: u8,
+    in_time: bool,
 }
 
 /// Parses the ISO duration strings accepted by `Intl.DurationFormat` and
-/// `Temporal.Duration` through Temporal's duration-string grammar. The host
-/// service receives a typed, validated ECMA-402 record, so neither this
-/// parser nor a Temporal object can trigger observable duration-field
-/// accessors while formatting.
+/// `Temporal.Duration`. The host service receives a typed, validated
+/// ECMA-402 record, so neither this parser nor a Temporal object can
+/// trigger observable duration-field accessors while formatting.
+///
+/// Temporal's duration grammar is narrower than general ISO 8601 in that a
+/// fraction may only appear on the **last** component present, but it is
+/// not restricted to seconds: `P1DT0.5M` is half a minute and `P1DT0,5H`
+/// half an hour (`Temporal/Duration/from/argument-string.js`), while
+/// `PT0.1H0M` is a syntax error
+/// (`Duration/from/argument-string-fractional-with-zero-subparts.js`).
+/// Fractions convert exactly, never through floating point
+/// (`argument-string-fractional-precision.js`).
 pub(crate) fn parse_duration_record(source: &str) -> Option<blueice_ecma402::DurationRecord> {
-    let (sign, source) = match source.as_bytes().first() {
-        Some(b'+') => (1_i128, &source[1..]),
-        Some(b'-') => (-1_i128, &source[1..]),
-        _ => (1_i128, source),
+    let mut cursor = Cursor::new(source);
+    let sign: i128 = match cursor.eat_any(b"+-") {
+        Some(b'-') => -1,
+        _ => 1,
     };
-    let mut characters = source.chars().peekable();
-    (characters.next() == Some('P')).then_some(())?;
-    let mut values = [0_i128; 10];
+    cursor.eat_any(b"Pp")?;
+    let mut terms: Vec<DurationTerm> = Vec::new();
     let mut in_time = false;
-    let mut saw_component = false;
-    while characters.peek().is_some() {
-        if characters.peek() == Some(&'T') {
+    while !cursor.done() {
+        if cursor.eat_any(b"Tt").is_some() {
             if in_time {
                 return None;
             }
-            characters.next();
             in_time = true;
             continue;
         }
-        let mut number = String::new();
-        while characters
-            .peek()
-            .is_some_and(|character| character.is_ascii_digit())
-        {
-            number.push(characters.next()?);
+        let start = cursor.index;
+        while cursor.peek_digit() {
+            cursor.index += 1;
         }
-        if number.is_empty() {
+        if cursor.index == start {
             return None;
         }
-        let mut fraction = None;
-        if characters.peek() == Some(&'.') {
-            characters.next();
-            let mut digits = String::new();
-            while characters
-                .peek()
-                .is_some_and(|character| character.is_ascii_digit())
-            {
-                digits.push(characters.next()?);
-            }
-            if digits.is_empty() || digits.len() > 9 {
-                return None;
-            }
-            fraction = Some(digits);
-        }
-        let designator = characters.next()?;
-        let index = match (in_time, designator) {
-            (false, 'Y') => 0,
-            (false, 'M') => 1,
-            (false, 'W') => 2,
-            (false, 'D') => 3,
-            (true, 'H') => 4,
-            (true, 'M') => 5,
-            (true, 'S') => 6,
-            _ => return None,
+        let number = source[start..cursor.index].parse::<i128>().ok()?;
+        let fraction = if cursor.eat_any(b".,").is_some() {
+            Some(cursor.fraction_nanoseconds()?)
+        } else {
+            None
         };
-        if let Some(fraction) = fraction {
-            if designator != 'S' {
+        let designator = cursor.peek()?.to_ascii_uppercase();
+        cursor.index += 1;
+        terms.push(DurationTerm {
+            number,
+            fraction,
+            designator,
+            in_time,
+        });
+    }
+    if terms.is_empty() || (in_time && !terms.iter().any(|term| term.in_time)) {
+        return None;
+    }
+    let mut values = [0_i128; 10];
+    let mut date_order = 0;
+    let mut time_order = 0;
+    for (position, term) in terms.iter().enumerate() {
+        let last = position + 1 == terms.len();
+        let index = if term.in_time {
+            let order = 1 + b"HMS".iter().position(|unit| *unit == term.designator)?;
+            if order <= time_order {
                 return None;
             }
-            let fraction = format!("{fraction:0<9}").parse::<i128>().ok()?;
-            values[7] = fraction / 1_000_000;
-            values[8] = (fraction / 1_000) % 1_000;
-            values[9] = fraction % 1_000;
+            time_order = order;
+            3 + order
+        } else {
+            let order = 1 + b"YMWD".iter().position(|unit| *unit == term.designator)?;
+            if order <= date_order {
+                return None;
+            }
+            date_order = order;
+            order - 1
+        };
+        values[index] = term.number;
+        if let Some(fraction) = term.fraction {
+            // A fraction is only legal on the final component, and a date
+            // component never takes one at all.
+            if !last || !term.in_time {
+                return None;
+            }
+            let mut nanoseconds = i128::from(fraction)
+                * match term.designator {
+                    b'H' => 3_600,
+                    b'M' => 60,
+                    _ => 1,
+                };
+            if term.designator == b'H' {
+                values[5] = nanoseconds / 60_000_000_000;
+                nanoseconds %= 60_000_000_000;
+            }
+            if term.designator != b'S' {
+                values[6] = nanoseconds / 1_000_000_000;
+                nanoseconds %= 1_000_000_000;
+            }
+            values[7] = nanoseconds / 1_000_000;
+            values[8] = (nanoseconds / 1_000) % 1_000;
+            values[9] = nanoseconds % 1_000;
         }
-        values[index] = number.parse::<i128>().ok()?;
-        saw_component = true;
     }
-    saw_component.then_some(())?;
     blueice_ecma402::DurationRecord::try_new(
         sign * values[0],
         sign * values[1],
@@ -431,212 +702,154 @@ pub(crate) fn parse_duration_record(source: &str) -> Option<blueice_ecma402::Dur
     .ok()
 }
 
-/// Parses a UTC-offset or `Z`/`z` suffix (`temporal_offset_seconds`'s own
-/// former name) into signed seconds east of UTC.
-pub(crate) fn parse_offset_seconds(source: &str) -> Option<i32> {
-    let index = source.char_indices().find_map(|(index, character)| {
-        matches!(character, 'Z' | 'z' | '+' | '-' | '[').then_some(index)
-    })?;
-    let suffix = &source[index..];
-    if matches!(suffix.as_bytes().first(), Some(b'Z' | b'z')) {
-        return (suffix.len() == 1 || suffix.starts_with("Z[") || suffix.starts_with("z["))
-            .then_some(0);
-    }
-    let sign = match suffix.as_bytes().first() {
-        Some(b'+') => 1,
-        Some(b'-') => -1,
-        _ => return None,
-    };
-    let fields = suffix[1..]
-        .split_once('[')
-        .map_or(&suffix[1..], |(fields, _)| fields);
-    // An offset shares the time-of-day grammar, including a sub-minute
-    // fraction (`+00:00:00.000000000`). The fractional part is dropped: no
-    // real zone offset has sub-second precision, and Temporal's own
-    // `PlainTime` path ignores the offset entirely — it is parsed only so a
-    // malformed one is still a syntax error.
-    let (hour, minute, second, _) = parse_time_spec(fields)?;
-    (second <= 59)
-        .then_some(sign * (i32::from(hour) * 3_600 + i32::from(minute) * 60 + i32::from(second)))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn parses_calendar_dates_within_the_supported_range() {
-        assert_eq!(parse_date("2000-05-02"), Some((2000, 5, 2)));
-        assert_eq!(parse_date("+002020-06-01"), Some((2020, 6, 1)));
-        assert_eq!(parse_date("2000-05-02T15:23"), Some((2000, 5, 2)));
-        assert_eq!(parse_date("2000-02-30"), None);
-        assert_eq!(parse_date("2000-13-01"), None);
-        assert_eq!(parse_date("not-a-date"), None);
+    fn date(source: &str) -> Option<(i32, u8, u8)> {
+        parse_date_time(source).map(|parsed| (parsed.year, parsed.month, parsed.day))
+    }
+
+    fn time_of(source: &str) -> Option<Time> {
+        parse_time(source).and_then(|parsed| parsed.time)
+    }
+
+    fn offset(source: &str) -> Option<i64> {
+        parse_date_time(source).and_then(|parsed| parsed.offset_nanoseconds)
     }
 
     #[test]
-    fn parses_time_of_day_with_fractional_seconds() {
-        assert_eq!(parse_time("15:23"), Some((15, 23, 0, 0, 0, 0)));
-        assert_eq!(
-            parse_time("15:23:07.008009010"),
-            Some((15, 23, 7, 8, 9, 10))
-        );
-        assert_eq!(parse_time("24:00"), None);
-        assert_eq!(parse_time("15:60"), None);
+    fn parses_extended_and_basic_calendar_dates() {
+        // Temporal/PlainDate/from/argument-string.js.
+        assert_eq!(date("2000-05-02"), Some((2000, 5, 2)));
+        assert_eq!(date("+002020-06-01"), Some((2020, 6, 1)));
+        assert_eq!(date("-010583-06-30"), Some((-10583, 6, 30)));
+        assert_eq!(date("19761118"), Some((1976, 11, 18)));
+        assert_eq!(date("+0019761118"), Some((1976, 11, 18)));
+        assert_eq!(date("2000-05-02T15:23"), Some((2000, 5, 2)));
+        assert_eq!(date("-999999-01-01"), Some((-999_999, 1, 1)));
     }
 
     #[test]
-    fn parses_basic_format_and_comma_separated_times() {
-        // Test262's `PlainTime/from/argument-string.js`: the separator-less
-        // basic format and `,` as the decimal separator are both accepted,
-        // and a lone two-digit hour is a complete time.
-        assert_eq!(parse_time("152330"), Some((15, 23, 30, 0, 0, 0)));
-        assert_eq!(parse_time("152330.1"), Some((15, 23, 30, 100, 0, 0)));
-        assert_eq!(parse_time("0030"), Some((0, 30, 0, 0, 0, 0)));
-        assert_eq!(parse_time("15"), Some((15, 0, 0, 0, 0, 0)));
-        assert_eq!(parse_time("15:23:30,12"), Some((15, 23, 30, 120, 0, 0)));
-        assert_eq!(parse_time("152330-0800"), Some((15, 23, 30, 0, 0, 0)));
-    }
-
-    #[test]
-    fn rejects_inconsistent_or_overlong_time_fields() {
-        // Test262's `PlainTime/from/argument-string-invalid.js`: the
-        // separators either all appear or none do, every field is exactly two
-        // digits, and no fraction may exceed nine digits or sit on a field
-        // other than the seconds.
+    fn rejects_dates_that_break_the_grammar() {
+        // Temporal/PlainDate/from/argument-string-invalid.js.
         for source in [
             "",
+            "invalid iso8601",
+            "2020-01-00",
+            "2020-01-32",
+            "2020-02-30",
+            "2021-02-29",
+            "2020-00-01",
+            "2020-13-01",
+            "02020-01-01",
+            "2020-001-01",
+            "2020-01-001",
+            "+0002020-01-01",
+            "2020-W01-1",
+            "2020-001",
+            "2020-01",
+            "+002020-01",
+            "01-01",
+            "2020-0101",
+            "202001-01",
+            "1976-11-18junk",
+            // Temporal/PlainDate/from/year-zero.js: a signed zero year.
+            "-000000-10-31",
+            "-000000-10-31T00:45",
+            // Temporal/PlainDate/from/argument-string-minus-sign.js: the
+            // Unicode minus sign U+2212 is not an ASCII sign.
+            "\u{2212}009999-11-18T15:23:30.12",
+            // Neither year width may borrow the other's: a six-digit year
+            // needs its sign, and a four-digit one must not carry one.
+            "002020-06-01",
+            "+2020-06-01",
+        ] {
+            assert_eq!(date(source), None, "{source}");
+        }
+        // `+000000` is a legal extended year; only the *negative* zero is
+        // prohibited.
+        assert_eq!(date("+000000-12-07"), Some((0, 12, 7)));
+        assert!(is_leap_year(2020) && !is_leap_year(2021));
+    }
+
+    #[test]
+    fn parses_time_of_day_in_both_forms_and_every_precision() {
+        // Temporal/PlainTime/from/argument-string.js.
+        assert_eq!(time_of("15"), Some((15, 0, 0, 0, 0, 0)));
+        assert_eq!(time_of("15:23"), Some((15, 23, 0, 0, 0, 0)));
+        assert_eq!(time_of("152330"), Some((15, 23, 30, 0, 0, 0)));
+        assert_eq!(time_of("152330.1"), Some((15, 23, 30, 100, 0, 0)));
+        assert_eq!(time_of("T00:30"), Some((0, 30, 0, 0, 0, 0)));
+        assert_eq!(time_of("t003000.000000000"), Some((0, 30, 0, 0, 0, 0)));
+        assert_eq!(
+            time_of("15:23:30.123456789"),
+            Some((15, 23, 30, 123, 456, 789))
+        );
+        // Temporal/Instant/from/argument-string.js: `,` is also a decimal
+        // separator.
+        assert_eq!(
+            time_of("1976-11-18T15:23:30,12"),
+            Some((15, 23, 30, 120, 0, 0))
+        );
+        // A space is a date/time separator, per
+        // Temporal/PlainDate/from/argument-string-time-separators.js.
+        assert_eq!(time_of("2000-05-02 15:23"), Some((15, 23, 0, 0, 0, 0)));
+        assert_eq!(time_of("2000-05-02t15:23"), Some((15, 23, 0, 0, 0, 0)));
+        // Temporal/PlainDate/from/argument-leap-second.js: a leap second
+        // parses, clamped to :59.
+        assert_eq!(time_of("2016-12-31T23:59:60"), Some((23, 59, 59, 0, 0, 0)));
+    }
+
+    #[test]
+    fn rejects_times_that_break_the_grammar() {
+        // Temporal/PlainTime/from/argument-string-invalid.js and
+        // Temporal/PlainDate/from/argument-string-{too-many-decimals,
+        // invalid}.js, no-fractional-minutes-hours.js.
+        for source in [
+            "24:00",
+            "15:60",
+            "25:00:00",
+            "01:60:00",
+            "01:60:61",
             "001",
             "01:001",
+            "01:01:001",
+            "00:00:00.1234567891",
             "0000:00",
             "00:0000",
+            "00:00:00+00:0000",
+            "00:00:00+0000:00",
+            "05:07.123",
+            "12.5",
+            "15:23:30.",
+            "2019-10-01",
+            "Z",
+            "1976-11-18T15:23:30.12\u{2212}02:00",
+            "",
             "00:00:00:00",
             "00:",
             "0:0",
             "1",
-            "00:00:00.",
-            "00:00:00.1234567891",
-            "05:07.123",
-            "12.5",
             "00:61",
-            "24:00:00",
             "00:00:61",
+            "15:23:30.100junk",
         ] {
-            assert_eq!(parse_time(source), None, "{source}");
+            assert_eq!(time_of(source), None, "{source}");
         }
-    }
-
-    #[test]
-    fn parses_basic_format_dates_and_rejects_a_negative_zero_year() {
-        // Test262's `PlainTime/from/argument-string.js` (basic-format date
-        // prefixes) and `.../year-zero.js`.
-        assert_eq!(parse_date("19761118"), Some((1976, 11, 18)));
-        assert_eq!(parse_date("+0019761118"), Some((1976, 11, 18)));
-        assert_eq!(parse_date("+0019761118T15:23"), Some((1976, 11, 18)));
-        assert_eq!(parse_date("-000000-12-07"), None);
-        assert_eq!(parse_date("-000000-12-07T03:24:30"), None);
-        assert_eq!(parse_date("+000000-12-07"), Some((0, 12, 7)));
-        // A six-digit year needs its sign, and a four-digit one must not
-        // carry one.
-        assert_eq!(parse_date("002020-06-01"), None);
-        assert_eq!(parse_date("+2020-06-01"), None);
-    }
-
-    #[test]
-    fn parses_offsets_with_fractional_seconds_and_rejects_bad_ones() {
-        // Test262's `PlainTime/prototype/until/argument-string-date-with-utc-offset.js`
-        // valid list, and `from/argument-string-invalid.js`'s offsets.
-        assert_eq!(parse_offset_seconds("+00:00:00,0"), Some(0));
-        assert_eq!(parse_offset_seconds("+000000.000000000"), Some(0));
-        assert_eq!(parse_offset_seconds("-023000,0"), Some(-9_000));
-        for source in [
-            "+24:00",
-            "-24:00",
-            "+00:0000",
-            "+0000:00",
-            "+00:00:00.1234567891",
-            "+00:00junk",
-        ] {
-            assert_eq!(parse_offset_seconds(source), None, "{source}");
-        }
-    }
-
-    #[test]
-    fn resolves_the_first_calendar_annotation_and_ignores_later_ones() {
+        // A `PlainTime` additionally rejects the UTC designator, which a
+        // wall-clock time cannot represent.
+        assert_eq!(parse_plain_time("09:00:00Z"), None);
+        assert_eq!(parse_plain_time("2019-10-01T09:00:00Z[UTC]"), None);
+        assert_eq!(parse_plain_time("T"), None);
         assert_eq!(
-            parse_annotations("[u-ca=hebrew]"),
-            Ok(Some("hebrew".to_string()))
+            parse_plain_time("1976-11-18 12:34:56.987654321"),
+            Some((12, 34, 56, 987, 654, 321))
         );
         assert_eq!(
-            parse_annotations("[u-ca=hebrew][u-ca=discord]"),
-            Ok(Some("hebrew".to_string()))
+            parse_plain_time("12:34:56.987654321+00:00:00,0"),
+            Some((12, 34, 56, 987, 654, 321))
         );
-        assert_eq!(
-            parse_annotations("[UTC][u-ca=hebrew]"),
-            Ok(Some("hebrew".to_string()))
-        );
-        assert_eq!(parse_annotations("[foo=bar]"), Ok(None));
-        assert_eq!(parse_annotations(""), Ok(None));
-    }
-
-    #[test]
-    fn rejects_invalid_or_critical_unknown_annotations() {
-        assert_eq!(parse_annotations("[!foo=bar]"), Err(()));
-        assert_eq!(parse_annotations("[FOO=bar]"), Err(()));
-        assert_eq!(parse_annotations("[u-CA=iso8601]"), Err(()));
-    }
-
-    #[test]
-    fn rejects_more_than_one_calendar_annotation_when_any_is_critical() {
-        // Test262's PlainTime/prototype/until/argument-string-multiple-calendar.js
-        // (and the identically-shaped PlainDate/PlainDateTime fixtures): a
-        // repeated `u-ca` annotation is ignored, but becomes a syntax error
-        // as soon as any of them carries the critical flag.
-        assert_eq!(
-            parse_annotations("[u-ca=iso8601][u-ca=discord]"),
-            Ok(Some("iso8601".to_string()))
-        );
-        assert_eq!(parse_annotations("[u-ca=iso8601][!u-ca=iso8601]"), Err(()));
-        assert_eq!(parse_annotations("[!u-ca=iso8601][u-ca=iso8601]"), Err(()));
-        assert_eq!(
-            parse_annotations("[UTC][u-ca=iso8601][!u-ca=iso8601]"),
-            Err(())
-        );
-        // A single critical calendar annotation stays valid.
-        assert_eq!(
-            parse_annotations("[!u-ca=iso8601]"),
-            Ok(Some("iso8601".to_string()))
-        );
-    }
-
-    #[test]
-    fn parses_the_plain_time_string_grammar() {
-        // Test262's PlainTime/prototype/until/argument-string-time-separators.js
-        // and .../argument-string-calendar-annotation.js.
-        for source in [
-            "12:34:56.987654321",
-            "T12:34:56.987654321",
-            "t12:34:56.987654321",
-            "1976-11-18T12:34:56.987654321",
-            "1976-11-18t12:34:56.987654321",
-            "1976-11-18 12:34:56.987654321",
-            "12:34:56.987654321[u-ca=iso8601]",
-            "12:34:56.987654321[UTC][u-ca=iso8601]",
-            "12:34:56.987654321[!u-ca=unknown]",
-            "12:34:56.987654321+00:00",
-            "12:34:56.987654321-02:30[America/St_Johns]",
-            "12:34:56.987654321+00:00:00,0",
-            "1976-11-18T12:34:56.987654321+00:00[UTC]",
-        ] {
-            assert_eq!(
-                parse_plain_time(source),
-                Some((12, 34, 56, 987, 654, 321)),
-                "{source}"
-            );
-        }
-        assert_eq!(parse_plain_time("15:23"), Some((15, 23, 0, 0, 0, 0)));
-        // A leap second is constrained to :59, per ParseISODateTime.
-        assert_eq!(parse_plain_time("23:59:60"), Some((23, 59, 59, 0, 0, 0)));
         assert_eq!(
             parse_plain_time("23:59:60.170"),
             Some((23, 59, 59, 170, 0, 0))
@@ -644,48 +857,347 @@ mod tests {
     }
 
     #[test]
-    fn rejects_non_plain_time_strings() {
+    fn requires_a_time_designator_only_where_a_date_reading_is_ambiguous() {
+        // TemporalHelpers.ISO.plainTimeStringsAmbiguous(), via
+        // PlainTime/from/argument-string-time-designator-required-for-disambiguation.js.
         for source in [
-            // A date-only string never implicitly means midnight.
-            "2019-10-01",
-            "2000-05-02[UTC]",
-            // A UTC designator is not valid on a PlainTime.
-            "09:00:00Z",
-            "09:00:00Z[UTC]",
-            "2019-10-01T09:00:00Z",
-            "2022-09-15+00:00",
-            // Ambiguous with PlainYearMonth/PlainMonthDay without a `T`.
             "2021-12",
+            "2021-12[-12:00]",
+            "1214",
+            "0229",
+            "1130",
             "12-14",
+            "12-14[-14:00]",
+            "202112",
             "202112[UTC]",
-            // Fractional minutes/hours, over-long fractions, trailing junk.
-            "05:07.123",
-            "12.5",
-            "00:00:00.1234567891",
-            "15:23:30.100junk",
-            // Annotation syntax errors.
-            "00:00[u-ca=iso8601][!u-ca=iso8601]",
-            "00:00[UTC][UTC]",
-            "00:00[!foo=bar]",
-            "",
-            "T",
+            "2021-12[u-ca=iso8601]",
+            "1130[u-ca=iso8601]",
         ] {
-            assert_eq!(parse_plain_time(source), None, "{source}");
+            assert_eq!(time_of(source), None, "ambiguous: {source}");
+            assert!(
+                time_of(&format!("T{source}")).is_some(),
+                "designated: T{source}"
+            );
+        }
+        // A space is only ever a date/time separator, never a substitute for
+        // the time designator.
+        assert_eq!(time_of(" 1130"), None);
+        assert_eq!(time_of(" 15:23"), None);
+        // TemporalHelpers.ISO.plainTimeStringsUnambiguous(): no month 13, no
+        // 32nd day, no February 30th, no zeroth month.
+        for (source, expected) in [
+            ("2021-13", (20, 21, 0, 0, 0, 0)),
+            ("202113", (20, 21, 13, 0, 0, 0)),
+            ("0000-00", (0, 0, 0, 0, 0, 0)),
+            ("000000", (0, 0, 0, 0, 0, 0)),
+            ("1314", (13, 14, 0, 0, 0, 0)),
+            ("13-14", (13, 0, 0, 0, 0, 0)),
+            ("1232", (12, 32, 0, 0, 0, 0)),
+            ("0230", (2, 30, 0, 0, 0, 0)),
+            ("0631", (6, 31, 0, 0, 0, 0)),
+            ("0000", (0, 0, 0, 0, 0, 0)),
+            ("00-00", (0, 0, 0, 0, 0, 0)),
+        ] {
+            assert_eq!(time_of(source), Some(expected), "unambiguous: {source}");
         }
     }
 
     #[test]
-    fn parses_duration_strings_with_the_seconds_only_fraction_rule() {
-        assert!(parse_duration_record("P1Y2M3W4DT5H6M7.008009010S").is_some());
-        assert!(parse_duration_record("P1DT2H30.5M").is_none());
-        assert!(parse_duration_record("not-a-duration").is_none());
+    fn parses_year_month_and_month_day_short_forms() {
+        // TemporalHelpers.ISO.plainYearMonthStringsValid().
+        for source in ["1976-11", "197611", "+00197611", "1976-11-10"] {
+            let parsed = parse_year_month(source).expect(source);
+            assert_eq!((parsed.year, parsed.month), (1976, 11), "{source}");
+        }
+        assert!(!parse_year_month("1976-11").unwrap().day_present);
+        assert!(parse_year_month("1976-11-10").unwrap().day_present);
+        assert_eq!(parse_year_month("-009999-11").unwrap().year, -9999);
+        // TemporalHelpers.ISO.plainYearMonthStringsInvalid().
+        for source in ["2020-13", "1976-11[U-CA=iso8601]", "1976-11[FOO=bar]"] {
+            assert_eq!(parse_year_month(source), None, "{source}");
+        }
+        // TemporalHelpers.ISO.plainMonthDayStringsValid().
+        for source in ["10-01", "1001", "--10-01", "--1001", "1965-10-01"] {
+            let parsed = parse_month_day(source).expect(source);
+            assert_eq!((parsed.month, parsed.day), (10, 1), "{source}");
+        }
+        assert!(!parse_month_day("--10-01").unwrap().year_present);
+        assert!(parse_month_day("1965-10-01").unwrap().year_present);
+        // February 29th is a valid month-day: the reference year is a leap
+        // year.
+        assert!(parse_month_day("02-29").is_some());
+        assert_eq!(parse_month_day("02-30"), None);
+        // TemporalHelpers.ISO.plainMonthDayStringsInvalid().
+        assert_eq!(parse_month_day("11-18junk"), None);
+        // Out-of-range years stay a caller's concern, not the grammar's.
+        assert_eq!(parse_month_day("-999999-10-01").unwrap().year, -999_999);
     }
 
     #[test]
-    fn parses_offsets_including_zulu_and_bracket_termination() {
-        assert_eq!(parse_offset_seconds("Z"), Some(0));
-        assert_eq!(parse_offset_seconds("+01:00"), Some(3_600));
-        assert_eq!(parse_offset_seconds("-0130"), Some(-5_400));
-        assert_eq!(parse_offset_seconds("+25:00"), None);
+    fn parses_utc_designators_and_offsets_down_to_nanoseconds() {
+        // Temporal/Instant/from/argument-string.js and
+        // instant-string-sub-minute-offset.js.
+        assert!(parse_date_time("1976-11-18T15:23z").unwrap().utc_designator);
+        assert_eq!(offset("1976-11-18T15:23:30+00"), Some(0));
+        assert_eq!(
+            offset("1976-11-18T15:23:30-02:00"),
+            Some(-7_200_000_000_000)
+        );
+        assert_eq!(offset("1976-11-18T15:23:30+0000"), Some(0));
+        assert_eq!(
+            offset("1970-01-01T00:19:32.37+00:19:32.37"),
+            Some(1_172_370_000_000)
+        );
+        assert_eq!(
+            offset("1976-11-18T15:23:30.123456789-00:00:00.000000001"),
+            Some(-1)
+        );
+        assert_eq!(offset("2000-05-02T00+000000,0"), Some(0));
+        // Out-of-range and mis-separated offsets.
+        for source in [
+            "2020-01-01T00:00-24:00",
+            "2020-01-01T00:00+24:00",
+            "2025-01-01T00:00:00+00:0000",
+            "2025-01-01T00:00:00+0000:00",
+        ] {
+            assert_eq!(parse_date_time(source), None, "{source}");
+        }
+        // A UTC offset is only ever legal after a time of day:
+        // PlainDate/from/argument-string-date-with-utc-offset.js.
+        for source in ["2022-09-15+00:00", "2022-09-15-02:30", "2022-09-15Z"] {
+            assert_eq!(parse_date_time(source), None, "{source}");
+        }
+        // A fixed-offset time-zone identifier, read on its own.
+        assert_eq!(
+            parse_offset_identifier_nanoseconds("+01:00"),
+            Some(3_600_000_000_000)
+        );
+        assert_eq!(
+            parse_offset_identifier_nanoseconds("-0130"),
+            Some(-5_400_000_000_000)
+        );
+        assert_eq!(parse_offset_identifier_nanoseconds("Z"), None);
+        assert_eq!(parse_offset_identifier_nanoseconds("+25:00"), None);
+        assert_eq!(parse_offset_identifier_nanoseconds("+00:00junk"), None);
+        // An identifier stays minute-precision: sub-minute belongs to a
+        // string's own offset, never to its zone annotation.
+        assert_eq!(parse_offset_identifier_nanoseconds("-07:00:01"), None);
+    }
+
+    #[test]
+    fn resolves_the_first_calendar_annotation_and_ignores_later_ones() {
+        let calendar = |source: &str| parse_date_time(source).map(|parsed| parsed.calendar);
+        assert_eq!(
+            calendar("2000-05-02[u-ca=hebrew]"),
+            Some(Some("hebrew".to_string()))
+        );
+        assert_eq!(
+            calendar("2000-05-02[u-ca=hebrew][u-ca=discord]"),
+            Some(Some("hebrew".to_string()))
+        );
+        assert_eq!(
+            calendar("2000-05-02[UTC][u-ca=hebrew]"),
+            Some(Some("hebrew".to_string()))
+        );
+        assert_eq!(calendar("2000-05-02[foo=bar]"), Some(None));
+        assert_eq!(calendar("2000-05-02"), Some(None));
+        assert_eq!(
+            parse_date_time("2000-05-02T15:23[!Europe/Vienna]")
+                .unwrap()
+                .time_zone,
+            Some("Europe/Vienna".to_string())
+        );
+        assert_eq!(
+            parse_date_time("2000-05-02T15:23[+00:00]")
+                .unwrap()
+                .time_zone,
+            Some("+00:00".to_string())
+        );
+        assert_eq!(
+            parse_date_time("1976-11-18T15:23:30.123456789Z[NotATimeZone]")
+                .unwrap()
+                .time_zone,
+            Some("NotATimeZone".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_or_critical_unknown_annotations() {
+        for source in [
+            // Critical unknown keys, and always-invalid uppercase keys.
+            "2000-05-02[!foo=bar]",
+            "2000-05-02[FOO=bar]",
+            "2000-05-02[u-CA=iso8601]",
+            "2000-05-02[U-CA=iso8601]",
+            "2000-05-02[u-ca=]",
+            "2000-05-02[=iso8601]",
+            "2000-05-02[u-ca=iso8601",
+            // A repeated calendar annotation is only tolerated when none is
+            // critical: PlainDateTime/from/argument-string-multiple-calendar.js.
+            "1970-01-01[u-ca=iso8601][!u-ca=iso8601]",
+            "1970-01-01[!u-ca=iso8601][u-ca=iso8601]",
+            "1970-01-01[UTC][u-ca=iso8601][!u-ca=iso8601]",
+            "1970-01-01[u-ca=iso8601][foo=bar][!u-ca=iso8601]",
+            // Only one time-zone annotation, and only in first position:
+            // Instant/from/argument-string-multiple-time-zone.js.
+            "1970-01-01T00:00Z[UTC][UTC]",
+            "1970-01-01T00:00Z[!UTC][UTC]",
+            "1970-01-01T00:00Z[UTC][u-ca=iso8601][UTC]",
+            // A time-zone annotation may not carry a sub-minute offset:
+            // Instant/from/instant-string-sub-minute-offset.js.
+            "2021-08-19T17:30-07:00:01[-07:00:01]",
+            "2021-08-19T17:30-07:00:00[-070000]",
+            // Trailing junk after each syntactic position.
+            "2020-01-01T00:00:00+00:00junk",
+            "2020-01-01T00:00:00+00:00[UTC]junk",
+            "2020-01-01T00:00:00+00:00[UTC][u-ca=iso8601]junk",
+            "2020-01-01T00:00Zjunk",
+        ] {
+            assert_eq!(parse_date_time(source), None, "{source}");
+        }
+        // An unknown annotation is ignored when it is not critical, and a
+        // long mixed-case value is legal: Instant/from/argument-string-unknown-annotation.js.
+        assert!(
+            parse_date_time("1970-01-01T00:00Z[foo=bar][_foo-bar0=Ignore-This-999999999999]")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn parses_duration_strings_with_a_fraction_on_the_smallest_unit_present() {
+        let fields = |source: &str| {
+            parse_duration_record(source).map(|record| {
+                [
+                    record.years,
+                    record.months,
+                    record.weeks,
+                    record.days,
+                    record.hours,
+                    record.minutes,
+                    record.seconds,
+                    record.milliseconds,
+                    record.microseconds,
+                    record.nanoseconds,
+                ]
+            })
+        };
+        // Temporal/Duration/from/argument-string.js.
+        assert_eq!(fields("P1D"), Some([0, 0, 0, 1, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(
+            fields("p1y1m1dt1h1m1s"),
+            Some([1, 1, 0, 1, 1, 1, 1, 0, 0, 0])
+        );
+        assert_eq!(
+            fields("P1Y1M1W1DT1H1M1.123456789S"),
+            Some([1, 1, 1, 1, 1, 1, 1, 123, 456, 789])
+        );
+        assert_eq!(
+            fields("P1Y1M1W1DT1H1M1,12S"),
+            Some([1, 1, 1, 1, 1, 1, 1, 120, 0, 0])
+        );
+        assert_eq!(fields("P1DT0.5M"), Some([0, 0, 0, 1, 0, 0, 30, 0, 0, 0]));
+        assert_eq!(fields("P1DT0,5H"), Some([0, 0, 0, 1, 0, 30, 0, 0, 0, 0]));
+        assert_eq!(fields("+P1D"), Some([0, 0, 0, 1, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(
+            fields("-P1Y1M1W1DT1H1M1.123456789S"),
+            Some([-1, -1, -1, -1, -1, -1, -1, -123, -456, -789])
+        );
+        assert_eq!(fields("PT100M"), Some([0, 0, 0, 0, 0, 100, 0, 0, 0, 0]));
+        // Temporal/Duration/from/string-with-skipped-units.js.
+        assert_eq!(fields("P3Y4W"), Some([3, 0, 4, 0, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(
+            fields("PT3H4.123456789S"),
+            Some([0, 0, 0, 0, 3, 0, 4, 123, 456, 789])
+        );
+        // Temporal/Duration/from/argument-string-fractional-precision.js:
+        // fractions are exact, not floating point.
+        assert_eq!(
+            fields("PT0.999999999H"),
+            Some([0, 0, 0, 0, 0, 59, 59, 999, 996, 400])
+        );
+        assert_eq!(
+            fields("PT0.000000011H"),
+            Some([0, 0, 0, 0, 0, 0, 0, 0, 39, 600])
+        );
+        assert_eq!(
+            fields("PT0.999999999M"),
+            Some([0, 0, 0, 0, 0, 0, 59, 999, 999, 940])
+        );
+        assert_eq!(
+            fields("PT0.000000011M"),
+            Some([0, 0, 0, 0, 0, 0, 0, 0, 0, 660])
+        );
+        // Temporal/Duration/from/argument-string-negative-fractional-units.js.
+        assert_eq!(
+            fields("-PT24.567890123H"),
+            Some([0, 0, 0, 0, -24, -34, -4, -404, -442, -800])
+        );
+        assert_eq!(
+            fields("-PT1440.567890123M"),
+            Some([0, 0, 0, 0, 0, -1440, -34, -73, -407, -380])
+        );
+    }
+
+    #[test]
+    fn rejects_duration_strings_that_break_the_grammar() {
+        // Temporal/Duration/from/argument-string-invalid.js and
+        // argument-string-fractional-with-zero-subparts.js.
+        for source in [
+            "P1Y1M1W1DT1H1M1.123456789123S",
+            "P0.5Y",
+            "P1Y0,5M",
+            "P1Y1M0.5W",
+            "P1Y1M1W0,5D",
+            "P1Y1M1W1DT0.5H5S",
+            "P1Y1M1W1DT1.5H0,5M",
+            "P1Y1M1W1DT1H0.5M0.5S",
+            "P",
+            "PT",
+            "-P",
+            "-PT",
+            "+P",
+            "+PT",
+            "P1Y1M1W1DT1H1M1.01Sjunk",
+            "P-1Y1M",
+            "P1Y-1M",
+            "P2H",
+            "P2.5M",
+            "P2S",
+            "PT2.H3M",
+            "PT2H3.2M3S",
+            "PT.1H",
+            "PT,1S",
+            "PT0.1H0M",
+            "PT0.1H0.0M",
+            "PT0.1M0S",
+            "",
+            "not-a-duration",
+            // Ordering and repetition are both fixed by the grammar.
+            "P1D1Y",
+            "P1Y1Y",
+            "PT1S1H",
+            "P1DT1HT1M",
+            // Temporal/Duration/from/argument-string-is-infinity.js: a
+            // component too large to represent is out of range.
+            "P999999999999999999999999999999999999999999Y",
+        ] {
+            assert_eq!(parse_duration_record(source), None, "{source}");
+        }
+    }
+
+    #[test]
+    fn keeps_representable_range_checks_out_of_the_grammar() {
+        // Temporal/PlainYearMonth/from/argument-string-limits.js: the
+        // year-month range is a month wider than the date range at each end.
+        assert!(is_year_month_within_limits(-271_821, 4));
+        assert!(!is_year_month_within_limits(-271_821, 3));
+        assert!(is_year_month_within_limits(275_760, 9));
+        assert!(!is_year_month_within_limits(275_760, 10));
+        assert!(!is_year_month_within_limits(999_999, 1));
+        assert!(is_year_month_within_limits(1976, 11));
+        // The grammar itself accepts any 4- or 6-digit year, leaving the
+        // limit to the type that cares: PlainMonthDay accepts
+        // "-999999-10-01" that PlainDate must reject.
+        assert_eq!(date("+999999-01-01"), Some((999_999, 1, 1)));
     }
 }

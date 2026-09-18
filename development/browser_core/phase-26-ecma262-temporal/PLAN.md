@@ -258,7 +258,10 @@ Nothing downstream is stable until this lands. Scope:
       (`built-ins/Temporal/PlainTime/prototype/add/argument-string-fractional-units-rounding-mode.js`).
       It *is* narrower than general ISO 8601 in that a fraction may only sit
       on the last present component, but seconds are not the only component
-      that may carry one. Left for Track B, which owns `Duration`.
+      that may carry one. **Fixed 2026-09-18 by the exhaustive grammar audit
+      below** (not by Track B): `iso::parse_duration_record` now accepts a
+      fraction on `H`, `M` or `S` when it is the last component present,
+      rejects one on any date component, and converts it exactly in `i128`.
 - [x] **Calendar-annotation parsing in ISO strings — closed 2026-09-17.**
       `temporal_value_from_string` previously hardcoded every parsed value's
       calendar to `"iso8601"` regardless of any `[u-ca=...]` annotation in
@@ -318,6 +321,158 @@ Nothing downstream is stable until this lands. Scope:
       against Test262) still remains open, and this item is evidence it is
       worth doing: every one of those defects was reachable and none was
       caught by "spot-checking".
+
+- [x] **Exhaustive ISO 8601 grammar audit — closed 2026-09-18, superseding
+      both the original "spot-checked" item above and Track D's partial
+      correction of it.** `iso.rs` was re-derived as a strict
+      recursive-descent scan of Temporal's own productions (`ISODate`,
+      `TimeSpec`, `UTCOffset`, `TimeZoneAnnotation`, `Annotations`,
+      `TemporalYearMonthString`, `TemporalMonthDayString`,
+      `TemporalTimeString`, `TemporalDurationString`) rather than a
+      split-on-separator approximation, and driven against **every**
+      string-relevant fixture under `built-ins/Temporal/*/from/`,
+      `*/compare/` and `*/prototype/{until,since,equals,with}/`, plus
+      `harness/temporalHelpers.js`'s own `ISO.*` corpora
+      (`plainYearMonthStrings{Valid,Invalid}`,
+      `plainMonthDayStrings{Valid,Invalid}`,
+      `plainTimeStrings{Ambiguous,Unambiguous}`) — the authoritative list of
+      what the grammar does and does not admit.
+
+      **Measured effect** (pinned corpus, `built-ins/Temporal/` only, all
+      eight types: 13,120 modes). Against the post-Track-D baseline,
+      **3,160 -> 3,284 passing, 0 regressions, 62 newly-passing fixture
+      files**: Instant 710 -> 760, PlainYearMonth 202 -> 222, PlainDate
+      348 -> 360, PlainDateTime 316 -> 328, Duration 232 -> 238, PlainMonthDay
+      174 -> 180, ZonedDateTime 210 -> 220, PlainTime 968 -> 976.
+      `intl402/Temporal/` 278 -> 282. Reproduce with
+      `python3 backend/bluejs/test262/run.py --filter "Temporal/PlainDate/,Temporal/PlainTime/,Temporal/PlainDateTime/,Temporal/PlainYearMonth/,Temporal/PlainMonthDay/,Temporal/Instant/,Temporal/Duration/,Temporal/ZonedDateTime/" --jobs 8`.
+
+      **Real bugs found and fixed** (each had a failing unit test in
+      `iso.rs`'s own `#[cfg(test)]` module first; each cites the fixture that
+      pins it):
+
+      1. **Duration fractions were restricted to seconds.** This document's
+         own Stage 0 item above asserted that restriction was correct
+         ("narrower than general ISO 8601 ... this was not a gap") and Track
+         D's rewrite left it in place. It is wrong: `DurationHoursFraction`
+         and `DurationMinutesFraction` exist, so `P1DT0.5M` is 30 seconds and
+         `P1DT0,5H` is 30 minutes (`Duration/from/argument-string.js`). What
+         the grammar actually requires is that a fraction sit on the *last
+         component present* and that no date component take one at all:
+         `PT0.1H0M` and `P0.5Y` are syntax errors
+         (`argument-string-fractional-with-zero-subparts.js`,
+         `argument-string-invalid.js`). Fractions now convert exactly in
+         `i128` (`PT0.999999999H` is 59m 59s 999ms 996us 400ns, per
+         `argument-string-fractional-precision.js`), never through a float.
+         The same rewrite also fixed the lowercase designator forms
+         (`p1y1m1dt1h1m1s`), `,` as the decimal separator, and the
+         previously-unenforced component ordering and no-repetition rules
+         (`P1D1Y`, `P1Y1Y`, `PT1S1H` were all accepted before).
+      2. **UTC offsets were truncated to whole seconds.** `parse_offset_seconds`
+         parsed a sub-minute offset's fraction and then discarded it, so
+         `1970-01-01T00:19:32.37+00:19:32.37` did not round-trip to the epoch
+         (`Instant/from/instant-string-sub-minute-offset.js`). Offsets are now
+         carried as **nanoseconds** (`Parsed::offset_nanoseconds`, `i64`) and
+         applied exactly. The 20 sub-nanosecond offset cases in
+         `Instant/from/argument-string.js` are what pin this.
+      3. **Time-zone annotations were skipped without validation.** A
+         `[...]` annotation body that is an offset must be *minute*
+         precision: `[-07:00:01]` and `[-070000.1]` are syntax errors even
+         though the identical offset is legal in the string's own offset
+         position (`instant-string-sub-minute-offset.js`'s 40-case invalid
+         list). Annotation bodies are now checked against
+         `UTCOffsetMinutePrecision` or the IANA-name shape (components of
+         1-14 `[A-Za-z._][A-Za-z._0-9+-]*`, `.`/`..` excluded) — a shape
+         check only, since `[NotATimeZone]` is syntactically fine and
+         accepted (`Instant/from/argument-string.js`).
+      4. **`Z` was accepted on wall-clock types.** `PlainDate.from(
+         "2019-10-01T09:00:00Z")` silently dropped the designator instead of
+         throwing (`argument-string-with-utc-designator.js`, present for
+         every plain type). The parser now reports `utc_designator` and
+         `temporal_value_from_string` rejects it for everything but `Instant`
+         and `ZonedDateTime`.
+      5. **A UTC offset was accepted without a time.** `2022-09-15+00:00`
+         and `2022-09-15Z` parsed; the grammar only allows
+         `DateTimeUTCOffset` after a `TimeSpec`
+         (`PlainDate/from/argument-string-date-with-utc-offset.js`).
+      6. **Trailing junk after an offset was ignored.** `2020-01-01T00:00:00+00:00junk`
+         parsed, because nothing checked that the whole input was consumed.
+         Every entry point now requires end-of-input after annotations.
+      7. **Representable-range limits were a single hardcoded year range
+         inside `parse_date`.** That is both too strict and too loose: a
+         `PlainMonthDay` legitimately accepts `-999999-10-01` (the year is
+         discarded for the 1972 reference year), while `PlainDate` must
+         reject `-271821-04-18` and `PlainDateTime` must reject
+         `-271821-04-19T00:00` yet accept `-271821-04-19T00:00:00.000000001`
+         — a *day-and-nanosecond* boundary, not a year one
+         (`PlainDate/from/argument-string-limits.js`,
+         `PlainDateTime/from/argument-string-limits.js`). The grammar no
+         longer range-checks at all; `epoch::is_date_within_limits` (noon of
+         the date) and `epoch::is_date_time_within_limits` (the exclusive
+         instant range widened by one day at each end) now do, per type,
+         alongside `iso::is_year_month_within_limits` for
+         `PlainYearMonth`'s own month-wide boundary (`-271821-04` and
+         `+275760-09` valid, `-271821-03` and `+275760-10` not).
+      8. **`PlainYearMonth` and `PlainMonthDay` had no short form at all.**
+         `1976-11`, `197611`, `+00197611`, `10-01`, `1001`, `--10-01` and
+         `--1001` are all valid strings for their types and every one of them
+         threw (`TemporalHelpers.ISO.plainYearMonthStringsValid()` /
+         `plainMonthDayStringsValid()`). They are now separate grammar entry
+         points (`iso::parse_year_month`/`parse_month_day`), each falling
+         back to the full date-time form. A year-month or month-day string
+         that omits the other half also requires the ISO calendar
+         (`11-18[u-ca=gregory]` throws), per those helpers' invalid lists.
+      9. **`PlainTime`'s bare-time ambiguity rule was structural, not
+         value-based.** Track D's `is_ambiguous_with_a_date` inspected field
+         widths directly; the rule the spec states is simply "would this also
+         parse as a year-month or month-day string", which is now what is
+         asked (`parse_year_month_only`/`parse_month_day_only` on the whole
+         input, annotations included). That also closed Track D's own
+         documented gap — the basic-format `T`-designated forms (`T1214`,
+         `T202112`) — since designation and ambiguity are now independent.
+      10. **`Instant` and `PlainTime` validated a calendar annotation they
+          have no slot for.** `1970-01-01T00:00Z[u-ca=discord]` and
+          `12:34:56[!u-ca=unknown]` must be *ignored*, critical flag and all
+          (`Instant/from/argument-string-calendar-annotation.js`,
+          `PlainTime/from/argument-string-calendar-annotation.js`). The
+          repeated-critical-`u-ca` syntax rule still applies to them, because
+          that one is grammar rather than semantics.
+      11. **Calendar identifiers from an annotation were matched
+          case-sensitively and without aliases**, unlike the identical
+          identifier written in a property bag. `[u-ca=ISO8601]` threw and
+          `[u-ca=islamicc]` did not canonicalize
+          (`argument-string-calendar-case-insensitive.js`,
+          `from/canonicalize-calendar.js`). Both spellings now resolve
+          through one `canonical_calendar_id` helper in `temporal.rs`.
+
+      **Audited and confirmed already correct** (no change needed): the
+      six-digit signed extended year and its negative-zero prohibition; the
+      basic date/time forms and the rule that a separator choice may not be
+      mixed within one date or time (`2020-0101`, `00:0000`, `+00:0000`); the
+      exact two-digit field widths; the 1-to-9-digit fraction limit with `.`
+      and `,` both accepted; `T`/`t`/space as the date-time separator; the
+      `:60` leap second clamped to `:59`; the Unicode minus sign U+2212 being
+      rejected wherever an ASCII sign is required; annotation keys being
+      lowercase-only regardless of the critical flag; an unrecognized
+      non-critical key being ignored and a critical one throwing; the first
+      `u-ca` winning among non-critical repeats while any critical repeat is
+      a syntax error; at most one time-zone annotation, only in first
+      position; hour-only times and offsets (`1976-11-18T15Z`, `+00`); and
+      the absence of any length limit on annotation keys or values
+      (`[_foo-bar0=Ignore-This-999999999999]` is legal — there is no
+      Unicode-extension-style 8-character cap in Temporal's grammar, and no
+      fixture anywhere in the pinned corpus asserts one).
+
+      **Deliberately left alone as not-parsing bugs** (found while auditing,
+      each blocking string fixtures' *assertions* rather than their parse):
+      `era`/`eraYear` return `"default"`/the ISO year instead of `undefined`
+      for the ISO calendar, which fails every `TemporalHelpers.assertPlainDate`
+      /`assertPlainDateTime` call; `PlainYearMonth`/`PlainMonthDay`/
+      `PlainTime`/`Duration`/`ZonedDateTime` have no property-bag `from`
+      path, so `from({...})` falls through to the string parser and reports a
+      string error; `compare` is undefined on every type; and
+      `icu_calendar`'s `Date::try_new_iso` rejects years near ±271821, so an
+      in-range extreme date parses but its getters throw.
 
 ### Stage 1 — parallel tracks (worktree-isolated agents, after Stage 0 lands)
 
@@ -460,7 +615,10 @@ isn't an assumption:
     to seconds only" is **wrong**; Temporal's grammar has
     `DurationHoursFraction`/`DurationMinutesFraction` too
     (`add/argument-string-fractional-units-rounding-mode.js`). Left for
-    Track B rather than edited across a track boundary. The other 22 are
+    Track B rather than edited across a track boundary. (**The fractional
+    `H`/`M` half of this was fixed on 2026-09-18 by the exhaustive ISO
+    grammar audit recorded in Stage 0, which owns `iso.rs`; the
+    property-bag `Duration.from({...})` half remains Track B's.**) The other 22 are
     `intl402/.../toLocaleString/`, which needs real `Intl.DateTimeFormat`
     integration for a plain time (default field set, `dateStyle`/`timeStyle`
     conflict rejection) — an ECMA-402 boundary, not PlainTime arithmetic;
