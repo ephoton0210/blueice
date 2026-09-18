@@ -368,6 +368,72 @@ fn temporal_calendar_fields_round_trip_through_iso_and_lunisolar_months() {
 }
 
 #[test]
+fn temporal_string_calendar_and_unknown_annotations_follow_the_grammar() {
+    let source = r#"
+        let calendarWins = [
+            "2000-05-02[u-ca=hebrew]",
+            "2000-05-02[UTC][u-ca=hebrew]",
+            "2000-05-02T15:23[u-ca=hebrew]",
+            "2000-05-02T15:23[UTC][u-ca=hebrew]",
+            "2000-05-02T15:23[!u-ca=hebrew]",
+            "2000-05-02T15:23[UTC][!u-ca=hebrew]",
+            "2000-05-02T15:23[u-ca=hebrew][u-ca=discord]",
+        ];
+        for (let source of calendarWins) {
+            let date = Temporal.PlainDate.from(source);
+            if (date.calendarId !== "hebrew") throw new Error(`calendar wins: ${source}`);
+        }
+
+        let unknownIgnored = [
+            "2000-05-02[foo=bar]",
+            "2000-05-02T15:23[foo=bar]",
+            "2000-05-02T15:23[UTC][foo=bar]",
+            "2000-05-02T15:23[u-ca=iso8601][foo=bar]",
+            "2000-05-02T15:23[UTC][foo=bar][u-ca=iso8601]",
+            "2000-05-02T15:23[foo=bar][_foo-bar0=Ignore-This-999999999999]",
+        ];
+        for (let source of unknownIgnored) {
+            let date = Temporal.PlainDate.from(source);
+            if (date.calendarId !== "iso8601" || date.year !== 2000 || date.month !== 5 || date.day !== 2) {
+                throw new Error(`unknown annotation ignored: ${source}`);
+            }
+        }
+
+        let criticalUnknownThrows = [
+            "1970-01-01[!foo=bar]",
+            "1970-01-01T00:00[!foo=bar]",
+            "1970-01-01T00:00[UTC][!foo=bar]",
+            "1970-01-01T00:00[u-ca=iso8601][!foo=bar]",
+            "1970-01-01T00:00[UTC][!foo=bar][u-ca=iso8601]",
+        ];
+        for (let source of criticalUnknownThrows) {
+            let threw = false;
+            try { Temporal.PlainDate.from(source); } catch (error) { threw = error instanceof RangeError; }
+            if (!threw) throw new Error(`critical unknown annotation must throw: ${source}`);
+        }
+
+        let invalidKeyThrows = [
+            "1970-01-01[U-CA=iso8601]",
+            "1970-01-01[u-CA=iso8601]",
+            "1970-01-01[FOO=bar]",
+        ];
+        for (let source of invalidKeyThrows) {
+            let threw = false;
+            try { Temporal.PlainDate.from(source); } catch (error) { threw = error instanceof RangeError; }
+            if (!threw) throw new Error(`uppercase annotation key must always throw: ${source}`);
+        }
+
+        let unsupportedCalendarThrows = false;
+        try { Temporal.PlainDate.from("1970-01-01[u-ca=discordian]"); }
+        catch (error) { unsupportedCalendarThrows = error instanceof RangeError; }
+        if (!unsupportedCalendarThrows) throw new Error("unrecognized calendar id must throw");
+
+        true
+    "#;
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
 fn date_locale_methods_share_datetime_format_resolution_and_defaults() {
     for source in [
         "let d=new Date(0);d.toLocaleString('en-US')===new Intl.DateTimeFormat('en-US',{year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',second:'numeric'}).format(d)",

@@ -194,13 +194,71 @@ Nothing downstream is stable until this lands. Scope:
       is not one monolithic `Balance()` — it is many focused per-operation
       functions (`Duration.cpp` is Gecko's single largest file at 4,229
       lines) sharing the same internal record shapes.
-- [ ] Locate (or build, if genuinely absent) the ISO 8601 duration parser
-      `Intl.DurationFormat` already appears to depend on — resolve the open
-      item above before assuming this needs to be built from scratch here.
+- [x] Locate the ISO 8601 duration parser `Intl.DurationFormat` depends on —
+      **resolved 2026-09-17**: it already exists, as
+      `temporal_duration_record` in `backend/bluejs/src/vm/temporal.rs`
+      (called from `intl.rs`'s `duration_record` via
+      `temporal_value_from_string`). It correctly restricts fractional parts
+      to seconds only, matching Temporal's grammar (narrower than general
+      ISO 8601, which allows a fraction on any final component) — this was
+      not a gap.
+- [x] **Calendar-annotation parsing in ISO strings — closed 2026-09-17.**
+      `temporal_value_from_string` previously hardcoded every parsed value's
+      calendar to `"iso8601"` regardless of any `[u-ca=...]` annotation in
+      the source string — a real, silent bug (confirmed no existing test
+      covered this; `temporal_calendar_fields_round_trip_...` only exercises
+      calendar via constructor argument/property-bag form, never a string
+      annotation). Added `temporal_annotations` (TDD, `backend/bluejs/tests/intl.rs`'s
+      `temporal_string_calendar_and_unknown_annotations_follow_the_grammar`,
+      cases taken directly from Test262's
+      `built-ins/Temporal/PlainDate/from/argument-string-calendar-annotation*.js`
+      fixtures): first `u-ca=` annotation wins (later ones ignored,
+      unvalidated); an uppercase annotation key is always a syntax error
+      regardless of the critical flag; any other unrecognized key is ignored
+      unless critical (`!`), in which case it throws; an unrecognized
+      calendar ID throws. A leading non-`key=value` bracket (a time-zone
+      annotation, e.g. `[UTC]`) is skipped without validation — that
+      remains Track E's scope, not this item's.
+- [x] **Found and fixed a real, unrelated latent bug while adding the above
+      — closed 2026-09-17.** Extracting the time-of-day portion used
+      `source.split_once(['T', 't'])` globally across the *entire* input
+      string. `"UTC"` itself contains a `'T'`, so a date-only string with a
+      leading time-zone annotation and no actual time component (e.g.
+      `"2000-05-02[UTC][u-ca=hebrew]"`) mis-split inside the annotation
+      bracket and failed with a spurious "invalid Temporal time string".
+      Fixed by bounding the search to the character immediately following
+      the date portion (mirroring `temporal_date`'s own boundary
+      computation) instead of a global search. This was reachable before
+      this session's new annotation test exercised the combination; no
+      previously-existing test caught it.
 - [ ] `heap.rs`: confirm/extend `TemporalKind` if any Stage 0 record needs
       direct heap representation (most of Stage 0 is plain Rust values held
       inside the existing per-type `TemporalKind` payloads, not new heap
       object kinds).
+- [ ] Extract the pure-parsing functions above (`temporal_date`,
+      `temporal_time`, `temporal_annotations`, `temporal_duration_record`,
+      `temporal_offset_seconds`, `temporal_epoch_nanoseconds{,_in_range}`)
+      out of `vm/temporal.rs` into the `vm/temporal/{iso,epoch}.rs` module
+      split this document's Architecture section describes. Not done yet —
+      the fixes above were kept as minimal, targeted diffs in the existing
+      file to land each as its own verifiable increment first; the
+      module-split refactor is the next Stage 0 item, to be done as its own
+      behavior-preserving change (verified against the now-larger test
+      suite) rather than bundled with a behavior change.
+- [ ] `epoch.rs`'s design (`i128`, not a bespoke bigint) is written but not
+      yet implemented — `temporal_epoch_nanoseconds` still returns
+      `num_bigint::BigInt` today. Confirm during the extraction above
+      whether switching to `i128` is worth doing (Gecko's own range limit,
+      ±8.64e21 ns, fits in `i128`) or whether `BigInt` should stay for
+      headroom.
+- [ ] Full ISO 8601 grammar coverage beyond what today's parsers happen to
+      support has not been audited item-by-item against the spec grammar
+      (e.g. basic/non-extended date format without hyphens; the six-digit
+      signed extended-year form was spot-checked as already working via
+      `+002020-06-01` in an existing DateTimeFormat test, but was not
+      exhaustively verified). Do this as part of the module extraction
+      above, with Test262's own ISO-string fixtures as the source of truth,
+      not assumptions from reading the code.
 
 ### Stage 1 — parallel tracks (worktree-isolated agents, after Stage 0 lands)
 

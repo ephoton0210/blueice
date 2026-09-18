@@ -115,6 +115,61 @@ fn temporal_time(source: &str) -> Option<(u8, u8, u8, u16, u16, u16)> {
     ))
 }
 
+/// Scans the zero-or-more bracket annotations that may follow an ISO
+/// date/time/offset prefix, returning the first `u-ca=` value if present.
+///
+/// Grammar notes (from Temporal's annotation syntax): an optional leading
+/// time-zone annotation (no `=` in its body) is skipped without further
+/// validation here — resolving it is a separate, later concern (matching
+/// `Intl.DateTimeFormat`'s own time-zone-annotation handling elsewhere in
+/// this codebase). Every subsequent annotation is `[!]key=value`; a key
+/// containing any non-lowercase character is always a syntax error,
+/// regardless of the critical (`!`) flag. A second or later `u-ca`
+/// annotation is always ignored, never validated. Any other unrecognized
+/// key is ignored unless marked critical, in which case this returns `Err`.
+fn temporal_annotations(mut cursor: &str) -> Result<Option<String>, ()> {
+    if let Some(rest) = cursor.strip_prefix('[') {
+        let end = rest.find(']').ok_or(())?;
+        let body = rest[..end].strip_prefix('!').unwrap_or(&rest[..end]);
+        if !body.contains('=') {
+            cursor = &rest[end + 1..];
+        }
+    }
+    let mut calendar = None;
+    while !cursor.is_empty() {
+        let rest = cursor.strip_prefix('[').ok_or(())?;
+        let end = rest.find(']').ok_or(())?;
+        let body = &rest[..end];
+        cursor = &rest[end + 1..];
+        let (critical, body) = body
+            .strip_prefix('!')
+            .map_or((false, body), |rest| (true, rest));
+        let (key, value) = body.split_once('=').ok_or(())?;
+        if key.is_empty() || value.is_empty() {
+            return Err(());
+        }
+        let key_valid = key.bytes().enumerate().all(|(index, byte)| {
+            if index == 0 {
+                byte.is_ascii_lowercase() || byte == b'_'
+            } else {
+                byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-')
+            }
+        });
+        let value_valid = value.split('-').all(|component| {
+            !component.is_empty() && component.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        });
+        if !key_valid || !value_valid {
+            return Err(());
+        }
+        if key == "u-ca" {
+            calendar.get_or_insert_with(|| value.to_string());
+        } else if critical {
+            return Err(());
+        }
+    }
+    Ok(calendar)
+}
+
 /// Parses the ISO duration strings accepted by `Intl.DurationFormat` through
 /// Temporal's duration-string grammar. The host service receives a typed,
 /// validated ECMA-402 record, so neither this parser nor a Temporal object
@@ -911,7 +966,26 @@ impl Vm {
         }
         let (year, month, day) = temporal_date(source)
             .ok_or_else(|| RuntimeError::RangeError("invalid Temporal date string".into()))?;
-        let time = source.split_once(['T', 't']).map(|(_, time)| time);
+        let annotations = source.find('[').map_or("", |index| &source[index..]);
+        let calendar = match temporal_annotations(annotations)
+            .map_err(|()| RuntimeError::RangeError("invalid Temporal annotation".into()))?
+        {
+            Some(calendar) => {
+                temporal_calendar_kind(&calendar).ok_or_else(|| {
+                    RuntimeError::RangeError(format!("unsupported Temporal calendar: {calendar}"))
+                })?;
+                calendar
+            }
+            None => "iso8601".to_string(),
+        };
+        // Bound the search to the character immediately after the date
+        // portion (mirroring `temporal_date`'s own boundary computation):
+        // a global `split_once(['T', 't'])` would wrongly match the 'T' in
+        // a `[UTC]` time-zone annotation on a date-only string.
+        let date_end = source
+            .find(['T', 't', '[', 'Z', 'z'])
+            .unwrap_or(source.len());
+        let time = source[date_end..].strip_prefix(['T', 't']);
         let (hour, minute, second, millisecond, microsecond, nanosecond) = match time {
             Some(time) => temporal_time(time)
                 .ok_or_else(|| RuntimeError::RangeError("invalid Temporal time string".into()))?,
@@ -959,7 +1033,7 @@ impl Vm {
             microsecond,
             nanosecond,
             epoch_nanoseconds,
-            calendar: "iso8601".into(),
+            calendar,
             time_zone: "UTC".into(),
         })
     }
