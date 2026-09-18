@@ -812,14 +812,26 @@ fn temporal_now_reads_one_wall_clock_through_resolved_time_zone_identifiers() {
             }
         }
 
-        // A named IANA zone is a valid identifier, and ZonedDateTime only
-        // needs the identifier — but the plain ISO variants need a real UTC
-        // offset at this instant, which is still Track E's transition-history
-        // work. That must be a loud RangeError, never a UTC-shifted answer.
+        // A named IANA zone now resolves a real historical offset too
+        // (Phase 26's gap-closure pass wires `Temporal.Now` to Track E's
+        // transition data), so the plain ISO variants no longer reject it —
+        // they read the actual wall clock in that zone rather than
+        // rejecting it or silently assuming UTC.
         for (let method of ["plainDateISO", "plainDateTimeISO", "plainTimeISO"]) {
             let threw = false;
-            try { Temporal.Now[method]("America/Vancouver"); } catch (error) { threw = error instanceof RangeError; }
-            if (!threw) throw new Error(`${method} must not silently assume UTC for a named zone`);
+            try { Temporal.Now[method]("America/Vancouver"); } catch (error) { threw = true; }
+            if (threw) throw new Error(`${method} should accept a named zone now that Track E is wired up`);
+        }
+        // The reported wall clock actually shifts by a real Vancouver
+        // offset (PST -08:00 or PDT -07:00), not by zero. A small tolerance
+        // (matching the fixed-offset checks above) absorbs the wall-clock
+        // drift between the two separate `Temporal.Now` reads `localEpoch`
+        // makes.
+        let vancouverShift = localEpoch("America/Vancouver") - localEpoch("UTC");
+        let matchesPst = Math.abs(vancouverShift - (-8 * 3600000)) <= 1000;
+        let matchesPdt = Math.abs(vancouverShift - (-7 * 3600000)) <= 1000;
+        if (!matchesPst && !matchesPdt) {
+            throw new Error(`America/Vancouver shift should be a real PST/PDT offset, got ${vancouverShift}`);
         }
 
         true

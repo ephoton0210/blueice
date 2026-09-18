@@ -86,6 +86,7 @@ impl Default for Parsed {
 }
 
 use super::epoch::{CivilDate, CivilTime};
+use num_bigint::BigInt;
 
 /// Returns whether `year` is a leap year in the proleptic Gregorian
 /// calendar (the ISO 8601 calendar).
@@ -803,14 +804,19 @@ pub(crate) fn parse_instant(source: &str) -> Option<InstantParts> {
 }
 
 /// Resolves a Temporal `TimeZoneIdentifier`, or the time-zone information
-/// carried by a full ISO date-time string, into a fixed UTC offset in
-/// nanoseconds.
+/// carried by a full ISO date-time string, into the UTC offset (in
+/// nanoseconds) that zone was actually observing at `epoch_nanoseconds`.
 ///
-/// `Ok(None)` means the identifier is syntactically valid but names an IANA
-/// zone whose transition rules this engine cannot yet resolve (everything
-/// except `UTC`); `Err(())` means the input is not a time zone at all.
-/// Resolving named zones is Stage 1 Track E's `time_zone.rs`.
-pub(crate) fn resolve_fixed_time_zone_offset(source: &str) -> Result<Option<i128>, ()> {
+/// `Err(())` means the input is not a time zone at all (either malformed, or
+/// syntactically shaped like an IANA name that names no real zone in the
+/// pinned database). A named IANA zone's real historical offset comes from
+/// Stage 1 Track E's `time_zone.rs`, which owns the actual transition data;
+/// `UTC` and a fixed numeric offset are resolved directly here since they do
+/// not depend on `epoch_nanoseconds` at all.
+pub(crate) fn resolve_time_zone_offset(
+    source: &str,
+    epoch_nanoseconds: &BigInt,
+) -> Result<i128, ()> {
     let identifier = if is_time_zone_identifier(source) {
         source.to_string()
     } else {
@@ -833,17 +839,24 @@ pub(crate) fn resolve_fixed_time_zone_offset(source: &str) -> Result<Option<i128
                 if !offset.minute_precision {
                     return Err(());
                 }
-                return Ok(Some(offset.nanoseconds));
+                return Ok(offset.nanoseconds);
             }
         }
     };
     if let Some(offset) = parse_minute_precision_offset(&identifier) {
-        return Ok(Some(offset));
+        return Ok(offset);
     }
     if identifier.eq_ignore_ascii_case("UTC") {
-        return Ok(Some(0));
+        return Ok(0);
     }
-    Ok(None)
+    // A named IANA zone: `identifier` is already a bare `TimeZoneIdentifier`
+    // at this point (either `source` itself, or the body of a winning
+    // time-zone annotation), so this only ever takes the
+    // `parse_bare_identifier` path inside `time_zone::parse_identifier` — it
+    // re-validates the name against the same pinned database rather than
+    // trusting the shape check above, and supplies the real offset lookup.
+    let zone = super::time_zone::parse_identifier(&identifier).ok_or(())?;
+    Ok(i128::from(zone.offset_nanoseconds_for(epoch_nanoseconds)))
 }
 
 /// `AnnotatedDateTime`: a required `ISODate`, an optional time of day (and,
@@ -1671,36 +1684,75 @@ mod tests {
     }
 
     #[test]
-    fn resolves_only_utc_and_fixed_offset_time_zones() {
+    fn resolves_utc_and_fixed_offset_time_zones_regardless_of_the_instant() {
+        let epoch = BigInt::from(0);
         for (source, expected) in [
-            ("UTC", Ok(Some(0))),
-            ("utc", Ok(Some(0))),
-            ("+01:00", Ok(Some(3_600_000_000_000))),
-            ("-01:30", Ok(Some(-5_400_000_000_000))),
-            ("2021-08-19T17:30Z", Ok(Some(0))),
-            ("2021-08-19T17:30-07:00", Ok(Some(-25_200_000_000_000))),
-            ("2021-08-19T17:30-07:00[UTC]", Ok(Some(0))),
+            ("UTC", Ok(0)),
+            ("utc", Ok(0)),
+            ("+01:00", Ok(3_600_000_000_000)),
+            ("-01:30", Ok(-5_400_000_000_000)),
+            ("2021-08-19T17:30Z", Ok(0)),
+            ("2021-08-19T17:30-07:00", Ok(-25_200_000_000_000)),
+            ("2021-08-19T17:30-07:00[UTC]", Ok(0)),
             (
                 "2021-08-19T17:30:45.123456789-12:12[+01:46]",
-                Ok(Some(6_360_000_000_000)),
+                Ok(6_360_000_000_000),
             ),
-            ("2016-12-31T23:59:60+00:00[UTC]", Ok(Some(0))),
-            // Syntactically a zone, but its transition rules are Track E's.
-            ("Europe/Vienna", Ok(None)),
-            ("Mars/Olympus_Mons", Ok(None)),
-            // Not a time zone at all.
+            ("2016-12-31T23:59:60+00:00[UTC]", Ok(0)),
+            // Not a real time zone at all.
             ("", Err(())),
             ("2021-08-19T17:30", Err(())),
             ("2021-08-19T17:30-07:00:01", Err(())),
             ("2021-08-19T17:30-07:00:00", Err(())),
             ("2021-08-19T17:30:45.123456789+23:59[+23:59:60]", Err(())),
+            // Syntactically zone-shaped, but not a real IANA name.
+            ("Mars/Olympus_Mons", Err(())),
         ] {
             assert_eq!(
-                resolve_fixed_time_zone_offset(source),
+                resolve_time_zone_offset(source, &epoch),
                 expected,
                 "{source:?}"
             );
         }
+    }
+
+    #[test]
+    fn resolves_real_historical_offsets_for_named_iana_zones() {
+        // Cases taken directly from the pinned Test262 corpus's
+        // intl402/Temporal/Instant/prototype/toString/timezone-offset.js,
+        // all at the epoch instant `new Temporal.Instant(0n)` uses.
+        let epoch = BigInt::from(0);
+        assert_eq!(
+            resolve_time_zone_offset("Europe/Berlin", &epoch),
+            Ok(3_600_000_000_000)
+        );
+        assert_eq!(
+            resolve_time_zone_offset("America/New_York", &epoch),
+            Ok(-5 * 3_600_000_000_000)
+        );
+        // A sub-minute historical offset: Monrovia was UTC-00:44:30 before
+        // 1972 (the fixture's own expected display string,
+        // "1969-12-31T23:15:30-00:45", rounds this to the minute for
+        // `toString`'s offset field, but the underlying instant's real
+        // offset — what this function resolves — is the exact -00:44:30).
+        assert_eq!(
+            resolve_time_zone_offset("Africa/Monrovia", &epoch),
+            Ok(-(44 * 60_000_000_000_i128) - 30_000_000_000)
+        );
+        // A different instant in the same named zone resolves a different
+        // (real, historical) offset — summer vs. winter New York.
+        let summer = BigInt::from(1_720_480_004_i64) * 1_000_000_000_u32;
+        assert_eq!(
+            resolve_time_zone_offset("America/New_York", &summer),
+            Ok(-4 * 3_600_000_000_000)
+        );
+        // A time-zone annotation's IANA name wins over the string's own
+        // offset, and is resolved at the receiver's instant, not a fixed
+        // offset taken from the string.
+        assert_eq!(
+            resolve_time_zone_offset("2021-08-19T17:30-07:00[America/Vancouver]", &epoch),
+            resolve_time_zone_offset("America/Vancouver", &epoch)
+        );
     }
 
     #[test]

@@ -6,22 +6,33 @@
 (shared foundation) completed 2026-09-18, plus a same-day exhaustive ISO 8601
 grammar audit (11 real bugs, see its own bullet below) that closed the one
 checklist item Stage 0 originally left open. **Stage 1 is done**: Track C
-(`Instant` arithmetic plus `Temporal.Now`, including a same-day gap-closure
-pass), Track D (`PlainTime`), Track E (time-zone identifiers/offsets/
-disambiguation), and Track B (`Duration` arithmetic) are all done, and every
-track plus the grammar audit is merged into one tree as of 2026-09-18 — see
-each track's own bullet for its independently-measured Test262 numbers and
-remaining gaps, and the closure table in Stage 3 for the true, fully-merged
-per-type picture. Track E's own former blocker (whether `icu_time` carries
-real IANA transition data) is **resolved** — see "Open questions" below; it
-does not, and real historical offset resolution instead uses
-`jiff`/`jiff-tzdb`, already a pinned `blueice-ecma402` dependency. Track A
-was folded into Stage 2, not a standalone track. **The fully-integrated
+(`Instant` arithmetic plus `Temporal.Now`, including two same-day gap-closure
+passes — see below), Track D (`PlainTime`), Track E (time-zone
+identifiers/offsets/disambiguation), and Track B (`Duration` arithmetic) are
+all done, and every track plus the grammar audit is merged into one tree as
+of 2026-09-18 — see each track's own bullet for its independently-measured
+Test262 numbers and remaining gaps, and the closure table in Stage 3 for the
+true, fully-merged per-type picture. Track E's own former blocker (whether
+`icu_time` carries real IANA transition data) is **resolved** — see "Open
+questions" below; it does not, and real historical offset resolution instead
+uses `jiff`/`jiff-tzdb`, already a pinned `blueice-ecma402` dependency. Track
+A was folded into Stage 2, not a standalone track. **The fully-integrated
 tree's real combined `Temporal/` Test262 number is 4,396/13,272 (33.1%)**,
 up from the 2026-09-17 baseline's 1,592 and confirming the repeated
 "per-track numbers are not strictly additive" note below — cross-track
 shared-foundation fixes compound favorably when merged together, not just
-summed. It exists because completing Phase 25 (ECMA-402) surfaced a real
+summed. **A second, later same-day gap-closure pass (2026-09-18) then wired
+Track C's `Instant`/`Now` code paths to consume Track E's already-landed
+`time_zone.rs` (which two call sites — `iso::resolve_fixed_time_zone_offset`
+and `time_zone_id::offset_seconds` — had not yet been updated to use) and
+fixed a `Temporal.Duration` float64-rounding gap in `Instant.prototype.
+since`/`until`, taking `Instant` to 966/968 (every fixture except the 2
+`toLocaleString/hourcycle.js` modes a sibling `Intl.DateTimeFormat` fix
+covers) and `Now` to 138/138 (100%); combined `Temporal/` is now
+4,406/13,272, +10 over the 4,396 baseline above with zero regressions,
+diffed per path+mode against a freshly-built pristine pre-change worktree at
+the same commit. See Track C's and Track E's own bullets below for the
+detail.** It exists because completing Phase 25 (ECMA-402) surfaced a real
 gap in `intl402/`'s
 `Temporal/` subtree. **Correction (2026-09-17, same day):** the plan's first
 version only measured `intl402/Temporal/` (4,058 modes, 6.55% pass) — see
@@ -612,7 +623,10 @@ isn't an assumption:
     `round/next-day-out-of-range.js`, which are calendar-anchored too.
 - **Track C — Instant + Now.** Evidence: epoch nanoseconds are
   calendar-agnostic by construction; Gecko's `Instant.cpp` has no calendar
-  dependency. **`Instant` arithmetic done 2026-09-18** (kept inside
+  dependency. (**Final numbers, second gap-closure pass, 2026-09-18: `Instant`
+  966/968, `Now` 138/138 — see each sub-bullet's own "Closed" note below for
+  what moved past the first gap-closure pass's 904/968 and 136/138.**)
+  **`Instant` arithmetic done 2026-09-18** (kept inside
   `vm/temporal.rs` rather than a new `instant.rs` file — the method bodies
   are adapter-layer `impl Vm` code coupled to `Value`/heap, matching the
   existing `temporal_getter`/`temporal_with_calendar` style, not
@@ -678,18 +692,24 @@ isn't an assumption:
     `Intl.DateTimeFormat` already applies when no `timeZone` option is
     given. The two must agree, since a `Now.zonedDateTimeISO()` value
     formatted through `toLocaleString()` routes through DateTimeFormat.
-  - **Deferred, and the reason for the 2 remaining failures** (both modes of
-    `intl402/Temporal/Now/plainDateTimeISO/timezone-string-datetime.js`): a
-    *named* IANA zone's UTC offset at a given instant needs the transition
-    history, which is Track E's scope. `zonedDateTimeISO` and `timeZoneId`
-    need only a valid identifier, so they accept named zones and are exactly
-    correct for them; `plainDateISO`/`plainDateTimeISO`/`plainTimeISO`
-    genuinely need an offset, so a named zone other than `UTC` raises a
-    specific `RangeError` there rather than silently reporting a UTC wall
-    clock. That is the deliberate trade — one lost Test262 file instead of a
-    wrong date — and closing it is a one-line change in
-    `time_zone_id::offset_seconds` once Track E lands a
-    `(zone, instant) -> offset` lookup.
+  - **Closed, 2026-09-18 (second gap-closure pass, after Track E landed):**
+    the 2 remaining failures (both modes of
+    `intl402/Temporal/Now/plainDateTimeISO/timezone-string-datetime.js`)
+    were exactly the deferred case above — `plainDateISO`/
+    `plainDateTimeISO`/`plainTimeISO` raising a `RangeError` for a named zone
+    other than `UTC` instead of resolving its real offset. `time_zone_id::
+    offset_seconds` now takes the current instant's epoch nanoseconds
+    alongside the identifier and, for anything past `UTC`/a fixed offset,
+    delegates to `super::time_zone::parse_identifier` +
+    `TimeZone::offset_nanoseconds_for` — the exact
+    `(zone, instant) -> offset` lookup this bullet said would make the fix
+    "one line" once Track E landed it. `Temporal/Now/` is now **138/138
+    (100%)**. `backend/bluejs/tests/intl.rs`'s
+    `temporal_now_reads_one_wall_clock_through_resolved_time_zone_identifiers`
+    (previously asserting the old `RangeError`-for-named-zones behavior) was
+    updated to assert the new resolution instead, with a small tolerance on
+    the wall-clock comparison since two separate `Temporal.Now` reads can
+    drift by a millisecond against real time.
   - Also added, because `Now/zonedDateTimeISO`'s own fixtures require it:
     the `Temporal.ZonedDateTime.prototype.timeZoneId` getter, which was
     missing. Independently of `Now` that moved `ZonedDateTime/` from
@@ -779,6 +799,23 @@ isn't an assumption:
     `float64-representable-integer` need `Duration.prototype.negated`/`total`/
     `add`, `Duration.prototype.toString` and `Duration.compare`. The
     `Instant` side of each of these already works.
+    (**`float64-representable-integer` closed 2026-09-18** — 2 of the 20,
+    one each for `since`/`until` — once `Temporal.Duration.from` and the
+    other prerequisites above existed: `temporal_instant_difference`
+    (`since`/`until`'s shared implementation) built its resulting
+    `Duration`'s fields directly with `blueice_ecma402::DurationRecord::
+    try_new`, bypassing `Self::temporal_duration_record`'s float64-rounding
+    step Track B's own entry documents (`CreateTemporalDuration` rounds every
+    balanced field to the nearest double *before* the range check). An exact
+    `i128` difference whose magnitude exceeds what an `f64` represents
+    exactly — e.g. the fixtures' own 18,446,744,073,709,551 microseconds,
+    which rounds to ...552 — was therefore stored unrounded, so the
+    `microseconds` getter, `toString` and subsequent arithmetic on the result
+    disagreed with the spec's already-rounded value. Routing both methods'
+    `Duration` construction through `Self::temporal_duration_record` instead
+    (reusing the existing helper rather than reimplementing it) fixed both
+    fixtures with no other behavior change; 18 of the 20 remain blocked on
+    the property-bag/`toString`/`compare` prerequisites above.)
   - **4 — `intl402` `toString/timezone-offset.js` and
     `timezone-string-datetime.js`.** The only genuinely timeZone-dependent
     deferral: they format against `Europe/Berlin`, `America/New_York` and
@@ -791,6 +828,38 @@ isn't an assumption:
     already depends on `jiff`/`jiff_tzdb` with real transition data
     (`to_offset_info`), so Track E's open question has a ready answer — it was
     simply out of scope to wire a new dependency edge from here.
+
+    **Closed 2026-09-18 (second gap-closure pass, after Track E landed).**
+    `iso::resolve_fixed_time_zone_offset` is now `iso::resolve_time_zone_offset`,
+    taking the receiver `Instant`'s own epoch nanoseconds alongside the
+    source string; for anything past `UTC`/a fixed offset it delegates to
+    `super::time_zone::parse_identifier` + `TimeZone::offset_nanoseconds_for`
+    against that instant rather than reporting "unresolvable". Both call
+    sites in `temporal.rs` (`temporal_to_string_time_zone`, used by
+    `Instant.prototype.toString`'s `timeZone` option) were updated to pass
+    the instant through. Fixing these two files surfaced a second, real,
+    previously-latent bug in the same code path: `format_instant_string`'s
+    offset-to-string formatting (`FormatDateTimeUTCOffsetRounded`) computed
+    `offset.abs() / 60_000_000_000` — integer-truncating to the *lower*
+    minute — instead of rounding to the *nearest* one. Every offset reaching
+    it before this session was an exact multiple of a minute (`UTC` or a
+    minute-precision fixed offset), so the bug was unreachable until a named
+    zone's genuine sub-minute historical offset started flowing through here
+    (Monrovia was UTC-00:44:30 before 1972; `timezone-offset.js` asserts the
+    correctly-*rounded* `-00:45`, which truncation reported as `-00:44`).
+    Fixed by adding a half-increment before the integer division
+    (`(offset.abs() + 30_000_000_000) / 60_000_000_000`), the standard
+    round-half-up-on-a-positive-magnitude technique — exact multiples of a
+    minute are unaffected since the added half never pushes the quotient over
+    by construction. `Temporal/Instant/` is now **966/968**, i.e. every
+    fixture except the 2 `toLocaleString/hourcycle.js` modes below.
+    Measured against a freshly-built pristine pre-change worktree at the
+    same commit (`ba16c16`), not the plan's own possibly-stale numbers: the
+    real baseline was 4,396/13,272 combined `Temporal/`, and after this pass
+    it is **4,406/13,272**, a diff of exactly +10 modes (the 4 modes here +
+    2 `Now` modes + 4 `float64-representable-integer` modes above,
+    `since`/`until` × strict/sloppy), diffed per path+mode with **zero
+    regressions anywhere** in the 13,272-mode corpus.
   - **2 — `intl402` `toLocaleString/hourcycle.js`.** Pre-existing
     `Intl.DateTimeFormat` gap (`hourCycle: "h24"`/`"h11"`), not an `Instant`
     one: the fixture's own `Intl.DateTimeFormat` equivalent fails the same
@@ -1066,6 +1135,17 @@ once). One owner:
       `epoch::is_date_time_within_limits`, canonical calendar-alias
       resolution via `canonical_calendar_id`) landing on top of every other
       track's own already-merged fixes.
+
+      **This table is a snapshot as of the tracks' initial merge and is now
+      stale for `Instant` and `Now`.** A second, later same-day gap-closure
+      pass (2026-09-18, see Track C's own bullet's "Closed" notes) wired two
+      call sites Track C had not yet updated to Track E's already-landed
+      `time_zone.rs`, and fixed a separate `Temporal.Duration`
+      float64-rounding gap in `since`/`until`: `Instant` is now **966/968**
+      (not 958/968) and `Now` is now **138/138, 100%** (not 136/138).
+      Combined `Temporal/` is now **4,406/13,272**, +10 over this table's
+      4,396 total, diffed per path+mode against a freshly-built pristine
+      pre-change worktree at this table's own commit with zero regressions.
 
       (The `Temporal/` filter schedules 13,272 modes in Track D's count,
       four more than the per-type table's 13,268 — the extra ones are the

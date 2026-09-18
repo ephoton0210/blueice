@@ -1909,7 +1909,13 @@ impl Vm {
         );
         let [hours, minutes, seconds, milliseconds, microseconds, nanoseconds] =
             rounded.balance_to(largest_unit);
-        let record = blueice_ecma402::DurationRecord::try_new(
+        // `CreateTemporalDuration` (via `temporal_duration_record`) rounds
+        // every field to the nearest float64 before the range check, since
+        // every `Temporal.Duration` field is a Number — an exact difference
+        // that overflows what a double can represent precisely must be
+        // observably rounded, not stored exactly
+        // (`prototype/{since,until}/float64-representable-integer.js`).
+        let record = Self::temporal_duration_record([
             0,
             0,
             0,
@@ -1920,8 +1926,7 @@ impl Vm {
             i128::from(milliseconds),
             i128::from(microseconds),
             i128::from(nanoseconds),
-        )
-        .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        ])?;
         self.alloc_temporal_value(
             TemporalValue {
                 kind: TemporalKind::Duration,
@@ -2005,9 +2010,14 @@ impl Vm {
             }
         }
         match offset_nanoseconds {
-            // `FormatDateTimeUTCOffsetRounded`: minutes, never seconds.
+            // `FormatDateTimeUTCOffsetRounded`: minutes, never seconds —
+            // rounded (half away from zero) to the nearest minute, not
+            // truncated. A fixed/UTC offset is always an exact multiple of a
+            // minute, so this was unreachable before named zones (which can
+            // carry a genuine sub-minute historical offset, e.g. Monrovia's
+            // pre-1972 -00:44:30) started flowing through here.
             Some(offset) => {
-                let minutes = offset.abs() / 60_000_000_000;
+                let minutes = (offset.abs() + 30_000_000_000) / 60_000_000_000;
                 result.push_str(&format!(
                     "{}{:02}:{:02}",
                     if offset < 0 { '-' } else { '+' },
@@ -2057,10 +2067,13 @@ impl Vm {
     }
 
     /// `ToTemporalTimeZoneIdentifier` for the `timeZone` option, resolved to
-    /// a fixed offset. `Ok(None)` means the option was absent.
+    /// the offset that zone was actually observing at `epoch_nanoseconds` —
+    /// the receiver `Instant`'s own epoch, per `GetOffsetNanosecondsFor`.
+    /// `Ok(None)` means the option was absent.
     fn temporal_to_string_time_zone(
         &mut self,
         options: &Value,
+        epoch_nanoseconds: &BigInt,
     ) -> Result<Option<i128>, RuntimeError> {
         let value = self.get_property(options, &"timeZone".into())?;
         if value == Value::Undefined {
@@ -2069,14 +2082,9 @@ impl Vm {
         if let Some(object) = value.object_id() {
             if let Some(temporal) = self.heap.temporal_value(object)? {
                 if temporal.kind == TemporalKind::ZonedDateTime {
-                    return iso::resolve_fixed_time_zone_offset(&temporal.time_zone)
-                        .map_err(|()| RuntimeError::RangeError("invalid time zone".into()))?
+                    return iso::resolve_time_zone_offset(&temporal.time_zone, epoch_nanoseconds)
                         .map(Some)
-                        .ok_or_else(|| {
-                            RuntimeError::RangeError(
-                                "named IANA time zones are not supported yet".into(),
-                            )
-                        });
+                        .map_err(|()| RuntimeError::RangeError("invalid time zone".into()));
                 }
             }
         }
@@ -2088,12 +2096,9 @@ impl Vm {
         let source = text
             .to_utf8()
             .map_err(|_| RuntimeError::RangeError("invalid time zone".into()))?;
-        iso::resolve_fixed_time_zone_offset(&source)
-            .map_err(|()| RuntimeError::RangeError("invalid time zone".into()))?
+        iso::resolve_time_zone_offset(&source, epoch_nanoseconds)
             .map(Some)
-            .ok_or_else(|| {
-                RuntimeError::RangeError("named IANA time zones are not supported yet".into())
-            })
+            .map_err(|()| RuntimeError::RangeError("invalid time zone".into()))
     }
 
     pub(super) fn temporal_instant_to_string(
@@ -2109,7 +2114,7 @@ impl Vm {
         let mode =
             self.temporal_rounding_mode(&options, blueice_ecma402::NumberRoundingMode::Trunc)?;
         let smallest_unit = self.temporal_unit_option(&options, "smallestUnit", false)?;
-        let offset = self.temporal_to_string_time_zone(&options)?;
+        let offset = self.temporal_to_string_time_zone(&options, &epoch)?;
         // `hour` is a valid unit name but not a valid `toString` precision.
         let smallest_unit = Self::temporal_time_unit(smallest_unit, "smallestUnit", false)?;
         // `ToSecondsStringPrecision`: smallestUnit wins outright, and the
@@ -3033,13 +3038,13 @@ impl Vm {
         time_zone: &Value,
     ) -> Result<(epoch::CivilDate, epoch::CivilTime), RuntimeError> {
         let identifier = self.temporal_time_zone_identifier(time_zone)?;
-        let offset = time_zone_id::offset_seconds(&identifier).ok_or_else(|| {
+        let now = Self::temporal_now_epoch_nanoseconds();
+        let offset = time_zone_id::offset_seconds(&identifier, &now).ok_or_else(|| {
             RuntimeError::RangeError(format!(
-                "Temporal.Now cannot yet resolve a UTC offset for the named time zone {identifier}"
+                "Temporal.Now cannot resolve a UTC offset for the time zone {identifier}"
             ))
         })?;
-        let local =
-            Self::temporal_now_epoch_nanoseconds() + BigInt::from(offset) * 1_000_000_000_u32;
+        let local = now + BigInt::from(offset) * 1_000_000_000_u32;
         Ok(epoch::instant_fields(&local))
     }
 

@@ -12,14 +12,14 @@
 //! exposes — so Temporal and ECMA-402 can never disagree about which zone
 //! names exist.
 //!
-//! Deliberately *identifier*-only. Resolving a named zone's UTC offset at an
-//! arbitrary instant needs the IANA transition history, which is Phase 26
-//! Stage 1 Track E's `time_zone.rs`, not this file. [`offset_seconds`]
-//! therefore answers only for `UTC` and fixed-offset identifiers and returns
-//! `None` for every other (valid, available) named zone, so a caller that
-//! genuinely needs an offset raises a loud error rather than silently
-//! reporting a UTC-shifted wall clock.
+//! Deliberately *identifier*-only for parsing/validation. Resolving a named
+//! zone's real UTC offset at an arbitrary instant needs the IANA transition
+//! history, which lives in Phase 26 Stage 1 Track E's `time_zone.rs`;
+//! [`offset_seconds`] delegates to it directly rather than duplicating it, so
+//! `UTC`, a fixed offset and a named zone all answer correctly for the given
+//! instant.
 
+use num_bigint::BigInt;
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
@@ -180,16 +180,26 @@ fn has_negative_zero_year(source: &str) -> bool {
         .is_some_and(|year| year == "000000")
 }
 
-/// The UTC offset a resolved identifier implies, in seconds east of UTC.
+/// The UTC offset a resolved identifier was actually observing at
+/// `epoch_nanoseconds`, in seconds east of UTC.
 ///
-/// `None` for a named zone other than `UTC`: that answer depends on the
-/// instant and the IANA transition history, which Phase 26 Stage 1 Track E
-/// owns. Callers turn `None` into a `RangeError` rather than assuming zero.
-pub(crate) fn offset_seconds(identifier: &str) -> Option<i32> {
+/// `identifier` is always the canonical spelling [`resolve`] already
+/// returned, so it is always a valid `TimeZoneIdentifier` here; `None` is
+/// reserved for a caller that (unlike every current one) passes something
+/// that isn't, so it still fails closed with a `RangeError` rather than
+/// panicking.
+pub(crate) fn offset_seconds(identifier: &str, epoch_nanoseconds: &BigInt) -> Option<i32> {
     if identifier.eq_ignore_ascii_case(SYSTEM) {
         return Some(0);
     }
-    parse_offset_minutes(identifier).map(|minutes| minutes * 60)
+    if let Some(minutes) = parse_offset_minutes(identifier) {
+        return Some(minutes * 60);
+    }
+    let zone = super::time_zone::parse_identifier(identifier)?;
+    let nanoseconds = zone.offset_nanoseconds_for(epoch_nanoseconds);
+    // Real IANA offsets only ever change on a whole-second boundary, so this
+    // division is always exact.
+    Some((nanoseconds / 1_000_000_000) as i32)
 }
 
 #[cfg(test)]
@@ -322,11 +332,18 @@ mod tests {
     }
 
     #[test]
-    fn answers_offsets_only_for_utc_and_fixed_offset_identifiers() {
-        assert_eq!(offset_seconds("UTC"), Some(0));
-        assert_eq!(offset_seconds("+01:30"), Some(5_400));
-        assert_eq!(offset_seconds("-07:00"), Some(-25_200));
-        // Track E's transition-history work, not this module's.
-        assert_eq!(offset_seconds("America/Vancouver"), None);
+    fn answers_offsets_for_utc_fixed_offset_and_named_identifiers() {
+        let epoch = BigInt::from(0);
+        assert_eq!(offset_seconds("UTC", &epoch), Some(0));
+        assert_eq!(offset_seconds("+01:30", &epoch), Some(5_400));
+        assert_eq!(offset_seconds("-07:00", &epoch), Some(-25_200));
+        // A named zone now resolves through Track E's real transition data
+        // rather than reporting "unresolvable".
+        assert_eq!(offset_seconds("America/Vancouver", &epoch), Some(-28_800));
+        // The same zone at a different instant resolves a different (real,
+        // historical) offset.
+        let summer = BigInt::from(1_720_480_004_i64) * 1_000_000_000_u32;
+        assert_eq!(offset_seconds("America/New_York", &summer), Some(-14_400));
+        assert_eq!(offset_seconds("Mars/Olympus_Mons", &epoch), None);
     }
 }
