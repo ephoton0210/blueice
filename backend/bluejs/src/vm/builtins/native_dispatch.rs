@@ -1113,6 +1113,59 @@ impl Vm {
                 self.temporal_duration_to_locale_string(&receiver, &args)
             }
             NativeFunction::TemporalDurationValueOf => self.temporal_duration_value_of(),
+            NativeFunction::TemporalDateWith => {
+                self.temporal_date_with(&receiver, first, native::argument(&args, 1))
+            }
+            NativeFunction::TemporalDateAdd => {
+                self.temporal_date_add(&receiver, first, native::argument(&args, 1), false)
+            }
+            NativeFunction::TemporalDateSubtract => {
+                self.temporal_date_add(&receiver, first, native::argument(&args, 1), true)
+            }
+            NativeFunction::TemporalDateUntil => self.temporal_date_difference(
+                &receiver,
+                first,
+                native::argument(&args, 1),
+                false,
+            ),
+            NativeFunction::TemporalDateSince => {
+                self.temporal_date_difference(&receiver, first, native::argument(&args, 1), true)
+            }
+            NativeFunction::TemporalDateEquals => self.temporal_date_equals(&receiver, first),
+            NativeFunction::TemporalDateCompare(kind) => {
+                self.temporal_date_compare(kind, first, native::argument(&args, 1))
+            }
+            NativeFunction::TemporalDateToString => {
+                self.temporal_date_to_string(&receiver, first)
+            }
+            NativeFunction::TemporalDateToJson => {
+                self.temporal_date_to_string(&receiver, &Value::Undefined)
+            }
+            NativeFunction::TemporalDateToLocaleString => {
+                self.temporal_date_to_locale_string(&receiver, &args)
+            }
+            NativeFunction::TemporalDateValueOf => self.temporal_date_value_of(),
+            NativeFunction::TemporalPlainDateToPlainDateTime => {
+                self.temporal_plain_date_to_plain_date_time(&receiver, first)
+            }
+            NativeFunction::TemporalPlainDateToPlainYearMonth => {
+                self.temporal_plain_date_to_plain_year_month(&receiver)
+            }
+            NativeFunction::TemporalPlainDateToPlainMonthDay => {
+                self.temporal_plain_date_to_plain_month_day(&receiver)
+            }
+            NativeFunction::TemporalPlainDateTimeToPlainDate => {
+                self.temporal_plain_date_time_to_plain_date(&receiver)
+            }
+            NativeFunction::TemporalPlainDateTimeToPlainTime => {
+                self.temporal_plain_date_time_to_plain_time(&receiver)
+            }
+            NativeFunction::TemporalPlainDateTimeWithPlainTime => {
+                self.temporal_plain_date_time_with_plain_time(&receiver, first)
+            }
+            NativeFunction::TemporalPlainDateTimeRound => {
+                self.temporal_plain_date_time_round(&receiver, first)
+            }
             NativeFunction::ListFormatSupportedLocales => self.list_format_supported_locales(&args),
             NativeFunction::ListFormatFormat => self.list_format_format(&receiver, first),
             NativeFunction::ListFormatFormatToParts => {
