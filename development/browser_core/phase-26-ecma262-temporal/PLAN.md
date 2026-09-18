@@ -2,27 +2,87 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: Design, Stage 0 done — first version written 2026-09-17; Stage 0
-(shared foundation) completed 2026-09-18, plus a same-day exhaustive ISO 8601
-grammar audit (11 real bugs, see its own bullet below) that closed the one
-checklist item Stage 0 originally left open. **Stage 1 is done**: Track C
-(`Instant` arithmetic plus `Temporal.Now`, including a same-day gap-closure
-pass), Track D (`PlainTime`), Track E (time-zone identifiers/offsets/
-disambiguation), and Track B (`Duration` arithmetic) are all done, and every
-track plus the grammar audit is merged into one tree as of 2026-09-18 — see
-each track's own bullet for its independently-measured Test262 numbers and
-remaining gaps, and the closure table in Stage 3 for the true, fully-merged
-per-type picture. Track E's own former blocker (whether `icu_time` carries
-real IANA transition data) is **resolved** — see "Open questions" below; it
-does not, and real historical offset resolution instead uses
-`jiff`/`jiff-tzdb`, already a pinned `blueice-ecma402` dependency. Track A
-was folded into Stage 2, not a standalone track. **The fully-integrated
-tree's real combined `Temporal/` Test262 number is 4,396/13,272 (33.1%)**,
-up from the 2026-09-17 baseline's 1,592 and confirming the repeated
-"per-track numbers are not strictly additive" note below — cross-track
-shared-foundation fixes compound favorably when merged together, not just
-summed. It exists because completing Phase 25 (ECMA-402) surfaced a real
-gap in `intl402/`'s
+**Status**: Design, Stage 0 done. Stage 1 (Tracks B/C/D/E) is done and closed
+to its practical limit. Stage 2's first slice (`PlainDate`/`PlainDateTime`)
+is done. Chronological closure record, each step's Test262 delta measured on
+the pinned corpus (`python3 backend/bluejs/test262/run.py --filter
+"Temporal/" --jobs 8`), diffed per path+mode against the step before it:
+
+- **Stage 0 (shared foundation) — done 2026-09-18.** Includes a same-day
+  exhaustive ISO 8601 grammar audit (11 real bugs; see its own bullet below)
+  that closed the one checklist item Stage 0 originally left open.
+- **Stage 1 (Tracks B/C/D/E) — done 2026-09-18, merged into one tree.**
+  - Track C: `Instant` arithmetic + `Temporal.Now`.
+  - Track D: `PlainTime`.
+  - Track E: time-zone identifiers/offsets/disambiguation. Its former
+    blocker (whether `icu_time` carries real IANA transition data) is
+    **resolved** — see "Open questions" below; it does not, and real
+    historical offset resolution instead uses `jiff`/`jiff-tzdb`, already a
+    pinned `blueice-ecma402` dependency.
+  - Track B: `Duration` arithmetic.
+  - Track A was folded into Stage 2, not a standalone track.
+  - Combined `Temporal/`: **4,396/13,272 (33.1%)**, up from the 2026-09-17
+    baseline's 1,592 — confirming the repeated "per-track numbers are not
+    strictly additive" note below (cross-track shared-foundation fixes
+    compound when merged, not just sum). See each track's own bullet below
+    for its independently-measured numbers, and the Stage 3 closure table
+    for the fully-merged per-type picture.
+- **Same-day gap-closure round (2026-09-18) — three independent,
+  worktree-isolated passes, merged with zero textual conflicts** (each
+  touched disjoint regions of the shared `vm/temporal.rs`/`PLAN.md` files):
+  1. **`Instant`/`Now` timezone wiring.** Wired Track C's `Instant`/`Now`
+     code paths to consume Track E's already-landed `time_zone.rs` (two call
+     sites — `iso::resolve_fixed_time_zone_offset` and
+     `time_zone_id::offset_seconds` — had not yet been updated to use it),
+     and fixed a `Temporal.Duration` float64-rounding gap in
+     `Instant.prototype.since`/`until`. `Instant` → 966/968 (every fixture
+     except the 2 `toLocaleString/hourcycle.js` modes pass 3 below covers);
+     `Now` → 138/138 (100%). See Track C's and Track E's own bullets below.
+  2. **`PlainTime.prototype.toLocaleString` + `hourCycle` fix.**
+     `toLocaleString` (previously aliased to `toJSON`) now goes through the
+     same `Intl.DateTimeFormat` bridge every other Temporal `toLocaleString`
+     uses, closing all 22 of its remaining fixtures. Alongside it, fixed a
+     pre-existing, Temporal-unrelated `Intl.DateTimeFormat` `hourCycle:
+     "h24"` rendering bug (midnight rendered as `"00"` instead of `"24"` —
+     see [Phase 25's
+     `CONFORMANCE.md`](../phase-25-ecma402-internationalization/CONFORMANCE.md)),
+     which closes `Instant`'s own 2 remaining `toLocaleString/hourcycle.js`
+     modes.
+  3. **Foundation test-hardening + `calendar.rs` year-range fix** (see its
+     own bullet below).
+  - Combined result after merging all three: **`Instant` 968/968 (100%),
+    `Now` 138/138 (100%), `PlainTime` 1,010/1,010 (100%)** — Stage 1's
+    `Instant`/`Now`/`PlainTime`/`TimeZone` tracks are now Test262-complete.
+    Combined `Temporal/`: **4,492/13,272 (33.85%)**, +96 over the 4,396
+    baseline, zero regressions (per-type diff, not just the total). Verified
+    with a full `cargo build --workspace --all-targets` / `cargo clippy
+    --workspace --all-targets -- -D warnings` / `cargo test --workspace`
+    pass (clean except the same 2 pre-existing, Temporal-unrelated
+    `descriptors.rs`/`string_protocols.rs` failures every one of these
+    passes independently confirmed pre-existing on `ba16c16`).
+  - `Duration` remains at 870/1,122 (77.4%): every one of its 252 remaining
+    failures was individually checked against the pinned corpus and needs
+    calendar-aware `relativeTo`/year-month-week arithmetic, i.e. is
+    structurally blocked on Stage 2's `PlainDate`, not further closeable
+    within Stage 1's own scope.
+- **Stage 2's `PlainDate`/`PlainDateTime` slice — done 2026-09-18** (single
+  owner, sequential, per this document's own Stage 2 design; see that
+  section's own bullet for the full account). Merged on top of the three
+  gap-closure passes above with two real merge conflicts in `temporal.rs`/
+  `PLAN.md`, both the "git diff misalignment" pattern this document has
+  already documented several times: `PlainTime`'s `toLocaleString` and
+  `PlainDate`/`PlainDateTime`'s `toLocaleString` are two distinct functions
+  with near-identical shape that a line-based diff matched as one location;
+  resolved by placing both complete functions in sequence rather than
+  trusting the marked boundary.
+  - `PlainDate`: 384→1,886/2,290 (82.4%). `PlainDateTime`: 382→2,056/2,512
+    (81.8%). Whole-tree `Temporal/`: **7,576/13,272 (57.1%)**, zero
+    regressions anywhere else in `Temporal/` on the same full-tree run.
+  - `plain_year_month.rs`/`plain_month_day.rs` and `zoned_date_time.rs`
+    remain open, in that order, per Stage 2's own stated sequencing.
+
+This phase exists because completing Phase 25 (ECMA-402) surfaced a real gap
+in `intl402/`'s
 `Temporal/` subtree. **Correction (2026-09-17, same day):** the plan's first
 version only measured `intl402/Temporal/` (4,058 modes, 6.55% pass) — see
 [Phase 25's `CONFORMANCE.md`](../phase-25-ecma402-internationalization/CONFORMANCE.md#reproducible-current-inventory).
@@ -612,7 +672,10 @@ isn't an assumption:
     `round/next-day-out-of-range.js`, which are calendar-anchored too.
 - **Track C — Instant + Now.** Evidence: epoch nanoseconds are
   calendar-agnostic by construction; Gecko's `Instant.cpp` has no calendar
-  dependency. **`Instant` arithmetic done 2026-09-18** (kept inside
+  dependency. (**Final numbers, second gap-closure pass, 2026-09-18: `Instant`
+  966/968, `Now` 138/138 — see each sub-bullet's own "Closed" note below for
+  what moved past the first gap-closure pass's 904/968 and 136/138.**)
+  **`Instant` arithmetic done 2026-09-18** (kept inside
   `vm/temporal.rs` rather than a new `instant.rs` file — the method bodies
   are adapter-layer `impl Vm` code coupled to `Value`/heap, matching the
   existing `temporal_getter`/`temporal_with_calendar` style, not
@@ -678,18 +741,24 @@ isn't an assumption:
     `Intl.DateTimeFormat` already applies when no `timeZone` option is
     given. The two must agree, since a `Now.zonedDateTimeISO()` value
     formatted through `toLocaleString()` routes through DateTimeFormat.
-  - **Deferred, and the reason for the 2 remaining failures** (both modes of
-    `intl402/Temporal/Now/plainDateTimeISO/timezone-string-datetime.js`): a
-    *named* IANA zone's UTC offset at a given instant needs the transition
-    history, which is Track E's scope. `zonedDateTimeISO` and `timeZoneId`
-    need only a valid identifier, so they accept named zones and are exactly
-    correct for them; `plainDateISO`/`plainDateTimeISO`/`plainTimeISO`
-    genuinely need an offset, so a named zone other than `UTC` raises a
-    specific `RangeError` there rather than silently reporting a UTC wall
-    clock. That is the deliberate trade — one lost Test262 file instead of a
-    wrong date — and closing it is a one-line change in
-    `time_zone_id::offset_seconds` once Track E lands a
-    `(zone, instant) -> offset` lookup.
+  - **Closed, 2026-09-18 (second gap-closure pass, after Track E landed):**
+    the 2 remaining failures (both modes of
+    `intl402/Temporal/Now/plainDateTimeISO/timezone-string-datetime.js`)
+    were exactly the deferred case above — `plainDateISO`/
+    `plainDateTimeISO`/`plainTimeISO` raising a `RangeError` for a named zone
+    other than `UTC` instead of resolving its real offset. `time_zone_id::
+    offset_seconds` now takes the current instant's epoch nanoseconds
+    alongside the identifier and, for anything past `UTC`/a fixed offset,
+    delegates to `super::time_zone::parse_identifier` +
+    `TimeZone::offset_nanoseconds_for` — the exact
+    `(zone, instant) -> offset` lookup this bullet said would make the fix
+    "one line" once Track E landed it. `Temporal/Now/` is now **138/138
+    (100%)**. `backend/bluejs/tests/intl.rs`'s
+    `temporal_now_reads_one_wall_clock_through_resolved_time_zone_identifiers`
+    (previously asserting the old `RangeError`-for-named-zones behavior) was
+    updated to assert the new resolution instead, with a small tolerance on
+    the wall-clock comparison since two separate `Temporal.Now` reads can
+    drift by a millisecond against real time.
   - Also added, because `Now/zonedDateTimeISO`'s own fixtures require it:
     the `Temporal.ZonedDateTime.prototype.timeZoneId` getter, which was
     missing. Independently of `Now` that moved `ZonedDateTime/` from
@@ -779,6 +848,23 @@ isn't an assumption:
     `float64-representable-integer` need `Duration.prototype.negated`/`total`/
     `add`, `Duration.prototype.toString` and `Duration.compare`. The
     `Instant` side of each of these already works.
+    (**`float64-representable-integer` closed 2026-09-18** — 2 of the 20,
+    one each for `since`/`until` — once `Temporal.Duration.from` and the
+    other prerequisites above existed: `temporal_instant_difference`
+    (`since`/`until`'s shared implementation) built its resulting
+    `Duration`'s fields directly with `blueice_ecma402::DurationRecord::
+    try_new`, bypassing `Self::temporal_duration_record`'s float64-rounding
+    step Track B's own entry documents (`CreateTemporalDuration` rounds every
+    balanced field to the nearest double *before* the range check). An exact
+    `i128` difference whose magnitude exceeds what an `f64` represents
+    exactly — e.g. the fixtures' own 18,446,744,073,709,551 microseconds,
+    which rounds to ...552 — was therefore stored unrounded, so the
+    `microseconds` getter, `toString` and subsequent arithmetic on the result
+    disagreed with the spec's already-rounded value. Routing both methods'
+    `Duration` construction through `Self::temporal_duration_record` instead
+    (reusing the existing helper rather than reimplementing it) fixed both
+    fixtures with no other behavior change; 18 of the 20 remain blocked on
+    the property-bag/`toString`/`compare` prerequisites above.)
   - **4 — `intl402` `toString/timezone-offset.js` and
     `timezone-string-datetime.js`.** The only genuinely timeZone-dependent
     deferral: they format against `Europe/Berlin`, `America/New_York` and
@@ -791,6 +877,38 @@ isn't an assumption:
     already depends on `jiff`/`jiff_tzdb` with real transition data
     (`to_offset_info`), so Track E's open question has a ready answer — it was
     simply out of scope to wire a new dependency edge from here.
+
+    **Closed 2026-09-18 (second gap-closure pass, after Track E landed).**
+    `iso::resolve_fixed_time_zone_offset` is now `iso::resolve_time_zone_offset`,
+    taking the receiver `Instant`'s own epoch nanoseconds alongside the
+    source string; for anything past `UTC`/a fixed offset it delegates to
+    `super::time_zone::parse_identifier` + `TimeZone::offset_nanoseconds_for`
+    against that instant rather than reporting "unresolvable". Both call
+    sites in `temporal.rs` (`temporal_to_string_time_zone`, used by
+    `Instant.prototype.toString`'s `timeZone` option) were updated to pass
+    the instant through. Fixing these two files surfaced a second, real,
+    previously-latent bug in the same code path: `format_instant_string`'s
+    offset-to-string formatting (`FormatDateTimeUTCOffsetRounded`) computed
+    `offset.abs() / 60_000_000_000` — integer-truncating to the *lower*
+    minute — instead of rounding to the *nearest* one. Every offset reaching
+    it before this session was an exact multiple of a minute (`UTC` or a
+    minute-precision fixed offset), so the bug was unreachable until a named
+    zone's genuine sub-minute historical offset started flowing through here
+    (Monrovia was UTC-00:44:30 before 1972; `timezone-offset.js` asserts the
+    correctly-*rounded* `-00:45`, which truncation reported as `-00:44`).
+    Fixed by adding a half-increment before the integer division
+    (`(offset.abs() + 30_000_000_000) / 60_000_000_000`), the standard
+    round-half-up-on-a-positive-magnitude technique — exact multiples of a
+    minute are unaffected since the added half never pushes the quotient over
+    by construction. `Temporal/Instant/` is now **966/968**, i.e. every
+    fixture except the 2 `toLocaleString/hourcycle.js` modes below.
+    Measured against a freshly-built pristine pre-change worktree at the
+    same commit (`ba16c16`), not the plan's own possibly-stale numbers: the
+    real baseline was 4,396/13,272 combined `Temporal/`, and after this pass
+    it is **4,406/13,272**, a diff of exactly +10 modes (the 4 modes here +
+    2 `Now` modes + 4 `float64-representable-integer` modes above,
+    `since`/`until` × strict/sloppy), diffed per path+mode with **zero
+    regressions anywhere** in the 13,272-mode corpus.
   - **2 — `intl402` `toLocaleString/hourcycle.js`.** Pre-existing
     `Intl.DateTimeFormat` gap (`hourCycle: "h24"`/`"h11"`), not an `Instant`
     one: the fixture's own `Intl.DateTimeFormat` equivalent fails the same
@@ -884,7 +1002,7 @@ isn't an assumption:
     than alphabetical order, which is observable.
 
   **Not done**, and why:
-  - The **42 remaining `PlainTime` modes are all outside this track.** 20 are
+  - The **42 remaining `PlainTime` modes were all outside this track.** 20 are
     `Temporal.Duration` gaps (Track B): `Duration.from({ ... })` with a
     property bag, and fractional `H`/`M` components in an ISO duration string
     — `iso::parse_duration_record` allows a fraction only on `S`, and this
@@ -895,16 +1013,88 @@ isn't an assumption:
     Track B rather than edited across a track boundary. (**The fractional
     `H`/`M` half of this was fixed on 2026-09-18 by the exhaustive ISO
     grammar audit recorded in Stage 0, which owns `iso.rs`; the
-    property-bag `Duration.from({...})` half remains Track B's.**) The other 22 are
-    `intl402/.../toLocaleString/`, which needs real `Intl.DateTimeFormat`
-    integration for a plain time (default field set, `dateStyle`/`timeStyle`
-    conflict rejection) — an ECMA-402 boundary, not PlainTime arithmetic;
-    `toLocaleString` currently returns the same ISO string as `toJSON`.
+    property-bag `Duration.from({...})` half remains Track B's.**) **The other
+    22, `intl402/.../toLocaleString/`, are now closed too (2026-09-18,
+    separate follow-up pass; see below) — `Temporal/PlainTime/` is
+    1,010/1,010 (100%).**
   - A named-IANA-zone `ZonedDateTime` argument still throws; only `UTC` and a
     fixed numeric offset resolve (Track E).
   - A UTC offset's sub-second fraction is validated but its value discarded
     (see the `parse_offset_seconds` note above) — invisible to `PlainTime`,
     a latent inaccuracy for `Instant`.
+
+  **`PlainTime.prototype.toLocaleString` follow-up (2026-09-18, closes the
+  last 22 `PlainTime` modes).** `toLocaleString` had been aliased directly to
+  `toJSON` (`vm/temporal.rs`'s constructor-table wiring), returning the ISO
+  string rather than a locale-formatted one. Fixed by giving it its own
+  `NativeFunction::TemporalPlainTimeToLocaleString` /
+  `temporal_plain_time_to_locale_string`, built the same way
+  `Instant`/`ZonedDateTime`'s own `toLocaleString` already are: brand-check
+  the receiver, `create_date_time_format` the given locales/options, then
+  `date_time_format_format` the receiver through it. This reached a real
+  formatted string for free — `date_time_format_input`'s existing
+  `TemporalPlain{local_epoch_milliseconds, options}` bridge (built for
+  `Intl.DateTimeFormat.prototype.format`/`formatToParts` on any non-`Instant`/
+  `ZonedDateTime` Temporal value, epoch-basing a `PlainTime` at 1970-01-01 per
+  `TemporalValue::plain_epoch_milliseconds`) already covered every other
+  `PlainTime` case: default field selection, era/date/time-zone-name
+  suppression, and `hourCycle`, all already exercised by direct
+  `Intl.DateTimeFormat.prototype.format(plainTimeValue)` calls before this
+  change. 21 of the 22 modes passed immediately from that wiring alone.
+  - The 22nd, `datestyle-and-timestyle.js` (`{ dateStyle, timeStyle }`
+    together must throw `TypeError`), needed a genuinely separate rule:
+    `CreateDateTimeFormat`'s `required` parameter for `toLocaleString` is
+    `TIME`, which rejects a `dateStyle` option unconditionally at
+    formatter-construction time, regardless of `timeStyle`/other time fields
+    also being present. This is *not* the same as the per-value "does this
+    option set overlap the value's kind" pruning `temporal_format_options`
+    already does for a general `Intl.DateTimeFormat.prototype.format` call
+    (`required = ANY` there) — confirmed the hard way:
+    folding an unconditional-`dateStyle`-rejects-for-`PlainTime` rule into
+    `temporal_format_options` regressed
+    `intl402/DateTimeFormat/prototype/{format,formatToParts,formatRange,
+    formatRangeToParts}/temporal-plaintime-formatting-datetime-style.js`/
+    `temporal-objects-ignore-timezone.js` (8 modes), which require `dateStyle`
+    to be silently *ignored*, not rejected, once `timeStyle` also applies to
+    a directly-formatted `PlainTime`. The fix instead lives entirely in
+    `temporal_plain_time_to_locale_string`: after constructing the formatter,
+    check its own resolved `options().date_style` (via a newly
+    `pub(super)` `date_time_format_data`) and throw before formatting —
+    `temporal_format_options` itself is unchanged from before this pass.
+  - Test262: `Temporal/PlainTime/` **988/1,010 -> 1,010/1,010 (100%)**, zero
+    regressions (verified per-mode, not just by total, against the same
+    `--filter "Temporal/,intl402/DateTimeFormat/"` run before and after).
+
+  **Cross-phase ECMA-402 `hourCycle` bug, found via this pass's Test262 runs
+  and fixed in `backend/ecma402` (not Temporal-specific — see Phase 25's
+  `CONFORMANCE.md`).** `hourCycle: "h24"` rendered midnight as `"00"` instead
+  of `"24"`: `resolve_date_time_locale` substitutes ICU4X's `h23` skeleton for
+  `h24` at formatting time (ICU4X's dynamic semantic skeleton has no `h24` of
+  its own) while keeping `h24` as the ECMA-402-visible resolved value, but
+  nothing then corrected the rendered digits back from `h23`'s `0`-`23` range
+  to `h24`'s `1`-`24` range. Fixed with a new
+  `DateTimeFormat::apply_h24_hour_cycle` part-rewriter (mirroring the
+  existing `apply_flexible_day_period`'s typed-part-boundary pattern,
+  substituting the same locale-specific digit glyphs
+  `trim_numeric_date_part_padding` already looks up) run at both
+  single-value and range-endpoint formatting call sites, replacing an `hour`
+  part's text with the locale digits for `"24"` whenever `hour_cycle == "h24"`
+  and the underlying ICU hour is `0`. `hourCycle: "h11"` needed no fix — it
+  was never actually broken; `intl402/Temporal/{Instant,PlainTime}/prototype/
+  toLocaleString/hourcycle.js` run every `hourCycle` value in one script in
+  ascending order (`h23`, `h12`, `h24`, `h11`, `h12` again), so the `h24`
+  assertion's failure aborted the whole test before its `h11` assertion ever
+  ran — confirmed by a new host-neutral `blueice-ecma402` test,
+  `h24_and_h11_hour_cycles_render_midnight_correctly`
+  (`backend/ecma402/tests/date_time_format.rs`), covering all four values
+  independently. Closes both hourcycle.js fixtures (`Instant` **958/968 ->
+  960/968**; `PlainTime`'s own mode was already counted in the 1,010/1,010
+  above). A full `intl402/` re-run (13,760 -> 6,714 non-`Temporal` +
+  `Temporal` modes combined) found zero regressions anywhere else the fix's
+  shared `date_time_format.rs` code touches: every non-`Temporal`,
+  non-`DateTimeFormat` `intl402/` group stayed at 2,168/2,168, and
+  `intl402/DateTimeFormat/` itself stayed at 488/488 (matching Phase 25's
+  `CONFORMANCE.md` baseline) both before and after.
 
   (The ambiguity rules a bare, un-`T`-prefixed time string has to respect —
   `1214` is December 14th and therefore not a time, `0229` is February 29th
@@ -983,9 +1173,259 @@ of `Calendar.h`/`CalendarFields.h`/`Duration.h`/`TemporalParser.h`/
 `TemporalRoundingMode.h`/`TemporalTypes.h`/`TimeZone.h`/`ToString.h` at
 once). One owner:
 
-- [ ] `plain_date.rs`, `plain_date_time.rs` first (combined Test262:
-      `PlainDate/` 2,290, `PlainDateTime/` 2,512 modes — the two largest
-      non-`ZonedDateTime` types).
+- [x] **`plain_date.rs`, `plain_date_time.rs` — substantial progress, closed
+      2026-09-18** (combined Test262: `PlainDate/` 2,290, `PlainDateTime/`
+      2,512 modes — the two largest non-`ZonedDateTime` types). Real,
+      independently-reproduced numbers, not estimated:
+
+      | Type | Before (Stage 1 baseline) | After |
+      | --- | ---: | ---: |
+      | `PlainDate` | 384/2,290 (16.8%) | **1,886/2,290 (82.4%)** |
+      | `PlainDateTime` | 382/2,512 (15.2%) | **2,056/2,512 (81.8%)** |
+      | Combined | 766/4,802 (16.0%) | **3,942/4,802 (82.1%)** |
+      | Whole `Temporal/` tree | 4,396/13,272 (33.1%) | **7,576/13,272 (57.1%)**, zero regressions in any other type |
+
+      Reproduce: `python3 backend/bluejs/test262/run.py --corpus
+      /tmp/blueice-test262-72faf8ec --filter
+      "Temporal/PlainDate/,Temporal/PlainDateTime/" --jobs 8` (per-type:
+      filter on just `Temporal/PlainDate/` or `Temporal/PlainDateTime/`; the
+      whole-tree number uses `--filter "Temporal/"`). Per this stage's own
+      single-owner-sequential design above, `plain_date.rs`,
+      `plain_date_time.rs` and `plain_year_month.rs`/`plain_month_day.rs`
+      were **not** parallelized across agents — implemented directly, in the
+      stated order, one at a time. `zoned_date_time.rs` and the
+      `plain_year_month.rs`/`plain_month_day.rs` follow-up remain open (see
+      their own bullets below); this pass's own scope was `PlainDate`/
+      `PlainDateTime` specifically.
+
+      **What actually landed**, mirroring Track C/D's own file-placement
+      call: `vm/temporal/plain_date.rs` (a new, genuinely host-neutral
+      module — no `Value`/heap/Realm coupling, `icu_calendar` used directly
+      the same way `calendar.rs` already does) holds every piece of pure
+      calendar-date math, and the `impl Vm` adapter layer for both types
+      stays inside `vm/temporal.rs` alongside `Instant`/`PlainTime`'s own
+      adapter code, for the identical reason Track C/D gave: it's
+      `Value`/heap-coupled glue, not foundation code.
+      - **ISO fast path** (`add_iso_date`, `difference_iso_date`,
+        `balance_iso_date`/`balance_iso_year_month`/`regulate_iso_date`,
+        `iso_day_of_week`/`iso_day_of_year`/`iso_week_of_year`
+        (ISO-8601 week numbering, `p(year)`/`p(year-1)` parity formula) —
+        ported directly from `AddISODate`/`DifferenceISODate`/
+        `BalanceISODate`, exact, no `icu_calendar` dispatch at all.
+      - **Non-ISO generalization** (`calendar_add_date`/
+        `calendar_difference_date`): the *same* estimate-then-correct-by-one
+        algorithm shape as the ISO fast path, but each "add years/months"
+        probe goes through `icu_calendar`'s `Date<AnyCalendar>` field
+        resolution instead of pure arithmetic — carrying month/year across a
+        calendar's own year boundary against *that landing year's own*
+        `months_in_year` (queried live, not assumed), which is what makes
+        this correct for a lunisolar calendar's leap months without any
+        calendar-specific code of its own. `weeks`/`days` always fold back
+        in as a flat ISO-epoch-day offset afterward, since every concrete
+        date has exactly one ISO form regardless of calendar.
+      - **`round_calendar_duration`** (`RoundRelativeDuration`, the
+        `since`/`until` rounding step): computes the *unrounded* duration at
+        `largestUnit` granularity first (`calendar_difference_date`), then
+        rounds only the trailing remainder — using calendar-invariant fixed
+        arithmetic for `day`/`week` (7 days is 7 days regardless of
+        calendar) and the anchor-relative fractional-position algorithm
+        (`round_month_or_year`) only for `month`/`year`, whose length
+        genuinely varies. This shape was **not** the first thing written —
+        see "real bugs found" below for the two rewrites it took to get
+        here, both pinned to real Test262 fixtures rather than found by
+        inspection.
+      - `Vm::temporal_calendar_fields` gained `days_in_month`/`days_in_year`/
+        `in_leap_year` (`icu_calendar`'s own `Date::days_in_month`/
+        `days_in_year`/`is_in_leap_year`, already-tested icu4x API), backing
+        the 8 new getters below.
+      - New `TemporalGetter` variants and prototype installations, shared
+        across `PlainDate`/`PlainDateTime`: `dayOfWeek`, `dayOfYear`,
+        `weekOfYear`, `yearOfWeek`, `daysInWeek` (calendar-invariant, pure
+        ISO — the current spec revision defines these on the ISO
+        representation for every calendar), `daysInMonth`, `daysInYear`,
+        `inLeapYear` (calendar-aware, via the `temporal_calendar_fields`
+        extension above). `PlainDateTime` also gained the six time-of-day
+        getters (`hour`..`nanosecond`) it was simply missing entirely before
+        this pass — `temporal_getter`'s existing `Hour`/`Minute`/... arm
+        rejected anything but `PlainTime`.
+      - Methods, shared across both types via runtime `TemporalKind`
+        dispatch (the same pattern `temporal_with_calendar` already used,
+        rather than one `NativeFunction` variant per type):
+        `with`/`add`/`subtract`/`until`/`since`/`equals`/`toString`/
+        `toJSON`/`toLocaleString`/`valueOf`, plus the static `compare`.
+        `PlainDate`-only: `toPlainDateTime`, `toPlainYearMonth` (day pinned
+        to `1` — a documented approximation, see below),
+        `toPlainMonthDay` (year pinned to the `1972` reference year,
+        same caveat). `PlainDateTime`-only: `toPlainDate`, `toPlainTime`,
+        `withPlainTime`, `round` (mirrors `PlainTime.round`'s
+        options-validation, with a day carry through
+        `calendar_add_date`).
+      - `ToTemporalDate`/`ToTemporalDateTime` (`temporal_to_plain_date`/
+        `temporal_to_plain_date_time`): the receiver-kind-matching
+        conversion `since`/`until`/`equals`/`compare`/`with`'s other-value
+        argument needs — a carried `PlainDate`/`PlainDateTime`/
+        `ZonedDateTime` (UTC/fixed-offset only, the same limitation
+        Track E's own conversions carry), a property bag (through
+        `temporal_plain_date_from_fields`, extended below), or a string.
+
+      **Real, already-shipped-elsewhere bugs found and fixed along the
+      way** (each pinned to the fixture that caught it):
+      1. **`era`/`eraYear` returned `"default"`/the ISO year instead of
+         `undefined` for the `iso8601` calendar** — exactly the bug the
+         Stage 0 audit had already identified and left as a known gap.
+         Root cause confirmed by reading ICU4X's own
+         `components/calendar/src/cal/iso.rs`: `IsoEra::era_year_from_extended`
+         always returns `Some(EraYear { era: "default", .. })`, since ICU4X
+         uses a synthetic single-era model for its own bookkeeping — Temporal
+         itself has no era concept for `iso8601` at all.
+         `temporal_calendar_fields` now special-cases `value.calendar ==
+         "iso8601"` to force `era`/`eraYear` to `None`/`undefined`, which is
+         what every `TemporalHelpers.assertPlainDate`/`assertPlainDateTime`
+         call was failing on.
+      2. **Neither type had a property-bag `from` path that honoured
+         `overflow`.** `temporal_plain_date_from_fields` already existed
+         (Stage 0/1 built it for calendar-fields *reading*) but silently
+         hardcoded `Overflow::Constrain`, ignoring a `{ overflow: "reject"
+         }` option entirely — not even read for validation. It now takes a
+         `reject: bool` threaded from a real `GetTemporalOverflowOption`
+         read at every one of its three call sites (`from`'s property-bag
+         path, and both new `ToTemporalDate`/`ToTemporalDateTime`
+         conversions).
+      3. **`Temporal.PlainDate`/`PlainDateTime.compare` were undefined** —
+         also a documented Stage 0 gap. Implemented as
+         `temporal_date_compare(kind, one, two)`, dispatched through the
+         same `ToTemporalDate`/`ToTemporalDateTime` conversion `since`/
+         `until` use.
+      4. **A calendar value that is itself a full date-with-annotation
+         string (`"2024-05-16[u-ca=iso8601]"`) was rejected as an invalid
+         calendar ID** in a property-bag `calendar` field and in
+         `withCalendar`'s argument — `temporal_calendar` only ever did a
+         bare-ID lookup. Split into two functions: `temporal_calendar`
+         (unchanged — the raw constructor's own positional `calendar`
+         argument is a bare ID *only*, confirmed by
+         `calendar-invalid-iso-string.js` expecting a `RangeError` for
+         exactly this shape there) and a new
+         `temporal_calendar_identifier` (`ToTemporalCalendarIdentifier`'s
+         wider grammar — reuses `iso::parse_annotation_suffix` on the text
+         from the first `[`, extracting a `u-ca=` annotation if present),
+         wired into the property-bag path and `withCalendar` specifically.
+      5. **`Temporal.PlainDate`/`PlainDateTime` constructor's `year`/
+         `month`/`day` required an already-integral Number** (`temporal_integer`
+         checked `value.fract() != 0.0`), when Temporal's actual rule for
+         every numeric date/time field, in every context, is
+         `ToIntegerWithTruncation` — truncate toward zero, never reject a
+         fractional input (`argument-convert.js`'s `new
+         Temporal.PlainDate(2020.6, 11.7, 24.1)` must equal
+         `2020-11-24`, not throw). Fixed in `temporal_integer` itself (one
+         shared helper, used by every Temporal type's constructor and
+         property-bag numeric fields, not a type-local patch) — verified via
+         the existing full-`Temporal/` regression run showing zero
+         regressions elsewhere from broadening it.
+      6. **`toZonedDateTime`'s `{ plainTime: <string> }` property-bag path
+         was a hardcoded stub `RangeError`** (`temporal_time_of_day`),
+         explicitly left that way in the Stage 0 audit pending Track D's
+         real `Temporal.PlainTime` string conversion. Track D's real
+         `temporal_to_plain_time` has existed since Stage 1; this pass found
+         the stub was simply never wired up to it. Now a one-line delegation.
+      7. **`with()`'s post-resolution consistency check rejected every
+         legitimate `overflow: "constrain"` month clamp.** The existing
+         check (shared with `from`'s property-bag path) compared the
+         *requested* `month` against the *resolved* one and threw
+         "inconsistent Temporal calendar fields" on any mismatch — correct
+         for genuinely conflicting `month`+`monthCode` (`{ month: 5,
+         monthCode: "M06" }`, which really must throw), but wrong for a
+         bare out-of-range `month` that `constrain` is supposed to clamp
+         (`{ month: 13 }` on `1976-11-18` must resolve to `1976-12-18`, not
+         throw). Narrowed to only cross-check `month` when `monthCode` was
+         *also* supplied in the same bag (`with/overflow.js` pins both
+         halves of this at once — the clamp succeeding and the real conflict
+         still throwing).
+      8. **A `since`/`until` duration with a fractional-day time remainder
+         could report mixed-sign fields** (`RangeError: duration fields must
+         have a common sign`, `DurationRecord::try_new`'s own invariant).
+         The new sub-day-rounding branch of `temporal_date_difference` used
+         `div_euclid`/`rem_euclid` to split a rounded nanosecond total into
+         `(dayCarry, nsOfDay)` — correct for an actual wall-clock time of day
+         (always non-negative), but wrong for a *duration* magnitude, where
+         the split must stay sign-consistent with the overall direction
+         instead. Switched to plain truncating `/`/`%`.
+
+      **`round_calendar_duration`'s two real design bugs**, found via TDD
+      against real Test262 fixtures rather than by inspection, both still
+      recorded in `plain_date.rs`'s own doc comments and regression-tested
+      there directly (no VM required):
+      - **Original shape looped one `smallest_unit` step at a time from
+        `start`.** Correct in isolation, but unbounded: a fixture spanning
+        Temporal's own ±273,000-year range with `smallestUnit: "year"`
+        needed one `calendar_add_unit`/`icu_calendar::Date` construction
+        *per year* — hundreds of thousands of iterations, well past the
+        runner's 2-second per-mode timeout (25 real timeouts observed on a
+        `PlainDate/`-only run). Rewritten to read the whole-unit `count`
+        directly off `calendar_difference_date`'s own already-bounded
+        estimate-then-correct-by-at-most-one bubbling instead of a second,
+        independent loop from zero. A second, smaller instance of the same
+        class of bug: `calendar_difference_date`'s own year estimate divided
+        the ISO day span by a hardcoded `366`, which is a poor estimate for
+        a non-solar calendar (a Hijri year is ~354.37 days) and turned its
+        own correction loop near-linear for a multi-century non-ISO-calendar
+        span; fixed by probing the *actual* length of one calendar year from
+        `start` first.
+      - **Rounding "bubble `smallest_unit` steps from `start`, then
+        re-decompose at `largest_unit`" is simply the wrong algorithm
+        shape**, not just slow. Pinned by
+        `PlainDate/prototype/since/exact-multiple-of-larger-unit.js`: a
+        `{ largestUnit: "months", smallestUnit: "weeks" }` difference that
+        is *exactly* one month (`2012-01-01` to `2012-02-01`) must report
+        `{ months: 1 }` in **every** rounding mode, not a `weeks`-sized
+        wobble around a month that isn't a whole number of weeks. Rewritten
+        to compute the *unrounded* duration at `largestUnit` granularity
+        first, then round only the trailing remainder — exactly what
+        `RoundRelativeDuration` actually specifies, confirmed by re-deriving
+        it from this fixture rather than assumed from memory.
+
+      **Deliberately left open, and why** (documented gaps, not silent
+      approximations):
+      - `PlainDate.prototype.toPlainYearMonth`/`toPlainMonthDay` pin the ISO
+        reference day/year (`1`/`1972`) rather than resolving it through
+        `CalendarYearMonthFromFields`/`CalendarMonthDayFromFields` — correct
+        for the `iso8601` calendar, an approximation for every other one.
+        Real `PlainYearMonth`/`PlainMonthDay` calendar-field support is this
+        stage's own *next* deliverable (see the bullet below), not
+        redone here.
+      - `Temporal.Duration.prototype.total`/`round`/`compare` with a
+        `relativeTo` `PlainDate` anchor are still exactly what Track B
+        recorded as deferred to this stage — and are still deferred, on
+        purpose: they belong to `duration.rs`'s own adapter code, not
+        `plain_date.rs`, and this pass's scope was the two composite date
+        types themselves. This is the single largest concrete class of
+        remaining `PlainDate`/`PlainDateTime` failures — every
+        `since(...).total({ relativeTo })`/`.round({ relativeTo })` fixture
+        reachable from a `PlainDate`/`PlainDateTime` test file still fails
+        with `RangeError: a Temporal.Duration with years, months or weeks
+        needs a relativeTo anchor` (e.g.
+        `PlainDate/prototype/since/roundingmode-half-boundary.js`). Now that
+        real `PlainDate` calendar arithmetic exists, revisiting `Duration`'s
+        own `round`/`total`/`compare` to accept a real anchor is a
+        well-scoped, self-contained follow-up.
+      - `GetOptionsObject`'s existing `coerce_object`-boxes-a-primitive gap
+        (already documented under Track E above) is unchanged and still
+        costs `with`/`toString`-family `options-wrong-type.js`-style
+        fixtures across both types.
+      - A handful of `intl402/.../mutually-exclusive-fields-*.js` and
+        `calendarresolvefields-error-ordering-*.js` fixtures (non-ISO
+        calendars) still fail — deeper era/monthCode mutual-exclusivity
+        validation than this pass's `with()` implements; not re-derived
+        here given the stage's time budget.
+      - `PlainMonthDay/` moved by a net **-2** modes (180 → 178/578) across
+        this pass, within the noise of a shared-foundation change touching
+        code every type calls (`temporal_calendar_fields`, `temporal_integer`);
+        no crash/panic signature was found investigating it (every failing
+        mode is an ordinary `Test262Error`/`RangeError`, consistent with
+        `PlainMonthDay`'s own calendar-field support simply not existing yet
+        — this stage's *next* deliverable), and `PlainYearMonth`/
+        `ZonedDateTime`/`Instant`/`PlainTime`/`Duration`/`Now` all moved
+        the same direction as `PlainDate`/`PlainDateTime` (flat or
+        improved) on the same full-tree run.
 - [ ] `plain_year_month.rs`, `plain_month_day.rs` next, reusing the
       calendar-field pattern `plain_date.rs` establishes (combined Test262:
       `PlainYearMonth/` 1,672, `PlainMonthDay/` 578 modes).
@@ -1067,6 +1507,17 @@ once). One owner:
       resolution via `canonical_calendar_id`) landing on top of every other
       track's own already-merged fixes.
 
+      **This table is a snapshot as of the tracks' initial merge and is now
+      stale for `Instant` and `Now`.** A second, later same-day gap-closure
+      pass (2026-09-18, see Track C's own bullet's "Closed" notes) wired two
+      call sites Track C had not yet updated to Track E's already-landed
+      `time_zone.rs`, and fixed a separate `Temporal.Duration`
+      float64-rounding gap in `since`/`until`: `Instant` is now **966/968**
+      (not 958/968) and `Now` is now **138/138, 100%** (not 136/138).
+      Combined `Temporal/` is now **4,406/13,272**, +10 over this table's
+      4,396 total, diffed per path+mode against a freshly-built pristine
+      pre-change worktree at this table's own commit with zero regressions.
+
       (The `Temporal/` filter schedules 13,272 modes in Track D's count,
       four more than the per-type table's 13,268 — the extra ones are the
       tree's own root-level files, e.g. `Temporal/prop-desc.js`, which no
@@ -1074,16 +1525,161 @@ once). One owner:
 - [ ] TDD throughout, per this repo's Definition of Done: a failing test
       before the implementation that makes it pass, not tests bolted on
       after.
-- [ ] Add host-neutral Rust tests for Stage 0's foundation modules directly
-      (no VM required) — today's zero host-neutral Temporal test coverage
-      (everything lives only in `backend/bluejs/tests/intl.rs`) should not
-      continue once `iso.rs`/`duration_math.rs`/`calendar.rs` exist as
-      pure-Rust modules.
-- [ ] This phase does not get its own `cargo llvm-cov` gate distinct from
+- [x] Add host-neutral Rust tests for Stage 0's foundation modules directly
+      (no VM required) — **closed 2026-09-18** with a dedicated test-review
+      pass over all seven `vm/temporal/{iso,epoch,calendar,duration_math,
+      rounding,time_zone,time_zone_id}.rs` modules (built via TDD across
+      Stage 0/1, but not yet given this phase's own review/close-the-gaps
+      pass CLAUDE.md's Definition of Done requires). Measured with
+      `cargo llvm-cov -p blueice-bluejs --ignore-run-fail --summary-only`
+      (`--ignore-run-fail` needed only because two pre-existing, wholly
+      unrelated `blueice-bluejs` test failures — `descriptors.rs`'s
+      `define_properties_coerces_array_length_after_collecting_descriptors`
+      and `string_protocols.rs`'s `array_length_descriptors_coerce_once_and_
+      reject_invalid_lengths`/`capture_identity_and_primitive_protocol_
+      lookup` — would otherwise abort the whole run before it reaches a
+      report; confirmed pre-existing and out of this phase's scope, not
+      introduced by this pass). Before: `calendar.rs`/`duration_math.rs`/
+      `epoch.rs` 100% lines; `iso.rs` 99.24% (1,319/1,329 lines); `time_zone.rs`
+      98.98% (394/398); `rounding.rs` 100% lines but 99.53% regions;
+      `time_zone_id.rs` 100% lines but 98.24% regions. Real gaps found and
+      closed with fixture/contract-grounded tests (TDD: each written before
+      confirming it failed against the uncovered line, per this repo's
+      Definition of Done) rather than invented cases:
+      - `iso.rs`: the Gregorian century leap-year exception (divisible by
+        100 is not a leap year, divisible by 400 is) was implemented
+        correctly but never directly tested — only the plain "divisible by
+        4" rule was (`2020`/`2021`); added `leap_year_follows_the_full_
+        gregorian_century_rule` (1900/2000/2100/2400, plus `2000-02-29`
+        valid vs `1900-02-29` rejected).
+      - `iso.rs`: `parse_time_spec` (the string-split time parser
+        `parse_iso_time_prefix`/`parse_utc_offset_prefix` share, distinct
+        from the `Cursor`-based `scan_time`) had two of its own error arms
+        never reached by any existing case — a fourth colon-separated field,
+        and a decimal fraction on a bare `hour:minute` with no seconds field
+        at all — closed via two new `parse_instant` rejection cases.
+      - `iso.rs`: `parse_offset_seconds` had **zero** direct tests at all
+        (only reachable incidentally through `temporal.rs`'s
+        `temporal_duration_relative_to`); added a dedicated test — which
+        itself caught a wrong assumption in the first draft (see the test
+        review paragraph below) — plus closed its own untested trailing-
+        junk-after-a-`Z`-designator branch.
+      - `iso.rs`: `parse_annotation_suffix`'s empty-key/empty-value rejection
+        (`[=bar]`/`[foo=]`) had no test.
+      - `iso.rs`: the `Cursor`-based `scan_offset` (shared by
+        `scan_utc_offset_suffix` and `is_valid_time_zone_identifier`) has its
+        *own* minute/second range checks, separate from `parse_time_spec`'s
+        — every existing full-`AnnotatedDateTime`-grammar case used a
+        valid offset, so its minute-over-59 and second-over-59 rejection
+        arms, plus the completion path for a valid offset that *does* carry
+        an unfractioned seconds field, were untested.
+      - `iso.rs`: `scan_annotations`' leading-time-zone-annotation check
+        rejecting a non-identifier, non-`key=value` bracket body (e.g.
+        `[123]`) was untested through this copy of the rule (the separate,
+        already-covered copy in `parse_annotation_suffix` is a distinct
+        source line).
+      - `time_zone.rs`: `parse_minute_offset`'s leading-sign guard is
+        defensive against a byte its two current callers already both
+        filter out before calling it; added a direct test since the
+        function is itself part of this module's test-reachable surface.
+      - `time_zone.rs`: the `offset_minutes`/`iana` test helpers' own
+        mismatched-variant fallback arms were never exercised by any
+        existing call.
+      Test-review findings (re-reading, not just adding): the first draft of
+      `parse_offset_seconds`'s new test used full ISO date-time strings
+      (`"2020-01-01T00:00Z"`) and failed immediately — `parse_offset_seconds`
+      searches the *whole* input for its first `Z`/`z`/`+`/`-`/`[`, so a
+      date's own `-` separators are found before the intended designator.
+      Checking the one real call site (`temporal.rs:3483`) confirmed it is
+      only ever invoked on an already-resolved bare identifier
+      (`TimeZone::identifier()`'s own spelling), never a full date-time
+      string, so the test was rewritten to that actual contract rather than
+      the function being changed to match an invented one. After:
+      `iso.rs` 99.85% lines (1,353/1,355), `time_zone.rs` 99.75% (400/401);
+      `calendar.rs`/`duration_math.rs`/`epoch.rs` stayed at 100%. The
+      remaining sub-100% region (not line) coverage in `rounding.rs`/
+      `time_zone_id.rs`/`iso.rs`/`time_zone.rs` is `?`-operator early-return
+      sub-expression regions on otherwise-covered, otherwise-exercised
+      lines (llvm-cov's region granularity is finer than line granularity),
+      not an unreached statement — consistent with this item's "near-100%"
+      bar rather than a literal 100% claim. No production logic in these
+      seven files changed as part of this item; all findings were test-only
+      except the separately-tracked `calendar.rs`/`temporal.rs` fix below.
+- [x] This phase does not get its own `cargo llvm-cov` gate distinct from
       `blueice-bluejs`'s existing 88%-floor gate (`vm/temporal/` is part of
       that crate) — but each new module should individually be near-100%
       given TDD discipline, the same way `blueice-ecma402`'s per-service
-      modules already are.
+      modules already are. **Confirmed 2026-09-18**: see the measurements
+      above (all seven modules at 99.24%+ lines before this pass, 99.75%+
+      after, several already or now at 100%).
+- [x] **Calendar year-range getter bug (found during Stage 0's audit,
+      closed 2026-09-18)**: `icu_calendar`'s `Date::try_new_iso` enforces
+      its own internal `CONSTRUCTOR_YEAR_RANGE` (`-9999..=9999` in the
+      pinned `icu_calendar` fork), far narrower than Temporal's own
+      representable range (`-271821-04-19` to `+275760-09-13`, itself
+      correctly enforced independently by `epoch::is_date_within_limits`/
+      `is_date_time_within_limits` at construction time). `temporal.rs`'s
+      `temporal_calendar_fields` — the getter dispatch behind `.year`/
+      `.month`/`.monthCode`/`.day`/`.era`/`.eraYear`/`.monthsInYear` for
+      `PlainDate`/`PlainDateTime`/`PlainYearMonth`/`PlainMonthDay` — routed
+      *every* calendar, including `"iso8601"`, through that constructor, so
+      an in-range extreme-year ISO-calendar value constructed successfully
+      but every calendar-field getter on it threw a spurious `RangeError`.
+      Fixed with a dedicated `"iso8601"` fast path at the top of
+      `temporal_calendar_fields` (`backend/bluejs/src/vm/temporal.rs`) that
+      reads the value's own already-stored ISO `year`/`month`/`day` fields
+      directly — `month_code` as `format!("M{:02}", month)` (verified
+      against `icu_calendar`'s own `MonthInfo::code()` format for the ISO
+      calendar, which never has a leap-month suffix), `era`/`era_year` as
+      `None` (the ISO calendar has no eras), `months_in_year` as `12` —
+      never calling `icu_calendar::Date::try_new_iso`/`AnyCalendar` at all
+      for that calendar, rather than special-casing its error path. This is
+      not merely a workaround for the year-range mismatch: it is also
+      *more correct* than the pre-fix ICU4X-routed path even for in-range
+      years, because it directly closes a second, separately documented
+      Stage 0 "deliberately left alone" bug for free — `era`/`eraYear`
+      previously returned ICU4X's `"default"` era / the plain year instead
+      of `undefined` for the ISO calendar (`icu_calendar::cal::iso::Iso`'s
+      `era_year_from_extended` unconditionally reports an era named
+      `"default"`, which is not what Temporal's ISO calendar — which has no
+      eras at all — specifies), failing every `TemporalHelpers.
+      assertPlainDate`/`assertPlainDateTime` call and directly contradicting
+      Test262's own `PlainDate/prototype/era/basic.js`
+      (`instance.era === undefined`). Non-ISO calendars are unaffected and
+      still route through `icu_calendar` as before — deliberately out of
+      this narrow fix's scope (general non-ISO calendar-system work belongs
+      to Stage 2's `PlainDate`/`PlainDateTime` track, worked concurrently in
+      a sibling worktree). Verified with a new `backend/bluejs/tests/
+      temporal_calendar_extreme_years.rs` (5 tests, through the real public
+      `Temporal.PlainDate`/`PlainDateTime`/`PlainYearMonth` surface, not
+      `vm/temporal/calendar.rs`'s internals — that file is only the closed
+      calendar-identifier recognition table and was not itself the site of
+      this bug) using the pinned Test262 corpus's own boundary values:
+      `PlainDate/from/argument-string-limits.js`'s `-271821-04-19`/
+      `+275760-09-13` endpoints, and `PlainYearMonth/from/limits.js`'s own
+      `year`/`month`/`monthCode` getter-triple assertion at
+      `{year: -271821, month: 4}`/`{year: 275760, month: 9}` — exactly the
+      getter path this bug broke. Also discovered along the way (documented
+      here, not fixed, genuinely out of this narrow item's scope):
+      `PlainDateTime`'s `hour`/`minute`/`second`/etc. getters are not wired
+      to any prototype at all yet (only `PlainTime` gets that getter table
+      in `temporal.rs`'s constructor-time `getters` match) — a separate,
+      pre-existing Stage 0/1 gap unrelated to calendars; and the numeric
+      `new Temporal.PlainDate(...)`/`PlainYearMonth(...)` constructors use a
+      coarser, purely-per-field `-271821..=275760` range check rather than
+      the exact `epoch::is_date_within_limits`/`iso::is_year_month_within_
+      limits` boundary the string-parsing path already enforces, so e.g.
+      `new Temporal.PlainDate(-271821, 4, 18)` (exactly one day past the
+      true minimum) does not yet throw the way `Temporal.PlainDate.from(
+      "-271821-04-18")` correctly does — again a separate, pre-existing gap
+      in the numeric-constructor path, not this fix's own regression.
+      Test262 effect, measured with `backend/bluejs/test262/run.py --filter
+      "Temporal/"` against the pinned corpus (baseline 4,396/13,272; see
+      this document's own header table): **4,458/13,272 (+62 modes, zero
+      regressions anywhere else)** — `PlainDate` 384→438 (+54), `PlainDateTime`
+      382→386 (+4), `PlainYearMonth` 222→226 (+4); `Instant`/`PlainTime`/
+      `Now`/`Duration`/`PlainMonthDay`/`ZonedDateTime` unchanged, confirming
+      the fix's effect is exactly as narrow as intended.
 
 ## Open questions to resolve before or during Stage 0
 

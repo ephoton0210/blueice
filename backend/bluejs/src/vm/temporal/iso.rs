@@ -86,6 +86,7 @@ impl Default for Parsed {
 }
 
 use super::epoch::{CivilDate, CivilTime};
+use num_bigint::BigInt;
 
 /// Returns whether `year` is a leap year in the proleptic Gregorian
 /// calendar (the ISO 8601 calendar).
@@ -803,14 +804,19 @@ pub(crate) fn parse_instant(source: &str) -> Option<InstantParts> {
 }
 
 /// Resolves a Temporal `TimeZoneIdentifier`, or the time-zone information
-/// carried by a full ISO date-time string, into a fixed UTC offset in
-/// nanoseconds.
+/// carried by a full ISO date-time string, into the UTC offset (in
+/// nanoseconds) that zone was actually observing at `epoch_nanoseconds`.
 ///
-/// `Ok(None)` means the identifier is syntactically valid but names an IANA
-/// zone whose transition rules this engine cannot yet resolve (everything
-/// except `UTC`); `Err(())` means the input is not a time zone at all.
-/// Resolving named zones is Stage 1 Track E's `time_zone.rs`.
-pub(crate) fn resolve_fixed_time_zone_offset(source: &str) -> Result<Option<i128>, ()> {
+/// `Err(())` means the input is not a time zone at all (either malformed, or
+/// syntactically shaped like an IANA name that names no real zone in the
+/// pinned database). A named IANA zone's real historical offset comes from
+/// Stage 1 Track E's `time_zone.rs`, which owns the actual transition data;
+/// `UTC` and a fixed numeric offset are resolved directly here since they do
+/// not depend on `epoch_nanoseconds` at all.
+pub(crate) fn resolve_time_zone_offset(
+    source: &str,
+    epoch_nanoseconds: &BigInt,
+) -> Result<i128, ()> {
     let identifier = if is_time_zone_identifier(source) {
         source.to_string()
     } else {
@@ -833,17 +839,24 @@ pub(crate) fn resolve_fixed_time_zone_offset(source: &str) -> Result<Option<i128
                 if !offset.minute_precision {
                     return Err(());
                 }
-                return Ok(Some(offset.nanoseconds));
+                return Ok(offset.nanoseconds);
             }
         }
     };
     if let Some(offset) = parse_minute_precision_offset(&identifier) {
-        return Ok(Some(offset));
+        return Ok(offset);
     }
     if identifier.eq_ignore_ascii_case("UTC") {
-        return Ok(Some(0));
+        return Ok(0);
     }
-    Ok(None)
+    // A named IANA zone: `identifier` is already a bare `TimeZoneIdentifier`
+    // at this point (either `source` itself, or the body of a winning
+    // time-zone annotation), so this only ever takes the
+    // `parse_bare_identifier` path inside `time_zone::parse_identifier` — it
+    // re-validates the name against the same pinned database rather than
+    // trusting the shape check above, and supplies the real offset lookup.
+    let zone = super::time_zone::parse_identifier(&identifier).ok_or(())?;
+    Ok(i128::from(zone.offset_nanoseconds_for(epoch_nanoseconds)))
 }
 
 /// `AnnotatedDateTime`: a required `ISODate`, an optional time of day (and,
@@ -1205,6 +1218,25 @@ mod tests {
         // prohibited.
         assert_eq!(date("+000000-12-07"), Some((0, 12, 7)));
         assert!(is_leap_year(2020) && !is_leap_year(2021));
+    }
+
+    #[test]
+    fn leap_year_follows_the_full_gregorian_century_rule() {
+        // `2020`/`2021` above only exercise the plain "divisible by 4" rule.
+        // The proleptic Gregorian rule this is meant to implement also has a
+        // century exception (divisible by 100 is not a leap year) and a
+        // 400-year exception to that exception (divisible by 400 is), and a
+        // naive `year % 4 == 0` implementation would get both wrong: 1900
+        // would be misreported as a leap year, and `2000-02-29`/`1900-02-29`
+        // would misparse as valid/invalid respectively.
+        assert!(is_leap_year(2000), "2000 is divisible by 400");
+        assert!(!is_leap_year(1900), "1900 is divisible by 100 but not 400");
+        assert!(!is_leap_year(2100), "2100 is divisible by 100 but not 400");
+        assert!(is_leap_year(2400), "2400 is divisible by 400");
+        assert_eq!(days_in_month(2000, 2), Some(29));
+        assert_eq!(days_in_month(1900, 2), Some(28));
+        assert_eq!(date("2000-02-29"), Some((2000, 2, 29)));
+        assert_eq!(date("1900-02-29"), None);
     }
 
     #[test]
@@ -1665,42 +1697,161 @@ mod tests {
             // More than one calendar annotation, any of them critical.
             "1970-01-01T00:00Z[u-ca=iso8601][!u-ca=iso8601]",
             "1970-01-01T00:00Z[!u-ca=iso8601][u-ca=iso8601]",
+            // `parse_time_spec` (shared by `parse_iso_time_prefix` and
+            // `parse_utc_offset_prefix`) has its own grammar rules distinct
+            // from `scan_time`'s: a fourth colon-separated field is always a
+            // syntax error...
+            "1970-01-01T00:00:00:00Z",
+            // ...and a decimal fraction belongs to the *seconds* field only,
+            // so a fraction on a bare hour:minute (no seconds field at all)
+            // is a syntax error rather than fractional minutes.
+            "1970-01-01T00:19.5Z",
+            // `parse_iso_time_prefix` clamps a `:60` leap second to `:59`
+            // (see the passing case above) but still rejects anything past
+            // that, e.g. a `:61`.
+            "1970-01-01T00:00:61Z",
         ] {
             assert_eq!(parse_instant(source), None, "{source:?}");
         }
     }
 
+    /// [`parse_offset_seconds`] has no other direct test: every other test
+    /// in this module reaches its shared grammar through a different public
+    /// entry point ([`parse_date_time`]/[`parse_instant`]/etc.), never this
+    /// one directly. It backs `temporal.rs`'s check of whether a
+    /// `Temporal.ZonedDateTime`'s stored `[[TimeZone]]` slot is a fixed
+    /// offset -- called there only on an already-resolved bare identifier
+    /// (`TimeZone::identifier()`'s own `±HH:MM`/`"UTC"` spelling), never a
+    /// full date-time string, which matters here: `source.find([..])`
+    /// searches the *whole* input for its first `Z`/`z`/`+`/`-`/`[`, so a
+    /// full date-time string's own `-` date separators would be found
+    /// first -- these cases stick to the identifier-shaped inputs the
+    /// function is actually called with.
     #[test]
-    fn resolves_only_utc_and_fixed_offset_time_zones() {
+    fn parse_offset_seconds_resolves_the_designator_or_a_numeric_offset() {
+        assert_eq!(parse_offset_seconds("Z"), Some(0));
+        assert_eq!(parse_offset_seconds("+05:30"), Some(19_800));
+        assert_eq!(parse_offset_seconds("-05:30"), Some(-19_800));
+        // A trailing annotation bracket after the offset/designator is fine
+        // (its own contents are never inspected here)...
+        assert_eq!(parse_offset_seconds("Z[UTC]"), Some(0));
+        assert_eq!(parse_offset_seconds("+05:30[Asia/Kolkata]"), Some(19_800));
+        // ...but any other trailing text is not.
+        assert_eq!(parse_offset_seconds("Zjunk"), None);
+        assert_eq!(parse_offset_seconds("+05:30extra"), None);
+        // No `Z`/`z`/`+`/`-`/`[` anywhere in the source at all is not a time
+        // zone designator or offset in the first place.
+        assert_eq!(parse_offset_seconds("UTC"), None);
+        assert_eq!(parse_offset_seconds(""), None);
+    }
+
+    /// [`parse_annotation_suffix`]'s `key.is_empty() || value.is_empty()`
+    /// check, exercised only through [`parse_annotations`] elsewhere in this
+    /// module, none of which write an empty key or value.
+    #[test]
+    fn rejects_annotations_with_an_empty_key_or_value() {
+        assert_eq!(parse_annotations("[=bar]"), Err(()));
+        assert_eq!(parse_annotations("[foo=]"), Err(()));
+    }
+
+    /// [`scan_offset`] (the `Cursor`-based offset parser [`scan_utc_offset_suffix`]
+    /// and [`is_valid_time_zone_identifier`] share) has its own range checks
+    /// distinct from [`parse_time_spec`]'s, reached only through the full
+    /// `AnnotatedDateTime` grammar ([`parse_date_time`]) elsewhere in this
+    /// module -- and every existing case there uses a valid offset.
+    #[test]
+    fn rejects_out_of_range_offset_fields_in_the_full_date_time_grammar() {
+        // An offset minute field over 59...
+        assert_eq!(date("1976-11-18T15:23:30+00:60"), None);
+        // ...and an offset second field over 59 -- unlike the time-of-day
+        // field above it, an offset never gets leap-second tolerance.
+        assert_eq!(date("1976-11-18T15:23:30+00:00:60"), None);
+        // A valid offset that *does* carry an explicit, unfractioned seconds
+        // field is still accepted (the completion path after that field,
+        // when no further fraction follows it).
+        assert_eq!(date("1976-11-18T15:23:30+05:30:15"), Some((1976, 11, 18)));
+    }
+
+    /// [`scan_annotations`]' leading-time-zone-annotation check
+    /// (`is_valid_time_zone_identifier`) rejecting a non-identifier-shaped,
+    /// non-`key=value` bracket body -- exercised elsewhere in this module
+    /// only through [`parse_annotation_suffix`]'s separate copy of the same
+    /// rule, never this one.
+    #[test]
+    fn rejects_a_leading_annotation_that_is_neither_a_time_zone_nor_key_value() {
+        assert_eq!(date("1976-11-18T15:23[123]"), None);
+    }
+
+    #[test]
+    fn resolves_utc_and_fixed_offset_time_zones_regardless_of_the_instant() {
+        let epoch = BigInt::from(0);
         for (source, expected) in [
-            ("UTC", Ok(Some(0))),
-            ("utc", Ok(Some(0))),
-            ("+01:00", Ok(Some(3_600_000_000_000))),
-            ("-01:30", Ok(Some(-5_400_000_000_000))),
-            ("2021-08-19T17:30Z", Ok(Some(0))),
-            ("2021-08-19T17:30-07:00", Ok(Some(-25_200_000_000_000))),
-            ("2021-08-19T17:30-07:00[UTC]", Ok(Some(0))),
+            ("UTC", Ok(0)),
+            ("utc", Ok(0)),
+            ("+01:00", Ok(3_600_000_000_000)),
+            ("-01:30", Ok(-5_400_000_000_000)),
+            ("2021-08-19T17:30Z", Ok(0)),
+            ("2021-08-19T17:30-07:00", Ok(-25_200_000_000_000)),
+            ("2021-08-19T17:30-07:00[UTC]", Ok(0)),
             (
                 "2021-08-19T17:30:45.123456789-12:12[+01:46]",
-                Ok(Some(6_360_000_000_000)),
+                Ok(6_360_000_000_000),
             ),
-            ("2016-12-31T23:59:60+00:00[UTC]", Ok(Some(0))),
-            // Syntactically a zone, but its transition rules are Track E's.
-            ("Europe/Vienna", Ok(None)),
-            ("Mars/Olympus_Mons", Ok(None)),
-            // Not a time zone at all.
+            ("2016-12-31T23:59:60+00:00[UTC]", Ok(0)),
+            // Not a real time zone at all.
             ("", Err(())),
             ("2021-08-19T17:30", Err(())),
             ("2021-08-19T17:30-07:00:01", Err(())),
             ("2021-08-19T17:30-07:00:00", Err(())),
             ("2021-08-19T17:30:45.123456789+23:59[+23:59:60]", Err(())),
+            // Syntactically zone-shaped, but not a real IANA name.
+            ("Mars/Olympus_Mons", Err(())),
         ] {
             assert_eq!(
-                resolve_fixed_time_zone_offset(source),
+                resolve_time_zone_offset(source, &epoch),
                 expected,
                 "{source:?}"
             );
         }
+    }
+
+    #[test]
+    fn resolves_real_historical_offsets_for_named_iana_zones() {
+        // Cases taken directly from the pinned Test262 corpus's
+        // intl402/Temporal/Instant/prototype/toString/timezone-offset.js,
+        // all at the epoch instant `new Temporal.Instant(0n)` uses.
+        let epoch = BigInt::from(0);
+        assert_eq!(
+            resolve_time_zone_offset("Europe/Berlin", &epoch),
+            Ok(3_600_000_000_000)
+        );
+        assert_eq!(
+            resolve_time_zone_offset("America/New_York", &epoch),
+            Ok(-5 * 3_600_000_000_000)
+        );
+        // A sub-minute historical offset: Monrovia was UTC-00:44:30 before
+        // 1972 (the fixture's own expected display string,
+        // "1969-12-31T23:15:30-00:45", rounds this to the minute for
+        // `toString`'s offset field, but the underlying instant's real
+        // offset — what this function resolves — is the exact -00:44:30).
+        assert_eq!(
+            resolve_time_zone_offset("Africa/Monrovia", &epoch),
+            Ok(-(44 * 60_000_000_000_i128) - 30_000_000_000)
+        );
+        // A different instant in the same named zone resolves a different
+        // (real, historical) offset — summer vs. winter New York.
+        let summer = BigInt::from(1_720_480_004_i64) * 1_000_000_000_u32;
+        assert_eq!(
+            resolve_time_zone_offset("America/New_York", &summer),
+            Ok(-4 * 3_600_000_000_000)
+        );
+        // A time-zone annotation's IANA name wins over the string's own
+        // offset, and is resolved at the receiver's instant, not a fixed
+        // offset taken from the string.
+        assert_eq!(
+            resolve_time_zone_offset("2021-08-19T17:30-07:00[America/Vancouver]", &epoch),
+            resolve_time_zone_offset("America/Vancouver", &epoch)
+        );
     }
 
     #[test]

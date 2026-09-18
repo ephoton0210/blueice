@@ -659,7 +659,45 @@ fn temporal_plain_time_getters_and_calendar_agnostic_arithmetic() {
                 `invalid fractionalSecondDigits ${String(bad)}`);
         }
         check(new Temporal.PlainTime(15, 23, 30, 123, 400).toJSON() === "15:23:30.1234", "toJSON");
-        check(typeof time.toLocaleString() === "string", "toLocaleString returns a string");
+
+        // toLocaleString goes through Intl.DateTimeFormat, not toJSON's ISO
+        // serialization (intl402 toLocaleString/basic.js, options-undefined.js,
+        // default-does-not-include-date-and-time-zone-name.js).
+        check(time.toLocaleString("en", { timeZone: "UTC" })
+            === new Intl.DateTimeFormat("en", { timeZone: "UTC" }).format(time),
+            "toLocaleString matches DateTimeFormat.format");
+        check(time.toLocaleString("en") === new Intl.DateTimeFormat("en").format(time),
+            "toLocaleString defaults match DateTimeFormat's");
+        check(time.toLocaleString("en", { timeZone: "UTC" }) !== time.toString(),
+            "toLocaleString is not an alias for toString/toJSON");
+        let defaultResult = time.toLocaleString("en", { timeZone: "UTC" });
+        check(!defaultResult.includes("1970"), "default omits the epoch reference date");
+        check(!defaultResult.includes("UTC"), "default omits the time zone name");
+
+        // `CreateDateTimeFormat`'s `required` parameter here is TIME: a
+        // `dateStyle` option is rejected unconditionally, even alongside
+        // `timeStyle` (toLocaleString/datestyle-and-timestyle.js,
+        // options-conflict.js) -- unlike a direct `Intl.DateTimeFormat.format`
+        // call on a PlainTime, where `dateStyle` is merely ignored once
+        // `timeStyle` also applies (intl402/DateTimeFormat/prototype/format/
+        // temporal-plaintime-formatting-datetime-style.js).
+        throwsType(() => time.toLocaleString("en", { dateStyle: "short" }),
+            "bare dateStyle conflicts with PlainTime");
+        throwsType(() => time.toLocaleString("en", { dateStyle: "full", timeStyle: "full" }),
+            "dateStyle still conflicts even alongside timeStyle");
+        check(typeof time.toLocaleString("en", { timeStyle: "short" }) === "string",
+            "timeStyle alone is fine");
+        check(new Intl.DateTimeFormat("en", { dateStyle: "full", timeStyle: "full" }).format(time)
+            === new Intl.DateTimeFormat("en", { timeStyle: "full" }).format(time),
+            "a direct DateTimeFormat.format call ignores dateStyle instead of throwing");
+
+        // era is an additive display field with no PlainTime meaning, so it
+        // is ignored rather than changing the result (toLocaleString/era.js).
+        check(time.toLocaleString("en", { era: "narrow" }) === time.toLocaleString("en"),
+            "era is ignored when formatting a PlainTime");
+
+        throwsType(() => Temporal.PlainTime.prototype.toLocaleString.call({}),
+            "toLocaleString checks its brand");
         throwsType(() => time.valueOf(), "valueOf throws");
 
         // with (with/basic.js, plaintimelike-invalid.js, overflow-undefined.js).
@@ -812,14 +850,26 @@ fn temporal_now_reads_one_wall_clock_through_resolved_time_zone_identifiers() {
             }
         }
 
-        // A named IANA zone is a valid identifier, and ZonedDateTime only
-        // needs the identifier — but the plain ISO variants need a real UTC
-        // offset at this instant, which is still Track E's transition-history
-        // work. That must be a loud RangeError, never a UTC-shifted answer.
+        // A named IANA zone now resolves a real historical offset too
+        // (Phase 26's gap-closure pass wires `Temporal.Now` to Track E's
+        // transition data), so the plain ISO variants no longer reject it —
+        // they read the actual wall clock in that zone rather than
+        // rejecting it or silently assuming UTC.
         for (let method of ["plainDateISO", "plainDateTimeISO", "plainTimeISO"]) {
             let threw = false;
-            try { Temporal.Now[method]("America/Vancouver"); } catch (error) { threw = error instanceof RangeError; }
-            if (!threw) throw new Error(`${method} must not silently assume UTC for a named zone`);
+            try { Temporal.Now[method]("America/Vancouver"); } catch (error) { threw = true; }
+            if (threw) throw new Error(`${method} should accept a named zone now that Track E is wired up`);
+        }
+        // The reported wall clock actually shifts by a real Vancouver
+        // offset (PST -08:00 or PDT -07:00), not by zero. A small tolerance
+        // (matching the fixed-offset checks above) absorbs the wall-clock
+        // drift between the two separate `Temporal.Now` reads `localEpoch`
+        // makes.
+        let vancouverShift = localEpoch("America/Vancouver") - localEpoch("UTC");
+        let matchesPst = Math.abs(vancouverShift - (-8 * 3600000)) <= 1000;
+        let matchesPdt = Math.abs(vancouverShift - (-7 * 3600000)) <= 1000;
+        if (!matchesPst && !matchesPdt) {
+            throw new Error(`America/Vancouver shift should be a real PST/PDT offset, got ${vancouverShift}`);
         }
 
         true

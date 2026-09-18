@@ -931,3 +931,43 @@ fn accepts_ecmascript_time_clip_endpoints_for_utc_ranges() {
         Err(DateTimeFormatError::InvalidTime)
     );
 }
+
+/// `hourCycle: "h24"`/`"h11"` at midnight (epoch 0). `h23`/`h12` are the
+/// control cases: real `Intl.DateTimeFormat` renders midnight as `"00"` for
+/// `h23` (0-23, zero-padded), `"12"` for `h12` (1-12), `"24"` for `h24`
+/// (1-24 — the *same* range as `h23` except midnight reads 24, not 0), and
+/// un-padded `"0"` for `h11` (0-11, the same range as `h12` shifted down by
+/// one). Pinned by Test262's `intl402/Temporal/{Instant,PlainTime}/prototype/
+/// toLocaleString/hourcycle.js`.
+#[test]
+fn h24_and_h11_hour_cycles_render_midnight_correctly() {
+    fn format_with_hour_cycle(hour_cycle: &str) -> String {
+        DateTimeFormat::try_new(
+            &[canonicalize("en").unwrap()],
+            DateTimeFormatOptions {
+                hour: Some(DateTimeWidth::Numeric),
+                minute: Some(DateTimeWidth::Numeric),
+                second: Some(DateTimeWidth::Numeric),
+                hour_cycle: Some(hour_cycle.into()),
+                time_zone: Some("UTC".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .format(0.0)
+        .unwrap()
+    }
+
+    let h23 = format_with_hour_cycle("h23");
+    assert!(h23.contains("00:00:00"), "h23 midnight: {h23:?}");
+
+    let h12 = format_with_hour_cycle("h12");
+    assert!(h12.contains("12:00:00"), "h12 midnight: {h12:?}");
+
+    let h24 = format_with_hour_cycle("h24");
+    assert!(h24.contains("24:00:00"), "h24 midnight: {h24:?}");
+
+    let h11 = format_with_hour_cycle("h11");
+    assert!(h11.contains("0:00:00"), "h11 midnight: {h11:?}");
+    assert!(!h11.contains("12:00:00"), "h11 midnight: {h11:?}");
+}
