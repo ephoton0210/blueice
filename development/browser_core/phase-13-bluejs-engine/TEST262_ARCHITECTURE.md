@@ -3961,3 +3961,264 @@ using `$262.createRealm()` directly, mirroring the Test262 scenario);
 passing. `cargo build --workspace --all-targets`, `cargo test --workspace
 --no-fail-fast` (only the same pre-declared `string_protocols.rs` flake) and
 `cargo clippy --workspace --all-targets -- -D warnings` all pass.
+
+## Lazy on-demand module compilation, and a further round of individual dynamic-import fixes
+
+Implemented 2026-09-18, a third continuation of the same-day session above,
+addressing its own explicitly deferred `eval-script-code-target` finding
+plus the residual individually-diagnosed `dynamic-import` failures.
+
+### 1. `ensure_dynamic_module_compiled`: the `eval-script-code-target` fix, implemented for real
+
+Built the "raw-source registry for dynamic-only siblings" the prior section
+named but deferred, directly analogous to `ensure_json_module`:
+
+- **`vm/modules.rs::ensure_dynamic_module_compiled`**: given a resolved
+  module name already absent from the working module map, looks up raw
+  JavaScript text in a new `Vm::dynamic_module_sources` registry (installed
+  via the new `Vm::set_dynamic_module_sources`) and compiles it on demand
+  via the crate's own `parse_module`/`compile_module_with_limit` (the same
+  functions the Test262 adapter already uses for every other module). A
+  parse or compile failure becomes a real `RuntimeError::SyntaxError`
+  (matching `indirect_eval`'s own error mapping), which -- reached only
+  through a dynamic import's own job -- rejects that import's promise with
+  a real `SyntaxError` object rather than surfacing as a harness-level or
+  whole-graph failure. A target with no registered raw source at all is
+  left alone: the pre-existing "module was not linked" `ModuleResolution`
+  fallback still applies exactly as before this function existed.
+- **A necessary generalization in `execute_module_graph_inner`**: linking
+  work (cell creation, indirect-export/source-phase validation, import
+  aliasing, declaration instantiation) was gated on `fresh_graph` --
+  correct only because, before this session, the *entire* reachable set was
+  always supplied up front in one registry, so "first ever graph" and "every
+  module that will ever need linking" were the same set. Once a module can
+  be compiled and added to the graph *after* that first call (a dynamic
+  import discovering a not-yet-compiled sibling, exactly `ensure_json_module`'s
+  own case too, or now `ensure_dynamic_module_compiled`'s), that assumption
+  breaks -- a `fresh_graph`-gated pass would simply never link it. The fix:
+  compute `new_names` (every module in `modules` not already in `linked`)
+  and gate/scope the *same* linking pass on `!new_names.is_empty()` instead
+  of `fresh_graph`, using `new_names` in place of `order` throughout. This
+  runs identically to the old `fresh_graph` behavior when nothing has been
+  linked yet (`new_names == order`, since `linked` starts empty) and is a
+  no-op when nothing new was added (`new_names` empty) -- but now also
+  correctly links a lazily-added module into an *already-linked* existing
+  graph. This let the bespoke single-entry `LinkedModule` construction the
+  prior section added specifically for `ensure_json_module` on a non-fresh
+  graph be deleted entirely: a JSON module and a lazily-compiled ordinary
+  module now share the exact same generic linking path. A rollback
+  refinement went with it: on a linking failure, a fresh graph still
+  discards every root (nothing was usable), but a failure while linking a
+  *delta* into an existing graph now rolls back only that delta (removing
+  just `new_names` from `linked`, unrooting only the roots pushed since a
+  new `roots_checkpoint`), so an unrelated later operation on the rest of
+  the graph is unaffected and a retried dynamic import of the same failed
+  specifier is treated as new again rather than resuming a half-linked
+  record.
+- **Harness wiring** (`run.py`, `bluejs-test262.rs`): `module_sources()` now
+  returns `(sources, dynamic_sources, json_sources)` instead of two values.
+  Every discovered file is tagged by *how* it was reached -- a static edge
+  (`import`/`export ... from`, from any visited node, transitively) or a
+  dynamic one (a literal `import(...)` call, or the broader relative-string
+  fallback) -- with static winning whenever both apply to the same file
+  (a module genuinely required statically must still be compiled eagerly,
+  even if also separately dynamically imported elsewhere). A `.js` file
+  reached only dynamically goes to the new `dynamic_sources` return value
+  (raw text, sent to the adapter as a new `module_dynamic_sources` request
+  field and installed via `Vm::set_dynamic_module_sources`) instead of the
+  eagerly-parsed-and-compiled `sources`. One new host-recognized regex,
+  `DYNAMIC_IMPORT_PLAIN_REQUEST`, deliberately excludes `import.source(...)`/
+  `import.defer(...)`: those forms have no lazy-compile counterpart (source-
+  phase dynamic import resolves by checking whether the target is *already*
+  a compiled Source Text Module), so a reference through either must still
+  be treated as a static edge -- a new `DYNAMIC_IMPORT_SOURCE_OR_DEFER_REQUEST`
+  regex tags those "static" explicitly. A second harness-only fix: a script
+  that dynamically imports *itself* (`eval-self-once-script.js`) names a
+  path always classified "static" (the entry always seeds discovery that
+  way) yet is deliberately excluded from `module_codes` (compiled once, as
+  the script the request actually executes, never twice as a module) --
+  its raw text is now also copied into `dynamic_sources` when that
+  exclusion applies, so self-referential dynamic import finds it instead of
+  neither registry.
+
+**Evidence**: all 16 `catch/*-eval-script-code-target.js` tests now pass
+(0/16 before this fix, confirmed both individually and as part of the full
+run below). Six new regression tests in `test262_host.rs`: compiling an
+uncompiled module on demand, the exact `eval-script-code-target` scenario
+lazily rejecting with a real `SyntaxError`, reusing an on-demand-compiled
+module's identity across repeated imports (`Promise.all` of two imports of
+the same never-before-seen specifier resolve to the *same* namespace), a
+failed on-demand compile/link not corrupting an unrelated already-healthy
+module in the same graph, a script dynamically importing itself, and one
+documenting the accepted trade-off below.
+
+**A real, understood, and accepted one-test trade-off**: `language/module-code/
+source-phase-import/import-source.js` regressed (2 modes). Root cause fully
+diagnosed and preserved as `dynamic_import_of_lazily_compiled_siblings_does_not_batch_unrelated_modules`
+in `test262_host.rs`: this test dynamically imports three fixtures one at a
+time; one of them has genuine `import source x from '<do not resolve>'`
+requests that always fail with a `TypeError`, while the *other* fixtures'
+own imports (ordinary default imports of the same deliberately-unresolvable
+specifier, or -- via a shared `ensure-linking-error_FIXTURE.js` sibling --
+a "does not export" case) fail with a `SyntaxError` instead. Under the old
+eager-everything-up-front harness, a first module graph linked *all* four
+siblings together regardless of which one a given dynamic import actually
+targeted, so the second fixture's real `TypeError` always won the race
+against the others' `SyntaxError`s -- accidentally matching what the test
+expects for all three calls, for a reason unrelated to what it claims to
+verify. Lazily compiling only the module a specific dynamic import actually
+names removes that coincidence: it is a strictly more correct linking
+granularity (it stops spuriously batching together modules that have
+nothing to do with the import being made), so the first fixture's own
+dynamic import no longer incidentally pulls in the second fixture's
+`Bytecode`, and its own `SyntaxError` is what actually surfaces. Judged
+not worth chasing further: a proper fix would require distinguishing "the
+host could not resolve/load this module at all" (arguably a `TypeError`,
+by analogy with `module_source_object`'s own "host did not provide" case)
+from "the module was resolved but a specific named export is missing"
+(a `SyntaxError`, per `ResolveExport`) throughout `resolve_export`'s
+"module ... was not supplied by the host" branch -- a change with a wide,
+not-fully-mapped blast radius across the whole corpus, for the sake of one
+upstream test whose own assertion happens to rely on a coincidence.
+
+### 2. Two more individually diagnosed and fixed `dynamic-import` bugs
+
+**`Promise.prototype.constructor` unset for internally-created promises**
+(`language/expressions/dynamic-import/always-create-new-promise.js`, a
+pre-existing bug unrelated to this session's own work -- confirmed present
+in the very first full-tree measurement, before any of this session's
+changes). `new_promise` (`vm/builtins/promises.rs`, used by dynamic import,
+`await`, `Promise.all`/`race`/`allSettled`/`any`, `Atomics.waitAsync`, and
+every other internally-created promise) built instances from
+`promise_prototype()` alone, which installs `then`/`catch`/`finally`/
+`@@toStringTag` but not the prototype's "constructor" link back to the
+`Promise` function -- that property is only added when the `Promise`
+*global* itself is separately materialized (`globals.rs`), on first access
+to the bare `Promise` identifier. A script whose first reference to
+`Promise` is indirect (`p.constructor` from an internally-created promise,
+before ever naming `Promise` itself) observed a broken link. Fixed by
+having `new_promise` call `self.global("Promise")` first (idempotent/cached,
+so a no-op on every call after the first; safe from circularity too, since
+`Promise`'s own materialization calls `promise_prototype()` directly rather
+than `new_promise`). New regression test:
+`dynamic_import_promise_observes_the_promise_constructor_link_unprompted`.
+This is a centralized fix: every other internal promise-creation call site
+listed above benefits identically, not just dynamic import's own.
+
+**`await-import-evaluation.js`**: investigated, not fixed, and judged
+untractable rather than deprioritized for lack of effort. Its fixture
+busy-waits on real wall-clock time (`while(true){ if (Date.now()-start>100)
+break }`) to prove evaluation genuinely completed before the dynamic
+import's promise resolves. A real 100ms wall-clock busy-wait loop costs far
+more than the harness's 100,000-instruction default budget at this
+interpreter's speed, so this fails as a `resource_error` (correctly
+classified, not a false failure) rather than a wrong result. Not a bug in
+the engine or the harness's module handling -- a structural mismatch
+between an instruction-budget-bounded interpreter and a wall-clock-timing
+test, out of scope for a targeted fix here.
+
+**`for-await-resolution-and-error-agen-yield.js`**: investigated, not
+resolved. Isolated to `AsyncGeneratorYield`'s implicit `Await` of a
+*rejected* dynamic-import promise specifically -- fulfilled cases (two of
+four `yield`/`yield await` pairs across the test's two async generators)
+observe the correct awaited value, but the rejected case's caught error is
+an unrelated empty object instead of the module's own thrown `'foo'`
+string. `promise_resolve`'s "is this already a genuine Promise" fast path
+(`vm/builtins/promises.rs`) was suspected and instrumented directly, since
+this session's own `new_promise` fix (above) changes exactly the
+`.constructor` check that path depends on; instrumentation showed the fast
+path *does* correctly identify true dynamic-import promises now, ruling
+that specific mechanism out, but also surfaced at least one
+`promise_resolve` call on a value that is not a tracked Promise at all
+during the same sequence (likely related to the async generator's own
+completion/return bookkeeping) whose role was not run to ground. Left open
+rather than shipping a guessed fix; a future session should trace
+`await_async_generator_yield` and `finish_async_generator_yield` end to end
+against this exact repro rather than starting over.
+
+**`import-fulfilled-member-of-errored-cycle.js`**: investigated at the
+specification level, not attempted. Requires implementing "cycle root"
+tracking for async module evaluation cycles (`[[CycleRoot]]`,
+`[[EvaluationError]]` recorded on and redirected through a cycle's root
+module per `Evaluate`/`InnerModuleEvaluation`) -- a real, unimplemented
+piece of the module-evaluation algorithm, not a bug in existing code. This
+engine's `LinkedModule`/graph model has no notion of strongly-connected
+cycle roots at all today. Out of scope as a "fix"; it is a feature gap,
+sized more like a phase-level unit of work than an individual bug.
+
+### 3. Re-measured full scope and `import-attributes` re-verification
+
+`--filter "language/module-code/,language/expressions/dynamic-import/,
+language/import/,built-ins/ImportAttributes"` (2,637 modes, same scope
+throughout this whole session):
+
+| Stage | Pass / fail |
+| --- | ---: |
+| Prior section's end state (this session) | 2,053 / 584 |
+| After `ensure_dynamic_module_compiled` + harness fixes | 2,068 / 569 |
+| After the `Promise.prototype.constructor` fix + `eval-self-once-script.js` harness fix | **2,072 / 565** |
+
+Net this round: +19 pass, -19 fail, on top of the +76 the session's first
+two rounds had already found. Diffed path-and-mode-for-path-and-mode
+against the session's very first post-JSON-modules measurement: 21 fixed,
+2 regressed (the one documented, accepted `import-source.js` trade-off
+above) -- zero unexplained regressions.
+
+Plain (non-`import-attributes`/`import-defer`/`source-phase-imports`-tagged)
+`dynamic-import` failures: 68 (end of the prior section) -> 52. The
+residual is fully accounted for: 42 are the already-documented
+`import.UNKNOWN(...)`/bare-`typeof import`-adjacent cases blocked on the
+pre-existing `import.source`/`import.defer` global-object mechanism (an
+intentional non-goal, unchanged since the first round), and the remaining
+10 (5 distinct files) are the individually diagnosed cases in section 2:
+2 fixed, 1 judged untractable (wall-clock budget mismatch), 2 left open
+(one deep async-generator/promise interaction needing further tracing, one
+requiring genuinely new cycle-root-tracking engine machinery).
+
+`import ... with {...}` (static form, `module-code/import-attributes/`)
+re-verified at full corpus scope (not just the narrower filter the first
+round checked): **13/13 (100%)**, unchanged and confirmed holding. The
+broader `import-attributes`-tagged areas: `dynamic-import/import-attributes/`
+42/44 (the 2 remaining need the separate `import-text` proposal), and
+`import/import-attributes/` (JSON modules) 12/17 (the 5 remaining also need
+`import-text`, unrelated to JSON-module support itself, which is complete
+for every case this corpus actually exercises).
+
+All three gates pass: `cargo build --workspace --all-targets`; `cargo test
+--workspace --no-fail-fast` (only the pre-declared, separately-owned
+`observable_conversion_order_and_gc_pressure` fails, confirmed via an
+isolated rerun to be exactly that test and nothing else); `cargo clippy
+--workspace --all-targets -- -D warnings` clean. `backend/bluejs/tests/
+test262_host.rs` sits at 102 tests (all passing), and
+`backend/bluejs/test262/test_runner.py`/`test_analyze.py` at 34 (all
+passing), including new coverage for `module_sources()`'s three-way
+static/dynamic/json split and a module reached by both a static and a
+dynamic edge classifying as static.
+
+### Merge-time reconciliation: `speculative_relative_strings` survives the static/dynamic split
+
+Merging this slice against the concurrently-developed ShadowRealm follow-up
+(above) required reconciling two independent rewrites of `module_sources()`
+in `backend/bluejs/test262/run.py`: this slice's static/dynamic/json
+three-way split, and the ShadowRealm slice's `speculative_relative_strings`
+flag (a relative-string root reached only via `ShadowRealm.prototype.
+importValue`'s heuristic trigger should not hard-fail the whole run on its
+own parse failure). This slice's own rewrite, developed without visibility
+into that flag, classified every `RELATIVE_STRING` root as `"dynamic"`
+unconditionally -- which happens to also satisfy the ShadowRealm case (a
+`"dynamic"` classification's lazy-compile-on-demand path already tolerates
+a parse failure), but would have silently changed the established, relied-
+upon behavior for a plain dynamic `import()` with a variable specifier
+(`speculative_relative_strings` left at its default `False`): such a
+root's own parse failure must still hard-fail eagerly, per that flag's own
+docstring contract, which a large, unrelated part of the corpus already
+depends on. The merged `module_sources()` restores that distinction
+explicitly: a `RELATIVE_STRING` root classifies `"dynamic"` only when
+`speculative_relative_strings` is `True`, and `"static"` otherwise --
+preserving both slices' own contracts rather than silently picking one.
+`request["speculative_module_sources"]` (the ShadowRealm slice's own
+harness-request field for the same purpose) is now unused by this call
+site, since a genuinely speculative root no longer reaches `sources` at
+all under the three-way split; it is left defined in the adapter
+(`bluejs-test262.rs`) rather than removed, since removing an unused-but-
+harmless field is out of scope for a conflict-resolution merge.

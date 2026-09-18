@@ -357,22 +357,46 @@ class RunnerTests(unittest.TestCase):
             unrelated.write_text("export const ignored = true;")
             binary.write_bytes(b"\x89binary")
 
-            sources, json_sources, _speculative = module_sources(entry, test)
+            # `dynamic.js` is reached only through a literal `import(...)`
+            # call -- a dynamic edge -- so it lands in `dynamic_sources`, not
+            # the eagerly compiled `sources`, even without
+            # `include_dynamic_string_roots`. `source-dynamic.js`, reached
+            # only through `import.source(...)`, stays in `sources`: that
+            # path has no lazy-compile counterpart to
+            # `ensure_dynamic_module_compiled` (see `module_sources`'s own
+            # docstring), so it must still be eagerly compiled.
+            sources, dynamic_sources, json_sources = module_sources(entry, test)
             self.assertEqual(
                 set(sources),
                 {
                     "modules/entry.js",
                     "modules/nested/dependency.js",
-                    "modules/dynamic.js",
-                    "modules/source-dynamic.js",
                     "modules/reexport.js",
+                    "modules/source-dynamic.js",
                 },
             )
+            self.assertEqual(set(dynamic_sources), {"modules/dynamic.js"})
             self.assertEqual(json_sources, {})
 
             entry.write_text("import './bytes_FIXTURE.bin';")
-            sources, json_sources, _speculative = module_sources(entry, test)
+            sources, dynamic_sources, json_sources = module_sources(entry, test)
             self.assertEqual(set(sources), {"modules/entry.js"})
+            self.assertEqual(dynamic_sources, {})
+            self.assertEqual(json_sources, {})
+
+    def test_module_sources_classifies_a_module_reached_both_ways_as_static(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "entry.js"
+            entry.parent.mkdir(parents=True)
+            entry.write_text(
+                "import './both.js'; import('./both.js');"
+            )
+            (test / "modules" / "both.js").write_text("export const value = true;")
+
+            sources, dynamic_sources, json_sources = module_sources(entry, test)
+            self.assertEqual(set(sources), {"modules/entry.js", "modules/both.js"})
+            self.assertEqual(dynamic_sources, {})
             self.assertEqual(json_sources, {})
 
     def test_module_sources_collects_json_fixture_text_separately(self):
@@ -385,8 +409,24 @@ class RunnerTests(unittest.TestCase):
             )
             (test / "modules" / "data.json").write_text('{"a": 1}')
 
-            sources, json_sources, _speculative = module_sources(entry, test)
+            sources, dynamic_sources, json_sources = module_sources(entry, test)
             self.assertEqual(set(sources), {"modules/entry.js"})
+            self.assertEqual(dynamic_sources, {})
+            self.assertEqual(json_sources, {"modules/data.json": '{"a": 1}'})
+
+    def test_module_sources_collects_dynamic_only_json_fixture_text(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "entry.js"
+            entry.parent.mkdir(parents=True)
+            entry.write_text("import('./data.json', {with: {type: 'json'}});")
+            (test / "modules" / "data.json").write_text('{"a": 1}')
+
+            sources, dynamic_sources, json_sources = module_sources(
+                entry, test, include_dynamic_string_roots=True
+            )
+            self.assertEqual(set(sources), {"modules/entry.js"})
+            self.assertEqual(dynamic_sources, {})
             self.assertEqual(json_sources, {"modules/data.json": '{"a": 1}'})
 
     def test_supervisor_terminates_and_restarts_a_stalled_process(self):

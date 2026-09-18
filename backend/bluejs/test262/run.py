@@ -36,8 +36,16 @@ MODULE_REQUEST = re.compile(
     r'''\bimport\s+(?:[^;]*?\bfrom\s+)?["']([^"']+)["']|\bexport\s+(?:\*\s*(?:as\s+(?:[\w$]+|"[^"]*"|'[^']*')\s*)?|\{[^}]*\}\s+)from\s*["']([^"']+)["']''',
     re.DOTALL,
 )
-DYNAMIC_IMPORT_REQUEST = re.compile(
-    r'''\bimport\s*(?:\.\s*(?:source|defer)\s*)?\(\s*["']([^"']+)["']\s*\)'''
+# A plain `import(...)` reference is safe to classify as a "dynamic" edge in
+# `module_sources` (see its own docstring): its target may be compiled on
+# demand by `Vm::ensure_dynamic_module_compiled`. `import.source(...)`/
+# `import.defer(...)` have no such lazy-compile counterpart -- source-phase
+# dynamic import specifically resolves by checking whether the target is
+# *already* a compiled Source Text Module -- so a reference through either
+# of those must still be treated as a "static" (eagerly compiled) edge.
+DYNAMIC_IMPORT_PLAIN_REQUEST = re.compile(r'''\bimport\s*\(\s*["']([^"']+)["']\s*\)''')
+DYNAMIC_IMPORT_SOURCE_OR_DEFER_REQUEST = re.compile(
+    r'''\bimport\s*\.\s*(?:source|defer)\s*\(\s*["']([^"']+)["']\s*\)'''
 )
 DYNAMIC_IMPORT_EXPRESSION = re.compile(
     r'''\bimport\s*(?:\(|\.\s*(?:source|defer)\s*\()'''
@@ -462,58 +470,77 @@ def module_sources(
     the test source, so a caller may opt into supplying existing sibling
     files without making unrelated ordinary module tests over-inclusive.
 
-    Returns `(sources, json_sources, speculative)`: `.js` fixtures are
-    parser input for the adapter's own JavaScript module graph in `sources`,
-    while `.json` fixtures are raw text for its separate `type: "json"`
-    module-record path in `json_sources` (neither a parser input nor
-    decoded/validated here). Other import-attribute-named fixture kinds
-    (Wasm, binary text) are left to the adapter's normal module-resolution
-    result, per this function's original scope.
+    Returns `(sources, dynamic_sources, json_sources)`. `.js` fixtures
+    reached by at least one static edge (an `import`/`export ... from`, from
+    `entry` or transitively) are parser input for the adapter's own eagerly
+    linked JavaScript module graph, in `sources`. A `.js` fixture reached
+    only through a dynamic edge (a literal `import(...)` or, with
+    `include_dynamic_string_roots` and `speculative_relative_strings=True`,
+    any other relative-looking string) goes to `dynamic_sources` instead:
+    raw text the adapter must **not** eagerly parse/compile, since a module
+    that is a syntax/semantic error only *as a module* (perfectly valid
+    otherwise) must fail lazily, as that dynamic import's own promise
+    rejection, not as an eager whole-run failure before any code has even
+    run. A module reached by *both* kinds of edge (from different call
+    sites) counts as static: eager compilation is the correct, safe choice
+    whenever a module is genuinely required by the static graph regardless
+    of also being separately dynamically imported.
 
-    When `speculative_relative_strings` is true, `speculative` names every
-    collected `.js` path (in `sources`) reached *only* through such a
-    relative-string candidate -- never through an actual
-    `import`/dynamic-`import()` reference (nor the entry itself). A
-    speculative candidate may be a deliberately invalid fixture meant to be
-    discovered lazily (e.g. by `ShadowRealm.prototype.importValue` at
-    runtime) rather than linked eagerly, so the adapter treats a parse
-    failure there as "this candidate turned out unused" instead of the hard
-    resolution-phase failure a genuinely required module's own syntax error
-    still produces. Leave this false (the default) to keep every relative-
-    string candidate's parse failure hard-failing exactly as it always has --
-    e.g. for a plain dynamic `import()` with a variable specifier, where the
-    established behavior is not this function's to change.
+    With `include_dynamic_string_roots` but `speculative_relative_strings`
+    left false (the default), a relative-looking string root counts as
+    *static* instead -- preserving the original, established behavior for a
+    plain dynamic `import()` with a variable specifier (where such a
+    candidate's own parse failure must still hard-fail eagerly, exactly as
+    it always has). Pass `speculative_relative_strings=True` only when a
+    relative-string candidate may be a deliberately invalid, never-actually-
+    imported fixture (e.g. reached via `ShadowRealm.prototype.importValue`'s
+    own heuristic trigger), so the adapter's lazy per-import rejection
+    applies instead of an eager hard failure.
+
+    `.json` fixtures are always raw text for the adapter's separate
+    `type: "json"` module-record path (neither a parser input nor
+    decoded/validated here), regardless of which kind of edge reaches them.
+    Other import-attribute-named fixture kinds (Wasm, binary text) are left
+    to the adapter's normal module-resolution result, per this function's
+    original scope.
     """
     test_root = test_root.resolve()
-    pending = [(entry.resolve(), True)]
-    sources = {}
-    json_sources = {}
-    required = set()
+    text = {}
+    discovery = {}
+    pending = [(entry.resolve(), "static")]
     while pending:
-        path, is_required = pending.pop()
+        path, reason = pending.pop()
         relative = path.relative_to(test_root).as_posix()
-        if is_required:
-            required.add(relative)
-        if relative in sources or relative in json_sources:
+        previous = discovery.get(relative)
+        if previous == "static" or previous == reason:
             continue
+        discovery[relative] = "static" if reason == "static" else previous or reason
+        if relative not in text:
+            text[relative] = path.read_text(encoding="utf-8")
         if path.suffix == ".json":
-            json_sources[relative] = path.read_text(encoding="utf-8")
             continue
-        source = path.read_text(encoding="utf-8")
-        sources[relative] = source
+        source = text[relative]
         requests = [
-            (match.group(1) or match.group(2), True)
+            (match.group(1) or match.group(2), "static")
             for match in MODULE_REQUEST.finditer(source)
         ]
         requests.extend(
-            (match.group(1), True) for match in DYNAMIC_IMPORT_REQUEST.finditer(source)
+            (match.group(1), "dynamic")
+            for match in DYNAMIC_IMPORT_PLAIN_REQUEST.finditer(source)
+        )
+        requests.extend(
+            (match.group(1), "static")
+            for match in DYNAMIC_IMPORT_SOURCE_OR_DEFER_REQUEST.finditer(source)
         )
         if include_dynamic_string_roots:
             requests.extend(
-                (match.group(1), not speculative_relative_strings)
+                (
+                    match.group(1),
+                    "dynamic" if speculative_relative_strings else "static",
+                )
                 for match in RELATIVE_STRING.finditer(source)
             )
-        for request, request_is_required in requests:
+        for request, sub_reason in requests:
             if not request or not request.startswith("."):
                 continue
             candidate = (path.parent / request).resolve()
@@ -526,9 +553,18 @@ def module_sources(
             # module-resolution result rather than making the inventory
             # runner attempt UTF-8 decoding and abort the whole run.
             if candidate.is_file() and candidate.suffix in (".js", ".json"):
-                pending.append((candidate, request_is_required))
-    speculative = {relative for relative in sources if relative not in required}
-    return sources, json_sources, speculative
+                pending.append((candidate, sub_reason))
+    sources = {}
+    dynamic_sources = {}
+    json_sources = {}
+    for relative, reason in discovery.items():
+        if relative.endswith(".json"):
+            json_sources[relative] = text[relative]
+        elif reason == "static":
+            sources[relative] = text[relative]
+        else:
+            dynamic_sources[relative] = text[relative]
+    return sources, dynamic_sources, json_sources
 
 
 def selected_files(all_files, corpus, pattern, excluded=""):
@@ -993,7 +1029,7 @@ def main():
                     has_dynamic_import_expression or has_shadow_realm_import_value
                 )
                 if mode == "module" or needs_dynamic_string_roots:
-                    sources, json_sources, speculative_sources = module_sources(
+                    sources, dynamic_sources, json_sources = module_sources(
                         path,
                         args.corpus / "test",
                         include_dynamic_string_roots=needs_dynamic_string_roots,
@@ -1013,8 +1049,8 @@ def main():
                     )
                     request["module_path"] = relative
                     request["module_sources"] = sources
+                    request["module_dynamic_sources"] = dynamic_sources
                     request["module_json_sources"] = json_sources
-                    request["speculative_module_sources"] = sorted(speculative_sources)
                     request["module_source_requests"] = sorted(
                         {
                             match.group(1)
