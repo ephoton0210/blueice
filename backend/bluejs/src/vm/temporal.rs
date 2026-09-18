@@ -40,6 +40,17 @@ struct TemporalCalendarFields {
     months_in_year: u8,
 }
 
+/// How many sub-second digits an ISO serialization prints, as
+/// `ToSecondsStringPrecision` resolves it: `Minute` omits the seconds field
+/// entirely, `Auto` prints the shortest exact fraction (or none), and
+/// `Digits(n)` prints exactly `n` digits.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SecondsPrecision {
+    Minute,
+    Auto,
+    Digits(u8),
+}
+
 impl Vm {
     pub(super) fn temporal_global(&mut self) -> Result<Value, RuntimeError> {
         if let Some(&id) = self.globals.get("Temporal") {
@@ -226,7 +237,11 @@ impl Vm {
                         ("equals", 1, NativeFunction::TemporalInstantEquals),
                         ("toString", 0, NativeFunction::TemporalInstantToString),
                         ("toJSON", 0, NativeFunction::TemporalInstantToJson),
-                        ("toLocaleString", 0, NativeFunction::TemporalInstantToString),
+                        (
+                            "toLocaleString",
+                            0,
+                            NativeFunction::TemporalInstantToLocaleString,
+                        ),
                         ("valueOf", 0, NativeFunction::TemporalInstantValueOf),
                     ] {
                         self.install_native(prototype, function_prototype, name, arity, method)?;
@@ -314,6 +329,31 @@ impl Vm {
             return Err(RuntimeError::RangeError(format!("invalid Temporal {name}")));
         }
         Ok(value as i32)
+    }
+
+    /// `ToBigInt`: a Number is a `TypeError` (not a truncation), a Boolean is
+    /// `0n`/`1n`, and a String that is not an integer literal is a
+    /// `SyntaxError` — the exact set Test262's `Instant/basic.js` and
+    /// `Instant/argument.js` pin for the constructor's argument.
+    fn temporal_to_big_int(&mut self, value: &Value) -> Result<BigInt, RuntimeError> {
+        match self.coerce_primitive(value, "number")? {
+            Value::BigInt(value) => Ok(value),
+            Value::Bool(flag) => Ok(BigInt::from(u8::from(flag))),
+            Value::String(text) => {
+                let text = text
+                    .to_utf8()
+                    .map_err(|_| RuntimeError::SyntaxError("invalid BigInt string".into()))?;
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    return Ok(BigInt::from(0));
+                }
+                BigInt::parse_bytes(trimmed.as_bytes(), 10)
+                    .ok_or_else(|| RuntimeError::SyntaxError("invalid BigInt string".into()))
+            }
+            _ => Err(RuntimeError::TypeError(
+                "Temporal.Instant requires epoch nanoseconds as a BigInt".into(),
+            )),
+        }
     }
 
     fn temporal_calendar(&mut self, value: &Value) -> Result<String, RuntimeError> {
@@ -571,14 +611,7 @@ impl Vm {
                 ));
             }
             TemporalKind::Instant => {
-                value.epoch_nanoseconds = match native::argument(args, 0) {
-                    Value::BigInt(value) => value.clone(),
-                    _ => {
-                        return Err(RuntimeError::TypeError(
-                            "Temporal.Instant requires epoch nanoseconds as a BigInt".into(),
-                        ));
-                    }
-                };
+                value.epoch_nanoseconds = self.temporal_to_big_int(native::argument(args, 0))?;
                 if !epoch::is_in_instant_range(&value.epoch_nanoseconds) {
                     return Err(RuntimeError::RangeError(
                         "Temporal.Instant epoch nanoseconds are outside the supported range".into(),
@@ -761,6 +794,30 @@ impl Vm {
             })?;
             return Ok(Self::plain_time_value(fields));
         }
+        if kind == TemporalKind::Instant {
+            // `TemporalInstantString` has its own complete grammar too (a
+            // mandatory time and UTC offset, leap seconds, nanosecond-precision
+            // offsets, and an ignored rather than resolved calendar
+            // annotation), so it is parsed by `iso::parse_instant` rather than
+            // through the plain date/time path below.
+            let epoch_nanoseconds = Self::instant_epoch_from_string(source)?;
+            return Ok(TemporalValue {
+                kind,
+                duration: None,
+                year: 1970,
+                month: 1,
+                day: 1,
+                hour: 0,
+                minute: 0,
+                second: 0,
+                millisecond: 0,
+                microsecond: 0,
+                nanosecond: 0,
+                epoch_nanoseconds,
+                calendar: "iso8601".into(),
+                time_zone: "UTC".into(),
+            });
+        }
         let (year, month, day) = iso::parse_date(source)
             .ok_or_else(|| RuntimeError::RangeError("invalid Temporal date string".into()))?;
         let annotations = source.find('[').map_or("", |index| &source[index..]);
@@ -788,27 +845,7 @@ impl Vm {
                 .ok_or_else(|| RuntimeError::RangeError("invalid Temporal time string".into()))?,
             None => (0, 0, 0, 0, 0, 0),
         };
-        let epoch_nanoseconds = if kind == TemporalKind::Instant {
-            let time = time.ok_or_else(|| {
-                RuntimeError::RangeError("invalid Temporal Instant string".into())
-            })?;
-            let offset = iso::parse_offset_seconds(time).ok_or_else(|| {
-                RuntimeError::RangeError("invalid Temporal Instant string".into())
-            })?;
-            let epoch_nanoseconds = epoch::nanoseconds_since_epoch(
-                (year, month, day),
-                (hour, minute, second, millisecond, microsecond, nanosecond),
-                offset,
-            );
-            if !epoch::is_in_instant_range(&epoch_nanoseconds) {
-                return Err(RuntimeError::RangeError(
-                    "Temporal.Instant string is outside the supported range".into(),
-                ));
-            }
-            epoch_nanoseconds
-        } else {
-            0.into()
-        };
+        let epoch_nanoseconds = BigInt::from(0);
         Ok(TemporalValue {
             kind,
             duration: None,
@@ -895,6 +932,12 @@ impl Vm {
                 });
             self.stack.truncate(base);
             return result;
+        }
+        if kind == TemporalKind::Instant {
+            // `Temporal.Instant.from` *is* `ToTemporalInstant`, including its
+            // ZonedDateTime fast path and its TypeError for non-strings.
+            let epoch_nanoseconds = self.temporal_to_instant_epoch(value)?;
+            return self.instant_from_epoch_nanoseconds(epoch_nanoseconds);
         }
         if let Some(object) = value.object_id() {
             if let Some(temporal) = self.heap.temporal_value(object)? {
@@ -984,7 +1027,17 @@ impl Vm {
                     TemporalKind::ZonedDateTime | TemporalKind::Instant
                 ) =>
             {
-                (&value.epoch_nanoseconds / 1_000_000_u32)
+                // `floor(epochNanoseconds / 10^6)`, not a truncation toward
+                // zero: a pre-epoch instant's milliseconds round *down*
+                // (Test262's `epochMilliseconds/basic.js`).
+                let million = BigInt::from(1_000_000);
+                let mut milliseconds = &value.epoch_nanoseconds / &million;
+                if &value.epoch_nanoseconds % &million != BigInt::from(0)
+                    && value.epoch_nanoseconds < BigInt::from(0)
+                {
+                    milliseconds -= 1;
+                }
+                milliseconds
                     .to_f64()
                     .map(Value::Number)
                     .ok_or_else(|| RuntimeError::RangeError("invalid Temporal instant".into()))
@@ -1206,23 +1259,46 @@ impl Vm {
 
     // ---- Stage 1 Track C: Temporal.Instant arithmetic -------------------
 
-    /// `GetOptionsObject`: `undefined` becomes an empty object; any other
-    /// non-object value is a `TypeError` — it is *not* boxed into a wrapper
-    /// object the way an ordinary `ToObject` would (Test262's
-    /// `PlainTime/prototype/until/options-wrong-type.js` and its siblings
-    /// pass `"hello"`/`1`/`1n` and require the throw).
+    /// `GetOptionsObject`: `undefined` becomes a fresh empty object; an
+    /// Object is used as-is; any other value is a `TypeError` — it is
+    /// deliberately *not* boxed through `ToObject`, so
+    /// `instant.toString("some string")` throws rather than reading options
+    /// off a String wrapper. Test262's
+    /// `Instant/prototype/toString/options-wrong-type.js` and
+    /// `PlainTime/prototype/until/options-wrong-type.js` both pass
+    /// `"hello"`/`1`/`1n` and require the throw.
     fn temporal_options(&mut self, value: &Value) -> Result<Value, RuntimeError> {
-        let object = if *value == Value::Undefined {
-            self.with_roots(|heap| heap.alloc_object(None))?
-        } else if matches!(value, Value::Object(_)) {
-            self.coerce_object(value)?
-        } else {
-            return Err(RuntimeError::TypeError(
-                "Temporal options must be an object".into(),
-            ));
+        let result = match value {
+            Value::Undefined => Value::Object(self.with_roots(|heap| heap.alloc_object(None))?),
+            Value::Object(_) => value.clone(),
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "Temporal options must be an object or undefined".into(),
+                ));
+            }
         };
+        self.stack.push(result.clone());
+        Ok(result)
+    }
+
+    /// The `roundTo` parameter of `Temporal.Instant.prototype.round`: a
+    /// String is shorthand for `{ smallestUnit: <string> }`, carried on a
+    /// null-prototype object so `Object.prototype` accessors for the other
+    /// option names are never consulted (Test262's
+    /// `string-shorthand-no-object-prototype-pollution.js`).
+    fn temporal_round_to(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        if *value == Value::Undefined {
+            return Err(RuntimeError::TypeError(
+                "Temporal.Instant.round requires a roundTo argument".into(),
+            ));
+        }
+        if !matches!(value, Value::String(_)) {
+            return self.temporal_options(value);
+        }
+        let object = self.with_roots(|heap| heap.alloc_object(None))?;
         let result = Value::Object(object);
         self.stack.push(result.clone());
+        self.define_data(object, "smallestUnit", value.clone(), true, true, true)?;
         Ok(result)
     }
 
@@ -1289,34 +1365,50 @@ impl Vm {
         }
     }
 
-    fn temporal_time_unit_option(
+    /// `GetTemporalUnitValuedOption`: reads a unit-valued option, accepting
+    /// **every** unit name (including the calendar units `Temporal.Instant`
+    /// itself never allows) plus an optional extra literal such as `"auto"`.
+    /// Rejecting a syntactically valid but operation-inappropriate unit is a
+    /// separate, later step — the ordering Test262's
+    /// `options-read-before-algorithmic-validation.js` fixtures observe.
+    fn temporal_unit_option(
         &mut self,
         options: &Value,
         name: &str,
+        auto: bool,
+    ) -> Result<Option<rounding::Unit>, RuntimeError> {
+        let value = self.get_property(options, &name.into())?;
+        if value == Value::Undefined {
+            return Ok(None);
+        }
+        let string = self.coerce_string(&value)?;
+        let string = string
+            .to_utf8()
+            .map_err(|_| RuntimeError::RangeError(format!("invalid {name} option")))?;
+        if auto && string == "auto" {
+            return Ok(None);
+        }
+        rounding::parse_unit(&string)
+            .map(Some)
+            .ok_or_else(|| RuntimeError::RangeError(format!("invalid {name} option")))
+    }
+
+    /// Narrows an already-read unit option to a time unit, optionally also
+    /// rejecting `"hour"` (which `toString` disallows while `round` allows).
+    fn temporal_time_unit(
+        unit: Option<rounding::Unit>,
+        name: &str,
+        allow_hour: bool,
     ) -> Result<Option<rounding::TimeUnit>, RuntimeError> {
-        match self.temporal_string_option(
-            options,
-            name,
-            &[
-                "hour",
-                "hours",
-                "minute",
-                "minutes",
-                "second",
-                "seconds",
-                "millisecond",
-                "milliseconds",
-                "microsecond",
-                "microseconds",
-                "nanosecond",
-                "nanoseconds",
-            ],
-        )? {
+        match unit {
             None => Ok(None),
-            Some(unit) => Ok(Some(
-                rounding::parse_time_unit(&unit)
-                    .expect("temporal_string_option already validated the unit name"),
-            )),
+            Some(rounding::Unit::Time(rounding::TimeUnit::Hour)) if !allow_hour => {
+                Err(RuntimeError::RangeError(format!("invalid {name} option")))
+            }
+            Some(rounding::Unit::Time(unit)) => Ok(Some(unit)),
+            Some(rounding::Unit::Date(_)) => {
+                Err(RuntimeError::RangeError(format!("invalid {name} option")))
+            }
         }
     }
 
@@ -1353,11 +1445,14 @@ impl Vm {
         }
         let mut values = [0_i128; 10];
         let mut has_field = false;
-        // Alphabetical read order, which is observable: Test262's
-        // `PlainTime/prototype/add/order-of-operations.js` asserts each
+        // `ToTemporalPartialDurationRecord` reads the ten fields in
+        // *alphabetical* order, not in largest-to-smallest order — observable
+        // via getters/`valueOf`: Test262's
+        // `Instant/prototype/add/order-of-operations.js` and
+        // `PlainTime/prototype/add/order-of-operations.js` both assert each
         // getter/`valueOf` fires in exactly this sequence.
         for (index, name) in [
-            (3, "days"),
+            (3_usize, "days"),
             (4, "hours"),
             (8, "microseconds"),
             (7, "milliseconds"),
@@ -1402,22 +1497,51 @@ impl Vm {
         Ok(value.epoch_nanoseconds)
     }
 
-    /// `ToTemporalInstant`: an `Instant` receiver's epoch nanoseconds are
-    /// used directly; anything else is coerced to a string and parsed.
+    /// Parses a `TemporalInstantString` into epoch nanoseconds.
+    fn instant_epoch_from_string(source: &str) -> Result<BigInt, RuntimeError> {
+        let parts = iso::parse_instant(source)
+            .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.Instant string".into()))?;
+        // The offset is exact to the nanosecond, so it is applied here rather
+        // than through `nanoseconds_since_epoch`'s whole-second parameter.
+        let epoch_nanoseconds = epoch::nanoseconds_since_epoch(parts.date, parts.time, 0)
+            - BigInt::from(parts.offset_nanoseconds);
+        if !epoch::is_in_instant_range(&epoch_nanoseconds) {
+            return Err(RuntimeError::RangeError(
+                "Temporal.Instant string is outside the supported range".into(),
+            ));
+        }
+        Ok(epoch_nanoseconds)
+    }
+
+    /// `ToTemporalInstant`: an `Instant` or `ZonedDateTime` argument's epoch
+    /// nanoseconds are used directly (no observable property reads); any
+    /// other object is taken through `ToPrimitive` with a string hint, and a
+    /// result that is not a String is a `TypeError` rather than being
+    /// stringified — so `instant.equals(1)` throws `TypeError`, not
+    /// `RangeError` (Test262's `argument-wrong-type.js`).
     fn temporal_to_instant_epoch(&mut self, value: &Value) -> Result<BigInt, RuntimeError> {
-        if let Some(object) = value.object_id() {
+        let primitive = if let Some(object) = value.object_id() {
             if let Some(temporal) = self.heap.temporal_value(object)? {
-                if temporal.kind == TemporalKind::Instant {
+                if matches!(
+                    temporal.kind,
+                    TemporalKind::Instant | TemporalKind::ZonedDateTime
+                ) {
                     return Ok(temporal.epoch_nanoseconds);
                 }
             }
-        }
-        let source = self
-            .coerce_string(value)?
+            self.coerce_primitive(value, "string")?
+        } else {
+            value.clone()
+        };
+        let Value::String(text) = primitive else {
+            return Err(RuntimeError::TypeError(
+                "Temporal.Instant requires an Instant or an ISO 8601 string".into(),
+            ));
+        };
+        let source = text
             .to_utf8()
             .map_err(|_| RuntimeError::RangeError("invalid Temporal.Instant string".into()))?;
-        self.temporal_value_from_string(TemporalKind::Instant, &source)
-            .map(|temporal| temporal.epoch_nanoseconds)
+        Self::instant_epoch_from_string(&source)
     }
 
     fn instant_from_epoch_nanoseconds(
@@ -1486,15 +1610,17 @@ impl Vm {
         options: &Value,
     ) -> Result<Value, RuntimeError> {
         let epoch = self.temporal_instant_epoch(receiver)?;
-        let options = self.temporal_options(options)?;
-        let smallest_unit = self
-            .temporal_time_unit_option(&options, "smallestUnit")?
-            .ok_or_else(|| {
-                RuntimeError::RangeError("Temporal.Instant.round requires smallestUnit".into())
-            })?;
+        let options = self.temporal_round_to(options)?;
+        // Every option is read and coerced in alphabetical order, before any
+        // of them is validated against the others.
         let increment = self.temporal_rounding_increment(&options)?;
         let mode =
             self.temporal_rounding_mode(&options, blueice_ecma402::NumberRoundingMode::HalfExpand)?;
+        let smallest_unit = self.temporal_unit_option(&options, "smallestUnit", false)?;
+        let smallest_unit = Self::temporal_time_unit(smallest_unit, "smallestUnit", true)?
+            .ok_or_else(|| {
+                RuntimeError::RangeError("Temporal.Instant.round requires smallestUnit".into())
+            })?;
         let day_nanoseconds = 86_400_000_000_000_i128;
         let step = smallest_unit.nanoseconds() * increment;
         if day_nanoseconds % step != 0 {
@@ -1506,7 +1632,7 @@ impl Vm {
             .to_i128()
             .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.Instant".into()))?;
         let rounded = duration_math::TimeDuration::from_nanoseconds(epoch_i128)
-            .round(smallest_unit, increment, mode)
+            .round_as_if_positive(smallest_unit, increment, mode)
             .total_nanoseconds();
         self.instant_from_epoch_nanoseconds(BigInt::from(rounded))
     }
@@ -1521,23 +1647,36 @@ impl Vm {
         let self_epoch = self.temporal_instant_epoch(receiver)?;
         let other_epoch = self.temporal_to_instant_epoch(other)?;
         let options = self.temporal_options(options)?;
-        let smallest_unit = self
-            .temporal_time_unit_option(&options, "smallestUnit")?
+        // `GetDifferenceSettings` reads largestUnit, roundingIncrement,
+        // roundingMode and smallestUnit in that (alphabetical) order, and
+        // validates none of them until all four have been read and coerced.
+        let largest_unit = self.temporal_unit_option(&options, "largestUnit", true)?;
+        let increment = self.temporal_rounding_increment(&options)?;
+        let mode =
+            self.temporal_rounding_mode(&options, blueice_ecma402::NumberRoundingMode::Trunc)?;
+        let smallest_unit = self.temporal_unit_option(&options, "smallestUnit", false)?;
+        let largest_unit = Self::temporal_time_unit(largest_unit, "largestUnit", true)?;
+        let smallest_unit = Self::temporal_time_unit(smallest_unit, "smallestUnit", true)?
             .unwrap_or(rounding::TimeUnit::Nanosecond);
-        let largest_unit = self
-            .temporal_time_unit_option(&options, "largestUnit")?
-            .unwrap_or(rounding::TimeUnit::Second);
+        // An absent (or explicit `"auto"`) largestUnit is the larger of
+        // `Instant`'s own default, `"second"`, and smallestUnit — so
+        // `{ smallestUnit: "hours" }` alone balances into hours rather than
+        // being rejected as a smaller largestUnit.
+        let largest_unit = largest_unit.unwrap_or(smallest_unit.max(rounding::TimeUnit::Second));
         if smallest_unit > largest_unit {
             return Err(RuntimeError::RangeError(
                 "smallestUnit must not be larger than largestUnit".into(),
             ));
         }
-        let increment = self.temporal_rounding_increment(&options)?;
-        let mode =
-            self.temporal_rounding_mode(&options, blueice_ecma402::NumberRoundingMode::Trunc)?;
-        // Unlike `.round()`, `.until()`/`.since()` have no fixture in the
-        // pinned Test262 corpus requiring the increment to divide evenly
-        // into a day — only the general 1..=1e9 range above applies.
+        // `ValidateTemporalRoundingIncrement` with `inclusive = false`: the
+        // increment must be strictly smaller than, and divide evenly into,
+        // the count of this unit in the next larger one.
+        let dividend = smallest_unit.increment_dividend();
+        if increment >= dividend || dividend % increment != 0 {
+            return Err(RuntimeError::RangeError(
+                "roundingIncrement does not divide evenly into the next larger unit".into(),
+            ));
+        }
         let self_i128: i128 = self_epoch
             .to_i128()
             .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.Instant".into()))?;
@@ -1614,36 +1753,133 @@ impl Vm {
         }))
     }
 
-    fn format_instant_string(epoch_nanoseconds: &BigInt, fractional_digits: Option<u8>) -> String {
+    fn format_instant_string(
+        epoch_nanoseconds: &BigInt,
+        precision: SecondsPrecision,
+        offset_nanoseconds: Option<i128>,
+    ) -> String {
+        let local = match offset_nanoseconds {
+            Some(offset) => epoch_nanoseconds + BigInt::from(offset),
+            None => epoch_nanoseconds.clone(),
+        };
         let ((year, month, day), (hour, minute, second, millisecond, microsecond, nanosecond)) =
-            epoch::instant_fields(epoch_nanoseconds);
+            epoch::instant_fields(&local);
         let mut result = if (0..=9999).contains(&year) {
             format!("{year:04}")
         } else {
             format!("{}{:06}", if year < 0 { "-" } else { "+" }, year.abs())
         };
-        result.push_str(&format!(
-            "-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}"
-        ));
-        let nanos_total = u32::from(millisecond) * 1_000_000
-            + u32::from(microsecond) * 1_000
-            + u32::from(nanosecond);
-        match fractional_digits {
-            Some(0) => {}
-            Some(digits) => {
-                let text = format!("{nanos_total:09}");
-                result.push('.');
-                result.push_str(&text[..digits as usize]);
+        result.push_str(&format!("-{month:02}-{day:02}T{hour:02}:{minute:02}"));
+        if precision != SecondsPrecision::Minute {
+            result.push_str(&format!(":{second:02}"));
+            let nanos_total = u32::from(millisecond) * 1_000_000
+                + u32::from(microsecond) * 1_000
+                + u32::from(nanosecond);
+            match precision {
+                SecondsPrecision::Minute | SecondsPrecision::Digits(0) => {}
+                SecondsPrecision::Digits(digits) => {
+                    let text = format!("{nanos_total:09}");
+                    result.push('.');
+                    result.push_str(&text[..digits as usize]);
+                }
+                SecondsPrecision::Auto if nanos_total != 0 => {
+                    let text = format!("{nanos_total:09}");
+                    result.push('.');
+                    result.push_str(text.trim_end_matches('0'));
+                }
+                SecondsPrecision::Auto => {}
             }
-            None if nanos_total != 0 => {
-                let text = format!("{nanos_total:09}");
-                result.push('.');
-                result.push_str(text.trim_end_matches('0'));
-            }
-            None => {}
         }
-        result.push('Z');
+        match offset_nanoseconds {
+            // `FormatDateTimeUTCOffsetRounded`: minutes, never seconds.
+            Some(offset) => {
+                let minutes = offset.abs() / 60_000_000_000;
+                result.push_str(&format!(
+                    "{}{:02}:{:02}",
+                    if offset < 0 { '-' } else { '+' },
+                    minutes / 60,
+                    minutes % 60
+                ));
+            }
+            None => result.push('Z'),
+        }
         result
+    }
+
+    /// `GetTemporalFractionalSecondDigitsOption`, a `GetStringOrNumberOption`
+    /// whose only permitted string is `"auto"`: a Number is floored and then
+    /// range-checked (so `9.7` is 9 but `-0.6` is out of range), and anything
+    /// that is not a Number is stringified and must equal `"auto"`.
+    fn temporal_fractional_second_digits(
+        &mut self,
+        options: &Value,
+    ) -> Result<Option<u8>, RuntimeError> {
+        let value = self.get_property(options, &"fractionalSecondDigits".into())?;
+        match value {
+            Value::Undefined => Ok(None),
+            Value::Number(digits) => {
+                let digits = digits.floor();
+                if !digits.is_finite() || !(0.0..=9.0).contains(&digits) {
+                    return Err(RuntimeError::RangeError(
+                        "invalid fractionalSecondDigits".into(),
+                    ));
+                }
+                Ok(Some(digits as u8))
+            }
+            value => {
+                let text = self.coerce_string(&value)?;
+                let text = text.to_utf8().map_err(|_| {
+                    RuntimeError::RangeError("invalid fractionalSecondDigits".into())
+                })?;
+                if text == "auto" {
+                    Ok(None)
+                } else {
+                    Err(RuntimeError::RangeError(
+                        "invalid fractionalSecondDigits".into(),
+                    ))
+                }
+            }
+        }
+    }
+
+    /// `ToTemporalTimeZoneIdentifier` for the `timeZone` option, resolved to
+    /// a fixed offset. `Ok(None)` means the option was absent.
+    fn temporal_to_string_time_zone(
+        &mut self,
+        options: &Value,
+    ) -> Result<Option<i128>, RuntimeError> {
+        let value = self.get_property(options, &"timeZone".into())?;
+        if value == Value::Undefined {
+            return Ok(None);
+        }
+        if let Some(object) = value.object_id() {
+            if let Some(temporal) = self.heap.temporal_value(object)? {
+                if temporal.kind == TemporalKind::ZonedDateTime {
+                    return iso::resolve_fixed_time_zone_offset(&temporal.time_zone)
+                        .map_err(|()| RuntimeError::RangeError("invalid time zone".into()))?
+                        .map(Some)
+                        .ok_or_else(|| {
+                            RuntimeError::RangeError(
+                                "named IANA time zones are not supported yet".into(),
+                            )
+                        });
+                }
+            }
+        }
+        let Value::String(text) = &value else {
+            return Err(RuntimeError::TypeError(
+                "a Temporal time zone must be a string".into(),
+            ));
+        };
+        let source = text
+            .to_utf8()
+            .map_err(|_| RuntimeError::RangeError("invalid time zone".into()))?;
+        iso::resolve_fixed_time_zone_offset(&source)
+            .map_err(|()| RuntimeError::RangeError("invalid time zone".into()))?
+            .map(Some)
+            .ok_or_else(|| {
+                RuntimeError::RangeError("named IANA time zones are not supported yet".into())
+            })
     }
 
     pub(super) fn temporal_instant_to_string(
@@ -1653,63 +1889,102 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let epoch = self.temporal_instant_epoch(receiver)?;
         let options = self.temporal_options(options)?;
-        let fractional_digits_value =
-            self.get_property(&options, &"fractionalSecondDigits".into())?;
-        let explicit_digits = match &fractional_digits_value {
-            Value::Undefined => None,
-            Value::String(text) => {
-                let text = text.to_utf8().map_err(|_| {
-                    RuntimeError::RangeError("invalid fractionalSecondDigits".into())
-                })?;
-                if text == "auto" {
-                    None
-                } else {
-                    return Err(RuntimeError::RangeError(
-                        "invalid fractionalSecondDigits".into(),
-                    ));
-                }
-            }
-            _ => {
-                let digits = self.coerce_number(&fractional_digits_value)?;
-                if !digits.is_finite() || digits.fract() != 0.0 || !(0.0..=9.0).contains(&digits) {
-                    return Err(RuntimeError::RangeError(
-                        "invalid fractionalSecondDigits".into(),
-                    ));
-                }
-                Some(digits as u8)
-            }
-        };
-        let smallest_unit = self.temporal_time_unit_option(&options, "smallestUnit")?;
+        // Read (and coerce) every option in alphabetical order first; only
+        // then reject a unit this operation does not accept.
+        let explicit_digits = self.temporal_fractional_second_digits(&options)?;
         let mode =
             self.temporal_rounding_mode(&options, blueice_ecma402::NumberRoundingMode::Trunc)?;
-        let effective_unit = smallest_unit.or(explicit_digits.map(|digits| match digits {
-            0 => rounding::TimeUnit::Second,
-            1..=3 => rounding::TimeUnit::Millisecond,
-            4..=6 => rounding::TimeUnit::Microsecond,
-            _ => rounding::TimeUnit::Nanosecond,
-        }));
-        let display_digits = smallest_unit
-            .map(|unit| match unit {
-                rounding::TimeUnit::Hour
-                | rounding::TimeUnit::Minute
-                | rounding::TimeUnit::Second => 0,
-                rounding::TimeUnit::Millisecond => 3,
-                rounding::TimeUnit::Microsecond => 6,
-                rounding::TimeUnit::Nanosecond => 9,
-            })
-            .or(explicit_digits);
+        let smallest_unit = self.temporal_unit_option(&options, "smallestUnit", false)?;
+        let offset = self.temporal_to_string_time_zone(&options)?;
+        // `hour` is a valid unit name but not a valid `toString` precision.
+        let smallest_unit = Self::temporal_time_unit(smallest_unit, "smallestUnit", false)?;
+        // `ToSecondsStringPrecision`: smallestUnit wins outright, and the
+        // digit count implies both the rounding unit and its increment.
+        let (precision, unit, increment) = match smallest_unit {
+            Some(rounding::TimeUnit::Minute) => {
+                (SecondsPrecision::Minute, rounding::TimeUnit::Minute, 1)
+            }
+            Some(rounding::TimeUnit::Second) => {
+                (SecondsPrecision::Digits(0), rounding::TimeUnit::Second, 1)
+            }
+            Some(rounding::TimeUnit::Millisecond) => (
+                SecondsPrecision::Digits(3),
+                rounding::TimeUnit::Millisecond,
+                1,
+            ),
+            Some(rounding::TimeUnit::Microsecond) => (
+                SecondsPrecision::Digits(6),
+                rounding::TimeUnit::Microsecond,
+                1,
+            ),
+            Some(rounding::TimeUnit::Nanosecond) | Some(rounding::TimeUnit::Hour) => (
+                SecondsPrecision::Digits(9),
+                rounding::TimeUnit::Nanosecond,
+                1,
+            ),
+            None => match explicit_digits {
+                None => (
+                    SecondsPrecision::Auto,
+                    rounding::TimeUnit::Nanosecond,
+                    1_i128,
+                ),
+                Some(0) => (SecondsPrecision::Digits(0), rounding::TimeUnit::Second, 1),
+                Some(digits @ 1..=3) => (
+                    SecondsPrecision::Digits(digits),
+                    rounding::TimeUnit::Millisecond,
+                    10_i128.pow(u32::from(3 - digits)),
+                ),
+                Some(digits @ 4..=6) => (
+                    SecondsPrecision::Digits(digits),
+                    rounding::TimeUnit::Microsecond,
+                    10_i128.pow(u32::from(6 - digits)),
+                ),
+                Some(digits) => (
+                    SecondsPrecision::Digits(digits),
+                    rounding::TimeUnit::Nanosecond,
+                    10_i128.pow(u32::from(9 - digits)),
+                ),
+            },
+        };
         let epoch_i128: i128 = epoch
             .to_i128()
             .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.Instant".into()))?;
-        let rounded = match effective_unit {
-            Some(unit) => duration_math::TimeDuration::from_nanoseconds(epoch_i128)
-                .round(unit, 1, mode)
-                .total_nanoseconds(),
-            None => epoch_i128,
-        };
+        let rounded = duration_math::TimeDuration::from_nanoseconds(epoch_i128)
+            .round_as_if_positive(unit, increment, mode)
+            .total_nanoseconds();
         Ok(Value::String(
-            Self::format_instant_string(&BigInt::from(rounded), display_digits).into(),
+            Self::format_instant_string(&BigInt::from(rounded), precision, offset).into(),
         ))
+    }
+
+    /// `Temporal.Instant.prototype.toLocaleString`, which is
+    /// `CreateDateTimeFormat(locales, options, ANY, ALL)` followed by
+    /// `FormatDateTime` — i.e. exactly what
+    /// `new Intl.DateTimeFormat(locales, options).format(instant)` produces,
+    /// so it is built from the same `Intl.DateTimeFormat` bridge rather than
+    /// aliasing `toString`'s ISO serialization.
+    pub(super) fn temporal_instant_to_locale_string(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        // Brand check before any observable option read.
+        self.temporal_instant_epoch(receiver)?;
+        let stack_base = self.stack.len();
+        let result = (|| {
+            let formatter = self.create_date_time_format(
+                &Value::Undefined,
+                &[
+                    native::argument(args, 0).clone(),
+                    native::argument(args, 1).clone(),
+                ],
+                false,
+            )?;
+            self.stack.push(formatter.clone());
+            self.date_time_format_format(&formatter, receiver)
+        })();
+        self.stack.truncate(stack_base);
+        result
     }
 
     pub(super) fn temporal_instant_value_of(&mut self) -> Result<Value, RuntimeError> {
@@ -1838,13 +2113,7 @@ impl Vm {
         increment: i128,
         unit: rounding::TimeUnit,
     ) -> Result<(), RuntimeError> {
-        let maximum = match unit {
-            rounding::TimeUnit::Hour => 24,
-            rounding::TimeUnit::Minute | rounding::TimeUnit::Second => 60,
-            rounding::TimeUnit::Millisecond
-            | rounding::TimeUnit::Microsecond
-            | rounding::TimeUnit::Nanosecond => 1_000,
-        };
+        let maximum = unit.increment_dividend();
         if increment >= maximum || maximum % increment != 0 {
             return Err(RuntimeError::RangeError(
                 "roundingIncrement does not divide evenly into the smallestUnit".into(),
