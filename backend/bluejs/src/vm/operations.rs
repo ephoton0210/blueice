@@ -404,6 +404,17 @@ impl Vm {
             (Value::String(left), Value::Number(right)) => {
                 Ok(primitive::number(&Value::String(left))? == right)
             }
+            // BigInt/Number and BigInt/String each compare by mathematical
+            // value rather than routing the BigInt operand through ToNumber
+            // (which would throw): reuse the Abstract Relational Comparison
+            // BigInt cases, since "equal" is exactly "neither operand is NaN
+            // and the ordering is Equal".
+            (left @ Value::BigInt(_), right @ Value::Number(_))
+            | (left @ Value::Number(_), right @ Value::BigInt(_))
+            | (left @ Value::BigInt(_), right @ Value::String(_))
+            | (left @ Value::String(_), right @ Value::BigInt(_)) => {
+                Ok(primitive::compare(&left, &right)? == Some(Ordering::Equal))
+            }
             (Value::Bool(left), right) => {
                 self.loose_equal(Value::Number(if left { 1.0 } else { 0.0 }), right)
             }

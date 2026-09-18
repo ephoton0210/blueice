@@ -845,6 +845,14 @@ impl Vm {
                         false,
                         true,
                     )?;
+                    self.install_native(id, prototype, "asIntN", 2, NativeFunction::BigIntAsIntN)?;
+                    self.install_native(
+                        id,
+                        prototype,
+                        "asUintN",
+                        2,
+                        NativeFunction::BigIntAsUintN,
+                    )?;
                 } else {
                     if name != "Number" {
                         self.install_native(

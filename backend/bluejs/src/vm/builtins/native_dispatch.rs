@@ -1645,9 +1645,12 @@ impl Vm {
                         "BigInt is not a constructor".into(),
                     ));
                 }
+                // BigInt ( value ): a single ToPrimitive(value, number) call,
+                // then NumberToBigInt for a Number result or ToBigInt for
+                // everything else (which, given an already-primitive input,
+                // performs no further observable coercion).
                 let value = self.coerce_primitive(first, "number")?;
                 match value {
-                    Value::BigInt(value) => Ok(Value::BigInt(value)),
                     Value::Number(value) if value.is_finite() && value.fract() == 0.0 => {
                         // An integral IEEE-754 Number can be much larger
                         // than i64 (up to roughly 2^1024). Convert its exact
@@ -1661,20 +1664,45 @@ impl Vm {
                     Value::Number(_) => Err(RuntimeError::RangeError(
                         "BigInt conversion requires an integral Number".into(),
                     )),
-                    Value::String(value) => {
-                        let value = value.to_utf8().map_err(|_| {
-                            RuntimeError::SyntaxError("invalid BigInt string".into())
-                        })?;
-                        let value =
-                            BigInt::parse_bytes(value.trim().as_bytes(), 10).ok_or_else(|| {
-                                RuntimeError::SyntaxError("invalid BigInt string".into())
-                            })?;
-                        Ok(Value::BigInt(value))
-                    }
-                    _ => Err(RuntimeError::TypeError(
-                        "BigInt conversion requires a Number, BigInt, or integer string".into(),
-                    )),
+                    value => Ok(Value::BigInt(self.to_bigint(&value)?)),
                 }
+            }
+            NativeFunction::BigIntAsIntN | NativeFunction::BigIntAsUintN => {
+                // 1. Let bits be ? ToIndex(bits). 2. Let bigint be ?
+                // ToBigInt(bigint). Both are observable coercions, evaluated
+                // in this order before any arithmetic.
+                let bits = self.to_bigint_index(native::argument(&args, 0))?;
+                let bigint = self.to_bigint(native::argument(&args, 1))?;
+                if bits == 0 {
+                    return Ok(Value::BigInt(BigInt::zero()));
+                }
+                // ToIndex alone permits bits up to 2**53-1; bound the actual
+                // 2**bits allocation at a generous but finite size (same
+                // "implementation capacity" style as bigint_shift/
+                // bigint_exponentiate) rather than letting an extreme bits
+                // value exhaust host memory.
+                const MAX_ASINTN_BITS: usize = 1_000_000;
+                if bits > MAX_ASINTN_BITS {
+                    return Err(RuntimeError::RangeError(
+                        "BigInt.asIntN/asUintN bit width exceeds implementation capacity".into(),
+                    ));
+                }
+                let modulus = BigInt::one() << bits;
+                // BigInt's `%` follows the dividend's sign (truncated
+                // division), not the mathematical "modulo" the spec asks
+                // for here; adding the modulus back for a negative result
+                // maps it into the required [0, 2**bits) range.
+                let mut result = &bigint % &modulus;
+                if result.sign() == Sign::Minus {
+                    result += &modulus;
+                }
+                if function == NativeFunction::BigIntAsIntN {
+                    let half = BigInt::one() << (bits - 1);
+                    if result >= half {
+                        result -= modulus;
+                    }
+                }
+                Ok(Value::BigInt(result))
             }
             NativeFunction::PrimitiveMethod { boolean, string } => {
                 let value = if let Value::Object(id) = receiver {
