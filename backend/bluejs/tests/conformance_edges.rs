@@ -436,6 +436,36 @@ fn number_static_constants_have_spec_values_and_attributes() {
 }
 
 #[test]
+fn number_to_string_uses_the_requested_radix_and_round_trips_binary64() {
+    for (source, expected) in [
+        ("(255).toString(16)", "ff"),
+        ("(-31).toString(36)", "-v"),
+        ("(10.5).toString(2)", "1010.1"),
+        ("(0.1).toString(16)", "0.1999999999999a"),
+        ("(1/3).toString(3)", "0.1"),
+    ] {
+        assert_eq!(evaluate(source), Value::String(expected.into()), "{source}");
+    }
+    assert_eq!(
+        evaluate("Number.prototype.toString.length"),
+        Value::Number(1.0)
+    );
+    for source in [
+        "(1).toString(1)",
+        "(1).toString(37)",
+        "(1).toString(null)",
+        "Number.prototype.toString.call({})",
+    ] {
+        assert!(
+            Vm::default()
+                .execute(&compile(&parse(source).unwrap()).unwrap())
+                .is_err(),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn property_is_enumerable_observes_only_own_enumerable_properties() {
     assert_eq!(
         evaluate(
@@ -730,6 +760,17 @@ fn json_parse_and_stringify_preserve_data_properties_and_json_escapes() {
         r#"let object={shown:1};Object.defineProperty(object,'hidden',{value:2,enumerable:false});JSON.stringify(object)==='{"shown":1}'"#,
         r#"JSON.stringify('\b\t\f\r"\\\uD83D\uDE00') === '"\\b\\t\\f\\r\\"\\\\\uD83D\uDE00"'"#,
         "JSON===globalThis.JSON&&JSON.parse.length===2&&JSON.stringify.length===3",
+        r#"let calls=[];let value={a:1,b:2,toJSON(key){calls.push('toJSON:'+key);return {a:this.a,b:this.b}}};JSON.stringify(value,(key,current)=>{calls.push('replace:'+key);return key==='b'?undefined:current;})==='{"a":1}'&&calls.join(',')==='toJSON:,replace:,replace:a,replace:b'"#,
+        r#"let list=['b',new String('a'),1,'b',true];JSON.stringify({a:1,b:2,'1':3,c:4},list)==='{"b":2,"a":1,"1":3}'"#,
+        r#"let arr=[];let handle=Proxy.revocable(arr,{get(target,key,receiver){if(key!=='length'||receiver!==handle.proxy)throw new Error('unexpected property');handle.revoke();return 0;}});JSON.stringify({a:0},handle.proxy)==='{}'"#,
+        r#"JSON.stringify({a:[1,2]},null,2)==='{\n  "a": [\n    1,\n    2\n  ]\n}'&&JSON.stringify({a:1},null,'abcdefghijk')==='{\nabcdefghij"a": 1\n}'"#,
+        r#"JSON.stringify([new Number(1),new String('x'),new Boolean(false)])==='[1,"x",false]'"#,
+        r#"BigInt.prototype.toJSON=function(key){return this.toString()+key};JSON.stringify({value:1n})==='{"value":"1value"}'"#,
+        r#"let calls=[];let value=JSON.parse('{"a":1,"nested":[2]}',function(key,current){calls.push(key);if(key==='a')return undefined;if(key==='0')return 3;return current;});value.a===undefined&&value.nested[0]===3&&calls.join(',')==='a,0,nested,'"#,
+        r#"let calls=[];let value=JSON.parse('{"a":1.0,"nested":[true]}',function(key,current,context){calls.push(key+':'+(('source' in context)?context.source:'none'));return current;});value.a===1&&value.nested[0]===true&&calls.join(',')==='a:1.0,0:true,nested:none,:none'"#,
+        r#"Object.defineProperty(Object.prototype,'',{set(){throw new Error('setter')}});let wrapper;JSON.parse('2',function(){wrapper=this});delete Object.prototype[''];Object.getOwnPropertyDescriptor(wrapper,'').value===2"#,
+        r#"let raw=JSON.rawJSON('1e3');Object.getPrototypeOf(raw)===null&&Object.isFrozen(raw)&&Object.getOwnPropertyDescriptor(raw,'rawJSON').enumerable===true&&JSON.isRawJSON(raw)&&!JSON.isRawJSON({rawJSON:'1e3'})&&JSON.stringify({value:raw})==='{"value":1e3}'&&JSON.stringify(new Proxy(raw,{}))==='{"rawJSON":"1e3"}'"#,
+        r#"let invalid=true;for(let text of ['', ' 1','1 ','[]','{}']){try{JSON.rawJSON(text);invalid=false}catch(error){invalid=invalid&&(error instanceof SyntaxError)}}invalid"#,
     ] {
         assert_eq!(evaluate(source), Value::Bool(true), "{source}");
     }
@@ -763,6 +804,24 @@ fn json_parse_and_stringify_preserve_data_properties_and_json_escapes() {
         vm.execute(&oversized),
         Err(RuntimeError::StringLimit { limit: 4 })
     );
+
+    let mut tiny_nursery = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 512,
+            max_heap_bytes: 2 * 1024 * 1024,
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    let revived = compile(
+        &parse(
+            "let empty=JSON.parse('[]',function(key,current){return current});let value=JSON.parse('[{\"a\":1},{\"a\":2}]',function(key,current){return key==='a'?{value:current}:current});empty.length===0&&value[0].a.value===1&&value[1].a.value===2",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(tiny_nursery.execute(&revived), Ok(Value::Bool(true)));
 }
 
 #[test]

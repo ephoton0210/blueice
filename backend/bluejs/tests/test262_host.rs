@@ -893,6 +893,23 @@ fn promise_constructor_invokes_its_executor_and_settles_once() {
 }
 
 #[test]
+fn promise_race_rejects_iterator_acquisition_and_step_errors() {
+    for source in [
+        "Promise.race(new Error('not iterable')).then(function(){$DONE(new Test262Error('fulfilled'))},function(error){if(error instanceof TypeError)$DONE();else $DONE(error)})",
+        "let iterable={};iterable[Symbol.iterator]=false;Promise.race(iterable).then(function(){$DONE(new Test262Error('fulfilled'))},function(error){if(error instanceof TypeError)$DONE();else $DONE(error)})",
+        "let error=new Test262Error('iterator value');let result={done:false};Object.defineProperty(result,'value',{get:function(){throw error}});let iterable={};iterable[Symbol.iterator]=function(){return {next:function(){return result}}};Promise.race(iterable).then(function(){$DONE(new Test262Error('fulfilled'))},function(reason){if(reason===error)$DONE();else $DONE(reason)})",
+    ] {
+        let mut vm = Vm::default();
+        vm.install_test262_harness().unwrap();
+        vm.install_test262_done().unwrap();
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap();
+        vm.run_promise_jobs().unwrap();
+        assert_eq!(vm.take_test262_done(), Some(Ok(())), "{source}");
+    }
+}
+
+#[test]
 fn promise_static_methods_observe_constructor_resolve_and_then_failures() {
     for source in [
         "Promise.resolve(1).then(function(value){if(value===1)$DONE();else $DONE(new Test262Error('wrong fulfillment'))},$DONE)",
@@ -1333,6 +1350,126 @@ fn create_realm_membrane_preserves_foreign_object_identity_and_internal_slots() 
     let source = "var other=$262.createRealm().global;var value=other.eval('var state=0;({get value(){state++;return state}})');var regexp=other.eval('/a/g');value.value===1&&other.eval('state')===1&&RegExp(regexp)!==regexp&&RegExp(regexp).toString()==='/a/g'";
     assert_eq!(
         vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn create_realm_shares_the_agent_global_symbol_registry() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = "var other=$262.createRealm().global;var local=Symbol.for('blueice');var foreign=other.Symbol.for('blueice');local===foreign&&other.eval(\"Symbol.for('blueice')\")===local&&Symbol.keyFor(foreign)==='blueice'&&other.Symbol.keyFor(local)==='blueice'";
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn create_realm_forwards_own_property_keys_from_foreign_intrinsics() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        var other = $262.createRealm().global;
+        var expected = Reflect.ownKeys(Math);
+        var actual = Reflect.ownKeys(other.Math);
+        var same = actual.length === expected.length;
+        for (var index = 0; index < expected.length; index++)
+            same = same && actual[index] === expected[index];
+        same
+    "#;
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn create_realm_forwards_set_with_the_explicit_receiver() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        var other = $262.createRealm().global;
+        other.eval(`
+            var hits = 0;
+            var expected;
+            var object = {
+                set value(value) {
+                    'use strict';
+                    if (this !== expected || value !== 'blueice') throw 'wrong receiver';
+                    hits++;
+                }
+            };
+        `);
+        var local = {};
+        other.expected = local;
+        var localResult = Reflect.set(other.object, 'value', 'blueice', local) && other.hits === 1;
+        other.expected = other.object;
+        var foreignResult = Reflect.set(other.object, 'value', 'blueice', other.object) && other.hits === 2;
+        other.expected = undefined;
+        var primitiveResult = Reflect.set(other.object, 'value', 'blueice', undefined) && other.hits === 3;
+        localResult && foreignResult && primitiveResult
+    "#;
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn dynamic_async_constructor_observes_a_revoked_proxy_new_target() {
+    let source = r#"
+        var constructor = (async function() {}).constructor;
+        var revocations = 0;
+        var handle = Proxy.revocable(function() {}, {
+            get(target, key) {
+                if (key === 'prototype') {
+                    revocations++;
+                    handle.revoke();
+                    return undefined;
+                }
+                return Reflect.get(target, key);
+            }
+        });
+        var caught = false;
+        try { Reflect.construct(constructor, [], handle.proxy); }
+        catch (error) { caught = error instanceof TypeError; }
+        caught && revocations === 1
+    "#;
+    assert_eq!(
+        Vm::default()
+            .execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn promise_constructor_observes_a_revoked_proxy_new_target() {
+    let source = r#"
+        var revocations = 0;
+        var handle = Proxy.revocable(function() {}, {
+            get(target, key) {
+                if (key === 'prototype') {
+                    revocations++;
+                    handle.revoke();
+                    return undefined;
+                }
+                return Reflect.get(target, key);
+            }
+        });
+        var caught = false;
+        try { Reflect.construct(Promise, [function() {}], handle.proxy); }
+        catch (error) { caught = error instanceof TypeError; }
+        caught && revocations === 1
+    "#;
+    assert_eq!(
+        Vm::default()
+            .execute_script(&compile(&parse(source).unwrap()).unwrap())
             .unwrap(),
         Value::Bool(true)
     );

@@ -145,6 +145,29 @@ pub struct HeapStats {
 }
 
 pub(crate) type RegExpIteratorState = (ObjectId, JsString, bool, bool, bool);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IteratorHelperKind {
+    Concat,
+    Zip,
+    ZipKeyed,
+    Chunks,
+    Windows,
+    Map,
+    Filter,
+    FlatMap,
+    Take,
+    Drop,
+}
+
+#[derive(Clone)]
+pub(crate) struct IteratorHelperState {
+    pub record: ObjectId,
+    pub callback: Value,
+    pub index: u64,
+    pub done: bool,
+    pub executing: bool,
+    pub kind: IteratorHelperKind,
+}
 pub(crate) type ClosureState = (
     Rc<Bytecode>,
     Vec<ObjectId>,
@@ -716,6 +739,10 @@ impl OrderedCollection {
 
 enum ObjectKind {
     Ordinary,
+    /// The `[[IsRawJSON]]` internal slot. Raw JSON objects otherwise use the
+    /// ordinary object internal methods; their frozen `rawJSON` own property
+    /// stores the validated source text.
+    RawJson,
     Collator {
         data: Rc<crate::intl::Collator>,
         compare: Option<ObjectId>,
@@ -855,6 +882,18 @@ enum ObjectKind {
     IteratorWrapper {
         iterator: ObjectId,
         next: Value,
+    },
+    /// A lazy `Iterator` helper owns the direct iterator record it advances,
+    /// its callback and the next index. The record is a normal private object
+    /// so all `next`/`return` operations keep using the shared iterator
+    /// abstract-operation path.
+    IteratorHelper {
+        record: ObjectId,
+        callback: Value,
+        index: u64,
+        done: bool,
+        executing: bool,
+        kind: IteratorHelperKind,
     },
     RegExpIterator {
         matcher: ObjectId,
@@ -1235,6 +1274,11 @@ impl Object {
                 ObjectKind::IteratorWrapper { iterator, next } => {
                     std::iter::once(*iterator).chain(next.object_id()).collect()
                 }
+                ObjectKind::IteratorHelper {
+                    record, callback, ..
+                } => std::iter::once(*record)
+                    .chain(callback.object_id())
+                    .collect(),
                 ObjectKind::DataView { buffer, .. } | ObjectKind::TypedArray { buffer, .. } => {
                     vec![*buffer]
                 }
@@ -1435,6 +1479,11 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
             ObjectKind::IteratorWrapper { iterator, next } => {
                 std::iter::once(*iterator).chain(next.object_id()).collect()
             }
+            ObjectKind::IteratorHelper {
+                record, callback, ..
+            } => std::iter::once(*record)
+                .chain(callback.object_id())
+                .collect(),
             ObjectKind::DataView { buffer, .. } | ObjectKind::TypedArray { buffer, .. } => {
                 vec![*buffer]
             }
@@ -1521,6 +1570,19 @@ impl Heap {
     /// The returned object is unrooted until registered or attached to a root.
     pub fn alloc_object(&mut self, prototype: Option<ObjectId>) -> Result<ObjectId, HeapError> {
         self.alloc(ObjectKind::Ordinary, prototype)
+    }
+
+    /// Allocates the branded object used by `JSON.rawJSON`. The caller defines
+    /// and freezes its observable `rawJSON` property before exposing it.
+    pub(crate) fn alloc_raw_json(&mut self) -> Result<ObjectId, HeapError> {
+        self.alloc(ObjectKind::RawJson, None)
+    }
+
+    /// Reports the presence of the `[[IsRawJSON]]` internal slot. A Proxy is
+    /// deliberately not unwrapped: it does not itself carry its target's
+    /// internal slots.
+    pub(crate) fn is_raw_json(&self, object: ObjectId) -> Result<bool, HeapError> {
+        Ok(matches!(self.object(object)?.kind, ObjectKind::RawJson))
     }
 
     pub(crate) fn alloc_weak_collection(
@@ -3079,6 +3141,112 @@ impl Heap {
             ObjectKind::IteratorWrapper { iterator, next } => Some((*iterator, next.clone())),
             _ => None,
         })
+    }
+    pub(crate) fn alloc_iterator_helper(
+        &mut self,
+        record: ObjectId,
+        callback: Value,
+        kind: IteratorHelperKind,
+        index: u64,
+        prototype: ObjectId,
+    ) -> Result<ObjectId, HeapError> {
+        self.alloc(
+            ObjectKind::IteratorHelper {
+                record,
+                callback,
+                index,
+                done: false,
+                executing: false,
+                kind,
+            },
+            Some(prototype),
+        )
+    }
+    pub(crate) fn iterator_helper(
+        &self,
+        id: ObjectId,
+    ) -> Result<Option<IteratorHelperState>, HeapError> {
+        Ok(match &self.object(id)?.kind {
+            ObjectKind::IteratorHelper {
+                record,
+                callback,
+                index,
+                done,
+                executing,
+                kind,
+            } => Some(IteratorHelperState {
+                record: *record,
+                callback: callback.clone(),
+                index: *index,
+                done: *done,
+                executing: *executing,
+                kind: *kind,
+            }),
+            _ => None,
+        })
+    }
+    pub(crate) fn begin_iterator_helper(&mut self, id: ObjectId) -> Result<(), HeapError> {
+        let object = self
+            .objects
+            .get_mut(&id)
+            .ok_or(HeapError::InvalidObject(id))?;
+        let ObjectKind::IteratorHelper { executing, .. } = &mut object.kind else {
+            return Err(HeapError::InvalidInternalSlot(id));
+        };
+        *executing = true;
+        Ok(())
+    }
+    pub(crate) fn leave_iterator_helper(&mut self, id: ObjectId) -> Result<(), HeapError> {
+        let object = self
+            .objects
+            .get_mut(&id)
+            .ok_or(HeapError::InvalidObject(id))?;
+        let ObjectKind::IteratorHelper { executing, .. } = &mut object.kind else {
+            return Err(HeapError::InvalidInternalSlot(id));
+        };
+        *executing = false;
+        Ok(())
+    }
+    pub(crate) fn finish_iterator_helper(&mut self, id: ObjectId) -> Result<(), HeapError> {
+        let object = self
+            .objects
+            .get_mut(&id)
+            .ok_or(HeapError::InvalidObject(id))?;
+        let ObjectKind::IteratorHelper {
+            done, executing, ..
+        } = &mut object.kind
+        else {
+            return Err(HeapError::InvalidInternalSlot(id));
+        };
+        *done = true;
+        *executing = false;
+        Ok(())
+    }
+    pub(crate) fn advance_iterator_helper(&mut self, id: ObjectId) -> Result<(), HeapError> {
+        let object = self
+            .objects
+            .get_mut(&id)
+            .ok_or(HeapError::InvalidObject(id))?;
+        let ObjectKind::IteratorHelper { index, .. } = &mut object.kind else {
+            return Err(HeapError::InvalidInternalSlot(id));
+        };
+        *index = index
+            .checked_add(1)
+            .expect("Iterator helper index is checked before incrementing");
+        Ok(())
+    }
+    pub(crate) fn consume_iterator_helper_take(&mut self, id: ObjectId) -> Result<(), HeapError> {
+        let object = self
+            .objects
+            .get_mut(&id)
+            .ok_or(HeapError::InvalidObject(id))?;
+        let ObjectKind::IteratorHelper { index, .. } = &mut object.kind else {
+            return Err(HeapError::InvalidInternalSlot(id));
+        };
+        *index = index
+            .checked_sub(1)
+            .expect("take helper is consumed only with a positive remainder");
+        Ok(())
     }
     pub(crate) fn regexp(
         &self,

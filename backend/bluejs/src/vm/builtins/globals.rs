@@ -253,15 +253,35 @@ impl Vm {
                     false,
                     false,
                 )?;
-                self.define_data(
+                self.install_native_accessor(
                     iterator_prototype,
+                    prototype,
                     "constructor",
-                    Value::Object(id),
-                    true,
-                    false,
-                    true,
+                    NativeFunction::IteratorConstructorGetter,
+                    NativeFunction::IteratorConstructorSetter,
                 )?;
                 self.install_native(id, prototype, "from", 1, NativeFunction::IteratorFrom)?;
+                self.install_native(
+                    id,
+                    prototype,
+                    "concat",
+                    0,
+                    NativeFunction::IteratorHelper(native::IteratorHelperMethod::Concat),
+                )?;
+                self.install_native(
+                    id,
+                    prototype,
+                    "zip",
+                    1,
+                    NativeFunction::IteratorHelper(native::IteratorHelperMethod::Zip),
+                )?;
+                self.install_native(
+                    id,
+                    prototype,
+                    "zipKeyed",
+                    1,
+                    NativeFunction::IteratorHelper(native::IteratorHelperMethod::ZipKeyed),
+                )?;
             } else if name == "Array" {
                 self.define_data(
                     id,
@@ -772,13 +792,22 @@ impl Vm {
                 let bigint = name == "BigInt";
                 let value = if boolean {
                     Value::Bool(false)
-                } else if bigint {
-                    Value::BigInt(0.into())
                 } else {
                     Value::Number(0.0)
                 };
-                let boxed_prototype =
-                    self.with_roots(|heap| heap.alloc_boxed_primitive(value, object_prototype))?;
+                // Unlike %Number.prototype%/%Boolean.prototype%, the BigInt
+                // prototype is explicitly *not* a BigInt exotic object (no
+                // [[BigIntData]] internal slot) per "Properties of the
+                // BigInt Prototype Object" -- an ordinary object instead, so
+                // e.g. `BigInt.prototype.toString(1)` throws TypeError
+                // rather than treating the prototype itself as 0n.
+                let boxed_prototype = self.with_roots(|heap| {
+                    if bigint {
+                        heap.alloc_object(Some(object_prototype))
+                    } else {
+                        heap.alloc_boxed_primitive(value, object_prototype)
+                    }
+                })?;
                 self.define_data(
                     id,
                     "prototype",
@@ -825,17 +854,27 @@ impl Vm {
                         false,
                         true,
                     )?;
-                } else {
+                    self.install_native(id, prototype, "asIntN", 2, NativeFunction::BigIntAsIntN)?;
                     self.install_native(
-                        boxed_prototype,
+                        id,
                         prototype,
-                        "toString",
-                        0,
-                        NativeFunction::PrimitiveMethod {
-                            boolean,
-                            string: true,
-                        },
+                        "asUintN",
+                        2,
+                        NativeFunction::BigIntAsUintN,
                     )?;
+                } else {
+                    if name != "Number" {
+                        self.install_native(
+                            boxed_prototype,
+                            prototype,
+                            "toString",
+                            0,
+                            NativeFunction::PrimitiveMethod {
+                                boolean,
+                                string: true,
+                            },
+                        )?;
+                    }
                     self.install_native(
                         boxed_prototype,
                         prototype,
@@ -849,6 +888,7 @@ impl Vm {
                 }
                 if name == "Number" {
                     for (property, length, method) in [
+                        ("toString", 1, native::NumberMethod::ToString),
                         ("toLocaleString", 0, native::NumberMethod::LocaleString),
                         ("toFixed", 1, native::NumberMethod::Fixed),
                         ("toExponential", 1, native::NumberMethod::Exponential),

@@ -2171,3 +2171,334 @@ eager terminal-helper approximation. Final verification for this continuation
 was `cargo test -p blueice-bluejs --quiet --no-fail-fast`: all enabled BlueJS
 tests passed, with only the pre-existing Node-dependent differential test
 explicitly ignored.
+
+## Working-tree continuation: JSON, descriptor roots, and foreign internal methods
+
+The following is direct regression evidence for the working tree after the
+complete inventory recorded above; it is not a replacement for a new full
+53,582-file reconciliation. `JSON.parse` now implements
+`InternalizeJSONProperty`: it creates the ordinary root wrapper with a data
+property, walks arrays and enumerable object keys post-order, invokes the
+reviver with the specified holder/key pair, and uses `[[Delete]]` or
+`[[DefineOwnProperty]] for each replacement. This keeps Proxy reviver
+replacements, inherited reads, non-extensible receivers, and abrupt traps on
+the normal internal-method path.
+
+`JSON.stringify` now implements the `space` gap, Number/String wrapper
+unboxing with observable `ToNumber`/`ToString`, and `toJSON` lookup for both
+objects and BigInts. Its existing function/array replacer handling retains
+the wrapper, property list, and every intermediate callback result across GC.
+The independent `JSON.rawJSON` and `JSON.isRawJSON` APIs still need their own
+branded raw-JSON internal slot; they are deliberately not represented by a
+plain object fallback.
+
+The same continuation shares the global-symbol registry between Test262
+Realms, forwards foreign `[[OwnPropertyKeys]]` and receiver-aware `[[Set]]`,
+and roots Proxy `[[DefineOwnProperty]]` trap descriptor objects. Promise lazy
+prototype construction and resolving-function pairs now retain intermediate
+objects across allocation; `Promise` and dynamic async function construction
+also observe a supplied `newTarget` when selecting their prototype. Lazy
+global deletion materializes the specified descriptor before invoking
+`[[Delete]]`.
+
+Direct pinned Test262 regression (both sloppy and strict where applicable)
+passed these **45 modes**:
+
+| Area | Modes | Exact fixtures |
+| --- | ---: | --- |
+| Reflect/Proxy realm and internal-method closure | 11 | `staging/sm/Reflect/{apply,ownKeys,deleteProperty,set}.js`; `staging/sm/Proxy/revoked-get-function-realm-typeerror.js`; `staging/sm/Proxy/json-stringify-replacer-array-revocable-proxy.js` |
+| JSON reviver/stringify library boundary | 34 | `built-ins/JSON/parse/{reviver-call-order,revived-proxy,reviver-array-define-prop-err,reviver-array-get-prop-from-prototype,reviver-array-delete-err,reviver-array-length-coerce-err,reviver-object-own-keys-err,reviver-object-define-prop-err}.js`; `built-ins/JSON/stringify/{space-string,space-number-object,value-number-object,value-bigint-tojson,value-bigint-order,value-bigint-replacer,replacer-array-proxy,replacer-function-tojson,value-tojson-result}.js` |
+
+The public JSON regression also runs under a one-object nursery, exercising
+nested parse/revive replacement across collection. Final local validation was
+`cargo test -p blueice-bluejs --quiet`, `cargo fmt --all -- --check`, and
+`cargo clippy -p blueice-bluejs --all-targets -- -D warnings`; all passed.
+
+## Working-tree continuation: remaining library algorithms and Iterator helpers
+
+`JSON.rawJSON` and `JSON.isRawJSON` now use a dedicated `RawJson` heap kind,
+rather than an observable plain-object marker. `rawJSON` validates that its
+text is a JSON primitive, creates the required frozen/null-prototype branded
+object, and `stringify` emits the retained primitive source directly. The
+parser also retains original primitive tokens for the ES2026 reviver context:
+`context.source` is fresh, data-only and present only when the current value
+is still the parsed primitive. Proxy mutation and duplicate-key replacement
+therefore remain on the ordinary internal-method path.
+
+`Array.prototype.concat` now calls the VM's Proxy-aware `IsArray`, observes
+`Symbol.isConcatSpreadable`, preserves source holes through `HasProperty`,
+and creates its result via `ArraySpeciesCreate`. The foreign-Test262-realm
+bridge recognizes a foreign intrinsic `%Array%` constructor before reading a
+foreign species. This closes the cross-Realm concat branch without adopting a
+foreign array prototype in the caller Realm.
+
+`Number.prototype.toString` is no longer routed through the generic primitive
+method. It has its required arity of one, coerces and validates radix 2–36,
+and selects a shortest representation from exact binary64 round-trip
+boundaries. This fixed the otherwise misleading `RegExp.escape` punctuation
+fixtures, whose expected hexadecimal escapes are constructed by
+`codePointAt(...).toString(16)`.
+
+The lazy iterator helpers, `Iterator.prototype.map`,
+`Iterator.prototype.filter`, `Iterator.prototype.take` and
+`Iterator.prototype.drop`, share one traced private state record for the
+direct iterator, cached `next`, callback/count, kind, done and executing
+states. Their helper `next`/`return` methods retain lazy advancement,
+iterator-result validation, re-entry rejection, forwarding of `return`, and
+the rule that an already-abrupt callback error survives a later close error.
+`filter` loops through rejected source values inside one lazy `next()` without
+eager collection, while preserving the callback's source index; `take` closes
+only when the next pull reaches its limit, while `drop` skips only on demand.
+The accompanying native-call correction permits `%Iterator%` to be used as a
+class heritage constructor while retaining its direct-call/direct-construct
+TypeError contract. This also unblocks pre-existing terminal-helper subclasses.
+
+`Iterator.prototype.flatMap` extends that state record with a traced active
+inner direct-iterator record. It calls the mapper only when an outer value is
+needed, flattens exactly one iterator level, rejects primitive mapper results,
+and closes an active inner iterator before the outer iterator on `return()`.
+To retain the existing tiny-heap string-iteration guarantee, independently
+added helpers such as `flatMap` and `chunks` are materialized on
+`%Iterator.prototype%` only when their property is observed. The
+materialization is performed at the shared `[[GetOwnProperty]]` boundary, so
+ordinary reads and every descriptor/reflection path see the same writable,
+non-enumerable, configurable data property.
+
+`Iterator.concat` snapshots every object argument's `Symbol.iterator` method
+in argument order, yet delays calling each method until that source is first
+needed. Its concat state retains the iterable/method pairs and only the active
+direct iterator record; natural exhaustion drops that record without a
+`return`, while helper `return()` closes precisely the still-active source.
+The shared helper execution guard remains set during forwarding, preserving
+the required TypeError for a re-entrant `next` or `return`.
+
+`Iterator.prototype.chunks` accepts only an integral Number in the inclusive
+range 1–2³²−1; it deliberately does not coerce its argument. Invalid input
+therefore closes the object receiver before consulting `next`. Each lazy pull
+collects a distinct Array of up to that many values, returning the final
+partial array before producing the terminal result; no `return` is called for
+natural exhaustion.
+
+`Iterator.prototype.windows` applies the same Number-only validation before
+it reads `next`, then retains a traced private sliding buffer. It yields a
+fresh Array for every full window, and supports the explicit
+`"allow-partial"` mode for the single final undersized window. Invalid mode
+or size closes the receiver without observing its `next` property.
+
+`Iterator.prototype.constructor` is now the specified configurable,
+non-enumerable accessor. Its getter returns the Realm's `%Iterator%`; its
+setter uses `SetterThatIgnoresPrototypeProperties`, rejecting the home
+prototype while creating or updating an own `constructor` on derived objects.
+
+`GetPrototypeFromConstructor` now recognizes `%Iterator.prototype%` as a
+Realm-sensitive fallback intrinsic. A foreign `newTarget` whose `prototype`
+is non-object consequently selects the foreign Realm's Iterator prototype.
+
+`Iterator.zip` eagerly opens the outer iterables iterator and, for each
+yielded item, resolves it through `GetIteratorFlattenable`, retaining every
+opened record in the shared metadata object rather than a public slot; only
+`"longest"` mode additionally collects one padding value per record,
+optionally consuming a real padding iterator and closing it once enough
+values are read. Every eager step distinguishes which already-opened records
+an abrupt completion must close: a failing `GetIteratorFlattenable` closes
+the already-opened inner records and then the outer iterables iterator,
+while a failing outer step, or any failure while collecting padding, closes
+only the already-opened inner records — matching `IteratorZip`'s two
+distinct `IfAbruptCloseIterators` call sites rather than one shared handler.
+`Iterator.zipKeyed` shares this eager collection and closing behavior, but
+enumerates own enumerable keys (skipping `undefined` values) instead of
+iterating a list, and yields `null`-prototype records keyed by the source's
+own keys rather than fixed-length arrays.
+
+`Iterator.prototype.includes` is a terminal helper with `SameValueZero`
+comparison, so it correctly treats `NaN` as matching itself and `-0` as `+0`.
+Its optional `skippedElements` accepts only an integral Number or infinity—it
+does not run `ToNumber`—and invalid input closes the direct iterator without
+observing `next`. A successful match likewise closes the active iterator,
+whereas natural exhaustion does not.
+
+`Iterator.prototype.join` coerces its separator before obtaining the cached
+`next` method, closes without that lookup if separator conversion is abrupt,
+and appends non-nullish values after their observable string conversion. Its
+error path shares `IteratorClose`, while iterator-origin errors retain the
+already-completed direct record and therefore do not call `return` again.
+
+The previously implemented terminal callback helpers—`forEach`, `every`,
+`some`, `find` and `reduce`—now share the same callback-validation boundary:
+an invalid callback closes an object receiver before `GetIteratorDirect`, so
+its `next` getter remains unobserved. This is a descriptor/internal-method
+ordering requirement, not merely an input-validation shortcut.
+
+`Array.prototype.fill` performs an ordinary `Set` for every index in its
+resolved range rather than writing dense storage directly, so it stays
+generic over array-like receivers (including proxies and inherited setters)
+the same way the existing `at` method does. Its start/end arguments follow
+`ToIntegerOrInfinity` and the shared relative-index clamping, without special
+casing `NaN` beyond the standard "treat as zero" rule.
+
+The expanded library slice exposed two GC reachability defects under the
+normal small-nursery test configuration. A dequeued Promise job must retain
+its target, callback and values until that job completes; likewise, the first
+of a combinator's two just-allocated reaction functions must survive creation
+of the second. The VM now roots both sets of temporary edges, rather than
+depending on a particular heap allocation cadence.
+
+Pinned Test262 evidence from `72faf8ec1445c55149615e8b35187830783aba1a`:
+
+| Surface | Result | Evidence |
+| --- | ---: | --- |
+| JSON raw JSON, reviver source and SpiderMonkey parse-with-source | **44 / 44 pass** | `target/test262-json-source` |
+| Array concat (spreadability, holes, species and foreign Realm) | **137 / 137 pass** | `target/test262-array-concat` |
+| Number radix conversion and RegExp.escape | **222 / 222 pass** | `target/test262-number-regexp` |
+| Iterator map/filter plus Iterator subclassability | **148 / 148 pass** | `target/test262-iterator-map-filter` |
+| Iterator take | **66 / 66 pass** | `target/test262-iterator-take` |
+| Iterator drop | **68 / 68 pass** | `target/test262-iterator-drop` |
+| Iterator flatMap | **88 / 88 pass** | `target/test262-iterator-flatmap` |
+| Iterator concat | **64 / 64 pass** | `target/test262-iterator-concat` |
+| Iterator chunks | **76 / 76 pass** | `target/test262-iterator-chunks` |
+| Iterator windows | **80 / 80 pass** | `target/test262-iterator-windows` |
+| Iterator constructor accessor | **4 / 4 pass** | `target/test262-iterator-constructor` |
+| Iterator cross-Realm constructor fallback | **2 / 2 pass** | `target/test262-iterator-proto-realm` |
+| Iterator zip | **76 / 76 pass** | `target/test262-iterator-zip` |
+| Iterator zipKeyed | **88 / 88 pass** | `target/test262-iterator-zip-keyed` |
+| Iterator includes | **88 / 88 pass** | `target/test262-iterator-includes` |
+| Iterator join | **36 / 36 pass** | `target/test262-iterator-join` |
+| Existing terminal callback helpers | **346 / 346 pass** | `target/test262-iterator-terminal-after-validation` |
+| Array.prototype.fill | **44 / 44 pass** | `target/test262-array-fill` |
+| Full current `built-ins/Iterator/` inventory | **1,308 / 1,308 pass** | `target/test262-iterator-after-zip` |
+
+With `zip`/`zipKeyed`'s closing behavior corrected (see below), the full
+current `built-ins/Iterator/` inventory now passes completely against this
+pinned snapshot; this is scoped to `built-ins/Iterator/` and this snapshot,
+not a whole-engine or whole-Test262 completion claim. The working tree has
+not been committed; the local BlueJS crate gate is green, while broader
+workspace and cross-platform gates remain required before any commit
+decision.
+
+`Iterator.zip`'s initial working-tree revision opened records eagerly in
+order but never closed already-opened ones when a later step (a bad
+`GetIteratorFlattenable`, an outer iterator step, or padding collection)
+raised abruptly, unlike the equivalent `Iterator.zipKeyed` path. Test262's
+five dedicated abrupt-completion fixtures under `built-ins/Iterator/zip/`
+(`iterables-iteration-get-iterator-flattenable-abrupt-completion`,
+`iterables-iteration-iterator-step-value-abrupt-completion`, and the three
+`padding-iteration-*-abrupt-completion` cases) caught this: 10 of the 164
+scheduled `zip`/`zipKeyed` modes failed before the fix, all under `zip/`.
+The corrected implementation distinguishes, per `IfAbruptCloseIterators`
+call site, whether the outer iterables iterator itself must also close; a
+new BlueJS-side regression test
+(`iterator_zip_closes_already_opened_records_in_order_on_abrupt_completion`)
+pins the exact close ordering for all four cases independently of the
+upstream corpus.
+
+## BigInt closure: StringToBigInt, asIntN/asUintN, toString(radix), and ++/-- typing
+
+Implemented 2026-09-18, against the pinned `72faf8ec1445c55149615e8b35187830783aba1a`
+snapshot's full `built-ins/BigInt/` inventory (154 scheduled modes, 77 files):
+
+| Stage | Result | Evidence |
+| --- | ---: | --- |
+| Session baseline (before this work) | 72 pass / 82 fail | `/tmp/bigint-baseline` |
+| After `asIntN`/`asUintN`, `StringToBigInt`, `ToBigInt`, and Number/String equality/comparison mixing | 138 pass / 16 fail | first commit below |
+| After `toString(radix)`, the ordinary (non-boxed) BigInt prototype, and BigInt's constructor whitelisting | 152 pass / 2 fail | second commit below |
+| After the Object/BigInt equality fallback and `++`/`--` BigInt typing | **154 / 154 pass** | `/tmp/bigint-after4` |
+
+`BigInt.asIntN`/`BigInt.asUintN` did not exist at all — no `NativeFunction`
+variant, nothing installed on the constructor — so every test under
+`built-ins/BigInt/asIntN` and `asUintN` failed outright. Implemented per
+sec-bigint.asintn/sec-bigint.asuintn: `ToIndex(bits)` then `ToBigInt(bigint)`
+in that order, each a single observable coercion; the result is wrapped into
+`[0, 2**bits)` via BigInt's truncating `%` corrected to a mathematical
+modulo (`asIntN` additionally reflects values at or above `2**(bits-1)` into
+the negative half). `bits` is capped at 1,000,000 — the same
+"implementation capacity" convention `bigint_shift`/`bigint_exponentiate`
+already use — so a ToIndex-valid but absurd `bits` (up to `2**53-1`) can't
+try to allocate an astronomically large BigInt.
+
+`BigInt(value)`'s own coercion had three real gaps: `BigInt(true)`/
+`BigInt(false)` threw `TypeError` instead of returning `1n`/`0n`; string
+coercion parsed only plain decimal digits via `BigInt::parse_bytes(_, 10)`,
+rejecting every `0x`/`0o`/`0b`-prefixed string and an empty/all-whitespace
+string (StringToBigInt says empty is `0n`); and the constructor duplicated
+its own coercion logic instead of sharing it with anything else that needs
+`ToBigInt`. Added `primitive::string_to_bigint` (a real StringToBigInt: an
+unsigned `0x`/`0o`/`0b` literal, or a signed decimal, `StrWhiteSpace`-trimmed
+on both ends, empty is `0n`) and a VM `to_bigint` helper (the `ToBigInt`
+abstract operation proper: Boolean/BigInt/String primitives convert, Number/
+Symbol/Null/Undefined/Object throw), both shared by the constructor and by
+`asIntN`/`asUintN`'s own `ToBigInt(bigint)` step.
+
+`primitive::compare` and `vm::operations::loose_equal` did not handle a
+BigInt operand against a String at all (fell through to `Ok(false)`/no
+match), and `loose_equal` didn't handle BigInt against Number either (`1n ==
+1` was `false`). Both now follow Abstract Relational Comparison/Abstract
+Equality Comparison's BigInt cases exactly. A second, later equality bug: the
+Object↔primitive `ToPrimitive`-unwrap fallback in `loose_equal` listed
+Number/String/Symbol as valid companions for an Object operand but not
+BigInt, so `Object(1n) == 1n` fell through to `false` instead of unwrapping
+the object first — caught by `wrapper-object-ordinary-toprimitive.js`, whose
+whole point is exercising an overridden `valueOf`/`toString` pair through
+several different `ToPrimitive` hints.
+
+`BigInt.prototype` was allocated as a boxed-primitive object holding `0n`,
+the same as `%Number.prototype%`/`%Boolean.prototype%` — but "Properties of
+the BigInt Prototype Object" explicitly says the BigInt prototype does *not*
+have a `[[BigIntData]]` internal slot. That made `BigInt.prototype.toString(1)`
+(and any other direct call on the bare prototype) silently treat it as `0n`
+instead of throwing `TypeError`. It's now allocated as a plain object;
+Number/Boolean keep their existing boxed-primitive prototypes.
+`BigInt.prototype.toString`/`valueOf` also didn't fall back to
+`test262_foreign_boxed_primitive` the way `Symbol.prototype`'s own methods
+already do, so a cross-realm-created boxed BigInt threw instead of reading
+the other realm's internal slot. Separately, `BigInt.prototype.toString(
+[radix])` never accepted a radix argument at all (always base 10); added
+`ToIntegerOrInfinity`-then-range-check handling for the optional radix
+(2-36, `RangeError` outside that range, `TypeError` for a Symbol/BigInt
+radix via the existing `ToNumber` rejection), backed by num-bigint's own
+`to_str_radix` for the a-z digit conversion. `BigInt` itself was also
+missing from both constructor whitelists (`is_constructor` and the generic
+`new`-gate in `vm.rs`), so `isConstructor(BigInt)` incorrectly reported
+`false` even though BigInt does have `[[Construct]]` (only failing once
+NewTarget is observed defined) — a distinction the existing, previously
+unreachable check inside BigInt's own native dispatch already encoded
+correctly once actually reached.
+
+The highest-leverage fix, by scope rather than by BigInt-directory mode
+count: `++`/`--` on a plain identifier compiled to a `ToNumber` opcode
+followed by adding a fixed `Number(1.0)` constant — `ToNumber` rejects
+BigInt outright, and even bypassing that, adding a Number to a BigInt is
+itself a rejected mix. Added a `ToNumeric` opcode (`ToNumber`'s
+BigInt-preserving sibling; unary `+` keeps using plain `ToNumber`, since it
+must still throw on BigInt) and a `PushOne` opcode that pushes a `1` of
+whichever numeric type `ToNumeric` just produced, so the following Add/
+Subtract never mixes types. `UpdateProperty`/`SuperUpdate` (member/super
+`++`/`--`) had the identical bug in their own Rust implementation and now
+share a new `numeric_step` VM helper instead. This is a core interpreter
+fix, not `built-ins/BigInt/`-local, so it also corrects `i++`/`obj.x--`/
+`super.x++` wherever a BigInt operand reaches them — e.g. it was the actual
+cause behind `built-ins/BigInt/prototype/toString/a-z.js`'s failure, whose
+own assertion is about `toString`'s digit set, not increment.
+
+`backend/bluejs/tests/bigint.rs` (30 tests) covers all of the above
+end-to-end through parse/compile/execute: `BigInt()`'s Number/Boolean/String/
+Symbol/null/undefined coercion paths (including the single-ToPrimitive-call
+guarantee), `StringToBigInt`'s full grammar (radix prefixes, blank-string
+zero, syntax-error rejections), BigInt mixing with Number/String in both
+`==` and relational operators (including through a boxed wrapper object),
+`asIntN`/`asUintN`'s wrap-around arithmetic, argument-coercion order,
+not-a-constructor status and property descriptors, `toString`'s radix range/
+digit-set/error paths, the now-ordinary BigInt prototype, BigInt's
+is-a-constructor-but-always-throws status, and `++`/`--` on BigInt
+identifiers/properties/super properties.
+
+Explicitly out of scope for this pass (left for the sibling TypedArray
+work): `BigInt64Array`/`BigUint64Array` construction and indexing,
+`DataView.prototype.{get,set}BigInt64`/`BigUint64`, and Atomics on BigInt
+typed arrays. Also not attempted: a systematic sweep of the ~215
+`features: [BigInt]`-tagged files under `test/language/` (as opposed to
+`test/built-ins/BigInt/`) beyond spot-checking that the `++`/`--` and
+equality fixes above don't regress the surrounding non-BigInt
+`postfix-increment`/`prefix-increment`/`equality` suites (291/323 passing
+there, with the 32 failures being pre-existing, non-BigInt reference/
+`putValue`-ordering/line-terminator gaps unrelated to this session's
+changes).

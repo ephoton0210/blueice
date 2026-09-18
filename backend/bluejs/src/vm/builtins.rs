@@ -16,13 +16,15 @@ mod promises;
 mod typed_arrays;
 use crate::heap::{
     same_value, ArrayIteratorKind, AsyncGeneratorCompletion, AsyncGeneratorDelegate,
-    AsyncGeneratorRequest, AsyncGeneratorStatus, GeneratorState, TypedArrayKind,
-    TypedArrayNumericKey,
+    AsyncGeneratorRequest, AsyncGeneratorStatus, GeneratorState, IteratorHelperKind,
+    IteratorHelperState, TypedArrayKind, TypedArrayNumericKey,
 };
 use crate::native::{
     AtomicOp, MapMethod, MathMethod, NumberMethod, ObjectMethod, PatternMethod, SetMethod,
     StringMethod, TypedArrayMethod, WeakCollectionMethod,
 };
+use num_bigint::BigUint;
+use num_traits::One;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -49,6 +51,94 @@ fn array_index_below_length(key: &PropertyName, length: u64) -> Option<u32> {
 fn same_value_zero(left: &Value, right: &Value) -> bool {
     left == right
         || matches!((left, right), (Value::Number(left), Value::Number(right)) if left.is_nan() && right.is_nan())
+}
+
+/// Return the exact, non-negative binary64 value as an integer divided by
+/// 2^1074. Keeping a single denominator lets `Number.prototype.toString`
+/// choose the shortest radix representation which rounds back to the input
+/// Number without accumulating floating-point conversion error.
+fn number_numerator(value: f64) -> BigUint {
+    debug_assert!(value.is_finite() && value >= 0.0);
+    let bits = value.to_bits();
+    let exponent = ((bits >> 52) & 0x7ff) as usize;
+    let fraction = bits & ((1_u64 << 52) - 1);
+    if exponent == 0 {
+        BigUint::from(fraction)
+    } else {
+        BigUint::from((1_u64 << 52) | fraction) << (exponent - 1)
+    }
+}
+
+fn number_radix_string(number: f64, radix: u32) -> String {
+    debug_assert!(number.is_finite() && number != 0.0 && (2..=36).contains(&radix));
+
+    let negative = number.is_sign_negative();
+    let magnitude = number.abs();
+    let numerator = number_numerator(magnitude);
+
+    // Values at least 2^52 are integral binary64 values. Their exact integer
+    // form also avoids needing an upper rounding boundary for MAX_VALUE.
+    if magnitude.fract() == 0.0 {
+        let output = (numerator >> 1074_usize).to_str_radix(radix);
+        return if negative {
+            format!("-{output}")
+        } else {
+            output
+        };
+    }
+
+    // A base-radix literal may differ from the exact binary value so long as
+    // parsing it rounds back to the same binary64. Search increasing numbers
+    // of fractional radix digits and use the closest candidate at each step.
+    // Every finite binary64 reaches a candidate within 1075 binary digits;
+    // larger radices only reduce that bound.
+    const DENOMINATOR_BITS: usize = 1074;
+    let denominator = BigUint::one() << DENOMINATOR_BITS;
+    let previous = number_numerator(f64::from_bits(magnitude.to_bits() - 1));
+    let next = number_numerator(f64::from_bits(magnitude.to_bits() + 1));
+    let lower = &numerator + previous;
+    let upper = &numerator + next;
+    let inclusive_boundary = magnitude.to_bits() & 1 == 0;
+    let mut power = BigUint::one();
+
+    for fraction_digits in 0..=DENOMINATOR_BITS + 1 {
+        let scaled = &numerator * &power;
+        let mut candidate = &scaled >> DENOMINATOR_BITS;
+        let remainder = scaled - (&candidate << DENOMINATOR_BITS);
+        let doubled_remainder = &remainder << 1;
+        if doubled_remainder > denominator
+            || (doubled_remainder == denominator && (&candidate & BigUint::one()) == BigUint::one())
+        {
+            candidate += BigUint::one();
+        }
+
+        // Compare candidate / radix^fraction_digits to the two exact
+        // round-to-nearest-even midpoints around `number`.
+        let candidate_scaled = &candidate << (DENOMINATOR_BITS + 1);
+        let lower_order = candidate_scaled.cmp(&(&lower * &power));
+        let upper_order = candidate_scaled.cmp(&(&upper * &power));
+        let above_lower = lower_order.is_gt() || (inclusive_boundary && lower_order.is_eq());
+        let below_upper = upper_order.is_lt() || (inclusive_boundary && upper_order.is_eq());
+        if above_lower && below_upper {
+            let digits = candidate.to_str_radix(radix);
+            let output = if fraction_digits == 0 {
+                digits
+            } else if digits.len() <= fraction_digits {
+                format!("0.{}{}", "0".repeat(fraction_digits - digits.len()), digits)
+            } else {
+                let split_at = digits.len() - fraction_digits;
+                format!("{}.{}", &digits[..split_at], &digits[split_at..])
+            };
+            return if negative {
+                format!("-{output}")
+            } else {
+                output
+            };
+        }
+        power *= radix;
+    }
+
+    unreachable!("every finite Number has a shortest radix representation")
 }
 
 /// Validate the non-mutating part of ValidateAndApplyPropertyDescriptor.
@@ -1263,6 +1353,25 @@ impl Vm {
                 .map(|formatted| Value::String(formatted.into()))
                 .map_err(|error| RuntimeError::RangeError(error.to_string()));
         }
+        if method == NumberMethod::ToString {
+            let radix = native::argument(args, 0);
+            if radix == &Value::Undefined {
+                return primitive::string(&Value::Number(number)).map(Value::String);
+            }
+            let radix = self.coerce_number(radix)?;
+            let radix = if radix.is_nan() { 0.0 } else { radix.trunc() };
+            if !radix.is_finite() || !(2.0..=36.0).contains(&radix) {
+                return Err(RuntimeError::RangeError(
+                    "Number.prototype.toString radix must be between 2 and 36".into(),
+                ));
+            }
+            if !number.is_finite() || number == 0.0 {
+                return primitive::string(&Value::Number(number)).map(Value::String);
+            }
+            return Ok(Value::String(
+                number_radix_string(number, radix as u32).into(),
+            ));
+        }
         // Number formatting canonicalizes -0 before producing a string.
         let mut number = number;
         if number == 0.0 {
@@ -1270,6 +1379,7 @@ impl Vm {
         }
         let source_string = || primitive::string(&Value::Number(number));
         match method {
+            NumberMethod::ToString => unreachable!("handled before numeric string methods"),
             NumberMethod::LocaleString => unreachable!("handled before numeric string methods"),
             NumberMethod::Fixed => {
                 let digits =
@@ -1410,6 +1520,44 @@ impl Vm {
 
     pub(super) fn coerce_length(&mut self, value: &Value) -> Result<f64, RuntimeError> {
         native::length(&Value::Number(self.coerce_number(value)?))
+    }
+
+    /// ToBigInt ( argument ). `coerce_primitive` performs the single
+    /// observable ToPrimitive(argument, number) call; everything after that
+    /// is non-observable dispatch on the resulting primitive's type.
+    pub(super) fn coerce_bigint(&mut self, value: &Value) -> Result<BigInt, RuntimeError> {
+        match self.coerce_primitive(value, "number")? {
+            Value::BigInt(value) => Ok(value),
+            Value::Bool(value) => Ok(BigInt::from(u8::from(value))),
+            Value::String(text) => {
+                let text = text
+                    .to_utf8()
+                    .map_err(|_| RuntimeError::SyntaxError("invalid BigInt string".into()))?;
+                primitive::string_to_bigint(&text)
+                    .ok_or_else(|| RuntimeError::SyntaxError("invalid BigInt string".into()))
+            }
+            Value::Number(_) => Err(RuntimeError::TypeError(
+                "cannot convert a Number to a BigInt".into(),
+            )),
+            Value::Null | Value::Undefined | Value::Symbol(_) | Value::Object(_) => Err(
+                RuntimeError::TypeError("cannot convert value to a BigInt".into()),
+            ),
+        }
+    }
+
+    /// ToIndex ( value ), for `BigInt.asIntN`/`asUintN`'s `bits` parameter.
+    /// The upper bound is the abstract operation's own 2**53-1, independent
+    /// of any host object's storage capacity (contrast `buffer_index`, which
+    /// bounds by `usize::MAX` for byte offsets/lengths instead).
+    pub(super) fn coerce_bigint_index(&mut self, value: &Value) -> Result<usize, RuntimeError> {
+        let integer = self.coerce_number(value)?;
+        let integer = if integer.is_nan() { 0.0 } else { integer.trunc() };
+        if !(0.0..=9_007_199_254_740_991.0).contains(&integer) {
+            return Err(RuntimeError::RangeError(
+                "index out of range".into(),
+            ));
+        }
+        Ok(integer as usize)
     }
 
     /// ECMA-262 §19.2.5 parseInt.  The scan is deliberately prefix based:
@@ -1815,13 +1963,19 @@ impl Vm {
             .expect("Function wrapper compiles one function declaration");
 
         debug_assert_eq!(child.async_function, async_function);
-        let function_prototype = if async_function {
+        let default_prototype = if async_function {
             self.async_function_prototype()?
-        } else if self.new_target != Value::Undefined {
-            let default = self.function_prototype()?;
-            self.constructor_prototype(default)?
         } else {
             self.function_prototype()?
+        };
+        // CreateDynamicFunction selects its function object's prototype with
+        // GetPrototypeFromConstructor for every dynamic function kind. In
+        // particular, `%AsyncFunction%` must observe a revoked Proxy
+        // newTarget rather than silently using its default prototype.
+        let function_prototype = if self.new_target != Value::Undefined {
+            self.constructor_prototype(default_prototype)?
+        } else {
+            default_prototype
         };
         // Compiling the wrapper declaration produces a single capture for
         // its declaration name. It is an implementation detail of using the

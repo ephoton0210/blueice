@@ -308,14 +308,14 @@ fn edition_17_regexp_flags_and_species_order_are_observable() {
 }
 
 #[test]
-fn capture_identity_and_primitive_protocol_lookup() {
+fn capture_identity_and_non_object_pattern_protocol_boundaries() {
     check(&[
         "let m=/(?<outer>(?<inner>a))(?<absent>b)?/d.exec('a'); m.indices.groups.outer === m.indices[1] && m.indices.groups.inner === m.indices[2] && m.indices[1] !== m.indices[2] && m.indices.groups.absent === undefined",
         "let m=/(x)(?<\\u0061>a)/d.exec('xa'); m.indices.groups.a === m.indices[2]",
         "let m=/(?<x>a)|(?<x>b)/d.exec('b'); m.indices.groups.x === m.indices[2]",
-        "Number.prototype[Symbol.match]=function(s){return s+this;}; 'a'.match(3) === 'a3'",
-        "String.prototype[Symbol.search]=()=>42; 'a'.search('b') === 42",
-        "Boolean.prototype[Symbol.matchAll]=()=>42; 'a'.matchAll(true) === 42",
+        "Number.prototype[Symbol.match]=function(s){return s+this;}; 'a'.match(3) === null",
+        "String.prototype[Symbol.search]=()=>42; 'a'.search('b') === -1",
+        "Boolean.prototype[Symbol.matchAll]=()=>42; 'a'.matchAll(true).next().done",
     ]);
     let source = "let o={}; Object.defineProperty(o,'x',{get value(){return {x:'alive'};},get writable(){let a={};return true;},get configurable(){let a={};return true;}}); o.x.x === 'alive'";
     let mut vm = Vm::new(blueice_bluejs::VmConfig {
@@ -642,12 +642,12 @@ fn syntax_metadata_and_remaining_protocol_boundaries() {
 }
 
 #[test]
-fn array_length_descriptors_coerce_once_and_reject_invalid_lengths() {
+fn array_length_descriptors_coerce_twice_and_reject_invalid_lengths() {
     check(&[
-        "let n=0; let a=[]; a.length={valueOf(){n++;return 2;}}; a.length === 2 && n === 1",
-        "let n=0; let a=[]; Object.defineProperty(a,'length',{value:{valueOf(){n++;return 2;}}}); a.length === 2 && n === 1",
+        "let n=0; let a=[]; a.length={valueOf(){n++;return 2;}}; a.length === 2 && n === 2",
+        "let n=0; let a=[]; Object.defineProperty(a,'length',{value:{valueOf(){n++;return 2;}}}); a.length === 2 && n === 2",
         "let a=[]; Object.defineProperty(a,'length',{value:'2'}); a.length === 2",
-        "let n=0;let range=false;try{Object.defineProperty([],'length',{value:{valueOf(){n++;return 1.5}}})}catch(error){range=error instanceof RangeError}range&&n===1",
+        "let n=0;let range=false;try{Object.defineProperty([],'length',{value:{valueOf(){n++;return 1.5}}})}catch(error){range=error instanceof RangeError}range&&n===2",
     ]);
     let source = "Object.defineProperty([],'length',{value:1.5})";
     assert!(

@@ -57,6 +57,7 @@ pub(crate) enum TypedArrayMethod {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NumberMethod {
+    ToString,
     LocaleString,
     Fixed,
     Exponential,
@@ -87,6 +88,25 @@ pub(crate) enum SetMethod {
     Add,
     Delete,
     Has,
+}
+
+/// The lazy iterator helpers share one native dispatcher. Keeping the method
+/// selector as payload avoids growing the global NativeFunction discriminant,
+/// whose size is part of each native heap object's footprint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IteratorHelperMethod {
+    Concat,
+    Zip,
+    ZipKeyed,
+    Chunks,
+    Windows,
+    Map,
+    Filter,
+    FlatMap,
+    Take,
+    Drop,
+    Includes,
+    Join,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -291,6 +311,7 @@ pub(crate) enum NativeFunction {
     },
     ArrayIsArray,
     ArrayAt,
+    ArrayFill,
     ArrayOf,
     ArraySpecies,
     ArrayFrom,
@@ -336,6 +357,8 @@ pub(crate) enum NativeFunction {
     },
     JsonParse,
     JsonStringify,
+    JsonRawJson,
+    JsonIsRawJson,
     Math(MathMethod),
     Error(&'static str),
     ErrorToString,
@@ -516,6 +539,8 @@ pub(crate) enum NativeFunction {
     BigIntToString,
     BigIntValueOf,
     BigIntToLocaleString,
+    BigIntAsIntN,
+    BigIntAsUintN,
     NumberIsFinite,
     NumberIsInteger,
     NumberIsSafeInteger,
@@ -530,6 +555,9 @@ pub(crate) enum NativeFunction {
     /// rejects both call and construct evaluation.
     Iterator,
     IteratorFrom,
+    IteratorHelper(IteratorHelperMethod),
+    IteratorHelperNext,
+    IteratorHelperReturn,
     IteratorWrapperNext,
     IteratorWrapperReturn,
     IteratorToArray,
@@ -542,6 +570,8 @@ pub(crate) enum NativeFunction {
     IteratorNext,
     IteratorSelf,
     IteratorDispose,
+    IteratorConstructorGetter,
+    IteratorConstructorSetter,
     IteratorToStringTagGetter,
     IteratorToStringTagSetter,
     AsyncIteratorSelf,

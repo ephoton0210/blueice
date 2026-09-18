@@ -35,6 +35,62 @@ impl Vm {
         result
     }
 
+    /// `Array.prototype.fill` performs `Set` for every index in the selected
+    /// range. Keeping this at the ordinary property boundary makes it generic
+    /// for array-like objects and preserves proxy and inherited-setter
+    /// behavior, rather than treating the receiver as dense Array storage.
+    pub(in super::super) fn array_fill(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        let object_value = Value::Object(object);
+        let base = self.stack.len();
+        self.stack.push(object_value.clone());
+        self.stack.extend(args.iter().cloned());
+        let result = (|| {
+            let length = self.get_property(&object_value, &"length".into())?;
+            let length = self.coerce_length(&length)?;
+            let start = self.array_fill_index(native::argument(args, 1), length)?;
+            let end = if args.get(2).is_some_and(|value| *value != Value::Undefined) {
+                self.array_fill_index(native::argument(args, 2), length)?
+            } else {
+                length as u64
+            };
+            let value = native::argument(args, 0).clone();
+            self.stack.push(value.clone());
+            for index in start..end.max(start) {
+                self.charge_step()?;
+                self.array_set_or_throw(object, index.to_string().into(), &value)?;
+            }
+            self.stack.pop();
+            Ok(object_value)
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// `ToIntegerOrInfinity` followed by Array's relative-index conversion.
+    /// `LengthOfArrayLike` is at most `2^53 - 1`, so every finite clamped
+    /// result is representable as an unsigned property index here.
+    fn array_fill_index(&mut self, value: &Value, length: f64) -> Result<u64, RuntimeError> {
+        let number = self.coerce_number(value)?;
+        let integer = if number.is_nan() || number == 0.0 {
+            0.0
+        } else {
+            number.trunc()
+        };
+        let index = if integer == f64::NEG_INFINITY {
+            0.0
+        } else if integer < 0.0 {
+            (length + integer).max(0.0)
+        } else {
+            integer.min(length)
+        };
+        Ok(index as u64)
+    }
+
     pub(in super::super) fn array_join(
         &mut self,
         receiver: &Value,
@@ -77,25 +133,85 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        let mut values = Vec::new();
-        for value in std::iter::once(receiver).chain(args) {
-            if let Some(object) = value
-                .object_id()
-                .filter(|id| self.heap.is_array(*id).unwrap_or(false))
-            {
-                let length = self.get_property(&Value::Object(object), &"length".into())?;
-                let length = self.coerce_length(&length)? as u64;
-                for index in 0..length {
-                    self.charge_step()?;
-                    values.push(
-                        self.get_property(&Value::Object(object), &index.to_string().into())?,
-                    );
+        // §23.1.3.2 starts by boxing the receiver, then creates its result
+        // through ArraySpeciesCreate. A primitive receiver therefore becomes
+        // one non-spread element, while an Array Proxy can still select its
+        // species and spread through the normal internal-method boundary.
+        let original = self.coerce_object(receiver)?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(original));
+        self.stack.extend(args.iter().cloned());
+        let result = (|| {
+            let target = self.array_species_create(original, 0)?;
+            self.stack.push(Value::Object(target));
+            let mut index = 0_u64;
+            for value in std::iter::once(Value::Object(original)).chain(args.iter().cloned()) {
+                self.stack.push(value.clone());
+                if self.array_is_concat_spreadable(&value)? {
+                    let source = self.coerce_object(&value)?;
+                    self.stack.push(Value::Object(source));
+                    let length = self.get_property(&Value::Object(source), &"length".into())?;
+                    let length = self.coerce_length(&length)? as u64;
+                    if index
+                        .checked_add(length)
+                        .is_none_or(|next| next > 9_007_199_254_740_991)
+                    {
+                        return Err(RuntimeError::TypeError(
+                            "concatenated Array length exceeds the safe integer limit".into(),
+                        ));
+                    }
+                    for source_index in 0..length {
+                        self.charge_step()?;
+                        let key: PropertyName = source_index.to_string().into();
+                        if self.has_property(source, &key)? {
+                            let element = self.get_property(&Value::Object(source), &key)?;
+                            self.stack.push(element.clone());
+                            self.array_create_data_property_or_throw(
+                                target,
+                                index.to_string().into(),
+                                element,
+                            )?;
+                            self.stack.pop();
+                        }
+                        index += 1;
+                    }
+                    self.stack.pop();
+                } else {
+                    if index >= 9_007_199_254_740_991 {
+                        return Err(RuntimeError::TypeError(
+                            "concatenated Array length exceeds the safe integer limit".into(),
+                        ));
+                    }
+                    self.array_create_data_property_or_throw(
+                        target,
+                        index.to_string().into(),
+                        value,
+                    )?;
+                    index += 1;
                 }
-            } else {
-                values.push(value.clone());
+                self.stack.pop();
             }
+            self.array_set_or_throw(target, "length".into(), &Value::Number(index as f64))?;
+            Ok(Value::Object(target))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// ECMAScript `IsConcatSpreadable`. The well-known-symbol lookup is
+    /// observable before `IsArray`; a false marker keeps even an Array (or an
+    /// Array Proxy) as a single element, while a true marker spreads an
+    /// arbitrary array-like object.
+    fn array_is_concat_spreadable(&mut self, value: &Value) -> Result<bool, RuntimeError> {
+        let Value::Object(_) = value else {
+            return Ok(false);
+        };
+        let marker =
+            self.get_property(value, &JsSymbol::well_known("isConcatSpreadable").into())?;
+        if marker != Value::Undefined {
+            return self.to_boolean(&marker);
         }
-        self.array_from(values)
+        self.is_array(value)
     }
 
     pub(in super::super) fn array_for_each(
@@ -1040,13 +1156,18 @@ impl Vm {
             let prototype = vm.array_prototype;
             vm.with_roots(|heap| heap.alloc_array(length, Some(prototype)))
         };
-        if !self.heap.is_array(original)? {
+        if !self.is_array(&Value::Object(original))? {
             return ordinary_array(self);
         }
         let original = Value::Object(original);
         let constructor = self.get_property(&original, &"constructor".into())?;
         if constructor == Value::Undefined {
             return ordinary_array(self);
+        }
+        if let Some(constructor) = constructor.object_id() {
+            if self.test262_foreign_intrinsic_constructor(constructor, "Array")? {
+                return ordinary_array(self);
+            }
         }
         if !matches!(constructor, Value::Object(_)) {
             return Err(RuntimeError::TypeError(

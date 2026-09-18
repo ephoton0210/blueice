@@ -104,6 +104,420 @@ fn iterator_terminal_helpers_share_step_and_early_close_protocol() {
 }
 
 #[test]
+fn iterator_map_and_filter_are_lazy_close_on_abrupt_completion_and_have_private_state() {
+    let source = r#"
+        let nextCalls = 0;
+        let closes = 0;
+        let source = {
+            next() { return nextCalls++ < 2 ? { value: nextCalls, done: false } : { done: true }; },
+            return() { closes++; return { done: true }; },
+        };
+        let mapped = Iterator.from(source).map((value, index) => value * 10 + index);
+        let first = mapped.next();
+        let second = mapped.next();
+        let done = mapped.next();
+        let closedAgain = mapped.return();
+        let filtered = Iterator.from([1, 2, 3, 4]).filter((value, index) => value % 2 && index === 0);
+        let filteredFirst = filtered.next();
+        let filteredDone = filtered.next();
+        let mapperClosed = Iterator.from({
+          next() { return { value: 1, done: false }; },
+          return() { closes++; return {}; },
+        }).map(() => { throw 1; });
+        let abrupt = false;
+        try { mapperClosed.next(); } catch (error) { abrupt = error === 1; }
+        let validationClosed = {
+          __proto__: Iterator.prototype,
+          get next() { throw 'next must stay unobserved'; },
+          return() { closes++; return {}; },
+        };
+        let invalid = false;
+        try { validationClosed.map({}); } catch (error) { invalid = error instanceof TypeError; }
+        nextCalls === 3 && first.value === 10 && !first.done &&
+          second.value === 21 && !second.done && done.done && closedAgain.done &&
+          filteredFirst.value === 1 && !filteredFirst.done && filteredDone.done &&
+          Object.getPrototypeOf(mapped)[Symbol.toStringTag] === 'Iterator Helper' &&
+          Object.keys(mapped).length === 0 && abrupt && invalid && closes === 2
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn iterator_take_and_drop_coerce_before_reading_next_and_preserve_lazy_close() {
+    let source = r#"
+        let effects = '';
+        let index = 0;
+        let source = {
+          get next() {
+            effects += 'next';
+            return () => index < 3 ? { value: index++, done: false } : { done: true };
+          },
+          return() { effects += 'return'; return {}; },
+        };
+        let taken = Iterator.prototype.take.call(source, {
+          valueOf() { effects += 'number'; return 2; },
+        });
+        let first = taken.next();
+        let second = taken.next();
+        let done = taken.next();
+        let dropped = Iterator.from([0, 1, 2, 3]).drop(2);
+        let droppedFirst = dropped.next();
+        let droppedSecond = dropped.next();
+        let rangeNext = 0;
+        let rangeClosed = 0;
+        let rangeSource = {
+          get next() { rangeNext++; return () => ({ done: true }); },
+          return() { rangeClosed++; return {}; },
+        };
+        let rangeError = false;
+        try { Iterator.prototype.take.call(rangeSource, undefined); }
+        catch (error) { rangeError = error instanceof RangeError; }
+        effects === 'numbernextreturn' &&
+          first.value === 0 && !first.done && second.value === 1 && !second.done && done.done &&
+          droppedFirst.value === 2 && !droppedFirst.done && droppedSecond.value === 3 && !droppedSecond.done &&
+          rangeError && rangeNext === 0 && rangeClosed === 1
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn iterator_includes_uses_same_value_zero_and_validates_skip_without_coercion() {
+    let source = r#"
+        let closes = 0;
+        let sourceIndex = 0;
+        let source = {
+          next() {
+            return sourceIndex++ < 3
+              ? { value: [0, NaN, 2][sourceIndex - 1], done: false }
+              : { done: true };
+          },
+          return() { closes++; return {}; },
+        };
+        let found = Iterator.prototype.includes.call(source, NaN, 1);
+        let invalidNextGets = 0;
+        let invalidCloses = 0;
+        let invalid = {
+          get next() { invalidNextGets++; return () => ({ done: true }); },
+          return() { invalidCloses++; return {}; },
+        };
+        let rangeError = false;
+        try { Iterator.prototype.includes.call(invalid, 0, -1); }
+        catch (error) { rangeError = error instanceof RangeError; }
+        let coerced = false;
+        let typeError = false;
+        try {
+          Iterator.prototype.includes.call(invalid, 0, {
+            valueOf() { coerced = true; return 0; },
+          });
+        } catch (error) { typeError = error instanceof TypeError; }
+        found && closes === 1 && rangeError && typeError && !coerced &&
+          invalidNextGets === 0 && invalidCloses === 2
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn iterator_join_coerces_separator_before_next_and_closes_on_content_errors() {
+    let source = r#"
+        let effects = '';
+        let index = 0;
+        let iterator = {
+          get next() {
+            effects += 'next';
+            return () => index++ < 2 ? { value: ['one', null][index - 1], done: false } : { done: true };
+          },
+        };
+        let separator = { toString() { effects += 'separator'; return '&&'; } };
+        let joined = Iterator.prototype.join.call(iterator, separator);
+        let closed = 0;
+        let contentError = false;
+        let throwing = {
+          next() { return { value: { toString() { throw 1; } }, done: false }; },
+          return() { closed++; return {}; },
+        };
+        try { Iterator.prototype.join.call(throwing); }
+        catch (error) { contentError = error === 1; }
+        joined === 'one&&' && effects === 'separatornext' && contentError && closed === 1
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn iterator_flat_map_is_lazy_flattens_one_level_and_closes_active_inner_iterator() {
+    let source = r#"
+        let outerSteps = 0;
+        let mapperCalls = 0;
+        let flattened = Iterator.from({
+          next() { return outerSteps++ < 2 ? { value: outerSteps, done: false } : { done: true }; },
+          return() { return {}; },
+        }).flatMap((value, index) => { mapperCalls++; return [value, index]; });
+        let first = flattened.next();
+        let second = flattened.next();
+        let third = flattened.next();
+        let innerCloses = 0;
+        let outerCloses = 0;
+        let active = Iterator.from({
+          next() { return { value: 1, done: false }; },
+          return() { outerCloses++; return {}; },
+        }).flatMap(() => ({
+          next() { return { value: 9, done: false }; },
+          return() { innerCloses++; return {}; },
+        }));
+        let activeValue = active.next();
+        active.return();
+        mapperCalls === 2 && outerSteps === 2 && first.value === 1 && second.value === 0 &&
+          third.value === 2 && activeValue.value === 9 && innerCloses === 1 && outerCloses === 1
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn iterator_concat_snapshots_methods_but_opens_lazily_and_closes_the_active_source() {
+    let source = r#"
+        let methodGets = 0;
+        let opens = '';
+        let closes = 0;
+        let first = {
+          get [Symbol.iterator]() {
+            methodGets++;
+            return function() {
+              opens += 'a';
+              let yielded = false;
+              return {
+                next() { return yielded ? { done: true } : (yielded = true, { value: 1, done: false }); },
+                return() { closes += 10; return {}; },
+              };
+            };
+          },
+        };
+        let second = {
+          get [Symbol.iterator]() {
+            methodGets++;
+            return function() {
+              opens += 'b';
+              return {
+                next() { return { value: 2, done: false }; },
+                return() { closes++; return {}; },
+              };
+            };
+          },
+        };
+        let joined = Iterator.concat(first, second);
+        let beforeNext = methodGets === 2 && opens === '';
+        let firstValue = joined.next();
+        let secondValue = joined.next();
+        let closed = joined.return();
+        beforeNext && firstValue.value === 1 && secondValue.value === 2 &&
+          opens === 'ab' && closes === 1 && closed.done
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn iterator_chunks_validates_before_next_and_yields_full_and_partial_arrays() {
+    let source = r#"
+        let nextGets = 0;
+        let closes = 0;
+        let invalidSource = {
+          get next() { nextGets++; return () => ({ done: true }); },
+          return() { closes++; return {}; },
+        };
+        let rangeError = false;
+        try { Iterator.prototype.chunks.call(invalidSource, 0); }
+        catch (error) { rangeError = error instanceof RangeError; }
+        let typeError = false;
+        try { Iterator.prototype.chunks.call(invalidSource, Infinity); }
+        catch (error) { typeError = error instanceof TypeError; }
+        let chunked = Iterator.from([0, 1, 2, 3, 4]).chunks(2);
+        let first = chunked.next();
+        let second = chunked.next();
+        let last = chunked.next();
+        let done = chunked.next();
+        rangeError && typeError && nextGets === 0 && closes === 2 &&
+          first.value.length === 2 && first.value[0] === 0 && first.value[1] === 1 &&
+          second.value.length === 2 && second.value[0] === 2 && second.value[1] === 3 &&
+          last.value.length === 1 && last.value[0] === 4 && done.done
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn iterator_windows_slides_lazily_and_can_return_one_undersized_window() {
+    let source = r#"
+        let nextGets = 0;
+        let closes = 0;
+        let invalidSource = {
+          get next() { nextGets++; return () => ({ done: true }); },
+          return() { closes++; return {}; },
+        };
+        let invalidMode = false;
+        try { Iterator.prototype.windows.call(invalidSource, 2, 'bad'); }
+        catch (error) { invalidMode = error instanceof TypeError; }
+        let windows = Iterator.from([0, 1, 2, 3]).windows(2);
+        let first = windows.next();
+        let second = windows.next();
+        let third = windows.next();
+        let done = windows.next();
+        let partial = Iterator.from([7, 8]).windows(3, 'allow-partial').next();
+        invalidMode && nextGets === 0 && closes === 1 &&
+          first.value[0] === 0 && first.value[1] === 1 &&
+          second.value[0] === 1 && second.value[1] === 2 &&
+          third.value[0] === 2 && third.value[1] === 3 && done.done &&
+          partial.value.length === 2 && partial.value[0] === 7 && partial.value[1] === 8
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn iterator_constructor_is_an_accessor_with_a_prototype_ignoring_setter() {
+    let source = r#"
+        let descriptor = Object.getOwnPropertyDescriptor(Iterator.prototype, 'constructor');
+        let child = Object.create(Iterator.prototype);
+        let sentinel = {};
+        descriptor.set.call(child, sentinel);
+        let rejected = false;
+        try { descriptor.set.call(Iterator.prototype, sentinel); }
+        catch (error) { rejected = error instanceof TypeError; }
+        typeof descriptor.get === 'function' && typeof descriptor.set === 'function' &&
+          descriptor.get.call() === Iterator && child.constructor === sentinel &&
+          Iterator.prototype.constructor === Iterator && rejected
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn iterator_zip_collects_eager_input_records_and_yields_fresh_rows() {
+    let source = r#"
+        let zipped = Iterator.zip([[1, 2], [3, 4]]);
+        let first = zipped.next();
+        let second = zipped.next();
+        let done = zipped.next();
+        let empty = Iterator.zip([]).next();
+        let descriptor = Object.getOwnPropertyDescriptor(first, 'value');
+        let shortest = Iterator.zip([[1], [2, 3]]);
+        let shortestValue = shortest.next();
+        let shortestDone = shortest.next();
+        let longest = Iterator.zip([[1], [2, 3]], { mode: 'longest', padding: ['p'] });
+        let longestFirst = longest.next();
+        let longestSecond = longest.next();
+        let longestDone = longest.next();
+        let emptyLongest = Iterator.zip([], { mode: 'longest', padding: [] }).next();
+        let emptyPaddedLongest = Iterator.zip([], { mode: 'longest', padding: ['p'] }).next();
+        let numbers = { *[Symbol.iterator]() { let value = 10; while (true) yield value++; } };
+        let generatedPadding = Iterator.zip([[], []], { mode: 'longest', padding: numbers }).next();
+        zipped instanceof Iterator && Object.getPrototypeOf(first) === Object.prototype &&
+          descriptor.writable && descriptor.enumerable && descriptor.configurable &&
+          !first.done && first.value.length === 2 && first.value[0] === 1 && first.value[1] === 3 &&
+          !second.done && second.value.length === 2 && second.value[0] === 2 && second.value[1] === 4 &&
+          first.value !== second.value && done.done && empty.done &&
+          shortestValue.value[0] === 1 && shortestValue.value[1] === 2 && shortestDone.done &&
+          longestFirst.value[0] === 1 && longestFirst.value[1] === 2 &&
+          longestSecond.value[0] === 'p' && longestSecond.value[1] === 3 && longestDone.done &&
+          emptyLongest.done && emptyPaddedLongest.done && generatedPadding.done
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn iterator_zip_closes_already_opened_records_in_order_on_abrupt_completion() {
+    let source = r#"
+        function record(name, log) {
+            return {
+                next() { log.push('next ' + name); },
+                return() {
+                    log.push('close ' + name);
+                    throw new Error('ignored');
+                },
+            };
+        }
+        let flattenLog = [];
+        let first = record('first', flattenLog);
+        let second = record('second', flattenLog);
+        let bad = { [Symbol.iterator]() { throw 'flatten'; } };
+        let elements = [first, second, bad][Symbol.iterator]();
+        let iterables = {
+            [Symbol.iterator]() { return this; },
+            next() { flattenLog.push('call next'); return elements.next(); },
+            return() { flattenLog.push('close iterables'); throw new Error('ignored'); },
+        };
+        let flattenError;
+        try { Iterator.zip(iterables); } catch (error) { flattenError = error; }
+
+        let stepLog = [];
+        let stepFirst = record('first', stepLog);
+        let stepSecond = record('second', stepLog);
+        let stepElements = [stepFirst, stepSecond][Symbol.iterator]();
+        let stepIterables = {
+            [Symbol.iterator]() { return this; },
+            next() {
+                let result = stepElements.next();
+                if (result.done) throw 'step';
+                return result;
+            },
+            return() { stepLog.push('UNEXPECTED close iterables'); },
+        };
+        let stepError;
+        try { Iterator.zip(stepIterables); } catch (error) { stepError = error; }
+
+        let paddingLog = [];
+        let paddingFirst = record('first', paddingLog);
+        let paddingSecond = record('second', paddingLog);
+        let badPadding = { [Symbol.iterator]() { throw 'padding'; } };
+        let paddingError;
+        try {
+            Iterator.zip([paddingFirst, paddingSecond], { mode: 'longest', padding: badPadding });
+        } catch (error) { paddingError = error; }
+
+        let closeLog = [];
+        let closeFirst = record('first', closeLog);
+        let closeSecond = record('second', closeLog);
+        let closingPadding = {
+            [Symbol.iterator]() { return this; },
+            next() { return { done: false, value: 'p' }; },
+            return() { closeLog.push('close padding'); throw 'padding-close'; },
+        };
+        let closeError;
+        try {
+            Iterator.zip([closeFirst, closeSecond], { mode: 'longest', padding: closingPadding });
+        } catch (error) { closeError = error; }
+
+        flattenError === 'flatten' &&
+          flattenLog.join(',') === 'call next,call next,call next,close second,close first,close iterables' &&
+          stepError === 'step' &&
+          stepLog.join(',') === 'close second,close first' &&
+          paddingError === 'padding' &&
+          paddingLog.join(',') === 'close second,close first' &&
+          closeError === 'padding-close' &&
+          closeLog.join(',') === 'close padding,close second,close first'
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn iterator_zip_keyed_filters_undefined_inputs_and_creates_null_results() {
+    let source = r#"
+        let symbol = Symbol('symbol');
+        let keyed = Iterator.zipKeyed({ a: [1, 2], skipped: undefined, b: [3, 4], [symbol]: [5, 6] });
+        let first = keyed.next();
+        let second = keyed.next();
+        let done = keyed.next();
+        let longest = Iterator.zipKeyed({ a: [1], b: [2, 3] }, { mode: 'longest', padding: { a: 'p' } });
+        let longestFirst = longest.next();
+        let longestSecond = longest.next();
+        let longestDone = longest.next();
+        let descriptor = Object.getOwnPropertyDescriptor(first.value, 'a');
+        Object.getPrototypeOf(first.value) === null &&
+          first.value.a === 1 && first.value.b === 3 && first.value[symbol] === 5 &&
+          !('skipped' in first.value) && second.value.a === 2 && second.value.b === 4 &&
+          second.value[symbol] === 6 && first.value !== second.value && done.done &&
+          descriptor.writable && descriptor.enumerable && descriptor.configurable &&
+          longestFirst.value.a === 1 && longestFirst.value.b === 2 &&
+          longestSecond.value.a === 'p' && longestSecond.value.b === 3 && longestDone.done
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
 fn undeclared_for_heads_use_assignment_patterns_and_close_on_abrupt_assignment() {
     for source in [
         "let first=0;let second=0;let rest;for([first,second=3,...rest] of [[1,undefined,4,5]]){}first===1&&second===3&&rest.length===2&&rest[0]===4&&rest[1]===5",

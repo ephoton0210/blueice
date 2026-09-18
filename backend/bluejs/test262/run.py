@@ -58,8 +58,41 @@ NATIVE_DEEP_EQUAL_FIXTURES = frozenset({
     "intl402/DateTimeFormat/prototype/formatToParts/temporal-objects-resolved-time-zone.js",
     "intl402/DateTimeFormat/prototype/formatRangeToParts/temporal-objects-resolved-time-zone.js",
 })
+# Running more VM subprocesses than the host has schedulable CPUs turns the
+# ordinary per-case deadline into a scheduler-delay detector on slower hosts.
+# Keep the historical eight-worker ceiling, while making the default portable
+# across macOS, Linux, and Windows CI machines.
+MAX_DEFAULT_JOBS = 8
+
+
+def default_jobs(cpu_count=None):
+    """Return the portable default worker count for a full inventory run."""
+    if cpu_count is None:
+        cpu_count = os.cpu_count()
+    return max(1, min(MAX_DEFAULT_JOBS, cpu_count or 1))
+
+
 TAIL_CALL_INSTRUCTION_BUDGET = 3_000_000
 TAIL_CALL_TIMEOUT = 30
+# This fixture traverses every reachable well-known intrinsic and validates
+# its built-in function source representation. It is finite, but on a busy
+# debug-interpreter worker its two modes can each take more than the general
+# finite-stress allowance.
+BUILTIN_FUNCTION_TOSTRING_FIXTURE = (
+    "built-ins/Function/prototype/toString/built-in-function-object.js"
+)
+BUILTIN_FUNCTION_TOSTRING_TIMEOUT = 180
+# These two fixed match-indices conformance files can wait for the dedicated
+# RegExp worker to warm up under a parallel inventory. Keep that allowance
+# attached to their exact paths instead of relaxing the default deadline for
+# all RegExp tests.
+REGEXP_MATCH_INDICES_FIXTURES = frozenset(
+    {
+        "built-ins/RegExp/match-indices/indices-array-non-unicode-match.js",
+        "built-ins/RegExp/match-indices/indices-array-unicode-match.js",
+    }
+)
+REGEXP_MATCH_INDICES_TIMEOUT = 30
 # Test262's Unicode identifier tables contain tens of thousands of declarations
 # and escaped identifier spellings. Parsing and compiling them is bounded work,
 # but exceeds the general two-second script deadline in an interpreter build.
@@ -185,6 +218,9 @@ FINITE_STRESS_FIXTURES = frozenset(
         "annexB/built-ins/RegExp/RegExp-leading-escape-BMP.js",
         "annexB/built-ins/RegExp/RegExp-trailing-escape-BMP.js",
         "built-ins/Array/prototype/concat/Array.prototype.concat_large-typed-array.js",
+        # This walks the complete reachable graph of well-known intrinsics
+        # and checks each built-in function's NativeFunction source form.
+        "built-ins/Function/prototype/toString/built-in-function-object.js",
         "built-ins/RegExp/character-class-escape-non-whitespace.js",
         "built-ins/String/prototype/repeat/repeat-string-n-times.js",
         "built-ins/parseFloat/S15.1.2.3_A6.js",
@@ -232,9 +268,21 @@ FINITE_STRESS_FIXTURES = frozenset(
         "language/module-code/top-level-await/rejection-order.js",
         "language/module-code/top-level-await/unobservable-global-async-evaluation-count-reset.js",
         "staging/sm/Array/sort_holes.js",
+        # These legacy staging fixtures have fixed, small workloads, but use
+        # deep helper recursion or TypedArray dispatch that can exceed the
+        # ordinary wall deadline when every runner worker is cold or busy.
+        "staging/sm/Reflect/propertyKeys.js",
+        "staging/sm/TypedArray/filter-species.js",
+        "staging/sm/TypedArray/map-species.js",
+        "staging/sm/TypedArray/sort_snans.js",
+        "staging/sm/generators/delegating-yield-9.js",
+        "staging/sm/object/entries.js",
         "staging/sm/Function/has-instance-jitted.js",
         "staging/sm/Function/function-toString-builtin.js",
         "staging/sm/Proxy/ownkeys-linear.js",
+        # Generated Unicode 16 case-folding coverage checks every recorded
+        # equivalence class through both literal and character-class regexps.
+        "staging/sm/RegExp/unicode-ignoreCase.js",
         "staging/sm/String/fromCodePoint.js",
         "staging/sm/String/string-pad-start-end.js",
         STRING_CASE_MAPPING_FIXTURE,
@@ -290,6 +338,23 @@ TEMPORAL_CALENDAR_MATRIX_FIXTURES = frozenset(
 )
 TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET = 10_000_000
 TEMPORAL_CALENDAR_MATRIX_TIMEOUT = 360
+# The six upstream Iterator.zip/zipKeyed basic fixtures enumerate every prefix
+# combination through three inputs, then verify descriptor details for every
+# yielded row. They are finite conformance matrices, not an unbounded iterator
+# probe; keep their larger envelope exact and leave ordinary iterator cases at
+# the default budget.
+ITERATOR_ZIP_BASIC_MATRIX_FIXTURES = frozenset(
+    {
+        "built-ins/Iterator/zip/basic-shortest.js",
+        "built-ins/Iterator/zip/basic-longest.js",
+        "built-ins/Iterator/zip/basic-strict.js",
+        "built-ins/Iterator/zipKeyed/basic-shortest.js",
+        "built-ins/Iterator/zipKeyed/basic-longest.js",
+        "built-ins/Iterator/zipKeyed/basic-strict.js",
+    }
+)
+ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET = 10_000_000
+ITERATOR_ZIP_BASIC_MATRIX_TIMEOUT = 15
 # These six historical RegExp BMP enumerations parse or execute one pattern
 # for every UTF-16 code unit. They compete for the isolated matcher processes
 # during a parallel inventory run, so their measured per-mode bound is higher
@@ -534,6 +599,8 @@ def instruction_budget(data, default, relative=None, source=""):
     """Keep standard tail-call conformance probes within a bounded budget."""
     if relative in TEMPORAL_CALENDAR_MATRIX_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET)
+    if relative in ITERATOR_ZIP_BASIC_MATRIX_FIXTURES:
+        return max(default, ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET)
     if relative == NUMBER_FORMAT_NATIVE_PRECISION_MATRIX_FIXTURE:
         return default
     if relative in URI_EXHAUSTIVE_FIXTURES:
@@ -561,6 +628,12 @@ def case_timeout(data, default, relative=None, source=""):
     """Return a bounded, metadata-derived wall deadline for a Test262 mode."""
     if relative in TEMPORAL_CALENDAR_MATRIX_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_MATRIX_TIMEOUT)
+    if relative in ITERATOR_ZIP_BASIC_MATRIX_FIXTURES:
+        return max(default, ITERATOR_ZIP_BASIC_MATRIX_TIMEOUT)
+    if relative == BUILTIN_FUNCTION_TOSTRING_FIXTURE:
+        return max(default, BUILTIN_FUNCTION_TOSTRING_TIMEOUT)
+    if relative in REGEXP_MATCH_INDICES_FIXTURES:
+        return max(default, REGEXP_MATCH_INDICES_TIMEOUT)
     if relative == NUMBER_FORMAT_NATIVE_PRECISION_MATRIX_FIXTURE:
         return default
     if relative == SUPPORTED_LOCALES_UNICODE_EXTENSION_FIXTURE:
@@ -730,7 +803,7 @@ def main():
     parser.add_argument("--corpus", type=Path, default=ROOT / "development/browser_core/reference/test262")
     parser.add_argument("--adapter", type=Path, default=ROOT / "target/debug/bluejs-test262")
     parser.add_argument("--output", type=Path, default=ROOT / "target/test262")
-    parser.add_argument("--jobs", type=int, default=8)
+    parser.add_argument("--jobs", type=int, default=default_jobs())
     parser.add_argument("--timeout", type=float, default=2)
     parser.add_argument("--instruction-budget", type=int, default=100_000)
     parser.add_argument(
@@ -926,7 +999,46 @@ def main():
             reporter.join()
         for worker in workers:
             worker.close()
-    report = {"snapshot": SNAPSHOT, "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(), "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "regex_worker_sha256": hashlib.sha256(regex_worker_binary(args.adapter).read_bytes()).hexdigest(), "complete_inventory": not args.filter and not args.exclude, "filter": args.filter, "exclude": args.exclude, "discovered_js": len(all_files), "fixture_resources": len(fixtures), "test_files": len(files), "scheduled_modes": sum(counters.values()), "results": counters, "groups": groups, "features": features, "elapsed_seconds": round(time.monotonic() - start, 3), "timeout_seconds": args.timeout, "typed_array_harness_timeout_seconds": TYPED_ARRAY_HARNESS_TIMEOUT, "typed_array_harness_instruction_budget": TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET, "instruction_budget": args.instruction_budget, "tail_call_instruction_budget": TAIL_CALL_INSTRUCTION_BUDGET, "tail_call_timeout_seconds": TAIL_CALL_TIMEOUT, "unicode_identifier_timeout_seconds": UNICODE_IDENTIFIER_TIMEOUT, "uri_global_instruction_budget": URI_GLOBAL_INSTRUCTION_BUDGET, "uri_global_timeout_seconds": URI_GLOBAL_TIMEOUT, "uri_exhaustive_instruction_budget": URI_EXHAUSTIVE_INSTRUCTION_BUDGET, "uri_exhaustive_timeout_seconds": URI_EXHAUSTIVE_TIMEOUT, "temporal_calendar_matrix_instruction_budget": TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET, "temporal_calendar_matrix_timeout_seconds": TEMPORAL_CALENDAR_MATRIX_TIMEOUT, "jobs": args.jobs, "limitations": ["static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable", "unclassified parser rejections never satisfy parse-SyntaxError negative tests", "harness sources still require supported grammar and APIs", "native overrides for sta.js, assert.js, propertyHelper.js, isConstructor.js, the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness", "each mode has a bounded interpreter instruction budget; tail-call, TypedArray-harness, and the two Temporal calendar matrices receive their recorded budgets"]}
+    report = {
+        "snapshot": SNAPSHOT,
+        "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(),
+        "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "regex_worker_sha256": hashlib.sha256(regex_worker_binary(args.adapter).read_bytes()).hexdigest(),
+        "complete_inventory": not args.filter and not args.exclude,
+        "filter": args.filter,
+        "exclude": args.exclude,
+        "discovered_js": len(all_files),
+        "fixture_resources": len(fixtures),
+        "test_files": len(files),
+        "scheduled_modes": sum(counters.values()),
+        "results": counters,
+        "groups": groups,
+        "features": features,
+        "elapsed_seconds": round(time.monotonic() - start, 3),
+        "timeout_seconds": args.timeout,
+        "typed_array_harness_timeout_seconds": TYPED_ARRAY_HARNESS_TIMEOUT,
+        "typed_array_harness_instruction_budget": TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET,
+        "instruction_budget": args.instruction_budget,
+        "tail_call_instruction_budget": TAIL_CALL_INSTRUCTION_BUDGET,
+        "tail_call_timeout_seconds": TAIL_CALL_TIMEOUT,
+        "unicode_identifier_timeout_seconds": UNICODE_IDENTIFIER_TIMEOUT,
+        "uri_global_instruction_budget": URI_GLOBAL_INSTRUCTION_BUDGET,
+        "uri_global_timeout_seconds": URI_GLOBAL_TIMEOUT,
+        "uri_exhaustive_instruction_budget": URI_EXHAUSTIVE_INSTRUCTION_BUDGET,
+        "uri_exhaustive_timeout_seconds": URI_EXHAUSTIVE_TIMEOUT,
+        "temporal_calendar_matrix_instruction_budget": TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET,
+        "temporal_calendar_matrix_timeout_seconds": TEMPORAL_CALENDAR_MATRIX_TIMEOUT,
+        "iterator_zip_basic_matrix_instruction_budget": ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET,
+        "iterator_zip_basic_matrix_timeout_seconds": ITERATOR_ZIP_BASIC_MATRIX_TIMEOUT,
+        "jobs": args.jobs,
+        "limitations": [
+            "static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable",
+            "unclassified parser rejections never satisfy parse-SyntaxError negative tests",
+            "harness sources still require supported grammar and APIs",
+            "native overrides for sta.js, assert.js, propertyHelper.js, isConstructor.js, the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness",
+            "each mode has a bounded interpreter instruction budget; tail-call, TypedArray-harness, the two Temporal calendar matrices, and the six finite Iterator.zip/zipKeyed basic matrices receive their recorded budgets",
+        ],
+    }
     (args.output / "summary.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps({key: report[key] for key in ("test_files", "scheduled_modes", "results", "elapsed_seconds")}, indent=2))
     return 0 if counters["pass"] == sum(counters.values()) else 1

@@ -11,36 +11,45 @@ impl Vm {
         }
         let object_prototype = self.object_prototype;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let function_prototype = self.function_prototype()?;
-        self.install_native(
-            prototype,
-            function_prototype,
-            "then",
-            2,
-            NativeFunction::PromiseThen,
-        )?;
-        self.install_native(
-            prototype,
-            function_prototype,
-            "catch",
-            1,
-            NativeFunction::PromiseCatch,
-        )?;
-        self.install_native(
-            prototype,
-            function_prototype,
-            "finally",
-            1,
-            NativeFunction::PromiseFinally,
-        )?;
-        self.define_data(
-            prototype,
-            JsSymbol::well_known("toStringTag"),
-            Value::String("Promise".into()),
-            false,
-            false,
-            true,
-        )?;
+        // Building the methods below allocates native function objects. Keep
+        // the freshly-created prototype rooted until its cache entry makes it
+        // permanently reachable from the Realm.
+        let base = self.stack.len();
+        self.stack.push(Value::Object(prototype));
+        let result: Result<(), RuntimeError> = (|| {
+            let function_prototype = self.function_prototype()?;
+            self.install_native(
+                prototype,
+                function_prototype,
+                "then",
+                2,
+                NativeFunction::PromiseThen,
+            )?;
+            self.install_native(
+                prototype,
+                function_prototype,
+                "catch",
+                1,
+                NativeFunction::PromiseCatch,
+            )?;
+            self.install_native(
+                prototype,
+                function_prototype,
+                "finally",
+                1,
+                NativeFunction::PromiseFinally,
+            )?;
+            self.define_data(
+                prototype,
+                JsSymbol::well_known("toStringTag"),
+                Value::String("Promise".into()),
+                false,
+                false,
+                true,
+            )
+        })();
+        self.stack.truncate(base);
+        result?;
         self.promise_prototype = Some(prototype);
         Ok(prototype)
     }
@@ -718,6 +727,7 @@ impl Vm {
             Value::Object(_) => true,
             Value::Symbol(symbol) => !self
                 .symbol_registry
+                .borrow()
                 .values()
                 .any(|registered| registered == symbol),
             _ => false,
@@ -847,6 +857,13 @@ impl Vm {
 
     pub(in super::super) fn new_promise(&mut self) -> Result<ObjectId, RuntimeError> {
         let prototype = self.promise_prototype()?;
+        self.new_promise_with_prototype(prototype)
+    }
+
+    fn new_promise_with_prototype(
+        &mut self,
+        prototype: ObjectId,
+    ) -> Result<ObjectId, RuntimeError> {
         let promise = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         self.promises.insert(
             promise,
@@ -977,13 +994,22 @@ impl Vm {
                 "Promise resolver is not a function".into(),
             ));
         }
-        let promise = self.new_promise()?;
-        // The capability must survive allocations for its resolving functions
-        // and for executor invocation.
+        // PromiseCreate uses OrdinaryCreateFromConstructor, so a distinct
+        // newTarget can observe its `prototype` getter (and a revoked Proxy
+        // there must throw) before the promise record is allocated.
+        let default_prototype = self.promise_prototype()?;
+        let prototype = self.constructor_prototype(default_prototype)?;
+        let promise = self.new_promise_with_prototype(prototype)?;
+        // The capability and both resolving functions must survive further
+        // allocations. In particular, creating `reject` can collect the
+        // freshly-created `resolve` function before the executor observes it.
+        let base = self.stack.len();
         self.stack.push(Value::Object(promise));
         let result = (|| {
             let resolve = self.promise_resolving_function(promise, true)?;
+            self.stack.push(resolve.clone());
             let reject = self.promise_resolving_function(promise, false)?;
+            self.stack.push(reject.clone());
             match self.call_native(executor, Value::Undefined, vec![resolve, reject], false) {
                 Ok(_) => {}
                 Err(RuntimeError::Thrown(value)) => {
@@ -996,7 +1022,7 @@ impl Vm {
             }
             Ok(Value::Object(promise))
         })();
-        self.stack.pop();
+        self.stack.truncate(base);
         result
     }
 
@@ -1006,8 +1032,9 @@ impl Vm {
         self.stack.push(Value::Object(promise));
         let result = (|| {
             let resolve = self.promise_resolving_function(promise, true)?;
+            self.stack.push(resolve.clone());
             let reject = self.promise_resolving_function(promise, false)?;
-            self.stack.extend([resolve.clone(), reject.clone()]);
+            self.stack.push(reject.clone());
             let object_prototype = self.object_prototype;
             let capability = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
             self.stack.push(Value::Object(capability));
@@ -1386,15 +1413,24 @@ impl Vm {
                 },
             );
             for (index, value) in values.into_iter().enumerate() {
-                let input =
-                    self.call_native(resolve.clone(), constructor.clone(), vec![value], false)?;
-                let fulfilled = self.promise_all_handler(promise, Some(index as u32))?;
-                let rejected = self.promise_all_handler(promise, None)?;
-                // Invoke rather than internally attaching a reaction: an
-                // own `then` getter/method on the resolved value is part of
-                // Promise.all's observable error surface.
-                let then = self.get_property(&input, &"then".into())?;
-                self.call_native(then, input, vec![fulfilled, rejected], false)?;
+                let entry_base = self.stack.len();
+                let result = (|| {
+                    let input =
+                        self.call_native(resolve.clone(), constructor.clone(), vec![value], false)?;
+                    self.stack.push(input.clone());
+                    let fulfilled = self.promise_all_handler(promise, Some(index as u32))?;
+                    self.stack.push(fulfilled.clone());
+                    let rejected = self.promise_all_handler(promise, None)?;
+                    self.stack.push(rejected.clone());
+                    // Invoke rather than internally attaching a reaction: an
+                    // own `then` getter/method on the resolved value is part
+                    // of Promise.all's observable error surface.
+                    let then = self.get_property(&input, &"then".into())?;
+                    self.stack.push(then.clone());
+                    self.call_native(then, input, vec![fulfilled, rejected], false)
+                })();
+                self.stack.truncate(entry_base);
+                result?;
             }
             Ok(Value::Object(promise))
         })();
@@ -1415,32 +1451,56 @@ impl Vm {
         constructor: &Value,
         values: &Value,
     ) -> Result<Value, RuntimeError> {
-        let values = self.array_like_values(values)?;
         let promise = self.new_promise()?;
         let base = self.stack.len();
         self.stack.push(Value::Object(promise));
         let outcome = (|| {
-            let resolve = self.get_property(constructor, &"resolve".into())?;
-            if !self.is_callable(&resolve)? {
-                return Err(RuntimeError::TypeError(
-                    "Promise.race resolve must be callable".into(),
-                ));
+            // Promise.race is iterable-based, not array-like. In particular,
+            // an absent/non-callable @@iterator or an abrupt iterator step
+            // rejects the capability promise. Treating it as an empty
+            // array-like object leaves the promise pending forever.
+            self.stack.push(values.clone());
+            let record = self.get_iterator(values)?;
+            self.stack.push(record.clone());
+            let result = (|| {
+                let resolve = self.get_property(constructor, &"resolve".into())?;
+                if !self.is_callable(&resolve)? {
+                    return Err(RuntimeError::TypeError(
+                        "Promise.race resolve must be callable".into(),
+                    ));
+                }
+                while let Some(value) = self.iterator_step(&record, true)? {
+                    let entry_base = self.stack.len();
+                    self.stack.push(value.clone());
+                    let input =
+                        self.call_native(resolve.clone(), constructor.clone(), vec![value], false)?;
+                    self.stack.push(input.clone());
+                    let fulfilled =
+                        self.promise_combinator_handler(NativeFunction::PromiseRaceFulfill {
+                            target: promise,
+                        })?;
+                    self.stack.push(fulfilled.clone());
+                    let rejected =
+                        self.promise_combinator_handler(NativeFunction::PromiseRaceReject {
+                            target: promise,
+                        })?;
+                    self.stack.push(rejected.clone());
+                    let then = self.get_property(&input, &"then".into())?;
+                    self.stack.push(then.clone());
+                    self.call_native(then, input, vec![fulfilled, rejected], false)?;
+                    self.stack.truncate(entry_base);
+                }
+                Ok(Value::Object(promise))
+            })();
+            if result.is_err() {
+                let error_base = self.stack.len();
+                if let Err(RuntimeError::Thrown(value)) = &result {
+                    self.stack.push(value.clone());
+                }
+                let _ = self.iterator_close(&record);
+                self.stack.truncate(error_base);
             }
-            for value in values {
-                let input =
-                    self.call_native(resolve.clone(), constructor.clone(), vec![value], false)?;
-                let fulfilled =
-                    self.promise_combinator_handler(NativeFunction::PromiseRaceFulfill {
-                        target: promise,
-                    })?;
-                let rejected =
-                    self.promise_combinator_handler(NativeFunction::PromiseRaceReject {
-                        target: promise,
-                    })?;
-                let then = self.get_property(&input, &"then".into())?;
-                self.call_native(then, input, vec![fulfilled, rejected], false)?;
-            }
-            Ok(Value::Object(promise))
+            result
         })();
         self.stack.truncate(base);
         match outcome {
@@ -1564,20 +1624,30 @@ impl Vm {
                 },
             );
             for (index, value) in values.into_iter().enumerate() {
-                let input =
-                    self.call_native(resolve.clone(), constructor.clone(), vec![value], false)?;
-                let fulfilled =
-                    self.promise_combinator_handler(NativeFunction::PromiseAllSettledFulfill {
-                        target: promise,
-                        index: index as u32,
-                    })?;
-                let rejected =
-                    self.promise_combinator_handler(NativeFunction::PromiseAllSettledReject {
-                        target: promise,
-                        index: index as u32,
-                    })?;
-                let then = self.get_property(&input, &"then".into())?;
-                self.call_native(then, input, vec![fulfilled, rejected], false)?;
+                let entry_base = self.stack.len();
+                let result = (|| {
+                    let input =
+                        self.call_native(resolve.clone(), constructor.clone(), vec![value], false)?;
+                    self.stack.push(input.clone());
+                    let fulfilled = self.promise_combinator_handler(
+                        NativeFunction::PromiseAllSettledFulfill {
+                            target: promise,
+                            index: index as u32,
+                        },
+                    )?;
+                    self.stack.push(fulfilled.clone());
+                    let rejected =
+                        self.promise_combinator_handler(NativeFunction::PromiseAllSettledReject {
+                            target: promise,
+                            index: index as u32,
+                        })?;
+                    self.stack.push(rejected.clone());
+                    let then = self.get_property(&input, &"then".into())?;
+                    self.stack.push(then.clone());
+                    self.call_native(then, input, vec![fulfilled, rejected], false)
+                })();
+                self.stack.truncate(entry_base);
+                result?;
             }
             Ok(Value::Object(promise))
         })();
@@ -1688,19 +1758,28 @@ impl Vm {
                 return Ok(Value::Object(promise));
             }
             for (index, value) in values.into_iter().enumerate() {
-                let input =
-                    self.call_native(resolve.clone(), constructor.clone(), vec![value], false)?;
-                let fulfilled =
-                    self.promise_combinator_handler(NativeFunction::PromiseAnyFulfill {
-                        target: promise,
-                    })?;
-                let rejected =
-                    self.promise_combinator_handler(NativeFunction::PromiseAnyReject {
-                        target: promise,
-                        index: index as u32,
-                    })?;
-                let then = self.get_property(&input, &"then".into())?;
-                self.call_native(then, input, vec![fulfilled, rejected], false)?;
+                let entry_base = self.stack.len();
+                let result = (|| {
+                    let input =
+                        self.call_native(resolve.clone(), constructor.clone(), vec![value], false)?;
+                    self.stack.push(input.clone());
+                    let fulfilled =
+                        self.promise_combinator_handler(NativeFunction::PromiseAnyFulfill {
+                            target: promise,
+                        })?;
+                    self.stack.push(fulfilled.clone());
+                    let rejected =
+                        self.promise_combinator_handler(NativeFunction::PromiseAnyReject {
+                            target: promise,
+                            index: index as u32,
+                        })?;
+                    self.stack.push(rejected.clone());
+                    let then = self.get_property(&input, &"then".into())?;
+                    self.stack.push(then.clone());
+                    self.call_native(then, input, vec![fulfilled, rejected], false)
+                })();
+                self.stack.truncate(entry_base);
+                result?;
             }
             Ok(Value::Object(promise))
         })();
@@ -1741,110 +1820,179 @@ impl Vm {
         // interpreter with no fuel, but that must not turn the next queued
         // reaction into an instruction-limit failure.
         self.remaining_instructions = self.config.instruction_budget;
-        match job {
+        // The queue no longer owns this job after pop_front. Keep every
+        // heap edge in the active job visible to allocation safepoints until
+        // it has either settled its target or scheduled its successor.
+        let root_base = self.stack.len();
+        match &job {
             PromiseJob::Reaction {
                 target,
                 handler,
                 value,
-                fulfilled,
+                ..
             } => {
-                if !self.is_callable(&handler)? {
-                    self.settle_promise(
-                        target,
-                        if fulfilled {
-                            PromiseStatus::Fulfilled(value)
-                        } else {
-                            PromiseStatus::Rejected(value)
-                        },
-                    )?;
-                    return Ok(true);
-                }
-                let result = self.call_native(handler, Value::Undefined, vec![value], false);
-                match result {
-                    Ok(value) => self.resolve_promise(target, value)?,
-                    Err(error) => {
-                        let error = self.error_value(error)?;
-                        self.settle_promise(target, PromiseStatus::Rejected(error))?;
-                    }
-                }
+                self.stack.push(Value::Object(*target));
+                self.stack.push(handler.clone());
+                self.stack.push(value.clone());
+            }
+            PromiseJob::FinalizationCleanup { callback, holdings } => {
+                self.stack.push(callback.clone());
+                self.stack.push(holdings.clone());
             }
             PromiseJob::Thenable {
                 target,
                 thenable,
                 then,
             } => {
-                let result = (|| {
-                    let resolve = self.promise_resolving_function(target, true)?;
-                    let reject = self.promise_resolving_function(target, false)?;
-                    self.call_native(then, thenable, vec![resolve, reject], false)
-                })();
-                if let Err(error) = result {
-                    let error = self.error_value(error)?;
-                    self.settle_promise(target, PromiseStatus::Rejected(error))?;
-                }
+                self.stack.push(Value::Object(*target));
+                self.stack.push(thenable.clone());
+                self.stack.push(then.clone());
             }
-            PromiseJob::DynamicImport {
-                target,
-                referrer,
-                specifier,
-            } => {
-                let result = self.dynamic_import_job(&referrer, &specifier);
-                match result {
-                    Ok(DynamicImportResult::Fulfilled(namespace)) => {
-                        self.settle_promise(target, PromiseStatus::Fulfilled(namespace))?
-                    }
-                    Ok(DynamicImportResult::Waiting(module)) => {
-                        self.module_import_waiters
-                            .entry(module)
-                            .or_default()
-                            .push(target);
-                    }
-                    // Dynamic import delegates loading and linking to the
-                    // host. A host module-resolution failure rejects the
-                    // capability with its host error rather than leaking
-                    // the static-module SyntaxError classification.
-                    Err(RuntimeError::ModuleResolution(message)) => {
-                        let error = self.error_object("TypeError", message)?;
-                        self.settle_promise(target, PromiseStatus::Rejected(error))?;
-                    }
-                    Err(error) => {
-                        let error = self.error_value(error)?;
-                        self.settle_promise(target, PromiseStatus::Rejected(error))?;
-                    }
-                }
+            PromiseJob::DynamicImport { target, .. } => {
+                self.stack.push(Value::Object(*target));
             }
-            PromiseJob::ModuleAwait {
-                continuation,
-                value,
-                fulfilled,
-            } => self.resume_module_await(continuation, value, fulfilled)?,
-            PromiseJob::AsyncAwait {
-                continuation,
-                value,
-                fulfilled,
-            } => self.resume_async_await(continuation, value, fulfilled)?,
+            PromiseJob::ModuleAwait { value, .. } | PromiseJob::AsyncAwait { value, .. } => {
+                self.stack.push(value.clone());
+            }
             PromiseJob::AsyncGeneratorYield {
                 generator,
                 target,
                 result,
                 value,
-                fulfilled,
-            } => self.finish_async_generator_yield(generator, target, result, value, fulfilled)?,
+                ..
+            } => {
+                self.stack.push(Value::Object(*generator));
+                self.stack.push(Value::Object(*target));
+                self.stack.push(Value::Object(*result));
+                self.stack.push(value.clone());
+            }
             PromiseJob::AsyncGeneratorDelegate {
                 generator,
                 target,
-                kind,
                 value,
-                fulfilled,
-            } => self.finish_async_generator_delegate(generator, target, kind, value, fulfilled)?,
-            PromiseJob::FinalizationCleanup { callback, holdings } => {
-                // Cleanup callbacks are host jobs, not Promise reactions. A
-                // throwing callback is reported through this embedding's job
-                // runner but cannot resurrect or re-register the consumed
-                // cell.
-                self.call_native(callback, Value::Undefined, vec![holdings], false)?;
+                ..
+            } => {
+                self.stack.push(Value::Object(*generator));
+                self.stack.push(Value::Object(*target));
+                self.stack.push(value.clone());
             }
         }
+        let result: Result<(), RuntimeError> = (|| {
+            match job {
+                PromiseJob::Reaction {
+                    target,
+                    handler,
+                    value,
+                    fulfilled,
+                } => {
+                    if !self.is_callable(&handler)? {
+                        self.settle_promise(
+                            target,
+                            if fulfilled {
+                                PromiseStatus::Fulfilled(value)
+                            } else {
+                                PromiseStatus::Rejected(value)
+                            },
+                        )?;
+                        return Ok(());
+                    }
+                    let result = self.call_native(handler, Value::Undefined, vec![value], false);
+                    match result {
+                        Ok(value) => self.resolve_promise(target, value)?,
+                        Err(error) => {
+                            let error = self.error_value(error)?;
+                            self.settle_promise(target, PromiseStatus::Rejected(error))?;
+                        }
+                    }
+                }
+                PromiseJob::Thenable {
+                    target,
+                    thenable,
+                    then,
+                } => {
+                    let base = self.stack.len();
+                    let result = (|| {
+                        let resolve = self.promise_resolving_function(target, true)?;
+                        self.stack.push(resolve.clone());
+                        let reject = self.promise_resolving_function(target, false)?;
+                        self.call_native(then, thenable, vec![resolve, reject], false)
+                    })();
+                    self.stack.truncate(base);
+                    if let Err(error) = result {
+                        let error = self.error_value(error)?;
+                        self.settle_promise(target, PromiseStatus::Rejected(error))?;
+                    }
+                }
+                PromiseJob::DynamicImport {
+                    target,
+                    referrer,
+                    specifier,
+                } => {
+                    let result = self.dynamic_import_job(&referrer, &specifier);
+                    match result {
+                        Ok(DynamicImportResult::Fulfilled(namespace)) => {
+                            self.settle_promise(target, PromiseStatus::Fulfilled(namespace))?
+                        }
+                        Ok(DynamicImportResult::Waiting(module)) => {
+                            self.module_import_waiters
+                                .entry(module)
+                                .or_default()
+                                .push(target);
+                        }
+                        // Dynamic import delegates loading and linking to the
+                        // host. A host module-resolution failure rejects the
+                        // capability with its host error rather than leaking
+                        // the static-module SyntaxError classification.
+                        Err(RuntimeError::ModuleResolution(message)) => {
+                            let error = self.error_object("TypeError", message)?;
+                            self.settle_promise(target, PromiseStatus::Rejected(error))?;
+                        }
+                        Err(error) => {
+                            let error = self.error_value(error)?;
+                            self.settle_promise(target, PromiseStatus::Rejected(error))?;
+                        }
+                    }
+                }
+                PromiseJob::ModuleAwait {
+                    continuation,
+                    value,
+                    fulfilled,
+                } => self.resume_module_await(continuation, value, fulfilled)?,
+                PromiseJob::AsyncAwait {
+                    continuation,
+                    value,
+                    fulfilled,
+                } => self.resume_async_await(continuation, value, fulfilled)?,
+                PromiseJob::AsyncGeneratorYield {
+                    generator,
+                    target,
+                    result,
+                    value,
+                    fulfilled,
+                } => {
+                    self.finish_async_generator_yield(generator, target, result, value, fulfilled)?
+                }
+                PromiseJob::AsyncGeneratorDelegate {
+                    generator,
+                    target,
+                    kind,
+                    value,
+                    fulfilled,
+                } => {
+                    self.finish_async_generator_delegate(generator, target, kind, value, fulfilled)?
+                }
+                PromiseJob::FinalizationCleanup { callback, holdings } => {
+                    // Cleanup callbacks are host jobs, not Promise reactions. A
+                    // throwing callback is reported through this embedding's job
+                    // runner but cannot resurrect or re-register the consumed
+                    // cell.
+                    self.call_native(callback, Value::Undefined, vec![holdings], false)?;
+                }
+            }
+            Ok(())
+        })();
+        self.stack.truncate(root_base);
+        result?;
         Ok(true)
     }
 }

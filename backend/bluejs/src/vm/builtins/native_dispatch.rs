@@ -1457,12 +1457,9 @@ impl Vm {
             NativeFunction::WeakCollectionMethod { map, method } => {
                 self.weak_collection_method(map, method, &receiver, &args)
             }
-            NativeFunction::ArrayIsArray => Ok(Value::Bool(
-                first
-                    .object_id()
-                    .is_some_and(|id| self.heap.is_array(id).unwrap_or(false)),
-            )),
+            NativeFunction::ArrayIsArray => Ok(Value::Bool(self.is_array(first)?)),
             NativeFunction::ArrayAt => self.array_at(&receiver, first),
+            NativeFunction::ArrayFill => self.array_fill(&receiver, &args),
             NativeFunction::ArrayOf => self.array_of_method(&receiver, &args),
             NativeFunction::ArraySpecies => Ok(receiver),
             NativeFunction::ArrayFrom => self.array_from_method(&args),
@@ -1538,8 +1535,10 @@ impl Vm {
                     self.dynamic_import(first.clone())
                 }
             }
-            NativeFunction::JsonParse => self.json_parse(first),
-            NativeFunction::JsonStringify => self.json_stringify(first),
+            NativeFunction::JsonParse => self.json_parse(first, args.get(1)),
+            NativeFunction::JsonStringify => self.json_stringify(&args),
+            NativeFunction::JsonRawJson => self.json_raw_json(first),
+            NativeFunction::JsonIsRawJson => self.json_is_raw_json(first),
             NativeFunction::Math(method) => self.math_method(method, &args),
             NativeFunction::Bind => self.bind_function(receiver, &args),
             NativeFunction::HasInstance => self
@@ -1702,9 +1701,12 @@ impl Vm {
                         "BigInt is not a constructor".into(),
                     ));
                 }
+                // BigInt ( value ): a single ToPrimitive(value, number) call,
+                // then NumberToBigInt for a Number result or ToBigInt for
+                // everything else (which, given an already-primitive input,
+                // performs no further observable coercion).
                 let value = self.coerce_primitive(first, "number")?;
                 match value {
-                    Value::BigInt(value) => Ok(Value::BigInt(value)),
                     Value::Number(value) if value.is_finite() && value.fract() == 0.0 => {
                         // An integral IEEE-754 Number can be much larger
                         // than i64 (up to roughly 2^1024). Convert its exact
@@ -1718,20 +1720,45 @@ impl Vm {
                     Value::Number(_) => Err(RuntimeError::RangeError(
                         "BigInt conversion requires an integral Number".into(),
                     )),
-                    Value::String(value) => {
-                        let value = value.to_utf8().map_err(|_| {
-                            RuntimeError::SyntaxError("invalid BigInt string".into())
-                        })?;
-                        let value =
-                            BigInt::parse_bytes(value.trim().as_bytes(), 10).ok_or_else(|| {
-                                RuntimeError::SyntaxError("invalid BigInt string".into())
-                            })?;
-                        Ok(Value::BigInt(value))
-                    }
-                    _ => Err(RuntimeError::TypeError(
-                        "BigInt conversion requires a Number, BigInt, or integer string".into(),
-                    )),
+                    value => Ok(Value::BigInt(self.coerce_bigint(&value)?)),
                 }
+            }
+            NativeFunction::BigIntAsIntN | NativeFunction::BigIntAsUintN => {
+                // 1. Let bits be ? ToIndex(bits). 2. Let bigint be ?
+                // ToBigInt(bigint). Both are observable coercions, evaluated
+                // in this order before any arithmetic.
+                let bits = self.coerce_bigint_index(native::argument(&args, 0))?;
+                let bigint = self.coerce_bigint(native::argument(&args, 1))?;
+                if bits == 0 {
+                    return Ok(Value::BigInt(BigInt::zero()));
+                }
+                // ToIndex alone permits bits up to 2**53-1; bound the actual
+                // 2**bits allocation at a generous but finite size (same
+                // "implementation capacity" style as bigint_shift/
+                // bigint_exponentiate) rather than letting an extreme bits
+                // value exhaust host memory.
+                const MAX_ASINTN_BITS: usize = 1_000_000;
+                if bits > MAX_ASINTN_BITS {
+                    return Err(RuntimeError::RangeError(
+                        "BigInt.asIntN/asUintN bit width exceeds implementation capacity".into(),
+                    ));
+                }
+                let modulus = BigInt::one() << bits;
+                // BigInt's `%` follows the dividend's sign (truncated
+                // division), not the mathematical "modulo" the spec asks
+                // for here; adding the modulus back for a negative result
+                // maps it into the required [0, 2**bits) range.
+                let mut result = &bigint % &modulus;
+                if result.sign() == Sign::Minus {
+                    result += &modulus;
+                }
+                if function == NativeFunction::BigIntAsIntN {
+                    let half = BigInt::one() << (bits - 1);
+                    if result >= half {
+                        result -= modulus;
+                    }
+                }
+                Ok(Value::BigInt(result))
             }
             NativeFunction::PrimitiveMethod { boolean, string } => {
                 let value = if let Value::Object(id) = receiver {
@@ -1790,8 +1817,17 @@ impl Vm {
                 Ok(symbol.description.map_or(Value::Undefined, Value::String))
             }
             NativeFunction::BigIntToString | NativeFunction::BigIntValueOf => {
+                // thisBigIntValue(this value): a bare BigInt returns itself;
+                // an object needs its own [[BigIntData]] slot (a cross-realm
+                // wrapper's own heap is checked as a fallback, the same way
+                // Symbol's methods already do above); anything else,
+                // including the BigInt prototype object itself (which has
+                // no such slot), is a TypeError.
                 let value = if let Value::Object(id) = receiver {
-                    self.heap.boxed_primitive(id)?.unwrap_or(Value::Undefined)
+                    self.heap
+                        .boxed_primitive(id)?
+                        .or(self.test262_foreign_boxed_primitive(id)?)
+                        .unwrap_or(Value::Undefined)
                 } else {
                     receiver
                 };
@@ -1800,15 +1836,31 @@ impl Vm {
                         "BigInt method requires a BigInt".into(),
                     ));
                 };
-                if function == NativeFunction::BigIntToString {
-                    Ok(Value::String(value.to_string().into()))
-                } else {
-                    Ok(Value::BigInt(value))
+                if function == NativeFunction::BigIntValueOf {
+                    return Ok(Value::BigInt(value));
                 }
+                // BigInt.prototype.toString ( [ radix ] )
+                let radix_arg = native::argument(&args, 0);
+                let radix = if matches!(radix_arg, Value::Undefined) {
+                    10
+                } else {
+                    let radix = self.coerce_number(radix_arg)?;
+                    let radix = if radix.is_nan() { 0.0 } else { radix.trunc() };
+                    if !(2.0..=36.0).contains(&radix) {
+                        return Err(RuntimeError::RangeError(
+                            "toString radix must be between 2 and 36".into(),
+                        ));
+                    }
+                    radix as u32
+                };
+                Ok(Value::String(value.to_str_radix(radix).into()))
             }
             NativeFunction::BigIntToLocaleString => {
                 let value = if let Value::Object(id) = receiver {
-                    self.heap.boxed_primitive(id)?.unwrap_or(Value::Undefined)
+                    self.heap
+                        .boxed_primitive(id)?
+                        .or(self.test262_foreign_boxed_primitive(id)?)
+                        .unwrap_or(Value::Undefined)
                 } else {
                     receiver
                 };
@@ -2094,6 +2146,7 @@ impl Vm {
                 let key = self.coerce_string(first)?;
                 let symbol = self
                     .symbol_registry
+                    .borrow_mut()
                     .entry(key.clone())
                     .or_insert_with(|| JsSymbol::new(Some(key)))
                     .clone();
@@ -2107,6 +2160,7 @@ impl Vm {
                 };
                 Ok(self
                     .symbol_registry
+                    .borrow()
                     .iter()
                     .find_map(|(key, candidate)| (candidate == symbol).then(|| key.clone()))
                     .map_or(Value::Undefined, Value::String))
@@ -2158,6 +2212,28 @@ impl Vm {
                 }
                 self.iterator_from(first)
             }
+            NativeFunction::IteratorHelper(method) => match method {
+                native::IteratorHelperMethod::Concat => self.iterator_concat(&args),
+                native::IteratorHelperMethod::Zip => {
+                    self.iterator_zip(first, native::argument(&args, 1))
+                }
+                native::IteratorHelperMethod::ZipKeyed => {
+                    self.iterator_zip_keyed(first, native::argument(&args, 1))
+                }
+                native::IteratorHelperMethod::Chunks => self.iterator_chunks(&receiver, first),
+                native::IteratorHelperMethod::Windows => {
+                    self.iterator_windows(&receiver, first, native::argument(&args, 1))
+                }
+                native::IteratorHelperMethod::Map => self.iterator_map(&receiver, first),
+                native::IteratorHelperMethod::Filter => self.iterator_filter(&receiver, first),
+                native::IteratorHelperMethod::FlatMap => self.iterator_flat_map(&receiver, first),
+                native::IteratorHelperMethod::Take => self.iterator_take(&receiver, first),
+                native::IteratorHelperMethod::Drop => self.iterator_drop(&receiver, first),
+                native::IteratorHelperMethod::Includes => {
+                    self.iterator_includes(&receiver, first, native::argument(&args, 1))
+                }
+                native::IteratorHelperMethod::Join => self.iterator_join(&receiver, first),
+            },
             NativeFunction::IteratorToArray => self.iterator_to_array(&receiver),
             NativeFunction::IteratorForEach => self.iterator_for_each(&receiver, first),
             NativeFunction::IteratorEvery => self.iterator_every(&receiver, first),
@@ -2188,7 +2264,13 @@ impl Vm {
             }
             NativeFunction::IteratorWrapperNext => self.iterator_wrapper_next(&receiver),
             NativeFunction::IteratorWrapperReturn => self.iterator_wrapper_return(&receiver),
+            NativeFunction::IteratorHelperNext => self.iterator_helper_next(&receiver),
+            NativeFunction::IteratorHelperReturn => self.iterator_helper_return(&receiver),
             NativeFunction::IteratorDispose => self.iterator_dispose(&receiver),
+            NativeFunction::IteratorConstructorGetter => self.global("Iterator"),
+            NativeFunction::IteratorConstructorSetter => {
+                self.iterator_constructor_setter(&receiver, first)
+            }
             NativeFunction::IteratorToStringTagGetter => Ok(Value::String("Iterator".into())),
             NativeFunction::IteratorToStringTagSetter => {
                 self.iterator_to_string_tag_setter(&receiver, first)

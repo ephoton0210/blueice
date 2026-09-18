@@ -1286,6 +1286,28 @@ impl Vm {
         })
     }
 
+    /// Checks whether a facade denotes the named intrinsic constructor in its
+    /// own Realm. `ArraySpeciesCreate` needs this exact identity check before
+    /// reading `@@species`: a foreign `%Array%` is replaced by the current
+    /// Realm's default Array constructor rather than observing mutable
+    /// properties on the foreign intrinsic.
+    pub(super) fn test262_foreign_intrinsic_constructor(
+        &mut self,
+        wrapper: ObjectId,
+        intrinsic: &str,
+    ) -> Result<bool, RuntimeError> {
+        let Some((realm_id, target, _, _)) = self.test262_foreign_reference(wrapper) else {
+            return Ok(false);
+        };
+        let realm = self
+            .test262_realms
+            .get_mut(&realm_id)
+            .expect("foreign realm remains live");
+        realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+        let intrinsic = realm.vm.global(intrinsic)?.object_id();
+        Ok(intrinsic == Some(target))
+    }
+
     /// Return a facade's child-VM builtin tag without invoking it. Internal
     /// algorithms use this to recognize intrinsic hooks such as
     /// `Function.prototype[@@hasInstance]`; calling that hook in the child
@@ -1640,6 +1662,50 @@ impl Vm {
         self.test262_import_foreign_result(realm_id, result)
     }
 
+    /// Forwards a foreign facade's [[OwnPropertyKeys]] into its Realm. Keys
+    /// are primitives, so no wrapper allocation is needed; agent-wide
+    /// registered Symbols already retain their identity across the boundary.
+    pub(super) fn test262_foreign_own_property_keys(
+        &mut self,
+        wrapper: ObjectId,
+    ) -> Result<Vec<PropertyName>, RuntimeError> {
+        let (realm_id, target, _, _) = self
+            .test262_foreign_reference(wrapper)
+            .expect("foreign ownKeys has a membrane record");
+        let realm = self
+            .test262_realms
+            .get_mut(&realm_id)
+            .expect("foreign realm remains live");
+        realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+        realm.vm.object_own_property_keys(target)
+    }
+
+    /// Runs a foreign facade's [[Set]] in its owning Realm. `Reflect.set`
+    /// exposes its explicit receiver to accessors and Proxy traps, so both
+    /// receiver and value must cross the membrane before the internal method
+    /// begins rather than being applied to the local wrapper.
+    pub(super) fn test262_foreign_set_with_receiver(
+        &mut self,
+        wrapper: ObjectId,
+        receiver: &Value,
+        key: &PropertyName,
+        value: &Value,
+    ) -> Result<bool, RuntimeError> {
+        let (realm_id, target, _, _) = self
+            .test262_foreign_reference(wrapper)
+            .expect("foreign set has a membrane record");
+        let receiver = self.test262_export_foreign_value(realm_id, receiver)?;
+        let value = self.test262_export_foreign_value(realm_id, value)?;
+        let realm = self
+            .test262_realms
+            .get_mut(&realm_id)
+            .expect("foreign realm remains live");
+        realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+        realm
+            .vm
+            .ordinary_set_with_receiver(target, &receiver, key, &value)
+    }
+
     pub(super) fn test262_foreign_set(
         &mut self,
         wrapper: ObjectId,
@@ -1649,7 +1715,39 @@ impl Vm {
         let (realm_id, target, _, _) = self
             .test262_foreign_reference(wrapper)
             .expect("foreign set has a membrane record");
-        let value = self.test262_export_foreign_value(realm_id, value)?;
+        // Test262 harness helpers are installed independently in every
+        // Realm. A fixture may explicitly copy (for example)
+        // `assert.sameValue` into a child Realm; preserving that child's
+        // equivalent native helper keeps the call boundary functional rather
+        // than replacing it with the deliberately opaque ordinary-object
+        // transport used for arbitrary parent objects.
+        let native = value
+            .object_id()
+            .map(|object| self.heap.native_function(object))
+            .transpose()?
+            .flatten();
+        let equivalent_native = if let Some(native) = native {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+            let current = realm
+                .vm
+                .get_object_property(target, &Value::Object(target), key)?;
+            current
+                .object_id()
+                .filter(|current| {
+                    realm.vm.heap.native_function(*current).ok() == Some(Some(native))
+                })
+                .map(Value::Object)
+        } else {
+            None
+        };
+        let value = match equivalent_native {
+            Some(value) => value,
+            None => self.test262_export_foreign_value(realm_id, value)?,
+        };
         let realm = self
             .test262_realms
             .get_mut(&realm_id)
@@ -1855,6 +1953,10 @@ impl Vm {
     /// caller's current global environment.
     fn test262_create_realm(&mut self) -> Result<Value, RuntimeError> {
         let mut realm = Box::new(Vm::new(self.config)?);
+        // Realms created by one Test262 host execute in the same agent. The
+        // GlobalSymbolRegistry is agent-wide even though every Realm keeps
+        // its own global object and intrinsics.
+        realm.symbol_registry = Rc::clone(&self.symbol_registry);
         // A Test262 realm exposes the same host interface as its creator.
         // In particular, the record returned by createRealm must provide an
         // evalScript function that evaluates in this child Realm.

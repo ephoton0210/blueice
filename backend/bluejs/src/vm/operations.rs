@@ -217,6 +217,32 @@ impl Vm {
         Ok(())
     }
 
+    /// The shared core of `++`/`--` on a property reference (`UpdateProperty`,
+    /// `SuperUpdate`): ToNumeric the current value, then add or subtract 1
+    /// while staying in the same numeric type, returning `(old, new)`.
+    /// A plain-identifier update instead compiles to `ToNumeric`/`PushOne`/
+    /// `Add`/`Subtract` directly, since it has no single opcode of its own.
+    pub(super) fn numeric_step(
+        &mut self,
+        value: &Value,
+        decrement: bool,
+    ) -> Result<(Value, Value), RuntimeError> {
+        Ok(match self.coerce_numeric(value)? {
+            primitive::Numeric::Number(old) => (
+                Value::Number(old),
+                Value::Number(if decrement { old - 1.0 } else { old + 1.0 }),
+            ),
+            primitive::Numeric::BigInt(old) => {
+                let new = if decrement {
+                    &old - BigInt::one()
+                } else {
+                    &old + BigInt::one()
+                };
+                (Value::BigInt(old), Value::BigInt(new))
+            }
+        })
+    }
+
     /// Applies the arithmetic operators shared by Number and BigInt.
     ///
     /// Arithmetic is deliberately separate from bitwise operations because
@@ -404,6 +430,17 @@ impl Vm {
             (Value::String(left), Value::Number(right)) => {
                 Ok(primitive::number(&Value::String(left))? == right)
             }
+            // BigInt/Number and BigInt/String each compare by mathematical
+            // value rather than routing the BigInt operand through ToNumber
+            // (which would throw): reuse the Abstract Relational Comparison
+            // BigInt cases, since "equal" is exactly "neither operand is NaN
+            // and the ordering is Equal".
+            (left @ Value::BigInt(_), right @ Value::Number(_))
+            | (left @ Value::Number(_), right @ Value::BigInt(_))
+            | (left @ Value::BigInt(_), right @ Value::String(_))
+            | (left @ Value::String(_), right @ Value::BigInt(_)) => {
+                Ok(primitive::compare(&left, &right)? == Some(Ordering::Equal))
+            }
             (Value::Bool(left), right) => {
                 self.loose_equal(Value::Number(if left { 1.0 } else { 0.0 }), right)
             }
@@ -412,13 +449,13 @@ impl Vm {
             }
             (
                 Value::Object(left),
-                right @ (Value::Number(_) | Value::String(_) | Value::Symbol(_)),
+                right @ (Value::Number(_) | Value::String(_) | Value::Symbol(_) | Value::BigInt(_)),
             ) => {
                 let left = self.coerce_primitive(&Value::Object(left), "default")?;
                 self.loose_equal(left, right)
             }
             (
-                left @ (Value::Number(_) | Value::String(_) | Value::Symbol(_)),
+                left @ (Value::Number(_) | Value::String(_) | Value::Symbol(_) | Value::BigInt(_)),
                 Value::Object(right),
             ) => {
                 let right = self.coerce_primitive(&Value::Object(right), "default")?;
