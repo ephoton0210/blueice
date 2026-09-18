@@ -104,6 +104,119 @@ fn iterator_terminal_helpers_share_step_and_early_close_protocol() {
 }
 
 #[test]
+fn iterator_map_and_filter_are_lazy_close_on_abrupt_completion_and_have_private_state() {
+    let source = r#"
+        let nextCalls = 0;
+        let closes = 0;
+        let source = {
+            next() { return nextCalls++ < 2 ? { value: nextCalls, done: false } : { done: true }; },
+            return() { closes++; return { done: true }; },
+        };
+        let mapped = Iterator.from(source).map((value, index) => value * 10 + index);
+        let first = mapped.next();
+        let second = mapped.next();
+        let done = mapped.next();
+        let closedAgain = mapped.return();
+        let filtered = Iterator.from([1, 2, 3, 4]).filter((value, index) => value % 2 && index === 0);
+        let filteredFirst = filtered.next();
+        let filteredDone = filtered.next();
+        let mapperClosed = Iterator.from({
+          next() { return { value: 1, done: false }; },
+          return() { closes++; return {}; },
+        }).map(() => { throw 1; });
+        let abrupt = false;
+        try { mapperClosed.next(); } catch (error) { abrupt = error === 1; }
+        let validationClosed = {
+          __proto__: Iterator.prototype,
+          get next() { throw 'next must stay unobserved'; },
+          return() { closes++; return {}; },
+        };
+        let invalid = false;
+        try { validationClosed.map({}); } catch (error) { invalid = error instanceof TypeError; }
+        nextCalls === 3 && first.value === 10 && !first.done &&
+          second.value === 21 && !second.done && done.done && closedAgain.done &&
+          filteredFirst.value === 1 && !filteredFirst.done && filteredDone.done &&
+          Object.getPrototypeOf(mapped)[Symbol.toStringTag] === 'Iterator Helper' &&
+          Object.keys(mapped).length === 0 && abrupt && invalid && closes === 2
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn iterator_take_and_drop_coerce_before_reading_next_and_preserve_lazy_close() {
+    let source = r#"
+        let effects = '';
+        let index = 0;
+        let source = {
+          get next() {
+            effects += 'next';
+            return () => index < 3 ? { value: index++, done: false } : { done: true };
+          },
+          return() { effects += 'return'; return {}; },
+        };
+        let taken = Iterator.prototype.take.call(source, {
+          valueOf() { effects += 'number'; return 2; },
+        });
+        let first = taken.next();
+        let second = taken.next();
+        let done = taken.next();
+        let dropped = Iterator.from([0, 1, 2, 3]).drop(2);
+        let droppedFirst = dropped.next();
+        let droppedSecond = dropped.next();
+        let rangeNext = 0;
+        let rangeClosed = 0;
+        let rangeSource = {
+          get next() { rangeNext++; return () => ({ done: true }); },
+          return() { rangeClosed++; return {}; },
+        };
+        let rangeError = false;
+        try { Iterator.prototype.take.call(rangeSource, undefined); }
+        catch (error) { rangeError = error instanceof RangeError; }
+        effects === 'numbernextreturn' &&
+          first.value === 0 && !first.done && second.value === 1 && !second.done && done.done &&
+          droppedFirst.value === 2 && !droppedFirst.done && droppedSecond.value === 3 && !droppedSecond.done &&
+          rangeError && rangeNext === 0 && rangeClosed === 1
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn iterator_includes_uses_same_value_zero_and_validates_skip_without_coercion() {
+    let source = r#"
+        let closes = 0;
+        let sourceIndex = 0;
+        let source = {
+          next() {
+            return sourceIndex++ < 3
+              ? { value: [0, NaN, 2][sourceIndex - 1], done: false }
+              : { done: true };
+          },
+          return() { closes++; return {}; },
+        };
+        let found = Iterator.prototype.includes.call(source, NaN, 1);
+        let invalidNextGets = 0;
+        let invalidCloses = 0;
+        let invalid = {
+          get next() { invalidNextGets++; return () => ({ done: true }); },
+          return() { invalidCloses++; return {}; },
+        };
+        let rangeError = false;
+        try { Iterator.prototype.includes.call(invalid, 0, -1); }
+        catch (error) { rangeError = error instanceof RangeError; }
+        let coerced = false;
+        let typeError = false;
+        try {
+          Iterator.prototype.includes.call(invalid, 0, {
+            valueOf() { coerced = true; return 0; },
+          });
+        } catch (error) { typeError = error instanceof TypeError; }
+        found && closes === 1 && rangeError && typeError && !coerced &&
+          invalidNextGets === 0 && invalidCloses === 2
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
 fn undeclared_for_heads_use_assignment_patterns_and_close_on_abrupt_assignment() {
     for source in [
         "let first=0;let second=0;let rest;for([first,second=3,...rest] of [[1,undefined,4,5]]){}first===1&&second===3&&rest.length===2&&rest[0]===4&&rest[1]===5",

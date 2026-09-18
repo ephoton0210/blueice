@@ -51,6 +51,31 @@ impl Vm {
                 NativeFunction::IteratorDispose,
             )?;
             for (name, length, native) in [
+                (
+                    "map",
+                    1,
+                    NativeFunction::IteratorHelper(native::IteratorHelperMethod::Map),
+                ),
+                (
+                    "filter",
+                    1,
+                    NativeFunction::IteratorHelper(native::IteratorHelperMethod::Filter),
+                ),
+                (
+                    "take",
+                    1,
+                    NativeFunction::IteratorHelper(native::IteratorHelperMethod::Take),
+                ),
+                (
+                    "drop",
+                    1,
+                    NativeFunction::IteratorHelper(native::IteratorHelperMethod::Drop),
+                ),
+                (
+                    "includes",
+                    1,
+                    NativeFunction::IteratorHelper(native::IteratorHelperMethod::Includes),
+                ),
                 ("toArray", 0, NativeFunction::IteratorToArray),
                 ("forEach", 1, NativeFunction::IteratorForEach),
                 ("every", 1, NativeFunction::IteratorEvery),
@@ -166,6 +191,46 @@ impl Vm {
         Ok(prototype)
     }
 
+    fn iterator_helper_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
+        if let Some(prototype) = self.iterator_helper_prototype {
+            return Ok(prototype);
+        }
+        let function_prototype = self.function_prototype()?;
+        let base = self.base_iterator_prototype()?;
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
+        let root = self.heap.root(prototype)?;
+        let result = (|| {
+            self.install_native(
+                prototype,
+                function_prototype,
+                "next",
+                0,
+                NativeFunction::IteratorHelperNext,
+            )?;
+            self.install_native(
+                prototype,
+                function_prototype,
+                "return",
+                0,
+                NativeFunction::IteratorHelperReturn,
+            )?;
+            self.define_data(
+                prototype,
+                JsSymbol::well_known("toStringTag"),
+                Value::String("Iterator Helper".into()),
+                false,
+                false,
+                true,
+            )
+        })();
+        if let Err(error) = result {
+            self.heap.unroot(root)?;
+            return Err(error);
+        }
+        self.iterator_helper_prototype = Some(prototype);
+        Ok(prototype)
+    }
+
     pub(in super::super) fn iterator_from(&mut self, value: &Value) -> Result<Value, RuntimeError> {
         if !matches!(value, Value::Object(_) | Value::String(_)) {
             return Err(RuntimeError::TypeError(
@@ -263,6 +328,20 @@ impl Vm {
         Ok(Value::Undefined)
     }
 
+    fn iterator_close_direct(&mut self, iterator: &Value) -> Result<(), RuntimeError> {
+        let close = self.get_method(iterator, &"return".into())?;
+        if close == Value::Undefined {
+            return Ok(());
+        }
+        let result = self.call_native(close, iterator.clone(), Vec::new(), false)?;
+        if !matches!(result, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "iterator return must return an object".into(),
+            ));
+        }
+        Ok(())
+    }
+
     fn direct_iterator_record(&mut self, value: &Value) -> Result<Value, RuntimeError> {
         let Value::Object(iterator) = value else {
             return Err(RuntimeError::TypeError(
@@ -282,6 +361,408 @@ impl Vm {
             self.stack.pop();
             Ok(Value::Object(record))
         })();
+        self.stack.pop();
+        result
+    }
+
+    fn iterator_helper_create(
+        &mut self,
+        receiver: &Value,
+        callback: &Value,
+        kind: IteratorHelperKind,
+    ) -> Result<Value, RuntimeError> {
+        if !matches!(receiver, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "Iterator helper requires an object receiver".into(),
+            ));
+        }
+        if !self.is_callable(callback)? {
+            // Iterator helpers close an object receiver when argument
+            // validation fails, but must not observe its `next` property.
+            self.iterator_close_direct(receiver)?;
+            return Err(RuntimeError::TypeError(
+                "Iterator helper callback must be callable".into(),
+            ));
+        }
+        let record = self.direct_iterator_record(receiver)?;
+        let record_id = record
+            .object_id()
+            .expect("direct iterator records are ordinary objects");
+        self.stack.push(record);
+        self.stack.push(callback.clone());
+        let result = (|| {
+            let prototype = self.iterator_helper_prototype()?;
+            self.with_roots(|heap| {
+                heap.alloc_iterator_helper(record_id, callback.clone(), kind, 0, prototype)
+            })
+            .map(Value::Object)
+        })();
+        self.stack.pop();
+        self.stack.pop();
+        result
+    }
+
+    pub(in super::super) fn iterator_map(
+        &mut self,
+        receiver: &Value,
+        mapper: &Value,
+    ) -> Result<Value, RuntimeError> {
+        self.iterator_helper_create(receiver, mapper, IteratorHelperKind::Map)
+    }
+
+    pub(in super::super) fn iterator_filter(
+        &mut self,
+        receiver: &Value,
+        predicate: &Value,
+    ) -> Result<Value, RuntimeError> {
+        self.iterator_helper_create(receiver, predicate, IteratorHelperKind::Filter)
+    }
+
+    pub(in super::super) fn iterator_take(
+        &mut self,
+        receiver: &Value,
+        limit: &Value,
+    ) -> Result<Value, RuntimeError> {
+        self.iterator_count_helper(receiver, limit, IteratorHelperKind::Take)
+    }
+
+    pub(in super::super) fn iterator_drop(
+        &mut self,
+        receiver: &Value,
+        limit: &Value,
+    ) -> Result<Value, RuntimeError> {
+        self.iterator_count_helper(receiver, limit, IteratorHelperKind::Drop)
+    }
+
+    fn iterator_count_helper(
+        &mut self,
+        receiver: &Value,
+        limit: &Value,
+        kind: IteratorHelperKind,
+    ) -> Result<Value, RuntimeError> {
+        if !matches!(receiver, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "Iterator helper requires an object receiver".into(),
+            ));
+        }
+        self.stack.push(receiver.clone());
+        let result = (|| {
+            // `take` deliberately coerces its limit before obtaining `next`.
+            // Abrupt limit conversion and every invalid range close the
+            // receiver without observing that property.
+            let number = match self.coerce_number(limit) {
+                Ok(number) => number,
+                Err(error) => return self.close_direct_iterator_on_error(receiver, error),
+            };
+            if number.is_nan() || (number.is_finite() && number > 9_007_199_254_740_991.0) {
+                return self.close_direct_iterator_on_error(
+                    receiver,
+                    RuntimeError::RangeError("invalid Iterator.take limit".into()),
+                );
+            }
+            let integer = if number == 0.0 { 0.0 } else { number.trunc() };
+            if integer < 0.0 {
+                return self.close_direct_iterator_on_error(
+                    receiver,
+                    RuntimeError::RangeError("invalid Iterator.take limit".into()),
+                );
+            }
+            // The public finite range ends at MAX_SAFE_INTEGER. `u64::MAX`
+            // is therefore an unobservable sentinel for an infinite limit
+            // under the VM's finite execution budget, without inflating every
+            // heap object's representation for a per-helper Option field.
+            let remaining = if integer.is_infinite() {
+                u64::MAX
+            } else {
+                integer as u64
+            };
+            let record = self.direct_iterator_record(receiver)?;
+            let record_id = record
+                .object_id()
+                .expect("direct iterator records are ordinary objects");
+            self.stack.push(record);
+            let result = (|| {
+                let prototype = self.iterator_helper_prototype()?;
+                self.with_roots(|heap| {
+                    heap.alloc_iterator_helper(
+                        record_id,
+                        Value::Undefined,
+                        kind,
+                        remaining,
+                        prototype,
+                    )
+                })
+                .map(Value::Object)
+            })();
+            self.stack.pop();
+            result
+        })();
+        self.stack.pop();
+        result
+    }
+
+    pub(in super::super) fn iterator_helper_next(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let Value::Object(helper) = receiver else {
+            return Err(RuntimeError::TypeError(
+                "Iterator helper next requires an iterator helper".into(),
+            ));
+        };
+        let Some(state) = self.heap.iterator_helper(*helper)? else {
+            return Err(RuntimeError::TypeError(
+                "Iterator helper next requires an iterator helper".into(),
+            ));
+        };
+        if state.done {
+            return self.iterator_result(Value::Undefined, true);
+        }
+        if state.executing {
+            return Err(RuntimeError::TypeError(
+                "Iterator helper is already executing".into(),
+            ));
+        }
+        self.stack.push(receiver.clone());
+        self.stack.push(Value::Object(state.record));
+        self.stack.push(state.callback.clone());
+        let record = Value::Object(state.record);
+        let result = (|| {
+            self.with_roots(|heap| heap.begin_iterator_helper(*helper))?;
+            loop {
+                if state.kind == IteratorHelperKind::Take && state.index == 0 {
+                    self.with_roots(|heap| heap.finish_iterator_helper(*helper))?;
+                    self.iterator_close(&record)?;
+                    return self.iterator_result(Value::Undefined, true);
+                }
+                let Some(value) = self.iterator_step(&record, true)? else {
+                    self.with_roots(|heap| heap.finish_iterator_helper(*helper))?;
+                    return self.iterator_result(Value::Undefined, true);
+                };
+                match state.kind {
+                    IteratorHelperKind::Take => {
+                        self.with_roots(|heap| heap.consume_iterator_helper_take(*helper))?;
+                        self.stack.push(value.clone());
+                        let result = self.iterator_result(value, false);
+                        self.stack.pop();
+                        return result;
+                    }
+                    IteratorHelperKind::Drop => {
+                        let remaining = self
+                            .heap
+                            .iterator_helper(*helper)?
+                            .expect("iterator helper state remains live")
+                            .index;
+                        if remaining > 0 {
+                            self.with_roots(|heap| heap.consume_iterator_helper_take(*helper))?;
+                            continue;
+                        }
+                        self.stack.push(value.clone());
+                        let result = self.iterator_result(value, false);
+                        self.stack.pop();
+                        return result;
+                    }
+                    IteratorHelperKind::Map => {
+                        let callback_result = self.iterator_helper_callback(*helper, &value)?;
+                        self.stack.pop();
+                        self.stack.push(callback_result.clone());
+                        let result = self.iterator_result(callback_result, false);
+                        self.stack.pop();
+                        return result;
+                    }
+                    IteratorHelperKind::Filter => {
+                        let callback_result = self.iterator_helper_callback(*helper, &value)?;
+                        let selected = match self.to_boolean(&callback_result) {
+                            Ok(selected) => selected,
+                            Err(error) => {
+                                self.stack.pop();
+                                return Err(error);
+                            }
+                        };
+                        if selected {
+                            let result = self.iterator_result(value, false);
+                            self.stack.pop();
+                            return result;
+                        }
+                        self.stack.pop();
+                    }
+                }
+            }
+        })();
+        if result.is_err() {
+            self.with_roots(|heap| heap.finish_iterator_helper(*helper))?;
+        } else if !self
+            .heap
+            .iterator_helper(*helper)?
+            .is_some_and(|state| state.done)
+        {
+            self.with_roots(|heap| heap.leave_iterator_helper(*helper))?;
+        }
+        self.stack.pop();
+        self.stack.pop();
+        self.stack.pop();
+        self.close_iterator_on_error(&record, result)
+    }
+
+    fn iterator_helper_callback(
+        &mut self,
+        helper: ObjectId,
+        value: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let state = self
+            .heap
+            .iterator_helper(helper)?
+            .expect("iterator helper state remains live");
+        if state.index >= 9_007_199_254_740_991 {
+            return Err(RuntimeError::RangeError(
+                "Iterator helper index exceeds the safe integer range".into(),
+            ));
+        }
+        self.stack.push(value.clone());
+        let callback_result = self.call_native(
+            state.callback.clone(),
+            Value::Undefined,
+            vec![value.clone(), Value::Number(state.index as f64)],
+            false,
+        );
+        let callback_result = match callback_result {
+            Ok(result) => result,
+            Err(error) => {
+                self.stack.pop();
+                return Err(error);
+            }
+        };
+        self.with_roots(|heap| heap.advance_iterator_helper(helper))?;
+        Ok(callback_result)
+    }
+
+    fn close_direct_iterator_on_error<T>(
+        &mut self,
+        iterator: &Value,
+        error: RuntimeError,
+    ) -> Result<T, RuntimeError> {
+        let base = self.stack.len();
+        if let RuntimeError::Thrown(value) = &error {
+            self.stack.push(value.clone());
+        }
+        let _ = self.iterator_close_direct(iterator);
+        self.stack.truncate(base);
+        Err(error)
+    }
+
+    pub(in super::super) fn iterator_includes(
+        &mut self,
+        receiver: &Value,
+        search_element: &Value,
+        skipped_elements: &Value,
+    ) -> Result<Value, RuntimeError> {
+        if !matches!(receiver, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "Iterator helper requires an object receiver".into(),
+            ));
+        }
+        self.stack.push(receiver.clone());
+        self.stack.push(search_element.clone());
+        let result = (|| {
+            // `includes` intentionally does not apply ToNumber to its
+            // optional skip count. It accepts only integral Numbers and
+            // infinities, and validates before reading `next`.
+            let to_skip = match skipped_elements {
+                Value::Undefined => 0.0,
+                Value::Number(number)
+                    if !number.is_nan() && (number.is_infinite() || number.fract() == 0.0) =>
+                {
+                    *number
+                }
+                _ => {
+                    return self.close_direct_iterator_on_error(
+                        receiver,
+                        RuntimeError::TypeError(
+                            "Iterator.includes skippedElements must be an integral Number".into(),
+                        ),
+                    )
+                }
+            };
+            if to_skip < 0.0 {
+                return self.close_direct_iterator_on_error(
+                    receiver,
+                    RuntimeError::RangeError(
+                        "Iterator.includes skippedElements must not be negative".into(),
+                    ),
+                );
+            }
+            if to_skip.is_finite() && to_skip > 9_007_199_254_740_991.0 {
+                return self.close_direct_iterator_on_error(
+                    receiver,
+                    RuntimeError::RangeError(
+                        "Iterator.includes skippedElements exceeds MAX_SAFE_INTEGER".into(),
+                    ),
+                );
+            }
+            let mut skipped = to_skip;
+            let record = self.direct_iterator_record(receiver)?;
+            self.stack.push(record.clone());
+            let result = (|| {
+                while let Some(value) = self.iterator_step(&record, true)? {
+                    if skipped > 0.0 {
+                        skipped -= 1.0;
+                        continue;
+                    }
+                    if Self::same_value_zero(&value, search_element) {
+                        self.iterator_close(&record)?;
+                        return Ok(Value::Bool(true));
+                    }
+                }
+                Ok(Value::Bool(false))
+            })();
+            self.stack.pop();
+            self.close_iterator_on_error(&record, result)
+        })();
+        self.stack.pop();
+        self.stack.pop();
+        result
+    }
+
+    fn same_value_zero(left: &Value, right: &Value) -> bool {
+        match (left, right) {
+            (Value::Number(left), Value::Number(right)) => {
+                left == right || (left.is_nan() && right.is_nan())
+            }
+            _ => left == right,
+        }
+    }
+
+    pub(in super::super) fn iterator_helper_return(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let Value::Object(helper) = receiver else {
+            return Err(RuntimeError::TypeError(
+                "Iterator helper return requires an iterator helper".into(),
+            ));
+        };
+        let Some(state) = self.heap.iterator_helper(*helper)? else {
+            return Err(RuntimeError::TypeError(
+                "Iterator helper return requires an iterator helper".into(),
+            ));
+        };
+        if state.done {
+            return self.iterator_result(Value::Undefined, true);
+        }
+        if state.executing {
+            return Err(RuntimeError::TypeError(
+                "Iterator helper is already executing".into(),
+            ));
+        }
+        self.stack.push(receiver.clone());
+        self.stack.push(Value::Object(state.record));
+        let record = Value::Object(state.record);
+        let result = (|| {
+            self.with_roots(|heap| heap.finish_iterator_helper(*helper))?;
+            self.iterator_close(&record)?;
+            self.iterator_result(Value::Undefined, true)
+        })();
+        self.stack.pop();
         self.stack.pop();
         result
     }
@@ -314,9 +795,14 @@ impl Vm {
             Ok(value) => Ok(value),
             Err(error) => {
                 // IteratorClose preserves an active iterator's observable
-                // cleanup side effect. The original abrupt completion remains
-                // the public result when closing itself succeeds.
-                self.iterator_close(record)?;
+                // cleanup side effect. When a completion is already abrupt,
+                // a later `return` failure cannot replace it.
+                let base = self.stack.len();
+                if let RuntimeError::Thrown(value) = &error {
+                    self.stack.push(value.clone());
+                }
+                let _ = self.iterator_close(record);
+                self.stack.truncate(base);
                 Err(error)
             }
         }

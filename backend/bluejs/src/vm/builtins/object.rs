@@ -100,6 +100,11 @@ impl Vm {
         object: ObjectId,
         key: &PropertyName,
     ) -> Result<bool, RuntimeError> {
+        // Lazy global intrinsics still have their specified own-property
+        // descriptors when observed through [[Delete]]. Without this, deleting
+        // an as-yet-unread `globalThis.undefined` incorrectly looked like a
+        // successful deletion of an absent property.
+        self.materialize_global_object_property(object, key)?;
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_delete(object, key);
         }
@@ -110,6 +115,12 @@ impl Vm {
         &mut self,
         object: ObjectId,
     ) -> Result<Vec<PropertyName>, RuntimeError> {
+        // A Test262 child-realm facade has no mirrored ordinary properties.
+        // Its [[OwnPropertyKeys]] must be performed in the target Realm so
+        // reflection sees the complete intrinsic surface and its key order.
+        if self.heap.proxy(object)?.is_none() && self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_own_property_keys(object);
+        }
         // Global built-ins are initialized on demand to keep ordinary realms
         // compact. [[OwnPropertyKeys]] is nevertheless a reflective view of
         // the realm record, so it must expose the standard global properties
@@ -231,6 +242,12 @@ impl Vm {
     ) -> Result<bool, RuntimeError> {
         if self.heap.proxy(target)?.is_some() {
             return self.proxy_set(target, receiver, key, value);
+        }
+        // A foreign facade is intentionally an empty local object. Its
+        // [[Set]] must therefore run in the target Realm, with both the
+        // explicit receiver and value transported through the membrane.
+        if self.test262_foreign_reference(target).is_some() {
+            return self.test262_foreign_set_with_receiver(target, receiver, key, value);
         }
         // Module Namespace Exotic Objects have a distinct [[Set]] internal
         // method: it returns false for every property key, including a
@@ -1080,12 +1097,19 @@ impl Vm {
             ));
         }
         let descriptor_value = self.descriptor_object(&descriptor)?;
+        // The descriptor record is observable by the trap. Root it across
+        // the call because a trap can allocate (or invoke assertions that
+        // allocate) before it reads the third argument.
+        let base = self.stack.len();
+        self.stack.push(descriptor_value.clone());
         let trap_result = self.call_native(
             trap,
             Value::Object(handler),
             vec![Value::Object(target), key.value(), descriptor_value],
             false,
-        )?;
+        );
+        self.stack.truncate(base);
+        let trap_result = trap_result?;
         if !self.to_boolean(&trap_result)? {
             return Ok(false);
         }

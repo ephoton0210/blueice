@@ -2171,3 +2171,98 @@ eager terminal-helper approximation. Final verification for this continuation
 was `cargo test -p blueice-bluejs --quiet --no-fail-fast`: all enabled BlueJS
 tests passed, with only the pre-existing Node-dependent differential test
 explicitly ignored.
+
+## Working-tree continuation: JSON, descriptor roots, and foreign internal methods
+
+The following is direct regression evidence for the working tree after the
+complete inventory recorded above; it is not a replacement for a new full
+53,582-file reconciliation. `JSON.parse` now implements
+`InternalizeJSONProperty`: it creates the ordinary root wrapper with a data
+property, walks arrays and enumerable object keys post-order, invokes the
+reviver with the specified holder/key pair, and uses `[[Delete]]` or
+`[[DefineOwnProperty]] for each replacement. This keeps Proxy reviver
+replacements, inherited reads, non-extensible receivers, and abrupt traps on
+the normal internal-method path.
+
+`JSON.stringify` now implements the `space` gap, Number/String wrapper
+unboxing with observable `ToNumber`/`ToString`, and `toJSON` lookup for both
+objects and BigInts. Its existing function/array replacer handling retains
+the wrapper, property list, and every intermediate callback result across GC.
+The independent `JSON.rawJSON` and `JSON.isRawJSON` APIs still need their own
+branded raw-JSON internal slot; they are deliberately not represented by a
+plain object fallback.
+
+The same continuation shares the global-symbol registry between Test262
+Realms, forwards foreign `[[OwnPropertyKeys]]` and receiver-aware `[[Set]]`,
+and roots Proxy `[[DefineOwnProperty]]` trap descriptor objects. Promise lazy
+prototype construction and resolving-function pairs now retain intermediate
+objects across allocation; `Promise` and dynamic async function construction
+also observe a supplied `newTarget` when selecting their prototype. Lazy
+global deletion materializes the specified descriptor before invoking
+`[[Delete]]`.
+
+Direct pinned Test262 regression (both sloppy and strict where applicable)
+passed these **45 modes**:
+
+| Area | Modes | Exact fixtures |
+| --- | ---: | --- |
+| Reflect/Proxy realm and internal-method closure | 11 | `staging/sm/Reflect/{apply,ownKeys,deleteProperty,set}.js`; `staging/sm/Proxy/revoked-get-function-realm-typeerror.js`; `staging/sm/Proxy/json-stringify-replacer-array-revocable-proxy.js` |
+| JSON reviver/stringify library boundary | 34 | `built-ins/JSON/parse/{reviver-call-order,revived-proxy,reviver-array-define-prop-err,reviver-array-get-prop-from-prototype,reviver-array-delete-err,reviver-array-length-coerce-err,reviver-object-own-keys-err,reviver-object-define-prop-err}.js`; `built-ins/JSON/stringify/{space-string,space-number-object,value-number-object,value-bigint-tojson,value-bigint-order,value-bigint-replacer,replacer-array-proxy,replacer-function-tojson,value-tojson-result}.js` |
+
+The public JSON regression also runs under a one-object nursery, exercising
+nested parse/revive replacement across collection. Final local validation was
+`cargo test -p blueice-bluejs --quiet`, `cargo fmt --all -- --check`, and
+`cargo clippy -p blueice-bluejs --all-targets -- -D warnings`; all passed.
+
+## Working-tree continuation: remaining library algorithms and Iterator helpers
+
+`JSON.rawJSON` and `JSON.isRawJSON` now use a dedicated `RawJson` heap kind,
+rather than an observable plain-object marker. `rawJSON` validates that its
+text is a JSON primitive, creates the required frozen/null-prototype branded
+object, and `stringify` emits the retained primitive source directly. The
+parser also retains original primitive tokens for the ES2026 reviver context:
+`context.source` is fresh, data-only and present only when the current value
+is still the parsed primitive. Proxy mutation and duplicate-key replacement
+therefore remain on the ordinary internal-method path.
+
+`Array.prototype.concat` now calls the VM's Proxy-aware `IsArray`, observes
+`Symbol.isConcatSpreadable`, preserves source holes through `HasProperty`,
+and creates its result via `ArraySpeciesCreate`. The foreign-Test262-realm
+bridge recognizes a foreign intrinsic `%Array%` constructor before reading a
+foreign species. This closes the cross-Realm concat branch without adopting a
+foreign array prototype in the caller Realm.
+
+`Number.prototype.toString` is no longer routed through the generic primitive
+method. It has its required arity of one, coerces and validates radix 2–36,
+and selects a shortest representation from exact binary64 round-trip
+boundaries. This fixed the otherwise misleading `RegExp.escape` punctuation
+fixtures, whose expected hexadecimal escapes are constructed by
+`codePointAt(...).toString(16)`.
+
+The first two lazy iterator helpers, `Iterator.prototype.map` and
+`Iterator.prototype.filter`, share one traced private state record for the
+direct iterator, cached `next`, callback, index, kind, done and executing
+states. Their helper `next`/`return` methods retain lazy advancement,
+iterator-result validation, re-entry rejection, forwarding of `return`, and
+the rule that an already-abrupt callback error survives a later close error.
+`filter` loops through rejected source values inside one lazy `next()` without
+eager collection, while preserving the callback's source index. The
+accompanying native-call correction permits `%Iterator%` to be used as a class
+heritage constructor while retaining its direct-call/direct-construct TypeError
+contract. This also unblocks pre-existing terminal-helper subclasses.
+
+Pinned Test262 evidence from `72faf8ec1445c55149615e8b35187830783aba1a`:
+
+| Surface | Result | Evidence |
+| --- | ---: | --- |
+| JSON raw JSON, reviver source and SpiderMonkey parse-with-source | **44 / 44 pass** | `target/test262-json-source` |
+| Array concat (spreadability, holes, species and foreign Realm) | **137 / 137 pass** | `target/test262-array-concat` |
+| Number radix conversion and RegExp.escape | **222 / 222 pass** | `target/test262-number-regexp` |
+| Iterator map/filter plus Iterator subclassability | **148 / 148 pass** | `target/test262-iterator-map-filter` |
+| Full current `built-ins/Iterator/` inventory | **614 pass / 694 fail** of 1,308 | `target/test262-iterator-current` |
+
+The final Iterator row is deliberately not a completion claim: the remaining
+work is the other lazy helper state machines and multi-input helpers, not a
+reason to substitute eager collection behavior. The working tree has not been
+committed; broader crate and workspace gates remain required before any commit
+decision.

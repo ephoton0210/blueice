@@ -4,7 +4,7 @@
 
 use blueice_bluejs::{
     compile, parse, Heap, HeapConfig, HeapError, JsString, JsSymbol, PropertyDescriptor as D,
-    PropertyName, RuntimeError, Value, Vm,
+    PropertyName, RuntimeError, Value, Vm, VmConfig,
 };
 
 fn evaluate(source: &str) -> Result<Value, RuntimeError> {
@@ -225,7 +225,7 @@ fn array_truncation_stops_at_nonconfigurable_elements() {
 fn define_properties_coerces_array_length_after_collecting_descriptors() {
     assert_eq!(
         evaluate(
-            "let log=[];let length={valueOf:function(){log.push('valueOf');return 2}};let array=[0,1,2];Object.defineProperties(array,{first:{value:1},length:{value:length}});array.length===2&&array[0]===0&&array[1]===1&&array[2]===undefined&&log.join(',')==='valueOf'",
+            "let log=[];let length={valueOf:function(){log.push('valueOf');return 2}};let array=[0,1,2];Object.defineProperties(array,{first:{value:1},length:{value:length}});array.length===2&&array[0]===0&&array[1]===1&&array[2]===undefined&&log.join(',')==='valueOf,valueOf'",
         )
         .unwrap(),
         Value::Bool(true)
@@ -787,7 +787,14 @@ fn reflect_and_proxy_operations_keep_the_explicit_receiver_and_trap_contract() {
     );
     assert_eq!(
         evaluate(
-            "let log=[];let proxy=new Proxy({shown:2},{ownKeys(){log.push('keys');return ['shown']},getOwnPropertyDescriptor(target,key){log.push('descriptor');return {value:target[key],writable:true,enumerable:true,configurable:true}},get(target,key){log.push('get');return target[key]}});JSON.stringify(proxy)==='{\"shown\":2}'&&log.join(',')==='keys,descriptor,get'"
+            "let log=[];let proxy=new Proxy({shown:2},{ownKeys(){log.push('keys');return ['shown']},getOwnPropertyDescriptor(target,key){log.push('descriptor');return {value:target[key],writable:true,enumerable:true,configurable:true}},get(target,key){log.push('get');return target[key]}});JSON.stringify(proxy)==='{\"shown\":2}'&&log.join(',')==='get,keys,descriptor,get'"
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate(
+            "Reflect.deleteProperty(globalThis,'undefined')===false&&Reflect.deleteProperty(globalThis,'NaN')===false&&Reflect.deleteProperty(globalThis,'Infinity')===false"
         )
         .unwrap(),
         Value::Bool(true)
@@ -841,6 +848,72 @@ fn reflect_and_proxy_operations_keep_the_explicit_receiver_and_trap_contract() {
     assert_eq!(
         evaluate(
             "let observed=false;let proxy=new Proxy(function(){},{construct(target,args,newTarget){observed=args.length===1&&args[0]===4&&newTarget===proxy;return {}}});new proxy(4);observed"
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate(
+            "let sparse=Array(2);let spread={0:'x',length:1,[Symbol.isConcatSpreadable]:true};let nested=[3];nested[Symbol.isConcatSpreadable]=false;let result=[].concat(sparse,spread,nested);result.length===4&&!(0 in result)&&!(1 in result)&&result[2]==='x'&&result[3]===nested&&Array.isArray(new Proxy([],{}))&&!Array.isArray(new Proxy({},{}))"
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn proxy_define_property_trap_keeps_its_descriptor_alive_across_gc() {
+    let source = r#"
+        var pass = true;
+        for (var index = 0; index < 32; index++) {
+            var receiver = new Proxy({}, {
+                getOwnPropertyDescriptor() { return undefined; },
+                defineProperty(target, key, descriptor) {
+                    pass = pass && key === 'value' &&
+                        descriptor.value === index &&
+                        descriptor.writable === true &&
+                        descriptor.enumerable === true &&
+                        descriptor.configurable === true;
+                    return true;
+                }
+            });
+            pass = pass && Reflect.set({}, 'value', index, receiver);
+        }
+        pass
+    "#;
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 512,
+            max_heap_bytes: 2 * 1024 * 1024,
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn promise_prototype_survives_gc_while_lazy_methods_are_installed() {
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            major_threshold_bytes: 512,
+            max_heap_bytes: 2 * 1024 * 1024,
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    assert_eq!(
+        vm.execute(
+            &compile(
+                &parse("let promise = Promise.resolve(1); promise instanceof Promise").unwrap()
+            )
+            .unwrap(),
         )
         .unwrap(),
         Value::Bool(true)

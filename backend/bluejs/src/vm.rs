@@ -19,6 +19,7 @@ use crate::{
 };
 use num_bigint::{BigInt, Sign};
 use num_traits::{One, ToPrimitive, Zero};
+use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 mod builtins;
@@ -672,9 +673,12 @@ pub struct Vm {
     top_level_module: bool,
     globals: HashMap<String, ObjectId>,
     global_bindings: HashMap<String, GlobalBinding>,
-    /// `Symbol.for` has per-realm identity. Registered symbols are not valid
-    /// WeakMap/WeakSet keys, whereas ordinary and well-known symbols are.
-    symbol_registry: HashMap<JsString, JsSymbol>,
+    /// The GlobalSymbolRegistry belongs to an ECMAScript agent, not to an
+    /// individual Realm. Test262 child realms share this handle; independent
+    /// top-level VMs each create their own agent registry.
+    /// Registered symbols are not valid WeakMap/WeakSet keys, whereas
+    /// ordinary and well-known symbols are.
+    symbol_registry: Rc<RefCell<HashMap<JsString, JsSymbol>>>,
     /// The per-realm hidden key used by the normative-optional legacy
     /// constructors. It is deliberately not a well-known Symbol: callers may
     /// discover it only through the legacy receiver's own symbol keys.
@@ -711,6 +715,9 @@ pub struct Vm {
     /// `%WrapForValidIteratorPrototype%`, shared by the iterator wrappers
     /// created by `Iterator.from`.
     iterator_wrapper_prototype: Option<ObjectId>,
+    /// `%IteratorHelperPrototype%`, the common prototype for lazy iterator
+    /// helper instances such as `Iterator.prototype.map`.
+    iterator_helper_prototype: Option<ObjectId>,
     array_iterator_prototype: Option<ObjectId>,
     map_iterator_prototype: Option<ObjectId>,
     set_iterator_prototype: Option<ObjectId>,
@@ -821,7 +828,7 @@ impl Vm {
             top_level_module: false,
             globals: HashMap::new(),
             global_bindings: HashMap::new(),
-            symbol_registry: HashMap::new(),
+            symbol_registry: Rc::new(RefCell::new(HashMap::new())),
             intl_legacy_constructed_symbol: None,
             script_global_slots: HashMap::new(),
             variable_scope: 0,
@@ -836,6 +843,7 @@ impl Vm {
             class_field_initializer_depth: 0,
             iterator_base: None,
             iterator_wrapper_prototype: None,
+            iterator_helper_prototype: None,
             array_iterator_prototype: None,
             map_iterator_prototype: None,
             set_iterator_prototype: None,
@@ -1818,6 +1826,7 @@ impl Vm {
                     | NativeFunction::Promise
                     | NativeFunction::Function
                     | NativeFunction::AsyncFunction
+                    | NativeFunction::Iterator
                     | NativeFunction::PrimitiveConstructor(_)
             )
         {

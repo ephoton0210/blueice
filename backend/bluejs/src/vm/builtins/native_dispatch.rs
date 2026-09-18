@@ -1282,11 +1282,7 @@ impl Vm {
             NativeFunction::WeakCollectionMethod { map, method } => {
                 self.weak_collection_method(map, method, &receiver, &args)
             }
-            NativeFunction::ArrayIsArray => Ok(Value::Bool(
-                first
-                    .object_id()
-                    .is_some_and(|id| self.heap.is_array(id).unwrap_or(false)),
-            )),
+            NativeFunction::ArrayIsArray => Ok(Value::Bool(self.is_array(first)?)),
             NativeFunction::ArrayAt => self.array_at(&receiver, first),
             NativeFunction::ArrayOf => self.array_of_method(&receiver, &args),
             NativeFunction::ArraySpecies => Ok(receiver),
@@ -1363,8 +1359,10 @@ impl Vm {
                     self.dynamic_import(first.clone())
                 }
             }
-            NativeFunction::JsonParse => self.json_parse(first),
-            NativeFunction::JsonStringify => self.json_stringify(first),
+            NativeFunction::JsonParse => self.json_parse(first, args.get(1)),
+            NativeFunction::JsonStringify => self.json_stringify(&args),
+            NativeFunction::JsonRawJson => self.json_raw_json(first),
+            NativeFunction::JsonIsRawJson => self.json_is_raw_json(first),
             NativeFunction::Math(method) => self.math_method(method, &args),
             NativeFunction::Bind => self.bind_function(receiver, &args),
             NativeFunction::HasInstance => self
@@ -1919,6 +1917,7 @@ impl Vm {
                 let key = self.coerce_string(first)?;
                 let symbol = self
                     .symbol_registry
+                    .borrow_mut()
                     .entry(key.clone())
                     .or_insert_with(|| JsSymbol::new(Some(key)))
                     .clone();
@@ -1932,6 +1931,7 @@ impl Vm {
                 };
                 Ok(self
                     .symbol_registry
+                    .borrow()
                     .iter()
                     .find_map(|(key, candidate)| (candidate == symbol).then(|| key.clone()))
                     .map_or(Value::Undefined, Value::String))
@@ -1983,6 +1983,15 @@ impl Vm {
                 }
                 self.iterator_from(first)
             }
+            NativeFunction::IteratorHelper(method) => match method {
+                native::IteratorHelperMethod::Map => self.iterator_map(&receiver, first),
+                native::IteratorHelperMethod::Filter => self.iterator_filter(&receiver, first),
+                native::IteratorHelperMethod::Take => self.iterator_take(&receiver, first),
+                native::IteratorHelperMethod::Drop => self.iterator_drop(&receiver, first),
+                native::IteratorHelperMethod::Includes => {
+                    self.iterator_includes(&receiver, first, native::argument(&args, 1))
+                }
+            },
             NativeFunction::IteratorToArray => self.iterator_to_array(&receiver),
             NativeFunction::IteratorForEach => self.iterator_for_each(&receiver, first),
             NativeFunction::IteratorEvery => self.iterator_every(&receiver, first),
@@ -2013,6 +2022,8 @@ impl Vm {
             }
             NativeFunction::IteratorWrapperNext => self.iterator_wrapper_next(&receiver),
             NativeFunction::IteratorWrapperReturn => self.iterator_wrapper_return(&receiver),
+            NativeFunction::IteratorHelperNext => self.iterator_helper_next(&receiver),
+            NativeFunction::IteratorHelperReturn => self.iterator_helper_return(&receiver),
             NativeFunction::IteratorDispose => self.iterator_dispose(&receiver),
             NativeFunction::IteratorToStringTagGetter => Ok(Value::String("Iterator".into())),
             NativeFunction::IteratorToStringTagSetter => {

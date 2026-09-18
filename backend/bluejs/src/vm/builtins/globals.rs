@@ -826,16 +826,18 @@ impl Vm {
                         true,
                     )?;
                 } else {
-                    self.install_native(
-                        boxed_prototype,
-                        prototype,
-                        "toString",
-                        0,
-                        NativeFunction::PrimitiveMethod {
-                            boolean,
-                            string: true,
-                        },
-                    )?;
+                    if name != "Number" {
+                        self.install_native(
+                            boxed_prototype,
+                            prototype,
+                            "toString",
+                            0,
+                            NativeFunction::PrimitiveMethod {
+                                boolean,
+                                string: true,
+                            },
+                        )?;
+                    }
                     self.install_native(
                         boxed_prototype,
                         prototype,
@@ -849,6 +851,7 @@ impl Vm {
                 }
                 if name == "Number" {
                     for (property, length, method) in [
+                        ("toString", 1, native::NumberMethod::ToString),
                         ("toLocaleString", 0, native::NumberMethod::LocaleString),
                         ("toFixed", 1, native::NumberMethod::Fixed),
                         ("toExponential", 1, native::NumberMethod::Exponential),
