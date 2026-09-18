@@ -2329,6 +2329,163 @@ once). One owner:
       Test262-verified implementation; **Phase 26 Stage 2 is functionally
       complete**, with the specific documented gaps above (and each earlier
       slice's own) as the remaining well-scoped follow-up work toward 100%.
+- [x] **Leap-month calendar (`chinese`/`dangi`/`hebrew`) `since`/`until`
+      gap-closure — done 2026-09-18** (single owner, sequential; scoped
+      narrowly to `plain_date.rs`'s own `calendar_difference_date` per the
+      exact diagnosis the `PlainDate`/`PlainDateTime` second pass and the
+      `plain_year_month.rs`/`plain_month_day.rs` gap-closure pass already
+      recorded above — a concurrent sibling session worked
+      `with()`'s era/eraYear resolution in `calendar.rs` at the same time,
+      with no file-content overlap: this pass's only `calendar.rs` change
+      is additive, see below). TDD throughout: every fix is pinned first by
+      a failing Rust integration test built directly from real Test262
+      fixture values
+      (`backend/bluejs/tests/temporal_leap_month_calendar_difference.rs`,
+      exercising the real public `Temporal.PlainDate.prototype.{since,until}`
+      surface) before the implementation change that makes it pass, plus
+      new host-neutral unit tests in `plain_date.rs`'s own `#[cfg(test)]`
+      module requiring no VM.
+
+      **Real numbers**, pinned corpus, before/after on the same commit,
+      each affected type re-measured individually to confirm zero
+      regressions:
+
+      | Type | Before | After |
+      | --- | ---: | ---: |
+      | `PlainDate` | 2,036/2,290 (88.9%) | **2,044/2,290 (89.26%)** |
+      | `PlainDateTime` | 2,231/2,512 (88.8%) | **2,238/2,512 (89.09%)** |
+      | `PlainYearMonth` | 1,520/1,672 (90.9%) | **1,526/1,672 (91.27%)** |
+      | `PlainMonthDay` | 514/578 (88.9%) | 514/578 (88.9%, flat — expected, see below) |
+      | `ZonedDateTime` | 2,348/2,968 (79.1%) | **2,356/2,968 (79.38%)** |
+      | `Duration` | 1,024/1,122 (91.3%) | 1,024/1,122 (91.3%, flat — expected, `relativeTo` is out of this pass's scope) |
+      | `Instant` / `PlainTime` / `Now` | 968/968, 1,010/1,010, 138/138 | unchanged (100% each, no leap-month surface) |
+      | Whole `Temporal/` tree | 11,800/13,272 (88.9%) | **11,830/13,272 (89.13%)**, +30, zero regressions in any type |
+
+      `PlainMonthDay` is flat by design, not oversight: confirmed against
+      the pinned corpus and against Gecko's own `PlainMonthDay.cpp` (already
+      noted by the `plain_year_month.rs`/`plain_month_day.rs` slice above)
+      that this type has no `add`/`subtract`/`since`/`until`/`compare` at
+      all — a month-day pair has no well-ordered total order in general —
+      so `calendar_difference_date` has no `PlainMonthDay` call site to fix.
+
+      Reproduce: `python3 backend/bluejs/test262/run.py --corpus
+      /tmp/blueice-test262-72faf8ec --filter "Temporal/" --jobs 8` for the
+      whole-tree number; the equivalent `--filter "Temporal/<Type>/"` for
+      each row.
+
+      **The real bug, precisely**: `calendar_difference_date_leap_month`
+      (the `chinese`/`dangi`/`hebrew` branch of `calendar_difference_date`,
+      shared by every `Plain*` type's `since`/`until` and reused as-is by
+      `zoned_date_time.rs`'s `difference_zoned_date_time`) compared
+      candidates by raw ordinal month position, which silently misorders
+      whenever the two years being compared put their leap month in a
+      different position (e.g. `2001`'s Chinese `M04L` sits at ordinal 5,
+      shifting every later month's ordinal by one that year only). Rewrote
+      it to compare by **`Month` identity** instead — `icu_calendar`'s own
+      `types::Month` (`number` + `is_leap`) *is* Temporal's `monthCode`
+      concept (`Month::new(4)` <-> `"M04"`, `Month::leap(4)` <-> `"M04L"`),
+      so no separate month-code string type was introduced. Ported directly
+      from Gecko's `DifferenceNonISODate`'s `CalendarHasLeapMonths` branch
+      (`development/browser_core/reference/gecko/js/src/builtin/temporal/Calendar.cpp`,
+      fetched directly via `curl` since this worktree had no local Gecko
+      checkout, matching the pattern earlier passes on this branch used):
+      `CompareCalendarDate`-equivalent comparison, `AddYearMonthDuration`'s
+      leap-month variant for month-bubbling, and the same
+      months-until-end-of-year/months-since-start-of-year fold used when
+      `largestUnit` is `"month"` and a whole-year span needs folding down.
+
+      **Checked `icu_calendar` before porting Gecko's own ~350-line
+      `CreateDateFromCodes` fallback table by hand, per this pass's own
+      instructions — and it mostly wasn't needed**: `icu_calendar`'s
+      `DateFields::month: Option<Month>` field, resolved through
+      `Date::try_from_fields`, already does per-calendar `monthCode`
+      resolution with the same constrain/reject leap-month-doesn't-exist
+      semantics Gecko hand-codes (confirmed directly against
+      `components/calendar/src/cal/hebrew.rs`'s own
+      `Hebrew::ordinal_from_month`, not assumed) — no separate fallback
+      table needed for the general case.
+
+      **One real, load-bearing exception found and fixed, exactly the kind
+      of gap this pass's own instructions warned might exist**: `icu_calendar`'s
+      `Hebrew::ordinal_from_month` happens to already implement Gecko's own
+      generic "pick the next month" constrain fallback (Adar I `M05L` ->
+      Adar `M06`, i.e. `ordinal + 1`) — but its `EastAsianTraditional`
+      (`Chinese`/`Dangi`) implementation instead falls back to the *same*
+      month number, only dropping the leap flag (`M04L` -> `M04`, not
+      `M05`) — confirmed by reading both
+      `components/calendar/src/cal/hebrew.rs` and
+      `components/calendar/src/cal/east_asian_traditional.rs` directly, and
+      independently by Gecko's own `CreateDateFromCodes` comment ("Pick the
+      next month... except for M12L, because we don't want to switch over
+      to the next year") plus its generic `nonLeapMonth = min(monthCode.ordinal() + 1, 12)`
+      code, which applies uniformly to all three leap calendars in the
+      actual shipped algorithm. This is a real, independently-discovered
+      library/reference divergence, not a bug in either — `calendar.rs`'s
+      new `calendar_date_from_month` (`plain_date.rs`) does not trust
+      whichever fallback the underlying calendar happens to implement;
+      it detects "this leap month does not exist in this year" itself via a
+      day-independent `Reject`-mode existence probe, then applies Gecko's
+      own uniform fallback explicitly. Pinned by both a Rust unit test
+      (`calendar_date_from_month_falls_back_to_the_next_month_for_a_leap_month_that_does_not_recur`)
+      and the real Test262 fixture value it was found from
+      (`intl402/Temporal/PlainDate/prototype/since/leap-months-chinese.js`'s
+      "M04L-M04 backwards is -12mo not -1y" case, which this engine
+      previously computed as `-1y`/`0mo`).
+
+      **Shared-file functions added/changed** (per this stage's own
+      file-boundary discipline — every change below is additive, no
+      existing function signature changed): all new, in
+      `backend/bluejs/src/vm/temporal/plain_date.rs`:
+      `calendar_month_identity`, `calendar_date_from_month`,
+      `calendar_date_from_month_exact`, `calendar_date_from_ordinal`,
+      `month_sort_key`, `compare_calendar_identity`, `surpasses_identity`,
+      `add_year_month_duration_leap_month`; `calendar_difference_date_leap_month`
+      itself was rewritten in place (same signature, same call sites in
+      `calendar_difference_date`) rather than added alongside. No changes
+      to `calendar.rs` or `vm/temporal.rs` were needed — this pass's entire
+      diff is contained to `plain_date.rs` plus its own new test files
+      (`backend/bluejs/tests/temporal_leap_month_calendar_difference.rs`),
+      deliberately minimizing overlap with the concurrent `with()`
+      era/eraYear session's own `calendar.rs` work.
+
+      **Deliberately left open, and why** (documented, not silently
+      approximated):
+      - `calendar_add_date`/`AddNonISODate` (the `add`/`subtract` side,
+        Gecko's own `AddYearMonthDuration`-via-`AddNonISODate` path) is
+        **not** monthCode-aware for the three leap calendars — it still
+        carries years/months by flat ordinal position, the same
+        structurally-different-algorithm gap this document's
+        `plain_year_month.rs`/`plain_month_day.rs` gap-closure pass already
+        recorded in detail. This pass's own scope, confirmed against its
+        own launch instructions, was specifically `calendar_difference_date`
+        (`since`/`until`); `calendar_add_date` is `add`/`subtract`'s
+        separate, larger, not-yet-attempted follow-up (its own "~130+
+        modes" estimate above is now smaller, since `since`/`until`'s own
+        share of that cluster is closed by this pass, but a fresh
+        fixture-by-fixture count was not re-run to isolate exactly how much
+        of it is `add`/`subtract`-only going forward).
+      - `round_calendar_duration`'s month/year rounding
+        (`since`/`until`'s own `{ smallestUnit }` rounding, not the
+        unrounded largest-unit duration this pass fixes) still calls
+        `calendar_add_unit` -> `calendar_add_date` for its anchor-relative
+        fractional-position probes, so a *rounded* `since`/`until` result
+        on a leap-month calendar still inherits `calendar_add_date`'s own
+        ordinal-based (not monthCode-based) probing. Not separately
+        triaged; likely a smaller residual share of the type totals above,
+        since the unrounded largest-unit path (this pass's own fix) is the
+        one every `leap-months-*.js`/`wrapping-at-end-of-month-*.js`
+        fixture exercises directly.
+      - The era/monthCode mutual-exclusivity validation gap every earlier
+        `PlainDate`/`PlainDateTime`/`PlainYearMonth`/`PlainMonthDay` slice
+        already documented as not re-derived is unchanged here, as is
+        `ZonedDateTime`'s own day-length-aware fractional rounding gap.
+      - `cargo build --workspace --all-targets` / `cargo test --workspace
+        --no-fail-fast` / `cargo clippy --workspace --all-targets -- -D
+        warnings` all clean on this pass's own commit — the only test
+        failure anywhere in the whole workspace is the already-documented
+        pre-existing `string_protocols.rs::observable_conversion_order_and_gc_pressure`
+        flake this document's own launch instructions list as known and out
+        of scope.
 
 ### Stage 3 — Test262-evidence closure and coverage
 
