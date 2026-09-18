@@ -2713,3 +2713,222 @@ in both directions, the cross-realm `JSON.stringify` fix, the Proxy/Reflect
 boundary checks, and the `asIntN`/`asUintN` cap's enforced (not truncated)
 behavior. `built-ins/BigInt/`'s full 154/154 remains unaffected by this
 round's changes (reverified after each fix).
+
+## ShadowRealm: construction, evaluate/importValue, and cross-realm wrapped functions
+
+Implemented 2026-09-18. **Edition-17 applicability finding**: `ShadowRealm`
+is **not** part of published ECMA-262 edition 17. Its own proposal
+repository (`tc39/proposal-shadowrealm`) reports it at TC39 **Stage 2.7** as
+of this date -- not yet Stage 3, let alone merged into a published edition
+-- and the `262.ecma-international.org/17.0/` table of contents has no
+`ShadowRealm` clause. It is present in this Test262 snapshot only because
+the pinned revision's own selection note says "current Test262 main..,
+proposals and staging are included, not filtered to an ECMA edition"
+(`backend/bluejs/test262/snapshot.json`). Implemented anyway per an explicit
+request; `ECMASCRIPT_2026.md`'s workstream table should credit this as a
+proposal-tracking slice, not edition-17 progress, if it is cited there.
+
+### Result
+
+`built-ins/ShadowRealm/`: **0/124 -> 114/124** passing modes (64 files),
+starting from a 100% pre-implementation failure baseline.
+
+### What's implemented
+
+`backend/bluejs/src/vm/shadow_realm.rs` builds directly on the "a realm is a
+whole child `Vm`" primitive `test262.rs`'s `$262.createRealm()` already
+established, rather than inventing a second one: `new ShadowRealm()` creates
+a boxed child `Vm` sharing this `Vm`'s `GlobalSymbolRegistry` (matching
+`$262.createRealm()`'s identical choice, for the identical spec-mandated
+reason -- `Symbol.for` is agent-wide even though every Realm keeps its own
+globals), tracked in new `Vm` fields (`shadow_realms`, `shadow_realm_by_heap`,
+`shadow_wrapped_functions`) alongside the existing
+`test262_realms`/`test262_foreign_values`.
+
+- `ShadowRealm.prototype.evaluate` (`PerformShadowRealmEval`): parses and
+  compiles `sourceText` as a classic Script; a parse failure throws a real
+  `SyntaxError` directly (`ParseText`'s own failure, before any execution
+  context exists), while any abrupt completion *during* execution -- a
+  thrown value, or a promise job's own rejection drained synchronously
+  afterward, since this engine has no realm-independent job queue -- becomes
+  an opaque, message-less `TypeError` in the caller's realm
+  (`CreateTypeErrorCopy`). These are genuinely different spec paths, not an
+  implementation shortcut: confirmed by fetching the proposal's own
+  `PerformShadowRealmEval`/`CreateTypeErrorCopy` text before assuming either
+  one, after an early attempt wrongly wrapped *every* completion the same
+  way and failed `throws-syntaxerror-on-bad-syntax.js`.
+- `GetWrappedValue`/`WrappedFunctionCreate`: primitives (this engine's
+  `Value::String`/`Number`/`Bool`/`BigInt`/`Symbol`/`Undefined`/`Null` carry
+  no heap affinity) cross a boundary unchanged; a callable Object becomes a
+  fresh `NativeFunction::ShadowRealmWrappedFunction` facade allocated in the
+  destination realm (never cached -- a new facade every crossing, matching
+  `wrapped-functions-new-wrapping-on-each-evaluation.js`); any other Object
+  is a `TypeError`. `CopyNameAndLength` reads `length`/`name` through
+  `Vm::proxy_get_own_property` (not the raw heap record), so a revoked or
+  throwing-trap Proxy target is reported correctly instead of silently
+  defaulting.
+- Calling a wrapped function (`OrdinaryWrappedFunctionCall`) wraps
+  `this`/each argument *into* the target realm and the result *back* into
+  the caller's, so a caller-side function passed as an argument becomes
+  itself a fresh wrapped facade the callee can invoke -- the fully
+  bidirectional case
+  (`wrapped-function-arguments-are-wrapped-into-the-inner-realm.js`,
+  `wrapped-functions-accepts-callable-objects.js`, and
+  `wrapped-function-multiple-different-realms(-nested).js`'s multi-hop
+  chains through 3-5 realms in both directions within one expression).
+- `ShadowRealm.prototype.importValue` reuses the same host-supplied module
+  registry ordinary dynamic `import()` already uses (`Vm::dynamic_import`):
+  the child realm borrows the caller's
+  `module_registry`/`active_module_name` for the duration of one call, and
+  any failure (bad specifier, a throwing or unparseable module, a missing
+  export) rejects the returned promise with an opaque `TypeError`, matching
+  the proposal's own `%ThrowTypeError%` rejection handler. `exportName`
+  needed its own read of the actual algorithm text before implementing:
+  unlike `specifier` (`? ToString(specifier)`), `exportName` is a *plain
+  type check with no coercion attempted* ("If exportName is not a String,
+  throw a TypeError exception") -- `throws-if-exportname-not-string.js`
+  specifically asserts a throwing `toString` on a non-string `exportName` is
+  never even called.
+
+### The reentrancy problem this needed solving, and how
+
+Unlike Test262's own realm membrane (which forwards arbitrary object
+operations and deliberately leaves an argument object passed *into* a child
+realm as a non-forwarding opaque stand-in -- see `test262_transport_value`'s
+own comment: "property forwarding needs a resumable cross-VM operation and
+is not implied by passing an otherwise opaque argument through a foreign
+call"), `ShadowRealm`'s wrapped functions must genuinely call back and
+forth in both directions. `wrapped-function-multiple-different-realms.js`
+and its `-nested` sibling chain calls through 3-5 realms within a single
+expression, including a realm calling back into a *grandparent* it does not
+own directly.
+
+Every `Vm` a `ShadowRealm` creates is owned as a plain `Box<Vm>` inside its
+creator's own `shadow_realms` map -- there is no shared/reference-counted
+ownership between realms. Reaching an ancestor (or an ancestor's sibling)
+`Vm` from deep inside a nested call therefore needs something other than
+ordinary field access. The fix is a thread-local stack,
+`ACTIVE: Vec<(heap_tag, *mut Vm)>`: immediately before a `Vm` calls into
+another realm, `register_active` pushes a raw pointer to itself, tagged by
+its own heap id (`ObjectId::heap`); the RAII `ActiveGuard` pops it the
+instant that nested call returns. A callee that needs to reach back into an
+ancestor resolves it by tag through this stack instead of through any
+`HashMap`. The safety argument (documented in full on `ACTIVE` itself in
+`shadow_realm.rs`): a pointer is only ever present for the exact dynamic
+extent of a `&mut Vm` call already suspended on the Rust stack when it was
+pushed, so a wrapped function retained and called again long after that call
+chain returned simply finds no entry (a catchable error) rather than
+dereferencing freed memory -- and a `std::ptr::eq` check refuses the
+degenerate case of a chain looping all the way back to its own origin realm
+within one call.
+
+A second, related bug this exposed and fixed: a realm's own child can be
+*directly owned* by `self` (present in `self.shadow_realms`) while
+simultaneously being *checked out* (removed from that map for the duration
+of a call already using it, the same pattern `test262_foreign_call` already
+uses to avoid aliasing `self.shadow_realms` while a nested call runs).
+`wrapped-function-multiple-different-realms-nested.js`'s 5-realm-deep chain
+does exactly this -- the chain loops back to a realm's own child while an
+ancestor frame is already using that exact child -- and the first
+implementation's `.expect()` panicked trying to remove it a second time
+(reported by the runner as `"kind": "crash", "message": "adapter exited
+with code 101"`). The fix: `shadow_call_wrapped` and `shadow_realm_evaluate`
+now check `ACTIVE` *before* trying to remove from their own `shadow_realms`
+map, and a freshly-checked-out child is itself registered in `ACTIVE` (by
+its own tag) for the duration it is in use, so a call chain that loops back
+through it is found there instead of attempting a second removal.
+
+A third, independent bug: a wrapped function's target had no GC root of its
+own. An arrow function returned directly as an `evaluate()` completion value
+(never stored in that realm's own globals) has nothing else in its own
+realm's reachability graph keeping it alive, so an unrelated later
+allocation in that realm's heap (e.g. a second `evaluate()` call
+materializing new intrinsics) could reclaim it before a wrapper elsewhere
+ever called it -- reproduced directly by running the multi-realm test with
+an extra intervening `evaluate()` call inserted between creating and calling
+the wrapper, confirmed via the engine's own `bluejs gc reclaim` stderr
+trace. Fixed by rooting the target (`Heap::root`) in its own realm for the
+wrapper's lifetime, mirroring `Test262ForeignValue`'s identical
+`_target_root` pattern one field over.
+
+### Test262 runner infrastructure fix (shared with, but scoped away from, dynamic `import()`)
+
+`ShadowRealm.prototype.importValue('./relative.js', name)` is an ordinary
+method call, not `import`/`import.source`/`import.defer` syntax, so the
+runner's existing dynamic-import-with-a-variable-specifier heuristic
+(`DYNAMIC_IMPORT_EXPRESSION` triggering a relative-string scan of the test
+source for sibling fixtures) never found `import-value_FIXTURE.js` for
+`import-value.js` -- a real gap in the runner, not the engine, that a plain
+"module not found" happened to mask for every *other* `importValue` test
+(each expects a `TypeError` rejection regardless of the specific reason, so
+a missing fixture and a genuinely broken one both "pass" until a test
+actually expects success). Added a second trigger,
+`SHADOW_REALM_IMPORT_VALUE_EXPRESSION` (`\.importValue\s*\(`), alongside the
+existing one.
+
+That alone regressed `throws-typeerror-import-syntax-error.js`: its fixture
+is *deliberately* unparseable (it tests that `importValue` rejects when the
+imported script can't be parsed), but the adapter's `mode == "module"` path
+eagerly precompiles every `module_sources` entry up front and hard-fails the
+*entire request* on any parse error -- correct for a genuinely
+statically-imported module (a real linking failure the corpus already
+depends on testing this way), wrong for a candidate that is only a
+speculative relative-string guess never actually required by anything.
+`module_sources()` now also returns which collected paths were reached
+*only* through such a guess (never through a real `import`/dynamic-
+`import()` reference), and the adapter (`bluejs-test262.rs`) skips --
+instead of hard-failing on -- a parse/compile failure for exactly those
+paths (`speculative_module_sources` in the request). To keep this from
+touching the already-large, separately-exercised dynamic-`import()` corpus,
+that leniency is further scoped to apply only when `.importValue(` is what
+triggered the string scan and no actual dynamic-`import()` expression is
+also present -- verified unchanged (861 fail / 1039 pass, identical file-
+for-file before and after this change) against
+`language/expressions/dynamic-import/` before finishing.
+
+### Remaining gaps (10/124 failing modes, 5 files)
+
+All confirmed, by direct reproduction, to be **pre-existing** limitations
+unrelated to this work -- none are ShadowRealm-specific, and each reproduces
+identically on a plain `Vm`/Test262-realm scenario with no `ShadowRealm`
+involved at all:
+
+- `globalthis-available-properties.js`, `globalthis-config-only-properties.js`
+  (4 modes): `Object.prototype.hasOwnProperty.call(globalThis, 'Array')`
+  (direct reflection, bypassing the compiler's identifier fast path) returns
+  `false` for at least this one lazily-materialized global, even on the
+  *outer*, non-ShadowRealm realm with no prior touch, while `'JSON'` and
+  `'isFinite'` checked the same way both correctly return `true` -- a
+  narrow, name-specific gap in `materialize_global_object_property`'s
+  dispatch, not chased further given this session's scope.
+- `returns-primitive-values.js` (2 modes): needs `Number.isNaN`, not yet an
+  implemented `Number` static (the global `isNaN`/`isFinite`/etc. exist; the
+  `Number.*` statics remain part of the still-open "complete builtin
+  libraries" workstream per `ECMASCRIPT_2026.md`).
+- `wrapped-function-proto-from-caller-realm.js`,
+  `wrapped-function-throws-typeerror-from-caller-realm.js` (4 modes): both
+  use `$262.createRealm()` to construct a `ShadowRealm` in one Test262 realm
+  and then pass *that* `ShadowRealm` instance into a *third*, unrelated
+  Test262 realm (`YetAnotherShadowRealm.prototype.evaluate.call(realm, ...)`).
+  Test262's own membrane represents an object crossing between two realms
+  neither of which is the immediate caller as an opaque, brand-less stand-in
+  (`test262_transport_value`'s own documented limitation, quoted above), so
+  this feature's `[[ShadowRealm]]` brand check correctly reports it as *not*
+  a `ShadowRealm` once it arrives that way -- a pre-existing Test262-membrane
+  gap this feature's brand check did not introduce, and could not paper over
+  without extending that membrane's own object-identity model.
+
+### Verification
+
+`backend/bluejs/tests/shadow_realm.rs` (new, 12 tests): construction/brand
+checks, `evaluate`'s primitive-passthrough and non-primitive/non-callable
+`TypeError` boundary, the `SyntaxError`-vs-opaque-`TypeError` split, a
+wrapped function's `length`/`name`/fresh-identity-per-crossing, the
+bidirectional callable-argument case, the multi-realm GC-rooting regression,
+and `importValue`'s resolve/reject paths through
+`set_module_loader_context`. `cargo build --workspace --all-targets`,
+`cargo test --workspace --no-fail-fast` and `cargo clippy --workspace
+--all-targets -- -D warnings` all pass except the one pre-declared
+known-flaky `observable_conversion_order_and_gc_pressure` in
+`tests/string_protocols.rs` (intermittent `HeapLimitExceeded`, unrelated to
+this work).
