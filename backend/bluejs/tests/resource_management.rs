@@ -342,3 +342,52 @@ fn async_disposable_stack_dispose_async_rejects_with_dispose_error() {
     vm.run_promise_jobs().unwrap();
     assert_eq!(execute(&mut vm, "result"), Ok(Value::Bool(true)));
 }
+
+#[test]
+fn using_declaration_infers_anonymous_function_name_from_its_binding() {
+    let mut vm = Vm::default();
+    // NamedEvaluation applies to any single-identifier lexical binding with
+    // an anonymous function/arrow/class initializer, `using` included; the
+    // dispose call is patched to a no-op afterward so this only exercises
+    // name inference, not disposal.
+    let source = r#"
+        Function.prototype[Symbol.dispose] = function () {};
+        let arrowName, fnExprName;
+        {
+            using arrow = () => {};
+            arrowName = arrow.name;
+        }
+        {
+            using fn = function () {};
+            fnExprName = fn.name;
+        }
+        arrowName === 'arrow' && fnExprName === 'fn'
+    "#;
+    assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn using_directly_in_a_switch_case_is_a_compile_error() {
+    assert!(matches!(
+        compile_error("switch (0) { case 0: using x = null; break; }"),
+        CompileError::InvalidSyntax(_)
+    ));
+    assert!(matches!(
+        compile_error("switch (0) { default: using x = null; }"),
+        CompileError::InvalidSyntax(_)
+    ));
+    // A `using` inside its own block within a case is fine -- only a
+    // *direct* case-body declaration is rejected.
+    let mut vm = Vm::default();
+    let source = r#"
+        let disposed = false;
+        switch (0) {
+            case 0: {
+                using x = { [Symbol.dispose]() { disposed = true; } };
+                break;
+            }
+        }
+        disposed
+    "#;
+    assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)));
+}

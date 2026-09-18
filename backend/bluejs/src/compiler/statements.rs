@@ -733,10 +733,17 @@ impl Compiler {
                 continue;
             }
             if let Some(value) = &declaration.init {
-                let inferred_name = match (&declaration.pattern, self.bytecode.module) {
-                    (Pattern::Identifier(name), true) if name == MODULE_DEFAULT_BINDING => {
+                // "IsAnonymousFunctionDefinition(Initializer)" NamedEvaluation
+                // applies to any `var`/`let`/`const`/`using`/`await using`
+                // declarator whose target is a single BindingIdentifier --
+                // not just a module's default-export binding.
+                let inferred_name = match &declaration.pattern {
+                    Pattern::Identifier(name)
+                        if self.bytecode.module && name == MODULE_DEFAULT_BINDING =>
+                    {
                         Some("default")
                     }
+                    Pattern::Identifier(name) => Some(name.as_str()),
                     _ => None,
                 };
                 self.expression_with_name(value, inferred_name)?

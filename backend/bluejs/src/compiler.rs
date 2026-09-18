@@ -1336,6 +1336,27 @@ fn validate_switch_case_declarations(
             "a switch lexical declaration conflicts with a var declaration",
         ));
     }
+    // "It is a Syntax Error if UsingDeclaration is contained directly
+    // within the StatementList of either a CaseClause or DefaultClause":
+    // unlike an ordinary `let`/`const`, a `using`/`await using` directly in
+    // a case's statement list has no block of its own to dispose it at the
+    // end of (the switch's own case-block environment spans every case, not
+    // one case's statements), so it is rejected outright rather than wired
+    // up to dispose at the switch's exit.
+    if cases
+        .iter()
+        .flat_map(|case| &case.consequent)
+        .any(|statement| {
+            matches!(
+                statement,
+                Stmt::VarDecl(DeclKind::Using | DeclKind::AwaitUsing, _)
+            )
+        })
+    {
+        return Err(CompileError::InvalidSyntax(
+            "a using declaration cannot appear directly in a switch case",
+        ));
+    }
     Ok(())
 }
 
