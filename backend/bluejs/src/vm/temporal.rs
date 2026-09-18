@@ -404,7 +404,10 @@ impl Vm {
                         ("monthCode", native::TemporalGetter::MonthCode),
                         ("era", native::TemporalGetter::Era),
                         ("eraYear", native::TemporalGetter::EraYear),
+                        ("daysInYear", native::TemporalGetter::DaysInYear),
+                        ("daysInMonth", native::TemporalGetter::DaysInMonth),
                         ("monthsInYear", native::TemporalGetter::MonthsInYear),
+                        ("inLeapYear", native::TemporalGetter::InLeapYear),
                     ],
                     TemporalKind::ZonedDateTime => &[
                         ("calendarId", native::TemporalGetter::CalendarId),
@@ -699,75 +702,77 @@ impl Vm {
     /// not only a bare calendar ID — Test262's `since/calendar-id-match.js`
     /// passes `"2024-05-16[u-ca=iso8601]"` as a property-bag `calendar`
     /// value, `withCalendar/calendar-time-string.js` passes
-    /// `"T11:30[u-ca=hebrew]"` to `withCalendar`, and (found via a real
-    /// `equals/argument-propertybag-calendar-iso-string.js` failure) an
-    /// *unannotated* ISO string like `"2020-01-01"` or `"2020-01"` is
-    /// equally valid and always means `"iso8601"` — the calendar defaults
-    /// to `iso8601` whenever no `[u-ca=...]` annotation is present, per
-    /// `ParseISODateTime`. Tries every ISO string production this crate has
-    /// a parser for (date-time, year-month, month-day, time — matching
-    /// `TemporalCalendarString`'s own grammar alternation), extracting the
-    /// first `u-ca=` annotation from whichever one matches; only when
-    /// *none* of them parse does this fall back to a bare calendar ID
-    /// lookup (an actual calendar ID like `"gregory"` never matches any of
-    /// those productions, so the two paths never compete).
+    /// `"T11:30[u-ca=hebrew]"` to `withCalendar`, and an *unannotated* ISO
+    /// string like `"2020-01-01"` or `"2020-01"` is equally valid and
+    /// always means `"iso8601"`. A bare calendar ID wins outright (step 3,
+    /// e.g. `"gregory"`); otherwise the whole string must parse as *some*
+    /// recognized Temporal string shape (step 4 — date-time, year-month,
+    /// month-day or time, matching `TemporalCalendarString`'s own grammar
+    /// alternation), whose calendar annotation (if any) is the result — an
+    /// unannotated but otherwise syntactically valid string implies
+    /// `"iso8601"`, it is not itself tried as a calendar-ID literal. Before
+    /// this fix, a bracket-less date-like string always fell straight to
+    /// `canonical_calendar_id(&value)` and always failed, since no real
+    /// calendar ID looks like a date — pinned by
+    /// `PlainYearMonth/PlainMonthDay/prototype/equals/
+    /// argument-propertybag-calendar-iso-string.js`'s eight unannotated/
+    /// annotated date, dateTime, year-month and month-day forms.
+    ///
+    /// A Temporal object with its own `[[Calendar]]` slot returns that
+    /// calendar directly (`ToTemporalCalendar` step 1.a's fast path,
+    /// pinned by `TemporalHelpers.checkToTemporalCalendarFastPath`, which
+    /// makes both a `calendar`/`calendarId` JS-visible property throw if
+    /// read); only `PlainDate`/`PlainDateTime`/`PlainMonthDay`/
+    /// `PlainYearMonth`/`ZonedDateTime` carry `[[InitializedTemporalXxx]]`
+    /// calendar semantics — `Temporal.Duration`/`Instant`/`PlainTime` are
+    /// calendar-less and fall through to the plain-string handling below,
+    /// where a non-`String` value is a `TypeError`, not coerced via
+    /// `ToString` the way a plain calendar-agnostic string argument would
+    /// be (`argument-propertybag-calendar-wrong-type.js`'s ten cases:
+    /// `null`/`Boolean`/`Number`/`BigInt`/`Symbol`/a plain object/a
+    /// non-fast-path `Temporal.Duration` instance — this function is also
+    /// exactly what a `Duration.prototype.round`'s `relativeTo` property
+    /// bag's own `calendar` field goes through, per
+    /// `relativeto-propertybag-calendar-wrong-type.js`).
     fn temporal_calendar_identifier(&mut self, value: &Value) -> Result<String, RuntimeError> {
         if *value == Value::Undefined {
             return Ok("iso8601".into());
         }
-        // `ToTemporalCalendarIdentifier`: a Temporal object with its own
-        // `[[Calendar]]` slot returns that calendar directly; any other
-        // object, or any non-`String` primitive (`null`, a boolean, a
-        // Number, a BigInt, a Symbol), is a `TypeError` — *not* coerced via
-        // `ToString` the way a plain calendar-agnostic string argument would
-        // be. Found via `Duration/prototype/round/
-        // relativeto-propertybag-calendar-wrong-type.js` (this function is
-        // exactly what a `relativeTo` property bag's own `calendar` field
-        // goes through), and confirmed as a real, already-present gap
-        // reachable independently of `relativeTo` — every one of
-        // `PlainDate/calendar-wrong-type.js`,
-        // `PlainDate/from/argument-propertybag-calendar-wrong-type.js` and
-        // `PlainDate/prototype/withCalendar/calendar-wrong-type.js` (all
-        // three of this function's other call sites) fails identically on
-        // the unmodified pinned corpus.
         if let Some(object) = value.object_id() {
             if let Some(temporal) = self.heap.temporal_value(object)? {
                 if matches!(
                     temporal.kind,
                     TemporalKind::PlainDate
                         | TemporalKind::PlainDateTime
-                        | TemporalKind::PlainYearMonth
                         | TemporalKind::PlainMonthDay
+                        | TemporalKind::PlainYearMonth
                         | TemporalKind::ZonedDateTime
                 ) {
-                    return Ok(temporal.calendar.clone());
+                    return Ok(temporal.calendar);
                 }
             }
-            return Err(RuntimeError::TypeError(
-                "Temporal calendar must be a string or a Temporal object with a calendar".into(),
-            ));
         }
-        if !matches!(value, Value::String(_)) {
+        let Value::String(value) = value else {
             return Err(RuntimeError::TypeError(
-                "Temporal calendar must be a string or a Temporal object with a calendar".into(),
+                "Temporal calendar must be a string".into(),
             ));
-        }
-        let value = self.coerce_string(value)?;
+        };
         let value = value
             .to_utf8()
             .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar".into()))?;
-        let parsed_calendar = iso::parse_date_time(&value)
+        if let Some(id) = canonical_calendar_id(&value) {
+            return Ok(id);
+        }
+        let parsed = iso::parse_date_time(&value)
             .or_else(|| iso::parse_year_month(&value))
             .or_else(|| iso::parse_month_day(&value))
-            .or_else(|| iso::parse_time(&value))
-            .map(|parsed| parsed.calendar);
-        if let Some(calendar) = parsed_calendar {
-            let calendar = calendar.as_deref().unwrap_or("iso8601");
+            .or_else(|| iso::parse_time(&value));
+        if let Some(parsed) = parsed {
+            let calendar = parsed.calendar.as_deref().unwrap_or("iso8601");
             return canonical_calendar_id(calendar)
                 .ok_or_else(|| RuntimeError::RangeError("invalid Temporal calendar".into()));
         }
-        canonical_calendar_id(&value)
-            .ok_or_else(|| RuntimeError::RangeError("invalid Temporal calendar".into()))
+        Err(RuntimeError::RangeError("invalid Temporal calendar".into()))
     }
 
     fn temporal_calendar_fields(
@@ -1153,6 +1158,19 @@ impl Vm {
                 if iso::days_in_month(value.year, value.month).is_none_or(|last| value.day > last) {
                     return Err(RuntimeError::RangeError("invalid Temporal day".into()));
                 }
+                // The per-field `-271_821..=275_760` bound above is coarser
+                // than the exact representable-range boundary (a
+                // day-and-nanosecond boundary, not a year one --
+                // `+275760-09-13` is the true maximum, so `+275760-09-14`
+                // must still throw even though every individual field is
+                // itself in range). Pinned by
+                // `PlainMonthDay/refisoyear-out-of-range.js`.
+                if !epoch::is_date_within_limits((value.year, value.month, value.day)) {
+                    return Err(RuntimeError::RangeError(
+                        "Temporal.PlainMonthDay reference year is outside the supported range"
+                            .into(),
+                    ));
+                }
             }
             TemporalKind::PlainTime => {
                 // `ToIntegerWithTruncation` then `RejectTime`: a fractional
@@ -1198,6 +1216,18 @@ impl Vm {
                 if iso::days_in_month(value.year, value.month).is_none_or(|last| value.day > last) {
                     return Err(RuntimeError::RangeError(
                         "invalid Temporal reference day".into(),
+                    ));
+                }
+                // As with `PlainMonthDay` above: the per-field year bound is
+                // coarser than the true representable-range boundary, which
+                // is a *month* boundary within the min/max year, not a
+                // whole-year one (`-271821-04` is valid, `-271821-03` is
+                // not; `+275760-09` is valid, `+275760-10` is not) --
+                // `referenceISODay` never affects this, only `year`/`month`
+                // do. Pinned by `PlainYearMonth/limits.js`.
+                if !iso::is_year_month_within_limits(value.year, value.month) {
+                    return Err(RuntimeError::RangeError(
+                        "Temporal.PlainYearMonth is outside the supported range".into(),
                     ));
                 }
             }
@@ -1737,7 +1767,9 @@ impl Vm {
                     native::TemporalGetter::DaysInMonth
                         if matches!(
                             value.kind,
-                            TemporalKind::PlainDate | TemporalKind::PlainDateTime
+                            TemporalKind::PlainDate
+                                | TemporalKind::PlainDateTime
+                                | TemporalKind::PlainYearMonth
                         ) =>
                     {
                         Ok(Value::Number(fields.days_in_month.into()))
@@ -1745,7 +1777,9 @@ impl Vm {
                     native::TemporalGetter::DaysInYear
                         if matches!(
                             value.kind,
-                            TemporalKind::PlainDate | TemporalKind::PlainDateTime
+                            TemporalKind::PlainDate
+                                | TemporalKind::PlainDateTime
+                                | TemporalKind::PlainYearMonth
                         ) =>
                     {
                         Ok(Value::Number(fields.days_in_year.into()))
@@ -1753,7 +1787,9 @@ impl Vm {
                     native::TemporalGetter::InLeapYear
                         if matches!(
                             value.kind,
-                            TemporalKind::PlainDate | TemporalKind::PlainDateTime
+                            TemporalKind::PlainDate
+                                | TemporalKind::PlainDateTime
+                                | TemporalKind::PlainYearMonth
                         ) =>
                     {
                         Ok(Value::Bool(fields.in_leap_year))
@@ -6414,8 +6450,12 @@ impl Vm {
         let era = self.get_property(bag, &"era".into())?;
         let era_year = self.get_property(bag, &"eraYear".into())?;
 
+        // Unbounded at the field-reading stage (`ToIntegerWithTruncation`),
+        // matching `temporal_year_month_with`'s own identical fix's doc
+        // comment -- `iso::is_year_month_within_limits` below still
+        // range-checks the resolved date.
         let requested_year = (!matches!(year, Value::Undefined))
-            .then(|| self.temporal_integer(&year, -9_999, 9_999, "year"))
+            .then(|| self.temporal_integer(&year, i32::MIN, i32::MAX, "year"))
             .transpose()?;
         let era_s = (!matches!(era, Value::Undefined))
             .then(|| self.coerce_string(&era))
@@ -6427,7 +6467,7 @@ impl Vm {
             })
             .transpose()?;
         let era_year_num = if era_s.is_some() {
-            Some(self.temporal_integer(&era_year, -9_999, 9_999, "era year")?)
+            Some(self.temporal_integer(&era_year, i32::MIN, i32::MAX, "era year")?)
         } else {
             if !matches!(era_year, Value::Undefined) {
                 return Err(RuntimeError::RangeError(
@@ -6496,8 +6536,12 @@ impl Vm {
         let month_code = self.get_property(bag, &"monthCode".into())?;
         let day = self.get_property(bag, &"day".into())?;
 
+        // Unbounded at the field-reading stage (`ToIntegerWithTruncation`),
+        // matching `temporal_month_day_with`'s own identical `year` fix --
+        // see that call site's doc comment. `epoch::is_date_within_limits`
+        // below still range-checks the resolved date.
         let requested_year = (!matches!(year, Value::Undefined))
-            .then(|| self.temporal_integer(&year, -9_999, 9_999, "year"))
+            .then(|| self.temporal_integer(&year, i32::MIN, i32::MAX, "year"))
             .transpose()?;
         let requested_month = (!matches!(month, Value::Undefined))
             .then(|| self.temporal_integer(&month, 1, 99, "month"))
@@ -6521,7 +6565,18 @@ impl Vm {
         // ordinal `month`'s identity itself varies by year, so it cannot
         // resolve one. `ToTemporalMonthDay`'s own field set has no `era`,
         // so `year`/`monthCode` are the only two ways to avoid this.
-        if requested_year.is_none() && month_code_s.is_none() {
+        //
+        // This only applies to a **non-ISO** calendar, though: Gecko's own
+        // `CalendarResolveFields` gives the `iso8601` calendar a separate,
+        // narrower branch that requires only `day` and (`monthCode` or
+        // `month`) -- no `year` at all, since the ISO calendar's reference
+        // year (1972) is fixed and never genuinely ambiguous the way a
+        // lunisolar calendar's leap-month numbering is. Verified against
+        // Test262's `PlainMonthDay/prototype/equals/basic.js`, whose
+        // `md1.equals({ month: 1, day: 22 })` call (a bare ordinal
+        // `month`+`day`, no `monthCode`/`year`) must succeed for the ISO
+        // calendar.
+        if calendar != "iso8601" && requested_year.is_none() && month_code_s.is_none() {
             return Err(RuntimeError::TypeError(
                 "Temporal.PlainMonthDay fields require monthCode or year".into(),
             ));
@@ -6531,20 +6586,71 @@ impl Vm {
                 "Temporal.PlainMonthDay fields require day".into(),
             ));
         }
-        let day_num = self.temporal_integer(&day, 1, 31, "day")?;
+        // `ToPositiveIntegerWithTruncation`: only a lower bound of `1`, no
+        // upper bound (see `temporal_month_day_with`'s identical fix's doc
+        // comment) -- the calendar's own `overflow` regulation constrains
+        // or rejects an out-of-month-range `day`, not this read.
+        let day_num = self.temporal_integer(&day, 1, i32::MAX, "day")?;
+        let day_num_u8 = day_num.min(i32::from(u8::MAX)) as u8;
 
         let calendar_kind = calendar::calendar_kind(&calendar)
             .expect("temporal_calendar_identifier validates the calendar identifier");
-        let fields = plain_month_day::MonthDayFields {
-            extended_year: requested_year,
-            month_code: month_code_s.as_deref(),
-            ordinal_month: requested_month.map(|value| value as u8),
-            day: day_num as u8,
-        };
-        let date = plain_month_day::month_day_from_fields(calendar_kind, &fields, reject)
-            .map_err(|_| {
+        // `icu_calendar`'s reference-year derivation
+        // (`MissingFieldsStrategy::Ecma`) only fires from a `monthCode`+
+        // `day` pair, never a bare ordinal `month`+`day` -- correct in
+        // general (an ordinal month's identity varies by year for a
+        // leap-month calendar), but the ISO calendar's ordinal month and
+        // `monthCode` always correspond 1:1 (`M01`..`M12`, no ambiguity),
+        // so synthesize the equivalent `monthCode` here rather than
+        // requiring the caller to supply a redundant `year`.
+        let iso_month_code = (calendar == "iso8601" && month_code_s.is_none())
+            .then(|| requested_month.map(|value| format!("M{value:02}")))
+            .flatten();
+        let month_code_for_fields = month_code_s.as_deref().or(iso_month_code.as_deref());
+        // Once a `monthCode` is in hand (given directly, or synthesized for
+        // `iso8601` above), drop the redundant `ordinal_month` --
+        // `icu_calendar::Date::try_from_fields` treats a simultaneous
+        // `month_code` + `ordinal_month` as conflicting fields even when
+        // they agree, rather than as redundant-but-consistent input.
+        let ordinal_month_for_fields = month_code_for_fields
+            .is_none()
+            .then(|| requested_month.map(|value| value as u8))
+            .flatten();
+        // `CalendarISOToDate`'s ISO-specific branch (`Calendar.cpp`): a
+        // supplied `year` regulates the resolved `day` (e.g. whether 29
+        // February constrains/rejects) but never survives into the result
+        // -- the `iso8601` calendar's `PlainMonthDay` always reports the
+        // fixed reference year 1972. Handled by a dedicated pure-Rust fast
+        // path (`iso_month_day_from_fields`) rather than `icu_calendar`,
+        // whose own internal year-range limits are far narrower than the
+        // regulation year's legitimate domain here (an arbitrarily large or
+        // small `year` is valid input purely for leap-year determination).
+        // Pinned by `PlainMonthDay/from/iso-year-used-only-for-overflow.js`.
+        let date = if calendar == "iso8601" {
+            let month = requested_month
+                .map(|value| value as u8)
+                .or_else(|| {
+                    month_code_for_fields.and_then(|code| code.strip_prefix('M')?.parse().ok())
+                })
+                .ok_or_else(|| RuntimeError::RangeError("invalid Temporal month code".into()))?;
+            plain_month_day::iso_month_day_from_fields(
+                month,
+                day_num_u8,
+                requested_year.unwrap_or(1972),
+                reject,
+            )
+            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar month-day".into()))?
+        } else {
+            let fields = plain_month_day::MonthDayFields {
+                extended_year: requested_year,
+                month_code: month_code_for_fields,
+                ordinal_month: ordinal_month_for_fields,
+                day: day_num_u8,
+            };
+            plain_month_day::month_day_from_fields(calendar_kind, &fields, reject).map_err(|_| {
                 RuntimeError::RangeError("invalid Temporal calendar month-day".into())
-            })?;
+            })?
+        };
         if !epoch::is_date_within_limits(date) {
             return Err(RuntimeError::RangeError(
                 "Temporal.PlainMonthDay is outside the supported range".into(),
@@ -6682,9 +6788,13 @@ impl Vm {
         let year_v = self.get_property(like, &"year".into())?;
         let month_v = self.get_property(like, &"month".into())?;
         let month_code_v = self.get_property(like, &"monthCode".into())?;
+        let era_v = self.get_property(like, &"era".into())?;
+        let era_year_v = self.get_property(like, &"eraYear".into())?;
         if matches!(year_v, Value::Undefined)
             && matches!(month_v, Value::Undefined)
             && matches!(month_code_v, Value::Undefined)
+            && matches!(era_v, Value::Undefined)
+            && matches!(era_year_v, Value::Undefined)
         {
             return Err(RuntimeError::TypeError(
                 "Temporal.with requires at least one recognized property".into(),
@@ -6693,8 +6803,13 @@ impl Vm {
         let resolved_options = self.temporal_options(options)?;
         let reject = self.temporal_overflow_option(&resolved_options)?;
 
+        // `ToIntegerWithTruncation`: unbounded at the field-reading stage
+        // for both `year` and `eraYear` (`CalendarFields.cpp`'s
+        // `CalendarField::Year`/`EraYear` cases) -- the real representable-
+        // range check happens once, below, against the *resolved* date via
+        // `iso::is_year_month_within_limits`, not here.
         let requested_year = (!matches!(year_v, Value::Undefined))
-            .then(|| self.temporal_integer(&year_v, -9_999, 9_999, "year"))
+            .then(|| self.temporal_integer(&year_v, i32::MIN, i32::MAX, "year"))
             .transpose()?;
         let requested_month = (!matches!(month_v, Value::Undefined))
             .then(|| self.temporal_integer(&month_v, 1, 99, "month"))
@@ -6708,16 +6823,56 @@ impl Vm {
                     .map_err(|_| RuntimeError::RangeError("invalid Temporal month code".into()))
             })
             .transpose()?;
+        let era_s = (!matches!(era_v, Value::Undefined))
+            .then(|| self.coerce_string(&era_v))
+            .transpose()?
+            .map(|value| {
+                value
+                    .to_utf8()
+                    .map_err(|_| RuntimeError::RangeError("invalid Temporal era".into()))
+            })
+            .transpose()?;
+        let requested_era_year = (!matches!(era_year_v, Value::Undefined))
+            .then(|| self.temporal_integer(&era_year_v, i32::MIN, i32::MAX, "eraYear"))
+            .transpose()?;
 
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         let month_code = month_code_s
             .clone()
             .or_else(|| requested_month.is_none().then(|| base.month_code.clone()));
+
+        // `CalendarFields.cpp`'s `NonISOResolveFields`: on a calendar that
+        // supports eras, `era` and `eraYear` must be supplied together or
+        // not at all -- see
+        // `development/browser_core/phase-26-ecma262-temporal/PLAN.md`'s
+        // Stage 2 `plain_year_month.rs` entry and this test file's own
+        // doc comment for the fixture this pins
+        // (`mutually-exclusive-fields-gregory.js`).
+        let supports_era = calendar::calendar_supports_era(&existing.calendar);
+        if supports_era && era_s.is_some() != requested_era_year.is_some() {
+            return Err(RuntimeError::TypeError(
+                if era_s.is_some() {
+                    "Temporal.with requires eraYear when era is provided".into()
+                } else {
+                    "Temporal.with requires era when eraYear is provided".into()
+                },
+            ));
+        }
+        // `NonISOFieldKeysToIgnore`: `era`/`eraYear`/`year` are mutually
+        // exclusive as a group on an era-supporting calendar -- providing
+        // any one of them drops the receiver's own value for all three,
+        // rather than only the field actually given.
+        let (era_field, era_year_field, extended_year_field) =
+            if supports_era && era_s.is_some() && requested_era_year.is_some() {
+                (era_s.as_deref(), requested_era_year, None)
+            } else {
+                (None, None, Some(requested_year.unwrap_or(base.year)))
+            };
         let fields = plain_year_month::YearMonthFields {
-            era: None,
-            era_year: None,
-            extended_year: Some(requested_year.unwrap_or(base.year)),
+            era: era_field,
+            era_year: era_year_field,
+            extended_year: extended_year_field,
             month_code: month_code.as_deref(),
             ordinal_month: requested_month.map(|value| value as u8),
         };
@@ -6773,8 +6928,17 @@ impl Vm {
         let resolved_options = self.temporal_options(options)?;
         let reject = self.temporal_overflow_option(&resolved_options)?;
 
+        // `ToIntegerWithTruncation` (`CalendarFields.cpp`'s
+        // `CalendarField::Year` case): unbounded at the field-reading
+        // stage, matching `built-ins/Temporal/PlainMonthDay/prototype/with/
+        // iso-year-used-only-for-overflow.js` -- for `PlainMonthDay` a huge
+        // out-of-range `year` is legitimate input used only to determine
+        // leap-year-ness for `overflow` regulation (e.g. is 29 February
+        // valid in *this* `year`), never range-checked itself, and never
+        // part of the type's own identity (`format_month_day` ignores the
+        // stored year entirely for the `iso8601` short form).
         let requested_year = (!matches!(year_v, Value::Undefined))
-            .then(|| self.temporal_integer(&year_v, -9_999, 9_999, "year"))
+            .then(|| self.temporal_integer(&year_v, i32::MIN, i32::MAX, "year"))
             .transpose()?;
         let requested_month = (!matches!(month_v, Value::Undefined))
             .then(|| self.temporal_integer(&month_v, 1, 99, "month"))
@@ -6788,8 +6952,17 @@ impl Vm {
                     .map_err(|_| RuntimeError::RangeError("invalid Temporal month code".into()))
             })
             .transpose()?;
+        // `ToPositiveIntegerWithTruncation` (`CalendarFields.cpp`'s
+        // `CalendarField::Day` case): only a lower bound of `1`, no upper
+        // bound at the field-reading stage -- `{ day: 100 }` must reach the
+        // calendar's own `overflow: "constrain"`/`"reject"` regulation
+        // below, not be rejected outright here. The `u8` field this feeds
+        // is saturated rather than truncated so a huge value still clamps
+        // sensibly (`month_day_from_fields`'s own `Overflow::Constrain`
+        // brings it down to the real month length; `Overflow::Reject` still
+        // throws, just from calendar regulation instead of this read).
         let requested_day = (!matches!(day_v, Value::Undefined))
-            .then(|| self.temporal_integer(&day_v, 1, 31, "day"))
+            .then(|| self.temporal_integer(&day_v, 1, i32::MAX, "day"))
             .transpose()?;
 
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
@@ -6797,16 +6970,77 @@ impl Vm {
         let month_code = month_code_s
             .clone()
             .or_else(|| requested_month.is_none().then(|| base.month_code.clone()));
-        let fields = plain_month_day::MonthDayFields {
-            extended_year: Some(requested_year.unwrap_or(base.year)),
-            month_code: month_code.as_deref(),
-            ordinal_month: requested_month.map(|value| value as u8),
-            day: requested_day.map(|value| value as u8).unwrap_or(base.day),
+        // `ISODateToFields(calendar, isoDate, MONTH-DAY)`: the receiver's
+        // own base field set for `with()`'s merge is only `monthCode`/`day`
+        // -- unlike `PlainDate`/`PlainYearMonth`, `PlainMonthDay` has no
+        // `year`/`month` getters at all, so there is no receiver `year` to
+        // fall back on for a non-ISO calendar. Falling back to `base.year`
+        // regardless (as this function did before this fix) is only
+        // correct for `iso8601`, whose fixed 1972 reference year is never
+        // genuinely ambiguous; for any other calendar, supplying a bare
+        // ordinal `month` with no explicit `year` must throw per
+        // `NonISOResolveFields`'s `requireYear` rule -- pinned by
+        // `intl402/Temporal/PlainMonthDay/prototype/with/
+        // fields-missing-properties.js`.
+        let extended_year_for_fields = if existing.calendar == "iso8601" {
+            Some(requested_year.unwrap_or(base.year))
+        } else {
+            requested_year
         };
-        let date = plain_month_day::month_day_from_fields(calendar_kind, &fields, reject)
-            .map_err(|_| {
+        if existing.calendar != "iso8601"
+            && requested_month.is_some()
+            && extended_year_for_fields.is_none()
+        {
+            return Err(RuntimeError::TypeError(
+                "Temporal.with requires year when only an ordinal month is given for this calendar".into(),
+            ));
+        }
+        // As in `temporal_plain_month_day_from_fields`: once a `monthCode`
+        // is in hand, drop the redundant `ordinal_month` --
+        // `icu_calendar::Date::try_from_fields` treats a simultaneous
+        // `month_code` + `ordinal_month` as conflicting fields even when
+        // they agree.
+        let ordinal_month_for_fields = month_code
+            .is_none()
+            .then(|| requested_month.map(|value| value as u8))
+            .flatten();
+        let day_for_fields = requested_day
+            .map(|value| value.min(i32::from(u8::MAX)) as u8)
+            .unwrap_or(base.day);
+        // As in `temporal_plain_month_day_from_fields`: the `iso8601`
+        // calendar's own regulation must bypass `icu_calendar` entirely --
+        // its internal year-range limits are far narrower than the
+        // regulation year's legitimate domain (`year` here is only ever
+        // used to decide leap-year-ness, never part of the result).
+        // Pinned by `PlainMonthDay/prototype/with/
+        // iso-year-used-only-for-overflow.js`.
+        let date = if existing.calendar == "iso8601" {
+            let month = requested_month
+                .map(|value| value as u8)
+                .or_else(|| {
+                    month_code
+                        .as_deref()
+                        .and_then(|code| code.strip_prefix('M')?.parse().ok())
+                })
+                .ok_or_else(|| RuntimeError::RangeError("invalid Temporal month code".into()))?;
+            plain_month_day::iso_month_day_from_fields(
+                month,
+                day_for_fields,
+                extended_year_for_fields.unwrap_or(1972),
+                reject,
+            )
+            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar month-day".into()))?
+        } else {
+            let fields = plain_month_day::MonthDayFields {
+                extended_year: extended_year_for_fields,
+                month_code: month_code.as_deref(),
+                ordinal_month: ordinal_month_for_fields,
+                day: day_for_fields,
+            };
+            plain_month_day::month_day_from_fields(calendar_kind, &fields, reject).map_err(|_| {
                 RuntimeError::RangeError("invalid Temporal calendar month-day".into())
-            })?;
+            })?
+        };
         let value = Self::temporal_date_value(TemporalKind::PlainMonthDay, existing.calendar, date);
         self.alloc_temporal_value(value, false)
     }

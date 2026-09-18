@@ -4,20 +4,21 @@
 
 **Status**: Design, Stage 0 done. Stage 1 (Tracks B/C/D/E) is done and closed
 to its practical limit. Stage 2's `PlainDate`/`PlainDateTime` slice has had
-two passes; `PlainYearMonth`/`PlainMonthDay` are done (first slice); Track
-B's `relativeTo`-dependent Duration follow-up (the stable-today subset —
+two passes; `PlainYearMonth`/`PlainMonthDay` have had two passes; Track B's
+`relativeTo`-dependent Duration follow-up (the stable-today subset —
 `PlainDate`/`PlainDateTime`/fixed-offset-or-UTC-`ZonedDateTime` anchors, not
 `PlainYearMonth`/`PlainMonthDay`/named-zone anchors) is done; `zoned_date_time.rs`
-is in progress. Combined `Temporal/` is **9,284/13,272 (69.96%)** as of the
-most recent merge (`Instant`/`Now`/`PlainTime` 100%, `PlainDate` 87.3%,
-`PlainDateTime` 87.8%, `PlainYearMonth` 80.9%, `PlainMonthDay` 79.9%,
-`Duration` 91.6%, `ZonedDateTime` 8.9% — in progress). The single largest
-remaining gap in `PlainDate`/`PlainDateTime` is the `with()` era/eraYear
-mutual-exclusivity feature (not yet attempted, see the second pass's own
-bullet below for what it needs). Chronological closure record, each step's
-Test262 delta measured on the pinned corpus (`python3
-backend/bluejs/test262/run.py --filter "Temporal/" --jobs 8`), diffed per
-path+mode against the step before it:
+is in progress (a concurrent agent's own report, not yet merged, puts it at
+78.9% — see its own bullet once merged). Combined `Temporal/`, measured on
+this merge: `Instant`/`Now`/`PlainTime` 100%, `PlainDate` and `PlainDateTime`
+each up again from a shared-helper fix in this merge, `PlainYearMonth`
+90.8%, `PlainMonthDay` 88.9%, `Duration` 91.6%. The single largest remaining
+gap in `PlainYearMonth`/`PlainMonthDay`'s own leap-month calendars
+(`chinese`/`dangi`/`hebrew`) is a structurally different algorithm Gecko
+uses for them (not yet ported, see the second pass's own bullet below).
+Chronological closure record, each step's Test262 delta measured on the
+pinned corpus (`python3 backend/bluejs/test262/run.py --filter "Temporal/"
+--jobs 8`), diffed per path+mode against the step before it:
 
 - **Stage 0 (shared foundation) — done 2026-09-18.** Includes a same-day
   exhaustive ISO 8601 grammar audit (11 real bugs; see its own bullet below)
@@ -1899,6 +1900,219 @@ once). One owner:
         `string_protocols.rs::observable_conversion_order_and_gc_pressure`
         flake this document's own launch instructions list as known and
         out of scope.
+- [x] **`plain_year_month.rs`/`plain_month_day.rs` gap-closure follow-up —
+      done 2026-09-18** (single owner, sequential, in its own worktree,
+      following on from the slice above; real bugs found and fixed rather
+      than a fixture-by-fixture patch pass). Real numbers, pinned corpus,
+      before/after on the same commit:
+
+      | Type | Before | After |
+      | --- | ---: | ---: |
+      | `PlainYearMonth` | 1,324/1,672 (79.2%) | **1,518/1,672 (90.8%)** |
+      | `PlainMonthDay` | 450/578 (77.9%) | **514/578 (88.9%)** |
+      | Combined | 1,774/2,250 (78.8%) | **2,032/2,250 (90.3%)** |
+
+      Regression check, same commit, full `--filter "Temporal/"` run:
+      `PlainDate` 1,896→**1,954**/2,290, `PlainDateTime` 2,064→**2,122**/2,512
+      (both *improved* — see the shared `temporal_calendar_identifier` bug
+      below), `Duration`/`Instant`/`Now`/`PlainTime`/`ZonedDateTime` all flat
+      at 870/1,122, 968/968, 138/138, 1,010/1,010, 264/2,968. Whole-`Temporal/`
+      total: **9,372/13,272 (70.6%)**, up from 8,998/13,272 (67.8%) before
+      this pass, zero regressions anywhere. Reproduce with
+      `python3 backend/bluejs/test262/run.py --corpus
+      /tmp/blueice-test262-72faf8ec --filter
+      "Temporal/PlainYearMonth/,Temporal/PlainMonthDay/" --jobs 8` (and
+      `--filter "Temporal/"` for the whole-tree regression check).
+
+      **Real bugs found and fixed** (each pinned to the fixture that
+      caught it; TDD throughout — a Rust integration test exercising the
+      real public `Temporal.*` surface, pinned to the fixture's own
+      expected values, written and confirmed failing before each fix):
+      1. **`PlainYearMonth`'s `daysInMonth`/`daysInYear`/`inLeapYear`
+         getters were entirely unwired**, not merely wrong -- confirmed
+         against Gecko's own `PlainYearMonth_prototype_properties` table
+         (`PlainYearMonth.cpp`). The getter-installation table only listed
+         `monthsInYear`, and `temporal_getter`'s dispatch guards for the
+         other three explicitly excluded `PlainYearMonth`, even though
+         `temporal_calendar_fields` already computed all three correctly
+         regardless of kind (`PlainDate`/`PlainDateTime` already used them).
+         A "wire it up" gap, not a missing algorithm -- closes ~112 modes
+         on its own (`intl402`+`built-ins`, both types' `inLeapYear`/
+         `daysInMonth`/`daysInYear` directories).
+      2. **`PlainYearMonth.prototype.with()` never read `era`/`eraYear`**,
+         so `with({ era, eraYear })` on an era-supporting calendar always
+         fell through to "requires at least one recognized property" --
+         this is the exact gap the prior slice flagged as worth checking
+         first, and it *was* a real, closeable cluster. Added
+         `calendar::calendar_supports_era` (ported from Gecko's `Era.h`:
+         every calendar has eras except `iso8601`/`chinese`/`dangi`) and a
+         `CalendarMergeFields`/`NonISOResolveFields`-equivalent mutual-
+         exclusion check in `temporal_year_month_with`: `era`+`eraYear` must
+         be supplied together or not at all on an era-supporting calendar
+         (`TypeError` otherwise, matching `CalendarResolveFields`'s own
+         error class before this document's earlier "always resolves via
+         extended_year" approximation could even attempt a resolution), and
+         providing any of `era`/`eraYear`/`year` drops the receiver's own
+         value for all three as a group. This one fix also closed the
+         `calendarresolvefields-error-ordering-{gregory,japanese}.js`
+         fixtures the prior slice flagged as the same class of gap
+         `PlainDate`/`PlainDateTime` also left open -- confirming a working
+         pattern now exists there too, should that type revisit it.
+      3. **`ToTemporalCalendarIdentifier` (`temporal_calendar_identifier`,
+         shared by every property-bag `calendar` field and `withCalendar`
+         argument across `PlainDate`/`PlainDateTime`/`PlainYearMonth`/
+         `PlainMonthDay`) had three separate real bugs**, all fixed
+         together since they share one call site:
+         - A bracket-less string (e.g. `"2020-01-01"`) always tried the
+           *whole string* as a calendar-ID literal first, which always
+           failed (no real calendar ID looks like a date) -- it must
+           instead parse as a recognized Temporal string shape
+           (`parse_date_time`/`parse_year_month`/`parse_month_day`/
+           `parse_time`) and imply `"iso8601"` when unannotated.
+         - A Temporal object supplied as the `calendar` value must yield
+           its own internal calendar directly (`ToTemporalCalendar` step
+           1.a's fast path, restricted to the five calendar-carrying kinds
+           -- `Duration`/`Instant`/`PlainTime` are calendar-less and must
+           still fall through to the string/type check below), never
+           reading its `calendar`/`calendarId` JS-visible properties (which
+           `TemporalHelpers.checkToTemporalCalendarFastPath` makes throw if
+           read).
+         - Anything that is not a String primitive (and not the fast-path
+           object above) is a `TypeError` immediately -- no `ToString`
+           coercion at all, unlike most other Temporal string arguments.
+         Fixing this one shared helper improved `PlainDate`/`PlainDateTime`
+         too (+58 modes each on the same full-tree run) purely as a
+         byproduct, confirming the "shared-foundation fixes compound" note
+         elsewhere in this document.
+      4. **`PlainMonthDay`'s property-bag resolution required `monthCode`
+         or `year` even for the `iso8601` calendar**, where a bare ordinal
+         `{ month, day }` is spec-valid (`CalendarResolveFields`'s ISO
+         branch requires only `day` and `month`/`monthCode`, no `year` at
+         all -- the fixed 1972 reference year is never genuinely
+         ambiguous the way a lunisolar calendar's leap-month numbering is).
+         Narrowed the check to non-`iso8601` calendars, synthesizing the
+         equivalent `monthCode` from a bare ordinal `month` for `iso8601`
+         (`icu_calendar`'s reference-year derivation only fires from a
+         `monthCode`+`day` pair, never a bare ordinal `month`+`day`).
+      5. **The `iso8601` calendar's `PlainMonthDay` `from()`/`with()`
+         discarded a supplied `year` into the final result instead of
+         using it only to regulate the resolved `day`.** Gecko's own
+         `CalendarMonthDayFromFields` ISO branch (`Calendar.cpp`) is
+         explicit: `year` determines leap-year-ness for regulating `day`
+         (is 29 February valid this year), but the *result* always reports
+         the fixed reference year 1972, regardless. Fixed with a new
+         host-neutral `plain_month_day::iso_month_day_from_fields`
+         (`regulate_iso_date` + force the year to 1972), which also fixes a
+         real, previously-latent crash risk: routing this through
+         `icu_calendar` failed outright for a regulation year outside
+         ICU4X's own narrow internal year-range limits (`-1000000`, a real
+         Gregorian leap year via the divisible-by-400 rule, is exactly this
+         document's `-999999`/`-1000000` "Calendar year-range getter bug"
+         class of issue, but in a resolution path rather than a getter
+         one) -- the new path is pure Rust arithmetic with no such limit,
+         and defensively regulates an out-of-range ordinal month first
+         (`temporal_integer`'s own field bound is `1..=99`, wider than
+         `iso_days_in_month`'s `unreachable!()` tolerates) rather than risk
+         a panic on malformed input.
+      6. **Both types' numeric constructors used a coarse per-field year
+         bound (`-271_821..275_760`) instead of the true representable-
+         range boundary**, which is a *month* boundary for `PlainYearMonth`
+         (`-271821-04` is the true minimum, not any month of `-271821`) and
+         a *day* boundary for `PlainMonthDay`'s `referenceISODay` (e.g.
+         `new Temporal.PlainMonthDay(9, 14, "iso8601", 275760)` must throw,
+         one day past the true maximum instant, even though every
+         individual field is itself in its own coarse bound). Added the
+         missing `iso::is_year_month_within_limits`/
+         `epoch::is_date_within_limits` checks to both numeric-constructor
+         match arms -- this document's own "Deliberately left alone" list
+         under the Stage 0 audit already flagged this exact gap for the
+         numeric-constructor path generally; this closes it for these two
+         types specifically (`PlainDate`/`PlainDateTime`'s own numeric
+         constructors are unaffected, out of this pass's file scope).
+      - **Widened several artificially narrow field-read bounds** (`day`
+        1..31, `year` -9999..9999) that threw before the calendar's own
+        `overflow` regulation ever ran, contradicting
+        `CalendarFields.cpp`'s actual field-reading rules
+        (`ToPositiveIntegerWithTruncation` for `day`/`month` -- no upper
+        bound at all; `ToIntegerWithTruncation` for `year`/`eraYear` --
+        unbounded both directions) -- e.g. `{ day: 100 }` under the default
+        `overflow: "constrain"` must clamp to the month's real length, not
+        throw immediately. The real range check happens once, against the
+        *resolved* date, via the range checks each function already had
+        (or, for `PlainMonthDay`, deliberately does not have at all for
+        `with()`'s own `year` -- see item 5 above and
+        `iso-year-used-only-for-overflow.js`).
+
+      **Deliberately left open, and why** (documented gaps, not silent
+      approximations):
+      - **Leap-month calendars' (`chinese`/`dangi`/`hebrew`) year/month
+        arithmetic is structurally wrong, not merely incomplete** -- the
+        single largest remaining cluster (`add`/`subtract`/`since`/`until`
+        across both types, roughly 130+ modes). Root-caused against Gecko's
+        own `Calendar.cpp`: `NonISODateAdd` branches on
+        `CalendarHasLeapMonths(calendarId)` (true only for `Chinese`/
+        `Dangi`/`Hebrew`) into two *entirely different* algorithms --
+        `AddYearMonthDuration`'s ordinal-month-position variant (what this
+        codebase's `calendar_add_date`/`calendar_difference_date` already
+        implement, correct for every calendar *without* leap months) versus
+        a `monthCode`-preserving variant for the three that have them:
+        adding years re-resolves the *same* `monthCode` in the target year
+        via `CreateDateFromCodes` (honoring `overflow` -- a leap month like
+        `"M04L"` genuinely may not recur, and `reject` must throw exactly
+        when it doesn't, which is what
+        `leap-month-chinese-numerical-months.js`/`leap-year-hebrew.js`
+        assert), and only *then* bubbles `months` by ordinal position
+        within that already-year-resolved date. `CreateDateFromCodes`'s own
+        leap-month constrain/fallback table (`Calendar.cpp` lines ~900-1245)
+        is itself a substantial, calendar-specific piece of porting work.
+        Implementing this correctly was judged out of this pass's time
+        budget given its size and the risk of a partial, subtly-wrong
+        port; left as a precisely-scoped, evidenced follow-up rather than
+        attempted and left half-working. `intl402/.../monthCode/
+        {chinese,dangi}-calendar-dates.js` (getter-level monthCode
+        round-tripping through this same arithmetic) is the same root
+        cause.
+      - **`with()`'s field-read order doesn't match `PrepareCalendarFields`'s
+        alphabetical, read-then-immediately-coerce-per-field order** --
+        `order-of-operations.js` fixtures for both types' `with()`/`from()`
+        and `PlainYearMonth`'s `since`/`until` (12 modes total). This
+        codebase's existing shape (read every raw property value first, in
+        declaration order, then coerce each in a second pass) cannot
+        produce the correct interleaved alphabetical side-effect sequence
+        without a genuine per-function restructure; a small, low-value
+        cluster relative to the restructuring cost, left open.
+      - **`Intl.supportedValuesOf`/`Set` iterator interaction** --
+        `toLocaleString/calendar-mismatch.js` (4 modes) fails with "value is
+        not callable" on `calendars.values().next().value`, which reads as
+        a general BlueJS `Set`-iterator gap rather than anything
+        Temporal-specific; not investigated further here as out of this
+        phase's scope.
+      - Deeper era/`monthCode` mutual-exclusivity validation beyond the
+        `era`+`eraYear` pairing fixed above (`mutually-exclusive-fields-*.js`
+        for fields other than era/year, and the general
+        `calendarresolvefields-error-ordering-*.js` pattern for calendars
+        other than gregory/japanese) -- not re-derived exhaustively; the
+        pairing check above closes the concrete cases this pass's own
+        fixture triage found.
+      - `PlainYearMonth`/`PlainMonthDay` in a `relativeTo` position for
+        `Temporal.Duration.prototype.{round,total,compare}` -- unchanged,
+        still `duration.rs`'s own follow-up per the earlier slice's note.
+      - `Temporal.PlainDate.prototype.toPlainMonthDay` (`vm/temporal.rs`'s
+        `temporal_plain_date_to_plain_month_day`, `PlainDate`/`PlainDateTime`'s
+        own file scope, not touched here to avoid the concurrent
+        `PlainDate`/`PlainDateTime` session's own edits) has the same
+        item-5-class bug found here -- it passes the source `PlainDate`'s
+        own year straight through to `icu_calendar` for `iso8601` rather
+        than always reporting reference year 1972. Flagged for whoever
+        next revisits that function; not fixed here since it is outside
+        this pass's `plain_year_month.rs`/`plain_month_day.rs` file
+        ownership.
+      - `cargo build --workspace --all-targets` / `cargo test --workspace`
+        (`--no-fail-fast`) / `cargo clippy --workspace --all-targets -- -D
+        warnings` all clean, confirmed on this pass's own commit -- the
+        only test failures anywhere in the whole workspace are the
+        already-documented pre-existing, out-of-scope flakes this
+        document's own launch instructions list.
 - [ ] `zoned_date_time.rs` last — composes `PlainDateTime` + `TimeZone` +
       `Instant`, so it must come after all three are solid. Gecko's largest
       per-type file (`ZonedDateTime.cpp`, 3,180 lines) and Test262's largest

@@ -17,7 +17,9 @@
 //! does not define these operations for this type.
 
 use super::epoch::CivilDate;
-use super::plain_date::{format_calendar_annotation, format_iso_date, ShowCalendar};
+use super::plain_date::{
+    format_calendar_annotation, format_iso_date, regulate_iso_date, ShowCalendar,
+};
 use icu_calendar::options::{DateFromFieldsOptions, MissingFieldsStrategy, Overflow as IcuOverflow};
 use icu_calendar::types::DateFields;
 use icu_calendar::{AnyCalendar, AnyCalendarKind, Date, Iso};
@@ -64,6 +66,47 @@ pub(crate) fn month_day_from_fields(
         iso.month().number(),
         iso.day_of_month().0,
     ))
+}
+
+/// The `iso8601` calendar's own branch of `CalendarMonthDayFromFields`
+/// (`Calendar.cpp`): a supplied `year` (or `1972` if absent) regulates the
+/// resolved `day` against *that* year's own leap-year-ness (constrain/reject
+/// per `overflow`), but the fixed reference year `1972` -- never the
+/// supplied one -- is what survives into the result.
+///
+/// Deliberately bypasses `icu_calendar::Date::try_from_fields` entirely
+/// (unlike [`month_day_from_fields`]'s general non-ISO path): ICU4X's own
+/// internal year-range limits are far narrower than Temporal's actual
+/// regulation-year domain here -- an arbitrarily large or small `year` is
+/// legitimate input purely for leap-year determination and must never be
+/// rejected merely for being out of `icu_calendar`'s own representable
+/// range (`PlainMonthDay/from/iso-year-used-only-for-overflow.js`'s own
+/// `-1000000` case is exactly this: a leap year via the Gregorian
+/// divisible-by-400 rule, far outside any calendar library's usual
+/// constructor bounds). [`super::plain_date::regulate_iso_date`] is pure
+/// Rust arithmetic with no such limit.
+pub(crate) fn iso_month_day_from_fields(
+    ordinal_month: u8,
+    day: u8,
+    regulation_year: i32,
+    reject: bool,
+) -> Result<CivilDate, ()> {
+    // `regulate_iso_date` assumes `month` is already `1..=12` (Temporal
+    // ISO months are regulated before it is ever called elsewhere in this
+    // codebase); a bare ordinal `month` read straight from user input has
+    // no such guarantee (`temporal_integer`'s own field bound is the wider
+    // `1..=99`), so regulate it here first rather than risk the
+    // `unreachable!` in `iso_days_in_month`.
+    let month = if reject {
+        if !(1..=12).contains(&ordinal_month) {
+            return Err(());
+        }
+        ordinal_month
+    } else {
+        ordinal_month.clamp(1, 12)
+    };
+    let (_, month, day) = regulate_iso_date(regulation_year, month, i64::from(day), reject).ok_or(())?;
+    Ok((1972, month, day))
 }
 
 /// `TemporalMonthDayToString`'s date portion: the short `MM-DD` form when the
@@ -196,5 +239,39 @@ mod tests {
             format_month_day((1972, 11, 18), "iso8601", ShowCalendar::Never),
             "11-18"
         );
+    }
+
+    #[test]
+    fn iso_fast_path_always_reports_the_1972_reference_year() {
+        assert_eq!(
+            iso_month_day_from_fields(1, 1, -999_999, false),
+            Ok((1972, 1, 1))
+        );
+    }
+
+    #[test]
+    fn iso_fast_path_uses_the_supplied_year_only_to_regulate_the_day() {
+        // -999999 is a common (non-leap) year: 29 February constrains to 28.
+        assert_eq!(
+            iso_month_day_from_fields(2, 29, -999_999, false),
+            Ok((1972, 2, 28))
+        );
+        assert_eq!(iso_month_day_from_fields(2, 29, -999_999, true), Err(()));
+        // -1000000 is a leap year (divisible by 400): 29 February is exact.
+        assert_eq!(
+            iso_month_day_from_fields(2, 29, -1_000_000, false),
+            Ok((1972, 2, 29))
+        );
+        assert_eq!(
+            iso_month_day_from_fields(2, 29, -1_000_000, true),
+            Ok((1972, 2, 29))
+        );
+    }
+
+    #[test]
+    fn iso_fast_path_regulates_an_out_of_range_ordinal_month_without_panicking() {
+        assert_eq!(iso_month_day_from_fields(13, 1, 1972, false), Ok((1972, 12, 1)));
+        assert_eq!(iso_month_day_from_fields(13, 1, 1972, true), Err(()));
+        assert_eq!(iso_month_day_from_fields(0, 1, 1972, false), Ok((1972, 1, 1)));
     }
 }
