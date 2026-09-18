@@ -163,7 +163,36 @@ fn observable_conversion_order_and_gc_pressure() {
             heap: blueice_bluejs::HeapConfig {
                 nursery_capacity: 1,
                 major_threshold_bytes: 256,
-                max_heap_bytes: 256 * 1024,
+                // Root cause of this test's former intermittent
+                // `HeapLimitExceeded { limit: 262144 }` panic (see
+                // git history around this constant): 256 KiB was not a
+                // GC bug's symptom, it was simply too tight a ceiling.
+                // Each fresh `Vm` here lazily materializes only the
+                // built-in surface a given `source` actually touches
+                // (confirmed via `Heap::stats()`: a `Vm::new` baseline
+                // is ~512 bytes, and a given script's post-execution
+                // `managed_bytes` is bit-for-bit identical whether
+                // `max_heap_bytes` here is 256 KiB or 16 MiB -- not a
+                // leak that keeps growing with headroom). The costliest
+                // source above (the
+                // `RegExp('','gu')` + Unicode `matchAll` one, which
+                // pulls in the full String + RegExp + Symbol/iterator
+                // protocol built-in surface) settles at exactly 259,790
+                // live bytes with `nursery_capacity: 1` -- i.e. only
+                // ~2.3 KiB under the old 256 KiB ceiling. As BlueJS's
+                // built-in surface has grown (BigInt, TypedArray,
+                // Temporal, ShadowRealm, Explicit Resource Management,
+                // dynamic import, JSON modules), that margin eroded
+                // from "usually fits" to "deterministically doesn't"
+                // depending on exactly which commit was under test --
+                // the reported flakiness across sessions, not GC
+                // nondeterminism at a single commit. 1 MiB restores
+                // real headroom (~4x the measured 259,790-byte peak)
+                // while leaving `nursery_capacity`/`major_threshold_bytes`
+                // untouched, so every allocation still forces a minor
+                // GC and every 256 bytes still forces a major one --
+                // this test's actual "GC pressure" intent is unchanged.
+                max_heap_bytes: 1024 * 1024,
             },
             ..Default::default()
         })
