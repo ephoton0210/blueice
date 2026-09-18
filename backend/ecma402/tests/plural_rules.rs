@@ -153,6 +153,56 @@ fn carries_the_compact_exponent_and_supplemental_manx_rules_into_selection() {
 }
 
 #[test]
+fn resolves_ranges_from_the_cldr_plural_ranges_table() {
+    // Matches icu_plurals's own `PluralRulesWithRanges` doctest: Russian
+    // cardinal category_for_range(0, 2) resolves to "few" from the CLDR
+    // pluralRanges table, not from either endpoint's own category (0 is
+    // "many", 2 is "few" in isolation).
+    let russian = canonicalize("ru").unwrap();
+    let russian_rules = PluralRules::try_new(&[russian], Default::default()).unwrap();
+    assert_eq!(russian_rules.select_f64(0.0).unwrap(), PluralCategory::Many);
+    assert_eq!(russian_rules.select_f64(2.0).unwrap(), PluralCategory::Few);
+    assert_eq!(
+        russian_rules.select_range_f64(0.0, 2.0).unwrap(),
+        PluralCategory::Few
+    );
+    assert_eq!(
+        russian_rules.select_range_decimal("0", "2").unwrap(),
+        PluralCategory::Few
+    );
+
+    // A locale without explicit CLDR pluralRanges data (English) falls back
+    // to the end category, per icu_plurals's `resolve_range` default.
+    let english = canonicalize("en").unwrap();
+    let english_rules = PluralRules::try_new(&[english], Default::default()).unwrap();
+    assert_eq!(
+        english_rules.select_range_f64(102.0, 201.0).unwrap(),
+        PluralCategory::Other
+    );
+
+    // Ordinal ranges use the ordinal table, matching the doctest's own `sl`
+    // example: resolve_range(Other, One) == Few for ordinals.
+    let slovenian = canonicalize("sl").unwrap();
+    let slovenian_ordinal = PluralRules::try_new(
+        &[slovenian],
+        PluralRulesOptions {
+            rule_type: PluralRuleType::Ordinal,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        slovenian_ordinal.select_range(PluralCategory::Other, PluralCategory::One),
+        PluralCategory::Few
+    );
+
+    assert!(english_rules.select_range_f64(f64::NAN, 1.0).is_err());
+    assert!(english_rules
+        .select_range_decimal("1", "not a decimal")
+        .is_err());
+}
+
+#[test]
 fn exposes_plural_locale_filters_errors_and_remaining_supplemental_paths() {
     let requested = [canonicalize("zz").unwrap(), canonicalize("ar").unwrap()];
     assert_eq!(

@@ -4023,22 +4023,24 @@ impl Vm {
                 "Intl.PluralRules selectRange arguments must be finite".into(),
             ));
         }
-        // The host service does not yet expose CLDR plural-range tables. The
-        // identity range is exact; the non-identity fallback is the required
-        // default for English and remains tracked as a host-service gap.
-        if start == end {
-            let category = if data.notation == "compact" {
+        let category_for = |value: f64| {
+            if data.notation == "compact" {
                 data.data
-                    .select_compact_f64(start, data.compact_display.as_deref() == Some("long"))
+                    .select_compact_f64(value, data.compact_display.as_deref() == Some("long"))
             } else {
-                data.data.select_f64(start)
-            };
-            return category
-                .map(Self::plural_category_name)
-                .map(|category| Value::String(category.into()))
-                .map_err(|error| RuntimeError::RangeError(error.to_string()));
-        }
-        Ok(Value::String("other".into()))
+                data.data.select_f64(value)
+            }
+        };
+        let category = if start == end {
+            category_for(start)
+        } else {
+            category_for(start)
+                .and_then(|start| category_for(end).map(|end| data.data.select_range(start, end)))
+        };
+        category
+            .map(Self::plural_category_name)
+            .map(|category| Value::String(category.into()))
+            .map_err(|error| RuntimeError::RangeError(error.to_string()))
     }
 
     pub(super) fn plural_rules_resolved_options(

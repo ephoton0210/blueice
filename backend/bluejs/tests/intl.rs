@@ -679,6 +679,7 @@ fn plural_rules_delegates_selection_and_resolved_options_to_the_host_service() {
         "Intl.PluralRules.supportedLocalesOf(['en','zz','pl-PL']).join() === 'en,pl-PL' && Object.prototype.toString.call(new Intl.PluralRules()) === '[object Intl.PluralRules]'",
         "function F(){} let p=Reflect.construct(Intl.PluralRules,['en'],F); Object.getPrototypeOf(p) === F.prototype && Intl.PluralRules.prototype.select.call(p,1) === 'one'",
         "new Intl.PluralRules('en').selectRange(102,201) === 'other' && new Intl.PluralRules('en').selectRange(1,1) === 'one'",
+        "new Intl.PluralRules('ru').selectRange(0,2) === 'few' && new Intl.PluralRules('ru',{type:'ordinal'}).selectRange(0,2) === 'other'",
         "let log='';let o={get localeMatcher(){log+='l';return 'lookup'},get type(){log+='t';return 'cardinal'},get notation(){log+='n';return 'standard'},get compactDisplay(){log+='c';return 'short'},get minimumIntegerDigits(){log+='i';return 1},get minimumFractionDigits(){log+='f';return 0},get maximumFractionDigits(){log+='F';return 3},get minimumSignificantDigits(){log+='s';return undefined},get maximumSignificantDigits(){log+='S';return undefined},get roundingIncrement(){log+='r';return 1},get roundingMode(){log+='m';return 'halfExpand'},get roundingPriority(){log+='p';return 'auto'},get trailingZeroDisplay(){log+='z';return 'auto'}};new Intl.PluralRules('en',o);log === 'ltncifFsSrmpz'",
     ] {
         match evaluate(source) {

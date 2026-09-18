@@ -204,7 +204,15 @@ from a finite base-10 decimal or IEEE-754 value, preserving visible fractional
 zeros for the former. Its host-neutral decimal boundary deliberately exposes
 the operand distinction needed by CLDR (`1` versus `1.0`), while a future
 BlueJS adapter supplies ECMAScript Number coercion and digit-option rounding.
-`selectRange` remains a later service slice.
+`selectRange` now resolves each endpoint's own category through a second
+locale-negotiated `PluralRulesWithRanges` service (cardinal or ordinal,
+matching the constructed rules) and looks up the pair in the bundled CLDR
+`pluralRanges` table, replacing the former identity-only/`"other"`-fallback
+stub; a locale without explicit range data still falls back to the end
+category, matching `icu_plurals`'s own documented default. BlueJS's adapter
+reuses this for both plain and compact-notation endpoints. The full pinned
+`intl402/PluralRules` Test262 selection (106 modes, including `selectRange`)
+continues to pass.
 
 The independent ListFormat slice formats already-coerced strings with CLDR
 conjunction, disjunction and unit patterns at wide, short and narrow widths.
