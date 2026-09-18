@@ -958,6 +958,7 @@ impl Vm {
                         1,
                         NativeFunction::NumberIsFinite,
                     )?;
+                    self.install_native(id, prototype, "isNaN", 1, NativeFunction::NumberIsNaN)?;
                     self.install_native(
                         id,
                         prototype,

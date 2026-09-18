@@ -1741,6 +1741,12 @@ impl Vm {
             NativeFunction::NumberIsFinite => Ok(Value::Bool(
                 matches!(first, Value::Number(number) if number.is_finite()),
             )),
+            // Number.isNaN ( number ): a plain Number-type-and-NaN check
+            // with no ToNumber coercion at all -- unlike the global
+            // `isNaN`, `Number.isNaN('NaN')` is `false`.
+            NativeFunction::NumberIsNaN => Ok(Value::Bool(
+                matches!(first, Value::Number(number) if number.is_nan()),
+            )),
             NativeFunction::NumberIsInteger => Ok(Value::Bool(
                 matches!(first, Value::Number(number) if number.is_finite() && number.fract() == 0.0),
             )),

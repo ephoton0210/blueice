@@ -374,6 +374,29 @@ impl Vm {
         Ok(())
     }
 
+    /// Drops every purely-lexical (non-property) entry from
+    /// `global_bindings`, releasing each one's GC root first. `var`/function
+    /// global declarations (`property: true`, backed by a real `globalThis`
+    /// data property) are left exactly as they are -- only the bookkeeping
+    /// this VM uses to detect an invalid global lexical redeclaration is
+    /// reset, for a caller (`ShadowRealm.prototype.evaluate`, so far the
+    /// only one) whose own semantics need a fresh global lexical scope on
+    /// each call rather than this VM's ordinary one-persistent-scope model.
+    pub(super) fn reset_lexical_global_bindings(&mut self) -> Result<(), RuntimeError> {
+        let stale: Vec<String> = self
+            .global_bindings
+            .iter()
+            .filter(|(_, binding)| !binding.property)
+            .map(|(name, _)| name.clone())
+            .collect();
+        for name in stale {
+            if let Some(binding) = self.global_bindings.remove(&name) {
+                self.heap.unroot(binding._root)?;
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn global_binding_value(&self, name: &str) -> Result<Option<Value>, RuntimeError> {
         let Some(binding) = self.global_bindings.get(name) else {
             return Ok(None);

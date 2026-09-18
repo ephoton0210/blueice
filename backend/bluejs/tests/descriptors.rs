@@ -359,6 +359,31 @@ fn reflective_own_keys_materialize_the_p0_global_realm_surface() {
 }
 
 #[test]
+fn has_own_property_and_property_is_enumerable_materialize_lazy_globals() {
+    // `Object.getOwnPropertyNames`/`OwnPropertyKeys` already materialize a
+    // lazy intrinsic global before observing it (the test above). Direct
+    // [[GetOwnProperty]] reflection through `Object.prototype.hasOwnProperty`
+    // and `propertyIsEnumerable` must observe the exact same own property,
+    // per "every standard global property [...] Perform
+    // DefinePropertyOrThrow" -- a lazily-created intrinsic is not a
+    // different, absent property just because nothing has referenced it by
+    // identifier yet. Uses a fresh `Vm` per name (via `evaluate`, which
+    // constructs one per call) so no other assertion's own global access can
+    // have already materialized it first.
+    for name in ["Array", "JSON", "isFinite", "WeakRef", "ShadowRealm"] {
+        let source = format!(
+            "Object.prototype.hasOwnProperty.call(globalThis, '{name}') && \
+             Object.prototype.propertyIsEnumerable.call(globalThis, '{name}') === false"
+        );
+        assert_eq!(
+            evaluate(&source).unwrap(),
+            Value::Bool(true),
+            "hasOwnProperty/propertyIsEnumerable should observe lazily-materialized '{name}': {source}"
+        );
+    }
+}
+
+#[test]
 fn object_group_by_uses_iterator_keys_and_closes_on_an_abrupt_callback() {
     assert_eq!(
         evaluate(

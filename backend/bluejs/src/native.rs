@@ -547,6 +547,7 @@ pub(crate) enum NativeFunction {
     NumberIsFinite,
     NumberIsInteger,
     NumberIsSafeInteger,
+    NumberIsNaN,
     PrimitiveConstructor(bool),
     PrimitiveMethod {
         boolean: bool,

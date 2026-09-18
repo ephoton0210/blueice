@@ -94,10 +94,9 @@ impl Vm {
         }
         let default = self.shadow_realm_prototype()?;
         let prototype = self.constructor_prototype(default)?;
-        let mut child = Box::new(
+        let mut child =
             Vm::new(self.config)
-                .map_err(|_| RuntimeError::RangeError("could not create a ShadowRealm".into()))?,
-        );
+                .map_err(|_| RuntimeError::RangeError("could not create a ShadowRealm".into()))?;
         // Realms created within one ShadowRealm agent share the
         // GlobalSymbolRegistry, matching `$262.createRealm()`'s identical
         // choice for the same spec-mandated reason (`Symbol.for` is
@@ -106,9 +105,34 @@ impl Vm {
         let heap_tag = child.object_prototype.heap;
         let instance = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
         self.shadow_realm_by_heap.insert(heap_tag, instance);
-        self.shadow_realms
-            .insert(instance, ShadowRealmRecord { vm: child });
+        self.shadow_realms.insert(
+            instance,
+            ShadowRealmRecord {
+                vm: Rc::new(RefCell::new(child)),
+            },
+        );
         Ok(Value::Object(instance))
+    }
+
+    /// Registers `instance` (in this `Vm`'s own heap) as denoting the exact
+    /// same live `ShadowRealm` child realm as `record` -- used when a
+    /// `ShadowRealm` *instance itself* crosses a Test262
+    /// `$262.createRealm()` boundary into this realm (see
+    /// `test262_transport_value`'s ShadowRealm-specific branch), so that
+    /// `evaluate`/`importValue`/a wrapped-function call reached through the
+    /// transported stand-in observes the identical realm -- same
+    /// `globalThis`, same prior `evaluate` side effects -- as the original.
+    pub(super) fn adopt_shadow_realm(&mut self, instance: ObjectId, record: ShadowRealmRecord) {
+        let heap_tag = record.vm.borrow().object_prototype.heap;
+        self.shadow_realm_by_heap.insert(heap_tag, instance);
+        self.shadow_realms.insert(instance, record);
+    }
+
+    /// The live record for `instance`, if this `Vm` has one -- for
+    /// `test262.rs` to clone (a cheap `Rc` bump) into another realm via
+    /// [`Vm::adopt_shadow_realm`].
+    pub(super) fn shadow_realm_record(&self, instance: ObjectId) -> Option<ShadowRealmRecord> {
+        self.shadow_realms.get(&instance).cloned()
     }
 
     pub(super) fn shadow_realm_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
@@ -185,52 +209,58 @@ impl Vm {
             crate::parse(&source_text).map_err(|error| RuntimeError::SyntaxError(error.message))?;
         let code = crate::compile(&program)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
-        // This exact ShadowRealm may already be checked out of
-        // `self.shadow_realms` by an ancestor frame further up this same
-        // synchronous call chain (e.g. a wrapped-function call chain that
-        // loops back to `evaluate` on a realm one of those calls is already
-        // running through) -- see `shadow_call_wrapped`'s identical
-        // reasoning. Detect that first via `ACTIVE`, using the permanent
-        // tag lookup below (unlike `shadow_realms` itself, this mapping is
-        // never removed while checked out).
-        let heap_tag = self
-            .shadow_realm_by_heap
-            .iter()
-            .find(|&(_, &id)| id == this_id)
-            .map(|(&tag, _)| tag);
-        if let Some(ptr) = heap_tag.and_then(resolve_active) {
-            if std::ptr::eq(ptr as *const Vm, self as *const Vm) {
-                return Err(RuntimeError::TypeError(
-                    "a ShadowRealm boundary cannot resolve to itself".into(),
-                ));
-            }
-            // SAFETY: see `ACTIVE`'s documentation and the identical
-            // reasoning in `shadow_call_wrapped`.
-            let record_vm = unsafe { &mut *ptr };
-            let outcome = Self::run_evaluate(self, record_vm, &code);
-            return match outcome {
-                Ok(value) => self.shadow_wrap_into(record_vm, value),
-                Err(_) => Err(RuntimeError::TypeError(String::new())),
-            };
-        }
-        // Ownership, not a borrow, of the child while it runs: its own
-        // execution may call back into `self` (a wrapped-function
-        // argument/return crossing the boundary), which must not alias a
-        // live `self.shadow_realms` borrow. See `shadow_call_wrapped` for
-        // the same pattern.
-        let mut record = self
+        // `this_id` names a live record (checked above), so this record is
+        // always present; it may still be a *shared* one -- see
+        // `ShadowRealmRecord`'s own doc comment -- if it was ever
+        // transported into another realm.
+        let record = self
             .shadow_realms
-            .remove(&this_id)
+            .get(&this_id)
+            .cloned()
             .expect("require_shadow_realm confirmed this_id names a live ShadowRealm record");
-        let child_guard = register_active(&mut record.vm);
-        let outcome = Self::run_evaluate(self, &mut record.vm, &code);
-        drop(child_guard);
-        let wrapped = match outcome {
-            Ok(value) => self.shadow_wrap_into(&mut record.vm, value),
-            Err(_) => Err(RuntimeError::TypeError(String::new())),
+        return match record.vm.try_borrow_mut() {
+            Ok(mut child) => {
+                let child_guard = register_active(&mut child);
+                let outcome = Self::run_evaluate(self, &mut child, &code);
+                drop(child_guard);
+                match outcome {
+                    Ok(value) => self.shadow_wrap_into(&mut child, value),
+                    Err(_) => Err(RuntimeError::TypeError(String::new())),
+                }
+            }
+            Err(_) => {
+                // Already mid-call further up this exact synchronous chain
+                // (a wrapped-function call chain that loops back to
+                // `evaluate` on a realm one of those calls is already
+                // running through). Reach it the same way a callee reaches
+                // any other ancestor: through `ACTIVE`, keyed by the
+                // permanent tag lookup below (unlike a fresh borrow, this
+                // mapping does not itself change while checked out).
+                let heap_tag = self
+                    .shadow_realm_by_heap
+                    .iter()
+                    .find(|&(_, &id)| id == this_id)
+                    .map(|(&tag, _)| tag);
+                let Some(ptr) = heap_tag.and_then(resolve_active) else {
+                    return Err(RuntimeError::TypeError(
+                        "the ShadowRealm this function belongs to is no longer reachable".into(),
+                    ));
+                };
+                if std::ptr::eq(ptr as *const Vm, self as *const Vm) {
+                    return Err(RuntimeError::TypeError(
+                        "a ShadowRealm boundary cannot resolve to itself".into(),
+                    ));
+                }
+                // SAFETY: see `ACTIVE`'s documentation and the identical
+                // reasoning in `shadow_call_wrapped`.
+                let record_vm = unsafe { &mut *ptr };
+                let outcome = Self::run_evaluate(self, record_vm, &code);
+                match outcome {
+                    Ok(value) => self.shadow_wrap_into(record_vm, value),
+                    Err(_) => Err(RuntimeError::TypeError(String::new())),
+                }
+            }
         };
-        self.shadow_realms.insert(this_id, record);
-        wrapped
     }
 
     /// Runs a parsed/compiled `evaluate` body in `child` (registering
@@ -245,6 +275,27 @@ impl Vm {
         code: &Bytecode,
     ) -> Result<Value, RuntimeError> {
         child.remaining_instructions = child.config.instruction_budget;
+        // GetShadowRealmContext ( shadowRealmRecord, strictEval ): "Let
+        // lexEnv be NewDeclarativeEnvironment(shadowRealmRecord.[[GlobalEnv]])."
+        // Every single `evaluate` call gets a *fresh* declarative
+        // environment for its own top-level `let`/`const` -- unlike an
+        // ordinary repeated top-level Script, which runs
+        // GlobalDeclarationInstantiation directly against the realm's own,
+        // persistent Global Environment Record (so a second `let x` in a
+        // second <script> genuinely does conflict with an earlier one,
+        // matching real engines). This Vm's `execute_script` only
+        // implements that latter, ordinary case: it tracks lexical global
+        // redeclarations in one persistent `global_bindings` map with no
+        // notion of "this call's own fresh lexEnv is now out of scope".
+        // Clear its lexical (non-property) entries before every fresh
+        // `evaluate` script, releasing their GC roots, so this call's
+        // top-level declarations never see a previous call's now-defunct
+        // ones as already declared. `var`/function declarations are
+        // untouched: `varEnv` stays the realm's shared GlobalEnv even
+        // though `lexEnv` is fresh, so those must keep being real, visible
+        // `globalThis` properties across calls exactly as `execute_script`
+        // already provides.
+        child.reset_lexical_global_bindings()?;
         let _guard = register_active(caller);
         let value = child.execute_script(code)?;
         // This engine has no realm-independent job queue: a Script's own
@@ -285,58 +336,58 @@ impl Vm {
         };
         let promise_constructor = self.global("Promise")?;
         let (promise, resolve, reject) = self.new_promise_capability(&promise_constructor)?;
-        let outcome: Result<Value, RuntimeError> = {
-            let mut record = self
-                .shadow_realms
-                .remove(&this_id)
-                .expect("require_shadow_realm confirmed this_id names a live ShadowRealm record");
-            let inner: Result<Value, RuntimeError> = (|| {
-                record.vm.module_registry = self.module_registry.clone();
-                record.vm.active_module_name = self.active_module_name.clone();
-                record.vm.remaining_instructions = record.vm.config.instruction_budget;
-                let promise_value = record
-                    .vm
-                    .dynamic_import(Value::String(specifier.clone()), Value::Undefined)?;
-                let inner_promise = promise_value
-                    .object_id()
-                    .expect("dynamic_import always returns a Promise object");
-                record.vm.run_promise_jobs()?;
-                let namespace = match record.vm.promises.get(&inner_promise).map(|p| &p.status) {
-                    Some(PromiseStatus::Fulfilled(value)) => value.clone(),
-                    _ => {
+        let record = self
+            .shadow_realms
+            .get(&this_id)
+            .cloned()
+            .expect("require_shadow_realm confirmed this_id names a live ShadowRealm record");
+        let outcome: Result<Value, RuntimeError> = match record.vm.try_borrow_mut() {
+            Ok(mut child) => {
+                let inner: Result<Value, RuntimeError> = (|| {
+                    child.module_registry = self.module_registry.clone();
+                    child.active_module_name = self.active_module_name.clone();
+                    child.remaining_instructions = child.config.instruction_budget;
+                    let promise_value = child
+                        .dynamic_import(Value::String(specifier.clone()), Value::Undefined)?;
+                    let inner_promise = promise_value
+                        .object_id()
+                        .expect("dynamic_import always returns a Promise object");
+                    child.run_promise_jobs()?;
+                    let namespace = match child.promises.get(&inner_promise).map(|p| &p.status) {
+                        Some(PromiseStatus::Fulfilled(value)) => value.clone(),
+                        _ => {
+                            return Err(RuntimeError::TypeError(
+                                "module import did not resolve".into(),
+                            ))
+                        }
+                    };
+                    let Value::Object(namespace_id) = namespace else {
                         return Err(RuntimeError::TypeError(
-                            "module import did not resolve".into(),
-                        ))
+                            "module namespace is not an object".into(),
+                        ));
+                    };
+                    let export_name_utf8 = export_name.to_utf8().map_err(|_| {
+                        RuntimeError::TypeError("export name is not a Unicode string".into())
+                    })?;
+                    let has_export = child
+                        .heap
+                        .get_own_property_descriptor(namespace_id, export_name_utf8.as_str())?
+                        .is_some();
+                    if !has_export {
+                        return Err(RuntimeError::TypeError(
+                            "the requested export does not exist".into(),
+                        ));
                     }
-                };
-                let Value::Object(namespace_id) = namespace else {
-                    return Err(RuntimeError::TypeError(
-                        "module namespace is not an object".into(),
-                    ));
-                };
-                let export_name_utf8 = export_name.to_utf8().map_err(|_| {
-                    RuntimeError::TypeError("export name is not a Unicode string".into())
-                })?;
-                let has_export = record
-                    .vm
-                    .heap
-                    .get_own_property_descriptor(namespace_id, export_name_utf8.as_str())?
-                    .is_some();
-                if !has_export {
-                    return Err(RuntimeError::TypeError(
-                        "the requested export does not exist".into(),
-                    ));
+                    child.get_property(&namespace, &PropertyName::String(export_name.clone()))
+                })();
+                match inner {
+                    Ok(value) => self.shadow_wrap_into(&mut child, value),
+                    Err(error) => Err(error),
                 }
-                record
-                    .vm
-                    .get_property(&namespace, &PropertyName::String(export_name.clone()))
-            })();
-            let wrapped = match inner {
-                Ok(value) => self.shadow_wrap_into(&mut record.vm, value),
-                Err(error) => Err(error),
-            };
-            self.shadow_realms.insert(this_id, record);
-            wrapped
+            }
+            Err(_) => Err(RuntimeError::TypeError(
+                "this ShadowRealm is already mid-call".into(),
+            )),
         };
         match outcome {
             Ok(value) => {
@@ -373,56 +424,66 @@ impl Vm {
             .shadow_wrapped_functions
             .get(&wrapper)
             .expect("dispatch_call only routes here for a registered wrapper");
-        // Check the current synchronous call chain first. A deep,
-        // multi-realm wrapper chain can loop back through a realm that
-        // *this* `self` directly owns but has already checked out of
-        // `self.shadow_realms` further up this very call stack (e.g. an
-        // ancestor frame is mid-call through it, reached itself only
-        // through `ACTIVE`) -- trying to remove it a second time would find
-        // nothing there. Preferring `ACTIVE` here, ahead of direct
-        // ownership, catches exactly that case, since a realm that is not
-        // currently checked out is never registered in it.
-        if let Some(ptr) = resolve_active(home_heap) {
-            if std::ptr::eq(ptr as *const Vm, self as *const Vm) {
-                // A value that somehow crossed all the way back to its own
-                // origin realm within one call chain. Calling through would
-                // alias `self` with itself; refuse rather than risk it.
-                return Err(RuntimeError::TypeError(
-                    "a ShadowRealm boundary cannot resolve to itself".into(),
-                ));
-            }
-            // SAFETY: `ptr` is only present in `ACTIVE` for the dynamic
-            // extent of a `&mut Vm` call currently suspended further up the
-            // Rust call stack (see `ACTIVE`'s documentation); we have just
-            // confirmed it is not `self`, so this reborrow does not alias
-            // any reference `self` itself is holding.
-            let other = unsafe { &mut *ptr };
-            return self.shadow_call_across(other, target, this_arg, args);
+        // The common case: `self` directly holds a (possibly shared, if it
+        // was ever transported through Test262's own membrane -- see
+        // `ShadowRealmRecord`'s doc comment) reference to the target's
+        // realm, and it is not already mid-call further up this exact
+        // synchronous chain.
+        if let Some(&realm_key) = self.shadow_realm_by_heap.get(&home_heap) {
+            let record = self
+                .shadow_realms
+                .get(&realm_key)
+                .cloned()
+                .expect("shadow_realm_by_heap stays in sync with shadow_realms");
+            match record.vm.try_borrow_mut() {
+                Ok(mut other) => {
+                    // Register this child as active, by its own heap tag,
+                    // for exactly the duration of this borrow -- so a call
+                    // chain that loops back through it (reaching it only
+                    // through `ACTIVE`, below) finds it there instead of
+                    // trying to borrow it a second time.
+                    let child_guard = register_active(&mut other);
+                    let result = self.shadow_call_across(&mut other, target, this_arg, args);
+                    drop(child_guard);
+                    return result;
+                }
+                Err(_) => {
+                    // Fall through to the `ACTIVE`-based lookup below: some
+                    // ancestor frame is mid-call through this exact realm
+                    // (reached itself only through `ACTIVE`, e.g. a
+                    // wrapped-function chain looping back through a realm
+                    // `self` also owns directly), so this borrow_mut cannot
+                    // succeed a second time.
+                }
+            };
         }
-        let Some(&realm_key) = self.shadow_realm_by_heap.get(&home_heap) else {
+        // Otherwise this facade points to a realm not directly reachable
+        // from `self`'s own map: either an ancestor `Vm` that is not
+        // itself a `ShadowRealm` child (e.g. the embedder's own top-level
+        // `Vm`), or -- per the fallback above -- one that is, but is
+        // already checked out further up this very call stack. Either way
+        // it is reachable only through `ACTIVE` (see its own documentation
+        // for why that is sound here).
+        let Some(ptr) = resolve_active(home_heap) else {
             return Err(RuntimeError::TypeError(
                 "the ShadowRealm this function belongs to is no longer reachable".into(),
             ));
         };
-        // The common case: the target lives in a realm `self` created
-        // directly, and it is not already checked out elsewhere on this
-        // call chain. Move it out for the duration of the call instead of
-        // holding a live borrow through `self.shadow_realms` -- the callee
-        // may call back into `self` (an argument/return value wrapped the
-        // other way), which must not alias that borrow.
-        let mut record = self
-            .shadow_realms
-            .remove(&realm_key)
-            .expect("shadow_realm_by_heap stays in sync with shadow_realms");
-        // Register this child as active, by its own heap tag, for exactly
-        // the duration it is checked out -- see the comment above: this is
-        // what lets a call chain that loops back through it find it here
-        // instead of trying to remove it a second time.
-        let child_guard = register_active(&mut record.vm);
-        let result = self.shadow_call_across(&mut record.vm, target, this_arg, args);
-        drop(child_guard);
-        self.shadow_realms.insert(realm_key, record);
-        result
+        if std::ptr::eq(ptr as *const Vm, self as *const Vm) {
+            // A value that somehow crossed all the way back to its own
+            // origin realm within one call chain. Calling through would
+            // alias `self` with itself; refuse rather than risk it.
+            return Err(RuntimeError::TypeError(
+                "a ShadowRealm boundary cannot resolve to itself".into(),
+            ));
+        }
+        // SAFETY: `ptr` is only present in `ACTIVE` for the dynamic extent
+        // of a `&mut Vm` call currently suspended further up the Rust call
+        // stack (see `ACTIVE`'s documentation); we have just confirmed it
+        // is not `self`, so this reborrow does not alias any reference
+        // `self` itself is holding.
+        let other = unsafe { &mut *ptr };
+        self.shadow_call_across(other, target, this_arg, args)
     }
 
     /// `OrdinaryWrappedFunctionCall`: wraps `this`/each argument *into*

@@ -436,6 +436,39 @@ fn number_static_constants_have_spec_values_and_attributes() {
 }
 
 #[test]
+fn number_is_nan_requires_a_number_type_with_no_coercion_unlike_global_is_nan() {
+    // Number.isNaN ( number ): "1. If number is not a Number, return false.
+    // 2. If number is NaN, return true. 3. Otherwise, return false." --
+    // unlike the global `isNaN`, this performs no ToNumber coercion at all.
+    for (source, expected) in [
+        ("Number.isNaN(NaN)", true),
+        ("Number.isNaN(0/0)", true),
+        ("Number.isNaN(1)", false),
+        ("Number.isNaN(Infinity)", false),
+        ("Number.isNaN('NaN')", false),
+        ("Number.isNaN(undefined)", false),
+        ("Number.isNaN({})", false),
+        ("Number.isNaN()", false),
+        ("!Number.isNaN('NaN') && isNaN('NaN')", true),
+    ] {
+        assert_eq!(
+            evaluate(source),
+            Value::Bool(expected),
+            "{source} (Number.isNaN must not coerce)"
+        );
+    }
+    assert_eq!(evaluate("Number.isNaN.length"), Value::Number(1.0));
+    assert_eq!(evaluate("Number.isNaN.name"), Value::String("isNaN".into()));
+    assert_eq!(
+        evaluate(
+            "let d=Object.getOwnPropertyDescriptor(Number,'isNaN');\
+             typeof d.value==='function'&&d.writable&&!d.enumerable&&d.configurable",
+        ),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn number_to_string_uses_the_requested_radix_and_round_trips_binary64() {
     for (source, expected) in [
         ("(255).toString(16)", "ff"),
