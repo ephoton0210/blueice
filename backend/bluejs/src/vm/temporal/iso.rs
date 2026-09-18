@@ -1221,6 +1221,25 @@ mod tests {
     }
 
     #[test]
+    fn leap_year_follows_the_full_gregorian_century_rule() {
+        // `2020`/`2021` above only exercise the plain "divisible by 4" rule.
+        // The proleptic Gregorian rule this is meant to implement also has a
+        // century exception (divisible by 100 is not a leap year) and a
+        // 400-year exception to that exception (divisible by 400 is), and a
+        // naive `year % 4 == 0` implementation would get both wrong: 1900
+        // would be misreported as a leap year, and `2000-02-29`/`1900-02-29`
+        // would misparse as valid/invalid respectively.
+        assert!(is_leap_year(2000), "2000 is divisible by 400");
+        assert!(!is_leap_year(1900), "1900 is divisible by 100 but not 400");
+        assert!(!is_leap_year(2100), "2100 is divisible by 100 but not 400");
+        assert!(is_leap_year(2400), "2400 is divisible by 400");
+        assert_eq!(days_in_month(2000, 2), Some(29));
+        assert_eq!(days_in_month(1900, 2), Some(28));
+        assert_eq!(date("2000-02-29"), Some((2000, 2, 29)));
+        assert_eq!(date("1900-02-29"), None);
+    }
+
+    #[test]
     fn parses_time_of_day_in_both_forms_and_every_precision() {
         // Temporal/PlainTime/from/argument-string.js.
         assert_eq!(time_of("15"), Some((15, 0, 0, 0, 0, 0)));
@@ -1678,9 +1697,89 @@ mod tests {
             // More than one calendar annotation, any of them critical.
             "1970-01-01T00:00Z[u-ca=iso8601][!u-ca=iso8601]",
             "1970-01-01T00:00Z[!u-ca=iso8601][u-ca=iso8601]",
+            // `parse_time_spec` (shared by `parse_iso_time_prefix` and
+            // `parse_utc_offset_prefix`) has its own grammar rules distinct
+            // from `scan_time`'s: a fourth colon-separated field is always a
+            // syntax error...
+            "1970-01-01T00:00:00:00Z",
+            // ...and a decimal fraction belongs to the *seconds* field only,
+            // so a fraction on a bare hour:minute (no seconds field at all)
+            // is a syntax error rather than fractional minutes.
+            "1970-01-01T00:19.5Z",
+            // `parse_iso_time_prefix` clamps a `:60` leap second to `:59`
+            // (see the passing case above) but still rejects anything past
+            // that, e.g. a `:61`.
+            "1970-01-01T00:00:61Z",
         ] {
             assert_eq!(parse_instant(source), None, "{source:?}");
         }
+    }
+
+    /// [`parse_offset_seconds`] has no other direct test: every other test
+    /// in this module reaches its shared grammar through a different public
+    /// entry point ([`parse_date_time`]/[`parse_instant`]/etc.), never this
+    /// one directly. It backs `temporal.rs`'s check of whether a
+    /// `Temporal.ZonedDateTime`'s stored `[[TimeZone]]` slot is a fixed
+    /// offset -- called there only on an already-resolved bare identifier
+    /// (`TimeZone::identifier()`'s own `±HH:MM`/`"UTC"` spelling), never a
+    /// full date-time string, which matters here: `source.find([..])`
+    /// searches the *whole* input for its first `Z`/`z`/`+`/`-`/`[`, so a
+    /// full date-time string's own `-` date separators would be found
+    /// first -- these cases stick to the identifier-shaped inputs the
+    /// function is actually called with.
+    #[test]
+    fn parse_offset_seconds_resolves_the_designator_or_a_numeric_offset() {
+        assert_eq!(parse_offset_seconds("Z"), Some(0));
+        assert_eq!(parse_offset_seconds("+05:30"), Some(19_800));
+        assert_eq!(parse_offset_seconds("-05:30"), Some(-19_800));
+        // A trailing annotation bracket after the offset/designator is fine
+        // (its own contents are never inspected here)...
+        assert_eq!(parse_offset_seconds("Z[UTC]"), Some(0));
+        assert_eq!(parse_offset_seconds("+05:30[Asia/Kolkata]"), Some(19_800));
+        // ...but any other trailing text is not.
+        assert_eq!(parse_offset_seconds("Zjunk"), None);
+        assert_eq!(parse_offset_seconds("+05:30extra"), None);
+        // No `Z`/`z`/`+`/`-`/`[` anywhere in the source at all is not a time
+        // zone designator or offset in the first place.
+        assert_eq!(parse_offset_seconds("UTC"), None);
+        assert_eq!(parse_offset_seconds(""), None);
+    }
+
+    /// [`parse_annotation_suffix`]'s `key.is_empty() || value.is_empty()`
+    /// check, exercised only through [`parse_annotations`] elsewhere in this
+    /// module, none of which write an empty key or value.
+    #[test]
+    fn rejects_annotations_with_an_empty_key_or_value() {
+        assert_eq!(parse_annotations("[=bar]"), Err(()));
+        assert_eq!(parse_annotations("[foo=]"), Err(()));
+    }
+
+    /// [`scan_offset`] (the `Cursor`-based offset parser [`scan_utc_offset_suffix`]
+    /// and [`is_valid_time_zone_identifier`] share) has its own range checks
+    /// distinct from [`parse_time_spec`]'s, reached only through the full
+    /// `AnnotatedDateTime` grammar ([`parse_date_time`]) elsewhere in this
+    /// module -- and every existing case there uses a valid offset.
+    #[test]
+    fn rejects_out_of_range_offset_fields_in_the_full_date_time_grammar() {
+        // An offset minute field over 59...
+        assert_eq!(date("1976-11-18T15:23:30+00:60"), None);
+        // ...and an offset second field over 59 -- unlike the time-of-day
+        // field above it, an offset never gets leap-second tolerance.
+        assert_eq!(date("1976-11-18T15:23:30+00:00:60"), None);
+        // A valid offset that *does* carry an explicit, unfractioned seconds
+        // field is still accepted (the completion path after that field,
+        // when no further fraction follows it).
+        assert_eq!(date("1976-11-18T15:23:30+05:30:15"), Some((1976, 11, 18)));
+    }
+
+    /// [`scan_annotations`]' leading-time-zone-annotation check
+    /// (`is_valid_time_zone_identifier`) rejecting a non-identifier-shaped,
+    /// non-`key=value` bracket body -- exercised elsewhere in this module
+    /// only through [`parse_annotation_suffix`]'s separate copy of the same
+    /// rule, never this one.
+    #[test]
+    fn rejects_a_leading_annotation_that_is_neither_a_time_zone_nor_key_value() {
+        assert_eq!(date("1976-11-18T15:23[123]"), None);
     }
 
     #[test]

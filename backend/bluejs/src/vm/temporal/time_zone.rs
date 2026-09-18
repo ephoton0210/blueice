@@ -428,6 +428,23 @@ mod tests {
         assert_eq!(parse_identifier("+24:00"), None);
         assert_eq!(parse_identifier("+01:60"), None);
         assert_eq!(parse_identifier("+ab:cd"), None);
+        // The `offset_minutes`/`iana` test helpers' own fallback arms: an
+        // input that resolves to the *other* variant (or to neither) is
+        // `None` through the same helper, not a mismatched value.
+        assert_eq!(offset_minutes("UTC"), None);
+        assert_eq!(offset_minutes(""), None);
+        assert_eq!(iana("+01:30"), None);
+    }
+
+    /// [`parse_minute_offset`]'s own leading-sign check is defensive: both
+    /// of its current callers already only call it once the first byte is
+    /// known to be `+`/`-`, so this is the one place that guard itself is
+    /// exercised directly, including on an empty string (no first byte at
+    /// all).
+    #[test]
+    fn parse_minute_offset_rejects_input_with_no_leading_sign() {
+        assert_eq!(parse_minute_offset("07:00"), None);
+        assert_eq!(parse_minute_offset(""), None);
     }
 
     #[test]
