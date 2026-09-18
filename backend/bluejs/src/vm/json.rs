@@ -571,7 +571,11 @@ impl Vm {
                     let string = Value::String(self.coerce_string(value)?);
                     return self.json_serialize(&string, state, indent);
                 }
-                if let Some(primitive) = self.heap.boxed_primitive(*object)? {
+                if let Some(primitive) = self
+                    .heap
+                    .boxed_primitive(*object)?
+                    .or(self.test262_foreign_boxed_primitive(*object)?)
+                {
                     return match primitive {
                         Value::Number(_) => {
                             let number = Value::Number(self.coerce_number(value)?);
