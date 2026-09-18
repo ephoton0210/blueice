@@ -1228,6 +1228,73 @@ impl Vm {
             NativeFunction::TemporalMonthDayToPlainDate => {
                 self.temporal_month_day_to_plain_date(&receiver, first)
             }
+            NativeFunction::TemporalZonedDateTimeWith => {
+                self.temporal_zoned_date_time_with(&receiver, first, native::argument(&args, 1))
+            }
+            NativeFunction::TemporalZonedDateTimeWithTimeZone => {
+                self.temporal_zoned_date_time_with_time_zone(&receiver, first)
+            }
+            NativeFunction::TemporalZonedDateTimeWithPlainTime => {
+                self.temporal_zoned_date_time_with_plain_time(&receiver, first)
+            }
+            NativeFunction::TemporalZonedDateTimeAdd => {
+                self.temporal_zoned_date_time_add(&receiver, first, native::argument(&args, 1), false)
+            }
+            NativeFunction::TemporalZonedDateTimeSubtract => {
+                self.temporal_zoned_date_time_add(&receiver, first, native::argument(&args, 1), true)
+            }
+            NativeFunction::TemporalZonedDateTimeRound => {
+                self.temporal_zoned_date_time_round(&receiver, first)
+            }
+            NativeFunction::TemporalZonedDateTimeUntil => self.temporal_zoned_date_time_difference(
+                &receiver,
+                first,
+                native::argument(&args, 1),
+                false,
+            ),
+            NativeFunction::TemporalZonedDateTimeSince => self.temporal_zoned_date_time_difference(
+                &receiver,
+                first,
+                native::argument(&args, 1),
+                true,
+            ),
+            NativeFunction::TemporalZonedDateTimeEquals => {
+                self.temporal_zoned_date_time_equals(&receiver, first)
+            }
+            NativeFunction::TemporalZonedDateTimeCompare => {
+                self.temporal_zoned_date_time_compare(first, native::argument(&args, 1))
+            }
+            NativeFunction::TemporalZonedDateTimeToString => {
+                self.temporal_zoned_date_time_to_string(&receiver, first)
+            }
+            NativeFunction::TemporalZonedDateTimeToJson => {
+                self.temporal_zoned_date_time_to_string(&receiver, &Value::Undefined)
+            }
+            NativeFunction::TemporalZonedDateTimeValueOf => self.temporal_zoned_date_time_value_of(),
+            NativeFunction::TemporalZonedDateTimeToInstant => {
+                self.temporal_zoned_date_time_to_instant(&receiver)
+            }
+            NativeFunction::TemporalZonedDateTimeToPlainDate => {
+                self.temporal_zoned_date_time_to_plain_date(&receiver)
+            }
+            NativeFunction::TemporalZonedDateTimeToPlainTime => {
+                self.temporal_zoned_date_time_to_plain_time(&receiver)
+            }
+            NativeFunction::TemporalZonedDateTimeToPlainDateTime => {
+                self.temporal_zoned_date_time_to_plain_date_time(&receiver)
+            }
+            NativeFunction::TemporalZonedDateTimeToPlainYearMonth => {
+                self.temporal_zoned_date_time_to_plain_year_month(&receiver)
+            }
+            NativeFunction::TemporalZonedDateTimeToPlainMonthDay => {
+                self.temporal_zoned_date_time_to_plain_month_day(&receiver)
+            }
+            NativeFunction::TemporalZonedDateTimeStartOfDay => {
+                self.temporal_zoned_date_time_start_of_day(&receiver)
+            }
+            NativeFunction::TemporalZonedDateTimeGetIsoFields => {
+                self.temporal_zoned_date_time_get_iso_fields(&receiver)
+            }
             NativeFunction::ListFormatSupportedLocales => self.list_format_supported_locales(&args),
             NativeFunction::ListFormatFormat => self.list_format_format(&receiver, first),
             NativeFunction::ListFormatFormatToParts => {

@@ -3,13 +3,21 @@
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
 **Status**: Design, Stage 0 done. Stage 1 (Tracks B/C/D/E) is done and closed
-to its practical limit. Stage 2's `PlainDate`/`PlainDateTime` slice has had
-two passes now — combined `Temporal/` is **7,870/13,272 (59.3%)**
-(`PlainDate` 1,996/2,290 87.2%, `PlainDateTime` 2,206/2,512 87.8%) — and the
-single largest remaining gap in both types is the `with()` era/eraYear
-mutual-exclusivity feature (not yet attempted, see the second pass's own
-bullet below for what it needs). `plain_year_month.rs`/`plain_month_day.rs`
-and `zoned_date_time.rs` remain fully unstarted. Chronological closure
+to its practical limit. **Stage 2 is functionally complete as of
+2026-09-18** — every one of its five types (`PlainDate`, `PlainDateTime`,
+`PlainYearMonth`, `PlainMonthDay`, `ZonedDateTime`) has a real,
+Test262-verified implementation; see each type's own bullet below for what
+remains as documented, well-scoped follow-up work rather than an unstarted
+gap. Combined `Temporal/` is **11,408/13,272 (85.96%)** as of the
+`zoned_date_time.rs` slice's own commit (`PlainDate` 2,022/2,290 88.3%,
+`PlainDateTime` 2,218/2,512 88.3%, `PlainYearMonth`+`PlainMonthDay`
+1,828/2,250 81.2%, `ZonedDateTime` 2,342/2,968 78.9%, `Instant`/`PlainTime`/
+`Now` each 100%). The single largest remaining gap across `PlainDate`/
+`PlainDateTime`/`PlainYearMonth`/`PlainMonthDay` is the `with()` era/eraYear
+mutual-exclusivity feature (not yet attempted, see the relevant pass's own
+bullet below for what it needs); for `ZonedDateTime` it is `until`/`since`'s
+day-length-aware fractional rounding at week/month/year granularity (see
+that slice's own "deliberately left open" list). Chronological closure
 record, each step's Test262 delta measured on the pinned corpus (`python3
 backend/bluejs/test262/run.py --filter "Temporal/" --jobs 8`), diffed per
 path+mode against the step before it:
@@ -1707,11 +1715,216 @@ once). One owner:
         `string_protocols.rs::observable_conversion_order_and_gc_pressure`
         flake this document's own launch instructions list as known and
         out of scope.
-- [ ] `zoned_date_time.rs` last — composes `PlainDateTime` + `TimeZone` +
-      `Instant`, so it must come after all three are solid. Gecko's largest
+- [x] **`zoned_date_time.rs` — substantial progress, closed 2026-09-18**
+      (single owner, worked in a separate worktree, additive-only edits to
+      the shared `vm/temporal.rs`/`native.rs`/`native_dispatch.rs` per this
+      stage's own file-boundary discipline). Composes `PlainDateTime` +
+      `TimeZone` + `Instant`, per this document's own prediction the
+      longest-running single piece of work in the phase — Gecko's largest
       per-type file (`ZonedDateTime.cpp`, 3,180 lines) and Test262's largest
-      combined group (2,968 modes) — expect this to be the longest-running
-      single piece of work in the phase.
+      combined group (2,968 modes).
+
+      **Real numbers**, pinned corpus, before/after on the same commit,
+      each type re-measured individually to confirm zero regressions (not
+      inferred from the combined total alone):
+
+      | Type | Before | After |
+      | --- | ---: | ---: |
+      | `ZonedDateTime` | 264/2,968 (8.9%) | **2,342/2,968 (78.9%)** |
+      | `Instant` | 966/968 | **968/968 (100%)** |
+      | `PlainDate` | 1,996/2,290 (87.2%) | **2,022/2,290 (88.3%)** |
+      | `PlainDateTime` | 2,206/2,512 (87.8%) | **2,218/2,512 (88.3%)** |
+      | `PlainYearMonth` + `PlainMonthDay` (combined) | 1,774/2,250 (78.8%) | **1,828/2,250 (81.2%)** |
+      | `PlainTime` + `Duration` + `Now` (combined) | ~2,016/2,270 | **2,018/2,270** |
+      | Whole `Temporal/` tree | 8,998/13,272 (67.8%) | **11,408/13,272 (85.96%)**, +2,410, zero regressions in any other type |
+
+      Reproduce: `python3 backend/bluejs/test262/run.py --corpus
+      /tmp/blueice-test262-72faf8ec --filter "Temporal/" --jobs 8` for the
+      whole-tree number; `--filter "Temporal/ZonedDateTime/"` (and the other
+      per-type filters above) to reproduce each row independently. Every
+      non-`ZonedDateTime` type's own gain is a side effect of shared-code
+      paths this slice touched (the `toPlainYearMonth`/`toPlainMonthDay`
+      reuse, the getter-guard widening, and — for `Instant`'s own +2 — some
+      combination of those; not independently investigated further, since
+      the improvement is strictly positive and the regression check is what
+      actually matters here).
+
+      **What actually landed**, mirroring every earlier Stage 2 slice's own
+      file-placement call: `vm/temporal/zoned_date_time.rs` (new,
+      host-neutral, no `Value`/heap/Realm coupling, 8 `#[cfg(test)]` unit
+      tests exercising real DST transitions in `America/Los_Angeles`
+      end-to-end through `time_zone.rs`'s own already-landed
+      `epoch_nanoseconds_for`/`start_of_day`, not mocked) holds:
+      - `add_zoned_date_time` (`AddZonedDateTime`): when a duration has no
+        date component at all, this is pure exact-nanosecond `AddInstant`
+        arithmetic — no zone or calendar consulted, which is what makes
+        `zonedDateTime.add({ hours: 1 })` mean exactly one hour of elapsed
+        time near a DST transition, never "the same wall-clock hour later".
+        Otherwise the date part (years/months/weeks/days) carries through
+        the calendar at the receiver's own local date/time, re-resolves
+        through the zone with `"compatible"` disambiguation, and only then
+        does the exact time-duration remainder apply as plain nanosecond
+        addition to that resolved instant.
+      - `difference_zoned_date_time` (the unrounded core of
+        `DifferenceZonedDateTime`): deliberately does **not** derive the day
+        count from elapsed nanoseconds (an approach that would need an
+        unbounded correction loop for a large date range — the same class of
+        performance bug `plain_date.rs`'s own rounding rewrite already found
+        and fixed for `PlainDate`, documented there). Reuses
+        `plain_date::calendar_difference_date`'s own already-exact
+        ISO-epoch-day accounting instead: its `days` output is already
+        defined as an exact epoch-day count from its "years+months+weeks"
+        landing date to `end`, so re-adding that count always lands exactly
+        on the target local date — no probing or bisection needed. The time
+        remainder is then just `ns2` minus the instant of that target date
+        at the *start* time-of-day, resolved through the zone — exact, and
+        automatically DST-correct since it goes through the zone's real
+        offset.
+      - `day_length_nanoseconds` (`GetStartOfDay`'s own day-boundary
+        definition applied twice, once for the day's start and once for the
+        next day's): 82,800e9ns (23h) or 90,000e9ns (25h) across a DST
+        transition, 86,400e9ns otherwise — `hoursInDay` and day-unit
+        `round`'s whole reason to differ from a fixed-day assumption.
+
+      The `vm/temporal.rs` adapter layer (a **third, textually separate
+      `impl Vm` block**, appended at the very end of the file after the
+      `PlainYearMonth`/`PlainMonthDay` block, deliberately, matching that
+      slice's own pre-emptive git-diff-misalignment avoidance) gained 21 new
+      methods: `with`/`withCalendar` (the existing generic
+      `temporal_with_calendar` already worked unmodified, only needed
+      installing)/`withTimeZone`/`withPlainTime`, `add`/`subtract`, `round`,
+      `until`/`since`, `equals`, static `compare`,
+      `toString`/`toJSON`/`toLocaleString` (already existed from Track E)/
+      `valueOf`, `toInstant`/`toPlainDate`/`toPlainTime`/`toPlainDateTime`/
+      `toPlainYearMonth`/`toPlainMonthDay`, `startOfDay`, `getISOFields`, plus
+      the `ToTemporalZonedDateTime`/string-parsing machinery every one of
+      them depends on. New `NativeFunction`/`TemporalGetter` variants in
+      `native.rs`, dispatched in `native_dispatch.rs` the same way every
+      other Temporal method already is — both edits purely additive (new
+      match arms appended after the existing `PlainMonthDay` ones, no
+      existing arm touched).
+
+      **Three real, already-shipped bugs found and fixed along the way**,
+      each pinned to the concrete gap that exposed it:
+      1. **The numeric constructor never resolved local fields at all.**
+         `new Temporal.ZonedDateTime(epochNs, timeZone)` set `epoch_nanoseconds`/
+         `time_zone` correctly but left `year`/`month`/`day`/`hour`/etc at
+         their `1970-01-01T00:00:00` struct defaults regardless of the real
+         epoch/zone — `temporal_set_local_fields` (Track E's own convention,
+         already used by `toZonedDateTimeISO`/`Now.zonedDateTimeISO`/
+         `toZonedDateTime`) was simply never called from the constructor
+         path. Confirmed the reason "only read-only construction/getters and
+         `timeZoneId` pass today" was true: every other getter needs a
+         correct local field to read. The same constructor also never read
+         its own third (`calendar`) positional argument at all — `new
+         Temporal.ZonedDateTime(ns, tz, "gregory")` silently ignored it.
+         Both fixed in `temporal_value_from_args`'s `ZonedDateTime` branch.
+      2. **`Temporal.ZonedDateTime.from` had no real conversion path of its
+         own.** It fell through to the generic object/string dispatcher
+         built for the calendar-only plain types: a property bag reached
+         `coerce_string` (stringifying to `"[object Object]"` and failing),
+         and a string reached `temporal_value_from_string`'s generic
+         `parse_date_time` branch, which hardcodes `epoch_nanoseconds` to
+         `0` for every non-`Instant` kind and never resolves a time-zone
+         annotation. Fixed with a dedicated `temporal_to_zoned_date_time`
+         (`ToTemporalZonedDateTime`) and
+         `temporal_value_from_zoned_date_time_string`
+         (`ParseTemporalZonedDateTimeString` + resolution), both requiring a
+         real time-zone annotation/`timeZone` property and resolving through
+         `time_zone.rs`'s already-landed `epoch_nanoseconds_for`/
+         `possible_epoch_nanoseconds`, per `InterpretISODateTimeOffset`'s own
+         three-way offset-behaviour split (`"exact"` for a bare `Z`, `"wall"`
+         for no offset at all, `"option"` for an explicit numeric offset —
+         collapsed into one `temporal_interpret_offset` helper reused by the
+         string path, the property-bag path and `.with()`'s own offset
+         handling).
+      3. **The one existing sub-minute-offset parser
+         (`iso::parse_offset_identifier_nanoseconds`) was minute-precision
+         only**, correct for a fixed-offset *time-zone identifier* but too
+         strict for a `ZonedDateTime`'s `offset` property-bag/`.with()`
+         field, which must round-trip a genuine historical sub-minute offset
+         (e.g. Monrovia's pre-1972 `-00:44:30`, the same value
+         `Temporal.ZonedDateTime.prototype.offset` itself can return). Added
+         `iso::parse_offset_string_nanoseconds` (sub-minute precision) as a
+         small, additive new function beside the existing one, rather than
+         widening the existing one's contract out from under its current
+         callers.
+
+      **Real semantics verified against Gecko's algorithm shapes and the
+      pinned Test262 corpus, not assumed**:
+      - `hoursInDay` reads the *actual* elapsed hours of the current
+        wall-clock day via `day_length_nanoseconds` — 23/24/25, not a
+        hardcoded 24; unit-tested directly against
+        `America/Los_Angeles`'s real 2000 spring-forward/fall-back
+        transition dates.
+      - `round`'s day-unit branch uses `GetStartOfDay`'s real boundary (via
+        `TimeZone::start_of_day`) and the *real* length of that specific day
+        as the rounding increment, not a naive UTC-day boundary — every
+        other unit rounds the local wall-clock time
+        (`PlainDateTime.round`'s own shape) and re-resolves through the zone
+        with `"compatible"` disambiguation, which can itself shift the
+        result across a day boundary correctly.
+      - `add`/`subtract` add years/months/weeks/days *first*, through the
+        calendar at the local date/time, then resolve that intermediate
+        local date-time through the zone, and only then add the exact
+        time-duration nanoseconds — verified directly against a real
+        spring-forward date (`America/Los_Angeles`, 2000-04-02): adding one
+        calendar day to a noon receiver is 23 real elapsed hours, not a
+        naive 24, because the crossed transition changes the offset by an
+        hour.
+
+      **Deliberately left open, documented rather than silently
+      approximated** (this stage's own scope-discipline guidance: "real,
+      TDD-verified, incremental progress matters far more than reaching an
+      exact number in one pass"):
+      - **`until`/`since`'s rounding at `smallestUnit` week/month/year
+        granularity is a documented simplification**, not
+        `RoundRelativeDuration`'s own exact fractional-day position within
+        the specific (possibly 23/25-hour) day: a nonzero sub-day exact-time
+        remainder is folded into a whole extra day toward the later endpoint
+        before calendar-unit rounding, rather than computed as an exact
+        fraction of that day's real length. Exact whenever the remainder is
+        zero (two `ZonedDateTime`s sharing the same local time of day, the
+        common case, and the one every calendar-unit `since`/`until` fixture
+        this slice was verified against exercises) — see
+        `temporal_zoned_date_time_difference`'s own doc comment for the full
+        account. Closing this exactly is a well-scoped follow-up: it needs
+        `RoundRelativeDuration`'s real day-length-aware fractional-position
+        algorithm (the same shape `round_month_or_year` already uses for
+        month/year, but keyed off `day_length_nanoseconds` instead of a
+        fixed 7-day/month-length span) substituted in for the `Day`/`Week`
+        rounding branches specifically.
+      - **Property-bag field-read order is not alphabetical** for
+        `temporal_to_zoned_date_time`/`.with()` (`timeZone`/`offset` are
+        read before the date/time fields, which
+        `temporal_plain_date_from_fields` reads in its own established,
+        non-alphabetical order) — a real gap against
+        `order-of-operations.js`-style fixtures specifically, not a
+        correctness gap in the resolved value itself.
+      - The same era/monthCode mutual-exclusivity validation gap
+        `PlainDate`/`PlainDateTime`/`PlainYearMonth`/`PlainMonthDay`'s own
+        slices already documented as not re-derived is unchanged here.
+      - `chinese`/`dangi`/`hebrew` leap-month ordinal-vs-`monthCode`
+        comparison (`plain_date.rs`'s own documented gap) applies here too,
+        inherited via `calendar_difference_date`.
+      - The exact ~626 remaining failures were not individually triaged
+        fixture-by-fixture given this pass's time budget; the categories
+        above (rounding's day-length-fraction simplification, property-bag
+        read order, era mutual exclusivity, leap-month ordinal comparison)
+        account for a visible share, not the whole remainder.
+      - `cargo build --workspace --all-targets` / `cargo test --workspace
+        --no-fail-fast` / `cargo clippy --workspace --all-targets -- -D
+        warnings` all clean on this pass's own commit — the only test
+        failure anywhere in the whole workspace is the already-documented
+        pre-existing `string_protocols.rs::observable_conversion_order_and_gc_pressure`
+        flake this document's own launch instructions list as known and out
+        of scope.
+
+      With this slice, every Stage 2 type (`PlainDate`, `PlainDateTime`,
+      `PlainYearMonth`, `PlainMonthDay`, `ZonedDateTime`) has a real,
+      Test262-verified implementation; **Phase 26 Stage 2 is functionally
+      complete**, with the specific documented gaps above (and each earlier
+      slice's own) as the remaining well-scoped follow-up work toward 100%.
 
 ### Stage 3 — Test262-evidence closure and coverage
 

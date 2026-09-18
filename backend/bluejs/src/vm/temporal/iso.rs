@@ -1007,6 +1007,19 @@ pub(crate) fn parse_offset_identifier_nanoseconds(source: &str) -> Option<i64> {
     cursor.done().then_some(offset)
 }
 
+/// A whole-string UTC offset at full (sub-minute) precision -- the grammar a
+/// `Temporal.ZonedDateTime` property-bag `offset` field, or `.with()`'s own
+/// `offset` property, is validated against (`ParseDateTimeUTCOffset`).
+/// Unlike [`parse_offset_identifier_nanoseconds`], this accepts a genuine
+/// historical sub-minute offset (e.g. Monrovia's pre-1972 `-00:44:30`) --
+/// exactly what `Temporal.ZonedDateTime.prototype.offset` itself can return,
+/// so a round trip through `.with({ offset })` must accept it back.
+pub(crate) fn parse_offset_string_nanoseconds(source: &str) -> Option<i64> {
+    let mut cursor = Cursor::new(source);
+    let offset = scan_offset(&mut cursor, true)?;
+    cursor.done().then_some(offset)
+}
+
 /// Parses the ISO duration strings accepted by `Intl.DurationFormat` and
 /// `Temporal.Duration` through Temporal's duration-string grammar. The host
 /// service receives a typed, validated ECMA-402 record, so neither this
