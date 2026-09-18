@@ -25,6 +25,8 @@ mod duration_math;
 mod epoch;
 mod iso;
 mod plain_date;
+mod plain_month_day;
+mod plain_year_month;
 mod rounding;
 mod time_zone;
 mod time_zone_id;
@@ -295,6 +297,62 @@ impl Vm {
                             1,
                             NativeFunction::TemporalPlainDateTimeRound,
                         )?;
+                    }
+                }
+                if kind == TemporalKind::PlainYearMonth {
+                    for (name, arity, method) in [
+                        ("with", 1, NativeFunction::TemporalYearMonthWith),
+                        ("add", 1, NativeFunction::TemporalYearMonthAdd),
+                        ("subtract", 1, NativeFunction::TemporalYearMonthSubtract),
+                        ("until", 1, NativeFunction::TemporalYearMonthUntil),
+                        ("since", 1, NativeFunction::TemporalYearMonthSince),
+                        ("equals", 1, NativeFunction::TemporalYearMonthEquals),
+                        ("toString", 0, NativeFunction::TemporalYearMonthToString),
+                        ("toJSON", 0, NativeFunction::TemporalYearMonthToJson),
+                        (
+                            "toLocaleString",
+                            0,
+                            NativeFunction::TemporalYearMonthToLocaleString,
+                        ),
+                        ("valueOf", 0, NativeFunction::TemporalYearMonthValueOf),
+                        (
+                            "toPlainDate",
+                            1,
+                            NativeFunction::TemporalYearMonthToPlainDate,
+                        ),
+                    ] {
+                        self.install_native(prototype, function_prototype, name, arity, method)?;
+                    }
+                    self.install_native(
+                        constructor,
+                        function_prototype,
+                        "compare",
+                        2,
+                        NativeFunction::TemporalYearMonthCompare,
+                    )?;
+                }
+                if kind == TemporalKind::PlainMonthDay {
+                    // Deliberately no `add`/`subtract`/`until`/`since`/
+                    // `compare` -- see `NativeFunction::TemporalMonthDay*`'s
+                    // own doc comment for why this type has none.
+                    for (name, arity, method) in [
+                        ("with", 1, NativeFunction::TemporalMonthDayWith),
+                        ("equals", 1, NativeFunction::TemporalMonthDayEquals),
+                        ("toString", 0, NativeFunction::TemporalMonthDayToString),
+                        ("toJSON", 0, NativeFunction::TemporalMonthDayToJson),
+                        (
+                            "toLocaleString",
+                            0,
+                            NativeFunction::TemporalMonthDayToLocaleString,
+                        ),
+                        ("valueOf", 0, NativeFunction::TemporalMonthDayValueOf),
+                        (
+                            "toPlainDate",
+                            1,
+                            NativeFunction::TemporalMonthDayToPlainDate,
+                        ),
+                    ] {
+                        self.install_native(prototype, function_prototype, name, arity, method)?;
                     }
                 }
                 let getters: &[(&str, native::TemporalGetter)] = match kind {
@@ -1245,13 +1303,23 @@ impl Vm {
         Ok(TemporalValue {
             kind,
             duration: None,
-            year: if kind == TemporalKind::PlainMonthDay {
+            // The `1972`/`1` reference-field hardcodes below are only
+            // correct for the `iso8601` calendar (`ToTemporalMonthDay`'s own
+            // literal `referenceISOYear = 1972`, mirrored here for
+            // `PlainYearMonth`'s reference day). A non-`iso8601` calendar
+            // string keeps its own parsed year/day instead, which
+            // `Vm::temporal_to_plain_year_month`/`temporal_to_plain_month_day`
+            // then re-resolves through `CalendarYearMonthFromFields`/
+            // `CalendarMonthDayFromFields` -- discarding it unconditionally
+            // here (as this function previously did) silently dropped a
+            // non-ISO calendar string's own explicit year/day.
+            year: if kind == TemporalKind::PlainMonthDay && calendar == "iso8601" {
                 1972
             } else {
                 year
             },
             month,
-            day: if kind == TemporalKind::PlainYearMonth {
+            day: if kind == TemporalKind::PlainYearMonth && calendar == "iso8601" {
                 1
             } else {
                 day
@@ -1340,6 +1408,22 @@ impl Vm {
             // ZonedDateTime fast path and its TypeError for non-strings.
             let epoch_nanoseconds = self.temporal_to_instant_epoch(value)?;
             return self.instant_from_epoch_nanoseconds(epoch_nanoseconds);
+        }
+        if kind == TemporalKind::PlainYearMonth {
+            // `Temporal.PlainYearMonth.from` *is* `ToTemporalYearMonth`,
+            // which (unlike `PlainDate`/`PlainDateTime`) is handled entirely
+            // by one function rather than split between this generic
+            // dispatcher's object/string branches below -- both a
+            // property-bag object and a calendar-annotated string need the
+            // same `CalendarYearMonthFromFields` re-resolution.
+            let resolved = self.temporal_to_plain_year_month(value, options)?;
+            return self.alloc_temporal_value(resolved, false);
+        }
+        if kind == TemporalKind::PlainMonthDay {
+            // Same rationale as `PlainYearMonth` above, for
+            // `ToTemporalMonthDay`.
+            let resolved = self.temporal_to_plain_month_day(value, options)?;
+            return self.alloc_temporal_value(resolved, false);
         }
         if let Some(object) = value.object_id() {
             if let Some(temporal) = self.heap.temporal_value(object)? {
@@ -4272,35 +4356,58 @@ impl Vm {
         self.alloc_temporal_value(value, false)
     }
 
-    /// Approximation, not yet calendar-exact for every non-ISO calendar: the
-    /// ISO reference day is fixed at `1` rather than resolved through
-    /// `CalendarYearMonthFromFields` — full `PlainYearMonth` calendar-field
-    /// support is Stage 2's *next* deliverable, not this one's.
+    /// `Temporal.PlainDate.prototype.toPlainYearMonth`: resolves through
+    /// `CalendarYearMonthFromFields` (Phase 26 Stage 2's
+    /// `plain_year_month.rs`), correct for every calendar -- this used to
+    /// pin the ISO reference day at `1` unconditionally, which is only
+    /// correct for the `iso8601` calendar.
     pub(super) fn temporal_plain_date_to_plain_year_month(
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
         let existing = self.temporal_date_receiver(receiver)?;
-        let value = Self::temporal_date_value(
-            TemporalKind::PlainYearMonth,
-            existing.calendar,
-            (existing.year, existing.month, 1),
-        );
+        let fields = self.temporal_calendar_fields(&existing)?;
+        let calendar_kind = calendar::calendar_kind(&existing.calendar)
+            .expect("Temporal values retain a validated calendar identifier");
+        let ym_fields = plain_year_month::YearMonthFields {
+            era: None,
+            era_year: None,
+            extended_year: Some(fields.year),
+            month_code: Some(&fields.month_code),
+            ordinal_month: None,
+        };
+        let date = plain_year_month::year_month_from_fields(calendar_kind, &ym_fields, false)
+            .map_err(|_| {
+                RuntimeError::RangeError("invalid Temporal calendar year-month".into())
+            })?;
+        let value = Self::temporal_date_value(TemporalKind::PlainYearMonth, existing.calendar, date);
         self.alloc_temporal_value(value, false)
     }
 
-    /// Same approximation note as `toPlainYearMonth` above, for the
-    /// reference year instead.
+    /// `Temporal.PlainDate.prototype.toPlainMonthDay`: resolves through
+    /// `CalendarMonthDayFromFields` (Phase 26 Stage 2's
+    /// `plain_month_day.rs`), correct for every calendar -- this used to pin
+    /// the ISO reference year at `1972` unconditionally, which is only
+    /// correct for the `iso8601` calendar.
     pub(super) fn temporal_plain_date_to_plain_month_day(
         &mut self,
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
         let existing = self.temporal_date_receiver(receiver)?;
-        let value = Self::temporal_date_value(
-            TemporalKind::PlainMonthDay,
-            existing.calendar,
-            (1972, existing.month, existing.day),
-        );
+        let fields = self.temporal_calendar_fields(&existing)?;
+        let calendar_kind = calendar::calendar_kind(&existing.calendar)
+            .expect("Temporal values retain a validated calendar identifier");
+        let md_fields = plain_month_day::MonthDayFields {
+            extended_year: Some(fields.year),
+            month_code: Some(&fields.month_code),
+            ordinal_month: None,
+            day: fields.day,
+        };
+        let date = plain_month_day::month_day_from_fields(calendar_kind, &md_fields, false)
+            .map_err(|_| {
+                RuntimeError::RangeError("invalid Temporal calendar month-day".into())
+            })?;
+        let value = Self::temporal_date_value(TemporalKind::PlainMonthDay, existing.calendar, date);
         self.alloc_temporal_value(value, false)
     }
 
@@ -5516,6 +5623,872 @@ impl Vm {
         Err(RuntimeError::TypeError(
             "Temporal.Duration cannot be converted to a primitive value".into(),
         ))
+    }
+}
+
+/// Phase 26 Stage 2's second `PlainYearMonth`/`PlainMonthDay` slice. Kept as
+/// its own `impl Vm` block (rather than folded into the block above) so this
+/// addition stays textually disjoint from the region a sibling worktree is
+/// concurrently editing for `PlainDate`/`PlainDateTime` bug fixes -- per this
+/// document's own repeatedly-recorded "git diff misalignment" merge pattern.
+impl Vm {
+    /// Brand check shared by every `Temporal.PlainYearMonth` prototype
+    /// method, mirroring `temporal_date_receiver`'s own pattern for
+    /// `PlainDate`/`PlainDateTime`.
+    fn temporal_year_month_receiver(&mut self, receiver: &Value) -> Result<TemporalValue, RuntimeError> {
+        let object = receiver.object_id().ok_or_else(|| {
+            RuntimeError::TypeError(
+                "Temporal.PlainYearMonth method requires a matching receiver".into(),
+            )
+        })?;
+        let value = self.heap.temporal_value(object)?.ok_or_else(|| {
+            RuntimeError::TypeError(
+                "Temporal.PlainYearMonth method requires a matching receiver".into(),
+            )
+        })?;
+        if value.kind != TemporalKind::PlainYearMonth {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainYearMonth method requires a matching receiver".into(),
+            ));
+        }
+        Ok(value)
+    }
+
+    /// Same as [`Self::temporal_year_month_receiver`], for `PlainMonthDay`.
+    fn temporal_month_day_receiver(&mut self, receiver: &Value) -> Result<TemporalValue, RuntimeError> {
+        let object = receiver.object_id().ok_or_else(|| {
+            RuntimeError::TypeError(
+                "Temporal.PlainMonthDay method requires a matching receiver".into(),
+            )
+        })?;
+        let value = self.heap.temporal_value(object)?.ok_or_else(|| {
+            RuntimeError::TypeError(
+                "Temporal.PlainMonthDay method requires a matching receiver".into(),
+            )
+        })?;
+        if value.kind != TemporalKind::PlainMonthDay {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainMonthDay method requires a matching receiver".into(),
+            ));
+        }
+        Ok(value)
+    }
+
+    /// `CalendarYearMonthFromFields`'s property-bag entry point --
+    /// `Temporal.PlainYearMonth.from({...})` and the object branch of
+    /// `ToTemporalYearMonth`.
+    fn temporal_plain_year_month_from_fields(
+        &mut self,
+        bag: &Value,
+        reject: bool,
+    ) -> Result<TemporalValue, RuntimeError> {
+        let calendar_value = self.get_property(bag, &"calendar".into())?;
+        let calendar = self.temporal_calendar_identifier(&calendar_value)?;
+        let year = self.get_property(bag, &"year".into())?;
+        let month = self.get_property(bag, &"month".into())?;
+        let month_code = self.get_property(bag, &"monthCode".into())?;
+        let era = self.get_property(bag, &"era".into())?;
+        let era_year = self.get_property(bag, &"eraYear".into())?;
+
+        let requested_year = (!matches!(year, Value::Undefined))
+            .then(|| self.temporal_integer(&year, -9_999, 9_999, "year"))
+            .transpose()?;
+        let era_s = (!matches!(era, Value::Undefined))
+            .then(|| self.coerce_string(&era))
+            .transpose()?
+            .map(|value| {
+                value
+                    .to_utf8()
+                    .map_err(|_| RuntimeError::RangeError("invalid Temporal era".into()))
+            })
+            .transpose()?;
+        let era_year_num = if era_s.is_some() {
+            Some(self.temporal_integer(&era_year, -9_999, 9_999, "era year")?)
+        } else {
+            if !matches!(era_year, Value::Undefined) {
+                return Err(RuntimeError::RangeError(
+                    "Temporal eraYear requires an era".into(),
+                ));
+            }
+            None
+        };
+        if era_s.is_none() && requested_year.is_none() {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainYearMonth fields require year".into(),
+            ));
+        }
+
+        let requested_month = (!matches!(month, Value::Undefined))
+            .then(|| self.temporal_integer(&month, 1, 99, "month"))
+            .transpose()?;
+        let month_code_s = (!matches!(month_code, Value::Undefined))
+            .then(|| self.coerce_string(&month_code))
+            .transpose()?
+            .map(|value| {
+                value
+                    .to_utf8()
+                    .map_err(|_| RuntimeError::RangeError("invalid Temporal month code".into()))
+            })
+            .transpose()?;
+        if month_code_s.is_none() && requested_month.is_none() {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainYearMonth fields require month or monthCode".into(),
+            ));
+        }
+
+        let calendar_kind = calendar::calendar_kind(&calendar)
+            .expect("temporal_calendar_identifier validates the calendar identifier");
+        let fields = plain_year_month::YearMonthFields {
+            era: era_s.as_deref(),
+            era_year: era_year_num,
+            extended_year: requested_year,
+            month_code: month_code_s.as_deref(),
+            ordinal_month: requested_month.map(|value| value as u8),
+        };
+        let date = plain_year_month::year_month_from_fields(calendar_kind, &fields, reject)
+            .map_err(|_| {
+                RuntimeError::RangeError("invalid Temporal calendar year-month".into())
+            })?;
+        if !iso::is_year_month_within_limits(date.0, date.1) {
+            return Err(RuntimeError::RangeError(
+                "Temporal.PlainYearMonth is outside the supported range".into(),
+            ));
+        }
+        Ok(Self::temporal_date_value(TemporalKind::PlainYearMonth, calendar, date))
+    }
+
+    /// `CalendarMonthDayFromFields`'s property-bag entry point --
+    /// `Temporal.PlainMonthDay.from({...})` and the object branch of
+    /// `ToTemporalMonthDay`.
+    fn temporal_plain_month_day_from_fields(
+        &mut self,
+        bag: &Value,
+        reject: bool,
+    ) -> Result<TemporalValue, RuntimeError> {
+        let calendar_value = self.get_property(bag, &"calendar".into())?;
+        let calendar = self.temporal_calendar_identifier(&calendar_value)?;
+        let year = self.get_property(bag, &"year".into())?;
+        let month = self.get_property(bag, &"month".into())?;
+        let month_code = self.get_property(bag, &"monthCode".into())?;
+        let day = self.get_property(bag, &"day".into())?;
+
+        let requested_year = (!matches!(year, Value::Undefined))
+            .then(|| self.temporal_integer(&year, -9_999, 9_999, "year"))
+            .transpose()?;
+        let requested_month = (!matches!(month, Value::Undefined))
+            .then(|| self.temporal_integer(&month, 1, 99, "month"))
+            .transpose()?;
+        let month_code_s = (!matches!(month_code, Value::Undefined))
+            .then(|| self.coerce_string(&month_code))
+            .transpose()?
+            .map(|value| {
+                value
+                    .to_utf8()
+                    .map_err(|_| RuntimeError::RangeError("invalid Temporal month code".into()))
+            })
+            .transpose()?;
+        if month_code_s.is_none() && requested_month.is_none() {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainMonthDay fields require month or monthCode".into(),
+            ));
+        }
+        // Per `MissingFieldsStrategy::Ecma`'s own documented rule, a
+        // reference year is only derivable from `monthCode` + `day` -- an
+        // ordinal `month`'s identity itself varies by year, so it cannot
+        // resolve one. `ToTemporalMonthDay`'s own field set has no `era`,
+        // so `year`/`monthCode` are the only two ways to avoid this.
+        if requested_year.is_none() && month_code_s.is_none() {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainMonthDay fields require monthCode or year".into(),
+            ));
+        }
+        if matches!(day, Value::Undefined) {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainMonthDay fields require day".into(),
+            ));
+        }
+        let day_num = self.temporal_integer(&day, 1, 31, "day")?;
+
+        let calendar_kind = calendar::calendar_kind(&calendar)
+            .expect("temporal_calendar_identifier validates the calendar identifier");
+        let fields = plain_month_day::MonthDayFields {
+            extended_year: requested_year,
+            month_code: month_code_s.as_deref(),
+            ordinal_month: requested_month.map(|value| value as u8),
+            day: day_num as u8,
+        };
+        let date = plain_month_day::month_day_from_fields(calendar_kind, &fields, reject)
+            .map_err(|_| {
+                RuntimeError::RangeError("invalid Temporal calendar month-day".into())
+            })?;
+        if !epoch::is_date_within_limits(date) {
+            return Err(RuntimeError::RangeError(
+                "Temporal.PlainMonthDay is outside the supported range".into(),
+            ));
+        }
+        Ok(Self::temporal_date_value(TemporalKind::PlainMonthDay, calendar, date))
+    }
+
+    /// `ToTemporalYearMonth`.
+    pub(super) fn temporal_to_plain_year_month(
+        &mut self,
+        value: &Value,
+        options: &Value,
+    ) -> Result<TemporalValue, RuntimeError> {
+        if let Some(object) = value.object_id() {
+            if let Some(temporal) = self.heap.temporal_value(object)? {
+                if temporal.kind == TemporalKind::PlainYearMonth {
+                    let resolved_options = self.temporal_options(options)?;
+                    self.temporal_overflow_option(&resolved_options)?;
+                    return Ok(temporal);
+                }
+            }
+            let resolved_options = self.temporal_options(options)?;
+            let reject = self.temporal_overflow_option(&resolved_options)?;
+            return self.temporal_plain_year_month_from_fields(value, reject);
+        }
+        if !matches!(value, Value::String(_)) {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainYearMonth-like value must be an object or a string".into(),
+            ));
+        }
+        let source = self.coerce_string(value)?.to_utf8().map_err(|_| {
+            RuntimeError::RangeError("invalid Temporal.PlainYearMonth string".into())
+        })?;
+        let resolved_options = self.temporal_options(options)?;
+        self.temporal_overflow_option(&resolved_options)?;
+        let parsed = self.temporal_value_from_string(TemporalKind::PlainYearMonth, &source)?;
+        if parsed.calendar == "iso8601" {
+            return Ok(parsed);
+        }
+        let fields = self.temporal_calendar_fields(&parsed)?;
+        let calendar_kind = calendar::calendar_kind(&parsed.calendar)
+            .expect("Temporal values retain a validated calendar identifier");
+        let ym_fields = plain_year_month::YearMonthFields {
+            era: None,
+            era_year: None,
+            extended_year: Some(fields.year),
+            month_code: Some(&fields.month_code),
+            ordinal_month: None,
+        };
+        let date = plain_year_month::year_month_from_fields(calendar_kind, &ym_fields, false)
+            .map_err(|_| {
+                RuntimeError::RangeError("invalid Temporal calendar year-month".into())
+            })?;
+        Ok(Self::temporal_date_value(TemporalKind::PlainYearMonth, parsed.calendar, date))
+    }
+
+    /// `ToTemporalMonthDay`.
+    pub(super) fn temporal_to_plain_month_day(
+        &mut self,
+        value: &Value,
+        options: &Value,
+    ) -> Result<TemporalValue, RuntimeError> {
+        if let Some(object) = value.object_id() {
+            if let Some(temporal) = self.heap.temporal_value(object)? {
+                if temporal.kind == TemporalKind::PlainMonthDay {
+                    let resolved_options = self.temporal_options(options)?;
+                    self.temporal_overflow_option(&resolved_options)?;
+                    return Ok(temporal);
+                }
+            }
+            let resolved_options = self.temporal_options(options)?;
+            let reject = self.temporal_overflow_option(&resolved_options)?;
+            return self.temporal_plain_month_day_from_fields(value, reject);
+        }
+        if !matches!(value, Value::String(_)) {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainMonthDay-like value must be an object or a string".into(),
+            ));
+        }
+        let source = self.coerce_string(value)?.to_utf8().map_err(|_| {
+            RuntimeError::RangeError("invalid Temporal.PlainMonthDay string".into())
+        })?;
+        let resolved_options = self.temporal_options(options)?;
+        self.temporal_overflow_option(&resolved_options)?;
+        let parsed = self.temporal_value_from_string(TemporalKind::PlainMonthDay, &source)?;
+        if parsed.calendar == "iso8601" {
+            return Ok(parsed);
+        }
+        let fields = self.temporal_calendar_fields(&parsed)?;
+        let calendar_kind = calendar::calendar_kind(&parsed.calendar)
+            .expect("Temporal values retain a validated calendar identifier");
+        let md_fields = plain_month_day::MonthDayFields {
+            extended_year: Some(fields.year),
+            month_code: Some(&fields.month_code),
+            ordinal_month: None,
+            day: fields.day,
+        };
+        let date = plain_month_day::month_day_from_fields(calendar_kind, &md_fields, false)
+            .map_err(|_| {
+                RuntimeError::RangeError("invalid Temporal calendar month-day".into())
+            })?;
+        Ok(Self::temporal_date_value(TemporalKind::PlainMonthDay, parsed.calendar, date))
+    }
+
+    /// `Temporal.PlainYearMonth.prototype.with`. Unlike
+    /// `PlainDate`/`PlainDateTime.prototype.with`, only `year`/`month`/
+    /// `monthCode` are recognized overrides -- `era`/`eraYear` are always
+    /// carried through unchanged from the receiver (Gecko's own
+    /// `PlainYearMonth_with` restricts `PreparePartialCalendarFields` to
+    /// exactly this trio).
+    pub(super) fn temporal_year_month_with(
+        &mut self,
+        receiver: &Value,
+        like: &Value,
+        options: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_year_month_receiver(receiver)?;
+        let like_object = like
+            .object_id()
+            .ok_or_else(|| RuntimeError::TypeError("Temporal.with requires an object".into()))?;
+        if self.heap.temporal_value(like_object)?.is_some() {
+            return Err(RuntimeError::TypeError(
+                "Temporal.with does not accept a Temporal-like object".into(),
+            ));
+        }
+        for banned in ["calendar", "timeZone"] {
+            if self.get_property(like, &banned.into())? != Value::Undefined {
+                return Err(RuntimeError::TypeError(format!(
+                    "Temporal.with does not accept a {banned} property"
+                )));
+            }
+        }
+        let base = self.temporal_calendar_fields(&existing)?;
+        let year_v = self.get_property(like, &"year".into())?;
+        let month_v = self.get_property(like, &"month".into())?;
+        let month_code_v = self.get_property(like, &"monthCode".into())?;
+        if matches!(year_v, Value::Undefined)
+            && matches!(month_v, Value::Undefined)
+            && matches!(month_code_v, Value::Undefined)
+        {
+            return Err(RuntimeError::TypeError(
+                "Temporal.with requires at least one recognized property".into(),
+            ));
+        }
+        let resolved_options = self.temporal_options(options)?;
+        let reject = self.temporal_overflow_option(&resolved_options)?;
+
+        let requested_year = (!matches!(year_v, Value::Undefined))
+            .then(|| self.temporal_integer(&year_v, -9_999, 9_999, "year"))
+            .transpose()?;
+        let requested_month = (!matches!(month_v, Value::Undefined))
+            .then(|| self.temporal_integer(&month_v, 1, 99, "month"))
+            .transpose()?;
+        let month_code_s = (!matches!(month_code_v, Value::Undefined))
+            .then(|| self.coerce_string(&month_code_v))
+            .transpose()?
+            .map(|value| {
+                value
+                    .to_utf8()
+                    .map_err(|_| RuntimeError::RangeError("invalid Temporal month code".into()))
+            })
+            .transpose()?;
+
+        let calendar_kind = calendar::calendar_kind(&existing.calendar)
+            .expect("Temporal values retain a validated calendar identifier");
+        let month_code = month_code_s
+            .clone()
+            .or_else(|| requested_month.is_none().then(|| base.month_code.clone()));
+        let fields = plain_year_month::YearMonthFields {
+            era: None,
+            era_year: None,
+            extended_year: Some(requested_year.unwrap_or(base.year)),
+            month_code: month_code.as_deref(),
+            ordinal_month: requested_month.map(|value| value as u8),
+        };
+        let date = plain_year_month::year_month_from_fields(calendar_kind, &fields, reject)
+            .map_err(|_| {
+                RuntimeError::RangeError("invalid Temporal calendar year-month".into())
+            })?;
+        if !iso::is_year_month_within_limits(date.0, date.1) {
+            return Err(RuntimeError::RangeError(
+                "Temporal.PlainYearMonth is outside the supported range".into(),
+            ));
+        }
+        let value = Self::temporal_date_value(TemporalKind::PlainYearMonth, existing.calendar, date);
+        self.alloc_temporal_value(value, false)
+    }
+
+    /// `Temporal.PlainMonthDay.prototype.with`.
+    pub(super) fn temporal_month_day_with(
+        &mut self,
+        receiver: &Value,
+        like: &Value,
+        options: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_month_day_receiver(receiver)?;
+        let like_object = like
+            .object_id()
+            .ok_or_else(|| RuntimeError::TypeError("Temporal.with requires an object".into()))?;
+        if self.heap.temporal_value(like_object)?.is_some() {
+            return Err(RuntimeError::TypeError(
+                "Temporal.with does not accept a Temporal-like object".into(),
+            ));
+        }
+        for banned in ["calendar", "timeZone"] {
+            if self.get_property(like, &banned.into())? != Value::Undefined {
+                return Err(RuntimeError::TypeError(format!(
+                    "Temporal.with does not accept a {banned} property"
+                )));
+            }
+        }
+        let base = self.temporal_calendar_fields(&existing)?;
+        let year_v = self.get_property(like, &"year".into())?;
+        let month_v = self.get_property(like, &"month".into())?;
+        let month_code_v = self.get_property(like, &"monthCode".into())?;
+        let day_v = self.get_property(like, &"day".into())?;
+        if [&year_v, &month_v, &month_code_v, &day_v]
+            .into_iter()
+            .all(|value| matches!(value, Value::Undefined))
+        {
+            return Err(RuntimeError::TypeError(
+                "Temporal.with requires at least one recognized property".into(),
+            ));
+        }
+        let resolved_options = self.temporal_options(options)?;
+        let reject = self.temporal_overflow_option(&resolved_options)?;
+
+        let requested_year = (!matches!(year_v, Value::Undefined))
+            .then(|| self.temporal_integer(&year_v, -9_999, 9_999, "year"))
+            .transpose()?;
+        let requested_month = (!matches!(month_v, Value::Undefined))
+            .then(|| self.temporal_integer(&month_v, 1, 99, "month"))
+            .transpose()?;
+        let month_code_s = (!matches!(month_code_v, Value::Undefined))
+            .then(|| self.coerce_string(&month_code_v))
+            .transpose()?
+            .map(|value| {
+                value
+                    .to_utf8()
+                    .map_err(|_| RuntimeError::RangeError("invalid Temporal month code".into()))
+            })
+            .transpose()?;
+        let requested_day = (!matches!(day_v, Value::Undefined))
+            .then(|| self.temporal_integer(&day_v, 1, 31, "day"))
+            .transpose()?;
+
+        let calendar_kind = calendar::calendar_kind(&existing.calendar)
+            .expect("Temporal values retain a validated calendar identifier");
+        let month_code = month_code_s
+            .clone()
+            .or_else(|| requested_month.is_none().then(|| base.month_code.clone()));
+        let fields = plain_month_day::MonthDayFields {
+            extended_year: Some(requested_year.unwrap_or(base.year)),
+            month_code: month_code.as_deref(),
+            ordinal_month: requested_month.map(|value| value as u8),
+            day: requested_day.map(|value| value as u8).unwrap_or(base.day),
+        };
+        let date = plain_month_day::month_day_from_fields(calendar_kind, &fields, reject)
+            .map_err(|_| {
+                RuntimeError::RangeError("invalid Temporal calendar month-day".into())
+            })?;
+        let value = Self::temporal_date_value(TemporalKind::PlainMonthDay, existing.calendar, date);
+        self.alloc_temporal_value(value, false)
+    }
+
+    /// `Temporal.PlainYearMonth.prototype.add`/`subtract`. Only a duration
+    /// with zero weeks/days/time is accepted -- `AddDurationToYearMonth`'s
+    /// own rule (Gecko's `NonZeroDurationPartAfterMonths`).
+    pub(super) fn temporal_year_month_add(
+        &mut self,
+        receiver: &Value,
+        duration_value: &Value,
+        options: &Value,
+        negate: bool,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_year_month_receiver(receiver)?;
+        let mut duration = self.temporal_duration_from_value(duration_value)?;
+        if negate {
+            duration.years = -duration.years;
+            duration.months = -duration.months;
+            duration.weeks = -duration.weeks;
+            duration.days = -duration.days;
+            duration.hours = -duration.hours;
+            duration.minutes = -duration.minutes;
+            duration.seconds = -duration.seconds;
+            duration.milliseconds = -duration.milliseconds;
+            duration.microseconds = -duration.microseconds;
+            duration.nanoseconds = -duration.nanoseconds;
+        }
+        if duration.weeks != 0
+            || duration.days != 0
+            || duration.hours != 0
+            || duration.minutes != 0
+            || duration.seconds != 0
+            || duration.milliseconds != 0
+            || duration.microseconds != 0
+            || duration.nanoseconds != 0
+        {
+            return Err(RuntimeError::RangeError(
+                "Temporal.PlainYearMonth arithmetic only accepts a years/months duration".into(),
+            ));
+        }
+        let resolved_options = self.temporal_options(options)?;
+        let reject = self.temporal_overflow_option(&resolved_options)?;
+        let calendar_kind = calendar::calendar_kind(&existing.calendar)
+            .expect("Temporal values retain a validated calendar identifier");
+        let fields = self.temporal_calendar_fields(&existing)?;
+        let anchor_fields = plain_year_month::YearMonthFields {
+            era: None,
+            era_year: None,
+            extended_year: Some(fields.year),
+            month_code: Some(&fields.month_code),
+            ordinal_month: None,
+        };
+        let anchor = plain_year_month::year_month_from_fields(calendar_kind, &anchor_fields, false)
+            .map_err(|_| {
+                RuntimeError::RangeError("invalid Temporal calendar year-month".into())
+            })?;
+        let result_date = plain_date::calendar_add_date(
+            calendar_kind,
+            anchor,
+            duration.years as i64,
+            duration.months as i64,
+            0,
+            0,
+            reject,
+        )
+        .ok_or_else(|| {
+            RuntimeError::RangeError("Temporal.PlainYearMonth arithmetic is out of range".into())
+        })?;
+        if !iso::is_year_month_within_limits(result_date.0, result_date.1) {
+            return Err(RuntimeError::RangeError(
+                "Temporal.PlainYearMonth arithmetic is out of range".into(),
+            ));
+        }
+        let value = Self::temporal_date_value(TemporalKind::PlainYearMonth, existing.calendar, result_date);
+        self.alloc_temporal_value(value, false)
+    }
+
+    /// `Temporal.PlainYearMonth.prototype.until`/`since`. `smallestUnit`/
+    /// `largestUnit` are restricted to `"month"`/`"year"` -- `until`/`since`
+    /// simply do not accept a finer unit for this type
+    /// (`GetDifferenceSettings`'s own `disallowedUnits` for `YearMonth`).
+    pub(super) fn temporal_year_month_difference(
+        &mut self,
+        receiver: &Value,
+        other_value: &Value,
+        options: &Value,
+        since: bool,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_year_month_receiver(receiver)?;
+        let other = self.temporal_to_plain_year_month(other_value, &Value::Undefined)?;
+        if existing.calendar != other.calendar {
+            return Err(RuntimeError::RangeError(
+                "Temporal.since/until requires the same calendar".into(),
+            ));
+        }
+        let resolved_options = self.temporal_options(options)?;
+        let largest_raw = self.temporal_raw_string_option(&resolved_options, "largestUnit")?;
+        let increment_raw = self.temporal_raw_number_option(&resolved_options, "roundingIncrement")?;
+        let mode_raw = self.temporal_raw_string_option(&resolved_options, "roundingMode")?;
+        let smallest_raw = self.temporal_raw_string_option(&resolved_options, "smallestUnit")?;
+
+        let smallest_unit = match smallest_raw.as_deref() {
+            None => rounding::TemporalUnit::Month,
+            Some(text) => rounding::parse_temporal_unit(text)
+                .ok_or_else(|| RuntimeError::RangeError("invalid smallestUnit option".into()))?,
+        };
+        if !matches!(
+            smallest_unit,
+            rounding::TemporalUnit::Month | rounding::TemporalUnit::Year
+        ) {
+            return Err(RuntimeError::RangeError(
+                "smallestUnit is out of range for this receiver".into(),
+            ));
+        }
+        let largest_unit = match largest_raw.as_deref() {
+            None | Some("auto") => rounding::TemporalUnit::Year,
+            Some(text) => rounding::parse_temporal_unit(text)
+                .ok_or_else(|| RuntimeError::RangeError("invalid largestUnit option".into()))?,
+        };
+        if !matches!(
+            largest_unit,
+            rounding::TemporalUnit::Month | rounding::TemporalUnit::Year
+        ) {
+            return Err(RuntimeError::RangeError(
+                "largestUnit is out of range for this receiver".into(),
+            ));
+        }
+        if smallest_unit > largest_unit {
+            return Err(RuntimeError::RangeError(
+                "smallestUnit must not be larger than largestUnit".into(),
+            ));
+        }
+        let increment = Self::temporal_validated_rounding_increment(increment_raw)?;
+        let mode = Self::temporal_validated_rounding_mode(
+            mode_raw.as_deref(),
+            blueice_ecma402::NumberRoundingMode::Trunc,
+        )?;
+
+        let calendar_kind = calendar::calendar_kind(&existing.calendar)
+            .expect("Temporal values retain a validated calendar identifier");
+        let (from, to) = if since { (&other, &existing) } else { (&existing, &other) };
+        let from_fields = self.temporal_calendar_fields(from)?;
+        let to_fields = self.temporal_calendar_fields(to)?;
+        let resolve = |fields: &TemporalCalendarFields| {
+            plain_year_month::year_month_from_fields(
+                calendar_kind,
+                &plain_year_month::YearMonthFields {
+                    era: None,
+                    era_year: None,
+                    extended_year: Some(fields.year),
+                    month_code: Some(&fields.month_code),
+                    ordinal_month: None,
+                },
+                false,
+            )
+        };
+        let from_date = resolve(&from_fields).map_err(|_| {
+            RuntimeError::RangeError("invalid Temporal calendar year-month".into())
+        })?;
+        let to_date = resolve(&to_fields).map_err(|_| {
+            RuntimeError::RangeError("invalid Temporal calendar year-month".into())
+        })?;
+
+        let (years, months, _, _) = plain_date::round_calendar_duration(
+            calendar_kind,
+            from_date,
+            to_date,
+            Self::temporal_unit_to_date_unit(largest_unit),
+            Self::temporal_unit_to_date_unit(smallest_unit),
+            increment,
+            mode,
+        );
+        let record = blueice_ecma402::DurationRecord::try_new(
+            i128::from(years),
+            i128::from(months),
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        )
+        .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        self.alloc_temporal_value(Self::temporal_duration_value(record), false)
+    }
+
+    pub(super) fn temporal_year_month_equals(
+        &mut self,
+        receiver: &Value,
+        other_value: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_year_month_receiver(receiver)?;
+        let other = self.temporal_to_plain_year_month(other_value, &Value::Undefined)?;
+        let equal = existing.year == other.year
+            && existing.month == other.month
+            && existing.day == other.day
+            && existing.calendar == other.calendar;
+        Ok(Value::Bool(equal))
+    }
+
+    pub(super) fn temporal_year_month_compare(
+        &mut self,
+        one: &Value,
+        two: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let a = self.temporal_to_plain_year_month(one, &Value::Undefined)?;
+        let b = self.temporal_to_plain_year_month(two, &Value::Undefined)?;
+        let ord = (a.year, a.month, a.day).cmp(&(b.year, b.month, b.day));
+        Ok(Value::Number(match ord {
+            std::cmp::Ordering::Less => -1.0,
+            std::cmp::Ordering::Equal => 0.0,
+            std::cmp::Ordering::Greater => 1.0,
+        }))
+    }
+
+    pub(super) fn temporal_month_day_equals(
+        &mut self,
+        receiver: &Value,
+        other_value: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_month_day_receiver(receiver)?;
+        let other = self.temporal_to_plain_month_day(other_value, &Value::Undefined)?;
+        let equal = existing.year == other.year
+            && existing.month == other.month
+            && existing.day == other.day
+            && existing.calendar == other.calendar;
+        Ok(Value::Bool(equal))
+    }
+
+    pub(super) fn temporal_year_month_to_string(
+        &mut self,
+        receiver: &Value,
+        options: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_year_month_receiver(receiver)?;
+        let resolved_options = self.temporal_options(options)?;
+        let show_calendar_raw = self.temporal_string_option(
+            &resolved_options,
+            "calendarName",
+            &["auto", "always", "never", "critical"],
+        )?;
+        let show_calendar = show_calendar_raw
+            .as_deref()
+            .map(|value| plain_date::parse_show_calendar(value).expect("already validated"))
+            .unwrap_or(plain_date::ShowCalendar::Auto);
+        let text = plain_year_month::format_year_month(
+            (existing.year, existing.month, existing.day),
+            &existing.calendar,
+            show_calendar,
+        );
+        Ok(Value::String(text.into()))
+    }
+
+    pub(super) fn temporal_month_day_to_string(
+        &mut self,
+        receiver: &Value,
+        options: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_month_day_receiver(receiver)?;
+        let resolved_options = self.temporal_options(options)?;
+        let show_calendar_raw = self.temporal_string_option(
+            &resolved_options,
+            "calendarName",
+            &["auto", "always", "never", "critical"],
+        )?;
+        let show_calendar = show_calendar_raw
+            .as_deref()
+            .map(|value| plain_date::parse_show_calendar(value).expect("already validated"))
+            .unwrap_or(plain_date::ShowCalendar::Auto);
+        let text = plain_month_day::format_month_day(
+            (existing.year, existing.month, existing.day),
+            &existing.calendar,
+            show_calendar,
+        );
+        Ok(Value::String(text.into()))
+    }
+
+    pub(super) fn temporal_year_month_to_locale_string(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        self.temporal_year_month_receiver(receiver)?;
+        let stack_base = self.stack.len();
+        let result = (|| {
+            let formatter = self.create_date_time_format(
+                &Value::Undefined,
+                &[
+                    native::argument(args, 0).clone(),
+                    native::argument(args, 1).clone(),
+                ],
+                false,
+            )?;
+            self.stack.push(formatter.clone());
+            self.date_time_format_format(&formatter, receiver)
+        })();
+        self.stack.truncate(stack_base);
+        result
+    }
+
+    pub(super) fn temporal_month_day_to_locale_string(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        self.temporal_month_day_receiver(receiver)?;
+        let stack_base = self.stack.len();
+        let result = (|| {
+            let formatter = self.create_date_time_format(
+                &Value::Undefined,
+                &[
+                    native::argument(args, 0).clone(),
+                    native::argument(args, 1).clone(),
+                ],
+                false,
+            )?;
+            self.stack.push(formatter.clone());
+            self.date_time_format_format(&formatter, receiver)
+        })();
+        self.stack.truncate(stack_base);
+        result
+    }
+
+    pub(super) fn temporal_year_month_value_of(&mut self) -> Result<Value, RuntimeError> {
+        Err(RuntimeError::TypeError(
+            "Temporal.PlainYearMonth cannot be converted to a primitive value".into(),
+        ))
+    }
+
+    pub(super) fn temporal_month_day_value_of(&mut self) -> Result<Value, RuntimeError> {
+        Err(RuntimeError::TypeError(
+            "Temporal.PlainMonthDay cannot be converted to a primitive value".into(),
+        ))
+    }
+
+    /// `Temporal.PlainYearMonth.prototype.toPlainDate`: merges the
+    /// receiver's own year/monthCode with the required `item.day`.
+    pub(super) fn temporal_year_month_to_plain_date(
+        &mut self,
+        receiver: &Value,
+        item: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_year_month_receiver(receiver)?;
+        if item.object_id().is_none() {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainYearMonth.prototype.toPlainDate requires an object".into(),
+            ));
+        }
+        let day_v = self.get_property(item, &"day".into())?;
+        if matches!(day_v, Value::Undefined) {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainYearMonth.prototype.toPlainDate requires a day property".into(),
+            ));
+        }
+        let day = self.temporal_integer(&day_v, 1, 31, "day")?;
+        let base = self.temporal_calendar_fields(&existing)?;
+        let calendar_kind = calendar::calendar_kind(&existing.calendar)
+            .expect("Temporal values retain a validated calendar identifier");
+        let mut fields = DateFields::default();
+        fields.extended_year = Some(base.year);
+        fields.month_code = Some(base.month_code.as_bytes());
+        fields.day = Some(day as u8);
+        let mut icu_options = icu_calendar::options::DateFromFieldsOptions::default();
+        icu_options.overflow = Some(icu_calendar::options::Overflow::Constrain);
+        let date = Date::try_from_fields(fields, icu_options, AnyCalendar::new(calendar_kind))
+            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar date".into()))?;
+        let value = Self::temporal_value_from_calendar_date(TemporalKind::PlainDate, existing.calendar, date);
+        self.alloc_temporal_value(value, false)
+    }
+
+    /// `Temporal.PlainMonthDay.prototype.toPlainDate`: merges the
+    /// receiver's own monthCode/day with the required `item.year`.
+    pub(super) fn temporal_month_day_to_plain_date(
+        &mut self,
+        receiver: &Value,
+        item: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_month_day_receiver(receiver)?;
+        if item.object_id().is_none() {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainMonthDay.prototype.toPlainDate requires an object".into(),
+            ));
+        }
+        let year_v = self.get_property(item, &"year".into())?;
+        if matches!(year_v, Value::Undefined) {
+            return Err(RuntimeError::TypeError(
+                "Temporal.PlainMonthDay.prototype.toPlainDate requires a year property".into(),
+            ));
+        }
+        let year = self.temporal_integer(&year_v, -9_999, 9_999, "year")?;
+        let base = self.temporal_calendar_fields(&existing)?;
+        let calendar_kind = calendar::calendar_kind(&existing.calendar)
+            .expect("Temporal values retain a validated calendar identifier");
+        let mut fields = DateFields::default();
+        fields.extended_year = Some(year);
+        fields.month_code = Some(base.month_code.as_bytes());
+        fields.day = Some(base.day);
+        let mut icu_options = icu_calendar::options::DateFromFieldsOptions::default();
+        icu_options.overflow = Some(icu_calendar::options::Overflow::Constrain);
+        let date = Date::try_from_fields(fields, icu_options, AnyCalendar::new(calendar_kind))
+            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar date".into()))?;
+        let value = Self::temporal_value_from_calendar_date(TemporalKind::PlainDate, existing.calendar, date);
+        self.alloc_temporal_value(value, false)
     }
 }
 
