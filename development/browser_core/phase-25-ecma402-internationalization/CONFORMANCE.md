@@ -59,6 +59,43 @@ An implementation may use implementation-dependent locale data as permitted by
 the specification. That does not relax ECMAScript-observable algorithms,
 property descriptors, coercion, error order, or the required service APIs.
 
+## `hourCycle: "h24"` rendering bug (fixed 2026-09-18, found via Phase 26)
+
+Found while closing `Temporal.PlainTime`/`Temporal.Instant`'s own
+`toLocaleString/hourcycle.js` Test262 fixtures (Phase 26,
+`development/browser_core/phase-26-ecma262-temporal/PLAN.md`) — an ordinary
+`Intl.DateTimeFormat` bug, not a Temporal one, so it is recorded here rather
+than in the Temporal plan. `hourCycle: "h24"` rendered midnight (hour 0) as
+`"00"` instead of `"24"`. `resolve_date_time_locale`
+(`backend/ecma402/src/date_time_format.rs`) substitutes ICU4X's `h23`
+skeleton for `h24` when building the formatting locale — ICU4X's dynamic
+semantic skeleton has no `h24` field-set preference of its own — while
+keeping `h24` as the ECMA-402-visible resolved `hourCycle`, but nothing
+converted the resulting `h23`-range (`0`-`23`) rendered digits back to
+`h24`'s range (`1`-`24`) at midnight. Fixed with
+`DateTimeFormat::apply_h24_hour_cycle`, a typed-part-boundary rewriter in the
+same style as the existing `apply_flexible_day_period` (reusing
+`trim_numeric_date_part_padding`'s locale-digit lookup rather than assuming
+ASCII), run at both the single-value and range-endpoint formatting call
+sites: whenever the resolved `hour_cycle` is `"h24"` and the underlying ICU
+hour is `0`, the `hour` part's text is replaced with the locale digits for
+`"24"`. `hourCycle: "h11"` needed no corresponding fix — it was already
+correct; it only *looked* broken in the Temporal fixtures because both
+`hourcycle.js` files run every `hourCycle` value in one script in ascending
+order and the `h24` assertion's failure aborted the script before its `h11`
+assertion ever ran. A new host-neutral `blueice-ecma402` test,
+`h24_and_h11_hour_cycles_render_midnight_correctly`
+(`backend/ecma402/tests/date_time_format.rs`), covers all four `hourCycle`
+values (`h23`/`h12`/`h24`/`h11`) independently and would have caught this on
+its own. No non-`Temporal` Test262 fixture happens to check the rendered
+digits at `h24`/`h11` midnight (the existing `hourCycle`-adjacent
+`intl402/DateTimeFormat/` fixtures only check `resolvedOptions()` reporting,
+which this bug never affected), so the "every group other than `Temporal/`
+is at 100%" table above did not previously expose it; re-running
+`intl402/DateTimeFormat/` after the fix still measures 488/488, and a full
+`intl402/` run excluding `Temporal/`/`DateTimeFormat/` stays at 2,168/2,168 —
+zero regressions.
+
 ## What “100%” means for this phase
 
 Phase 25 can be called complete only when all of the following are true:

@@ -1309,6 +1309,7 @@ impl DateTimeFormat {
         self.apply_numbering_system_punctuation(&mut parts);
         self.apply_style_part_widths(&mut parts);
         self.apply_flexible_day_period(&mut parts, datetime.time.hour.number());
+        self.apply_h24_hour_cycle(&mut parts, datetime.time.hour.number());
         self.apply_calendar_part_completeness(&mut parts);
         Ok(parts)
     }
@@ -1341,6 +1342,7 @@ impl DateTimeFormat {
         self.apply_numbering_system_punctuation(&mut parts);
         self.apply_style_part_widths(&mut parts);
         self.apply_flexible_day_period(&mut parts, datetime.time.hour.number());
+        self.apply_h24_hour_cycle(&mut parts, datetime.time.hour.number());
         self.apply_calendar_part_completeness(&mut parts);
         Ok(parts)
     }
@@ -1692,6 +1694,35 @@ impl DateTimeFormat {
                 if index > 0 && parts[index - 1].kind == "literal" {
                     parts[index - 1].value = " ".into();
                 }
+            }
+        }
+    }
+
+    /// `hourCycle: "h24"` has the same 1-24 range as `h23`'s 0-23 range
+    /// except that midnight reads `24` instead of `0`. ICU4X's dynamic
+    /// semantic skeleton (`icu_datetime`) does not have an `h24` field-set
+    /// preference of its own — `resolve_date_time_locale` deliberately
+    /// substitutes its `h23` skeleton for formatting (see
+    /// `formatting_hour_cycle`) while keeping `h24` as the ECMA-402-visible
+    /// resolved value, so the rendered digits still read `0`/`00` at
+    /// midnight and need this one-value correction. Test262's
+    /// `intl402/Temporal/{Instant,PlainTime}/prototype/toLocaleString/
+    /// hourcycle.js` pins the exact rendered text ("24:00:00"), so this
+    /// substitutes the same locale-specific digit glyphs
+    /// `trim_numeric_date_part_padding` looks up rather than assuming ASCII.
+    fn apply_h24_hour_cycle(&self, parts: &mut [DateTimePart], hour: u8) {
+        if self.hour_cycle != "h24" || hour != 0 {
+            return;
+        }
+        let digits = locale_data_provider()
+            .decimal_digits(&self.numbering_system)
+            .unwrap_or([
+                '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+            ]);
+        let twenty_four: String = [digits[2], digits[4]].into_iter().collect();
+        for part in parts.iter_mut() {
+            if part.kind == "hour" {
+                part.value = twenty_four.clone();
             }
         }
     }

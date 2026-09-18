@@ -2417,7 +2417,7 @@ impl Vm {
             .clone()
     }
 
-    fn date_time_format_data(
+    pub(super) fn date_time_format_data(
         &self,
         value: &Value,
     ) -> Result<Rc<intl::DateTimeFormat>, RuntimeError> {
@@ -2823,6 +2823,17 @@ impl Vm {
         // If a date/time style was present but it did not apply to this
         // Temporal kind, the pruning above left no components. This is the
         // same no-overlap TypeError, including dateStyle with PlainTime.
+        // This is a *value-side* check (it runs for every formatted value,
+        // including a plain `Intl.DateTimeFormat.prototype.format` call, not
+        // only `Temporal.PlainTime.prototype.toLocaleString`) and is
+        // deliberately narrower than `toLocaleString`'s own required=TIME
+        // check in `temporal_plain_time_to_locale_string`: a bare
+        // `{ dateStyle }` (no timeStyle, no time fields) has no overlap with
+        // a PlainTime under either rule, but `{ dateStyle, timeStyle }`
+        // together format the value fine here — dateStyle is simply ignored
+        // — per `intl402/DateTimeFormat/prototype/format/
+        // temporal-plaintime-formatting-datetime-style.js`, which is *not*
+        // going through `toLocaleString`.
         if (kind == TemporalKind::PlainTime
             && original.date_style.is_some()
             && original.time_style.is_none()
