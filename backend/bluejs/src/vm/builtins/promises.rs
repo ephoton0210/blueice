@@ -1415,32 +1415,53 @@ impl Vm {
         constructor: &Value,
         values: &Value,
     ) -> Result<Value, RuntimeError> {
-        let values = self.array_like_values(values)?;
         let promise = self.new_promise()?;
         let base = self.stack.len();
         self.stack.push(Value::Object(promise));
         let outcome = (|| {
-            let resolve = self.get_property(constructor, &"resolve".into())?;
-            if !self.is_callable(&resolve)? {
-                return Err(RuntimeError::TypeError(
-                    "Promise.race resolve must be callable".into(),
-                ));
+            // Promise.race is iterable-based, not array-like. In particular,
+            // an absent/non-callable @@iterator or an abrupt iterator step
+            // rejects the capability promise. Treating it as an empty
+            // array-like object leaves the promise pending forever.
+            self.stack.push(values.clone());
+            let record = self.get_iterator(values)?;
+            self.stack.push(record.clone());
+            let result = (|| {
+                let resolve = self.get_property(constructor, &"resolve".into())?;
+                if !self.is_callable(&resolve)? {
+                    return Err(RuntimeError::TypeError(
+                        "Promise.race resolve must be callable".into(),
+                    ));
+                }
+                while let Some(value) = self.iterator_step(&record, true)? {
+                    let entry_base = self.stack.len();
+                    self.stack.push(value.clone());
+                    let input =
+                        self.call_native(resolve.clone(), constructor.clone(), vec![value], false)?;
+                    self.stack.push(input.clone());
+                    let fulfilled =
+                        self.promise_combinator_handler(NativeFunction::PromiseRaceFulfill {
+                            target: promise,
+                        })?;
+                    let rejected =
+                        self.promise_combinator_handler(NativeFunction::PromiseRaceReject {
+                            target: promise,
+                        })?;
+                    let then = self.get_property(&input, &"then".into())?;
+                    self.call_native(then, input, vec![fulfilled, rejected], false)?;
+                    self.stack.truncate(entry_base);
+                }
+                Ok(Value::Object(promise))
+            })();
+            if result.is_err() {
+                let error_base = self.stack.len();
+                if let Err(RuntimeError::Thrown(value)) = &result {
+                    self.stack.push(value.clone());
+                }
+                let _ = self.iterator_close(&record);
+                self.stack.truncate(error_base);
             }
-            for value in values {
-                let input =
-                    self.call_native(resolve.clone(), constructor.clone(), vec![value], false)?;
-                let fulfilled =
-                    self.promise_combinator_handler(NativeFunction::PromiseRaceFulfill {
-                        target: promise,
-                    })?;
-                let rejected =
-                    self.promise_combinator_handler(NativeFunction::PromiseRaceReject {
-                        target: promise,
-                    })?;
-                let then = self.get_property(&input, &"then".into())?;
-                self.call_native(then, input, vec![fulfilled, rejected], false)?;
-            }
-            Ok(Value::Object(promise))
+            result
         })();
         self.stack.truncate(base);
         match outcome {

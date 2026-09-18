@@ -12,6 +12,7 @@ from run import (
     Worker,
     case_timeout,
     classify,
+    default_jobs,
     execution_source,
     format_progress,
     instruction_budget,
@@ -23,6 +24,13 @@ from run import (
 
 
 class RunnerTests(unittest.TestCase):
+    def test_default_jobs_never_oversubscribes_the_host_or_exceeds_the_ceiling(self):
+        self.assertEqual(default_jobs(0), 1)
+        self.assertEqual(default_jobs(1), 1)
+        self.assertEqual(default_jobs(6), 6)
+        self.assertEqual(default_jobs(8), 8)
+        self.assertEqual(default_jobs(32), 8)
+
     def test_regex_worker_binary_preserves_adapter_suffix(self):
         self.assertEqual(
             run.regex_worker_binary(Path("/tmp/bluejs-test262")),
@@ -101,6 +109,13 @@ class RunnerTests(unittest.TestCase):
             "language/module-code/top-level-await/rejection-order.js",
             "language/module-code/top-level-await/unobservable-global-async-evaluation-count-reset.js",
             "staging/sm/Array/sort_holes.js",
+            "staging/sm/Reflect/propertyKeys.js",
+            "staging/sm/RegExp/unicode-ignoreCase.js",
+            "staging/sm/TypedArray/filter-species.js",
+            "staging/sm/TypedArray/map-species.js",
+            "staging/sm/TypedArray/sort_snans.js",
+            "staging/sm/generators/delegating-yield-9.js",
+            "staging/sm/object/entries.js",
         ):
             self.assertEqual(instruction_budget({}, 100_000, relative), 10_000_000)
             self.assertEqual(case_timeout({}, 2, relative), 90)
@@ -193,6 +208,19 @@ class RunnerTests(unittest.TestCase):
         relative = "built-ins/parseInt/S15.1.2.2_A8.js"
         self.assertEqual(instruction_budget({}, 100_000, relative), 10_000_000)
         self.assertEqual(case_timeout({}, 2, relative), 90)
+        self.assertEqual(
+            case_timeout(
+                {},
+                2,
+                "built-ins/Function/prototype/toString/built-in-function-object.js",
+            ),
+            180,
+        )
+        for relative in (
+            "built-ins/RegExp/match-indices/indices-array-non-unicode-match.js",
+            "built-ins/RegExp/match-indices/indices-array-unicode-match.js",
+        ):
+            self.assertEqual(case_timeout({}, 2, relative), 30)
         self.assertEqual(instruction_budget({}, 100_000, "built-ins/parseInt/basic.js"), 100_000)
         self.assertEqual(case_timeout({}, 2, "built-ins/parseInt/basic.js"), 2)
 

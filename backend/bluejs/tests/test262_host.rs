@@ -893,6 +893,23 @@ fn promise_constructor_invokes_its_executor_and_settles_once() {
 }
 
 #[test]
+fn promise_race_rejects_iterator_acquisition_and_step_errors() {
+    for source in [
+        "Promise.race(new Error('not iterable')).then(function(){$DONE(new Test262Error('fulfilled'))},function(error){if(error instanceof TypeError)$DONE();else $DONE(error)})",
+        "let iterable={};iterable[Symbol.iterator]=false;Promise.race(iterable).then(function(){$DONE(new Test262Error('fulfilled'))},function(error){if(error instanceof TypeError)$DONE();else $DONE(error)})",
+        "let error=new Test262Error('iterator value');let result={done:false};Object.defineProperty(result,'value',{get:function(){throw error}});let iterable={};iterable[Symbol.iterator]=function(){return {next:function(){return result}}};Promise.race(iterable).then(function(){$DONE(new Test262Error('fulfilled'))},function(reason){if(reason===error)$DONE();else $DONE(reason)})",
+    ] {
+        let mut vm = Vm::default();
+        vm.install_test262_harness().unwrap();
+        vm.install_test262_done().unwrap();
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap();
+        vm.run_promise_jobs().unwrap();
+        assert_eq!(vm.take_test262_done(), Some(Ok(())), "{source}");
+    }
+}
+
+#[test]
 fn promise_static_methods_observe_constructor_resolve_and_then_failures() {
     for source in [
         "Promise.resolve(1).then(function(value){if(value===1)$DONE();else $DONE(new Test262Error('wrong fulfillment'))},$DONE)",

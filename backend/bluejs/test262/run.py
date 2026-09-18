@@ -58,8 +58,41 @@ NATIVE_DEEP_EQUAL_FIXTURES = frozenset({
     "intl402/DateTimeFormat/prototype/formatToParts/temporal-objects-resolved-time-zone.js",
     "intl402/DateTimeFormat/prototype/formatRangeToParts/temporal-objects-resolved-time-zone.js",
 })
+# Running more VM subprocesses than the host has schedulable CPUs turns the
+# ordinary per-case deadline into a scheduler-delay detector on slower hosts.
+# Keep the historical eight-worker ceiling, while making the default portable
+# across macOS, Linux, and Windows CI machines.
+MAX_DEFAULT_JOBS = 8
+
+
+def default_jobs(cpu_count=None):
+    """Return the portable default worker count for a full inventory run."""
+    if cpu_count is None:
+        cpu_count = os.cpu_count()
+    return max(1, min(MAX_DEFAULT_JOBS, cpu_count or 1))
+
+
 TAIL_CALL_INSTRUCTION_BUDGET = 3_000_000
 TAIL_CALL_TIMEOUT = 30
+# This fixture traverses every reachable well-known intrinsic and validates
+# its built-in function source representation. It is finite, but on a busy
+# debug-interpreter worker its two modes can each take more than the general
+# finite-stress allowance.
+BUILTIN_FUNCTION_TOSTRING_FIXTURE = (
+    "built-ins/Function/prototype/toString/built-in-function-object.js"
+)
+BUILTIN_FUNCTION_TOSTRING_TIMEOUT = 180
+# These two fixed match-indices conformance files can wait for the dedicated
+# RegExp worker to warm up under a parallel inventory. Keep that allowance
+# attached to their exact paths instead of relaxing the default deadline for
+# all RegExp tests.
+REGEXP_MATCH_INDICES_FIXTURES = frozenset(
+    {
+        "built-ins/RegExp/match-indices/indices-array-non-unicode-match.js",
+        "built-ins/RegExp/match-indices/indices-array-unicode-match.js",
+    }
+)
+REGEXP_MATCH_INDICES_TIMEOUT = 30
 # Test262's Unicode identifier tables contain tens of thousands of declarations
 # and escaped identifier spellings. Parsing and compiling them is bounded work,
 # but exceeds the general two-second script deadline in an interpreter build.
@@ -185,6 +218,9 @@ FINITE_STRESS_FIXTURES = frozenset(
         "annexB/built-ins/RegExp/RegExp-leading-escape-BMP.js",
         "annexB/built-ins/RegExp/RegExp-trailing-escape-BMP.js",
         "built-ins/Array/prototype/concat/Array.prototype.concat_large-typed-array.js",
+        # This walks the complete reachable graph of well-known intrinsics
+        # and checks each built-in function's NativeFunction source form.
+        "built-ins/Function/prototype/toString/built-in-function-object.js",
         "built-ins/RegExp/character-class-escape-non-whitespace.js",
         "built-ins/String/prototype/repeat/repeat-string-n-times.js",
         "built-ins/parseFloat/S15.1.2.3_A6.js",
@@ -232,9 +268,21 @@ FINITE_STRESS_FIXTURES = frozenset(
         "language/module-code/top-level-await/rejection-order.js",
         "language/module-code/top-level-await/unobservable-global-async-evaluation-count-reset.js",
         "staging/sm/Array/sort_holes.js",
+        # These legacy staging fixtures have fixed, small workloads, but use
+        # deep helper recursion or TypedArray dispatch that can exceed the
+        # ordinary wall deadline when every runner worker is cold or busy.
+        "staging/sm/Reflect/propertyKeys.js",
+        "staging/sm/TypedArray/filter-species.js",
+        "staging/sm/TypedArray/map-species.js",
+        "staging/sm/TypedArray/sort_snans.js",
+        "staging/sm/generators/delegating-yield-9.js",
+        "staging/sm/object/entries.js",
         "staging/sm/Function/has-instance-jitted.js",
         "staging/sm/Function/function-toString-builtin.js",
         "staging/sm/Proxy/ownkeys-linear.js",
+        # Generated Unicode 16 case-folding coverage checks every recorded
+        # equivalence class through both literal and character-class regexps.
+        "staging/sm/RegExp/unicode-ignoreCase.js",
         "staging/sm/String/fromCodePoint.js",
         "staging/sm/String/string-pad-start-end.js",
         STRING_CASE_MAPPING_FIXTURE,
@@ -561,6 +609,10 @@ def case_timeout(data, default, relative=None, source=""):
     """Return a bounded, metadata-derived wall deadline for a Test262 mode."""
     if relative in TEMPORAL_CALENDAR_MATRIX_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_MATRIX_TIMEOUT)
+    if relative == BUILTIN_FUNCTION_TOSTRING_FIXTURE:
+        return max(default, BUILTIN_FUNCTION_TOSTRING_TIMEOUT)
+    if relative in REGEXP_MATCH_INDICES_FIXTURES:
+        return max(default, REGEXP_MATCH_INDICES_TIMEOUT)
     if relative == NUMBER_FORMAT_NATIVE_PRECISION_MATRIX_FIXTURE:
         return default
     if relative == SUPPORTED_LOCALES_UNICODE_EXTENSION_FIXTURE:
@@ -730,7 +782,7 @@ def main():
     parser.add_argument("--corpus", type=Path, default=ROOT / "development/browser_core/reference/test262")
     parser.add_argument("--adapter", type=Path, default=ROOT / "target/debug/bluejs-test262")
     parser.add_argument("--output", type=Path, default=ROOT / "target/test262")
-    parser.add_argument("--jobs", type=int, default=8)
+    parser.add_argument("--jobs", type=int, default=default_jobs())
     parser.add_argument("--timeout", type=float, default=2)
     parser.add_argument("--instruction-budget", type=int, default=100_000)
     parser.add_argument(

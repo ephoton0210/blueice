@@ -8,36 +8,35 @@ Targets are inferred from paths/metadata; blockers are first observed symptoms, 
 
 | Order | Target | Pass | Fail | Unsupported | Timeout | Harness error | Prerequisites |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| P0.1 | completion: Completion records, iterator lifetime, catch/finally, control transfer | 8968 | 691 | 0 | 0 | 0 | — |
-| P0.2 | environments: Persistent realms, bindings, parameter environments, arguments, eval | 3766 | 180 | 0 | 1 | 0 | completion |
+| P0.1 | completion: Completion records, iterator lifetime, catch/finally, control transfer | 9049 | 610 | 0 | 0 | 0 | — |
+| P0.2 | environments: Persistent realms, bindings, parameter environments, arguments, eval | 3771 | 176 | 0 | 0 | 0 | completion |
 | P0.3 | references: Reference evaluation, coercion and observable evaluation order | 5818 | 265 | 0 | 0 | 0 | completion, environments |
-| P0.4 | objects: Internal methods, descriptors, receiver and callable/constructor contracts | 7781 | 10 | 0 | 8 | 0 | references |
+| P0.4 | objects: Internal methods, descriptors, receiver and callable/constructor contracts | 7788 | 11 | 0 | 0 | 0 | references |
 | P1.1 | grammar: Source grammar and classified strict/early errors | 3669 | 664 | 0 | 0 | 0 | environments, references |
-| P1.2 | classes: Classes, private slots, super and derived construction | 16738 | 380 | 0 | 4 | 0 | objects, grammar |
-| P1.3 | suspension: Resumable frames, generators, async functions and promise jobs | 3915 | 1164 | 0 | 2 | 0 | completion, environments, objects, grammar |
-| P1.4 | modules: Module linking, live bindings, evaluation and dynamic import | 1681 | 986 | 0 | 0 | 0 | environments, suspension, grammar |
-| P1.5 | storage: BigInt, buffers, typed arrays, shared memory and GC weak slots | 6009 | 1636 | 0 | 6 | 0 | objects |
-| P1.6 | host: Test262 realm, agent, GC, buffer and async host hooks | 200 | 28 | 0 | 4 | 0 | environments, suspension, modules, storage |
-| P2.1 | library: Remaining standard builtin algorithms and descriptors | 17673 | 11872 | 0 | 0 | 0 | completion, references, objects |
-| P2.2 | intl: ECMA-402 constructors, algorithms and locale data | 2365 | 4342 | 0 | 7 | 0 | library |
-| P3.1 | review: Unmapped/staging targets requiring specification and applicability review | 1314 | 744 | 0 | 35 | 0 | — |
+| P1.2 | classes: Classes, private slots, super and derived construction | 16744 | 378 | 0 | 0 | 0 | objects, grammar |
+| P1.3 | suspension: Resumable frames, generators, async functions and promise jobs | 4259 | 822 | 0 | 0 | 0 | completion, environments, objects, grammar |
+| P1.4 | modules: Module linking, live bindings, evaluation and dynamic import | 1680 | 987 | 0 | 0 | 0 | environments, suspension, grammar |
+| P1.5 | storage: BigInt, buffers, typed arrays, shared memory and GC weak slots | 6059 | 1592 | 0 | 0 | 0 | objects |
+| P1.6 | host: Test262 realm, agent, GC, buffer and async host hooks | 206 | 26 | 0 | 0 | 0 | environments, suspension, modules, storage |
+| P2.1 | library: Remaining standard builtin algorithms and descriptors | 18491 | 11054 | 0 | 0 | 0 | completion, references, objects |
+| P2.2 | intl: ECMA-402 constructors, algorithms and locale data | 2922 | 3792 | 0 | 0 | 0 | library |
+| P3.1 | review: Unmapped/staging targets requiring specification and applicability review | 1350 | 743 | 0 | 0 | 0 | — |
 
 ## Observed blockers
 
 | Symptom | Modes | Representative test / mode |
 | --- | ---: | --- |
-| none | 79897 | `—` |
-| exception:TypeError | 9632 | `annexB/built-ins/RegExp/legacy-accessors/index/prop-desc.js [sloppy]` |
-| assertion | 7242 | `annexB/built-ins/RegExp/legacy-accessors/index/this-cross-realm-constructor.js [sloppy]` |
-| exception:RangeError | 3090 | `built-ins/Array/prototype/slice/S15.4.4.10_A1.1_T3.js [sloppy]` |
-| missing-expected-error | 906 | `annexB/language/expressions/template-literal/legacy-octal-escape-sequence-strict.js [strict]` |
+| none | 81806 | `—` |
+| exception:TypeError | 8424 | `annexB/built-ins/RegExp/legacy-accessors/index/prop-desc.js [sloppy]` |
+| assertion | 7577 | `annexB/built-ins/RegExp/legacy-accessors/index/this-cross-realm-constructor.js [sloppy]` |
+| exception:RangeError | 2227 | `built-ins/Array/prototype/slice/S15.4.4.10_A1.1_T3.js [sloppy]` |
+| missing-expected-error | 831 | `annexB/language/expressions/template-literal/legacy-octal-escape-sequence-strict.js [strict]` |
 | unresolved-name | 647 | `annexB/built-ins/escape/argument_bigint.js [sloppy]` |
 | exception:SyntaxError | 577 | `annexB/language/function-code/function-redeclaration-block.js [sloppy]` |
 | unclassified-parse | 564 | `language/asi/S7.9.2_A1_T3.js [sloppy]` |
-| exception:ThrownValue | 199 | `built-ins/Promise/all/capability-resolve-throws-reject.js [sloppy]` |
-| deadline | 67 | `built-ins/TypedArray/prototype/sort/stability.js [sloppy]` |
+| exception:ThrownValue | 152 | `built-ins/Promise/all/capability-resolve-throws-reject.js [sloppy]` |
 | exception:crash | 55 | `annexB/language/statements/labeled/function-declaration.js [sloppy]` |
-| resource-limit | 40 | `built-ins/Array/prototype/every/15.4.4.16-7-c-ii-2.js [sloppy]` |
+| resource-limit | 56 | `built-ins/Array/prototype/every/15.4.4.16-7-c-ii-2.js [sloppy]` |
 | exception:Error | 10 | `built-ins/AsyncGeneratorPrototype/return/return-suspendedStart-broken-promise.js [sloppy]` |
 
 ## Frequent diagnostics
@@ -46,32 +45,30 @@ Exact per-mode evidence, source hashes, esid, includes and dependency labels are
 
 | Diagnostic (numeric details normalized) | Modes |
 | --- | ---: |
-| TypeError: value is not callable | 6019 |
-| Test262Error: throws failed | 3104 |
-| RangeError: invalid Temporal date string | 2788 |
-| Test262Error: sameValue failed | 2594 |
-| uncaught JavaScript value: Object(ObjectId { heap: #, serial: # }) | 1614 |
-| TypeError: cannot access a property of null or undefined | 1486 |
-| ok | 906 |
-| TypeError: property helper requires an object | 582 |
+| TypeError: value is not callable | 5521 |
+| Test262Error: throws failed | 3310 |
+| Test262Error: sameValue failed | 2783 |
+| RangeError: invalid Temporal date string | 1784 |
+| uncaught JavaScript value: Object(ObjectId { heap: #, serial: # }) | 1611 |
+| ok | 831 |
+| TypeError: cannot access a property of null or undefined | 802 |
+| TypeError: property helper requires an object | 562 |
 | TypeError: value is not a constructor | 408 |
-| Test262Error: isConstructor failed | 278 |
-| Test262Error: verifyProperty failed | 253 |
+| Test262Error: isConstructor failed | 272 |
+| Test262Error: verifyProperty failed | 237 |
 | ReferenceError: DisposableStack is not defined | 188 |
 | expected RParen (found Punct(Comma)) | 171 |
-| Test262Error: compareArray failed | 168 |
-| Test262Error: assert failed | 153 |
-| uncaught JavaScript value: String(JsString([#, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #, #,  | 148 |
+| RangeError: invalid Temporal.Duration string | 158 |
+| Test262Error: assert failed | 147 |
+| Test262Error: compareArray failed | 142 |
 | ReferenceError: AsyncDisposableStack is not defined | 146 |
 | expected ';' (found Identifier("x")) | 139 |
 | ReferenceError: ShadowRealm is not defined | 118 |
-| TypeError: class extends value is not a constructor or null | 110 |
+| TypeError: class extends value is not a constructor or null | 108 |
 | default import requires 'from' or ',' (found Punct(Star)) | 96 |
-| RangeError: invalid time value | 92 |
-| whole-case wall deadline exceeded | 67 |
+| RangeError: Temporal.toZonedDateTime currently supports UTC | 90 |
 | expected ';' (found Identifier("_")) | 59 |
-| adapter exited with code # | 55 |
-| RangeError: Intl.supportedValuesOf data is unavailable | 50 |
+| adapter exited with code # | 54 |
 | TypeError: TypedArray is out of bounds | 50 |
 | RangeError: maximum call depth exceeded | 42 |
 | expected an expression (found Punct(Ellipsis)) | 42 |
