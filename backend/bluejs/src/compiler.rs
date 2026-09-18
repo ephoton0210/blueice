@@ -168,7 +168,17 @@ fn compile_with_limit_and_mode(
     if module {
         compiler.function_declarations(&program.body)?;
         compiler.bytecode.module_evaluate_entry = Some(compiler.offset()?);
-        compiler.statements_after_function_declarations(&program.body)?;
+        // Unlike a Script, a Module's top level *is* one of the
+        // UsingDeclaration-permitted contexts: a `using`/`await using`
+        // there disposes when the module's own evaluation completes.
+        if has_using_declaration(&program.body) {
+            let is_async = has_await_using_declaration(&program.body);
+            compiler.wrap_with_disposal(is_async, |this| {
+                this.statements_after_function_declarations(&program.body)
+            })?;
+        } else {
+            compiler.statements_after_function_declarations(&program.body)?;
+        }
     } else {
         // "It is a Syntax Error if the goal symbol is Script and
         // UsingDeclaration is not contained, either directly or

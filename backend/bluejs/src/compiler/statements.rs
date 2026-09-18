@@ -32,6 +32,28 @@ impl Compiler {
         if !has_using_declaration(statements) {
             return self.statements_after_function_declarations(statements);
         }
+        let is_async = has_await_using_declaration(statements);
+        self.wrap_with_disposal(is_async, |this| {
+            this.statements_after_function_declarations(statements)
+        })
+    }
+
+    /// Wraps `compile_body` in a synthetic
+    /// `try { <compile_body> } finally { <dispose> }`, reusing the same
+    /// handler-stack machinery `try_statement` uses for a real `finally`
+    /// clause. `statements_with_disposal` uses this for a using-declaring
+    /// block/function body; `for_each` uses it for a per-iteration
+    /// `using`/`await using` `ForBinding` (`for (using x of iterable)`),
+    /// wrapping just the current iteration's bind-and-body so the bound
+    /// value is disposed at the end of *that* iteration rather than only
+    /// once the whole loop exits. `is_async` selects
+    /// `compile_async_dispose_finally`'s `Await`-capable loop over the
+    /// plain, single-native-opcode `DisposeResources` fast path.
+    pub(super) fn wrap_with_disposal(
+        &mut self,
+        is_async: bool,
+        compile_body: impl FnOnce(&mut Self) -> Result<(), CompileError>,
+    ) -> Result<(), CompileError> {
         let handler_index = u32::try_from(self.bytecode.handlers.len())
             .map_err(|_| CompileError::ProgramTooLarge)?;
         self.bytecode.handlers.push(Handler {
@@ -45,14 +67,14 @@ impl Compiler {
         self.emit(Opcode::MarkDisposables, 0)?;
         self.emit(Opcode::ClearCompletion, 0)?;
         self.bytecode.handlers[handler_index as usize].try_start = self.offset()?;
-        self.statements_after_function_declarations(statements)?;
+        compile_body(self)?;
         self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
         self.emit(Opcode::PopHandler, 0)?;
         self.emit(Opcode::SaveCompletion, 0)?;
         let normal_exit = self.emit(Opcode::Jump, 0)?;
         let finally_start = self.offset()?;
         self.bytecode.handlers[handler_index as usize].finally = Some(finally_start);
-        if has_await_using_declaration(statements) {
+        if is_async {
             self.compile_async_dispose_finally(handler_index)?;
         } else {
             self.emit(Opcode::DisposeResources, handler_index)?;
@@ -492,14 +514,39 @@ impl Compiler {
                 test,
                 update,
                 body,
-            } => self.loop_statement(
-                init.as_ref(),
-                test.as_ref(),
-                update.as_ref(),
-                body,
-                false,
-                Vec::new(),
-            )?,
+            } => {
+                // `using`/`await using` in a C-style for-head disposes once,
+                // when the whole ForStatement completes (confirmed against
+                // `initializer-disposed-at-end-of-forstatement.js`'s own
+                // naming) -- unlike the ForOf `using ForBinding` production
+                // in `for_each`, which disposes each iteration's own
+                // binding at the end of *that* iteration.
+                let is_async_using = matches!(
+                    init,
+                    Some(ForInit::VarDecl(DeclKind::AwaitUsing, _))
+                );
+                if is_async_using || matches!(init, Some(ForInit::VarDecl(DeclKind::Using, _))) {
+                    self.wrap_with_disposal(is_async_using, |this| {
+                        this.loop_statement(
+                            init.as_ref(),
+                            test.as_ref(),
+                            update.as_ref(),
+                            body,
+                            false,
+                            Vec::new(),
+                        )
+                    })?;
+                } else {
+                    self.loop_statement(
+                        init.as_ref(),
+                        test.as_ref(),
+                        update.as_ref(),
+                        body,
+                        false,
+                        Vec::new(),
+                    )?;
+                }
+            }
             Stmt::ForIn { left, right, body } => self.for_in(left, right, body, Vec::new())?,
             Stmt::ForOf {
                 left,

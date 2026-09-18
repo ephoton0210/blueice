@@ -782,6 +782,14 @@ pub struct Vm {
     finalization_registry_prototype: Option<ObjectId>,
     disposable_stack_prototype: Option<ObjectId>,
     async_disposable_stack_prototype: Option<ObjectId>,
+    /// A lazily-compiled-once internal async function implementing the same
+    /// `Await`-interleaved disposal loop as `Compiler::compile_async_dispose_finally`,
+    /// reused by `AsyncDisposableStack.prototype.disposeAsync` (a native
+    /// method, which cannot itself contain a bytecode `Await`) so it gets
+    /// the exact same real per-resource-await semantics `await using`
+    /// already has, rather than a separate, weaker implementation. See
+    /// `Vm::async_dispose_helper`.
+    async_dispose_helper: Option<Value>,
     /// `[[DisposeCapability]]` state for each live `DisposableStack`
     /// instance, keyed by its object identity.
     disposable_stacks: HashMap<ObjectId, DisposeCapabilityState>,
@@ -931,6 +939,7 @@ impl Vm {
             finalization_registry_prototype: None,
             disposable_stack_prototype: None,
             async_disposable_stack_prototype: None,
+            async_dispose_helper: None,
             disposable_stacks: HashMap::new(),
             async_disposable_stacks: HashMap::new(),
             disposables: Vec::new(),
