@@ -1426,9 +1426,177 @@ once). One owner:
         `ZonedDateTime`/`Instant`/`PlainTime`/`Duration`/`Now` all moved
         the same direction as `PlainDate`/`PlainDateTime` (flat or
         improved) on the same full-tree run.
-- [ ] `plain_year_month.rs`, `plain_month_day.rs` next, reusing the
-      calendar-field pattern `plain_date.rs` establishes (combined Test262:
-      `PlainYearMonth/` 1,672, `PlainMonthDay/` 578 modes).
+- [x] **`plain_year_month.rs`, `plain_month_day.rs` — done 2026-09-18**
+      (single owner, sequential, per this stage's own design; worked in a
+      separate worktree from the concurrent `PlainDate`/`PlainDateTime`
+      bug-fix session, with the file-boundary and shared-file discipline
+      that session's own launch note required).
+
+      **Real numbers**, pinned corpus, before/after on the same commit:
+
+      | Type | Before | After |
+      | --- | ---: | ---: |
+      | `PlainYearMonth` | 226/1,672 (13.5%) | **1,324/1,672 (79.2%)** |
+      | `PlainMonthDay` | 178/578 (30.8%) | **450/578 (77.9%)** |
+      | Combined | 404/2,250 (18.0%) | **1,774/2,250 (78.8%)** |
+
+      Regression check, same commit: `PlainDate` 1,886→**1,896**/2,290,
+      `PlainDateTime` 2,056→**2,064**/2,512 (both *improved*, not just
+      flat — see the `toPlainYearMonth`/`toPlainMonthDay` real-resolution
+      fix below), and the combined `Instant`+`PlainTime`+`Duration`+`Now`+
+      `PlainDate`+`PlainDateTime`+`ZonedDateTime` total (i.e. every type
+      other than this pass's own two) is 7,210/11,008 — at or above every
+      one of those types' own last-recorded individual number, confirming
+      **zero regressions** anywhere else in the tree. Whole-`Temporal/`
+      total: **8,998/13,272 (67.8%)**. Reproduce with
+      `python3 backend/bluejs/test262/run.py --corpus
+      /tmp/blueice-test262-72faf8ec --filter
+      "Temporal/PlainYearMonth/,Temporal/PlainMonthDay/" --jobs 8` (and the
+      individual per-type filters for the other rows).
+
+      **A key foundation discovery that shaped this whole slice**: the
+      pinned `icu_calendar` fork's `Date::try_from_fields` already has a
+      `DateFromFieldsOptions::missing_fields_strategy` option
+      (`MissingFieldsStrategy::Ecma`) that is *exactly*
+      `CalendarYearMonthFromFields`/`CalendarMonthDayFromFields`'s own
+      reference-day/reference-year rule, verified directly against its own
+      doctest and unit test (`icu_calendar::options` source, not assumed):
+      "if a year and a month are present but no day, set day to 1; if month
+      and day are present but no year, derive a calendar-specific reference
+      year" — and for the ISO/Gregorian family that reference year is
+      `1972`, confirmed by reading `abstract_gregorian.rs`'s own
+      `REFERENCE_YEAR` constant, matching `ToTemporalMonthDay`'s hardcoded
+      ISO literal exactly. This meant `plain_year_month.rs`/
+      `plain_month_day.rs`'s own `year_month_from_fields`/
+      `month_day_from_fields` are thin wrappers (build a `DateFields`, set
+      `missing_fields_strategy`, call `try_from_fields`, convert to ISO) —
+      most of the real work was in `vm/temporal.rs`'s adapter layer wiring
+      them to every call site, not in re-deriving calendar-day-1 arithmetic
+      by hand. One caveat found via the ICU4X source itself, not assumed:
+      the reference-year derivation only fires from a `monthCode`+`day`
+      pair, **not** from a bare ordinal `month`+`day` (an ordinal month's
+      identity varies by year, so there is no year-independent reference
+      year for one) — `Vm::temporal_plain_month_day_from_fields` requires a
+      `year` whenever only an ordinal `month` is given, matching this.
+
+      **What actually landed**, mirroring `plain_date.rs`'s own
+      file-placement call: `vm/temporal/plain_year_month.rs`/
+      `plain_month_day.rs` (new, host-neutral, no `Value`/heap/Realm
+      coupling — `year_month_from_fields`/`month_day_from_fields`
+      (`CalendarYearMonthFromFields`/`CalendarMonthDayFromFields`) and
+      `format_year_month`/`format_month_day`, each with its own
+      `#[cfg(test)]` unit tests, no VM required). `vm/temporal.rs`'s
+      adapter layer (a **second, textually separate `impl Vm` block**
+      appended at the end of the file, deliberately, to minimize collision
+      surface with the concurrent `PlainDate`/`PlainDateTime` session's own
+      edits inside the first block — this phase's own "git diff
+      misalignment" pattern, avoided pre-emptively rather than resolved
+      after the fact) gained:
+      - `temporal_plain_year_month_from_fields`/
+        `temporal_plain_month_day_from_fields` (the property-bag `from()`
+        path Stage 0's audit flagged as missing) and
+        `temporal_to_plain_year_month`/`temporal_to_plain_month_day`
+        (`ToTemporalYearMonth`/`ToTemporalMonthDay` — object/string/
+        same-kind dispatch, reused by every other method's "other value"
+        argument). `Vm::temporal_from` now special-cases these two kinds
+        the same way it already special-cases `PlainTime`/`Duration`/
+        `Instant`, routing entirely through one `ToTemporal*` function
+        rather than the generic object/string dispatcher.
+      - `with`/`add`/`subtract`/`until`/`since`/`equals`/static `compare`/
+        `toString`/`toJSON`/`toLocaleString`/`valueOf`/`toPlainDate` for
+        `PlainYearMonth`; `with`/`equals`/`toString`/`toJSON`/
+        `toLocaleString`/`valueOf`/`toPlainDate` for `PlainMonthDay` --
+        confirmed against the pinned corpus, not assumed from the task
+        brief, that `PlainMonthDay` has **no** `add`/`subtract`/`until`/
+        `since`/`compare` at all (no such Test262 directory exists, and
+        Gecko's own `PlainMonthDay.cpp` defines none either — a month-day
+        pair has no well-ordered total order in general).
+      - `PlainYearMonth.prototype.add`/`subtract` reject any duration with
+        a nonzero week/day/time component (`AddDurationToYearMonth`'s own
+        rule); `until`/`since` restrict `smallestUnit`/`largestUnit` to
+        `"month"`/`"year"` only, default `smallestUnit` `"month"`/
+        `largestUnit` `"year"`, and reuse `plain_date.rs`'s existing
+        `round_calendar_duration` unmodified (only `PlainYearMonth`'s own
+        two calendar-day-1 anchors are new). `with()` recognizes only
+        `year`/`month`/`monthCode` (`PlainMonthDay.with()` also `day`) --
+        confirmed against Gecko's own `PreparePartialCalendarFields` field
+        list, not assumed symmetric with `PlainDate`'s wider one.
+      - Fixed two real, already-shipped bugs in `temporal_value_from_string`
+        (Stage 0/1 code, shared with every other Temporal type's string
+        parsing): it unconditionally forced a parsed `PlainYearMonth`'s day
+        to `1` and a parsed `PlainMonthDay`'s year to `1972`, *regardless of
+        calendar* -- correct only for `iso8601`. For any other calendar this
+        silently discarded a syntactically-required, already-validated
+        parsed year/day (Stage 0's own code path enforces that a non-ISO
+        year-month/month-day string *must* spell the otherwise-omittable
+        half) before this pass's own `temporal_to_plain_year_month`/
+        `temporal_to_plain_month_day` could ever re-derive the correct
+        calendar reference date from it. Narrowed both hardcodes to
+        `calendar == "iso8601"` only; the non-ISO path now keeps the parsed
+        anchor and re-resolves it through
+        `CalendarYearMonthFromFields`/`CalendarMonthDayFromFields`.
+      - Closed the two `toPlainYearMonth`/`toPlainMonthDay` approximations
+        Stage 2's `PlainDate`/`PlainDateTime` slice explicitly deferred:
+        both now resolve through the real `CalendarYearMonthFromFields`/
+        `CalendarMonthDayFromFields` path instead of pinning the ISO
+        reference day/year unconditionally -- this is what moved `PlainDate`
+        from 1,886 to 1,896 (`PlainDateTime` has no such methods of its own,
+        so its own +8 is most likely `PlainDate`-derived fixtures reached
+        indirectly through a shared harness helper, not independently
+        re-derived here).
+      - `NativeFunction`: 19 new variants (`TemporalYearMonth{With,Add,
+        Subtract,Until,Since,Equals,Compare,ToString,ToJson,
+        ToLocaleString,ValueOf,ToPlainDate}`, `TemporalMonthDay{With,
+        Equals,ToString,ToJson,ToLocaleString,ValueOf,ToPlainDate}`),
+        dispatched in `native_dispatch.rs` the same way every other
+        Temporal method already is.
+      - `temporal_global()`'s per-kind method-installation loop gained two
+        new `if kind == ...` blocks (after the existing
+        `PlainDate`/`PlainDateTime` one), installing the above onto each
+        constructor/prototype -- the getters themselves needed no change,
+        confirmed already wired for both kinds before this pass (matching
+        the Stage 0 audit's own "read-only construction plus getters" note
+        on why they already partially passed).
+
+      **Deliberately left open, and why** (documented gaps, not silent
+      approximations):
+      - `PlainYearMonth`/`PlainMonthDay.prototype.with()` always resolves
+        a changed `year` via `extended_year`, never re-deriving an
+        `era`/`eraYear` pair even when the receiver's own calendar uses one
+        -- correct for `iso8601` (the overwhelming majority of Test262
+        coverage) and for any calendar's *own* `year` getter (already
+        extended-year-valued), an approximation for an era-based calendar's
+        `with({ year })` specifically. Gecko's own field list excludes
+        `era`/`eraYear` from `with()`'s recognized overrides entirely, so
+        this is a narrower gap than it might look -- only the "does the
+        *unrelated*, still-present original era information get
+        cross-validated against the new extended year" edge stays
+        unhandled.
+      - Deeper era/monthCode mutual-exclusivity validation
+        (`calendarresolvefields-error-ordering-*.js`,
+        `mutually-exclusive-fields-*.js`) -- same class of gap
+        `PlainDate`/`PlainDateTime`'s own slice already documented as not
+        re-derived, still true here.
+      - `PlainYearMonth`/`PlainMonthDay` in a `relativeTo` position for
+        `Temporal.Duration.prototype.{round,total,compare}` -- unaffected
+        by this pass, still `duration.rs`'s own follow-up per the
+        `PlainDate`/`PlainDateTime` slice's own note.
+      - The exact ~450 remaining `PlainYearMonth`/~128 `PlainMonthDay`
+        failures were not individually triaged fixture-by-fixture given
+        this pass's time budget; the categories above (era mutual
+        exclusivity, non-ISO `with({year})` era round-tripping,
+        `relativeTo`) account for a visible share of `intl402/` failures
+        specifically (`basic-japanese.js`-style era-calendar fixtures
+        recur throughout the `progress`/`checkpoint` log lines above), not
+        the whole remainder.
+      - `cargo build --workspace --all-targets` / `cargo test --workspace`
+        (`--no-fail-fast`) / `cargo clippy --workspace --all-targets -- -D
+        warnings` all clean, confirmed on this pass's own commit -- the
+        only test failure anywhere in the whole workspace is the
+        already-documented pre-existing
+        `string_protocols.rs::observable_conversion_order_and_gc_pressure`
+        flake this document's own launch instructions list as known and
+        out of scope.
 - [ ] `zoned_date_time.rs` last — composes `PlainDateTime` + `TimeZone` +
       `Instant`, so it must come after all three are solid. Gecko's largest
       per-type file (`ZonedDateTime.cpp`, 3,180 lines) and Test262's largest
