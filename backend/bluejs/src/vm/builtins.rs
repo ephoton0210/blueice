@@ -2343,18 +2343,21 @@ impl Vm {
             }
             PropertyIsEnumerable => {
                 let key = property_query_key.expect("property query key was coerced");
+                // [[GetOwnProperty]], not the raw heap record: a lazily
+                // materialized intrinsic global is a real own property that
+                // merely has not been created yet, and an exotic object
+                // (e.g. a Proxy) must have its own trap observed here
+                // exactly as `Object.hasOwn`/`Object.getOwnPropertyDescriptor`
+                // already do.
                 Ok(Value::Bool(
-                    self.heap
-                        .get_own_property_descriptor(object, key)?
+                    self.object_get_own_property(object, &key)?
                         .is_some_and(|descriptor| descriptor.enumerable == Some(true)),
                 ))
             }
             HasOwnProperty => {
                 let key = property_query_key.expect("property query key was coerced");
                 Ok(Value::Bool(
-                    self.heap
-                        .get_own_property_descriptor(object, key)?
-                        .is_some(),
+                    self.object_get_own_property(object, &key)?.is_some(),
                 ))
             }
             Keys | Values | Entries | GetOwnPropertyNames | GetOwnPropertySymbols | OwnKeys => {
