@@ -42,6 +42,11 @@ DYNAMIC_IMPORT_REQUEST = re.compile(
 DYNAMIC_IMPORT_EXPRESSION = re.compile(
     r'''\bimport\s*(?:\(|\.\s*(?:source|defer)\s*\()'''
 )
+# `ShadowRealm.prototype.importValue` is host-loaded through the same
+# adapter module registry as dynamic `import()`, but it is an ordinary
+# method call rather than `import`/`import.source`/`import.defer` syntax, so
+# it needs its own trigger for bundling a relative-string sibling fixture.
+SHADOW_REALM_IMPORT_VALUE_EXPRESSION = re.compile(r'''\.importValue\s*\(''')
 RELATIVE_STRING = re.compile(r'''["'](\.{1,2}/[^"']+)["']''')
 SOURCE_PHASE_IMPORT_REQUEST = re.compile(
     r'''\bimport\s+source\s+[\w$]+\s+from\s*["']([^"']+)["']''',
@@ -444,31 +449,59 @@ def modes(data):
     return ["sloppy", "strict"]
 
 
-def module_sources(entry, test_root, include_dynamic_string_roots=False):
+def module_sources(
+    entry,
+    test_root,
+    include_dynamic_string_roots=False,
+    speculative_relative_strings=False,
+):
     """Collect static imports and, when needed, relative dynamic-import roots.
 
     A dynamic import with a variable specifier cannot be resolved statically.
     Test262 fixtures conventionally retain its relative candidate strings in
     the test source, so a caller may opt into supplying existing sibling
     files without making unrelated ordinary module tests over-inclusive.
+
+    Returns `(sources, speculative)`. When `speculative_relative_strings` is
+    true, `speculative` names every collected path reached *only* through
+    such a relative-string candidate -- never through an actual
+    `import`/dynamic-`import()` reference (nor the entry itself). A
+    speculative candidate may be a deliberately invalid fixture meant to be
+    discovered lazily (e.g. by `ShadowRealm.prototype.importValue` at
+    runtime) rather than linked eagerly, so the adapter treats a parse
+    failure there as "this candidate turned out unused" instead of the hard
+    resolution-phase failure a genuinely required module's own syntax error
+    still produces. Leave this false (the default) to keep every relative-
+    string candidate's parse failure hard-failing exactly as it always has --
+    e.g. for a plain dynamic `import()` with a variable specifier, where the
+    established behavior is not this function's to change.
     """
     test_root = test_root.resolve()
-    pending = [entry.resolve()]
+    pending = [(entry.resolve(), True)]
     sources = {}
+    required = set()
     while pending:
-        path = pending.pop()
+        path, is_required = pending.pop()
         relative = path.relative_to(test_root).as_posix()
+        if is_required:
+            required.add(relative)
         if relative in sources:
             continue
         source = path.read_text(encoding="utf-8")
         sources[relative] = source
         requests = [
-            match.group(1) or match.group(2) for match in MODULE_REQUEST.finditer(source)
+            (match.group(1) or match.group(2), True)
+            for match in MODULE_REQUEST.finditer(source)
         ]
-        requests.extend(match.group(1) for match in DYNAMIC_IMPORT_REQUEST.finditer(source))
+        requests.extend(
+            (match.group(1), True) for match in DYNAMIC_IMPORT_REQUEST.finditer(source)
+        )
         if include_dynamic_string_roots:
-            requests.extend(match.group(1) for match in RELATIVE_STRING.finditer(source))
-        for request in requests:
+            requests.extend(
+                (match.group(1), not speculative_relative_strings)
+                for match in RELATIVE_STRING.finditer(source)
+            )
+        for request, request_is_required in requests:
             if not request or not request.startswith("."):
                 continue
             candidate = (path.parent / request).resolve()
@@ -482,8 +515,9 @@ def module_sources(entry, test_root, include_dynamic_string_roots=False):
             # adapter's normal module-resolution result rather than making the
             # inventory runner attempt UTF-8 decoding and abort the whole run.
             if candidate.is_file() and candidate.suffix == ".js":
-                pending.append(candidate)
-    return sources
+                pending.append((candidate, request_is_required))
+    speculative = {relative for relative in sources if relative not in required}
+    return sources, speculative
 
 
 def selected_files(all_files, corpus, pattern, excluded=""):
@@ -938,14 +972,37 @@ def main():
                     request["string_limit"] = REGEXP_CLASS_ESCAPE_STRING_LIMIT
                 if relative == STRING_CASE_MAPPING_FIXTURE:
                     request["heap_limit"] = STRING_CASE_MAPPING_HEAP_LIMIT
-                if mode == "module" or DYNAMIC_IMPORT_EXPRESSION.search(source_for_execution):
-                    sources = module_sources(
+                has_dynamic_import_expression = bool(
+                    DYNAMIC_IMPORT_EXPRESSION.search(source_for_execution)
+                )
+                has_shadow_realm_import_value = bool(
+                    SHADOW_REALM_IMPORT_VALUE_EXPRESSION.search(source_for_execution)
+                )
+                needs_dynamic_string_roots = (
+                    has_dynamic_import_expression or has_shadow_realm_import_value
+                )
+                if mode == "module" or needs_dynamic_string_roots:
+                    sources, speculative_sources = module_sources(
                         path,
                         args.corpus / "test",
-                        include_dynamic_string_roots=bool(DYNAMIC_IMPORT_EXPRESSION.search(source_for_execution)),
+                        include_dynamic_string_roots=needs_dynamic_string_roots,
+                        # Only let a relative-string candidate's own parse
+                        # failure be tolerated when it was reachable *solely*
+                        # because of `ShadowRealm.prototype.importValue`'s
+                        # own trigger above -- a file also matching (or only
+                        # matching) `DYNAMIC_IMPORT_EXPRESSION` keeps that
+                        # trigger's original, unconditional hard-fail
+                        # behavior, since that is already exercised by a
+                        # large, unrelated part of the corpus this change
+                        # must not affect.
+                        speculative_relative_strings=(
+                            has_shadow_realm_import_value
+                            and not has_dynamic_import_expression
+                        ),
                     )
                     request["module_path"] = relative
                     request["module_sources"] = sources
+                    request["speculative_module_sources"] = sorted(speculative_sources)
                     request["module_source_requests"] = sorted(
                         {
                             match.group(1)

@@ -24,6 +24,16 @@ struct Request {
     module_path: Option<String>,
     #[serde(default)]
     module_sources: HashMap<String, String>,
+    /// Paths in `module_sources` reached only through a relative-string
+    /// heuristic (e.g. a `ShadowRealm.prototype.importValue` specifier
+    /// argument), never through an actual `import`/dynamic-`import()`
+    /// reference. Such a candidate may be a deliberately invalid fixture
+    /// meant to be discovered lazily at runtime rather than linked eagerly;
+    /// a parse/compile failure there is simply excluded from the module
+    /// registry instead of failing the whole request, unlike every other
+    /// (genuinely required) `module_sources` entry.
+    #[serde(default)]
+    speculative_module_sources: std::collections::HashSet<String>,
     #[serde(default)]
     module_source_requests: Vec<String>,
     #[serde(default)]
@@ -138,8 +148,10 @@ fn evaluate(request: Request) -> Value {
             if module_codes.contains_key(path) {
                 continue;
             }
+            let speculative = request.speculative_module_sources.contains(path);
             let program = match parse_module(module_source) {
                 Ok(program) => program,
+                Err(_) if speculative => continue,
                 Err(error) if error.known_syntax => {
                     return json!({
                         "phase":"resolution",
@@ -154,6 +166,7 @@ fn evaluate(request: Request) -> Value {
                 request.bytecode_limit.unwrap_or(u32::MAX),
             ) {
                 Ok(code) => code,
+                Err(_) if speculative => continue,
                 Err(CompileError::DuplicateBinding(message)) => {
                     return json!({
                         "phase":"resolution",
@@ -188,8 +201,10 @@ fn evaluate(request: Request) -> Value {
             if request.module_path.as_deref() == Some(path.as_str()) {
                 continue;
             }
+            let speculative = request.speculative_module_sources.contains(path);
             let program = match parse_module(module_source) {
                 Ok(program) => program,
+                Err(_) if speculative => continue,
                 Err(error) => return parse_error(error),
             };
             let code = match compile_module_with_limit(
@@ -197,6 +212,7 @@ fn evaluate(request: Request) -> Value {
                 request.bytecode_limit.unwrap_or(u32::MAX),
             ) {
                 Ok(code) => code,
+                Err(_) if speculative => continue,
                 Err(error) => return compile_error(error),
             };
             module_codes.insert(path.clone(), code);
