@@ -637,6 +637,7 @@ impl Vm {
                     | NativeFunction::WeakRef
                     | NativeFunction::FinalizationRegistry
                     | NativeFunction::DisposableStack { .. }
+                    | NativeFunction::ShadowRealm
                     | NativeFunction::Promise
                     | NativeFunction::AsyncFunction
                     | NativeFunction::Object

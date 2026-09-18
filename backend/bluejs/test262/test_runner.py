@@ -357,7 +357,7 @@ class RunnerTests(unittest.TestCase):
             unrelated.write_text("export const ignored = true;")
             binary.write_bytes(b"\x89binary")
 
-            sources, json_sources = module_sources(entry, test)
+            sources, json_sources, _speculative = module_sources(entry, test)
             self.assertEqual(
                 set(sources),
                 {
@@ -371,7 +371,7 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(json_sources, {})
 
             entry.write_text("import './bytes_FIXTURE.bin';")
-            sources, json_sources = module_sources(entry, test)
+            sources, json_sources, _speculative = module_sources(entry, test)
             self.assertEqual(set(sources), {"modules/entry.js"})
             self.assertEqual(json_sources, {})
 
@@ -385,7 +385,7 @@ class RunnerTests(unittest.TestCase):
             )
             (test / "modules" / "data.json").write_text('{"a": 1}')
 
-            sources, json_sources = module_sources(entry, test)
+            sources, json_sources, _speculative = module_sources(entry, test)
             self.assertEqual(set(sources), {"modules/entry.js"})
             self.assertEqual(json_sources, {"modules/data.json": '{"a": 1}'})
 

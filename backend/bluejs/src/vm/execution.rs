@@ -225,6 +225,7 @@ impl Vm {
                 | "FinalizationRegistry"
                 | "DisposableStack"
                 | "AsyncDisposableStack"
+                | "ShadowRealm"
                 | "Iterator"
                 | "Function"
                 | "Proxy"

@@ -82,6 +82,7 @@ impl Vm {
             "FinalizationRegistry" => NativeFunction::FinalizationRegistry,
             "DisposableStack" => NativeFunction::DisposableStack { is_async: false },
             "AsyncDisposableStack" => NativeFunction::DisposableStack { is_async: true },
+            "ShadowRealm" => NativeFunction::ShadowRealm,
             "Promise" => NativeFunction::Promise,
             "eval" => NativeFunction::Eval,
             "Object" => NativeFunction::Object,
@@ -125,6 +126,7 @@ impl Vm {
                         "WeakMap" | "WeakSet" => 0.0,
                         "FinalizationRegistry" => 1.0,
                         "DisposableStack" | "AsyncDisposableStack" => 0.0,
+                        "ShadowRealm" => 0.0,
                         _ => 1.0,
                     }),
                     false,
@@ -767,6 +769,24 @@ impl Vm {
                 )?;
                 self.define_data(
                     stack_prototype,
+                    "constructor",
+                    Value::Object(id),
+                    true,
+                    false,
+                    true,
+                )?;
+            } else if name == "ShadowRealm" {
+                let shadow_realm_prototype = self.shadow_realm_prototype()?;
+                self.define_data(
+                    id,
+                    "prototype",
+                    Value::Object(shadow_realm_prototype),
+                    false,
+                    false,
+                    false,
+                )?;
+                self.define_data(
+                    shadow_realm_prototype,
                     "constructor",
                     Value::Object(id),
                     true,
