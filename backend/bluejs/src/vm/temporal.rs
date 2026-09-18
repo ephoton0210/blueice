@@ -25,6 +25,7 @@ mod duration_math;
 mod epoch;
 mod iso;
 mod rounding;
+mod time_zone_id;
 
 /// The calendar fields exposed by Temporal are derived from its ISO internal
 /// date. Keeping ISO fields in `TemporalValue` preserves the invariant used
@@ -181,6 +182,7 @@ impl Vm {
                             native::TemporalGetter::EpochMilliseconds,
                         ),
                         ("epochNanoseconds", native::TemporalGetter::EpochNanoseconds),
+                        ("timeZoneId", native::TemporalGetter::TimeZoneId),
                     ],
                     TemporalKind::Instant => &[
                         (
@@ -250,6 +252,39 @@ impl Vm {
                     .insert(format!("%Temporal.{}%", kind.name()), constructor);
                 self.stack.pop();
             }
+            // `Temporal.Now` is a plain namespace object, not a constructor:
+            // no `TemporalKind` variant, no prototype, no `[[Construct]]` on
+            // any of its methods (`is_constructor`'s whitelist excludes them).
+            let now = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
+            self.stack.push(Value::Object(now));
+            self.define_data(
+                now,
+                JsSymbol::well_known("toStringTag"),
+                Value::String("Temporal.Now".into()),
+                false,
+                false,
+                true,
+            )?;
+            for (name, method) in [
+                ("instant", NativeFunction::TemporalNowInstant),
+                ("plainDateISO", NativeFunction::TemporalNowPlainDateIso),
+                (
+                    "plainDateTimeISO",
+                    NativeFunction::TemporalNowPlainDateTimeIso,
+                ),
+                ("plainTimeISO", NativeFunction::TemporalNowPlainTimeIso),
+                ("timeZoneId", NativeFunction::TemporalNowTimeZoneId),
+                (
+                    "zonedDateTimeISO",
+                    NativeFunction::TemporalNowZonedDateTimeIso,
+                ),
+            ] {
+                // Every method's own time-zone parameter is optional, so each
+                // reports `length` 0.
+                self.install_native(now, function_prototype, name, 0, method)?;
+            }
+            self.define_data(namespace, "Now", Value::Object(now), true, false, true)?;
+            self.stack.pop();
             self.globals.insert("Temporal".into(), namespace);
             if let Some(&global) = self.globals.get("globalThis") {
                 self.define_data(
@@ -950,6 +985,12 @@ impl Vm {
             }
             native::TemporalGetter::EpochNanoseconds => Err(RuntimeError::TypeError(
                 "Temporal epochNanoseconds requires an Instant or ZonedDateTime receiver".into(),
+            )),
+            native::TemporalGetter::TimeZoneId if value.kind == TemporalKind::ZonedDateTime => {
+                Ok(Value::String(value.time_zone.into()))
+            }
+            native::TemporalGetter::TimeZoneId => Err(RuntimeError::TypeError(
+                "Temporal timeZoneId requires a ZonedDateTime receiver".into(),
             )),
             getter => {
                 if !matches!(
@@ -1665,5 +1706,141 @@ impl Vm {
             }
         };
         self.instant_from_epoch_nanoseconds(nanoseconds)
+    }
+
+    // ---- Stage 1 Track C: Temporal.Now ----------------------------------
+
+    /// `SystemUTCEpochNanoseconds`, read from the one wall clock this engine
+    /// already has: `Date.now()`'s own `SystemTime` call. Reusing it means
+    /// `Temporal.Now.instant()` and `Date.now()` can never disagree, which is
+    /// exactly what Test262's `Now/instant/return-value-value.js` checks by
+    /// bracketing the call between two `Date.now()` reads.
+    ///
+    /// Millisecond granularity therefore, not nanosecond. The spec leaves the
+    /// clock's resolution implementation-defined and explicitly permits
+    /// coarsening it; real engines clamp for the same reason.
+    fn temporal_now_epoch_nanoseconds() -> BigInt {
+        BigInt::from(Self::current_time() as i64) * 1_000_000_u32
+    }
+
+    /// `ToTemporalTimeZoneIdentifier`. A `Temporal.ZonedDateTime` contributes
+    /// its own zone; every other object is a `TypeError` — note that no
+    /// `ToString` coercion happens at all here, so an object with a
+    /// `toString` method is rejected rather than consulted.
+    fn temporal_time_zone_identifier(&mut self, value: &Value) -> Result<String, RuntimeError> {
+        if *value == Value::Undefined {
+            return Ok(time_zone_id::SYSTEM.into());
+        }
+        if let Some(object) = value.object_id() {
+            if let Some(temporal) = self.heap.temporal_value(object)? {
+                if temporal.kind == TemporalKind::ZonedDateTime {
+                    return Ok(temporal.time_zone);
+                }
+            }
+        }
+        let Value::String(text) = value else {
+            return Err(RuntimeError::TypeError(
+                "Temporal time zone must be a string or a Temporal.ZonedDateTime".into(),
+            ));
+        };
+        let text = text
+            .to_utf8()
+            .map_err(|_| RuntimeError::RangeError("invalid Temporal time zone".into()))?;
+        time_zone_id::resolve(&text)
+            .map_err(|()| RuntimeError::RangeError(format!("invalid Temporal time zone: {text}")))
+    }
+
+    /// `SystemDateTime`: the current instant's wall-clock fields in the zone
+    /// `time_zone` names.
+    fn temporal_now_local_fields(
+        &mut self,
+        time_zone: &Value,
+    ) -> Result<(epoch::CivilDate, epoch::CivilTime), RuntimeError> {
+        let identifier = self.temporal_time_zone_identifier(time_zone)?;
+        let offset = time_zone_id::offset_seconds(&identifier).ok_or_else(|| {
+            RuntimeError::RangeError(format!(
+                "Temporal.Now cannot yet resolve a UTC offset for the named time zone {identifier}"
+            ))
+        })?;
+        let local =
+            Self::temporal_now_epoch_nanoseconds() + BigInt::from(offset) * 1_000_000_000_u32;
+        Ok(epoch::instant_fields(&local))
+    }
+
+    pub(super) fn temporal_now_instant(&mut self) -> Result<Value, RuntimeError> {
+        self.instant_from_epoch_nanoseconds(Self::temporal_now_epoch_nanoseconds())
+    }
+
+    pub(super) fn temporal_now_time_zone_id(&mut self) -> Result<Value, RuntimeError> {
+        Ok(Value::String(time_zone_id::SYSTEM.into()))
+    }
+
+    /// `Temporal.Now.plainDateISO`/`plainDateTimeISO`/`plainTimeISO`: the same
+    /// wall clock, projected onto whichever of the three ISO-calendar plain
+    /// types `kind` names. The fields each type does not carry keep the
+    /// constructors' own 1970-01-01T00:00 placeholders.
+    pub(super) fn temporal_now_plain(
+        &mut self,
+        kind: TemporalKind,
+        time_zone: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let ((year, month, day), (hour, minute, second, millisecond, microsecond, nanosecond)) =
+            self.temporal_now_local_fields(time_zone)?;
+        let dated = kind != TemporalKind::PlainTime;
+        let timed = kind != TemporalKind::PlainDate;
+        self.alloc_temporal_value(
+            TemporalValue {
+                kind,
+                duration: None,
+                year: if dated { year } else { 1970 },
+                month: if dated { month } else { 1 },
+                day: if dated { day } else { 1 },
+                hour: if timed { hour } else { 0 },
+                minute: if timed { minute } else { 0 },
+                second: if timed { second } else { 0 },
+                millisecond: if timed { millisecond } else { 0 },
+                microsecond: if timed { microsecond } else { 0 },
+                nanosecond: if timed { nanosecond } else { 0 },
+                epoch_nanoseconds: 0.into(),
+                calendar: "iso8601".into(),
+                time_zone: "UTC".into(),
+            },
+            false,
+        )
+    }
+
+    /// `Temporal.Now.zonedDateTimeISO`: unlike the plain variants this needs
+    /// only a *valid* zone identifier, never its offset — the epoch value and
+    /// the identifier are both exact, so a named IANA zone works here even
+    /// while Track E's transition history is still missing. The ISO
+    /// wall-clock fields stay at the same 1970-01-01 placeholder
+    /// `instant_from_epoch_nanoseconds` leaves on an `Instant`; nothing
+    /// observable reads them for a `ZonedDateTime` yet, and Stage 2 will
+    /// derive them from the epoch and the zone rather than store them.
+    pub(super) fn temporal_now_zoned_date_time(
+        &mut self,
+        time_zone: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let identifier = self.temporal_time_zone_identifier(time_zone)?;
+        let epoch_nanoseconds = Self::temporal_now_epoch_nanoseconds();
+        self.alloc_temporal_value(
+            TemporalValue {
+                kind: TemporalKind::ZonedDateTime,
+                duration: None,
+                year: 1970,
+                month: 1,
+                day: 1,
+                hour: 0,
+                minute: 0,
+                second: 0,
+                millisecond: 0,
+                microsecond: 0,
+                nanosecond: 0,
+                epoch_nanoseconds,
+                calendar: "iso8601".into(),
+                time_zone: identifier,
+            },
+            false,
+        )
     }
 }

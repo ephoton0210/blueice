@@ -434,6 +434,119 @@ fn temporal_string_calendar_and_unknown_annotations_follow_the_grammar() {
 }
 
 #[test]
+fn temporal_now_reads_one_wall_clock_through_resolved_time_zone_identifiers() {
+    let source = r#"
+        if (typeof Temporal.Now !== "object") throw new Error("Now is a namespace object");
+        if (Object.getPrototypeOf(Temporal.Now) !== Object.prototype) throw new Error("Now prototype");
+        if (Temporal.Now.prototype !== undefined) throw new Error("Now has no prototype property");
+        if (String(Temporal.Now) !== "[object Temporal.Now]") throw new Error("Now toStringTag");
+
+        for (let name of ["instant", "plainDateISO", "plainDateTimeISO", "plainTimeISO", "timeZoneId", "zonedDateTimeISO"]) {
+            let method = Temporal.Now[name];
+            if (typeof method !== "function") throw new Error(`method ${name}`);
+            if (method.length !== 0 || method.name !== name) throw new Error(`length/name ${name}`);
+            let threw = false;
+            try { new method(); } catch (error) { threw = error instanceof TypeError; }
+            if (!threw) throw new Error(`${name} is not a constructor`);
+        }
+
+        // The Instant reads the same wall clock Date.now() does, so it must
+        // land inside a window bracketing the call.
+        let before = Date.now();
+        let instant = Temporal.Now.instant();
+        let after = Date.now();
+        if (!(instant instanceof Temporal.Instant)) throw new Error("instant instance");
+        let milliseconds = Number(instant.epochNanoseconds / 1000000n);
+        if (milliseconds < before || milliseconds > after) throw new Error("instant is not now");
+        if (Temporal.Now.instant() === instant) throw new Error("each call allocates");
+
+        if (Temporal.Now.timeZoneId() !== "UTC") throw new Error("system time zone");
+        if (Temporal.Now.plainDateISO().calendarId !== "iso8601") throw new Error("plainDateISO calendar");
+        if (!(Temporal.Now.plainTimeISO() instanceof Temporal.PlainTime)) throw new Error("plainTimeISO instance");
+        if (!(Temporal.Now.plainDateTimeISO(undefined) instanceof Temporal.PlainDateTime)) throw new Error("explicit undefined");
+
+        let zoned = Temporal.Now.zonedDateTimeISO();
+        if (zoned.calendarId !== "iso8601" || zoned.timeZoneId !== Temporal.Now.timeZoneId()) {
+            throw new Error("zonedDateTimeISO defaults");
+        }
+
+        // A fixed offset shifts the reported wall clock by exactly that
+        // offset. PlainDateTime has no time-of-day getters yet (Stage 2), so
+        // read the shift back through toZonedDateTime, which turns the ISO
+        // fields into an epoch value with no further offset of its own.
+        let localEpoch = (zone) => Temporal.Now.plainDateTimeISO(zone).toZonedDateTime("UTC").epochMilliseconds;
+        if (Math.abs(localEpoch("+05:00") - localEpoch("UTC") - 5 * 3600000) > 1000) {
+            throw new Error("fixed offset shift");
+        }
+        if (Math.abs(localEpoch("-0930") - localEpoch("+00:00") + 9.5 * 3600000) > 1000) {
+            throw new Error("negative offset shift");
+        }
+        // The same shift has to move plainDateISO across a day boundary when
+        // the two offsets straddle one.
+        let dates = new Set(["-12:00", "+00:00", "+14:00"].map((zone) => {
+            let date = Temporal.Now.plainDateISO(zone);
+            return `${date.year}-${date.month}-${date.day}`;
+        }));
+        if (dates.size < 2) throw new Error("plainDateISO ignores its time zone");
+
+        let identifiers = [
+            ["UtC", "UTC"],
+            ["+01:30", "+01:30"],
+            ["-0700", "-07:00"],
+            ["America/Vancouver", "America/Vancouver"],
+            ["2021-08-19T17:30Z", "UTC"],
+            ["2021-08-19T1730-0700", "-07:00"],
+            ["2021-08-19T17:30:45.123456789-12:12[+01:46]", "+01:46"],
+            ["2021-08-19T17:30-07:00[America/Vancouver]", "America/Vancouver"],
+        ];
+        for (let [argument, identifier] of identifiers) {
+            if (Temporal.Now.zonedDateTimeISO(argument).timeZoneId !== identifier) {
+                throw new Error(`identifier ${argument}`);
+            }
+        }
+
+        // Non-strings are never coerced: only a ZonedDateTime is accepted as
+        // an object, and every other non-string is a TypeError.
+        if (Temporal.Now.zonedDateTimeISO(zoned).timeZoneId !== "UTC") throw new Error("ZonedDateTime argument");
+        for (let argument of [null, true, 1, 19761118, 1n, Symbol(), {}, new Temporal.Duration(), {toString(){return "UTC"}}]) {
+            let threw = false;
+            try { Temporal.Now.plainDateISO(argument); } catch (error) { threw = error instanceof TypeError; }
+            if (!threw) throw new Error(`non-string argument ${String(argument)}`);
+        }
+
+        let rangeErrors = [
+            "",
+            "-12:12:59.9",
+            "2021-08-19T17:30",
+            "2021-08-19T17:30-07:00:00",
+            "2021-08-19T17:30:45.123456789+23:59[+23:59:60]",
+            "-000000-10-31T17:45Z",
+            "Mars/Olympus_Mons",
+        ];
+        for (let argument of rangeErrors) {
+            for (let method of ["plainDateISO", "plainDateTimeISO", "plainTimeISO", "zonedDateTimeISO"]) {
+                let threw = false;
+                try { Temporal.Now[method](argument); } catch (error) { threw = error instanceof RangeError; }
+                if (!threw) throw new Error(`${method} must reject ${argument}`);
+            }
+        }
+
+        // A named IANA zone is a valid identifier, and ZonedDateTime only
+        // needs the identifier — but the plain ISO variants need a real UTC
+        // offset at this instant, which is still Track E's transition-history
+        // work. That must be a loud RangeError, never a UTC-shifted answer.
+        for (let method of ["plainDateISO", "plainDateTimeISO", "plainTimeISO"]) {
+            let threw = false;
+            try { Temporal.Now[method]("America/Vancouver"); } catch (error) { threw = error instanceof RangeError; }
+            if (!threw) throw new Error(`${method} must not silently assume UTC for a named zone`);
+        }
+
+        true
+    "#;
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
 fn date_locale_methods_share_datetime_format_resolution_and_defaults() {
     for source in [
         "let d=new Date(0);d.toLocaleString('en-US')===new Intl.DateTimeFormat('en-US',{year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',second:'numeric'}).format(d)",
