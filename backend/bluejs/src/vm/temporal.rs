@@ -3962,25 +3962,57 @@ impl Vm {
             })
             .transpose()?;
         let era_year_num = (!matches!(era_year_v, Value::Undefined))
-            .then(|| self.temporal_integer(&era_year_v, -9_999, 9_999, "era year"))
+            .then(|| self.temporal_integer(&era_year_v, i32::MIN, i32::MAX, "era year"))
             .transpose()?;
-        // The `iso8601` calendar has no eras at all (per the fix in
-        // `temporal_calendar_fields` above) — an `era`/`eraYear` property is
-        // still read (for property-bag ordering) but never applied to field
-        // resolution for it, matching Test262's
-        // `with/time-units-ignored.js` (`{ day: 30, era: "BC" }` on an ISO
-        // `PlainDate` simply changes `day`, `era` is inert).
-        if let Some(era) = era_s.as_deref().filter(|_| existing.calendar != "iso8601") {
-            fields.era = Some(era.as_bytes());
-            fields.era_year = Some(era_year_num.or(existing_fields.era_year).ok_or_else(|| {
-                RuntimeError::TypeError("Temporal eraYear requires an era".into())
-            })?);
-        } else if era_year_num.is_some() && existing.calendar != "iso8601" {
-            return Err(RuntimeError::RangeError(
-                "Temporal eraYear requires an era".into(),
-            ));
-        } else {
+        // `CalendarFields.cpp`'s `NonISOResolveFields`/`NonISOFieldKeysToIgnore`
+        // (ported here the same way `temporal_year_month_with` already does
+        // for `PlainYearMonth`): the `iso8601` calendar has no eras at all
+        // (per the fix in `temporal_calendar_fields` above) — an
+        // `era`/`eraYear` property is still read (for property-bag
+        // ordering) but never applied to field resolution for it, matching
+        // Test262's `with/time-units-ignored.js` (`{ day: 30, era: "BC" }`
+        // on an ISO `PlainDate` simply changes `day`, `era` is inert).
+        // `chinese`/`dangi` are different from `iso8601` here: ICU4X has no
+        // era concept for them either, but Temporal's own behavior is to
+        // *reject* any use of `era`/`eraYear` rather than silently ignore
+        // it (`mutually-exclusive-fields-{chinese,dangi}.js`). On any
+        // calendar that *does* support eras, `era` and `eraYear` must be
+        // supplied together or not at all — providing exactly one is a
+        // `TypeError` (`mutually-exclusive-fields-*.js`'s trailing
+        // `assert.throws(TypeError, ...)` pair), and this check must run
+        // before any `RangeError` from an out-of-range/conflicting
+        // month/day field (`calendarresolvefields-error-ordering-*.js`),
+        // which is why it happens here, before the month/day fields below
+        // are even parsed.
+        if existing.calendar == "iso8601" {
             fields.extended_year = Some(requested_year.unwrap_or(existing_fields.year));
+        } else if !calendar::calendar_supports_era(&existing.calendar) {
+            if era_s.is_some() || era_year_num.is_some() {
+                return Err(RuntimeError::TypeError(
+                    "era and eraYear are not valid for this calendar".into(),
+                ));
+            }
+            fields.extended_year = Some(requested_year.unwrap_or(existing_fields.year));
+        } else {
+            match (era_s.as_deref(), era_year_num) {
+                (Some(era), Some(era_year)) => {
+                    fields.era = Some(era.as_bytes());
+                    fields.era_year = Some(era_year);
+                }
+                (Some(_), None) => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.with requires eraYear when era is provided".into(),
+                    ));
+                }
+                (None, Some(_)) => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.with requires era when eraYear is provided".into(),
+                    ));
+                }
+                (None, None) => {
+                    fields.extended_year = Some(requested_year.unwrap_or(existing_fields.year));
+                }
+            }
         }
 
         let requested_month = (!matches!(month_v, Value::Undefined))
@@ -4002,8 +4034,14 @@ impl Vm {
         } else {
             fields.month_code = Some(existing_fields.month_code.as_bytes());
         }
+        // `ToPositiveIntegerWithTruncation`: `day` has no upper bound at the
+        // field-reading stage (`CalendarFields.cpp`) — the real range check
+        // happens once, below, against the calendar's own `overflow`
+        // regulation, matching `plain_month_day.rs`'s identical fix and
+        // Test262's `wrapping-at-end-of-month-*.js` (`date.with({ day:
+        // daysInMonth + 1 })` constrains rather than field-bound-rejecting).
         let requested_day = (!matches!(day_v, Value::Undefined))
-            .then(|| self.temporal_integer(&day_v, 1, 31, "day"))
+            .then(|| self.temporal_integer(&day_v, 1, i32::MAX, "day"))
             .transpose()?;
         fields.day = Some(requested_day.unwrap_or(i32::from(existing_fields.day)) as u8);
 
@@ -7029,6 +7067,24 @@ impl Vm {
                 } else {
                     "Temporal.with requires era when eraYear is provided".into()
                 },
+            ));
+        }
+        // `chinese`/`dangi` are unlike `iso8601` here even though both fail
+        // `calendar_supports_era`: `iso8601` silently ignores an `era`/
+        // `eraYear` property (no Test262 fixture requires otherwise, and
+        // `PlainDate`'s own `with/time-units-ignored.js` establishes this is
+        // the correct cross-type behavior for `iso8601` specifically), but
+        // ICU4X has no era concept for `chinese`/`dangi` at all and
+        // Temporal's own behavior for them is to *reject* any use of
+        // `era`/`eraYear`, matching
+        // `mutually-exclusive-fields-{chinese,dangi}.js`'s
+        // `assert.throws(TypeError, () => instance.with({ eraYear, era }))`.
+        if !supports_era
+            && existing.calendar != "iso8601"
+            && (era_s.is_some() || requested_era_year.is_some())
+        {
+            return Err(RuntimeError::TypeError(
+                "era and eraYear are not valid for this calendar".into(),
             ));
         }
         // `NonISOFieldKeysToIgnore`: `era`/`eraYear`/`year` are mutually

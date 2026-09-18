@@ -14,10 +14,16 @@ anchors, not named-zone anchors) is also done. Combined `Temporal/` numbers
 below are re-measured after every merge (see the reproduction command) —
 treat any specific figure in this paragraph as the snapshot at its own
 merge, not a running total; the Stage 3 closure table has the authoritative
-latest picture. The single largest remaining gap across `PlainDate`/
-`PlainDateTime`/`PlainYearMonth`/`PlainMonthDay` is the `with()` era/eraYear
-mutual-exclusivity feature (not yet attempted, see the relevant pass's own
-bullet below); `PlainYearMonth`/`PlainMonthDay`'s own leap-month calendars
+latest picture. **`with()`'s era/eraYear mutual-exclusivity validation across
+`PlainDate`/`PlainDateTime`/`PlainYearMonth` — closed 2026-09-18** (see the
+dedicated bullet at the end of Stage 2 below); `PlainMonthDay.prototype.with`
+turns out to take no `era`/`eraYear`/`year` fields at all (confirmed against
+both Gecko's own field list and the pinned Test262 corpus — no such fixture
+exists for it), so it needed no change. What remains open, once that cluster
+closed, is the field-read-order (`order-of-operations.js`) and
+options-argument-type-validation-order gaps each type's own Stage 2 slice
+already documented as separate, unrelated issues.
+`PlainYearMonth`/`PlainMonthDay`'s own leap-month calendars
 (`chinese`/`dangi`/`hebrew`) need a structurally different algorithm Gecko
 uses for them (not yet ported); for `ZonedDateTime` it is `until`/`since`'s
 day-length-aware fractional rounding at week/month/year granularity (see
@@ -2329,6 +2335,148 @@ once). One owner:
       Test262-verified implementation; **Phase 26 Stage 2 is functionally
       complete**, with the specific documented gaps above (and each earlier
       slice's own) as the remaining well-scoped follow-up work toward 100%.
+
+- [x] **`with()`'s era/eraYear mutual-exclusivity validation across
+      `PlainDate`/`PlainDateTime`/`PlainYearMonth`/`PlainMonthDay` — closed
+      2026-09-18** (single owner, sequential, in its own worktree; scope was
+      the era/eraYear cluster only, not `calendar.rs`'s leap-month
+      arithmetic or `vm/temporal.rs`'s `Duration` methods, both owned by
+      concurrent sibling passes on this branch per this document's own
+      coordination note). Triaged first against the real pinned corpus
+      before writing anything (`--filter
+      "Temporal/PlainDate/prototype/with/,Temporal/PlainDateTime/prototype/with/,Temporal/PlainYearMonth/prototype/with/,Temporal/PlainMonthDay/prototype/with/"`,
+      562 modes): 110 failing, of which exactly the era/eraYear cluster
+      below plus one adjacent, easily-fixed bug found during the same
+      triage; the remaining 24 (`options-wrong-type.js`,
+      `order-of-operations.js`, `PlainDateTime`'s own `options-empty.js`/
+      `overflow-undefined.js`/`throws-if-combined-date-time-outside-valid-
+      iso-range.js`, `PlainMonthDay/basic.js`,
+      `PlainYearMonth/minimum-valid-year-month.js`) are unrelated,
+      already-documented-elsewhere bugs, left untouched and unclaimed here.
+
+      **Real numbers**, pinned corpus, before/after on the same commit:
+
+      | Filter | Before | After |
+      | --- | ---: | ---: |
+      | The four types' `with/` only (562 modes) | 452/562 (80.4%) | **538/562 (95.7%)** |
+      | Whole-tree `Temporal/` (13,272 modes) | 11,800/13,272 (88.9%) | **11,886/13,272 (89.6%)** |
+
+      The whole-tree delta (+86) matches the filtered delta (+86) exactly,
+      confirming zero regressions anywhere outside the four types' `with/`
+      surface (reproduce with `python3 backend/bluejs/test262/run.py
+      --corpus /tmp/blueice-test262-72faf8ec --filter "Temporal/" --jobs
+      8`). Per-type after this pass, whole-tree run: `PlainDate` 2,076/2,290
+      (90.7%, up from 88.9%), `PlainDateTime` 2,272/2,512 (90.4%, up from
+      88.8%), `PlainYearMonth` 1,524/1,672 (91.1%, up from 90.9%),
+      `PlainMonthDay` 514/578 (88.9%, unchanged -- confirmed no era fixture
+      applies to it), `ZonedDateTime`/`Duration`/`Instant`/`Now`/`PlainTime`
+      all flat (untouched by this pass's file scope).
+
+      **Real bugs found and fixed**, all in `backend/bluejs/src/vm/
+      temporal.rs`'s `temporal_date_with` (shared by `PlainDate`/
+      `PlainDateTime`) and `temporal_year_month_with` (`PlainYearMonth`) --
+      confirmed via Test262's own `mutually-exclusive-fields-*.js` (one per
+      non-ISO calendar) and `calendarresolvefields-error-ordering-*.js`
+      fixtures, each pinned by a new Rust integration test in
+      `backend/bluejs/tests/temporal_plain_date_with_era.rs` (12 tests) and
+      `backend/bluejs/tests/temporal_plain_year_month_with_unsupported_era_calendar.rs`
+      (4 tests) before confirming the fix against the real corpus:
+      1. **`temporal_date_with`: `era` supplied without `eraYear` silently
+         fell back to the receiver's own `eraYear`** instead of throwing --
+         so the spec's `TypeError` (`era` excludes `year`/`eraYear` and
+         cannot be provided alone) never fired at all.
+      2. **`temporal_date_with`: `eraYear` supplied without `era` threw
+         `RangeError`** instead of the spec's `TypeError`.
+      3. **`temporal_date_with`: a calendar with no era concept at all
+         (`chinese`/`dangi`) let `era`/`eraYear` through unvalidated**,
+         silently ignoring them the same way `iso8601` correctly does --
+         but Temporal's actual rule for `chinese`/`dangi` is to *reject*
+         any use of `era`/`eraYear` with `TypeError`
+         (`mutually-exclusive-fields-{chinese,dangi}.js`), unlike
+         `iso8601` (`with/time-units-ignored.js`). Fixed by branching on
+         `existing.calendar == "iso8601"` (silently ignore, unchanged) vs.
+         `!calendar::calendar_supports_era(...)` (now `TypeError`) vs. the
+         era-supporting case (already-existing `Date::try_from_fields`
+         era-aware resolution, unchanged) as three separate arms, instead
+         of the previous single `existing.calendar != "iso8601"` condition
+         that conflated the second and third cases.
+      4. **`temporal_year_month_with` had the identical bug 3, one level
+         removed**: its own `supports_era` guard (added by the prior
+         `plain_year_month.rs`/`plain_month_day.rs` gap-closure pass, see
+         that entry above) only fired the `era`+`eraYear`-supplied-
+         together-or-not-at-all `TypeError` check *inside* an `if
+         supports_era` gate, so on `chinese`/`dangi` (where
+         `supports_era` is `false`) `with({ eraYear, era })` silently fell
+         through to the extended-year path instead of throwing --
+         `mutually-exclusive-fields-{chinese,dangi}.js`'s own
+         `assert.throws(TypeError, ...)` case for `PlainYearMonth`. Fixed
+         with the same `iso8601`-vs-`chinese`/`dangi` distinction as fix 3.
+      5. **Adjacent, non-era bug found by the same triage and fixed
+         alongside it**: `temporal_date_with`'s `day` field was bounded to
+         `1..=31` at the field-reading stage, so `date.with({ day:
+         daysInMonth + 1 })` (spec-valid -- it must *constrain* under the
+         default overflow, `RangeError` only under `overflow: "reject"`)
+         threw immediately regardless of the actual month length or
+         overflow option (`wrapping-at-end-of-month-{buddhist,gregory,
+         japanese}.js`, both `PlainDate` and `PlainDateTime`, 12 modes).
+         `ToPositiveIntegerWithTruncation` (`CalendarFields.cpp`'s
+         `CalendarField::Day` case) has no upper bound at all -- the same
+         fix `plain_month_day.rs`'s own `with()` already applied. Widened
+         to `1..=i32::MAX`, matching that precedent. `eraYear`'s own field
+         bound was widened from `-9_999..=9_999` to the full `i32` range
+         at the same time, matching `ToIntegerWithTruncation`'s unbounded
+         reading rule and `temporal_year_month_with`'s own existing
+         `eraYear` bound -- no fixture specifically required this, but it
+         removes a latent, same-class gap while the function was already
+         open.
+
+      **What was verified to need no change**: `PlainMonthDay.prototype.with`
+      reads no `year`/`era`/`eraYear` property at all (confirmed against
+      both Gecko's own field list, per the earlier `plain_year_month.rs`/
+      `plain_month_day.rs` slice's own note, and the pinned corpus -- no
+      `mutually-exclusive-fields-*.js`/`calendarresolvefields-error-
+      ordering-*.js` fixture exists under `PlainMonthDay/prototype/with/`
+      at all), so it was left untouched. The "supplying both `year` and
+      `era`/`eraYear` that disagree" `RangeError` case this document's own
+      task brief called out separately turns out to already be handled by
+      an existing, unmodified check
+      (`requested_year.is_some_and(|year| year != date.year().
+      extended_year())`) a few lines below the fix -- no Test262 fixture in
+      the pinned corpus exercises that specific combination (confirmed by
+      grep across every `mutually-exclusive-fields-*.js` fixture: none
+      supplies `year` alongside `era`+`eraYear` in the same `with()` call),
+      but the existing consistency check already produces the right
+      `RangeError` for it as a side effect of resolving through
+      `Date::try_from_fields`, so no dedicated new logic was needed. Real
+      era-to-extended-year resolution itself was **already** going through
+      `icu_calendar`'s `Date::try_from_fields` (fields.era/fields.era_year
+      set directly) before this pass -- the gap was purely in the
+      surrounding mutual-exclusivity *validation*, not in the era
+      arithmetic, so no new `calendar::era_year_to_extended_year`-shaped
+      helper was needed; `calendar.rs` gained no new functions in this
+      pass (only `calendar_supports_era`, already added by the prior
+      `plain_year_month.rs`/`plain_month_day.rs` gap-closure pass, was
+      reused).
+
+      **Deliberately left open, and why**: `Temporal.ZonedDateTime.prototype.
+      with` has the textually-identical bug to fixes 1-3 above in its own
+      copy of this era-resolution block (`vm/temporal.rs`, a separate
+      function) -- confirmed by inspection, not fixed here, since this
+      pass's scope was explicitly the four `Plain*` types only (`ZonedDate
+      Time`'s own documented open item is `until`/`since`'s day-length-aware
+      fractional rounding, a different, unrelated gap). A straightforward,
+      well-scoped follow-up: port the same three-way `iso8601`/
+      `!calendar_supports_era`/era-supporting branch into that function.
+      Deeper era/`monthCode` mutual-exclusivity validation beyond the
+      `era`+`eraYear` pairing (fields other than era/year) remains the same
+      open gap every earlier Stage 2 slice already documented -- unchanged
+      by this pass. `cargo build --workspace --all-targets` / `cargo test
+      --workspace --no-fail-fast` / `cargo clippy --workspace --all-targets
+      -- -D warnings` all clean on this pass's own commit -- the only test
+      failure anywhere in the whole workspace is the already-documented
+      pre-existing `string_protocols.rs::observable_conversion_order_and_gc_pressure`
+      flake this document's own launch instructions list as known and out
+      of scope.
 
 ### Stage 3 — Test262-evidence closure and coverage
 
