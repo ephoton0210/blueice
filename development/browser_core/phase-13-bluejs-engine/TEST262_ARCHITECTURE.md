@@ -2502,3 +2502,91 @@ equality fixes above don't regress the surrounding non-BigInt
 there, with the 32 failures being pre-existing, non-BigInt reference/
 `putValue`-ordering/line-terminator gaps unrelated to this session's
 changes).
+
+## BigInt closure, continued: language/ sweep, Proxy/Reflect audit, and a verified non-regression
+
+Implemented 2026-09-18, same session as the closure above. That first pass
+scoped its verification to `built-ins/BigInt/` and a spot-check of a few
+`language/` directories; this pass follows up on exactly what was left open:
+a systematic sweep of every `features: [BigInt]`-tagged file under
+`test/language/` (not just `test/built-ins/BigInt/`), an audit of BigInt's
+interaction with Proxy/Reflect and JSON (the closest ECMA-262 has to a
+structured-clone-like API), and a *verified* (not assumed) non-regression
+check against the pre-session commit.
+
+| Surface | Result | Evidence |
+| --- | ---: | --- |
+| `features:[BigInt]` under `test/language/` (215 files, 430 modes) | 422 pass / 8 fail | cross-referenced from a directory-scoped run against the exact file list |
+| `built-ins/JSON/{rawJSON,stringify}` BigInt-tagged (7 files, 14 modes) | 14 / 14 pass | `/tmp/json-bigint2` |
+| `postfix`/`prefix`-increment/decrement + equality/does-not-equals (323 modes), pre-session commit `d86243d` | 273 pass / 50 fail | `/tmp/lang-check-pre` |
+| Same directories, this session's tip | 291 pass / 32 fail | `/tmp/lang-check` |
+| Diff of the two | 18 fixed, **0 regressed**, 32 identical on both | path/mode-level `results.jsonl` diff |
+
+The remaining 8 `language/`-BigInt failures are all
+`language/expressions/dynamic-import/import-attributes/2nd-param-*.js`: an
+`import(specifier, options)` second-argument parser gap. 21 of that
+directory's 25 files aren't BigInt-tagged at all -- these four just happen
+to loop a BigInt value in among several non-object values (`null`, `false`,
+`23`, `''`, `Symbol()`, `23n`) they all reject the same way. This is the
+unrelated import-attributes proposal, not a BigInt gap, and stays out of
+scope here.
+
+Three real, narrow gaps closed this pass:
+
+`language/expressions/object/literal-property-name-bigint.js`: a BigInt
+literal was never accepted as a `LiteralPropertyName` -- object literal
+keys, method names, class methods and destructuring patterns all share one
+parser function, `parse_property_key`, which matched `Token::Number` but not
+`Token::BigInt`. Per "LiteralPropertyName: NumericLiteral -- 1. Let nbr be
+the NumericValue of NumericLiteral. 2. Return ! ToString(nbr)", added a
+`Token::BigInt` arm converting straight to `PropertyKey::String` via
+BigInt's own decimal `Display` -- exactly `ToString(BigInt)`, no further
+numeric-formatting pass needed (unlike a large Number literal used as a key,
+which can need scientific-notation handling).
+
+`language/expressions/{greater,less}-than/bigint-and-boolean.js`:
+`primitive::compare` had no `Bool`<->`BigInt` case at all, so `1n > true`
+fell through to `number(&value)`, which throws for a BigInt operand.
+Abstract Relational Comparison's own `ToNumeric` step converts a Boolean
+operand to Number (`0`/`1`) -- it never becomes a BigInt -- so both
+orderings now convert the Boolean side to a Number and recurse into the
+existing BigInt/Number case rather than trying (and failing) to treat it as
+a BigInt.
+
+`built-ins/JSON/stringify/value-bigint-cross-realm.js`, found while auditing
+BigInt against cross-realm/Proxy/Reflect machinery: JSON's Object-branch
+primitive-unwrap step only checked this realm's own `heap.boxed_primitive`,
+so a boxed BigInt built by a *different* Test262 realm
+(`$262.createRealm()`) fell through to ordinary-object serialization
+(`"{}"`) instead of unwrapping its `[[BigIntData]]` and throwing `TypeError`
+per `SerializeJSONProperty`. Added the same `test262_foreign_boxed_primitive`
+fallback that `BigInt.prototype.toString`/`valueOf` already needed for the
+identical reason in the prior closure.
+
+Proxy/Reflect audit: Test262 has **no** `built-ins/Proxy/` or
+`built-ins/Reflect/` tests tagged `BigInt` at all. Neither mechanism
+special-cases a value's *type* -- Proxy traps intercept property-key
+operations and forward arbitrary return values, and Reflect operations are
+thin wrappers over the same internal methods -- so there was no
+existing-corpus gap to find. Added our own end-to-end coverage instead
+(`get`/`set` traps carrying a BigInt property value, `Reflect.apply`/
+`Reflect.construct` with BigInt arguments, a `has` trap keyed by a BigInt's
+`ToPropertyKey` conversion -- confirming `5n in p` and `'5' in p` reach the
+trap identically, since `ToPropertyKey` on a non-Symbol primitive is just
+`ToString` -- and `Reflect.ownKeys`) confirming BigInt values and
+BigInt-derived property keys pass through both mechanisms exactly like any
+other value.
+
+`asIntN`/`asUintN`'s 1,000,000-bit cap (from the prior closure) is
+unchanged; a new regression test pins it as a hard, explicit `RangeError`
+boundary -- `BigInt.asIntN(1_000_000, 1n)` still succeeds exactly at the
+cap, `BigInt.asIntN(1_000_001, 1n)` throws -- rather than a value that
+silently narrows, wraps, or truncates before use.
+
+`backend/bluejs/tests/bigint.rs` grew from 27 to 33 tests, covering all of
+the above: the BigInt-literal property-name fix (object literals, method
+names, class methods, destructuring), Boolean/BigInt relational comparison
+in both directions, the cross-realm `JSON.stringify` fix, the Proxy/Reflect
+boundary checks, and the `asIntN`/`asUintN` cap's enforced (not truncated)
+behavior. `built-ins/BigInt/`'s full 154/154 remains unaffected by this
+round's changes (reverified after each fix).
