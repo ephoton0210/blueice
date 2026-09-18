@@ -62,6 +62,11 @@ impl Vm {
                     NativeFunction::IteratorHelper(native::IteratorHelperMethod::Filter),
                 ),
                 (
+                    "flatMap",
+                    1,
+                    NativeFunction::IteratorHelper(native::IteratorHelperMethod::FlatMap),
+                ),
+                (
                     "take",
                     1,
                     NativeFunction::IteratorHelper(native::IteratorHelperMethod::Take),
@@ -75,6 +80,11 @@ impl Vm {
                     "includes",
                     1,
                     NativeFunction::IteratorHelper(native::IteratorHelperMethod::Includes),
+                ),
+                (
+                    "join",
+                    1,
+                    NativeFunction::IteratorHelper(native::IteratorHelperMethod::Join),
                 ),
                 ("toArray", 0, NativeFunction::IteratorToArray),
                 ("forEach", 1, NativeFunction::IteratorForEach),
@@ -365,6 +375,47 @@ impl Vm {
         result
     }
 
+    fn callback_iterator_record(
+        &mut self,
+        receiver: &Value,
+        callback: &Value,
+    ) -> Result<Value, RuntimeError> {
+        if !matches!(receiver, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "Iterator helper requires an object receiver".into(),
+            ));
+        }
+        if !self.is_callable(callback)? {
+            // Terminal helpers validate their callback before GetIteratorDirect.
+            // An invalid callback closes the receiver but must not observe
+            // the cached `next` property.
+            self.iterator_close_direct(receiver)?;
+            return Err(RuntimeError::TypeError(
+                "Iterator helper callback must be callable".into(),
+            ));
+        }
+        self.direct_iterator_record(receiver)
+    }
+
+    fn iterator_flattenable_record(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        if !matches!(value, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "Iterator.flatMap mapper must return an object".into(),
+            ));
+        }
+        let method = self.get_method(value, &JsSymbol::well_known("iterator").into())?;
+        if method == Value::Undefined {
+            return self.direct_iterator_record(value);
+        }
+        let iterator = self.call_native(method, value.clone(), Vec::new(), false)?;
+        if !matches!(iterator, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "Iterator.flatMap iterator method must return an object".into(),
+            ));
+        }
+        self.direct_iterator_record(&iterator)
+    }
+
     fn iterator_helper_create(
         &mut self,
         receiver: &Value,
@@ -391,6 +442,9 @@ impl Vm {
         self.stack.push(record);
         self.stack.push(callback.clone());
         let result = (|| {
+            if kind == IteratorHelperKind::FlatMap {
+                self.with_roots(|heap| heap.set(record_id, "flatMapInner", Value::Undefined))?;
+            }
             let prototype = self.iterator_helper_prototype()?;
             self.with_roots(|heap| {
                 heap.alloc_iterator_helper(record_id, callback.clone(), kind, 0, prototype)
@@ -416,6 +470,14 @@ impl Vm {
         predicate: &Value,
     ) -> Result<Value, RuntimeError> {
         self.iterator_helper_create(receiver, predicate, IteratorHelperKind::Filter)
+    }
+
+    pub(in super::super) fn iterator_flat_map(
+        &mut self,
+        receiver: &Value,
+        mapper: &Value,
+    ) -> Result<Value, RuntimeError> {
+        self.iterator_helper_create(receiver, mapper, IteratorHelperKind::FlatMap)
     }
 
     pub(in super::super) fn iterator_take(
@@ -535,6 +597,23 @@ impl Vm {
                     self.iterator_close(&record)?;
                     return self.iterator_result(Value::Undefined, true);
                 }
+                if state.kind == IteratorHelperKind::FlatMap {
+                    let inner = self.heap.get_own(state.record, "flatMapInner")?;
+                    if let Some(inner @ Value::Object(_)) = inner {
+                        self.stack.push(inner.clone());
+                        let next = self.iterator_step(&inner, true);
+                        self.stack.pop();
+                        if let Some(value) = next? {
+                            self.stack.push(value.clone());
+                            let result = self.iterator_result(value, false);
+                            self.stack.pop();
+                            return result;
+                        }
+                        self.with_roots(|heap| {
+                            heap.set(state.record, "flatMapInner", Value::Undefined)
+                        })?;
+                    }
+                }
                 let Some(value) = self.iterator_step(&record, true)? else {
                     self.with_roots(|heap| heap.finish_iterator_helper(*helper))?;
                     return self.iterator_result(Value::Undefined, true);
@@ -584,6 +663,17 @@ impl Vm {
                             self.stack.pop();
                             return result;
                         }
+                        self.stack.pop();
+                    }
+                    IteratorHelperKind::FlatMap => {
+                        let mapped = self.iterator_helper_callback(*helper, &value)?;
+                        self.stack.pop();
+                        self.stack.push(mapped.clone());
+                        let inner = self.iterator_flattenable_record(&mapped);
+                        self.stack.pop();
+                        let inner = inner?;
+                        self.stack.push(inner.clone());
+                        self.with_roots(|heap| heap.set(state.record, "flatMapInner", inner))?;
                         self.stack.pop();
                     }
                 }
@@ -732,6 +822,56 @@ impl Vm {
         }
     }
 
+    pub(in super::super) fn iterator_join(
+        &mut self,
+        receiver: &Value,
+        separator: &Value,
+    ) -> Result<Value, RuntimeError> {
+        if !matches!(receiver, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "Iterator helper requires an object receiver".into(),
+            ));
+        }
+        self.stack.push(receiver.clone());
+        let result = (|| {
+            // The separator is coerced before `next` is fetched. Its abrupt
+            // conversion closes the direct iterator record without observing
+            // that property.
+            let separator = if *separator == Value::Undefined {
+                ",".into()
+            } else {
+                match self.coerce_string(separator) {
+                    Ok(separator) => separator,
+                    Err(error) => return self.close_direct_iterator_on_error(receiver, error),
+                }
+            };
+            let record = self.direct_iterator_record(receiver)?;
+            self.stack.push(record.clone());
+            let result = (|| {
+                let mut result = JsString::default();
+                let mut first = true;
+                while let Some(value) = self.iterator_step(&record, true)? {
+                    if !first {
+                        native::append(&mut result, &separator, self.config.max_string_bytes)?;
+                    }
+                    first = false;
+                    if !matches!(value, Value::Null | Value::Undefined) {
+                        self.stack.push(value.clone());
+                        let text = self.coerce_string(&value);
+                        self.stack.pop();
+                        let text = text?;
+                        native::append(&mut result, &text, self.config.max_string_bytes)?;
+                    }
+                }
+                Ok(Value::String(result))
+            })();
+            self.stack.pop();
+            self.close_iterator_on_error(&record, result)
+        })();
+        self.stack.pop();
+        result
+    }
+
     pub(in super::super) fn iterator_helper_return(
         &mut self,
         receiver: &Value,
@@ -759,6 +899,18 @@ impl Vm {
         let record = Value::Object(state.record);
         let result = (|| {
             self.with_roots(|heap| heap.finish_iterator_helper(*helper))?;
+            if state.kind == IteratorHelperKind::FlatMap {
+                if let Some(inner @ Value::Object(_)) =
+                    self.heap.get_own(state.record, "flatMapInner")?
+                {
+                    self.stack.push(inner.clone());
+                    let inner_result = self.iterator_close(&inner);
+                    self.stack.pop();
+                    if let Err(error) = inner_result {
+                        return self.close_iterator_on_error(&record, Err(error));
+                    }
+                }
+            }
             self.iterator_close(&record)?;
             self.iterator_result(Value::Undefined, true)
         })();
@@ -832,7 +984,7 @@ impl Vm {
         receiver: &Value,
         callback: &Value,
     ) -> Result<Value, RuntimeError> {
-        let record = self.direct_iterator_record(receiver)?;
+        let record = self.callback_iterator_record(receiver, callback)?;
         self.stack.push(record.clone());
         let result = (|| {
             let mut index = 0_u64;
@@ -851,7 +1003,7 @@ impl Vm {
         receiver: &Value,
         callback: &Value,
     ) -> Result<Value, RuntimeError> {
-        let record = self.direct_iterator_record(receiver)?;
+        let record = self.callback_iterator_record(receiver, callback)?;
         self.stack.push(record.clone());
         let result = (|| {
             let mut index = 0_u64;
@@ -874,7 +1026,7 @@ impl Vm {
         receiver: &Value,
         callback: &Value,
     ) -> Result<Value, RuntimeError> {
-        let record = self.direct_iterator_record(receiver)?;
+        let record = self.callback_iterator_record(receiver, callback)?;
         self.stack.push(record.clone());
         let result = (|| {
             let mut index = 0_u64;
@@ -897,7 +1049,7 @@ impl Vm {
         receiver: &Value,
         callback: &Value,
     ) -> Result<Value, RuntimeError> {
-        let record = self.direct_iterator_record(receiver)?;
+        let record = self.callback_iterator_record(receiver, callback)?;
         self.stack.push(record.clone());
         let result = (|| {
             let mut index = 0_u64;
@@ -921,7 +1073,7 @@ impl Vm {
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
         let callback = native::argument(args, 0);
-        let record = self.direct_iterator_record(receiver)?;
+        let record = self.callback_iterator_record(receiver, callback)?;
         self.stack.push(record.clone());
         let result = (|| {
             if !self.is_callable(callback)? {

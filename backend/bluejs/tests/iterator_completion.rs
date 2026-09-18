@@ -217,6 +217,61 @@ fn iterator_includes_uses_same_value_zero_and_validates_skip_without_coercion() 
 }
 
 #[test]
+fn iterator_join_coerces_separator_before_next_and_closes_on_content_errors() {
+    let source = r#"
+        let effects = '';
+        let index = 0;
+        let iterator = {
+          get next() {
+            effects += 'next';
+            return () => index++ < 2 ? { value: ['one', null][index - 1], done: false } : { done: true };
+          },
+        };
+        let separator = { toString() { effects += 'separator'; return '&&'; } };
+        let joined = Iterator.prototype.join.call(iterator, separator);
+        let closed = 0;
+        let contentError = false;
+        let throwing = {
+          next() { return { value: { toString() { throw 1; } }, done: false }; },
+          return() { closed++; return {}; },
+        };
+        try { Iterator.prototype.join.call(throwing); }
+        catch (error) { contentError = error === 1; }
+        joined === 'one&&' && effects === 'separatornext' && contentError && closed === 1
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn iterator_flat_map_is_lazy_flattens_one_level_and_closes_active_inner_iterator() {
+    let source = r#"
+        let outerSteps = 0;
+        let mapperCalls = 0;
+        let flattened = Iterator.from({
+          next() { return outerSteps++ < 2 ? { value: outerSteps, done: false } : { done: true }; },
+          return() { return {}; },
+        }).flatMap((value, index) => { mapperCalls++; return [value, index]; });
+        let first = flattened.next();
+        let second = flattened.next();
+        let third = flattened.next();
+        let innerCloses = 0;
+        let outerCloses = 0;
+        let active = Iterator.from({
+          next() { return { value: 1, done: false }; },
+          return() { outerCloses++; return {}; },
+        }).flatMap(() => ({
+          next() { return { value: 9, done: false }; },
+          return() { innerCloses++; return {}; },
+        }));
+        let activeValue = active.next();
+        active.return();
+        mapperCalls === 2 && outerSteps === 2 && first.value === 1 && second.value === 0 &&
+          third.value === 2 && activeValue.value === 9 && innerCloses === 1 && outerCloses === 1
+    "#;
+    assert_eq!(execute(&mut Vm::default(), source), Ok(Value::Bool(true)));
+}
+
+#[test]
 fn undeclared_for_heads_use_assignment_patterns_and_close_on_abrupt_assignment() {
     for source in [
         "let first=0;let second=0;let rest;for([first,second=3,...rest] of [[1,undefined,4,5]]){}first===1&&second===3&&rest.length===2&&rest[0]===4&&rest[1]===5",

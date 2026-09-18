@@ -2239,17 +2239,45 @@ boundaries. This fixed the otherwise misleading `RegExp.escape` punctuation
 fixtures, whose expected hexadecimal escapes are constructed by
 `codePointAt(...).toString(16)`.
 
-The first two lazy iterator helpers, `Iterator.prototype.map` and
-`Iterator.prototype.filter`, share one traced private state record for the
-direct iterator, cached `next`, callback, index, kind, done and executing
+The lazy iterator helpers, `Iterator.prototype.map`,
+`Iterator.prototype.filter`, `Iterator.prototype.take` and
+`Iterator.prototype.drop`, share one traced private state record for the
+direct iterator, cached `next`, callback/count, kind, done and executing
 states. Their helper `next`/`return` methods retain lazy advancement,
 iterator-result validation, re-entry rejection, forwarding of `return`, and
 the rule that an already-abrupt callback error survives a later close error.
 `filter` loops through rejected source values inside one lazy `next()` without
-eager collection, while preserving the callback's source index. The
-accompanying native-call correction permits `%Iterator%` to be used as a class
-heritage constructor while retaining its direct-call/direct-construct TypeError
-contract. This also unblocks pre-existing terminal-helper subclasses.
+eager collection, while preserving the callback's source index; `take` closes
+only when the next pull reaches its limit, while `drop` skips only on demand.
+The accompanying native-call correction permits `%Iterator%` to be used as a
+class heritage constructor while retaining its direct-call/direct-construct
+TypeError contract. This also unblocks pre-existing terminal-helper subclasses.
+
+`Iterator.prototype.includes` is a terminal helper with `SameValueZero`
+comparison, so it correctly treats `NaN` as matching itself and `-0` as `+0`.
+Its optional `skippedElements` accepts only an integral Number or infinity—it
+does not run `ToNumber`—and invalid input closes the direct iterator without
+observing `next`. A successful match likewise closes the active iterator,
+whereas natural exhaustion does not.
+
+`Iterator.prototype.join` coerces its separator before obtaining the cached
+`next` method, closes without that lookup if separator conversion is abrupt,
+and appends non-nullish values after their observable string conversion. Its
+error path shares `IteratorClose`, while iterator-origin errors retain the
+already-completed direct record and therefore do not call `return` again.
+
+The previously implemented terminal callback helpers—`forEach`, `every`,
+`some`, `find` and `reduce`—now share the same callback-validation boundary:
+an invalid callback closes an object receiver before `GetIteratorDirect`, so
+its `next` getter remains unobserved. This is a descriptor/internal-method
+ordering requirement, not merely an input-validation shortcut.
+
+The expanded library slice exposed two GC reachability defects under the
+normal small-nursery test configuration. A dequeued Promise job must retain
+its target, callback and values until that job completes; likewise, the first
+of a combinator's two just-allocated reaction functions must survive creation
+of the second. The VM now roots both sets of temporary edges, rather than
+depending on a particular heap allocation cadence.
 
 Pinned Test262 evidence from `72faf8ec1445c55149615e8b35187830783aba1a`:
 
@@ -2259,10 +2287,15 @@ Pinned Test262 evidence from `72faf8ec1445c55149615e8b35187830783aba1a`:
 | Array concat (spreadability, holes, species and foreign Realm) | **137 / 137 pass** | `target/test262-array-concat` |
 | Number radix conversion and RegExp.escape | **222 / 222 pass** | `target/test262-number-regexp` |
 | Iterator map/filter plus Iterator subclassability | **148 / 148 pass** | `target/test262-iterator-map-filter` |
-| Full current `built-ins/Iterator/` inventory | **614 pass / 694 fail** of 1,308 | `target/test262-iterator-current` |
+| Iterator take | **66 / 66 pass** | `target/test262-iterator-take` |
+| Iterator drop | **68 / 68 pass** | `target/test262-iterator-drop` |
+| Iterator includes | **88 / 88 pass** | `target/test262-iterator-includes` |
+| Iterator join | **36 / 36 pass** | `target/test262-iterator-join` |
+| Existing terminal callback helpers | **346 / 346 pass** | `target/test262-iterator-terminal-after-validation` |
+| Full current `built-ins/Iterator/` inventory | **872 pass / 436 fail** of 1,308 | `target/test262-iterator-after-terminal-validation` |
 
 The final Iterator row is deliberately not a completion claim: the remaining
 work is the other lazy helper state machines and multi-input helpers, not a
 reason to substitute eager collection behavior. The working tree has not been
-committed; broader crate and workspace gates remain required before any commit
-decision.
+committed; the local BlueJS crate gate is green, while broader workspace and
+cross-platform gates remain required before any commit decision.

@@ -1986,11 +1986,13 @@ impl Vm {
             NativeFunction::IteratorHelper(method) => match method {
                 native::IteratorHelperMethod::Map => self.iterator_map(&receiver, first),
                 native::IteratorHelperMethod::Filter => self.iterator_filter(&receiver, first),
+                native::IteratorHelperMethod::FlatMap => self.iterator_flat_map(&receiver, first),
                 native::IteratorHelperMethod::Take => self.iterator_take(&receiver, first),
                 native::IteratorHelperMethod::Drop => self.iterator_drop(&receiver, first),
                 native::IteratorHelperMethod::Includes => {
                     self.iterator_includes(&receiver, first, native::argument(&args, 1))
                 }
+                native::IteratorHelperMethod::Join => self.iterator_join(&receiver, first),
             },
             NativeFunction::IteratorToArray => self.iterator_to_array(&receiver),
             NativeFunction::IteratorForEach => self.iterator_for_each(&receiver, first),

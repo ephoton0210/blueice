@@ -149,6 +149,7 @@ pub(crate) type RegExpIteratorState = (ObjectId, JsString, bool, bool, bool);
 pub(crate) enum IteratorHelperKind {
     Map,
     Filter,
+    FlatMap,
     Take,
     Drop,
 }

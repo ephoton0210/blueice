@@ -97,9 +97,11 @@ pub(crate) enum SetMethod {
 pub(crate) enum IteratorHelperMethod {
     Map,
     Filter,
+    FlatMap,
     Take,
     Drop,
     Includes,
+    Join,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
