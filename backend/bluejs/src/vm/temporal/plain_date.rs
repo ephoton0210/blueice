@@ -192,16 +192,52 @@ pub(crate) enum DateUnit {
     Day,
 }
 
+/// Raw, possibly out-of-range `(year, month, day)` tuple comparison —
+/// `CompareISODate`/`CompareCalendarDate` as Gecko defines them: plain
+/// lexicographic comparison with **no** per-field validity check (a `day` of
+/// 29 in a 28-day month, or a `month` of 13, compares exactly as its numeric
+/// value would). This is deliberately not [`compare_iso_date`]'s `CivilDate`
+/// (whose `u8` fields cannot even represent an out-of-range candidate) —
+/// callers here need to compare a not-yet-regulated intermediate candidate
+/// against a real date, which [`ISODateSurpasses`]/[`surpasses`] needs to do
+/// *before* any constraining happens, per Gecko's own `DifferenceISODate`/
+/// `DifferenceNonISODate`.
+fn compare_date_tuple(a: (i64, i64, i64), b: (i64, i64, i64)) -> Ordering {
+    a.cmp(&b)
+}
+
+/// `ISODateSurpasses`/`CompareSurpasses ( sign, one, two )`: whether `one`
+/// has gone past `two` in the `sign` direction — the test every
+/// estimate-then-correct difference algorithm below uses to detect an
+/// overshoot, always against the *raw* (possibly invalid) candidate tuple.
+fn surpasses(sign: i64, one: (i64, i64, i64), two: (i64, i64, i64)) -> bool {
+    let cmp = match compare_date_tuple(one, two) {
+        Ordering::Less => -1_i64,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    };
+    cmp * sign > 0
+}
+
 /// `DifferenceISODate(y1, m1, d1, y2, m2, d2, largestUnit)`: the calendar
 /// duration `(years, months, weeks, days)` — signed, all the same sign as
-/// `end - start` — such that `AddISODate(start, duration) == end`.
-///
-/// Years are estimated directly (`end.year - start.year`) and then months
-/// bubble in a loop bounded to at most ~12 iterations, *not* one bounded by
-/// the total span: after the year estimate lands within a year of `end`
-/// (correcting by at most one year if it overshot), only the remaining
-/// within-year month offset needs bubbling. This keeps the whole function
-/// O(1) even across Temporal's full ±273,000-year range.
+/// `end - start` — such that `AddISODate(start, duration) == end`. Ported
+/// directly from Gecko's `DifferenceISODate`
+/// (`js/src/builtin/temporal/Calendar.cpp`): `years`/`months` are each a
+/// direct field subtraction (`end.year - start.year`, `end.month -
+/// start.month`), corrected by *at most one* step apiece by comparing an
+/// **unconstrained** `(year, month, start.day)` candidate against `end` —
+/// not a `start.day`-constrained landing date. That distinction is load-
+/// bearing, not cosmetic: constraining the candidate first (e.g. via
+/// [`regulate_iso_date`]) before comparing it hides exactly the "wrapping at
+/// the end of a month" case Test262 pins
+/// (`intl402/Temporal/PlainDate/prototype/since/wrapping-at-end-of-month-*.js`
+/// — `Jan 29 -> Feb 28` must report `{ days: -30 }`, not `{ months: -1 }`,
+/// because the *unconstrained* `Jan 29 + 1 month = Feb 29` candidate does
+/// surpass `Feb 28`, even though `Feb 29` constrained down to `Feb 28`
+/// would not). This replaces an earlier estimate-via-day-span-then-bubble-
+/// one-month-at-a-time implementation that constrained every candidate
+/// before comparing it, which is what let that class of case through.
 pub(crate) fn difference_iso_date(
     start: CivilDate,
     end: CivilDate,
@@ -221,50 +257,36 @@ pub(crate) fn difference_iso_date(
         };
     }
 
-    let land = |years: i64, months: i64| -> CivilDate {
-        let (y, m) = balance_iso_year_month(i64::from(start.0) + years, i64::from(start.1) + months);
-        // A landing year outside i32 cannot occur for any representable
-        // Temporal date pair, so this only ever clamps a same-year overflow.
-        let y = i32::try_from(y).unwrap_or(if y > 0 { i32::MAX } else { i32::MIN });
-        regulate_iso_date(y, m, i64::from(start.2), false)
-            .expect("constrain-mode regulation always succeeds")
-    };
-    let sign_towards = |candidate: CivilDate| -> i64 {
-        match compare_iso_date(candidate, end) {
-            Ordering::Less => 1,
-            Ordering::Greater => -1,
-            Ordering::Equal => 0,
-        }
-    };
+    let (y1, m1, d1) = (i64::from(start.0), i64::from(start.1), i64::from(start.2));
+    let two = (i64::from(end.0), i64::from(end.1), i64::from(end.2));
 
-    let mut years = i64::from(end.0) - i64::from(start.0);
-    let mut mid = land(years, 0);
-    if sign_towards(mid) == -sign {
+    let mut years = two.0 - y1;
+    let mut months = two.1 - m1;
+
+    if surpasses(sign, (y1 + years, m1, d1), two) {
         years -= sign;
-        mid = land(years, 0);
+        months += 12 * sign;
     }
 
-    let mut months = 0_i64;
-    loop {
-        let candidate_months = months + sign;
-        let candidate = land(years, candidate_months);
-        let candidate_sign = sign_towards(candidate);
-        if candidate_sign == -sign {
-            break;
-        }
-        months = candidate_months;
-        mid = candidate;
-        if candidate_sign == 0 {
-            break;
-        }
+    let (iy, im) = balance_iso_year_month(y1 + years, m1 + months);
+    if surpasses(sign, (iy, i64::from(im), d1), two) {
+        months -= sign;
     }
 
-    let days = iso_date_to_epoch_days(end) - iso_date_to_epoch_days(mid);
     if largest_unit == DateUnit::Month {
-        (0, months + years * 12, 0, days)
-    } else {
-        (years, months, 0, days)
+        months += years * 12;
+        years = 0;
     }
+
+    let (by, bm) = balance_iso_year_month(y1 + years, m1 + months);
+    // A landing year outside i32 cannot occur for any representable
+    // Temporal date pair, so this only ever clamps a same-year overflow.
+    let by = i32::try_from(by).unwrap_or(if by > 0 { i32::MAX } else { i32::MIN });
+    let constrained =
+        regulate_iso_date(by, bm, d1, false).expect("constrain-mode regulation always succeeds");
+
+    let days = iso_date_to_epoch_days(end) - iso_date_to_epoch_days(constrained);
+    (years, months, 0, days)
 }
 
 /// `ISODateToString`'s date-only portion, including `ToTemporalYearMonth`'s
@@ -404,24 +426,264 @@ pub(crate) fn calendar_add_date(
     ))
 }
 
-/// The non-ISO generalization of [`difference_iso_date`]: identical
-/// estimate-then-bubble shape, but each "add years/months to start" probe
-/// goes through [`calendar_add_date`] instead of the pure-ISO fast path, so
-/// the year/month carry honours the target calendar's own numbering.
+/// Whether `calendar`'s year boundaries and month lengths line up exactly
+/// with the ISO 8601 calendar's own — Gecko's `NonISODateUntil` dispatch
+/// (`js/src/builtin/temporal/Calendar.cpp`) routes these straight through
+/// `DifferenceISODate` on the value's *raw stored ISO fields*, never through
+/// `icu_calendar` at all for difference purposes: `Buddhist`/`Japanese`/
+/// `Roc` are the ISO calendar under a different era/year label, and
+/// `Gregorian` (Temporal's `"gregory"`, distinct from `"iso8601"`) *is* the
+/// ISO calendar's own proleptic-Gregorian date structure.
+fn calendar_uses_iso_date_arithmetic(calendar: AnyCalendarKind) -> bool {
+    matches!(
+        calendar,
+        AnyCalendarKind::Iso
+            | AnyCalendarKind::Gregorian
+            | AnyCalendarKind::Buddhist
+            | AnyCalendarKind::Japanese
+            | AnyCalendarKind::Roc
+    )
+}
+
+/// Whether `calendar` can insert a leap *month* (as opposed to only a leap
+/// *day*) in some years — the three lunisolar calendars in this project's
+/// closed 16-ID set. These need a variable `monthsPerYear` per landing year
+/// rather than [`calendar_difference_date_fixed_months`]'s constant `12`,
+/// matching Gecko's own `CalendarHasLeapMonths` split between
+/// `DifferenceNonISODate` and `DifferenceNonISODateWithLeapMonth`.
+fn calendar_has_leap_months(calendar: AnyCalendarKind) -> bool {
+    matches!(
+        calendar,
+        AnyCalendarKind::Chinese | AnyCalendarKind::Dangi | AnyCalendarKind::Hebrew
+    )
+}
+
+/// `ToCalendarDateWithOrdinalMonth`: the calendar-specific `(extended_year,
+/// ordinal_month, day)` triple for a representable ISO civil date. Ordinal
+/// month (not a `monthCode` string) is sufficient for every comparison this
+/// module needs it for, since it is monotonic within a single calendar year
+/// by construction (`temporal_calendar_fields`'s own doc comment: "a leap
+/// month therefore increments every following ordinal").
+fn to_calendar_ordinal(calendar: AnyCalendarKind, date: CivilDate) -> (i64, i64, i64) {
+    let iso = Date::try_new_iso(date.0, date.1, date.2)
+        .expect("a representable Temporal ISO date always converts to any calendar");
+    let cal_date = iso.to_calendar(AnyCalendar::new(calendar));
+    (
+        i64::from(cal_date.year().extended_year()),
+        i64::from(cal_date.month().ordinal),
+        i64::from(cal_date.day_of_month().0),
+    )
+}
+
+/// `CreateDateFrom(..., TemporalOverflow::Constrain)`: builds a
+/// representable ISO civil date from a calendar-ordinal `(year,
+/// ordinal_month, day)` triple, constraining an out-of-range `day` down to
+/// the landing month's own length. `ordinal_month` must already be
+/// normalized to `1..=` that year's own month count — this never carries a
+/// month overflow itself.
+fn calendar_ordinal_to_iso(
+    calendar: AnyCalendarKind,
+    year: i64,
+    ordinal_month: i64,
+    day: i64,
+) -> Option<CivilDate> {
+    let year = i32::try_from(year).ok()?;
+    let ordinal_month = u8::try_from(ordinal_month).ok()?;
+    let mut fields = DateFields::default();
+    fields.extended_year = Some(year);
+    fields.ordinal_month = Some(ordinal_month);
+    fields.day = Some(u8::try_from(day.clamp(1, 31)).ok()?);
+    let mut options = DateFromFieldsOptions::default();
+    options.overflow = Some(IcuOverflow::Constrain);
+    let landed = Date::try_from_fields(fields, options, AnyCalendar::new(calendar)).ok()?;
+    let landed_iso = landed.to_calendar(Iso);
+    Some((
+        landed_iso.year().extended_year(),
+        landed_iso.month().number(),
+        landed_iso.day_of_month().0,
+    ))
+}
+
+/// `DifferenceNonISODate`: the fixed-`monthsPerYear = 12` generalization of
+/// [`difference_iso_date`] for every non-ISO-aligned calendar without leap
+/// months (`Coptic`/`Ethiopian`/`EthiopianAmeteAlem`/`Indian`/the three
+/// Hijri variants/`Persian`) — same direct-subtraction-then-two-corrections
+/// shape, just carrying year/month in the target calendar's own numbering
+/// via [`to_calendar_ordinal`]/[`calendar_ordinal_to_iso`] instead of the
+/// ISO fields directly.
+fn calendar_difference_date_fixed_months(
+    calendar: AnyCalendarKind,
+    start: CivilDate,
+    end: CivilDate,
+    largest_unit: DateUnit,
+) -> (i64, i64, i64, i64) {
+    const MONTHS_PER_YEAR: i64 = 12;
+    let sign = match compare_iso_date(start, end) {
+        Ordering::Less => 1_i64,
+        Ordering::Greater => -1,
+        Ordering::Equal => return (0, 0, 0, 0),
+    };
+    let (y1, m1, d1) = to_calendar_ordinal(calendar, start);
+    let two = to_calendar_ordinal(calendar, end);
+
+    let mut years = two.0 - y1;
+    let mut months = two.1 - m1;
+
+    if surpasses(sign, (y1 + years, m1, d1), two) {
+        years -= sign;
+        months += MONTHS_PER_YEAR * sign;
+    }
+
+    // Gecko's own `DifferenceNonISODate`/`DifferenceISODate` normalize this
+    // intermediate with a single `if > monthsPerYear {} else if < 1 {}` step
+    // rather than a full modulo, which is only sound if the correction
+    // above bounds `months` tightly enough that one step always suffices.
+    // It does not for every calendar/date pair this engine's own
+    // `to_calendar_ordinal` can produce (confirmed by a real panic on
+    // `intl402/Temporal/PlainDate/prototype/since/basic-indian.js`, where a
+    // single step left `bm` still outside `1..=12`) — a full `div_euclid`/
+    // `rem_euclid` normalize (mirroring [`balance_iso_year_month`],
+    // parameterized on `MONTHS_PER_YEAR` instead of hardcoding 12) is
+    // strictly safer and exactly as correct for the in-range case.
+    let normalize = |year: i64, month: i64| -> (i64, i64) {
+        let zero_based = month - 1;
+        (
+            year + zero_based.div_euclid(MONTHS_PER_YEAR),
+            zero_based.rem_euclid(MONTHS_PER_YEAR) + 1,
+        )
+    };
+
+    let (by, bm) = normalize(y1 + years, m1 + months);
+    if surpasses(sign, (by, bm, d1), two) {
+        months -= sign;
+    }
+
+    if largest_unit == DateUnit::Month {
+        months += years * MONTHS_PER_YEAR;
+        years = 0;
+    }
+
+    let (fby, fbm) = normalize(y1 + years, m1 + months);
+    let constrained = calendar_ordinal_to_iso(calendar, fby, fbm, d1)
+        .expect("constrain-mode regulation always succeeds for a representable date");
+
+    let days = iso_date_to_epoch_days(end) - iso_date_to_epoch_days(constrained);
+    (years, months, 0, days)
+}
+
+/// The non-ISO generalization of [`difference_iso_date`] used only for the
+/// three leap-month calendars (`Chinese`/`Dangi`/`Hebrew`), where
+/// `monthsPerYear` varies by year so [`calendar_difference_date_fixed_months`]'s
+/// constant-12 carry does not apply. This keeps the estimate-then-bubble
+/// shape the fixed-months/ISO paths used before this module's Gecko-ported
+/// rewrite, **still using an unconstrained candidate for the years-estimate
+/// surpass check** (the part that rewrite fixed generally), but bubbling
+/// months one at a time through the already-constraining [`calendar_add_date`]
+/// rather than porting Gecko's own `DifferenceNonISODateWithLeapMonth`
+/// (which compares by `monthCode`, not ordinal month, specifically so an
+/// ordinal-month comparison across two years with a *different* leap-month
+/// position can't silently misorder — a real, narrower gap than the
+/// constrain-before-compare bug this module's other rewrites close).
+/// Documented, not silent: `development/browser_core/phase-26-ecma262-temporal/PLAN.md`
+/// tracks completing this to match Gecko's `monthCode`-based algorithm
+/// exactly as a follow-up.
+fn calendar_difference_date_leap_month(
+    calendar: AnyCalendarKind,
+    start: CivilDate,
+    end: CivilDate,
+    largest_unit: DateUnit,
+) -> (i64, i64, i64, i64) {
+    let sign = match compare_iso_date(start, end) {
+        Ordering::Less => 1_i64,
+        Ordering::Greater => -1,
+        Ordering::Equal => return (0, 0, 0, 0),
+    };
+
+    let land = |years: i64, months: i64| -> CivilDate {
+        calendar_add_date(calendar, start, years, months, 0, 0, false)
+            .expect("constrain-mode calendar regulation always succeeds")
+    };
+
+    let (y1, m1, d1) = to_calendar_ordinal(calendar, start);
+    let two = to_calendar_ordinal(calendar, end);
+
+    // Unconstrained years-only correction: `start`'s own ordinal month/day
+    // carried into `y1 + years` without re-resolving them against that
+    // year's own month structure. This only risks misordering when `y1 +
+    // years == two.0` *and* that year's leap-month position differs from
+    // `start`'s own year — see this function's own doc comment.
+    let mut years = two.0 - y1;
+    if surpasses(sign, (y1 + years, m1, d1), two) {
+        years -= sign;
+    }
+
+    let mut months = 0_i64;
+    let mut mid = land(years, 0);
+    loop {
+        let candidate_months = months + sign;
+        let candidate = land(years, candidate_months);
+        let candidate_ordinal = to_calendar_ordinal(calendar, candidate);
+        // Use the *unconstrained* day (`d1`, `start`'s own) for the surpass
+        // test rather than `candidate_ordinal`'s already-day-constrained
+        // one, per [`difference_iso_date`]'s own doc comment on why this
+        // matters.
+        let candidate_raw = (candidate_ordinal.0, candidate_ordinal.1, d1);
+        if surpasses(sign, candidate_raw, two) {
+            break;
+        }
+        months = candidate_months;
+        mid = candidate;
+        if compare_date_tuple(candidate_raw, two) == Ordering::Equal {
+            break;
+        }
+    }
+
+    let days = iso_date_to_epoch_days(end) - iso_date_to_epoch_days(mid);
+    if largest_unit == DateUnit::Month {
+        // Fold years into months using each crossed year's own real month
+        // count (`months_in_year_for`), not a fixed constant.
+        let mut total_months = months;
+        let mut probe_year = y1;
+        let mut remaining = years;
+        while remaining != 0 {
+            let step = if remaining > 0 { 1 } else { -1 };
+            let this_year = if step > 0 { probe_year } else { probe_year - 1 };
+            let count = i64::from(
+                months_in_year_for(calendar, i32::try_from(this_year).unwrap_or(if this_year > 0 {
+                    i32::MAX
+                } else {
+                    i32::MIN
+                }))
+                .unwrap_or(12),
+            );
+            total_months += count * step;
+            probe_year += step;
+            remaining -= step;
+        }
+        (0, total_months, 0, days)
+    } else {
+        (years, months, 0, days)
+    }
+}
+
+/// The non-ISO generalization of [`difference_iso_date`]: dispatches to
+/// whichever of [`calendar_uses_iso_date_arithmetic`],
+/// [`calendar_difference_date_fixed_months`] or
+/// [`calendar_difference_date_leap_month`] matches `calendar`, per Gecko's
+/// own `NonISODateUntil` three-way split. `week`/`day` `largestUnit` is
+/// always calendar-invariant pure ISO epoch-day math (every supported
+/// calendar uses a 7-day week and every concrete date has exactly one ISO
+/// form), matching Gecko's own "delegate to the ISO 8601 calendar for
+/// weeks/days" shortcut.
 pub(crate) fn calendar_difference_date(
     calendar: AnyCalendarKind,
     start: CivilDate,
     end: CivilDate,
     largest_unit: DateUnit,
 ) -> (i64, i64, i64, i64) {
-    if calendar == AnyCalendarKind::Iso {
+    if calendar_uses_iso_date_arithmetic(calendar) {
         return difference_iso_date(start, end, largest_unit);
     }
-    let sign = match compare_iso_date(start, end) {
-        Ordering::Less => 1_i64,
-        Ordering::Greater => -1,
-        Ordering::Equal => return (0, 0, 0, 0),
-    };
     if !matches!(largest_unit, DateUnit::Year | DateUnit::Month) {
         let days = iso_date_to_epoch_days(end) - iso_date_to_epoch_days(start);
         return if largest_unit == DateUnit::Week {
@@ -430,67 +692,10 @@ pub(crate) fn calendar_difference_date(
             (0, 0, 0, days)
         };
     }
-
-    let land = |years: i64, months: i64| -> CivilDate {
-        calendar_add_date(calendar, start, years, months, 0, 0, false)
-            .expect("constrain-mode calendar regulation always succeeds")
-    };
-    let sign_towards = |candidate: CivilDate| -> i64 {
-        match compare_iso_date(candidate, end) {
-            Ordering::Less => 1,
-            Ordering::Greater => -1,
-            Ordering::Equal => 0,
-        }
-    };
-
-    // A calendar year does not correspond exactly to 365.25 ISO days for
-    // every calendar (e.g. a Hijri year is ~354.37 days) — dividing by a
-    // fixed 366 would misestimate by several percent per year, which is
-    // fine for a short span but turns the correction loop below into a
-    // near-linear scan (thousands of iterations, each an `icu_calendar`
-    // `Date` construction) for a multi-century span. Probe the *actual*
-    // length of one calendar year from `start` instead, so the estimate is
-    // exact for a fixed-length calendar and close for a variable one.
-    let day_span = iso_date_to_epoch_days(end) - iso_date_to_epoch_days(start);
-    let probe_year = land(sign, 0);
-    let year_length = (iso_date_to_epoch_days(probe_year) - iso_date_to_epoch_days(start))
-        .unsigned_abs()
-        .max(1) as i64;
-    let mut years = day_span / year_length;
-    let mut mid = land(years, 0);
-    while sign_towards(mid) == -sign {
-        years -= sign;
-        mid = land(years, 0);
-    }
-    loop {
-        let candidate = land(years + sign, 0);
-        if sign_towards(candidate) == -sign {
-            break;
-        }
-        years += sign;
-        mid = candidate;
-    }
-
-    let mut months = 0_i64;
-    loop {
-        let candidate_months = months + sign;
-        let candidate = land(years, candidate_months);
-        let candidate_sign = sign_towards(candidate);
-        if candidate_sign == -sign {
-            break;
-        }
-        months = candidate_months;
-        mid = candidate;
-        if candidate_sign == 0 {
-            break;
-        }
-    }
-
-    let days = iso_date_to_epoch_days(end) - iso_date_to_epoch_days(mid);
-    if largest_unit == DateUnit::Month {
-        (0, months + years * 12, 0, days)
+    if calendar_has_leap_months(calendar) {
+        calendar_difference_date_leap_month(calendar, start, end, largest_unit)
     } else {
-        (years, months, 0, days)
+        calendar_difference_date_fixed_months(calendar, start, end, largest_unit)
     }
 }
 
@@ -908,5 +1113,93 @@ mod tests {
         let result =
             calendar_add_date(AnyCalendarKind::Gregorian, (2020, 3, 1), 1, 0, 0, 0, false);
         assert_eq!(result, Some((2021, 3, 1)));
+    }
+
+    /// Regression for a real bug in this module's earlier estimate-then-
+    /// bubble `difference_iso_date`/`calendar_difference_date`, found via
+    /// Test262's
+    /// `intl402/Temporal/PlainDate/prototype/since/wrapping-at-end-of-month-*.js`:
+    /// `Jan 29 -> Feb 28` (a non-leap year) must report a 30-day difference,
+    /// **not** one month, because the *unconstrained* `Jan 29 + 1 month =
+    /// Feb 29` candidate surpasses `Feb 28`, even though `Feb 29`
+    /// constrained down to `Feb 28` would land exactly on it. The earlier
+    /// implementation compared an already-`calendar_add_date`-constrained
+    /// candidate (which silently clips `Feb 29` to `Feb 28` before the
+    /// comparison ever happens) and got this wrong. Covers both the pure
+    /// ISO path (`difference_iso_date`) and the non-ISO-aligned fixed-
+    /// months path (`calendar_difference_date` with `Gregorian`, which
+    /// `wrapping-at-end-of-month-*.js`'s own `buddhist`/`gregory`/etc.
+    /// variants exercise) since both were rewritten together.
+    #[test]
+    fn month_difference_does_not_constrain_before_detecting_an_end_of_month_overshoot() {
+        for unit in [DateUnit::Year, DateUnit::Month] {
+            assert_eq!(
+                difference_iso_date((2020, 1, 29), (2020, 2, 28), unit),
+                (0, 0, 0, 30),
+                "ISO Jan 29 -> Feb 28, {unit:?}"
+            );
+            assert_eq!(
+                calendar_difference_date(AnyCalendarKind::Gregorian, (2020, 1, 29), (2020, 2, 28), unit),
+                (0, 0, 0, 30),
+                "Gregorian Jan 29 -> Feb 28, {unit:?}"
+            );
+            assert_eq!(
+                calendar_difference_date(AnyCalendarKind::Persian, (2020, 1, 29), (2020, 2, 28), unit),
+                calendar_difference_date_fixed_months(AnyCalendarKind::Persian, (2020, 1, 29), (2020, 2, 28), unit),
+                "Persian (fixed-months path) Jan 29 -> Feb 28 is internally consistent, {unit:?}"
+            );
+        }
+        // Jan 30 -> Feb 28 is 29 days (one day closer than Jan 29's case),
+        // and Jan 31 -> Feb 28 is 28 days -- both from the same fixture,
+        // pinning the exact day-count, not just "not a whole month".
+        assert_eq!(
+            difference_iso_date((2020, 1, 30), (2020, 2, 28), DateUnit::Year),
+            (0, 0, 0, 29)
+        );
+        assert_eq!(
+            difference_iso_date((2020, 1, 31), (2020, 2, 28), DateUnit::Year),
+            (0, 0, 0, 28)
+        );
+    }
+
+    /// Regression for a real panic in an earlier draft of
+    /// [`calendar_difference_date_fixed_months`]: its intermediate
+    /// year/month normalization used a single `if bm > 12 {} else if bm < 1
+    /// {}` step (mirroring Gecko's own `DifferenceNonISODate`), which is
+    /// only sound if the preceding correction bounds the candidate month
+    /// tightly enough that one step always suffices -- Gecko's own
+    /// production code apparently relies on invariants this port's simpler
+    /// `MONTHS_PER_YEAR`-only (no monthCode) representation doesn't
+    /// preserve. Found via a real crash on
+    /// `intl402/Temporal/PlainDate/prototype/since/basic-indian.js`
+    /// ("negative 61 years, 3 months and 17 days", `date19430716` to
+    /// `date18820330`), not by inspection. Fixed by a full `div_euclid`/
+    /// `rem_euclid` normalize instead of the single-step version. This test
+    /// exercises every fixed-months calendar across a multi-decade span
+    /// with a large year delta, the shape that triggered the crash.
+    #[test]
+    fn fixed_months_difference_never_panics_across_a_large_multi_decade_span() {
+        for calendar in [
+            AnyCalendarKind::Coptic,
+            AnyCalendarKind::Ethiopian,
+            AnyCalendarKind::EthiopianAmeteAlem,
+            AnyCalendarKind::Indian,
+            AnyCalendarKind::HijriTabularTypeIIFriday,
+            AnyCalendarKind::HijriTabularTypeIIThursday,
+            AnyCalendarKind::HijriUmmAlQura,
+            AnyCalendarKind::Persian,
+        ] {
+            for unit in [DateUnit::Year, DateUnit::Month] {
+                // date19430716 -> date18820330, the exact pair
+                // `basic-indian.js` panicked on.
+                let (years, months, weeks, days) =
+                    calendar_difference_date(calendar, (1943, 7, 16), (1882, 3, 30), unit);
+                assert_eq!(weeks, 0);
+                // Every field should be non-positive (end is before start)
+                // and the whole-duration sign should be consistent with a
+                // backward difference.
+                assert!(years <= 0 && months <= 0 && days <= 0, "{calendar:?} {unit:?}: {years} {months} {days}");
+            }
+        }
     }
 }
