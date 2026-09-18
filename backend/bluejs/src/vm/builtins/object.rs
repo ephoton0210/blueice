@@ -17,6 +17,12 @@ impl Vm {
         // Intrinsic globals are lazily initialized, but reflective descriptor
         // operations must observe the same own properties as ordinary Get.
         self.materialize_global_object_property(object, key)?;
+        // Keep the lazily-installed Iterator helper visible to every
+        // [[GetOwnProperty]] consumer. Test262's descriptor harness reaches
+        // this internal operation through both public reflection APIs and its
+        // host fast paths, so materializing only at public call sites made the
+        // same property inconsistently observable.
+        self.materialize_iterator_helper_property(object, key)?;
         // These %Object.prototype% methods are installed on first ordinary
         // lookup. [[GetOwnProperty]] is also observable through descriptor
         // APIs, however, so it must not expose a transient lazy-intrinsic
@@ -392,6 +398,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let mut current = Some(start);
         while let Some(object) = current {
+            self.materialize_iterator_helper_property(object, key)?;
             if self.heap.proxy(object)?.is_some() {
                 return self.proxy_get(object, receiver, key);
             }
@@ -544,6 +551,8 @@ impl Vm {
                 Some("FinalizationRegistry")
             } else if self.date_prototype == Some(default) {
                 Some("Date")
+            } else if default == self.base_iterator_prototype()? {
+                Some("Iterator")
             } else {
                 None
             };

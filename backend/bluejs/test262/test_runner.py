@@ -9,6 +9,9 @@ from unittest import mock
 
 import run
 from run import (
+    ITERATOR_ZIP_BASIC_MATRIX_FIXTURES,
+    ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET,
+    ITERATOR_ZIP_BASIC_MATRIX_TIMEOUT,
     Worker,
     case_timeout,
     classify,
@@ -243,6 +246,38 @@ class RunnerTests(unittest.TestCase):
             case_timeout(
                 {}, 2, "intl402/DateTimeFormat/prototype/formatToParts/basic.js"
             ),
+            2,
+        )
+
+    def test_iterator_zip_basic_matrices_receive_an_exact_bounded_envelope(self):
+        self.assertEqual(
+            ITERATOR_ZIP_BASIC_MATRIX_FIXTURES,
+            frozenset(
+                {
+                    "built-ins/Iterator/zip/basic-shortest.js",
+                    "built-ins/Iterator/zip/basic-longest.js",
+                    "built-ins/Iterator/zip/basic-strict.js",
+                    "built-ins/Iterator/zipKeyed/basic-shortest.js",
+                    "built-ins/Iterator/zipKeyed/basic-longest.js",
+                    "built-ins/Iterator/zipKeyed/basic-strict.js",
+                }
+            ),
+        )
+        for relative in ITERATOR_ZIP_BASIC_MATRIX_FIXTURES:
+            self.assertEqual(
+                instruction_budget({}, 100_000, relative),
+                ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET,
+            )
+            self.assertEqual(
+                case_timeout({}, 2, relative),
+                ITERATOR_ZIP_BASIC_MATRIX_TIMEOUT,
+            )
+        self.assertEqual(
+            instruction_budget({}, 100_000, "built-ins/Iterator/zip/options.js"),
+            100_000,
+        )
+        self.assertEqual(
+            case_timeout({}, 2, "built-ins/Iterator/zip/options.js"),
             2,
         )
 

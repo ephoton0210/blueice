@@ -1284,6 +1284,7 @@ impl Vm {
             }
             NativeFunction::ArrayIsArray => Ok(Value::Bool(self.is_array(first)?)),
             NativeFunction::ArrayAt => self.array_at(&receiver, first),
+            NativeFunction::ArrayFill => self.array_fill(&receiver, &args),
             NativeFunction::ArrayOf => self.array_of_method(&receiver, &args),
             NativeFunction::ArraySpecies => Ok(receiver),
             NativeFunction::ArrayFrom => self.array_from_method(&args),
@@ -1984,6 +1985,17 @@ impl Vm {
                 self.iterator_from(first)
             }
             NativeFunction::IteratorHelper(method) => match method {
+                native::IteratorHelperMethod::Concat => self.iterator_concat(&args),
+                native::IteratorHelperMethod::Zip => {
+                    self.iterator_zip(first, native::argument(&args, 1))
+                }
+                native::IteratorHelperMethod::ZipKeyed => {
+                    self.iterator_zip_keyed(first, native::argument(&args, 1))
+                }
+                native::IteratorHelperMethod::Chunks => self.iterator_chunks(&receiver, first),
+                native::IteratorHelperMethod::Windows => {
+                    self.iterator_windows(&receiver, first, native::argument(&args, 1))
+                }
                 native::IteratorHelperMethod::Map => self.iterator_map(&receiver, first),
                 native::IteratorHelperMethod::Filter => self.iterator_filter(&receiver, first),
                 native::IteratorHelperMethod::FlatMap => self.iterator_flat_map(&receiver, first),
@@ -2027,6 +2039,10 @@ impl Vm {
             NativeFunction::IteratorHelperNext => self.iterator_helper_next(&receiver),
             NativeFunction::IteratorHelperReturn => self.iterator_helper_return(&receiver),
             NativeFunction::IteratorDispose => self.iterator_dispose(&receiver),
+            NativeFunction::IteratorConstructorGetter => self.global("Iterator"),
+            NativeFunction::IteratorConstructorSetter => {
+                self.iterator_constructor_setter(&receiver, first)
+            }
             NativeFunction::IteratorToStringTagGetter => Ok(Value::String("Iterator".into())),
             NativeFunction::IteratorToStringTagSetter => {
                 self.iterator_to_string_tag_setter(&receiver, first)

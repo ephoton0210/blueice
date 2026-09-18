@@ -253,15 +253,35 @@ impl Vm {
                     false,
                     false,
                 )?;
-                self.define_data(
+                self.install_native_accessor(
                     iterator_prototype,
+                    prototype,
                     "constructor",
-                    Value::Object(id),
-                    true,
-                    false,
-                    true,
+                    NativeFunction::IteratorConstructorGetter,
+                    NativeFunction::IteratorConstructorSetter,
                 )?;
                 self.install_native(id, prototype, "from", 1, NativeFunction::IteratorFrom)?;
+                self.install_native(
+                    id,
+                    prototype,
+                    "concat",
+                    0,
+                    NativeFunction::IteratorHelper(native::IteratorHelperMethod::Concat),
+                )?;
+                self.install_native(
+                    id,
+                    prototype,
+                    "zip",
+                    1,
+                    NativeFunction::IteratorHelper(native::IteratorHelperMethod::Zip),
+                )?;
+                self.install_native(
+                    id,
+                    prototype,
+                    "zipKeyed",
+                    1,
+                    NativeFunction::IteratorHelper(native::IteratorHelperMethod::ZipKeyed),
+                )?;
             } else if name == "Array" {
                 self.define_data(
                     id,

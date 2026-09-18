@@ -35,6 +35,62 @@ impl Vm {
         result
     }
 
+    /// `Array.prototype.fill` performs `Set` for every index in the selected
+    /// range. Keeping this at the ordinary property boundary makes it generic
+    /// for array-like objects and preserves proxy and inherited-setter
+    /// behavior, rather than treating the receiver as dense Array storage.
+    pub(in super::super) fn array_fill(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        let object_value = Value::Object(object);
+        let base = self.stack.len();
+        self.stack.push(object_value.clone());
+        self.stack.extend(args.iter().cloned());
+        let result = (|| {
+            let length = self.get_property(&object_value, &"length".into())?;
+            let length = self.coerce_length(&length)?;
+            let start = self.array_fill_index(native::argument(args, 1), length)?;
+            let end = if args.get(2).is_some_and(|value| *value != Value::Undefined) {
+                self.array_fill_index(native::argument(args, 2), length)?
+            } else {
+                length as u64
+            };
+            let value = native::argument(args, 0).clone();
+            self.stack.push(value.clone());
+            for index in start..end.max(start) {
+                self.charge_step()?;
+                self.array_set_or_throw(object, index.to_string().into(), &value)?;
+            }
+            self.stack.pop();
+            Ok(object_value)
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// `ToIntegerOrInfinity` followed by Array's relative-index conversion.
+    /// `LengthOfArrayLike` is at most `2^53 - 1`, so every finite clamped
+    /// result is representable as an unsigned property index here.
+    fn array_fill_index(&mut self, value: &Value, length: f64) -> Result<u64, RuntimeError> {
+        let number = self.coerce_number(value)?;
+        let integer = if number.is_nan() || number == 0.0 {
+            0.0
+        } else {
+            number.trunc()
+        };
+        let index = if integer == f64::NEG_INFINITY {
+            0.0
+        } else if integer < 0.0 {
+            (length + integer).max(0.0)
+        } else {
+            integer.min(length)
+        };
+        Ok(index as u64)
+    }
+
     pub(in super::super) fn array_join(
         &mut self,
         receiver: &Value,

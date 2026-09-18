@@ -112,6 +112,7 @@ impl Vm {
                 || key == "toLocaleString"
                 || key == "valueOf"
                 || key == "at"
+                || key == "fill"
                 || key == "entries"
                 || key == "keys"
                 || key == "values"

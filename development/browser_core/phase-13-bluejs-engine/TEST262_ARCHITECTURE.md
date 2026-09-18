@@ -2253,6 +2253,63 @@ The accompanying native-call correction permits `%Iterator%` to be used as a
 class heritage constructor while retaining its direct-call/direct-construct
 TypeError contract. This also unblocks pre-existing terminal-helper subclasses.
 
+`Iterator.prototype.flatMap` extends that state record with a traced active
+inner direct-iterator record. It calls the mapper only when an outer value is
+needed, flattens exactly one iterator level, rejects primitive mapper results,
+and closes an active inner iterator before the outer iterator on `return()`.
+To retain the existing tiny-heap string-iteration guarantee, independently
+added helpers such as `flatMap` and `chunks` are materialized on
+`%Iterator.prototype%` only when their property is observed. The
+materialization is performed at the shared `[[GetOwnProperty]]` boundary, so
+ordinary reads and every descriptor/reflection path see the same writable,
+non-enumerable, configurable data property.
+
+`Iterator.concat` snapshots every object argument's `Symbol.iterator` method
+in argument order, yet delays calling each method until that source is first
+needed. Its concat state retains the iterable/method pairs and only the active
+direct iterator record; natural exhaustion drops that record without a
+`return`, while helper `return()` closes precisely the still-active source.
+The shared helper execution guard remains set during forwarding, preserving
+the required TypeError for a re-entrant `next` or `return`.
+
+`Iterator.prototype.chunks` accepts only an integral Number in the inclusive
+range 1–2³²−1; it deliberately does not coerce its argument. Invalid input
+therefore closes the object receiver before consulting `next`. Each lazy pull
+collects a distinct Array of up to that many values, returning the final
+partial array before producing the terminal result; no `return` is called for
+natural exhaustion.
+
+`Iterator.prototype.windows` applies the same Number-only validation before
+it reads `next`, then retains a traced private sliding buffer. It yields a
+fresh Array for every full window, and supports the explicit
+`"allow-partial"` mode for the single final undersized window. Invalid mode
+or size closes the receiver without observing its `next` property.
+
+`Iterator.prototype.constructor` is now the specified configurable,
+non-enumerable accessor. Its getter returns the Realm's `%Iterator%`; its
+setter uses `SetterThatIgnoresPrototypeProperties`, rejecting the home
+prototype while creating or updating an own `constructor` on derived objects.
+
+`GetPrototypeFromConstructor` now recognizes `%Iterator.prototype%` as a
+Realm-sensitive fallback intrinsic. A foreign `newTarget` whose `prototype`
+is non-object consequently selects the foreign Realm's Iterator prototype.
+
+`Iterator.zip` eagerly opens the outer iterables iterator and, for each
+yielded item, resolves it through `GetIteratorFlattenable`, retaining every
+opened record in the shared metadata object rather than a public slot; only
+`"longest"` mode additionally collects one padding value per record,
+optionally consuming a real padding iterator and closing it once enough
+values are read. Every eager step distinguishes which already-opened records
+an abrupt completion must close: a failing `GetIteratorFlattenable` closes
+the already-opened inner records and then the outer iterables iterator,
+while a failing outer step, or any failure while collecting padding, closes
+only the already-opened inner records — matching `IteratorZip`'s two
+distinct `IfAbruptCloseIterators` call sites rather than one shared handler.
+`Iterator.zipKeyed` shares this eager collection and closing behavior, but
+enumerates own enumerable keys (skipping `undefined` values) instead of
+iterating a list, and yields `null`-prototype records keyed by the source's
+own keys rather than fixed-length arrays.
+
 `Iterator.prototype.includes` is a terminal helper with `SameValueZero`
 comparison, so it correctly treats `NaN` as matching itself and `-0` as `+0`.
 Its optional `skippedElements` accepts only an integral Number or infinity—it
@@ -2272,6 +2329,13 @@ an invalid callback closes an object receiver before `GetIteratorDirect`, so
 its `next` getter remains unobserved. This is a descriptor/internal-method
 ordering requirement, not merely an input-validation shortcut.
 
+`Array.prototype.fill` performs an ordinary `Set` for every index in its
+resolved range rather than writing dense storage directly, so it stays
+generic over array-like receivers (including proxies and inherited setters)
+the same way the existing `at` method does. Its start/end arguments follow
+`ToIntegerOrInfinity` and the shared relative-index clamping, without special
+casing `NaN` beyond the standard "treat as zero" rule.
+
 The expanded library slice exposed two GC reachability defects under the
 normal small-nursery test configuration. A dequeued Promise job must retain
 its target, callback and values until that job completes; likewise, the first
@@ -2289,13 +2353,40 @@ Pinned Test262 evidence from `72faf8ec1445c55149615e8b35187830783aba1a`:
 | Iterator map/filter plus Iterator subclassability | **148 / 148 pass** | `target/test262-iterator-map-filter` |
 | Iterator take | **66 / 66 pass** | `target/test262-iterator-take` |
 | Iterator drop | **68 / 68 pass** | `target/test262-iterator-drop` |
+| Iterator flatMap | **88 / 88 pass** | `target/test262-iterator-flatmap` |
+| Iterator concat | **64 / 64 pass** | `target/test262-iterator-concat` |
+| Iterator chunks | **76 / 76 pass** | `target/test262-iterator-chunks` |
+| Iterator windows | **80 / 80 pass** | `target/test262-iterator-windows` |
+| Iterator constructor accessor | **4 / 4 pass** | `target/test262-iterator-constructor` |
+| Iterator cross-Realm constructor fallback | **2 / 2 pass** | `target/test262-iterator-proto-realm` |
+| Iterator zip | **76 / 76 pass** | `target/test262-iterator-zip` |
+| Iterator zipKeyed | **88 / 88 pass** | `target/test262-iterator-zip-keyed` |
 | Iterator includes | **88 / 88 pass** | `target/test262-iterator-includes` |
 | Iterator join | **36 / 36 pass** | `target/test262-iterator-join` |
 | Existing terminal callback helpers | **346 / 346 pass** | `target/test262-iterator-terminal-after-validation` |
-| Full current `built-ins/Iterator/` inventory | **872 pass / 436 fail** of 1,308 | `target/test262-iterator-after-terminal-validation` |
+| Array.prototype.fill | **44 / 44 pass** | `target/test262-array-fill` |
+| Full current `built-ins/Iterator/` inventory | **1,308 / 1,308 pass** | `target/test262-iterator-after-zip` |
 
-The final Iterator row is deliberately not a completion claim: the remaining
-work is the other lazy helper state machines and multi-input helpers, not a
-reason to substitute eager collection behavior. The working tree has not been
-committed; the local BlueJS crate gate is green, while broader workspace and
-cross-platform gates remain required before any commit decision.
+With `zip`/`zipKeyed`'s closing behavior corrected (see below), the full
+current `built-ins/Iterator/` inventory now passes completely against this
+pinned snapshot; this is scoped to `built-ins/Iterator/` and this snapshot,
+not a whole-engine or whole-Test262 completion claim. The working tree has
+not been committed; the local BlueJS crate gate is green, while broader
+workspace and cross-platform gates remain required before any commit
+decision.
+
+`Iterator.zip`'s initial working-tree revision opened records eagerly in
+order but never closed already-opened ones when a later step (a bad
+`GetIteratorFlattenable`, an outer iterator step, or padding collection)
+raised abruptly, unlike the equivalent `Iterator.zipKeyed` path. Test262's
+five dedicated abrupt-completion fixtures under `built-ins/Iterator/zip/`
+(`iterables-iteration-get-iterator-flattenable-abrupt-completion`,
+`iterables-iteration-iterator-step-value-abrupt-completion`, and the three
+`padding-iteration-*-abrupt-completion` cases) caught this: 10 of the 164
+scheduled `zip`/`zipKeyed` modes failed before the fix, all under `zip/`.
+The corrected implementation distinguishes, per `IfAbruptCloseIterators`
+call site, whether the outer iterables iterator itself must also close; a
+new BlueJS-side regression test
+(`iterator_zip_closes_already_opened_records_in_order_on_abrupt_completion`)
+pins the exact close ordering for all four cases independently of the
+upstream corpus.

@@ -95,6 +95,11 @@ pub(crate) enum SetMethod {
 /// whose size is part of each native heap object's footprint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum IteratorHelperMethod {
+    Concat,
+    Zip,
+    ZipKeyed,
+    Chunks,
+    Windows,
     Map,
     Filter,
     FlatMap,
@@ -242,6 +247,7 @@ pub(crate) enum NativeFunction {
     },
     ArrayIsArray,
     ArrayAt,
+    ArrayFill,
     ArrayOf,
     ArraySpecies,
     ArrayFrom,
@@ -498,6 +504,8 @@ pub(crate) enum NativeFunction {
     IteratorNext,
     IteratorSelf,
     IteratorDispose,
+    IteratorConstructorGetter,
+    IteratorConstructorSetter,
     IteratorToStringTagGetter,
     IteratorToStringTagSetter,
     AsyncIteratorSelf,

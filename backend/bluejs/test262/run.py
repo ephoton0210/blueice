@@ -338,6 +338,23 @@ TEMPORAL_CALENDAR_MATRIX_FIXTURES = frozenset(
 )
 TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET = 10_000_000
 TEMPORAL_CALENDAR_MATRIX_TIMEOUT = 360
+# The six upstream Iterator.zip/zipKeyed basic fixtures enumerate every prefix
+# combination through three inputs, then verify descriptor details for every
+# yielded row. They are finite conformance matrices, not an unbounded iterator
+# probe; keep their larger envelope exact and leave ordinary iterator cases at
+# the default budget.
+ITERATOR_ZIP_BASIC_MATRIX_FIXTURES = frozenset(
+    {
+        "built-ins/Iterator/zip/basic-shortest.js",
+        "built-ins/Iterator/zip/basic-longest.js",
+        "built-ins/Iterator/zip/basic-strict.js",
+        "built-ins/Iterator/zipKeyed/basic-shortest.js",
+        "built-ins/Iterator/zipKeyed/basic-longest.js",
+        "built-ins/Iterator/zipKeyed/basic-strict.js",
+    }
+)
+ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET = 10_000_000
+ITERATOR_ZIP_BASIC_MATRIX_TIMEOUT = 15
 # These six historical RegExp BMP enumerations parse or execute one pattern
 # for every UTF-16 code unit. They compete for the isolated matcher processes
 # during a parallel inventory run, so their measured per-mode bound is higher
@@ -582,6 +599,8 @@ def instruction_budget(data, default, relative=None, source=""):
     """Keep standard tail-call conformance probes within a bounded budget."""
     if relative in TEMPORAL_CALENDAR_MATRIX_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET)
+    if relative in ITERATOR_ZIP_BASIC_MATRIX_FIXTURES:
+        return max(default, ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET)
     if relative == NUMBER_FORMAT_NATIVE_PRECISION_MATRIX_FIXTURE:
         return default
     if relative in URI_EXHAUSTIVE_FIXTURES:
@@ -609,6 +628,8 @@ def case_timeout(data, default, relative=None, source=""):
     """Return a bounded, metadata-derived wall deadline for a Test262 mode."""
     if relative in TEMPORAL_CALENDAR_MATRIX_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_MATRIX_TIMEOUT)
+    if relative in ITERATOR_ZIP_BASIC_MATRIX_FIXTURES:
+        return max(default, ITERATOR_ZIP_BASIC_MATRIX_TIMEOUT)
     if relative == BUILTIN_FUNCTION_TOSTRING_FIXTURE:
         return max(default, BUILTIN_FUNCTION_TOSTRING_TIMEOUT)
     if relative in REGEXP_MATCH_INDICES_FIXTURES:
@@ -978,7 +999,46 @@ def main():
             reporter.join()
         for worker in workers:
             worker.close()
-    report = {"snapshot": SNAPSHOT, "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(), "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "regex_worker_sha256": hashlib.sha256(regex_worker_binary(args.adapter).read_bytes()).hexdigest(), "complete_inventory": not args.filter and not args.exclude, "filter": args.filter, "exclude": args.exclude, "discovered_js": len(all_files), "fixture_resources": len(fixtures), "test_files": len(files), "scheduled_modes": sum(counters.values()), "results": counters, "groups": groups, "features": features, "elapsed_seconds": round(time.monotonic() - start, 3), "timeout_seconds": args.timeout, "typed_array_harness_timeout_seconds": TYPED_ARRAY_HARNESS_TIMEOUT, "typed_array_harness_instruction_budget": TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET, "instruction_budget": args.instruction_budget, "tail_call_instruction_budget": TAIL_CALL_INSTRUCTION_BUDGET, "tail_call_timeout_seconds": TAIL_CALL_TIMEOUT, "unicode_identifier_timeout_seconds": UNICODE_IDENTIFIER_TIMEOUT, "uri_global_instruction_budget": URI_GLOBAL_INSTRUCTION_BUDGET, "uri_global_timeout_seconds": URI_GLOBAL_TIMEOUT, "uri_exhaustive_instruction_budget": URI_EXHAUSTIVE_INSTRUCTION_BUDGET, "uri_exhaustive_timeout_seconds": URI_EXHAUSTIVE_TIMEOUT, "temporal_calendar_matrix_instruction_budget": TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET, "temporal_calendar_matrix_timeout_seconds": TEMPORAL_CALENDAR_MATRIX_TIMEOUT, "jobs": args.jobs, "limitations": ["static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable", "unclassified parser rejections never satisfy parse-SyntaxError negative tests", "harness sources still require supported grammar and APIs", "native overrides for sta.js, assert.js, propertyHelper.js, isConstructor.js, the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness", "each mode has a bounded interpreter instruction budget; tail-call, TypedArray-harness, and the two Temporal calendar matrices receive their recorded budgets"]}
+    report = {
+        "snapshot": SNAPSHOT,
+        "adapter_sha256": hashlib.sha256(args.adapter.read_bytes()).hexdigest(),
+        "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "regex_worker_sha256": hashlib.sha256(regex_worker_binary(args.adapter).read_bytes()).hexdigest(),
+        "complete_inventory": not args.filter and not args.exclude,
+        "filter": args.filter,
+        "exclude": args.exclude,
+        "discovered_js": len(all_files),
+        "fixture_resources": len(fixtures),
+        "test_files": len(files),
+        "scheduled_modes": sum(counters.values()),
+        "results": counters,
+        "groups": groups,
+        "features": features,
+        "elapsed_seconds": round(time.monotonic() - start, 3),
+        "timeout_seconds": args.timeout,
+        "typed_array_harness_timeout_seconds": TYPED_ARRAY_HARNESS_TIMEOUT,
+        "typed_array_harness_instruction_budget": TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET,
+        "instruction_budget": args.instruction_budget,
+        "tail_call_instruction_budget": TAIL_CALL_INSTRUCTION_BUDGET,
+        "tail_call_timeout_seconds": TAIL_CALL_TIMEOUT,
+        "unicode_identifier_timeout_seconds": UNICODE_IDENTIFIER_TIMEOUT,
+        "uri_global_instruction_budget": URI_GLOBAL_INSTRUCTION_BUDGET,
+        "uri_global_timeout_seconds": URI_GLOBAL_TIMEOUT,
+        "uri_exhaustive_instruction_budget": URI_EXHAUSTIVE_INSTRUCTION_BUDGET,
+        "uri_exhaustive_timeout_seconds": URI_EXHAUSTIVE_TIMEOUT,
+        "temporal_calendar_matrix_instruction_budget": TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET,
+        "temporal_calendar_matrix_timeout_seconds": TEMPORAL_CALENDAR_MATRIX_TIMEOUT,
+        "iterator_zip_basic_matrix_instruction_budget": ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET,
+        "iterator_zip_basic_matrix_timeout_seconds": ITERATOR_ZIP_BASIC_MATRIX_TIMEOUT,
+        "jobs": args.jobs,
+        "limitations": [
+            "static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable",
+            "unclassified parser rejections never satisfy parse-SyntaxError negative tests",
+            "harness sources still require supported grammar and APIs",
+            "native overrides for sta.js, assert.js, propertyHelper.js, isConstructor.js, the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness",
+            "each mode has a bounded interpreter instruction budget; tail-call, TypedArray-harness, the two Temporal calendar matrices, and the six finite Iterator.zip/zipKeyed basic matrices receive their recorded budgets",
+        ],
+    }
     (args.output / "summary.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps({key: report[key] for key in ("test_files", "scheduled_modes", "results", "elapsed_seconds")}, indent=2))
     return 0 if counters["pass"] == sum(counters.values()) else 1

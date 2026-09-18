@@ -1200,6 +1200,13 @@ impl Vm {
                 1,
                 NativeFunction::ArrayAt,
             )?;
+            self.install_native(
+                self.array_prototype,
+                function_prototype,
+                "fill",
+                1,
+                NativeFunction::ArrayFill,
+            )?;
             for (name, kind) in [
                 ("entries", ArrayIteratorKind::Entries),
                 ("keys", ArrayIteratorKind::Keys),
@@ -1394,6 +1401,7 @@ impl Vm {
                     (object_prototype, "__proto__".into()),
                     (object_prototype, "hasOwnProperty".into()),
                     (self.array_prototype, "at".into()),
+                    (self.array_prototype, "fill".into()),
                     (self.array_prototype, "entries".into()),
                     (self.array_prototype, "keys".into()),
                     (self.array_prototype, "values".into()),

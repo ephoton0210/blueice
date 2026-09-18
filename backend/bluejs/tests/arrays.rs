@@ -79,6 +79,17 @@ fn mutating_and_locale_array_methods_preserve_generic_property_semantics() {
 }
 
 #[test]
+fn array_fill_is_generic_and_observes_relative_bounds() {
+    assert_eq!(
+        evaluate(
+            "let values=[0,1,2,3];let result=values.fill('x',-3,-1);let all=values.fill('z',-Infinity,Infinity);let generic={length:4};Array.prototype.fill.call(generic,7,1,-1);let descriptor=Object.getOwnPropertyDescriptor(Array.prototype,'fill');result===values&&all===values&&values.join(',')==='z,z,z,z'&&generic[0]===undefined&&generic[1]===7&&generic[2]===7&&generic[3]===undefined&&descriptor.writable&&descriptor.configurable&&!descriptor.enumerable&&Array.prototype.fill.length===1",
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn canonical_index_boundaries_grow_length_without_dense_allocation() {
     let mut heap = Heap::default();
     let array = heap.alloc_array(0, None).unwrap();

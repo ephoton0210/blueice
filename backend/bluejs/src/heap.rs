@@ -147,6 +147,11 @@ pub struct HeapStats {
 pub(crate) type RegExpIteratorState = (ObjectId, JsString, bool, bool, bool);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum IteratorHelperKind {
+    Concat,
+    Zip,
+    ZipKeyed,
+    Chunks,
+    Windows,
     Map,
     Filter,
     FlatMap,

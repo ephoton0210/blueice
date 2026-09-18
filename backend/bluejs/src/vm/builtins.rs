@@ -17,7 +17,7 @@ mod typed_arrays;
 use crate::heap::{
     same_value, ArrayIteratorKind, AsyncGeneratorCompletion, AsyncGeneratorDelegate,
     AsyncGeneratorRequest, AsyncGeneratorStatus, GeneratorState, IteratorHelperKind,
-    TypedArrayKind, TypedArrayNumericKey,
+    IteratorHelperState, TypedArrayKind, TypedArrayNumericKey,
 };
 use crate::native::{
     AtomicOp, MapMethod, MathMethod, NumberMethod, ObjectMethod, PatternMethod, SetMethod,
