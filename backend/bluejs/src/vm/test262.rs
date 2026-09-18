@@ -1585,6 +1585,17 @@ impl Vm {
                 if value_realm == realm_id {
                     return Ok(Value::Object(target));
                 }
+                // `target` belongs to a different Test262 realm than the
+                // one we are exporting into. If it is itself a
+                // `ShadowRealm` instance there, re-export that exact same
+                // child realm into `realm_id` too, rather than falling
+                // through to an opaque, brand-less stand-in that could
+                // never again be recognized as a `ShadowRealm`.
+                if let Some(value) =
+                    self.export_foreign_shadow_realm(value_realm, target, realm_id)?
+                {
+                    return Ok(value);
+                }
                 break;
             }
             let Some((target, _)) = self.heap.proxy(candidate)? else {
@@ -1593,6 +1604,54 @@ impl Vm {
             candidate = target;
         }
         self.test262_transport_value(realm_id, value.clone())
+    }
+
+    /// If `target` (an object living in the Test262 realm `source_realm_id`'s
+    /// own `Vm`) is itself a `ShadowRealm` instance, registers that exact
+    /// same child realm under a fresh instance object in `realm_id`'s own
+    /// `Vm` too (a cheap `Rc` clone -- see `ShadowRealmRecord`'s doc
+    /// comment) and returns that new instance's identity. Reaching
+    /// `evaluate`/`importValue`/a wrapped-function call through it then
+    /// observes the exact same realm -- same `globalThis`, same prior
+    /// `evaluate()` side effects -- as the original, which Test262's
+    /// ordinary opaque, brand-less transport (`test262_transport_value`)
+    /// cannot represent at all. Returns `Ok(None)` when `target` is not a
+    /// `ShadowRealm`, letting the caller fall back to that ordinary
+    /// transport as before.
+    fn export_foreign_shadow_realm(
+        &mut self,
+        source_realm_id: ObjectId,
+        target: ObjectId,
+        realm_id: ObjectId,
+    ) -> Result<Option<Value>, RuntimeError> {
+        let Some(source_record) = self
+            .test262_realms
+            .get(&source_realm_id)
+            .and_then(|realm| realm.vm.shadow_realm_record(target))
+        else {
+            return Ok(None);
+        };
+        // Reuse an earlier re-export of this exact target into this exact
+        // destination realm, rather than minting a fresh `ShadowRealm`
+        // instance object every time the same value crosses again.
+        if let Some(&existing) = self
+            .test262_realms
+            .get(&realm_id)
+            .and_then(|realm| realm.shadow_realm_reexports.get(&target))
+        {
+            return Ok(Some(Value::Object(existing)));
+        }
+        let destination = self
+            .test262_realms
+            .get_mut(&realm_id)
+            .expect("foreign realm remains live");
+        let default = destination.vm.shadow_realm_prototype()?;
+        let instance = destination
+            .vm
+            .with_roots(|heap| heap.alloc_object(Some(default)))?;
+        destination.vm.adopt_shadow_realm(instance, source_record);
+        destination.shadow_realm_reexports.insert(target, instance);
+        Ok(Some(Value::Object(instance)))
     }
 
     /// Creates an identity-preserving, child-heap stand-in for a parent value.
@@ -1980,6 +2039,7 @@ impl Vm {
                     wrappers: HashMap::from([(foreign_global, global)]),
                     imported_sources: HashMap::new(),
                     imported_values: HashMap::new(),
+                    shadow_realm_reexports: HashMap::new(),
                 },
             );
             self.test262_foreign_values.insert(

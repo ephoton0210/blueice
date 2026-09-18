@@ -22,6 +22,16 @@ fn assert_true(source: &str) {
     assert_eq!(evaluate(source).unwrap(), Value::Bool(true), "{source}");
 }
 
+fn assert_true_with_test262_harness(source: &str) {
+    let mut vm = Vm::default();
+    vm.install_test262_harness()
+        .expect("test262 harness installs");
+    let result = vm
+        .execute_script(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap();
+    assert_eq!(result, Value::Bool(true), "{source}");
+}
+
 #[test]
 fn constructor_creates_distinct_instances_with_the_expected_prototype_chain() {
     assert_true(
@@ -145,6 +155,59 @@ fn multiple_shadow_realms_can_exchange_wrapped_functions_across_a_gc_boundary() 
            return r2wrapped() === 1 && rewrapped() === 2 \
              && realm1.evaluate('globalThis.count') === 2; \
          })()",
+    );
+}
+
+#[test]
+fn evaluate_gives_each_call_a_fresh_lexical_scope_that_does_not_conflict_with_earlier_ones() {
+    // GetShadowRealmContext ( shadowRealmRecord, strictEval ): "1. Let
+    // lexEnv be NewDeclarativeEnvironment(shadowRealmRecord.[[GlobalEnv]])."
+    // -- a *fresh* declarative environment on every single `evaluate` call,
+    // unlike an ordinary repeated top-level Script (where global
+    // `let`/`const` redeclaration genuinely is an error against the same
+    // realm, matching real engines' <script>-tag behavior). Two separate
+    // `evaluate` calls declaring the same top-level `const` name must not
+    // conflict with each other.
+    assert_true(
+        "(()=>{ \
+           const r = new ShadowRealm(); \
+           r.evaluate('const x = 1; x'); \
+           return r.evaluate('const x = 2; x') === 2; \
+         })()",
+    );
+    // `var`/function declarations are unaffected: GetShadowRealmContext's
+    // `varEnv` stays the realm's own persistent GlobalEnv even though
+    // `lexEnv` is fresh each time, so they keep being real, visible
+    // globalThis properties across calls exactly as before.
+    assert_true(
+        "(()=>{ \
+           const r = new ShadowRealm(); \
+           r.evaluate('var y = 1;'); \
+           return r.evaluate('y') === 1; \
+         })()",
+    );
+}
+
+#[test]
+fn a_shadowrealm_instance_keeps_its_identity_across_a_test262_realm_transport() {
+    // A `ShadowRealm` instance created in one Test262 `$262.createRealm()`
+    // realm and passed as a value into a *third*, unrelated realm must
+    // still be recognized there as the exact same live `ShadowRealm` --
+    // same [[ShadowRealm]] brand, same child realm (so a later `evaluate`
+    // reached through either path observes the other's side effects) --
+    // not Test262's ordinary opaque, brand-less membrane stand-in (which
+    // cannot represent "this is a ShadowRealm" at all).
+    assert_true_with_test262_harness(
+        "var other = $262.createRealm().global; \
+         var OtherShadowRealm = other.ShadowRealm; \
+         var yetAnother = $262.createRealm().global; \
+         var YetAnotherShadowRealm = yetAnother.ShadowRealm; \
+         var realm = Reflect.construct(OtherShadowRealm, []); \
+         realm.evaluate('globalThis.count = 1;'); \
+         var seenThroughYetAnother = YetAnotherShadowRealm.prototype.evaluate.call(realm, 'globalThis.count'); \
+         YetAnotherShadowRealm.prototype.evaluate.call(realm, 'globalThis.count = 2;'); \
+         var seenThroughOther = realm.evaluate('globalThis.count'); \
+         seenThroughYetAnother === 1 && seenThroughOther === 2;",
     );
 }
 

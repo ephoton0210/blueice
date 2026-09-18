@@ -518,6 +518,18 @@ struct Test262Realm {
     /// returns or retains an argument supplied by the parent.
     imported_sources: HashMap<ObjectId, ObjectId>,
     imported_values: HashMap<ObjectId, Test262ImportedValue>,
+    /// A `ShadowRealm` instance (keyed here by its identity in the realm
+    /// that actually owns the child, i.e. `target` in
+    /// `export_foreign_shadow_realm`) that has already been re-exported
+    /// into this realm, mapped to that re-export's own instance identity
+    /// here. Deliberately separate from `imported_sources`/
+    /// `imported_values`: those back an opaque, brand-less stand-in with
+    /// no meaning of its own, retrievable only through this side table,
+    /// whereas a re-exported `ShadowRealm` is a real instance this realm's
+    /// own `shadow_realms`/`shadow_realm_by_heap` already fully describe --
+    /// this map exists purely so re-exporting the same one twice returns
+    /// the same instance rather than minting a second one.
+    shadow_realm_reexports: HashMap<ObjectId, ObjectId>,
 }
 
 /// The two roots keep an opaque membrane transport value alive in each heap.
@@ -539,8 +551,21 @@ struct Test262ImportedValue {
 /// this `Vm`: a `ShadowRealm` value can be retained by script indefinitely,
 /// so there is no earlier point at which dropping it would be safe --
 /// matching [`Test262Realm`]'s identical accepted tradeoff.
+/// Shared, not exclusive, ownership: a `ShadowRealm`'s child realm must
+/// remain reachable from more than one owner when the `ShadowRealm`
+/// *instance itself* crosses a Test262 `$262.createRealm()` boundary into a
+/// third realm (see `test262.rs`'s `test262_transport_value` and its
+/// ShadowRealm-specific branch) -- both the original creating realm and the
+/// realm it was transported into need the exact same live child, not two
+/// independent copies. `RefCell` borrows are held only for the dynamic
+/// extent of one call into this child (see `shadow_realm.rs`), never
+/// nested on the same `Rc` clone, so its runtime borrow check is not
+/// expected to ever actually deny an access; `Rc<RefCell<_>>` is used here
+/// (over an `unsafe` aliasing scheme) precisely so a bug in that assumption
+/// panics loudly instead of aliasing `&mut Vm`.
+#[derive(Clone)]
 struct ShadowRealmRecord {
-    vm: Box<Vm>,
+    vm: Rc<RefCell<Vm>>,
 }
 
 /// A caller-heap facade standing in for a callable value that crossed a
