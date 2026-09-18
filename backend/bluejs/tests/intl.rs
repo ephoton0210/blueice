@@ -1795,13 +1795,15 @@ fn temporal_time_zones_resolve_real_iana_transitions_and_disambiguation() {
 }
 
 /// Phase 26 Stage 2 follow-up: `Temporal.Duration`'s `relativeTo`-dependent
-/// `round`/`total`/`compare` — the stable-today subset (a `PlainDate`/
-/// `PlainDateTime` anchor, a `ZonedDateTime` anchor in `UTC` or a fixed
-/// offset, a date-only or zoned ISO string, or a property bag), *not*
-/// `PlainYearMonth`/`PlainMonthDay` anchors or a named-IANA-zone
-/// `ZonedDateTime`. Every expectation below is taken from a real Test262
-/// fixture under `built-ins/Temporal/Duration/` or `intl402/Temporal/
-/// Duration/`, named in the comment beside it.
+/// `round`/`total`/`compare`, including that follow-up's own later
+/// named-IANA-zone gap-closure pass — every accepted anchor shape (a
+/// `PlainDate`/`PlainDateTime` anchor, a `ZonedDateTime` anchor in `UTC`, a
+/// fixed offset, or now a real named IANA zone, a date-only or zoned ISO
+/// string, or a property bag), *not* a `PlainYearMonth`/`PlainMonthDay`
+/// anchor (never a valid `relativeTo` shape at all, regardless of what else
+/// this engine supports). Every expectation below is taken from a real
+/// Test262 fixture under `built-ins/Temporal/Duration/` or
+/// `intl402/Temporal/Duration/`, named in the comment beside it.
 #[test]
 fn temporal_duration_relative_to_resolves_calendar_aware_arithmetic() {
     let source = r#"
@@ -1952,34 +1954,45 @@ fn temporal_duration_relative_to_resolves_calendar_aware_arithmetic() {
         }
 
         // Deliberately still out of scope, per this repo's Phase 26
-        // PLAN.md: a PlainYearMonth/PlainMonthDay relativeTo (needs
-        // Stage 2's still-open plain_year_month.rs/plain_month_day.rs) and
-        // a named-IANA-zone ZonedDateTime relativeTo (needs real
-        // zoned_date_time.rs transition data) must keep throwing, not
-        // silently approximate.
+        // PLAN.md: `PlainYearMonth`/`PlainMonthDay` are never valid
+        // `relativeTo` shapes at all (confirmed against
+        // `relativeto-wrong-type.js` — a real `TypeError`, not a missing
+        // feature), so they must keep throwing regardless of what else this
+        // engine supports.
         {
             const oneMonth = new Temporal.Duration(0, 1);
             throwsType(
                 () => oneMonth.round({ largestUnit: "months", relativeTo: new Temporal.PlainYearMonth(2020, 1) }),
-                "PlainYearMonth relativeTo is not yet supported"
+                "PlainYearMonth is never a valid relativeTo shape"
             );
             throwsType(
                 () => oneMonth.round({ largestUnit: "months", relativeTo: new Temporal.PlainMonthDay(1, 1) }),
-                "PlainMonthDay relativeTo is not yet supported"
+                "PlainMonthDay is never a valid relativeTo shape"
             );
-            throwsRange(
-                () => oneMonth.round({
+            // A named-IANA-zone ZonedDateTime/string relativeTo — once
+            // genuinely blocked on real transition data, this engine's
+            // `zoned_date_time.rs` now supplies it (this pass's own
+            // gap-closure): both anchors here sit away from any DST
+            // transition (`America/Los_Angeles` observes none in
+            // December/January), so a whole calendar month is exact and the
+            // answer matches the original, unrounded duration.
+            sameDuration(
+                oneMonth.round({
                     largestUnit: "months",
                     relativeTo: new Temporal.ZonedDateTime(0n, "America/Los_Angeles"),
                 }),
-                "a named-IANA-zone ZonedDateTime relativeTo is not yet supported"
+                0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                "a named-IANA-zone ZonedDateTime relativeTo is now supported"
             );
-            throwsRange(
-                () => oneMonth.round({ largestUnit: "months", relativeTo: "2020-01-01[America/Los_Angeles]" }),
-                "a named-IANA-zone relativeTo string is not yet supported"
+            sameDuration(
+                oneMonth.round({ largestUnit: "months", relativeTo: "2020-01-01[America/Los_Angeles]" }),
+                0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                "a named-IANA-zone relativeTo string is now supported"
             );
             // A relativeTo string with `Z` and no bracket annotation names
-            // no real zone at all (relativeto-string-invalid.js).
+            // no real zone at all (relativeto-string-invalid.js) — this
+            // boundary is unaffected by named-zone support, since `Z` alone
+            // never carries a real identifier to resolve.
             throwsRange(
                 () => oneMonth.round({ largestUnit: "months", relativeTo: "2019-11-01T00:00Z" }),
                 "a bare Z relativeTo string with no annotation is invalid"

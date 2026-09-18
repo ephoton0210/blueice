@@ -3,23 +3,26 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! `Temporal.Duration`'s arithmetic surface (Phase 26 Stage 1 Track B, plus
-//! its own `relativeTo`-dependent follow-up).
+//! its own `relativeTo`-dependent follow-up and that follow-up's own
+//! named-IANA-zone gap-closure pass).
 //!
 //! Every expectation here is taken from a named fixture in the pinned
 //! Test262 corpus rather than from memory, so the same boundary this engine
 //! implements is the one the corpus checks. The calendar-dependent cases the
 //! corpus also covers (a non-zero `years`/`months`/`weeks`, a calendar
 //! `largestUnit`/`smallestUnit`/`unit`, or a usable `relativeTo` anchor) are
-//! real for a `relativeTo` this engine can resolve without either real IANA
-//! transition data or `PlainYearMonth`/`PlainMonthDay` support: a
-//! `PlainDate`/`PlainDateTime` anchor, a `ZonedDateTime` anchor in `UTC` or a
-//! fixed offset, a date-only or zoned ISO string, or a property bag (see
+//! real for every accepted `relativeTo` shape: a `PlainDate`/`PlainDateTime`
+//! anchor, a `ZonedDateTime` anchor in `UTC`, a fixed offset, or now a real
+//! named IANA zone (`zoned_date_time.rs`'s real transition data, day-length-
+//! aware rounding for `smallestUnit` finer than `day`, and real epoch-
+//! nanosecond bracketing for `day`/`week`/`month`/`year`), a date-only or
+//! zoned ISO string, or a property bag (see
 //! `relative_to_is_accepted_only_where_it_cannot_change_the_answer`'s own
 //! updated doc comment below for exactly which). Calendar-unit arithmetic
-//! with no `relativeTo`, or with a `relativeTo` this engine cannot yet
-//! resolve (a named-IANA-zone `ZonedDateTime`, or a `PlainYearMonth`/
-//! `PlainMonthDay` anchor), is asserted here only where the specification
-//! requires a throw anyway.
+//! with no `relativeTo`, or with a `relativeTo` shape the specification
+//! itself never accepts (a `PlainYearMonth`/`PlainMonthDay` anchor, a bare
+//! `Z`-designated string naming no real zone), is asserted here only where
+//! the specification requires a throw anyway.
 
 use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
 
@@ -725,10 +728,16 @@ fn balanced_fields_round_trip_through_a_double() {
 /// `ZonedDateTime` anchor in `UTC`/a fixed offset, a date-only or zoned ISO
 /// string, or a property bag) now gets a real, calendar-aware answer instead
 /// of a throw — the three assertions moved out of the "rejected" list below,
-/// each with its real expected value, not just "does not throw". Still
-/// rejected: a named-IANA-zone `ZonedDateTime`/string (needs real transition
-/// data `zoned_date_time.rs` doesn't have yet), a `Temporal.Duration` itself
-/// as `relativeTo` (never a valid anchor shape), and a malformed string.
+/// each with its real expected value, not just "does not throw". **Updated
+/// again** for this same Track B's own named-IANA-zone gap-closure pass: a
+/// `ZonedDateTime`/zoned-string anchor in a *named* zone (`zoned_date_time.rs`
+/// now has real transition data) is likewise a real answer now — two more
+/// assertions moved out of "rejected" below, each away from a DST transition
+/// so the answer is the same as a fixed-offset zone would give (`America/
+/// Vancouver` observes no DST near January). Still rejected: a
+/// `Temporal.Duration` itself as `relativeTo` (never a valid anchor shape), a
+/// bare `Z`-designated string with no bracketed zone annotation (names no
+/// real zone), and a malformed string.
 #[test]
 fn relative_to_is_accepted_only_where_it_cannot_change_the_answer() {
     assert_true(
@@ -762,12 +771,17 @@ fn relative_to_is_accepted_only_where_it_cannot_change_the_answer() {
             // `ToTemporalDate`-shaped field reading `PlainDate.from` uses,
             // previously rejected outright as unsupported.
             && oneDay.total({ unit: "days", relativeTo: { year: 2017, month: 1, day: 1 } }) === 1
+            // A named-IANA-zone `ZonedDateTime`/string anchor, away from any
+            // DST transition (`America/Vancouver` observes none near
+            // January): once genuinely blocked on real transition data,
+            // `zoned_date_time.rs` now supplies it, so one calendar day here
+            // is exactly 24 real hours, same as a fixed-offset zone.
+            && oneDay.total({ unit: "days", relativeTo: new Temporal.ZonedDateTime(0n, "America/Vancouver") }) === 1
+            && oneDay.total({ unit: "days", relativeTo: "2017-01-01T00:00[America/Vancouver]" }) === 1
     "#,
     );
     // Rejected, each for its own documented reason.
     for source in [
-        r#"new Temporal.Duration(0, 0, 0, 1).total({ unit: "days", relativeTo: new Temporal.ZonedDateTime(0n, "America/Vancouver") })"#,
-        r#"new Temporal.Duration(0, 0, 0, 1).total({ unit: "days", relativeTo: "2017-01-01T00:00[America/Vancouver]" })"#,
         r#"new Temporal.Duration(0, 0, 0, 1).total({ unit: "days", relativeTo: "2017-01-01T00:00Z" })"#,
         r#"new Temporal.Duration(0, 0, 0, 1).total({ unit: "days", relativeTo: "nonsense" })"#,
     ] {
