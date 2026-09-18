@@ -659,7 +659,45 @@ fn temporal_plain_time_getters_and_calendar_agnostic_arithmetic() {
                 `invalid fractionalSecondDigits ${String(bad)}`);
         }
         check(new Temporal.PlainTime(15, 23, 30, 123, 400).toJSON() === "15:23:30.1234", "toJSON");
-        check(typeof time.toLocaleString() === "string", "toLocaleString returns a string");
+
+        // toLocaleString goes through Intl.DateTimeFormat, not toJSON's ISO
+        // serialization (intl402 toLocaleString/basic.js, options-undefined.js,
+        // default-does-not-include-date-and-time-zone-name.js).
+        check(time.toLocaleString("en", { timeZone: "UTC" })
+            === new Intl.DateTimeFormat("en", { timeZone: "UTC" }).format(time),
+            "toLocaleString matches DateTimeFormat.format");
+        check(time.toLocaleString("en") === new Intl.DateTimeFormat("en").format(time),
+            "toLocaleString defaults match DateTimeFormat's");
+        check(time.toLocaleString("en", { timeZone: "UTC" }) !== time.toString(),
+            "toLocaleString is not an alias for toString/toJSON");
+        let defaultResult = time.toLocaleString("en", { timeZone: "UTC" });
+        check(!defaultResult.includes("1970"), "default omits the epoch reference date");
+        check(!defaultResult.includes("UTC"), "default omits the time zone name");
+
+        // `CreateDateTimeFormat`'s `required` parameter here is TIME: a
+        // `dateStyle` option is rejected unconditionally, even alongside
+        // `timeStyle` (toLocaleString/datestyle-and-timestyle.js,
+        // options-conflict.js) -- unlike a direct `Intl.DateTimeFormat.format`
+        // call on a PlainTime, where `dateStyle` is merely ignored once
+        // `timeStyle` also applies (intl402/DateTimeFormat/prototype/format/
+        // temporal-plaintime-formatting-datetime-style.js).
+        throwsType(() => time.toLocaleString("en", { dateStyle: "short" }),
+            "bare dateStyle conflicts with PlainTime");
+        throwsType(() => time.toLocaleString("en", { dateStyle: "full", timeStyle: "full" }),
+            "dateStyle still conflicts even alongside timeStyle");
+        check(typeof time.toLocaleString("en", { timeStyle: "short" }) === "string",
+            "timeStyle alone is fine");
+        check(new Intl.DateTimeFormat("en", { dateStyle: "full", timeStyle: "full" }).format(time)
+            === new Intl.DateTimeFormat("en", { timeStyle: "full" }).format(time),
+            "a direct DateTimeFormat.format call ignores dateStyle instead of throwing");
+
+        // era is an additive display field with no PlainTime meaning, so it
+        // is ignored rather than changing the result (toLocaleString/era.js).
+        check(time.toLocaleString("en", { era: "narrow" }) === time.toLocaleString("en"),
+            "era is ignored when formatting a PlainTime");
+
+        throwsType(() => Temporal.PlainTime.prototype.toLocaleString.call({}),
+            "toLocaleString checks its brand");
         throwsType(() => time.valueOf(), "valueOf throws");
 
         // with (with/basic.js, plaintimelike-invalid.js, overflow-undefined.js).

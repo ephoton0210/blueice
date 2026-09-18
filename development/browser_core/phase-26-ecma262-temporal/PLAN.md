@@ -953,7 +953,7 @@ isn't an assumption:
     than alphabetical order, which is observable.
 
   **Not done**, and why:
-  - The **42 remaining `PlainTime` modes are all outside this track.** 20 are
+  - The **42 remaining `PlainTime` modes were all outside this track.** 20 are
     `Temporal.Duration` gaps (Track B): `Duration.from({ ... })` with a
     property bag, and fractional `H`/`M` components in an ISO duration string
     — `iso::parse_duration_record` allows a fraction only on `S`, and this
@@ -964,16 +964,88 @@ isn't an assumption:
     Track B rather than edited across a track boundary. (**The fractional
     `H`/`M` half of this was fixed on 2026-09-18 by the exhaustive ISO
     grammar audit recorded in Stage 0, which owns `iso.rs`; the
-    property-bag `Duration.from({...})` half remains Track B's.**) The other 22 are
-    `intl402/.../toLocaleString/`, which needs real `Intl.DateTimeFormat`
-    integration for a plain time (default field set, `dateStyle`/`timeStyle`
-    conflict rejection) — an ECMA-402 boundary, not PlainTime arithmetic;
-    `toLocaleString` currently returns the same ISO string as `toJSON`.
+    property-bag `Duration.from({...})` half remains Track B's.**) **The other
+    22, `intl402/.../toLocaleString/`, are now closed too (2026-09-18,
+    separate follow-up pass; see below) — `Temporal/PlainTime/` is
+    1,010/1,010 (100%).**
   - A named-IANA-zone `ZonedDateTime` argument still throws; only `UTC` and a
     fixed numeric offset resolve (Track E).
   - A UTC offset's sub-second fraction is validated but its value discarded
     (see the `parse_offset_seconds` note above) — invisible to `PlainTime`,
     a latent inaccuracy for `Instant`.
+
+  **`PlainTime.prototype.toLocaleString` follow-up (2026-09-18, closes the
+  last 22 `PlainTime` modes).** `toLocaleString` had been aliased directly to
+  `toJSON` (`vm/temporal.rs`'s constructor-table wiring), returning the ISO
+  string rather than a locale-formatted one. Fixed by giving it its own
+  `NativeFunction::TemporalPlainTimeToLocaleString` /
+  `temporal_plain_time_to_locale_string`, built the same way
+  `Instant`/`ZonedDateTime`'s own `toLocaleString` already are: brand-check
+  the receiver, `create_date_time_format` the given locales/options, then
+  `date_time_format_format` the receiver through it. This reached a real
+  formatted string for free — `date_time_format_input`'s existing
+  `TemporalPlain{local_epoch_milliseconds, options}` bridge (built for
+  `Intl.DateTimeFormat.prototype.format`/`formatToParts` on any non-`Instant`/
+  `ZonedDateTime` Temporal value, epoch-basing a `PlainTime` at 1970-01-01 per
+  `TemporalValue::plain_epoch_milliseconds`) already covered every other
+  `PlainTime` case: default field selection, era/date/time-zone-name
+  suppression, and `hourCycle`, all already exercised by direct
+  `Intl.DateTimeFormat.prototype.format(plainTimeValue)` calls before this
+  change. 21 of the 22 modes passed immediately from that wiring alone.
+  - The 22nd, `datestyle-and-timestyle.js` (`{ dateStyle, timeStyle }`
+    together must throw `TypeError`), needed a genuinely separate rule:
+    `CreateDateTimeFormat`'s `required` parameter for `toLocaleString` is
+    `TIME`, which rejects a `dateStyle` option unconditionally at
+    formatter-construction time, regardless of `timeStyle`/other time fields
+    also being present. This is *not* the same as the per-value "does this
+    option set overlap the value's kind" pruning `temporal_format_options`
+    already does for a general `Intl.DateTimeFormat.prototype.format` call
+    (`required = ANY` there) — confirmed the hard way:
+    folding an unconditional-`dateStyle`-rejects-for-`PlainTime` rule into
+    `temporal_format_options` regressed
+    `intl402/DateTimeFormat/prototype/{format,formatToParts,formatRange,
+    formatRangeToParts}/temporal-plaintime-formatting-datetime-style.js`/
+    `temporal-objects-ignore-timezone.js` (8 modes), which require `dateStyle`
+    to be silently *ignored*, not rejected, once `timeStyle` also applies to
+    a directly-formatted `PlainTime`. The fix instead lives entirely in
+    `temporal_plain_time_to_locale_string`: after constructing the formatter,
+    check its own resolved `options().date_style` (via a newly
+    `pub(super)` `date_time_format_data`) and throw before formatting —
+    `temporal_format_options` itself is unchanged from before this pass.
+  - Test262: `Temporal/PlainTime/` **988/1,010 -> 1,010/1,010 (100%)**, zero
+    regressions (verified per-mode, not just by total, against the same
+    `--filter "Temporal/,intl402/DateTimeFormat/"` run before and after).
+
+  **Cross-phase ECMA-402 `hourCycle` bug, found via this pass's Test262 runs
+  and fixed in `backend/ecma402` (not Temporal-specific — see Phase 25's
+  `CONFORMANCE.md`).** `hourCycle: "h24"` rendered midnight as `"00"` instead
+  of `"24"`: `resolve_date_time_locale` substitutes ICU4X's `h23` skeleton for
+  `h24` at formatting time (ICU4X's dynamic semantic skeleton has no `h24` of
+  its own) while keeping `h24` as the ECMA-402-visible resolved value, but
+  nothing then corrected the rendered digits back from `h23`'s `0`-`23` range
+  to `h24`'s `1`-`24` range. Fixed with a new
+  `DateTimeFormat::apply_h24_hour_cycle` part-rewriter (mirroring the
+  existing `apply_flexible_day_period`'s typed-part-boundary pattern,
+  substituting the same locale-specific digit glyphs
+  `trim_numeric_date_part_padding` already looks up) run at both
+  single-value and range-endpoint formatting call sites, replacing an `hour`
+  part's text with the locale digits for `"24"` whenever `hour_cycle == "h24"`
+  and the underlying ICU hour is `0`. `hourCycle: "h11"` needed no fix — it
+  was never actually broken; `intl402/Temporal/{Instant,PlainTime}/prototype/
+  toLocaleString/hourcycle.js` run every `hourCycle` value in one script in
+  ascending order (`h23`, `h12`, `h24`, `h11`, `h12` again), so the `h24`
+  assertion's failure aborted the whole test before its `h11` assertion ever
+  ran — confirmed by a new host-neutral `blueice-ecma402` test,
+  `h24_and_h11_hour_cycles_render_midnight_correctly`
+  (`backend/ecma402/tests/date_time_format.rs`), covering all four values
+  independently. Closes both hourcycle.js fixtures (`Instant` **958/968 ->
+  960/968**; `PlainTime`'s own mode was already counted in the 1,010/1,010
+  above). A full `intl402/` re-run (13,760 -> 6,714 non-`Temporal` +
+  `Temporal` modes combined) found zero regressions anywhere else the fix's
+  shared `date_time_format.rs` code touches: every non-`Temporal`,
+  non-`DateTimeFormat` `intl402/` group stayed at 2,168/2,168, and
+  `intl402/DateTimeFormat/` itself stayed at 488/488 (matching Phase 25's
+  `CONFORMANCE.md` baseline) both before and after.
 
   (The ambiguity rules a bare, un-`T`-prefixed time string has to respect —
   `1214` is December 14th and therefore not a time, `0229` is February 29th

@@ -387,7 +387,11 @@ impl Vm {
                         ("with", 1, NativeFunction::TemporalPlainTimeWith),
                         ("toString", 0, NativeFunction::TemporalPlainTimeToString),
                         ("toJSON", 0, NativeFunction::TemporalPlainTimeToJson),
-                        ("toLocaleString", 0, NativeFunction::TemporalPlainTimeToJson),
+                        (
+                            "toLocaleString",
+                            0,
+                            NativeFunction::TemporalPlainTimeToLocaleString,
+                        ),
                         ("valueOf", 0, NativeFunction::TemporalPlainTimeValueOf),
                     ] {
                         self.install_native(prototype, function_prototype, name, arity, method)?;
@@ -3006,6 +3010,65 @@ impl Vm {
             ))
         })();
         self.stack.truncate(base);
+        result
+    }
+
+    /// `Temporal.PlainTime.prototype.toLocaleString`, which is
+    /// `CreateDateTimeFormat(locales, options, TIME, TIME)` followed by
+    /// `FormatDateTime` — i.e. exactly what
+    /// `new Intl.DateTimeFormat(locales, options).format(plainTime)`
+    /// produces, so it is built from the same `Intl.DateTimeFormat` bridge
+    /// `Instant`/`ZonedDateTime`'s own `toLocaleString` already use, rather
+    /// than aliasing `toString`'s ISO serialization. `create_date_time_format`
+    /// -> `date_time_format_format` finds the receiver's `TemporalValue` via
+    /// `date_time_format_value`/`date_time_format_input` and routes a
+    /// `PlainTime` through `DateTimeFormatInput::TemporalPlain` the same way
+    /// a direct `Intl.DateTimeFormat.prototype.format` call already does —
+    /// `temporal_format_options`'s `TemporalKind::PlainTime` arm clears date
+    /// components/time zone name from the per-value resolved options.
+    ///
+    /// `required = TIME` is a *formatter-construction-time* rule, separate
+    /// from that per-value pruning: it rejects a `dateStyle` option
+    /// unconditionally, even with `timeStyle`/individual time fields also
+    /// present, because `toLocaleString`'s own freshly-constructed formatter
+    /// has no other value to format. Test262's `datestyle-and-timestyle.js`
+    /// (`{ dateStyle, timeStyle }` together) pins this. This is deliberately
+    /// *not* folded into `temporal_format_options`, which
+    /// `Intl.DateTimeFormat.prototype.format`/`formatToParts`/range methods
+    /// share too — those construct an ordinary (`required = ANY`) formatter
+    /// first and may format *any* value with it, so `dateStyle` there is
+    /// simply ignored once `timeStyle` (or another time field) also applies
+    /// to a `PlainTime` argument, per
+    /// `intl402/DateTimeFormat/prototype/format/
+    /// temporal-plaintime-formatting-datetime-style.js` — folding this
+    /// check in there regressed that fixture during development.
+    pub(super) fn temporal_plain_time_to_locale_string(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        // Brand check before any observable option read.
+        self.temporal_plain_time_fields(receiver)?;
+        let stack_base = self.stack.len();
+        let result = (|| {
+            let formatter = self.create_date_time_format(
+                &Value::Undefined,
+                &[
+                    native::argument(args, 0).clone(),
+                    native::argument(args, 1).clone(),
+                ],
+                false,
+            )?;
+            self.stack.push(formatter.clone());
+            if self.date_time_format_data(&formatter)?.options().date_style.is_some() {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainTime.prototype.toLocaleString does not accept a dateStyle option"
+                        .into(),
+                ));
+            }
+            self.date_time_format_format(&formatter, receiver)
+        })();
+        self.stack.truncate(stack_base);
         result
     }
 

@@ -1072,6 +1072,9 @@ impl Vm {
             NativeFunction::TemporalPlainTimeToJson => {
                 self.temporal_plain_time_to_string(&receiver, &Value::Undefined)
             }
+            NativeFunction::TemporalPlainTimeToLocaleString => {
+                self.temporal_plain_time_to_locale_string(&receiver, &args)
+            }
             NativeFunction::TemporalPlainTimeValueOf => self.temporal_plain_time_value_of(),
             NativeFunction::TemporalNowInstant => self.temporal_now_instant(),
             NativeFunction::TemporalNowTimeZoneId => self.temporal_now_time_zone_id(),

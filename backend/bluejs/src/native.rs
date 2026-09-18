@@ -177,6 +177,7 @@ pub(crate) enum NativeFunction {
     TemporalPlainTimeWith,
     TemporalPlainTimeToString,
     TemporalPlainTimeToJson,
+    TemporalPlainTimeToLocaleString,
     TemporalPlainTimeValueOf,
     TemporalNowInstant,
     TemporalNowTimeZoneId,
