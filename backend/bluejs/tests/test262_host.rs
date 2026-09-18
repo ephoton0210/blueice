@@ -843,6 +843,105 @@ fn dynamic_import_resolves_against_the_module_registry_in_a_promise_job() {
     assert_eq!(vm.take_test262_done(), Some(Ok(())));
 }
 
+/// `import(specifier, options)`'s second argument (import attributes) per
+/// EvaluateImportCall: an omitted, `undefined`, or empty-`with` options
+/// object all resolve identically to plain `import(specifier)`.
+#[test]
+fn dynamic_import_second_argument_accepts_omitted_or_empty_options() {
+    let modules = HashMap::from([(
+        "second-arg/dependency.js".to_string(),
+        compile_module(&parse_module("export const value=42").unwrap()).unwrap(),
+    )]);
+    for source in [
+        "import('./dependency.js').then(ns=>{if(ns.value===42)$DONE();else $DONE(new Error('a'))})",
+        "import('./dependency.js', undefined).then(ns=>{if(ns.value===42)$DONE();else $DONE(new Error('b'))})",
+        "import('./dependency.js', {}).then(ns=>{if(ns.value===42)$DONE();else $DONE(new Error('c'))})",
+        "import('./dependency.js', {with:undefined}).then(ns=>{if(ns.value===42)$DONE();else $DONE(new Error('d'))})",
+        // A trailing comma is allowed after either one or two arguments.
+        "import('./dependency.js',).then(ns=>{if(ns.value===42)$DONE();else $DONE(new Error('e'))})",
+        "import('./dependency.js', {},).then(ns=>{if(ns.value===42)$DONE();else $DONE(new Error('f'))})",
+        // An attribute key this host does not act on is still accepted --
+        // this host does not yet vary module resolution by attribute.
+        "import('./dependency.js', {with:{type:'javascript'}}).then(ns=>{if(ns.value===42)$DONE();else $DONE(new Error('g'))})",
+    ] {
+        let mut vm = Vm::default();
+        vm.install_test262_done().unwrap();
+        vm.set_module_loader_context("second-arg/main.js", modules.clone());
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap();
+        vm.run_promise_jobs().unwrap();
+        assert_eq!(vm.take_test262_done(), Some(Ok(())), "{source}");
+    }
+}
+
+/// EvaluateImportCall rejects (not throws synchronously) a non-object
+/// options argument, a non-object `with` attributes value, and a
+/// non-string attribute value -- and propagates a thrown attribute getter's
+/// exact value rather than wrapping it.
+#[test]
+fn dynamic_import_second_argument_rejects_invalid_options_and_attributes() {
+    let modules = HashMap::from([(
+        "second-arg-invalid/dependency.js".to_string(),
+        compile_module(&parse_module("export const value=42").unwrap()).unwrap(),
+    )]);
+    for source in [
+        "import('./dependency.js', 23).then(()=>{$DONE(new Error('fulfilled'))},error=>{if(error.constructor===TypeError)$DONE();else $DONE(error)})",
+        "import('./dependency.js', null).then(()=>{$DONE(new Error('fulfilled'))},error=>{if(error.constructor===TypeError)$DONE();else $DONE(error)})",
+        "import('./dependency.js', {with:23}).then(()=>{$DONE(new Error('fulfilled'))},error=>{if(error.constructor===TypeError)$DONE();else $DONE(error)})",
+        "import('./dependency.js', {with:{key:23}}).then(()=>{$DONE(new Error('fulfilled'))},error=>{if(error.constructor===TypeError)$DONE();else $DONE(error)})",
+        "var thrown=new Test262Error();import('./dependency.js', {with:{get key(){throw thrown}}}).then(()=>{$DONE(new Error('fulfilled'))},error=>{if(error===thrown)$DONE();else $DONE(error)})",
+        "var thrown=new Test262Error();import('./dependency.js', {get with(){throw thrown}}).then(()=>{$DONE(new Error('fulfilled'))},error=>{if(error===thrown)$DONE();else $DONE(error)})",
+    ] {
+        let mut vm = Vm::default();
+        vm.install_test262_harness().unwrap();
+        vm.install_test262_done().unwrap();
+        vm.set_module_loader_context("second-arg-invalid/main.js", modules.clone());
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap();
+        vm.run_promise_jobs().unwrap();
+        assert_eq!(vm.take_test262_done(), Some(Ok(())), "{source}");
+    }
+}
+
+/// EvaluateImportCall evaluates the specifier expression, then the options
+/// expression, synchronously and in that order -- before either argument's
+/// value is inspected -- and both positions are `AssignmentExpression[+In]`
+/// even inside a no-in `for`-head context.
+#[test]
+fn dynamic_import_second_argument_evaluates_arguments_in_order_with_in_allowed() {
+    let mut vm = Vm::default();
+    let source = "let log=[];import(log.push('first'),(log.push('second'),undefined)).then(null,function(){});if(log.length===2&&log[0]==='first'&&log[1]==='second')1;else throw new Error('order')";
+    vm.execute(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap();
+
+    let for_in_source = "let promise;for(promise=import('x','y' in {}||undefined);false;);promise.then(null,function(){})";
+    vm.execute(&compile(&parse(for_in_source).unwrap()).unwrap())
+        .unwrap();
+}
+
+/// ImportCall is a "Forbidden Extension": a spread argument, a third
+/// argument, and using `new` on it are all SyntaxErrors, and `import` is
+/// otherwise reserved (not a plain IdentifierReference) outside of
+/// `import(...)` and `import.<name>`.
+#[test]
+fn dynamic_import_call_rejects_forbidden_extensions() {
+    for source in [
+        "new import('x')",
+        "new import('x').prop",
+        "import(...['x'])",
+        "import('x', 'y', 'z')",
+        "typeof import",
+        "import + 1",
+    ] {
+        assert!(parse(source).is_err(), "{source}");
+    }
+    // `import.meta`/`import.source`/`import.defer` remain ordinary
+    // continuations of the `import` binding and must keep parsing.
+    for source in ["import.source('x')", "import.defer('x')"] {
+        assert!(parse(source).is_ok(), "{source}");
+    }
+}
+
 #[test]
 fn async_test_style_promise_chain_observes_an_async_function() {
     let mut vm = Vm::default();

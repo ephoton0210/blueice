@@ -440,15 +440,23 @@ impl Vm {
     /// resolution, linking and evaluation to the realm job queue.  The host
     /// registry is deliberately the same finite registry used for static
     /// module graphs, so no JavaScript source can escape the supplied tree.
-    pub(super) fn dynamic_import(&mut self, specifier: Value) -> Result<Value, RuntimeError> {
+    ///
+    /// `options` is the ImportCall's optional second argument
+    /// (`import(specifier, options)`); per EvaluateImportCall it is always
+    /// evaluated and validated synchronously, with every abrupt completion
+    /// (including a non-string `with` attribute value or a thrown getter)
+    /// rejecting the returned promise rather than propagating as a
+    /// synchronous throw -- only evaluating the two argument expressions
+    /// themselves (already done by the compiler before this opcode fires)
+    /// happens outside the promise's `IfAbruptRejectPromise` boundary.
+    pub(super) fn dynamic_import(
+        &mut self,
+        specifier: Value,
+        options: Value,
+    ) -> Result<Value, RuntimeError> {
         let promise = self.new_promise()?;
-        let specifier = match self.coerce_string(&specifier) {
-            Ok(specifier) => specifier.to_utf8().map_err(|_| {
-                RuntimeError::TypeError("module specifier is not a Unicode string".into())
-            }),
-            Err(error) => Err(error),
-        };
-        match specifier {
+        let outcome = self.evaluate_import_call_arguments(specifier, options);
+        match outcome {
             Ok(specifier) => {
                 let referrer = self
                     .active_module_name
@@ -466,6 +474,64 @@ impl Vm {
             }
         }
         Ok(Value::Object(promise))
+    }
+
+    /// The specifier-ToString and options-validation steps of
+    /// EvaluateImportCall, i.e. everything between "NewPromiseCapability"
+    /// and "HostImportModuleDynamically". Attribute keys/values are
+    /// validated (and, for `type`, retained) but otherwise this host does
+    /// not yet vary module resolution by attribute; unsupported/ignored
+    /// attribute keys are accepted here exactly like this host's static
+    /// `import ... with {...}` attributes.
+    fn evaluate_import_call_arguments(
+        &mut self,
+        specifier: Value,
+        options: Value,
+    ) -> Result<String, RuntimeError> {
+        let specifier = self.coerce_string(&specifier)?;
+        let specifier = specifier
+            .to_utf8()
+            .map_err(|_| RuntimeError::TypeError("module specifier is not a Unicode string".into()))?;
+        if options != Value::Undefined {
+            if !matches!(options, Value::Object(_)) {
+                return Err(RuntimeError::TypeError(
+                    "import() options argument must be an object".into(),
+                ));
+            }
+            let attributes = self.get_property(&options, &"with".into())?;
+            if attributes != Value::Undefined {
+                let Value::Object(attributes_id) = attributes else {
+                    return Err(RuntimeError::TypeError(
+                        "import() attributes value must be an object".into(),
+                    ));
+                };
+                // EnumerableOwnPropertyNames(attributesObj, KEY): own,
+                // String-keyed (never Symbol), and enumerable per a
+                // re-checked [[GetOwnProperty]] -- the same algorithm as
+                // Object.keys, including Proxy ownKeys/getOwnPropertyDescriptor
+                // trap observance.
+                let keys = self.object_own_property_keys(attributes_id)?;
+                for key in keys {
+                    if !matches!(key, PropertyName::String(_)) {
+                        continue;
+                    }
+                    let Some(descriptor) = self.object_get_own_property(attributes_id, &key)?
+                    else {
+                        continue;
+                    };
+                    if descriptor.enumerable != Some(true) {
+                        continue;
+                    }
+                    let value = self.get_property(&attributes, &key)?;
+                    if !matches!(value, Value::String(_)) {
+                        return Err(RuntimeError::TypeError(
+                            "import attribute values must be strings".into(),
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(specifier)
     }
 
     /// Source-phase dynamic import has the same promise and ToString boundary

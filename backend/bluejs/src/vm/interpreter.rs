@@ -807,8 +807,9 @@ impl Vm {
                         self.stack.push(value);
                     }
                     Opcode::DynamicImport => {
+                        let options = self.pop();
                         let specifier = self.pop();
-                        let promise = self.dynamic_import(specifier)?;
+                        let promise = self.dynamic_import(specifier, options)?;
                         self.stack.push(promise);
                     }
                     Opcode::ImportMeta => {

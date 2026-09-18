@@ -860,10 +860,15 @@ fn strict_assignment_in_expression(expression: &Expr) -> bool {
             .as_deref()
             .is_some_and(strict_assignment_in_expression),
         Expr::Await(expression)
-        | Expr::DynamicImport(expression)
         | Expr::Unary {
             arg: expression, ..
         } => strict_assignment_in_expression(expression),
+        Expr::DynamicImport { specifier, options } => {
+            strict_assignment_in_expression(specifier)
+                || options
+                    .as_deref()
+                    .is_some_and(strict_assignment_in_expression)
+        }
         Expr::Update { arg, .. } => strict_assignment_target(arg),
         Expr::Arrow { params, body, .. } => {
             params.iter().any(|param| {

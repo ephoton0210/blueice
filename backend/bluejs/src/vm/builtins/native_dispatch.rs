@@ -1541,7 +1541,10 @@ impl Vm {
                 if source {
                     self.dynamic_import_source(first.clone())
                 } else {
-                    self.dynamic_import(first.clone())
+                    // `import.defer(specifier)` reaches this same host
+                    // function as ordinary `import()`; it takes no import
+                    // attributes second argument of its own.
+                    self.dynamic_import(first.clone(), Value::Undefined)
                 }
             }
             NativeFunction::JsonParse => self.json_parse(first, args.get(1)),
