@@ -792,13 +792,22 @@ impl Vm {
                 let bigint = name == "BigInt";
                 let value = if boolean {
                     Value::Bool(false)
-                } else if bigint {
-                    Value::BigInt(0.into())
                 } else {
                     Value::Number(0.0)
                 };
-                let boxed_prototype =
-                    self.with_roots(|heap| heap.alloc_boxed_primitive(value, object_prototype))?;
+                // Unlike %Number.prototype%/%Boolean.prototype%, the BigInt
+                // prototype is explicitly *not* a BigInt exotic object (no
+                // [[BigIntData]] internal slot) per "Properties of the
+                // BigInt Prototype Object" -- an ordinary object instead, so
+                // e.g. `BigInt.prototype.toString(1)` throws TypeError
+                // rather than treating the prototype itself as 0n.
+                let boxed_prototype = self.with_roots(|heap| {
+                    if bigint {
+                        heap.alloc_object(Some(object_prototype))
+                    } else {
+                        heap.alloc_boxed_primitive(value, object_prototype)
+                    }
+                })?;
                 self.define_data(
                     id,
                     "prototype",
@@ -844,6 +853,14 @@ impl Vm {
                         false,
                         false,
                         true,
+                    )?;
+                    self.install_native(id, prototype, "asIntN", 2, NativeFunction::BigIntAsIntN)?;
+                    self.install_native(
+                        id,
+                        prototype,
+                        "asUintN",
+                        2,
+                        NativeFunction::BigIntAsUintN,
                     )?;
                 } else {
                     if name != "Number" {

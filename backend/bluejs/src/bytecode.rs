@@ -69,6 +69,16 @@ opcodes! {
     Negate: 1, 0;
     BitNot: 1, 0;
     ToNumber: 1, 0;
+    // ToNumeric: like ToNumber, but a BigInt operand passes through
+    // unchanged instead of throwing. Used by `++`/`--` on a plain
+    // identifier, whose result must stay a BigInt when its operand is one.
+    ToNumeric: 1, 0;
+    // Pushes `1` matching the numeric type already on top of the stack
+    // (Number `1.0` or BigInt `1n`), so the following Add/Subtract never
+    // mixes BigInt with Number. Always immediately preceded by ToNumeric
+    // (possibly through a Dup), so the peeked type is always Number or
+    // BigInt.
+    PushOne: 1, 0;
     ToString: 1, 0;
     Not: 1, 0;
     Typeof: 1, 0;

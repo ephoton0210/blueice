@@ -189,6 +189,21 @@ pub(crate) fn compare(left: &Value, right: &Value) -> Result<Option<Ordering>, R
         compare_bigint_number(bigint, *number)
     } else if let (Value::Number(number), Value::BigInt(bigint)) = (left, right) {
         compare_bigint_number(bigint, *number).map(|ordering| ordering.map(Ordering::reverse))
+    } else if let (Value::BigInt(bigint), Value::String(text)) = (left, right) {
+        // A string that isn't a valid StringToBigInt source compares as
+        // undefined (neither less than, greater than, nor equal), matching
+        // an nan-producing ToNumeric conversion rather than throwing here.
+        Ok(text
+            .to_utf8()
+            .ok()
+            .and_then(|text| string_to_bigint(&text))
+            .map(|other| bigint.cmp(&other)))
+    } else if let (Value::String(text), Value::BigInt(bigint)) = (left, right) {
+        Ok(text
+            .to_utf8()
+            .ok()
+            .and_then(|text| string_to_bigint(&text))
+            .map(|other| other.cmp(bigint)))
     } else {
         Ok(number(left)?.partial_cmp(&number(right)?))
     }
@@ -278,6 +293,41 @@ fn string_number(s: &str) -> f64 {
         return f64::NAN;
     }
     s.parse().unwrap_or(f64::NAN)
+}
+
+/// StringToBigInt ( argument ), per the spec's own description of its
+/// grammar as StringNumericLiteral with StrUnsignedDecimalLiteral replaced by
+/// plain DecimalDigits: no `Infinity`, decimal points, or exponents, but the
+/// `0x`/`0o`/`0b` non-decimal integer literals (unsigned, no leading sign)
+/// are still accepted. An all-whitespace (including empty) string is 0n;
+/// anything else that doesn't fit the grammar reports no value at all, which
+/// callers turn into a SyntaxError (`BigInt(...)`) or TypeError-adjacent
+/// failure (`==`) as their own operation requires, rather than a shared
+/// NaN-like sentinel.
+pub(crate) fn string_to_bigint(s: &str) -> Option<BigInt> {
+    let s = s.trim_matches(whitespace);
+    if s.is_empty() {
+        return Some(BigInt::zero());
+    }
+    for (prefixes, radix) in [(["0x", "0X"], 16u32), (["0o", "0O"], 8), (["0b", "0B"], 2)] {
+        if let Some(digits) = prefixes
+            .iter()
+            .find_map(|prefix| s.strip_prefix(prefix))
+        {
+            if digits.is_empty() || !digits.bytes().all(|byte| (byte as char).is_digit(radix)) {
+                return None;
+            }
+            return BigInt::parse_bytes(digits.as_bytes(), radix);
+        }
+    }
+    let bytes = s.as_bytes();
+    let negative = bytes[0] == b'-';
+    let digits = &s[usize::from(matches!(bytes[0], b'+' | b'-'))..];
+    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let value = BigInt::parse_bytes(digits.as_bytes(), 10)?;
+    Some(if negative { -value } else { value })
 }
 
 pub(crate) fn radix_number(s: &str, digit_bits: u32) -> f64 {

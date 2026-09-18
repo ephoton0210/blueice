@@ -1522,6 +1522,44 @@ impl Vm {
         native::length(&Value::Number(self.coerce_number(value)?))
     }
 
+    /// ToBigInt ( argument ). `coerce_primitive` performs the single
+    /// observable ToPrimitive(argument, number) call; everything after that
+    /// is non-observable dispatch on the resulting primitive's type.
+    pub(super) fn coerce_bigint(&mut self, value: &Value) -> Result<BigInt, RuntimeError> {
+        match self.coerce_primitive(value, "number")? {
+            Value::BigInt(value) => Ok(value),
+            Value::Bool(value) => Ok(BigInt::from(u8::from(value))),
+            Value::String(text) => {
+                let text = text
+                    .to_utf8()
+                    .map_err(|_| RuntimeError::SyntaxError("invalid BigInt string".into()))?;
+                primitive::string_to_bigint(&text)
+                    .ok_or_else(|| RuntimeError::SyntaxError("invalid BigInt string".into()))
+            }
+            Value::Number(_) => Err(RuntimeError::TypeError(
+                "cannot convert a Number to a BigInt".into(),
+            )),
+            Value::Null | Value::Undefined | Value::Symbol(_) | Value::Object(_) => Err(
+                RuntimeError::TypeError("cannot convert value to a BigInt".into()),
+            ),
+        }
+    }
+
+    /// ToIndex ( value ), for `BigInt.asIntN`/`asUintN`'s `bits` parameter.
+    /// The upper bound is the abstract operation's own 2**53-1, independent
+    /// of any host object's storage capacity (contrast `buffer_index`, which
+    /// bounds by `usize::MAX` for byte offsets/lengths instead).
+    pub(super) fn coerce_bigint_index(&mut self, value: &Value) -> Result<usize, RuntimeError> {
+        let integer = self.coerce_number(value)?;
+        let integer = if integer.is_nan() { 0.0 } else { integer.trunc() };
+        if !(0.0..=9_007_199_254_740_991.0).contains(&integer) {
+            return Err(RuntimeError::RangeError(
+                "index out of range".into(),
+            ));
+        }
+        Ok(integer as usize)
+    }
+
     /// ECMA-262 §19.2.5 parseInt.  The scan is deliberately prefix based:
     /// unlike Number(), trailing non-digits are ignored and an incomplete
     /// exponent is irrelevant because exponent syntax is not part of

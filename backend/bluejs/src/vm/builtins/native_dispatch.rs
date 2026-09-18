@@ -1645,9 +1645,12 @@ impl Vm {
                         "BigInt is not a constructor".into(),
                     ));
                 }
+                // BigInt ( value ): a single ToPrimitive(value, number) call,
+                // then NumberToBigInt for a Number result or ToBigInt for
+                // everything else (which, given an already-primitive input,
+                // performs no further observable coercion).
                 let value = self.coerce_primitive(first, "number")?;
                 match value {
-                    Value::BigInt(value) => Ok(Value::BigInt(value)),
                     Value::Number(value) if value.is_finite() && value.fract() == 0.0 => {
                         // An integral IEEE-754 Number can be much larger
                         // than i64 (up to roughly 2^1024). Convert its exact
@@ -1661,20 +1664,45 @@ impl Vm {
                     Value::Number(_) => Err(RuntimeError::RangeError(
                         "BigInt conversion requires an integral Number".into(),
                     )),
-                    Value::String(value) => {
-                        let value = value.to_utf8().map_err(|_| {
-                            RuntimeError::SyntaxError("invalid BigInt string".into())
-                        })?;
-                        let value =
-                            BigInt::parse_bytes(value.trim().as_bytes(), 10).ok_or_else(|| {
-                                RuntimeError::SyntaxError("invalid BigInt string".into())
-                            })?;
-                        Ok(Value::BigInt(value))
-                    }
-                    _ => Err(RuntimeError::TypeError(
-                        "BigInt conversion requires a Number, BigInt, or integer string".into(),
-                    )),
+                    value => Ok(Value::BigInt(self.coerce_bigint(&value)?)),
                 }
+            }
+            NativeFunction::BigIntAsIntN | NativeFunction::BigIntAsUintN => {
+                // 1. Let bits be ? ToIndex(bits). 2. Let bigint be ?
+                // ToBigInt(bigint). Both are observable coercions, evaluated
+                // in this order before any arithmetic.
+                let bits = self.coerce_bigint_index(native::argument(&args, 0))?;
+                let bigint = self.coerce_bigint(native::argument(&args, 1))?;
+                if bits == 0 {
+                    return Ok(Value::BigInt(BigInt::zero()));
+                }
+                // ToIndex alone permits bits up to 2**53-1; bound the actual
+                // 2**bits allocation at a generous but finite size (same
+                // "implementation capacity" style as bigint_shift/
+                // bigint_exponentiate) rather than letting an extreme bits
+                // value exhaust host memory.
+                const MAX_ASINTN_BITS: usize = 1_000_000;
+                if bits > MAX_ASINTN_BITS {
+                    return Err(RuntimeError::RangeError(
+                        "BigInt.asIntN/asUintN bit width exceeds implementation capacity".into(),
+                    ));
+                }
+                let modulus = BigInt::one() << bits;
+                // BigInt's `%` follows the dividend's sign (truncated
+                // division), not the mathematical "modulo" the spec asks
+                // for here; adding the modulus back for a negative result
+                // maps it into the required [0, 2**bits) range.
+                let mut result = &bigint % &modulus;
+                if result.sign() == Sign::Minus {
+                    result += &modulus;
+                }
+                if function == NativeFunction::BigIntAsIntN {
+                    let half = BigInt::one() << (bits - 1);
+                    if result >= half {
+                        result -= modulus;
+                    }
+                }
+                Ok(Value::BigInt(result))
             }
             NativeFunction::PrimitiveMethod { boolean, string } => {
                 let value = if let Value::Object(id) = receiver {
@@ -1733,8 +1761,17 @@ impl Vm {
                 Ok(symbol.description.map_or(Value::Undefined, Value::String))
             }
             NativeFunction::BigIntToString | NativeFunction::BigIntValueOf => {
+                // thisBigIntValue(this value): a bare BigInt returns itself;
+                // an object needs its own [[BigIntData]] slot (a cross-realm
+                // wrapper's own heap is checked as a fallback, the same way
+                // Symbol's methods already do above); anything else,
+                // including the BigInt prototype object itself (which has
+                // no such slot), is a TypeError.
                 let value = if let Value::Object(id) = receiver {
-                    self.heap.boxed_primitive(id)?.unwrap_or(Value::Undefined)
+                    self.heap
+                        .boxed_primitive(id)?
+                        .or(self.test262_foreign_boxed_primitive(id)?)
+                        .unwrap_or(Value::Undefined)
                 } else {
                     receiver
                 };
@@ -1743,15 +1780,31 @@ impl Vm {
                         "BigInt method requires a BigInt".into(),
                     ));
                 };
-                if function == NativeFunction::BigIntToString {
-                    Ok(Value::String(value.to_string().into()))
-                } else {
-                    Ok(Value::BigInt(value))
+                if function == NativeFunction::BigIntValueOf {
+                    return Ok(Value::BigInt(value));
                 }
+                // BigInt.prototype.toString ( [ radix ] )
+                let radix_arg = native::argument(&args, 0);
+                let radix = if matches!(radix_arg, Value::Undefined) {
+                    10
+                } else {
+                    let radix = self.coerce_number(radix_arg)?;
+                    let radix = if radix.is_nan() { 0.0 } else { radix.trunc() };
+                    if !(2.0..=36.0).contains(&radix) {
+                        return Err(RuntimeError::RangeError(
+                            "toString radix must be between 2 and 36".into(),
+                        ));
+                    }
+                    radix as u32
+                };
+                Ok(Value::String(value.to_str_radix(radix).into()))
             }
             NativeFunction::BigIntToLocaleString => {
                 let value = if let Value::Object(id) = receiver {
-                    self.heap.boxed_primitive(id)?.unwrap_or(Value::Undefined)
+                    self.heap
+                        .boxed_primitive(id)?
+                        .or(self.test262_foreign_boxed_primitive(id)?)
+                        .unwrap_or(Value::Undefined)
                 } else {
                     receiver
                 };

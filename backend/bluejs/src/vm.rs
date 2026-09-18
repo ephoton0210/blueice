@@ -1836,6 +1836,10 @@ impl Vm {
                     | NativeFunction::AsyncFunction
                     | NativeFunction::Iterator
                     | NativeFunction::PrimitiveConstructor(_)
+                    // Reaches native_call so its own NewTarget-is-defined
+                    // check (below) produces the throw, rather than this
+                    // generic gate -- BigInt does have [[Construct]].
+                    | NativeFunction::BigInt
             )
         {
             return Err(RuntimeError::TypeError("value is not a constructor".into()));

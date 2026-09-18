@@ -305,15 +305,9 @@ impl Vm {
                         let key_value = self.pop();
                         let key = self.coerce_property_key(&key_value)?;
                         let old_value = self.super_get(&key)?;
-                        let old = self.coerce_number(&old_value)?;
-                        let new = if operand & 1 == 0 {
-                            old + 1.0
-                        } else {
-                            old - 1.0
-                        };
-                        self.super_set(&key, &Value::Number(new))?;
-                        self.stack
-                            .push(Value::Number(if operand & 2 == 0 { old } else { new }));
+                        let (old, new) = self.numeric_step(&old_value, operand & 1 != 0)?;
+                        self.super_set(&key, &new)?;
+                        self.stack.push(if operand & 2 == 0 { old } else { new });
                     }
                     Opcode::SuperCall | Opcode::SuperCallSpread | Opcode::SuperCallForward => {
                         let args = if instruction.opcode == Opcode::SuperCall {
@@ -1244,6 +1238,7 @@ impl Vm {
                     Opcode::Negate
                     | Opcode::BitNot
                     | Opcode::ToNumber
+                    | Opcode::ToNumeric
                     | Opcode::ToString
                     | Opcode::Not
                     | Opcode::Typeof => {
@@ -1252,6 +1247,10 @@ impl Vm {
                             Opcode::Negate => self.negate(&arg)?,
                             Opcode::BitNot => self.bit_not(&arg)?,
                             Opcode::ToNumber => Value::Number(self.coerce_number(&arg)?),
+                            Opcode::ToNumeric => match self.coerce_numeric(&arg)? {
+                                primitive::Numeric::Number(number) => Value::Number(number),
+                                primitive::Numeric::BigInt(value) => Value::BigInt(value),
+                            },
                             Opcode::ToString => Value::String(self.coerce_string(&arg)?),
                             Opcode::Not => Value::Bool(!self.to_boolean(&arg)?),
                             _ => Value::String(self.typeof_value(&arg)?.into()),
@@ -1259,6 +1258,16 @@ impl Vm {
                         self.check_string(&value)?;
                         self.pop();
                         self.stack.push(value);
+                    }
+                    Opcode::PushOne => {
+                        // `++`/`--` on a plain identifier: the value just
+                        // pushed by `ToNumeric` (possibly duplicated for a
+                        // postfix update) determines which "one" to add.
+                        let one = match self.stack.last().unwrap() {
+                            Value::BigInt(_) => Value::BigInt(BigInt::one()),
+                            _ => Value::Number(1.0),
+                        };
+                        self.stack.push(one);
                     }
                     Opcode::Jump => pc = operand,
                     Opcode::JumpIfFalse | Opcode::JumpIfTrue | Opcode::JumpIfNotNullish => {
@@ -1358,17 +1367,11 @@ impl Vm {
                     Opcode::UpdateProperty => {
                         let (object, key) = self.property_reference()?;
                         self.stack.push(object.clone());
-                        let old = self.get_property(&object, &key)?;
-                        let old = self.coerce_number(&old)?;
-                        let new = if operand & 1 == 0 {
-                            old + 1.0
-                        } else {
-                            old - 1.0
-                        };
-                        self.set_property(&object, &key, &Value::Number(new))?;
+                        let old_value = self.get_property(&object, &key)?;
+                        let (old, new) = self.numeric_step(&old_value, operand & 1 != 0)?;
+                        self.set_property(&object, &key, &new)?;
                         self.stack.pop();
-                        self.stack
-                            .push(Value::Number(if operand & 2 == 0 { old } else { new }));
+                        self.stack.push(if operand & 2 == 0 { old } else { new });
                     }
                     Opcode::SetLiteralPrototype => {
                         let value = self.pop();

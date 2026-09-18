@@ -518,6 +518,8 @@ pub(crate) enum NativeFunction {
     BigIntToString,
     BigIntValueOf,
     BigIntToLocaleString,
+    BigIntAsIntN,
+    BigIntAsUintN,
     NumberIsFinite,
     NumberIsInteger,
     NumberIsSafeInteger,
