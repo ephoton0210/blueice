@@ -151,6 +151,8 @@ dependencies = [
  "icu_locale",
  "icu_locale_core",
  "icu_properties",
+ "jiff",
+ "jiff-tzdb",
  "num-bigint",
  "num-traits",
  "regress",

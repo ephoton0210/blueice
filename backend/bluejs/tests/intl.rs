@@ -1453,3 +1453,64 @@ fn intl_and_error_bootstrap_failures_release_partial_roots() {
         }
     }
 }
+
+/// Phase 26 Stage 1 Track E: named IANA time zones resolve real historical
+/// transition offsets, not a single current offset, through the JS-visible
+/// `Temporal` surface. The expected epoch values are the pinned Test262
+/// corpus's own, from `built-ins/` and `intl402/Temporal/.../toZonedDateTime*`.
+#[test]
+fn temporal_time_zones_resolve_real_iana_transitions_and_disambiguation() {
+    for source in [
+        // `Instant.prototype.toZonedDateTimeISO` keeps the instant and adopts
+        // the zone, offset and IANA identifiers alike.
+        "let i=new Temporal.Instant(1000000000000000000n);let z=i.toZonedDateTimeISO('UTC');z.epochNanoseconds===i.epochNanoseconds&&z.timeZoneId==='UTC'&&z.calendarId==='iso8601'",
+        "new Temporal.Instant(0n).toZonedDateTimeISO('-05:00').timeZoneId==='-05:00'",
+        "new Temporal.Instant(0n).toZonedDateTimeISO('uTc').timeZoneId==='UTC'",
+        "new Temporal.Instant(0n).toZonedDateTimeISO('2021-08-19T17:30:45.123456789-12:12[+01:46]').timeZoneId==='+01:46'",
+        "new Temporal.Instant(0n).toZonedDateTimeISO('2021-08-19T17:30Z').timeZoneId==='UTC'",
+        // A named zone's offset really does differ by instant.
+        "let ny='America/New_York';let summer=new Temporal.Instant(1720480004000000000n).toZonedDateTimeISO(ny);let winter=new Temporal.Instant(1704941204000000000n).toZonedDateTimeISO(ny);summer.epochNanoseconds===1720480004000000000n&&winter.epochNanoseconds===1704941204000000000n",
+        // `ZonedDateTime`'s own constructor validates and normalizes the zone.
+        "new Temporal.ZonedDateTime(0n,'utc').timeZoneId==='UTC'",
+        // Fixed-offset zones ignore `disambiguation` entirely.
+        "let d=new Temporal.PlainDateTime(2019,2,16,23,45);['earlier','later','compatible','reject'].every(x=>d.toZonedDateTime('+03:30',{disambiguation:x}).epochNanoseconds===1550348100000000000n)",
+        // A repeated local hour in Los Angeles: two real instants.
+        "let f=new Temporal.PlainDateTime(2000,10,29,1,45);f.toZonedDateTime('America/Los_Angeles').epochNanoseconds===972809100000000000n&&f.toZonedDateTime('America/Los_Angeles',{disambiguation:'later'}).epochNanoseconds===972812700000000000n",
+        // A skipped local hour: shifted backwards or forwards by the gap.
+        "let s=new Temporal.PlainDateTime(2000,4,2,2,30);s.toZonedDateTime('America/Los_Angeles',{disambiguation:'earlier'}).epochNanoseconds===954667800000000000n&&s.toZonedDateTime('America/Los_Angeles',{disambiguation:'later'}).epochNanoseconds===954671400000000000n",
+        // `PlainDate.prototype.toZonedDateTime` uses the zone's start of day,
+        // which Toronto's 1919-03-31 midnight-skipping transition puts 30
+        // minutes before what `compatible` midnight resolution would give.
+        "let t=new Temporal.PlainDate(1919,3,31);let start=t.toZonedDateTime('America/Toronto');let bag=t.toZonedDateTime({timeZone:'America/Toronto',plainTime:new Temporal.PlainTime()});bag.epochNanoseconds-start.epochNanoseconds===1800000000000n",
+        "new Temporal.PlainDate(2020,1,1).toZonedDateTime('UTC').epochNanoseconds===1577836800000000000n",
+    ] {
+        assert_eq!(evaluate(source), Ok(Value::Bool(true)), "{source}");
+    }
+    for source in [
+        // `ToTemporalTimeZoneIdentifier` never coerces a non-string.
+        "new Temporal.Instant(0n).toZonedDateTimeISO()",
+        "new Temporal.Instant(0n).toZonedDateTimeISO(1)",
+        "new Temporal.Instant(0n).toZonedDateTimeISO({})",
+        // Unknown names and sub-minute offsets are RangeErrors, and a valid
+        // offset beside an unknown name is not a fallback.
+        "new Temporal.Instant(0n).toZonedDateTimeISO('America/Nonexistent')",
+        "new Temporal.Instant(0n).toZonedDateTimeISO('-12:12:59.9')",
+        "new Temporal.Instant(0n).toZonedDateTimeISO('1970-01-01T00:00+01:00[America/Nonexistent]')",
+        "new Temporal.Instant(0n).toZonedDateTimeISO('2021-08-19T17:30')",
+        "new Temporal.Instant(0n).toZonedDateTimeISO('-000000-10-31T17:45Z')",
+        "new Temporal.Instant(0n).toZonedDateTimeISO('')",
+        "new Temporal.ZonedDateTime(0n,'Mars/Olympus_Mons')",
+        // `disambiguation: "reject"` refuses to choose.
+        "new Temporal.PlainDateTime(2000,10,29,1,45).toZonedDateTime('America/Los_Angeles',{disambiguation:'reject'})",
+        "new Temporal.PlainDateTime(2000,4,2,2,30).toZonedDateTime('America/Los_Angeles',{disambiguation:'reject'})",
+        "new Temporal.PlainDateTime(2000,5,2).toZonedDateTime('UTC',{disambiguation:'EARLIER'})",
+    ] {
+        assert!(
+            matches!(
+                evaluate(source),
+                Err(RuntimeError::TypeError(_) | RuntimeError::RangeError(_))
+            ),
+            "{source}"
+        );
+    }
+}

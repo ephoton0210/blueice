@@ -991,7 +991,10 @@ impl Vm {
             }
             NativeFunction::TemporalWithCalendar => self.temporal_with_calendar(&receiver, first),
             NativeFunction::TemporalPlainToZonedDateTime => {
-                self.temporal_plain_to_zoned_date_time(&receiver, first)
+                self.temporal_plain_to_zoned_date_time(&receiver, first, native::argument(&args, 1))
+            }
+            NativeFunction::TemporalInstantToZonedDateTimeIso => {
+                self.temporal_instant_to_zoned_date_time_iso(&receiver, first)
             }
             NativeFunction::TemporalGetter(getter) => self.temporal_getter(&receiver, getter),
             NativeFunction::TemporalZonedDateTimeToLocaleString => {

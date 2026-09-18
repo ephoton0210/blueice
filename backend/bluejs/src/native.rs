@@ -151,6 +151,7 @@ pub(crate) enum NativeFunction {
     TemporalFrom(TemporalKind),
     TemporalWithCalendar,
     TemporalPlainToZonedDateTime,
+    TemporalInstantToZonedDateTimeIso,
     TemporalGetter(TemporalGetter),
     TemporalZonedDateTimeToLocaleString,
     TemporalInstantAdd,

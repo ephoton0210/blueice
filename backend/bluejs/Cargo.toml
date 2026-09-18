@@ -15,5 +15,13 @@ icu_calendar = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf4
 icu_locale = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
 icu_locale_core = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
 icu_properties = { git = "https://github.com/ephoton0210/icu4x.git", rev = "31dcf42731d45cb191cdbd5bb92b669b5be12b57" }
+# Temporal's IANA time-zone transition history (Phase 26 Stage 1 Track E).
+# `icu_time` deliberately carries only display-name-era data, so the pinned,
+# bundled IANA Time Zone Database `blueice-ecma402` already formats with is
+# the one real transition source in this workspace; `vm/temporal/time_zone.rs`
+# reads it directly, the same way `vm/temporal/calendar.rs` reads
+# `icu_calendar` directly rather than through the ECMA-402 crate.
+jiff = { version = "=0.2.35", default-features = false, features = ["std", "tzdb-bundle-always"] }
+jiff-tzdb = "=0.1.8"
 num-bigint = "=0.4.6"
 num-traits = "=0.2.19"
