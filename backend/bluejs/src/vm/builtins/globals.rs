@@ -79,6 +79,7 @@ impl Vm {
             "WeakSet" => NativeFunction::WeakSet,
             "WeakRef" => NativeFunction::WeakRef,
             "FinalizationRegistry" => NativeFunction::FinalizationRegistry,
+            "ShadowRealm" => NativeFunction::ShadowRealm,
             "Promise" => NativeFunction::Promise,
             "eval" => NativeFunction::Eval,
             "Object" => NativeFunction::Object,
@@ -121,6 +122,7 @@ impl Vm {
                         "Date" => 7.0,
                         "WeakMap" | "WeakSet" => 0.0,
                         "FinalizationRegistry" => 1.0,
+                        "ShadowRealm" => 0.0,
                         _ => 1.0,
                     }),
                     false,
@@ -744,6 +746,24 @@ impl Vm {
                 )?;
                 self.define_data(
                     registry_prototype,
+                    "constructor",
+                    Value::Object(id),
+                    true,
+                    false,
+                    true,
+                )?;
+            } else if name == "ShadowRealm" {
+                let shadow_realm_prototype = self.shadow_realm_prototype()?;
+                self.define_data(
+                    id,
+                    "prototype",
+                    Value::Object(shadow_realm_prototype),
+                    false,
+                    false,
+                    false,
+                )?;
+                self.define_data(
+                    shadow_realm_prototype,
                     "constructor",
                     Value::Object(id),
                     true,

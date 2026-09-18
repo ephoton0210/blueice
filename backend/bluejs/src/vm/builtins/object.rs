@@ -632,6 +632,7 @@ impl Vm {
                     | NativeFunction::WeakSet
                     | NativeFunction::WeakRef
                     | NativeFunction::FinalizationRegistry
+                    | NativeFunction::ShadowRealm
                     | NativeFunction::Promise
                     | NativeFunction::AsyncFunction
                     | NativeFunction::Object

@@ -1463,6 +1463,20 @@ impl Vm {
             NativeFunction::FinalizationRegistryUnregister => {
                 self.finalization_registry_unregister(&receiver, first.clone())
             }
+            NativeFunction::ShadowRealm => self.shadow_realm_constructor(construct),
+            NativeFunction::ShadowRealmEvaluate => {
+                self.shadow_realm_evaluate(receiver, first.clone())
+            }
+            NativeFunction::ShadowRealmImportValue => {
+                let second = native::argument(&args, 1);
+                self.shadow_realm_import_value(receiver, first.clone(), second.clone())
+            }
+            // Never reached: `dispatch_call` routes any callee registered
+            // in `shadow_wrapped_functions` to `shadow_call_wrapped` before
+            // a callee is ever reduced to this bare `NativeFunction` tag.
+            NativeFunction::ShadowRealmWrappedFunction => Err(RuntimeError::TypeError(
+                "ShadowRealm wrapped function called without its membrane record".into(),
+            )),
             NativeFunction::WeakCollectionMethod { map, method } => {
                 self.weak_collection_method(map, method, &receiver, &args)
             }

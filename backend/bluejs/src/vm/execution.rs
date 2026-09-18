@@ -223,6 +223,7 @@ impl Vm {
                 | "WeakSet"
                 | "WeakRef"
                 | "FinalizationRegistry"
+                | "ShadowRealm"
                 | "Iterator"
                 | "Function"
                 | "Proxy"

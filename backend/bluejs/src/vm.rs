@@ -33,6 +33,7 @@ mod modules;
 mod operations;
 mod properties;
 mod regexp;
+mod shadow_realm;
 mod temporal;
 mod test262;
 mod test262_agents;
@@ -532,6 +533,34 @@ struct Test262ImportedValue {
 /// A parent-heap object that stands for an object retained in a Test262 child
 /// realm. The two roots keep both endpoints alive while the membrane identity
 /// is observable; the child object is never stored in the parent heap.
+/// A `ShadowRealm` instance's own isolated realm: a full child `Vm` sharing
+/// this `Vm`'s `GlobalSymbolRegistry` (agent-local, like
+/// `$262.createRealm()`'s identical choice). Kept alive for the lifetime of
+/// this `Vm`: a `ShadowRealm` value can be retained by script indefinitely,
+/// so there is no earlier point at which dropping it would be safe --
+/// matching [`Test262Realm`]'s identical accepted tradeoff.
+struct ShadowRealmRecord {
+    vm: Box<Vm>,
+}
+
+/// A caller-heap facade standing in for a callable value that crossed a
+/// `ShadowRealm` boundary (`WrappedFunctionCreate`). `home_heap` identifies,
+/// by `ObjectId::heap`, the `Vm` that owns `target`; the live pointer to
+/// that `Vm` is resolved dynamically (see `shadow_realm::resolve_active`)
+/// rather than stored here, since a `Vm` is an ordinary owned value its
+/// caller may move between top-level calls. `_target_root` keeps `target`
+/// alive against *its own* realm's collector: nothing in that realm's own
+/// reachability graph necessarily still references it (it may have been an
+/// unstored expression completion value), so without this root a later,
+/// unrelated allocation in that realm could reclaim it out from under this
+/// facade.
+#[derive(Clone, Copy)]
+struct ShadowWrappedFunction {
+    home_heap: u64,
+    target: ObjectId,
+    _target_root: RootId,
+}
+
 struct Test262ForeignValue {
     realm: ObjectId,
     target: ObjectId,
@@ -755,6 +784,13 @@ pub struct Vm {
     test262_async_waits: std::sync::Arc<test262_agents::Test262AsyncWaits>,
     test262_realms: HashMap<ObjectId, Test262Realm>,
     test262_foreign_values: HashMap<ObjectId, Test262ForeignValue>,
+    shadow_realm_prototype: Option<ObjectId>,
+    shadow_realms: HashMap<ObjectId, ShadowRealmRecord>,
+    /// Reverse index from a `ShadowRealm` child's own heap tag back to the
+    /// key it is stored under in `shadow_realms`, so a wrapped-function call
+    /// can find "a realm I created directly" without a linear scan.
+    shadow_realm_by_heap: HashMap<u64, ObjectId>,
+    shadow_wrapped_functions: HashMap<ObjectId, ShadowWrappedFunction>,
     throw_type_error: Option<ObjectId>,
     joining: Vec<ObjectId>,
 }
@@ -872,6 +908,10 @@ impl Vm {
             test262_async_waits: std::sync::Arc::new(test262_agents::Test262AsyncWaits::new()),
             test262_realms: HashMap::new(),
             test262_foreign_values: HashMap::new(),
+            shadow_realm_prototype: None,
+            shadow_realms: HashMap::new(),
+            shadow_realm_by_heap: HashMap::new(),
+            shadow_wrapped_functions: HashMap::new(),
             throw_type_error: None,
             joining: Vec::new(),
         })
@@ -1785,6 +1825,11 @@ impl Vm {
             }
         }
         if let Value::Object(id) = callee {
+            if self.shadow_wrapped_functions.contains_key(&id) {
+                return self.shadow_call_wrapped(id, receiver, args, construct);
+            }
+        }
+        if let Value::Object(id) = callee {
             if let Some((code, captures, lexical_this, home, class_base)) = self.heap.closure(id)? {
                 let receiver = if code.arrow { lexical_this } else { receiver };
                 return self.call_closure(builtins::ClosureCall {
@@ -1825,6 +1870,7 @@ impl Vm {
                     | NativeFunction::WeakSet
                     | NativeFunction::WeakRef
                     | NativeFunction::FinalizationRegistry
+                    | NativeFunction::ShadowRealm
                     | NativeFunction::Object
                     | NativeFunction::RegExp
                     | NativeFunction::Collator
