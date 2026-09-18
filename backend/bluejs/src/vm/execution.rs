@@ -223,6 +223,8 @@ impl Vm {
                 | "WeakSet"
                 | "WeakRef"
                 | "FinalizationRegistry"
+                | "DisposableStack"
+                | "AsyncDisposableStack"
                 | "Iterator"
                 | "Function"
                 | "Proxy"
@@ -237,6 +239,7 @@ impl Vm {
                 | "EvalError"
                 | "URIError"
                 | "AggregateError"
+                | "SuppressedError"
                 | "eval"
                 | "isNaN"
                 | "isFinite"
@@ -988,6 +991,23 @@ impl Vm {
                     if let Value::Object(id) = value {
                         roots.push(self.heap.root(*id)?);
                     }
+                }
+            }
+            for resource in self
+                .disposable_stacks
+                .values()
+                .chain(self.async_disposable_stacks.values())
+                .flat_map(|state| state.resources.iter())
+                .chain(self.disposables.iter())
+            {
+                if let Value::Object(id) = &resource.receiver {
+                    roots.push(self.heap.root(*id)?);
+                }
+                if let Some(Value::Object(id)) = &resource.argument {
+                    roots.push(self.heap.root(*id)?);
+                }
+                if let Some(Value::Object(id)) = &resource.method {
+                    roots.push(self.heap.root(*id)?);
                 }
             }
             for job in &self.promise_jobs {

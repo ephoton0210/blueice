@@ -585,6 +585,30 @@ pub(crate) enum NativeFunction {
     RegExpGetter(&'static str),
     RegExpIteratorNext,
     StringMethod(StringMethod),
+    /// The `DisposableStack`/`AsyncDisposableStack` constructors (Explicit
+    /// Resource Management). `is_async` selects which brand's internal
+    /// slot/prototype the constructor and its methods observe.
+    DisposableStack {
+        is_async: bool,
+    },
+    DisposableStackDispose {
+        is_async: bool,
+    },
+    DisposableStackUse {
+        is_async: bool,
+    },
+    DisposableStackAdopt {
+        is_async: bool,
+    },
+    DisposableStackDefer {
+        is_async: bool,
+    },
+    DisposableStackMove {
+        is_async: bool,
+    },
+    DisposableStackDisposedGetter {
+        is_async: bool,
+    },
 }
 
 /// Failures particular to the URI encode/decode abstract operations.  The VM

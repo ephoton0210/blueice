@@ -1463,6 +1463,34 @@ impl Vm {
             NativeFunction::FinalizationRegistryUnregister => {
                 self.finalization_registry_unregister(&receiver, first.clone())
             }
+            NativeFunction::DisposableStack { is_async } => {
+                self.disposable_stack_constructor(is_async, construct)
+            }
+            NativeFunction::DisposableStackDispose { is_async } => {
+                if is_async {
+                    self.disposable_stack_dispose_async(&receiver)
+                } else {
+                    self.disposable_stack_dispose(&receiver)
+                }
+            }
+            NativeFunction::DisposableStackUse { is_async } => {
+                self.disposable_stack_use(&receiver, first.clone(), is_async)
+            }
+            NativeFunction::DisposableStackAdopt { is_async } => self.disposable_stack_adopt(
+                &receiver,
+                first.clone(),
+                native::argument(&args, 1).clone(),
+                is_async,
+            ),
+            NativeFunction::DisposableStackDefer { is_async } => {
+                self.disposable_stack_defer(&receiver, first.clone(), is_async)
+            }
+            NativeFunction::DisposableStackMove { is_async } => {
+                self.disposable_stack_move(&receiver, is_async)
+            }
+            NativeFunction::DisposableStackDisposedGetter { is_async } => {
+                self.disposable_stack_disposed(&receiver, is_async)
+            }
             NativeFunction::WeakCollectionMethod { map, method } => {
                 self.weak_collection_method(map, method, &receiver, &args)
             }

@@ -576,7 +576,7 @@ impl Compiler {
             child.emit(Opcode::SuperCallForward, 0)?;
             child.emit(Opcode::Pop, 0)?;
         }
-        child.statements(&function.body)?;
+        child.statements_with_disposal(&function.body)?;
         child.constant(Value::Undefined)?;
         child.emit(Opcode::Return, 0)?;
         let child_bytes = child_budget - child.max_bytecode_bytes + child.offset()?;

@@ -549,6 +549,10 @@ impl Vm {
                 Some("WeakRef")
             } else if default == self.finalization_registry_prototype()? {
                 Some("FinalizationRegistry")
+            } else if default == self.disposable_stack_prototype(false)? {
+                Some("DisposableStack")
+            } else if default == self.disposable_stack_prototype(true)? {
+                Some("AsyncDisposableStack")
             } else if self.date_prototype == Some(default) {
                 Some("Date")
             } else if default == self.base_iterator_prototype()? {
@@ -632,6 +636,7 @@ impl Vm {
                     | NativeFunction::WeakSet
                     | NativeFunction::WeakRef
                     | NativeFunction::FinalizationRegistry
+                    | NativeFunction::DisposableStack { .. }
                     | NativeFunction::Promise
                     | NativeFunction::AsyncFunction
                     | NativeFunction::Object
