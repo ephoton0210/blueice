@@ -1023,6 +1023,9 @@ impl Vm {
             NativeFunction::TemporalInstantToString => {
                 self.temporal_instant_to_string(&receiver, first)
             }
+            NativeFunction::TemporalInstantToLocaleString => {
+                self.temporal_instant_to_locale_string(&receiver, &args)
+            }
             NativeFunction::TemporalInstantToJson => {
                 self.temporal_instant_to_string(&receiver, &Value::Undefined)
             }

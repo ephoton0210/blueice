@@ -162,6 +162,7 @@ pub(crate) enum NativeFunction {
     TemporalInstantEquals,
     TemporalInstantCompare,
     TemporalInstantToString,
+    TemporalInstantToLocaleString,
     TemporalInstantToJson,
     TemporalInstantValueOf,
     TemporalFromEpochMilliseconds,

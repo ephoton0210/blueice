@@ -6,7 +6,8 @@
 (shared foundation) completed 2026-09-18, see its own checklist below for
 exactly what that means and what remains open within it (a full spec-grammar
 audit beyond Test262's coverage). **Stage 1 is done**: Track C (`Instant`
-arithmetic plus `Temporal.Now`), Track D (`PlainTime`), Track E (time-zone
+arithmetic plus `Temporal.Now`, including a same-day gap-closure pass that
+took `Instant` to 904/968), Track D (`PlainTime`), Track E (time-zone
 identifiers/offsets/disambiguation), and Track B (`Duration` arithmetic) are
 all done as of 2026-09-18 — see each track's own bullet for its measured
 Test262 numbers and its remaining gaps, and the closure table in Stage 3 for
@@ -530,6 +531,111 @@ isn't an assumption:
     and is already stale for several rows after Track C's `Instant` slice;
     the numbers here are the ones measured on this slice's own commit.
 
+  **Gap-closure pass, 2026-09-18 (same day, after Track D merged).**
+  `Temporal/Instant/` went from **710/968 (73.3%)** — the post-Track-D
+  baseline, Track C's original 646 plus the 64 modes Track D's shared Stage 0
+  parser fixes carried — to **904/968 (93.4%)**, with **zero regressions
+  anywhere in `Temporal/`** (the whole-tree filter went 3,168 → 3,380 of
+  13,272, +212 fixed / 0 regressed, diffed per path+mode). Per bucket:
+  `toString` 52→110/114, `toLocaleString` 12→40/42, `round` 64→82/82,
+  `equals` 48→60/60, `since` 116→136/142, `until` 114→134/140, `add`
+  48→52/56, `subtract` 46→50/54, `epochMilliseconds` 4→6/6, and every
+  `from`/`compare` string-argument file (24 modes) from 0.
+
+  What was actually wrong, each item pinned to the fixture that proves it:
+
+  - **Instant strings had no grammar of their own.** They went through the
+    generic date/time path, so a mandatory time and offset were not enforced,
+    `Z`-less and space-separated forms, leap seconds, sub-minute (indeed
+    nanosecond-precision) offsets, basic-format dates and ignorable `u-ca`
+    annotations were all mishandled, and trailing junk was accepted.
+    `iso::parse_instant` is now a complete `TemporalInstantString` parser
+    built from prefix parsers (`parse_iso_date_prefix`/`parse_iso_time_prefix`/
+    `parse_utc_offset_prefix`) that Track D's `parse_date`/`parse_time`/
+    `parse_offset_seconds` now delegate to, so there is one grammar
+    implementation rather than two.
+  - **Rounding used the wrong algorithm for negative instants.**
+    `RoundTemporalInstant` is defined over
+    `RoundNumberToIncrementAsIfPositive`, not `RoundNumberToIncrement`: for a
+    pre-epoch instant, `trunc` must move *earlier* and `ceil` *later*,
+    independent of sign. Added `rounding::round_to_increment_as_if_positive`
+    (kept beside, not replacing, the ordinary magnitude-based one that
+    `PlainTime`/`Duration` need) — `round/negative-instant.js`,
+    `toString/rounding-direction.js`, `toString/negative-instant-rounding.js`.
+  - **`toString` ignored three of its own options.** `smallestUnit: "minute"`
+    must drop the seconds field entirely; `fractionalSecondDigits: n` implies
+    a rounding *increment* of `10^(3-n)`/`10^(6-n)`/`10^(9-n)`, not 1
+    (`rounding-cross-midnight.js`); and the `timeZone` option was not
+    implemented at all. It now prints local fields plus a `±HH:MM` offset.
+  - **`toLocaleString` was an alias for `toString`.** It is
+    `CreateDateTimeFormat(locales, options, ANY, ALL)` + `FormatDateTime`, so
+    it now goes through the same `Intl.DateTimeFormat` bridge
+    `temporal_zoned_date_time_to_locale_string` uses — minus that method's
+    forced `timeZone`, which an `Instant` does not carry.
+  - **Option reading was neither strict nor ordered.** `GetOptionsObject` now
+    rejects primitives instead of `ToObject`-boxing them; `round` accepts a
+    String `roundTo` shorthand on a null-prototype object; and every method
+    reads *all* its options, in alphabetical order, before validating any of
+    them — `GetTemporalUnitValuedOption` accepts any unit *name* (including
+    calendar units) and the unit-group check happens afterwards, which is
+    exactly what the `order-of-operations.js` and
+    `options-read-before-algorithmic-validation.js` fixtures observe.
+  - **`until`/`since` had two rule bugs.** `largestUnit` defaults to
+    `LargerOfTwoTemporalUnits("second", smallestUnit)`, not to `"second"`
+    flatly (`largestunit-default.js`), and their rounding increment must
+    divide the *next larger unit* and stay strictly below it
+    (`invalid-increments.js`) — a different rule from
+    `Instant.prototype.round`'s divide-a-whole-day one.
+  - **Smaller fixes:** the constructor takes `ToBigInt` (so a numeric string
+    and a Boolean work, and a Number is a `TypeError`) rather than requiring
+    a literal `BigInt` (`basic.js`); `epochMilliseconds` floors rather than
+    truncating toward zero, so a pre-epoch instant rounds down
+    (`epochMilliseconds/basic.js`); `ToTemporalInstant` has a `ZonedDateTime`
+    fast path and throws `TypeError` for a non-String primitive rather than
+    stringifying it (`argument-zoneddatetime.js`, `argument-wrong-type.js`);
+    and `iso::parse_duration_record` now supports a fraction on the last
+    present time unit, cascading exactly into the units below it, which is
+    what `Instant.prototype.add("PT1.03125H")` needs.
+
+  **The 64 still-failing modes, and why** (none of them are Instant
+  arithmetic itself):
+
+  - **38 — `toZonedDateTimeISO` (2/40).** Not implemented; needs Track E's
+    `TimeZone`. Deliberately untouched.
+  - **20 — blocked on Track B (`Temporal.Duration`).** `add-large-subseconds`,
+    `subtract-large-subseconds` and `minimum-maximum-instant` need
+    `Temporal.Duration.from` with a property bag; `until`/`since`'s
+    `add-subtract`, `argument-zoneddatetime` and
+    `float64-representable-integer` need `Duration.prototype.negated`/`total`/
+    `add`, `Duration.prototype.toString` and `Duration.compare`. The
+    `Instant` side of each of these already works.
+  - **4 — `intl402` `toString/timezone-offset.js` and
+    `timezone-string-datetime.js`.** The only genuinely timeZone-dependent
+    deferral: they format against `Europe/Berlin`, `America/New_York` and
+    `Africa/Monrovia`, which needs real IANA transition data at an arbitrary
+    instant. `iso::resolve_fixed_time_zone_offset` therefore resolves `UTC`
+    and fixed offsets and returns "unresolvable" for every named zone, which
+    the caller turns into a `RangeError`. That is also, coincidentally, what
+    makes `timezone-string-unknown.js` pass, so those two files are the exact
+    measure of what Track E's data would add here. Note `backend/ecma402`
+    already depends on `jiff`/`jiff_tzdb` with real transition data
+    (`to_offset_info`), so Track E's open question has a ready answer — it was
+    simply out of scope to wire a new dependency edge from here.
+  - **2 — `intl402` `toLocaleString/hourcycle.js`.** Pre-existing
+    `Intl.DateTimeFormat` gap (`hourCycle: "h24"`/`"h11"`), not an `Instant`
+    one: the fixture's own `Intl.DateTimeFormat` equivalent fails the same
+    way, and this implementation is verified against
+    `new Intl.DateTimeFormat(locales, options).format(instant)` directly.
+
+  One pre-existing foundation test's expectation was corrected, not weakened:
+  `iso.rs`'s `parses_duration_strings_with_the_seconds_only_fraction_rule`
+  asserted `parse_duration_record("P1DT2H30.5M").is_none()`. That is wrong —
+  Temporal's `DurationTime` grammar allows a fraction on the *last present*
+  unit, and Test262's
+  `Instant/prototype/add/argument-string-negative-fractional-units.js` adds
+  `"-PT1440.567890123M"` to an `Instant`. It is now
+  `parses_duration_strings_with_a_fraction_on_the_last_unit_only`, still
+  pinning the "not on a non-final unit" half of the rule.
 - **Track D — PlainTime.** Evidence: time-of-day has no calendar-field
   dependency; Gecko's `PlainTime.cpp` (1,644 lines) is the smallest of the
   calendar-adjacent per-type files. **Done 2026-09-18** — kept inside
@@ -735,18 +841,30 @@ once). One owner:
       not yet recorded here — do not sum or otherwise combine these columns
       to approximate it.
 
-      | Type | 2026-09-17 | After Track C | After Track D (alone, on Track C) | After Track E (alone, on Track C) |
-      | --- | ---: | ---: | ---: | ---: |
-      | `Instant` | 86/968 | 646/968 | 710/968 | 684/968 |
-      | `PlainTime` | 102/1,010 | 108/1,010 | **968/1,010** | 108/1,010 |
-      | `PlainDate` | 332/2,290 | 332/2,290 | 348/2,290 | 366/2,290 |
-      | `PlainDateTime` | 302/2,512 | 302/2,512 | 316/2,512 | 362/2,512 |
-      | `PlainMonthDay` | 158/578 | 158/578 | 174/578 | 168/578 |
-      | `PlainYearMonth` | 186/1,672 | 186/1,672 | 202/1,672 | 196/1,672 |
-      | `ZonedDateTime` | 186/2,968 | 186/2,968 | 210/2,968 | 240/2,968 |
-      | `Duration` | 232/1,122 | 232/1,122 | 232/1,122 | 232/1,122 |
-      | `Now` | 0/138 | 0/138 | 0/138 | 136/138 (Now, merged separately) |
-      | **Total (`Temporal/`)** | 1,592 | — | 3,168/13,272 | 2,364/13,268 |
+      | Type | 2026-09-17 | After Track C | After Track D (alone, on Track C) | After Track E (alone, on Track C) | After Track C's gap-closure pass |
+      | --- | ---: | ---: | ---: | ---: | ---: |
+      | `Instant` | 86/968 | 646/968 | 710/968 | 684/968 | **904/968** |
+      | `PlainTime` | 102/1,010 | 108/1,010 | **968/1,010** | 108/1,010 | 976/1,010 |
+      | `PlainDate` | 332/2,290 | 332/2,290 | 348/2,290 | 366/2,290 | 348/2,290 |
+      | `PlainDateTime` | 302/2,512 | 302/2,512 | 316/2,512 | 362/2,512 | 316/2,512 |
+      | `PlainMonthDay` | 158/578 | 158/578 | 174/578 | 168/578 | 174/578 |
+      | `PlainYearMonth` | 186/1,672 | 186/1,672 | 202/1,672 | 196/1,672 | 202/1,672 |
+      | `ZonedDateTime` | 186/2,968 | 186/2,968 | 210/2,968 | 240/2,968 | 216/2,968 |
+      | `Duration` | 232/1,122 | 232/1,122 | 232/1,122 | 232/1,122 | 236/1,122 |
+      | `Now` | 0/138 | 0/138 | 0/138 | 136/138 (Now, merged separately) | 0/138 |
+      | **Total (`Temporal/`)** | 1,592 | — | 3,168/13,272 | 2,364/13,268 | **3,380/13,272** |
+
+      The gap-closure column's non-`Instant` movement (18 modes) is the
+      shared half of Track C's gap-closure pass: `iso.rs` now has one
+      unified date/time/offset grammar rather than two, and
+      `parse_duration_record` accepts a fraction on the last present unit,
+      so `PlainTime`, `ZonedDateTime` and `Duration` string arguments moved
+      too. Both runs were diffed per path+mode, not just by total: **212
+      fixed, 0 regressed.** Each column remains an independent, per-track
+      measurement on top of Track C's own commit — not cumulative across
+      columns — per the note above; the true combined number after every
+      track (including Track B's and Track E's own separately-merged work)
+      is recorded in the Stage 3 closure table instead.
 
       (The `Temporal/` filter schedules 13,272 modes in Track D's count,
       four more than the per-type table's 13,268 — the extra ones are the

@@ -10,6 +10,8 @@
 //! `vm/temporal.rs`'s `impl Vm` methods are the only callers that bridge
 //! these results into JavaScript-visible values.
 
+use super::epoch::{CivilDate, CivilTime};
+
 /// Returns whether `year` is a leap year in the proleptic Gregorian
 /// calendar (the ISO 8601 calendar).
 pub(crate) fn is_leap_year(year: i32) -> bool {
@@ -102,108 +104,81 @@ fn parse_time_spec(source: &str) -> Option<(u8, u8, u8, u32)> {
     (hour <= 23 && minute <= 59).then_some((hour, minute, second.unwrap_or(0), nanoseconds))
 }
 
-/// Parses the `YYYY-MM-DD` date portion at the start of an ISO
+/// Parses the whole `YYYY-MM-DD` date portion at the start of an ISO
 /// date/date-time/instant string, in either the extended (separated) or the
-/// basic (separator-less) form, with a four-digit unsigned year or a
-/// sign-plus-six-digit extended year.
+/// basic (separator-less) form, rejecting anything left over before the time
+/// designator, `Z`, or annotation.
 pub(crate) fn parse_date(source: &str) -> Option<(i32, u8, u8)> {
     let end = source
         .find(['T', 't', '[', 'Z', 'z'])
         .unwrap_or(source.len());
-    let date = &source[..end];
-    let (sign, rest) = match date.as_bytes().first() {
-        Some(b'+') => (1_i32, &date[1..]),
-        Some(b'-') => (-1_i32, &date[1..]),
-        _ => (1, date),
-    };
-    // A sign is exactly what distinguishes the six-digit extended year from
-    // the plain four-digit one; neither form may borrow the other's width.
-    let signed = date.len() != rest.len();
-    let year_width = if signed { 6 } else { 4 };
-    let (year, month, day) = if rest.contains('-') {
-        let mut fields = rest.split('-');
-        let year = fields.next()?;
-        let month = fields.next()?;
-        let day = fields.next()?;
-        if fields.next().is_some() {
-            return None;
-        }
-        (year, month, day)
-    } else {
-        (
-            rest.get(..year_width)?,
-            rest.get(year_width..year_width + 2)?,
-            rest.get(year_width + 2..)?,
-        )
-    };
-    if year.len() != year_width || !year.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    let magnitude: i32 = year.parse().ok()?;
-    // `-000000` is a negative zero year, which the grammar rejects outright.
-    if sign < 0 && magnitude == 0 {
-        return None;
-    }
-    let year = sign * magnitude;
-    let month = two_digit_field(month)?;
-    let day = two_digit_field(day)?;
-    ((-271_821..=275_760).contains(&year)
-        && day >= 1
-        && days_in_month(year, month).is_some_and(|last| day <= last))
-    .then_some((year, month, day))
+    let (date, rest) = parse_iso_date_prefix(&source[..end])?;
+    rest.is_empty().then_some(date)
 }
 
-/// Parses an `HH:MM:SS.fraction` time-of-day (ignoring any UTC offset,
-/// designator or annotation that follows it), returning
-/// `(hour, minute, second, millisecond, microsecond, nanosecond)`.
+/// Parses an `HH:MM:SS.fraction` time-of-day, ignoring any UTC offset,
+/// designator or annotation that follows it.
 pub(crate) fn parse_time(source: &str) -> Option<(u8, u8, u8, u16, u16, u16)> {
-    let body = source
-        .split(['Z', 'z', '+', '-', '['])
-        .next()
-        .unwrap_or(source);
-    let (hour, minute, second, nanos) = parse_time_spec(body)?;
-    if second > 60 {
+    parse_iso_time_prefix(source).map(|(time, _)| time)
+}
+
+/// Parses the UTC offset (or `Z`/`z` designator) found within `source` into
+/// signed whole seconds, dropping any sub-second fraction: no real zone
+/// offset has sub-second precision, and `Temporal.PlainTime` ignores the
+/// offset entirely — it is parsed only so a malformed one is still a syntax
+/// error.
+pub(crate) fn parse_offset_seconds(source: &str) -> Option<i32> {
+    let index = source.find(['Z', 'z', '+', '-', '['])?;
+    let (offset, rest) = parse_utc_offset_prefix(&source[index..])?;
+    if !(rest.is_empty() || rest.starts_with('[')) {
         return None;
     }
-    // `ParseISODateTime` accepts a `:60` leap second in the grammar and
-    // immediately constrains it to `:59` (there is no leap second in
-    // Temporal's time record) — Test262's
-    // `PlainTime/from/argument-string-leap-second.js`.
-    let second = second.min(59);
-    Some((
-        hour,
-        minute,
-        second,
-        (nanos / 1_000_000) as u16,
-        ((nanos / 1_000) % 1_000) as u16,
-        (nanos % 1_000) as u16,
-    ))
+    i32::try_from(offset.nanoseconds / 1_000_000_000).ok()
+}
+
+/// The annotation suffix of an ISO date/time/offset string: an optional
+/// leading time-zone annotation followed by zero or more `[key=value]`
+/// annotations.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct Annotations {
+    /// The time-zone annotation's body (without `!`), if one was present.
+    pub(crate) time_zone: Option<String>,
+    /// The first `u-ca=` annotation's value, if any.
+    pub(crate) calendar: Option<String>,
 }
 
 /// Scans the zero-or-more bracket annotations that may follow an ISO
-/// date/time/offset prefix, returning the first `u-ca=` value if present.
+/// date/time/offset prefix.
 ///
 /// Grammar notes (from Temporal's annotation syntax): an optional leading
-/// time-zone annotation (no `=` in its body) is skipped without further
-/// validation here — resolving it is a separate, later concern (Stage 1
-/// Track E's `time_zone.rs`, and matching `Intl.DateTimeFormat`'s own
-/// time-zone-annotation handling elsewhere in this codebase). Every
-/// subsequent annotation is `[!]key=value`; a key containing any
-/// non-lowercase character is always a syntax error, regardless of the
-/// critical (`!`) flag. A second or later `u-ca` annotation is always
-/// ignored, never validated. Any other unrecognized key is ignored unless
-/// marked critical, in which case this returns `Err`.
-pub(crate) fn parse_annotations(mut cursor: &str) -> Result<Option<String>, ()> {
+/// time-zone annotation (no `=` in its body) is returned as
+/// [`Annotations::time_zone`] after being checked against
+/// `TimeZoneIdentifier` — an IANA-shaped name, or a UTC offset with at most
+/// minute precision (Test262's `instant-string-sub-minute-offset.js` makes
+/// the sub-minute rejection a syntax error, not a later resolution failure).
+/// Whether a named identifier actually *exists* is a separate, later concern
+/// (Stage 1 Track E's `time_zone.rs`). Every subsequent annotation is
+/// `[!]key=value`; a key containing any non-lowercase character is always a
+/// syntax error, regardless of the critical (`!`) flag. A second or later
+/// `u-ca` annotation is ignored rather than resolved, but more than one
+/// `u-ca` annotation with any of them critical is a syntax error. Any other
+/// unrecognized key is ignored unless marked critical, in which case this
+/// returns `Err`.
+pub(crate) fn parse_annotation_suffix(mut cursor: &str) -> Result<Annotations, ()> {
+    let mut result = Annotations::default();
     if let Some(rest) = cursor.strip_prefix('[') {
         let end = rest.find(']').ok_or(())?;
         let body = rest[..end].strip_prefix('!').unwrap_or(&rest[..end]);
         if !body.contains('=') {
+            if !is_time_zone_identifier(body) {
+                return Err(());
+            }
+            result.time_zone = Some(body.to_string());
             cursor = &rest[end + 1..];
         }
     }
-    let mut calendar = None;
-    let mut calendar_count = 0_usize;
-    let mut any_critical = false;
+    let mut calendars = 0_usize;
+    let mut critical_calendar = false;
     while !cursor.is_empty() {
         let rest = cursor.strip_prefix('[').ok_or(())?;
         let end = rest.find(']').ok_or(())?;
@@ -230,19 +205,262 @@ pub(crate) fn parse_annotations(mut cursor: &str) -> Result<Option<String>, ()> 
             return Err(());
         }
         if key == "u-ca" {
-            calendar_count += 1;
-            any_critical |= critical;
-            calendar.get_or_insert_with(|| value.to_string());
+            calendars += 1;
+            critical_calendar |= critical;
+            if calendars > 1 && critical_calendar {
+                return Err(());
+            }
+            result.calendar.get_or_insert_with(|| value.to_string());
         } else if critical {
             return Err(());
         }
     }
-    // A repeated calendar annotation is ordinarily ignored, but repeating it
-    // with the critical flag anywhere in the set is a syntax error.
-    if calendar_count > 1 && any_critical {
-        return Err(());
+    Ok(result)
+}
+
+/// [`parse_annotation_suffix`], keeping only the resolved calendar.
+pub(crate) fn parse_annotations(cursor: &str) -> Result<Option<String>, ()> {
+    parse_annotation_suffix(cursor).map(|annotations| annotations.calendar)
+}
+
+/// Whether `value` matches Temporal's `TimeZoneIdentifier`: either a UTC
+/// offset with at most minute precision, or an IANA-shaped name. Existence
+/// of a named zone is deliberately not checked here.
+pub(crate) fn is_time_zone_identifier(value: &str) -> bool {
+    if value.starts_with(['+', '-']) {
+        return parse_minute_precision_offset(value).is_some();
     }
-    Ok(calendar)
+    !value.is_empty()
+        && value.split('/').all(|component| {
+            (1..=14).contains(&component.len())
+                && component
+                    .bytes()
+                    .next()
+                    .is_some_and(|byte| byte.is_ascii_alphabetic() || matches!(byte, b'_' | b'.'))
+                && component.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'+' | b'-')
+                })
+        })
+}
+
+/// Parses a `±HH`, `±HH:MM` or `±HHMM` offset — the only offset forms a
+/// `TimeZoneIdentifier` accepts — into signed nanoseconds. A seconds
+/// component disqualifies the string even when it is `00`, because the
+/// restriction is syntactic (Test262's `timezone-string-datetime.js` rejects
+/// `-07:00:00` alongside `-07:00:01`).
+pub(crate) fn parse_minute_precision_offset(value: &str) -> Option<i128> {
+    if !value.starts_with(['+', '-']) {
+        return None;
+    }
+    let (offset, rest) = parse_utc_offset_prefix(value)?;
+    (rest.is_empty() && offset.minute_precision).then_some(offset.nanoseconds)
+}
+
+/// Splits exactly `count` leading ASCII digits off `source`.
+fn split_digits(source: &str, count: usize) -> Option<(&str, &str)> {
+    let bytes = source.as_bytes();
+    if bytes.len() < count || !bytes[..count].iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    Some(source.split_at(count))
+}
+
+/// Parses the date at the start of `source`, returning it with the
+/// unconsumed remainder. Both the extended (`YYYY-MM-DD`) and basic
+/// (`YYYYMMDD`) forms are accepted, with either a four-digit year or a
+/// signed six-digit extended year — Test262's `Instant/from/argument-string.js`
+/// exercises every combination, including mixing a basic date with an
+/// extended time. `-000000` is never a valid extended year.
+pub(crate) fn parse_iso_date_prefix(source: &str) -> Option<(CivilDate, &str)> {
+    let (year, rest) = match source.as_bytes().first() {
+        Some(sign @ (b'+' | b'-')) => {
+            let negative = *sign == b'-';
+            let (digits, rest) = split_digits(&source[1..], 6)?;
+            let value: i32 = digits.parse().ok()?;
+            if negative && value == 0 {
+                return None;
+            }
+            (if negative { -value } else { value }, rest)
+        }
+        _ => {
+            let (digits, rest) = split_digits(source, 4)?;
+            (digits.parse().ok()?, rest)
+        }
+    };
+    let (month, day, rest) = match rest.strip_prefix('-') {
+        Some(rest) => {
+            let (month, rest) = split_digits(rest, 2)?;
+            let (day, rest) = split_digits(rest.strip_prefix('-')?, 2)?;
+            (month, day, rest)
+        }
+        None => {
+            let (month, rest) = split_digits(rest, 2)?;
+            let (day, rest) = split_digits(rest, 2)?;
+            (month, day, rest)
+        }
+    };
+    let month: u8 = month.parse().ok()?;
+    let day: u8 = day.parse().ok()?;
+    ((-271_821..=275_760).contains(&year)
+        && day >= 1
+        && days_in_month(year, month).is_some_and(|last| day <= last))
+    .then_some(((year, month, day), rest))
+}
+
+/// Parses a time-of-day at the start of `source`, returning it with the
+/// unconsumed remainder (the UTC offset, designator or annotation that
+/// follows). The time itself is delegated to [`parse_time_spec`], so the
+/// extended/basic forms and the fraction rules stay defined in exactly one
+/// place; a `60` second value is a leap second, clamped to `59` as
+/// `ParseISODateTime` prescribes.
+pub(crate) fn parse_iso_time_prefix(source: &str) -> Option<(CivilTime, &str)> {
+    let end = source
+        .find(['Z', 'z', '+', '-', '['])
+        .unwrap_or(source.len());
+    let (hour, minute, second, nanoseconds) = parse_time_spec(&source[..end])?;
+    if second > 60 {
+        return None;
+    }
+    Some((
+        (
+            hour,
+            minute,
+            second.min(59),
+            (nanoseconds / 1_000_000) as u16,
+            ((nanoseconds / 1_000) % 1_000) as u16,
+            (nanoseconds % 1_000) as u16,
+        ),
+        &source[end..],
+    ))
+}
+
+/// A parsed UTC offset: its exact value, plus whether it was written without
+/// a seconds component.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct UtcOffset {
+    /// Signed nanoseconds east of UTC.
+    pub(crate) nanoseconds: i128,
+    /// Whether the written form had no seconds field (a `Z` designator
+    /// counts, since it denotes exactly UTC).
+    pub(crate) minute_precision: bool,
+}
+
+/// Parses a `Z`/`z` designator or a `±HH[[:]MM[[:]SS[.frac]]]` UTC offset at
+/// the start of `source`. An offset shares the time-of-day grammar, so the
+/// body goes through [`parse_time_spec`] too.
+pub(crate) fn parse_utc_offset_prefix(source: &str) -> Option<(UtcOffset, &str)> {
+    if let Some(rest) = source.strip_prefix(['Z', 'z']) {
+        return Some((
+            UtcOffset {
+                nanoseconds: 0,
+                minute_precision: true,
+            },
+            rest,
+        ));
+    }
+    let negative = match source.as_bytes().first()? {
+        b'+' => false,
+        b'-' => true,
+        _ => return None,
+    };
+    // An annotation, not a further offset field, is the only thing that may
+    // follow an offset, so it is where the offset body ends.
+    let end = source[1..]
+        .find('[')
+        .map_or(source.len(), |index| index + 1);
+    let body = &source[1..end];
+    let (hour, minute, second, nanoseconds) = parse_time_spec(body)?;
+    if second > 59 {
+        return None;
+    }
+    // Whether a seconds field was *written* (not merely non-zero) is what
+    // decides whether the offset can serve as a `TimeZoneIdentifier`.
+    let core = body.split(['.', ',']).next().unwrap_or(body);
+    let has_second = if core.contains(':') {
+        core.matches(':').count() == 2
+    } else {
+        core.len() == 6
+    };
+    let total = i128::from(hour) * 3_600_000_000_000
+        + i128::from(minute) * 60_000_000_000
+        + i128::from(second) * 1_000_000_000
+        + i128::from(nanoseconds);
+    Some((
+        UtcOffset {
+            nanoseconds: if negative { -total } else { total },
+            minute_precision: !has_second,
+        },
+        &source[end..],
+    ))
+}
+
+/// The pieces of a `TemporalInstantString`: a date, a time-of-day, and the
+/// UTC offset that places them on the epoch timeline. Both the time and the
+/// offset are mandatory for an `Instant` — a bare date, or a date with an
+/// offset but no time, carries too little information (Test262's
+/// `argument-string-date-with-utc-offset.js`).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct InstantParts {
+    pub(crate) date: CivilDate,
+    pub(crate) time: CivilTime,
+    pub(crate) offset_nanoseconds: i128,
+}
+
+/// Parses a complete `TemporalInstantString`, rejecting trailing junk.
+pub(crate) fn parse_instant(source: &str) -> Option<InstantParts> {
+    let (date, rest) = parse_iso_date_prefix(source)?;
+    let (time, rest) = parse_iso_time_prefix(rest.strip_prefix(['T', 't', ' '])?)?;
+    let (offset, rest) = parse_utc_offset_prefix(rest)?;
+    parse_annotation_suffix(rest).ok()?;
+    Some(InstantParts {
+        date,
+        time,
+        offset_nanoseconds: offset.nanoseconds,
+    })
+}
+
+/// Resolves a Temporal `TimeZoneIdentifier`, or the time-zone information
+/// carried by a full ISO date-time string, into a fixed UTC offset in
+/// nanoseconds.
+///
+/// `Ok(None)` means the identifier is syntactically valid but names an IANA
+/// zone whose transition rules this engine cannot yet resolve (everything
+/// except `UTC`); `Err(())` means the input is not a time zone at all.
+/// Resolving named zones is Stage 1 Track E's `time_zone.rs`.
+pub(crate) fn resolve_fixed_time_zone_offset(source: &str) -> Result<Option<i128>, ()> {
+    let identifier = if is_time_zone_identifier(source) {
+        source.to_string()
+    } else {
+        // Not a bare identifier: the only other accepted form is a full ISO
+        // date-time carrying either a time-zone annotation (which wins), a
+        // `Z` designator, or a UTC offset.
+        let (_, rest) = parse_iso_date_prefix(source).ok_or(())?;
+        let rest = rest.strip_prefix(['T', 't', ' ']).ok_or(())?;
+        let (_, rest) = parse_iso_time_prefix(rest).ok_or(())?;
+        let (offset, rest) = match parse_utc_offset_prefix(rest) {
+            Some((offset, rest)) => (Some(offset), rest),
+            None => (None, rest),
+        };
+        match parse_annotation_suffix(rest)?.time_zone {
+            Some(time_zone) => time_zone,
+            // A `Z` designator means UTC; a written offset must be
+            // minute-precision to serve as an identifier.
+            None => {
+                let offset = offset.ok_or(())?;
+                if !offset.minute_precision {
+                    return Err(());
+                }
+                return Ok(Some(offset.nanoseconds));
+            }
+        }
+    };
+    if let Some(offset) = parse_minute_precision_offset(&identifier) {
+        return Ok(Some(offset));
+    }
+    if identifier.eq_ignore_ascii_case("UTC") {
+        return Ok(Some(0));
+    }
+    Ok(None)
 }
 
 /// Parses the `TemporalTimeString` grammar — the string form
@@ -477,35 +695,6 @@ pub(crate) fn parse_duration_record(source: &str) -> Option<blueice_ecma402::Dur
         sign * values[9],
     )
     .ok()
-}
-
-/// Parses a UTC-offset or `Z`/`z` suffix (`temporal_offset_seconds`'s own
-/// former name) into signed seconds east of UTC.
-pub(crate) fn parse_offset_seconds(source: &str) -> Option<i32> {
-    let index = source.char_indices().find_map(|(index, character)| {
-        matches!(character, 'Z' | 'z' | '+' | '-' | '[').then_some(index)
-    })?;
-    let suffix = &source[index..];
-    if matches!(suffix.as_bytes().first(), Some(b'Z' | b'z')) {
-        return (suffix.len() == 1 || suffix.starts_with("Z[") || suffix.starts_with("z["))
-            .then_some(0);
-    }
-    let sign = match suffix.as_bytes().first() {
-        Some(b'+') => 1,
-        Some(b'-') => -1,
-        _ => return None,
-    };
-    let fields = suffix[1..]
-        .split_once('[')
-        .map_or(&suffix[1..], |(fields, _)| fields);
-    // An offset shares the time-of-day grammar, including a sub-minute
-    // fraction (`+00:00:00.000000000`). The fractional part is dropped: no
-    // real zone offset has sub-second precision, and Temporal's own
-    // `PlainTime` path ignores the offset entirely — it is parsed only so a
-    // malformed one is still a syntax error.
-    let (hour, minute, second, _) = parse_time_spec(fields)?;
-    (second <= 59)
-        .then_some(sign * (i32::from(hour) * 3_600 + i32::from(minute) * 60 + i32::from(second)))
 }
 
 #[cfg(test)]
@@ -819,10 +1008,195 @@ mod tests {
     }
 
     #[test]
+    fn parses_duration_strings_with_a_fraction_on_the_last_unit_only() {
+        assert!(parse_duration_record("P1Y2M3W4DT5H6M7.008009010S").is_some());
+        // A fraction on the last present unit is valid, and cascades into
+        // the units below it: `PT30.5M` is 30 minutes and 30 seconds.
+        // (Test262 evidence that this *must* parse:
+        // `built-ins/Temporal/Instant/prototype/add/argument-string-negative-fractional-units.js`
+        // adds `"-PT1440.567890123M"` to an Instant.)
+        let record = parse_duration_record("P1DT2H30.5M").expect("a fractional minute is valid");
+        assert_eq!(record.minutes, 30);
+        assert_eq!(record.seconds, 30);
+        // A fraction anywhere but on the last unit is still a syntax error.
+        assert!(parse_duration_record("PT30.5M10S").is_none());
+        assert!(parse_duration_record("P1.5DT1H").is_none());
+        assert!(parse_duration_record("not-a-duration").is_none());
+        assert!(parse_duration_record("P1DT").is_none());
+    }
+
+    #[test]
+    fn cascades_a_fractional_hour_into_every_lower_unit() {
+        // Test262's `add/argument-string-fractional-units-rounding-mode.js`:
+        // `PT1.03125H` is exactly 3,712.5 seconds.
+        let record = parse_duration_record("PT1.03125H").expect("a fractional hour is valid");
+        assert_eq!(record.hours, 1);
+        assert_eq!(record.minutes, 1);
+        assert_eq!(record.seconds, 52);
+        assert_eq!(record.milliseconds, 500);
+        // `add/argument-string-negative-fractional-units.js`'s exact values.
+        let record = parse_duration_record("-PT24.567890123H").expect("a fractional hour is valid");
+        assert_eq!(
+            (
+                record.hours,
+                record.minutes,
+                record.seconds,
+                record.milliseconds,
+                record.microseconds,
+                record.nanoseconds
+            ),
+            (-24, -34, -4, -404, -442, -800)
+        );
+    }
+
+    #[test]
     fn parses_offsets_including_zulu_and_bracket_termination() {
-        assert_eq!(parse_offset_seconds("Z"), Some(0));
-        assert_eq!(parse_offset_seconds("+01:00"), Some(3_600));
-        assert_eq!(parse_offset_seconds("-0130"), Some(-5_400));
-        assert_eq!(parse_offset_seconds("+25:00"), None);
+        assert_eq!(
+            parse_utc_offset_prefix("Z").map(|(offset, rest)| (offset.nanoseconds, rest)),
+            Some((0, ""))
+        );
+        assert_eq!(
+            parse_utc_offset_prefix("+01:00").map(|(offset, rest)| (offset.nanoseconds, rest)),
+            Some((3_600_000_000_000, ""))
+        );
+        assert_eq!(
+            parse_utc_offset_prefix("-0130").map(|(offset, rest)| (offset.nanoseconds, rest)),
+            Some((-5_400_000_000_000, ""))
+        );
+        assert_eq!(
+            parse_utc_offset_prefix("-08:00[America/Vancouver]")
+                .map(|(offset, rest)| (offset.nanoseconds, rest)),
+            Some((-28_800_000_000_000, "[America/Vancouver]"))
+        );
+        assert_eq!(parse_utc_offset_prefix("+25:00"), None);
+        assert_eq!(parse_utc_offset_prefix("01:00"), None);
+    }
+
+    #[test]
+    fn records_whether_an_offset_was_written_with_minute_precision() {
+        for (source, minute_precision) in [
+            ("Z", true),
+            ("+00", true),
+            ("+00:00", true),
+            ("+0000", true),
+            ("+00:00:00", false),
+            ("+000000", false),
+            ("+00:00:00.5", false),
+        ] {
+            let (offset, rest) =
+                parse_utc_offset_prefix(source).unwrap_or_else(|| panic!("{source} parses"));
+            assert!(rest.is_empty(), "{source}");
+            assert_eq!(offset.minute_precision, minute_precision, "{source}");
+        }
+    }
+
+    #[test]
+    fn parses_the_instant_grammar_including_leap_seconds_and_variant_separators() {
+        assert_eq!(
+            parse_instant("1970-01-01T00:00Z"),
+            Some(InstantParts {
+                date: (1970, 1, 1),
+                time: (0, 0, 0, 0, 0, 0),
+                offset_nanoseconds: 0,
+            })
+        );
+        for separator in ['T', 't', ' '] {
+            assert!(
+                parse_instant(&format!("1970-01-01{separator}00:00Z")).is_some(),
+                "{separator}"
+            );
+        }
+        // Leap seconds clamp to :59 rather than being rejected.
+        assert_eq!(
+            parse_instant("2016-12-31T23:59:60Z").map(|parts| parts.time),
+            Some((23, 59, 59, 0, 0, 0))
+        );
+        // Sub-minute offsets are exact in the offset position.
+        assert_eq!(
+            parse_instant("1970-01-01T00:19:32.37+00:19:32.37")
+                .map(|parts| (parts.time, parts.offset_nanoseconds)),
+            Some(((0, 19, 32, 370, 0, 0), 1_172_370_000_000))
+        );
+        // A calendar annotation is accepted and never resolved.
+        assert!(parse_instant("1970-01-01T00:00Z[u-ca=discord]").is_some());
+        assert!(parse_instant("1970-01-01T00Z[Europe/Vienna]").is_some());
+    }
+
+    #[test]
+    fn rejects_instant_strings_the_grammar_does_not_allow() {
+        for source in [
+            "",
+            "invalid iso8601",
+            // A bare date, or a date without a time, is not an instant.
+            "2020-01-01",
+            "2020-01-01T00:00:00",
+            "2022-09-15Z",
+            "2022-09-15+00:00[UTC]",
+            "2020-01-01TZ",
+            // Out-of-range or malformed components.
+            "2020-01-00T00:00Z",
+            "2020-02-30T00:00Z",
+            "2020-13-01T00:00Z",
+            "2020-01-01T25:00:00Z",
+            "2020-01-01T01:60:00Z",
+            "2020-01-01T00:00-24:00",
+            // Trailing junk.
+            "2020-01-01T00:00Zjunk",
+            "2020-01-01T00:00:00+00:00[UTC][u-ca=iso8601]junk",
+            // Unsupported year/component widths.
+            "02020-01-01T00:00Z",
+            "+0002020-01-01T00:00Z",
+            "2020-001-01T00:00Z",
+            "2020-01-001T00:00Z",
+            "2020-01-01T001Z",
+            "2020-01-01T01:001Z",
+            "2020-W01-1T00:00Z",
+            // Negative zero is never a valid extended year.
+            "-000000-03-30T00:45Z",
+            // More than nine fractional digits.
+            "1970-01-01T00:00:00.1234567891Z",
+            "1970-01-01T00+00:00:00.1234567890",
+            // A sub-minute offset cannot be a time-zone annotation.
+            "2021-08-19T17:30-07:00:01[-07:00:01]",
+            "2021-08-19T17:30-07:00:00[-070000]",
+            // More than one calendar annotation, any of them critical.
+            "1970-01-01T00:00Z[u-ca=iso8601][!u-ca=iso8601]",
+            "1970-01-01T00:00Z[!u-ca=iso8601][u-ca=iso8601]",
+        ] {
+            assert_eq!(parse_instant(source), None, "{source:?}");
+        }
+    }
+
+    #[test]
+    fn resolves_only_utc_and_fixed_offset_time_zones() {
+        for (source, expected) in [
+            ("UTC", Ok(Some(0))),
+            ("utc", Ok(Some(0))),
+            ("+01:00", Ok(Some(3_600_000_000_000))),
+            ("-01:30", Ok(Some(-5_400_000_000_000))),
+            ("2021-08-19T17:30Z", Ok(Some(0))),
+            ("2021-08-19T17:30-07:00", Ok(Some(-25_200_000_000_000))),
+            ("2021-08-19T17:30-07:00[UTC]", Ok(Some(0))),
+            (
+                "2021-08-19T17:30:45.123456789-12:12[+01:46]",
+                Ok(Some(6_360_000_000_000)),
+            ),
+            ("2016-12-31T23:59:60+00:00[UTC]", Ok(Some(0))),
+            // Syntactically a zone, but its transition rules are Track E's.
+            ("Europe/Vienna", Ok(None)),
+            ("Mars/Olympus_Mons", Ok(None)),
+            // Not a time zone at all.
+            ("", Err(())),
+            ("2021-08-19T17:30", Err(())),
+            ("2021-08-19T17:30-07:00:01", Err(())),
+            ("2021-08-19T17:30-07:00:00", Err(())),
+            ("2021-08-19T17:30:45.123456789+23:59[+23:59:60]", Err(())),
+        ] {
+            assert_eq!(
+                resolve_fixed_time_zone_offset(source),
+                expected,
+                "{source:?}"
+            );
+        }
     }
 }

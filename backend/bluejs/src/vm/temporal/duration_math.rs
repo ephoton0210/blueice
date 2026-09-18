@@ -134,6 +134,25 @@ impl TimeDuration {
         }
     }
 
+    /// Rounds the exact total the way `RoundTemporalInstant` does: with the
+    /// mode applied as if the total were positive, so the direction never
+    /// depends on which side of the epoch the instant falls on.
+    pub(crate) fn round_as_if_positive(
+        self,
+        smallest_unit: TimeUnit,
+        increment: i128,
+        mode: blueice_ecma402::NumberRoundingMode,
+    ) -> Self {
+        let step = smallest_unit.nanoseconds() * increment;
+        Self {
+            total_nanoseconds: rounding::round_to_increment_as_if_positive(
+                self.total_nanoseconds,
+                step,
+                mode,
+            ),
+        }
+    }
+
     /// Balances the exact total into `(hour, minute, second, millisecond,
     /// microsecond, nanosecond)` fields, with everything above `largest`
     /// folded — unbounded — into `largest`'s own field, and every unit at or
@@ -300,6 +319,33 @@ mod tests {
         assert_eq!(
             rounded.total_nanoseconds(),
             14 * 3_600_000_000_000 + 30 * 60_000_000_000
+        );
+    }
+
+    #[test]
+    fn as_if_positive_rounding_keeps_a_negative_total_moving_earlier() {
+        // Test262's Instant/prototype/toString/rounding-direction.js:
+        // -000099-12-15T12:00:00.5Z truncated to the second moves earlier
+        // (away from the epoch), unlike ordinary magnitude-based truncation.
+        let duration = TimeDuration::from_nanoseconds(-65_261_246_399_500_000_000);
+        assert_eq!(
+            duration
+                .round_as_if_positive(TimeUnit::Second, 1, Mode::Trunc)
+                .total_nanoseconds(),
+            -65_261_246_400_000_000_000
+        );
+        assert_eq!(
+            duration
+                .round_as_if_positive(TimeUnit::Second, 1, Mode::Ceil)
+                .total_nanoseconds(),
+            -65_261_246_399_000_000_000
+        );
+        // Ordinary rounding is the one that moves toward the epoch.
+        assert_eq!(
+            duration
+                .round(TimeUnit::Second, 1, Mode::Trunc)
+                .total_nanoseconds(),
+            -65_261_246_399_000_000_000
         );
     }
 

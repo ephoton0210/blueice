@@ -592,8 +592,11 @@ fn temporal_plain_time_getters_and_calendar_agnostic_arithmetic() {
         check(one.until(three, { largestUnit: "auto" }).hours === 1,
             "largestUnit auto resolves to hour");
         // until/since share round()'s divides-the-unit increment rule, which
-        // Instant's own difference methods do not have
-        // (until/roundingincrement-invalid.js).
+        // `Temporal.Instant.prototype.round` does not have — an Instant is
+        // unbounded, so its own rounding only has to divide a whole day, while
+        // `Instant.prototype.until`/`since` use this same per-unit rule
+        // (until/roundingincrement-invalid.js, and
+        // `Instant/prototype/until/invalid-increments.js` for the Instant side).
         throwsRange(() => one.until(three, { smallestUnit: "minutes", roundingIncrement: 29 }),
             "until validates the rounding increment against its unit");
         // A primitive options argument is a TypeError, not a boxed wrapper
@@ -820,6 +823,232 @@ fn temporal_now_reads_one_wall_clock_through_resolved_time_zone_identifiers() {
         }
 
         true
+    "#;
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn temporal_instant_string_grammar_rounding_and_serialization() {
+    // Every expectation below is taken from a Test262 fixture under
+    // `built-ins/Temporal/Instant/` or `intl402/Temporal/Instant/`, named in
+    // the comment beside it, rather than derived from the spec text alone.
+    let source = r#"
+        // Failures accumulate rather than throwing, so a regression reports
+        // *which* expectation broke instead of an opaque thrown object.
+        let failures = [];
+        function check(condition, message) {
+            if (!condition) failures.push(message);
+        }
+        function throwsRange(thunk, message) {
+            try { thunk(); } catch (error) {
+                check(error instanceof RangeError, `${message}: ${error}`);
+                return;
+            }
+            failures.push(`${message}: did not throw`);
+        }
+        function throwsType(thunk, message) {
+            try { thunk(); } catch (error) {
+                check(error instanceof TypeError, `${message}: ${error}`);
+                return;
+            }
+            failures.push(`${message}: did not throw`);
+        }
+
+        // The constructor takes ToBigInt, not only a literal BigInt
+        // (basic.js, argument.js).
+        check(new Temporal.Instant("217175010123456789").epochNanoseconds
+            === 217175010123456789n, "a string argument converts through ToBigInt");
+        check(new Temporal.Instant(true).epochNanoseconds === 1n, "true is 1n");
+        throwsType(() => new Temporal.Instant(42), "a Number is not a BigInt");
+        // `epochMilliseconds` floors, so a pre-epoch instant rounds *down*
+        // (prototype/epochMilliseconds/basic.js).
+        check(new Temporal.Instant(-217175010876543211n).epochMilliseconds === -217175010877,
+            "epochMilliseconds floors below the epoch");
+
+        // The TemporalInstantString grammar (prototype/equals/argument-string-*.js,
+        // from/argument-string.js, leap-second.js, year-zero.js).
+        let epoch = new Temporal.Instant(0n);
+        for (let arg of [
+            "1970-01-01T00:00Z", "1970-01-01t00:00Z", "1970-01-01 00:00Z",
+            "1970-01-01T00Z[Europe/Vienna]", "1969-12-31T16-080000.000000000[America/Vancouver]",
+            "1970-01-01T00+00:00:00,0", "1970-01-01T00:00Z[u-ca=discord]",
+            "19700101T00:00:00+0000", "+0019700101T000000.000+00:00",
+        ]) {
+            check(epoch.equals(arg), `valid instant string ${arg}`);
+        }
+        check(new Temporal.Instant(1483228799000000000n).equals("2016-12-31T23:59:60Z"),
+            "a leap second is accepted and constrained");
+        check(epoch.equals("1970-01-01T00:19:32.37+00:19:32.37"),
+            "a sub-minute offset is applied exactly");
+        for (let invalid of [
+            "", "invalid iso8601", "2020-01-01", "2020-01-01T00:00:00", "2022-09-15Z",
+            "2022-09-15+00:00[UTC]", "2020-01-01T00:00Zjunk", "02020-01-01T00:00Z",
+            "2020-01-01T001Z", "2020-W01-1T00:00Z", "-000000-03-30T00:45Z",
+            "1970-01-01T00:00:00.1234567891Z", "2021-08-19T17:30-07:00:00[-070000]",
+            "1970-01-01T00:00Z[u-ca=iso8601][!u-ca=iso8601]",
+            "-271821-04-19T23:59:59.999999999Z", "+275760-09-13T00:00:00.000000001Z",
+        ]) {
+            throwsRange(() => epoch.equals(invalid), `invalid instant string ${invalid}`);
+        }
+        // Only a String (after ToPrimitive) is accepted; a Number is a
+        // TypeError rather than being stringified
+        // (prototype/equals/argument-wrong-type.js).
+        for (let bad of [undefined, null, true, 1, 19761118, 1n]) {
+            throwsType(() => epoch.equals(bad), `wrong argument type ${typeof bad}`);
+        }
+        throwsRange(() => epoch.equals({}), "an object stringifies and then fails to parse");
+        // A ZonedDateTime converts by its epoch nanoseconds, with no
+        // observable property access (prototype/equals/argument-zoneddatetime.js).
+        check(new Temporal.Instant(1000000000987654321n)
+            .equals(new Temporal.ZonedDateTime(1000000000987654321n, "UTC")),
+            "a ZonedDateTime takes the fast path");
+
+        // add/subtract, including fractional units in a duration string
+        // (prototype/add/argument-string-fractional-units-rounding-mode.js,
+        // argument-string-negative-fractional-units.js).
+        check(epoch.add("PT1.03125H").epochNanoseconds === 3712500000000n,
+            "a fractional hour cascades into the lower units");
+        check(new Temporal.Instant(1000000000000000000n).add("-PT1440.567890123M")
+            .epochNanoseconds === 999913565926592620n, "a negative fractional minute");
+        check(epoch.subtract({ nanoseconds: 1 }).epochNanoseconds === -1n, "subtract negates");
+        throwsRange(() => epoch.add({ days: 1 }), "a calendar unit is not an Instant duration");
+
+        // round(): a String is shorthand for { smallestUnit }, and rounding is
+        // "as if positive", so a negative instant truncates *earlier*
+        // (prototype/round/accepts-string-parameter-for-smallestunit.js,
+        // negative-instant.js, rounding-increments.js).
+        let late = new Temporal.Instant(1000000000123456789n);
+        for (let unit of ["hour", "minute", "second", "millisecond", "microsecond", "nanosecond"]) {
+            check(late.round(unit).epochNanoseconds === late.round({ smallestUnit: unit }).epochNanoseconds,
+                `string shorthand matches the options bag: ${unit}`);
+        }
+        let negative = new Temporal.Instant(-1000000000000000000n);
+        for (let mode of ["trunc", "floor", "halfExpand", "halfEven"]) {
+            check(negative.round({ smallestUnit: "hour", roundingMode: mode }).epochNanoseconds
+                === -1000000800000000000n, `as-if-positive rounding: ${mode}`);
+        }
+        check(negative.round({ smallestUnit: "hour", roundingMode: "ceil" }).epochNanoseconds
+            === -999997200000000000n, "as-if-positive ceil moves later");
+        throwsType(() => late.round(), "round requires an argument");
+        throwsRange(() => late.round("day"), "round rejects a calendar unit");
+        // Unlike PlainTime, an Instant's increment only has to divide a whole
+        // day, so 12 hours is fine and 11 is not (round/rounding-increments.js).
+        check(late.round({ smallestUnit: "hour", roundingIncrement: 12 }).epochNanoseconds
+            === 999993600000000000n, "an increment dividing a day is accepted");
+        throwsRange(() => late.round({ smallestUnit: "hour", roundingIncrement: 11 }),
+            "an increment that does not divide a day is rejected");
+
+        // until/since: largestUnit defaults to the larger of "second" and
+        // smallestUnit, and the increment must divide the *next larger unit*
+        // (prototype/until/largestunit-default.js, invalid-increments.js).
+        let earlier = Temporal.Instant.from("1969-07-24T16:50:35.123456789Z");
+        let later = Temporal.Instant.from("2019-10-29T10:46:38.271986102Z");
+        check(earlier.until(later, { smallestUnit: "hours", roundingMode: "halfExpand" }).hours
+            === 440610, "largestUnit auto follows a larger smallestUnit");
+        let difference = earlier.until(later);
+        check(difference.hours === 0 && difference.minutes === 0
+            && difference.seconds === 1586195763 && difference.milliseconds === 148
+            && difference.microseconds === 529 && difference.nanoseconds === 313,
+            "until defaults to largestUnit second, folding the hours in");
+        check(later.since(earlier).seconds === 1586195763, "since is until reversed");
+        for (let [unit, increment] of [["hours", 11], ["hours", 24], ["minutes", 29],
+                                       ["minutes", 60], ["nanoseconds", 29], ["nanoseconds", 1000]]) {
+            throwsRange(() => earlier.until(later, { smallestUnit: unit, roundingIncrement: increment }),
+                `increment ${increment} must divide the unit above ${unit}`);
+        }
+        throwsRange(() => earlier.until(later, { largestUnit: "week" }),
+            "largestUnit rejects a calendar unit");
+        for (let bad of [null, true, "hello", 1, 1n]) {
+            throwsType(() => earlier.until(later, bad), `primitive options ${typeof bad}`);
+            throwsType(() => epoch.toString(bad), `primitive options ${typeof bad}`);
+        }
+        // `round`'s parameter is `roundTo`, not an options object, so a String
+        // is shorthand rather than a TypeError — but every other primitive
+        // still goes through GetOptionsObject
+        // (round/smallestunit-string-shorthand.js, options-wrong-type.js).
+        for (let bad of [null, true, 1, 1n]) {
+            throwsType(() => epoch.round(bad), `primitive roundTo ${typeof bad}`);
+        }
+        throwsRange(() => epoch.round("hello"), "a string roundTo must name a unit");
+
+        // toString precision, including the minute precision that drops the
+        // seconds field entirely, and the increment a digit count implies
+        // (toString/smallestunit-valid-units.js, rounding-cross-midnight.js,
+        // rounding-direction.js).
+        let sub = new Temporal.Instant(1000000000123456789n);
+        check(sub.toString() === "2001-09-09T01:46:40.123456789Z", "auto precision");
+        check(epoch.toString() === "1970-01-01T00:00:00Z", "auto precision pads seconds");
+        check(sub.toString({ smallestUnit: "minute" }) === "2001-09-09T01:46Z",
+            "minute precision drops the seconds field");
+        check(sub.toString({ smallestUnit: "microsecond" }) === "2001-09-09T01:46:40.123456Z",
+            "microsecond precision");
+        check(new Temporal.Instant(946684799999999999n)
+            .toString({ fractionalSecondDigits: 8, roundingMode: "halfExpand" })
+            === "2000-01-01T00:00:00.00000000Z", "eight digits round in 10ns increments");
+        check(new Temporal.Instant(-65261246399500000000n)
+            .toString({ smallestUnit: "second", roundingMode: "floor" })
+            === "-000099-12-15T12:00:00Z", "rounding down goes away from the epoch");
+        check(sub.toString({ smallestUnit: "millisecond", fractionalSecondDigits: 5 })
+            === "2001-09-09T01:46:40.123Z", "smallestUnit overrides fractionalSecondDigits");
+        check(new Temporal.Instant(1000000000987650000n).toString({ fractionalSecondDigits: 9.7 })
+            === "2001-09-09T01:46:40.987650000Z", "fractionalSecondDigits floors before the range check");
+        throwsRange(() => sub.toString({ fractionalSecondDigits: -0.6 }),
+            "fractionalSecondDigits -0.6 floors to -1 and is out of range");
+        throwsRange(() => sub.toString({ smallestUnit: "hour" }),
+            "hour is not an Instant serialization unit");
+        for (let bad of [null, true, 2n, {}, "AUTO"]) {
+            throwsRange(() => sub.toString({ fractionalSecondDigits: bad }),
+                `invalid fractionalSecondDigits ${String(bad)}`);
+        }
+        check(sub.toJSON() === "2001-09-09T01:46:40.123456789Z", "toJSON ignores options");
+        throwsType(() => sub.valueOf(), "valueOf throws");
+
+        // The timeZone option prints a local time plus a ±HH:MM offset rather
+        // than `Z`. Only UTC and fixed offsets resolve here; a named IANA zone
+        // needs Track E's transition data (toString/timezone-offset.js,
+        // timezone-string-datetime.js, timezone-string-unknown.js,
+        // timezone-wrong-type.js).
+        check(epoch.toString({ timeZone: "UTC" }) === "1970-01-01T00:00:00+00:00", "UTC offset");
+        check(epoch.toString({ timeZone: "+01:00" }) === "1970-01-01T01:00:00+01:00", "positive offset");
+        check(epoch.toString({ timeZone: "-05:00" }) === "1969-12-31T19:00:00-05:00", "negative offset");
+        check(epoch.toString({ timeZone: "2021-08-19T17:30-07:00[UTC]" }).slice(-6) === "+00:00",
+            "an annotation beats the string's own offset");
+        check(epoch.toString({ timeZone: "2021-08-19T17:30:45.123456789-12:12[+01:46]" }).slice(-6)
+            === "+01:46", "an offset annotation is the identifier");
+        for (let bad of ["", "2021-08-19T17:30", "2021-08-19T17:30-07:00:00", "Mars/Olympus_Mons"]) {
+            throwsRange(() => epoch.toString({ timeZone: bad }), `invalid time zone ${bad}`);
+        }
+        for (let bad of [null, true, 1, 1n, {}, new Temporal.Duration()]) {
+            throwsType(() => epoch.toString({ timeZone: bad }), `wrong time zone type ${typeof bad}`);
+        }
+        // `options.timeZone` is read even when it goes unused, after every
+        // other option (toString/order-of-operations.js, get-timezone-throws.js).
+        let log = [];
+        throwsRange(() => sub.toString({
+            get fractionalSecondDigits() { log.push("fractionalSecondDigits"); return "auto" },
+            get roundingMode() { log.push("roundingMode"); return "trunc" },
+            get smallestUnit() { log.push("smallestUnit"); return "month" },
+            get timeZone() { log.push("timeZone"); return undefined },
+        }), "a date unit is rejected only after every option is read");
+        check(log.join() === "fractionalSecondDigits,roundingMode,smallestUnit,timeZone",
+            `toString options read in alphabetical order, got ${log.join()}`);
+
+        // toLocaleString goes through Intl.DateTimeFormat, not toString's ISO
+        // serialization (intl402 toLocaleString/basic.js, options-undefined.js).
+        let options = { timeZone: "UTC", dateStyle: "short", timeStyle: "short" };
+        check(sub.toLocaleString("en-US", options)
+            === new Intl.DateTimeFormat("en-US", options).format(sub),
+            "toLocaleString matches DateTimeFormat.format");
+        check(sub.toLocaleString("en") === new Intl.DateTimeFormat("en").format(sub),
+            "toLocaleString defaults match DateTimeFormat's");
+        check(sub.toLocaleString("en", { timeZone: "UTC" }) !== sub.toString(),
+            "toLocaleString is not an alias for toString");
+        throwsType(() => sub.toLocaleString("en", { hour: "numeric", dateStyle: "short" }),
+            "conflicting dateStyle options still throw");
+        throwsType(() => Temporal.Instant.prototype.toLocaleString.call({}),
+            "toLocaleString checks its brand");
+
+        failures.length === 0 || failures.join(" | ")
     "#;
     assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
 }
