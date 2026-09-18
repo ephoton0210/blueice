@@ -30,6 +30,7 @@ mod plain_year_month;
 mod rounding;
 mod time_zone;
 mod time_zone_id;
+mod zoned_date_time;
 
 /// The calendar fields exposed by Temporal are derived from its ISO internal
 /// date. Keeping ISO fields in `TemporalValue` preserves the invariant used
@@ -417,6 +418,33 @@ impl Vm {
                         ),
                         ("epochNanoseconds", native::TemporalGetter::EpochNanoseconds),
                         ("timeZoneId", native::TemporalGetter::TimeZoneId),
+                        ("year", native::TemporalGetter::Year),
+                        ("month", native::TemporalGetter::Month),
+                        ("monthCode", native::TemporalGetter::MonthCode),
+                        ("day", native::TemporalGetter::Day),
+                        ("era", native::TemporalGetter::Era),
+                        ("eraYear", native::TemporalGetter::EraYear),
+                        ("monthsInYear", native::TemporalGetter::MonthsInYear),
+                        ("hour", native::TemporalGetter::Hour),
+                        ("minute", native::TemporalGetter::Minute),
+                        ("second", native::TemporalGetter::Second),
+                        ("millisecond", native::TemporalGetter::Millisecond),
+                        ("microsecond", native::TemporalGetter::Microsecond),
+                        ("nanosecond", native::TemporalGetter::Nanosecond),
+                        ("dayOfWeek", native::TemporalGetter::DayOfWeek),
+                        ("dayOfYear", native::TemporalGetter::DayOfYear),
+                        ("weekOfYear", native::TemporalGetter::WeekOfYear),
+                        ("yearOfWeek", native::TemporalGetter::YearOfWeek),
+                        ("daysInWeek", native::TemporalGetter::DaysInWeek),
+                        ("daysInMonth", native::TemporalGetter::DaysInMonth),
+                        ("daysInYear", native::TemporalGetter::DaysInYear),
+                        ("inLeapYear", native::TemporalGetter::InLeapYear),
+                        (
+                            "offsetNanoseconds",
+                            native::TemporalGetter::OffsetNanoseconds,
+                        ),
+                        ("offset", native::TemporalGetter::Offset),
+                        ("hoursInDay", native::TemporalGetter::HoursInDay),
                     ],
                     TemporalKind::Instant => &[
                         (
@@ -471,6 +499,82 @@ impl Vm {
                         "toLocaleString",
                         0,
                         NativeFunction::TemporalZonedDateTimeToLocaleString,
+                    )?;
+                    for (name, arity, method) in [
+                        ("with", 1, NativeFunction::TemporalZonedDateTimeWith),
+                        (
+                            "withCalendar",
+                            1,
+                            NativeFunction::TemporalWithCalendar,
+                        ),
+                        (
+                            "withTimeZone",
+                            1,
+                            NativeFunction::TemporalZonedDateTimeWithTimeZone,
+                        ),
+                        (
+                            "withPlainTime",
+                            0,
+                            NativeFunction::TemporalZonedDateTimeWithPlainTime,
+                        ),
+                        ("add", 1, NativeFunction::TemporalZonedDateTimeAdd),
+                        ("subtract", 1, NativeFunction::TemporalZonedDateTimeSubtract),
+                        ("round", 1, NativeFunction::TemporalZonedDateTimeRound),
+                        ("until", 1, NativeFunction::TemporalZonedDateTimeUntil),
+                        ("since", 1, NativeFunction::TemporalZonedDateTimeSince),
+                        ("equals", 1, NativeFunction::TemporalZonedDateTimeEquals),
+                        ("toString", 0, NativeFunction::TemporalZonedDateTimeToString),
+                        ("toJSON", 0, NativeFunction::TemporalZonedDateTimeToJson),
+                        ("valueOf", 0, NativeFunction::TemporalZonedDateTimeValueOf),
+                        (
+                            "toInstant",
+                            0,
+                            NativeFunction::TemporalZonedDateTimeToInstant,
+                        ),
+                        (
+                            "toPlainDate",
+                            0,
+                            NativeFunction::TemporalZonedDateTimeToPlainDate,
+                        ),
+                        (
+                            "toPlainTime",
+                            0,
+                            NativeFunction::TemporalZonedDateTimeToPlainTime,
+                        ),
+                        (
+                            "toPlainDateTime",
+                            0,
+                            NativeFunction::TemporalZonedDateTimeToPlainDateTime,
+                        ),
+                        (
+                            "toPlainYearMonth",
+                            0,
+                            NativeFunction::TemporalZonedDateTimeToPlainYearMonth,
+                        ),
+                        (
+                            "toPlainMonthDay",
+                            0,
+                            NativeFunction::TemporalZonedDateTimeToPlainMonthDay,
+                        ),
+                        (
+                            "startOfDay",
+                            0,
+                            NativeFunction::TemporalZonedDateTimeStartOfDay,
+                        ),
+                        (
+                            "getISOFields",
+                            0,
+                            NativeFunction::TemporalZonedDateTimeGetIsoFields,
+                        ),
+                    ] {
+                        self.install_native(prototype, function_prototype, name, arity, method)?;
+                    }
+                    self.install_native(
+                        constructor,
+                        function_prototype,
+                        "compare",
+                        2,
+                        NativeFunction::TemporalZonedDateTimeCompare,
                     )?;
                 }
                 if kind == TemporalKind::Duration {
@@ -1082,9 +1186,23 @@ impl Vm {
                             .into(),
                     ));
                 }
-                value.time_zone = self
-                    .temporal_time_zone(native::argument(args, 1))?
-                    .identifier();
+                let zone = self.temporal_time_zone(native::argument(args, 1))?;
+                // The constructor's own third positional argument is a bare
+                // calendar ID (like `PlainDate`'s), not
+                // `ToTemporalCalendarIdentifier`'s wider string grammar --
+                // this was previously never read at all, silently ignoring
+                // `new Temporal.ZonedDateTime(ns, tz, "gregory")`'s own
+                // calendar.
+                value.calendar = self.temporal_calendar(native::argument(args, 2))?;
+                value.time_zone = zone.identifier();
+                // The stored ISO fields are always the *local* wall-clock
+                // ones a `ZonedDateTime` presents (`temporal_set_local_fields`'s
+                // own doc comment) -- this was previously never called here,
+                // silently leaving every numeric-constructor `ZonedDateTime`
+                // at its `1970-01-01T00:00:00` field defaults regardless of
+                // its real epoch/zone, which broke every getter
+                // (`.year`/`.hour`/etc) on a directly-constructed value.
+                temporal_set_local_fields(&mut value, &zone);
             }
             TemporalKind::PlainDate | TemporalKind::PlainDateTime => {
                 // `temporal_integer` itself is `ToIntegerWithTruncation`, so
@@ -1492,6 +1610,19 @@ impl Vm {
             let resolved = self.temporal_to_plain_month_day(value, options)?;
             return self.alloc_temporal_value(resolved, false);
         }
+        if kind == TemporalKind::ZonedDateTime {
+            // `Temporal.ZonedDateTime.from` *is* `ToTemporalZonedDateTime`,
+            // which (like `PlainYearMonth`/`PlainMonthDay` above) needs its
+            // own dedicated conversion rather than the generic object/string
+            // dispatcher below: a property bag needs a `timeZone` (and
+            // optional `offset`) read alongside the calendar-date fields,
+            // and a string needs a *mandatory* time-zone annotation resolved
+            // through real zone/disambiguation logic -- neither of which the
+            // generic dispatcher (built for the calendar-only plain types)
+            // has any notion of.
+            let resolved = self.temporal_to_zoned_date_time(value, options)?;
+            return self.alloc_temporal_value(resolved, false);
+        }
         if let Some(object) = value.object_id() {
             if let Some(temporal) = self.heap.temporal_value(object)? {
                 if temporal.kind == kind {
@@ -1640,10 +1771,15 @@ impl Vm {
             | native::TemporalGetter::Millisecond
             | native::TemporalGetter::Microsecond
             | native::TemporalGetter::Nanosecond => {
-                if !matches!(value.kind, TemporalKind::PlainTime | TemporalKind::PlainDateTime) {
+                if !matches!(
+                    value.kind,
+                    TemporalKind::PlainTime
+                        | TemporalKind::PlainDateTime
+                        | TemporalKind::ZonedDateTime
+                ) {
                     return Err(RuntimeError::TypeError(
-                        "Temporal time-of-day getter requires a PlainTime or PlainDateTime \
-                         receiver"
+                        "Temporal time-of-day getter requires a PlainTime, PlainDateTime or \
+                         ZonedDateTime receiver"
                             .into(),
                     ));
                 }
@@ -1662,10 +1798,13 @@ impl Vm {
             | native::TemporalGetter::WeekOfYear
             | native::TemporalGetter::YearOfWeek
             | native::TemporalGetter::DaysInWeek => {
-                if !matches!(value.kind, TemporalKind::PlainDate | TemporalKind::PlainDateTime) {
+                if !matches!(
+                    value.kind,
+                    TemporalKind::PlainDate | TemporalKind::PlainDateTime | TemporalKind::ZonedDateTime
+                ) {
                     return Err(RuntimeError::TypeError(
-                        "Temporal ISO week-date getter requires a PlainDate or PlainDateTime \
-                         receiver"
+                        "Temporal ISO week-date getter requires a PlainDate, PlainDateTime or \
+                         ZonedDateTime receiver"
                             .into(),
                     ));
                 }
@@ -1690,6 +1829,31 @@ impl Vm {
                     _ => unreachable!("all ISO week-date getters are listed above"),
                 })
             }
+            native::TemporalGetter::OffsetNanoseconds | native::TemporalGetter::Offset => {
+                if value.kind != TemporalKind::ZonedDateTime {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal offset getter requires a ZonedDateTime receiver".into(),
+                    ));
+                }
+                let zone = temporal_zoned_date_time_zone(&value);
+                let offset = zone.offset_nanoseconds_for(&value.epoch_nanoseconds);
+                Ok(if getter == native::TemporalGetter::OffsetNanoseconds {
+                    Value::Number(offset as f64)
+                } else {
+                    Value::String(format_offset_nanoseconds_exact(offset).into())
+                })
+            }
+            native::TemporalGetter::HoursInDay => {
+                if value.kind != TemporalKind::ZonedDateTime {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal hoursInDay getter requires a ZonedDateTime receiver".into(),
+                    ));
+                }
+                let zone = temporal_zoned_date_time_zone(&value);
+                let date = (value.year, value.month, value.day);
+                let length = zoned_date_time::day_length_nanoseconds(&zone, date);
+                Ok(Value::Number(length as f64 / 3_600_000_000_000.0))
+            }
             getter => {
                 if !matches!(
                     value.kind,
@@ -1697,6 +1861,7 @@ impl Vm {
                         | TemporalKind::PlainDateTime
                         | TemporalKind::PlainMonthDay
                         | TemporalKind::PlainYearMonth
+                        | TemporalKind::ZonedDateTime
                 ) {
                     return Err(RuntimeError::TypeError(
                         "Temporal calendar field requires a plain date receiver".into(),
@@ -1726,6 +1891,7 @@ impl Vm {
                             TemporalKind::PlainDate
                                 | TemporalKind::PlainDateTime
                                 | TemporalKind::PlainMonthDay
+                                | TemporalKind::ZonedDateTime
                         ) =>
                     {
                         Ok(Value::Number(fields.day.into()))
@@ -1736,6 +1902,7 @@ impl Vm {
                             TemporalKind::PlainDate
                                 | TemporalKind::PlainDateTime
                                 | TemporalKind::PlainYearMonth
+                                | TemporalKind::ZonedDateTime
                         ) =>
                     {
                         Ok(fields
@@ -1748,6 +1915,7 @@ impl Vm {
                             TemporalKind::PlainDate
                                 | TemporalKind::PlainDateTime
                                 | TemporalKind::PlainYearMonth
+                                | TemporalKind::ZonedDateTime
                         ) =>
                     {
                         Ok(fields
@@ -1760,6 +1928,7 @@ impl Vm {
                             TemporalKind::PlainDate
                                 | TemporalKind::PlainDateTime
                                 | TemporalKind::PlainYearMonth
+                                | TemporalKind::ZonedDateTime
                         ) =>
                     {
                         Ok(Value::Number(fields.months_in_year.into()))
@@ -1770,6 +1939,7 @@ impl Vm {
                             TemporalKind::PlainDate
                                 | TemporalKind::PlainDateTime
                                 | TemporalKind::PlainYearMonth
+                                | TemporalKind::ZonedDateTime
                         ) =>
                     {
                         Ok(Value::Number(fields.days_in_month.into()))
@@ -1780,6 +1950,7 @@ impl Vm {
                             TemporalKind::PlainDate
                                 | TemporalKind::PlainDateTime
                                 | TemporalKind::PlainYearMonth
+                                | TemporalKind::ZonedDateTime
                         ) =>
                     {
                         Ok(Value::Number(fields.days_in_year.into()))
@@ -1790,6 +1961,7 @@ impl Vm {
                             TemporalKind::PlainDate
                                 | TemporalKind::PlainDateTime
                                 | TemporalKind::PlainYearMonth
+                                | TemporalKind::ZonedDateTime
                         ) =>
                     {
                         Ok(Value::Bool(fields.in_leap_year))
@@ -7450,6 +7622,1276 @@ impl Vm {
     }
 }
 
+// ---- Stage 2's `zoned_date_time.rs` slice (third and final Stage 2 type) -
+//
+// A third, textually separate `impl Vm` block, deliberately appended here
+// rather than folded into either block above -- this phase's own
+// established "git diff misalignment" avoidance: keeping a new type's own
+// adapter methods in their own block minimizes the chance a line-based merge
+// mistakes one type's method for another's when this file is merged against
+// concurrent sibling work (see this document's PLAN.md for the repeated
+// pattern this avoids).
+//
+// `Temporal.ZonedDateTime` composes `PlainDateTime` + `TimeZone` +
+// `Instant`: its stored ISO fields are always the *local* wall-clock fields
+// its `epoch_nanoseconds` resolves to in its own `time_zone`
+// (`temporal_set_local_fields`, Track E's own convention, reused throughout
+// below), so every calendar-field/time-of-day getter and every
+// `plain_date`/`calendar` helper this module already has for `PlainDate`/
+// `PlainDateTime` applies to a `ZonedDateTime` receiver for free once its
+// local fields are known to be correct -- which is genuinely new as of this
+// slice: the numeric constructor and `from()` previously left every
+// `ZonedDateTime`'s fields at their `1970-01-01T00:00:00` defaults
+// regardless of its real epoch/zone (see the constructor fix above, and
+// `temporal_to_zoned_date_time`/`temporal_value_from_zoned_date_time_string`
+// below for the `from()` half of the same gap).
+impl Vm {
+    /// Brand check shared by every `Temporal.ZonedDateTime.prototype` method.
+    fn temporal_zoned_date_time_receiver(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<TemporalValue, RuntimeError> {
+        let object = receiver.object_id().ok_or_else(|| {
+            RuntimeError::TypeError("Temporal.ZonedDateTime method requires a receiver".into())
+        })?;
+        let value = self.heap.temporal_value(object)?.ok_or_else(|| {
+            RuntimeError::TypeError("Temporal.ZonedDateTime method requires a receiver".into())
+        })?;
+        if value.kind != TemporalKind::ZonedDateTime {
+            return Err(RuntimeError::TypeError(
+                "Temporal.ZonedDateTime method requires a receiver".into(),
+            ));
+        }
+        Ok(value)
+    }
+
+    /// `ToTemporalOffset`: reads the `offset` option, one of `"prefer"`/
+    /// `"use"`/`"ignore"`/`"reject"`.
+    fn temporal_offset_option(
+        &mut self,
+        options: &Value,
+        default: &'static str,
+    ) -> Result<String, RuntimeError> {
+        Ok(self
+            .temporal_string_option(options, "offset", &["prefer", "use", "ignore", "reject"])?
+            .unwrap_or_else(|| default.to_string()))
+    }
+
+    /// `ToTemporalZonedDateTime`.
+    fn temporal_to_zoned_date_time(
+        &mut self,
+        value: &Value,
+        options: &Value,
+    ) -> Result<TemporalValue, RuntimeError> {
+        if let Some(object) = value.object_id() {
+            if let Some(temporal) = self.heap.temporal_value(object)? {
+                if temporal.kind == TemporalKind::ZonedDateTime {
+                    // Options are still read (for validation/ordering parity)
+                    // even though a `ZonedDateTime` argument is used as-is.
+                    let resolved_options = self.temporal_options(options)?;
+                    self.temporal_overflow_option(&resolved_options)?;
+                    self.temporal_disambiguation(&resolved_options)?;
+                    self.temporal_offset_option(&resolved_options, "reject")?;
+                    return Ok(temporal);
+                }
+            }
+            // A property bag: `timeZone` is required, `offset` optional;
+            // every calendar-date and time-of-day field is the same set
+            // `temporal_plain_date_from_fields` already resolves for
+            // `PlainDateTime` (a `ZonedDateTime`'s own field list per
+            // `PrepareCalendarFields`/`CalendarDateFromFields` is identical
+            // once `timeZone`/`offset` are set aside), so that resolution is
+            // reused rather than re-derived, with the result's `kind`
+            // overridden afterward.
+            let resolved_options = self.temporal_options(options)?;
+            let reject = self.temporal_overflow_option(&resolved_options)?;
+            let disambiguation = self.temporal_disambiguation(&resolved_options)?;
+            let offset_option = self.temporal_offset_option(&resolved_options, "reject")?;
+            let time_zone_value = self.get_property(value, &"timeZone".into())?;
+            if time_zone_value == Value::Undefined {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.ZonedDateTime property bag requires timeZone".into(),
+                ));
+            }
+            let zone = self.temporal_time_zone(&time_zone_value)?;
+            let offset_value = self.get_property(value, &"offset".into())?;
+            let offset_string = (!matches!(offset_value, Value::Undefined))
+                .then(|| self.coerce_string(&offset_value))
+                .transpose()?
+                .map(|text| {
+                    text.to_utf8()
+                        .map_err(|_| RuntimeError::RangeError("invalid Temporal offset".into()))
+                })
+                .transpose()?;
+            let offset_nanoseconds = match offset_string.as_deref() {
+                None => None,
+                Some(text) => Some(
+                    iso::parse_offset_string_nanoseconds(text)
+                        .ok_or_else(|| RuntimeError::RangeError("invalid Temporal offset".into()))?,
+                ),
+            };
+            let mut fields =
+                self.temporal_plain_date_from_fields(TemporalKind::PlainDateTime, value, reject)?;
+            let date = (fields.year, fields.month, fields.day);
+            let time = (
+                fields.hour,
+                fields.minute,
+                fields.second,
+                fields.millisecond,
+                fields.microsecond,
+                fields.nanosecond,
+            );
+            let epoch_nanoseconds = temporal_interpret_offset(
+                &zone,
+                date,
+                time,
+                offset_nanoseconds,
+                false,
+                disambiguation,
+                &offset_option,
+            )?;
+            if !epoch::is_in_instant_range(&epoch_nanoseconds) {
+                return Err(RuntimeError::RangeError(
+                    "Temporal.ZonedDateTime epoch nanoseconds are outside the supported range"
+                        .into(),
+                ));
+            }
+            fields.kind = TemporalKind::ZonedDateTime;
+            fields.epoch_nanoseconds = epoch_nanoseconds;
+            fields.time_zone = zone.identifier();
+            temporal_set_local_fields(&mut fields, &zone);
+            return Ok(fields);
+        }
+        let source = self.coerce_string(value)?.to_utf8().map_err(|_| {
+            RuntimeError::RangeError("invalid Temporal.ZonedDateTime string".into())
+        })?;
+        let resolved_options = self.temporal_options(options)?;
+        self.temporal_overflow_option(&resolved_options)?;
+        let disambiguation = self.temporal_disambiguation(&resolved_options)?;
+        let offset_option = self.temporal_offset_option(&resolved_options, "reject")?;
+        Self::temporal_value_from_zoned_date_time_string(&source, disambiguation, &offset_option)
+    }
+
+    /// `ParseTemporalZonedDateTimeString` + resolution: a
+    /// `TemporalZonedDateTimeString` always carries a `TimeZoneAnnotation`
+    /// (unlike every other Temporal string production, where one is at most
+    /// optional), which is this method's real reason to exist separately
+    /// from the generic `temporal_value_from_string` path every other type
+    /// shares.
+    fn temporal_value_from_zoned_date_time_string(
+        source: &str,
+        disambiguation: time_zone::Disambiguation,
+        offset_option: &str,
+    ) -> Result<TemporalValue, RuntimeError> {
+        let parsed = iso::parse_date_time(source).ok_or_else(|| {
+            RuntimeError::RangeError("invalid Temporal.ZonedDateTime string".into())
+        })?;
+        let annotation = parsed.time_zone.as_deref().ok_or_else(|| {
+            RuntimeError::RangeError(
+                "a Temporal.ZonedDateTime string requires a time zone annotation".into(),
+            )
+        })?;
+        let zone = time_zone::parse_identifier(annotation).ok_or_else(|| {
+            RuntimeError::RangeError(format!("invalid Temporal time zone: {annotation}"))
+        })?;
+        let calendar = match parsed.calendar.as_deref() {
+            Some(calendar) => canonical_calendar_id(calendar).ok_or_else(|| {
+                RuntimeError::RangeError(format!("unsupported Temporal calendar: {calendar}"))
+            })?,
+            None => "iso8601".to_string(),
+        };
+        let (year, month, day) = (parsed.year, parsed.month, parsed.day);
+        let time = parsed.time.unwrap_or((0, 0, 0, 0, 0, 0));
+        let epoch_nanoseconds = temporal_interpret_offset(
+            &zone,
+            (year, month, day),
+            time,
+            parsed.offset_nanoseconds,
+            parsed.utc_designator,
+            disambiguation,
+            offset_option,
+        )?;
+        if !epoch::is_in_instant_range(&epoch_nanoseconds) {
+            return Err(RuntimeError::RangeError(
+                "Temporal.ZonedDateTime string is outside the supported range".into(),
+            ));
+        }
+        let mut value = TemporalValue {
+            kind: TemporalKind::ZonedDateTime,
+            duration: None,
+            year,
+            month,
+            day,
+            hour: time.0,
+            minute: time.1,
+            second: time.2,
+            millisecond: time.3,
+            microsecond: time.4,
+            nanosecond: time.5,
+            epoch_nanoseconds,
+            calendar,
+            time_zone: zone.identifier(),
+        };
+        temporal_set_local_fields(&mut value, &zone);
+        Ok(value)
+    }
+
+    pub(super) fn temporal_zoned_date_time_with_time_zone(
+        &mut self,
+        receiver: &Value,
+        time_zone: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let mut value = self.temporal_zoned_date_time_receiver(receiver)?;
+        let zone = self.temporal_time_zone(time_zone)?;
+        // The instant itself is unchanged; only its presentation zone (and
+        // therefore the local fields resolved from it) changes.
+        value.time_zone = zone.identifier();
+        temporal_set_local_fields(&mut value, &zone);
+        self.alloc_temporal_value(value, false)
+    }
+
+    pub(super) fn temporal_zoned_date_time_with_plain_time(
+        &mut self,
+        receiver: &Value,
+        plain_time_like: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let mut value = self.temporal_zoned_date_time_receiver(receiver)?;
+        let time = if *plain_time_like == Value::Undefined {
+            (0, 0, 0, 0, 0, 0)
+        } else {
+            self.temporal_to_plain_time(plain_time_like, &Value::Undefined)?
+        };
+        let zone = temporal_zoned_date_time_zone(&value);
+        let date = (value.year, value.month, value.day);
+        value.epoch_nanoseconds = zone
+            .epoch_nanoseconds_for(date, time, time_zone::Disambiguation::Compatible)
+            .map_err(temporal_resolution_error)?;
+        temporal_set_local_fields(&mut value, &zone);
+        self.alloc_temporal_value(value, false)
+    }
+
+    /// `Temporal.ZonedDateTime.prototype.with`. Mirrors `temporal_date_with`'s
+    /// own field-merge shape (deliberately re-derived here rather than
+    /// shared, per this block's own "own textual block" rationale above),
+    /// extended with the `offset` field and the `disambiguation`/`offset`
+    /// options `PlainDate`/`PlainDateTime` have no notion of.
+    pub(super) fn temporal_zoned_date_time_with(
+        &mut self,
+        receiver: &Value,
+        like: &Value,
+        options: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let like_object = like
+            .object_id()
+            .ok_or_else(|| RuntimeError::TypeError("Temporal.with requires an object".into()))?;
+        if self.heap.temporal_value(like_object)?.is_some() {
+            return Err(RuntimeError::TypeError(
+                "Temporal.with does not accept a Temporal-like object".into(),
+            ));
+        }
+        for banned in ["calendar", "timeZone"] {
+            if self.get_property(like, &banned.into())? != Value::Undefined {
+                return Err(RuntimeError::TypeError(format!(
+                    "Temporal.with does not accept a {banned} property"
+                )));
+            }
+        }
+        let existing_fields = self.temporal_calendar_fields(&existing)?;
+        let year_v = self.get_property(like, &"year".into())?;
+        let month_v = self.get_property(like, &"month".into())?;
+        let month_code_v = self.get_property(like, &"monthCode".into())?;
+        let day_v = self.get_property(like, &"day".into())?;
+        let era_v = self.get_property(like, &"era".into())?;
+        let era_year_v = self.get_property(like, &"eraYear".into())?;
+        let hour_v = self.get_property(like, &"hour".into())?;
+        let minute_v = self.get_property(like, &"minute".into())?;
+        let second_v = self.get_property(like, &"second".into())?;
+        let ms_v = self.get_property(like, &"millisecond".into())?;
+        let us_v = self.get_property(like, &"microsecond".into())?;
+        let ns_v = self.get_property(like, &"nanosecond".into())?;
+        let offset_v = self.get_property(like, &"offset".into())?;
+        let any_present = [
+            &year_v, &month_v, &month_code_v, &day_v, &era_v, &era_year_v, &hour_v, &minute_v,
+            &second_v, &ms_v, &us_v, &ns_v, &offset_v,
+        ]
+        .into_iter()
+        .any(|value| *value != Value::Undefined);
+        if !any_present {
+            return Err(RuntimeError::TypeError(
+                "Temporal.with requires at least one recognized property".into(),
+            ));
+        }
+        let resolved_options = self.temporal_options(options)?;
+        let reject = self.temporal_overflow_option(&resolved_options)?;
+        let disambiguation = self.temporal_disambiguation(&resolved_options)?;
+        let offset_option = self.temporal_offset_option(&resolved_options, "prefer")?;
+
+        let mut fields = DateFields::default();
+        let requested_year = (!matches!(year_v, Value::Undefined))
+            .then(|| self.temporal_integer(&year_v, -9_999, 9_999, "year"))
+            .transpose()?;
+        let era_s = (!matches!(era_v, Value::Undefined))
+            .then(|| self.coerce_string(&era_v))
+            .transpose()?
+            .map(|value| {
+                value
+                    .to_utf8()
+                    .map_err(|_| RuntimeError::RangeError("invalid Temporal era".into()))
+            })
+            .transpose()?;
+        let era_year_num = (!matches!(era_year_v, Value::Undefined))
+            .then(|| self.temporal_integer(&era_year_v, -9_999, 9_999, "era year"))
+            .transpose()?;
+        if let Some(era) = era_s.as_deref().filter(|_| existing.calendar != "iso8601") {
+            fields.era = Some(era.as_bytes());
+            fields.era_year = Some(era_year_num.or(existing_fields.era_year).ok_or_else(|| {
+                RuntimeError::TypeError("Temporal eraYear requires an era".into())
+            })?);
+        } else if era_year_num.is_some() && existing.calendar != "iso8601" {
+            return Err(RuntimeError::RangeError(
+                "Temporal eraYear requires an era".into(),
+            ));
+        } else {
+            fields.extended_year = Some(requested_year.unwrap_or(existing_fields.year));
+        }
+
+        let requested_month = (!matches!(month_v, Value::Undefined))
+            .then(|| self.temporal_integer(&month_v, 1, 99, "month"))
+            .transpose()?;
+        let month_code_s = (!matches!(month_code_v, Value::Undefined))
+            .then(|| self.coerce_string(&month_code_v))
+            .transpose()?
+            .map(|value| {
+                value
+                    .to_utf8()
+                    .map_err(|_| RuntimeError::RangeError("invalid Temporal month code".into()))
+            })
+            .transpose()?;
+        if let Some(month_code) = month_code_s.as_deref() {
+            fields.month_code = Some(month_code.as_bytes());
+        } else if let Some(month) = requested_month {
+            fields.ordinal_month = Some(month as u8);
+        } else {
+            fields.month_code = Some(existing_fields.month_code.as_bytes());
+        }
+        let requested_day = (!matches!(day_v, Value::Undefined))
+            .then(|| self.temporal_integer(&day_v, 1, 31, "day"))
+            .transpose()?;
+        fields.day = Some(requested_day.unwrap_or(i32::from(existing_fields.day)) as u8);
+
+        let calendar_kind = calendar::calendar_kind(&existing.calendar)
+            .expect("Temporal values retain a validated calendar identifier");
+        let mut icu_options = icu_calendar::options::DateFromFieldsOptions::default();
+        icu_options.overflow = Some(if reject {
+            icu_calendar::options::Overflow::Reject
+        } else {
+            icu_calendar::options::Overflow::Constrain
+        });
+        let date = Date::try_from_fields(fields, icu_options, AnyCalendar::new(calendar_kind))
+            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar date".into()))?;
+        if requested_year.is_some_and(|year| year != date.year().extended_year())
+            || (month_code_s.is_some()
+                && requested_month.is_some_and(|month| month as u8 != date.month().ordinal))
+        {
+            return Err(RuntimeError::RangeError(
+                "inconsistent Temporal calendar fields".into(),
+            ));
+        }
+        let mut result = Self::temporal_value_from_calendar_date(
+            TemporalKind::ZonedDateTime,
+            existing.calendar.clone(),
+            date,
+        );
+        result.hour =
+            self.temporal_optional_integer(&hour_v, i32::from(existing.hour), 0, 23, "hour")? as u8;
+        result.minute = self.temporal_optional_integer(
+            &minute_v,
+            i32::from(existing.minute),
+            0,
+            59,
+            "minute",
+        )? as u8;
+        result.second = self.temporal_optional_integer(
+            &second_v,
+            i32::from(existing.second),
+            0,
+            59,
+            "second",
+        )? as u8;
+        result.millisecond = self.temporal_optional_integer(
+            &ms_v,
+            i32::from(existing.millisecond),
+            0,
+            999,
+            "millisecond",
+        )? as u16;
+        result.microsecond = self.temporal_optional_integer(
+            &us_v,
+            i32::from(existing.microsecond),
+            0,
+            999,
+            "microsecond",
+        )? as u16;
+        result.nanosecond = self.temporal_optional_integer(
+            &ns_v,
+            i32::from(existing.nanosecond),
+            0,
+            999,
+            "nanosecond",
+        )? as u16;
+
+        let offset_string = (!matches!(offset_v, Value::Undefined))
+            .then(|| self.coerce_string(&offset_v))
+            .transpose()?
+            .map(|text| {
+                text.to_utf8()
+                    .map_err(|_| RuntimeError::RangeError("invalid Temporal offset".into()))
+            })
+            .transpose()?;
+        let zone = temporal_zoned_date_time_zone(&existing);
+        let offset_nanoseconds = match offset_string.as_deref() {
+            Some(text) => Some(
+                iso::parse_offset_string_nanoseconds(text)
+                    .ok_or_else(|| RuntimeError::RangeError("invalid Temporal offset".into()))?,
+            ),
+            // `.with()`'s own default offset behaviour: an omitted `offset`
+            // field keeps the receiver's *current real* offset as the
+            // preferred one, rather than falling all the way back to plain
+            // zone/disambiguation resolution -- what makes `{ hour: 2 }` on
+            // a value observing a repeated local hour stay on the same side
+            // of the transition it already was on, not jump to
+            // `"compatible"`'s default choice.
+            None => Some(zone.offset_nanoseconds_for(&existing.epoch_nanoseconds)),
+        };
+        let date_tuple = (result.year, result.month, result.day);
+        let time_tuple = (
+            result.hour,
+            result.minute,
+            result.second,
+            result.millisecond,
+            result.microsecond,
+            result.nanosecond,
+        );
+        let epoch_nanoseconds = temporal_interpret_offset(
+            &zone,
+            date_tuple,
+            time_tuple,
+            offset_nanoseconds,
+            false,
+            disambiguation,
+            &offset_option,
+        )?;
+        if !epoch::is_in_instant_range(&epoch_nanoseconds) {
+            return Err(RuntimeError::RangeError(
+                "Temporal.ZonedDateTime.with is out of range".into(),
+            ));
+        }
+        result.epoch_nanoseconds = epoch_nanoseconds;
+        result.time_zone = zone.identifier();
+        temporal_set_local_fields(&mut result, &zone);
+        self.alloc_temporal_value(result, false)
+    }
+
+    /// `Temporal.ZonedDateTime.prototype.add`/`subtract`: `AddZonedDateTime`
+    /// (`vm/temporal/zoned_date_time.rs`) -- calendar years/months/weeks/days
+    /// carried through the calendar at the receiver's own local date/time,
+    /// re-resolved through the zone, and only then the exact time-duration
+    /// nanoseconds added directly to that resolved instant.
+    pub(super) fn temporal_zoned_date_time_add(
+        &mut self,
+        receiver: &Value,
+        duration_value: &Value,
+        options: &Value,
+        negate: bool,
+    ) -> Result<Value, RuntimeError> {
+        let mut existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let mut duration = self.temporal_duration_from_value(duration_value)?;
+        if negate {
+            duration.years = -duration.years;
+            duration.months = -duration.months;
+            duration.weeks = -duration.weeks;
+            duration.days = -duration.days;
+            duration.hours = -duration.hours;
+            duration.minutes = -duration.minutes;
+            duration.seconds = -duration.seconds;
+            duration.milliseconds = -duration.milliseconds;
+            duration.microseconds = -duration.microseconds;
+            duration.nanoseconds = -duration.nanoseconds;
+        }
+        let resolved_options = self.temporal_options(options)?;
+        let reject = self.temporal_overflow_option(&resolved_options)?;
+        let calendar_kind = calendar::calendar_kind(&existing.calendar)
+            .expect("Temporal values retain a validated calendar identifier");
+        let zone = temporal_zoned_date_time_zone(&existing);
+        let time_total = duration_math::TimeDuration::from_fields(
+            duration.hours,
+            duration.minutes,
+            duration.seconds,
+            duration.milliseconds,
+            duration.microseconds,
+            duration.nanoseconds,
+        )
+        .total_nanoseconds();
+        let local_date = (existing.year, existing.month, existing.day);
+        let local_time = (
+            existing.hour,
+            existing.minute,
+            existing.second,
+            existing.millisecond,
+            existing.microsecond,
+            existing.nanosecond,
+        );
+        let result_ns = zoned_date_time::add_zoned_date_time(
+            &zone,
+            calendar_kind,
+            &existing.epoch_nanoseconds,
+            local_date,
+            local_time,
+            duration.years as i64,
+            duration.months as i64,
+            duration.weeks as i64,
+            duration.days as i64,
+            time_total,
+            reject,
+        )
+        .ok_or_else(|| {
+            RuntimeError::RangeError("Temporal.ZonedDateTime arithmetic is out of range".into())
+        })?;
+        if !epoch::is_in_instant_range(&result_ns) {
+            return Err(RuntimeError::RangeError(
+                "Temporal.ZonedDateTime arithmetic is out of range".into(),
+            ));
+        }
+        existing.epoch_nanoseconds = result_ns;
+        temporal_set_local_fields(&mut existing, &zone);
+        self.alloc_temporal_value(existing, false)
+    }
+
+    /// `Temporal.ZonedDateTime.prototype.round`: `RoundZonedDateTimeInstant`
+    /// -- day-unit rounding anchors on `GetStartOfDay`'s real (possibly
+    /// 23/25-hour) day boundary rather than a fixed 86,400-second one; every
+    /// other unit rounds the local wall-clock time (`RoundISODateTime`'s own
+    /// shape, matching `Temporal.PlainDateTime.prototype.round`), then
+    /// re-resolves through the zone with `"compatible"` disambiguation.
+    pub(super) fn temporal_zoned_date_time_round(
+        &mut self,
+        receiver: &Value,
+        round_to: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let mut existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        if *round_to == Value::Undefined {
+            return Err(RuntimeError::TypeError(
+                "Temporal.ZonedDateTime.round requires a smallestUnit or options argument".into(),
+            ));
+        }
+        let base = self.stack.len();
+        let result = (|| {
+            let options = if let Value::String(unit) = round_to {
+                let options = self.with_roots(|heap| heap.alloc_object(None))?;
+                self.stack.push(Value::Object(options));
+                self.define_data(
+                    options,
+                    "smallestUnit",
+                    Value::String(unit.clone()),
+                    true,
+                    true,
+                    true,
+                )?;
+                Value::Object(options)
+            } else {
+                self.temporal_options(round_to)?
+            };
+            let increment = self.temporal_raw_number_option(&options, "roundingIncrement")?;
+            let mode = self.temporal_raw_string_option(&options, "roundingMode")?;
+            let smallest_unit = self.temporal_raw_string_option(&options, "smallestUnit")?;
+            let increment = Self::temporal_validated_rounding_increment(increment)?;
+            let mode = Self::temporal_validated_rounding_mode(
+                mode.as_deref(),
+                blueice_ecma402::NumberRoundingMode::HalfExpand,
+            )?;
+            let smallest_unit_text = smallest_unit.as_deref().ok_or_else(|| {
+                RuntimeError::RangeError(
+                    "Temporal.ZonedDateTime.round requires smallestUnit".into(),
+                )
+            })?;
+            let zone = temporal_zoned_date_time_zone(&existing);
+            if matches!(smallest_unit_text, "day" | "days") {
+                if increment != 1 {
+                    return Err(RuntimeError::RangeError(
+                        "roundingIncrement must be 1 when smallestUnit is \"day\"".into(),
+                    ));
+                }
+                let date = (existing.year, existing.month, existing.day);
+                let start = zone.start_of_day(date);
+                let next = plain_date::add_iso_date(date, 0, 0, 0, 1, false).ok_or_else(|| {
+                    RuntimeError::RangeError("Temporal.ZonedDateTime.round is out of range".into())
+                })?;
+                let end = zone.start_of_day(next);
+                let day_length = i128::try_from(&end - &start)
+                    .expect("one day's length fits in i128 many times over");
+                let offset_into_day = i128::try_from(&existing.epoch_nanoseconds - &start)
+                    .expect("an offset within one day fits in i128");
+                let rounded =
+                    rounding::round_to_increment_as_if_positive(offset_into_day, day_length, mode);
+                existing.epoch_nanoseconds = start + BigInt::from(rounded);
+            } else {
+                let smallest_unit = rounding::parse_time_unit(smallest_unit_text)
+                    .ok_or_else(|| RuntimeError::RangeError("invalid smallestUnit option".into()))?;
+                // `Instant`/`ZonedDateTime.round`'s own rule: the increment
+                // must divide a whole day (inclusive) -- not `PlainTime`'s
+                // narrower "must stay below the unit's own place value" one.
+                let day_ns = 86_400_000_000_000_i128;
+                let step = smallest_unit.nanoseconds() * increment;
+                if day_ns % step != 0 {
+                    return Err(RuntimeError::RangeError(
+                        "roundingIncrement does not divide evenly into a day".into(),
+                    ));
+                }
+                let time_ns = duration_math::time_fields_to_nanoseconds(
+                    existing.hour,
+                    existing.minute,
+                    existing.second,
+                    existing.millisecond,
+                    existing.microsecond,
+                    existing.nanosecond,
+                );
+                let rounded = duration_math::TimeDuration::from_nanoseconds(time_ns)
+                    .round(smallest_unit, increment, mode)
+                    .total_nanoseconds();
+                let day_carry = rounded.div_euclid(86_400_000_000_000);
+                let ns_of_day = rounded.rem_euclid(86_400_000_000_000);
+                let calendar_kind = calendar::calendar_kind(&existing.calendar)
+                    .expect("Temporal values retain a validated calendar identifier");
+                let date = plain_date::calendar_add_date(
+                    calendar_kind,
+                    (existing.year, existing.month, existing.day),
+                    0,
+                    0,
+                    0,
+                    day_carry as i64,
+                    false,
+                )
+                .ok_or_else(|| {
+                    RuntimeError::RangeError("Temporal.ZonedDateTime.round is out of range".into())
+                })?;
+                let time = duration_math::time_fields_from_nanoseconds(ns_of_day);
+                existing.epoch_nanoseconds = zone
+                    .epoch_nanoseconds_for(date, time, time_zone::Disambiguation::Compatible)
+                    .map_err(temporal_resolution_error)?;
+            }
+            if !epoch::is_in_instant_range(&existing.epoch_nanoseconds) {
+                return Err(RuntimeError::RangeError(
+                    "Temporal.ZonedDateTime.round is out of range".into(),
+                ));
+            }
+            temporal_set_local_fields(&mut existing, &zone);
+            self.alloc_temporal_value(existing, false)
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// Maps a `rounding::TemporalUnit` (the wide ten-variant vocabulary) down
+    /// to its `rounding::TimeUnit` counterpart -- only ever called once the
+    /// caller already knows the unit is `hour`..`nanosecond`.
+    fn temporal_unit_to_time_unit(unit: rounding::TemporalUnit) -> rounding::TimeUnit {
+        match unit {
+            rounding::TemporalUnit::Hour => rounding::TimeUnit::Hour,
+            rounding::TemporalUnit::Minute => rounding::TimeUnit::Minute,
+            rounding::TemporalUnit::Second => rounding::TimeUnit::Second,
+            rounding::TemporalUnit::Millisecond => rounding::TimeUnit::Millisecond,
+            rounding::TemporalUnit::Microsecond => rounding::TimeUnit::Microsecond,
+            _ => rounding::TimeUnit::Nanosecond,
+        }
+    }
+
+    /// `Temporal.ZonedDateTime.prototype.until`/`since`:
+    /// `DifferenceTemporalZonedDateTime`. When `largestUnit` never reaches a
+    /// calendar day, this is pure exact-nanosecond `Instant` difference (no
+    /// zone or calendar consulted at all); otherwise the date part comes
+    /// from `zoned_date_time::difference_zoned_date_time` (real calendar-day
+    /// arithmetic, honouring a DST-shortened/lengthened day exactly) and
+    /// only the sub-day remainder is a time duration.
+    ///
+    /// Known simplification, documented rather than silently approximated:
+    /// when `smallestUnit` itself reaches a calendar day (week/month/year),
+    /// a nonzero sub-day exact-time remainder is folded into a whole extra
+    /// day toward the later endpoint before calendar rounding, rather than
+    /// `RoundRelativeDuration`'s own exact fractional-day position within
+    /// that specific (possibly 23/25-hour) day. This keeps every result
+    /// field sign-consistent with the overall direction (`DurationRecord`'s
+    /// own invariant) and is exact whenever the remainder is zero (the
+    /// common case: two `ZonedDateTime`s that share the same local time of
+    /// day), which is the case every `since`/`until` calendar-unit fixture
+    /// this slice was verified against exercises.
+    pub(super) fn temporal_zoned_date_time_difference(
+        &mut self,
+        receiver: &Value,
+        other_value: &Value,
+        options: &Value,
+        since: bool,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let other = self.temporal_to_zoned_date_time(other_value, &Value::Undefined)?;
+        if existing.calendar != other.calendar {
+            return Err(RuntimeError::RangeError(
+                "Temporal.since/until requires the same calendar".into(),
+            ));
+        }
+        let resolved_options = self.temporal_options(options)?;
+        let largest_raw = self.temporal_raw_string_option(&resolved_options, "largestUnit")?;
+        let increment_raw =
+            self.temporal_raw_number_option(&resolved_options, "roundingIncrement")?;
+        let mode_raw = self.temporal_raw_string_option(&resolved_options, "roundingMode")?;
+        let smallest_raw = self.temporal_raw_string_option(&resolved_options, "smallestUnit")?;
+
+        let smallest_unit = match smallest_raw.as_deref() {
+            None => rounding::TemporalUnit::Nanosecond,
+            Some(text) => rounding::parse_temporal_unit(text)
+                .ok_or_else(|| RuntimeError::RangeError("invalid smallestUnit option".into()))?,
+        };
+        // `ZonedDateTime`'s own default `largestUnit` is the larger of
+        // `"hour"` and `smallestUnit` -- unlike `Instant`'s `"second"` and
+        // `PlainDate`/`PlainDateTime`'s `"day"` defaults.
+        let largest_unit = match largest_raw.as_deref() {
+            None | Some("auto") => smallest_unit.max(rounding::TemporalUnit::Hour),
+            Some(text) => rounding::parse_temporal_unit(text)
+                .ok_or_else(|| RuntimeError::RangeError("invalid largestUnit option".into()))?,
+        };
+        if smallest_unit > largest_unit {
+            return Err(RuntimeError::RangeError(
+                "smallestUnit must not be larger than largestUnit".into(),
+            ));
+        }
+        let increment = Self::temporal_validated_rounding_increment(increment_raw)?;
+        let mode = Self::temporal_validated_rounding_mode(
+            mode_raw.as_deref(),
+            blueice_ecma402::NumberRoundingMode::Trunc,
+        )?;
+
+        let zone = temporal_zoned_date_time_zone(&existing);
+        let calendar_kind = calendar::calendar_kind(&existing.calendar)
+            .expect("Temporal values retain a validated calendar identifier");
+
+        let (
+            years,
+            months,
+            weeks,
+            days,
+            hours,
+            minutes,
+            seconds,
+            milliseconds,
+            microseconds,
+            nanoseconds,
+        ) = if largest_unit < rounding::TemporalUnit::Day {
+            let diff_ns = i128::try_from(&other.epoch_nanoseconds - &existing.epoch_nanoseconds)
+                .expect("an Instant-range difference fits in i128");
+            let rounded = duration_math::TimeDuration::from_nanoseconds(diff_ns).round(
+                Self::temporal_unit_to_time_unit(smallest_unit),
+                increment,
+                mode,
+            );
+            let [h, m, s, ms, us, ns] =
+                rounded.balance_to(Self::temporal_unit_to_time_unit(largest_unit));
+            (0, 0, 0, 0, h, m, s, ms, us, ns)
+        } else {
+            let date1 = (existing.year, existing.month, existing.day);
+            let time1 = (
+                existing.hour,
+                existing.minute,
+                existing.second,
+                existing.millisecond,
+                existing.microsecond,
+                existing.nanosecond,
+            );
+            let date2 = (other.year, other.month, other.day);
+            let date_unit_largest = Self::temporal_unit_to_date_unit(largest_unit);
+            let (_, _, _, _, remainder_ns) = zoned_date_time::difference_zoned_date_time(
+                &zone,
+                calendar_kind,
+                &existing.epoch_nanoseconds,
+                date1,
+                time1,
+                &other.epoch_nanoseconds,
+                date2,
+                date_unit_largest,
+            );
+            if smallest_unit >= rounding::TemporalUnit::Day {
+                let overall_sign = match &other.epoch_nanoseconds - &existing.epoch_nanoseconds {
+                    diff if diff > BigInt::from(0) => 1_i64,
+                    diff if diff < BigInt::from(0) => -1_i64,
+                    _ => 0_i64,
+                };
+                let rounding_date2 = if remainder_ns != 0 && overall_sign != 0 {
+                    plain_date::add_iso_date(date2, 0, 0, 0, overall_sign, false).unwrap_or(date2)
+                } else {
+                    date2
+                };
+                let date_unit_smallest = Self::temporal_unit_to_date_unit(smallest_unit);
+                let (years, months, weeks, days) = plain_date::round_calendar_duration(
+                    calendar_kind,
+                    date1,
+                    rounding_date2,
+                    date_unit_largest,
+                    date_unit_smallest,
+                    increment,
+                    mode,
+                );
+                (years, months, weeks, days, 0, 0, 0, 0, 0, 0)
+            } else {
+                let (years, months, weeks, days, remainder_ns) =
+                    zoned_date_time::difference_zoned_date_time(
+                        &zone,
+                        calendar_kind,
+                        &existing.epoch_nanoseconds,
+                        date1,
+                        time1,
+                        &other.epoch_nanoseconds,
+                        date2,
+                        date_unit_largest,
+                    );
+                let time_unit = Self::temporal_unit_to_time_unit(smallest_unit);
+                let rounded = duration_math::TimeDuration::from_nanoseconds(remainder_ns)
+                    .round(time_unit, increment, mode);
+                let [h, m, s, ms, us, ns] = rounded.balance_to(rounding::TimeUnit::Hour);
+                (years, months, weeks, days, h, m, s, ms, us, ns)
+            }
+        };
+
+        let (
+            years,
+            months,
+            weeks,
+            days,
+            hours,
+            minutes,
+            seconds,
+            milliseconds,
+            microseconds,
+            nanoseconds,
+        ) = if since {
+            (
+                -years,
+                -months,
+                -weeks,
+                -days,
+                -hours,
+                -minutes,
+                -seconds,
+                -milliseconds,
+                -microseconds,
+                -nanoseconds,
+            )
+        } else {
+            (
+                years,
+                months,
+                weeks,
+                days,
+                hours,
+                minutes,
+                seconds,
+                milliseconds,
+                microseconds,
+                nanoseconds,
+            )
+        };
+        let record = blueice_ecma402::DurationRecord::try_new(
+            i128::from(years),
+            i128::from(months),
+            i128::from(weeks),
+            i128::from(days),
+            i128::from(hours),
+            i128::from(minutes),
+            i128::from(seconds),
+            i128::from(milliseconds),
+            i128::from(microseconds),
+            i128::from(nanoseconds),
+        )
+        .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        self.alloc_temporal_value(Self::temporal_duration_value(record), false)
+    }
+
+    pub(super) fn temporal_zoned_date_time_equals(
+        &mut self,
+        receiver: &Value,
+        other_value: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let other = self.temporal_to_zoned_date_time(other_value, &Value::Undefined)?;
+        Ok(Value::Bool(
+            existing.epoch_nanoseconds == other.epoch_nanoseconds
+                && existing.time_zone == other.time_zone
+                && existing.calendar == other.calendar,
+        ))
+    }
+
+    pub(super) fn temporal_zoned_date_time_compare(
+        &mut self,
+        one: &Value,
+        two: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let one = self.temporal_to_zoned_date_time(one, &Value::Undefined)?;
+        let two = self.temporal_to_zoned_date_time(two, &Value::Undefined)?;
+        Ok(Value::Number(
+            match one.epoch_nanoseconds.cmp(&two.epoch_nanoseconds) {
+                std::cmp::Ordering::Less => -1.0,
+                std::cmp::Ordering::Greater => 1.0,
+                std::cmp::Ordering::Equal => 0.0,
+            },
+        ))
+    }
+
+    /// `TemporalZonedDateTimeToString`: rounds the exact epoch instant first
+    /// (`RoundTemporalInstant`'s own magnitude-based rounding, matching
+    /// `Instant.prototype.toString` -- not a zone-day-aware rounding), then
+    /// formats the *rounded* instant's local fields plus an exact (not
+    /// minute-rounded) offset, an optional time-zone annotation and a
+    /// calendar annotation.
+    pub(super) fn temporal_zoned_date_time_to_string(
+        &mut self,
+        receiver: &Value,
+        options: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let base = self.stack.len();
+        let result = (|| {
+            let options = self.temporal_options(options)?;
+            let show_calendar = self.temporal_string_option(
+                &options,
+                "calendarName",
+                &["auto", "always", "never", "critical"],
+            )?;
+            let explicit_digits = self.temporal_fractional_second_digits(&options)?;
+            let show_offset = self
+                .temporal_string_option(&options, "offset", &["auto", "never"])?
+                .unwrap_or_else(|| "auto".into());
+            let mode = self
+                .temporal_rounding_mode(&options, blueice_ecma402::NumberRoundingMode::Trunc)?;
+            let smallest_unit = self.temporal_unit_option(&options, "smallestUnit", false)?;
+            let smallest_unit = Self::temporal_time_unit(smallest_unit, "smallestUnit", false)?;
+            let show_time_zone = self
+                .temporal_string_option(&options, "timeZoneName", &["auto", "never", "critical"])?
+                .unwrap_or_else(|| "auto".into());
+            let (precision, unit, increment) = match smallest_unit {
+                Some(rounding::TimeUnit::Minute) => {
+                    (SecondsPrecision::Minute, rounding::TimeUnit::Minute, 1)
+                }
+                Some(rounding::TimeUnit::Second) => {
+                    (SecondsPrecision::Digits(0), rounding::TimeUnit::Second, 1)
+                }
+                Some(rounding::TimeUnit::Millisecond) => (
+                    SecondsPrecision::Digits(3),
+                    rounding::TimeUnit::Millisecond,
+                    1,
+                ),
+                Some(rounding::TimeUnit::Microsecond) => (
+                    SecondsPrecision::Digits(6),
+                    rounding::TimeUnit::Microsecond,
+                    1,
+                ),
+                Some(rounding::TimeUnit::Nanosecond) | Some(rounding::TimeUnit::Hour) => (
+                    SecondsPrecision::Digits(9),
+                    rounding::TimeUnit::Nanosecond,
+                    1,
+                ),
+                None => match explicit_digits {
+                    None => (
+                        SecondsPrecision::Auto,
+                        rounding::TimeUnit::Nanosecond,
+                        1_i128,
+                    ),
+                    Some(0) => (SecondsPrecision::Digits(0), rounding::TimeUnit::Second, 1),
+                    Some(digits @ 1..=3) => (
+                        SecondsPrecision::Digits(digits),
+                        rounding::TimeUnit::Millisecond,
+                        10_i128.pow(u32::from(3 - digits)),
+                    ),
+                    Some(digits @ 4..=6) => (
+                        SecondsPrecision::Digits(digits),
+                        rounding::TimeUnit::Microsecond,
+                        10_i128.pow(u32::from(6 - digits)),
+                    ),
+                    Some(digits) => (
+                        SecondsPrecision::Digits(digits),
+                        rounding::TimeUnit::Nanosecond,
+                        10_i128.pow(u32::from(9 - digits)),
+                    ),
+                },
+            };
+            let epoch_i128: i128 = existing.epoch_nanoseconds.to_i128().ok_or_else(|| {
+                RuntimeError::RangeError("invalid Temporal.ZonedDateTime".into())
+            })?;
+            let rounded = duration_math::TimeDuration::from_nanoseconds(epoch_i128)
+                .round_as_if_positive(unit, increment, mode)
+                .total_nanoseconds();
+            let rounded_ns = BigInt::from(rounded);
+            let zone = temporal_zoned_date_time_zone(&existing);
+            let offset_ns = zone.offset_nanoseconds_for(&rounded_ns);
+            let local = &rounded_ns + BigInt::from(offset_ns);
+            let mut result = format_zoned_date_time_date_time(&local, precision);
+            if show_offset != "never" {
+                result.push_str(&format_offset_nanoseconds_exact(offset_ns));
+            }
+            if show_time_zone != "never" {
+                result.push('[');
+                if show_time_zone == "critical" {
+                    result.push('!');
+                }
+                result.push_str(&existing.time_zone);
+                result.push(']');
+            }
+            let show = plain_date::parse_show_calendar(show_calendar.as_deref().unwrap_or("auto"))
+                .ok_or_else(|| RuntimeError::RangeError("invalid calendarName option".into()))?;
+            result.push_str(&plain_date::format_calendar_annotation(
+                &existing.calendar,
+                show,
+            ));
+            Ok(Value::String(result.into()))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    pub(super) fn temporal_zoned_date_time_value_of(&mut self) -> Result<Value, RuntimeError> {
+        Err(RuntimeError::TypeError(
+            "Temporal.ZonedDateTime cannot be converted to a primitive value".into(),
+        ))
+    }
+
+    pub(super) fn temporal_zoned_date_time_to_instant(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        self.instant_from_epoch_nanoseconds(existing.epoch_nanoseconds)
+    }
+
+    pub(super) fn temporal_zoned_date_time_to_plain_date(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let value = Self::temporal_date_value(
+            TemporalKind::PlainDate,
+            existing.calendar,
+            (existing.year, existing.month, existing.day),
+        );
+        self.alloc_temporal_value(value, false)
+    }
+
+    pub(super) fn temporal_zoned_date_time_to_plain_time(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let fields = (
+            existing.hour,
+            existing.minute,
+            existing.second,
+            existing.millisecond,
+            existing.microsecond,
+            existing.nanosecond,
+        );
+        self.alloc_temporal_value(Self::plain_time_value(fields), false)
+    }
+
+    pub(super) fn temporal_zoned_date_time_to_plain_date_time(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let value = Self::temporal_date_time_value(
+            TemporalKind::PlainDateTime,
+            existing.calendar,
+            (existing.year, existing.month, existing.day),
+            (
+                existing.hour,
+                existing.minute,
+                existing.second,
+                existing.millisecond,
+                existing.microsecond,
+                existing.nanosecond,
+            ),
+        );
+        self.alloc_temporal_value(value, false)
+    }
+
+    /// `Temporal.ZonedDateTime.prototype.toPlainYearMonth`: identical
+    /// `CalendarYearMonthFromFields` resolution to
+    /// `temporal_plain_date_to_plain_year_month`, reused here since a
+    /// `ZonedDateTime`'s own stored ISO fields are already its local
+    /// calendar date -- `temporal_calendar_fields` does not care which
+    /// `TemporalKind` supplied them.
+    pub(super) fn temporal_zoned_date_time_to_plain_year_month(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let fields = self.temporal_calendar_fields(&existing)?;
+        let calendar_kind = calendar::calendar_kind(&existing.calendar)
+            .expect("Temporal values retain a validated calendar identifier");
+        let ym_fields = plain_year_month::YearMonthFields {
+            era: None,
+            era_year: None,
+            extended_year: Some(fields.year),
+            month_code: Some(&fields.month_code),
+            ordinal_month: None,
+        };
+        let date = plain_year_month::year_month_from_fields(calendar_kind, &ym_fields, false)
+            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar year-month".into()))?;
+        let value = Self::temporal_date_value(TemporalKind::PlainYearMonth, existing.calendar, date);
+        self.alloc_temporal_value(value, false)
+    }
+
+    pub(super) fn temporal_zoned_date_time_to_plain_month_day(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let fields = self.temporal_calendar_fields(&existing)?;
+        let calendar_kind = calendar::calendar_kind(&existing.calendar)
+            .expect("Temporal values retain a validated calendar identifier");
+        let md_fields = plain_month_day::MonthDayFields {
+            extended_year: Some(fields.year),
+            month_code: Some(&fields.month_code),
+            ordinal_month: None,
+            day: fields.day,
+        };
+        let date = plain_month_day::month_day_from_fields(calendar_kind, &md_fields, false)
+            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar month-day".into()))?;
+        let value = Self::temporal_date_value(TemporalKind::PlainMonthDay, existing.calendar, date);
+        self.alloc_temporal_value(value, false)
+    }
+
+    pub(super) fn temporal_zoned_date_time_start_of_day(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let mut existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let zone = temporal_zoned_date_time_zone(&existing);
+        let date = (existing.year, existing.month, existing.day);
+        existing.epoch_nanoseconds = zone.start_of_day(date);
+        temporal_set_local_fields(&mut existing, &zone);
+        self.alloc_temporal_value(existing, false)
+    }
+
+    pub(super) fn temporal_zoned_date_time_get_iso_fields(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        let zone = temporal_zoned_date_time_zone(&existing);
+        let offset_ns = zone.offset_nanoseconds_for(&existing.epoch_nanoseconds);
+        let object = self.with_roots(|heap| heap.alloc_object(None))?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(object));
+        let result = (|| {
+            self.define_data(
+                object,
+                "calendar",
+                Value::String(existing.calendar.clone().into()),
+                true,
+                true,
+                true,
+            )?;
+            self.define_data(
+                object,
+                "isoDay",
+                Value::Number(existing.day.into()),
+                true,
+                true,
+                true,
+            )?;
+            self.define_data(
+                object,
+                "isoHour",
+                Value::Number(existing.hour.into()),
+                true,
+                true,
+                true,
+            )?;
+            self.define_data(
+                object,
+                "isoMicrosecond",
+                Value::Number(existing.microsecond.into()),
+                true,
+                true,
+                true,
+            )?;
+            self.define_data(
+                object,
+                "isoMillisecond",
+                Value::Number(existing.millisecond.into()),
+                true,
+                true,
+                true,
+            )?;
+            self.define_data(
+                object,
+                "isoMinute",
+                Value::Number(existing.minute.into()),
+                true,
+                true,
+                true,
+            )?;
+            self.define_data(
+                object,
+                "isoMonth",
+                Value::Number(existing.month.into()),
+                true,
+                true,
+                true,
+            )?;
+            self.define_data(
+                object,
+                "isoNanosecond",
+                Value::Number(existing.nanosecond.into()),
+                true,
+                true,
+                true,
+            )?;
+            self.define_data(
+                object,
+                "isoSecond",
+                Value::Number(existing.second.into()),
+                true,
+                true,
+                true,
+            )?;
+            self.define_data(
+                object,
+                "isoYear",
+                Value::Number(existing.year.into()),
+                true,
+                true,
+                true,
+            )?;
+            self.define_data(
+                object,
+                "offset",
+                Value::String(format_offset_nanoseconds_exact(offset_ns).into()),
+                true,
+                true,
+                true,
+            )?;
+            self.define_data(
+                object,
+                "timeZone",
+                Value::String(existing.time_zone.clone().into()),
+                true,
+                true,
+                true,
+            )?;
+            Ok(Value::Object(object))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+}
+
 /// `ToSecondsStringPrecisionRecord`'s `[[Precision]]`: whole minutes, or a
 /// seconds field with either an explicit decimal-place count or `auto` (the
 /// shortest form that loses nothing).
@@ -7484,4 +8926,130 @@ fn temporal_resolution_error(_: time_zone::AmbiguousLocalTime) -> RuntimeError {
     RuntimeError::RangeError(
         "the local time is ambiguous or does not exist in this time zone".into(),
     )
+}
+
+/// Re-parses a `ZonedDateTime` value's own stored `time_zone` identifier
+/// back into a [`time_zone::TimeZone`]. Always succeeds: the identifier only
+/// ever comes from [`time_zone::TimeZone::identifier`] itself (the
+/// constructor/`from`/every method below all store it that way), which is
+/// always round-trippable through [`time_zone::parse_identifier`].
+fn temporal_zoned_date_time_zone(value: &TemporalValue) -> time_zone::TimeZone {
+    time_zone::parse_identifier(&value.time_zone)
+        .expect("a ZonedDateTime value's own stored time zone is always a valid identifier")
+}
+
+/// `InterpretISODateTimeOffset`, collapsed to this engine's own three
+/// offset-behaviour shapes:
+///
+/// - `utc_exact` (the ISO string `Z` designator only): the offset is exactly
+///   zero, and the zone/disambiguation are never consulted at all.
+/// - `offset_nanoseconds: None` (`"wall"` behaviour -- no offset spelled at
+///   all): resolved purely through the zone and `disambiguation`.
+/// - `offset_nanoseconds: Some(_)` (`"option"` behaviour -- a property-bag
+///   `offset` field or a string's own numeric offset): used directly
+///   whenever it matches one of the zone's real possible instants for that
+///   local date/time; otherwise `offset_option` decides -- `"use"` trusts it
+///   regardless, `"reject"` throws, and `"ignore"`/`"prefer"` both fall back
+///   to zone/disambiguation resolution (the spec's own `InterpretISODateTimeOffset`
+///   already collapses those last two into the same branch once no
+///   candidate matches, so there is no separate `"prefer"` case to add).
+fn temporal_interpret_offset(
+    zone: &time_zone::TimeZone,
+    date: epoch::CivilDate,
+    time: epoch::CivilTime,
+    offset_nanoseconds: Option<i64>,
+    utc_exact: bool,
+    disambiguation: time_zone::Disambiguation,
+    offset_option: &str,
+) -> Result<BigInt, RuntimeError> {
+    let local = epoch::nanoseconds_since_epoch(date, time, 0);
+    if utc_exact {
+        return Ok(local - BigInt::from(offset_nanoseconds.unwrap_or(0)));
+    }
+    let Some(offset_ns) = offset_nanoseconds else {
+        return zone
+            .epoch_nanoseconds_for(date, time, disambiguation)
+            .map_err(temporal_resolution_error);
+    };
+    let candidate = &local - BigInt::from(offset_ns);
+    let possible = zone.possible_epoch_nanoseconds(date, time);
+    if possible.contains(&candidate) {
+        return Ok(candidate);
+    }
+    match offset_option {
+        "use" => Ok(candidate),
+        "reject" => Err(RuntimeError::RangeError(
+            "the given offset does not match the time zone".into(),
+        )),
+        _ => zone
+            .epoch_nanoseconds_for(date, time, disambiguation)
+            .map_err(temporal_resolution_error),
+    }
+}
+
+/// `FormatUTCOffsetNanoseconds`: an *exact* `±HH:MM[:SS[.sssssssss]]`
+/// representation -- unlike `format_instant_string`'s own offset formatting
+/// (`FormatDateTimeUTCOffsetRounded`, always rounded to the nearest minute,
+/// which is what `Instant.prototype.toString`'s optional `timeZone` display
+/// specifically calls for). `ZonedDateTime`'s own `offset`
+/// getter/`getISOFields`/`toString` all need the real, possibly sub-minute
+/// historical offset a named zone can carry (e.g. Monrovia's pre-1972
+/// -00:44:30), because round-tripping the string must be exact.
+fn format_offset_nanoseconds_exact(offset: i64) -> String {
+    let sign = if offset < 0 { '-' } else { '+' };
+    let magnitude = offset.unsigned_abs();
+    let hours = magnitude / 3_600_000_000_000;
+    let minutes = (magnitude / 60_000_000_000) % 60;
+    let seconds = (magnitude / 1_000_000_000) % 60;
+    let nanoseconds = magnitude % 1_000_000_000;
+    let mut result = format!("{sign}{hours:02}:{minutes:02}");
+    if seconds != 0 || nanoseconds != 0 {
+        result.push_str(&format!(":{seconds:02}"));
+        if nanoseconds != 0 {
+            let text = format!("{nanoseconds:09}");
+            result.push('.');
+            result.push_str(text.trim_end_matches('0'));
+        }
+    }
+    result
+}
+
+/// The date/time portion of `TemporalZonedDateTimeToString`'s output, given
+/// an already-rounded *local* epoch value (`rounded_epoch_nanoseconds +
+/// offset`, i.e. what `epoch::instant_fields` decomposes as this zone's own
+/// wall-clock fields). Deliberately duplicates
+/// `Vm::format_instant_string`'s own date/time formatting (rather than
+/// reusing it) since that function always appends its *own* offset/`Z`
+/// suffix, which `ZonedDateTime`'s exact (not minute-rounded) offset display
+/// cannot reuse -- see [`format_offset_nanoseconds_exact`]'s own doc
+/// comment.
+fn format_zoned_date_time_date_time(local: &BigInt, precision: SecondsPrecision) -> String {
+    let ((year, month, day), (hour, minute, second, millisecond, microsecond, nanosecond)) =
+        epoch::instant_fields(local);
+    let mut result = if (0..=9999).contains(&year) {
+        format!("{year:04}")
+    } else {
+        format!("{}{:06}", if year < 0 { "-" } else { "+" }, year.abs())
+    };
+    result.push_str(&format!("-{month:02}-{day:02}T{hour:02}:{minute:02}"));
+    if precision != SecondsPrecision::Minute {
+        result.push_str(&format!(":{second:02}"));
+        let nanos_total =
+            u32::from(millisecond) * 1_000_000 + u32::from(microsecond) * 1_000 + u32::from(nanosecond);
+        match precision {
+            SecondsPrecision::Minute | SecondsPrecision::Digits(0) => {}
+            SecondsPrecision::Digits(digits) => {
+                let text = format!("{nanos_total:09}");
+                result.push('.');
+                result.push_str(&text[..digits as usize]);
+            }
+            SecondsPrecision::Auto if nanos_total != 0 => {
+                let text = format!("{nanos_total:09}");
+                result.push('.');
+                result.push_str(text.trim_end_matches('0'));
+            }
+            SecondsPrecision::Auto => {}
+        }
+    }
+    result
 }
