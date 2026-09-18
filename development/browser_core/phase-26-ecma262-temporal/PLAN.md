@@ -5,16 +5,16 @@
 **Status**: Design, Stage 0 done — first version written 2026-09-17; Stage 0
 (shared foundation) completed 2026-09-18, see its own checklist below for
 exactly what that means and what remains open within it (a full spec-grammar
-audit beyond Test262's coverage). **Stage 1 is in progress**: Track C
-(`Instant` arithmetic plus `Temporal.Now`), Track D (`PlainTime`) and Track E
-(time-zone identifiers/offsets/disambiguation) are all done as of 2026-09-18
-— see each track's own bullet for its measured Test262 numbers and its
-remaining gaps, and the closure table in Stage 3 for the per-type picture.
-Track E's own former blocker (whether `icu_time` carries real IANA
-transition data) is **resolved** — see "Open questions" below; it does not,
-and real historical offset resolution instead uses `jiff`/`jiff-tzdb`, already
-a pinned `blueice-ecma402` dependency. Tracks A (folded into Stage 2, not a
-standalone track) and B (`Duration`) remain. It exists because
+audit beyond Test262's coverage). **Stage 1 is done**: Track C (`Instant`
+arithmetic plus `Temporal.Now`), Track D (`PlainTime`), Track E (time-zone
+identifiers/offsets/disambiguation), and Track B (`Duration` arithmetic) are
+all done as of 2026-09-18 — see each track's own bullet for its measured
+Test262 numbers and its remaining gaps, and the closure table in Stage 3 for
+the per-type picture. Track E's own former blocker (whether `icu_time`
+carries real IANA transition data) is **resolved** — see "Open questions"
+below; it does not, and real historical offset resolution instead uses
+`jiff`/`jiff-tzdb`, already a pinned `blueice-ecma402` dependency. Track A
+was folded into Stage 2, not a standalone track. It exists because
 completing Phase 25 (ECMA-402) surfaced a real gap in `intl402/`'s
 `Temporal/` subtree. **Correction (2026-09-17, same day):** the plan's first
 version only measured `intl402/Temporal/` (4,058 modes, 6.55% pass) — see
@@ -231,8 +231,11 @@ Nothing downstream is stable until this lands. Scope:
       friction at every read, not remove any — `epoch.rs` keeps `BigInt`.
 - [x] **`TemporalUnit`/`TemporalRoundingMode` vocabulary and the
       calendar-agnostic `TimeDuration` combinator — design settled
-      2026-09-18, deliberately not landed as `rounding.rs`/`duration_math.rs`
-      files yet.** A `#[allow(dead_code)]` search across `backend/bluejs`
+      2026-09-18; landed by Stage 1 once each piece had a real caller
+      (`rounding.rs`/`duration_math.rs` by Track C for `TimeUnit`, the full
+      ten-variant `TemporalUnit` by Track B, which is the first caller that
+      needs to *name* a calendar unit in order to reject it).** A
+      `#[allow(dead_code)]` search across `backend/bluejs`
       and `backend/ecma402` finds zero precedent anywhere in this codebase
       for landing code with no real caller; `iso`/`epoch`/`calendar` above
       are justified as Stage 0 deliverables specifically because they
@@ -264,15 +267,14 @@ Nothing downstream is stable until this lands. Scope:
       **resolved 2026-09-17**: it already exists, as
       `temporal_duration_record` in `backend/bluejs/src/vm/temporal.rs`
       (called from `intl.rs`'s `duration_record` via
-      `temporal_value_from_string`). **Correction (2026-09-18, Track D):**
-      this item originally recorded that restricting the fraction to the
-      seconds component "correctly" matches Temporal's grammar. It does not —
-      Temporal has `DurationHoursFraction` and `DurationMinutesFraction` as
-      well, so `"PT1.03125H"` is valid and today throws
-      (`built-ins/Temporal/PlainTime/prototype/add/argument-string-fractional-units-rounding-mode.js`).
-      It *is* narrower than general ISO 8601 in that a fraction may only sit
-      on the last present component, but seconds are not the only component
-      that may carry one. Left for Track B, which owns `Duration`.
+      `temporal_value_from_string`; now `iso::parse_duration_record`).
+      **Corrected 2026-09-18 by Stage 1 Track B:** this item originally
+      recorded that the parser "correctly restricts fractional parts to
+      seconds only, matching Temporal's grammar". That was wrong on both
+      counts — Temporal allows a fraction on any *final* time component
+      (`PT0.5H` is 30 minutes), and the parser was also missing lowercase
+      designators, the `,` decimal separator, the U+2212 sign, and
+      component-order/duplication checks. See Track B's entry for the fix.
 - [x] **Calendar-annotation parsing in ISO strings — closed 2026-09-17.**
       `temporal_value_from_string` previously hardcoded every parsed value's
       calendar to `"iso8601"` regardless of any `[u-ca=...]` annotation in
@@ -354,13 +356,89 @@ isn't an assumption:
   test coverage through `PlainDate`/`PlainDateTime`/etc., which are Stage
   2's calendar-aware composite types. Do not dispatch a standalone "Track
   A" agent; calendar correctness gets exercised as part of Stage 2 instead.
-- **Track B — Duration arithmetic** (`duration.rs`, the JS-visible wrapper;
-  building on Stage 0's `duration_math.rs`). Evidence: Gecko's core
-  add/subtract/negate/abs/compare path does not depend on `Calendar.cpp`
-  except for calendar-aware rounding against an optional `relativeTo` —
-  calendar-independent arithmetic can be built and tested (Test262's
-  combined `Duration/`, 1,122 modes across both trees) before Track A
-  finishes.
+- **Track B — Duration arithmetic** (kept inside `vm/temporal.rs` rather than
+  a new `duration.rs`, for the same reason Track C gave: the method bodies
+  are adapter-layer `impl Vm` code coupled to `Value`/heap, and only
+  `iso`/`epoch`/`calendar`/`rounding`/`duration_math` are the host-neutral
+  split). Evidence: Gecko's core add/subtract/negate/abs/compare path does
+  not depend on `Calendar.cpp` except for calendar-aware rounding against an
+  optional `relativeTo` — calendar-independent arithmetic can be built and
+  tested before Track A finishes. **Done 2026-09-18**: `Temporal/Duration/`
+  went from 232/1,122 (20.68%, Stage 0's read-only-construction baseline) to
+  **868/1,122 (77.4%)** against the pinned corpus, with every other Temporal
+  type unchanged or improved in the same run (`Instant` 646→670,
+  `PlainDate`/`PlainDateTime`/`PlainYearMonth`/`PlainMonthDay`/`PlainTime`/
+  `ZonedDateTime` each +6 to +20; combined `Temporal/` 1,592→2,878).
+
+  Implemented: the `sign` and `blank` **getters** (confirmed accessors, not
+  methods, from `prototype/{sign,blank}/prop-desc.js`), `with`, `negated`,
+  `abs`, `add`, `subtract`, `round`, `total`, `toString`, `toJSON`,
+  `toLocaleString`, `valueOf`, and the static `compare`. `rounding.rs` gained
+  the full ten-variant `TemporalUnit` vocabulary Stage 0 designed (the
+  earlier `TimeUnit` covers only hour..nanosecond and is untouched, so
+  `Temporal.Instant`'s wiring is unaffected), plus
+  `MaximumTemporalDurationRoundingIncrement` and an exact
+  integer-ratio-to-`f64` division (`total` returns the correctly-rounded
+  value of an exact rational, not a double-rounded one). `duration_math.rs`
+  gained `from_record_with_24_hour_days`, `rounded_to_step`,
+  `balance_with_days` (`balance_to` plus a `days` field, widened to `i128`
+  because folding a whole duration into `nanoseconds` overflows `i64`) and
+  `total_in`.
+
+  Three real bugs were found and fixed along the way, all in already-shipped
+  shared code rather than in the new methods:
+  - `iso::parse_duration_record` rejected a fraction on anything but seconds.
+    Temporal's grammar allows one on *any* final time component, so `PT0.5H`
+    is 30 minutes, not a syntax error. It also rejected lowercase
+    designators (`p1y1m1dt1h1m1s`), the `,` decimal separator, and U+2212 as
+    a sign, and accepted repeated/out-of-order components. Stage 0's own
+    "restricts fractional parts to seconds only, matching Temporal's grammar"
+    note was simply wrong; this corrects it. The module test that asserted
+    `P1DT2H30.5M` is invalid was updated, since that string is valid.
+  - `temporal_duration_from_value` (`ToTemporalDuration`) read a property bag
+    in `years`..`nanoseconds` order. The observable order is *alphabetical*
+    (`prototype/add/order-of-operations.js`), which also fixed
+    `Temporal.Instant`'s own order-of-operations fixtures.
+  - `Temporal.Duration.from` never reached `ToTemporalDuration` for a
+    property bag: it fell through to `ToString`, so `Duration.from({days:1})`
+    threw "invalid Temporal.Duration string". It now shares the one
+    conversion. `Temporal.Duration.length` was 10; every parameter is
+    optional, so it is 0.
+
+  Two further behaviours are part of the algorithm rather than conveniences,
+  and are easy to lose in a refactor: a `Duration`'s fields are **Numbers**,
+  so `CreateTemporalDuration` rounds every balanced field to the nearest
+  double *before* the range check (an exact value that passes can fail once
+  rounded — `prototype/round/out-of-range-when-converting-from-normalized-duration.js`);
+  and `toLocaleString` is ECMA-402's `Intl.DurationFormat` path, not the ISO
+  string `toString` returns.
+
+  **Deferred to Stage 2, precisely.** Everything below throws a `RangeError`
+  (or, where the specification's own conversion would, a `TypeError`) instead
+  of returning an approximate answer:
+  - Any `add`/`subtract`/`round`/`total`/`compare` where the receiver, the
+    argument, or a requested `largestUnit`/`smallestUnit`/`unit` involves
+    `year`, `month` or `week`. Without `relativeTo` the specification throws
+    here too, so this boundary is real conformance; *with* a `relativeTo` it
+    is a gap, because the answer needs calendar-aware date arithmetic.
+  - `relativeTo` as a **property bag** (`TypeError`) or as a **string**
+    (`RangeError`) — both need Stage 2's calendar-aware `PlainDate` field
+    and string resolution. A *date-only* string with no time-zone annotation
+    is parsed and accepted.
+  - `relativeTo` as a `Temporal.ZonedDateTime` in a **named IANA zone**
+    (`RangeError`), where a day can be 23 or 25 hours long. That needs Track
+    E's transition data. A `ZonedDateTime` in `UTC` or a fixed UTC offset
+    *is* accepted, and a `PlainDate`/`PlainDateTime` anchor always is:
+    neither can change a calendar-agnostic answer, since Temporal fixes a day
+    at 86,400 seconds except across a real offset transition. A blank
+    duration with any anchor also short-circuits to blank/zero, which is
+    exact for every unit.
+  - `intl402/.../Duration/compare/twenty-five-hour-day.js` and the
+    `dst-*`/`relativeto-dst-*` fixtures are the concrete cases the above
+    excludes; `relativeto-propertybag-*` and `relativeto-string-*` are the
+    rest. That is the whole of the remaining 254 failing modes apart from
+    `round/case-where-relativeto-affects-rounding-mode-half-even.js` and
+    `round/next-day-out-of-range.js`, which are calendar-anchored too.
 - **Track C — Instant + Now.** Evidence: epoch nanoseconds are
   calendar-agnostic by construction; Gecko's `Instant.cpp` has no calendar
   dependency. **`Instant` arithmetic done 2026-09-18** (kept inside

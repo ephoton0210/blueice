@@ -32,6 +32,49 @@ mod time_zone_id;
 /// date. Keeping ISO fields in `TemporalValue` preserves the invariant used
 /// by DateTimeFormat's plain-value bridge while ICU4X performs the actual
 /// non-ISO conversion at each observable calendar boundary.
+/// The ten `Temporal.Duration` field names paired with their index in
+/// [`blueice_ecma402::DurationRecord`]'s own `years`..`nanoseconds` order.
+///
+/// The *listed* order is alphabetical, because that is the order
+/// `ToTemporalDurationRecord`/`ToPartialDuration` observably read a property
+/// bag in — checked by Test262's
+/// `built-ins/Temporal/Duration/prototype/{add,with}/order-of-operations.js`,
+/// not assumed.
+const DURATION_FIELDS_IN_READ_ORDER: [(&str, usize); 10] = [
+    ("days", 3),
+    ("hours", 4),
+    ("microseconds", 8),
+    ("milliseconds", 7),
+    ("minutes", 5),
+    ("months", 1),
+    ("nanoseconds", 9),
+    ("seconds", 6),
+    ("weeks", 2),
+    ("years", 0),
+];
+
+/// A `largestUnit`/`smallestUnit`/`unit` option's three observable states.
+/// `Unset` and `Auto` resolve to the same unit wherever both are allowed, but
+/// they are not interchangeable: `Temporal.Duration.prototype.round` requires
+/// *some* unit option to be present, and `largestUnit: "auto"` satisfies that
+/// while omitting it does not (Test262's
+/// `built-ins/Temporal/Duration/prototype/round/succeeds-with-largest-unit-auto.js`).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum UnitOption {
+    Unset,
+    Auto,
+    Unit(rounding::TemporalUnit),
+}
+
+impl UnitOption {
+    fn unit(self) -> Option<rounding::TemporalUnit> {
+        match self {
+            Self::Unit(unit) => Some(unit),
+            Self::Unset | Self::Auto => None,
+        }
+    }
+}
+
 struct TemporalCalendarFields {
     year: i32,
     month: u8,
@@ -77,7 +120,9 @@ impl Vm {
                     function_prototype,
                     kind.name(),
                     match kind {
-                        TemporalKind::Duration => 10,
+                        // Every `Temporal.Duration` parameter is optional, so
+                        // its `length` is zero (Test262's Duration/length.js).
+                        TemporalKind::Duration => 0,
                         TemporalKind::PlainDate => 3,
                         TemporalKind::PlainDateTime => 3,
                         TemporalKind::PlainMonthDay => 2,
@@ -150,6 +195,11 @@ impl Vm {
                         ("milliseconds", native::TemporalGetter::DurationMilliseconds),
                         ("microseconds", native::TemporalGetter::DurationMicroseconds),
                         ("nanoseconds", native::TemporalGetter::DurationNanoseconds),
+                        // `sign` and `blank` are accessors, not methods —
+                        // Test262's Duration/prototype/{sign,blank}/prop-desc.js
+                        // check for a getter function and no setter.
+                        ("sign", native::TemporalGetter::DurationSign),
+                        ("blank", native::TemporalGetter::DurationBlank),
                     ],
                     TemporalKind::PlainDate | TemporalKind::PlainDateTime => &[
                         ("calendarId", native::TemporalGetter::CalendarId),
@@ -217,6 +267,34 @@ impl Vm {
                         "toLocaleString",
                         0,
                         NativeFunction::TemporalZonedDateTimeToLocaleString,
+                    )?;
+                }
+                if kind == TemporalKind::Duration {
+                    for (name, arity, method) in [
+                        ("with", 1, NativeFunction::TemporalDurationWith),
+                        ("negated", 0, NativeFunction::TemporalDurationNegated),
+                        ("abs", 0, NativeFunction::TemporalDurationAbs),
+                        ("add", 1, NativeFunction::TemporalDurationAdd),
+                        ("subtract", 1, NativeFunction::TemporalDurationSubtract),
+                        ("round", 1, NativeFunction::TemporalDurationRound),
+                        ("total", 1, NativeFunction::TemporalDurationTotal),
+                        ("toString", 0, NativeFunction::TemporalDurationToString),
+                        ("toJSON", 0, NativeFunction::TemporalDurationToJson),
+                        (
+                            "toLocaleString",
+                            0,
+                            NativeFunction::TemporalDurationToLocaleString,
+                        ),
+                        ("valueOf", 0, NativeFunction::TemporalDurationValueOf),
+                    ] {
+                        self.install_native(prototype, function_prototype, name, arity, method)?;
+                    }
+                    self.install_native(
+                        constructor,
+                        function_prototype,
+                        "compare",
+                        2,
+                        NativeFunction::TemporalDurationCompare,
                     )?;
                 }
                 if kind == TemporalKind::Instant {
@@ -936,6 +1014,12 @@ impl Vm {
             self.stack.truncate(base);
             return result;
         }
+        if kind == TemporalKind::Duration {
+            // `Temporal.Duration.from` is exactly `ToTemporalDuration`, which
+            // already accepts a Duration, an ISO string and a property bag.
+            let record = self.temporal_duration_from_value(value)?;
+            return self.alloc_temporal_value(Self::temporal_duration_value(record), false);
+        }
         if let Some(object) = value.object_id() {
             if let Some(temporal) = self.heap.temporal_value(object)? {
                 if temporal.kind == kind {
@@ -1016,6 +1100,23 @@ impl Vm {
                     _ => unreachable!("all Temporal.Duration getters are listed above"),
                 };
                 Ok(Value::Number(field as f64))
+            }
+            native::TemporalGetter::DurationSign | native::TemporalGetter::DurationBlank => {
+                if value.kind != TemporalKind::Duration {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Duration getter requires a duration receiver".into(),
+                    ));
+                }
+                let sign = value
+                    .duration
+                    .as_deref()
+                    .expect("Temporal.Duration values retain a duration record")
+                    .sign();
+                Ok(if getter == native::TemporalGetter::DurationSign {
+                    Value::Number(sign.into())
+                } else {
+                    Value::Bool(sign == 0)
+                })
             }
             native::TemporalGetter::CalendarId => Ok(Value::String(value.calendar.into())),
             native::TemporalGetter::EpochMilliseconds
@@ -1426,18 +1527,7 @@ impl Vm {
         // Alphabetical read order, which is observable: Test262's
         // `PlainTime/prototype/add/order-of-operations.js` asserts each
         // getter/`valueOf` fires in exactly this sequence.
-        for (index, name) in [
-            (3, "days"),
-            (4, "hours"),
-            (8, "microseconds"),
-            (7, "milliseconds"),
-            (5, "minutes"),
-            (1, "months"),
-            (9, "nanoseconds"),
-            (6, "seconds"),
-            (2, "weeks"),
-            (0, "years"),
-        ] {
+        for (name, index) in DURATION_FIELDS_IN_READ_ORDER {
             let field = self.get_property(value, &name.into())?;
             if field != Value::Undefined {
                 has_field = true;
@@ -2841,6 +2931,787 @@ impl Vm {
         };
         temporal_set_local_fields(&mut value, &zone);
         self.alloc_temporal_value(value, false)
+    }
+
+    // ---- Stage 1 Track B: Temporal.Duration arithmetic ------------------
+    //
+    // Every method below implements the *calendar-agnostic* case completely:
+    // a duration whose `years`/`months`/`weeks` are all zero, addressed with
+    // units of `day` or smaller. `days` participate fully, at Temporal's own
+    // fixed 86,400 seconds per day. A request that genuinely needs calendar
+    // arithmetic — a non-zero `years`/`months`/`weeks`, a `year`/`month`/
+    // `week` unit, or a `relativeTo` anchor this engine cannot resolve — is
+    // rejected with a `RangeError` rather than answered approximately; see
+    // Phase 26's plan for the Stage 2 boundary.
+
+    /// Reads a validated `Temporal.Duration` receiver's own record.
+    fn temporal_duration_receiver(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<blueice_ecma402::DurationRecord, RuntimeError> {
+        let object = receiver.object_id().ok_or_else(|| {
+            RuntimeError::TypeError("Temporal.Duration method requires a Duration receiver".into())
+        })?;
+        let value = self.heap.temporal_value(object)?.ok_or_else(|| {
+            RuntimeError::TypeError("Temporal.Duration method requires a Duration receiver".into())
+        })?;
+        if value.kind != TemporalKind::Duration {
+            return Err(RuntimeError::TypeError(
+                "Temporal.Duration method requires a Duration receiver".into(),
+            ));
+        }
+        Ok(*value
+            .duration
+            .as_deref()
+            .expect("Temporal.Duration values retain a duration record"))
+    }
+
+    fn temporal_duration_value(record: blueice_ecma402::DurationRecord) -> TemporalValue {
+        TemporalValue {
+            kind: TemporalKind::Duration,
+            duration: Some(Box::new(record)),
+            year: 1970,
+            month: 1,
+            day: 1,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            millisecond: 0,
+            microsecond: 0,
+            nanosecond: 0,
+            epoch_nanoseconds: 0.into(),
+            calendar: "iso8601".into(),
+            time_zone: "UTC".into(),
+        }
+    }
+
+    /// `CreateTemporalDuration`: stores the ten fields, then validates.
+    ///
+    /// Every field is a Number on a `Temporal.Duration`, so an exact
+    /// nanosecond-accurate balancing result is observably rounded to the
+    /// nearest double *before* the range check — and a value that passed the
+    /// check exactly can fail it once rounded. Test262 checks this directly
+    /// (`prototype/round/{float64-representable-integer,
+    /// out-of-range-when-converting-from-normalized-duration}.js`,
+    /// `prototype/add/{float64-representable-integer,result-out-of-range-3,
+    /// argument-duration-precision-exact-numerical-values}.js`), so the
+    /// round-trip is part of the algorithm rather than a lossy shortcut.
+    fn temporal_duration_record(
+        fields: [i128; 10],
+    ) -> Result<blueice_ecma402::DurationRecord, RuntimeError> {
+        let fields = fields.map(|value| value as f64 as i128);
+        blueice_ecma402::DurationRecord::try_new(
+            fields[0], fields[1], fields[2], fields[3], fields[4], fields[5], fields[6], fields[7],
+            fields[8], fields[9],
+        )
+        .map_err(|error| RuntimeError::RangeError(error.to_string()))
+    }
+
+    fn temporal_duration_create(&mut self, fields: [i128; 10]) -> Result<Value, RuntimeError> {
+        let record = Self::temporal_duration_record(fields)?;
+        self.alloc_temporal_value(Self::temporal_duration_value(record), false)
+    }
+
+    /// `DefaultTemporalLargestUnit`: the largest unit the record actually uses.
+    fn temporal_duration_largest_unit(
+        record: &blueice_ecma402::DurationRecord,
+    ) -> rounding::TemporalUnit {
+        for (value, unit) in [
+            (record.years, rounding::TemporalUnit::Year),
+            (record.months, rounding::TemporalUnit::Month),
+            (record.weeks, rounding::TemporalUnit::Week),
+            (record.days, rounding::TemporalUnit::Day),
+            (record.hours, rounding::TemporalUnit::Hour),
+            (record.minutes, rounding::TemporalUnit::Minute),
+            (record.seconds, rounding::TemporalUnit::Second),
+            (record.milliseconds, rounding::TemporalUnit::Millisecond),
+            (record.microseconds, rounding::TemporalUnit::Microsecond),
+        ] {
+            if value != 0 {
+                return unit;
+            }
+        }
+        rounding::TemporalUnit::Nanosecond
+    }
+
+    /// `GetOptionsObject`: `undefined` becomes a fresh empty object; any other
+    /// non-object throws. Deliberately not `ToObject` — a primitive must be
+    /// rejected, not boxed.
+    fn temporal_duration_options(&mut self, value: &Value) -> Result<Value, RuntimeError> {
+        match value {
+            Value::Undefined => {
+                let object = self.with_roots(|heap| heap.alloc_object(None))?;
+                let result = Value::Object(object);
+                self.stack.push(result.clone());
+                Ok(result)
+            }
+            Value::Object(_) => Ok(value.clone()),
+            _ => Err(RuntimeError::TypeError(
+                "Temporal options must be an object".into(),
+            )),
+        }
+    }
+
+    /// The required first argument of `round`/`total`: either a bare unit
+    /// string (which the specification turns into a null-prototype object
+    /// carrying only that one option, so no other option may be looked up) or
+    /// an options object. `undefined` throws a `TypeError`.
+    fn temporal_duration_round_to(
+        &mut self,
+        value: &Value,
+        method: &str,
+    ) -> Result<(Option<String>, Value), RuntimeError> {
+        if *value == Value::Undefined {
+            return Err(RuntimeError::TypeError(format!(
+                "Temporal.Duration.prototype.{method} requires an argument"
+            )));
+        }
+        if let Value::String(text) = value {
+            let text = text
+                .to_utf8()
+                .map_err(|_| RuntimeError::RangeError(format!("invalid {method} unit")))?;
+            return Ok((Some(text), Value::Undefined));
+        }
+        let options = self.temporal_duration_options(value)?;
+        Ok((None, options))
+    }
+
+    /// `GetTemporalUnitValuedOption`. `auto` is recognised only where
+    /// `allow_auto` says so.
+    fn temporal_duration_unit_option(
+        &mut self,
+        options: &Value,
+        name: &str,
+        allow_auto: bool,
+    ) -> Result<UnitOption, RuntimeError> {
+        let mut allowed = rounding::TEMPORAL_UNIT_NAMES.to_vec();
+        if allow_auto {
+            allowed.push("auto");
+        }
+        match self.temporal_string_option(options, name, &allowed)? {
+            None => Ok(UnitOption::Unset),
+            Some(text) if text == "auto" => Ok(UnitOption::Auto),
+            Some(text) => Ok(UnitOption::Unit(
+                rounding::parse_temporal_unit(&text)
+                    .expect("temporal_string_option already validated the unit name"),
+            )),
+        }
+    }
+
+    fn temporal_duration_unit_name(
+        text: &str,
+        name: &str,
+    ) -> Result<rounding::TemporalUnit, RuntimeError> {
+        rounding::parse_temporal_unit(text)
+            .ok_or_else(|| RuntimeError::RangeError(format!("invalid {name} option")))
+    }
+
+    /// `GetTemporalRelativeToOption`, as far as Stage 1 can honour it: returns
+    /// whether an anchor was supplied at all.
+    ///
+    /// Accepted, and then deliberately ignored: a `Temporal.PlainDate`/
+    /// `PlainDateTime` object, a date/date-time string with no time-zone
+    /// annotation, and a `Temporal.ZonedDateTime` whose time zone is `UTC` or
+    /// a fixed UTC offset. None of those can change a calendar-agnostic
+    /// answer — relative to a plain date, or inside a zone with no offset
+    /// transitions, Temporal fixes a day at exactly 86,400 seconds, which is
+    /// what the calendar-agnostic path already assumes.
+    ///
+    /// Rejected: a named-IANA-zone `Temporal.ZonedDateTime`, where a day can
+    /// genuinely be 23 or 25 hours long (that needs Track E's `TimeZone`
+    /// transition data), plus a property bag and a zoned string, which both
+    /// need Stage 2's calendar-aware `PlainDate` field resolution.
+    fn temporal_duration_relative_to(&mut self, value: &Value) -> Result<bool, RuntimeError> {
+        if *value == Value::Undefined {
+            return Ok(false);
+        }
+        if let Some(object) = value.object_id() {
+            if let Some(temporal) = self.heap.temporal_value(object)? {
+                return match temporal.kind {
+                    TemporalKind::PlainDate | TemporalKind::PlainDateTime => Ok(true),
+                    TemporalKind::ZonedDateTime => {
+                        let fixed_offset = temporal.time_zone.starts_with(['+', '-'])
+                            && iso::parse_offset_seconds(&temporal.time_zone).is_some();
+                        if temporal.time_zone == "UTC" || fixed_offset {
+                            Ok(true)
+                        } else {
+                            Err(RuntimeError::RangeError(
+                                "a named-time-zone Temporal.ZonedDateTime relativeTo is not \
+                                 supported yet"
+                                    .into(),
+                            ))
+                        }
+                    }
+                    _ => Err(RuntimeError::TypeError(
+                        "relativeTo must be a PlainDate, PlainDateTime or ZonedDateTime".into(),
+                    )),
+                };
+            }
+            return Err(RuntimeError::TypeError(
+                "a relativeTo property bag is not supported yet".into(),
+            ));
+        }
+        if !matches!(value, Value::String(_)) {
+            return Err(RuntimeError::TypeError(
+                "relativeTo must be an object or a string".into(),
+            ));
+        }
+        let source = self
+            .coerce_string(value)?
+            .to_utf8()
+            .map_err(|_| RuntimeError::RangeError("invalid relativeTo string".into()))?;
+        // A leading bracket annotation that is not `u-ca=` is a time-zone
+        // identifier, i.e. a ZonedDateTime anchor.
+        let zoned = source.find('[').is_some_and(|index| {
+            !source[index + 1..]
+                .trim_start_matches('!')
+                .starts_with("u-ca=")
+        });
+        if zoned || source.ends_with('Z') || source.ends_with('z') {
+            return Err(RuntimeError::RangeError(
+                "a zoned relativeTo string is not supported yet".into(),
+            ));
+        }
+        self.temporal_value_from_string(TemporalKind::PlainDateTime, &source)?;
+        Ok(true)
+    }
+
+    /// The calendar-agnostic gate shared by `add`/`subtract`/`round`/`total`/
+    /// `compare`. Where the specification requires a `relativeTo` this engine
+    /// cannot honour, the answer is a `RangeError`, never an approximation.
+    fn temporal_duration_require_no_calendar_units(
+        record: &blueice_ecma402::DurationRecord,
+        units: &[rounding::TemporalUnit],
+    ) -> Result<(), RuntimeError> {
+        if Self::temporal_duration_largest_unit(record).is_calendar()
+            || units.iter().any(|unit| unit.is_calendar())
+        {
+            return Err(RuntimeError::RangeError(
+                "a Temporal.Duration with years, months or weeks needs a relativeTo anchor".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn temporal_duration_with(
+        &mut self,
+        receiver: &Value,
+        like: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let record = self.temporal_duration_receiver(receiver)?;
+        if !matches!(like, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "Temporal.Duration.prototype.with requires a Duration-like object".into(),
+            ));
+        }
+        let mut fields = [
+            record.years,
+            record.months,
+            record.weeks,
+            record.days,
+            record.hours,
+            record.minutes,
+            record.seconds,
+            record.milliseconds,
+            record.microseconds,
+            record.nanoseconds,
+        ];
+        let mut present = false;
+        for (name, index) in DURATION_FIELDS_IN_READ_ORDER {
+            let value = self.get_property(like, &name.into())?;
+            if value == Value::Undefined {
+                continue;
+            }
+            present = true;
+            fields[index] = self.temporal_duration_integer(&value, name)?;
+        }
+        if !present {
+            return Err(RuntimeError::TypeError(
+                "Temporal.Duration.prototype.with requires at least one duration field".into(),
+            ));
+        }
+        self.temporal_duration_create(fields)
+    }
+
+    pub(super) fn temporal_duration_negated(
+        &mut self,
+        receiver: &Value,
+        absolute: bool,
+    ) -> Result<Value, RuntimeError> {
+        let record = self.temporal_duration_receiver(receiver)?;
+        let map = |value: i128| if absolute { value.abs() } else { -value };
+        // Negating or taking the magnitude of every field at once preserves
+        // both the common-sign and the range invariants, so this cannot fail.
+        self.alloc_temporal_value(
+            Self::temporal_duration_value(blueice_ecma402::DurationRecord {
+                years: map(record.years),
+                months: map(record.months),
+                weeks: map(record.weeks),
+                days: map(record.days),
+                hours: map(record.hours),
+                minutes: map(record.minutes),
+                seconds: map(record.seconds),
+                milliseconds: map(record.milliseconds),
+                microseconds: map(record.microseconds),
+                nanoseconds: map(record.nanoseconds),
+            }),
+            false,
+        )
+    }
+
+    pub(super) fn temporal_duration_add(
+        &mut self,
+        receiver: &Value,
+        other: &Value,
+        negate: bool,
+    ) -> Result<Value, RuntimeError> {
+        let one = self.temporal_duration_receiver(receiver)?;
+        let mut two = self.temporal_duration_from_value(other)?;
+        if negate {
+            two = blueice_ecma402::DurationRecord {
+                years: -two.years,
+                months: -two.months,
+                weeks: -two.weeks,
+                days: -two.days,
+                hours: -two.hours,
+                minutes: -two.minutes,
+                seconds: -two.seconds,
+                milliseconds: -two.milliseconds,
+                microseconds: -two.microseconds,
+                nanoseconds: -two.nanoseconds,
+            };
+        }
+        // `AddDurations` balances the sum up to the larger of the two
+        // operands' own largest units — a calendar one has no fixed length,
+        // so it is rejected outright rather than balanced.
+        let largest = Self::temporal_duration_largest_unit(&one)
+            .max(Self::temporal_duration_largest_unit(&two));
+        Self::temporal_duration_require_no_calendar_units(&one, &[largest])?;
+        Self::temporal_duration_require_no_calendar_units(&two, &[])?;
+        let total = duration_math::TimeDuration::from_record_with_24_hour_days(&one)
+            .total_nanoseconds()
+            + duration_math::TimeDuration::from_record_with_24_hour_days(&two).total_nanoseconds();
+        let balanced =
+            duration_math::TimeDuration::from_nanoseconds(total).balance_with_days(largest);
+        self.temporal_duration_create([
+            0,
+            0,
+            0,
+            balanced[0],
+            balanced[1],
+            balanced[2],
+            balanced[3],
+            balanced[4],
+            balanced[5],
+            balanced[6],
+        ])
+    }
+
+    pub(super) fn temporal_duration_round(
+        &mut self,
+        receiver: &Value,
+        round_to: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let record = self.temporal_duration_receiver(receiver)?;
+        let base = self.stack.len();
+        let result = (|| {
+            let (shorthand, options) = self.temporal_duration_round_to(round_to, "round")?;
+            // The specification reads every option, in alphabetical order,
+            // before any algorithmic validation happens.
+            let (requested_largest, anchored, increment, mode, requested_smallest) =
+                match &shorthand {
+                    Some(text) => (
+                        UnitOption::Unset,
+                        false,
+                        1,
+                        blueice_ecma402::NumberRoundingMode::HalfExpand,
+                        UnitOption::Unit(Self::temporal_duration_unit_name(text, "smallestUnit")?),
+                    ),
+                    None => {
+                        let largest =
+                            self.temporal_duration_unit_option(&options, "largestUnit", true)?;
+                        let relative_to = self.get_property(&options, &"relativeTo".into())?;
+                        let anchored = self.temporal_duration_relative_to(&relative_to)?;
+                        let increment = self.temporal_rounding_increment(&options)?;
+                        let mode = self.temporal_rounding_mode(
+                            &options,
+                            blueice_ecma402::NumberRoundingMode::HalfExpand,
+                        )?;
+                        let smallest =
+                            self.temporal_duration_unit_option(&options, "smallestUnit", false)?;
+                        (largest, anchored, increment, mode, smallest)
+                    }
+                };
+            if requested_largest == UnitOption::Unset && requested_smallest == UnitOption::Unset {
+                return Err(RuntimeError::RangeError(
+                    "Temporal.Duration.prototype.round requires largestUnit or smallestUnit".into(),
+                ));
+            }
+            let smallest = requested_smallest
+                .unit()
+                .unwrap_or(rounding::TemporalUnit::Nanosecond);
+            // A smallestUnit larger than the duration's own largest unit
+            // raises the default largestUnit with it, so e.g. rounding
+            // 86,399 seconds to days yields one day rather than zero.
+            let default_largest = Self::temporal_duration_largest_unit(&record).max(smallest);
+            let largest = requested_largest.unit().unwrap_or(default_largest);
+            if smallest > largest {
+                return Err(RuntimeError::RangeError(
+                    "smallestUnit must not be larger than largestUnit".into(),
+                ));
+            }
+            if let Some(maximum) = smallest.maximum_rounding_increment() {
+                if increment >= maximum || maximum % increment != 0 {
+                    return Err(RuntimeError::RangeError(
+                        "roundingIncrement does not divide evenly into the next larger unit".into(),
+                    ));
+                }
+            }
+            if increment > 1 && smallest != largest && smallest >= rounding::TemporalUnit::Day {
+                return Err(RuntimeError::RangeError(
+                    "a date-unit roundingIncrement above 1 cannot also balance to a larger unit"
+                        .into(),
+                ));
+            }
+            // A blank duration rounds to a blank duration in every unit: zero
+            // is an exact multiple of any increment, and balancing zero
+            // yields zero. Given an anchor, that is the whole answer even for
+            // a calendar unit, with no calendar arithmetic involved.
+            if anchored && record.sign() == 0 {
+                return self.temporal_duration_create([0; 10]);
+            }
+            Self::temporal_duration_require_no_calendar_units(&record, &[largest, smallest])?;
+            let step = smallest
+                .nanoseconds()
+                .expect("the calendar units were rejected above")
+                * increment;
+            let balanced = duration_math::TimeDuration::from_record_with_24_hour_days(&record)
+                .rounded_to_step(step, mode)
+                .balance_with_days(largest);
+            self.temporal_duration_create([
+                0,
+                0,
+                0,
+                balanced[0],
+                balanced[1],
+                balanced[2],
+                balanced[3],
+                balanced[4],
+                balanced[5],
+                balanced[6],
+            ])
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    pub(super) fn temporal_duration_total(
+        &mut self,
+        receiver: &Value,
+        total_of: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let record = self.temporal_duration_receiver(receiver)?;
+        let base = self.stack.len();
+        let result = (|| {
+            let (shorthand, options) = self.temporal_duration_round_to(total_of, "total")?;
+            let (unit, anchored) = match &shorthand {
+                Some(text) => (Self::temporal_duration_unit_name(text, "unit")?, false),
+                None => {
+                    let relative_to = self.get_property(&options, &"relativeTo".into())?;
+                    let anchored = self.temporal_duration_relative_to(&relative_to)?;
+                    let unit = self
+                        .temporal_duration_unit_option(&options, "unit", false)?
+                        .unit()
+                        .ok_or_else(|| {
+                            RuntimeError::RangeError(
+                                "Temporal.Duration.prototype.total requires unit".into(),
+                            )
+                        })?;
+                    (unit, anchored)
+                }
+            };
+            // A blank duration totals zero in every unit; see `round` above.
+            if anchored && record.sign() == 0 {
+                return Ok(Value::Number(0.0));
+            }
+            Self::temporal_duration_require_no_calendar_units(&record, &[unit])?;
+            Ok(Value::Number(
+                duration_math::TimeDuration::from_record_with_24_hour_days(&record).total_in(unit),
+            ))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    pub(super) fn temporal_duration_compare(
+        &mut self,
+        one: &Value,
+        two: &Value,
+        options: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let one = self.temporal_duration_from_value(one)?;
+        let two = self.temporal_duration_from_value(two)?;
+        let base = self.stack.len();
+        let result = (|| {
+            let options = self.temporal_duration_options(options)?;
+            let relative_to = self.get_property(&options, &"relativeTo".into())?;
+            self.temporal_duration_relative_to(&relative_to)?;
+            // Field-identical durations compare equal before any unit is
+            // considered, so even a calendar-unit duration compares to itself.
+            if one == two {
+                return Ok(Value::Number(0.0));
+            }
+            Self::temporal_duration_require_no_calendar_units(&one, &[])?;
+            Self::temporal_duration_require_no_calendar_units(&two, &[])?;
+            let one = duration_math::TimeDuration::from_record_with_24_hour_days(&one)
+                .total_nanoseconds();
+            let two = duration_math::TimeDuration::from_record_with_24_hour_days(&two)
+                .total_nanoseconds();
+            Ok(Value::Number(match one.cmp(&two) {
+                std::cmp::Ordering::Less => -1.0,
+                std::cmp::Ordering::Equal => 0.0,
+                std::cmp::Ordering::Greater => 1.0,
+            }))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// `GetTemporalFractionalSecondDigitsOption`: `auto` (the default, `None`
+    /// here) or a digit count in `0..=9`. A non-Number value must stringify to
+    /// exactly `"auto"`; a Number is floored rather than required to be
+    /// integral.
+    fn temporal_duration_fractional_digits(
+        &mut self,
+        options: &Value,
+    ) -> Result<Option<u8>, RuntimeError> {
+        let value = self.get_property(options, &"fractionalSecondDigits".into())?;
+        if value == Value::Undefined {
+            return Ok(None);
+        }
+        if !matches!(value, Value::Number(_)) {
+            let text = self
+                .coerce_string(&value)?
+                .to_utf8()
+                .map_err(|_| RuntimeError::RangeError("invalid fractionalSecondDigits".into()))?;
+            if text == "auto" {
+                return Ok(None);
+            }
+            return Err(RuntimeError::RangeError(
+                "invalid fractionalSecondDigits".into(),
+            ));
+        }
+        let digits = self.coerce_number(&value)?;
+        if !digits.is_finite() {
+            return Err(RuntimeError::RangeError(
+                "invalid fractionalSecondDigits".into(),
+            ));
+        }
+        let count = digits.floor();
+        if !(0.0..=9.0).contains(&count) {
+            return Err(RuntimeError::RangeError(
+                "invalid fractionalSecondDigits".into(),
+            ));
+        }
+        Ok(Some(count as u8))
+    }
+
+    /// `TemporalDurationToString`. `precision` is the number of fractional
+    /// second digits to emit, or `None` for `auto` (emit only as many as the
+    /// value needs, and none at all for a whole number of seconds).
+    fn format_duration_string(
+        record: &blueice_ecma402::DurationRecord,
+        precision: Option<u8>,
+    ) -> String {
+        let mut date = String::new();
+        for (value, suffix) in [
+            (record.years, 'Y'),
+            (record.months, 'M'),
+            (record.weeks, 'W'),
+            (record.days, 'D'),
+        ] {
+            if value != 0 {
+                date.push_str(&value.unsigned_abs().to_string());
+                date.push(suffix);
+            }
+        }
+        let mut time = String::new();
+        for (value, suffix) in [(record.hours, 'H'), (record.minutes, 'M')] {
+            if value != 0 {
+                time.push_str(&value.unsigned_abs().to_string());
+                time.push(suffix);
+            }
+        }
+        // Seconds and every sub-second field are one exact quantity: 1,500
+        // milliseconds serializes as `1.5S`, and 9,007,199,254,740,991
+        // milliseconds must not lose precision on the way there.
+        let subsecond_total = record.seconds * 1_000_000_000
+            + record.milliseconds * 1_000_000
+            + record.microseconds * 1_000
+            + record.nanoseconds;
+        let seconds = subsecond_total / 1_000_000_000;
+        let fraction = (subsecond_total % 1_000_000_000).unsigned_abs();
+        let only_seconds = date.is_empty() && time.is_empty();
+        if seconds != 0 || fraction != 0 || only_seconds || precision.is_some() {
+            time.push_str(&seconds.unsigned_abs().to_string());
+            let digits = format!("{fraction:09}");
+            match precision {
+                None if fraction != 0 => {
+                    time.push('.');
+                    time.push_str(digits.trim_end_matches('0'));
+                }
+                Some(count) if count > 0 => {
+                    time.push('.');
+                    time.push_str(&digits[..usize::from(count)]);
+                }
+                _ => {}
+            }
+            time.push('S');
+        }
+        let mut result = String::new();
+        if record.sign() < 0 {
+            result.push('-');
+        }
+        result.push('P');
+        result.push_str(&date);
+        if !time.is_empty() {
+            result.push('T');
+            result.push_str(&time);
+        }
+        result
+    }
+
+    pub(super) fn temporal_duration_to_string(
+        &mut self,
+        receiver: &Value,
+        options: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let record = self.temporal_duration_receiver(receiver)?;
+        let base = self.stack.len();
+        let result = (|| {
+            let options = self.temporal_duration_options(options)?;
+            let digits = self.temporal_duration_fractional_digits(&options)?;
+            let mode =
+                self.temporal_rounding_mode(&options, blueice_ecma402::NumberRoundingMode::Trunc)?;
+            let smallest = self.temporal_duration_unit_option(&options, "smallestUnit", false)?;
+            // `ToSecondsStringPrecisionRecord`: a smallestUnit pins both the
+            // emitted digit count and the rounding unit; a digit count alone
+            // pins the digits and derives a unit plus increment from them.
+            let (precision, unit, increment) = match smallest.unit() {
+                Some(rounding::TemporalUnit::Second) => {
+                    (Some(0), rounding::TemporalUnit::Second, 1)
+                }
+                Some(rounding::TemporalUnit::Millisecond) => {
+                    (Some(3), rounding::TemporalUnit::Millisecond, 1)
+                }
+                Some(rounding::TemporalUnit::Microsecond) => {
+                    (Some(6), rounding::TemporalUnit::Microsecond, 1)
+                }
+                Some(rounding::TemporalUnit::Nanosecond) => {
+                    (Some(9), rounding::TemporalUnit::Nanosecond, 1)
+                }
+                Some(_) => {
+                    return Err(RuntimeError::RangeError(
+                        "Temporal.Duration.prototype.toString accepts a smallestUnit of second or \
+                         smaller"
+                            .into(),
+                    ));
+                }
+                None => match digits {
+                    None => (None, rounding::TemporalUnit::Nanosecond, 1),
+                    Some(0) => (Some(0), rounding::TemporalUnit::Second, 1),
+                    Some(count @ 1..=3) => (
+                        Some(count),
+                        rounding::TemporalUnit::Millisecond,
+                        10_i128.pow(u32::from(3 - count)),
+                    ),
+                    Some(count @ 4..=6) => (
+                        Some(count),
+                        rounding::TemporalUnit::Microsecond,
+                        10_i128.pow(u32::from(6 - count)),
+                    ),
+                    Some(count) => (
+                        Some(count),
+                        rounding::TemporalUnit::Nanosecond,
+                        10_i128.pow(u32::from(9 - count)),
+                    ),
+                },
+            };
+            if unit == rounding::TemporalUnit::Nanosecond && increment == 1 {
+                // Nothing to round: serialize the record exactly as stored,
+                // which is what keeps a maximal seconds-plus-nanoseconds pair
+                // in range instead of balancing it out of range.
+                return Ok(Value::String(
+                    Self::format_duration_string(&record, precision).into(),
+                ));
+            }
+            // Rounding the time part can carry into `days`, but never past
+            // them: `largestUnit` here is the duration's own largest unit (at
+            // least `second`), and the date fields are carried through
+            // untouched.
+            let largest =
+                Self::temporal_duration_largest_unit(&record).max(rounding::TemporalUnit::Second);
+            let step = unit
+                .nanoseconds()
+                .expect("second and smaller units have an exact length")
+                * increment;
+            let balanced = duration_math::TimeDuration::from_fields(
+                record.hours,
+                record.minutes,
+                record.seconds,
+                record.milliseconds,
+                record.microseconds,
+                record.nanoseconds,
+            )
+            .rounded_to_step(step, mode)
+            .balance_with_days(largest.min(rounding::TemporalUnit::Day));
+            let rounded = Self::temporal_duration_record([
+                record.years,
+                record.months,
+                record.weeks,
+                record.days + balanced[0],
+                balanced[1],
+                balanced[2],
+                balanced[3],
+                balanced[4],
+                balanced[5],
+                balanced[6],
+            ])?;
+            Ok(Value::String(
+                Self::format_duration_string(&rounded, precision).into(),
+            ))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// ECMA-402's `Temporal.Duration.prototype.toLocaleString`: build an
+    /// `Intl.DurationFormat` from the same `(locales, options)` arguments and
+    /// format this duration with it, rather than returning the ISO string
+    /// ECMA-262's own non-402 definition would.
+    pub(super) fn temporal_duration_to_locale_string(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let record = self.temporal_duration_receiver(receiver)?;
+        let base = self.stack.len();
+        let result = (|| {
+            let formatter = self.duration_format_for_locale_string(args)?;
+            self.stack.push(formatter.clone());
+            let duration =
+                self.alloc_temporal_value(Self::temporal_duration_value(record), false)?;
+            self.stack.push(duration.clone());
+            self.duration_format_format(&formatter, &duration)
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    pub(super) fn temporal_duration_value_of(&mut self) -> Result<Value, RuntimeError> {
+        Err(RuntimeError::TypeError(
+            "Temporal.Duration cannot be converted to a primitive value".into(),
+        ))
     }
 }
 

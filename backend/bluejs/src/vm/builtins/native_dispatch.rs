@@ -1082,6 +1082,34 @@ impl Vm {
                 self.temporal_now_plain(TemporalKind::PlainTime, first)
             }
             NativeFunction::TemporalNowZonedDateTimeIso => self.temporal_now_zoned_date_time(first),
+            NativeFunction::TemporalDurationWith => self.temporal_duration_with(&receiver, first),
+            NativeFunction::TemporalDurationNegated => {
+                self.temporal_duration_negated(&receiver, false)
+            }
+            NativeFunction::TemporalDurationAbs => self.temporal_duration_negated(&receiver, true),
+            NativeFunction::TemporalDurationAdd => {
+                self.temporal_duration_add(&receiver, first, false)
+            }
+            NativeFunction::TemporalDurationSubtract => {
+                self.temporal_duration_add(&receiver, first, true)
+            }
+            NativeFunction::TemporalDurationRound => self.temporal_duration_round(&receiver, first),
+            NativeFunction::TemporalDurationTotal => self.temporal_duration_total(&receiver, first),
+            NativeFunction::TemporalDurationCompare => self.temporal_duration_compare(
+                first,
+                native::argument(&args, 1),
+                native::argument(&args, 2),
+            ),
+            NativeFunction::TemporalDurationToString => {
+                self.temporal_duration_to_string(&receiver, first)
+            }
+            NativeFunction::TemporalDurationToJson => {
+                self.temporal_duration_to_string(&receiver, &Value::Undefined)
+            }
+            NativeFunction::TemporalDurationToLocaleString => {
+                self.temporal_duration_to_locale_string(&receiver, &args)
+            }
+            NativeFunction::TemporalDurationValueOf => self.temporal_duration_value_of(),
             NativeFunction::ListFormatSupportedLocales => self.list_format_supported_locales(&args),
             NativeFunction::ListFormatFormat => self.list_format_format(&receiver, first),
             NativeFunction::ListFormatFormatToParts => {
