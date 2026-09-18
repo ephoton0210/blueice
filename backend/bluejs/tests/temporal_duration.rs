@@ -776,8 +776,8 @@ fn relative_to_is_accepted_only_where_it_cannot_change_the_answer() {
             "{source}"
         );
     }
-    for source in [r#"new Temporal.Duration(0, 0, 0, 1).total({ unit: "days", relativeTo: new Temporal.Duration(1) })"#]
     {
+        let source = r#"new Temporal.Duration(0, 0, 0, 1).total({ unit: "days", relativeTo: new Temporal.Duration(1) })"#;
         assert!(
             matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
             "{source}"
