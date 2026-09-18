@@ -3878,40 +3878,31 @@ impl Vm {
 
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
-        let (from, to) = if since {
-            (
-                (other.year, other.month, other.day),
-                (existing.year, existing.month, existing.day),
-            )
-        } else {
-            (
-                (existing.year, existing.month, existing.day),
-                (other.year, other.month, other.day),
-            )
-        };
-        let (from_time, to_time) = if since {
-            (
-                (
-                    other.hour, other.minute, other.second, other.millisecond, other.microsecond,
-                    other.nanosecond,
-                ),
-                (
-                    existing.hour, existing.minute, existing.second, existing.millisecond,
-                    existing.microsecond, existing.nanosecond,
-                ),
-            )
-        } else {
-            (
-                (
-                    existing.hour, existing.minute, existing.second, existing.millisecond,
-                    existing.microsecond, existing.nanosecond,
-                ),
-                (
-                    other.hour, other.minute, other.second, other.millisecond, other.microsecond,
-                    other.nanosecond,
-                ),
-            )
-        };
+        // `DifferenceTemporalPlainDate`/`DifferenceTemporalPlainDateTime`
+        // always compute `CalendarDateUntil(calendar, temporalDate, other,
+        // largestUnit)` — i.e. always in the fixed receiver-to-argument
+        // direction, exactly like `until` — and only negate the *resulting*
+        // Duration afterward for `since` (step 10). This must not be
+        // implemented by swapping which date is `from`/`to` and skipping the
+        // negation: `CalendarDateUntil`'s own algorithm anchors on `from`'s
+        // day-of-month while walking years/months, so it is not
+        // anti-symmetric (`f(other, existing) != -f(existing, other)` in
+        // general — verified against Test262's
+        // `PlainDate/prototype/since/basic-gregory.js`, whose "23 years, 11
+        // months and 29 days" case a swap-based `from`/`to` computes as 30
+        // days instead of 29, because it anchors on the wrong date's day
+        // field). `from`/`to` are therefore always `existing`/`other`, and
+        // the whole result is negated below when `since` is true.
+        let from = (existing.year, existing.month, existing.day);
+        let to = (other.year, other.month, other.day);
+        let from_time = (
+            existing.hour, existing.minute, existing.second, existing.millisecond,
+            existing.microsecond, existing.nanosecond,
+        );
+        let to_time = (
+            other.hour, other.minute, other.second, other.millisecond, other.microsecond,
+            other.nanosecond,
+        );
 
         const DAY_NS: i128 = 86_400_000_000_000;
         let from_ns = duration_math::time_fields_to_nanoseconds(
@@ -4003,6 +3994,23 @@ impl Vm {
             time_fields.map_or((0, 0, 0, 0, 0, 0), |fields: [i64; 6]| {
                 (fields[0], fields[1], fields[2], fields[3], fields[4], fields[5])
             });
+        // Step 10 of `DifferenceTemporalPlainDate`/`DifferenceTemporalPlainDateTime`:
+        // the whole `years`..`nanoseconds` computation above is always in the
+        // fixed `existing` (receiver) -> `other` (argument) direction — see
+        // the comment on `from`/`to` above — so `since` negates every field
+        // of the finished result rather than the inputs to the computation.
+        let (years, months, weeks, days, hours, minutes, seconds, milliseconds, microseconds, nanoseconds) =
+            if since {
+                (
+                    -years, -months, -weeks, -days, -hours, -minutes, -seconds, -milliseconds,
+                    -microseconds, -nanoseconds,
+                )
+            } else {
+                (
+                    years, months, weeks, days, hours, minutes, seconds, milliseconds,
+                    microseconds, nanoseconds,
+                )
+            };
         let record = blueice_ecma402::DurationRecord::try_new(
             i128::from(years),
             i128::from(months),
