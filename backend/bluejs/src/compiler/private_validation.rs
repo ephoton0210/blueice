@@ -287,13 +287,18 @@ fn validate_private_expression(expr: &Expr, names: &HashSet<String>) -> Result<(
         | Expr::ImportMeta => Ok(()),
         Expr::Parenthesized(expression)
         | Expr::Await(expression)
-        | Expr::DynamicImport(expression)
         | Expr::Unary {
             arg: expression, ..
         }
         | Expr::Update {
             arg: expression, ..
         } => validate_private_expression(expression, names),
+        Expr::DynamicImport { specifier, options } => {
+            validate_private_expression(specifier, names)?;
+            options
+                .as_deref()
+                .map_or(Ok(()), |expression| validate_private_expression(expression, names))
+        }
         Expr::Template { expressions, .. } => expressions
             .iter()
             .try_for_each(|expression| validate_private_expression(expression, names)),

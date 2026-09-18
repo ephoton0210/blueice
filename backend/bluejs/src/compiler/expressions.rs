@@ -684,8 +684,16 @@ impl Compiler {
                 self.expression(expression)?;
                 self.emit(Opcode::Await, 0)?;
             }
-            Expr::DynamicImport(specifier) => {
+            Expr::DynamicImport { specifier, options } => {
                 self.expression(specifier)?;
+                match options {
+                    Some(options) => self.expression(options)?,
+                    // The opcode always pops a specifier and an options
+                    // value; an omitted second argument evaluates to
+                    // `undefined`, exactly as EvaluateImportCall's own
+                    // "options is undefined" branch expects.
+                    None => self.constant(Value::Undefined)?,
+                }
                 self.emit(Opcode::DynamicImport, 0)?;
             }
             Expr::Arrow {
