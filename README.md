@@ -30,43 +30,15 @@ Windows has a materially higher timeout count because the four-vCPU VM executes 
 
 ### ECMA-402 breakdown and Temporal
 
-The ECMA-402 column above (`intl402/`, 43.372%–43.521% depending on platform) is not evenly distributed: it is a single number across eleven independent services plus the `Temporal/` subtree, and only `Temporal/` is failing. The 2026-09-17 per-service breakdown (reproducible with `python backend/bluejs/test262/run.py --filter intl402/ --jobs 8`, grouped by `path.split("/")[1]`):
+The ECMA-402 column above (`intl402/`) is not evenly distributed: every service other than the `Temporal/` subtree is at 100%; `Temporal/` alone (4,058 of the 6,714 `intl402/` modes) is what drags the aggregate down to ~43%. `Temporal/` is ECMA-262 (a core language built-in, like `Date`), not an ECMA-402 service, and is scoped as its own effort — [Phase 26](development/browser_core/phase-26-ecma262-temporal/PLAN.md) — separate from ECMA-402's [Phase 25](development/browser_core/phase-25-ecma402-internationalization/PLAN.md). Test262 also has a larger, separate `built-ins/Temporal/` tree (9,210 modes) that is correctly excluded from the `intl402/`-scoped column above but is Temporal's actual primary test surface.
 
-| `intl402/` group | Modes | Pass | Fail | Pass rate |
-| --- | ---: | ---: | ---: | ---: |
-| `Temporal/` | 4,058 | 266 | 3,792 | 6.55% |
-| `NumberFormat/` | 498 | 498 | 0 | 100% |
-| `DateTimeFormat/` | 488 | 488 | 0 | 100% |
-| `Locale/` | 336 | 336 | 0 | 100% |
-| `DurationFormat/` | 220 | 220 | 0 | 100% |
-| `ListFormat/` | 162 | 162 | 0 | 100% |
-| `RelativeTimeFormat/` | 160 | 160 | 0 | 100% |
-| `Segmenter/` | 158 | 158 | 0 | 100% |
-| `Intl/` | 132 | 132 | 0 | 100% |
-| `Collator/` | 130 | 130 | 0 | 100% |
-| `DisplayNames/` | 114 | 114 | 0 | 100% |
-| `PluralRules/` | 106 | 106 | 0 | 100% |
-| `intl402/*.js` (top-level) + `String/`/`Date/`/`BigInt/`/`Number/`/`Array/`/`FallbackSymbol/`/`TypedArray/` (`toLocale*`/`localeCompare`) | 152 | 152 | 0 | 100% |
-| **Total** | **6,714** | **2,922** | **3,792** | **43.52%** |
-
-Every group other than `Temporal/` is at 100%. `Temporal/` is ECMA-262 (a core language built-in, like `Date`), not an ECMA-402 service — it is scoped and tracked as its own effort, [Phase 26](development/browser_core/phase-26-ecma262-temporal/PLAN.md), rather than inside ECMA-402's own [Phase 25](development/browser_core/phase-25-ecma402-internationalization/PLAN.md).
-
-Test262 also has a **separate, larger `built-ins/Temporal/` tree** (9,210 modes) that is correctly excluded from the `intl402/`-scoped ECMA-402 numbers above, but is Temporal's actual primary test surface. The true combined Temporal denominator Phase 26 is accountable to is **13,268 modes, 1,592 passing (12.00%)** as of 2026-09-17 (single-platform measurement; not yet run across all three platforms above):
-
-| Temporal type | Combined modes (`built-ins/` + `intl402/`) | Combined pass | Pass rate |
+| Platform | `intl402/` non-`Temporal` (11 services) | `intl402/Temporal/` | Combined Temporal (`built-ins/` + `intl402/`) |
 | --- | ---: | ---: | ---: |
-| `ZonedDateTime` | 2,968 | 186 | 6.27% |
-| `PlainDateTime` | 2,512 | 302 | 12.02% |
-| `PlainDate` | 2,290 | 332 | 14.50% |
-| `Duration` | 1,122 | 232 | 20.68% |
-| `PlainYearMonth` | 1,672 | 186 | 11.12% |
-| `PlainTime` | 1,010 | 102 | 10.10% |
-| `Instant` | 968 | 86 | 8.88% |
-| `PlainMonthDay` | 578 | 158 | 27.34% |
-| `Now` | 138 | 0 | 0% |
-| **Total** | **13,268** | **1,592** | **12.00%** |
+| macOS 26.6.2 (arm64) | pending — not yet run | pending — not yet run | pending — not yet run |
+| Ubuntu 24.04.4 LTS (x86_64) | 2,656 / 2,656 (100%) | 266 / 4,058 (6.55%) | 1,592 / 13,268 (12.00%) |
+| Windows 11 24H2 (x86_64 VM) | pending — not yet run | pending — not yet run | pending — not yet run |
 
-Today's Temporal slice is read-only construction plus one-way `Intl.DateTimeFormat` formatting (`backend/bluejs/src/vm/temporal.rs`); no arithmetic (`add`/`subtract`/`until`/`since`/`compare`/`round`/`equals`/`toString`/etc.) exists yet, which is what these pass rates reflect. See Phase 26's plan for the parallel-development structure this is being built under.
+The Linux row is a filtered rerun on this development environment's own working tree, not the pinned unfiltered `fccb017` run the main matrix above reports (see the caveat in the Linux report linked below); macOS and Windows cells are left as pending rather than guessed or backfilled from the Linux numbers, and should be filled in from a real run on each platform. The full per-service and per-Temporal-type breakdown, with exact reproduction commands, is in the [Linux report](development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md#ecma-402-and-temporal-breakdown-this-linuxwsl-environment-2026-09-17).
 
 Design and planning documents live under [`development/`](development/); it is not source code. Each subdirectory covers one major component of the project, following the same design-first workflow: a plan is drafted before implementation starts, and updated as the design evolves.
 
