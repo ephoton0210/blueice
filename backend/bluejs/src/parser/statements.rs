@@ -59,6 +59,15 @@ impl Parser {
             Token::Identifier(name) if name == "using" && self.using_declaration_follows() => {
                 self.parse_var_decl_stmt(DeclKind::Using)
             }
+            Token::Identifier(name)
+                if name == "await" && self.await_using_declaration_follows() =>
+            {
+                self.advance(); // "await"
+                self.advance(); // "using"
+                let declarators = self.parse_var_declarators()?;
+                self.consume_semicolon()?;
+                Ok(Stmt::VarDecl(DeclKind::AwaitUsing, declarators))
+            }
             Token::Identifier(name) if name == "with" => self.parse_with_stmt(),
             Token::Keyword(Keyword::If) => self.parse_if_stmt(),
             Token::Keyword(Keyword::For) => self.parse_for_stmt(),

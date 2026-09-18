@@ -440,6 +440,26 @@ impl Parser {
             })
     }
 
+    /// `await using` requires an async context (async function/method/
+    /// arrow/generator body, or a module with top-level await), exactly
+    /// like an ordinary `await` expression -- checked the same way
+    /// (`async_depth`/`module_await`). Both `await` and `using` are
+    /// contextual identifiers, so this needs the same
+    /// no-LineTerminator/next-token lookahead as `using_declaration_follows`
+    /// applied twice in a row.
+    pub(super) fn await_using_declaration_follows(&self) -> bool {
+        (self.async_depth != 0 || self.module_await)
+            && self.check_identifier("await")
+            && !self.current_identifier_escaped()
+            && self.tokens.get(self.pos + 1).is_some_and(|token| {
+                !token.newline_before
+                    && matches!(&token.token, Token::Identifier(name) if name == "using")
+            })
+            && self.tokens.get(self.pos + 2).is_some_and(|token| {
+                !token.newline_before && matches!(token.token, Token::Identifier(_))
+            })
+    }
+
     /// Object literals use the same contextual `async` modifier as class
     /// methods, but an unmodified `async()` remains an ordinary method name
     /// and `async: value` remains a data property.

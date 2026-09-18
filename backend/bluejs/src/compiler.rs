@@ -1257,6 +1257,18 @@ pub(super) fn has_using_declaration(statements: &[Stmt]) -> bool {
     })
 }
 
+/// Whether `statements` directly declares at least one `await using`
+/// binding, the trigger for `statements_with_disposal` to compile the
+/// `Await`-capable disposal loop (`compile_async_dispose_finally`) instead
+/// of the plain-synchronous, single-native-opcode `DisposeResources` path.
+/// A block with only plain `using` declarations never needs this, even
+/// nested inside an async function.
+pub(super) fn has_await_using_declaration(statements: &[Stmt]) -> bool {
+    statements
+        .iter()
+        .any(|statement| matches!(statement, Stmt::VarDecl(DeclKind::AwaitUsing, _)))
+}
+
 fn block_lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, CompileError> {
     let mut names = lexical_names(statements)?;
     for statement in statements {

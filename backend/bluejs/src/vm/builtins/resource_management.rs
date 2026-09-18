@@ -176,6 +176,54 @@ impl Vm {
         completion.map_or(Ok(()), Err)
     }
 
+    /// Converts a drained resource list plus any prior pending error into
+    /// the plain JS value `[hasError, pendingError, entries]` that
+    /// `Compiler::compile_async_dispose_finally`'s synthesized `while`/
+    /// `try`/`catch` loop destructures and iterates. `entries` is a real
+    /// Array of `[receiver, method, hasArgument, argument, isAsync]`
+    /// records, one per resource, in declaration order (the loop walks it
+    /// back to front, i.e. reverse declaration order).
+    pub(in super::super) fn build_async_dispose_state(
+        &mut self,
+        resources: Vec<DisposableResource>,
+        prior: Option<RuntimeError>,
+    ) -> Result<Value, RuntimeError> {
+        let (has_error, pending_error) = match prior {
+            None => (false, Value::Undefined),
+            Some(error) => {
+                if !error.is_catchable() {
+                    return Err(error);
+                }
+                (true, self.error_value(error)?)
+            }
+        };
+        let base = self.stack.len();
+        self.stack.push(pending_error.clone());
+        let result = (|| {
+            let mut entry_values = Vec::with_capacity(resources.len());
+            for resource in resources {
+                let entry = self.array_from(vec![
+                    resource.receiver,
+                    resource.method.unwrap_or(Value::Undefined),
+                    Value::Bool(resource.argument.is_some()),
+                    resource.argument.unwrap_or(Value::Undefined),
+                    Value::Bool(resource.hint == DisposeHint::Async),
+                ])?;
+                // Keep every already-built entry array reachable while
+                // building the rest: each is otherwise held only by this
+                // Rust-local `Vec`, which the GC cannot see.
+                self.stack.push(entry.clone());
+                entry_values.push(entry);
+            }
+            let entries = self.array_from(entry_values)?;
+            self.stack.push(entries.clone());
+            let outcome = self.array_from(vec![Value::Bool(has_error), pending_error, entries]);
+            outcome
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
     /// Builds a `new SuppressedError(error, suppressed)` object (no message).
     fn make_suppressed_error(
         &mut self,

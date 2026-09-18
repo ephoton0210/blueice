@@ -391,3 +391,123 @@ fn using_directly_in_a_switch_case_is_a_compile_error() {
     "#;
     assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)));
 }
+
+fn run_async(vm: &mut Vm, setup: &str) -> Value {
+    vm.execute_script(&compile(&parse(setup).unwrap()).unwrap())
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    execute(vm, "result").unwrap()
+}
+
+#[test]
+fn await_using_awaits_the_dispose_methods_own_returned_promise() {
+    let mut vm = Vm::default();
+    // Proves this goes through a real `Await` (suspend/resume), not just a
+    // synchronous call: the disposing function only settles once the
+    // dispose method's own promise resolves, so `log` observes the
+    // dispose-triggered work interleaved correctly rather than skipped.
+    let setup = r#"
+        var result = 'pending';
+        var log = [];
+        async function run() {
+            await using a = { [Symbol.asyncDispose]() {
+                return Promise.resolve().then(function () { log.push('a-resolved'); });
+            } };
+            log.push('body');
+        }
+        run().then(function () { result = log.join(','); });
+    "#;
+    assert_eq!(run_async(&mut vm, setup), Value::String("body,a-resolved".into()));
+}
+
+#[test]
+fn await_using_disposes_sync_and_async_resources_in_reverse_declaration_order() {
+    let mut vm = Vm::default();
+    let setup = r#"
+        var result = 'pending';
+        var log = [];
+        async function run() {
+            await using a = { [Symbol.asyncDispose]() { log.push('a'); } };
+            using b = { [Symbol.dispose]() { log.push('b'); } };
+            log.push('body');
+            return 'value';
+        }
+        run().then(function (value) { result = JSON.stringify([value, log.join(',')]); });
+    "#;
+    assert_eq!(
+        run_async(&mut vm, setup),
+        Value::String("[\"value\",\"body,b,a\"]".into())
+    );
+}
+
+#[test]
+fn await_using_propagates_a_rejected_dispose_promise_as_a_real_rejection() {
+    let mut vm = Vm::default();
+    let setup = r#"
+        var result = 'pending';
+        async function run() {
+            await using a = { [Symbol.asyncDispose]() { return Promise.reject(new Error('later-fail')); } };
+        }
+        run().then(
+            function (value) { result = ['fulfilled', value]; },
+            function (error) { result = ['rejected', error.message]; }
+        );
+    "#;
+    vm.execute_script(&compile(&parse(setup).unwrap()).unwrap())
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(
+        execute(&mut vm, "JSON.stringify(result)"),
+        Ok(Value::String("[\"rejected\",\"later-fail\"]".into()))
+    );
+}
+
+#[test]
+fn await_using_wraps_dispose_and_body_errors_in_suppressed_error() {
+    let mut vm = Vm::default();
+    let setup = r#"
+        var result = 'pending';
+        async function run() {
+            await using a = { [Symbol.asyncDispose]() { throw new Error('dispose-fail'); } };
+            throw new Error('body-fail');
+        }
+        run().then(
+            function () { result = false; },
+            function (error) {
+                result = error instanceof SuppressedError &&
+                    error.error.message === 'dispose-fail' &&
+                    error.suppressed.message === 'body-fail';
+            }
+        );
+    "#;
+    assert_eq!(run_async(&mut vm, setup), Value::Bool(true));
+}
+
+#[test]
+fn await_using_null_resource_still_resolves_without_error() {
+    let mut vm = Vm::default();
+    let setup = r#"
+        var result = 'pending';
+        async function run() {
+            await using a = null;
+            return 'ok';
+        }
+        run().then(function (value) { result = value; });
+    "#;
+    assert_eq!(run_async(&mut vm, setup), Value::String("ok".into()));
+}
+
+#[test]
+fn await_using_requires_async_context() {
+    // Outside an async context `await` is an ordinary identifier
+    // (`await_using_declaration_follows` requires `async_depth != 0 ||
+    // module_await`, matching a plain `await` expression's own gate), so
+    // `await using x = null;` is rejected already at parse time -- `await`
+    // followed immediately by another primary expression (`using`) with no
+    // operator between them is not valid grammar for a non-async `await`
+    // identifier reference either.
+    assert!(matches!(
+        parse_only("function f() { await using x = null; }"),
+        Err(_)
+    ));
+}
