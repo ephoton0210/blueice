@@ -306,7 +306,6 @@ impl Heap {
                 obj.young = false;
                 true
             } else {
-                eprintln!("bluejs gc reclaim {id:?}");
                 self.managed_bytes -= obj.bytes;
                 false
             }
