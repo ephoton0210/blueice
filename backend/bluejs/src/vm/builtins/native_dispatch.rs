@@ -985,7 +985,9 @@ impl Vm {
             NativeFunction::TemporalConstructor(kind) => {
                 self.temporal_constructor(kind, &args, construct)
             }
-            NativeFunction::TemporalFrom(kind) => self.temporal_from(kind, first),
+            NativeFunction::TemporalFrom(kind) => {
+                self.temporal_from(kind, first, native::argument(&args, 1))
+            }
             NativeFunction::TemporalWithCalendar => self.temporal_with_calendar(&receiver, first),
             NativeFunction::TemporalPlainToZonedDateTime => {
                 self.temporal_plain_to_zoned_date_time(&receiver, first)
@@ -1027,6 +1029,43 @@ impl Vm {
             NativeFunction::TemporalFromEpochNanoseconds => {
                 self.temporal_from_epoch_nanoseconds(first)
             }
+            NativeFunction::TemporalPlainTimeAdd => {
+                self.temporal_plain_time_add(&receiver, first, false)
+            }
+            NativeFunction::TemporalPlainTimeSubtract => {
+                self.temporal_plain_time_add(&receiver, first, true)
+            }
+            NativeFunction::TemporalPlainTimeRound => {
+                self.temporal_plain_time_round(&receiver, first)
+            }
+            NativeFunction::TemporalPlainTimeUntil => self.temporal_plain_time_difference(
+                &receiver,
+                first,
+                native::argument(&args, 1),
+                false,
+            ),
+            NativeFunction::TemporalPlainTimeSince => self.temporal_plain_time_difference(
+                &receiver,
+                first,
+                native::argument(&args, 1),
+                true,
+            ),
+            NativeFunction::TemporalPlainTimeEquals => {
+                self.temporal_plain_time_equals(&receiver, first)
+            }
+            NativeFunction::TemporalPlainTimeCompare => {
+                self.temporal_plain_time_compare(first, native::argument(&args, 1))
+            }
+            NativeFunction::TemporalPlainTimeWith => {
+                self.temporal_plain_time_with(&receiver, first, native::argument(&args, 1))
+            }
+            NativeFunction::TemporalPlainTimeToString => {
+                self.temporal_plain_time_to_string(&receiver, first)
+            }
+            NativeFunction::TemporalPlainTimeToJson => {
+                self.temporal_plain_time_to_string(&receiver, &Value::Undefined)
+            }
+            NativeFunction::TemporalPlainTimeValueOf => self.temporal_plain_time_value_of(),
             NativeFunction::ListFormatSupportedLocales => self.list_format_supported_locales(&args),
             NativeFunction::ListFormatFormat => self.list_format_format(&receiver, first),
             NativeFunction::ListFormatFormatToParts => {

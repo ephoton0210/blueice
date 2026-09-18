@@ -434,6 +434,284 @@ fn temporal_string_calendar_and_unknown_annotations_follow_the_grammar() {
 }
 
 #[test]
+fn temporal_plain_time_getters_and_calendar_agnostic_arithmetic() {
+    // Every expectation below is taken from a Test262 fixture under
+    // `built-ins/Temporal/PlainTime/`, named in the comment beside it, rather
+    // than derived from the spec text alone.
+    let source = r#"
+        function check(condition, message) {
+            if (!condition) throw new Error(message);
+        }
+        function timeEquals(time, hour, minute, second, millisecond, microsecond, nanosecond) {
+            return time.hour === hour && time.minute === minute && time.second === second
+                && time.millisecond === millisecond && time.microsecond === microsecond
+                && time.nanosecond === nanosecond;
+        }
+        function throwsRange(thunk, message) {
+            try { thunk(); } catch (error) {
+                check(error instanceof RangeError, `${message}: ${error}`);
+                return;
+            }
+            throw new Error(`${message}: did not throw`);
+        }
+        function throwsType(thunk, message) {
+            try { thunk(); } catch (error) {
+                check(error instanceof TypeError, `${message}: ${error}`);
+                return;
+            }
+            throw new Error(`${message}: did not throw`);
+        }
+
+        // Getters (prototype/{hour,minute,...}/basic.js, branding.js) and the
+        // truncating constructor (argument-convert.js).
+        let time = new Temporal.PlainTime(12, 34, 56, 987, 654, 321);
+        check(timeEquals(time, 12, 34, 56, 987, 654, 321), "getters");
+        check(timeEquals(new Temporal.PlainTime(11.9, 12.8, 13.7, 14.6, 15.5, 1.999999),
+            11, 12, 13, 14, 15, 1), "constructor truncates fractions");
+        let hourGetter = Object.getOwnPropertyDescriptor(Temporal.PlainTime.prototype, "hour").get;
+        throwsType(() => hourGetter.call({}), "hour getter branding");
+        throwsType(() => hourGetter.call(Temporal.Instant.fromEpochMilliseconds(0)),
+            "hour getter rejects a non-PlainTime Temporal value");
+
+        // The PlainTime string grammar (from/argument-string*.js).
+        check(timeEquals(Temporal.PlainTime.from("15:23"), 15, 23, 0, 0, 0, 0), "bare time string");
+        check(timeEquals(Temporal.PlainTime.from("T12:34:56.987654321"), 12, 34, 56, 987, 654, 321),
+            "time designator");
+        check(timeEquals(Temporal.PlainTime.from("1976-11-18 12:34:56.987654321"),
+            12, 34, 56, 987, 654, 321), "space separator");
+        check(timeEquals(Temporal.PlainTime.from("23:59:60.170"), 23, 59, 59, 170, 0, 0),
+            "leap second constrains to :59");
+        check(timeEquals(Temporal.PlainTime.from("12:34:56.987654321[u-ca=unknown]"),
+            12, 34, 56, 987, 654, 321), "an unknown calendar annotation is ignored");
+        // The basic (separator-less) format, which Stage 0 wrongly recorded as
+        // unnecessary (from/argument-string.js,
+        // from/argument-string-with-time-designator.js).
+        check(timeEquals(Temporal.PlainTime.from("152330"), 15, 23, 30, 0, 0, 0), "basic time");
+        check(timeEquals(Temporal.PlainTime.from("T0030"), 0, 30, 0, 0, 0, 0), "basic T time");
+        check(timeEquals(Temporal.PlainTime.from("152330.1-0800"), 15, 23, 30, 100, 0, 0),
+            "basic time with a basic offset");
+        check(timeEquals(Temporal.PlainTime.from("+0019761118T152330.1+0000"),
+            15, 23, 30, 100, 0, 0), "basic extended-year date prefix");
+        check(timeEquals(Temporal.PlainTime.from("15:23:30,12"), 15, 23, 30, 120, 0, 0),
+            "comma decimal separator");
+        check(timeEquals(Temporal.PlainTime.from("15"), 15, 0, 0, 0, 0, 0), "bare hour");
+        // `0230` is February 30th, which is not a real date, so it stays an
+        // unambiguous time; `0229` is, so it needs a `T`
+        // (TemporalHelpers.ISO.plainTimeStrings{Ambiguous,Unambiguous}).
+        check(timeEquals(Temporal.PlainTime.from("0230"), 2, 30, 0, 0, 0, 0),
+            "February 30th is not a date, so it is a time");
+        throwsRange(() => Temporal.PlainTime.from("0229"), "February 29th is ambiguous");
+        throwsRange(() => Temporal.PlainTime.from("202112"), "YYYYMM is ambiguous");
+        check(timeEquals(Temporal.PlainTime.from("202113"), 20, 21, 13, 0, 0, 0),
+            "month 13 is not a date, so it is a time");
+        throwsRange(() => Temporal.PlainTime.from("-000000-12-07T03:24:30"),
+            "a negative zero extended year is rejected");
+        for (let invalid of [
+            "2019-10-01", "09:00:00Z", "2022-09-15+00:00", "12-14", "05:07.123",
+            "00:00:00.1234567891", "15:23:30.100junk", "00:00[u-ca=iso8601][!u-ca=iso8601]",
+            "00:00[UTC][UTC]",
+        ]) {
+            throwsRange(() => Temporal.PlainTime.from(invalid), `invalid string ${invalid}`);
+        }
+        // from() with a property bag, including its overflow option
+        // (from/argument-object.js, overflow-reject.js).
+        check(timeEquals(Temporal.PlainTime.from({ hour: 15, minute: 23 }), 15, 23, 0, 0, 0, 0),
+            "property bag");
+        check(timeEquals(Temporal.PlainTime.from({ hour: 26 }), 23, 0, 0, 0, 0, 0),
+            "overflow constrains by default");
+        throwsRange(() => Temporal.PlainTime.from({ hour: 26 }, { overflow: "reject" }),
+            "overflow reject");
+        throwsType(() => Temporal.PlainTime.from({}), "empty property bag");
+        throwsType(() => Temporal.PlainTime.from({ minutes: 12 }), "plural-only property bag");
+        throwsType(() => Temporal.PlainTime.from(1), "a number is not a PlainTime");
+
+        // add/subtract wrap at the 24-hour boundary and ignore every
+        // calendar unit, days included (add/argument-higher-units.js,
+        // add/balance-negative-time-units.js).
+        let anchor = new Temporal.PlainTime(15, 23, 30, 123, 456, 789);
+        for (let higher of [{ days: 1 }, { weeks: 1 }, { months: 1 }, { years: 1 },
+                            "P1D", "P1W", "P1M", "P1Y"]) {
+            check(timeEquals(anchor.add(higher), 15, 23, 30, 123, 456, 789),
+                `add ignores higher units: ${JSON.stringify(higher)}`);
+            check(timeEquals(anchor.subtract(higher), 15, 23, 30, 123, 456, 789),
+                `subtract ignores higher units: ${JSON.stringify(higher)}`);
+        }
+        check(timeEquals(new Temporal.PlainTime(23).add({ hours: 2 }), 1, 0, 0, 0, 0, 0),
+            "23:00 + 2h wraps to 01:00");
+        check(timeEquals(new Temporal.PlainTime(1, 1, 1, 1, 1, 1).add({ hours: -2 }),
+            23, 1, 1, 1, 1, 1), "subtracting past midnight wraps back");
+        check(timeEquals(anchor.subtract({ hours: 16 }), 23, 23, 30, 123, 456, 789),
+            "subtract wraps");
+        check(timeEquals(new Temporal.PlainTime().add({ hours: 2501999792983, nanoseconds: 2191999999999 }),
+            7, 36, 31, 999, 999, 999), "maximum allowed duration (add/argument-duration-max.js)");
+        throwsRange(() => anchor.add({ hours: 1.5 }), "non-integer duration field");
+
+        // round: string shorthand, midnight crossing, and the
+        // divides-the-unit increment rule (round/*.js).
+        let late = Temporal.PlainTime.from("23:59:59.999999999");
+        for (let unit of ["hour", "minute", "second", "millisecond", "microsecond"]) {
+            check(timeEquals(late.round(unit), 0, 0, 0, 0, 0, 0), `round crosses midnight: ${unit}`);
+            check(timeEquals(late.round({ smallestUnit: unit }), 0, 0, 0, 0, 0, 0),
+                `string shorthand matches the options bag: ${unit}`);
+        }
+        throwsType(() => late.round(), "round requires an argument");
+        throwsRange(() => late.round("day"), "round rejects a calendar unit");
+        for (let [unit, increment] of [["hours", 11], ["hours", 24], ["minutes", 29],
+                                       ["minutes", 60], ["nanoseconds", 29], ["nanoseconds", 1000]]) {
+            throwsRange(() => late.round({ smallestUnit: unit, roundingIncrement: increment }),
+                `increment ${increment} must divide ${unit} and stay below it`);
+        }
+        check(timeEquals(Temporal.PlainTime.from("08:22:36.123456789")
+            .round({ smallestUnit: "hour", roundingIncrement: 12 }), 12, 0, 0, 0, 0, 0),
+            "a dividing increment is accepted");
+
+        // until/since (until/basic.js, largestunit-undefined.js,
+        // result-sub-second.js, largestunit-smallestunit-mismatch.js).
+        let one = new Temporal.PlainTime(15, 23, 30, 123, 456, 789);
+        let three = new Temporal.PlainTime(17, 0, 30, 123, 456, 789);
+        let forward = one.until(three);
+        check(forward.hours === 1 && forward.minutes === 37 && forward.seconds === 0,
+            "until defaults to largestUnit hour");
+        let backward = three.until(one);
+        check(backward.hours === -1 && backward.minutes === -37, "until is signed");
+        let since = three.since(one);
+        check(since.hours === 1 && since.minutes === 37, "since is until reversed");
+        let sub = Temporal.PlainTime.from("10:23:15")
+            .until(Temporal.PlainTime.from("17:15:57.250250250"), { largestUnit: "milliseconds" });
+        check(sub.milliseconds === 24762250 && sub.microseconds === 250 && sub.nanoseconds === 250,
+            "largestUnit milliseconds folds hours in");
+        let cast = one.until("16:34");
+        check(cast.hours === 1 && cast.minutes === 10 && cast.seconds === 29
+            && cast.milliseconds === 876 && cast.microseconds === 543 && cast.nanoseconds === 211,
+            "until casts a string argument");
+        throwsRange(() => one.until(three, { largestUnit: "minutes", smallestUnit: "hours" }),
+            "smallestUnit may not exceed largestUnit");
+        throwsRange(() => one.until(three, { largestUnit: "week" }),
+            "largestUnit rejects a calendar unit");
+        throwsType(() => one.until({}), "until rejects an empty property bag");
+        check(one.until(three, { largestUnit: "auto" }).hours === 1,
+            "largestUnit auto resolves to hour");
+        // until/since share round()'s divides-the-unit increment rule, which
+        // Instant's own difference methods do not have
+        // (until/roundingincrement-invalid.js).
+        throwsRange(() => one.until(three, { smallestUnit: "minutes", roundingIncrement: 29 }),
+            "until validates the rounding increment against its unit");
+        // A primitive options argument is a TypeError, not a boxed wrapper
+        // (until/options-wrong-type.js).
+        for (let bad of [null, true, "hello", 1, 1n]) {
+            throwsType(() => one.until(three, bad), `primitive options ${typeof bad}`);
+            throwsType(() => one.since(three, bad), `primitive options ${typeof bad}`);
+            throwsType(() => time.toString(bad), `primitive options ${typeof bad}`);
+            throwsType(() => time.with({ hour: 1 }, bad), `primitive options ${typeof bad}`);
+            throwsType(() => Temporal.PlainTime.from({ hour: 1 }, bad),
+                `primitive options ${typeof bad}`);
+        }
+        // ...but an options *object* of any kind is accepted, including a
+        // function (until/largestunit-undefined.js uses `() => {}`).
+        check(one.until(three, () => {}).hours === 1, "a function is a valid options object");
+
+        // equals / compare (equals/argument-cast.js, compare/basic.js).
+        let t1 = Temporal.PlainTime.from("08:44:15.321");
+        check(t1.equals("08:44:15.321") && !t1.equals("14:23:30.123"), "equals casts a string");
+        check(t1.equals({ hour: 8, minute: 44, second: 15, millisecond: 321 }), "equals casts a bag");
+        check(Temporal.PlainTime.compare(t1, t1) === 0, "compare equal");
+        check(Temporal.PlainTime.compare(t1, "14:23:30.123") === -1, "compare before");
+        check(Temporal.PlainTime.compare("14:23:30.123", t1) === 1, "compare after");
+        throwsType(() => t1.equals({}), "equals rejects an empty bag");
+        throwsType(() => Temporal.PlainTime.compare(t1, 1), "compare rejects a number");
+
+        // Other Temporal types convert by their time of day; a fixed-offset
+        // ZonedDateTime resolves, a named IANA zone is still Track E's scope
+        // (from/argument-plaindatetime.js,
+        // from/argument-zoneddatetime-balance-negative-time-units.js).
+        check(timeEquals(Temporal.PlainTime.from(Temporal.PlainDateTime.from("1976-11-18T15:23:30.1")),
+            15, 23, 30, 100, 0, 0), "converts a PlainDateTime");
+        check(timeEquals(Temporal.PlainTime.from(new Temporal.ZonedDateTime(3661001001001n, "-00:02")),
+            0, 59, 1, 1, 1, 1), "converts a fixed-offset ZonedDateTime");
+        throwsType(() => Temporal.PlainTime.from(Temporal.PlainDate.from("2019-05-17")),
+            "a PlainDate has no time fields");
+
+        // toString / toJSON precision (toString/smallestunit-valid-units.js,
+        // fractionalseconddigits-number.js, rounding-cross-midnight.js).
+        check(time.toString() === "12:34:56.987654321", "toString auto precision");
+        check(new Temporal.PlainTime(15, 23).toString() === "15:23:00", "toString pads seconds");
+        check(time.toString({ smallestUnit: "minute" }) === "12:34", "smallestUnit minute");
+        check(time.toString({ smallestUnit: "second" }) === "12:34:56", "smallestUnit second");
+        check(time.toString({ smallestUnit: "millisecond" }) === "12:34:56.987", "smallestUnit ms");
+        check(new Temporal.PlainTime(15, 23, 30, 123, 400).toString({ fractionalSecondDigits: 2 })
+            === "15:23:30.12", "fractionalSecondDigits truncates");
+        check(new Temporal.PlainTime(15, 23, 30, 123, 400).toString({ fractionalSecondDigits: 7 })
+            === "15:23:30.1234000", "fractionalSecondDigits pads");
+        check(new Temporal.PlainTime(23, 59, 59, 999, 999, 999)
+            .toString({ fractionalSecondDigits: 8, roundingMode: "halfExpand" })
+            === "00:00:00.00000000", "toString rounding crosses midnight");
+        check(time.toString({ smallestUnit: "millisecond", fractionalSecondDigits: 5 })
+            === "12:34:56.987", "smallestUnit overrides fractionalSecondDigits");
+        throwsRange(() => time.toString({ smallestUnit: "hour" }),
+            "hour is not a serialization unit");
+        check(time.toString({ fractionalSecondDigits: "auto" }) === "12:34:56.987654321",
+            "fractionalSecondDigits auto");
+        for (let bad of [true, "AUTO", -1, 10, NaN, Infinity]) {
+            throwsRange(() => time.toString({ fractionalSecondDigits: bad }),
+                `invalid fractionalSecondDigits ${String(bad)}`);
+        }
+        check(new Temporal.PlainTime(15, 23, 30, 123, 400).toJSON() === "15:23:30.1234", "toJSON");
+        check(typeof time.toLocaleString() === "string", "toLocaleString returns a string");
+        throwsType(() => time.valueOf(), "valueOf throws");
+
+        // with (with/basic.js, plaintimelike-invalid.js, overflow-undefined.js).
+        check(timeEquals(time.with({ hour: 3 }), 3, 34, 56, 987, 654, 321), "with replaces a field");
+        check(timeEquals(time.with({ minute: 8, nanosecond: 3 }), 12, 8, 56, 987, 654, 3),
+            "with replaces several fields");
+        check(timeEquals(time.with({ minutes: 8, nanosecond: 3 }), 12, 34, 56, 987, 654, 3),
+            "with ignores a plural property");
+        check(timeEquals(new Temporal.PlainTime(12).with({ minute: 67 }), 12, 59, 0, 0, 0, 0),
+            "with constrains by default");
+        throwsRange(() => new Temporal.PlainTime(12).with({ minute: 67 }, { overflow: "reject" }),
+            "with overflow reject");
+        throwsType(() => time.with("18:05:42.577"), "with rejects a string");
+        throwsType(() => time.with(Temporal.PlainTime.from("12:34")),
+            "with rejects a Temporal value");
+        throwsType(() => time.with({ hour: 14, calendar: "iso8601" }),
+            "with rejects a calendar property");
+        throwsType(() => time.with({ hour: 14, timeZone: "UTC" }),
+            "with rejects a timeZone property");
+        throwsType(() => time.with({}), "with rejects an empty bag");
+
+        // Options are all read and coerced before any of them is validated
+        // (round/options-read-before-algorithmic-validation.js).
+        let log = [];
+        let observed = {
+            get smallestUnit() { log.push("smallestUnit"); return "hour" },
+            get roundingIncrement() { log.push("roundingIncrement"); return 25 },
+            get roundingMode() { log.push("roundingMode"); return "expand" },
+        };
+        throwsRange(() => time.round(observed), "increment invalid for smallestUnit");
+        check(log.join() === "roundingIncrement,roundingMode,smallestUnit",
+            `options read in alphabetical order, got ${log.join()}`);
+
+        // Duration fields are likewise read alphabetically
+        // (add/order-of-operations.js).
+        let durationLog = [];
+        let durationBag = {};
+        for (let field of ["years", "months", "weeks", "days", "hours", "minutes",
+                           "seconds", "milliseconds", "microseconds", "nanoseconds"]) {
+            Object.defineProperty(durationBag, field, {
+                get() { durationLog.push(field); return 1 },
+                enumerable: true,
+            });
+        }
+        check(timeEquals(time.add(durationBag), 13, 35, 57, 988, 655, 322), "add reads every field");
+        check(durationLog.join() === "days,hours,microseconds,milliseconds,minutes,months,"
+            + "nanoseconds,seconds,weeks,years",
+            `duration fields read alphabetically, got ${durationLog.join()}`);
+
+        true
+    "#;
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
 fn date_locale_methods_share_datetime_format_resolution_and_defaults() {
     for source in [
         "let d=new Date(0);d.toLocaleString('en-US')===new Intl.DateTimeFormat('en-US',{year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',second:'numeric'}).format(d)",

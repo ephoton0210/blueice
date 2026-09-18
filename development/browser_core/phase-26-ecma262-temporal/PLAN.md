@@ -6,7 +6,12 @@
 (shared foundation) completed 2026-09-18, see its own checklist below for
 exactly what that means and what remains open within it (a full spec-grammar
 audit beyond Test262's coverage, and Track E's open TimeZone/`icu_time`
-question). Stage 1 (parallel tracks) has not started. It exists because
+question). **Stage 1 is in progress**: Track C (`Instant`) and Track D
+(`PlainTime`) are done as of 2026-09-18 — see each track's own bullet for its
+measured Test262 numbers and its remaining gaps, and the closure table in
+Stage 3 for the per-type picture. Tracks A (calendars), B (`Duration`) and E
+(`TimeZone`) are still open, as is `Temporal.Now` (grouped under Track C but
+a separate slice that track did not reach). It exists because
 completing Phase 25 (ECMA-402) surfaced a real gap in `intl402/`'s
 `Temporal/` subtree. **Correction (2026-09-17, same day):** the plan's first
 version only measured `intl402/Temporal/` (4,058 modes, 6.55% pass) — see
@@ -245,10 +250,15 @@ Nothing downstream is stable until this lands. Scope:
       **resolved 2026-09-17**: it already exists, as
       `temporal_duration_record` in `backend/bluejs/src/vm/temporal.rs`
       (called from `intl.rs`'s `duration_record` via
-      `temporal_value_from_string`). It correctly restricts fractional parts
-      to seconds only, matching Temporal's grammar (narrower than general
-      ISO 8601, which allows a fraction on any final component) — this was
-      not a gap.
+      `temporal_value_from_string`). **Correction (2026-09-18, Track D):**
+      this item originally recorded that restricting the fraction to the
+      seconds component "correctly" matches Temporal's grammar. It does not —
+      Temporal has `DurationHoursFraction` and `DurationMinutesFraction` as
+      well, so `"PT1.03125H"` is valid and today throws
+      (`built-ins/Temporal/PlainTime/prototype/add/argument-string-fractional-units-rounding-mode.js`).
+      It *is* narrower than general ISO 8601 in that a fraction may only sit
+      on the last present component, but seconds are not the only component
+      that may carry one. Left for Track B, which owns `Duration`.
 - [x] **Calendar-annotation parsing in ISO strings — closed 2026-09-17.**
       `temporal_value_from_string` previously hardcoded every parsed value's
       calendar to `"iso8601"` regardless of any `[u-ca=...]` annotation in
@@ -288,17 +298,26 @@ Nothing downstream is stable until this lands. Scope:
 - [x] Full ISO 8601 grammar coverage: spot-checked rather than exhaustively
       audited, given the size of the full grammar. Confirmed working: the
       six-digit signed extended-year form (`+002020-06-01`, exercised by an
-      existing DateTimeFormat test). Confirmed **not** supported and
-      **not required**: basic (non-extended, no separators) date format —
-      no fixture anywhere in the pinned Test262 corpus
-      (`built-ins/Temporal/`, `intl402/Temporal/`, or `harness/
-      temporalHelpers.js`) was found requiring it, consistent with
-      Temporal's spec deliberately restricting itself to the extended
-      format only (a departure from general ISO 8601, by design). A full
-      line-by-line grammar audit against the spec text itself, rather than
-      against what Test262 happens to exercise, remains open for whoever
-      picks up Stage 1/2 arithmetic work and needs to trust this parser
-      completely.
+      existing DateTimeFormat test).
+
+      **Correction (2026-09-18, Track D): this item's conclusion that the
+      basic (separator-less) format is "not required" was wrong**, and the
+      method that produced it — searching for a fixture that requires it —
+      is what failed: `built-ins/Temporal/PlainTime/from/argument-string.js`
+      requires `152330`, `19761118T15:23:30.1+00:00`,
+      `+0019761118T152330.1+0000` and `T0030`, and
+      `PlainTime/from/argument-string-with-time-designator.js` requires
+      `T003000.000000000`. Basic-format dates and times are now both
+      supported (`iso::parse_date`/`parse_time_spec`), along with `,` as the
+      decimal separator. Track D also found, by rewriting the parser against
+      `from/argument-string-invalid.js` rather than by audit, that this
+      parser was accepting a *superset* of the grammar in several places —
+      inconsistent separators, arbitrary field widths, over-long fractions, a
+      negative-zero extended year — each of which is listed under Track D
+      below. The full line-by-line audit against the spec text (as opposed to
+      against Test262) still remains open, and this item is evidence it is
+      worth doing: every one of those defects was reachable and none was
+      caught by "spot-checking".
 
 ### Stage 1 — parallel tracks (worktree-isolated agents, after Stage 0 lands)
 
@@ -355,10 +374,109 @@ isn't an assumption:
   Test262 (`since/roundingmode-ceil.js`) to be a literal signed-difference
   computation with the given mode applied as-is — no `NegateRoundingMode`
   step needed, contrary to an initial assumption.
-- **Track D — PlainTime** (`plain_time.rs`). Evidence: time-of-day has no
-  calendar-field dependency; Gecko's `PlainTime.cpp` (1,644 lines) is the
-  smallest of the calendar-adjacent per-type files. Combined Test262:
-  `PlainTime/` 1,010 modes.
+- **Track D — PlainTime.** Evidence: time-of-day has no calendar-field
+  dependency; Gecko's `PlainTime.cpp` (1,644 lines) is the smallest of the
+  calendar-adjacent per-type files. **Done 2026-09-18** — kept inside
+  `vm/temporal.rs` for the same reason Track C's `Instant` was (the method
+  bodies are `Value`/heap-coupled adapter code, not host-neutral foundation),
+  so no `plain_time.rs` file exists. `Temporal/PlainTime/` went from
+  **108/1,010 (10.7%)** — Stage 0's read-only-construction baseline, itself
+  slightly above this document's 2026-09-17 figure of 102 — to
+  **968/1,010 (95.8%)**. Implemented: the six field getters
+  (`hour`…`nanosecond`), `add`/`subtract`, `round`, `until`/`since`,
+  `equals`, static `compare`, `with`, `toString`/`toJSON`/`toLocaleString`/
+  `valueOf`, plus a real `ToTemporalTime` behind `from`/`until`/`since`/
+  `equals`/`compare` (PlainTime, PlainDateTime, fixed-offset/UTC
+  ZonedDateTime, property bag with `overflow`, and string).
+  Semantics Test262 settled, each against a named fixture rather than from
+  memory:
+  - **Wrapping, not overflow.** `PlainTime` arithmetic wraps at the 24-hour
+    boundary in both directions (`rem_euclid` over `NANOSECONDS_PER_DAY`, new
+    in `duration_math.rs` as `time_fields_to_nanoseconds`/
+    `time_fields_from_nanoseconds`) — `add/balance-negative-time-units.js`
+    and `round/rounding-cross-midnight.js`, where rounding
+    `23:59:59.999999999` up lands on `00:00:00`, not an out-of-range `24:00`.
+  - **Calendar units are ignored, including `days` — not rejected.** The
+    plan's own working assumption (and `Instant.prototype.add`'s behavior)
+    was wrong here: `add/argument-higher-units.js` requires
+    `plainTime.add({ days: 1 })` to be the *same* time and not to throw,
+    because the spec's `ToInternalDurationRecord` leaves years/months/weeks/
+    days in the date part `AddTime` never reads. A `days` field does **not**
+    contribute 24 hours.
+  - **`round`'s increment rule differs from `Instant`'s.** `Instant` needs
+    the increment to divide a whole *day* (inclusive); `PlainTime` needs it to
+    divide the *unit's own* place value (24/60/60/1000/1000/1000) and stay
+    strictly below it, so `{ smallestUnit: "hours", roundingIncrement: 24 }`
+    and `{ smallestUnit: "nanoseconds", roundingIncrement: 1000 }` both throw
+    (`round/roundingincrement-invalid.js`). `until`/`since` use the same rule,
+    which `Instant`'s own difference methods do not.
+  - `round`'s argument is **required**, and a bare string is shorthand for
+    `{ smallestUnit }` via a *null-prototype* options object
+    (`round/string-shorthand-no-object-prototype-pollution.js`).
+  - `until`/`since` default `largestUnit` to `hour` (not `second` as
+    `Instant` does) and accept `"auto"`. `since` again needs **no**
+    rounding-mode negation, for the same algebraic reason Track C recorded.
+  - **All options are read and coerced before any is validated**, in
+    alphabetical order — `round/options-read-before-algorithmic-validation.js`
+    reads `smallestUnit` and only then throws on the increment, so the
+    existing combined read-and-validate `temporal_string_option` could not be
+    reused where options participate in a joint check. Duration property bags
+    are likewise read alphabetically (`add/order-of-operations.js`).
+
+  Shared Stage 0 foundation bugs this track found and fixed (all
+  spec-correct for every Temporal type, and each lifted the other types'
+  Test262 numbers — see the closure table below):
+  - `parse_time` accepted inconsistent separators (`00:0000`), fields of any
+    width (`001Z`), fractions longer than nine digits, and fractions on the
+    minute/hour field (`05:07.123`); it rejected the leap-second `:60` the
+    grammar accepts and constrains to `:59`; and it supported neither the
+    basic separator-less format (`152330`, `T0030`) nor `,` as the decimal
+    separator. Rewritten onto one strict `parse_time_spec` shared with the
+    offset parser.
+  - `parse_date` accepted `-000000` as an extended year (a negative zero,
+    which the grammar rejects), let a four-digit year borrow the six-digit
+    form's width, and did not support the basic format (`19761118`,
+    `+0019761118`). **Stage 0's own note above that basic date format is
+    "not required" is wrong** — `PlainTime/from/argument-string.js` requires
+    it.
+  - `parse_offset_seconds` rejected a sub-minute fraction
+    (`+00:00:00.000000000`) and accepted trailing junk (`+00:00junk`); it now
+    shares `parse_time_spec`. The fraction's *value* is still discarded,
+    which is invisible to `PlainTime` (it ignores the offset entirely) but
+    would matter to a sub-second `Instant` offset — recorded as a known gap.
+  - `parse_annotations` did not reject a repeated `u-ca` annotation when any
+    copy carries the critical flag.
+  - `GetOptionsObject` boxed a primitive into a wrapper object instead of
+    throwing `TypeError`.
+  - `temporal_duration_from_value` read its ten fields in declaration rather
+    than alphabetical order, which is observable.
+
+  **Not done**, and why:
+  - The **42 remaining `PlainTime` modes are all outside this track.** 20 are
+    `Temporal.Duration` gaps (Track B): `Duration.from({ ... })` with a
+    property bag, and fractional `H`/`M` components in an ISO duration string
+    — `iso::parse_duration_record` allows a fraction only on `S`, and this
+    document's Stage 0 claim that that "correctly restricts fractional parts
+    to seconds only" is **wrong**; Temporal's grammar has
+    `DurationHoursFraction`/`DurationMinutesFraction` too
+    (`add/argument-string-fractional-units-rounding-mode.js`). Left for
+    Track B rather than edited across a track boundary. The other 22 are
+    `intl402/.../toLocaleString/`, which needs real `Intl.DateTimeFormat`
+    integration for a plain time (default field set, `dateStyle`/`timeStyle`
+    conflict rejection) — an ECMA-402 boundary, not PlainTime arithmetic;
+    `toLocaleString` currently returns the same ISO string as `toJSON`.
+  - A named-IANA-zone `ZonedDateTime` argument still throws; only `UTC` and a
+    fixed numeric offset resolve (Track E).
+  - A UTC offset's sub-second fraction is validated but its value discarded
+    (see the `parse_offset_seconds` note above) — invisible to `PlainTime`,
+    a latent inaccuracy for `Instant`.
+
+  (The ambiguity rules a bare, un-`T`-prefixed time string has to respect —
+  `1214` is December 14th and therefore not a time, `0229` is February 29th
+  and therefore not a time, `0230` is not a real date and therefore *is* a
+  time — are implemented from
+  `TemporalHelpers.ISO.plainTimeStringsAmbiguous()`/`plainTimeStringsUnambiguous()`
+  rather than derived, since the distinction turns on real calendar validity.)
 - **Track E — TimeZone** (`time_zone.rs`). Fixed-offset resolution is
   self-contained; named-IANA-identifier transition-rule lookup needs its own
   investigation first — **check whether `icu_time` (already a pinned
@@ -404,6 +522,28 @@ once). One owner:
       186/2,968, `PlainDate` 332/2,290, `PlainDateTime` 302/2,512,
       `PlainYearMonth` 186/1,672, `PlainMonthDay` 158/578, `Duration`
       232/1,122, `PlainTime` 102/1,010, `Instant` 86/968, `Now` 0/138).
+
+      Measured after Stage 1 Tracks C and D (`python3
+      backend/bluejs/test262/run.py --filter "Temporal/" --jobs 8`,
+      2026-09-18). Track D's shared Stage 0 parser fixes are why every type
+      moved, not only the two with a track:
+
+      | Type | 2026-09-17 | After Track C | After Track D |
+      | --- | ---: | ---: | ---: |
+      | `Instant` | 86/968 | 646/968 | **710/968** |
+      | `PlainTime` | 102/1,010 | 108/1,010 | **968/1,010** |
+      | `PlainDate` | 332/2,290 | 332/2,290 | **348/2,290** |
+      | `PlainDateTime` | 302/2,512 | 302/2,512 | **316/2,512** |
+      | `PlainMonthDay` | 158/578 | 158/578 | **174/578** |
+      | `PlainYearMonth` | 186/1,672 | 186/1,672 | **202/1,672** |
+      | `ZonedDateTime` | 186/2,968 | 186/2,968 | **210/2,968** |
+      | `Duration` | 232/1,122 | 232/1,122 | 232/1,122 |
+      | `Now` | 0/138 | 0/138 | 0/138 |
+      | **Total (`Temporal/`)** | 1,592 | — | **3,168/13,272** |
+
+      (The `Temporal/` filter schedules 13,272 modes, four more than the
+      per-type table's 13,268 — the extra ones are the tree's own root-level
+      files, e.g. `Temporal/prop-desc.js`, which no per-type group counts.)
 - [ ] TDD throughout, per this repo's Definition of Done: a failing test
       before the implementation that makes it pass, not tests bolted on
       after.

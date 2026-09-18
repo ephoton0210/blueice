@@ -8,14 +8,67 @@
 //! project's porting reference): `TimeDuration` (hours..nanoseconds) is a
 //! separate combinator from `DateDuration` (years/months/weeks/days),
 //! because only the latter needs calendar-aware balancing against a
-//! `relativeTo`. This module implements `TimeDuration` — used directly by
-//! `Temporal.Instant` (calendar-agnostic). `Temporal.PlainTime`/
-//! `Temporal.Duration`'s own arithmetic will extend this module's public
-//! surface via TDD from their own call sites, rather than speculatively
-//! ahead of them; see the source-modularity note in
-//! `development/browser_core/phase-26-ecma262-temporal/PLAN.md`.
+//! `relativeTo`. This module implements `TimeDuration`, used directly by
+//! `Temporal.Instant` and `Temporal.PlainTime` (both calendar-agnostic),
+//! plus the time-of-day/nanosecond conversion pair `PlainTime`'s
+//! 24-hour-wrapping arithmetic needs. `Temporal.Duration`'s own arithmetic
+//! will extend this module's public surface via TDD from its own call sites,
+//! rather than speculatively ahead of them; see the source-modularity note
+//! in `development/browser_core/phase-26-ecma262-temporal/PLAN.md`.
 
 use super::rounding::{self, TimeUnit};
+
+/// The exact length of one ISO day, in nanoseconds. Temporal's time-only
+/// types are bounded to this span, so it is also the modulus every
+/// `Temporal.PlainTime` arithmetic result wraps through.
+pub(crate) const NANOSECONDS_PER_DAY: i128 = 86_400 * 1_000_000_000;
+
+/// Collapses a time-of-day into its exact nanosecond offset from midnight.
+pub(crate) fn time_fields_to_nanoseconds(
+    hour: u8,
+    minute: u8,
+    second: u8,
+    millisecond: u16,
+    microsecond: u16,
+    nanosecond: u16,
+) -> i128 {
+    i128::from(hour) * 3_600_000_000_000
+        + i128::from(minute) * 60_000_000_000
+        + i128::from(second) * 1_000_000_000
+        + i128::from(millisecond) * 1_000_000
+        + i128::from(microsecond) * 1_000
+        + i128::from(nanosecond)
+}
+
+/// Expands an arbitrary nanosecond offset back into a valid time-of-day,
+/// wrapping at the 24-hour boundary in both directions.
+///
+/// This wrap is the one semantic that separates `Temporal.PlainTime`
+/// arithmetic from `Temporal.Instant`'s: an `Instant` is an unbounded point
+/// on the epoch line, whereas a `PlainTime` has no date to carry a
+/// day-overflow into, so `add`/`subtract`/`round` silently discard whole
+/// days (`AddTime`/`RoundTime` in the spec; Test262's
+/// `PlainTime/prototype/add/balance-negative-time-units.js` and
+/// `PlainTime/prototype/round/rounding-cross-midnight.js` pin both
+/// directions). Euclidean remainder, not truncating remainder, is what makes
+/// the negative direction land on `23:xx` rather than a negative hour.
+pub(crate) fn time_fields_from_nanoseconds(nanoseconds: i128) -> (u8, u8, u8, u16, u16, u16) {
+    let mut remaining = nanoseconds.rem_euclid(NANOSECONDS_PER_DAY);
+    let hour = remaining / 3_600_000_000_000;
+    remaining %= 3_600_000_000_000;
+    let minute = remaining / 60_000_000_000;
+    remaining %= 60_000_000_000;
+    let second = remaining / 1_000_000_000;
+    remaining %= 1_000_000_000;
+    (
+        hour as u8,
+        minute as u8,
+        second as u8,
+        (remaining / 1_000_000) as u16,
+        ((remaining / 1_000) % 1_000) as u16,
+        (remaining % 1_000) as u16,
+    )
+}
 
 /// A calendar-agnostic span of time, held as exact total nanoseconds.
 ///
@@ -173,6 +226,65 @@ mod tests {
             duration.balance_to(TimeUnit::Second),
             [0, 0, 3_660, 0, 0, 0]
         );
+    }
+
+    #[test]
+    fn a_time_of_day_round_trips_through_nanoseconds() {
+        assert_eq!(
+            time_fields_to_nanoseconds(15, 23, 30, 123, 456, 789),
+            15 * 3_600_000_000_000
+                + 23 * 60_000_000_000
+                + 30 * 1_000_000_000
+                + 123 * 1_000_000
+                + 456 * 1_000
+                + 789
+        );
+        assert_eq!(
+            time_fields_from_nanoseconds(time_fields_to_nanoseconds(15, 23, 30, 123, 456, 789)),
+            (15, 23, 30, 123, 456, 789)
+        );
+    }
+
+    #[test]
+    fn a_time_of_day_wraps_at_the_twenty_four_hour_boundary() {
+        // Test262's PlainTime/prototype/add/balance-negative-time-units.js:
+        // 01:01:01.001001001 minus two hours is 23:01:01.001001001, and
+        // 23:00 plus two hours is 01:00 — never 25:00.
+        let one = time_fields_to_nanoseconds(1, 1, 1, 1, 1, 1);
+        assert_eq!(
+            time_fields_from_nanoseconds(one - 2 * 3_600_000_000_000),
+            (23, 1, 1, 1, 1, 1)
+        );
+        assert_eq!(
+            time_fields_from_nanoseconds(
+                time_fields_to_nanoseconds(23, 0, 0, 0, 0, 0) + 2 * 3_600_000_000_000
+            ),
+            (1, 0, 0, 0, 0, 0)
+        );
+        // Test262's PlainTime/prototype/round/rounding-cross-midnight.js:
+        // rounding 23:59:59.999999999 up lands on exactly one whole day,
+        // which is midnight, not an out-of-range 24:00.
+        assert_eq!(
+            time_fields_from_nanoseconds(NANOSECONDS_PER_DAY),
+            (0, 0, 0, 0, 0, 0)
+        );
+        assert_eq!(
+            time_fields_from_nanoseconds(-1),
+            (23, 59, 59, 999, 999, 999)
+        );
+    }
+
+    #[test]
+    fn a_time_of_day_wraps_across_many_whole_days() {
+        // Test262's PlainTime/prototype/add/argument-duration-max.js adds
+        // 2,501,999,792,983 hours to midnight and expects 07:36:31.999...,
+        // so the wrap has to survive magnitudes far beyond a single day.
+        let total = 2_501_999_792_983_i128 * 3_600_000_000_000 + 2_191_999_999_999;
+        assert_eq!(
+            time_fields_from_nanoseconds(total),
+            (7, 36, 31, 999, 999, 999)
+        );
+        assert_eq!(time_fields_from_nanoseconds(-total), (16, 23, 28, 0, 0, 1));
     }
 
     #[test]
