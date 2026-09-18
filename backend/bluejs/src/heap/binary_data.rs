@@ -685,6 +685,34 @@ impl Heap {
             .ok_or(HeapError::InvalidBufferRange)
     }
 
+    /// Non-shared counterpart to `shared_typed_array_atomic_modify`. Per the
+    /// current Atomics spec, `ValidateIntegerTypedArray` no longer requires a
+    /// `SharedArrayBuffer` for ordinary read-modify-write operations (only
+    /// `Atomics.wait`/`waitAsync` still do, and `Atomics.notify` special-cases
+    /// a non-shared buffer to return 0 without ever reaching this helper). A
+    /// plain `ArrayBuffer` is never visible to more than one agent, so
+    /// ordinary synchronous byte access already gives read-modify-write
+    /// operations their required atomicity here -- no lock is needed.
+    pub(crate) fn typed_array_atomic_modify<T>(
+        &mut self,
+        object: ObjectId,
+        index: usize,
+        modify: impl FnOnce(Value) -> (Option<Value>, T),
+    ) -> Result<T, HeapError> {
+        let (buffer, byte_offset, length, kind) = self.typed_array_info(object)?;
+        if index >= length {
+            return Err(HeapError::InvalidBufferRange);
+        }
+        let start = byte_offset + index * kind.byte_width();
+        let bytes = self.buffer_bytes_mut(buffer)?;
+        let current = typed_read(kind, &bytes[start..]);
+        let (replacement, result) = modify(current);
+        if let Some(replacement) = replacement {
+            typed_write(kind, &mut bytes[start..], &replacement);
+        }
+        Ok(result)
+    }
+
     pub(crate) fn typed_array_normalize_value(&self, kind: TypedArrayKind, value: &Value) -> Value {
         let mut bytes = vec![0; kind.byte_width()];
         typed_write(kind, &mut bytes, value);

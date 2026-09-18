@@ -717,6 +717,13 @@ impl Vm {
         Ok(Value::Undefined)
     }
 
+    /// `ValidateIntegerTypedArray`. Per the current spec this does *not*
+    /// require a `SharedArrayBuffer` -- ordinary read-modify-write Atomics
+    /// operations work on any integer TypedArray, shared or not. Only
+    /// `Atomics.wait`/`waitAsync` (both call this with `waitable: true` and
+    /// then separately reject a non-shared buffer themselves) and
+    /// `Atomics.notify` (which instead returns 0 for a non-shared buffer,
+    /// without throwing) narrow that further.
     fn atomics_access(
         &mut self,
         args: &[Value],
@@ -730,11 +737,10 @@ impl Vm {
                 "Atomics requires an integer TypedArray".into(),
             ));
         }
-        let (buffer, _, length, kind) = self.heap.typed_array_info(object)?;
-        if !self.heap.buffer_is_shared(buffer)? || !kind.atomic() || (waitable && !kind.waitable())
-        {
+        let (_, _, length, kind) = self.heap.typed_array_info(object)?;
+        if !kind.atomic() || (waitable && !kind.waitable()) {
             return Err(RuntimeError::TypeError(
-                "Atomics requires a shared integer TypedArray".into(),
+                "Atomics requires an integer TypedArray of the correct kind".into(),
             ));
         }
         if self.heap.typed_array_is_out_of_bounds(object)? {
@@ -749,6 +755,66 @@ impl Vm {
             ));
         }
         Ok((object, index, kind))
+    }
+
+    /// `ValidateSharedIntegerTypedArray(typedArray, true)`: the legacy
+    /// combined validation `Atomics.wait`/`waitAsync` still use. Unlike
+    /// `Atomics.notify` (which coerces `index` before ever consulting
+    /// shared-ness, per the newer split `ValidateIntegerTypedArray` +
+    /// `IsSharedArrayBuffer` steps), `wait`/`waitAsync` must reject a
+    /// non-shared buffer *before* touching `index`/`value`/`timeout` at all
+    /// -- Test262 pins this by making those arguments' coercion poison the
+    /// test if ever observed for a non-shared buffer.
+    fn atomics_wait_access(
+        &mut self,
+        args: &[Value],
+    ) -> Result<(ObjectId, usize, TypedArrayKind), RuntimeError> {
+        let object = native::argument(args, 0).object_id().ok_or_else(|| {
+            RuntimeError::TypeError("Atomics requires an integer TypedArray".into())
+        })?;
+        if !self.heap.is_typed_array(object)? {
+            return Err(RuntimeError::TypeError(
+                "Atomics requires an integer TypedArray".into(),
+            ));
+        }
+        let (buffer, _, length, kind) = self.heap.typed_array_info(object)?;
+        if !kind.waitable() || !self.heap.buffer_is_shared(buffer)? {
+            return Err(RuntimeError::TypeError(
+                "Atomics.wait requires a shared Int32Array or BigInt64Array".into(),
+            ));
+        }
+        if self.heap.typed_array_is_out_of_bounds(object)? {
+            return Err(RuntimeError::TypeError(
+                "TypedArray is out of bounds".into(),
+            ));
+        }
+        let index = self.buffer_index(native::argument(args, 1))?;
+        if index >= length {
+            return Err(RuntimeError::RangeError(
+                "Atomics index is outside TypedArray".into(),
+            ));
+        }
+        Ok((object, index, kind))
+    }
+
+    /// Dispatches a read-modify-write Atomics operation to the shared
+    /// (locked) or non-shared (plain, single-agent) backing store.
+    fn atomics_modify<T>(
+        &mut self,
+        object: ObjectId,
+        index: usize,
+        modify: impl FnOnce(Value) -> (Option<Value>, T),
+    ) -> Result<T, RuntimeError> {
+        let (buffer, _, _, _) = self.heap.typed_array_info(object)?;
+        if self.heap.buffer_is_shared(buffer)? {
+            self.heap
+                .shared_typed_array_atomic_modify(object, index, modify)
+                .map_err(Into::into)
+        } else {
+            self.heap
+                .typed_array_atomic_modify(object, index, modify)
+                .map_err(Into::into)
+        }
     }
 
     fn atomics_element_value(
@@ -806,42 +872,29 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let (object, index, kind) = self.atomics_access(args, false)?;
         let result = match operation {
-            AtomicOp::Load => self
-                .heap
-                .shared_typed_array_atomic_modify(object, index, |old| (None, old))
-                .map_err(Into::into),
+            AtomicOp::Load => self.atomics_modify(object, index, |old| (None, old)),
             AtomicOp::Store => {
                 let value = self.atomics_element_value(kind, native::argument(args, 2))?;
-                self.heap
-                    .shared_typed_array_atomic_modify(object, index, move |_| {
-                        (Some(value.clone()), value)
-                    })
-                    .map_err(Into::into)
+                self.atomics_modify(object, index, move |_| (Some(value.clone()), value))
             }
             AtomicOp::CompareExchange => {
                 let expected = self.atomics_element_value(kind, native::argument(args, 2))?;
                 let replacement = self.atomics_element_value(kind, native::argument(args, 3))?;
-                self.heap
-                    .shared_typed_array_atomic_modify(object, index, move |old| {
-                        let replace = (old == expected).then(|| replacement.clone());
-                        (replace, old)
-                    })
-                    .map_err(Into::into)
+                self.atomics_modify(object, index, move |old| {
+                    let replace = (old == expected).then(|| replacement.clone());
+                    (replace, old)
+                })
             }
             AtomicOp::Add | AtomicOp::And | AtomicOp::Or | AtomicOp::Sub | AtomicOp::Xor => {
                 let value = self.atomics_element_value(kind, native::argument(args, 2))?;
-                self.heap
-                    .shared_typed_array_atomic_modify(object, index, move |old| {
-                        let next = Self::atomics_binary_value(kind, &old, &value, operation);
-                        (Some(next), old)
-                    })
-                    .map_err(Into::into)
+                self.atomics_modify(object, index, move |old| {
+                    let next = Self::atomics_binary_value(kind, &old, &value, operation);
+                    (Some(next), old)
+                })
             }
             AtomicOp::Exchange => {
                 let value = self.atomics_element_value(kind, native::argument(args, 2))?;
-                self.heap
-                    .shared_typed_array_atomic_modify(object, index, move |old| (Some(value), old))
-                    .map_err(Into::into)
+                self.atomics_modify(object, index, move |old| (Some(value), old))
             }
         };
         // Test262's agent helper intentionally spins on Atomics.load while
@@ -876,13 +929,16 @@ impl Vm {
                 count.trunc() as usize
             }
         };
+        if !self.heap.buffer_is_shared(buffer)? {
+            return Ok(Value::Number(0.0));
+        }
         let backing = self.heap.shared_buffer_backing(buffer)?;
         let position = byte_offset + index * kind.byte_width();
         Ok(Value::Number(backing.notify(position, count) as f64))
     }
 
     fn atomics_wait_status(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let (object, index, kind) = self.atomics_access(args, true)?;
+        let (object, index, kind) = self.atomics_wait_access(args)?;
         let expected = self.atomics_element_value(kind, native::argument(args, 2))?;
         let observed = self.atomics_read(object, index)?;
         if observed != expected {
@@ -915,7 +971,7 @@ impl Vm {
     }
 
     pub(super) fn atomics_wait_async(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let (object, index, kind) = self.atomics_access(args, true)?;
+        let (object, index, kind) = self.atomics_wait_access(args)?;
         let expected = self.atomics_element_value(kind, native::argument(args, 2))?;
         let observed = self.atomics_read(object, index)?;
         let prototype = self.object_prototype;

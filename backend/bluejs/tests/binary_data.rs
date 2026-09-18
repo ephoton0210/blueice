@@ -148,6 +148,18 @@ fn fixed_length_array_buffers_views_and_typed_indices_share_backing_bytes() {
             Value::Bool(true),
         ),
         (
+            "let buffer=new ArrayBuffer(16);let ints=new Int32Array(buffer);let big=new BigInt64Array(buffer);let stored=Atomics.store(ints,0,5)===5;let added=Atomics.add(ints,0,2)===5&&Atomics.load(ints,0)===7;let bits=Atomics.or(ints,0,8)===7&&Atomics.and(ints,0,13)===15&&Atomics.xor(ints,0,3)===13&&Atomics.sub(ints,0,3)===14;let exchanged=Atomics.exchange(ints,0,4)===11&&Atomics.compareExchange(ints,0,4,9)===4&&ints[0]===9;let bigint=Atomics.store(big,1,5n)===5n&&Atomics.add(big,1,2n)===5n&&Atomics.load(big,1)===7n;let notified=Atomics.notify(ints,0)===0&&Atomics.notify(ints,0,1)===0;let waitThrows=false;try{Atomics.wait(ints,0,7,0)}catch(error){waitThrows=error instanceof TypeError}let waitAsyncThrows=false;try{Atomics.waitAsync(ints,0,7,0)}catch(error){waitAsyncThrows=error instanceof TypeError}stored&&added&&bits&&exchanged&&bigint&&notified&&waitThrows&&waitAsyncThrows",
+            Value::Bool(true),
+        ),
+        (
+            "let buffer=new ArrayBuffer(4);let ints=new Int32Array(buffer);let observedIndex=false;let observedCount=false;let poisonedIndex={valueOf:function(){observedIndex=true;return 0}};let poisonedCount={valueOf:function(){observedCount=true;return 1}};let result=Atomics.notify(ints,poisonedIndex,poisonedCount);result===0&&observedIndex&&observedCount",
+            Value::Bool(true),
+        ),
+        (
+            "let buffer=new ArrayBuffer(4);let ints=new Int32Array(buffer);let poisoned={valueOf:function(){throw new TypeError('should not be observed')}};let throws=false;try{Atomics.wait(ints,poisoned,poisoned,poisoned)}catch(error){throws=error instanceof TypeError&&error.message!=='should not be observed'}let plainThrows=false;try{Atomics.wait(ints,0,0,0)}catch(error){plainThrows=error instanceof TypeError}throws&&plainThrows",
+            Value::Bool(true),
+        ),
+        (
             "let source=new ArrayBuffer(4,{maxByteLength:8});new Uint8Array(source).set([1,2,3,4]);let moved=source.transfer(6);let preserving=moved.resizable&&moved.maxByteLength===8&&moved.byteLength===6;let fixed=moved.transferToFixedLength(3);let detached=source.byteLength===0&&moved.byteLength===0;preserving&&detached&&moved.resizable===false&&fixed.resizable===false&&fixed.maxByteLength===3&&fixed.byteLength===3&&new Uint8Array(fixed).join()==='1,2,3'",
             Value::Bool(true),
         ),
