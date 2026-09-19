@@ -4183,7 +4183,7 @@ once). One owner:
      missing; added, which makes `{since,until}/same-epoch-nanoseconds.js`
      (a 660-call matrix) cheap. Those two fixtures still needed a bumped
      instruction budget, added to `backend/bluejs/test262/run.py` as
-     `ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES` (1,000,000; 500,000 is
+     `ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES` (1,000,000; 300,000 is
      enough, measured) following the existing `TEMPORAL_CALENDAR_MATRIX_
      FIXTURES` precedent. Tests: `temporal_zoned_date_time_difference_day_
      correction.rs` (4).
@@ -4244,6 +4244,54 @@ once). One owner:
   --no-fail-fast` and `cargo clippy --workspace --all-targets -- -D
   warnings` all clean on the rebased tip (the previously-documented
   `string_protocols.rs` flake did not fail on this run).
+
+#### Stage 2 follow-up — GC rooting in property-bag reads, and instruction budgets
+
+- **Symptom:** `resource_error: unknown or collected BlueJS object` on
+  `PlainMonthDay/{from,prototype/with}/order-of-operations.js` and
+  `ZonedDateTime/prototype/with/order-of-operations.js` (6 modes).
+- **Root cause (not a GC bug):** those natives read every field of the bag into
+  Rust locals first and converted them later. Test262's `propertyBagObserver`
+  is a `Proxy` whose `get` returns a *fresh* converting object per read, so
+  that object was referenced only by a Rust local. The next allocation (the
+  following field read) triggered a nursery collection that freed it, and the
+  later `ToPrimitive`/`ToString` hit a dead `ObjectId`.
+- **Fix:** follow the spec's own order. Each field is read **and converted
+  immediately**, alphabetically (`PrepareCalendarFields`), so no object-valued
+  `Get` result outlives the next `Get`. `options` is read after the fields
+  (`OverflowInput` defers `GetTemporalOverflowOption`; `PlainMonthDay.from`
+  had been reading it first). `temporal_read_optional_offset_string` is the
+  new helper for the `offset` field.
+- **Rooting convention (for every future native):** a `Value::Object` held
+  across any call that can allocate must be either converted at once or
+  pushed on `self.stack`; a Rust local is not a GC root.
+- **Regression tests:** `tests/temporal_property_bag_gc_rooting.rs` (4) runs
+  the observer pattern with `nursery_capacity: 1` (every allocation may
+  collect); all four failed before the fix.
+- **Latent-bug sweep:** `BLUEJS_TEST262_NURSERY_CAPACITY=1` (new adapter
+  knob, `bluejs-test262.rs`) runs the whole `built-ins/Temporal` corpus with
+  that stress nursery. Result: 8,974/9,210 in both modes, **0 differing
+  outcomes**, so no other Temporal native in the corpus's reach is unrooted.
+  It only proves what the corpus exercises; new natives should get a
+  stress-nursery test like the ones above.
+- **Instruction budgets (TC39 position):** ECMA-262 and Test262 define no
+  instruction budget; it is this host's resource policy. The conforming
+  approach is to run fixtures unmodified and grant finite fixtures a named,
+  bounded allowance (as `tail-call-optimization` already does). Measured
+  minimums, in VM dispatches:
+  - `{since,until}/same-epoch-nanoseconds.js`: 300,000 (allowance 1,000,000);
+  - `PlainDate/from/hebrew-keviah.js`: 500,000;
+  - `PlainDate/from/persian-new-year-dates.js`,
+    `{PlainDateTime,ZonedDateTime}/from/roundtrip-from-property-bag.js`:
+    200,000 each. These four had been failing on the 100,000 default and now
+    share `TEMPORAL_CALENDAR_TABLE_FIXTURES` at 2,000,000 (4x the largest).
+  - The engine-side cost is unchanged: these are finite tables, not loops
+    that hide an algorithmic bug (a single call is cheap).
+- **Result:** full Temporal inventory 12,684/13,288 (was 12,666/13,272 in the
+  stored baseline), 0 regressions, 18 newly passing modes, 0 `resource_error`.
+  The denominator grew by 16 modes because this run's `--filter Temporal`
+  is broader than the baseline's selection; the 18 gains are from the fixes
+  above.
 
 ### Stage 3 — Test262-evidence closure and coverage
 
