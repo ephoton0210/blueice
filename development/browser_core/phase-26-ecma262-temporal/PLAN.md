@@ -4139,6 +4139,112 @@ once). One owner:
         pre-existing `string_protocols.rs::observable_conversion_order_and_gc_pressure`
         flake.
 
+- **`ZonedDateTime` third pass: `DifferenceZonedDateTime` ported properly,
+  `toLocaleString` closed, one Coptic/Ethiopic lead found — 2026-09-19.**
+  Rebased twice onto the moving `feature/ecma402-plural-rules-select-range`
+  tip before landing (the second rebase absorbed the unrelated
+  `bluejs-object-heap` merge). Measured against a freshly built pristine
+  worktree at that exact tip, diffed per path+mode: whole-tree `Temporal/`
+  **12,568/13,272 (94.70%) → 12,608/13,272 (95.0%), +40 modes, zero
+  regressions**; `Temporal/ZonedDateTime/` **2,734/2,968 (92.1%) →
+  2,774/2,968 (93.5%)** (2,726 at this pass's own start, before the parallel
+  roundingMode fix below merged). Re-triaging `since`/`until` first showed the
+  earlier leap-month fix had already auto-closed 26 of the ~134-mode residual
+  (108 remained), as predicted.
+
+  1. **`since`'s `roundingMode` reflection — found independently, then
+     deduplicated.** The same `Ceil`<->`Floor`/`HalfCeil`<->`HalfFloor`
+     reflection bug (`temporal_date_difference` and
+     `temporal_zoned_date_time_difference` negate the finished result for
+     `since` without reflecting an asymmetric mode) was fixed in parallel on
+     the branch (`d1022b3`). This pass's own copy of the source change was
+     dropped in favour of the merged one (exactly one `effective_mode` per
+     site now: PlainDate/PlainDateTime, PlainYearMonth, ZonedDateTime); only
+     this pass's complementary test file
+     (`temporal_since_roundingmode_reflection_gap_closure.rs`, 8 tests,
+     including a sub-day `PlainDateTime` case and the `ZonedDateTime` ones)
+     was kept.
+  2. **`zoned_date_time::difference_zoned_date_time` is now Gecko's real
+     `DifferenceZonedDateTime` (`ZonedDateTime.cpp`) day-correction loop.**
+     The old version took `calendar_difference_date(date1, date2)` as-is and
+     measured the remainder from `date2` at `date1`'s own time-of-day, which
+     is only sign-consistent in the common case; otherwise the date part and
+     time remainder had opposite signs and `DurationRecord::try_new` threw
+     `RangeError: duration fields must have a common sign`. It now takes the
+     argument's own time-of-day (`time2`) and returns `Option`, tries
+     `date2` day-corrected by 0..=`1 + (sign > 0)` days until the remainder's
+     sign agrees, and decomposes `date1` -> that candidate. Fixes (all
+     verified by running the named fixtures): `built-ins/.../{since,until}/
+     {negative-epochnanoseconds,argument-at-limits}.js`, `since/
+     reversibility-of-differences.js`, `intl402/.../{since,until}/
+     {argument-at-limits,same-date-reverse-wallclock,dst-month-day-boundary}
+     .js` (22 modes). `DifferenceTemporalZonedDateTime` step 8 (equal epoch
+     nanoseconds -> blank duration, before any calendar bracketing) was also
+     missing; added, which makes `{since,until}/same-epoch-nanoseconds.js`
+     (a 660-call matrix) cheap. Those two fixtures still needed a bumped
+     instruction budget, added to `backend/bluejs/test262/run.py` as
+     `ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES` (1,000,000; 500,000 is
+     enough, measured) following the existing `TEMPORAL_CALENDAR_MATRIX_
+     FIXTURES` precedent. Tests: `temporal_zoned_date_time_difference_day_
+     correction.rs` (4).
+  3. **`Temporal.ZonedDateTime.prototype.toLocaleString` no longer reuses the
+     plain `Intl.DateTimeFormat` constructor path.** Ported from Gecko's
+     `TemporalObjectToLocaleString`/`GetDateTimeFormat`: a `timeZone` option
+     throws `TypeError` unconditionally (even when it equals the receiver's
+     zone); with none of the 9 ordinary component fields nor `dateStyle`/
+     `timeStyle` present, the defaults are year/month/day/hour/minute/second
+     numeric **plus `timeZoneName: "short"`** (`Defaults::ZonedDateTime`,
+     which no other Temporal type has). `era`/`timeZoneName` are excluded
+     from the "component present" gate, as in Gecko and
+     `Date.prototype.toLocaleString` — a lone `{ timeZoneName: "short" }`
+     still gets the full date+time set. Builds `DateTimeFormatOptions`
+     directly (the `date_to_locale_string` pattern); `date_time_format_options`
+     became `pub(super)`. Fixes 7 fixtures / 14 modes
+     (`intl402/.../toLocaleString/{options-timeZone,options-undefined,
+     locales-undefined,hourcycle,lone-options-accepted,dateStyle-timeStyle-
+     undefined,default-includes-time-and-time-zone-name}.js`). Tests:
+     `temporal_zoned_date_time_to_locale_string.rs` (5).
+
+  **Real lead found, not fixed (verified against Gecko source, not yet
+  against the fixtures):** `plain_date::calendar_difference_date_fixed_
+  months` hardcodes `MONTHS_PER_YEAR = 12`, and its own doc comment claims
+  that is right for `Coptic`/`Ethiopian`/`EthiopianAmeteAlem`. Gecko's
+  `MonthCode.h` defines `CalendarMonthsPerYear(id) = 13` whenever
+  `CalendarHasLeapMonths(id) || CalendarHasEpagomenalMonths(id)`, and
+  `CalendarHasEpagomenalMonths` is true for exactly those three calendars —
+  `DifferenceNonISODate` uses that per-calendar constant everywhere this
+  code uses `12` (the year-overshoot correction, the balance step, the
+  months-only flattening, and the final `BalanceYearMonth`). This is the
+  probable single root cause of the whole remaining Coptic/Ethiopic/
+  Ethioaa `since`/`until` cluster (`basic-*`, `wrapping-at-end-of-month-*`,
+  `era-boundary-ethiopic`, and the `intercalary-month-*` common-sign
+  `RangeError`s, all still failing after item 2 — ~24 `ZonedDateTime`
+  modes, more across `PlainDate`/`PlainDateTime`/`PlainYearMonth`). The fix
+  is a small `calendar_months_per_year(calendar)` helper replacing the
+  constant; it was not started in code in this pass.
+
+  **Deliberately left open** (194 `ZonedDateTime` modes remain: `until` 38,
+  `since` 36, `from` 32, `with` 16, `round` 8, `equals` 6, `withPlainTime` 6,
+  `add`/`subtract` 6+6, `compare` 4, `hoursInDay` 4, `withCalendar` 4,
+  `getTimeZoneTransition` 4, `toLocaleString` 4, rest 2 each): the
+  Coptic/Ethiopic lead above; `wrapping-at-end-of-month-hebrew.js`;
+  `order-of-operations.js` (the known field-read-order gap);
+  `roundingmode-half-boundary.js`, `round-cross-unit-boundary.js`,
+  `float64-representable-integer.js`, `argument-string-limits.js` (still
+  the unresolved representable-range boundary math),
+  `invalid-increments.js`/`roundingincrement-addition-out-of-range.js`
+  (`throws failed`, untriaged), `intl402/until/dst-rounding-result.js`.
+  `toLocaleString`'s remaining 4 modes: `calendar-mismatch.js` is the
+  already-documented unrelated `Set` iterator gap, and `offset-time-zones.js`
+  is a genuine `blueice-ecma402` formatting gap (a zero-offset fixed zone's
+  short name renders `GMT+0`, the fixture requires plain `GMT`), traced to
+  the vendored icu4x zone-name generation rather than this file's glue.
+
+  `cargo build --workspace --all-targets`, `cargo test --workspace
+  --no-fail-fast` and `cargo clippy --workspace --all-targets -- -D
+  warnings` all clean on the rebased tip (the previously-documented
+  `string_protocols.rs` flake did not fail on this run).
+
 ### Stage 3 — Test262-evidence closure and coverage
 
 - [x] Re-run both `intl402/Temporal/` and `built-ins/Temporal/` after each

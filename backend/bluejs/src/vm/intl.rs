@@ -2126,7 +2126,7 @@ impl Vm {
         Ok(Some(value.floor() as u8))
     }
 
-    fn date_time_format_options(
+    pub(super) fn date_time_format_options(
         &mut self,
         value: &Value,
     ) -> Result<blueice_ecma402::DateTimeFormatOptions, RuntimeError> {

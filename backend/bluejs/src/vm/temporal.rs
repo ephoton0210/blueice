@@ -2296,6 +2296,36 @@ impl Vm {
         self.alloc_temporal_value(value, false)
     }
 
+    /// `Temporal.ZonedDateTime.prototype.toLocaleString`'s own
+    /// `GetDateTimeFormat`/`TemporalObjectToLocaleString` shape (per the
+    /// Temporal-in-`Intl` proposal, ported from Gecko's
+    /// `DateTimeFormat.cpp`), which is genuinely different from the plain
+    /// `Intl.DateTimeFormat` constructor path every other
+    /// `temporal_*_to_locale_string` uses via `create_date_time_format`:
+    ///
+    /// 1. A `timeZone` option is rejected unconditionally, *even if its
+    ///    value agrees with the receiver's own zone* -- `options` must not
+    ///    have a `timeZone` property at all, per `CreateDateTimeFormat`'s own
+    ///    "steps 15-17" (`toLocaleStringTimeZone` present -> throw before
+    ///    ever coercing the option's value). `date_time_format_options`'s own
+    ///    `string_option` call already treats an absent-or-`undefined`
+    ///    property as `None`, so `time_zone.is_some()` here is exactly that
+    ///    check (`toLocaleString/options-timeZone.js`).
+    /// 2. Once no `dateStyle`/`timeStyle` and no individual date/time
+    ///    component was requested at all, the *default* field set is
+    ///    year/month/day/hour/minute/second (numeric) **plus**
+    ///    `timeZoneName: "short"` -- `GetDateTimeFormat`'s own
+    ///    `Defaults::ZonedDateTime` (distinct from `Defaults::All`, which
+    ///    every other Temporal type's own defaulting uses and which never
+    ///    adds a time zone name). This is the one piece a bare
+    ///    `Intl.DateTimeFormat` construction has no way to express, since it
+    ///    has no receiver-derived zone to name by default
+    ///    (`default-includes-time-and-time-zone-name.js`,
+    ///    `options-undefined.js`, `locales-undefined.js`,
+    ///    `dateStyle-timeStyle-undefined.js`, `hourcycle.js`). Any single
+    ///    explicit component (including a lone `timeZoneName`) still skips
+    ///    the whole default set, matching `Date.prototype.toLocaleString`'s
+    ///    own lone-option behavior (`lone-options-accepted.js`).
     pub(super) fn temporal_zoned_date_time_to_locale_string(
         &mut self,
         receiver: &Value,
@@ -2317,28 +2347,51 @@ impl Vm {
             .ok_or_else(|| RuntimeError::RangeError("invalid Temporal instant".into()))?;
         let stack_base = self.stack.len();
         let result = (|| {
-            let options_prototype = if native::argument(args, 1) == &Value::Undefined {
-                None
-            } else {
-                Some(self.coerce_object(native::argument(args, 1))?)
-            };
-            let options = self.with_roots(|heap| heap.alloc_object(options_prototype))?;
-            self.stack.push(Value::Object(options));
-            self.define_data(
-                options,
-                "timeZone",
-                Value::String(value.time_zone.into()),
-                true,
-                true,
-                true,
-            )?;
-            let formatter = self.create_date_time_format(
-                &Value::Undefined,
-                &[native::argument(args, 0).clone(), Value::Object(options)],
-                false,
-            )?;
-            self.stack.push(formatter.clone());
-            self.date_time_format_format(&formatter, &Value::Number(milliseconds))
+            let mut options = self.date_time_format_options(native::argument(args, 1))?;
+            if options.time_zone.is_some() {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.ZonedDateTime.prototype.toLocaleString does not accept a timeZone option"
+                        .into(),
+                ));
+            }
+            options.time_zone = Some(value.time_zone.to_string());
+            // `era` and `timeZoneName` are deliberately excluded from this
+            // gate (mirroring Gecko's own `anyPresent`/`requiredOptions`
+            // check, which the same two fields are excluded from): a lone
+            // `{ timeZoneName: "short" }` with no other component must still
+            // get the full date+time default set alongside it, not just the
+            // time zone name by itself (`toLocaleString/
+            // lone-options-accepted.js`'s own `timeZoneName` case, verified
+            // against `Date.prototype.toLocaleString`'s identical exclusion
+            // for the plain, non-Temporal `required=Any, defaults=All` case
+            // this mirrors).
+            let needs_defaults = options.date_style.is_none()
+                && options.time_style.is_none()
+                && options.weekday.is_none()
+                && options.year.is_none()
+                && options.month.is_none()
+                && options.day.is_none()
+                && options.day_period.is_none()
+                && options.hour.is_none()
+                && options.minute.is_none()
+                && options.second.is_none()
+                && options.fractional_second_digits.is_none();
+            if needs_defaults {
+                options.year = Some(blueice_ecma402::DateTimeWidth::Numeric);
+                options.month = Some(blueice_ecma402::DateTimeWidth::Numeric);
+                options.day = Some(blueice_ecma402::DateTimeWidth::Numeric);
+                options.hour = Some(blueice_ecma402::DateTimeWidth::Numeric);
+                options.minute = Some(blueice_ecma402::DateTimeWidth::Numeric);
+                options.second = Some(blueice_ecma402::DateTimeWidth::Numeric);
+                if options.time_zone_name.is_none() {
+                    options.time_zone_name = Some("short".to_string());
+                }
+            }
+            let locales = self.canonical_locales(native::argument(args, 0))?;
+            blueice_ecma402::DateTimeFormat::try_new(&locales, options)
+                .and_then(|format| format.format(milliseconds))
+                .map(|formatted| Value::String(formatted.into()))
+                .map_err(|error| RuntimeError::RangeError(error.to_string()))
         })();
         self.stack.truncate(stack_base);
         result
@@ -10042,6 +10095,7 @@ impl Vm {
         time1: epoch::CivilTime,
         other_epoch_ns: &BigInt,
         date2: epoch::CivilDate,
+        time2: epoch::CivilTime,
         largest_unit: rounding::TemporalUnit,
         smallest_unit: rounding::TemporalUnit,
         increment: i128,
@@ -10058,7 +10112,26 @@ impl Vm {
             let [h, m, s, ms, us, ns] =
                 rounded.balance_to(Self::temporal_unit_to_time_unit(largest_unit));
             Ok((0, 0, 0, 0, h, m, s, ms, us, ns))
+        } else if existing_epoch_ns == other_epoch_ns {
+            // `DifferenceTemporalZonedDateTime` step 8: once the epoch
+            // instants are already known equal, short-circuit to a blank
+            // duration *before* doing any calendar-day bracketing at all --
+            // not just an optimization, a real spec-ordering requirement
+            // (Gecko's own `ZonedDateTime.cpp` checks this ahead of calling
+            // `DifferenceZonedDateTimeWithRounding`). Confirmed as a real,
+            // previously-missing fast path via `built-ins/Temporal/
+            // ZonedDateTime/prototype/{since,until}/same-epoch-nanoseconds.js`,
+            // which iterates every `smallestUnit`/`largestUnit`/time-zone
+            // combination (660 calls) with the receiver and argument always
+            // at the *same* instant -- expensive enough, run unconditionally
+            // through the full calendar-bracketing path below, to exhaust
+            // the Test262 harness's own per-script instruction budget before
+            // this fast path existed.
+            Ok((0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
         } else {
+            let range_error = || {
+                RuntimeError::RangeError("Temporal.since/until is out of range".into())
+            };
             let date_unit_largest = Self::temporal_unit_to_date_unit(largest_unit);
             let (years, months, weeks, days, remainder_ns) =
                 zoned_date_time::difference_zoned_date_time(
@@ -10069,8 +10142,10 @@ impl Vm {
                     time1,
                     other_epoch_ns,
                     date2,
+                    time2,
                     date_unit_largest,
-                );
+                )
+                .ok_or_else(range_error)?;
             if smallest_unit >= rounding::TemporalUnit::Day {
                 let overall_sign = match other_epoch_ns - existing_epoch_ns {
                     diff if diff > BigInt::from(0) => 1_i64,
@@ -10078,11 +10153,6 @@ impl Vm {
                     _ => 0_i64,
                 };
                 let date_unit_smallest = Self::temporal_unit_to_date_unit(smallest_unit);
-                let range_error = || {
-                    RuntimeError::RangeError(
-                        "Temporal.since/until is out of range".into(),
-                    )
-                };
                 let nudge = zoned_date_time::nudge_to_calendar_unit(
                     zone,
                     calendar_kind,
@@ -10249,6 +10319,14 @@ impl Vm {
             ),
             &other.epoch_nanoseconds,
             (other.year, other.month, other.day),
+            (
+                other.hour,
+                other.minute,
+                other.second,
+                other.millisecond,
+                other.microsecond,
+                other.nanosecond,
+            ),
             largest_unit,
             smallest_unit,
             increment,
