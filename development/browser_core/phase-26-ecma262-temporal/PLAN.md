@@ -148,6 +148,73 @@ path+mode against the step before it:
   `calendar` value instead of throwing `TypeError`). Whole-tree `Temporal/`:
   **7,832/13,272 (59.0%)**, zero regressions anywhere else in `Temporal/` on
   the same full-tree run.
+- **`PlainDate`/`PlainYearMonth`/`PlainMonthDay`'s own `toLocaleString`
+  `required = DATE` gap — closed 2026-09-18.** Measured directly against
+  the pinned corpus first, not assumed: `PlainDate`'s/`PlainDateTime`'s own
+  `toLocaleString` were already wired to the real `Intl.DateTimeFormat`
+  bridge (`temporal_date_to_locale_string`, shared by both via runtime
+  `TemporalKind` dispatch, exactly like every other shared `PlainDate`/
+  `PlainDateTime` method), and so were `PlainYearMonth`'s/`PlainMonthDay`'s
+  own (`temporal_year_month_to_locale_string`/
+  `temporal_month_day_to_locale_string`) — none of the four was still
+  aliased to `toJSON`/ISO output the way `PlainTime`'s once was. The real
+  gap, found by running the actual fixtures rather than trusting the
+  existing wiring: `intl402/.../{PlainDate,PlainYearMonth,PlainMonthDay}/
+  prototype/toLocaleString/datestyle-and-timestyle.js` (6 modes) — a
+  `dateStyle`+`timeStyle` combination must throw `TypeError`
+  unconditionally for these three types, the exact mirror of
+  `temporal_plain_time_to_locale_string`'s own `required = TIME` rule
+  rejecting `dateStyle` unconditionally, just flipped to the date side.
+  `PlainDateTime`'s own `required` is `ANY` (confirmed by its own
+  `datestyle-and-timestyle.js`, which asserts the combination must *not*
+  throw), so the fix only had to touch `PlainDate` within the shared
+  `temporal_date_to_locale_string` function, gated on
+  `existing.kind == TemporalKind::PlainDate`, plus the two always-DATE
+  `PlainYearMonth`/`PlainMonthDay` functions unconditionally. Each checks
+  the already-constructed formatter's own resolved
+  `date_time_format_data(&formatter)?.options().time_style` (the exact
+  `pub(super) date_time_format_data` accessor `PlainTime`'s own fix already
+  made available) and throws before formatting if set — no change to
+  `temporal_format_options`/`date_time_format.rs` itself, since the
+  existing per-value overlap-after-pruning logic there already covered a
+  *bare* `timeStyle` with no `dateStyle` correctly; only the
+  `dateStyle`-present-alongside-`timeStyle` case needed this
+  `toLocaleString`-specific, unconditional rule. Pinned by a new test,
+  `temporal_date_year_month_month_day_to_locale_string_reject_time_style`
+  (`backend/bluejs/tests/intl.rs`), covering all three affected types plus
+  a `PlainDateTime` regression guard and the still-correct bare-`timeStyle`
+  case. Test262, diffed per path+mode (`--filter
+  "Temporal/PlainDate/,Temporal/PlainDateTime/,Temporal/PlainYearMonth/,
+  Temporal/PlainMonthDay/"`): 6,522/7,052 → **6,528/7,052**, +6, zero
+  regressions; a full `--filter "Temporal/,intl402/DateTimeFormat/"` run
+  (13,760 modes) confirms the same +6/0 regressions against a real
+  pre-change baseline of the same filter, not inferred from the narrower
+  one.
+  - **`calendar-mismatch.js` (8 modes, all four types) is deliberately left
+    open, and the earlier "the method appears unimplemented or
+    misregistered for `PlainMonthDay`" guess in this document's own
+    `PlainMonthDay` bullet above is corrected here: it is wrong.** Direct
+    JSON-line probing of the runtime (`new Set([...]).values()`) shows
+    `toLocaleString` itself runs correctly for every calendar-matching case
+    in the fixture; the failure is `calendars.values().next().value`
+    throwing `TypeError: value is not callable` before `toLocaleString` is
+    even reached a second time, because `Set.prototype.values`/`keys`/
+    `entries` (and the equivalent `Map.prototype` methods) are not
+    implemented at all — only `Set.prototype[Symbol.iterator]` exists.
+    This is a general BlueJS collection-iterator gap, unrelated to
+    Temporal or `toLocaleString` specifically, confirmed independently of
+    any Temporal type (`new Set(['a']).values()` alone throws the same
+    error with no Temporal object involved). Left open as out of this
+    pass's scope (a `Set`/`Map` builtin-surface fix, not a
+    `vm/temporal.rs`/`date_time_format.rs` one) — flagged precisely so a
+    future pass does not re-diagnose `toLocaleString` itself as the
+    problem.
+  - `cargo build --workspace --all-targets` / `cargo test --workspace` /
+    `cargo clippy --workspace --all-targets -- -D warnings` all clean on
+    this pass's own commit (only the pre-existing, unrelated
+    `string_protocols.rs::observable_conversion_order_and_gc_pressure`
+    flake, confirmed to reproduce identically on the pre-change commit
+    too).
 
 This phase exists because completing Phase 25 (ECMA-402) surfaced a real gap
 in `intl402/`'s
@@ -3135,12 +3202,17 @@ once). One owner:
          same class as the already-documented
          `string_protocols.rs::observable_conversion_order_and_gc_pressure`
          flake.
-      3. **`prototype/toLocaleString`** (2 fixtures, 4 modes):
-         `calendar-mismatch.js` reports `TypeError: value is not callable`
-         (the method appears unimplemented or misregistered for
-         `PlainMonthDay`) and `datestyle-and-timestyle.js` fails an expected
-         `throws` assertion; `toLocaleString` was out of scope for this
-         pass.
+      3. **`prototype/toLocaleString`** (2 fixtures, 4 modes) — out of
+         scope for this pass; **both since closed or corrected, see the
+         dedicated `toLocaleString` bullet earlier in this document
+         (2026-09-18)**: `datestyle-and-timestyle.js` is fixed;
+         `calendar-mismatch.js`'s `TypeError: value is not callable` turned
+         out **not** to be `toLocaleString` being "unimplemented or
+         misregistered" as guessed here originally -- it is a general
+         `Set.prototype.values`/`keys`/`entries` gap the fixture's own test
+         body happens to hit, confirmed unrelated to `PlainMonthDay` or
+         `toLocaleString` at all and left open under that later bullet
+         instead.
 
       **Verification**: `cargo build --workspace --all-targets` / `cargo
       clippy --workspace --all-targets -- -D warnings` both clean (genuinely

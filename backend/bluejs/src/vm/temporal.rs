@@ -4690,12 +4690,27 @@ impl Vm {
         Ok(Value::String(result.into()))
     }
 
+    /// `Temporal.PlainDate.prototype.toLocaleString`/
+    /// `Temporal.PlainDateTime.prototype.toLocaleString` share this adapter
+    /// (the same runtime-`TemporalKind`-dispatch pattern every other shared
+    /// `PlainDate`/`PlainDateTime` method here uses), but `CreateDateTimeFormat`'s
+    /// `required` parameter differs between the two: `PlainDate`'s own is
+    /// DATE, which rejects any `timeStyle` option unconditionally -- even
+    /// alongside a `dateStyle` that would otherwise make the value visible
+    /// (`intl402/.../PlainDate/prototype/toLocaleString/
+    /// datestyle-and-timestyle.js`) -- while `PlainDateTime`'s own is ANY, so
+    /// `dateStyle`+`timeStyle` together are legal and must still format
+    /// (`intl402/.../PlainDateTime/prototype/toLocaleString/
+    /// datestyle-and-timestyle.js`). This is the exact mirror of
+    /// `temporal_plain_time_to_locale_string`'s own `required = TIME` check
+    /// rejecting `dateStyle` unconditionally, flipped to the date side and
+    /// scoped to `PlainDate` only.
     pub(super) fn temporal_date_to_locale_string(
         &mut self,
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        self.temporal_date_receiver(receiver)?;
+        let existing = self.temporal_date_receiver(receiver)?;
         let stack_base = self.stack.len();
         let result = (|| {
             let formatter = self.create_date_time_format(
@@ -4707,6 +4722,14 @@ impl Vm {
                 false,
             )?;
             self.stack.push(formatter.clone());
+            if existing.kind == TemporalKind::PlainDate
+                && self.date_time_format_data(&formatter)?.options().time_style.is_some()
+            {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainDate.prototype.toLocaleString does not accept a timeStyle option"
+                        .into(),
+                ));
+            }
             self.date_time_format_format(&formatter, receiver)
         })();
         self.stack.truncate(stack_base);
@@ -8573,6 +8596,12 @@ impl Vm {
         Ok(Value::String(text.into()))
     }
 
+    /// `CreateDateTimeFormat`'s `required` parameter here is DATE, the same
+    /// as `PlainDate`'s own: a `timeStyle` option is rejected unconditionally,
+    /// even alongside `dateStyle`
+    /// (`intl402/.../PlainYearMonth/prototype/toLocaleString/
+    /// datestyle-and-timestyle.js`) -- the mirror of
+    /// `temporal_plain_time_to_locale_string`'s own `required = TIME` check.
     pub(super) fn temporal_year_month_to_locale_string(
         &mut self,
         receiver: &Value,
@@ -8590,12 +8619,23 @@ impl Vm {
                 false,
             )?;
             self.stack.push(formatter.clone());
+            if self.date_time_format_data(&formatter)?.options().time_style.is_some() {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainYearMonth.prototype.toLocaleString does not accept a timeStyle option"
+                        .into(),
+                ));
+            }
             self.date_time_format_format(&formatter, receiver)
         })();
         self.stack.truncate(stack_base);
         result
     }
 
+    /// `CreateDateTimeFormat`'s `required` parameter here is DATE, the same
+    /// as `PlainDate`'s own -- see `temporal_year_month_to_locale_string`'s
+    /// own doc comment
+    /// (`intl402/.../PlainMonthDay/prototype/toLocaleString/
+    /// datestyle-and-timestyle.js`).
     pub(super) fn temporal_month_day_to_locale_string(
         &mut self,
         receiver: &Value,
@@ -8613,6 +8653,12 @@ impl Vm {
                 false,
             )?;
             self.stack.push(formatter.clone());
+            if self.date_time_format_data(&formatter)?.options().time_style.is_some() {
+                return Err(RuntimeError::TypeError(
+                    "Temporal.PlainMonthDay.prototype.toLocaleString does not accept a timeStyle option"
+                        .into(),
+                ));
+            }
             self.date_time_format_format(&formatter, receiver)
         })();
         self.stack.truncate(stack_base);
