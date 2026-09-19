@@ -73,6 +73,12 @@ jobs:
         if: matrix.family == 'suse'
         run: |
           zypper --non-interactive install --no-recommends git-core gcc gcc-c++ make tar gzip xz zstd diffutils timezone findutils curl
+          # These images declare no PATH of their own, so the first entry a
+          # later step adds to GITHUB_PATH (rustup's) would become the whole
+          # PATH and `bash` would no longer resolve. Pin the default one.
+          for dir in /usr/local/sbin /usr/local/bin /usr/sbin /usr/bin /sbin /bin; do
+            echo "$dir" >> "$GITHUB_PATH"
+          done
       - uses: actions/checkout@v4
       # Compile-time fixtures in BlueJS integration tests must come from the
       # same immutable Test262 revision on every operating system.
@@ -92,11 +98,13 @@ jobs:
           repository: unicode-org/cldr-json
           ref: 26a79cb42bfcc90def764102aa2af126d9ef3108
           path: development/browser_core/reference/cldr-json
+          # The packages live under the repository's own `cldr-json/`
+          # directory, which is also the root the generators are given.
           sparse-checkout: |
-            cldr-bcp47/bcp47
-            cldr-core
-            cldr-localenames-full/main
-            cldr-dates-full/main
+            cldr-json/cldr-bcp47/bcp47
+            cldr-json/cldr-core
+            cldr-json/cldr-localenames-full/main
+            cldr-json/cldr-dates-full/main
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -105,27 +113,31 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      # Compare decompressed payloads, not files: the gzip bytes depend on the
+      # zlib build bundled with a given Node release, while the table inside
+      # is what the pinned CLDR revision actually determines.
       - name: Verify pinned CLDR provider is reproducible
         shell: bash
         run: |
-          node backend/ecma402/tools/generate_cldr_display_names.mjs \
-            development/browser_core/reference/cldr-json \
-            development/browser_core/reference/cldr-json/display_names_data.verify.b64
-          cmp -s backend/ecma402/src/locale_data/display_names_data.b64 \
-            development/browser_core/reference/cldr-json/display_names_data.verify.b64
-          node backend/ecma402/tools/generate_cldr_date_time_formats.mjs \
-            development/browser_core/reference/cldr-json \
-            development/browser_core/reference/cldr-json/date_time_formats_data.verify.b64 \
-            development/browser_core/reference/cldr-json/date_time_append_items_data.verify.b64
-          cmp -s backend/ecma402/src/locale_data/date_time_formats_data.b64 \
-            development/browser_core/reference/cldr-json/date_time_formats_data.verify.b64
-          cmp -s backend/ecma402/src/locale_data/date_time_append_items_data.b64 \
-            development/browser_core/reference/cldr-json/date_time_append_items_data.verify.b64
-          node backend/ecma402/tools/generate_cldr_locale_information.mjs \
-            development/browser_core/reference/cldr-json \
-            development/browser_core/reference/cldr-json/locale_information_data.verify.b64
-          cmp -s backend/ecma402/src/locale_data/locale_information_data.b64 \
-            development/browser_core/reference/cldr-json/locale_information_data.verify.b64
+          cldr=development/browser_core/reference/cldr-json
+          tools=backend/ecma402/tools
+          data=backend/ecma402/src/locale_data
+          node $tools/generate_cldr_display_names.mjs \
+            $cldr/cldr-json $cldr/display_names_data.verify.b64
+          node $tools/compare_cldr_payloads.mjs \
+            $data/display_names_data.b64 $cldr/display_names_data.verify.b64
+          node $tools/generate_cldr_date_time_formats.mjs \
+            $cldr/cldr-json \
+            $cldr/date_time_formats_data.verify.b64 \
+            $cldr/date_time_append_items_data.verify.b64
+          node $tools/compare_cldr_payloads.mjs \
+            $data/date_time_formats_data.b64 $cldr/date_time_formats_data.verify.b64
+          node $tools/compare_cldr_payloads.mjs \
+            $data/date_time_append_items_data.b64 $cldr/date_time_append_items_data.verify.b64
+          node $tools/generate_cldr_locale_information.mjs \
+            $cldr/cldr-json $cldr/locale_information_data.verify.b64
+          node $tools/compare_cldr_payloads.mjs \
+            $data/locale_information_data.b64 $cldr/locale_information_data.verify.b64
       # Keyed per matrix leg: the distro legs share one runner OS/arch, and
       # a `target/` (build scripts, C objects) built against one distro's
       # glibc must never be restored into another's.

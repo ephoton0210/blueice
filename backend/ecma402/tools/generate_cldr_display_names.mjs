@@ -26,7 +26,10 @@ const CLDR_JSON_REVISION = '26a79cb42bfcc90def764102aa2af126d9ef3108';
 const EXPECTED = Object.freeze({
   locales: 766,
   rows: 709260,
-  sha256: '8bd6a4728337428a01b1c4f95cf4c771681b5002a9851976ac72819276bb45a2',
+  // SHA-256 of the uncompressed table, not of the gzip/base64 output: gzip
+  // bytes depend on the zlib build bundled with a given Node release, so
+  // pinning them made the check fail on a Node that produced identical rows.
+  sha256: 'bbe58dfb85a120bee510173f9e9c665d8e29281b92fbbe776c1a756d74f648cf',
 });
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const defaultOutput = path.resolve(scriptDirectory, '../src/locale_data/display_names_data.b64');
@@ -170,10 +173,13 @@ if (rows.size !== EXPECTED.rows || localeCount !== EXPECTED.locales) {
 
 const compressed = zlib.gzipSync(Buffer.from(table), { mtime: 0 });
 const encoded = compressed.toString('base64').replace(/.{1,76}/g, '$&\n');
-const digest = crypto.createHash('sha256').update(encoded).digest('hex');
-if (digest !== EXPECTED.sha256) {
-  throw new Error(`non-reproducible CLDR output: expected ${EXPECTED.sha256}, received ${digest}`);
+const tableDigest = crypto.createHash('sha256').update(table).digest('hex');
+if (tableDigest !== EXPECTED.sha256) {
+  throw new Error(
+    `non-reproducible CLDR table: expected ${EXPECTED.sha256}, received ${tableDigest}`,
+  );
 }
+const digest = crypto.createHash('sha256').update(encoded).digest('hex');
 fs.writeFileSync(path.resolve(output), encoded);
 console.log(
   JSON.stringify({
@@ -183,6 +189,7 @@ console.log(
     tsvBytes: Buffer.byteLength(table),
     gzipBytes: compressed.length,
     base64Bytes: Buffer.byteLength(encoded),
+    tableSha256: tableDigest,
     sha256: digest,
   }),
 );
