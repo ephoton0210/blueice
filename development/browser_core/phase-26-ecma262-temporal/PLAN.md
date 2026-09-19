@@ -2867,6 +2867,145 @@ once). One owner:
       flake this document's own launch instructions list as known and out
       of scope.
 
+- [x] **2026-09-18 follow-up: `PlainMonthDay` property-bag gap-closure pass
+      (`from`/`with`/`toPlainDate`/the numeric constructor's `calendar`
+      argument), TDD'd one Test262 fixture at a time.** Seven real bugs
+      found and fixed, all in `vm/temporal.rs`/`vm/temporal/plain_month_day.rs`:
+      1. **`Temporal.PlainMonthDay.prototype.toPlainDate` never read
+         `era`/`eraYear` at all**, unlike `from`/`with`/`equals` (which
+         already resolve era-supplied years via `plain_month_day.rs`'s
+         `MonthDayFields::era`/`era_year` -> `month_day_from_fields`, so
+         `equals`'s own `infinity-throws-rangeerror.js` was passing before
+         this pass even started). `toPlainDate` builds its own field
+         resolution inline rather than going through that shared helper, so
+         it needed the identical era/eraYear wiring ported in separately.
+         While porting it, re-read the actual spec text
+         (`plainmonthday.html`,
+         `sec-temporal.plainmonthday.prototype.toplaindate`) rather than
+         trusting this function's own pre-existing doc comment: step 6's
+         `PrepareCalendarFields(calendar, item, « year », « », « »)` has an
+         **empty** required-field list -- `year` was never literally
+         required here, so `era`+`eraYear` can resolve the date with *no*
+         `year` property present at all. Confirmed directly against
+         Test262's own `toPlainDate/infinity-throws-rangeerror.js`, which
+         calls `instance.toPlainDate({ era: "ad", eraYear: Infinity })` with
+         no `year` at all and expects `eraYear`'s own out-of-range value to
+         be what throws, not a missing-`year` `TypeError`.
+      2. **`from`'s `month` field had an artificially narrow
+         `1..=99` bound**, throwing `RangeError` before the calendar's own
+         `overflow` regulation ever ran (`ToPositiveIntegerWithTruncation`
+         has no upper bound at all -- the same fix already applied to this
+         function's `day`/`year` fields, which `month` was inconsistently
+         left out of). A second bug found while fixing the first: the
+         widened `i32` month was truncated to `u8` with a bare `as u8`
+         (wraparound, not saturation) before being compared against 12.
+      3. **The string branch of `ToTemporalMonthDay` validated `options`
+         before parsing the source string**, so a malformed string plus a
+         wrong-type `options` argument reported `TypeError` instead of the
+         `RangeError` the string's own parse failure must produce first.
+      4. **`from`'s `monthCode`/`month` handling had three compounded bugs**
+         on the `iso8601` fast path: a `monthCode` supplied alongside a
+         numeric `month` was silently ignored instead of being
+         syntax-checked and cross-checked for agreement; a well-formed but
+         out-of-range or leap-suffixed `monthCode` (`"M19"`, `"M13L"`) was
+         resolved with a naive `strip_prefix('M')?.parse()` that silently
+         *constrained* the bare out-of-range ones instead of always
+         rejecting (suitability is a distinct check from a numeric field's
+         own constrain/reject regulation); malformed syntax (`"m1"`, `"L99M"`)
+         wasn't checked at all. Fixed by adding
+         `plain_month_day::is_well_formed_month_code` (pure grammar) and
+         `iso_month_code_ordinal` (`iso8601`'s own suitability rule) as
+         separate, explicitly-ordered checks.
+      5. **The raw numeric constructor's positional `calendar` argument
+         (`Temporal.PlainMonthDay`/`PlainDate`/`PlainDateTime`/
+         `PlainYearMonth`/`ZonedDateTime` all share `Vm::temporal_calendar`)
+         `ToString`-coerced any value** instead of requiring a `String`
+         outright, so `new Temporal.PlainMonthDay(12, 15, null, 1972)`
+         stringified `null` to `"null"` and reported `RangeError` (unknown
+         calendar id) instead of the spec's immediate `TypeError`.
+      6. **`toPlainDate`'s `year` field had the same narrow
+         `-9_999..=9_999` bound fix 2 already covered for `month`/`day`
+         elsewhere**, plus the `iso8601` calendar path routed through
+         `icu_calendar::Date::try_from_fields`, whose internal
+         `CONSTRUCTOR_YEAR_RANGE` (`-9999..=9999`) is far narrower than
+         Temporal's real `-271821-04-19`..`+275760-09-13` range -- the same
+         "calendar year-range getter" bug class Stage 0's audit already
+         fixed elsewhere, not yet ported to this specific merge. Fixed with
+         a dedicated `iso8601` fast path using `plain_date::regulate_iso_date`
+         (pure Rust arithmetic, no such limit) plus a real
+         `epoch::is_date_within_limits` check on the resolved date.
+      7. **`with()` had the `with`-shaped counterpart of bugs 4 and 3**: a
+         conflicting `monthCode`/`month` pair went uncross-checked, and
+         `options` was validated before the property-bag fields were read
+         (`PrepareCalendarFields` runs strictly before `GetOptionsObject` in
+         the real algorithm), so a wrong-type `options` argument could mask
+         an already-invalid field's own `RangeError`.
+
+      **Test262 evidence** (`--filter Temporal/PlainMonthDay`, 578 scheduled
+      modes both before and after -- identical corpus/filter scope): **514
+      -> 542 passing (88.9% -> 93.8%)**, verified by exact
+      path+mode key comparison against the pre-change code (`git show
+      HEAD:...` swapped in temporarily, corpus/adapter rebuilt, filter
+      re-run, files restored) rather than a bare pass-count delta: **zero
+      regressions**, 28 modes (14 fixtures, both `sloppy`/`strict`) newly
+      passing --
+      `calendar-wrong-type.js`,
+      `from/calendarresolvefields-error-ordering.js`,
+      `from/monthcode-invalid.js`,
+      `from/observable-get-overflow-argument-string-invalid.js`,
+      `from/options-wrong-type.js`, `from/overflow.js`,
+      `prototype/toPlainDate/limits.js`, `prototype/with/basic.js`,
+      `prototype/with/options-wrong-type.js`,
+      `intl402/.../chinese-dangi-leap-month-with-year-from-plaindate-overflow-reject.js`,
+      `intl402/.../dont-calculate-month-info-for-out-of-range-year.js`,
+      `intl402/.../fields-underspecified.js`,
+      `intl402/.../prototype/equals/infinity-throws-rangeerror.js`,
+      `intl402/.../prototype/toPlainDate/infinity-throws-rangeerror.js`.
+
+      **Deliberately left open (unresolved), confirmed still failing after
+      this pass** -- 36 modes across 18 fixtures, three distinct classes:
+      1. **Non-ISO calendar-specific field/leap-month resolution beyond
+         simple era/eraYear substitution** (11 fixtures, 22 modes):
+         `from/calendarresolvefields-error-ordering-{chinese,hebrew,
+         islamic}.js`, `from/{chinese,dangi}-calendar-dates.js`,
+         `from/chinese-dangi-leap-month-with-year-from-options-bag{,
+         -overflow-reject}.js`, `from/islamic{,-rgsa}.js`,
+         `from/reference-date-noniso-calendar.js`,
+         `from/reference-year-1972.js`,
+         `prototype/monthCode/{chinese,dangi}-calendar-dates.js` -- this is
+         the same "`PlainMonthDay`'s own calendar-field support simply not
+         existing yet" gap this document has documented since the original
+         Stage 2 slice; unchanged by this pass, which deliberately scoped
+         only the property-bag validation/ordering bugs above.
+      2. **`order-of-operations.js`, both `from/` and `prototype/with/`** (2
+         fixtures, 4 modes): fails with a `resource_error`
+         (`unknown or collected BlueJS object`), not a `Test262Error` --
+         these fixtures hold a reference to an observed-property-access
+         object across the call and something in this engine's GC/observable-
+         conversion-order tracking collects it prematurely. Not investigated
+         in this pass; plausibly related to (but not confirmed to be) the
+         same class as the already-documented
+         `string_protocols.rs::observable_conversion_order_and_gc_pressure`
+         flake.
+      3. **`prototype/toLocaleString`** (2 fixtures, 4 modes):
+         `calendar-mismatch.js` reports `TypeError: value is not callable`
+         (the method appears unimplemented or misregistered for
+         `PlainMonthDay`) and `datestyle-and-timestyle.js` fails an expected
+         `throws` assertion; `toLocaleString` was out of scope for this
+         pass.
+
+      **Verification**: `cargo build --workspace --all-targets` / `cargo
+      clippy --workspace --all-targets -- -D warnings` both clean (genuinely
+      -- checked via a separate non-piped exit code, after an earlier false
+      "clean" reading turned out to be `tail`'s exit code masking real
+      `cargo` failures caused by an unrelated environment issue: the
+      `development/browser_core/reference/test262` symlink's `/tmp` target
+      had been swept mid-session, since re-fetched). `cargo test --workspace
+      --no-fail-fast`: 1,862 passed, 1 failed -- the same pre-existing
+      `string_protocols.rs::observable_conversion_order_and_gc_pressure`
+      heap-budget flake, confirmed to reproduce identically byte-for-byte on
+      the pre-change code (not a regression introduced by this pass).
+
 ### Stage 3 — Test262-evidence closure and coverage
 
 - [x] Re-run both `intl402/Temporal/` and `built-ins/Temporal/` after each
