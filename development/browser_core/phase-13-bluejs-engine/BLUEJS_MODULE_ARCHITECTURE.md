@@ -1,40 +1,23 @@
 # BlueJS module boundaries
 
-This refactor keeps the Phase 13 engine extensible as P0.4, P1.3, and P1.5
-continue. It follows the dependency order in
-[the Test262 architecture backlog](TEST262_ARCHITECTURE.md): object internal
-methods are shared infrastructure; suspension and binary data build on heap
-lifetime and internal slots.
+This document records the current ownership boundaries in `backend/bluejs`. It is an architecture guide, not a historical line-count log; exact current counts and the repository-wide source-size policy live in the [source-size audit](../SOURCE_SIZE_AUDIT.md).
 
-## Audit result
+## Current audit (2026-09-20)
 
-The audit considered every Rust source file over 2,000 lines in `backend/bluejs/src`.
-The large files were not divided by line count. Each split follows a runtime or
-front-end ownership boundary, and the public crate API remains at its existing
-entry points.
-
-| Root module | Before | After | Extracted responsibilities |
-| --- | ---: | ---: | --- |
-| `parser.rs` | 4,882 | 580 | Module items, statements, patterns, function grammar, expressions, parser tests |
-| `compiler.rs` | 5,031 | 1,595 | Statement lowering, expression lowering, function/class lowering, private-name early validation |
-| `heap.rs` | 3,602 | 1,911 | Binary-data slots, object storage/descriptors, lifecycle and GC, heap tests |
-| `vm.rs` | 7,152 | 1,736 | Static/dynamic modules, bytecode interpreter, property operations, script/eval execution, runtime operations |
-| `vm/builtins.rs` | 8,082 | 1,916 | Objects/Proxy, promises, generators, binary data, iterator/closure execution, globals, native dispatch, Array and Math |
-
-No Rust source file in `backend/bluejs/src` exceeds 2,000 lines after the split.
-The largest remaining leaf is `vm/builtins.rs` at 1,916 lines; additions to it
-must be assigned to an existing builtin family or a new family module before it
-grows beyond the audit limit.
+All Rust source and integration-test files in `backend/bluejs` are at or below the repository's 2,200-line maintenance target. The largest are `vm/modules.rs` (2,140), `vm.rs` (2,098), `vm/temporal/iso.rs` (2,067), `tests/intl.rs` (2,067), and `vm/builtins/promises.rs` (2,003). These are reviewed files, not blanket refactor candidates: each has a cohesive owner and existing child-module seams. New independently evolving behavior must enter a child at that seam before expanding its parent past the target.
 
 ## Ownership and dependency direction
 
-| Area | Root owns | Child modules own |
+| Area | Parent owns | Child modules own |
 | --- | --- | --- |
-| Parser | Cursor state, diagnostics, public `parse_module` export | Grammar productions grouped by ModuleItem, statement, pattern, function, and expression ownership |
-| Compiler | Compilation context, bytecode assembly, public compilation entry points | AST lowering for statements, expressions, functions/classes, and private-name early-error validation |
-| Heap | Object records, allocation-facing constructors, shared types and public Heap API | `binary_data`: ArrayBuffer/DataView/TypedArray slots and numeric-index conversion; `object_storage`: descriptors, property storage, array length and key order; `lifecycle`: prototype/extensibility plus write barriers and collection |
-| VM | Realm state, public execution/module APIs, errors, limits and common types | `modules`: linking/import/TLA; `interpreter`: opcode dispatch; `properties`: receiver-aware property/reference operations; `execution`: script declarations, scopes and eval; `operations`: coercion, string/numeric/comparison and `with` operations |
-| Builtins | Cross-family helpers and builtin installation surface | `object`, `promises`, `generators`, `binary_data`, `execution`, `native_dispatch`, `globals`, `arrays`, and `math` each own one builtin family or dispatch concern |
+| Parser | Cursor state, diagnostics, public parse entry points | `module_items`, `module`, `statements`, `patterns`, `functions`, `expressions`, and parser-focused tests |
+| Compiler | Compilation context, bytecode assembly, public compilation entry points | Statement, expression, function, and private-name lowering |
+| Heap | Allocation-facing API, shared object references and common heap types | Binary-data slots, core storage, exotic behavior, lifecycle/GC, object storage, and heap tests |
+| VM shell | Realm state, public execution and module APIs, limits, errors and common value plumbing | Module linking, interpretation, script/eval execution, properties, coercion/operations, regular expressions, JSON, functions, and host/test support |
+| Built-ins | Installation surface and cross-family helpers | Object, arrays, promises, generators, binary data, typed arrays, collections, number/math/global/dynamic/resource-management families, execution, and native dispatch |
+| Internationalization | VM-facing intrinsic installation and shared dispatch | Collator/Locale, DateTimeFormat, list/duration, number options/runtime, plural/segmenter, and shared helpers |
+| Temporal | Public intrinsic wiring and shared Temporal entry points | Calendar, ISO values, conversion, dates, epoch/instant, plain value types, duration concerns, rounding, time-zone concerns, year-month, and zoned-date-time behavior |
+| Test262 host | Public host adapter entry point | Cases, descriptors, foreign-object handling, harness support, and agent support |
 
 The intended dependency direction is:
 
@@ -50,75 +33,23 @@ flowchart LR
     Modules --> VM
     Interpreter --> VM
     Properties --> Heap
+    Temporal --> VM
+    Intl --> VM
 ```
 
-`Heap` never calls into the VM, and parser modules do not depend on compiler
-implementation modules. That keeps GC and property contracts reusable by Proxy,
-classes and views without creating execution-layer cycles.
+`Heap` does not call into the VM. Parser modules do not depend on compiler implementation modules. Feature modules consume shared heap/property contracts instead of recreating descriptor, receiver, GC-root, or internal-slot logic.
 
-## Internal API rules
+## Placement rules
 
-Public APIs were preserved; this refactor did not promote internal operations to
-crate-wide APIs. A child of `parser`, `compiler`, `heap`, or `vm` uses
-`pub(super)` only when its parent or sibling needs the inherent method. Nested
-`vm::builtins::*` modules use `pub(in super::super)` only for methods that must
-be invoked by another VM subsystem such as the interpreter or error conversion.
-Existing `pub` and `pub(crate)` methods retain their former visibility.
+- A grammar production belongs in its parser production module; its lowering belongs in the compiler module that owns the corresponding AST category.
+- An ECMAScript internal object operation goes through heap storage or VM property operations. Proxy, class and built-in code must not duplicate those contracts.
+- ArrayBuffer/view storage belongs in `heap/binary_data.rs`; JavaScript-visible constructors and methods belong in `vm/builtins/binary_data.rs` or `typed_arrays.rs`.
+- Promise scheduling and generator request ownership belong to their built-in family; opcode resumption remains an interpreter/execution concern.
+- An ECMA-402 service is added beside its existing VM-facing service module; locale provider data stays in `blueice-ecma402`, not in VM dispatch code.
+- A Temporal change belongs to the type or operation module that owns its observable behavior. Do not recreate a common `temporal.rs` implementation for a type-specific concern.
 
-New implementation work belongs at the narrowest owner:
+## Ongoing review rule
 
-- A grammar production goes in a parser production module; its bytecode lowering
-  goes in the compiler module that owns the matching AST category.
-- An ECMAScript internal object operation goes through `heap/object_storage.rs`
-  or `vm/properties.rs`; Proxy, class, and builtin code must not duplicate
-  descriptor or receiver handling.
-- Heap-visible ArrayBuffer/View data and numeric-index semantics go in
-  `heap/binary_data.rs`; builtin constructors and methods go in
-  `vm/builtins/binary_data.rs`.
-- Suspension state transitions, queue ownership, and promise settlement go in
-  the generator/promise builtin modules; bytecode resumption stays in the VM
-  interpreter/execution modules.
-- A new standard-library family gets its own `vm/builtins/<family>.rs` module
-  once it has a distinct constructor/prototype or dispatch contract.
+When an edited Rust file reaches 1,200 lines or gains a distinct responsibility, review it against the [source-size audit](../SOURCE_SIZE_AUDIT.md). Before it would exceed 2,200 lines, extract the smallest cohesive child module, retain the parent public API, and add focused public-boundary regression coverage. Localized corrections in a cohesive module do not require a cosmetic split.
 
-## Phase impact
-
-P1.3's rooted generator frames, async-generator request queues and Promise job
-handling now live in separate generator, promise, and execution files. This
-makes the invariant visible: queue and continuation ownership is heap-backed,
-while opcode resumption remains an interpreter concern.
-
-P0.4's descriptor, `[[Get]]`/`[[Set]]`, `[[OwnPropertyKeys]]`, extensibility,
-and prototype operations now have explicit heap/VM boundaries. Proxy and class
-work must consume those boundaries instead of installing parallel object
-semantics.
-
-P1.5's fixed-length ArrayBuffer, detach state, DataView and TypedArray storage
-is separated from its JavaScript-facing constructors. Resize, SharedArrayBuffer
-and Atomics can extend the binary-data layers without changing ordinary object
-storage or promise/generator code.
-
-## Ongoing audit rule
-
-Before a BlueJS Rust source module exceeds 2,000 lines, review its methods by
-runtime responsibility, add a child module at a dependency boundary, and keep
-focused regressions with the moved behavior. Do not split a file only by
-contiguous line range. After a boundary change, run the focused tests for that
-area plus the BlueJS crate suite, formatting, Clippy with warnings denied, and
-a whitespace diff check.
-
-## Validation
-
-The refactor was validated with:
-
-- `cargo test -p blueice-bluejs` (all BlueJS unit and integration test targets pass)
-- `cargo clippy -p blueice-bluejs --all-targets -- -D warnings`
-- `cargo fmt --all -- --check`
-- `git diff --check`
-
-The host adapter regression now expects an unbound optional-chain base to reach
-runtime as `ReferenceError`, rather than retaining the obsolete `unsupported`
-classification. The compiler regression for an explicit derived constructor
-with a conditional direct `super()` now expects compilation to succeed. Unicode
-case/normalization tests retain their ECMAScript result assertions but no longer
-pin Rust and `unicode-normalization` to an identical Unicode data release.
+For current executable conformance evidence, use the [Ubuntu Test262 report](TEST262_LINUX_REPORT.md) and the [architecture-first backlog](TEST262_ARCHITECTURE.md), rather than inferring implementation status from file size.

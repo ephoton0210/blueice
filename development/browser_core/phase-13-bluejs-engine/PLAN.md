@@ -2,31 +2,17 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress (execution model, GC, event-loop shape, process placement, and MVP language scope all decided; tokenizer/parser, object/array heap with two-generation GC, and AST→bytecode→VM execution are implemented for the slices below — see `backend/bluejs`. The VM executes primitive expressions, bindings, control flow, ordinary objects and sparse array literals/indexing/length operations, with instruction/string limits and opt-in Node.js differential tests. Functions/closures, array methods/spread and the rest of the MVP execution semantics, event loop, and the `blueice_ipc::script` wiring's `core`-side implementation remain.)
+**Status**: In progress — BlueJS has a modular parser/compiler/VM, generational heap, standard-library and Temporal/Intl implementation. The current complete Ubuntu Test262 inventory passes 86,304 / 91,820 ECMA-262 Core modes (93.993%) and 6,364 / 6,714 ECMA-402 modes (94.787%); it is not a full-conformance claim. The classified remaining failures, page-script integration and cross-platform verification are tracked below.
 
 ## Ubuntu verification scope (2026-09-19)
 
-The only available host for this update is Ubuntu 24.04.3 LTS under WSL2
-(`x86_64-unknown-linux-gnu`, Rust/Cargo 1.95.0), not Ubuntu 24.04.4. It
-successfully built all workspace targets and ran focused ECMA-402/BlueJS
-regressions; the exact commands and outcomes are recorded in
-[the Ubuntu Test262 report](TEST262_LINUX_REPORT.md). The unfiltered Test262
-inventory was also rerun: 96,203 / 102,926 modes pass (93.468%), including
-86,304 / 91,820 ECMA-262 Core modes (93.993%) and 6,364 / 6,714 ECMA-402
-modes (94.787%). Coverage figures elsewhere remain separately dated because
-no fresh coverage run occurred in this update.
+The only available host for this update is Ubuntu 24.04.3 LTS under WSL2 (`x86_64-unknown-linux-gnu`, Rust/Cargo 1.95.0), not Ubuntu 24.04.4. It successfully built all workspace targets and ran focused ECMA-402/BlueJS regressions; the exact commands and outcomes are recorded in [the Ubuntu Test262 report](TEST262_LINUX_REPORT.md). The unfiltered Test262 inventory was also rerun: 96,203 / 102,926 modes pass (93.468%), including 86,304 / 91,820 ECMA-262 Core modes (93.993%) and 6,364 / 6,714 ECMA-402 modes (94.787%). Coverage figures elsewhere remain separately dated because no fresh coverage run occurred in this update.
 
-macOS and Windows testing is deferred until those environments are available.
-No Ubuntu result is a substitute for a platform-specific run.
+macOS and Windows testing is deferred until those environments are available. No Ubuntu result is a substitute for a platform-specific run.
 
 ## Objective
 
-**Test262 implementation order (2026-09-10)**: follow the
-[architecture-first backlog](TEST262_ARCHITECTURE.md). The iterator and
-`try`/Completion slices are implemented for the current executable subset;
-full per-mode analysis and the remaining environment, reference and
-internal-method foundations take precedence over adding individual builtin
-methods.
+**Test262 implementation order (2026-09-10)**: follow the [architecture-first backlog](TEST262_ARCHITECTURE.md). The iterator and `try`/Completion slices are implemented for the current executable subset; full per-mode analysis and the remaining environment, reference and internal-method foundations take precedence over adding individual builtin methods.
 
 **Language target expanded (2026-09-09)**: the user requested completion of ECMAScript 2026 (ECMA-262 edition 17). The [edition implementation track](ECMASCRIPT_2026.md) now supersedes the historical MVP cuts as the final language-completion criterion; the existing architecture remains. Full conformance is not yet achieved, and the older slice descriptions below are historical progress records.
 
@@ -203,6 +189,6 @@ The next hardening pass targets `cargo llvm-cov -p blueice-bluejs --fail-under-l
 - [ ] Wire the differential job into `.github/workflows/ci.yml`, per `testing/TEST_PLAN.md`
 - [ ] End-to-end smoke test: a real `<script>`-bearing fixture page executes correctly through the full Phase 3 pipeline
 
-## Intl, regex deadlines and Test262 inventory (2026-09-10)
+## Historical Intl, regex deadlines and Test262 implementation record (2026-09-10)
 
-[Design, test-content review and validation](INTL_CONFORMANCE.md) continue commit `2519fc1`. String-required Intl, Intl.Locale and Locale-info queries, Math, process-isolated compilation/matching, persistent classic harness scripts, native descriptor/constructibility helpers, abstract equality/property-presence operations, declarative and assignment patterns, object spread, numeric globals, JSON data paths and a pinned whole-inventory Test262 supervisor are implemented. The required BlueJS coverage gate passes; 22,269 Node scripts match. Test262 reports every mode, with 15,921 pass / 63,054 fail / 22,695 unsupported / 908 timeout across 53,404 files. This completes the inventory measurement, not full ECMAScript or ECMA-402 conformance. Complete harness/async/module hosts, the remaining language/builtin features and additional Intl constructors remain necessary.
+[Design, test-content review and validation](INTL_CONFORMANCE.md) continue commit `2519fc1`. This is a historical implementation record; its Node and Test262 counts are not current. The current unfiltered Ubuntu inventory is **96,203 / 102,926** passing modes (93.468%), with **86,304 / 91,820** ECMA-262 Core modes (93.993%) and **6,364 / 6,714** ECMA-402 modes (94.787%). See the [Ubuntu Test262 report](TEST262_LINUX_REPORT.md) for provenance and [architecture-first backlog](TEST262_ARCHITECTURE.md) for remaining classified work. These results do not establish full ECMAScript or ECMA-402 conformance, and macOS/Windows verification remains deferred.

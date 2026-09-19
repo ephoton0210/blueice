@@ -4,13 +4,7 @@
 
 What gets tested, how, and where a human can see current status without reading source. This is a living policy, not a one-time checklist — every phase's Definition of Done includes keeping this accurate, not just this document's own author.
 
-The BlueJS [Test262 architecture backlog](../phase-13-bluejs-engine/TEST262_ARCHITECTURE.md)
-records the dependency order and latest full before/after measurement. Its
-analyzer retains all test/mode outcomes and rejects incomplete, duplicated or
-source-mismatched inventories. `backend/bluejs/tests/iterator_completion.rs`
-drives elision/rest/abrupt iterator behavior and allocation-pressure GC through
-the public parse → compile → VM boundary. Run runner/analyzer regressions with
-`python3 -m unittest discover -s backend/bluejs/test262 -v`.
+The BlueJS [Test262 architecture backlog](../phase-13-bluejs-engine/TEST262_ARCHITECTURE.md) records the dependency order and latest full before/after measurement. Its analyzer retains all test/mode outcomes and rejects incomplete, duplicated or source-mismatched inventories. `backend/bluejs/tests/iterator_completion.rs` drives elision/rest/abrupt iterator behavior and allocation-pressure GC through the public parse → compile → VM boundary. Run runner/analyzer regressions with `python3 -m unittest discover -s backend/bluejs/test262 -v`.
 
 ## Definition of Done
 
@@ -183,8 +177,8 @@ None of this needs Phase 4. It's the concrete, already-integrated answer to want
 
 See "Definition of Done" at the top of this document — it, not a separate end-of-phase pass, is what every phase checklist item in `../phase-*/PLAN.md` is actually held to.
 
-## Intl/deadline/Test262 verification (2026-09-10)
+## Intl/deadline/Test262 verification
 
-The [continuation report](../phase-13-bluejs-engine/INTL_CONFORMANCE.md) records test-first locale/Collator/Locale/Locale-info/Math/deadline work and dedicated test-content review. The BlueJS default suite now passes 243 unit/integration tests, plus two doc examples; the no-exclusion coverage gate passes with both subprocess adapters included. The opt-in Node oracle passes 22,269 scripts, including array/object destructuring assignments. Three Python metadata/supervisor tests validate the full-inventory runner; subprocess deadline and protocol faults are also exercised by default Rust tests. POSIX fault tests require Python 3, while Node remains opt-in.
+The [continuation report](../phase-13-bluejs-engine/INTL_CONFORMANCE.md) records test-first locale/Collator/Locale/Locale-info/Math/deadline work and dedicated test-content review. Its focused-suite and Node figures are historical. The current full-run evidence is the [Ubuntu Test262 report](../phase-13-bluejs-engine/TEST262_LINUX_REPORT.md); runner/analyzer regression tests remain available through `python3 -m unittest discover -s backend/bluejs/test262 -v`. POSIX fault tests require Python 3, while Node remains opt-in.
 
-The full pinned Test262 run schedules 102,578 modes: 15,921 pass, 63,054 fail, 22,695 unsupported and 908 timeout, with no harness errors. Exit status 1 is required for this result. This is a measurement artifact, not a new passing CI gate or a substitute for complete language/Intl/host work. Corpus archive and per-file hashes, mode accounting, full JSONL results and a feature/group summary make the measurement reproducible.
+The full pinned Ubuntu Test262 run on 2026-09-19 schedules 102,926 modes: 96,203 pass, 6,714 fail and 9 timeout, with no harness errors. Exit status 1 is expected while any mode fails. This is a measurement artifact, not a new passing CI gate or a substitute for complete language/Intl/host work. Corpus archive and per-file hashes, mode accounting, full JSONL results and a feature/group summary make the measurement reproducible. macOS and Windows runs remain pending and must not be inferred from Ubuntu.

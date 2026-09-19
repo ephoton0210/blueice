@@ -8,7 +8,9 @@ Target the [published ECMA-262 edition 17 HTML](https://262.ecma-international.o
 
 Full completion requires an audited clause/feature inventory, a pinned Test262 revision appropriate to the edition, explicit strict/non-strict/module/async harness modes, negative-phase/error-type checking, and no silently skipped mandatory tests. Record unsupported cases separately from passed cases; Node differential results are supplemental. Feature tests must drive public APIs, BlueJS's current no-exclusion baseline is 88.38% line coverage with an 88% CI floor (Rust 1.95, 2026-09-13), and every slice gets a dedicated test-content review. Passing coverage or a selected Test262 subset never means the edition is complete. Normative optional, legacy and host-defined requirements need explicit applicability decisions, not blanket exclusions.
 
-## Dependency-ordered work inventory
+## Historical dependency-ordered work inventory
+
+The rows below are dated implementation notes, not a current feature matrix. The authoritative current evidence is the 2026-09-19 complete Ubuntu Test262 inventory: 86,304 / 91,820 ECMA-262 Core modes pass (93.993%). Remaining work is classified by dependency in [the Test262 architecture-first backlog](TEST262_ARCHITECTURE.md) and its [current analysis](TEST262_ANALYSIS_REPORT.md). Do not infer a feature's present absence from a historical “remain” entry.
 
 | Workstream | Current state / remaining work |
 | --- | --- |
@@ -24,10 +26,7 @@ Full completion requires an audited clause/feature inventory, a pinned Test262 r
 
 This is a workstream inventory, not a complete clause-by-clause audit. The [String implementation and dependency record](STRING_BUILTINS.md) distinguishes the implemented surface and observed protocols from edition-wide conformance and documents native matcher resource limits.
 
-The [Test262 architecture-first backlog](TEST262_ARCHITECTURE.md) supplies the
-current implementation order, per-mode classification contract and acceptance
-criteria: completion/iterator lifetime, environments, references and internal
-object methods precede the remaining syntax, suspension/modules and libraries.
+The [Test262 architecture-first backlog](TEST262_ARCHITECTURE.md) supplies the current implementation order, per-mode classification contract and acceptance criteria: completion/iterator lifetime, environments, references and internal object methods precede the remaining syntax, suspension/modules and libraries.
 
 ## Second slice: lossless UTF-16 storage
 

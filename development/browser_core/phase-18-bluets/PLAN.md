@@ -10,144 +10,30 @@ Let a BlueIce page opt in to TypeScript source without a build-time `.js` artifa
 
 ## Independent implementation status
 
-The first implementation intentionally completes the work that has no BlueJS
-dependency before introducing any page-runtime coupling:
+The first implementation intentionally completes the work that has no BlueJS dependency before introducing any page-runtime coupling:
 
-- `blueice-bluets` accepts only caller-supplied `ModuleLoader` records. The
-  library itself does not read files, URLs, DOM state or host capabilities.
-  `bluetsc` is the separate, project-root-confined filesystem adapter.
-- Its pinned `blue-ts-0.1` matrix parses/binds typed variable and function
-  declarations, interfaces, aliases, type-only imports/exports, primitive and
-  literal types, records, arrays, tuples, unions, intersections and the
-  corresponding erasable annotations/assertions. It resolves a closed relative
-  module graph, produces stable diagnostics for parse/unsupported syntax,
-  resolution, duplicate names, unknown types and the implemented assignment /
-  return checks, and never emits on an error.
-- `bluetsc check` uses that shared pipeline without writes. `bluetsc build`
-  stages ESM `.js`, optional column-provenance source maps and public `.d.ts` files, then
-  replaces the selected output directory only after every artifact has been
-  staged. Its fingerprint includes source content, the pinned language version,
-  target, source-map/declaration modes, runtime-policy label and resolver
-  identity.
-- `bluetsc` accepts either one explicit entry or a `bluetsc.json` project file.
-  The latter supports multiple `entries`, project-root-confined `outDir`,
-  `sourceMap`, `declaration`, `target`, `runtimePolicy`, and exact/prefix
-  `imports` mappings. Config flags cannot be mixed with client-side overrides;
-  an import target, entry or output path that escapes the declared root is
-  rejected before compilation, including a syntactically local `outDir` whose
-  existing ancestor is a symlink outside that root. An atomic output directory
-  also cannot contain an input source module, so it cannot replace `src/`.
-  This is the standalone compiler's closed-world resolver, not a page/network
-  loader or an arbitrary package-manager hook.
-- A project-root-confined relative import or exact `imports` mapping may target
-  a local `.d.ts` declaration module. Declaration modules are parsed, checked,
-  hashed and retained in VM-independent debug metadata, but are type-only:
-  they never emit JavaScript or a runtime import-map target. BlueTSC rejects a
-  `.d.ts` entry, a value import resolving to one, or runtime content within
-  one. When declaration output is selected, BlueTSC preserves the authorized
-  `.d.ts` source root-relatively and retains consuming `import type` clauses;
-  it does not acquire ambient, remote, package-manager, or arbitrary
-  `lib.dom.d.ts` declarations.
-- Every successful build stages a root-relative `bluetsc.manifest.json` with
-  language version, project fingerprint, target, runtime policy, requested
-  output modes and emitted entries. A configured `imports` map also emits
-  `bluetsc.importmap.json`, translating source `.ts`/`.tsx` mappings to their
-  generated `.js` locations. Both files are published with the artifacts, so
-  they contain no absolute host path and cannot drift from an atomic build.
-- The filesystem adapter supplies root-relative source identities to the shared
-  compiler. Therefore artifacts, source maps and the VM-independent
-  `BlueTsDebugInfo` do not expose checkout paths, and relocating an unchanged
-  project does not change its resolver or source-identity contribution to the
-  build fingerprint.
-- The standalone compiler emits the VM-independent portion of
-  `BlueTsDebugInfo`: source-content hashes, static types, symbols and spans.
-  It also contains a bounded, pure contract IR/validator for reifiable
-  JSON-like values. Neither artifact claims a runtime type tag or validates a
-  live page boundary yet.
-- BlueTSC source maps use Source Map v3 segments at copied, rewritten and
-  erased-source boundaries rather than line-only placeholders. Generated and
-  original columns use UTF-16 code units; CRLF is represented as one source
-  line transition. This gives portable JavaScript builds column-level
-  TypeScript provenance without claiming a BlueJS bytecode safe-point map.
-- `IncrementalCompiler` is a reusable, host-neutral single-entry session for
-  development hosts. It reloads the caller-authorized graph to detect changed
-  source or resolution edges, reuses parsed modules with identical bytes, and
-  rebinds/rechecks only changed modules plus their reverse dependencies. It
-  keeps only a successful cache entry and refuses reuse when the entry or any
-  compiler option differs; its work-selection result is observable without
-  exposing a BlueJS VM or page state.
-- Generic aliases, interfaces and direct function calls retain their
-  declarations' type parameters, including through local type-only imports.
-  An interface may extend one or more named interfaces, including a generic
-  instantiation; inherited fields participate in bounded structural checking,
-  property lookup, declaration emission and reifiable contract conjunction.
-  Its exported type-only surface carries inherited local declaration fields so
-  an authorized consumer need not import private parent declarations.
-  Direct local calls may either infer or explicitly supply their type arguments.
-  They instantiate bounded structural checks, enforce `extends` constraints,
-  and resolve trailing default type arguments (including in declaration
-  modules). A declaration's type parameter never leaks into surrounding module
-  scope; method/callback overload resolution and general expression inference
-  remain outside this narrow initial rule.
-- The parser rejects a `.tsx` module at its source-identity boundary, even if
-  it has not yet reached a JSX tag. This prevents a TSX project from being
-  treated as ordinary erasable TypeScript; tagged JSX is rejected by the same
-  stable `UnsupportedSyntax` path.
-- Legacy CommonJS-oriented `import =` and `export =` forms are likewise
-  rejected as `UnsupportedSyntax`, rather than being emitted as invalid ESM.
-- For a direct call to a locally declared function, the checker verifies the
-  accepted argument count and each annotated parameter after bounded generic
-  substitution, whether type arguments are inferred or explicitly supplied.
-  Optional and default-initialized parameters are omittable while preserving a
-  known return type. Signature-only local overload declarations are resolved
-  in declaration order for direct calls and erased from JavaScript; a
-  non-declaration signature must have a compatible local implementation. This
-  intentionally does not claim method calls, callback analysis, constructors,
-  or general expression inference.
-- Direct property access on an inferred record or a local/interface type alias
-  is resolved to the declared field type (including a generic instantiation).
-  Optional fields produce `T | undefined`; chained/member-call analysis and
-  arbitrary JavaScript property semantics remain outside this static subset.
-- The standalone `ContractPlan` validator accepts per-boundary
-  `ValidationLimits` for depth, collection entries, visited-node fuel and
-  string bytes. These checks remain pure data validation; host-boundary
-  discovery and enforcement are still deliberately separate work.
-- `backend/bluets/tests/typescript_oracle.rs` is a compatibility job run on
-  every push and pull request. It requires `BLUEICE_TSC` to name a TypeScript
-  5.9.3 compiler in strict mode, verifies that pin before executing, and runs
-  a fixture matrix covering generic properties, constraints/defaults,
-  explicit direct-call type arguments and generic
-  interface heritage (including local `.d.ts` parents and rejected conflicting
-  inherited fields), optional record fields and default/explicit-`undefined`
-  parameters, local constrained generic
-  function overloads, rejected assignment/call arguments,
-  Source Map v3 shape and accepted Node output. Rejected fixtures assert the
-  exact BlueTS diagnostic count, stable code and source line, then require the
-  pinned compiler to report the same count and source lines. Node and `tsc`
-  are test tools only; neither is linked, spawned, or discovered by the BlueTS
-  compiler or CLI.
-- `CompilerLimits` makes source bytes/tokens/type nesting, module count/edge
-  count/import depth, aggregate source bytes, generic-expansion work and
-  source-map segments explicit compiler policy. Every limit participates in
-  cache and artifact fingerprints; adversarial unit tests require a stable
-  `ResourceLimit` failure with no output.
-- The public [BlueTS ↔ BlueJS integration contract](INTEGRATION_CONTRACT.md)
-  freezes the proposed v1 AST/IR hand-off, safe-point map and generated host
-  typings/version policy without adding a BlueJS dependency to BlueTS.
-- [`bluets-test-interface`](TEST_INTERFACE.md) now exposes the same persistent
-  JSON-lines ready/request/reply transport as BlueJS's test adapter. It is
-  intentionally compile-only, accepts BlueJS's `sloppy` mode as a `raw` alias,
-  and has stable BlueTS diagnostic codes/spans and caller-controlled compiler
-  limits; Test262 runtime execution remains a future bridge concern rather
-  than a hidden BlueJS dependency.
+- `blueice-bluets` accepts only caller-supplied `ModuleLoader` records. The library itself does not read files, URLs, DOM state or host capabilities. `bluetsc` is the separate, project-root-confined filesystem adapter.
+- Its pinned `blue-ts-0.1` matrix parses/binds typed variable and function declarations, interfaces, aliases, type-only imports/exports, primitive and literal types, records, arrays, tuples, unions, intersections and the corresponding erasable annotations/assertions. It resolves a closed relative module graph, produces stable diagnostics for parse/unsupported syntax, resolution, duplicate names, unknown types and the implemented assignment / return checks, and never emits on an error.
+- `bluetsc check` uses that shared pipeline without writes. `bluetsc build` stages ESM `.js`, optional column-provenance source maps and public `.d.ts` files, then replaces the selected output directory only after every artifact has been staged. Its fingerprint includes source content, the pinned language version, target, source-map/declaration modes, runtime-policy label and resolver identity.
+- `bluetsc` accepts either one explicit entry or a `bluetsc.json` project file. The latter supports multiple `entries`, project-root-confined `outDir`, `sourceMap`, `declaration`, `target`, `runtimePolicy`, and exact/prefix `imports` mappings. Config flags cannot be mixed with client-side overrides; an import target, entry or output path that escapes the declared root is rejected before compilation, including a syntactically local `outDir` whose existing ancestor is a symlink outside that root. An atomic output directory also cannot contain an input source module, so it cannot replace `src/`. This is the standalone compiler's closed-world resolver, not a page/network loader or an arbitrary package-manager hook.
+- A project-root-confined relative import or exact `imports` mapping may target a local `.d.ts` declaration module. Declaration modules are parsed, checked, hashed and retained in VM-independent debug metadata, but are type-only: they never emit JavaScript or a runtime import-map target. BlueTSC rejects a `.d.ts` entry, a value import resolving to one, or runtime content within one. When declaration output is selected, BlueTSC preserves the authorized `.d.ts` source root-relatively and retains consuming `import type` clauses; it does not acquire ambient, remote, package-manager, or arbitrary `lib.dom.d.ts` declarations.
+- Every successful build stages a root-relative `bluetsc.manifest.json` with language version, project fingerprint, target, runtime policy, requested output modes and emitted entries. A configured `imports` map also emits `bluetsc.importmap.json`, translating source `.ts`/`.tsx` mappings to their generated `.js` locations. Both files are published with the artifacts, so they contain no absolute host path and cannot drift from an atomic build.
+- The filesystem adapter supplies root-relative source identities to the shared compiler. Therefore artifacts, source maps and the VM-independent `BlueTsDebugInfo` do not expose checkout paths, and relocating an unchanged project does not change its resolver or source-identity contribution to the build fingerprint.
+- The standalone compiler emits the VM-independent portion of `BlueTsDebugInfo`: source-content hashes, static types, symbols and spans. It also contains a bounded, pure contract IR/validator for reifiable JSON-like values. Neither artifact claims a runtime type tag or validates a live page boundary yet.
+- BlueTSC source maps use Source Map v3 segments at copied, rewritten and erased-source boundaries rather than line-only placeholders. Generated and original columns use UTF-16 code units; CRLF is represented as one source line transition. This gives portable JavaScript builds column-level TypeScript provenance without claiming a BlueJS bytecode safe-point map.
+- `IncrementalCompiler` is a reusable, host-neutral single-entry session for development hosts. It reloads the caller-authorized graph to detect changed source or resolution edges, reuses parsed modules with identical bytes, and rebinds/rechecks only changed modules plus their reverse dependencies. It keeps only a successful cache entry and refuses reuse when the entry or any compiler option differs; its work-selection result is observable without exposing a BlueJS VM or page state.
+- Generic aliases, interfaces and direct function calls retain their declarations' type parameters, including through local type-only imports. An interface may extend one or more named interfaces, including a generic instantiation; inherited fields participate in bounded structural checking, property lookup, declaration emission and reifiable contract conjunction. Its exported type-only surface carries inherited local declaration fields so an authorized consumer need not import private parent declarations. Direct local calls may either infer or explicitly supply their type arguments. They instantiate bounded structural checks, enforce `extends` constraints, and resolve trailing default type arguments (including in declaration modules). A declaration's type parameter never leaks into surrounding module scope; method/callback overload resolution and general expression inference remain outside this narrow initial rule.
+- The parser rejects a `.tsx` module at its source-identity boundary, even if it has not yet reached a JSX tag. This prevents a TSX project from being treated as ordinary erasable TypeScript; tagged JSX is rejected by the same stable `UnsupportedSyntax` path.
+- Legacy CommonJS-oriented `import =` and `export =` forms are likewise rejected as `UnsupportedSyntax`, rather than being emitted as invalid ESM.
+- For a direct call to a locally declared function, the checker verifies the accepted argument count and each annotated parameter after bounded generic substitution, whether type arguments are inferred or explicitly supplied. Optional and default-initialized parameters are omittable while preserving a known return type. Signature-only local overload declarations are resolved in declaration order for direct calls and erased from JavaScript; a non-declaration signature must have a compatible local implementation. This intentionally does not claim method calls, callback analysis, constructors, or general expression inference.
+- Direct property access on an inferred record or a local/interface type alias is resolved to the declared field type (including a generic instantiation). Optional fields produce `T | undefined`; chained/member-call analysis and arbitrary JavaScript property semantics remain outside this static subset.
+- The standalone `ContractPlan` validator accepts per-boundary `ValidationLimits` for depth, collection entries, visited-node fuel and string bytes. These checks remain pure data validation; host-boundary discovery and enforcement are still deliberately separate work.
+- `backend/bluets/tests/typescript_oracle.rs` is a compatibility job run on every push and pull request. It requires `BLUEICE_TSC` to name a TypeScript 5.9.3 compiler in strict mode, verifies that pin before executing, and runs a fixture matrix covering generic properties, constraints/defaults, explicit direct-call type arguments and generic interface heritage (including local `.d.ts` parents and rejected conflicting inherited fields), optional record fields and default/explicit-`undefined` parameters, local constrained generic function overloads, rejected assignment/call arguments, Source Map v3 shape and accepted Node output. Rejected fixtures assert the exact BlueTS diagnostic count, stable code and source line, then require the pinned compiler to report the same count and source lines. Node and `tsc` are test tools only; neither is linked, spawned, or discovered by the BlueTS compiler or CLI.
+- `CompilerLimits` makes source bytes/tokens/type nesting, module count/edge count/import depth, aggregate source bytes, generic-expansion work and source-map segments explicit compiler policy. Every limit participates in cache and artifact fingerprints; adversarial unit tests require a stable `ResourceLimit` failure with no output.
+- The public [BlueTS ↔ BlueJS integration contract](INTEGRATION_CONTRACT.md) freezes the proposed v1 AST/IR hand-off, safe-point map and generated host typings/version policy without adding a BlueJS dependency to BlueTS.
+- [`bluets-test-interface`](TEST_INTERFACE.md) now exposes the same persistent JSON-lines ready/request/reply transport as BlueJS's test adapter. It is intentionally compile-only, accepts BlueJS's `sloppy` mode as a `raw` alias, and has stable BlueTS diagnostic codes/spans and caller-controlled compiler limits; Test262 runtime execution remains a future bridge concern rather than a hidden BlueJS dependency.
 
-This is deliberately not a claim of general `tsc` compatibility. Control-flow
-narrowing, overload resolution, decorators, enums, classes, TSX, namespace
-emission, parameter properties, and arbitrary JavaScript expression typing
-remain pending. A construct outside the
-implemented matrix must be added with a parser/checker/emitter test and a
-precise compatibility entry; it must not be advertised merely because its
-tokens happen to be erasable.
+This is deliberately not a claim of general `tsc` compatibility. Control-flow narrowing, overload resolution, decorators, enums, classes, TSX, namespace emission, parameter properties, and arbitrary JavaScript expression typing remain pending. A construct outside the implemented matrix must be added with a parser/checker/emitter test and a precise compatibility entry; it must not be advertised merely because its tokens happen to be erasable.
 
 BlueTS is a Rust front end feeding the existing BlueJS bytecode compiler and VM. It is **not** a second JavaScript/TypeScript VM, an embedded `tsc` process, or a type-tagged replacement for BlueJS values. TypeScript's ordinary type system is compile-time only: the checker uses it to accept or reject a program, while BlueJS executes ordinary ECMAScript values. The [official TypeScript documentation](https://www.typescriptlang.org/docs/handbook/typescript-from-scratch) calls this "erased types" and states that types do not change JavaScript runtime behavior. BlueTS follows that compatibility rule for ordinary TypeScript, then adds an explicit BlueIce contract mode at foreign-data boundaries rather than silently making every local operation dynamically typed.
 

@@ -4,16 +4,9 @@ Snapshot: `72faf8ec1445c55149615e8b35187830783aba1a`.
 
 ## Platform provenance (updated 2026-09-19)
 
-The currently verified local host is Ubuntu 24.04.3 LTS under WSL2
-(`x86_64-unknown-linux-gnu`, Rust/Cargo 1.95.0), not Ubuntu 24.04.4. On
-2026-09-19, the complete 53,582-file / 102,926-mode inventory completed in
-685.257 seconds. This analysis was regenerated from that complete JSONL by
-`backend/bluejs/test262/analyze.py`; the counts below are fresh Ubuntu 24.04.3
-results. The command, artifact provenance and grouped totals are in
-[the Ubuntu Test262 report](TEST262_LINUX_REPORT.md).
+The currently verified local host is Ubuntu 24.04.3 LTS under WSL2 (`x86_64-unknown-linux-gnu`, Rust/Cargo 1.95.0), not Ubuntu 24.04.4. On 2026-09-19, the complete 53,582-file / 102,926-mode inventory completed in 685.257 seconds. This analysis was regenerated from that complete JSONL by `backend/bluejs/test262/analyze.py`; the counts below are fresh Ubuntu 24.04.3 results. The command, artifact provenance and grouped totals are in [the Ubuntu Test262 report](TEST262_LINUX_REPORT.md).
 
-macOS and Windows validation is deferred until real environments are
-available. Ubuntu numbers must not be used to establish parity on either.
+macOS and Windows validation is deferred until real environments are available. Ubuntu numbers must not be used to establish parity on either.
 
 Reconciled 53,582 files / 102,926 modes; complete inventory: True.
 
@@ -94,40 +87,18 @@ A passing result is the runner's observation, not proof of complete feature conf
 
 ## Historical focused P0.4 audits
 
-The following focused filters were measured against the prior `6eec1ac9…`
-snapshot. They remain useful regression evidence but are not substitutes for
-the complete `72faf8ec…` inventory above.
+The following focused filters were measured against the prior `6eec1ac9…` snapshot. They remain useful regression evidence but are not substitutes for the complete `72faf8ec…` inventory above.
 
 ### Closure audit
 
-The final targeted realm and Proxy audit records **607/607** passing modes for
-`built-ins/Proxy`, **60/60** for `built-ins/Proxy/construct`, and **20/20** for
-`built-ins/Reflect/construct`. The remaining Reflect modes required only that
-`Date.now` exist as a callable, non-constructor; the Date baseline supplies
-that contract without claiming complete Date object support. The public
-`conformance_edges` regression suite passes **37/37**.
+The final targeted realm and Proxy audit records **607/607** passing modes for `built-ins/Proxy`, **60/60** for `built-ins/Proxy/construct`, and **20/20** for `built-ins/Reflect/construct`. The remaining Reflect modes required only that `Date.now` exist as a callable, non-constructor; the Date baseline supplies that contract without claiming complete Date object support. The public `conformance_edges` regression suite passes **37/37**.
 
 ### Weak collections, Date and Array
 
-The P0.4 weak-collection implementation was checked with focused filters on
-the same Test262 snapshot: `built-ins/WeakMap/` is **281/281 pass**,
-`built-ins/WeakSet/` is **170/170 pass**, and `built-ins/WeakRef/` is now
-**58/58 pass** at `target/test262-p04-weak-ref-final-2`.
+The P0.4 weak-collection implementation was checked with focused filters on the same Test262 snapshot: `built-ins/WeakMap/` is **281/281 pass**, `built-ins/WeakSet/` is **170/170 pass**, and `built-ins/WeakRef/` is now **58/58 pass** at `target/test262-p04-weak-ref-final-2`.
 
-The two previous WeakRef failures were unblocked by a non-placeholder
-`FinalizationRegistry` substrate: the constructor/callback, weak target and
-unregister-token cells, strong holdings, `register`, `unregister`, and dead
-target collection behavior are represented in the VM. Cleanup-job scheduling
-and callback delivery remain future weak-GC/host work, so this does not claim
-full FinalizationRegistry conformance.
+The two previous WeakRef failures were unblocked by a non-placeholder `FinalizationRegistry` substrate: the constructor/callback, weak target and unregister-token cells, strong holdings, `register`, `unregister`, and dead target collection behavior are represented in the VM. Cleanup-job scheduling and callback delivery remain future weak-GC/host work, so this does not claim full FinalizationRegistry conformance.
 
-The corresponding Date audit rose from **166/1,236** to **1,220/1,236** at
-`target/test262-p04-date-final-4`; all 16 remaining modes require the absent
-Temporal bridge (`Date.prototype.toTemporalInstant`). The Array audit rose
-from **4,846/6,119** to **5,169/6,119** at
-`target/test262-p04-array-final-3`, after species-aware map/filter,
-`Array.of`, `at`, iterators, and the find family. The remaining Array failures
-are predominantly `Array.fromAsync`, concat spreadability, copy-by-value, and
-resizable-buffer work.
+The corresponding Date audit rose from **166/1,236** to **1,220/1,236** at `target/test262-p04-date-final-4`; all 16 remaining modes require the absent Temporal bridge (`Date.prototype.toTemporalInstant`). The Array audit rose from **4,846/6,119** to **5,169/6,119** at `target/test262-p04-array-final-3`, after species-aware map/filter, `Array.of`, `at`, iterators, and the find family. The remaining Array failures are predominantly `Array.fromAsync`, concat spreadability, copy-by-value, and resizable-buffer work.
 
 These focused results are historical regression evidence for their respective slices. The current complete-inventory baseline is the reconciled 72faf8ec result recorded above and in the checked-in summary.
