@@ -3764,6 +3764,131 @@ once). One owner:
   pre-existing `string_protocols.rs::observable_conversion_order_and_gc_pressure`
   flake.
 
+- [x] **`temporal_date_difference` (`PlainDate`/`PlainDateTime`) and
+      `temporal_zoned_date_time_difference` (`ZonedDateTime`) genuinely had
+      the same `roundingMode`-reflection bug class the "genuinely closed"
+      leap-month bullet above already fixed for `PlainYearMonth` — closed
+      2026-09-18** (single owner, sequential; scope was narrowly this one
+      bug class in these two functions, per this pass's own launch
+      instructions — not a general audit). The leap-month bullet's own
+      "remaining open" note only confirmed `PlainDate/prototype/since/
+      roundingmode-ceil.js` was failing identically before and after that
+      pass, without diagnosing why; this pass re-investigated for real.
+
+      **Confirmed real, against the actual fixtures, before any change**:
+      `built-ins/Temporal/{PlainDate,PlainDateTime,ZonedDateTime}/prototype/
+      since/roundingmode-{ceil,floor}.js` (plus `PlainDateTime`'s/
+      `ZonedDateTime`'s own `halfCeil`/`halfFloor` files) failed outright;
+      every corresponding `until/roundingmode-*.js` file already passed
+      (`until` never negates, so it never needed the fix). Manually
+      re-derived by hand against `round_month_or_year`'s real algorithm
+      before touching any code, to confirm the diagnosis rather than guess:
+      `PlainDate/prototype/since/roundingmode-ceil.js`'s "years" case,
+      `later.since(earlier)` (`later` = 2021-09-07, `earlier` = 2019-01-08),
+      computes the *unreflected* receiver-to-argument value as `years = -2`
+      (`ceil` applied to the real, negative `later -> earlier` direction:
+      `ceil(-2.663) == -2`), which negates to `2` — not the fixture's
+      expected `3`. Reflecting `Ceil` to `Floor` before rounding (since
+      `since` negates the result) gives `years = -3`
+      (`floor(-2.663) == -3`), which negates to the expected `3`, matching
+      the fixture exactly. The same by-hand check confirmed the "negative
+      case" (`earlier.since(later)`) and `ZonedDateTime`'s own analogous
+      `nudge_to_calendar_unit`/`nudge_expand_decision` path (which uses the
+      identical `Ceil => sign > 0`/`Floor => sign < 0`/etc. decision tree as
+      `round_month_or_year`, keyed off the real, unreflected sign of
+      `other_epoch_ns - existing_epoch_ns`).
+
+      **The fix**: the exact same pattern `temporal_year_month_difference`
+      already uses — compute a local `effective_mode` right after reading
+      the raw `roundingMode` option, swapping `Ceil`<->`Floor` and
+      `HalfCeil`<->`HalfFloor` only when `since` is true (`Trunc`/`Expand`/
+      `HalfExpand`/`HalfTrunc`/`HalfEven` are symmetric under negation and
+      need no reflection), and pass `effective_mode` — never the raw
+      `mode` — into every rounding step that runs before the final
+      field-wise negation. `Vm::temporal_date_difference` needed this at
+      *both* of its rounding call sites (`plain_date::round_calendar_duration`
+      for the day/week/month/year branch, and
+      `duration_math::TimeDuration::round` for the sub-day branch) — both
+      round a real, direction-aware signed quantity the same way
+      `round_month_or_year` does. `Vm::temporal_zoned_date_time_difference`
+      needed it at its one call site into
+      `temporal_zoned_date_time_difference_fields` (which internally covers
+      both its own sub-hour `TimeDuration::round` branch and its calendar-unit
+      `zoned_date_time::nudge_to_calendar_unit` branch with the same
+      `effective_mode`).
+
+      **`Temporal.Duration` checked and confirmed not applicable**: it has
+      no `since`/`until` method at all (a `Duration` *is* the difference —
+      you call `date.since(other)` to get one, never the reverse), and its
+      own `negated()` (`temporal_duration_negated`) is a plain field-wise
+      negation with no bundled rounding decision, so there is no swap/negate
+      asymmetry for it to have inherited. Not fixed because it was never
+      broken, not because it was out of scope.
+
+      **TDD**: `backend/bluejs/tests/temporal_date_since_roundingmode_reflection.rs`
+      (9 tests) pins the bug through the real public
+      `Temporal.{PlainDate,PlainDateTime,ZonedDateTime}.prototype.since`/
+      `until` surface, with every expected value taken directly from the
+      real fixtures above (`roundingmode-ceil.js`'s/`roundingmode-floor.js`'s/
+      `roundingmode-halfCeil.js`'s own `years`/`months`/`hours` cases, plus a
+      dedicated `until`-is-unaffected regression case) — confirmed failing
+      (7 of 9) before the fix, all 9 passing after.
+
+      **Real numbers**, pinned corpus, before/after on the same commit,
+      diffed per path+mode (not just the aggregate) to positively confirm
+      zero regressions: whole-tree `Temporal/` **12,550/13,272 (94.56%) ->
+      12,568/13,272 (94.70%)**, +18, zero regressions anywhere. The 18: both
+      modes each of `PlainDate/prototype/since/roundingmode-{ceil,floor,
+      half-boundary}.js` (6), `PlainDateTime/prototype/since/roundingmode-
+      {halfCeil,halfFloor}.js` (4), and `ZonedDateTime/prototype/since/
+      roundingmode-{ceil,floor,halfCeil,halfFloor}.js` (8). Reproduce with
+      `python3 backend/bluejs/test262/run.py --corpus
+      /tmp/blueice-test262-72faf8ec --filter "Temporal/" --jobs 8`.
+
+      **A second, real, genuinely different bug found while diagnosing why
+      `PlainDateTime/prototype/since/roundingmode-{ceil,floor}.js` still
+      fail after this fix — deliberately left open, not fixed here**:
+      `temporal_date_difference`'s calendar branch (`smallest_unit >= Day`)
+      computes `round_calendar_duration` purely from the two operands'
+      *date* fields, and only ever consults the leftover sub-day
+      `time_diff` to decide whether to borrow/return one whole day when its
+      sign disagrees with the date-only direction — it never folds a
+      *same-signed* nonzero `time_diff` into the rounding decision as a
+      fractional day at all. Confirmed by direct probe (not guessed): for
+      `PlainDateTime/prototype/since/roundingmode-ceil.js`'s own operands
+      (`earlier` = `2019-01-08T08:22:36.123456789`, `later` =
+      `2021-09-07T12:39:40.987654289` — a positive ~4h17m residual, same
+      sign as the overall date direction, so the existing day-borrow
+      adjustment never triggers), `smallestUnit: "days"` computes `973`
+      exactly (the pure calendar-day count) where the fixture expects `974`
+      (`ceil` of the true `973 + a-quarter-of-a-day` value), and
+      `smallestUnit: "weeks"` computes `139` where the fixture expects `140`
+      — both wrong by exactly the direction `ceil` should have carried the
+      residual across a whole-unit boundary. This is present identically in
+      `until` (confirmed: `PlainDateTime/prototype/until/roundingmode-
+      {ceil,floor}.js` already failed before this pass and still fail after
+      it, unchanged in either direction) — it is not a `since`-direction bug
+      at all, and not the bug class this pass's own launch instructions
+      scoped it to. `PlainDate` never exercises this path (its `hour`..
+      `nanosecond` fields are always zero, so `time_diff` is always exactly
+      `0`), and `ZonedDateTime`'s own equivalent path
+      (`nudge_to_calendar_unit`) is structurally immune — it brackets by
+      real epoch nanoseconds throughout, so a residual time-of-day
+      contribution is inherently part of its `numerator`/`denominator`
+      fraction rather than a separately-tracked value that can be dropped.
+      A well-scoped follow-up: `temporal_date_difference`'s calendar branch
+      needs its own day-length-aware fractional-remainder folding for
+      `PlainDateTime` specifically (conceptually the same class of gap this
+      document's own `ZonedDateTime` bullet already closed for that type,
+      but for a plain, unzoned day rather than a real, possibly-23/25-hour
+      one).
+      - `cargo build --workspace --all-targets` / `cargo test --workspace
+        --no-fail-fast` / `cargo clippy --workspace --all-targets -- -D
+        warnings` all clean on this pass's own commit — the only test
+        failure anywhere in the whole workspace is the already-documented
+        pre-existing `string_protocols.rs::observable_conversion_order_and_gc_pressure`
+        flake.
+
 ### Stage 3 — Test262-evidence closure and coverage
 
 - [x] Re-run both `intl402/Temporal/` and `built-ins/Temporal/` after each

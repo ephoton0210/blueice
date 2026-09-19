@@ -4377,6 +4377,34 @@ impl Vm {
             mode_raw.as_deref(),
             blueice_ecma402::NumberRoundingMode::Trunc,
         )?;
+        // Both rounding steps below (`round_calendar_duration` for
+        // day/week/month/year granularity, `TimeDuration::round` for
+        // sub-day granularity) round a *real*, direction-aware signed
+        // quantity computed in the fixed receiver-to-argument direction —
+        // `Ceil`/`Floor` round toward a fixed end of the real number line
+        // (`ceil(-x) == -floor(x)`, not `-ceil(x)`), and `HalfCeil`/
+        // `HalfFloor` are the half-mode analogue. Negating the *result* for
+        // `since` without also reflecting an asymmetric mode here would
+        // silently round the wrong way whenever `since` negates a
+        // non-exact value — exactly the same bug
+        // `temporal_year_month_difference` (`PlainYearMonth`) already had
+        // fixed for it (see that function's own comment). Confirmed via
+        // `built-ins/Temporal/{PlainDate,PlainDateTime}/prototype/since/
+        // roundingmode-{ceil,floor}.js`. `Trunc`/`Expand`/`HalfExpand`/
+        // `HalfTrunc`/`HalfEven` are all symmetric under negation and need
+        // no reflection.
+        let effective_mode = if since {
+            use blueice_ecma402::NumberRoundingMode as Mode;
+            match mode {
+                Mode::Ceil => Mode::Floor,
+                Mode::Floor => Mode::Ceil,
+                Mode::HalfCeil => Mode::HalfFloor,
+                Mode::HalfFloor => Mode::HalfCeil,
+                other => other,
+            }
+        } else {
+            mode
+        };
 
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
@@ -4435,7 +4463,7 @@ impl Vm {
                 Self::temporal_unit_to_date_unit(largest_unit),
                 Self::temporal_unit_to_date_unit(smallest_unit),
                 increment,
-                mode,
+                effective_mode,
             );
             (years, months, weeks, days, None)
         } else {
@@ -4448,7 +4476,7 @@ impl Vm {
                 _ => rounding::TimeUnit::Nanosecond,
             };
             let rounded = duration_math::TimeDuration::from_nanoseconds(time_diff)
-                .round(time_unit, increment, mode);
+                .round(time_unit, increment, effective_mode);
             // This is a *duration* (signed magnitude), not a wall-clock time
             // of day, so the day/time split must be sign-consistent
             // (truncating toward zero) rather than the `div_euclid`/
@@ -9882,6 +9910,31 @@ impl Vm {
             mode_raw.as_deref(),
             blueice_ecma402::NumberRoundingMode::Trunc,
         )?;
+        // Same reflection `Vm::temporal_date_difference` needs, and for the
+        // identical reason: `temporal_zoned_date_time_difference_fields`'s
+        // own rounding steps (`TimeDuration::round` for the sub-day branch,
+        // `zoned_date_time::nudge_to_calendar_unit`'s `nudge_expand_decision`
+        // for the calendar-unit branch) both round a *real*, direction-aware
+        // signed quantity computed in the fixed receiver-to-argument
+        // direction — `Ceil`/`Floor` round toward a fixed end of the real
+        // number line, not toward a fixed end of whichever internal
+        // direction happened to be computed — so negating the *result* for
+        // `since` without also reflecting an asymmetric mode here would
+        // silently round the wrong way. Confirmed via
+        // `built-ins/Temporal/ZonedDateTime/prototype/since/
+        // roundingmode-{ceil,floor,halfCeil,halfFloor}.js`.
+        let effective_mode = if since {
+            use blueice_ecma402::NumberRoundingMode as Mode;
+            match mode {
+                Mode::Ceil => Mode::Floor,
+                Mode::Floor => Mode::Ceil,
+                Mode::HalfCeil => Mode::HalfFloor,
+                Mode::HalfFloor => Mode::HalfCeil,
+                other => other,
+            }
+        } else {
+            mode
+        };
 
         let zone = temporal_zoned_date_time_zone(&existing);
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
@@ -9916,7 +9969,7 @@ impl Vm {
             largest_unit,
             smallest_unit,
             increment,
-            mode,
+            effective_mode,
         )?;
 
         let (
