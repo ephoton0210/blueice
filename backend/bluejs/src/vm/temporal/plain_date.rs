@@ -363,6 +363,9 @@ pub(crate) fn calendar_add_date(
     if calendar == AnyCalendarKind::Iso {
         return add_iso_date(date, years, months, weeks, days, reject);
     }
+    if calendar_has_leap_months(calendar) {
+        return calendar_add_date_leap_month(calendar, date, years, months, weeks, days, reject);
+    }
     let iso = Date::try_new_iso(date.0, date.1, date.2).ok()?;
     let cal_date = iso.to_calendar(AnyCalendar::new(calendar));
     let start_year = cal_date.year().extended_year();
@@ -589,41 +592,94 @@ fn calendar_month_identity(calendar: AnyCalendarKind, date: CivilDate) -> (i64, 
     )
 }
 
-/// Builds a calendar `Date` from an explicit `(year, Month, day)` identity,
-/// honoring `overflow` — Gecko's `CreateDateFromCodes`.
+/// Which convention to use when a requested leap [`Month`] does not recur in
+/// the target year — Gecko's `CreateDateFromCodes` (`Calendar.cpp`'s
+/// `CalendarError::UnknownMonthCode` branch) documents this exact ambiguity
+/// with its own comment: it ships one *uniform* rule for every leap
+/// calendar, "pick the next month" (`min(monthCode.ordinal() + 1, 12)`,
+/// non-leap — e.g. Chinese/Dangi's `M04L` becomes `M05`, Hebrew's Adar I
+/// `M05L` becomes Adar `M06`), but flags an explicit `TODO`: *"Temporal spec
+/// polyfill replaces M03L with M03 for Chinese/Dangi. No idea what are the
+/// 'cultural conventions' for these two calendars..."* — i.e. Gecko's own
+/// authors are not confident a single uniform rule is even correct.
 ///
-/// `icu_calendar`'s own `Date::try_from_fields` already resolves a
-/// `month_code`-equivalent `Month` field per calendar, but its own
-/// leap-month-doesn't-exist-this-year *constrain* fallback does not always
-/// agree with Gecko's — confirmed by reading both sources directly, not
-/// assumed: Gecko's `CreateDateFromCodes` (`Calendar.cpp`'s
-/// `CalendarError::UnknownMonthCode` branch) uses one fallback rule for
-/// *every* leap calendar, "pick the next month"
-/// (`min(monthCode.ordinal() + 1, 12)`, non-leap) — e.g. Hebrew's Adar I
-/// (`M05L`) becomes Adar (`M06`), and Chinese/Dangi's `M04L` becomes `M05`.
-/// `icu_calendar`'s own `Hebrew::ordinal_from_month`
-/// (`components/calendar/src/cal/hebrew.rs`) happens to already implement
-/// that identical rule, but its `EastAsianTraditional`
-/// (`Chinese`/`Dangi`, `components/calendar/src/cal/east_asian_traditional.rs`)
-/// implementation instead falls back to the *same* month *number* (only
-/// dropping the leap flag, e.g. `M04L` -> `M04`) — a real, different
-/// cultural convention, not a bug in either library, but one this function
-/// must not silently inherit only for two of the three leap calendars.
+/// Confirmed empirically against this project's own pinned Test262 corpus
+/// that it is not, and that the fix is *not* a second uniform rule either —
+/// [`calendar_add_date`]'s own leap-month branch needs a *calendar-specific*
+/// answer that in fact already matches `icu_calendar`'s own native,
+/// per-calendar `Constrain` behavior with **no override at all**: `Chinese`/
+/// `Dangi`'s shared `EastAsianTraditional` implementation
+/// (`components/calendar/src/cal/east_asian_traditional.rs`) drops the leap
+/// flag and keeps the same month number (`M03L` -> `M03`,
+/// `intl402/Temporal/PlainDate/prototype/add/leap-months-chinese.js`'s
+/// "Adding 1 year to leap month M03L lands in common-year M03"), while
+/// `Hebrew`'s own `ordinal_from_month`
+/// (`components/calendar/src/cal/hebrew.rs`) already implements Gecko's
+/// "pick the next month" rule (`M05L` -> `M06`,
+/// `intl402/Temporal/PlainDate/prototype/add/leap-months-hebrew.js`'s
+/// "Adding 1 year to Adar I (M05L) lands in common-year Adar (M06) with
+/// constrain") — verified directly against both sources, not assumed, and
+/// against both fixtures independently (each calendar is its own evidence;
+/// neither generalizes from the other). [`calendar_difference_date_leap_month`]'s
+/// own years-correction probe, on the other hand, needs the *uniform*
+/// `PickNextMonth` override for all three calendars regardless of what
+/// `icu_calendar` natively does (verified against
+/// `intl402/Temporal/PlainDate/prototype/since/leap-months-chinese.js`'s
+/// "M04L-M04 backwards is -12mo not -1y": under `Native` this instead
+/// computes `-1y`, the very regression that pass's own rewrite fixed, since
+/// `Chinese`/`Dangi`'s own native `SameNumberDropLeap`-equivalent behavior
+/// reproduces the bug). Three real, independently-verified conventions
+/// across two operations and three calendars — not a guess generalized from
+/// one case.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LeapMonthFallback {
+    /// `min(monthCode.number() + 1, 12)`, non-leap — [`calendar_difference_date_leap_month`]'s
+    /// own convention, applied uniformly regardless of calendar.
+    PickNextMonth,
+    /// Trust whichever fallback `icu_calendar`'s own `Date::try_from_fields`
+    /// already applies under `Overflow::Constrain` for this specific
+    /// calendar — [`calendar_add_date`]'s own convention (see this enum's
+    /// own doc comment for why this, despite being calendar-dependent, is
+    /// correct for every one of the three leap calendars).
+    Native,
+}
+
+impl LeapMonthFallback {
+    fn resolve(self, month: Month) -> Month {
+        match self {
+            LeapMonthFallback::PickNextMonth => Month::new((month.number() + 1).min(12)),
+            // `calendar_date_from_month` short-circuits `Native` before ever
+            // calling this — see that function's own body.
+            LeapMonthFallback::Native => month,
+        }
+    }
+}
+
+/// Builds a calendar `Date` from an explicit `(year, Month, day)` identity,
+/// honoring `overflow` — Gecko's `CreateDateFromCodes`, generalized with
+/// [`LeapMonthFallback`] since (unlike Gecko) this project's own evidence
+/// shows no single fallback rule is correct for every caller.
 /// [`calendar_date_from_month_exact`] does the actual field-resolution
-/// work; this wrapper detects a "month doesn't exist this year" outcome via
-/// a day-independent `Reject`-mode existence probe (day-overflow and
+/// work; under [`LeapMonthFallback::Native`] this is a thin, un-overridden
+/// pass-through to it. Under [`LeapMonthFallback::PickNextMonth`], this
+/// wrapper instead detects a "month doesn't exist this year" outcome via a
+/// day-independent `Reject`-mode existence probe (day-overflow and
 /// month-non-existence are Gecko's own two structurally distinct error
 /// cases — `UnknownMonthCode` vs. `OutOfRange` — and this keeps them
-/// separate exactly the same way) and applies Gecko's own uniform fallback
-/// itself under `Overflow::Constrain`, rather than trusting whichever
-/// behavior the underlying calendar implementation happens to have.
+/// separate exactly the same way) and applies that override itself under
+/// `Overflow::Constrain`, rather than trusting whichever behavior the
+/// underlying calendar implementation happens to have.
 fn calendar_date_from_month(
     calendar: AnyCalendarKind,
     year: i64,
     month: Month,
     day: i64,
     overflow: IcuOverflow,
+    fallback: LeapMonthFallback,
 ) -> Option<Date<AnyCalendar>> {
+    if fallback == LeapMonthFallback::Native {
+        return calendar_date_from_month_exact(calendar, year, month, day, overflow);
+    }
     if month.is_leap() && calendar_date_from_month_exact(calendar, year, month, 1, IcuOverflow::Reject).is_none() {
         // The requested leap month does not occur in `year` at all (a pure
         // day-1 existence probe, independent of the real `day`/`overflow`
@@ -631,8 +687,7 @@ fn calendar_date_from_month(
         if overflow == IcuOverflow::Reject {
             return None;
         }
-        let fallback = Month::new((month.number() + 1).min(12));
-        return calendar_date_from_month_exact(calendar, year, fallback, day, overflow);
+        return calendar_date_from_month_exact(calendar, year, fallback.resolve(month), day, overflow);
     }
     calendar_date_from_month_exact(calendar, year, month, day, overflow)
 }
@@ -713,18 +768,22 @@ fn surpasses_identity(sign: i64, one: (i64, Month, i64), two: (i64, Month, i64))
 /// only at the very end. `day` is deliberately not threaded through here at
 /// all (Gecko's own version carries it unregulated to the final result);
 /// callers needing a resolved day construct it themselves afterward via
-/// [`calendar_date_from_month`].
+/// [`calendar_date_from_month`]. `fallback` is threaded through to that
+/// initial re-resolution only — see [`LeapMonthFallback`]'s own doc comment
+/// for why callers on the add side and the difference side need different
+/// conventions here.
 fn add_year_month_duration_leap_month(
     calendar: AnyCalendarKind,
     anchor_year: i64,
     anchor_month: Month,
     years: i64,
     months: i64,
+    fallback: LeapMonthFallback,
 ) -> Option<(i64, Month)> {
     let mut year = anchor_year + years;
     let mut month = anchor_month;
     if months != 0 {
-        let mut first_day_of_month = calendar_date_from_month(calendar, year, month, 1, IcuOverflow::Constrain)?;
+        let mut first_day_of_month = calendar_date_from_month(calendar, year, month, 1, IcuOverflow::Constrain, fallback)?;
         let mut remaining = months;
         if remaining > 0 {
             loop {
@@ -755,6 +814,67 @@ fn add_year_month_duration_leap_month(
         month = final_day.month().to_input();
     }
     Some((year, month))
+}
+
+/// `AddNonISODate`'s leap-month branch (`chinese`/`dangi`/`hebrew`) — the
+/// add-side counterpart to [`calendar_difference_date_leap_month`], and the
+/// fix for this module's own previously-documented gap: `calendar_add_date`
+/// used to carry `years`/`months` through flat ordinal position for *every*
+/// non-ISO calendar, which is wrong for a leap-month calendar the same way
+/// the difference side was (a leap month's ordinal position shifts year to
+/// year). `years`/`months` are carried through the anchor's own `Month`
+/// identity instead, via [`add_year_month_duration_leap_month`] (reusing the
+/// exact same year/month-bubbling machinery the difference side already
+/// verified), then the day is regulated in the resulting month via
+/// [`calendar_date_from_month`] honoring the caller's real `reject`/
+/// `constrain` overflow — this is also where a non-recurring leap month's
+/// [`LeapMonthFallback::Native`] convention applies (see that enum's own
+/// doc comment for why trusting `icu_calendar`'s own per-calendar fallback,
+/// and not [`LeapMonthFallback::PickNextMonth`], is the add side's
+/// convention). `weeks`/`days` fold back in as a flat ISO day offset
+/// afterward, exactly like the non-leap-month path in [`calendar_add_date`].
+fn calendar_add_date_leap_month(
+    calendar: AnyCalendarKind,
+    date: CivilDate,
+    years: i64,
+    months: i64,
+    weeks: i64,
+    days: i64,
+    reject: bool,
+) -> Option<CivilDate> {
+    let (anchor_year, anchor_month, anchor_day) = calendar_month_identity(calendar, date);
+    let (year, month) = add_year_month_duration_leap_month(
+        calendar,
+        anchor_year,
+        anchor_month,
+        years,
+        months,
+        LeapMonthFallback::Native,
+    )?;
+    let overflow = if reject {
+        IcuOverflow::Reject
+    } else {
+        IcuOverflow::Constrain
+    };
+    let landed = calendar_date_from_month(
+        calendar,
+        year,
+        month,
+        anchor_day,
+        overflow,
+        LeapMonthFallback::Native,
+    )?;
+    let landed_iso = landed.to_calendar(Iso);
+    let landed_civil: CivilDate = (
+        landed_iso.year().extended_year(),
+        landed_iso.month().number(),
+        landed_iso.day_of_month().0,
+    );
+    Some(balance_iso_date(
+        landed_civil.0,
+        landed_civil.1,
+        i64::from(landed_civil.2) + days + weeks * 7,
+    ))
 }
 
 /// The non-ISO generalization of [`difference_iso_date`] for the three
@@ -794,8 +914,15 @@ fn calendar_difference_date_leap_month(
     // ported exactly as Gecko has it, since resolving a non-existent
     // `monthCode` (not merely an out-of-range day) is the thing being
     // guarded against here.
-    let constrained0 = calendar_date_from_month(calendar, one.0 + years, one.1, one.2, IcuOverflow::Constrain)
-        .expect("constrain-mode regulation always succeeds for a representable date");
+    let constrained0 = calendar_date_from_month(
+        calendar,
+        one.0 + years,
+        one.1,
+        one.2,
+        IcuOverflow::Constrain,
+        LeapMonthFallback::PickNextMonth,
+    )
+    .expect("constrain-mode regulation always succeeds for a representable date");
     let mut constrained: (i64, Month, i64) = (
         i64::from(constrained0.year().extended_year()),
         constrained0.month().to_input(),
@@ -813,7 +940,7 @@ fn calendar_difference_date_leap_month(
     // within already-identity-resolved years).
     let mut months = 0_i64;
     while let Some((candidate_year, candidate_month)) =
-        add_year_month_duration_leap_month(calendar, one.0, one.1, years, months + sign)
+        add_year_month_duration_leap_month(calendar, one.0, one.1, years, months + sign, LeapMonthFallback::PickNextMonth)
     {
         // `day` carries through unregulated here (Gecko's own
         // `AddYearMonthDuration` leaves it as the anchor's raw `day`),
@@ -856,7 +983,14 @@ fn calendar_difference_date_leap_month(
 
         // Months since/until the landing year's own start/end, from `one`'s
         // own Month identity re-resolved in that year.
-        if let Some(dt) = calendar_date_from_month(calendar, one.0 + years, one.1, 1, IcuOverflow::Constrain) {
+        if let Some(dt) = calendar_date_from_month(
+            calendar,
+            one.0 + years,
+            one.1,
+            1,
+            IcuOverflow::Constrain,
+            LeapMonthFallback::PickNextMonth,
+        ) {
             if sign > 0 {
                 months += months_since_start_of_year(&dt);
             } else {
@@ -866,8 +1000,15 @@ fn calendar_difference_date_leap_month(
         years = 0;
     }
 
-    let final_probe = calendar_date_from_month(calendar, constrained.0, constrained.1, constrained.2, IcuOverflow::Constrain)
-        .expect("constrain-mode regulation always succeeds for a representable date");
+    let final_probe = calendar_date_from_month(
+        calendar,
+        constrained.0,
+        constrained.1,
+        constrained.2,
+        IcuOverflow::Constrain,
+        LeapMonthFallback::PickNextMonth,
+    )
+    .expect("constrain-mode regulation always succeeds for a representable date");
     let final_iso = final_probe.to_calendar(Iso);
     let constrained_iso: CivilDate = (
         final_iso.year().extended_year(),
@@ -1421,7 +1562,7 @@ mod tests {
     /// around [`calendar_date_from_month`] so these tests never need a
     /// hand-computed ISO date.
     fn civil_date_from_month_code(calendar: AnyCalendarKind, year: i64, month: Month, day: i64) -> CivilDate {
-        let date = calendar_date_from_month(calendar, year, month, day, IcuOverflow::Reject)
+        let date = calendar_date_from_month(calendar, year, month, day, IcuOverflow::Reject, LeapMonthFallback::Native)
             .expect("test fixture month codes are always valid for their stated year");
         let iso = date.to_calendar(Iso);
         (iso.year().extended_year(), iso.month().number(), iso.day_of_month().0)
@@ -1439,11 +1580,24 @@ mod tests {
     /// ordinal 4. Under `Reject`, the same request must fail outright.
     #[test]
     fn calendar_date_from_month_falls_back_to_the_next_month_for_a_leap_month_that_does_not_recur() {
-        let expected = calendar_date_from_month(AnyCalendarKind::Chinese, 2002, Month::new(5), 1, IcuOverflow::Reject)
-            .expect("M05 always exists");
-        let constrained =
-            calendar_date_from_month(AnyCalendarKind::Chinese, 2002, Month::leap(4), 1, IcuOverflow::Constrain)
-                .expect("a non-recurring leap month still resolves under Constrain");
+        let expected = calendar_date_from_month(
+            AnyCalendarKind::Chinese,
+            2002,
+            Month::new(5),
+            1,
+            IcuOverflow::Reject,
+            LeapMonthFallback::PickNextMonth,
+        )
+        .expect("M05 always exists");
+        let constrained = calendar_date_from_month(
+            AnyCalendarKind::Chinese,
+            2002,
+            Month::leap(4),
+            1,
+            IcuOverflow::Constrain,
+            LeapMonthFallback::PickNextMonth,
+        )
+        .expect("a non-recurring leap month still resolves under Constrain");
         assert_eq!(constrained.month().ordinal, expected.month().ordinal);
         assert_eq!(
             constrained.to_calendar(Iso).day_of_month().0,
@@ -1451,15 +1605,29 @@ mod tests {
         );
 
         assert!(
-            calendar_date_from_month(AnyCalendarKind::Chinese, 2002, Month::leap(4), 1, IcuOverflow::Reject).is_none(),
+            calendar_date_from_month(
+                AnyCalendarKind::Chinese,
+                2002,
+                Month::leap(4),
+                1,
+                IcuOverflow::Reject,
+                LeapMonthFallback::PickNextMonth,
+            )
+            .is_none(),
             "a non-recurring leap month must be rejected under Overflow::Reject"
         );
 
         // `M12L`'s fallback caps at 12 (stays within the same year) rather
         // than wrapping to a 13th month.
-        let capped =
-            calendar_date_from_month(AnyCalendarKind::Chinese, 2002, Month::leap(12), 1, IcuOverflow::Constrain)
-                .expect("M12L's fallback must still resolve");
+        let capped = calendar_date_from_month(
+            AnyCalendarKind::Chinese,
+            2002,
+            Month::leap(12),
+            1,
+            IcuOverflow::Constrain,
+            LeapMonthFallback::PickNextMonth,
+        )
+        .expect("M12L's fallback must still resolve");
         assert_eq!(capped.month().ordinal, 12);
     }
 
@@ -1471,8 +1639,15 @@ mod tests {
     /// 6, since the leap month itself is ordinal 5).
     #[test]
     fn calendar_date_from_month_resolves_a_genuinely_recurring_leap_month_to_its_own_ordinal() {
-        let leap = calendar_date_from_month(AnyCalendarKind::Chinese, 2001, Month::leap(4), 1, IcuOverflow::Reject)
-            .expect("2001 has a real M04L");
+        let leap = calendar_date_from_month(
+            AnyCalendarKind::Chinese,
+            2001,
+            Month::leap(4),
+            1,
+            IcuOverflow::Reject,
+            LeapMonthFallback::PickNextMonth,
+        )
+        .expect("2001 has a real M04L");
         assert_eq!(leap.month().ordinal, 5);
         assert!(leap.month().to_input().is_leap());
     }
@@ -1483,8 +1658,15 @@ mod tests {
     /// `monthCode`, even though 2001 inserts a leap month right after it.
     #[test]
     fn add_year_month_duration_leap_month_preserves_identity_across_a_pure_year_shift() {
-        let (year, month) = add_year_month_duration_leap_month(AnyCalendarKind::Chinese, 2000, Month::new(4), 1, 0)
-            .expect("a representable in-range shift always succeeds");
+        let (year, month) = add_year_month_duration_leap_month(
+            AnyCalendarKind::Chinese,
+            2000,
+            Month::new(4),
+            1,
+            0,
+            LeapMonthFallback::PickNextMonth,
+        )
+        .expect("a representable in-range shift always succeeds");
         assert_eq!((year, month), (2001, Month::new(4)));
     }
 
@@ -1496,10 +1678,90 @@ mod tests {
     /// non-leap `monthCode`.
     #[test]
     fn add_year_month_duration_leap_month_bubbles_into_the_leap_month_itself() {
-        let (year, month) = add_year_month_duration_leap_month(AnyCalendarKind::Chinese, 2000, Month::new(4), 1, 1)
-            .expect("a representable in-range shift always succeeds");
+        let (year, month) = add_year_month_duration_leap_month(
+            AnyCalendarKind::Chinese,
+            2000,
+            Month::new(4),
+            1,
+            1,
+            LeapMonthFallback::PickNextMonth,
+        )
+        .expect("a representable in-range shift always succeeds");
         assert_eq!(year, 2001);
         assert_eq!(month, Month::leap(4));
+    }
+
+    /// [`calendar_add_date`]'s own leap-month branch, host-neutral layer:
+    /// adding 1 year to `M03L`(1966) under `Constrain` lands on `M03`(1967)
+    /// -- `LeapMonthFallback::Native`, not `PickNextMonth` -- matching
+    /// `intl402/Temporal/PlainDate/prototype/add/leap-months-chinese.js`'s
+    /// own worked example (the VM-level integration test in
+    /// `backend/bluejs/tests/temporal_leap_month_calendar_add.rs` exercises
+    /// the same fact through the real `Temporal.PlainDate.prototype.add`
+    /// surface, including the `overflow: "reject"` throw this test's
+    /// `Constrain` case does not cover).
+    #[test]
+    fn calendar_add_date_leap_month_constrains_a_non_recurring_leap_month_to_the_same_number() {
+        let anchor = civil_date_from_month_code(AnyCalendarKind::Chinese, 1966, Month::leap(3), 1);
+        let landed = calendar_add_date(AnyCalendarKind::Chinese, anchor, 1, 0, 0, 0, false)
+            .expect("constrain-mode add always succeeds for a representable date");
+        let (year, month, day) = calendar_month_identity(AnyCalendarKind::Chinese, landed);
+        assert_eq!((year, month, day), (1967, Month::new(3), 1));
+
+        assert_eq!(
+            calendar_add_date(AnyCalendarKind::Chinese, anchor, 1, 0, 0, 0, true),
+            None,
+            "overflow: reject must throw when M03L does not recur in the landing year"
+        );
+    }
+
+    /// The same scenario on `hebrew`: adding 1 year to Adar I (`M05L`, 5784)
+    /// under `Constrain` lands on Adar (`M06`, 5785) -- the *next* month,
+    /// not `M05` -- since `icu_calendar`'s own `Hebrew::ordinal_from_month`
+    /// natively implements that convention (unlike `Chinese`/`Dangi`'s
+    /// shared `EastAsianTraditional` implementation, exercised above).
+    /// Matches `intl402/Temporal/PlainDate/prototype/add/leap-months-hebrew.js`'s
+    /// "Adding 1 year to Adar I (M05L) lands in common-year Adar (M06) with
+    /// constrain" and its `overflow: "reject"` throw.
+    #[test]
+    fn calendar_add_date_leap_month_hebrew_picks_the_next_month_for_a_non_recurring_leap_month() {
+        let anchor = civil_date_from_month_code(AnyCalendarKind::Hebrew, 5784, Month::leap(5), 1);
+        let landed = calendar_add_date(AnyCalendarKind::Hebrew, anchor, 1, 0, 0, 0, false)
+            .expect("constrain-mode add always succeeds for a representable date");
+        let (year, month, day) = calendar_month_identity(AnyCalendarKind::Hebrew, landed);
+        assert_eq!((year, month, day), (5785, Month::new(6), 1));
+
+        assert_eq!(
+            calendar_add_date(AnyCalendarKind::Hebrew, anchor, 1, 0, 0, 0, true),
+            None,
+            "overflow: reject must throw when Adar I does not recur in the landing year"
+        );
+    }
+
+    /// [`calendar_add_date`]'s leap-month branch preserves `monthCode`
+    /// identity across a pure-year shift when the leap month *does* recur
+    /// (2012's `M04L` to 2020's own `M04L`, 8 years later) -- the same
+    /// "Adding years to go from one M04L to the next M04L" fixture case.
+    #[test]
+    fn calendar_add_date_leap_month_preserves_identity_when_the_leap_month_recurs() {
+        let anchor = civil_date_from_month_code(AnyCalendarKind::Chinese, 2012, Month::leap(4), 1);
+        let landed = calendar_add_date(AnyCalendarKind::Chinese, anchor, 8, 0, 0, 0, true)
+            .expect("2020 has a real M04L, so reject mode must succeed");
+        let (year, month, day) = calendar_month_identity(AnyCalendarKind::Chinese, landed);
+        assert_eq!((year, month, day), (2020, Month::leap(4), 1));
+    }
+
+    /// [`calendar_add_date`]'s leap-month branch bubbles a `months`
+    /// component by real ordinal position within an already-identity-
+    /// resolved year, landing correctly on the leap month itself --
+    /// "adding 2 months to M03 in leap year lands in M04L (leap month)".
+    #[test]
+    fn calendar_add_date_leap_month_bubbles_months_into_a_leap_month() {
+        let anchor = civil_date_from_month_code(AnyCalendarKind::Chinese, 2020, Month::new(3), 1);
+        let landed = calendar_add_date(AnyCalendarKind::Chinese, anchor, 0, 2, 0, 0, true)
+            .expect("landing on the real M04L must succeed under reject");
+        let (year, month, day) = calendar_month_identity(AnyCalendarKind::Chinese, landed);
+        assert_eq!((year, month, day), (2020, Month::leap(4), 1));
     }
 
     /// [`calendar_difference_date_leap_month`] reproduces
