@@ -334,6 +334,60 @@ impl TimeZone {
         after
     }
 
+    /// `GetNamedTimeZoneNextTransition`/`GetNamedTimeZonePreviousTransition`,
+    /// generalized over direction: the next (`forward = true`) or previous
+    /// (`forward = false`) instant, strictly after/before
+    /// `epoch_nanoseconds`, at which this zone's real UTC offset changes.
+    ///
+    /// `None` when there is no such instant — either because `self` is a
+    /// fixed-offset zone (`Temporal.ZonedDateTime.prototype
+    /// .getTimeZoneTransition`'s own spec: an offset zone never has
+    /// transitions), or because `epoch_nanoseconds` itself falls outside
+    /// Jiff's representable range (the same ISO ±9999-year window every
+    /// other real-transition-data lookup in this module already stays
+    /// inside — a Temporal `Instant` this far out has no real IANA data to
+    /// query in the first place, so there is nothing to project this
+    /// specific lookup onto, unlike [`Self::offset_nanoseconds_for`]'s own
+    /// periodic-cycle projection for a plain offset query).
+    ///
+    /// Delegates to `jiff::tz::TimeZone::following`/`preceding`, which reads
+    /// real transition entries directly from the same pinned TZif data
+    /// `offset_nanoseconds_for` already resolves offsets from — so a
+    /// same-abbreviation/same-offset rule change that the underlying TZif
+    /// data itself never recorded as a transition (`rule-change-without-
+    /// offset-transition.js`'s own Europe/London/America/Anchorage cases)
+    /// is not reported here either, with no separate filtering needed.
+    pub(crate) fn adjacent_transition(
+        &self,
+        epoch_nanoseconds: &BigInt,
+        forward: bool,
+    ) -> Option<BigInt> {
+        let name = match self {
+            Self::Offset(_) => return None,
+            Self::Iana(name) => name,
+        };
+        let zone = database()
+            .get(name)
+            .expect("a named zone only ever comes from this same pinned database");
+        let nanoseconds = i128::try_from(epoch_nanoseconds).ok()?;
+        // `Timestamp::from_nanosecond` trips a debug assertion rather than
+        // returning a clean `Err` for an out-of-range input (the same sharp
+        // edge `jiff_timestamp` above already works around for
+        // `from_second`), so the range is checked explicitly first.
+        if !(Timestamp::MIN.as_nanosecond()..=Timestamp::MAX.as_nanosecond()).contains(&nanoseconds)
+        {
+            return None;
+        }
+        let timestamp =
+            Timestamp::from_nanosecond(nanoseconds).expect("range was just checked above");
+        let transition = if forward {
+            zone.following(timestamp).next()
+        } else {
+            zone.preceding(timestamp).next()
+        }?;
+        Some(BigInt::from(transition.timestamp().as_nanosecond()))
+    }
+
     /// `GetEpochNanosecondsFor`: resolves a local date-time to one instant,
     /// applying `disambiguation` when the zone leaves it ambiguous or skips
     /// it entirely.
@@ -716,5 +770,78 @@ mod tests {
             ),
             Ok(BigInt::from(0))
         );
+    }
+
+    /// Real values pinned directly from the pinned Test262 corpus's
+    /// `intl402/Temporal/ZonedDateTime/prototype/getTimeZoneTransition/
+    /// specific-tzdb-values.js`.
+    #[test]
+    fn adjacent_transition_finds_real_historical_offset_changes() {
+        let new_york = TimeZone::Iana("America/New_York");
+        assert_eq!(
+            new_york.adjacent_transition(
+                &(BigInt::from(1_555_448_460_i64) * 1_000_000_000_u32),
+                true,
+            ),
+            Some(BigInt::from(1_572_760_800_i64) * 1_000_000_000_u32)
+        );
+        assert_eq!(
+            new_york.adjacent_transition(
+                &(-BigInt::from(5_364_662_400_i64) * 1_000_000_000_u32),
+                true,
+            ),
+            Some(-BigInt::from(2_717_650_800_i64) * 1_000_000_000_u32)
+        );
+        let london = TimeZone::Iana("Europe/London");
+        assert_eq!(
+            london.adjacent_transition(
+                &(BigInt::from(1_591_909_260_i64) * 1_000_000_000_u32),
+                false,
+            ),
+            Some(BigInt::from(1_585_443_600_i64) * 1_000_000_000_u32)
+        );
+        assert_eq!(
+            london.adjacent_transition(
+                &(-BigInt::from(3_849_984_000_i64) * 1_000_000_000_u32),
+                false,
+            ),
+            Some(BigInt::from(-3_852_662_325_i64) * 1_000_000_000)
+        );
+    }
+
+    /// A fixed-offset zone never transitions; a named zone with no real
+    /// transitions in a direction (`UTC` itself, or querying "next" from
+    /// after a zone's last historical DST year) reports `None` too, per
+    /// `utc-no-transitions.js`/`offset-timezone-no-transitions.js`/
+    /// `no-future-transitions.js`.
+    #[test]
+    fn adjacent_transition_is_none_for_a_fixed_offset_or_transition_less_zone() {
+        let epoch = BigInt::from(0);
+        assert_eq!(TimeZone::Offset(-600).adjacent_transition(&epoch, true), None);
+        assert_eq!(TimeZone::Offset(-600).adjacent_transition(&epoch, false), None);
+        assert_eq!(TimeZone::Iana("UTC").adjacent_transition(&epoch, true), None);
+        assert_eq!(TimeZone::Iana("UTC").adjacent_transition(&epoch, false), None);
+        // Asia/Kolkata has not observed DST since 1945; from 2024 there is no
+        // future transition, only a historical one going backward.
+        let kolkata = TimeZone::Iana("Asia/Kolkata");
+        let from_2024 = kolkata
+            .epoch_nanoseconds_for((2024, 6, 15), (12, 0, 0, 0, 0, 0), Disambiguation::Compatible)
+            .unwrap();
+        assert_eq!(kolkata.adjacent_transition(&from_2024, true), None);
+        assert!(kolkata.adjacent_transition(&from_2024, false).is_some());
+    }
+
+    /// An instant far outside Jiff's own ISO ±9999-year representable range
+    /// has no queryable real transition data — this lookup reports `None`
+    /// rather than projecting onto a synthetic cycle the way
+    /// [`TimeZone::offset_nanoseconds_for`] does for a plain offset query,
+    /// per `transition-at-instant-boundaries.js`'s own outer-bound checks.
+    #[test]
+    fn adjacent_transition_is_none_far_outside_jiffs_representable_range() {
+        let far_future = BigInt::from(8_640_000_000_000_000_i64) * 1_000_000;
+        let far_past = -(BigInt::from(8_640_000_000_000_000_i64) * 1_000_000_u32);
+        let ny = TimeZone::Iana("America/New_York");
+        assert_eq!(ny.adjacent_transition(&far_future, true), None);
+        assert_eq!(ny.adjacent_transition(&far_past, false), None);
     }
 }

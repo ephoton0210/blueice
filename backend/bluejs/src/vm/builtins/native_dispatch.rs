@@ -1295,6 +1295,9 @@ impl Vm {
             NativeFunction::TemporalZonedDateTimeGetIsoFields => {
                 self.temporal_zoned_date_time_get_iso_fields(&receiver)
             }
+            NativeFunction::TemporalZonedDateTimeGetTimeZoneTransition => {
+                self.temporal_zoned_date_time_get_time_zone_transition(&receiver, first)
+            }
             NativeFunction::ListFormatSupportedLocales => self.list_format_supported_locales(&args),
             NativeFunction::ListFormatFormat => self.list_format_format(&receiver, first),
             NativeFunction::ListFormatFormatToParts => {
