@@ -269,6 +269,15 @@ fn evaluate(request: Request) -> Value {
         instruction_budget: request.instruction_budget.unwrap_or(100_000),
         ..VmConfig::default()
     };
+    // GC stress mode: a tiny nursery makes nearly every allocation a collection
+    // point, so a native function that leaves an object unrooted across a
+    // later allocation fails deterministically instead of by timing luck.
+    if let Some(capacity) = std::env::var("BLUEJS_TEST262_NURSERY_CAPACITY")
+        .ok()
+        .and_then(|value| value.parse().ok())
+    {
+        config.heap.nursery_capacity = capacity;
+    }
     if let Some(limit) = request.heap_limit {
         config.heap.max_heap_bytes = limit;
         config.heap.major_threshold_bytes = config.heap.major_threshold_bytes.min(limit);

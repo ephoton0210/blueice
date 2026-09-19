@@ -12,6 +12,10 @@ from run import (
     ITERATOR_ZIP_BASIC_MATRIX_FIXTURES,
     ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET,
     ITERATOR_ZIP_BASIC_MATRIX_TIMEOUT,
+    TEMPORAL_CALENDAR_TABLE_FIXTURES,
+    TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET,
+    ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES,
+    ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET,
     Worker,
     case_timeout,
     classify,
@@ -247,6 +251,51 @@ class RunnerTests(unittest.TestCase):
                 {}, 2, "intl402/DateTimeFormat/prototype/formatToParts/basic.js"
             ),
             2,
+        )
+
+    def test_finite_temporal_fixtures_get_a_named_bounded_allowance_and_nothing_else(self):
+        # Test262 defines no instruction budget: it is this host's own resource
+        # policy. Each finite fixture keeps its unmodified source and gets an
+        # explicit, bounded allowance; neighbours keep the ordinary default.
+        self.assertEqual(
+            ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES,
+            frozenset(
+                {
+                    "built-ins/Temporal/ZonedDateTime/prototype/since/same-epoch-nanoseconds.js",
+                    "built-ins/Temporal/ZonedDateTime/prototype/until/same-epoch-nanoseconds.js",
+                }
+            ),
+        )
+        for relative in ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES:
+            self.assertEqual(
+                instruction_budget({}, 100_000, relative),
+                ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET,
+            )
+        self.assertEqual(
+            TEMPORAL_CALENDAR_TABLE_FIXTURES,
+            frozenset(
+                {
+                    "intl402/Temporal/PlainDate/from/hebrew-keviah.js",
+                    "intl402/Temporal/PlainDate/from/persian-new-year-dates.js",
+                    "intl402/Temporal/PlainDateTime/from/roundtrip-from-property-bag.js",
+                    "intl402/Temporal/ZonedDateTime/from/roundtrip-from-property-bag.js",
+                }
+            ),
+        )
+        for relative in TEMPORAL_CALENDAR_TABLE_FIXTURES:
+            self.assertEqual(
+                instruction_budget({}, 100_000, relative),
+                TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET,
+            )
+            # A larger explicit --instruction-budget is never lowered.
+            self.assertEqual(
+                instruction_budget({}, 50_000_000, relative), 50_000_000
+            )
+        self.assertEqual(
+            instruction_budget(
+                {}, 100_000, "intl402/Temporal/PlainDate/from/basic.js"
+            ),
+            100_000,
         )
 
     def test_iterator_zip_basic_matrices_receive_an_exact_bounded_envelope(self):

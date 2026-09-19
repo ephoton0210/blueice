@@ -17,7 +17,8 @@
 //! No `Value`/heap/Realm coupling, matching every other module in this
 //! directory — directly unit-testable without a VM.
 
-use super::epoch::{CivilDate, CivilTime};
+use super::duration_math;
+use super::epoch::{self, CivilDate, CivilTime};
 use super::plain_date::{self, DateUnit};
 use super::rounding;
 use super::time_zone::{AmbiguousLocalTime, Disambiguation, TimeZone};
@@ -63,22 +64,46 @@ pub(crate) fn add_zoned_date_time(
     Some(intermediate_ns + BigInt::from(time_nanoseconds))
 }
 
-/// The unrounded calendar-date portion of `DifferenceZonedDateTime`: the
-/// years/months/weeks/days between two zoned local dates at `largest_unit`
-/// granularity (exactly [`plain_date::calendar_difference_date`]), plus the
-/// *exact* nanosecond remainder once that whole date part is applied to
-/// `date1`.
+/// `DifferenceZonedDateTime`: the years/months/weeks/days between two zoned
+/// local dates at `largest_unit` granularity (exactly
+/// [`plain_date::calendar_difference_date`]), plus the *exact* nanosecond
+/// remainder once that whole date part is applied to `date1`.
 ///
-/// Deliberately does not derive the day count from elapsed nanoseconds (the
-/// naive approach, and the one that would need an unbounded correction loop
-/// for a large date range — the exact class of performance bug
-/// `plain_date.rs`'s own rounding rewrite already found and fixed for
-/// `PlainDate`, documented there). [`plain_date::calendar_difference_date`]'s
-/// own `days` output is already defined as an exact ISO-epoch-day count from
-/// its "years+months+weeks" landing date to `end`, so re-adding that same
-/// count in epoch days always lands exactly on `date2` — no probing or
-/// bisection needed: the time remainder is then just `ns2` minus the instant
-/// of `date2` at the *start* time-of-day, resolved through the zone.
+/// The naive version of this (used by an earlier slice of this same pass) —
+/// take `calendar_difference_date(date1, date2)` as-is, and the remainder as
+/// `ns2` minus the instant of `date2` at `date1`'s own time-of-day — is
+/// correct whenever that remainder's sign already agrees with the date part
+/// (the common case), but *not* in general: `date1`'s time-of-day is often
+/// later in the day than `date2`'s actual local time (from `ns2`), which
+/// makes that naive remainder land on the *wrong* side of zero relative to
+/// the overall direction, producing a `years`/`months`/`weeks`/`days` and a
+/// time remainder with **opposite** signs — the exact
+/// `DurationRecord::try_new` "common sign" `RangeError`
+/// `since/negative-epochnanoseconds.js`,
+/// `since/reversibility-of-differences.js` and the `argument-at-limits.js`/
+/// `intercalary-month-{coptic,ethiopic,ethioaa}.js` fixtures all hit before
+/// this fix.
+///
+/// Ported directly from Gecko's own `DifferenceZonedDateTime`
+/// (`ZonedDateTime.cpp`): finds the correct anchor date by *day-correcting*
+/// `date2` (by 0, 1, or up to 2 days for a positive overall direction —
+/// `maxDayCorrection`'s own `1 + (sign > 0)`, since a positive difference can
+/// need to cross two short/DST-shortened local days to find a consistent
+/// candidate) until resolving `(candidate, time1)` through the zone produces
+/// a remainder whose sign actually agrees with the overall direction, then
+/// computes the calendar date difference from `date1` to *that* candidate
+/// (not to `date2` directly) — still exactly
+/// [`plain_date::calendar_difference_date`], no bisection or bounded-loop
+/// day-count derivation needed, since the loop only ever runs 1-3 iterations
+/// regardless of how far apart `date1`/`date2` are.
+///
+/// `None` only on a genuine representable-range overflow while resolving a
+/// candidate instant (`argument-at-limits.js`-style fixtures near the ends of
+/// the `Instant` range), or if every day-correction candidate is exhausted
+/// without finding a consistent sign (Gecko's own
+/// `JSMSG_TEMPORAL_ZONED_DATE_TIME_INCONSISTENT_INSTANT`, not expected to be
+/// reachable in practice for a real IANA zone but kept total rather than
+/// panicking); the caller maps it to the spec's own `RangeError`.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn difference_zoned_date_time(
     zone: &TimeZone,
@@ -88,23 +113,56 @@ pub(crate) fn difference_zoned_date_time(
     time1: CivilTime,
     ns2: &BigInt,
     date2: CivilDate,
+    time2: CivilTime,
     largest_unit: DateUnit,
-) -> (i64, i64, i64, i64, i128) {
+) -> Option<(i64, i64, i64, i64, i128)> {
     if ns1 == ns2 {
-        return (0, 0, 0, 0, 0);
+        return Some((0, 0, 0, 0, 0));
     }
-    let (years, months, weeks, days) =
-        plain_date::calendar_difference_date(calendar, date1, date2, largest_unit);
-    // `Disambiguation::Compatible` always resolves (it is only ever `Err`
-    // for `Reject`), so the fallback here is unreachable in practice; it
-    // exists only so this function stays total rather than panicking.
-    let end_ns = zone
-        .epoch_nanoseconds_for(date2, time1, Disambiguation::Compatible)
-        .unwrap_or_else(|_| ns2.clone());
-    let time_remainder = ns2 - &end_ns;
-    let time_remainder_i128 = i128::try_from(&time_remainder)
-        .expect("a same-day-or-adjacent remainder around an Instant-range value fits in i128");
-    (years, months, weeks, days, time_remainder_i128)
+    if date1 == date2 {
+        let diff = i128::try_from(ns2 - ns1)
+            .expect("a same-day remainder around an Instant-range value fits in i128");
+        return Some((0, 0, 0, 0, diff));
+    }
+    let sign: i64 = if (ns2 - ns1).sign() == num_bigint::Sign::Minus {
+        -1
+    } else {
+        1
+    };
+    let max_day_correction: i64 = if sign > 0 { 2 } else { 1 };
+    let mut day_correction: i64 = 0;
+
+    let wall_time_diff = duration_math::time_fields_to_nanoseconds(
+        time2.0, time2.1, time2.2, time2.3, time2.4, time2.5,
+    ) - duration_math::time_fields_to_nanoseconds(
+        time1.0, time1.1, time1.2, time1.3, time1.4, time1.5,
+    );
+    if (wall_time_diff.signum() as i64) == -sign {
+        day_correction += 1;
+    }
+
+    loop {
+        if day_correction > max_day_correction {
+            return None;
+        }
+        let candidate =
+            plain_date::add_iso_date(date2, 0, 0, 0, -day_correction * sign, false)?;
+        let candidate_ns = zone
+            .epoch_nanoseconds_for(candidate, time1, Disambiguation::Compatible)
+            .ok()?;
+        if !epoch::is_in_instant_range(&candidate_ns) {
+            return None;
+        }
+        let time_duration = i128::try_from(ns2 - &candidate_ns)
+            .expect("a bounded-day-correction remainder around an Instant-range value fits in i128");
+        let time_sign = time_duration.signum() as i64;
+        if sign != -time_sign {
+            let (years, months, weeks, days) =
+                plain_date::calendar_difference_date(calendar, date1, candidate, largest_unit);
+            return Some((years, months, weeks, days, time_duration));
+        }
+        day_correction += 1;
+    }
 }
 
 /// The exact elapsed length, in nanoseconds, of the wall-clock day
@@ -488,8 +546,10 @@ mod tests {
             start_time,
             &ns2,
             end_date,
+            start_time,
             DateUnit::Day,
-        );
+        )
+        .unwrap();
         assert_eq!((years, months, weeks, days), (0, 0, 0, 1));
         assert_eq!(remainder_ns, 0);
         // The real elapsed time is 23h, not the naive 24h a fixed-day
@@ -512,9 +572,10 @@ mod tests {
                 time,
                 &ns,
                 date,
+                time,
                 DateUnit::Day,
             ),
-            (0, 0, 0, 0, 0)
+            Some((0, 0, 0, 0, 0))
         );
     }
 
