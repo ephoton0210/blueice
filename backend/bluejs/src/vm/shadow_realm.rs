@@ -346,7 +346,17 @@ impl Vm {
         let outcome: Result<Value, RuntimeError> = match record.vm.try_borrow_mut() {
             Ok(mut child) => {
                 let inner: Result<Value, RuntimeError> = (|| {
+                    // A ShadowRealm has its own module graph and heap, but
+                    // shares its agent's host module loader.  Copy every
+                    // source registry the host supplied, not only eagerly
+                    // compiled bytecode: Test262 deliberately keeps some
+                    // valid `importValue` fixtures as lazy dynamic sources.
+                    // Do not copy module_graph/source-object caches; their
+                    // ObjectIds belong to the caller heap.
                     child.module_registry = self.module_registry.clone();
+                    child.dynamic_module_sources = self.dynamic_module_sources.clone();
+                    child.json_module_sources = self.json_module_sources.clone();
+                    child.module_source_registry = self.module_source_registry.clone();
                     child.active_module_name = self.active_module_name.clone();
                     child.remaining_instructions = child.config.instruction_budget;
                     let promise_value =

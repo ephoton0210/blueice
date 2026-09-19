@@ -1103,6 +1103,16 @@ This closes 3 of `wrapped-function-proto-from-caller-realm.js`'s 4 assertions an
 
 Verified no regression from the `Rc<RefCell<Vm>>` change: `backend/bluejs/tests/shadow_realm.rs` grew to 14 tests (added `a_shadowrealm_instance_keeps_its_identity_across_a_test262_realm_transport`, using `$262.createRealm()` directly, mirroring the Test262 scenario); `built-ins/Reflect/` + `built-ins/Proxy/` (465 files, 915 modes) stayed 100% passing. `cargo build --workspace --all-targets`, `cargo test --workspace --no-fail-fast` (only the same pre-declared `string_protocols.rs` flake) and `cargo clippy --workspace --all-targets -- -D warnings` all pass.
 
+## ShadowRealm final Ubuntu retest: 124/124 (2026-09-20)
+
+A fresh Ubuntu 24.04 Test262 run, using the newly built adapter and `--filter 'ShadowRealm/' --jobs 8`, now records **124/124 passing modes across 64 files**. This closes the two remaining independent causes that the preceding follow-up had separated into three failed modes: the same wrapped-function fixture ran once each in sloppy and strict mode, plus one async module mode for `importValue`.
+
+`ShadowRealm.prototype.importValue` had copied only the caller's already-compiled `module_registry` and active referrer into its child. The Test262 adapter correctly classifies `import-value_FIXTURE.js` as a lazy dynamic source, so the child could not find that fixture even though its parent could. The child now receives the complete host loader context needed by dynamic import: compiled bytecode, lazy JavaScript sources, JSON sources, source-phase names, and the active referrer. Module graph and source-object caches remain realm-local because their object identities belong to their original heap. Regression coverage in `import_value_resolves_a_lazily_supplied_module_export` verifies the exact lazy-source path.
+
+For `wrapped-function-proto-from-caller-realm.js`, Test262's opaque transport now retains a local callable capability bit when the original parent-realm object is callable. This lets `ShadowRealm` apply `GetWrappedValue` and create the required caller-realm function facade rather than rejecting the intermediate stand-in before wrapping. `wrapped_functions_keep_callable_arguments_across_a_test262_realm_transport` reproduces the upstream assertion through `$262.createRealm()`. The transport remains opaque for arbitrary property and call forwarding; the completed upstream fixture observes the required wrapped-function creation and prototype, while a future Test262-membrane call-forwarding project would still need a separate bidirectional call bridge.
+
+Verification on this Ubuntu host: `cargo test -p blueice-bluejs --test shadow_realm -- --nocapture` reports **16/16**; the focused Test262 runner reports **124 pass, 0 fail, 0 timeout**. No Windows or macOS claim is made by this result.
+
 ## Lazy on-demand module compilation, and a further round of individual dynamic-import fixes
 
 Implemented 2026-09-18, a third continuation of the same-day session above, addressing its own explicitly deferred `eval-script-code-target` finding plus the residual individually-diagnosed `dynamic-import` failures.

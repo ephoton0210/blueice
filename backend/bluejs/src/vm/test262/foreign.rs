@@ -411,6 +411,12 @@ impl Vm {
         {
             return Ok(Value::Object(*target));
         }
+        // A ShadowRealm boundary is permitted to receive a callable object,
+        // and must manufacture a WrappedFunction with the target realm's
+        // %Function.prototype%.  The Test262 membrane keeps the object
+        // opaque, but it must retain this one observable capability locally
+        // or ShadowRealm rejects it before it can create that wrapper.
+        let callable = self.is_callable(&Value::Object(source))?;
         let source_root = self.heap.root(source)?;
         let result = (|| {
             let realm = self
@@ -422,6 +428,9 @@ impl Vm {
                 .vm
                 .with_roots(|heap| heap.alloc_object(Some(prototype)))?;
             let target_root = realm.vm.heap.root(target)?;
+            if callable {
+                realm.vm.test262_imported_callables.insert(target);
+            }
             realm.imported_sources.insert(source, target);
             realm.imported_values.insert(
                 target,

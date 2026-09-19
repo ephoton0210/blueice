@@ -27,6 +27,16 @@ Test262 has no official “Core” classification. This report defines **ECMA-26
 
 The run completed all 53,582 test files. Its JSONL contains nine `timeout` records and zero `harness_error` records. The 6,714 retained failures are semantic outcomes, not filtered or recategorized timeouts.
 
+## Focused ShadowRealm regression retest (2026-09-20)
+
+After the `ShadowRealm` loader and cross-Test262-realm callable fixes, a fresh focused invocation completed on this same **Ubuntu 24.04.3 LTS / WSL2** host (not 24.04.4): `python3 backend/bluejs/test262/run.py --adapter /tmp/blueice-shadowrealm-target/debug/bluejs-test262 --filter 'ShadowRealm/' --jobs 8 --output /tmp/blueice-test262-shadowrealm-fixed-20260920 --progress-interval 0`. The newly built adapter SHA-256 was `da3c85fde27b9fcb7259fdc20a40a8999c649b949c5ed58fca396dfc06613361`.
+
+| Scope | Scheduled | Pass | Fail | Timeout |
+| --- | ---: | ---: | ---: | ---: |
+| `built-ins/ShadowRealm/` | 124 | 124 | 0 | 0 |
+
+This is a post-fix focused regression result (64 files, 0.678 seconds), not a replacement for the unfiltered 2026-09-19 inventory above. Windows and macOS remain untested and explicitly deferred.
+
 ## ECMA-402 and Temporal breakdown (same 2026-09-19 complete run)
 
 The tables above report `intl402/` as one aggregate row. This section breaks that 94.787% down by service and adds ECMA-262 Temporal's own test surface, which `built-ins/` also includes above without a separate line. These figures are derived from the same complete JSONL as the tables above, not a filtered rerun. Reproduce with `python3 backend/bluejs/test262/run.py --jobs 8`, then group `results.jsonl` by `path.split("/")[1]` (or `[2]` for the Temporal sub-breakdown).

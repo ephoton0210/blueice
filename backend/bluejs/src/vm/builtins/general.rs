@@ -19,6 +19,12 @@ impl Vm {
         Ok(if let Value::Object(id) = value {
             if let Some((_, _, callable, _)) = self.test262_foreign_reference(*id) {
                 callable
+            } else if self.test262_imported_callables.contains(id) {
+                // `$262.createRealm()` transports an object owned by the
+                // caller as an opaque local stand-in.  Its owner retains the
+                // forwarding record, while this realm retains the callable
+                // bit so `ShadowRealm` can create its own wrapper around it.
+                true
             } else if let Some((callable, _)) = self.heap.proxy_capabilities(*id)? {
                 callable
             } else {

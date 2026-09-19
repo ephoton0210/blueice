@@ -899,6 +899,12 @@ pub struct Vm {
     test262_async_waits: std::sync::Arc<test262_agents::Test262AsyncWaits>,
     test262_realms: HashMap<ObjectId, Test262Realm>,
     test262_foreign_values: HashMap<ObjectId, Test262ForeignValue>,
+    /// Object identities in this realm that stand in for a callable value
+    /// owned by the parent Test262 realm.  The ordinary imported-value
+    /// record remains owned by that parent (so it can keep both heaps alive),
+    /// but `ShadowRealm` needs the callable bit locally when it applies
+    /// `GetWrappedValue` before any call can cross its own boundary.
+    test262_imported_callables: HashSet<ObjectId>,
     shadow_realm_prototype: Option<ObjectId>,
     shadow_realms: HashMap<ObjectId, ShadowRealmRecord>,
     /// Reverse index from a `ShadowRealm` child's own heap tag back to the
@@ -1032,6 +1038,7 @@ impl Vm {
             test262_async_waits: std::sync::Arc::new(test262_agents::Test262AsyncWaits::new()),
             test262_realms: HashMap::new(),
             test262_foreign_values: HashMap::new(),
+            test262_imported_callables: HashSet::new(),
             shadow_realm_prototype: None,
             shadow_realms: HashMap::new(),
             shadow_realm_by_heap: HashMap::new(),

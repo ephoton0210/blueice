@@ -212,6 +212,22 @@ fn a_shadowrealm_instance_keeps_its_identity_across_a_test262_realm_transport() 
 }
 
 #[test]
+fn wrapped_functions_keep_callable_arguments_across_a_test262_realm_transport() {
+    // Regression for Test262's
+    // `wrapped-function-proto-from-caller-realm.js`: this crosses two
+    // `$262.createRealm()` membranes before the callable is presented to a
+    // ShadowRealm, so the intermediate opaque stand-in must retain its
+    // callable capability for `GetWrappedValue`.
+    assert_true_with_test262_harness(
+        "var other = $262.createRealm().global; \
+         var OtherShadowRealm = other.ShadowRealm; \
+         var realm = Reflect.construct(OtherShadowRealm, []); \
+         var checkArgWrapperFn = realm.evaluate('(x) => Object.getPrototypeOf(x) === Function.prototype'); \
+         checkArgWrapperFn(() => {}) === true;",
+    );
+}
+
+#[test]
 fn evaluate_and_import_value_require_a_shadowrealm_receiver() {
     assert_true(
         "(()=>{try{ShadowRealm.prototype.evaluate.call({}, '1');return false}\
@@ -240,6 +256,29 @@ fn import_value_resolves_a_named_export_through_the_returned_promise() {
     let mut vm = Vm::default();
     vm.install_test262_done().unwrap();
     vm.set_module_loader_context("shadow/main.js", modules);
+    let source = "const r = new ShadowRealm(); \
+        r.importValue('./mod.js', 'x').then( \
+            v => { if (v === 42) $DONE(); else $DONE(new Error('wrong value: ' + v)); }, \
+            $DONE, \
+        );";
+    vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
+}
+
+#[test]
+fn import_value_resolves_a_lazily_supplied_module_export() {
+    // Test262's runner leaves a fixture reached only by `importValue` as
+    // source text until that import actually occurs.  The ShadowRealm child
+    // must inherit that lazy source registry as well as compiled modules.
+    let mut vm = Vm::default();
+    vm.install_test262_done().unwrap();
+    vm.set_module_loader_context("shadow/main.js", HashMap::new());
+    vm.set_dynamic_module_sources(HashMap::from([(
+        "shadow/mod.js".to_string(),
+        "export var x = 42;".to_string(),
+    )]));
     let source = "const r = new ShadowRealm(); \
         r.importValue('./mod.js', 'x').then( \
             v => { if (v === 42) $DONE(); else $DONE(new Error('wrong value: ' + v)); }, \
