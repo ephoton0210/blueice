@@ -51,7 +51,7 @@ fn valid_string_with_wrong_type_options_throws_type_error() {
 /// regression in the ordinary path).
 #[test]
 fn valid_string_with_valid_options_resolves() {
-    let result = run(r#"Temporal.PlainMonthDay.from("11-18", { overflow: "constrain" }).day"#)
-        .unwrap();
+    let result =
+        run(r#"Temporal.PlainMonthDay.from("11-18", { overflow: "constrain" }).day"#).unwrap();
     assert_eq!(result, blueice_bluejs::Value::Number(18.0));
 }

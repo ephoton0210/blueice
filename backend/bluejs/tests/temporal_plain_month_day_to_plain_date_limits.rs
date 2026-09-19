@@ -56,12 +56,8 @@ fn assert_range_error(source: &str) {
 /// succeeds.
 #[test]
 fn minimum_boundary_is_a_day_and_month_boundary_not_a_year_one() {
-    assert_range_error(
-        r#"Temporal.PlainMonthDay.from("01-01").toPlainDate({ year: -271821 })"#,
-    );
-    assert_range_error(
-        r#"Temporal.PlainMonthDay.from("04-18").toPlainDate({ year: -271821 })"#,
-    );
+    assert_range_error(r#"Temporal.PlainMonthDay.from("01-01").toPlainDate({ year: -271821 })"#);
+    assert_range_error(r#"Temporal.PlainMonthDay.from("04-18").toPlainDate({ year: -271821 })"#);
     assert_true(
         r#"
         const r = Temporal.PlainMonthDay.from("04-19").toPlainDate({ year: -271821 });
@@ -80,12 +76,8 @@ fn minimum_boundary_is_a_day_and_month_boundary_not_a_year_one() {
 /// succeeds.
 #[test]
 fn maximum_boundary_is_a_day_and_month_boundary_not_a_year_one() {
-    assert_range_error(
-        r#"Temporal.PlainMonthDay.from("12-31").toPlainDate({ year: 275760 })"#,
-    );
-    assert_range_error(
-        r#"Temporal.PlainMonthDay.from("09-14").toPlainDate({ year: 275760 })"#,
-    );
+    assert_range_error(r#"Temporal.PlainMonthDay.from("12-31").toPlainDate({ year: 275760 })"#);
+    assert_range_error(r#"Temporal.PlainMonthDay.from("09-14").toPlainDate({ year: 275760 })"#);
     assert_true(
         r#"
         const r = Temporal.PlainMonthDay.from("09-13").toPlainDate({ year: 275760 });

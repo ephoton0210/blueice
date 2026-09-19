@@ -18,7 +18,9 @@
 
 use super::epoch::CivilDate;
 use super::plain_date::{format_calendar_annotation, format_iso_date, ShowCalendar};
-use icu_calendar::options::{DateFromFieldsOptions, MissingFieldsStrategy, Overflow as IcuOverflow};
+use icu_calendar::options::{
+    DateFromFieldsOptions, MissingFieldsStrategy, Overflow as IcuOverflow,
+};
 use icu_calendar::types::DateFields;
 use icu_calendar::{AnyCalendar, AnyCalendarKind, Date, Iso};
 

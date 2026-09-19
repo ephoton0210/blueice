@@ -298,9 +298,9 @@ impl Parser {
             };
             let pattern = self.parse_binding_pattern()?;
             if !matches!(pattern, Pattern::Identifier(_)) {
-                return Err(self.syntax_error(
-                    "a using declaration cannot use a destructuring pattern",
-                ));
+                return Err(
+                    self.syntax_error("a using declaration cannot use a destructuring pattern")
+                );
             }
             if self.check_keyword(Keyword::In) {
                 // "It is a Syntax Error if IsUsingDeclaration of ForBinding is
@@ -335,15 +335,13 @@ impl Parser {
             while self.eat_punct(Punct::Comma) {
                 let pattern = self.parse_binding_pattern()?;
                 if !matches!(pattern, Pattern::Identifier(_)) {
-                    return Err(self.syntax_error(
-                        "a using declaration cannot use a destructuring pattern",
-                    ));
+                    return Err(
+                        self.syntax_error("a using declaration cannot use a destructuring pattern")
+                    );
                 }
                 let init = self.parse_optional_for_init_value()?;
                 if init.is_none() {
-                    return Err(
-                        self.syntax_error("a using declaration requires an initializer")
-                    );
+                    return Err(self.syntax_error("a using declaration requires an initializer"));
                 }
                 declarators.push(VarDeclarator { pattern, init });
             }

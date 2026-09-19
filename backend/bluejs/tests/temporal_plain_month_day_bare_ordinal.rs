@@ -57,7 +57,11 @@ fn bare_ordinal_month_and_day_resolve_for_the_iso_calendar() {
 /// ordinal `month` -- this fix must not weaken that check.
 #[test]
 fn non_iso_calendar_still_requires_month_code_or_year() {
-    let program = compile(&parse(r#"Temporal.PlainMonthDay.from({ month: 1, day: 1, calendar: "hebrew" });"#).unwrap()).unwrap();
+    let program = compile(
+        &parse(r#"Temporal.PlainMonthDay.from({ month: 1, day: 1, calendar: "hebrew" });"#)
+            .unwrap(),
+    )
+    .unwrap();
     match Vm::default().execute(&program) {
         Err(RuntimeError::TypeError(_)) => {}
         other => panic!("expected TypeError, got {other:?}"),

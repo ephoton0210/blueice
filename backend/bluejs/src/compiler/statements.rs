@@ -521,10 +521,8 @@ impl Compiler {
                 // naming) -- unlike the ForOf `using ForBinding` production
                 // in `for_each`, which disposes each iteration's own
                 // binding at the end of *that* iteration.
-                let is_async_using = matches!(
-                    init,
-                    Some(ForInit::VarDecl(DeclKind::AwaitUsing, _))
-                );
+                let is_async_using =
+                    matches!(init, Some(ForInit::VarDecl(DeclKind::AwaitUsing, _)));
                 if is_async_using || matches!(init, Some(ForInit::VarDecl(DeclKind::Using, _))) {
                     self.wrap_with_disposal(is_async_using, |this| {
                         this.loop_statement(

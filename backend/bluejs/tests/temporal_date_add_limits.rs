@@ -52,13 +52,19 @@ fn add_throws_when_crossing_the_representable_range_boundary() {
             r#"Temporal.PlainDate.from("-271821-04-19").add({{ days: -1 }}, {{ overflow: "{overflow}" }})"#
         );
         let error = evaluate_err(&source);
-        assert!(matches!(error, RuntimeError::RangeError(_)), "{overflow}: {error:?}");
+        assert!(
+            matches!(error, RuntimeError::RangeError(_)),
+            "{overflow}: {error:?}"
+        );
 
         let source = format!(
             r#"Temporal.PlainDate.from("+275760-09-13").add({{ days: 1 }}, {{ overflow: "{overflow}" }})"#
         );
         let error = evaluate_err(&source);
-        assert!(matches!(error, RuntimeError::RangeError(_)), "{overflow}: {error:?}");
+        assert!(
+            matches!(error, RuntimeError::RangeError(_)),
+            "{overflow}: {error:?}"
+        );
     }
 }
 

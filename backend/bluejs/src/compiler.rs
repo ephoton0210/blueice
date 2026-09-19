@@ -286,7 +286,10 @@ fn compile_with_limit_and_mode(
                     import_name: import_name.clone(),
                     json: *json,
                 }),
-                ExportEntry::Star { module_request, json } => Ok(CompiledModuleExport::Star {
+                ExportEntry::Star {
+                    module_request,
+                    json,
+                } => Ok(CompiledModuleExport::Star {
                     module_request: module_request.clone(),
                     json: *json,
                 }),

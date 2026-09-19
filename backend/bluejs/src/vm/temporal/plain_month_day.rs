@@ -20,7 +20,9 @@ use super::epoch::CivilDate;
 use super::plain_date::{
     format_calendar_annotation, format_iso_date, regulate_iso_date, ShowCalendar,
 };
-use icu_calendar::options::{DateFromFieldsOptions, MissingFieldsStrategy, Overflow as IcuOverflow};
+use icu_calendar::options::{
+    DateFromFieldsOptions, MissingFieldsStrategy, Overflow as IcuOverflow,
+};
 use icu_calendar::types::DateFields;
 use icu_calendar::{AnyCalendar, AnyCalendarKind, Date, Iso};
 
@@ -118,7 +120,8 @@ pub(crate) fn iso_month_day_from_fields(
     } else {
         ordinal_month.clamp(1, 12)
     };
-    let (_, month, day) = regulate_iso_date(regulation_year, month, i64::from(day), reject).ok_or(())?;
+    let (_, month, day) =
+        regulate_iso_date(regulation_year, month, i64::from(day), reject).ok_or(())?;
     Ok((1972, month, day))
 }
 
@@ -158,7 +161,10 @@ pub(crate) fn iso_month_code_ordinal(code: &str) -> Option<u8> {
     if code.ends_with('L') {
         return None;
     }
-    code[1..].parse::<u8>().ok().filter(|month| (1..=12).contains(month))
+    code[1..]
+        .parse::<u8>()
+        .ok()
+        .filter(|month| (1..=12).contains(month))
 }
 
 /// `TemporalMonthDayToString`'s date portion: the short `MM-DD` form when the
@@ -322,9 +328,15 @@ mod tests {
 
     #[test]
     fn iso_fast_path_regulates_an_out_of_range_ordinal_month_without_panicking() {
-        assert_eq!(iso_month_day_from_fields(13, 1, 1972, false), Ok((1972, 12, 1)));
+        assert_eq!(
+            iso_month_day_from_fields(13, 1, 1972, false),
+            Ok((1972, 12, 1))
+        );
         assert_eq!(iso_month_day_from_fields(13, 1, 1972, true), Err(()));
-        assert_eq!(iso_month_day_from_fields(0, 1, 1972, false), Ok((1972, 1, 1)));
+        assert_eq!(
+            iso_month_day_from_fields(0, 1, 1972, false),
+            Ok((1972, 1, 1))
+        );
     }
 
     #[test]

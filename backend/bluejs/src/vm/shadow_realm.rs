@@ -86,7 +86,10 @@ fn resolve_active(tag: u64) -> Option<*mut Vm> {
 }
 
 impl Vm {
-    pub(super) fn shadow_realm_constructor(&mut self, construct: bool) -> Result<Value, RuntimeError> {
+    pub(super) fn shadow_realm_constructor(
+        &mut self,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
         if !construct {
             return Err(RuntimeError::TypeError(
                 "Constructor ShadowRealm requires 'new'".into(),
@@ -94,9 +97,8 @@ impl Vm {
         }
         let default = self.shadow_realm_prototype()?;
         let prototype = self.constructor_prototype(default)?;
-        let mut child =
-            Vm::new(self.config)
-                .map_err(|_| RuntimeError::RangeError("could not create a ShadowRealm".into()))?;
+        let mut child = Vm::new(self.config)
+            .map_err(|_| RuntimeError::RangeError("could not create a ShadowRealm".into()))?;
         // Realms created within one ShadowRealm agent share the
         // GlobalSymbolRegistry, matching `$262.createRealm()`'s identical
         // choice for the same spec-mandated reason (`Symbol.for` is
@@ -347,8 +349,8 @@ impl Vm {
                     child.module_registry = self.module_registry.clone();
                     child.active_module_name = self.active_module_name.clone();
                     child.remaining_instructions = child.config.instruction_budget;
-                    let promise_value = child
-                        .dynamic_import(Value::String(specifier.clone()), Value::Undefined)?;
+                    let promise_value =
+                        child.dynamic_import(Value::String(specifier.clone()), Value::Undefined)?;
                     let inner_promise = promise_value
                         .object_id()
                         .expect("dynamic_import always returns a Promise object");
@@ -609,11 +611,7 @@ impl Vm {
         Ok(())
     }
 
-    fn require_shadow_realm(
-        &self,
-        this: &Value,
-        method: &str,
-    ) -> Result<ObjectId, RuntimeError> {
+    fn require_shadow_realm(&self, this: &Value, method: &str) -> Result<ObjectId, RuntimeError> {
         match this.object_id() {
             Some(id) if self.shadow_realms.contains_key(&id) => Ok(id),
             _ => Err(RuntimeError::TypeError(format!(

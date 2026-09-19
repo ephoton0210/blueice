@@ -828,10 +828,8 @@ mod tests {
     fn adjacent_transition_finds_real_historical_offset_changes() {
         let new_york = TimeZone::Iana("America/New_York");
         assert_eq!(
-            new_york.adjacent_transition(
-                &(BigInt::from(1_555_448_460_i64) * 1_000_000_000_u32),
-                true,
-            ),
+            new_york
+                .adjacent_transition(&(BigInt::from(1_555_448_460_i64) * 1_000_000_000_u32), true,),
             Some(BigInt::from(1_572_760_800_i64) * 1_000_000_000_u32)
         );
         assert_eq!(
@@ -866,15 +864,31 @@ mod tests {
     #[test]
     fn adjacent_transition_is_none_for_a_fixed_offset_or_transition_less_zone() {
         let epoch = BigInt::from(0);
-        assert_eq!(TimeZone::Offset(-600).adjacent_transition(&epoch, true), None);
-        assert_eq!(TimeZone::Offset(-600).adjacent_transition(&epoch, false), None);
-        assert_eq!(TimeZone::Iana("UTC").adjacent_transition(&epoch, true), None);
-        assert_eq!(TimeZone::Iana("UTC").adjacent_transition(&epoch, false), None);
+        assert_eq!(
+            TimeZone::Offset(-600).adjacent_transition(&epoch, true),
+            None
+        );
+        assert_eq!(
+            TimeZone::Offset(-600).adjacent_transition(&epoch, false),
+            None
+        );
+        assert_eq!(
+            TimeZone::Iana("UTC").adjacent_transition(&epoch, true),
+            None
+        );
+        assert_eq!(
+            TimeZone::Iana("UTC").adjacent_transition(&epoch, false),
+            None
+        );
         // Asia/Kolkata has not observed DST since 1945; from 2024 there is no
         // future transition, only a historical one going backward.
         let kolkata = TimeZone::Iana("Asia/Kolkata");
         let from_2024 = kolkata
-            .epoch_nanoseconds_for((2024, 6, 15), (12, 0, 0, 0, 0, 0), Disambiguation::Compatible)
+            .epoch_nanoseconds_for(
+                (2024, 6, 15),
+                (12, 0, 0, 0, 0, 0),
+                Disambiguation::Compatible,
+            )
             .unwrap();
         assert_eq!(kolkata.adjacent_transition(&from_2024, true), None);
         assert!(kolkata.adjacent_transition(&from_2024, false).is_some());

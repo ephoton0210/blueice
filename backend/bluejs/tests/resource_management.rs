@@ -88,7 +88,10 @@ fn disposable_stack_use_allows_nullish_and_rejects_non_object_without_dispose() 
         try { new DisposableStack().use({}); } catch (error) { threw = error instanceof TypeError; }
         threw
     "#;
-    assert_eq!(execute(&mut vm, threw_missing_method), Ok(Value::Bool(true)));
+    assert_eq!(
+        execute(&mut vm, threw_missing_method),
+        Ok(Value::Bool(true))
+    );
 }
 
 #[test]
@@ -417,7 +420,10 @@ fn await_using_awaits_the_dispose_methods_own_returned_promise() {
         }
         run().then(function () { result = log.join(','); });
     "#;
-    assert_eq!(run_async(&mut vm, setup), Value::String("body,a-resolved".into()));
+    assert_eq!(
+        run_async(&mut vm, setup),
+        Value::String("body,a-resolved".into())
+    );
 }
 
 #[test]
@@ -540,9 +546,7 @@ fn using_in_a_for_of_head_disposes_each_iterations_own_binding() {
     "#;
     assert_eq!(
         execute(&mut vm, source),
-        Ok(Value::String(
-            "iter,dispose:a,iter,dispose:b".into()
-        ))
+        Ok(Value::String("iter,dispose:a,iter,dispose:b".into()))
     );
 }
 

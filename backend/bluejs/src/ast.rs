@@ -885,9 +885,9 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
         Expr::Yield { value, .. } => value
             .as_deref()
             .is_some_and(|expr| expr_contains_super(expr, search)),
-        Expr::Await(expr)
-        | Expr::Unary { arg: expr, .. }
-        | Expr::Update { arg: expr, .. } => expr_contains_super(expr, search),
+        Expr::Await(expr) | Expr::Unary { arg: expr, .. } | Expr::Update { arg: expr, .. } => {
+            expr_contains_super(expr, search)
+        }
         Expr::DynamicImport { specifier, options } => {
             expr_contains_super(specifier, search)
                 || options

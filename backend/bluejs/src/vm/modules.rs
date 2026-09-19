@@ -545,7 +545,10 @@ impl Vm {
                         json,
                         ..
                     }
-                    | ModuleExport::Star { module_request, json }
+                    | ModuleExport::Star {
+                        module_request,
+                        json,
+                    }
                     | ModuleExport::Namespace {
                         module_request,
                         json,
@@ -604,8 +607,8 @@ impl Vm {
         let Some(source) = self.dynamic_module_sources.get(target).cloned() else {
             return Ok(());
         };
-        let program =
-            crate::parse_module(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let program = crate::parse_module(&source)
+            .map_err(|error| RuntimeError::SyntaxError(error.message))?;
         let code = crate::compile_module_with_limit(&program, u32::MAX)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         modules.insert(target.to_string(), code);
@@ -747,9 +750,9 @@ impl Vm {
         options: Value,
     ) -> Result<(String, bool), RuntimeError> {
         let specifier = self.coerce_string(&specifier)?;
-        let specifier = specifier
-            .to_utf8()
-            .map_err(|_| RuntimeError::TypeError("module specifier is not a Unicode string".into()))?;
+        let specifier = specifier.to_utf8().map_err(|_| {
+            RuntimeError::TypeError("module specifier is not a Unicode string".into())
+        })?;
         let mut json = false;
         if options != Value::Undefined {
             if !matches!(options, Value::Object(_)) {

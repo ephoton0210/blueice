@@ -145,16 +145,16 @@ pub(crate) fn difference_zoned_date_time(
         if day_correction > max_day_correction {
             return None;
         }
-        let candidate =
-            plain_date::add_iso_date(date2, 0, 0, 0, -day_correction * sign, false)?;
+        let candidate = plain_date::add_iso_date(date2, 0, 0, 0, -day_correction * sign, false)?;
         let candidate_ns = zone
             .epoch_nanoseconds_for(candidate, time1, Disambiguation::Compatible)
             .ok()?;
         if !epoch::is_in_instant_range(&candidate_ns) {
             return None;
         }
-        let time_duration = i128::try_from(ns2 - &candidate_ns)
-            .expect("a bounded-day-correction remainder around an Instant-range value fits in i128");
+        let time_duration = i128::try_from(ns2 - &candidate_ns).expect(
+            "a bounded-day-correction remainder around an Instant-range value fits in i128",
+        );
         let time_sign = time_duration.signum() as i64;
         if sign != -time_sign {
             let (years, months, weeks, days) =
@@ -266,7 +266,11 @@ pub(crate) fn nudge_to_calendar_unit(
         }
         DateUnit::Day => {
             let r1 = trunc(days);
-            ((years, months, weeks, r1), (years, months, weeks, r1 + step), r1)
+            (
+                (years, months, weeks, r1),
+                (years, months, weeks, r1 + step),
+                r1,
+            )
         }
     };
 
@@ -393,7 +397,13 @@ pub(crate) fn bubble_relative_duration(
             DateUnit::Day => unreachable!("Day is never a bubbling target"),
         };
         let end = plain_date::calendar_add_date(
-            calendar, date1, end_tuple.0, end_tuple.1, end_tuple.2, end_tuple.3, false,
+            calendar,
+            date1,
+            end_tuple.0,
+            end_tuple.1,
+            end_tuple.2,
+            end_tuple.3,
+            false,
         )?;
         let end_ns: Result<BigInt, AmbiguousLocalTime> =
             zone.epoch_nanoseconds_for(end, time1, Disambiguation::Compatible);
@@ -475,7 +485,11 @@ mod tests {
     fn add_one_day_across_a_spring_forward_transition_is_23_real_hours() {
         let zone = TimeZone::Iana("America/Los_Angeles");
         let start = zone
-            .epoch_nanoseconds_for((2000, 4, 1), (12, 0, 0, 0, 0, 0), Disambiguation::Compatible)
+            .epoch_nanoseconds_for(
+                (2000, 4, 1),
+                (12, 0, 0, 0, 0, 0),
+                Disambiguation::Compatible,
+            )
             .unwrap();
         let result = add_zoned_date_time(
             &zone,
@@ -502,7 +516,11 @@ mod tests {
     fn add_lands_inside_a_gap_and_resolves_via_compatible_disambiguation() {
         let zone = TimeZone::Iana("America/Los_Angeles");
         let start = zone
-            .epoch_nanoseconds_for((2000, 4, 1), (2, 30, 0, 0, 0, 0), Disambiguation::Compatible)
+            .epoch_nanoseconds_for(
+                (2000, 4, 1),
+                (2, 30, 0, 0, 0, 0),
+                Disambiguation::Compatible,
+            )
             .unwrap();
         let result = add_zoned_date_time(
             &zone,
@@ -521,7 +539,11 @@ mod tests {
         // 2000-04-02T02:30 does not exist; "compatible" (== "later" for a
         // spring-forward gap) resolves it to 03:30 PDT.
         let expected = zone
-            .epoch_nanoseconds_for((2000, 4, 2), (3, 30, 0, 0, 0, 0), Disambiguation::Compatible)
+            .epoch_nanoseconds_for(
+                (2000, 4, 2),
+                (3, 30, 0, 0, 0, 0),
+                Disambiguation::Compatible,
+            )
             .unwrap();
         assert_eq!(result, expected);
     }

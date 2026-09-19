@@ -971,9 +971,7 @@ impl Parser {
                     // element) is a "Forbidden Extension", e.g.
                     // `import(...['x'])`, not merely unsupported grammar.
                     if self.check_punct(Punct::Ellipsis) {
-                        return Err(
-                            self.syntax_error("import() does not accept a spread argument")
-                        );
+                        return Err(self.syntax_error("import() does not accept a spread argument"));
                     }
                     let specifier = self.parse_assignment()?;
                     // ImportCall : import ( AssignmentExpression ,opt )
@@ -1031,9 +1029,8 @@ impl Parser {
             // IdentifierReference: `import` is a reserved word outside
             // those productions (e.g. `typeof import` is a SyntaxError).
             Token::Identifier(name) if name == "import" && !self.check_punct_at(1, Punct::Dot) => {
-                Err(self.syntax_error(
-                    "'import' is reserved outside of import(...) and import.<name>",
-                ))
+                Err(self
+                    .syntax_error("'import' is reserved outside of import(...) and import.<name>"))
             }
             Token::Identifier(name)
                 if name == "await"

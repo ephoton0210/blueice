@@ -201,7 +201,8 @@ fn zoned_date_time_since_years_chinese_leap_month_anchor_needs_the_unconstrained
 /// `years * 12 + months` and re-split via `/ 12, % 12` -- unsound once a
 /// reported "year" can genuinely span 13 months.
 #[test]
-fn plain_year_month_since_years_chinese_leap_month_anchor_is_not_flattened_through_a_fixed_twelve_months_per_year() {
+fn plain_year_month_since_years_chinese_leap_month_anchor_is_not_flattened_through_a_fixed_twelve_months_per_year(
+) {
     assert_true(
         r#"
         (function() {
@@ -221,7 +222,8 @@ fn plain_year_month_since_years_chinese_leap_month_anchor_is_not_flattened_throu
 /// the same `PlainYearMonth` dispatch fix, so the fix is pinned on both
 /// `since`/`until` and on a second, structurally different leap calendar.
 #[test]
-fn plain_year_month_until_years_hebrew_leap_month_anchor_is_not_flattened_through_a_fixed_twelve_months_per_year() {
+fn plain_year_month_until_years_hebrew_leap_month_anchor_is_not_flattened_through_a_fixed_twelve_months_per_year(
+) {
     assert_true(
         r#"
         (function() {

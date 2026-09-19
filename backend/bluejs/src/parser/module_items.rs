@@ -190,7 +190,10 @@ impl Parser {
                     module_request,
                     json,
                 },
-                None => ExportEntry::Star { module_request, json },
+                None => ExportEntry::Star {
+                    module_request,
+                    json,
+                },
             });
             return Ok(Some(request));
         }

@@ -1427,7 +1427,8 @@ impl Vm {
                             DisposeHint::Async
                         };
                         let mut disposables = std::mem::take(&mut self.disposables);
-                        let result = self.add_disposable_resource(&mut disposables, value, hint, None);
+                        let result =
+                            self.add_disposable_resource(&mut disposables, value, hint, None);
                         self.disposables = disposables;
                         result?;
                     }

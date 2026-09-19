@@ -109,8 +109,8 @@ fn well_formed_but_unsuitable_month_code_does_not_preempt_year_type_error() {
 /// these fixes.
 #[test]
 fn valid_month_code_still_resolves() {
-    let result = run(r#"Temporal.PlainMonthDay.from({ monthCode: "M06", day: 15 }).monthCode"#)
-        .unwrap();
+    let result =
+        run(r#"Temporal.PlainMonthDay.from({ monthCode: "M06", day: 15 }).monthCode"#).unwrap();
     assert_eq!(result, blueice_bluejs::Value::String("M06".into()));
     let result =
         run(r#"Temporal.PlainMonthDay.from({ month: 6, monthCode: "M06", day: 15 }).monthCode"#)

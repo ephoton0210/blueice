@@ -274,8 +274,8 @@ impl Vm {
             }
             if (hasError) throw pendingError;
         })"#;
-        let program = crate::parse(SOURCE)
-            .map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let program =
+            crate::parse(SOURCE).map_err(|error| RuntimeError::SyntaxError(error.message))?;
         let code = crate::compiler::compile_eval(&program, &[], &[], &[], false, false, 0)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let helper = self.execute_eval(&code, Vec::new(), !code.strict)?;

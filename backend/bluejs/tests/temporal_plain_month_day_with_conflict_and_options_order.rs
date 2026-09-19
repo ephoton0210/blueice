@@ -60,9 +60,8 @@ fn with_month_and_month_code_conflict_throws_range_error() {
 #[test]
 fn invalid_field_throws_range_error_even_with_wrong_type_options() {
     for options_expr in ["null", "true", "\"some string\"", "Symbol()", "1", "2n"] {
-        let source = format!(
-            r#"Temporal.PlainMonthDay.from("01-15").with({{ day: -1 }}, {options_expr})"#
-        );
+        let source =
+            format!(r#"Temporal.PlainMonthDay.from("01-15").with({{ day: -1 }}, {options_expr})"#);
         match run(&source) {
             Err(RuntimeError::RangeError(_)) => {}
             other => panic!("{source}\n  -> expected RangeError, got: {other:?}"),

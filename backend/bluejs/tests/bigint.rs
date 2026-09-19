@@ -76,9 +76,7 @@ fn string_to_bigint_parses_decimal_hex_octal_and_binary() {
     assert_true("BigInt('0xa') === 10n && BigInt('0Xff') === 255n && BigInt('0xfabc') === 64188n");
     assert_true("BigInt('0o7') === 7n && BigInt('0O20') === 16n");
     assert_true("BigInt('0b1111') === 15n && BigInt('0B10') === 2n");
-    assert_true(
-        "BigInt('18446744073709551616') === 18446744073709551616n",
-    );
+    assert_true("BigInt('18446744073709551616') === 18446744073709551616n");
 }
 
 #[test]
@@ -91,8 +89,20 @@ fn string_to_bigint_treats_blank_strings_as_zero_and_trims_whitespace() {
 #[test]
 fn string_to_bigint_rejects_non_integer_grammar() {
     for source in [
-        "'10n'", "'10x'", "'10b'", "'10.5'", "'0b'", "'-0x1'", "'-0XFFab'", "'0oa'", "'000 12'",
-        "'0o'", "'0x'", "'00o'", "'00b'", "'00x'",
+        "'10n'",
+        "'10x'",
+        "'10b'",
+        "'10.5'",
+        "'0b'",
+        "'-0x1'",
+        "'-0XFFab'",
+        "'0oa'",
+        "'000 12'",
+        "'0o'",
+        "'0x'",
+        "'00o'",
+        "'00b'",
+        "'00x'",
     ] {
         let program = format!(
             "(()=>{{try{{BigInt({source});return false}}catch(e){{return e instanceof SyntaxError}}}})()"
@@ -187,7 +197,9 @@ fn as_int_n_and_as_uint_n_are_not_constructors() {
 
 #[test]
 fn to_string_supports_radix_and_a_through_z_digits() {
-    assert_true("(-100n).toString() === '-100' && (0n).toString() === '0' && (255n).toString(16) === 'ff'");
+    assert_true(
+        "(-100n).toString() === '-100' && (0n).toString() === '0' && (255n).toString(16) === 'ff'",
+    );
     assert_true("(-255n).toString(16) === '-ff' && (8n).toString(2) === '1000'");
     assert_true("(35n).toString(36) === 'z' && (10n).toString(11) === 'a'");
     for radix in 2..=36 {
@@ -289,9 +301,7 @@ fn bigint_literal_is_a_valid_property_name_converted_to_its_decimal_string() {
     // (unlike a large Number literal used as a property name).
     assert_true("let o={999999999999999999n: true}; o['999999999999999999'] === true");
     assert_true("let o={1n(){return 'bar'}}; o['1']() === 'bar'");
-    assert_true(
-        "class C{1n(){return 'baz'}} new C()['1']() === 'baz'",
-    );
+    assert_true("class C{1n(){return 'baz'}} new C()['1']() === 'baz'");
     assert_true("let {1n: a} = {'1': 'foo'}; a === 'foo'");
 }
 
@@ -331,9 +341,7 @@ fn bigint_values_pass_through_proxy_traps_and_reflect_operations_unchanged() {
         "let target={}; let p=new Proxy(target,{set(t,k,v,r){return Reflect.set(t,k,v,r)}}); p.x=5n; target.x === 5n",
     );
     assert_true("Reflect.apply(function(a,b){return a+b}, null, [1n, 2n]) === 3n");
-    assert_true(
-        "function F(a){this.v=a} let inst=Reflect.construct(F,[7n]); inst.v === 7n",
-    );
+    assert_true("function F(a){this.v=a} let inst=Reflect.construct(F,[7n]); inst.v === 7n");
     // `in`'s left operand goes through ToPropertyKey, which (being a
     // non-Symbol primitive) just means ToString: a BigInt key and its
     // decimal-string equivalent reach the `has` trap identically.

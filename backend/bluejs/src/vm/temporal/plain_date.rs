@@ -180,8 +180,13 @@ pub(crate) fn add_iso_date(
     let (carried_year, carried_month) =
         balance_iso_year_month(i64::from(date.0) + years, i64::from(date.1) + months);
     let carried_year = i32::try_from(carried_year).ok()?;
-    let (year, month, day) = regulate_iso_date(carried_year, carried_month, i64::from(date.2), reject)?;
-    Some(balance_iso_date(year, month, i64::from(day) + days + weeks * 7))
+    let (year, month, day) =
+        regulate_iso_date(carried_year, carried_month, i64::from(date.2), reject)?;
+    Some(balance_iso_date(
+        year,
+        month,
+        i64::from(day) + days + weeks * 7,
+    ))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -647,7 +652,12 @@ fn calendar_date_from_month(
 /// it has already crossed into a fresh year (where, per Gecko's own
 /// `AddYearMonthDuration`, only the *count* of months matters, not any
 /// particular month's identity).
-fn calendar_date_from_ordinal(calendar: AnyCalendarKind, year: i64, ordinal_month: i64, day: i64) -> Option<Date<AnyCalendar>> {
+fn calendar_date_from_ordinal(
+    calendar: AnyCalendarKind,
+    year: i64,
+    ordinal_month: i64,
+    day: i64,
+) -> Option<Date<AnyCalendar>> {
     let year = i32::try_from(year).ok()?;
     let ordinal_month = u8::try_from(ordinal_month).ok()?;
     let mut fields = DateFields::default();
@@ -675,7 +685,10 @@ fn month_sort_key(month: Month) -> i64 {
 /// a `(year, Month, day)` identity rather than a raw `(year, month, day)`
 /// ordinal tuple.
 fn compare_calendar_identity(a: (i64, Month, i64), b: (i64, Month, i64)) -> Ordering {
-    compare_date_tuple((a.0, month_sort_key(a.1), a.2), (b.0, month_sort_key(b.1), b.2))
+    compare_date_tuple(
+        (a.0, month_sort_key(a.1), a.2),
+        (b.0, month_sort_key(b.1), b.2),
+    )
 }
 
 /// [`surpasses`], specialized to a `(year, Month, day)` identity.
@@ -711,7 +724,8 @@ fn add_year_month_duration_leap_month(
     let mut year = anchor_year + years;
     let mut month = anchor_month;
     if months != 0 {
-        let mut first_day_of_month = calendar_date_from_month(calendar, year, month, 1, IcuOverflow::Constrain)?;
+        let mut first_day_of_month =
+            calendar_date_from_month(calendar, year, month, 1, IcuOverflow::Constrain)?;
         let mut remaining = months;
         if remaining > 0 {
             loop {
@@ -932,7 +946,8 @@ fn calendar_difference_date_leap_month(
         // own real month count (not a fixed constant).
         let mut y = sign;
         while y != years {
-            let probe_year = i32::try_from(one.0 + y).unwrap_or(if y > 0 { i32::MAX } else { i32::MIN });
+            let probe_year =
+                i32::try_from(one.0 + y).unwrap_or(if y > 0 { i32::MAX } else { i32::MIN });
             if let Some(count) = months_in_year_for(calendar, probe_year) {
                 months += i64::from(count) * sign;
             }
@@ -941,13 +956,9 @@ fn calendar_difference_date_leap_month(
 
         // Months since/until the landing year's own start/end, from `one`'s
         // own Month identity re-resolved in that year.
-        if let Some(dt) = calendar_date_from_month(
-            calendar,
-            one.0 + years,
-            one.1,
-            1,
-            IcuOverflow::Constrain,
-        ) {
+        if let Some(dt) =
+            calendar_date_from_month(calendar, one.0 + years, one.1, 1, IcuOverflow::Constrain)
+        {
             if sign > 0 {
                 months += months_since_start_of_year(&dt);
             } else {
@@ -1107,7 +1118,11 @@ fn round_month_or_year(
             }
         }
     };
-    let final_magnitude = if round_up { upper_multiple } else { lower_multiple };
+    let final_magnitude = if round_up {
+        upper_multiple
+    } else {
+        lower_multiple
+    };
     sign * (final_magnitude as i64)
 }
 
@@ -1177,8 +1192,17 @@ pub(crate) fn round_calendar_duration(
         // smallest-unit is `"month"`, so it always exercises this branch,
         // even with no explicit rounding option requested).
         DateUnit::Month if calendar_has_leap_months(calendar) && largest_unit == DateUnit::Year => {
-            let rounded_months =
-                round_month_or_year(calendar, start, years, end, DateUnit::Month, months, sign, increment, mode);
+            let rounded_months = round_month_or_year(
+                calendar,
+                start,
+                years,
+                end,
+                DateUnit::Month,
+                months,
+                sign,
+                increment,
+                mode,
+            );
             (years, rounded_months, 0, 0)
         }
         DateUnit::Month => {
@@ -1187,8 +1211,17 @@ pub(crate) fn round_calendar_duration(
             } else {
                 months
             };
-            let rounded_months =
-                round_month_or_year(calendar, start, 0, end, DateUnit::Month, total_months, sign, increment, mode);
+            let rounded_months = round_month_or_year(
+                calendar,
+                start,
+                0,
+                end,
+                DateUnit::Month,
+                total_months,
+                sign,
+                increment,
+                mode,
+            );
             if largest_unit == DateUnit::Year {
                 (rounded_months / 12, rounded_months % 12, 0, 0)
             } else {
@@ -1196,8 +1229,17 @@ pub(crate) fn round_calendar_duration(
             }
         }
         DateUnit::Year => {
-            let rounded_years =
-                round_month_or_year(calendar, start, 0, end, DateUnit::Year, years, sign, increment, mode);
+            let rounded_years = round_month_or_year(
+                calendar,
+                start,
+                0,
+                end,
+                DateUnit::Year,
+                years,
+                sign,
+                increment,
+                mode,
+            );
             (rounded_years, 0, 0, 0)
         }
     }
@@ -1342,7 +1384,10 @@ mod tests {
 
     #[test]
     fn formats_calendar_annotations_per_the_showcalendar_option() {
-        assert_eq!(format_calendar_annotation("iso8601", ShowCalendar::Auto), "");
+        assert_eq!(
+            format_calendar_annotation("iso8601", ShowCalendar::Auto),
+            ""
+        );
         assert_eq!(
             format_calendar_annotation("iso8601", ShowCalendar::Always),
             "[u-ca=iso8601]"
@@ -1351,7 +1396,10 @@ mod tests {
             format_calendar_annotation("iso8601", ShowCalendar::Critical),
             "[!u-ca=iso8601]"
         );
-        assert_eq!(format_calendar_annotation("iso8601", ShowCalendar::Never), "");
+        assert_eq!(
+            format_calendar_annotation("iso8601", ShowCalendar::Never),
+            ""
+        );
         assert_eq!(
             format_calendar_annotation("hebrew", ShowCalendar::Auto),
             "[u-ca=hebrew]"
@@ -1401,7 +1449,9 @@ mod tests {
         // one month/one year) must report that exactly, in every rounding
         // mode — not a `smallestUnit`-sized wobble computed by bubbling
         // `smallestUnit` steps from scratch.
-        use blueice_ecma402::NumberRoundingMode::{Ceil, Expand, Floor, HalfEven, HalfExpand, Trunc};
+        use blueice_ecma402::NumberRoundingMode::{
+            Ceil, Expand, Floor, HalfEven, HalfExpand, Trunc,
+        };
         let start = (2012, 1, 1);
         for mode in [Ceil, Floor, Expand, Trunc, HalfExpand, HalfEven] {
             assert_eq!(
@@ -1439,8 +1489,7 @@ mod tests {
         // fields at all, so adding a year should land on the same ISO
         // month/day one calendar year later (calendar_add_date must not
         // silently no-op for a non-ISO AnyCalendarKind).
-        let result =
-            calendar_add_date(AnyCalendarKind::Gregorian, (2020, 3, 1), 1, 0, 0, 0, false);
+        let result = calendar_add_date(AnyCalendarKind::Gregorian, (2020, 3, 1), 1, 0, 0, 0, false);
         assert_eq!(result, Some((2021, 3, 1)));
     }
 
@@ -1468,13 +1517,28 @@ mod tests {
                 "ISO Jan 29 -> Feb 28, {unit:?}"
             );
             assert_eq!(
-                calendar_difference_date(AnyCalendarKind::Gregorian, (2020, 1, 29), (2020, 2, 28), unit),
+                calendar_difference_date(
+                    AnyCalendarKind::Gregorian,
+                    (2020, 1, 29),
+                    (2020, 2, 28),
+                    unit
+                ),
                 (0, 0, 0, 30),
                 "Gregorian Jan 29 -> Feb 28, {unit:?}"
             );
             assert_eq!(
-                calendar_difference_date(AnyCalendarKind::Persian, (2020, 1, 29), (2020, 2, 28), unit),
-                calendar_difference_date_fixed_months(AnyCalendarKind::Persian, (2020, 1, 29), (2020, 2, 28), unit),
+                calendar_difference_date(
+                    AnyCalendarKind::Persian,
+                    (2020, 1, 29),
+                    (2020, 2, 28),
+                    unit
+                ),
+                calendar_difference_date_fixed_months(
+                    AnyCalendarKind::Persian,
+                    (2020, 1, 29),
+                    (2020, 2, 28),
+                    unit
+                ),
                 "Persian (fixed-months path) Jan 29 -> Feb 28 is internally consistent, {unit:?}"
             );
         }
@@ -1527,7 +1591,10 @@ mod tests {
                 // Every field should be non-positive (end is before start)
                 // and the whole-duration sign should be consistent with a
                 // backward difference.
-                assert!(years <= 0 && months <= 0 && days <= 0, "{calendar:?} {unit:?}: {years} {months} {days}");
+                assert!(
+                    years <= 0 && months <= 0 && days <= 0,
+                    "{calendar:?} {unit:?}: {years} {months} {days}"
+                );
             }
         }
     }
@@ -1536,11 +1603,20 @@ mod tests {
     /// `(year, Month, day)` identity, for use as test input — thin wrapper
     /// around [`calendar_date_from_month`] so these tests never need a
     /// hand-computed ISO date.
-    fn civil_date_from_month_code(calendar: AnyCalendarKind, year: i64, month: Month, day: i64) -> CivilDate {
+    fn civil_date_from_month_code(
+        calendar: AnyCalendarKind,
+        year: i64,
+        month: Month,
+        day: i64,
+    ) -> CivilDate {
         let date = calendar_date_from_month(calendar, year, month, day, IcuOverflow::Reject)
             .expect("test fixture month codes are always valid for their stated year");
         let iso = date.to_calendar(Iso);
-        (iso.year().extended_year(), iso.month().number(), iso.day_of_month().0)
+        (
+            iso.year().extended_year(),
+            iso.month().number(),
+            iso.day_of_month().0,
+        )
     }
 
     /// A non-recurring leap month resolves via `icu_calendar`'s own native,
@@ -1568,8 +1644,14 @@ mod tests {
         assert_eq!(constrained.month().to_input(), Month::new(4));
 
         assert!(
-            calendar_date_from_month(AnyCalendarKind::Chinese, 2002, Month::leap(4), 1, IcuOverflow::Reject)
-                .is_none(),
+            calendar_date_from_month(
+                AnyCalendarKind::Chinese,
+                2002,
+                Month::leap(4),
+                1,
+                IcuOverflow::Reject
+            )
+            .is_none(),
             "a non-recurring leap month must be rejected under Overflow::Reject"
         );
     }
@@ -1582,8 +1664,14 @@ mod tests {
     /// 6, since the leap month itself is ordinal 5).
     #[test]
     fn calendar_date_from_month_resolves_a_genuinely_recurring_leap_month_to_its_own_ordinal() {
-        let leap = calendar_date_from_month(AnyCalendarKind::Chinese, 2001, Month::leap(4), 1, IcuOverflow::Reject)
-            .expect("2001 has a real M04L");
+        let leap = calendar_date_from_month(
+            AnyCalendarKind::Chinese,
+            2001,
+            Month::leap(4),
+            1,
+            IcuOverflow::Reject,
+        )
+        .expect("2001 has a real M04L");
         assert_eq!(leap.month().ordinal, 5);
         assert!(leap.month().to_input().is_leap());
     }
@@ -1754,7 +1842,8 @@ mod tests {
     /// month — the `constrained`-only check alone can't distinguish this
     /// from the already-covered `leapMonth4L` -> `common2Month4` case.
     #[test]
-    fn calendar_difference_date_leap_month_needs_the_unconstrained_precheck_for_a_leap_month_anchor() {
+    fn calendar_difference_date_leap_month_needs_the_unconstrained_precheck_for_a_leap_month_anchor(
+    ) {
         let calendar = AnyCalendarKind::Chinese;
         let leap_month4l = civil_date_from_month_code(calendar, 2001, Month::leap(4), 1);
         let common2_month5 = civil_date_from_month_code(calendar, 2002, Month::new(5), 1);

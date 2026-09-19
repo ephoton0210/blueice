@@ -317,10 +317,7 @@ pub(crate) fn string_to_bigint(s: &str) -> Option<BigInt> {
         return Some(BigInt::zero());
     }
     for (prefixes, radix) in [(["0x", "0X"], 16u32), (["0o", "0O"], 8), (["0b", "0B"], 2)] {
-        if let Some(digits) = prefixes
-            .iter()
-            .find_map(|prefix| s.strip_prefix(prefix))
-        {
+        if let Some(digits) = prefixes.iter().find_map(|prefix| s.strip_prefix(prefix)) {
             if digits.is_empty() || !digits.bytes().all(|byte| (byte as char).is_digit(radix)) {
                 return None;
             }

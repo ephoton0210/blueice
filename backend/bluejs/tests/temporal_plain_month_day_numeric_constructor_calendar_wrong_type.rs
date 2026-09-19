@@ -53,7 +53,8 @@ fn non_string_calendar_values_throw_type_error() {
 #[test]
 fn string_calendar_values_still_work() {
     let program = compile(
-        &parse("new Temporal.PlainMonthDay(12, 15, \"iso8601\", 1972).monthCode === \"M12\"").unwrap(),
+        &parse("new Temporal.PlainMonthDay(12, 15, \"iso8601\", 1972).monthCode === \"M12\"")
+            .unwrap(),
     )
     .unwrap();
     let result = Vm::default().execute(&program).unwrap();
