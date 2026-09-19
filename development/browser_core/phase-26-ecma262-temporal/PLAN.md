@@ -43,20 +43,22 @@ new `getTimeZoneTransition` method); a residual `since`/`until` cluster
 plus smaller `equals`/`add`/`subtract`/`with`/`toLocaleString` gaps remain
 there, per that same bullet's own "deliberately left open" list.
 
-**Correction (2026-09-18, same day): an earlier "closed" claim in this
-document was itself overclaimed.** The since/until side of the leap-month
-gap (`calendar_difference_date_leap_month`) was previously marked "closed"
-based on its own hand-written Rust integration test passing — that test is
-real and not wrong, but it does not reproduce every assertion the actual
-Test262 fixture files make. Running those fixtures directly found **every
-one of
+**Correction history, since/until's leap-month gap:** an earlier "closed"
+claim in this document (2026-09-18) was itself overclaimed — the fix behind
+it was real but didn't reproduce every assertion the actual
 `intl402/Temporal/{PlainDate,PlainDateTime,PlainYearMonth,ZonedDateTime}/prototype/{since,until}/leap-months-{chinese,dangi,hebrew}.js`
-(24 files, 48 modes) still fails, `PlainDate`'s own included**. The
-underlying fix is real and correct as far as it goes, it just didn't close
-the actual Test262 surface it was credited with closing. Not triaged
-further (out of scope for the passes that found it) — flagged precisely
-for whoever next revisits `since`/`until`'s leap-month handling, since the
-previous "closed" status would otherwise mislead.
+fixtures (24 files, 48 modes) make, and running them directly found all 48
+modes still failing. **This gap is now genuinely closed (2026-09-18, later
+the same day), verified this time by running the actual named fixture files
+directly rather than a proxy test** — see the dedicated bullet later in
+Stage 2 below (search for "genuinely closed") for the five real bugs found
+and fixed (a missing years-correction pre-check in
+`calendar_difference_date_leap_month` itself, a mistaken second
+leap-month-fallback convention the earlier pass introduced, a `PlainYearMonth`
+dispatch bug swapping `from`/`to` instead of negating, a `roundingMode`
+reflection bug that swap-fix's own negation then exposed, and a
+`round_calendar_duration` month/year-flattening bug specific to leap-month
+calendars), the real before/after numbers, and what remains open.
 
 Chronological closure
 record, each step's Test262 delta measured on the pinned corpus (`python3
@@ -148,6 +150,22 @@ path+mode against the step before it:
   `calendar` value instead of throwing `TypeError`). Whole-tree `Temporal/`:
   **7,832/13,272 (59.0%)**, zero regressions anywhere else in `Temporal/` on
   the same full-tree run.
+- **`since`/`until`'s leap-month gap — genuinely closed 2026-09-18** (single
+  owner, sequential; see the dedicated bullet later in Stage 2 — search for
+  "genuinely closed" — for the full account, including five real bugs
+  found and fixed: a missing years-correction pre-check in
+  `calendar_difference_date_leap_month` itself, a mistaken second
+  leap-month-fallback convention an earlier pass introduced (removed, along
+  with the now-fully-dead `LeapMonthFallback` enum it lived in), a
+  `PlainYearMonth`-specific `since`/`until` dispatch bug swapping `from`/`to`
+  instead of negating the result, the `roundingMode` reflection bug that
+  fix then exposed, and a `round_calendar_duration` month/year-flattening
+  bug specific to leap-month calendars). Verified this time by running the
+  actual named Test262 fixture files directly, not a proxy test — all
+  48/48 modes across the 24 named
+  `leap-months-{chinese,dangi,hebrew}.js` `since`/`until` files
+  now pass. Whole-tree `Temporal/`: **12,384→12,470/13,272 (93.98%)**, +86,
+  zero regressions confirmed via a full before/after fail-set diff.
 
 This phase exists because completing Phase 25 (ECMA-402) surfaced a real gap
 in `intl402/`'s
@@ -2770,6 +2788,196 @@ once). One owner:
       `calendar_add_date` pass below (out of its own stated scope) — left
       precisely flagged, not silently re-labeled "closed", for whoever next
       revisits `since`/`until`'s leap-month handling.
+
+- [x] **`since`/`until`'s leap-month gap — genuinely closed 2026-09-18**
+      (single owner, sequential; scope was narrowly `plain_date.rs`'s own
+      `calendar_difference_date_leap_month` and its immediate helpers, per
+      this pass's own launch instructions — the same function two prior
+      passes above already touched for the add side and an initial,
+      incomplete difference-side fix). TDD against the **actual named
+      Test262 fixture files this time**, not a proxy: confirmed all 24
+      files/48 modes
+      (`intl402/Temporal/{PlainDate,PlainDateTime,PlainYearMonth,ZonedDateTime}/prototype/{since,until}/leap-months-{chinese,dangi,hebrew}.js`)
+      failing before any change (`python3 backend/bluejs/test262/run.py
+      --corpus /tmp/blueice-test262-72faf8ec --filter
+      "since/leap-months-chinese.js,since/leap-months-dangi.js,since/leap-months-hebrew.js,until/leap-months-chinese.js,until/leap-months-dangi.js,until/leap-months-hebrew.js"`),
+      then all 48/48 passing after, confirmed by re-running the same
+      command.
+
+      **Root cause, precisely**: a second, real bug distinct from — and not
+      fixed by — the two prior passes' own leap-month rewrites.
+      `calendar_difference_date_leap_month`'s years-only correction only
+      ever performed one surpass check (the *constrained* one, re-resolving
+      the anchor's own `Month` identity through a leap-month fallback
+      first). Re-reading Gecko's `DifferenceNonISODateWithLeapMonth`
+      (`Calendar.cpp`) line by line — not just its general shape, per this
+      pass's own instructions — found it actually performs **two** separate
+      checks: an *unconstrained* one first (comparing the anchor's raw,
+      unresolved `Month` identity against the target, with **no calendar
+      resolution at all** — the target year/month pair may not even exist,
+      which is fine since this is a pure identity comparison), and only
+      then the constrained one. Skipping the unconstrained check is exactly
+      what let `2001-M04L` since `2002-M05` (`largestUnit: "years"`) settle
+      on `-1y 0mo` instead of the correct `-1y -1mo`: the constrained check
+      alone immediately resolves `M04L` in 2002 through the fallback to
+      `M04`, which doesn't surpass `M05`, so `years` never gets reconsidered
+      against the *un*resolved identity first. Fixed by adding the missing
+      unconstrained pre-check, ported directly from Gecko's own
+      `unconstrainedDate`/first `CompareSurpasses` call — no new machinery,
+      reusing the same `surpasses_identity` this module already had.
+
+      **A second, real finding while re-reading Gecko's source this
+      carefully, corrected from this document's own prior (wrong)
+      conclusion**: the earlier `PickNextMonth` vs `Native`
+      `LeapMonthFallback` distinction two passes above introduced — the
+      theory that the difference side needed a *different*, uniform
+      "pick the next month" fallback from the add side's calendar-native
+      one — was itself mistaken. Gecko's `ConstrainMonthCode` is **one**
+      function, called identically by both `AddYearMonthDuration` (add
+      side) and `DifferenceNonISODateWithLeapMonth` (difference side) via
+      the shared `CreateDateFromCodes`; there is no second convention
+      anywhere in Gecko's own source. The `PickNextMonth`-vs-`Native`
+      split "worked" for the one fixture case the prior pass checked only
+      because it was compensating for the *real* bug (the missing
+      unconstrained pre-check) with a second wrong behavior that happened
+      to cancel out for that specific case. With the pre-check restored,
+      the add side's own `Native` fallback (`icu_calendar`'s native,
+      per-calendar `Constrain` behavior — already correct and unchanged)
+      is the *only* convention needed by the difference side too, confirmed
+      against all three calendars independently, not generalized from one.
+      Removed the now-fully-dead `LeapMonthFallback` enum entirely (its
+      `PickNextMonth` variant had zero production callers left, confirmed
+      via `cargo clippy`'s own dead-code warning) rather than leaving an
+      unused abstraction behind; `calendar_date_from_month`'s signature
+      simplified back down to no longer take a fallback parameter at all.
+
+      **A third, independent bug found while closing this one, in a
+      different file**: `Temporal.PlainYearMonth.prototype.since`/`until`'s
+      own dispatch (`vm/temporal.rs`'s `temporal_year_month_difference`)
+      swapped which date was `from`/`to` based on `since`, instead of
+      negating the *result* — exactly the antisymmetric-algorithm pitfall
+      `temporal_date_difference`'s own code comment already documents
+      (`f(other, existing) != -f(existing, other)` in general for this
+      family of algorithms). This swap happened to be harmless for
+      `calendar_difference_date_fixed_months`/`difference_iso_date` (which
+      are effectively antisymmetric for a year+month-only, no-real-day
+      calendar pair) but is provably wrong once
+      `calendar_difference_date_leap_month`'s own anchor-dependent
+      candidate walk is involved — found via
+      `PlainYearMonth`'s own copy of the "M04L-M04 is 1y not 1y 1mo" case,
+      which the swap computed as `1y 1mo`. Fixed to match
+      `temporal_date_difference`'s own already-correct pattern: always
+      `from = existing, to = other`, negate the finished `years`/`months`
+      for `since`.
+
+      **A fourth bug, surfaced by fixing the third**: negating the
+      `years`/`months` result for `since` without also reflecting an
+      asymmetric `roundingMode` broke `PlainYearMonth`'s own
+      `roundingmode-ceil.js`/`roundingmode-floor.js` fixtures (a real
+      regression this pass's own before/after fail-set diff caught, not
+      just the aggregate count) — `ceil`/`floor` round toward a fixed end
+      of the real number line (`ceil(-x) == -floor(x)`, not `-ceil(x)`),
+      so negating the result without swapping `Ceil`<->`Floor` and
+      `HalfCeil`<->`HalfFloor` in the `roundingMode` passed to
+      `round_calendar_duration` silently rounds the wrong way whenever
+      `since` negates a non-exact value. `Trunc`/`Expand`/`HalfExpand`/
+      `HalfTrunc`/`HalfEven` are symmetric under negation and need no such
+      reflection. Fixed locally in `temporal_year_month_difference` only
+      (not `round_calendar_duration` itself, which is calendar-direction-
+      agnostic by design and correctly out of scope here).
+
+      **A fifth, real bug, found empirically once the above closed
+      `PlainDate`/`PlainDateTime`/`ZonedDateTime` but left `PlainYearMonth`
+      still failing on its own leap-month fixtures**:
+      `round_calendar_duration`'s `DateUnit::Month` branch (which
+      `PlainYearMonth`'s `since`/`until` *always* exercises, even with no
+      explicit rounding option requested, since its own default
+      `smallestUnit` is `"month"`) folded `years * 12 + months` into a flat
+      total month count, rounded that, then re-split the result via
+      `/ 12, % 12`. This is unsound for a leap-month calendar specifically:
+      `calendar_difference_date_leap_month`'s own `years`/`months` split is
+      **not** a base-12 decomposition (a single reported "year" can
+      genuinely span 13 months when a leap month is crossed), so
+      re-deriving it from a flattened total silently computes a different,
+      wrong quantity. Re-checked against Gecko's own `ComputeNudgeWindow`
+      (`Duration.cpp`): it never flattens in the first place, for *any*
+      calendar — it keeps `years` fixed and rounds only the `months`
+      remainder in place (`startDuration = {years, r1}`, both years and
+      the rounded month count added together via one `CalendarDateAdd`
+      call). Ported that shape directly, gated on `calendar_has_leap_months`
+      so every other (already-correct) calendar's own math is untouched:
+      `round_month_or_year` gained a `fixed_years` parameter carried
+      through to a real `calendar_add_date` call (years and the rounded
+      month count together, not `calendar_add_unit`'s old single-unit-only
+      shape); `calendar_add_unit` itself, now redundant, was deleted.
+
+      **Shared-file functions changed** — all in
+      `backend/bluejs/src/vm/temporal/plain_date.rs` unless noted:
+      `calendar_difference_date_leap_month` (the two-step correction, `Native`-
+      only fallback), `calendar_date_from_month` (dropped its now-unused
+      `fallback` parameter), `add_year_month_duration_leap_month` and
+      `calendar_add_date_leap_month` (same), `round_month_or_year` (gained
+      `fixed_years`, boundary computation rewritten around `calendar_add_date`
+      instead of the deleted `calendar_add_unit`), `round_calendar_duration`
+      (new leap-month-gated branch in its `DateUnit::Month` arm); and in
+      `backend/bluejs/src/vm/temporal.rs`: `temporal_year_month_difference`
+      (`from`/`to` no longer swapped, result negated instead, with the
+      `roundingMode` reflection above). The now-fully-superseded
+      `LeapMonthFallback` enum and its `PickNextMonth` variant were removed
+      rather than left as dead code. TDD: a new
+      `backend/bluejs/tests/temporal_leap_month_since_until_gap_closure.rs`
+      (11 tests) exercises every one of the five bugs above through the
+      real public `Temporal.{PlainDate,PlainDateTime,PlainYearMonth,ZonedDateTime}.prototype.{since,until}`
+      surface, with values taken directly from the real Test262 fixtures;
+      plus two new host-neutral unit tests in `plain_date.rs`'s own
+      `#[cfg(test)]` module requiring no VM.
+
+      **Real numbers**, pinned corpus, full `Temporal/` filter, before/after
+      on the same commit, fail-set diffed (not just the aggregate) to
+      positively confirm zero regressions:
+
+      | Filter | Before | After |
+      | --- | ---: | ---: |
+      | Whole-tree `Temporal/` (13,272 modes) | 12,384/13,272 (93.32%) | **12,470/13,272 (93.98%)** |
+      | The 24 named `leap-months-*.js` `since`/`until` files (48 modes) | 0/48 | **48/48** |
+
+      +86 net, zero regressions anywhere in `Temporal/` (86 newly-passing
+      modes: the 48 named fixtures plus 38 more the same shared-code fix
+      also closed — `wrapping-at-end-of-month-{chinese,dangi}.js`,
+      `leap-year-since.js`, and `PlainYearMonth`'s own `basic-{chinese,dangi,hebrew}.js`,
+      confirmed via a full before/after fail-set diff, not inferred from
+      the total). `cargo build --workspace --all-targets` / `cargo test
+      --workspace --no-fail-fast` / `cargo clippy --workspace --all-targets
+      -- -D warnings` all clean on this pass's own commit — the only test
+      failure anywhere in the whole workspace is the already-documented
+      pre-existing `string_protocols.rs::observable_conversion_order_and_gc_pressure`
+      flake.
+
+      **Deliberately left open, and why**:
+      - `intl402/.../add/leap-month-{chinese,dangi,hebrew}-numerical-months.js`
+        (ordinal/numerical-month input, as opposed to `monthCode`) — this
+        pass confirmed these fixtures exist **only** for `add`/`subtract`
+        (no `since`/`until` variant exists in the pinned corpus, checked
+        directly by `find`), so they are out of this pass's own `since`/
+        `until` scope; still failing (48/48), unchanged by this pass in
+        either direction, exactly as the prior `calendar_add_date` pass
+        already flagged.
+      - `PlainMonthDay.from`'s own `chinese`/`dangi` leap-month-with-year
+        gap, and the era/monthCode mutual-exclusivity validation gap, both
+        already documented by earlier slices, are unchanged here.
+      - `ZonedDateTime`'s own day-length-aware fractional rounding gap
+        (`NudgeToCalendarUnit`/`NudgeToZonedTime`) is a structurally
+        different, already-documented code path
+        (`zoned_date_time.rs`'s own nudge functions, not
+        `round_calendar_duration`) and is unchanged here.
+      - The general `temporal_date_difference`/`temporal_year_month_difference`
+        family's `roundingMode` reflection is now fixed specifically for
+        `PlainYearMonth` (this pass's own regression); whether
+        `temporal_date_difference` (`PlainDate`/`PlainDateTime`) has the
+        same *class* of bug for some other input shape was not
+        re-audited beyond confirming its own `roundingmode-ceil.js`
+        fixture was already failing identically before and after this
+        pass's commit (a pre-existing, unrelated gap, not a regression).
 
 - [x] **`calendar_add_date`/`AddNonISODate`'s own leap-month gap (the
       `add`/`subtract` follow-up the bullet above left open), plus
