@@ -3778,8 +3778,9 @@ once). One owner:
       assumed: grepped the full `--filter "Temporal/"` run's failures for
       `order-of-operations` (25 fixtures, 50 modes) before writing anything.
 
-      **A real, load-bearing discovery from that triage, not assumed**: 20 of
-      those 25 fixtures were failing with `resource_error` ("unknown or
+      **A real, load-bearing discovery from that triage, not assumed**: 17 of
+      those 25 fixtures (34 modes; `ZonedDateTime/from` in sloppy mode only)
+      were failing with `resource_error` ("unknown or
       collected BlueJS object"), **not** `Test262Error` — i.e. a GC-rooting
       crash, not an observable order mismatch. Root-caused precisely (more
       specific than this document's own earlier "plausibly related to
@@ -3795,16 +3796,19 @@ once). One owner:
       the interleaved read-then-immediately-coerce shape
       `PrepareCalendarFields` itself requires (see below) incidentally
       re-roots each value via `self.stack` before the next field's own call
-      can trigger a GC, which is what actually made 9 of those 20
-      previously-`resource_error` fixtures (`PlainDate`/`PlainDateTime`'s
-      own `since`/`until`/`with`, `PlainYearMonth`'s own `from`/`since`/
-      `until`/`with`) start passing for real as a side effect. This is
-      genuinely incidental, not a targeted fix for the GC bug itself: the
-      remaining 11 `resource_error` fixtures this pass did not touch
-      (`PlainMonthDay`'s own `from`/`with`, `ZonedDateTime`'s own `with`,
-      plus the `ZonedDateTime` fixtures this pass deliberately left to the
-      concurrent sibling pass) still crash the same way, confirming the root
-      cause is real and general, not specific to any one function.
+      can trigger a GC, which is what actually made 11 of those 17
+      previously-`resource_error` fixtures (`PlainDate`'s own `from`/`since`/
+      `until`/`with`, `PlainDateTime`'s own `from`/`since`/`until`,
+      `PlainYearMonth`'s own `from`/`since`/`until`/`with`) start passing
+      for real as a side effect once their own remaining assertions (see
+      bugs 1-3 below) were also fixed. This is genuinely incidental, not a
+      targeted fix for the GC bug itself: of the other 6, three
+      (`ZonedDateTime`'s `compare`/`equals`/`from`, all untouched by this
+      pass) stopped crashing and now fail with an ordinary `Test262Error`
+      (a real order mismatch, the sibling pass's territory), and three
+      (`PlainMonthDay`'s own `from`/`with`, `ZonedDateTime`'s own `with`)
+      still crash the same way, confirming the root cause is real and
+      general, not specific to any one function.
 
       **The fix itself**: two new small helpers,
       `Vm::temporal_read_optional_integer`/`temporal_read_optional_string`
@@ -3980,7 +3984,7 @@ once). One owner:
         either the real fixture's larger object/heap-allocation footprint
         (more fields, more harness scaffolding) or something this smaller
         repro didn't happen to exercise. Fixing it for real (rather than
-        incidentally, as this pass's own restructure did for 9 fixtures) is
+        incidentally, as this pass's own restructure did for 11 fixtures) is
         a distinct, structural GC-rooting investigation, out of this pass's
         own field-read-order scope.
       - Deeper era/`monthCode` mutual-exclusivity validation beyond
