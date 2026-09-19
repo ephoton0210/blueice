@@ -2725,6 +2725,108 @@ once). One owner:
         flake this document's own launch instructions list as known and out
         of scope.
 
+- [x] **`calendar_add_date`/`AddNonISODate`'s own leap-month gap (the
+      `add`/`subtract` follow-up the bullet above left open), plus
+      `round_calendar_duration`'s rounding side — closed 2026-09-18** (single
+      owner, sequential, in its own worktree; scope was specifically
+      `calendar_add_date`/`round_calendar_duration`, not `since`/`until`'s
+      own dispatch, which the bullet above already closed for the unrounded
+      largest-unit case). Same real bug, add side: `calendar_add_date` used
+      to carry `years`/`months` through flat ordinal position for *every*
+      non-ISO calendar, wrong for a leap-month calendar the same way
+      `calendar_difference_date` was, since a leap month's ordinal position
+      shifts year to year. Fixed by dispatching `chinese`/`dangi`/`hebrew` to
+      a new `calendar_add_date_leap_month`, which carries `years`/`months`
+      through the anchor's own `Month` (`monthCode`) identity via
+      `add_year_month_duration_leap_month` — reusing the exact same
+      year/month-bubbling machinery `calendar_difference_date_leap_month`
+      already verified, rather than a parallel implementation.
+
+      **A genuinely different fallback convention than the difference side,
+      confirmed against both calendars' own Test262 fixtures, not
+      generalized from one**: a non-recurring leap month's constrain
+      fallback is *not* the difference side's uniform "pick the next month"
+      rule here. The add side instead needs `icu_calendar`'s own native,
+      per-calendar `Constrain` behavior with no override at all —
+      `chinese`/`dangi` drop the leap flag and keep the same month number
+      (`M03L` -> `M03`, confirmed against
+      `intl402/Temporal/PlainDate/prototype/add/leap-months-chinese.js`'s
+      own worked example), while `hebrew` picks the next month (`M05L` ->
+      `M06`, confirmed against `.../add/leap-months-hebrew.js`'s own
+      example) — the opposite-looking answer from `chinese`/`dangi` for the
+      exact same operation, on two calendars with genuinely different
+      underlying `icu_calendar` implementations
+      (`Hebrew::ordinal_from_month` vs. the shared `EastAsianTraditional`).
+      A new `LeapMonthFallback` enum (`PickNextMonth`/`Native`) threads this
+      distinction explicitly through `calendar_date_from_month` and
+      `add_year_month_duration_leap_month` (both generalized, not
+      duplicated) rather than hard-coding one calendar's convention as if it
+      were universal a second time.
+
+      **`round_calendar_duration`'s rounding side needed no separate
+      code change**: its own month/year rounding
+      (`round_month_or_year` -> `calendar_add_unit` -> `calendar_add_date`)
+      already reuses `calendar_add_date` for its anchor-relative
+      fractional-position probes, so this same fix covers a *rounded*
+      `since`/`until`/`round` result on a leap-month calendar too —
+      confirmed by re-reading `round_month_or_year`'s own call sites, not
+      assumed, since this pass's own launch instructions specifically named
+      `round_calendar_duration` as in scope.
+
+      **TDD**: new unit tests in `plain_date.rs`'s own `tests` module
+      (`calendar_add_date_leap_month_constrains_a_non_recurring_leap_month_to_the_same_number`,
+      its `hebrew` counterpart, `..._preserves_identity_when_the_leap_month_recurs`,
+      `..._bubbles_months_into_a_leap_month`), plus a new
+      `backend/bluejs/tests/temporal_leap_month_calendar_add.rs` exercising
+      the fix through the real public `Temporal.PlainDate.prototype.add`
+      surface, with cases and expected values taken directly from Test262's
+      own `intl402/Temporal/PlainDate/prototype/add/leap-months-{chinese,hebrew}.js`.
+
+      **Real numbers**, pinned corpus, same before/after methodology as the
+      `with()` bullet below (whole-tree `Temporal/` filter run on the parent
+      commit vs. this pass's own commit, full fail-set diffed, not just the
+      aggregate count, to positively confirm zero regressions rather than
+      infer it from a smaller total):
+
+      | Filter | Before | After |
+      | --- | ---: | ---: |
+      | Whole-tree `Temporal/` (13,272 modes) | 12,032/13,272 (90.7%) | **12,088/13,272 (91.1%)** |
+
+      The +56 delta is exactly the `leap-months-{chinese,dangi,hebrew}.js`
+      `add`/`subtract` fixtures across `PlainDate`/`PlainDateTime`/
+      `PlainYearMonth`/`ZonedDateTime` (all four delegate to this same
+      `plain_date.rs` code) plus `PlainDate`'s own `chinese`/`dangi`-calendar-dates.js`
+      `subtract` fixtures; a full before/after fail-set diff (not just the
+      aggregate count) confirms zero new failures anywhere in the whole
+      `Temporal/` tree.
+
+      **Deliberately left open, and why** (documented, not silently
+      approximated) — confirmed still failing on this pass's own commit,
+      not assumed unchanged:
+      - A *different* fixture per calendar,
+        `leap-month-{chinese,dangi,hebrew}-numerical-months.js`, still fails
+        across `add`/`subtract` for all four types — this exercises the
+        ordinal/numerical-month input path rather than `monthCode`, a
+        separate path this pass did not touch or triage.
+      - `PlainMonthDay.from`'s own `chinese`/`dangi` leap-month-with-year
+        field-resolution fixtures remain open, as flagged by the
+        `with()`/era bullet's own scope note below.
+      - `since`/`until`'s own `leap-months-{chinese,dangi,hebrew}.js`
+        fixtures still fail for `PlainDateTime`/`PlainYearMonth`/
+        `ZonedDateTime` (not `PlainDate`, closed by the bullet above) —
+        unchanged by this pass in either direction (present in both the
+        before and after fail sets), so each of those three types likely
+        still has its own not-yet-updated `since`/`until` dispatch path, or
+        the fixture exercises an unrelated assertion; not triaged here,
+        since this pass's own scope was `calendar_add_date`/
+        `round_calendar_duration`, not `since`/`until`'s per-type dispatch.
+      - The era/monthCode mutual-exclusivity validation gap and
+        `ZonedDateTime`'s own day-length-aware fractional rounding gap,
+        both already documented by earlier slices, are unchanged here.
+      - `cargo build --workspace --all-targets` / `cargo test --workspace
+        --no-fail-fast` / `cargo clippy --workspace --all-targets -- -D
+        warnings` all clean on this pass's own commit.
+
 - [x] **`with()`'s era/eraYear mutual-exclusivity validation across
       `PlainDate`/`PlainDateTime`/`PlainYearMonth`/`PlainMonthDay` — closed
       2026-09-18** (single owner, sequential, in its own worktree; scope was
