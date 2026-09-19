@@ -237,7 +237,13 @@ impl Parser {
         Self {
             id,
             source,
-            tokens,
+            // TypeScript permits adjacent generic closers without whitespace,
+            // even though the JavaScript lexer initially recognizes `>>` and
+            // `>>>` as shift operators.  The BlueTS parser does not parse
+            // runtime expressions from this token stream (the emitter keeps
+            // their original source), so present each closer independently to
+            // the type grammar while retaining its exact source span.
+            tokens: split_generic_closers(tokens),
             index: 0,
             declarations: Vec::new(),
             edits: Vec::new(),
@@ -292,6 +298,12 @@ impl Parser {
                 }
             } else if self.consume("interface") {
                 self.parse_interface(start, exported);
+            } else if self.peek("abstract") {
+                self.unsupported(
+                    self.current().span(&self.id),
+                    "`abstract` declarations are not in the initial BlueTS matrix",
+                );
+                self.skip_statement();
             } else {
                 let declared = self.consume("declare");
                 let async_start = self.consume("async");
@@ -305,6 +317,7 @@ impl Parser {
                     "namespace",
                     "module",
                     "class",
+                    "abstract",
                     "implements",
                     "decorator",
                 ]) {
@@ -578,7 +591,12 @@ impl Parser {
         }
         self.expect("{");
         let mut fields = Vec::new();
-        while !self.at_eof() && !self.consume("}") {
+        let mut closed = false;
+        while !self.at_eof() {
+            if self.consume("}") {
+                closed = true;
+                break;
+            }
             if self.consume("readonly") {
                 // `readonly` is static-only and represented by the field
                 // itself in this first checker.
@@ -597,6 +615,9 @@ impl Parser {
             });
             self.consume(";");
             self.consume(",");
+        }
+        if !closed {
+            self.expect("}");
         }
         let end = self.previous().end;
         self.edits.push(TextEdit {
@@ -1100,7 +1121,12 @@ impl Parser {
             Type::Null
         } else if self.consume("undefined") {
             Type::Undefined
-        } else if let Some(name) = self.consume_identifier_or_keyword() {
+        } else if let Some(mut name) = self.consume_identifier_or_keyword() {
+            while self.consume(".") {
+                let member = self.require_identifier("expected a qualified type name");
+                name.push('.');
+                name.push_str(&member);
+            }
             let mut arguments = Vec::new();
             if self.consume("<") {
                 while !self.at_eof() && !self.consume(">") {
@@ -1239,6 +1265,31 @@ impl Parser {
     fn unsupported(&mut self, span: SourceSpan, message: impl Into<String>) {
         self.error_at(span, DiagnosticCode::UnsupportedSyntax, message);
     }
+}
+
+/// Splits a lexically valid JavaScript shift-token run into individual generic
+/// closers for the TypeScript grammar. Every replacement token keeps its
+/// original source byte, so diagnostics and erasure edits remain source-based.
+fn split_generic_closers(tokens: Vec<Token>) -> Vec<Token> {
+    let mut split = Vec::with_capacity(tokens.len());
+    for token in tokens {
+        if token.kind == TokenKind::Punct
+            && token.text.len() > 1
+            && token.text.bytes().all(|byte| byte == b'>')
+        {
+            for start in token.start..token.end {
+                split.push(Token {
+                    kind: TokenKind::Punct,
+                    text: ">".to_string(),
+                    start,
+                    end: start + 1,
+                });
+            }
+        } else {
+            split.push(token);
+        }
+    }
+    split
 }
 
 fn is_typed_arrow_parameter(tokens: &[Token], colon: usize, end: usize) -> bool {

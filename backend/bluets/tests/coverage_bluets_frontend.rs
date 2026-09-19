@@ -71,6 +71,14 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "decorators and TSX/JSX are not in the initial BlueTS matrix",
         ),
         ("class A {}", "`class` is not in the initial BlueTS matrix"),
+        (
+            "abstract class A {}",
+            "`abstract` declarations are not in the initial BlueTS matrix",
+        ),
+        (
+            "declare abstract class A {}",
+            "`abstract` is not in the initial BlueTS matrix",
+        ),
         ("enum E { A }", "`enum` is not in the initial BlueTS matrix"),
         (
             "namespace N {}",
@@ -166,6 +174,7 @@ fn syntax_errors_carry_a_precise_expectation() {
         ("const x: { a number } = 1;", "expected `:`"),
         ("const x: { : number } = 1;", "expected a record field name"),
         ("interface A { a }", "expected `:`"),
+        ("interface A { a: number", "expected `}`"),
         ("interface { a: number }", "expected an interface name"),
         ("interface A<T extends> { a: T }", "expected a type"),
         ("interface A<T = > { a: T }", "expected a type"),
@@ -371,6 +380,7 @@ fn supported_programs_are_accepted() {
         "function f<T>(a: T): T { return a; } const x = f<number,>(1);",
         "const x = y!;",
         "const x = y!.z;",
+        "interface Box<T> { value: T } const box: Box<Box<number>> = { value: { value: 1 } };",
         "let a = 1, b = 2;",
         "function f() { const x: number = 1; let y: string = 'a'; var z = 3; return x; }",
         "function f() { if (true) { return 1; } return 2; }",
@@ -381,6 +391,7 @@ fn supported_programs_are_accepted() {
         "type A = number; export type { A }; export type { A as B };",
         "import type { Shape } from './a.ts'; const s: Shape = { x: 1 };",
         "import type { Shape as S, Id } from './a.ts'; const s: S = { x: 1 }; const i: Id = 1;",
+        "import type * as N from './a.ts'; const s: N.Shape = { x: 1 };",
         "import './a.ts';",
         "import { a, b as c } from './a.ts'; export const total: number = a;",
         "import * as ns from './a.ts';",

@@ -560,6 +560,20 @@ impl<'a> ModuleChecker<'a> {
         let exported = self.exported_types.get(resolved);
         for binding in &import.bindings {
             if binding.type_only {
+                if binding.imported == "*" {
+                    if let Some(source_types) = exported {
+                        for (name, definition) in source_types {
+                            self.insert_type(
+                                &format!("{}.{}", binding.local, name),
+                                definition.clone(),
+                                import.span.clone(),
+                                SymbolKind::Import,
+                                false,
+                            );
+                        }
+                    }
+                    continue;
+                }
                 let Some(source_type) = exported.and_then(|types| types.get(&binding.imported))
                 else {
                     self.diagnostics.push(Diagnostic::error(
