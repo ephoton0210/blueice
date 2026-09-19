@@ -28,15 +28,37 @@ closed, is the field-read-order (`order-of-operations.js`) and
 options-argument-type-validation-order gaps each type's own Stage 2 slice
 already documented as separate, unrelated issues.
 `PlainYearMonth`/`PlainMonthDay`'s own leap-month calendars
-(`chinese`/`dangi`/`hebrew`) need a structurally different algorithm Gecko
-uses for them (not yet ported). **`ZonedDateTime`'s `until`/`since`'s
-day-length-aware fractional rounding at week/month/year granularity, its
-own separate `with()` era/eraYear copy, and a real `.year` getter bug are
-closed 2026-09-18** (see the dedicated bullet at the end of Stage 2 below,
-which also adds the new `getTimeZoneTransition` method); a residual
-`since`/`until` cluster plus smaller `equals`/`add`/`subtract`/`with`/
-`toLocaleString` gaps remain there, per that same bullet's own
-"deliberately left open" list. Chronological closure
+(`chinese`/`dangi`/`hebrew`) needed a structurally different algorithm
+Gecko uses for them; `calendar_add_date`/`AddNonISODate`'s own add/subtract
+side of this **is now ported (2026-09-18)**, and as a side effect covers
+`round_calendar_duration`'s rounding path too, for every calendar-aware
+type including `PlainYearMonth` — see that bullet's own "deliberately left
+open" list for what's still outstanding on that side (the ordinal/
+numerical-month input path, and `PlainMonthDay.from`'s own leap-month-with-year
+gap). **`ZonedDateTime`'s `until`/`since` day-length-aware fractional
+rounding at week/month/year granularity, its own separate `with()`
+era/eraYear copy, and a real `.year` getter bug are closed 2026-09-18**
+(see the dedicated bullet at the end of Stage 2 below, which also adds the
+new `getTimeZoneTransition` method); a residual `since`/`until` cluster
+plus smaller `equals`/`add`/`subtract`/`with`/`toLocaleString` gaps remain
+there, per that same bullet's own "deliberately left open" list.
+
+**Correction (2026-09-18, same day): an earlier "closed" claim in this
+document was itself overclaimed.** The since/until side of the leap-month
+gap (`calendar_difference_date_leap_month`) was previously marked "closed"
+based on its own hand-written Rust integration test passing — that test is
+real and not wrong, but it does not reproduce every assertion the actual
+Test262 fixture files make. Running those fixtures directly found **every
+one of
+`intl402/Temporal/{PlainDate,PlainDateTime,PlainYearMonth,ZonedDateTime}/prototype/{since,until}/leap-months-{chinese,dangi,hebrew}.js`
+(24 files, 48 modes) still fails, `PlainDate`'s own included**. The
+underlying fix is real and correct as far as it goes, it just didn't close
+the actual Test262 surface it was credited with closing. Not triaged
+further (out of scope for the passes that found it) — flagged precisely
+for whoever next revisits `since`/`until`'s leap-month handling, since the
+previous "closed" status would otherwise mislead.
+
+Chronological closure
 record, each step's Test262 delta measured on the pinned corpus (`python3
 backend/bluejs/test262/run.py --filter "Temporal/" --jobs 8`), diffed per
 path+mode against the step before it:
@@ -2729,6 +2751,25 @@ once). One owner:
         pre-existing `string_protocols.rs::observable_conversion_order_and_gc_pressure`
         flake this document's own launch instructions list as known and out
         of scope.
+
+      **Correction (2026-09-18, later the same day, found by the
+      `calendar_add_date`/`round_calendar_duration` pass below while
+      triaging its own leap-month fixture set): this bullet's "since/until's
+      own share of that cluster is closed by this pass" claim above does not
+      hold against the real fixture files.** Running the pinned corpus
+      directly against
+      `intl402/Temporal/{PlainDate,PlainDateTime,PlainYearMonth,ZonedDateTime}/prototype/{since,until}/leap-months-{chinese,dangi,hebrew}.js`
+      (24 files, 48 modes) shows **every single one still fails, including
+      `PlainDate`'s own** — this bullet's own hand-written
+      `temporal_leap_month_calendar_difference.rs` integration test is not
+      wrong (it passes, and the `calendar_difference_date_leap_month` fix it
+      exercises is real and correct as far as it goes), but it does not
+      reproduce every assertion the actual Test262 fixture makes, so the
+      "closed" status above was never actually validated against this
+      phase's own real measurement target. Not triaged further by the
+      `calendar_add_date` pass below (out of its own stated scope) — left
+      precisely flagged, not silently re-labeled "closed", for whoever next
+      revisits `since`/`until`'s leap-month handling.
 
 - [x] **`calendar_add_date`/`AddNonISODate`'s own leap-month gap (the
       `add`/`subtract` follow-up the bullet above left open), plus
