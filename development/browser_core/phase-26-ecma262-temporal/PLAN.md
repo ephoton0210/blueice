@@ -23,10 +23,15 @@ latest picture. **`with()`'s era/eraYear mutual-exclusivity validation across
 dedicated bullet at the end of Stage 2 below); `PlainMonthDay.prototype.with`
 turns out to take no `era`/`eraYear`/`year` fields at all (confirmed against
 both Gecko's own field list and the pinned Test262 corpus — no such fixture
-exists for it), so it needed no change. What remains open, once that cluster
-closed, is the field-read-order (`order-of-operations.js`) and
-options-argument-type-validation-order gaps each type's own Stage 2 slice
-already documented as separate, unrelated issues.
+exists for it), so it needed no change. **The field-read-order
+(`order-of-operations.js`) gap across `PlainDate`/`PlainDateTime`/
+`PlainYearMonth`/`Duration` — closed 2026-09-18** (see the dedicated bullet
+at the end of Stage 2 below, search for "field-read-order restructure"):
+every `order-of-operations.js` fixture for those four types now passes.
+`ZonedDateTime`'s own copy of this gap (`with`/`from`/`compare`/`equals`/
+`since`/`until`) and `PlainMonthDay`'s own `from`/`with` (blocked on a
+separate, pre-existing GC bug, not field order — see that bullet's own
+"deliberately left open" list) remain open.
 `PlainYearMonth`/`PlainMonthDay`'s own leap-month calendars
 (`chinese`/`dangi`/`hebrew`) needed a structurally different algorithm
 Gecko uses for them; `calendar_add_date`/`AddNonISODate`'s own add/subtract
@@ -3763,6 +3768,251 @@ once). One owner:
   anywhere in the whole workspace is the same already-documented
   pre-existing `string_protocols.rs::observable_conversion_order_and_gc_pressure`
   flake.
+- [x] **Field-read-order restructure across `PlainDate`/`PlainDateTime`/
+      `PlainYearMonth`/`Duration` — closed 2026-09-18** (single owner,
+      sequential; scope was explicitly the `order-of-operations.js`
+      field-read-order cluster only, not `ZonedDateTime`'s own separate copy
+      of the same gap — left to a concurrent sibling pass on that type — nor
+      the leap-month-calendar/rounding-window functions other passes have
+      already touched). Triaged first against the real pinned corpus, not
+      assumed: grepped the full `--filter "Temporal/"` run's failures for
+      `order-of-operations` (25 fixtures, 50 modes) before writing anything.
+
+      **A real, load-bearing discovery from that triage, not assumed**: 17 of
+      those 25 fixtures (34 modes; `ZonedDateTime/from` in sloppy mode only)
+      were failing with `resource_error` ("unknown or
+      collected BlueJS object"), **not** `Test262Error` — i.e. a GC-rooting
+      crash, not an observable order mismatch. Root-caused precisely (more
+      specific than this document's own earlier "plausibly related to
+      `string_protocols.rs::observable_conversion_order_and_gc_pressure`"
+      guess): every affected function read multiple raw property values into
+      local Rust variables *before* coercing any of them (`let year_v =
+      get_property(...); let month_v = get_property(...); ...; let year =
+      coerce(year_v)?; ...`), so a `Value::Object` held only in an
+      uncollected-but-unrooted Rust local could be reclaimed by a minor GC
+      triggered by a *later* field's own `get_property`/coercion call (each
+      of which can run arbitrary JS through a Proxy trap or getter). This
+      was never fixed directly — restructuring every affected function into
+      the interleaved read-then-immediately-coerce shape
+      `PrepareCalendarFields` itself requires (see below) incidentally
+      re-roots each value via `self.stack` before the next field's own call
+      can trigger a GC, which is what actually made 11 of those 17
+      previously-`resource_error` fixtures (`PlainDate`'s own `from`/`since`/
+      `until`/`with`, `PlainDateTime`'s own `from`/`since`/`until`,
+      `PlainYearMonth`'s own `from`/`since`/`until`/`with`) start passing
+      for real as a side effect once their own remaining assertions (see
+      bugs 1-3 below) were also fixed. This is genuinely incidental, not a
+      targeted fix for the GC bug itself: of the other 6, three
+      (`ZonedDateTime`'s `compare`/`equals`/`from`, all untouched by this
+      pass) stopped crashing and now fail with an ordinary `Test262Error`
+      (a real order mismatch, the sibling pass's territory), and three
+      (`PlainMonthDay`'s own `from`/`with`, `ZonedDateTime`'s own `with`)
+      still crash the same way, confirming the root cause is real and
+      general, not specific to any one function.
+
+      **The fix itself**: two new small helpers,
+      `Vm::temporal_read_optional_integer`/`temporal_read_optional_string`
+      (`backend/bluejs/src/vm/temporal.rs`), each performing exactly one
+      field's `Get` immediately followed by its own `ToIntegerWithTruncation`/
+      `ToString` conversion (if the value isn't `undefined`) and returning
+      `Option<T>` — callers invoke one per field, **in the field names' own
+      alphabetical order**, rather than batching every `Get` ahead of every
+      conversion (the previous shape in every affected function). Restructured
+      six functions this way: `temporal_date_with` (`PlainDate`/
+      `PlainDateTime.prototype.with`), `temporal_plain_date_from_fields`
+      (both types' `from`, plus `ZonedDateTime`'s and `Temporal.Duration`'s
+      own `relativeTo`'s shared date/time-field resolution),
+      `temporal_year_month_with`, `temporal_plain_year_month_from_fields`,
+      `temporal_from`'s own generic object/string dispatch (see bug 3 below),
+      and a wholly rewritten `temporal_duration_relative_to_property_bag`
+      (see below). `temporal_month_day_with`/`temporal_plain_month_day_from_fields`
+      were deliberately **not** touched: on inspection they already have a
+      delicate, fixture-tuned read/validate interleaving (documented inline —
+      e.g. `monthCode` syntax must be checked before `year`'s own `Symbol`
+      conversion, per `from/monthcode-invalid.js`) built by an earlier pass,
+      and their own `order-of-operations.js` fixtures are both still
+      `resource_error`-blocked regardless of read order, so there was no way
+      to verify a reorder against a real fixture — rewriting them risked
+      silently breaking already-hard-won, verified behavior for a fixture
+      this pass could not have confirmed fixed either way. Left open,
+      precisely for this reason, rather than guessed at.
+
+      Also gated `era`/`eraYear` reads on `calendar != "iso8601"` everywhere
+      this restructure touched (`temporal_date_with`,
+      `temporal_plain_date_from_fields`, `temporal_year_month_with`,
+      `temporal_plain_year_month_from_fields`,
+      `temporal_duration_relative_to_property_bag`): `iso8601` has no era
+      concept at all, so its real `PrepareCalendarFields` field-name list
+      never includes `era`/`eraYear` — confirmed directly against every
+      affected `order-of-operations.js` fixture's own expected-ops array,
+      none of which has an `era`/`eraYear` entry for an `iso8601` receiver.
+      Every one of these functions previously read (and, for
+      `chinese`/`dangi`, correctly rejected) `era`/`eraYear` *unconditionally*,
+      which is still correct for a non-`iso8601` calendar (`chinese`/`dangi`
+      must still *see* a supplied `era`/`eraYear` in order to reject it) but
+      was an extra, unwanted `Get` for `iso8601`.
+
+      **Three further real bugs found and fixed, each pinned to the fixture
+      that caught it, once the masking `resource_error` fixtures above
+      started reaching their own actual assertions**:
+      1. `temporal_plain_year_month_from_fields`'s required-field validation
+         accidentally flipped order during the initial rewrite (checking
+         `month`-or-`monthCode`-required before `year`-required, the reverse
+         of the original) — caught by `PlainYearMonth/from/
+         missing-properties.js`'s own explicit "year should be checked after
+         fetching but before resolving the month" comment (a bag with
+         getters for `month`/`monthCode` but no `year` at all must still
+         fire both of those getters, per the alphabetical read order, before
+         throwing the `year` `TypeError` first). Fixed by keeping the
+         *validation* order exactly as it was (`year`-required, then
+         `month`-or-`monthCode`-required) while only reordering the
+         alphabetical *reads* above it — the two are independent once every
+         field has already been read, since no validation step here performs
+         a further `Get`. The identical validation-vs-read-order distinction
+         was re-checked against `temporal_plain_date_from_fields`'s own
+         three required-field checks (`year`, then `month`-or-`monthCode`,
+         then `day`) via `PlainDate/from/calendarresolvefields-error-
+         ordering.js`'s own three TypeError-before-RangeError assertions,
+         confirmed unchanged (this function's validation block was left in
+         its original relative order throughout).
+      2. `temporal_from`'s own generic object dispatcher (used by
+         `Temporal.PlainDate`/`PlainDateTime.from`, distinct from `since`/
+         `until`/`equals`/`compare`'s own `ToTemporalDate`/`ToTemporalDateTime`
+         conversion path through `temporal_to_plain_date`/
+         `temporal_to_plain_date_time`, which already read `options`
+         correctly) had two real, pre-existing bugs `PlainDate/PlainDateTime/
+         from/order-of-operations.js`'s own "order of operations when
+         cloning a `PlainDate` instance" and "... when parsing a string"
+         cases exposed once the fixture's first scenario stopped throwing
+         early: the exact-same-kind fast path (`from(existingPlainDate)`)
+         returned the argument unchanged without ever reading `options` at
+         all, and the string-parsing branch never read `options` either —
+         both differ from every other `ToTemporal*` conversion's own fast
+         path/string branch (`temporal_to_plain_date`,
+         `temporal_to_plain_year_month`, `temporal_to_zoned_date_time`,
+         ...), which already read+validate `overflow` even when the value is
+         used as-is. Fixed by adding the same `temporal_options`/
+         `temporal_overflow_option` read to both branches — for the string
+         branch specifically, *after* a successful parse, not before:
+         `observable-get-overflow-argument-string-invalid.js` pins that an
+         ISO-invalid string must throw `RangeError` from parsing alone,
+         without `options.overflow` ever being read (caught as a real
+         regression by the full-corpus diff on the first attempt, which read
+         options *before* parsing; corrected to parse first).
+      3. `temporal_duration_relative_to_property_bag`
+         (`GetTemporalRelativeToOption`'s property-bag path) was previously
+         a thin dispatcher: read `timeZone` alone first to pick a branch,
+         then delegated entirely to `temporal_to_zoned_date_time`/
+         `temporal_plain_date_from_fields`, each of which re-reads the same
+         bag in its *own*, different (and, for the zoned path, still
+         `ZonedDateTime`-order-of-operations-buggy) order — structurally
+         incapable of ever producing the fixture's required single merged
+         alphabetical order (`calendar`, `day`, `hour`, `microsecond`,
+         `millisecond`, `minute`, `month`, `monthCode`, `nanosecond`,
+         `offset`, `second`, `timeZone`, `year`) no matter how either
+         delegate's own order was fixed. Rewritten to read every field in
+         that exact order itself, entirely before branching on whether
+         `timeZone` was supplied, then resolve the date directly against the
+         same low-level, already-shared building blocks the delegates
+         themselves use (`icu_calendar::Date::try_from_fields`,
+         `temporal_interpret_offset`, `temporal_time_zone`,
+         `iso::parse_offset_string_nanoseconds`) rather than calling either
+         higher-level function — deliberately avoiding
+         `temporal_to_zoned_date_time` specifically, since it is the
+         concurrent sibling pass's own territory. The `offset` field's
+         `ToPrimitive`-then-require-`String` handling (an object's own
+         `toString`/`valueOf` genuinely called, but a non-object non-string
+         primitive a `TypeError` without ever being stringified) was ported
+         from `temporal_to_zoned_date_time`'s own identical logic rather
+         than re-derived, keeping `relativeto-propertybag-invalid-offset-
+         string.js` passing unchanged.
+
+      **Real numbers**, pinned corpus, real before/after diffed per
+      path+mode against a freshly-built pristine pre-change worktree (not
+      inferred from the aggregate count alone) — confirmed **zero
+      regressions** across the whole `Temporal/` tree at every step:
+
+      | Metric | Before | After |
+      | --- | ---: | ---: |
+      | Whole-tree `Temporal/` (13,272 modes) | 12,550/13,272 (94.56%) | **12,608/13,272 (95.00%)** |
+      | `Duration` | 1,094/1,122 (97.5%) | **1,100/1,122 (98.0%)** |
+      | `PlainDate` | 2,148/2,290 (93.8%) | **2,168/2,290 (94.7%)** |
+      | `PlainDateTime` | 2,340/2,512 (93.2%) | **2,360/2,512 (94.0%)** |
+      | `PlainYearMonth` | 1,570/1,672 (93.9%) | **1,582/1,672 (94.6%)** |
+      | `PlainMonthDay` (untouched) | 544/578 | 544/578 |
+      | `ZonedDateTime` (untouched, sibling's territory) | 2,726/2,968 | 2,726/2,968 |
+      | `Instant`/`Now`/`PlainTime` (untouched) | 968/968, 138/138, 1,010/1,010 | unchanged |
+
+      +58 modes, 0 regressions. Reproduce with `python3
+      backend/bluejs/test262/run.py --corpus /tmp/blueice-test262-72faf8ec
+      --filter "Temporal/" --jobs 8`. Every `order-of-operations.js` fixture
+      for `PlainDate`/`PlainDateTime`/`PlainYearMonth`/`Duration` now passes
+      (confirmed individually by path+mode, not inferred from the type
+      totals above).
+
+      **Deliberately left open, and why** (documented gaps, not silently
+      glossed over):
+      - `PlainMonthDay/{from,prototype/with}/order-of-operations.js` (2
+        fixtures, 4 modes): still `resource_error` — the general GC-rooting
+        bug described above, real and reproducible independent of this
+        pass's own changes, but `temporal_month_day_with`/
+        `temporal_plain_month_day_from_fields`'s own delicate, already-
+        fixture-tuned read/validate interleaving (see above) made a
+        same-shape restructure too risky to attempt unverified.
+      - `ZonedDateTime/{compare,from,prototype/{equals,since,until,with}}/
+        order-of-operations.js` (6 fixtures, 12 modes): `ZonedDateTime`'s own
+        separate copies of this exact gap (`temporal_zoned_date_time_with`'s
+        own field reads, `temporal_to_zoned_date_time`'s `timeZone`-read-
+        first-then-delegate shape) — explicitly a concurrent sibling pass's
+        own territory on this same branch, not touched here. The one
+        boundary this pass's own `temporal_duration_relative_to_property_bag`
+        rewrite depends on but does not fix: `temporal_to_zoned_date_time`
+        itself still has this same field-order gap for `ZonedDateTime.from`/
+        `.prototype.with` directly (unaffected by this pass, since the new
+        `relativeTo` implementation no longer calls it at all).
+      - The general GC-rooting theory above (holding a `Value::Object` in an
+        uncollected Rust local across a later `get_property`/coercion call
+        that can trigger GC) is this pass's own best diagnosis, not a
+        confirmed root cause: a standalone repro built directly from the
+        `PlainYearMonth/prototype/with/order-of-operations.js` fixture's own
+        `Proxy`-based `propertyBagObserver`/`toPrimitiveObserver` shape (a
+        `new Proxy({...}, {get(){...}})` wrapping a plain object, plus the
+        nested `toPrimitiveObserver` object each numeric/string field
+        resolves to), run directly through `bluejs-test262`'s own JSON-line
+        protocol against `Temporal.PlainYearMonth.prototype.with`, did
+        *not* reproduce the crash — so whatever actually triggers it needs
+        either the real fixture's larger object/heap-allocation footprint
+        (more fields, more harness scaffolding) or something this smaller
+        repro didn't happen to exercise. Fixing it for real (rather than
+        incidentally, as this pass's own restructure did for 11 fixtures) is
+        a distinct, structural GC-rooting investigation, out of this pass's
+        own field-read-order scope.
+      - Deeper era/`monthCode` mutual-exclusivity validation beyond
+        `era`+`eraYear` (fields other than era/year) and the leap-month-
+        calendar/rounding-window gaps other passes already documented are
+        both unchanged by this pass.
+
+      **Test coverage**: a new
+      `backend/bluejs/tests/temporal_order_of_operations_field_reads.rs` (7
+      tests) exercises the real public `Temporal.PlainDate`/`PlainDateTime`/
+      `PlainYearMonth`/`Duration` surface with a getter-observed property
+      bag (the same `observer`-via-`Object.defineProperty` pattern
+      `temporal_duration.rs`'s own pre-existing
+      `property_and_option_bags_are_read_in_alphabetical_order` test already
+      established), each asserting the exact alphabetical read sequence a
+      real Test262 fixture pins: `with`/`from`'s fields-before-options
+      ordering and the `iso8601`-skips-era gate (both date types and
+      `PlainYearMonth`), `from`'s options-still-read-for-a-same-kind-clone-
+      or-string-argument fix, `from`'s options-never-read-for-an-invalid-
+      string fix, and `Duration`'s own `relativeTo` property-bag order for
+      both a plain and a zoned anchor. `cargo build --workspace
+      --all-targets` / `cargo clippy --workspace --all-targets -- -D
+      warnings` both clean; `cargo test --workspace --no-fail-fast`: 1,926
+      passed, 1 failed — the same pre-existing
+      `string_protocols.rs::observable_conversion_order_and_gc_pressure`
+      flake, independently reproduced on the unmodified pre-change tree
+      too (confirmed by `git stash`-ing this pass's own changes and
+      re-running the identical test in isolation before restoring them).
 
 - [x] **`temporal_date_difference` (`PlainDate`/`PlainDateTime`) and
       `temporal_zoned_date_time_difference` (`ZonedDateTime`) genuinely had
