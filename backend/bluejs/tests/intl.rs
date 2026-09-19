@@ -753,6 +753,62 @@ fn temporal_plain_time_getters_and_calendar_agnostic_arithmetic() {
 }
 
 #[test]
+fn temporal_date_year_month_month_day_to_locale_string_reject_time_style() {
+    // Real, pinned Test262 fixtures:
+    // intl402/Temporal/{PlainDate,PlainYearMonth,PlainMonthDay}/prototype/
+    // toLocaleString/datestyle-and-timestyle.js ("Using timeStyle, even if
+    // dateStyle is present, should throw") -- `CreateDateTimeFormat`'s
+    // `required` parameter for these three types' own `toLocaleString` is
+    // DATE, which rejects any `timeStyle` option unconditionally, the exact
+    // mirror of `PlainTime.prototype.toLocaleString`'s own `required = TIME`
+    // rejecting `dateStyle` unconditionally (see the PlainTime test above).
+    // intl402/Temporal/PlainDateTime/prototype/toLocaleString/
+    // datestyle-and-timestyle.js ("Using both dateStyle and timeStyle should
+    // not throw") -- PlainDateTime's own `required` is ANY, so this fixture
+    // asserts the opposite: both apply together and neither is rejected.
+    let source = r#"
+        function check(condition, message) {
+            if (!condition) throw new Error(message);
+        }
+        function throwsType(thunk, message) {
+            try { thunk(); } catch (error) {
+                check(error instanceof TypeError, `${message}: ${error}`);
+                return;
+            }
+            throw new Error(`${message}: did not throw`);
+        }
+
+        let date = new Temporal.PlainDate(2026, 1, 20);
+        throwsType(() => date.toLocaleString("en", { dateStyle: "full", timeStyle: "full" }),
+            "PlainDate.prototype.toLocaleString rejects dateStyle+timeStyle together");
+        throwsType(() => date.toLocaleString("en", { timeStyle: "full" }),
+            "PlainDate.prototype.toLocaleString still rejects a bare timeStyle");
+
+        let yearMonth = new Temporal.PlainYearMonth(2026, 1, "gregory", 1);
+        throwsType(() => yearMonth.toLocaleString("en-u-ca-gregory", { dateStyle: "full", timeStyle: "full" }),
+            "PlainYearMonth.prototype.toLocaleString rejects dateStyle+timeStyle together");
+        throwsType(() => yearMonth.toLocaleString("en-u-ca-gregory", { timeStyle: "full" }),
+            "PlainYearMonth.prototype.toLocaleString still rejects a bare timeStyle");
+
+        let monthDay = new Temporal.PlainMonthDay(1, 20, "gregory", 1972);
+        throwsType(() => monthDay.toLocaleString("en-u-ca-gregory", { dateStyle: "full", timeStyle: "full" }),
+            "PlainMonthDay.prototype.toLocaleString rejects dateStyle+timeStyle together");
+        throwsType(() => monthDay.toLocaleString("en-u-ca-gregory", { timeStyle: "full" }),
+            "PlainMonthDay.prototype.toLocaleString still rejects a bare timeStyle");
+
+        // PlainDateTime is unaffected -- its own `required` is ANY, so
+        // dateStyle+timeStyle together is legal and must still format.
+        let dateTime = new Temporal.PlainDateTime(2000, 5, 2, 0, 0, 0, 0, 0, 0);
+        let result = dateTime.toLocaleString("en", { dateStyle: "full", timeStyle: "full" });
+        check(typeof result === "string" && result.includes(":00"),
+            "PlainDateTime.prototype.toLocaleString still accepts dateStyle+timeStyle");
+
+        true
+    "#;
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
 fn temporal_now_reads_one_wall_clock_through_resolved_time_zone_identifiers() {
     let source = r#"
         if (typeof Temporal.Now !== "object") throw new Error("Now is a namespace object");
@@ -1792,4 +1848,220 @@ fn temporal_time_zones_resolve_real_iana_transitions_and_disambiguation() {
             "{source}"
         );
     }
+}
+
+/// Phase 26 Stage 2 follow-up: `Temporal.Duration`'s `relativeTo`-dependent
+/// `round`/`total`/`compare`, including that follow-up's own later
+/// named-IANA-zone gap-closure pass — every accepted anchor shape (a
+/// `PlainDate`/`PlainDateTime` anchor, a `ZonedDateTime` anchor in `UTC`, a
+/// fixed offset, or now a real named IANA zone, a date-only or zoned ISO
+/// string, or a property bag), *not* a `PlainYearMonth`/`PlainMonthDay`
+/// anchor (never a valid `relativeTo` shape at all, regardless of what else
+/// this engine supports). Every expectation below is taken from a real
+/// Test262 fixture under `built-ins/Temporal/Duration/` or
+/// `intl402/Temporal/Duration/`, named in the comment beside it.
+#[test]
+fn temporal_duration_relative_to_resolves_calendar_aware_arithmetic() {
+    let source = r#"
+        let failures = [];
+        function check(condition, message) {
+            if (!condition) failures.push(message);
+        }
+        function throwsRange(thunk, message) {
+            try { thunk(); } catch (error) {
+                check(error instanceof RangeError, `${message}: ${error}`);
+                return;
+            }
+            failures.push(`${message}: did not throw`);
+        }
+        function throwsType(thunk, message) {
+            try { thunk(); } catch (error) {
+                check(error instanceof TypeError, `${message}: ${error}`);
+                return;
+            }
+            failures.push(`${message}: did not throw`);
+        }
+        function sameDuration(d, y, mo, w, day, h, mi, s, ms, us, ns, message) {
+            check(
+                d.years === y && d.months === mo && d.weeks === w && d.days === day &&
+                d.hours === h && d.minutes === mi && d.seconds === s &&
+                d.milliseconds === ms && d.microseconds === us && d.nanoseconds === ns,
+                `${message}: got ${d}`
+            );
+        }
+
+        // round/roundingmode-ceil.js: a calendar-unit duration rounded to
+        // each unit in turn, relative to a PlainDate anchor.
+        {
+            const instance = new Temporal.Duration(5, 6, 7, 8, 40, 30, 20, 123, 987, 500);
+            const relativeTo = new Temporal.PlainDate(2020, 4, 1);
+            sameDuration(instance.round({ smallestUnit: "years", relativeTo, roundingMode: "ceil" }),
+                6, 0, 0, 0, 0, 0, 0, 0, 0, 0, "ceil to years");
+            sameDuration(instance.round({ smallestUnit: "months", relativeTo, roundingMode: "ceil" }),
+                5, 8, 0, 0, 0, 0, 0, 0, 0, 0, "ceil to months");
+            // Weeks must land in the `weeks` field even though the default
+            // largestUnit ("years", from the record's own largest field) is
+            // coarser than weeks — round_calendar_duration's own Week
+            // branch only does this when largestUnit is itself "weeks";
+            // this is the local fix for that gap (see this repo's own
+            // Phase 26 PLAN.md Track B entry).
+            sameDuration(instance.round({ smallestUnit: "weeks", relativeTo, roundingMode: "ceil" }),
+                5, 7, 4, 0, 0, 0, 0, 0, 0, 0, "ceil to weeks");
+            // Rounding to whole days must still see the ~40.5 leftover
+            // hours (not truncate them away before rounding) to round the
+            // day count up under "ceil".
+            sameDuration(instance.round({ smallestUnit: "days", relativeTo, roundingMode: "ceil" }),
+                5, 7, 0, 28, 0, 0, 0, 0, 0, 0, "ceil to days");
+        }
+
+        // round/balances-up-to-weeks.js: largestUnit "weeks" with years and
+        // months present, and a large roundingIncrement.
+        {
+            const relativeTo = new Temporal.PlainDate(2024, 1, 1);
+            const oneYearOneMonthOneDay = new Temporal.Duration(1, 1, 0, 1);
+            sameDuration(
+                oneYearOneMonthOneDay.round({
+                    relativeTo, largestUnit: "weeks", smallestUnit: "weeks",
+                    roundingIncrement: 57, roundingMode: "ceil",
+                }),
+                0, 0, 57, 0, 0, 0, 0, 0, 0, 0, "balances-up-to-weeks 57"
+            );
+        }
+
+        // total/relativeto-total-of-each-unit.js: an exact fractional
+        // total, bit-for-bit, computed relative to a PlainDate anchor.
+        {
+            const duration = new Temporal.Duration(5, 5, 5, 5, 5, 5, 5, 5, 5, 5);
+            const relativeTo = new Temporal.PlainDate(2000, 1, 1);
+            const fullDays = 366 + 365 + 365 + 365 + 366 + 31 + 28 + 31 + 30 + 31 + 5 * 7 + 5;
+            const dayMilliseconds = 24 * 3600 * 1000;
+            const fullMilliseconds = fullDays * dayMilliseconds + 5 * 3600000 + 5 * 60000 + 5000 + 5;
+            const partialDayMilliseconds = fullMilliseconds - fullDays * dayMilliseconds + 0.005005;
+            const fractionalDay = partialDayMilliseconds / dayMilliseconds;
+            const expectedDays = fullDays + fractionalDay;
+            const expectedWeeks = Math.floor(fullDays / 7) + (2 + fractionalDay) / 7;
+            check(duration.total({ unit: "days", relativeTo }) === expectedDays, "total days");
+            check(duration.total({ unit: "weeks", relativeTo }) === expectedWeeks, "total weeks");
+            // A time-granularity `unit` still needs the anchor, since the
+            // record itself has calendar-unit fields.
+            check(
+                duration.total({ unit: "hours", relativeTo }) === fullDays * 24 + partialDayMilliseconds / 3600000,
+                "total hours despite a calendar-unit record"
+            );
+        }
+
+        // total/relativeto-plaindatetime.js: a PlainDateTime anchor gives
+        // the exact same answer as the PlainDate made from just its date
+        // fields (the time-of-day is dropped, not consulted).
+        {
+            const duration = new Temporal.Duration(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+            const relativeToDate = new Temporal.PlainDate(1970, 1, 1);
+            const relativeToDateTime = new Temporal.PlainDateTime(1970, 1, 1);
+            for (const unit of ["years", "months", "weeks", "days"]) {
+                check(
+                    duration.total({ unit, relativeTo: relativeToDateTime }) ===
+                        duration.total({ unit, relativeTo: relativeToDate }),
+                    `PlainDateTime relativeTo matches PlainDate for ${unit}`
+                );
+            }
+        }
+
+        // compare/*: a relativeTo anchor resolves which of two
+        // calendar-unit durations is larger.
+        {
+            const relativeTo = new Temporal.PlainDate(2000, 1, 1);
+            check(
+                Temporal.Duration.compare(
+                    new Temporal.Duration(0, 1), new Temporal.Duration(0, 0, 0, 27),
+                    { relativeTo }
+                ) === 1,
+                "one month is longer than 27 days from 2000-01-01 (31-day January)"
+            );
+            check(
+                Temporal.Duration.compare(
+                    new Temporal.Duration(0, 1), new Temporal.Duration(0, 0, 0, 31),
+                    { relativeTo }
+                ) === 0,
+                "one month equals exactly 31 days from 2000-01-01"
+            );
+        }
+
+        // relativeTo accepted anchor shapes: object, string and
+        // property-bag forms all resolve to the same calendar-aware answer.
+        {
+            const hours25 = new Temporal.Duration(0, 0, 0, 0, 25, 0, 0, 0, 0, 0);
+            const expectDay = (relativeTo, message) => sameDuration(
+                hours25.round({ largestUnit: "days", relativeTo }),
+                0, 0, 0, 1, 1, 0, 0, 0, 0, 0, message
+            );
+            expectDay(new Temporal.PlainDate(2019, 11, 2), "PlainDate object anchor");
+            expectDay(new Temporal.PlainDateTime(2019, 11, 2, 18), "PlainDateTime object anchor");
+            expectDay(new Temporal.ZonedDateTime(1572652800_000_000_000n, "UTC"), "ZonedDateTime UTC anchor");
+            expectDay(new Temporal.ZonedDateTime(1572652800_000_000_000n, "+00:00"), "ZonedDateTime fixed-offset anchor");
+            expectDay("2019-11-02", "date-only string anchor");
+            expectDay({ year: 2019, month: 11, day: 2 }, "property-bag anchor");
+            expectDay({ year: 2019, month: 11, day: 2, timeZone: "UTC" }, "property-bag with UTC timeZone anchor");
+            // relativeto-string.js's own zoned-string cases: a bracket
+            // annotation makes the string a zoned relativeTo, and a `Z`
+            // designator alongside one is accepted (not treated as
+            // asserting a conflicting offset).
+            expectDay("2019-11-01T00:00[-07:00]", "zoned string, fixed-offset annotation");
+            expectDay("2019-11-01T00:00Z[-07:00]", "zoned string, Z + fixed-offset annotation");
+        }
+
+        // Deliberately still out of scope, per this repo's Phase 26
+        // PLAN.md: `PlainYearMonth`/`PlainMonthDay` are never valid
+        // `relativeTo` shapes at all (confirmed against
+        // `relativeto-wrong-type.js` — a real `TypeError`, not a missing
+        // feature), so they must keep throwing regardless of what else this
+        // engine supports.
+        {
+            const oneMonth = new Temporal.Duration(0, 1);
+            throwsType(
+                () => oneMonth.round({ largestUnit: "months", relativeTo: new Temporal.PlainYearMonth(2020, 1) }),
+                "PlainYearMonth is never a valid relativeTo shape"
+            );
+            throwsType(
+                () => oneMonth.round({ largestUnit: "months", relativeTo: new Temporal.PlainMonthDay(1, 1) }),
+                "PlainMonthDay is never a valid relativeTo shape"
+            );
+            // A named-IANA-zone ZonedDateTime/string relativeTo — once
+            // genuinely blocked on real transition data, this engine's
+            // `zoned_date_time.rs` now supplies it (this pass's own
+            // gap-closure): both anchors here sit away from any DST
+            // transition (`America/Los_Angeles` observes none in
+            // December/January), so a whole calendar month is exact and the
+            // answer matches the original, unrounded duration.
+            sameDuration(
+                oneMonth.round({
+                    largestUnit: "months",
+                    relativeTo: new Temporal.ZonedDateTime(0n, "America/Los_Angeles"),
+                }),
+                0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                "a named-IANA-zone ZonedDateTime relativeTo is now supported"
+            );
+            sameDuration(
+                oneMonth.round({ largestUnit: "months", relativeTo: "2020-01-01[America/Los_Angeles]" }),
+                0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                "a named-IANA-zone relativeTo string is now supported"
+            );
+            // A relativeTo string with `Z` and no bracket annotation names
+            // no real zone at all (relativeto-string-invalid.js) — this
+            // boundary is unaffected by named-zone support, since `Z` alone
+            // never carries a real identifier to resolve.
+            throwsRange(
+                () => oneMonth.round({ largestUnit: "months", relativeTo: "2019-11-01T00:00Z" }),
+                "a bare Z relativeTo string with no annotation is invalid"
+            );
+            // Still correctly rejected: no relativeTo at all for a
+            // calendar-unit duration (unchanged, pre-existing behavior).
+            throwsRange(
+                () => oneMonth.round({ largestUnit: "months" }),
+                "a calendar-unit duration still needs a relativeTo anchor"
+            );
+        }
+
+        failures.length === 0 || failures.join(" | ")
+    "#;
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
 }

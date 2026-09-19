@@ -237,6 +237,56 @@ pub(crate) enum NativeFunction {
     TemporalPlainDateTimeToPlainTime,
     TemporalPlainDateTimeWithPlainTime,
     TemporalPlainDateTimeRound,
+    /// `Temporal.PlainYearMonth.prototype.*` (Phase 26 Stage 2's
+    /// `plain_year_month.rs`/`plain_month_day.rs` slice).
+    TemporalYearMonthWith,
+    TemporalYearMonthAdd,
+    TemporalYearMonthSubtract,
+    TemporalYearMonthUntil,
+    TemporalYearMonthSince,
+    TemporalYearMonthEquals,
+    TemporalYearMonthCompare,
+    TemporalYearMonthToString,
+    TemporalYearMonthToJson,
+    TemporalYearMonthToLocaleString,
+    TemporalYearMonthValueOf,
+    TemporalYearMonthToPlainDate,
+    /// `Temporal.PlainMonthDay.prototype.*`. Deliberately no `Add`/
+    /// `Subtract`/`Until`/`Since`/`Compare` variants -- the pinned Test262
+    /// corpus has no such fixtures for this type (a month-day pair has no
+    /// well-ordered total order in general), matching Gecko's own
+    /// `PlainMonthDay.cpp`, which defines no such methods either.
+    TemporalMonthDayWith,
+    TemporalMonthDayEquals,
+    TemporalMonthDayToString,
+    TemporalMonthDayToJson,
+    TemporalMonthDayToLocaleString,
+    TemporalMonthDayValueOf,
+    TemporalMonthDayToPlainDate,
+    /// `Temporal.ZonedDateTime.prototype.*` (Phase 26 Stage 2's
+    /// `zoned_date_time.rs` slice, third and final Stage 2 type).
+    TemporalZonedDateTimeWith,
+    TemporalZonedDateTimeWithTimeZone,
+    TemporalZonedDateTimeWithPlainTime,
+    TemporalZonedDateTimeAdd,
+    TemporalZonedDateTimeSubtract,
+    TemporalZonedDateTimeRound,
+    TemporalZonedDateTimeUntil,
+    TemporalZonedDateTimeSince,
+    TemporalZonedDateTimeEquals,
+    TemporalZonedDateTimeCompare,
+    TemporalZonedDateTimeToString,
+    TemporalZonedDateTimeToJson,
+    TemporalZonedDateTimeValueOf,
+    TemporalZonedDateTimeToInstant,
+    TemporalZonedDateTimeToPlainDate,
+    TemporalZonedDateTimeToPlainTime,
+    TemporalZonedDateTimeToPlainDateTime,
+    TemporalZonedDateTimeToPlainYearMonth,
+    TemporalZonedDateTimeToPlainMonthDay,
+    TemporalZonedDateTimeStartOfDay,
+    TemporalZonedDateTimeGetIsoFields,
+    TemporalZonedDateTimeGetTimeZoneTransition,
     ArrayBuffer,
     ArrayBufferByteLength,
     ArrayBufferMaxByteLength,
@@ -789,6 +839,9 @@ pub(crate) enum TemporalGetter {
     DaysInMonth,
     DaysInYear,
     InLeapYear,
+    OffsetNanoseconds,
+    Offset,
+    HoursInDay,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

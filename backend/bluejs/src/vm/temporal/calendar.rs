@@ -39,9 +39,46 @@ pub(crate) fn calendar_kind(calendar: &str) -> Option<AnyCalendarKind> {
     })
 }
 
+/// `CalendarSupportsEra ( calendar )`, per Gecko's own `Era.h`
+/// (`development/browser_core/reference/gecko/js/src/builtin/temporal/Era.h`):
+/// every recognized calendar has at least one era except `iso8601`,
+/// `chinese` and `dangi`, whose ICU4X representation has no era concept at
+/// all. Used by `Temporal.PlainYearMonth.prototype.with` to decide whether
+/// `era`/`eraYear` are recognized, mutually-exclusive-with-`year` calendar
+/// fields for the receiver's own calendar (`CalendarFields.cpp`'s
+/// `NonISOFieldKeysToIgnore`/`NonISOResolveFields`).
+pub(crate) fn calendar_supports_era(calendar: &str) -> bool {
+    !matches!(calendar, "iso8601" | "chinese" | "dangi")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_iso_chinese_and_dangi_lack_era_support() {
+        for id in ["iso8601", "chinese", "dangi"] {
+            assert!(!calendar_supports_era(id), "{id} should not support eras");
+        }
+        for id in [
+            "gregory",
+            "buddhist",
+            "coptic",
+            "ethiopic",
+            "ethioaa",
+            "hebrew",
+            "indian",
+            "islamic",
+            "islamic-civil",
+            "islamic-tbla",
+            "islamic-umalqura",
+            "japanese",
+            "persian",
+            "roc",
+        ] {
+            assert!(calendar_supports_era(id), "{id} should support eras");
+        }
+    }
 
     #[test]
     fn recognizes_every_currently_supported_calendar_id() {

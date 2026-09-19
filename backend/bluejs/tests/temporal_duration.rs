@@ -2,15 +2,27 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! `Temporal.Duration`'s arithmetic surface (Phase 26 Stage 1 Track B).
+//! `Temporal.Duration`'s arithmetic surface (Phase 26 Stage 1 Track B, plus
+//! its own `relativeTo`-dependent follow-up and that follow-up's own
+//! named-IANA-zone gap-closure pass).
 //!
 //! Every expectation here is taken from a named fixture in the pinned
 //! Test262 corpus rather than from memory, so the same boundary this engine
 //! implements is the one the corpus checks. The calendar-dependent cases the
 //! corpus also covers (a non-zero `years`/`months`/`weeks`, a calendar
 //! `largestUnit`/`smallestUnit`/`unit`, or a usable `relativeTo` anchor) are
-//! Stage 2 work and are asserted here only where the specification requires
-//! a throw anyway.
+//! real for every accepted `relativeTo` shape: a `PlainDate`/`PlainDateTime`
+//! anchor, a `ZonedDateTime` anchor in `UTC`, a fixed offset, or now a real
+//! named IANA zone (`zoned_date_time.rs`'s real transition data, day-length-
+//! aware rounding for `smallestUnit` finer than `day`, and real epoch-
+//! nanosecond bracketing for `day`/`week`/`month`/`year`), a date-only or
+//! zoned ISO string, or a property bag (see
+//! `relative_to_is_accepted_only_where_it_cannot_change_the_answer`'s own
+//! updated doc comment below for exactly which). Calendar-unit arithmetic
+//! with no `relativeTo`, or with a `relativeTo` shape the specification
+//! itself never accepts (a `PlainYearMonth`/`PlainMonthDay` anchor, a bare
+//! `Z`-designated string naming no real zone), is asserted here only where
+//! the specification requires a throw anyway.
 
 use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
 
@@ -707,9 +719,25 @@ fn balanced_fields_round_trip_through_a_double() {
     }
 }
 
-/// The Stage 1/Stage 2 boundary itself. A `relativeTo` anchor that cannot
-/// change a calendar-agnostic answer is honoured; one that could is rejected
-/// rather than approximated.
+/// Originally the Stage 1/Stage 2 boundary itself (a `relativeTo` anchor
+/// honoured only where it could not change a calendar-agnostic answer,
+/// everything else rejected). Updated for this phase's own `relativeTo`
+/// follow-up (`development/browser_core/phase-26-ecma262-temporal/PLAN.md`'s
+/// Track B entry): a calendar-unit duration with a `relativeTo` this engine
+/// can actually resolve (a `PlainDate`/`PlainDateTime` anchor, a
+/// `ZonedDateTime` anchor in `UTC`/a fixed offset, a date-only or zoned ISO
+/// string, or a property bag) now gets a real, calendar-aware answer instead
+/// of a throw — the three assertions moved out of the "rejected" list below,
+/// each with its real expected value, not just "does not throw". **Updated
+/// again** for this same Track B's own named-IANA-zone gap-closure pass: a
+/// `ZonedDateTime`/zoned-string anchor in a *named* zone (`zoned_date_time.rs`
+/// now has real transition data) is likewise a real answer now — two more
+/// assertions moved out of "rejected" below, each away from a DST transition
+/// so the answer is the same as a fixed-offset zone would give (`America/
+/// Vancouver` observes no DST near January). Still rejected: a
+/// `Temporal.Duration` itself as `relativeTo` (never a valid anchor shape), a
+/// bare `Z`-designated string with no bracketed zone annotation (names no
+/// real zone), and a malformed string.
 #[test]
 fn relative_to_is_accepted_only_where_it_cannot_change_the_answer() {
     assert_true(
@@ -731,26 +759,39 @@ fn relative_to_is_accepted_only_where_it_cannot_change_the_answer() {
             && blank.round({ smallestUnit: "weeks", relativeTo: utc }).blank === true
             && blank.total({ unit: "months", relativeTo: plain }) === 0
             && Temporal.Duration.compare(blank, blank, { relativeTo: utc }) === 0
+            // A one-year duration is exactly 365 days from 2017-01-01
+            // (2017 is not a leap year) — real calendar-aware `total`,
+            // previously rejected outright for any nonzero `years` field.
+            && new Temporal.Duration(1).total({ unit: "days", relativeTo: plain }) === 365
+            // One day out of January's 31 is an exact, real fraction of a
+            // month, not the fixed-length answer a calendar-agnostic path
+            // would have to reject `unit: "months"` for.
+            && oneDay.total({ unit: "months", relativeTo: plain }) === 1 / 31
+            // A property-bag `relativeTo` resolves through the same
+            // `ToTemporalDate`-shaped field reading `PlainDate.from` uses,
+            // previously rejected outright as unsupported.
+            && oneDay.total({ unit: "days", relativeTo: { year: 2017, month: 1, day: 1 } }) === 1
+            // A named-IANA-zone `ZonedDateTime`/string anchor, away from any
+            // DST transition (`America/Vancouver` observes none near
+            // January): once genuinely blocked on real transition data,
+            // `zoned_date_time.rs` now supplies it, so one calendar day here
+            // is exactly 24 real hours, same as a fixed-offset zone.
+            && oneDay.total({ unit: "days", relativeTo: new Temporal.ZonedDateTime(0n, "America/Vancouver") }) === 1
+            && oneDay.total({ unit: "days", relativeTo: "2017-01-01T00:00[America/Vancouver]" }) === 1
     "#,
     );
     // Rejected, each for its own documented reason.
     for source in [
-        r#"new Temporal.Duration(0, 0, 0, 1).total({ unit: "days", relativeTo: new Temporal.ZonedDateTime(0n, "America/Vancouver") })"#,
-        r#"new Temporal.Duration(0, 0, 0, 1).total({ unit: "days", relativeTo: "2017-01-01T00:00[America/Vancouver]" })"#,
         r#"new Temporal.Duration(0, 0, 0, 1).total({ unit: "days", relativeTo: "2017-01-01T00:00Z" })"#,
         r#"new Temporal.Duration(0, 0, 0, 1).total({ unit: "days", relativeTo: "nonsense" })"#,
-        r#"new Temporal.Duration(1).total({ unit: "days", relativeTo: new Temporal.PlainDate(2017, 1, 1) })"#,
-        r#"new Temporal.Duration(0, 0, 0, 1).total({ unit: "months", relativeTo: new Temporal.PlainDate(2017, 1, 1) })"#,
     ] {
         assert!(
             matches!(evaluate(source), Err(RuntimeError::RangeError(_))),
             "{source}"
         );
     }
-    for source in [
-        r#"new Temporal.Duration(0, 0, 0, 1).total({ unit: "days", relativeTo: { year: 2017, month: 1, day: 1 } })"#,
-        r#"new Temporal.Duration(0, 0, 0, 1).total({ unit: "days", relativeTo: new Temporal.Duration(1) })"#,
-    ] {
+    {
+        let source = r#"new Temporal.Duration(0, 0, 0, 1).total({ unit: "days", relativeTo: new Temporal.Duration(1) })"#;
         assert!(
             matches!(evaluate(source), Err(RuntimeError::TypeError(_))),
             "{source}"

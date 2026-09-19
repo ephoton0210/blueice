@@ -62,6 +62,14 @@ pub(crate) struct Parsed {
     pub(crate) utc_designator: bool,
     /// A numeric UTC offset, in nanoseconds east of UTC.
     pub(crate) offset_nanoseconds: Option<i64>,
+    /// Whether `offset_nanoseconds` was spelled with an explicit seconds (or
+    /// fractional) component (`-00:44:30`, `-00:45:00`), as opposed to
+    /// minute-only (`-00:45`) or absent. This is `InterpretISODateTimeOffset`'s
+    /// `MatchBehaviour` switch: a *minute-only* leading offset fuzzy-matches
+    /// a named zone's real historical offset once rounded to the nearest
+    /// minute, while a sub-minute-precision spelling requires an exact
+    /// match, however the given and real values individually round.
+    pub(crate) offset_sub_minute_precision: bool,
     /// The time-zone annotation's identifier, if one was present.
     pub(crate) time_zone: Option<String>,
     /// The first `u-ca=` annotation's value, if one was present.
@@ -79,6 +87,7 @@ impl Default for Parsed {
             time: None,
             utc_designator: false,
             offset_nanoseconds: None,
+            offset_sub_minute_precision: false,
             time_zone: None,
             calendar: None,
         }
@@ -361,20 +370,6 @@ pub(crate) fn parse_date(source: &str) -> Option<(i32, u8, u8)> {
     rest.is_empty().then_some(date)
 }
 
-/// Parses the UTC offset (or `Z`/`z` designator) found within `source` into
-/// signed whole seconds, dropping any sub-second fraction: no real zone
-/// offset has sub-second precision, and `Temporal.PlainTime` ignores the
-/// offset entirely — it is parsed only so a malformed one is still a syntax
-/// error.
-pub(crate) fn parse_offset_seconds(source: &str) -> Option<i32> {
-    let index = source.find(['Z', 'z', '+', '-', '['])?;
-    let (offset, rest) = parse_utc_offset_prefix(&source[index..])?;
-    if !(rest.is_empty() || rest.starts_with('[')) {
-        return None;
-    }
-    i32::try_from(offset.nanoseconds / 1_000_000_000).ok()
-}
-
 /// The annotation suffix of an ISO date/time/offset string: an optional
 /// leading time-zone annotation followed by zero or more `[key=value]`
 /// annotations.
@@ -458,8 +453,14 @@ pub(crate) fn parse_annotation_suffix(mut cursor: &str) -> Result<Annotations, (
 }
 
 /// `UTCOffset`, `Cursor`-based: shared by [`scan_utc_offset_suffix`] and
-/// [`is_valid_time_zone_identifier`]'s own offset form.
-fn scan_offset(cursor: &mut Cursor, sub_minute: bool) -> Option<i64> {
+/// [`is_valid_time_zone_identifier`]'s own offset form. The second element of
+/// the result is whether a seconds (or fractional) component was actually
+/// present in the source -- `InterpretISODateTimeOffset`'s `MatchBehaviour`
+/// switch (see [`Parsed::offset_sub_minute_precision`]) needs to know this
+/// independently of the resulting nanosecond value, since e.g. `-00:45` and
+/// `-00:45:00` carry the *same* numeric offset but must be matched
+/// differently.
+fn scan_offset(cursor: &mut Cursor, sub_minute: bool) -> Option<(i64, bool)> {
     let sign = match cursor.eat_any(b"+-")? {
         b'-' => -1,
         _ => 1,
@@ -471,6 +472,7 @@ fn scan_offset(cursor: &mut Cursor, sub_minute: bool) -> Option<i64> {
     let mut minute = 0;
     let mut second = 0;
     let mut nanoseconds = 0;
+    let mut has_seconds = false;
     let extended = cursor.eat(b':');
     if extended || cursor.peek_digit() {
         minute = i64::from(cursor.digits(2)?);
@@ -486,6 +488,7 @@ fn scan_offset(cursor: &mut Cursor, sub_minute: bool) -> Option<i64> {
             if !sub_minute {
                 return None;
             }
+            has_seconds = true;
             second = i64::from(cursor.digits(2)?);
             if second > 59 {
                 return None;
@@ -495,7 +498,10 @@ fn scan_offset(cursor: &mut Cursor, sub_minute: bool) -> Option<i64> {
             }
         }
     }
-    Some(sign * (((hour * 60 + minute) * 60 + second) * 1_000_000_000 + nanoseconds))
+    Some((
+        sign * (((hour * 60 + minute) * 60 + second) * 1_000_000_000 + nanoseconds),
+        has_seconds,
+    ))
 }
 
 /// `DateTimeUTCOffset`: the UTC designator or a numeric offset, both
@@ -505,7 +511,9 @@ fn scan_utc_offset_suffix(cursor: &mut Cursor, parsed: &mut Parsed) -> Option<()
     if cursor.eat_any(b"Zz").is_some() {
         parsed.utc_designator = true;
     } else if matches!(cursor.peek(), Some(b'+' | b'-')) {
-        parsed.offset_nanoseconds = Some(scan_offset(cursor, true)?);
+        let (offset, has_seconds) = scan_offset(cursor, true)?;
+        parsed.offset_nanoseconds = Some(offset);
+        parsed.offset_sub_minute_precision = has_seconds;
     }
     Some(())
 }
@@ -1003,7 +1011,20 @@ pub(crate) fn parse_plain_time(source: &str) -> Option<Time> {
 /// identifier is spelled. Returns nanoseconds east of UTC.
 pub(crate) fn parse_offset_identifier_nanoseconds(source: &str) -> Option<i64> {
     let mut cursor = Cursor::new(source);
-    let offset = scan_offset(&mut cursor, false)?;
+    let (offset, _) = scan_offset(&mut cursor, false)?;
+    cursor.done().then_some(offset)
+}
+
+/// A whole-string UTC offset at full (sub-minute) precision -- the grammar a
+/// `Temporal.ZonedDateTime` property-bag `offset` field, or `.with()`'s own
+/// `offset` property, is validated against (`ParseDateTimeUTCOffset`).
+/// Unlike [`parse_offset_identifier_nanoseconds`], this accepts a genuine
+/// historical sub-minute offset (e.g. Monrovia's pre-1972 `-00:44:30`) --
+/// exactly what `Temporal.ZonedDateTime.prototype.offset` itself can return,
+/// so a round trip through `.with({ offset })` must accept it back.
+pub(crate) fn parse_offset_string_nanoseconds(source: &str) -> Option<i64> {
+    let mut cursor = Cursor::new(source);
+    let (offset, _) = scan_offset(&mut cursor, true)?;
     cursor.done().then_some(offset)
 }
 
@@ -1713,36 +1734,6 @@ mod tests {
         ] {
             assert_eq!(parse_instant(source), None, "{source:?}");
         }
-    }
-
-    /// [`parse_offset_seconds`] has no other direct test: every other test
-    /// in this module reaches its shared grammar through a different public
-    /// entry point ([`parse_date_time`]/[`parse_instant`]/etc.), never this
-    /// one directly. It backs `temporal.rs`'s check of whether a
-    /// `Temporal.ZonedDateTime`'s stored `[[TimeZone]]` slot is a fixed
-    /// offset -- called there only on an already-resolved bare identifier
-    /// (`TimeZone::identifier()`'s own `±HH:MM`/`"UTC"` spelling), never a
-    /// full date-time string, which matters here: `source.find([..])`
-    /// searches the *whole* input for its first `Z`/`z`/`+`/`-`/`[`, so a
-    /// full date-time string's own `-` date separators would be found
-    /// first -- these cases stick to the identifier-shaped inputs the
-    /// function is actually called with.
-    #[test]
-    fn parse_offset_seconds_resolves_the_designator_or_a_numeric_offset() {
-        assert_eq!(parse_offset_seconds("Z"), Some(0));
-        assert_eq!(parse_offset_seconds("+05:30"), Some(19_800));
-        assert_eq!(parse_offset_seconds("-05:30"), Some(-19_800));
-        // A trailing annotation bracket after the offset/designator is fine
-        // (its own contents are never inspected here)...
-        assert_eq!(parse_offset_seconds("Z[UTC]"), Some(0));
-        assert_eq!(parse_offset_seconds("+05:30[Asia/Kolkata]"), Some(19_800));
-        // ...but any other trailing text is not.
-        assert_eq!(parse_offset_seconds("Zjunk"), None);
-        assert_eq!(parse_offset_seconds("+05:30extra"), None);
-        // No `Z`/`z`/`+`/`-`/`[` anywhere in the source at all is not a time
-        // zone designator or offset in the first place.
-        assert_eq!(parse_offset_seconds("UTC"), None);
-        assert_eq!(parse_offset_seconds(""), None);
     }
 
     /// [`parse_annotation_suffix`]'s `key.is_empty() || value.is_empty()`
