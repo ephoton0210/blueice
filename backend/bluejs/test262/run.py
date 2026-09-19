@@ -350,6 +350,48 @@ TEMPORAL_CALENDAR_MATRIX_FIXTURES = frozenset(
     }
 )
 TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET = 10_000_000
+# Test262 (and ECMA-262) define no instruction budget: it is this host's own
+# resource policy, so a finite fixture that needs more dispatches than the
+# default is granted an explicit, bounded allowance -- its source is never
+# edited and it still has to pass, and an unbounded loop still exhausts it.
+#
+# ZonedDateTime's own since/until same-epoch-nanoseconds fixtures enumerate
+# every combination of 4 time zones x 3 epoch-nanosecond values x 55
+# largestUnit/smallestUnit pairs (660 total `since`/`until` calls, each
+# followed by a 10-field `TemporalHelpers.assertDuration` comparison) to
+# confirm a blank duration at every granularity when the two instants are
+# already equal. A finite, bounded conformance matrix, not an unbounded loop
+# or an algorithmic-complexity bug in the difference computation itself
+# (confirmed directly: a single such call resolves immediately via
+# `DifferenceTemporalZonedDateTime` step 8's own equal-epoch-nanoseconds fast
+# path) -- the interpreter's own per-call/per-property-access dispatch cost,
+# multiplied across 660 iterations, is what needs the larger envelope.
+# Measured minimum: 300,000 dispatches; the allowance is ~3x that.
+ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES = frozenset(
+    {
+        "built-ins/Temporal/ZonedDateTime/prototype/since/same-epoch-nanoseconds.js",
+        "built-ins/Temporal/ZonedDateTime/prototype/until/same-epoch-nanoseconds.js",
+    }
+)
+ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET = 1_000_000
+# Four intl402 fixtures walk a fixed calendar table through the real
+# `Temporal.*.from` path: hebrew-keviah.js visits 2,101 Hebrew years (two
+# `PlainDate.from` calls plus a symbol lookup each), persian-new-year-dates.js
+# checks 293 Nowruz dates, and the two `roundtrip-from-property-bag.js`
+# fixtures run one `from` + a dozen property assertions per row of a 42-row
+# calendar table. Each is finite and its per-row cost is one ordinary call
+# chain; only the row count exceeds the default. Measured minimums are
+# 500,000 (hebrew-keviah) and 200,000 (the other three); the allowance is 4x
+# the largest.
+TEMPORAL_CALENDAR_TABLE_FIXTURES = frozenset(
+    {
+        "intl402/Temporal/PlainDate/from/hebrew-keviah.js",
+        "intl402/Temporal/PlainDate/from/persian-new-year-dates.js",
+        "intl402/Temporal/PlainDateTime/from/roundtrip-from-property-bag.js",
+        "intl402/Temporal/ZonedDateTime/from/roundtrip-from-property-bag.js",
+    }
+)
+TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET = 2_000_000
 TEMPORAL_CALENDAR_MATRIX_TIMEOUT = 360
 # The six upstream Iterator.zip/zipKeyed basic fixtures enumerate every prefix
 # combination through three inputs, then verify descriptor details for every
@@ -680,6 +722,10 @@ def instruction_budget(data, default, relative=None, source=""):
     """Keep standard tail-call conformance probes within a bounded budget."""
     if relative in TEMPORAL_CALENDAR_MATRIX_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET)
+    if relative in ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES:
+        return max(default, ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET)
+    if relative in TEMPORAL_CALENDAR_TABLE_FIXTURES:
+        return max(default, TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET)
     if relative in ITERATOR_ZIP_BASIC_MATRIX_FIXTURES:
         return max(default, ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET)
     if relative == NUMBER_FORMAT_NATIVE_PRECISION_MATRIX_FIXTURE:
