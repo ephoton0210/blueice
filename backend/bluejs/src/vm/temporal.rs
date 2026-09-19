@@ -8457,7 +8457,18 @@ impl Vm {
 
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
-        let (from, to) = if since { (&other, &existing) } else { (&existing, &other) };
+        // Always `from = existing, to = other` and negate the *result* for
+        // `since`, never swap which date is `from`/`to` — matching
+        // `temporal_date_difference`'s own documented rule (see that
+        // function's own comment). `calendar_difference_date_leap_month`
+        // anchors its whole computation on `from`'s own `Month` identity, so
+        // swapping `from`/`to` instead of negating silently computes a
+        // different (and for the three leap-month calendars, wrong)
+        // quantity: `f(other, existing) != -f(existing, other)` in general.
+        // Found via `intl402/Temporal/PlainYearMonth/prototype/since/
+        // leap-months-{chinese,dangi,hebrew}.js`, whose "M04L-M04 is 1y not
+        // 1y 1mo" case this swap computed as `1y 1mo` instead of `1y`.
+        let (from, to) = (&existing, &other);
         let from_fields = self.temporal_calendar_fields(from)?;
         let to_fields = self.temporal_calendar_fields(to)?;
         let resolve = |fields: &TemporalCalendarFields| {
@@ -8480,6 +8491,29 @@ impl Vm {
             RuntimeError::RangeError("invalid Temporal calendar year-month".into())
         })?;
 
+        // `round_calendar_duration`'s own `roundingMode` is direction-
+        // sensitive (`Ceil`/`Floor`/`HalfCeil`/`HalfFloor` round toward a
+        // fixed end of the *real* number line, not toward a fixed end of
+        // whichever internal `from`/`to` direction happened to be computed),
+        // so negating the result below without also reflecting an
+        // asymmetric mode would silently round the wrong way whenever
+        // `since` negates — `ceil(-x) == -floor(x)`, not `-ceil(x)`. Found
+        // via `built-ins/Temporal/PlainYearMonth/prototype/since/
+        // roundingmode-{ceil,floor}.js`, which this exact reflection fixes.
+        // `Trunc`/`Expand`/`HalfExpand`/`HalfTrunc`/`HalfEven` are all
+        // symmetric under negation and need no reflection.
+        let effective_mode = if since {
+            use blueice_ecma402::NumberRoundingMode as Mode;
+            match mode {
+                Mode::Ceil => Mode::Floor,
+                Mode::Floor => Mode::Ceil,
+                Mode::HalfCeil => Mode::HalfFloor,
+                Mode::HalfFloor => Mode::HalfCeil,
+                other => other,
+            }
+        } else {
+            mode
+        };
         let (years, months, _, _) = plain_date::round_calendar_duration(
             calendar_kind,
             from_date,
@@ -8487,8 +8521,9 @@ impl Vm {
             Self::temporal_unit_to_date_unit(largest_unit),
             Self::temporal_unit_to_date_unit(smallest_unit),
             increment,
-            mode,
+            effective_mode,
         );
+        let (years, months) = if since { (-years, -months) } else { (years, months) };
         let record = blueice_ecma402::DurationRecord::try_new(
             i128::from(years),
             i128::from(months),
