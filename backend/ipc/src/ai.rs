@@ -88,7 +88,9 @@ pub struct NodeState {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Role {
-    Heading { level: u8 },
+    Heading {
+        level: u8,
+    },
     Link,
     Button,
     TextBox,

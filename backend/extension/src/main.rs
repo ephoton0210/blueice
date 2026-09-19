@@ -20,11 +20,16 @@
 //! one hardcoded extension in this slice, so there's no concurrency to
 //! prove yet.
 
+#[cfg(unix)]
 use blueice_extension_host::{handle_extension_connection, ExtensionRegistry};
+#[cfg(unix)]
 use std::os::unix::net::UnixListener;
+#[cfg(unix)]
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::process::ExitCode;
 
+#[cfg(unix)]
 #[derive(Debug, PartialEq)]
 struct Args {
     socket: PathBuf,
@@ -34,6 +39,7 @@ struct Args {
 /// `std::env::args()` directly) so every flag-parsing branch is a plain
 /// unit test -- mirrors `blueice-core`'s own `parse_args` for the same
 /// reason (see that binary's docs).
+#[cfg(unix)]
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut socket = None;
 
@@ -50,6 +56,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     Ok(Args { socket })
 }
 
+#[cfg(unix)]
 fn main() -> ExitCode {
     let args = match parse_args(std::env::args().skip(1)) {
         Ok(args) => args,
@@ -68,7 +75,10 @@ fn main() -> ExitCode {
     let listener = match UnixListener::bind(&args.socket) {
         Ok(listener) => listener,
         Err(e) => {
-            eprintln!("blueice-extension-host: failed to bind {}: {e}", args.socket.display());
+            eprintln!(
+                "blueice-extension-host: failed to bind {}: {e}",
+                args.socket.display()
+            );
             return ExitCode::FAILURE;
         }
     };
@@ -82,7 +92,13 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-#[cfg(test)]
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("blueice-extension-host is currently supported only on Unix platforms");
+    std::process::exit(1);
+}
+
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 
@@ -97,16 +113,27 @@ mod tests {
 
     #[test]
     fn socket_flag_is_parsed() {
-        assert_eq!(args(&["--socket", "/tmp/x.sock"]).unwrap(), Args { socket: PathBuf::from("/tmp/x.sock") });
+        assert_eq!(
+            args(&["--socket", "/tmp/x.sock"]).unwrap(),
+            Args {
+                socket: PathBuf::from("/tmp/x.sock")
+            }
+        );
     }
 
     #[test]
     fn a_flag_missing_its_value_is_an_error() {
-        assert_eq!(args(&["--socket"]), Err("--socket requires a value".to_string()));
+        assert_eq!(
+            args(&["--socket"]),
+            Err("--socket requires a value".to_string())
+        );
     }
 
     #[test]
     fn an_unrecognized_flag_is_an_error() {
-        assert_eq!(args(&["--socket", "/tmp/x.sock", "--bogus"]), Err("unrecognized argument: --bogus".to_string()));
+        assert_eq!(
+            args(&["--socket", "/tmp/x.sock", "--bogus"]),
+            Err("unrecognized argument: --bogus".to_string())
+        );
     }
 }

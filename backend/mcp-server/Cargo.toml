@@ -10,6 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 base64 = "0.23.1"
+blueice-ecma402 = { version = "0.1.0", path = "../ecma402" }
 blueice-ipc = { version = "0.1.0", path = "../ipc" }
 blueice-launcher = { version = "0.1.0", path = "../launcher" }
 blueice-raster = { version = "0.1.0", path = "../core/raster" }

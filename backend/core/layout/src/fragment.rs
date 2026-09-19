@@ -47,7 +47,15 @@ pub struct Fragment {
 
 impl Fragment {
     pub fn empty_block() -> Self {
-        Fragment { node: None, kind: FragmentKind::Block, x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new() }
+        Fragment {
+            node: None,
+            kind: FragmentKind::Block,
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+            children: Vec::new(),
+        }
     }
 }
 

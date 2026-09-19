@@ -36,7 +36,14 @@ pub fn render(html: &str, css: &str, viewport_width: f64) -> Frame {
     let mut author = blueice_css::parse(css).rules;
     author.extend(stylesheet::extract_inline_stylesheets(&doc));
     let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
-    let fragment = blueice_layout::layout(&doc, doc.root(), &styles, blueice_layout::Constraints { available_width: viewport_width });
+    let fragment = blueice_layout::layout(
+        &doc,
+        doc.root(),
+        &styles,
+        blueice_layout::Constraints {
+            available_width: viewport_width,
+        },
+    );
     blueice_paint::paint(&fragment, &styles)
 }
 
@@ -49,7 +56,10 @@ mod tests {
     fn render_produces_a_frame_with_paint_commands_for_a_simple_page() {
         let frame = render("<p>hi</p>", "p { color: red; }", 320.0);
         assert_eq!(frame.width, 320.0);
-        assert!(frame.commands.iter().any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "hi")));
+        assert!(frame
+            .commands
+            .iter()
+            .any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "hi")));
     }
 
     #[test]
@@ -60,13 +70,21 @@ mod tests {
 
     #[test]
     fn render_applies_inline_style_tags_found_in_the_html_itself() {
-        let frame = render("<html><head><style>p { color: purple; }</style></head><body><p>hi</p></body></html>", "", 320.0);
+        let frame = render(
+            "<html><head><style>p { color: purple; }</style></head><body><p>hi</p></body></html>",
+            "",
+            320.0,
+        );
         assert!(frame.commands.iter().any(|c| matches!(c, PaintCommand::Text { color, .. } if *color == blueice_css::Color::Rgba(128, 0, 128, 255))));
     }
 
     #[test]
     fn explicit_css_param_and_inline_style_tags_both_apply() {
-        let frame = render("<html><body><style>p { color: red; }</style><p>hi</p></body></html>", "div { background-color: yellow; }", 320.0);
+        let frame = render(
+            "<html><body><style>p { color: red; }</style><p>hi</p></body></html>",
+            "div { background-color: yellow; }",
+            320.0,
+        );
         assert!(frame.commands.iter().any(|c| matches!(c, PaintCommand::Text { color, .. } if *color == blueice_css::Color::Rgba(255, 0, 0, 255))));
     }
 }

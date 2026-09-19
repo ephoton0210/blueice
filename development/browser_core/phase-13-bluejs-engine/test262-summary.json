@@ -1,0 +1,788 @@
+{
+  "adapter_sha256": "3e7f32efcbe10c8f0d0d8bd2a3dc3b9aebce5f899e885d7d00d38ca2f6c17883",
+  "complete_inventory": true,
+  "discovered_js": 53876,
+  "elapsed_seconds": 281.516,
+  "exclude": "",
+  "features": {
+    "AggregateError": {
+      "fail": 10,
+      "pass": 52
+    },
+    "Array.fromAsync": {
+      "fail": 186
+    },
+    "Array.prototype.at": {
+      "fail": 2,
+      "pass": 22
+    },
+    "Array.prototype.flat": {
+      "fail": 30
+    },
+    "Array.prototype.flatMap": {
+      "fail": 41
+    },
+    "Array.prototype.includes": {
+      "fail": 12,
+      "pass": 126
+    },
+    "Array.prototype.values": {
+      "fail": 6,
+      "pass": 2
+    },
+    "ArrayBuffer": {
+      "fail": 104,
+      "pass": 452
+    },
+    "Atomics": {
+      "fail": 82,
+      "pass": 690
+    },
+    "Atomics.pause": {
+      "pass": 10
+    },
+    "Atomics.waitAsync": {
+      "pass": 202
+    },
+    "BigInt": {
+      "fail": 1014,
+      "pass": 1967
+    },
+    "DataView": {
+      "fail": 46,
+      "pass": 340
+    },
+    "DataView.prototype.getFloat32": {
+      "pass": 14
+    },
+    "DataView.prototype.getFloat64": {
+      "pass": 10
+    },
+    "DataView.prototype.getInt16": {
+      "pass": 14
+    },
+    "DataView.prototype.getInt32": {
+      "pass": 14
+    },
+    "DataView.prototype.getInt8": {
+      "pass": 10
+    },
+    "DataView.prototype.getUint16": {
+      "pass": 14
+    },
+    "DataView.prototype.getUint32": {
+      "pass": 14
+    },
+    "DataView.prototype.setUint8": {
+      "fail": 12,
+      "pass": 100
+    },
+    "Error.isError": {
+      "fail": 26
+    },
+    "FinalizationRegistry": {
+      "fail": 4,
+      "pass": 94
+    },
+    "Float16Array": {
+      "fail": 80,
+      "pass": 22
+    },
+    "Float32Array": {
+      "fail": 2,
+      "pass": 12
+    },
+    "Float64Array": {
+      "fail": 2,
+      "pass": 12
+    },
+    "Int16Array": {
+      "pass": 4
+    },
+    "Int32Array": {
+      "fail": 4,
+      "pass": 4
+    },
+    "Int8Array": {
+      "fail": 8,
+      "pass": 68
+    },
+    "Intl-enumeration": {
+      "fail": 18,
+      "pass": 52
+    },
+    "Intl.DateTimeFormat-datetimestyle": {
+      "fail": 10,
+      "pass": 22
+    },
+    "Intl.DateTimeFormat-dayPeriod": {
+      "pass": 24
+    },
+    "Intl.DateTimeFormat-extend-timezonename": {
+      "pass": 4
+    },
+    "Intl.DateTimeFormat-formatRange": {
+      "pass": 74
+    },
+    "Intl.DateTimeFormat-fractionalSecondDigits": {
+      "pass": 20
+    },
+    "Intl.DisplayNames": {
+      "pass": 94
+    },
+    "Intl.DisplayNames-v2": {
+      "pass": 24
+    },
+    "Intl.DurationFormat": {
+      "fail": 2,
+      "pass": 220
+    },
+    "Intl.Era-monthcode": {
+      "fail": 2908,
+      "pass": 224
+    },
+    "Intl.ListFormat": {
+      "pass": 162
+    },
+    "Intl.Locale": {
+      "pass": 344
+    },
+    "Intl.Locale-info": {
+      "pass": 120
+    },
+    "Intl.NumberFormat-unified": {
+      "pass": 136
+    },
+    "Intl.NumberFormat-v3": {
+      "pass": 198
+    },
+    "Intl.RelativeTimeFormat": {
+      "pass": 158
+    },
+    "Intl.Segmenter": {
+      "pass": 158
+    },
+    "IsHTMLDDA": {
+      "fail": 14,
+      "pass": 70
+    },
+    "Iterator.prototype.join": {
+      "fail": 32,
+      "pass": 4
+    },
+    "Map": {
+      "fail": 48,
+      "pass": 32
+    },
+    "Math.sumPrecise": {
+      "fail": 20
+    },
+    "Object.fromEntries": {
+      "pass": 50
+    },
+    "Object.hasOwn": {
+      "pass": 124
+    },
+    "Object.is": {
+      "pass": 4
+    },
+    "Promise": {
+      "fail": 4,
+      "pass": 4
+    },
+    "Promise.allSettled": {
+      "fail": 94,
+      "pass": 110
+    },
+    "Promise.any": {
+      "fail": 92,
+      "pass": 92
+    },
+    "Promise.prototype.finally": {
+      "fail": 36,
+      "pass": 22
+    },
+    "Proxy": {
+      "fail": 96,
+      "pass": 837
+    },
+    "Reflect": {
+      "fail": 140,
+      "pass": 793
+    },
+    "Reflect.construct": {
+      "fail": 352,
+      "pass": 1056
+    },
+    "Reflect.set": {
+      "fail": 16,
+      "pass": 76
+    },
+    "Reflect.setPrototypeOf": {
+      "pass": 46
+    },
+    "RegExp.escape": {
+      "fail": 2,
+      "pass": 40
+    },
+    "Set": {
+      "fail": 18,
+      "pass": 58
+    },
+    "ShadowRealm": {
+      "fail": 124
+    },
+    "SharedArrayBuffer": {
+      "fail": 26,
+      "pass": 904
+    },
+    "String.fromCodePoint": {
+      "pass": 44
+    },
+    "String.prototype.at": {
+      "pass": 22
+    },
+    "String.prototype.endsWith": {
+      "pass": 54
+    },
+    "String.prototype.includes": {
+      "pass": 52
+    },
+    "String.prototype.isWellFormed": {
+      "pass": 16
+    },
+    "String.prototype.matchAll": {
+      "fail": 2,
+      "pass": 30
+    },
+    "String.prototype.replaceAll": {
+      "fail": 2,
+      "pass": 80
+    },
+    "String.prototype.toWellFormed": {
+      "pass": 16
+    },
+    "String.prototype.trimEnd": {
+      "pass": 48
+    },
+    "String.prototype.trimStart": {
+      "pass": 46
+    },
+    "Symbol": {
+      "fail": 860,
+      "pass": 2092
+    },
+    "Symbol.asyncIterator": {
+      "fail": 50,
+      "pass": 1026
+    },
+    "Symbol.hasInstance": {
+      "pass": 34
+    },
+    "Symbol.isConcatSpreadable": {
+      "fail": 61,
+      "pass": 6
+    },
+    "Symbol.iterator": {
+      "fail": 330,
+      "pass": 3390
+    },
+    "Symbol.match": {
+      "fail": 4,
+      "pass": 172
+    },
+    "Symbol.matchAll": {
+      "fail": 2,
+      "pass": 124
+    },
+    "Symbol.prototype.description": {
+      "pass": 16
+    },
+    "Symbol.replace": {
+      "fail": 20,
+      "pass": 174
+    },
+    "Symbol.search": {
+      "fail": 2,
+      "pass": 72
+    },
+    "Symbol.species": {
+      "fail": 214,
+      "pass": 354
+    },
+    "Symbol.split": {
+      "fail": 14,
+      "pass": 102
+    },
+    "Symbol.toPrimitive": {
+      "fail": 50,
+      "pass": 416
+    },
+    "Symbol.toStringTag": {
+      "fail": 44,
+      "pass": 201
+    },
+    "Symbol.unscopables": {
+      "fail": 15,
+      "pass": 39
+    },
+    "Temporal": {
+      "fail": 11698,
+      "pass": 1734
+    },
+    "TypedArray": {
+      "fail": 1074,
+      "pass": 3926
+    },
+    "TypedArray.prototype.at": {
+      "fail": 2,
+      "pass": 24
+    },
+    "Uint16Array": {
+      "pass": 12
+    },
+    "Uint32Array": {
+      "pass": 4
+    },
+    "Uint8Array": {
+      "fail": 4,
+      "pass": 22
+    },
+    "Uint8ClampedArray": {
+      "pass": 12
+    },
+    "WeakMap": {
+      "fail": 2,
+      "pass": 155
+    },
+    "WeakRef": {
+      "pass": 74
+    },
+    "WeakSet": {
+      "pass": 68
+    },
+    "__getter__": {
+      "pass": 54
+    },
+    "__proto__": {
+      "fail": 4,
+      "pass": 36
+    },
+    "__setter__": {
+      "pass": 54
+    },
+    "align-detached-buffer-semantics-with-web-reality": {
+      "fail": 94,
+      "pass": 196
+    },
+    "arbitrary-module-namespace-names": {
+      "pass": 16
+    },
+    "array-find-from-last": {
+      "fail": 28,
+      "pass": 178
+    },
+    "array-grouping": {
+      "fail": 24,
+      "pass": 32
+    },
+    "arraybuffer-transfer": {
+      "fail": 26,
+      "pass": 92
+    },
+    "arrow-function": {
+      "fail": 420,
+      "pass": 1380
+    },
+    "async-functions": {
+      "fail": 31,
+      "pass": 1277
+    },
+    "async-iteration": {
+      "fail": 229,
+      "pass": 9566
+    },
+    "await-dictionary": {
+      "fail": 174,
+      "pass": 4
+    },
+    "caller": {
+      "pass": 23
+    },
+    "canonical-tz": {
+      "fail": 28,
+      "pass": 10
+    },
+    "change-array-by-copy": {
+      "fail": 178,
+      "pass": 86
+    },
+    "class": {
+      "fail": 303,
+      "pass": 9123
+    },
+    "class-fields-private": {
+      "fail": 53,
+      "pass": 2195
+    },
+    "class-fields-private-in": {
+      "fail": 8,
+      "pass": 30
+    },
+    "class-fields-public": {
+      "fail": 117,
+      "pass": 3982
+    },
+    "class-methods-private": {
+      "fail": 32,
+      "pass": 3369
+    },
+    "class-static-block": {
+      "fail": 20,
+      "pass": 110
+    },
+    "class-static-fields-private": {
+      "fail": 4,
+      "pass": 682
+    },
+    "class-static-fields-public": {
+      "fail": 26,
+      "pass": 395
+    },
+    "class-static-methods-private": {
+      "fail": 10,
+      "pass": 2999
+    },
+    "coalesce-expression": {
+      "fail": 10,
+      "pass": 40
+    },
+    "computed-property-names": {
+      "fail": 92,
+      "pass": 854
+    },
+    "const": {
+      "pass": 29
+    },
+    "cross-realm": {
+      "fail": 168,
+      "pass": 230
+    },
+    "decorators": {
+      "fail": 42,
+      "pass": 6
+    },
+    "default-parameters": {
+      "fail": 6,
+      "pass": 4510
+    },
+    "destructuring-assignment": {
+      "pass": 217
+    },
+    "destructuring-binding": {
+      "fail": 20,
+      "pass": 13117
+    },
+    "dynamic-import": {
+      "fail": 858,
+      "pass": 1049
+    },
+    "error-cause": {
+      "pass": 10
+    },
+    "error-stack-accessor": {
+      "fail": 68,
+      "pass": 2
+    },
+    "explicit-resource-management": {
+      "fail": 799,
+      "pass": 148
+    },
+    "exponentiation": {
+      "fail": 34,
+      "pass": 174
+    },
+    "export-star-as-namespace-from-module": {
+      "pass": 23
+    },
+    "for-in-order": {
+      "fail": 2,
+      "pass": 16
+    },
+    "for-of": {
+      "pass": 10
+    },
+    "generators": {
+      "fail": 230,
+      "pass": 7845
+    },
+    "globalThis": {
+      "fail": 15,
+      "pass": 150
+    },
+    "hashbang": {
+      "fail": 12,
+      "pass": 23
+    },
+    "host-gc-required": {
+      "fail": 22,
+      "pass": 6
+    },
+    "immutable-arraybuffer": {
+      "fail": 123,
+      "pass": 4
+    },
+    "import-attributes": {
+      "fail": 145,
+      "pass": 15
+    },
+    "import-bytes": {
+      "fail": 5
+    },
+    "import-defer": {
+      "fail": 261,
+      "pass": 127
+    },
+    "import-text": {
+      "fail": 7
+    },
+    "import.meta": {
+      "fail": 4,
+      "pass": 24
+    },
+    "intl-normative-optional": {
+      "pass": 16
+    },
+    "iterator-chunking": {
+      "fail": 138,
+      "pass": 18
+    },
+    "iterator-helpers": {
+      "fail": 684,
+      "pass": 450
+    },
+    "iterator-includes": {
+      "fail": 80,
+      "pass": 8
+    },
+    "iterator-sequencing": {
+      "fail": 58,
+      "pass": 6
+    },
+    "joint-iteration": {
+      "fail": 154,
+      "pass": 10
+    },
+    "json-modules": {
+      "fail": 13,
+      "pass": 2
+    },
+    "json-parse-with-source": {
+      "fail": 38,
+      "pass": 6
+    },
+    "json-superset": {
+      "pass": 8
+    },
+    "legacy-regexp": {
+      "fail": 50,
+      "pass": 2
+    },
+    "let": {
+      "fail": 13,
+      "pass": 118
+    },
+    "logical-assignment-operators": {
+      "pass": 192
+    },
+    "new.target": {
+      "fail": 14,
+      "pass": 111
+    },
+    "nonextensible-applies-to-private": {
+      "fail": 4
+    },
+    "numeric-separator-literal": {
+      "fail": 4,
+      "pass": 314
+    },
+    "object-rest": {
+      "pass": 713
+    },
+    "object-spread": {
+      "pass": 238
+    },
+    "optional-catch-binding": {
+      "pass": 10
+    },
+    "optional-chaining": {
+      "fail": 8,
+      "pass": 104
+    },
+    "promise-try": {
+      "fail": 26,
+      "pass": 4
+    },
+    "promise-with-resolvers": {
+      "fail": 7,
+      "pass": 9
+    },
+    "proxy-missing-checks": {
+      "pass": 6
+    },
+    "regexp-dotall": {
+      "fail": 4,
+      "pass": 30
+    },
+    "regexp-duplicate-named-groups": {
+      "fail": 12,
+      "pass": 26
+    },
+    "regexp-lookbehind": {
+      "pass": 38
+    },
+    "regexp-match-indices": {
+      "fail": 2,
+      "pass": 60
+    },
+    "regexp-modifiers": {
+      "pass": 460
+    },
+    "regexp-named-groups": {
+      "fail": 2,
+      "pass": 198
+    },
+    "regexp-unicode-property-escapes": {
+      "pass": 1362
+    },
+    "regexp-v-flag": {
+      "fail": 2,
+      "pass": 372
+    },
+    "resizable-arraybuffer": {
+      "fail": 188,
+      "pass": 742
+    },
+    "rest-parameters": {
+      "pass": 192
+    },
+    "set-methods": {
+      "fail": 316,
+      "pass": 70
+    },
+    "source-phase-imports": {
+      "fail": 284,
+      "pass": 191
+    },
+    "source-phase-imports-module-source": {
+      "fail": 122,
+      "pass": 83
+    },
+    "stable-array-sort": {
+      "pass": 8
+    },
+    "stable-typedarray-sort": {
+      "pass": 2
+    },
+    "string-trimming": {
+      "pass": 108
+    },
+    "super": {
+      "pass": 38
+    },
+    "symbols-as-weakmap-keys": {
+      "fail": 2,
+      "pass": 55
+    },
+    "tail-call-optimization": {
+      "fail": 14,
+      "pass": 21
+    },
+    "template": {
+      "pass": 2
+    },
+    "top-level-await": {
+      "fail": 22,
+      "pass": 257
+    },
+    "u180e": {
+      "pass": 50
+    },
+    "uint8array-base64": {
+      "fail": 126,
+      "pass": 16
+    },
+    "upsert": {
+      "fail": 49,
+      "pass": 93
+    },
+    "well-formed-json-stringify": {
+      "pass": 2
+    }
+  },
+  "filter": "",
+  "fixture_resources": 294,
+  "groups": {
+    "annexB": {
+      "fail": 204,
+      "pass": 1173
+    },
+    "built-ins": {
+      "fail": 13466,
+      "pass": 33857
+    },
+    "harness": {
+      "fail": 26,
+      "pass": 206
+    },
+    "intl402": {
+      "fail": 3792,
+      "pass": 2922
+    },
+    "language": {
+      "fail": 2613,
+      "pass": 41884
+    },
+    "staging": {
+      "fail": 1019,
+      "pass": 1764
+    }
+  },
+  "instruction_budget": 100000,
+  "jobs": 8,
+  "limitations": [
+    "static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable",
+    "unclassified parser rejections never satisfy parse-SyntaxError negative tests",
+    "harness sources still require supported grammar and APIs",
+    "native overrides for sta.js, assert.js, propertyHelper.js, isConstructor.js, the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness",
+    "each mode has a bounded interpreter instruction budget; tail-call, TypedArray-harness, and the two Temporal calendar matrices receive their recorded budgets"
+  ],
+  "regex_worker_sha256": "4157b473c6ed93572803eb0b2e540adf6d2449ff6ba48fff1ed05271e356d9dd",
+  "results": {
+    "fail": 21120,
+    "pass": 81806
+  },
+  "runner_sha256": "d6951a869d536ad0eaed8d2ae818e74d49307ff01bfd4198ec184aa2ad343103",
+  "scheduled_modes": 102926,
+  "snapshot": {
+    "archive_sha256": "a5d51e56c81269314852f5c7de76d4837493086cc804a36603a459623449e9c2",
+    "committed_at": "2026-09-10T00:32:43Z",
+    "manifest_sha256": "8abd6392abcdde3aa17326391ed008a0336a253364c1676caa1af31b8a5bffd8",
+    "repository": "https://github.com/tc39/test262",
+    "revision": "72faf8ec1445c55149615e8b35187830783aba1a",
+    "selection": "Current Test262 main as of 2026-09-14; proposals and staging are included, not filtered to an ECMA edition."
+  },
+  "tail_call_instruction_budget": 3000000,
+  "tail_call_timeout_seconds": 30,
+  "temporal_calendar_matrix_instruction_budget": 10000000,
+  "temporal_calendar_matrix_timeout_seconds": 360,
+  "test_files": 53582,
+  "timeout_seconds": 2,
+  "typed_array_harness_instruction_budget": 10000000,
+  "typed_array_harness_timeout_seconds": 60,
+  "unicode_identifier_timeout_seconds": 30,
+  "uri_exhaustive_instruction_budget": 100000000,
+  "uri_exhaustive_timeout_seconds": 15,
+  "uri_global_instruction_budget": 10000000,
+  "uri_global_timeout_seconds": 30
+}

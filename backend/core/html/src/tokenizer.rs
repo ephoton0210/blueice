@@ -702,7 +702,11 @@ impl Tokenizer {
             let digits_start = self.pos + 1 + usize::from(hex);
             let mut end = digits_start;
             while let Some(&c) = self.input.get(end) {
-                let ok = if hex { c.is_ascii_hexdigit() } else { c.is_ascii_digit() };
+                let ok = if hex {
+                    c.is_ascii_hexdigit()
+                } else {
+                    c.is_ascii_digit()
+                };
                 if !ok {
                     break;
                 }
@@ -807,11 +811,11 @@ impl Tokenizer {
         }
         let start = self.pos + 2;
         let name_len = name.chars().count();
-        if !name
-            .chars()
-            .enumerate()
-            .all(|(i, c)| self.input.get(start + i).is_some_and(|&ic| ic.eq_ignore_ascii_case(&c)))
-        {
+        if !name.chars().enumerate().all(|(i, c)| {
+            self.input
+                .get(start + i)
+                .is_some_and(|&ic| ic.eq_ignore_ascii_case(&c))
+        }) {
             return false;
         }
         // Deliberately excludes `None` (EOF immediately after the
@@ -823,7 +827,10 @@ impl Tokenizer {
         // an unclosed `<script></SCRIPT` (no trailing `>`) was
         // silently swallowing the `</SCRIPT` text instead of keeping
         // it as the script's own content.
-        matches!(self.input.get(start + name_len), Some(' ') | Some('\t') | Some('\n') | Some('\x0C') | Some('\r') | Some('/') | Some('>'))
+        matches!(
+            self.input.get(start + name_len),
+            Some(' ') | Some('\t') | Some('\n') | Some('\x0C') | Some('\r') | Some('/') | Some('>')
+        )
     }
 
     /// Scans past an appropriate end tag's name to its terminating `>`,
@@ -878,7 +885,8 @@ impl Tokenizer {
                     // `domjs-unsafe.dat`: a raw NUL byte inside
                     // `<script>` content must surface as `�`, not a
                     // silently-passed-through control character).
-                    self.text_buffer.push(if c == '\0' { '\u{FFFD}' } else { c });
+                    self.text_buffer
+                        .push(if c == '\0' { '\u{FFFD}' } else { c });
                 }
             }
         }
@@ -896,14 +904,17 @@ impl Tokenizer {
         }
         let start = self.pos + 1;
         let name_len = name.chars().count();
-        if !name
-            .chars()
-            .enumerate()
-            .all(|(i, c)| self.input.get(start + i).is_some_and(|&ic| ic.eq_ignore_ascii_case(&c)))
-        {
+        if !name.chars().enumerate().all(|(i, c)| {
+            self.input
+                .get(start + i)
+                .is_some_and(|&ic| ic.eq_ignore_ascii_case(&c))
+        }) {
             return false;
         }
-        matches!(self.input.get(start + name_len), Some(' ') | Some('\t') | Some('\n') | Some('\x0C') | Some('\r') | Some('/') | Some('>'))
+        matches!(
+            self.input.get(start + name_len),
+            Some(' ') | Some('\t') | Some('\n') | Some('\x0C') | Some('\r') | Some('/') | Some('>')
+        )
     }
 
     /// WHATWG's "script data state" and its escaped/double-escaped
@@ -942,7 +953,8 @@ impl Tokenizer {
                     }
                     Some(c) => {
                         self.advance();
-                        self.text_buffer.push(if c == '\0' { '\u{FFFD}' } else { c });
+                        self.text_buffer
+                            .push(if c == '\0' { '\u{FFFD}' } else { c });
                     }
                 },
                 St::Escaped => match self.peek() {
@@ -967,7 +979,8 @@ impl Tokenizer {
                     }
                     Some(c) => {
                         self.advance();
-                        self.text_buffer.push(if c == '\0' { '\u{FFFD}' } else { c });
+                        self.text_buffer
+                            .push(if c == '\0' { '\u{FFFD}' } else { c });
                     }
                 },
                 St::DoubleEscaped => match self.peek() {
@@ -986,7 +999,8 @@ impl Tokenizer {
                     }
                     Some(c) => {
                         self.advance();
-                        self.text_buffer.push(if c == '\0' { '\u{FFFD}' } else { c });
+                        self.text_buffer
+                            .push(if c == '\0' { '\u{FFFD}' } else { c });
                     }
                 },
             }
@@ -1015,13 +1029,18 @@ mod tests {
     fn start(name: &str, attrs: &[(&str, &str)]) -> Token {
         Token::StartTag {
             name: name.to_string(),
-            attrs: attrs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            attrs: attrs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
             self_closing: false,
         }
     }
 
     fn end(name: &str) -> Token {
-        Token::EndTag { name: name.to_string() }
+        Token::EndTag {
+            name: name.to_string(),
+        }
     }
 
     fn text(s: &str) -> Token {
@@ -1033,7 +1052,12 @@ mod tests {
         let tokens = tokenize_all(r#"<div class="a">hi</div>"#);
         assert_eq!(
             tokens,
-            vec![start("div", &[("class", "a")]), text("hi"), end("div"), Token::Eof]
+            vec![
+                start("div", &[("class", "a")]),
+                text("hi"),
+                end("div"),
+                Token::Eof
+            ]
         );
     }
 
@@ -1056,7 +1080,10 @@ mod tests {
     #[test]
     fn unquoted_attribute_value() {
         let tokens = tokenize_all("<input type=text>");
-        assert_eq!(tokens, vec![start("input", &[("type", "text")]), Token::Eof]);
+        assert_eq!(
+            tokens,
+            vec![start("input", &[("type", "text")]), Token::Eof]
+        );
     }
 
     #[test]
@@ -1064,7 +1091,12 @@ mod tests {
         let tokens = tokenize_all("<a href='x'>t</a>");
         assert_eq!(
             tokens,
-            vec![start("a", &[("href", "x")]), text("t"), end("a"), Token::Eof]
+            vec![
+                start("a", &[("href", "x")]),
+                text("t"),
+                end("a"),
+                Token::Eof
+            ]
         );
     }
 
@@ -1089,7 +1121,10 @@ mod tests {
     #[test]
     fn comment_produces_a_token_but_no_content() {
         let tokens = tokenize_all("a<!-- hi -- there -->b");
-        assert_eq!(tokens, vec![text("a"), Token::Comment, text("b"), Token::Eof]);
+        assert_eq!(
+            tokens,
+            vec![text("a"), Token::Comment, text("b"), Token::Eof]
+        );
     }
 
     #[test]
@@ -1097,7 +1132,13 @@ mod tests {
         let tokens = tokenize_all("<!DOCTYPE html><p>x</p>");
         assert_eq!(
             tokens,
-            vec![Token::Doctype, start("p", &[]), text("x"), end("p"), Token::Eof]
+            vec![
+                Token::Doctype,
+                start("p", &[]),
+                text("x"),
+                end("p"),
+                Token::Eof
+            ]
         );
     }
 
@@ -1146,7 +1187,12 @@ mod tests {
         let tokens = tokenize_all(r#"<a href="?a=1&amp;b=2">x</a>"#);
         assert_eq!(
             tokens,
-            vec![start("a", &[("href", "?a=1&b=2")]), text("x"), end("a"), Token::Eof]
+            vec![
+                start("a", &[("href", "?a=1&b=2")]),
+                text("x"),
+                end("a"),
+                Token::Eof
+            ]
         );
     }
 
@@ -1176,8 +1222,11 @@ mod tests {
 
     #[test]
     fn rawtext_script_content_is_opaque() {
-        let tokens =
-            tokenize_with_content_switch("<script>if (a < b) { x(); }</script>done", "script", ContentModel::Rawtext);
+        let tokens = tokenize_with_content_switch(
+            "<script>if (a < b) { x(); }</script>done",
+            "script",
+            ContentModel::Rawtext,
+        );
         assert_eq!(
             tokens,
             vec![
@@ -1192,16 +1241,26 @@ mod tests {
 
     #[test]
     fn rawtext_does_not_process_character_references() {
-        let tokens = tokenize_with_content_switch("<style>a &amp; b</style>", "style", ContentModel::Rawtext);
+        let tokens = tokenize_with_content_switch(
+            "<style>a &amp; b</style>",
+            "style",
+            ContentModel::Rawtext,
+        );
         assert_eq!(
             tokens,
-            vec![start("style", &[]), text("a &amp; b"), end("style"), Token::Eof]
+            vec![
+                start("style", &[]),
+                text("a &amp; b"),
+                end("style"),
+                Token::Eof
+            ]
         );
     }
 
     #[test]
     fn rcdata_title_processes_character_references() {
-        let tokens = tokenize_with_content_switch("<title>A &amp; B</title>", "title", ContentModel::Rcdata);
+        let tokens =
+            tokenize_with_content_switch("<title>A &amp; B</title>", "title", ContentModel::Rcdata);
         assert_eq!(
             tokens,
             vec![start("title", &[]), text("A & B"), end("title"), Token::Eof]
@@ -1210,10 +1269,19 @@ mod tests {
 
     #[test]
     fn rawtext_end_tag_requires_matching_name() {
-        let tokens = tokenize_with_content_switch("<script>a</b>c</script>", "script", ContentModel::Rawtext);
+        let tokens = tokenize_with_content_switch(
+            "<script>a</b>c</script>",
+            "script",
+            ContentModel::Rawtext,
+        );
         assert_eq!(
             tokens,
-            vec![start("script", &[]), text("a</b>c"), end("script"), Token::Eof]
+            vec![
+                start("script", &[]),
+                text("a</b>c"),
+                end("script"),
+                Token::Eof
+            ]
         );
     }
 
@@ -1226,8 +1294,12 @@ mod tests {
         // after the matched name (no `>`/whitespace/`/`) means the
         // characters consumed so far belong back in the script's own
         // text content, not treated as a closing tag.
-        let tokens = tokenize_with_content_switch("<script></SCRIPT", "script", ContentModel::Rawtext);
-        assert_eq!(tokens, vec![start("script", &[]), text("</SCRIPT"), Token::Eof]);
+        let tokens =
+            tokenize_with_content_switch("<script></SCRIPT", "script", ContentModel::Rawtext);
+        assert_eq!(
+            tokens,
+            vec![start("script", &[]), text("</SCRIPT"), Token::Eof]
+        );
     }
 
     #[test]
@@ -1237,8 +1309,15 @@ mod tests {
         // must not be mistaken for the end tag's own terminator; only
         // the real, unquoted `>` after ` dd` closes it, leaving "BAR" as
         // separate text content afterward.
-        let tokens = tokenize_with_content_switch(r#"<script></script foo=">" dd>BAR"#, "script", ContentModel::Rawtext);
-        assert_eq!(tokens, vec![start("script", &[]), end("script"), text("BAR"), Token::Eof]);
+        let tokens = tokenize_with_content_switch(
+            r#"<script></script foo=">" dd>BAR"#,
+            "script",
+            ContentModel::Rawtext,
+        );
+        assert_eq!(
+            tokens,
+            vec![start("script", &[]), end("script"), text("BAR"), Token::Eof]
+        );
     }
 
     #[test]
@@ -1291,7 +1370,10 @@ mod tests {
     #[test]
     fn end_tag_open_with_invalid_char_is_bogus_comment() {
         let tokens = tokenize_all("a</3>b");
-        assert_eq!(tokens, vec![text("a"), Token::Comment, text("b"), Token::Eof]);
+        assert_eq!(
+            tokens,
+            vec![text("a"), Token::Comment, text("b"), Token::Eof]
+        );
     }
 
     #[test]
@@ -1313,7 +1395,10 @@ mod tests {
         // whitespace after `a` enters AfterAttributeName; `b` then starts a
         // second attribute directly (the "_ =>" arm of AfterAttributeName).
         let tokens = tokenize_all("<div a b=\"1\">");
-        assert_eq!(tokens, vec![start("div", &[("a", ""), ("b", "1")]), Token::Eof]);
+        assert_eq!(
+            tokens,
+            vec![start("div", &[("a", ""), ("b", "1")]), Token::Eof]
+        );
     }
 
     #[test]
@@ -1359,7 +1444,10 @@ mod tests {
     #[test]
     fn garbage_right_after_quoted_value_reconsumes_as_new_attribute() {
         let tokens = tokenize_all(r#"<div a="x"b="y">"#);
-        assert_eq!(tokens, vec![start("div", &[("a", "x"), ("b", "y")]), Token::Eof]);
+        assert_eq!(
+            tokens,
+            vec![start("div", &[("a", "x"), ("b", "y")]), Token::Eof]
+        );
     }
 
     #[test]
@@ -1458,7 +1546,10 @@ mod tests {
         // by the spec's own table -- must resolve to the raw C1
         // control character, not U+FFFD or a wrong substitution.
         for code in [0x81, 0x8D, 0x8F, 0x90, 0x9D] {
-            assert_eq!(resolve_numeric_character_reference(code), char::from_u32(code).unwrap());
+            assert_eq!(
+                resolve_numeric_character_reference(code),
+                char::from_u32(code).unwrap()
+            );
         }
     }
 

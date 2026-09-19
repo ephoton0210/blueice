@@ -108,7 +108,10 @@ impl Document {
     /// rather than safely failing to resolve at all. Callers replacing
     /// a document should pass the old document's [`Document::next_node_id`].
     pub fn new_continuing_from(next_id: u64) -> Self {
-        let mut doc = Document { allocator: NodeIdAllocator { next: next_id }, ..Document::default() };
+        let mut doc = Document {
+            allocator: NodeIdAllocator { next: next_id },
+            ..Document::default()
+        };
         let root = doc.create_node(NodeData::Document);
         doc.root = Some(root);
         doc
@@ -165,7 +168,11 @@ impl Document {
     /// `NodeId`, breaking plan §1's "stable ID across mutations"
     /// guarantee for the very node being mutated).
     pub fn data_mut(&mut self, id: NodeId) -> &mut NodeData {
-        &mut self.nodes.get_mut(&id).expect("NodeId must belong to this Document").data
+        &mut self
+            .nodes
+            .get_mut(&id)
+            .expect("NodeId must belong to this Document")
+            .data
     }
 
     pub fn parent(&self, id: NodeId) -> Option<NodeId> {
@@ -339,7 +346,10 @@ fn dump_node(doc: &Document, id: NodeId, depth: usize, out: &mut String) {
     let indent = "  ".repeat(depth);
     match doc.data(id) {
         NodeData::Document => unreachable!("the Document node is never its own child"),
-        NodeData::Element { tag_name, attributes } => {
+        NodeData::Element {
+            tag_name,
+            attributes,
+        } => {
             out.push_str(&format!("| {indent}<{tag_name}>\n"));
             let mut attrs: Vec<_> = attributes.iter().collect();
             attrs.sort_by(|a, b| a.0.cmp(&b.0));
@@ -365,9 +375,14 @@ mod tests {
     fn dump_renders_nested_elements_and_text() {
         let mut doc = Document::new();
         let root = doc.root();
-        let p = doc.create_node(NodeData::Element { tag_name: "p".to_string(), attributes: vec![] });
+        let p = doc.create_node(NodeData::Element {
+            tag_name: "p".to_string(),
+            attributes: vec![],
+        });
         doc.append_child(root, p);
-        let text = doc.create_node(NodeData::Text { data: "hi".to_string() });
+        let text = doc.create_node(NodeData::Text {
+            data: "hi".to_string(),
+        });
         doc.append_child(p, text);
 
         assert_eq!(dump(&doc), "| <p>\n|   \"hi\"\n");
@@ -379,7 +394,10 @@ mod tests {
         let root = doc.root();
         let div = doc.create_node(NodeData::Element {
             tag_name: "div".to_string(),
-            attributes: vec![("class".to_string(), "b".to_string()), ("id".to_string(), "a".to_string())],
+            attributes: vec![
+                ("class".to_string(), "b".to_string()),
+                ("id".to_string(), "a".to_string()),
+            ],
         });
         doc.append_child(root, div);
 
@@ -408,14 +426,26 @@ mod tests {
     #[test]
     fn data_mut_allows_updating_an_elements_attributes_in_place() {
         let mut doc = Document::new();
-        let input = doc.create_node(NodeData::Element { tag_name: "input".to_string(), attributes: vec![("type".to_string(), "text".to_string())] });
+        let input = doc.create_node(NodeData::Element {
+            tag_name: "input".to_string(),
+            attributes: vec![("type".to_string(), "text".to_string())],
+        });
         doc.append_child(doc.root(), input);
 
         if let NodeData::Element { attributes, .. } = doc.data_mut(input) {
             attributes.push(("value".to_string(), "hello".to_string()));
         }
 
-        assert_eq!(doc.data(input), &NodeData::Element { tag_name: "input".to_string(), attributes: vec![("type".to_string(), "text".to_string()), ("value".to_string(), "hello".to_string())] });
+        assert_eq!(
+            doc.data(input),
+            &NodeData::Element {
+                tag_name: "input".to_string(),
+                attributes: vec![
+                    ("type".to_string(), "text".to_string()),
+                    ("value".to_string(), "hello".to_string())
+                ]
+            }
+        );
     }
 
     #[test]
@@ -429,7 +459,11 @@ mod tests {
             *tag_name = "span".to_string();
         }
 
-        assert_eq!(doc.parent(node), Some(root), "mutating data must not detach the node");
+        assert_eq!(
+            doc.parent(node),
+            Some(root),
+            "mutating data must not detach the node"
+        );
         assert_eq!(doc.data(node), &elem("span"));
     }
 

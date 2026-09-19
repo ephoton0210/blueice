@@ -13,15 +13,26 @@
 //! test -- this file is just argument parsing and wiring a real
 //! `UnixListener` to that already-tested logic.
 
+#[cfg(unix)]
 use blueice_launcher::memory_pressure::{self, SystemMemorySource};
+#[cfg(unix)]
 use blueice_launcher::supervisor::{ProcessPolicy, ProcessRegistry};
-use blueice_launcher::{default_control_socket_path, default_rendezvous_socket_path, run_broker, SpawnedCore};
+#[cfg(unix)]
+use blueice_launcher::{
+    default_control_socket_path, default_rendezvous_socket_path, run_broker, SpawnedCore,
+};
+#[cfg(unix)]
 use std::os::unix::net::UnixListener;
+#[cfg(unix)]
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::process::ExitCode;
+#[cfg(unix)]
 use std::sync::{Arc, Mutex};
+#[cfg(unix)]
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
 #[derive(Debug, PartialEq)]
 struct Args {
     rendezvous_socket: PathBuf,
@@ -50,6 +61,7 @@ struct Args {
 /// `blueice-core.rs`'s `parse_args` does: every flag-parsing branch is a
 /// plain unit test, not something only exercisable by actually spawning
 /// the binary.
+#[cfg(unix)]
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut rendezvous_socket = None;
     let mut control_socket = None;
@@ -65,12 +77,22 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         match flag.as_str() {
             "--socket" => rendezvous_socket = Some(PathBuf::from(value()?)),
             "--control-socket" => control_socket = Some(PathBuf::from(value()?)),
-            "--width" => width = value()?.parse().map_err(|_| "--width must be a number".to_string())?,
-            "--height" => height = value()?.parse().map_err(|_| "--height must be a number".to_string())?,
+            "--width" => {
+                width = value()?
+                    .parse()
+                    .map_err(|_| "--width must be a number".to_string())?
+            }
+            "--height" => {
+                height = value()?
+                    .parse()
+                    .map_err(|_| "--height must be a number".to_string())?
+            }
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
             "--simulate-low-memory" => simulate_low_memory = true,
             "--memory-poll-interval-ms" => {
-                let ms: u64 = value()?.parse().map_err(|_| "--memory-poll-interval-ms must be a number".to_string())?;
+                let ms: u64 = value()?
+                    .parse()
+                    .map_err(|_| "--memory-poll-interval-ms must be a number".to_string())?;
                 memory_poll_interval = Duration::from_millis(ms);
             }
             other => return Err(format!("unrecognized argument: {other}")),
@@ -79,9 +101,18 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
 
     let rendezvous_socket = rendezvous_socket.unwrap_or_else(default_rendezvous_socket_path);
     let control_socket = control_socket.unwrap_or_else(default_control_socket_path);
-    Ok(Args { rendezvous_socket, control_socket, width, height, frame_dir, simulate_low_memory, memory_poll_interval })
+    Ok(Args {
+        rendezvous_socket,
+        control_socket,
+        width,
+        height,
+        frame_dir,
+        simulate_low_memory,
+        memory_poll_interval,
+    })
 }
 
+#[cfg(unix)]
 fn main() -> ExitCode {
     let args = match parse_args(std::env::args().skip(1)) {
         Ok(args) => args,
@@ -91,7 +122,9 @@ fn main() -> ExitCode {
         }
     };
 
-    let frame_dir = args.frame_dir.unwrap_or_else(|| std::env::temp_dir().join(format!("blueice-launcher-frames-{}", std::process::id())));
+    let frame_dir = args.frame_dir.unwrap_or_else(|| {
+        std::env::temp_dir().join(format!("blueice-launcher-frames-{}", std::process::id()))
+    });
 
     let core = match SpawnedCore::spawn(args.width, args.height, &frame_dir) {
         Ok(core) => core,
@@ -113,14 +146,31 @@ fn main() -> ExitCode {
     // item for why that's a separate, still-open transport question).
     let registry = Arc::new(Mutex::new(ProcessRegistry::new()));
     {
-        let mut registry = registry.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut registry = registry
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let now = Instant::now();
         registry.register("core", ProcessPolicy::AlwaysResident, None, now);
-        registry.register("mcp-server", ProcessPolicy::IdleTeardown { idle_timeout: Duration::from_secs(300) }, None, now);
+        registry.register(
+            "mcp-server",
+            ProcessPolicy::IdleTeardown {
+                idle_timeout: Duration::from_secs(300),
+            },
+            None,
+            now,
+        );
     }
-    let memory_source: Arc<dyn memory_pressure::MemorySource> =
-        if args.simulate_low_memory { Arc::new(memory_pressure::FixedMemorySource(0.0)) } else { Arc::new(SystemMemorySource::new()) };
-    let _pressure_monitor = memory_pressure::spawn_pressure_monitor(Arc::clone(&registry), memory_source, memory_pressure::DEFAULT_PRESSURE_THRESHOLD, args.memory_poll_interval);
+    let memory_source: Arc<dyn memory_pressure::MemorySource> = if args.simulate_low_memory {
+        Arc::new(memory_pressure::FixedMemorySource(0.0))
+    } else {
+        Arc::new(SystemMemorySource::new())
+    };
+    let _pressure_monitor = memory_pressure::spawn_pressure_monitor(
+        Arc::clone(&registry),
+        memory_source,
+        memory_pressure::DEFAULT_PRESSURE_THRESHOLD,
+        args.memory_poll_interval,
+    );
 
     if let Some(parent) = args.rendezvous_socket.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -138,14 +188,20 @@ fn main() -> ExitCode {
     let listener = match UnixListener::bind(&args.rendezvous_socket) {
         Ok(listener) => listener,
         Err(e) => {
-            eprintln!("blueice-launcher: failed to bind {}: {e}", args.rendezvous_socket.display());
+            eprintln!(
+                "blueice-launcher: failed to bind {}: {e}",
+                args.rendezvous_socket.display()
+            );
             return ExitCode::FAILURE;
         }
     };
     let control_listener = match UnixListener::bind(&args.control_socket) {
         Ok(listener) => listener,
         Err(e) => {
-            eprintln!("blueice-launcher: failed to bind {}: {e}", args.control_socket.display());
+            eprintln!(
+                "blueice-launcher: failed to bind {}: {e}",
+                args.control_socket.display()
+            );
             return ExitCode::FAILURE;
         }
     };
@@ -168,7 +224,13 @@ fn main() -> ExitCode {
     }
 }
 
-#[cfg(test)]
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("blueice-launcher is currently supported only on Unix platforms");
+    std::process::exit(1);
+}
+
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 
@@ -185,7 +247,10 @@ mod tests {
         assert_eq!(parsed.height, 600.0);
         assert_eq!(parsed.frame_dir, None);
         assert!(!parsed.simulate_low_memory);
-        assert_eq!(parsed.memory_poll_interval, memory_pressure::DEFAULT_POLL_INTERVAL);
+        assert_eq!(
+            parsed.memory_poll_interval,
+            memory_pressure::DEFAULT_POLL_INTERVAL
+        );
     }
 
     #[test]
@@ -222,31 +287,49 @@ mod tests {
 
     #[test]
     fn a_control_socket_flag_missing_its_value_is_an_error() {
-        assert_eq!(args(&["--control-socket"]), Err("--control-socket requires a value".to_string()));
+        assert_eq!(
+            args(&["--control-socket"]),
+            Err("--control-socket requires a value".to_string())
+        );
     }
 
     #[test]
     fn a_non_numeric_memory_poll_interval_is_an_error() {
-        assert_eq!(args(&["--memory-poll-interval-ms", "not-a-number"]), Err("--memory-poll-interval-ms must be a number".to_string()));
+        assert_eq!(
+            args(&["--memory-poll-interval-ms", "not-a-number"]),
+            Err("--memory-poll-interval-ms must be a number".to_string())
+        );
     }
 
     #[test]
     fn a_flag_missing_its_value_is_an_error() {
-        assert_eq!(args(&["--socket"]), Err("--socket requires a value".to_string()));
+        assert_eq!(
+            args(&["--socket"]),
+            Err("--socket requires a value".to_string())
+        );
     }
 
     #[test]
     fn a_non_numeric_width_is_an_error() {
-        assert_eq!(args(&["--width", "not-a-number"]), Err("--width must be a number".to_string()));
+        assert_eq!(
+            args(&["--width", "not-a-number"]),
+            Err("--width must be a number".to_string())
+        );
     }
 
     #[test]
     fn a_non_numeric_height_is_an_error() {
-        assert_eq!(args(&["--height", "not-a-number"]), Err("--height must be a number".to_string()));
+        assert_eq!(
+            args(&["--height", "not-a-number"]),
+            Err("--height must be a number".to_string())
+        );
     }
 
     #[test]
     fn an_unrecognized_flag_is_an_error() {
-        assert_eq!(args(&["--bogus"]), Err("unrecognized argument: --bogus".to_string()));
+        assert_eq!(
+            args(&["--bogus"]),
+            Err("unrecognized argument: --bogus".to_string())
+        );
     }
 }

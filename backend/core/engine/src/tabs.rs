@@ -84,7 +84,14 @@ impl TabManager {
         let default_tab = TabId(1);
         let mut tabs = HashMap::new();
         tabs.insert(default_tab, Page::new(viewport_width, viewport_height));
-        TabManager { tabs, order: vec![default_tab], next_tab_id: 2, default_tab, viewport_width, viewport_height }
+        TabManager {
+            tabs,
+            order: vec![default_tab],
+            next_tab_id: 2,
+            default_tab,
+            viewport_width,
+            viewport_height,
+        }
     }
 
     pub fn default_tab(&self) -> TabId {
@@ -96,7 +103,8 @@ impl TabManager {
     pub fn open_tab(&mut self) -> TabId {
         let id = TabId(self.next_tab_id);
         self.next_tab_id += 1;
-        self.tabs.insert(id, Page::new(self.viewport_width, self.viewport_height));
+        self.tabs
+            .insert(id, Page::new(self.viewport_width, self.viewport_height));
         self.order.push(id);
         id
     }
@@ -154,7 +162,10 @@ mod tests {
         let new_id = tabs.open_tab();
         assert_ne!(new_id, tabs.default_tab());
         assert!(tabs.get(new_id).is_some());
-        assert_eq!(tabs.ids().collect::<Vec<_>>(), vec![tabs.default_tab(), new_id]);
+        assert_eq!(
+            tabs.ids().collect::<Vec<_>>(),
+            vec![tabs.default_tab(), new_id]
+        );
     }
 
     #[test]
@@ -163,7 +174,10 @@ mod tests {
         let first = tabs.open_tab();
         assert!(tabs.close_tab(first));
         let second = tabs.open_tab();
-        assert_ne!(first, second, "a closed tab's id must never be reissued to an unrelated later tab");
+        assert_ne!(
+            first, second,
+            "a closed tab's id must never be reissued to an unrelated later tab"
+        );
     }
 
     #[test]

@@ -93,9 +93,55 @@ const IMPLIED_END_TAGS: &[&str] = &["li", "option", "optgroup", "p"];
 /// it was wrongly treated as blocked, since the approximation counted
 /// `option` as special. Found by the WPT corpus's `tests2.dat#37`.
 const SPECIAL_ELEMENTS: &[&str] = &[
-    "article", "aside", "blockquote", "body", "br", "button", "caption", "col", "colgroup", "div", "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6",
-    "head", "header", "hr", "html", "img", "input", "li", "link", "main", "meta", "nav", "ol", "p", "pre", "script", "section", "select", "style", "table", "tbody", "td", "textarea", "tfoot",
-    "th", "thead", "title", "tr", "ul",
+    "article",
+    "aside",
+    "blockquote",
+    "body",
+    "br",
+    "button",
+    "caption",
+    "col",
+    "colgroup",
+    "div",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "footer",
+    "form",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "header",
+    "hr",
+    "html",
+    "img",
+    "input",
+    "li",
+    "link",
+    "main",
+    "meta",
+    "nav",
+    "ol",
+    "p",
+    "pre",
+    "script",
+    "section",
+    "select",
+    "style",
+    "table",
+    "tbody",
+    "td",
+    "textarea",
+    "tfoot",
+    "th",
+    "thead",
+    "title",
+    "tr",
+    "ul",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -332,7 +378,12 @@ impl TreeBuilder {
     /// is in effect: immediately before the nearest open `<table>`, as a
     /// child of *its* parent (never a child of the table itself).
     fn foster_parent_target(&self) -> (NodeId, Option<NodeId>) {
-        if let Some(&table_id) = self.open_elements.iter().rev().find(|&&id| self.tag_of(id).as_deref() == Some("table")) {
+        if let Some(&table_id) = self
+            .open_elements
+            .iter()
+            .rev()
+            .find(|&&id| self.tag_of(id).as_deref() == Some("table"))
+        {
             if let Some(parent) = self.document.parent(table_id) {
                 return (parent, Some(table_id));
             }
@@ -408,7 +459,9 @@ impl TreeBuilder {
                 return;
             }
         }
-        let id = self.document.create_node(NodeData::Text { data: data.to_string() });
+        let id = self.document.create_node(NodeData::Text {
+            data: data.to_string(),
+        });
         self.document.insert_before(parent, id, reference);
     }
 
@@ -418,7 +471,11 @@ impl TreeBuilder {
     /// Ark clause below all only ever look at the slice from this point
     /// to the end of the list.
     fn afe_scan_start(&self) -> usize {
-        self.active_formatting.iter().rposition(|e| matches!(e, AfeEntry::Marker)).map(|p| p + 1).unwrap_or(0)
+        self.active_formatting
+            .iter()
+            .rposition(|e| matches!(e, AfeEntry::Marker))
+            .map(|p| p + 1)
+            .unwrap_or(0)
     }
 
     /// Inserts a `Marker` at the end of the active-formatting-elements
@@ -445,14 +502,17 @@ impl TreeBuilder {
             .iter()
             .enumerate()
             .filter_map(|(i, e)| match e {
-                AfeEntry::Formatting((_, t, a)) if t == tag && Self::attrs_equal(a, &attrs) => Some(scan_start + i),
+                AfeEntry::Formatting((_, t, a)) if t == tag && Self::attrs_equal(a, &attrs) => {
+                    Some(scan_start + i)
+                }
                 _ => None,
             })
             .collect();
         if matching.len() >= 3 {
             self.active_formatting.remove(matching[0]);
         }
-        self.active_formatting.push(AfeEntry::Formatting((id, tag.to_string(), attrs)));
+        self.active_formatting
+            .push(AfeEntry::Formatting((id, tag.to_string(), attrs)));
     }
 
     fn attrs_equal(a: &[(String, String)], b: &[(String, String)]) -> bool {
@@ -494,7 +554,8 @@ impl TreeBuilder {
             if t == tag {
                 return true;
             }
-            if DEFAULT_SCOPE_BLOCKERS.contains(&t.as_str()) || extra_blockers.contains(&t.as_str()) {
+            if DEFAULT_SCOPE_BLOCKERS.contains(&t.as_str()) || extra_blockers.contains(&t.as_str())
+            {
                 return false;
             }
         }
@@ -615,7 +676,10 @@ impl TreeBuilder {
 
     fn close_table_section(&mut self) {
         while let Some(&top) = self.open_elements.last() {
-            let is_section = matches!(self.tag_of(top).as_deref(), Some("tbody") | Some("thead") | Some("tfoot"));
+            let is_section = matches!(
+                self.tag_of(top).as_deref(),
+                Some("tbody") | Some("thead") | Some("tfoot")
+            );
             self.open_elements.pop();
             if is_section {
                 break;
@@ -688,7 +752,11 @@ impl TreeBuilder {
                     return;
                 }
                 Some("html") => {
-                    self.mode = if self.head_element.is_some() { Mode::AfterHead } else { Mode::BeforeHead };
+                    self.mode = if self.head_element.is_some() {
+                        Mode::AfterHead
+                    } else {
+                        Mode::BeforeHead
+                    };
                     return;
                 }
                 _ => continue,
@@ -748,7 +816,10 @@ impl TreeBuilder {
     /// recent `<caption>`/`<td>`/`<th>` marker.
     fn afe_formatting_rposition(&self, tag: &str) -> Option<usize> {
         let scan_start = self.afe_scan_start();
-        self.active_formatting[scan_start..].iter().rposition(|e| matches!(e, AfeEntry::Formatting((_, t, _)) if t == tag)).map(|p| scan_start + p)
+        self.active_formatting[scan_start..]
+            .iter()
+            .rposition(|e| matches!(e, AfeEntry::Formatting((_, t, _)) if t == tag))
+            .map(|p| scan_start + p)
     }
 
     /// The adoption agency algorithm (WHATWG HTML5 §13.2.5.2), for an end
@@ -762,7 +833,10 @@ impl TreeBuilder {
         // just happens to share the tag name), just pop it and return --
         // skip the whole algorithm below.
         if let Some(&current) = self.open_elements.last() {
-            let tracked = self.active_formatting.iter().any(|e| matches!(e, AfeEntry::Formatting((id, _, _)) if *id == current));
+            let tracked = self
+                .active_formatting
+                .iter()
+                .any(|e| matches!(e, AfeEntry::Formatting((id, _, _)) if *id == current));
             if self.tag_of(current).as_deref() == Some(tag) && !tracked {
                 self.open_elements.pop();
                 return;
@@ -798,7 +872,8 @@ impl TreeBuilder {
             let furthest_block_id = self.open_elements[furthest_block_pos];
             let common_ancestor = self.open_elements[fe_stack_pos - 1];
 
-            let between: Vec<NodeId> = self.open_elements[fe_stack_pos + 1..furthest_block_pos].to_vec();
+            let between: Vec<NodeId> =
+                self.open_elements[fe_stack_pos + 1..furthest_block_pos].to_vec();
             // `Bookmark` mirrors Blink's `HTMLFormattingElementList::Bookmark`
             // (`html_formatting_element_list.h`): a position tracked
             // *relative to a specific entry*, resolved to a concrete
@@ -818,8 +893,12 @@ impl TreeBuilder {
 
             for &node_id in between.iter().rev() {
                 iterations += 1;
-                let af_pos = self.active_formatting.iter().position(|e| matches!(e, AfeEntry::Formatting((id, _, _)) if *id == node_id));
-                let stack_pos_of = |tb: &Self, id: NodeId| tb.open_elements.iter().position(|&x| x == id);
+                let af_pos = self
+                    .active_formatting
+                    .iter()
+                    .position(|e| matches!(e, AfeEntry::Formatting((id, _, _)) if *id == node_id));
+                let stack_pos_of =
+                    |tb: &Self, id: NodeId| tb.open_elements.iter().position(|&x| x == id);
 
                 let Some(af_pos) = af_pos else {
                     // Not (or no longer) an active formatting element:
@@ -854,7 +933,8 @@ impl TreeBuilder {
                     tag_name: node_tag.clone(),
                     attributes: node_attrs.clone(),
                 });
-                self.active_formatting[af_pos] = AfeEntry::Formatting((new_node, node_tag, node_attrs));
+                self.active_formatting[af_pos] =
+                    AfeEntry::Formatting((new_node, node_tag, node_attrs));
                 if let Some(p) = stack_pos_of(self, node_id) {
                     self.open_elements[p] = new_node;
                 }
@@ -916,9 +996,14 @@ impl TreeBuilder {
                 .position(|e| matches!(e, AfeEntry::Formatting((id, _, _)) if *id == fe_id))
                 .unwrap();
             self.active_formatting.remove(fe_pos_now);
-            let insert_at = if raw_insert_at > fe_pos_now { raw_insert_at - 1 } else { raw_insert_at };
+            let insert_at = if raw_insert_at > fe_pos_now {
+                raw_insert_at - 1
+            } else {
+                raw_insert_at
+            };
             let insert_at = insert_at.min(self.active_formatting.len());
-            self.active_formatting.insert(insert_at, AfeEntry::Formatting((new_fe, fe_tag, fe_attrs)));
+            self.active_formatting
+                .insert(insert_at, AfeEntry::Formatting((new_fe, fe_tag, fe_attrs)));
 
             // Insert new_fe *above* furthest_block in the stack (closer to
             // the top / current node), not below it -- verified against
@@ -935,7 +1020,11 @@ impl TreeBuilder {
             // fixture behavior (`<a>1<p>2</a>3</p>` never nests "3"
             // inside a re-nested `<a>`).
             self.open_elements.retain(|&id| id != fe_id);
-            let fb_pos_now = self.open_elements.iter().position(|&id| id == furthest_block_id).unwrap();
+            let fb_pos_now = self
+                .open_elements
+                .iter()
+                .position(|&id| id == furthest_block_id)
+                .unwrap();
             self.open_elements.insert(fb_pos_now + 1, new_fe);
         }
     }
@@ -1010,7 +1099,9 @@ impl TreeBuilder {
                 self.mode = Mode::BeforeHead;
                 StepResult::Done
             }
-            Token::EndTag { name } if !matches!(name.as_str(), "head" | "body" | "html" | "br") => StepResult::Done,
+            Token::EndTag { name } if !matches!(name.as_str(), "head" | "body" | "html" | "br") => {
+                StepResult::Done
+            }
             _ => {
                 self.insert_element("html", vec![]);
                 self.mode = Mode::BeforeHead;
@@ -1033,7 +1124,9 @@ impl TreeBuilder {
                 self.mode = Mode::InHead;
                 StepResult::Done
             }
-            Token::EndTag { name } if !matches!(name.as_str(), "head" | "body" | "html" | "br") => StepResult::Done,
+            Token::EndTag { name } if !matches!(name.as_str(), "head" | "body" | "html" | "br") => {
+                StepResult::Done
+            }
             _ => {
                 let id = self.insert_element("head", vec![]);
                 self.head_element = Some(id);
@@ -1097,7 +1190,9 @@ impl TreeBuilder {
                 self.insert_element(name, attrs.clone());
                 StepResult::Done
             }
-            Token::StartTag { name, attrs, .. } if matches!(name.as_str(), "title" | "style" | "script") => {
+            Token::StartTag { name, attrs, .. }
+                if matches!(name.as_str(), "title" | "style" | "script") =>
+            {
                 let name = name.clone();
                 let attrs = attrs.clone();
                 self.switch_to_text_mode(&name, attrs);
@@ -1109,7 +1204,9 @@ impl TreeBuilder {
                 self.mode = Mode::AfterHead;
                 StepResult::Done
             }
-            Token::EndTag { name } if !matches!(name.as_str(), "body" | "html" | "br") => StepResult::Done,
+            Token::EndTag { name } if !matches!(name.as_str(), "body" | "html" | "br") => {
+                StepResult::Done
+            }
             _ => {
                 self.open_elements.pop();
                 self.mode = Mode::AfterHead;
@@ -1138,7 +1235,12 @@ impl TreeBuilder {
                 StepResult::Done
             }
             Token::StartTag { name, .. } if name == "head" => StepResult::Done,
-            Token::StartTag { name, .. } if matches!(name.as_str(), "meta" | "link" | "title" | "style" | "script") => {
+            Token::StartTag { name, .. }
+                if matches!(
+                    name.as_str(),
+                    "meta" | "link" | "title" | "style" | "script"
+                ) =>
+            {
                 // Spec: these still belong in `<head>` even after `</head>`
                 // has already closed it -- temporarily re-push the head
                 // element, delegate to "in head" rules, then remove it from
@@ -1156,7 +1258,9 @@ impl TreeBuilder {
                 self.open_elements.retain(|&id| id != head_id);
                 result
             }
-            Token::EndTag { name } if !matches!(name.as_str(), "body" | "html" | "br") => StepResult::Done,
+            Token::EndTag { name } if !matches!(name.as_str(), "body" | "html" | "br") => {
+                StepResult::Done
+            }
             _ => {
                 self.insert_element("body", vec![]);
                 self.mode = Mode::InBody;
@@ -1240,7 +1344,11 @@ impl TreeBuilder {
                 // right above `<html>`, which is body in every case MVP
                 // scope can reach -- no `<frameset>` support).
                 if let Some(&body_id) = self.open_elements.get(1) {
-                    if let NodeData::Element { tag_name, attributes } = self.document.data_mut(body_id) {
+                    if let NodeData::Element {
+                        tag_name,
+                        attributes,
+                    } = self.document.data_mut(body_id)
+                    {
                         if tag_name == "body" {
                             for (k, v) in attrs {
                                 if !attributes.iter().any(|(ek, _)| *ek == k) {
@@ -1260,7 +1368,9 @@ impl TreeBuilder {
             // ordinary elements. E.g. a stray `<col>` after `</table>`
             // has already closed the table must vanish, not become a
             // body-level child.
-            "caption" | "col" | "colgroup" | "tbody" | "td" | "tfoot" | "th" | "thead" | "tr" => StepResult::Done,
+            "caption" | "col" | "colgroup" | "tbody" | "td" | "tfoot" | "th" | "thead" | "tr" => {
+                StepResult::Done
+            }
             "table" => {
                 // Spec: closing an open `<p>` here is conditional on the
                 // document *not* being in quirks mode -- confirmed
@@ -1328,7 +1438,9 @@ impl TreeBuilder {
                     // runs even though the adoption agency call itself
                     // did nothing that time.
                     self.open_elements.retain(|&id| id != existing_a);
-                    self.active_formatting.retain(|e| !matches!(e, AfeEntry::Formatting((id, _, _)) if *id == existing_a));
+                    self.active_formatting.retain(
+                        |e| !matches!(e, AfeEntry::Formatting((id, _, _)) if *id == existing_a),
+                    );
                 }
                 self.reconstruct_active_formatting_elements();
                 let id = self.insert_element("a", attrs.clone());
@@ -1434,7 +1546,9 @@ impl TreeBuilder {
                 if self.has_p_in_button_scope() {
                     self.close_p_element();
                 }
-                if HEADING_ELEMENTS.contains(&self.tag_of(self.current_node()).as_deref().unwrap_or("")) {
+                if HEADING_ELEMENTS
+                    .contains(&self.tag_of(self.current_node()).as_deref().unwrap_or(""))
+                {
                     self.open_elements.pop();
                 }
                 self.insert_element(name, attrs);
@@ -1468,7 +1582,9 @@ impl TreeBuilder {
                 }
                 self.mode = Mode::AfterBody;
                 if name == "html" {
-                    StepResult::Reprocess(Token::EndTag { name: name.to_string() })
+                    StepResult::Reprocess(Token::EndTag {
+                        name: name.to_string(),
+                    })
                 } else {
                     StepResult::Done
                 }
@@ -1559,7 +1675,11 @@ impl TreeBuilder {
     /// child instead of the table structure's.
     fn clear_stack_back_to(&mut self, stop_tags: &[&str]) {
         while let Some(&top) = self.open_elements.last() {
-            if self.tag_of(top).as_deref().is_some_and(|t| t == "html" || stop_tags.contains(&t)) {
+            if self
+                .tag_of(top)
+                .as_deref()
+                .is_some_and(|t| t == "html" || stop_tags.contains(&t))
+            {
                 break;
             }
             self.open_elements.pop();
@@ -1594,30 +1714,56 @@ impl TreeBuilder {
                 self.mode = Mode::InColumnGroup;
                 StepResult::Done
             }
-            Token::StartTag { name, attrs, self_closing } if name == "col" => {
+            Token::StartTag {
+                name,
+                attrs,
+                self_closing,
+            } if name == "col" => {
                 self.clear_stack_back_to(&["table"]);
                 self.insert_element("colgroup", vec![]);
                 self.mode = Mode::InColumnGroup;
-                StepResult::Reprocess(Token::StartTag { name, attrs, self_closing })
+                StepResult::Reprocess(Token::StartTag {
+                    name,
+                    attrs,
+                    self_closing,
+                })
             }
-            Token::StartTag { name, attrs, .. } if matches!(name.as_str(), "tbody" | "thead" | "tfoot") => {
+            Token::StartTag { name, attrs, .. }
+                if matches!(name.as_str(), "tbody" | "thead" | "tfoot") =>
+            {
                 self.clear_stack_back_to(&["table"]);
                 self.insert_element(&name, attrs);
                 self.mode = Mode::InTableBody;
                 StepResult::Done
             }
-            Token::StartTag { name, attrs, self_closing } if matches!(name.as_str(), "tr" | "td" | "th") => {
+            Token::StartTag {
+                name,
+                attrs,
+                self_closing,
+            } if matches!(name.as_str(), "tr" | "td" | "th") => {
                 self.clear_stack_back_to(&["table"]);
                 self.insert_element("tbody", vec![]);
                 self.mode = Mode::InTableBody;
-                StepResult::Reprocess(Token::StartTag { name, attrs, self_closing })
+                StepResult::Reprocess(Token::StartTag {
+                    name,
+                    attrs,
+                    self_closing,
+                })
             }
-            Token::StartTag { name, attrs, self_closing } if name == "table" => {
+            Token::StartTag {
+                name,
+                attrs,
+                self_closing,
+            } if name == "table" => {
                 if self.has_tag_in_scope("table", &[]) {
                     self.pop_until_and_including("table");
                     self.reset_insertion_mode();
                 }
-                StepResult::Reprocess(Token::StartTag { name, attrs, self_closing })
+                StepResult::Reprocess(Token::StartTag {
+                    name,
+                    attrs,
+                    self_closing,
+                })
             }
             Token::EndTag { name } if name == "table" => {
                 if self.has_tag_in_scope("table", &[]) {
@@ -1629,7 +1775,17 @@ impl TreeBuilder {
             Token::EndTag { name }
                 if matches!(
                     name.as_str(),
-                    "body" | "caption" | "col" | "colgroup" | "html" | "tbody" | "td" | "tfoot" | "th" | "thead" | "tr"
+                    "body"
+                        | "caption"
+                        | "col"
+                        | "colgroup"
+                        | "html"
+                        | "tbody"
+                        | "td"
+                        | "tfoot"
+                        | "th"
+                        | "thead"
+                        | "tr"
                 ) =>
             {
                 StepResult::Done
@@ -1639,15 +1795,28 @@ impl TreeBuilder {
             // as a child of the table element itself -- not treated like
             // ordinary body content needing foster-parenting out in front
             // of the table.
-            Token::StartTag { name, attrs, self_closing } if matches!(name.as_str(), "style" | "script") => {
-                self.step_in_head(Token::StartTag { name, attrs, self_closing })
+            Token::StartTag {
+                name,
+                attrs,
+                self_closing,
+            } if matches!(name.as_str(), "style" | "script") => {
+                self.step_in_head(Token::StartTag {
+                    name,
+                    attrs,
+                    self_closing,
+                })
             }
             // Spec carve-out: `<input type="hidden">` directly inside
             // `<table>` is inserted normally (as the table's own child)
             // rather than foster-parented like other stray content --
             // real pages rely on this for CSRF-token-style hidden inputs
             // placed right inside a `<table>`, before any row.
-            Token::StartTag { name, attrs, .. } if name == "input" && attrs.iter().any(|(k, v)| k == "type" && v.eq_ignore_ascii_case("hidden")) => {
+            Token::StartTag { name, attrs, .. }
+                if name == "input"
+                    && attrs
+                        .iter()
+                        .any(|(k, v)| k == "type" && v.eq_ignore_ascii_case("hidden")) =>
+            {
                 self.insert_element("input", attrs);
                 StepResult::Done
             }
@@ -1692,8 +1861,14 @@ impl TreeBuilder {
                 self.mode = Mode::InTable;
                 StepResult::Done
             }
-            Token::StartTag { name, attrs, self_closing }
-                if matches!(name.as_str(), "caption" | "col" | "colgroup" | "tbody" | "td" | "tfoot" | "th" | "thead" | "tr") =>
+            Token::StartTag {
+                name,
+                attrs,
+                self_closing,
+            } if matches!(
+                name.as_str(),
+                "caption" | "col" | "colgroup" | "tbody" | "td" | "tfoot" | "th" | "thead" | "tr"
+            ) =>
             {
                 if self.has_tag_in_scope("caption", &[]) {
                     self.generate_implied_end_tags(None);
@@ -1701,7 +1876,11 @@ impl TreeBuilder {
                     self.clear_afe_up_to_last_marker();
                     self.mode = Mode::InTable;
                 }
-                StepResult::Reprocess(Token::StartTag { name, attrs, self_closing })
+                StepResult::Reprocess(Token::StartTag {
+                    name,
+                    attrs,
+                    self_closing,
+                })
             }
             Token::EndTag { name } if name == "table" => {
                 if self.has_tag_in_scope("caption", &[]) {
@@ -1757,16 +1936,32 @@ impl TreeBuilder {
                 self.mode = Mode::InRow;
                 StepResult::Done
             }
-            Token::StartTag { name, attrs, self_closing } if matches!(name.as_str(), "td" | "th") => {
+            Token::StartTag {
+                name,
+                attrs,
+                self_closing,
+            } if matches!(name.as_str(), "td" | "th") => {
                 self.clear_stack_back_to(&["tbody", "thead", "tfoot"]);
                 self.insert_element("tr", vec![]);
                 self.mode = Mode::InRow;
-                StepResult::Reprocess(Token::StartTag { name, attrs, self_closing })
+                StepResult::Reprocess(Token::StartTag {
+                    name,
+                    attrs,
+                    self_closing,
+                })
             }
-            Token::StartTag { name, attrs, self_closing } if matches!(name.as_str(), "tbody" | "thead" | "tfoot") => {
+            Token::StartTag {
+                name,
+                attrs,
+                self_closing,
+            } if matches!(name.as_str(), "tbody" | "thead" | "tfoot") => {
                 self.close_table_section();
                 self.mode = Mode::InTable;
-                StepResult::Reprocess(Token::StartTag { name, attrs, self_closing })
+                StepResult::Reprocess(Token::StartTag {
+                    name,
+                    attrs,
+                    self_closing,
+                })
             }
             Token::EndTag { name } if matches!(name.as_str(), "tbody" | "thead" | "tfoot") => {
                 if self.has_tag_in_scope(&name, &[]) {
@@ -1775,10 +1970,18 @@ impl TreeBuilder {
                 self.mode = Mode::InTable;
                 StepResult::Done
             }
-            Token::StartTag { name, attrs, self_closing } if matches!(name.as_str(), "caption" | "col" | "colgroup") => {
+            Token::StartTag {
+                name,
+                attrs,
+                self_closing,
+            } if matches!(name.as_str(), "caption" | "col" | "colgroup") => {
                 self.close_table_section();
                 self.mode = Mode::InTable;
-                StepResult::Reprocess(Token::StartTag { name, attrs, self_closing })
+                StepResult::Reprocess(Token::StartTag {
+                    name,
+                    attrs,
+                    self_closing,
+                })
             }
             Token::EndTag { name } if name == "table" => {
                 self.close_table_section();
@@ -1805,16 +2008,28 @@ impl TreeBuilder {
                 self.mode = Mode::InTableBody;
                 StepResult::Done
             }
-            Token::StartTag { name, attrs, self_closing }
-                if matches!(name.as_str(), "caption" | "col" | "colgroup" | "tbody" | "tfoot" | "thead" | "tr") =>
+            Token::StartTag {
+                name,
+                attrs,
+                self_closing,
+            } if matches!(
+                name.as_str(),
+                "caption" | "col" | "colgroup" | "tbody" | "tfoot" | "thead" | "tr"
+            ) =>
             {
                 if self.has_tag_in_scope("tr", &[]) {
                     self.pop_until_and_including("tr");
                     self.mode = Mode::InTableBody;
                 }
-                StepResult::Reprocess(Token::StartTag { name, attrs, self_closing })
+                StepResult::Reprocess(Token::StartTag {
+                    name,
+                    attrs,
+                    self_closing,
+                })
             }
-            Token::EndTag { name } if matches!(name.as_str(), "table" | "tbody" | "tfoot" | "thead") => {
+            Token::EndTag { name }
+                if matches!(name.as_str(), "table" | "tbody" | "tfoot" | "thead") =>
+            {
                 if self.has_tag_in_scope("tr", &[]) {
                     self.pop_until_and_including("tr");
                     self.mode = Mode::InTableBody;
@@ -1836,15 +2051,27 @@ impl TreeBuilder {
                 self.mode = Mode::InRow;
                 StepResult::Done
             }
-            Token::StartTag { name, attrs, self_closing }
-                if matches!(name.as_str(), "caption" | "col" | "colgroup" | "tbody" | "td" | "tfoot" | "th" | "thead" | "tr") =>
+            Token::StartTag {
+                name,
+                attrs,
+                self_closing,
+            } if matches!(
+                name.as_str(),
+                "caption" | "col" | "colgroup" | "tbody" | "td" | "tfoot" | "th" | "thead" | "tr"
+            ) =>
             {
                 if self.has_tag_in_scope("td", &[]) || self.has_tag_in_scope("th", &[]) {
                     self.close_current_cell();
                 }
-                StepResult::Reprocess(Token::StartTag { name, attrs, self_closing })
+                StepResult::Reprocess(Token::StartTag {
+                    name,
+                    attrs,
+                    self_closing,
+                })
             }
-            Token::EndTag { name } if matches!(name.as_str(), "table" | "tbody" | "tfoot" | "thead" | "tr") => {
+            Token::EndTag { name }
+                if matches!(name.as_str(), "table" | "tbody" | "tfoot" | "thead" | "tr") =>
+            {
                 // Spec: ignore this end tag entirely unless an element
                 // with that exact name is actually in table scope -- e.g.
                 // a stray `</thead>` while only an implicit `<tbody>` is
@@ -1860,7 +2087,6 @@ impl TreeBuilder {
             other => self.step_in_body(other),
         }
     }
-
 
     fn step_after_body(&mut self, token: Token) -> StepResult {
         if let Token::Character(s) = &token {
@@ -1960,7 +2186,10 @@ mod tests {
         let doc = parse("<body><script>var x = document.createElement('p');</script></body>");
         let script = find_by_tag(&doc, doc.root(), "script").unwrap();
         assert!(find_by_tag(&doc, script, "p").is_none());
-        assert_eq!(text_content(&doc, script), "var x = document.createElement('p');");
+        assert_eq!(
+            text_content(&doc, script),
+            "var x = document.createElement('p');"
+        );
     }
 
     #[test]
@@ -1976,7 +2205,10 @@ mod tests {
         // otherwise get (starting with <body> itself) silently goes
         // missing.
         let doc = parse("<!doctype html><script>");
-        assert!(find_by_tag(&doc, doc.root(), "body").is_some(), "an unclosed <script> at EOF must not suppress the implicit <body>");
+        assert!(
+            find_by_tag(&doc, doc.root(), "body").is_some(),
+            "an unclosed <script> at EOF must not suppress the implicit <body>"
+        );
     }
 
     #[test]
@@ -1993,14 +2225,20 @@ mod tests {
     fn p_auto_closes_on_new_p() {
         let doc = parse("<p>one<p>two");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        assert_eq!(children_tags(&doc, body), vec!["p".to_string(), "p".to_string()]);
+        assert_eq!(
+            children_tags(&doc, body),
+            vec!["p".to_string(), "p".to_string()]
+        );
     }
 
     #[test]
     fn p_auto_closes_on_div() {
         let doc = parse("<p>one<div>two</div>");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        assert_eq!(children_tags(&doc, body), vec!["p".to_string(), "div".to_string()]);
+        assert_eq!(
+            children_tags(&doc, body),
+            vec!["p".to_string(), "div".to_string()]
+        );
     }
 
     #[test]
@@ -2008,7 +2246,10 @@ mod tests {
         let doc = parse("<ul><li>a<li>b<li>c</ul>");
         let ul = find_by_tag(&doc, doc.root(), "ul").unwrap();
         let items = children_tags(&doc, ul);
-        assert_eq!(items, vec!["li".to_string(), "li".to_string(), "li".to_string()]);
+        assert_eq!(
+            items,
+            vec!["li".to_string(), "li".to_string(), "li".to_string()]
+        );
     }
 
     #[test]
@@ -2056,7 +2297,10 @@ mod tests {
         assert_eq!(children_tags(&doc, body), vec!["form".to_string()]);
         let form = doc.children(body).next().unwrap();
         // both inputs land inside the single form; the nested <form> start tag is ignored
-        assert_eq!(children_tags(&doc, form), vec!["input".to_string(), "input".to_string()]);
+        assert_eq!(
+            children_tags(&doc, form),
+            vec!["input".to_string(), "input".to_string()]
+        );
     }
 
     #[test]
@@ -2065,7 +2309,10 @@ mod tests {
         // closed, <table> becomes its sibling.
         let doc = parse("<!doctype html><p><table></table>");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        assert_eq!(children_tags(&doc, body), vec!["p".to_string(), "table".to_string()]);
+        assert_eq!(
+            children_tags(&doc, body),
+            vec!["p".to_string(), "table".to_string()]
+        );
 
         // WPT tests3.dat#23 (no doctype -> quirks mode): <table> nests
         // inside the still-open <p> instead.
@@ -2077,7 +2324,8 @@ mod tests {
     }
 
     #[test]
-    fn a_stray_end_tag_p_while_in_table_mode_in_quirks_mode_synthesizes_an_empty_p_before_the_table() {
+    fn a_stray_end_tag_p_while_in_table_mode_in_quirks_mode_synthesizes_an_empty_p_before_the_table(
+    ) {
         // WPT tests20.dat#41 (no doctype -> quirks mode):
         // `<p><table></p>`. The </p> reaches "in table" mode (table
         // nested inside p per the quirks-mode carve-out above), falls
@@ -2090,7 +2338,10 @@ mod tests {
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
         assert_eq!(children_tags(&doc, body), vec!["p".to_string()]);
         let outer_p = doc.children(body).next().unwrap();
-        assert_eq!(children_tags(&doc, outer_p), vec!["p".to_string(), "table".to_string()]);
+        assert_eq!(
+            children_tags(&doc, outer_p),
+            vec!["p".to_string(), "table".to_string()]
+        );
         let synthesized_p = doc.children(outer_p).next().unwrap();
         assert_eq!(doc.children(synthesized_p).count(), 0);
     }
@@ -2169,14 +2420,20 @@ mod tests {
     fn option_auto_closes_previous_option() {
         let doc = parse("<select><option>a<option>b</select>");
         let select = find_by_tag(&doc, doc.root(), "select").unwrap();
-        assert_eq!(children_tags(&doc, select), vec!["option".to_string(), "option".to_string()]);
+        assert_eq!(
+            children_tags(&doc, select),
+            vec!["option".to_string(), "option".to_string()]
+        );
     }
 
     #[test]
     fn new_heading_start_tag_closes_a_still_open_heading() {
         let doc = parse("<h1>a<h2>b</h2>");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        assert_eq!(children_tags(&doc, body), vec!["h1".to_string(), "h2".to_string()]);
+        assert_eq!(
+            children_tags(&doc, body),
+            vec!["h1".to_string(), "h2".to_string()]
+        );
         assert_eq!(text_content(&doc, body), "ab");
     }
 
@@ -2237,9 +2494,15 @@ mod tests {
         // every later sibling as its own descendant.
         let doc = parse("<a><table><a></table><p><a><div><a>");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        assert_eq!(children_tags(&doc, body), vec!["a".to_string(), "p".to_string(), "div".to_string()]);
+        assert_eq!(
+            children_tags(&doc, body),
+            vec!["a".to_string(), "p".to_string(), "div".to_string()]
+        );
         let outer_a = doc.children(body).next().unwrap();
-        assert_eq!(children_tags(&doc, outer_a), vec!["a".to_string(), "table".to_string()]);
+        assert_eq!(
+            children_tags(&doc, outer_a),
+            vec!["a".to_string(), "table".to_string()]
+        );
         let p = doc.children(body).nth(1).unwrap();
         assert_eq!(children_tags(&doc, p), vec!["a".to_string()]);
         let div = doc.children(body).nth(2).unwrap();
@@ -2254,20 +2517,35 @@ mod tests {
         // generalizes beyond the minimal repro (attribute preservation on
         // the clone, and a *second* independent adoption-agency run for
         // the third `<a>` after the table closes).
-        let doc = parse(r#"<a href="blah">aba<table><a href="foo">br<tr><td></td></tr>x</table>aoe"#);
+        let doc =
+            parse(r#"<a href="blah">aba<table><a href="foo">br<tr><td></td></tr>x</table>aoe"#);
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        assert_eq!(children_tags(&doc, body), vec!["a".to_string(), "a".to_string()]);
+        assert_eq!(
+            children_tags(&doc, body),
+            vec!["a".to_string(), "a".to_string()]
+        );
         let outer_a = doc.children(body).next().unwrap();
-        assert_eq!(children_tags(&doc, outer_a), vec!["a".to_string(), "a".to_string(), "table".to_string()]);
+        assert_eq!(
+            children_tags(&doc, outer_a),
+            vec!["a".to_string(), "a".to_string(), "table".to_string()]
+        );
         let trailing_a = doc.children(body).nth(1).unwrap();
         assert_eq!(text_content(&doc, trailing_a), "aoe");
         // Both clones inside `outer_a` (after its leading "aba" text
         // node), and the independent trailing `<a>`, all preserve the
         // `href="foo"` attribute from the `<a>` that triggered this
         // fix's cleanup path.
-        let inner_clones = doc.children(outer_a).filter(|&c| matches!(doc.data(c), NodeData::Element { tag_name, .. } if tag_name == "a"));
+        let inner_clones = doc.children(outer_a).filter(
+            |&c| matches!(doc.data(c), NodeData::Element { tag_name, .. } if tag_name == "a"),
+        );
         for a in inner_clones.chain(std::iter::once(trailing_a)) {
-            let NodeData::Element { tag_name, attributes } = doc.data(a) else { panic!("expected an element") };
+            let NodeData::Element {
+                tag_name,
+                attributes,
+            } = doc.data(a)
+            else {
+                panic!("expected an element")
+            };
             assert_eq!(tag_name, "a");
             assert_eq!(attributes, &[("href".to_string(), "foo".to_string())]);
         }
@@ -2302,7 +2580,12 @@ mod tests {
         let inner_i = find_by_tag(&doc, b, "i").unwrap();
         assert_eq!(text_content(&doc, inner_i), "2");
         // A second, cloned <i> is body's own child, wrapping <p>.
-        let outer_i = doc.children(body).find(|&c| c != b && matches!(doc.data(c), NodeData::Element{tag_name,..} if tag_name=="i")).unwrap();
+        let outer_i = doc
+            .children(body)
+            .find(|&c| {
+                c != b && matches!(doc.data(c), NodeData::Element{tag_name,..} if tag_name=="i")
+            })
+            .unwrap();
         let p = find_by_tag(&doc, outer_i, "p").unwrap();
         assert_eq!(children_tags(&doc, p), vec!["b".to_string()]);
         assert_eq!(text_content(&doc, p), "34");
@@ -2312,7 +2595,10 @@ mod tests {
     fn noahs_ark_clause_caps_identical_nested_formatting_elements_at_three() {
         let doc = parse("<p><b><b><b><b><p>x");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        let paragraphs: Vec<_> = doc.children(body).filter(|&c| matches!(doc.data(c), NodeData::Element{tag_name,..} if tag_name=="p")).collect();
+        let paragraphs: Vec<_> = doc
+            .children(body)
+            .filter(|&c| matches!(doc.data(c), NodeData::Element{tag_name,..} if tag_name=="p"))
+            .collect();
         assert_eq!(paragraphs.len(), 2);
         let second_p = paragraphs[1];
         // Reconstruction under the second <p> must only recreate three
@@ -2321,7 +2607,9 @@ mod tests {
         let mut depth = 0;
         let mut node = second_p;
         loop {
-            let Some(child) = doc.children(node).next() else { break };
+            let Some(child) = doc.children(node).next() else {
+                break;
+            };
             if !matches!(doc.data(child), NodeData::Element{tag_name,..} if tag_name=="b") {
                 break;
             }
@@ -2346,7 +2634,10 @@ mod tests {
         assert_eq!(children_tags(&doc, td), Vec::<String>::new(), "td must have no element children -- \"2\" must be plain text, not wrapped in a reconstructed <a>");
         assert_eq!(text_content(&doc, td), "2");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        let as_: Vec<_> = doc.children(body).filter(|&c| matches!(doc.data(c), NodeData::Element{tag_name,..} if tag_name=="a")).collect();
+        let as_: Vec<_> = doc
+            .children(body)
+            .filter(|&c| matches!(doc.data(c), NodeData::Element{tag_name,..} if tag_name=="a"))
+            .collect();
         assert_eq!(as_.len(), 2, "the <a> is reconstructed once table content resumes after the cell closes (\"3\"), landing back in front of the table");
     }
 
@@ -2369,7 +2660,11 @@ mod tests {
         };
         assert_eq!(tds.len(), 2);
         assert_eq!(text_content(&doc, tds[0]), "x");
-        assert_eq!(text_content(&doc, tds[1]), "y", "the second cell must not reconstruct <b> from the first cell");
+        assert_eq!(
+            text_content(&doc, tds[1]),
+            "y",
+            "the second cell must not reconstruct <b> from the first cell"
+        );
     }
 
     #[test]
@@ -2388,10 +2683,21 @@ mod tests {
     fn a_second_body_start_tag_merges_attributes_without_nesting() {
         let doc = parse("<body foo='bar'><body foo='baz' yo='mama'>");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        assert!(doc.children(body).next().is_none(), "a second <body> must not nest a new body element");
-        let NodeData::Element { attributes, .. } = doc.data(body) else { panic!("expected an element") };
-        assert!(attributes.contains(&("foo".to_string(), "bar".to_string())), "the original attribute value must survive (not be overwritten)");
-        assert!(attributes.contains(&("yo".to_string(), "mama".to_string())), "the new attribute must be merged in");
+        assert!(
+            doc.children(body).next().is_none(),
+            "a second <body> must not nest a new body element"
+        );
+        let NodeData::Element { attributes, .. } = doc.data(body) else {
+            panic!("expected an element")
+        };
+        assert!(
+            attributes.contains(&("foo".to_string(), "bar".to_string())),
+            "the original attribute value must survive (not be overwritten)"
+        );
+        assert!(
+            attributes.contains(&("yo".to_string(), "mama".to_string())),
+            "the new attribute must be merged in"
+        );
     }
 
     #[test]
@@ -2418,7 +2724,10 @@ mod tests {
         let colgroup = find_by_tag(&doc, table, "colgroup").unwrap();
         assert_eq!(text_content(&doc, colgroup), " ");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        assert!(text_content(&doc, body).starts_with("foo"), "the non-whitespace remainder must be foster-parented in front of the table, not lost");
+        assert!(
+            text_content(&doc, body).starts_with("foo"),
+            "the non-whitespace remainder must be foster-parented in front of the table, not lost"
+        );
     }
 
     #[test]
@@ -2430,9 +2739,14 @@ mod tests {
 
     #[test]
     fn table_direct_thead_tbody_tags_without_implicit_tr_path() {
-        let doc = parse("<table><thead><tr><th>H</th></tr></thead><tbody><tr><td>d</td></tr></tbody></table>");
+        let doc = parse(
+            "<table><thead><tr><th>H</th></tr></thead><tbody><tr><td>d</td></tr></tbody></table>",
+        );
         let table = find_by_tag(&doc, doc.root(), "table").unwrap();
-        assert_eq!(children_tags(&doc, table), vec!["thead".to_string(), "tbody".to_string()]);
+        assert_eq!(
+            children_tags(&doc, table),
+            vec!["thead".to_string(), "tbody".to_string()]
+        );
     }
 
     #[test]
@@ -2441,21 +2755,29 @@ mod tests {
         let table = find_by_tag(&doc, doc.root(), "table").unwrap();
         assert_eq!(children_tags(&doc, table), vec!["colgroup".to_string()]);
         let colgroup = doc.children(table).next().unwrap();
-        assert_eq!(children_tags(&doc, colgroup), vec!["col".to_string(), "col".to_string()]);
+        assert_eq!(
+            children_tags(&doc, colgroup),
+            vec!["col".to_string(), "col".to_string()]
+        );
     }
 
     #[test]
     fn colgroup_closes_implicitly_on_other_content() {
         let doc = parse("<table><colgroup><col><tbody><tr><td>x</td></tr></tbody></table>");
         let table = find_by_tag(&doc, doc.root(), "table").unwrap();
-        assert_eq!(children_tags(&doc, table), vec!["colgroup".to_string(), "tbody".to_string()]);
+        assert_eq!(
+            children_tags(&doc, table),
+            vec!["colgroup".to_string(), "tbody".to_string()]
+        );
     }
 
     #[test]
     fn whitespace_directly_inside_colgroup_is_kept() {
         let doc = parse("<table><colgroup>\n<col></colgroup></table>");
         let colgroup = find_by_tag(&doc, doc.root(), "colgroup").unwrap();
-        assert!(doc.children(colgroup).any(|c| matches!(doc.data(c), NodeData::Text { .. })));
+        assert!(doc
+            .children(colgroup)
+            .any(|c| matches!(doc.data(c), NodeData::Text { .. })));
     }
 
     #[test]
@@ -2472,9 +2794,20 @@ mod tests {
         // per HTML5's "insert a character" algorithm.
         let doc = parse("<html><body><div></div>\n</body>\n</html>");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        let text_children: Vec<_> = doc.children(body).filter(|&c| matches!(doc.data(c), NodeData::Text { .. })).collect();
-        assert_eq!(text_children.len(), 1, "the two whitespace runs must merge into a single Text node, not stay as two siblings");
-        assert_eq!(text_content(&doc, body).matches('\n').count(), 2, "both newlines must still be present in the merged node's data");
+        let text_children: Vec<_> = doc
+            .children(body)
+            .filter(|&c| matches!(doc.data(c), NodeData::Text { .. }))
+            .collect();
+        assert_eq!(
+            text_children.len(),
+            1,
+            "the two whitespace runs must merge into a single Text node, not stay as two siblings"
+        );
+        assert_eq!(
+            text_content(&doc, body).matches('\n').count(),
+            2,
+            "both newlines must still be present in the merged node's data"
+        );
     }
 
     #[test]
@@ -2491,7 +2824,10 @@ mod tests {
         // keeps the comment around afterward.
         let doc = parse("<p>a<!--x-->b</p>");
         let p = find_by_tag(&doc, doc.root(), "p").unwrap();
-        let text_children: Vec<_> = doc.children(p).filter(|&c| matches!(doc.data(c), NodeData::Text { .. })).collect();
+        let text_children: Vec<_> = doc
+            .children(p)
+            .filter(|&c| matches!(doc.data(c), NodeData::Text { .. }))
+            .collect();
         assert_eq!(text_children.len(), 2, "a real comment node would block the merge, even though blueice_dom doesn't keep it around");
         assert_eq!(text_content(&doc, p), "ab");
     }
@@ -2503,8 +2839,15 @@ mod tests {
         // to just before the table, not inside it).
         let doc = parse("<div><table>a<!--x-->b</table></div>");
         let div = find_by_tag(&doc, doc.root(), "div").unwrap();
-        let text_children: Vec<_> = doc.children(div).filter(|&c| matches!(doc.data(c), NodeData::Text { .. })).collect();
-        assert_eq!(text_children.len(), 2, "a real comment node would block the merge on the foster-parenting path too");
+        let text_children: Vec<_> = doc
+            .children(div)
+            .filter(|&c| matches!(doc.data(c), NodeData::Text { .. }))
+            .collect();
+        assert_eq!(
+            text_children.len(),
+            2,
+            "a real comment node would block the merge on the foster-parenting path too"
+        );
     }
 
     #[test]
@@ -2524,7 +2867,12 @@ mod tests {
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
         // the malformed nested <table> closes the (empty) outer one and
         // starts a second, sibling table containing the real content
-        let tables: Vec<_> = doc.children(body).filter(|&c| matches!(doc.data(c), NodeData::Element{tag_name, ..} if tag_name=="table")).collect();
+        let tables: Vec<_> = doc
+            .children(body)
+            .filter(
+                |&c| matches!(doc.data(c), NodeData::Element{tag_name, ..} if tag_name=="table"),
+            )
+            .collect();
         assert_eq!(tables.len(), 2);
         let td = find_by_tag(&doc, tables[1], "td").unwrap();
         assert_eq!(text_content(&doc, td), "inner");
@@ -2542,7 +2890,10 @@ mod tests {
     fn caption_closes_implicitly_before_a_row() {
         let doc = parse("<table><caption>Cap<tr><td>x</td></tr></table>");
         let table = find_by_tag(&doc, doc.root(), "table").unwrap();
-        assert_eq!(children_tags(&doc, table), vec!["caption".to_string(), "tbody".to_string()]);
+        assert_eq!(
+            children_tags(&doc, table),
+            vec!["caption".to_string(), "tbody".to_string()]
+        );
     }
 
     #[test]
@@ -2556,9 +2907,13 @@ mod tests {
 
     #[test]
     fn table_body_section_switches_directly_to_a_sibling_section() {
-        let doc = parse("<table><tbody><tr><td>a</td></tr><thead><tr><th>b</th></tr></thead></table>");
+        let doc =
+            parse("<table><tbody><tr><td>a</td></tr><thead><tr><th>b</th></tr></thead></table>");
         let table = find_by_tag(&doc, doc.root(), "table").unwrap();
-        assert_eq!(children_tags(&doc, table), vec!["tbody".to_string(), "thead".to_string()]);
+        assert_eq!(
+            children_tags(&doc, table),
+            vec!["tbody".to_string(), "thead".to_string()]
+        );
     }
 
     #[test]
@@ -2566,7 +2921,10 @@ mod tests {
         let doc = parse("<table><tbody><tr><td>a</td></tr></tbody><tr><td>b</td></tr></table>");
         let table = find_by_tag(&doc, doc.root(), "table").unwrap();
         // a second, implicit tbody is opened for the trailing <tr>
-        assert_eq!(children_tags(&doc, table), vec!["tbody".to_string(), "tbody".to_string()]);
+        assert_eq!(
+            children_tags(&doc, table),
+            vec!["tbody".to_string(), "tbody".to_string()]
+        );
     }
 
     // second_row_implicitly_closes_the_first is now
@@ -2578,7 +2936,9 @@ mod tests {
         let table = find_by_tag(&doc, doc.root(), "table").unwrap();
         let bodies: Vec<_> = doc
             .children(table)
-            .filter(|&c| matches!(doc.data(c), NodeData::Element{tag_name, ..} if tag_name=="tbody"))
+            .filter(
+                |&c| matches!(doc.data(c), NodeData::Element{tag_name, ..} if tag_name=="tbody"),
+            )
             .collect();
         assert_eq!(bodies.len(), 2);
     }
@@ -2591,7 +2951,10 @@ mod tests {
         let doc = parse("<table><tr><td>a</tr><tr><td>b</tr></table>");
         let table = find_by_tag(&doc, doc.root(), "table").unwrap();
         let tbody = doc.children(table).next().unwrap();
-        assert_eq!(children_tags(&doc, tbody), vec!["tr".to_string(), "tr".to_string()]);
+        assert_eq!(
+            children_tags(&doc, tbody),
+            vec!["tr".to_string(), "tr".to_string()]
+        );
     }
 
     #[test]
@@ -2601,7 +2964,10 @@ mod tests {
         // <hr> closes the first (now-empty) <p>; the stray </p> that
         // follows has no matching open <p> in scope, so per spec it
         // inserts (then immediately closes) a second, empty <p>.
-        assert_eq!(children_tags(&doc, body), vec!["p".to_string(), "hr".to_string(), "p".to_string()]);
+        assert_eq!(
+            children_tags(&doc, body),
+            vec!["p".to_string(), "hr".to_string(), "p".to_string()]
+        );
     }
 
     #[test]
@@ -2620,7 +2986,10 @@ mod tests {
     fn an_immediately_closed_empty_comment_does_not_swallow_following_markup() {
         let doc = parse("<!--><div>--<!-->");
         let div = find_by_tag(&doc, doc.root(), "div");
-        assert!(div.is_some(), "the <div> after an abruptly-closed `<!-->` comment must still be parsed as an element");
+        assert!(
+            div.is_some(),
+            "the <div> after an abruptly-closed `<!-->` comment must still be parsed as an element"
+        );
         assert_eq!(text_content(&doc, div.unwrap()), "--");
     }
 
@@ -2641,8 +3010,15 @@ mod tests {
         // alongside plain `-->`.
         let doc = parse("FOO<!-- BAR --!>BAZ");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        let text_children: Vec<_> = doc.children(body).filter(|&c| matches!(doc.data(c), NodeData::Text { .. })).collect();
-        assert_eq!(text_children.len(), 2, "the dropped comment must still block FOO/BAZ from merging into one text node");
+        let text_children: Vec<_> = doc
+            .children(body)
+            .filter(|&c| matches!(doc.data(c), NodeData::Text { .. }))
+            .collect();
+        assert_eq!(
+            text_children.len(),
+            2,
+            "the dropped comment must still block FOO/BAZ from merging into one text node"
+        );
         assert_eq!(text_content(&doc, body), "FOOBAZ");
     }
 
@@ -2650,16 +3026,30 @@ mod tests {
     fn col_start_tag_attributes_survive_the_implicit_colgroup_reprocess() {
         let doc = parse("<table><col foo='bar'>");
         let col = find_by_tag(&doc, doc.root(), "col").unwrap();
-        assert_eq!(doc.data(col), &NodeData::Element { tag_name: "col".to_string(), attributes: vec![("foo".to_string(), "bar".to_string())] });
+        assert_eq!(
+            doc.data(col),
+            &NodeData::Element {
+                tag_name: "col".to_string(),
+                attributes: vec![("foo".to_string(), "bar".to_string())]
+            }
+        );
     }
 
     #[test]
     fn a_second_html_start_tag_merges_new_attributes_without_overwriting_existing_ones() {
         let doc = parse("<html c=d><body></body><html a=b>");
         let html = find_by_tag(&doc, doc.root(), "html").unwrap();
-        let NodeData::Element { attributes, .. } = doc.data(html) else { panic!("expected an element") };
-        assert!(attributes.contains(&("c".to_string(), "d".to_string())), "the original attribute must survive");
-        assert!(attributes.contains(&("a".to_string(), "b".to_string())), "the new attribute from the second <html> tag must be merged in");
+        let NodeData::Element { attributes, .. } = doc.data(html) else {
+            panic!("expected an element")
+        };
+        assert!(
+            attributes.contains(&("c".to_string(), "d".to_string())),
+            "the original attribute must survive"
+        );
+        assert!(
+            attributes.contains(&("a".to_string(), "b".to_string())),
+            "the new attribute from the second <html> tag must be merged in"
+        );
     }
 
     #[test]
@@ -2667,8 +3057,14 @@ mod tests {
         let doc = parse("<head></head><style>x</style>");
         let head = find_by_tag(&doc, doc.root(), "head").unwrap();
         let style = find_by_tag(&doc, doc.root(), "style");
-        assert!(style.is_some(), "style after </head> must still parse as an element");
-        assert!(doc.children(head).any(|c| Some(c) == style), "style must be a child of <head>, not implicitly moved into <body>");
+        assert!(
+            style.is_some(),
+            "style after </head> must still parse as an element"
+        );
+        assert!(
+            doc.children(head).any(|c| Some(c) == style),
+            "style must be a child of <head>, not implicitly moved into <body>"
+        );
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
         assert!(find_by_tag(&doc, body, "style").is_none());
     }
@@ -2686,9 +3082,21 @@ mod tests {
     fn a_second_select_start_tag_closes_the_first_instead_of_nesting() {
         let doc = parse("<select><select>X");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        let selects: Vec<_> = doc.children(body).filter(|&c| matches!(doc.data(c), NodeData::Element{tag_name, ..} if tag_name=="select")).collect();
-        assert_eq!(selects.len(), 1, "the second <select> must close the first, not nest inside it");
-        assert!(doc.children(selects[0]).next().is_none(), "the (closed) <select> must have no children of its own");
+        let selects: Vec<_> = doc
+            .children(body)
+            .filter(
+                |&c| matches!(doc.data(c), NodeData::Element{tag_name, ..} if tag_name=="select"),
+            )
+            .collect();
+        assert_eq!(
+            selects.len(),
+            1,
+            "the second <select> must close the first, not nest inside it"
+        );
+        assert!(
+            doc.children(selects[0]).next().is_none(),
+            "the (closed) <select> must have no children of its own"
+        );
         assert_eq!(text_content(&doc, body), "X");
     }
 
@@ -2696,9 +3104,15 @@ mod tests {
     fn an_input_start_tag_inside_a_select_closes_it_and_becomes_a_sibling() {
         let doc = parse("<select><input>X");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        assert_eq!(children_tags(&doc, body), vec!["select".to_string(), "input".to_string()]);
+        assert_eq!(
+            children_tags(&doc, body),
+            vec!["select".to_string(), "input".to_string()]
+        );
         let select = find_by_tag(&doc, body, "select").unwrap();
-        assert!(doc.children(select).next().is_none(), "the <select> must be empty -- <input> must not nest inside it");
+        assert!(
+            doc.children(select).next().is_none(),
+            "the <select> must be empty -- <input> must not nest inside it"
+        );
     }
 
     #[test]
@@ -2708,7 +3122,11 @@ mod tests {
         let td = find_by_tag(&doc, table, "td").unwrap();
         assert_eq!(text_content(&doc, td), "A", "a </thead> with no matching open <thead> must be ignored, leaving \"A\" inside the cell");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        assert_eq!(children_tags(&doc, body), vec!["table".to_string()], "\"A\" must not be foster-parented in front of the table");
+        assert_eq!(
+            children_tags(&doc, body),
+            vec!["table".to_string()],
+            "\"A\" must not be foster-parented in front of the table"
+        );
     }
 
     #[test]
@@ -2744,7 +3162,10 @@ mod tests {
         // split point.
         let doc = parse("<head></head> x");
         let html = find_by_tag(&doc, doc.root(), "html").unwrap();
-        let text_children: Vec<_> = doc.children(html).filter(|&c| matches!(doc.data(c), NodeData::Text { .. })).collect();
+        let text_children: Vec<_> = doc
+            .children(html)
+            .filter(|&c| matches!(doc.data(c), NodeData::Text { .. }))
+            .collect();
         assert_eq!(text_children.len(), 1);
         assert_eq!(text_content(&doc, text_children[0]), " ");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
@@ -2760,7 +3181,10 @@ mod tests {
         // still open and current, landing inside it.
         let doc = parse("<!doctype html><script> <!-- </script> --> </script> EOF");
         let head = find_by_tag(&doc, doc.root(), "head").unwrap();
-        let text_children: Vec<_> = doc.children(head).filter(|&c| matches!(doc.data(c), NodeData::Text { .. })).collect();
+        let text_children: Vec<_> = doc
+            .children(head)
+            .filter(|&c| matches!(doc.data(c), NodeData::Text { .. }))
+            .collect();
         assert_eq!(text_children.len(), 1);
         assert_eq!(text_content(&doc, text_children[0]), " ");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
@@ -2775,7 +3199,8 @@ mod tests {
     }
 
     #[test]
-    fn whitespace_leading_a_mixed_character_run_before_html_or_head_exist_is_dropped_not_inserted() {
+    fn whitespace_leading_a_mixed_character_run_before_html_or_head_exist_is_dropped_not_inserted()
+    {
         // WPT `doctype01.dat#30`: a bogus DOCTYPE (tokenized per the
         // "bogus DOCTYPE" state -- everything up to the *first* raw `>`
         // is discarded, including a nested `<!-- ... -->`-shaped run,
@@ -2806,7 +3231,10 @@ mod tests {
     fn a_raw_null_character_in_body_content_is_dropped_not_shown() {
         let doc = parse("<body>\u{0}");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        assert!(doc.children(body).next().is_none(), "a lone NUL character token in body must be ignored outright, not inserted as text");
+        assert!(
+            doc.children(body).next().is_none(),
+            "a lone NUL character token in body must be ignored outright, not inserted as text"
+        );
     }
 
     #[test]
@@ -2856,7 +3284,10 @@ mod tests {
     fn hr_inside_a_select_closes_an_open_option_and_optgroup_but_not_the_select() {
         let doc = parse("<select><optgroup><option>x<hr>");
         let select = find_by_tag(&doc, doc.root(), "select").unwrap();
-        assert_eq!(children_tags(&doc, select), vec!["optgroup".to_string(), "hr".to_string()]);
+        assert_eq!(
+            children_tags(&doc, select),
+            vec!["optgroup".to_string(), "hr".to_string()]
+        );
         let optgroup = find_by_tag(&doc, select, "optgroup").unwrap();
         assert_eq!(children_tags(&doc, optgroup), vec!["option".to_string()]);
     }
@@ -2880,7 +3311,10 @@ mod tests {
         // webkit02.dat#35: <div>/<i> are real nested content now.
         let doc = parse("<select><div><i></div><option>option");
         let select = find_by_tag(&doc, doc.root(), "select").unwrap();
-        assert_eq!(children_tags(&doc, select), vec!["div".to_string(), "i".to_string()]);
+        assert_eq!(
+            children_tags(&doc, select),
+            vec!["div".to_string(), "i".to_string()]
+        );
         let div = doc.children(select).next().unwrap();
         assert_eq!(children_tags(&doc, div), vec!["i".to_string()]);
         let outer_i = doc.children(select).nth(1).unwrap();
@@ -2914,7 +3348,11 @@ mod tests {
         let doc = parse("<select><button><select></select></button></select>");
         let select = find_by_tag(&doc, doc.root(), "select").unwrap();
         assert_eq!(children_tags(&doc, select), vec!["button".to_string()]);
-        assert_eq!(doc.children(find_by_tag(&doc, select, "button").unwrap()).count(), 0);
+        assert_eq!(
+            doc.children(find_by_tag(&doc, select, "button").unwrap())
+                .count(),
+            0
+        );
 
         let doc = parse("<select><button><div><select></select>");
         let select = find_by_tag(&doc, doc.root(), "select").unwrap();
@@ -2941,7 +3379,10 @@ mod tests {
         // built, leaving "X" to land as body's own trailing text.
         let doc = parse("<select><b><option><select><option></b></select>X");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
-        assert_eq!(children_tags(&doc, body), vec!["select".to_string(), "b".to_string()]);
+        assert_eq!(
+            children_tags(&doc, body),
+            vec!["select".to_string(), "b".to_string()]
+        );
         assert_eq!(text_content(&doc, body), "X");
 
         let select = doc.children(body).next().unwrap();
@@ -2966,18 +3407,32 @@ mod tests {
         let doc = parse("<table><tbody><select><tr>");
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
         let select = find_by_tag(&doc, body, "select").unwrap();
-        assert!(doc.children(body).any(|c| Some(c) == Some(select)), "the (empty, closed) <select> must be foster-parented in front of the table");
+        assert!(
+            doc.children(body).any(|c| Some(c) == Some(select)),
+            "the (empty, closed) <select> must be foster-parented in front of the table"
+        );
         assert!(doc.children(select).next().is_none());
         let tbody = find_by_tag(&doc, doc.root(), "tbody").unwrap();
-        assert_eq!(children_tags(&doc, tbody), vec!["tr".to_string()], "<tr> must land inside <tbody>, not be dropped");
+        assert_eq!(
+            children_tags(&doc, tbody),
+            vec!["tr".to_string()],
+            "<tr> must land inside <tbody>, not be dropped"
+        );
     }
 
     #[test]
     fn a_table_structure_tag_is_ignored_by_a_select_opened_outside_a_table() {
         let doc = parse("<select><tr>x");
-        assert!(find_by_tag(&doc, doc.root(), "tr").is_none(), "a plain (non-table) <select> must ignore a stray <tr> outright, not close on it");
+        assert!(
+            find_by_tag(&doc, doc.root(), "tr").is_none(),
+            "a plain (non-table) <select> must ignore a stray <tr> outright, not close on it"
+        );
         let select = find_by_tag(&doc, doc.root(), "select").unwrap();
-        assert_eq!(text_content(&doc, select), "x", "content after the ignored <tr> still lands inside the (still-open) <select>");
+        assert_eq!(
+            text_content(&doc, select),
+            "x",
+            "content after the ignored <tr> still lands inside the (still-open) <select>"
+        );
     }
 
     #[test]
@@ -2996,7 +3451,10 @@ mod tests {
         let table = find_by_tag(&doc, doc.root(), "table").unwrap();
         let input = find_by_tag(&doc, doc.root(), "input");
         assert!(input.is_some());
-        assert!(doc.children(body).any(|c| Some(c) == input), "a non-hidden <input> keeps the normal foster-parenting behavior");
+        assert!(
+            doc.children(body).any(|c| Some(c) == input),
+            "a non-hidden <input> keeps the normal foster-parenting behavior"
+        );
         assert!(!doc.children(table).any(|c| Some(c) == input));
     }
 
@@ -3004,8 +3462,17 @@ mod tests {
     fn a_second_button_start_tag_closes_the_first_instead_of_nesting() {
         let doc = parse("<p><button><button>");
         let p = find_by_tag(&doc, doc.root(), "p").unwrap();
-        let buttons: Vec<_> = doc.children(p).filter(|&c| matches!(doc.data(c), NodeData::Element{tag_name, ..} if tag_name=="button")).collect();
-        assert_eq!(buttons.len(), 2, "the second <button> must close the first, becoming its sibling, not nesting inside it");
+        let buttons: Vec<_> = doc
+            .children(p)
+            .filter(
+                |&c| matches!(doc.data(c), NodeData::Element{tag_name, ..} if tag_name=="button"),
+            )
+            .collect();
+        assert_eq!(
+            buttons.len(),
+            2,
+            "the second <button> must close the first, becoming its sibling, not nesting inside it"
+        );
     }
 
     #[test]
@@ -3015,7 +3482,9 @@ mod tests {
         assert_eq!(children_tags(&doc, button), vec!["p".to_string()]);
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
         // "x" lands after the (now-closed) <button>, not inside it.
-        let text_after = doc.children(body).find(|&c| matches!(doc.data(c), NodeData::Text{..}));
+        let text_after = doc
+            .children(body)
+            .find(|&c| matches!(doc.data(c), NodeData::Text { .. }));
         assert!(text_after.is_some());
         assert_eq!(text_content(&doc, body), "x");
     }

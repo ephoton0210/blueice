@@ -32,7 +32,12 @@ use std::collections::HashMap;
 /// style (e.g. it's `doc.root()`, the `Document` node, which is never a
 /// cascade target), its first styled child is laid out as the root box
 /// instead.
-pub fn layout(doc: &Document, root: NodeId, styles: &HashMap<NodeId, ComputedStyle>, constraints: Constraints) -> Fragment {
+pub fn layout(
+    doc: &Document,
+    root: NodeId,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    constraints: Constraints,
+) -> Fragment {
     let effective_root = if styles.contains_key(&root) {
         Some(root)
     } else {
@@ -56,9 +61,18 @@ mod tests {
         let ua = ua_stylesheet();
         let styles = cascade(&doc, &[(Origin::Ua, &ua)]);
         let root = doc.root();
-        let fragment = layout(&doc, root, &styles, Constraints { available_width: 800.0 });
+        let fragment = layout(
+            &doc,
+            root,
+            &styles,
+            Constraints {
+                available_width: 800.0,
+            },
+        );
         assert_eq!(fragment.kind, FragmentKind::Block);
-        assert!(matches!(doc.data(fragment.node.unwrap()), NodeData::Element { tag_name, .. } if tag_name == "html"));
+        assert!(
+            matches!(doc.data(fragment.node.unwrap()), NodeData::Element { tag_name, .. } if tag_name == "html")
+        );
     }
 
     #[test]
@@ -66,8 +80,18 @@ mod tests {
         let doc = blueice_html::parse("<p>hi</p>");
         let ua = ua_stylesheet();
         let styles = cascade(&doc, &[(Origin::Ua, &ua)]);
-        let p = *styles.keys().find(|&&n| matches!(doc.data(n), NodeData::Element{tag_name, ..} if tag_name=="p")).unwrap();
-        let fragment = layout(&doc, p, &styles, Constraints { available_width: 800.0 });
+        let p = *styles
+            .keys()
+            .find(|&&n| matches!(doc.data(n), NodeData::Element{tag_name, ..} if tag_name=="p"))
+            .unwrap();
+        let fragment = layout(
+            &doc,
+            p,
+            &styles,
+            Constraints {
+                available_width: 800.0,
+            },
+        );
         assert_eq!(fragment.node, Some(p));
     }
 
@@ -75,7 +99,14 @@ mod tests {
     fn layout_on_a_root_with_no_styled_children_returns_an_empty_fragment() {
         let doc = Document::new();
         let styles = HashMap::new();
-        let fragment = layout(&doc, doc.root(), &styles, Constraints { available_width: 800.0 });
+        let fragment = layout(
+            &doc,
+            doc.root(),
+            &styles,
+            Constraints {
+                available_width: 800.0,
+            },
+        );
         assert_eq!(fragment.node, None);
         assert_eq!(fragment.width, 0.0);
     }
