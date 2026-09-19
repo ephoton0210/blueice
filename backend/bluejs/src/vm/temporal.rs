@@ -183,6 +183,25 @@ impl DurationAnchor {
     }
 }
 
+/// How `temporal_plain_date_from_fields` should resolve its own `overflow`
+/// (`GetTemporalOverflowOption`). Most callers (`Temporal.PlainDate`/
+/// `PlainDateTime.from`, `ToTemporalDate`/`ToTemporalDateTime`'s
+/// property-bag branch) have not read their own `options` argument at all
+/// yet when they call in — `ToTemporalDate`'s real algorithm resolves
+/// `fields` strictly *before* `resolvedOptions`, so `Options` defers that
+/// read to the correct point (right before the calendar actually resolves
+/// the fields, after every field above has already been read). A few
+/// callers (`ToTemporalZonedDateTime`'s own property-bag branch, which —
+/// unlike `ToTemporalDate` — legitimately reads `overflow`/`disambiguation`/
+/// `offset` together, early, all from the same already-fetched
+/// `resolvedOptions`) have *already* read `overflow` by the time they call
+/// in; `Resolved` lets them pass the already-known answer through without
+/// triggering a second, duplicate `Get` of `options.overflow`.
+enum OverflowInput<'a> {
+    Options(&'a Value),
+    Resolved(bool),
+}
+
 impl Vm {
     pub(super) fn temporal_global(&mut self) -> Result<Value, RuntimeError> {
         if let Some(&id) = self.globals.get("Temporal") {
@@ -1047,18 +1066,93 @@ impl Vm {
         &mut self,
         kind: TemporalKind,
         bag: &Value,
-        reject: bool,
+        overflow: OverflowInput,
     ) -> Result<TemporalValue, RuntimeError> {
         let calendar_value = self.get_property(bag, &"calendar".into())?;
         let calendar = self.temporal_calendar_identifier(&calendar_value)?;
-        let year = self.get_property(bag, &"year".into())?;
-        let month = self.get_property(bag, &"month".into())?;
-        let month_code = self.get_property(bag, &"monthCode".into())?;
-        let day = self.get_property(bag, &"day".into())?;
-        let era = self.get_property(bag, &"era".into())?;
-        let era_year = self.get_property(bag, &"eraYear".into())?;
+        let is_date_time = kind == TemporalKind::PlainDateTime;
 
-        let mut fields = DateFields::default();
+        // `PrepareCalendarFields` reads and immediately coerces every
+        // recognized property in strict alphabetical order -- `day`,
+        // `era`, `eraYear`, `hour`, `microsecond`, `millisecond`, `minute`,
+        // `month`, `monthCode`, `nanosecond`, `second`, `year` --
+        // interleaved with each field's own immediate conversion, never
+        // batched into a "read everything, then convert everything" pass.
+        // The six time-of-day fields only apply when `kind` is
+        // `PlainDateTime`, including when this function is reused for
+        // `ZonedDateTime`'s own property-bag path, which shares the
+        // identical field set. See `temporal_read_optional_integer`'s own
+        // doc comment; verified directly against `order-of-operations.js`.
+        // `options` itself (the caller's `overflow` source) is deliberately
+        // read *after* every field below, not before -- `ToTemporalDate`'s
+        // real algorithm resolves `fields = PrepareCalendarFields(...)`
+        // strictly before `resolvedOptions = GetOptionsObject(options)`
+        // (`PlainDate/from/order-of-operations.js`'s own
+        // `expectedOptionsReading` block comes *after*
+        // `expectedOpsForPrimitiveOptions`).
+        let requested_day = self.temporal_read_optional_integer(bag, "day", 1, i32::MAX)?;
+        // `iso8601` has no era concept at all -- its own field-name list
+        // never includes `era`/`eraYear`, so neither property is even read
+        // (confirmed directly by `order-of-operations.js`'s own expected
+        // sequence, which has no `era`/`eraYear` entries for an `iso8601`
+        // receiver). Every other calendar's field list includes both
+        // regardless of whether it individually supports eras.
+        let read_era_fields = calendar != "iso8601";
+        let (era, era_year) = if read_era_fields {
+            let era_v = self.get_property(bag, &"era".into())?;
+            let era = (!matches!(era_v, Value::Undefined))
+                .then(|| self.coerce_string(&era_v))
+                .transpose()?
+                .map(|value| {
+                    value
+                        .to_utf8()
+                        .map_err(|_| RuntimeError::RangeError("invalid Temporal era".into()))
+                })
+                .transpose()?;
+            // `eraYear`'s own `Get` happens here, at its correct
+            // alphabetical position; its conversion stays conditional on
+            // whether `era` was actually supplied (matching the unchanged
+            // value semantics below) -- no fixture in the pinned corpus
+            // exercises `era`+`eraYear` together on a getter-observed
+            // property bag to pin the exact relative position of
+            // `eraYear`'s own coercion, so this is a narrow, documented
+            // residual rather than a guess.
+            let era_year = self.get_property(bag, &"eraYear".into())?;
+            (era, era_year)
+        } else {
+            (None, Value::Undefined)
+        };
+        let (requested_hour, requested_microsecond, requested_millisecond, requested_minute) =
+            if is_date_time {
+                (
+                    self.temporal_read_optional_integer(bag, "hour", 0, 23)?,
+                    self.temporal_read_optional_integer(bag, "microsecond", 0, 999)?,
+                    self.temporal_read_optional_integer(bag, "millisecond", 0, 999)?,
+                    self.temporal_read_optional_integer(bag, "minute", 0, 59)?,
+                )
+            } else {
+                (None, None, None, None)
+            };
+        let requested_month = self.temporal_read_optional_integer(bag, "month", 1, 99)?;
+        let month_code =
+            self.temporal_read_optional_string(bag, "monthCode", "invalid Temporal month code")?;
+        // A leap second (`60`) is always constrained to `59`, matching the
+        // ISO-string grammar's own `:60` handling (`iso.rs`'s
+        // `parse_time_spec`) — Temporal has no internal leap-second
+        // representation, so a property bag's `second: 60` must be
+        // tolerated the same way rather than rejected outright
+        // (`relativeto-leap-second.js`, reached via `Temporal.Duration`'s
+        // own `relativeTo` property-bag path, which -- unlike a bare
+        // `PlainDate` bag -- now reads this field too). The `.min(59)`
+        // clamp is applied once the field is actually used, below.
+        let (requested_nanosecond, requested_second) = if is_date_time {
+            (
+                self.temporal_read_optional_integer(bag, "nanosecond", 0, 999)?,
+                self.temporal_read_optional_integer(bag, "second", 0, 60)?,
+            )
+        } else {
+            (None, None)
+        };
         // `-9_999..=9_999` was too narrow: a `PlainDate`/`PlainDateTime`/
         // `ZonedDateTime` property bag's `year` field is a plain integer
         // with no bound of its own (`ToIntegerWithTruncation` doesn't clamp
@@ -1069,18 +1163,9 @@ impl Vm {
         // exact `-271821`/`275760` boundary) are what surfaced this —
         // reached via `Temporal.Duration`'s own `relativeTo` reuse of this
         // function, though the same bound applied to every other caller too.
-        let requested_year = (!matches!(year, Value::Undefined))
-            .then(|| self.temporal_integer(&year, -275_760, 275_760, "year"))
-            .transpose()?;
-        let era = (!matches!(era, Value::Undefined))
-            .then(|| self.coerce_string(&era))
-            .transpose()?
-            .map(|value| {
-                value
-                    .to_utf8()
-                    .map_err(|_| RuntimeError::RangeError("invalid Temporal era".into()))
-            })
-            .transpose()?;
+        let requested_year = self.temporal_read_optional_integer(bag, "year", -275_760, 275_760)?;
+
+        let mut fields = DateFields::default();
         if let Some(era) = era.as_deref() {
             fields.era = Some(era.as_bytes());
             fields.era_year = Some(self.temporal_integer(&era_year, -9_999, 9_999, "era year")?);
@@ -1095,18 +1180,6 @@ impl Vm {
             })?);
         }
 
-        let requested_month = (!matches!(month, Value::Undefined))
-            .then(|| self.temporal_integer(&month, 1, 99, "month"))
-            .transpose()?;
-        let month_code = (!matches!(month_code, Value::Undefined))
-            .then(|| self.coerce_string(&month_code))
-            .transpose()?
-            .map(|value| {
-                value
-                    .to_utf8()
-                    .map_err(|_| RuntimeError::RangeError("invalid Temporal month code".into()))
-            })
-            .transpose()?;
         if let Some(month_code) = month_code.as_deref() {
             // Month codes preserve leap-month identity. If a property bag
             // also names `month`, validate it after calendar resolution.
@@ -1118,11 +1191,6 @@ impl Vm {
                 "Temporal date fields require month or monthCode".into(),
             ));
         }
-        if matches!(day, Value::Undefined) {
-            return Err(RuntimeError::TypeError(
-                "Temporal date fields require day".into(),
-            ));
-        }
         // `1..=i32::MAX`, not `1..=31` -- `ToPositiveIntegerWithTruncation`
         // has no upper bound at all: a raw property-bag `day` beyond a
         // month's real length must reach the calendar's own overflow-aware
@@ -1131,16 +1199,29 @@ impl Vm {
         // before overflow ever gets a say. Every `.with()`-style call site
         // in this file already uses this exact same widened bound/cast
         // shape (e.g. `temporal_zoned_date_time_with`'s own `requested_day`).
-        fields.day = Some(self.temporal_integer(&day, 1, i32::MAX, "day")? as u8);
+        let requested_day = requested_day.ok_or_else(|| {
+            RuntimeError::TypeError("Temporal date fields require day".into())
+        })?;
+        fields.day = Some(requested_day as u8);
+        // Every field above has now been read -- `overflow` is resolved
+        // only now (for an `OverflowInput::Options` caller), per
+        // `OverflowInput`'s own doc comment.
+        let reject = match overflow {
+            OverflowInput::Options(options) => {
+                let resolved_options = self.temporal_options(options)?;
+                self.temporal_overflow_option(&resolved_options)?
+            }
+            OverflowInput::Resolved(reject) => reject,
+        };
         let calendar_kind = calendar::calendar_kind(&calendar)
             .expect("temporal_calendar validates the calendar identifier");
-        let mut options = icu_calendar::options::DateFromFieldsOptions::default();
-        options.overflow = Some(if reject {
+        let mut icu_options = icu_calendar::options::DateFromFieldsOptions::default();
+        icu_options.overflow = Some(if reject {
             icu_calendar::options::Overflow::Reject
         } else {
             icu_calendar::options::Overflow::Constrain
         });
-        let date = Date::try_from_fields(fields, options, AnyCalendar::new(calendar_kind))
+        let date = Date::try_from_fields(fields, icu_options, AnyCalendar::new(calendar_kind))
             .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar date".into()))?;
         // `year` is checked against the resolved date to catch a `year`
         // that contradicts an also-supplied `era`/`eraYear` (which is what
@@ -1164,30 +1245,13 @@ impl Vm {
             ));
         }
         let mut value = Self::temporal_value_from_calendar_date(kind, calendar, date);
-        if kind == TemporalKind::PlainDateTime {
-            let hour = self.get_property(bag, &"hour".into())?;
-            let minute = self.get_property(bag, &"minute".into())?;
-            let second = self.get_property(bag, &"second".into())?;
-            let millisecond = self.get_property(bag, &"millisecond".into())?;
-            let microsecond = self.get_property(bag, &"microsecond".into())?;
-            let nanosecond = self.get_property(bag, &"nanosecond".into())?;
-            value.hour = self.temporal_optional_integer(&hour, 0, 0, 23, "hour")? as u8;
-            value.minute = self.temporal_optional_integer(&minute, 0, 0, 59, "minute")? as u8;
-            // A leap second (`60`) is always constrained to `59`, matching
-            // the ISO-string grammar's own `:60` handling (`iso.rs`'s
-            // `parse_time_spec`) — Temporal has no internal leap-second
-            // representation, so a property bag's `second: 60` must be
-            // tolerated the same way rather than rejected outright
-            // (`relativeto-leap-second.js`, reached via `Temporal.Duration`'s
-            // own `relativeTo` property-bag path, which -- unlike a bare
-            // `PlainDate` bag -- now reads this field too).
-            value.second = self.temporal_optional_integer(&second, 0, 0, 60, "second")?.min(59) as u8;
-            value.millisecond =
-                self.temporal_optional_integer(&millisecond, 0, 0, 999, "millisecond")? as u16;
-            value.microsecond =
-                self.temporal_optional_integer(&microsecond, 0, 0, 999, "microsecond")? as u16;
-            value.nanosecond =
-                self.temporal_optional_integer(&nanosecond, 0, 0, 999, "nanosecond")? as u16;
+        if is_date_time {
+            value.hour = requested_hour.unwrap_or(0) as u8;
+            value.minute = requested_minute.unwrap_or(0) as u8;
+            value.second = requested_second.map(|value| value.min(59)).unwrap_or(0) as u8;
+            value.millisecond = requested_millisecond.unwrap_or(0) as u16;
+            value.microsecond = requested_microsecond.unwrap_or(0) as u16;
+            value.nanosecond = requested_nanosecond.unwrap_or(0) as u16;
         }
         Ok(value)
     }
@@ -1205,6 +1269,53 @@ impl Vm {
         } else {
             self.temporal_integer(value, minimum, maximum, name)
         }
+    }
+
+    /// `PrepareCalendarFields`/`PreparePartialCalendarFields`'s own
+    /// per-field shape for a numeric property: `Get`, then — only if the
+    /// result is not `undefined` — immediately `ToIntegerWithTruncation`
+    /// it, before moving on to the next field name. Callers that need
+    /// several fields from the same object must invoke this (and
+    /// `temporal_read_optional_string` below) once per field, **in the
+    /// exact alphabetical order of the field names themselves**, and never
+    /// batch every `Get` ahead of every conversion — the interleaving
+    /// itself is observable (`order-of-operations.js`'s `"get
+    /// fields.day"`/`"get fields.day.valueOf"`/`"call fields.day.valueOf"`
+    /// triple appearing before the next field's own `"get fields.<next>"`).
+    fn temporal_read_optional_integer(
+        &mut self,
+        object: &Value,
+        name: &'static str,
+        minimum: i32,
+        maximum: i32,
+    ) -> Result<Option<i32>, RuntimeError> {
+        let value = self.get_property(object, &name.into())?;
+        (!matches!(value, Value::Undefined))
+            .then(|| self.temporal_integer(&value, minimum, maximum, name))
+            .transpose()
+    }
+
+    /// The string-field counterpart of `temporal_read_optional_integer`:
+    /// `Get`, then immediately `ToString` a present value, matching
+    /// `order-of-operations.js`'s `"get fields.monthCode"`/`"get
+    /// fields.monthCode.toString"`/`"call fields.monthCode.toString"`
+    /// triple for a `monthCode`/`era` field.
+    fn temporal_read_optional_string(
+        &mut self,
+        object: &Value,
+        name: &'static str,
+        error: &str,
+    ) -> Result<Option<String>, RuntimeError> {
+        let value = self.get_property(object, &name.into())?;
+        (!matches!(value, Value::Undefined))
+            .then(|| self.coerce_string(&value))
+            .transpose()?
+            .map(|value| {
+                value
+                    .to_utf8()
+                    .map_err(|_| RuntimeError::RangeError(error.into()))
+            })
+            .transpose()
     }
 
     fn temporal_duration_integer(
@@ -1733,14 +1844,29 @@ impl Vm {
         if let Some(object) = value.object_id() {
             if let Some(temporal) = self.heap.temporal_value(object)? {
                 if temporal.kind == kind {
+                    // Options are still read (for validation/ordering
+                    // parity) even though a same-kind argument is used
+                    // as-is -- every other `ToTemporal*` conversion's own
+                    // identical fast path already does this
+                    // (`temporal_to_plain_date`/`temporal_to_plain_date_time`/
+                    // `temporal_to_plain_year_month`/
+                    // `temporal_to_plain_month_day`/
+                    // `temporal_to_zoned_date_time`); this generic
+                    // dispatcher's own fast path had simply never had it
+                    // added (`order-of-operations.js`'s "order of
+                    // operations when cloning a PlainDate instance" case).
+                    let resolved_options = self.temporal_options(options)?;
+                    self.temporal_overflow_option(&resolved_options)?;
                     return self.alloc_temporal_value(temporal, false);
                 }
             }
             if matches!(kind, TemporalKind::PlainDate | TemporalKind::PlainDateTime) {
-                let resolved_options = self.temporal_options(options)?;
-                let reject = self.temporal_overflow_option(&resolved_options)?;
+                // `options` is passed through unread here -- `ToTemporalDate`/
+                // `ToTemporalDateTime`'s real algorithm reads `fields` before
+                // `resolvedOptions`, which `temporal_plain_date_from_fields`
+                // itself now does internally (see its own doc comment).
                 return self
-                    .temporal_plain_date_from_fields(kind, value, reject)
+                    .temporal_plain_date_from_fields(kind, value, OverflowInput::Options(options))
                     .and_then(|temporal| self.alloc_temporal_value(temporal, false));
             }
         }
@@ -1748,8 +1874,22 @@ impl Vm {
         let source = source
             .to_utf8()
             .map_err(|_| RuntimeError::RangeError("invalid Temporal string".into()))?;
-        self.temporal_value_from_string(kind, &source)
-            .and_then(|temporal| self.alloc_temporal_value(temporal, false))
+        // The string is parsed (and, on failure, throws `RangeError`)
+        // strictly *before* `options`/`overflow` are ever read --
+        // `observable-get-overflow-argument-string-invalid.js` pins this
+        // exact ordering: an ISO-invalid string must throw without
+        // `options.overflow` ever being read. `options`/`overflow` is
+        // still read (for validation/ordering parity) once parsing
+        // succeeds, even though a fully-specified ISO string never
+        // actually needs to regulate anything -- every other
+        // `ToTemporal*` conversion's own string branch already does this
+        // (e.g. `temporal_to_plain_date`'s), and `order-of-operations.js`'s
+        // "order of operations when parsing a string" case expects it here
+        // too.
+        let temporal = self.temporal_value_from_string(kind, &source)?;
+        let resolved_options = self.temporal_options(options)?;
+        self.temporal_overflow_option(&resolved_options)?;
+        self.alloc_temporal_value(temporal, false)
     }
 
     pub(super) fn temporal_with_calendar(
@@ -3885,9 +4025,13 @@ impl Vm {
                     return Ok(Self::temporal_date_value(TemporalKind::PlainDate, calendar, date));
                 }
             }
-            let resolved_options = self.temporal_options(options)?;
-            let reject = self.temporal_overflow_option(&resolved_options)?;
-            return self.temporal_plain_date_from_fields(TemporalKind::PlainDate, value, reject);
+            // `options` is passed through unread here -- see
+            // `temporal_plain_date_from_fields`'s own doc comment.
+            return self.temporal_plain_date_from_fields(
+                TemporalKind::PlainDate,
+                value,
+                OverflowInput::Options(options),
+            );
         }
         if !matches!(value, Value::String(_)) {
             return Err(RuntimeError::TypeError(
@@ -3959,9 +4103,13 @@ impl Vm {
                     ));
                 }
             }
-            let resolved_options = self.temporal_options(options)?;
-            let reject = self.temporal_overflow_option(&resolved_options)?;
-            return self.temporal_plain_date_from_fields(TemporalKind::PlainDateTime, value, reject);
+            // `options` is passed through unread here -- see
+            // `temporal_plain_date_from_fields`'s own doc comment.
+            return self.temporal_plain_date_from_fields(
+                TemporalKind::PlainDateTime,
+                value,
+                OverflowInput::Options(options),
+            );
         }
         if !matches!(value, Value::String(_)) {
             return Err(RuntimeError::TypeError(
@@ -4016,38 +4164,73 @@ impl Vm {
             }
         }
         let existing_fields = self.temporal_calendar_fields(&existing)?;
-        let year_v = self.get_property(like, &"year".into())?;
-        let month_v = self.get_property(like, &"month".into())?;
-        let month_code_v = self.get_property(like, &"monthCode".into())?;
-        let day_v = self.get_property(like, &"day".into())?;
-        let era_v = self.get_property(like, &"era".into())?;
-        let era_year_v = self.get_property(like, &"eraYear".into())?;
-        let (hour_v, minute_v, second_v, ms_v, us_v, ns_v) =
-            if existing.kind == TemporalKind::PlainDateTime {
+        let is_date_time = existing.kind == TemporalKind::PlainDateTime;
+
+        // `PrepareCalendarFields`/`PreparePartialCalendarFields` read and
+        // immediately coerce every recognized property in strict
+        // alphabetical order -- `day`, `era`, `eraYear`, `hour`,
+        // `microsecond`, `millisecond`, `minute`, `month`, `monthCode`,
+        // `nanosecond`, `second`, `year` -- interleaved with each field's
+        // own immediate conversion, never batched into a "read everything,
+        // then convert everything" pass; see `temporal_read_optional_integer`'s
+        // own doc comment. Verified directly against `order-of-operations.js`
+        // (`PlainDate`/`PlainDateTime`), which instruments every property
+        // with a getter that records this exact interleave.
+        let requested_day = self.temporal_read_optional_integer(like, "day", 1, i32::MAX)?;
+        // `iso8601` has no era concept at all -- its own field-name list
+        // never includes `era`/`eraYear`, so neither property is even read
+        // (confirmed directly by `order-of-operations.js`'s own expected
+        // sequence, which has no `era`/`eraYear` entries for an `iso8601`
+        // receiver). Every other calendar's field list includes both
+        // regardless of whether it individually supports eras --
+        // `chinese`/`dangi` still need to *see* a supplied `era`/`eraYear`
+        // in order to reject it (`mutually-exclusive-fields-{chinese,
+        // dangi}.js`).
+        let read_era_fields = existing.calendar != "iso8601";
+        let (era_s, era_year_num) = if read_era_fields {
+            (
+                self.temporal_read_optional_string(like, "era", "invalid Temporal era")?,
+                self.temporal_read_optional_integer(like, "eraYear", i32::MIN, i32::MAX)?,
+            )
+        } else {
+            (None, None)
+        };
+        let (requested_hour, requested_microsecond, requested_millisecond, requested_minute) =
+            if is_date_time {
                 (
-                    self.get_property(like, &"hour".into())?,
-                    self.get_property(like, &"minute".into())?,
-                    self.get_property(like, &"second".into())?,
-                    self.get_property(like, &"millisecond".into())?,
-                    self.get_property(like, &"microsecond".into())?,
-                    self.get_property(like, &"nanosecond".into())?,
+                    self.temporal_read_optional_integer(like, "hour", 0, 23)?,
+                    self.temporal_read_optional_integer(like, "microsecond", 0, 999)?,
+                    self.temporal_read_optional_integer(like, "millisecond", 0, 999)?,
+                    self.temporal_read_optional_integer(like, "minute", 0, 59)?,
                 )
             } else {
-                (
-                    Value::Undefined,
-                    Value::Undefined,
-                    Value::Undefined,
-                    Value::Undefined,
-                    Value::Undefined,
-                    Value::Undefined,
-                )
+                (None, None, None, None)
             };
-        let any_present = [
-            &year_v, &month_v, &month_code_v, &day_v, &era_v, &era_year_v, &hour_v, &minute_v,
-            &second_v, &ms_v, &us_v, &ns_v,
-        ]
-        .into_iter()
-        .any(|value| *value != Value::Undefined);
+        let requested_month = self.temporal_read_optional_integer(like, "month", 1, 99)?;
+        let month_code_s =
+            self.temporal_read_optional_string(like, "monthCode", "invalid Temporal month code")?;
+        let (requested_nanosecond, requested_second) = if is_date_time {
+            (
+                self.temporal_read_optional_integer(like, "nanosecond", 0, 999)?,
+                self.temporal_read_optional_integer(like, "second", 0, 59)?,
+            )
+        } else {
+            (None, None)
+        };
+        let requested_year = self.temporal_read_optional_integer(like, "year", -9_999, 9_999)?;
+
+        let any_present = requested_day.is_some()
+            || era_s.is_some()
+            || era_year_num.is_some()
+            || requested_hour.is_some()
+            || requested_microsecond.is_some()
+            || requested_millisecond.is_some()
+            || requested_minute.is_some()
+            || requested_month.is_some()
+            || month_code_s.is_some()
+            || requested_nanosecond.is_some()
+            || requested_second.is_some()
+            || requested_year.is_some();
         if !any_present {
             return Err(RuntimeError::TypeError(
                 "Temporal.with requires at least one recognized property".into(),
@@ -4057,41 +4240,28 @@ impl Vm {
         let reject = self.temporal_overflow_option(&resolved_options)?;
 
         let mut fields = DateFields::default();
-        let requested_year = (!matches!(year_v, Value::Undefined))
-            .then(|| self.temporal_integer(&year_v, -9_999, 9_999, "year"))
-            .transpose()?;
-        let era_s = (!matches!(era_v, Value::Undefined))
-            .then(|| self.coerce_string(&era_v))
-            .transpose()?
-            .map(|value| {
-                value
-                    .to_utf8()
-                    .map_err(|_| RuntimeError::RangeError("invalid Temporal era".into()))
-            })
-            .transpose()?;
-        let era_year_num = (!matches!(era_year_v, Value::Undefined))
-            .then(|| self.temporal_integer(&era_year_v, i32::MIN, i32::MAX, "era year"))
-            .transpose()?;
         // `CalendarFields.cpp`'s `NonISOResolveFields`/`NonISOFieldKeysToIgnore`
         // (ported here the same way `temporal_year_month_with` already does
         // for `PlainYearMonth`): the `iso8601` calendar has no eras at all
-        // (per the fix in `temporal_calendar_fields` above) — an
-        // `era`/`eraYear` property is still read (for property-bag
-        // ordering) but never applied to field resolution for it, matching
-        // Test262's `with/time-units-ignored.js` (`{ day: 30, era: "BC" }`
-        // on an ISO `PlainDate` simply changes `day`, `era` is inert).
-        // `chinese`/`dangi` are different from `iso8601` here: ICU4X has no
-        // era concept for them either, but Temporal's own behavior is to
-        // *reject* any use of `era`/`eraYear` rather than silently ignore
-        // it (`mutually-exclusive-fields-{chinese,dangi}.js`). On any
-        // calendar that *does* support eras, `era` and `eraYear` must be
-        // supplied together or not at all — providing exactly one is a
-        // `TypeError` (`mutually-exclusive-fields-*.js`'s trailing
-        // `assert.throws(TypeError, ...)` pair), and this check must run
-        // before any `RangeError` from an out-of-range/conflicting
+        // (per the fix in `temporal_calendar_fields` above), so `era`/
+        // `eraYear` (not even read above) never applies to field resolution
+        // for it, matching Test262's `with/time-units-ignored.js` (`{ day:
+        // 30, era: "BC" }` on an ISO `PlainDate` simply changes `day`,
+        // `era` is inert). `chinese`/`dangi` are different from `iso8601`
+        // here: ICU4X has no era concept for them either, but Temporal's
+        // own behavior is to *reject* any use of `era`/`eraYear` rather
+        // than silently ignore it (`mutually-exclusive-fields-{chinese,
+        // dangi}.js`). On any calendar that *does* support eras, `era` and
+        // `eraYear` must be supplied together or not at all — providing
+        // exactly one is a `TypeError` (`mutually-exclusive-fields-*.js`'s
+        // trailing `assert.throws(TypeError, ...)` pair), and this check
+        // must run before any `RangeError` from an out-of-range/conflicting
         // month/day field (`calendarresolvefields-error-ordering-*.js`),
         // which is why it happens here, before the month/day fields below
-        // are even parsed.
+        // are even resolved (every field has already been *read*, above,
+        // in the correct order — only the cross-field validation/merge
+        // logic below is free to run in whatever order is convenient, since
+        // it never calls back into the user-supplied object again).
         if existing.calendar == "iso8601" {
             fields.extended_year = Some(requested_year.unwrap_or(existing_fields.year));
         } else if !calendar::calendar_supports_era(&existing.calendar) {
@@ -4123,18 +4293,6 @@ impl Vm {
             }
         }
 
-        let requested_month = (!matches!(month_v, Value::Undefined))
-            .then(|| self.temporal_integer(&month_v, 1, 99, "month"))
-            .transpose()?;
-        let month_code_s = (!matches!(month_code_v, Value::Undefined))
-            .then(|| self.coerce_string(&month_code_v))
-            .transpose()?
-            .map(|value| {
-                value
-                    .to_utf8()
-                    .map_err(|_| RuntimeError::RangeError("invalid Temporal month code".into()))
-            })
-            .transpose()?;
         if let Some(month_code) = month_code_s.as_deref() {
             fields.month_code = Some(month_code.as_bytes());
         } else if let Some(month) = requested_month {
@@ -4148,9 +4306,6 @@ impl Vm {
         // regulation, matching `plain_month_day.rs`'s identical fix and
         // Test262's `wrapping-at-end-of-month-*.js` (`date.with({ day:
         // daysInMonth + 1 })` constrains rather than field-bound-rejecting).
-        let requested_day = (!matches!(day_v, Value::Undefined))
-            .then(|| self.temporal_integer(&day_v, 1, i32::MAX, "day"))
-            .transpose()?;
         fields.day = Some(requested_day.unwrap_or(i32::from(existing_fields.day)) as u8);
 
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
@@ -4175,45 +4330,16 @@ impl Vm {
         }
         let mut result =
             Self::temporal_value_from_calendar_date(existing.kind, existing.calendar.clone(), date);
-        if existing.kind == TemporalKind::PlainDateTime {
-            result.hour =
-                self.temporal_optional_integer(&hour_v, i32::from(existing.hour), 0, 23, "hour")?
-                    as u8;
-            result.minute = self.temporal_optional_integer(
-                &minute_v,
-                i32::from(existing.minute),
-                0,
-                59,
-                "minute",
-            )? as u8;
-            result.second = self.temporal_optional_integer(
-                &second_v,
-                i32::from(existing.second),
-                0,
-                59,
-                "second",
-            )? as u8;
-            result.millisecond = self.temporal_optional_integer(
-                &ms_v,
-                i32::from(existing.millisecond),
-                0,
-                999,
-                "millisecond",
-            )? as u16;
-            result.microsecond = self.temporal_optional_integer(
-                &us_v,
-                i32::from(existing.microsecond),
-                0,
-                999,
-                "microsecond",
-            )? as u16;
-            result.nanosecond = self.temporal_optional_integer(
-                &ns_v,
-                i32::from(existing.nanosecond),
-                0,
-                999,
-                "nanosecond",
-            )? as u16;
+        if is_date_time {
+            result.hour = requested_hour.unwrap_or(i32::from(existing.hour)) as u8;
+            result.minute = requested_minute.unwrap_or(i32::from(existing.minute)) as u8;
+            result.second = requested_second.unwrap_or(i32::from(existing.second)) as u8;
+            result.millisecond =
+                requested_millisecond.unwrap_or(i32::from(existing.millisecond)) as u16;
+            result.microsecond =
+                requested_microsecond.unwrap_or(i32::from(existing.microsecond)) as u16;
+            result.nanosecond =
+                requested_nanosecond.unwrap_or(i32::from(existing.nanosecond)) as u16;
         }
         self.alloc_temporal_value(result, false)
     }
@@ -4581,11 +4707,16 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let existing = self.temporal_date_receiver(receiver)?;
         let resolved_options = self.temporal_options(options)?;
-        let explicit_digits = self.temporal_fractional_second_digits(&resolved_options)?;
-        let mode =
-            self.temporal_rounding_mode(&resolved_options, blueice_ecma402::NumberRoundingMode::Trunc)?;
-        let smallest_unit = self.temporal_unit_option(&resolved_options, "smallestUnit", false)?;
-        let smallest_unit = Self::temporal_time_unit(smallest_unit, "smallestUnit", false)?;
+        // `calendarName` is read before the time-precision options
+        // (`fractionalSecondDigits`, `roundingMode`, `smallestUnit`),
+        // matching `order-of-operations.js`'s alphabetical expectation --
+        // and, for `PlainDate` specifically, it is the *only* option
+        // `ISODateToString` ever reads: `Temporal.PlainDate.prototype.
+        // toString` has no time component to round, so the other three
+        // must not be touched at all for it (confirmed directly against
+        // `PlainDate/prototype/toString/order-of-operations.js`'s own
+        // expected list, which has no `fractionalSecondDigits`/
+        // `roundingMode`/`smallestUnit` entries).
         let show_calendar_raw = self.temporal_string_option(
             &resolved_options,
             "calendarName",
@@ -4601,6 +4732,12 @@ impl Vm {
             result.push_str(&plain_date::format_calendar_annotation(&existing.calendar, show_calendar));
             return Ok(Value::String(result.into()));
         }
+
+        let explicit_digits = self.temporal_fractional_second_digits(&resolved_options)?;
+        let mode =
+            self.temporal_rounding_mode(&resolved_options, blueice_ecma402::NumberRoundingMode::Trunc)?;
+        let smallest_unit = self.temporal_unit_option(&resolved_options, "smallestUnit", false)?;
+        let smallest_unit = Self::temporal_time_unit(smallest_unit, "smallestUnit", false)?;
 
         let (precision, unit, increment) = match smallest_unit {
             Some(rounding::TimeUnit::Minute) => {
@@ -5497,60 +5634,190 @@ impl Vm {
     }
 
     /// `ToRelativeTemporalObject`'s property-bag path (`{ year, month, day,
-    /// ..., timeZone?, offset?, calendar? }`). A bag with a `timeZone` is
-    /// resolved exactly as `Temporal.ZonedDateTime.from` would resolve it
-    /// (`temporal_to_zoned_date_time` — the same real zone-offset resolution,
-    /// disambiguation and range check, including a named IANA zone now that
-    /// Stage 2's `zoned_date_time.rs`/`time_zone.rs` support one). A bag with
-    /// no `timeZone` is read exactly as `Temporal.PlainDateTime.from` would
-    /// read it (`temporal_plain_date_from_fields` with
-    /// `TemporalKind::PlainDateTime`, not `PlainDate`) even though only the
-    /// resulting date is kept — `GetTemporalRelativeToOption`'s real
-    /// algorithm reads and validates `hour`/`minute`/`second`/`millisecond`/
-    /// `microsecond`/`nanosecond` too, discarding their values, which is
-    /// exactly what routing through the `PlainDateTime` field set gives for
-    /// free (`relativeto-infinity-throws-rangeerror.js`'s time-field cases,
-    /// `order-of-operations.js`'s field-presence list).
+    /// ..., timeZone?, offset?, calendar? }`).
+    ///
+    /// Deliberately does **not** delegate to `temporal_to_zoned_date_time`/
+    /// `temporal_plain_date_from_fields` (as an earlier version of this
+    /// function did) — `GetTemporalRelativeToOption`'s real algorithm reads
+    /// and immediately coerces every property of the *merged*
+    /// calendar-date + time-of-day + `offset`/`timeZone` field-name list,
+    /// in strict alphabetical order (`day`, `era`, `eraYear` — only for a
+    /// non-`iso8601` calendar — `hour`, `microsecond`, `millisecond`,
+    /// `minute`, `month`, `monthCode`, `nanosecond`, `offset`, `second`,
+    /// `timeZone`, `year`), entirely *before* ever branching on whether a
+    /// `timeZone` was supplied. Delegating would mean reading `timeZone`
+    /// first (to pick a branch) and then having each delegate re-derive its
+    /// own, different field order — which is exactly what made this
+    /// function's own `order-of-operations.js` fixtures fail. Resolves the
+    /// date directly against the same `icu_calendar::Date::try_from_fields`/
+    /// `temporal_interpret_offset` building blocks those two functions
+    /// themselves use, so the actual *values* produced are unchanged; only
+    /// the read order and call shape differ. `hour`/`minute`/`second`/
+    /// `millisecond`/`microsecond`/`nanosecond` are still read and
+    /// range-validated even when the eventual anchor is `Plain` (their
+    /// values are simply discarded then), matching
+    /// `relativeto-infinity-throws-rangeerror.js`'s time-field cases.
     fn temporal_duration_relative_to_property_bag(
         &mut self,
         bag: &Value,
     ) -> Result<DurationAnchor, RuntimeError> {
+        let calendar_value = self.get_property(bag, &"calendar".into())?;
+        let calendar = self.temporal_calendar_identifier(&calendar_value)?;
+
+        let requested_day = self.temporal_read_optional_integer(bag, "day", 1, i32::MAX)?;
+        // `iso8601` has no era concept at all -- see
+        // `temporal_plain_date_from_fields`'s identical gate/comment.
+        let read_era_fields = calendar != "iso8601";
+        let era_v = if read_era_fields {
+            self.get_property(bag, &"era".into())?
+        } else {
+            Value::Undefined
+        };
+        let era = (!matches!(era_v, Value::Undefined))
+            .then(|| self.coerce_string(&era_v))
+            .transpose()?
+            .map(|value| {
+                value
+                    .to_utf8()
+                    .map_err(|_| RuntimeError::RangeError("invalid Temporal era".into()))
+            })
+            .transpose()?;
+        let era_year_v = if read_era_fields {
+            self.get_property(bag, &"eraYear".into())?
+        } else {
+            Value::Undefined
+        };
+        let requested_hour = self.temporal_read_optional_integer(bag, "hour", 0, 23)?;
+        let requested_microsecond = self.temporal_read_optional_integer(bag, "microsecond", 0, 999)?;
+        let requested_millisecond = self.temporal_read_optional_integer(bag, "millisecond", 0, 999)?;
+        let requested_minute = self.temporal_read_optional_integer(bag, "minute", 0, 59)?;
+        let requested_month = self.temporal_read_optional_integer(bag, "month", 1, 99)?;
+        let month_code =
+            self.temporal_read_optional_string(bag, "monthCode", "invalid Temporal month code")?;
+        let requested_nanosecond = self.temporal_read_optional_integer(bag, "nanosecond", 0, 999)?;
+        // `offset` goes through `ToPrimitive` with a string hint and then
+        // must *already be* a String -- an object's own `toString`/
+        // `valueOf` is genuinely called, but a non-object, non-string
+        // primitive is a `TypeError` without ever being stringified,
+        // matching `temporal_to_zoned_date_time`'s own identical `offset`
+        // handling (`relativeto-propertybag-invalid-offset-string.js`).
+        let offset_value = self.get_property(bag, &"offset".into())?;
+        let offset_primitive = (!matches!(offset_value, Value::Undefined))
+            .then(|| self.coerce_primitive(&offset_value, "string"))
+            .transpose()?;
+        if let Some(primitive) = &offset_primitive {
+            if !matches!(primitive, Value::String(_)) {
+                return Err(RuntimeError::TypeError(
+                    "Temporal relativeTo offset must be a string".into(),
+                ));
+            }
+        }
+        let offset_string = offset_primitive
+            .map(|primitive| self.coerce_string(&primitive))
+            .transpose()?
+            .map(|text| {
+                text.to_utf8()
+                    .map_err(|_| RuntimeError::RangeError("invalid Temporal offset".into()))
+            })
+            .transpose()?;
+        let requested_second = self.temporal_read_optional_integer(bag, "second", 0, 60)?;
         let time_zone_value = self.get_property(bag, &"timeZone".into())?;
+        let requested_year = self.temporal_read_optional_integer(bag, "year", -275_760, 275_760)?;
+
+        // Every field has now been read; nothing below touches `bag` again.
+        let mut fields = DateFields::default();
+        if let Some(era) = era.as_deref() {
+            fields.era = Some(era.as_bytes());
+            fields.era_year = Some(self.temporal_integer(&era_year_v, -9_999, 9_999, "era year")?);
+        } else {
+            if !matches!(era_year_v, Value::Undefined) {
+                return Err(RuntimeError::RangeError(
+                    "Temporal eraYear requires an era".into(),
+                ));
+            }
+            fields.extended_year = Some(requested_year.ok_or_else(|| {
+                RuntimeError::TypeError("Temporal date fields require year".into())
+            })?);
+        }
+        if let Some(month_code) = month_code.as_deref() {
+            fields.month_code = Some(month_code.as_bytes());
+        } else if let Some(month) = requested_month {
+            fields.ordinal_month = Some(month as u8);
+        } else {
+            return Err(RuntimeError::TypeError(
+                "Temporal date fields require month or monthCode".into(),
+            ));
+        }
+        let requested_day = requested_day.ok_or_else(|| {
+            RuntimeError::TypeError("Temporal date fields require day".into())
+        })?;
+        fields.day = Some(requested_day as u8);
+        let calendar_kind = calendar::calendar_kind(&calendar)
+            .expect("temporal_calendar_identifier validates the calendar identifier");
+        let mut icu_options = icu_calendar::options::DateFromFieldsOptions::default();
+        icu_options.overflow = Some(icu_calendar::options::Overflow::Constrain);
+        let date = Date::try_from_fields(fields, icu_options, AnyCalendar::new(calendar_kind))
+            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar date".into()))?;
+        let actual_year = date.year().extended_year();
+        let actual_month = date.month().ordinal;
+        if requested_year.is_some_and(|year| year != actual_year)
+            || (month_code.is_some() && requested_month.is_some_and(|month| month as u8 != actual_month))
+        {
+            return Err(RuntimeError::RangeError(
+                "inconsistent Temporal calendar fields".into(),
+            ));
+        }
+        let iso = date.to_calendar(Iso);
+        let local_date: epoch::CivilDate = (
+            iso.year().extended_year(),
+            iso.month().number(),
+            iso.day_of_month().0,
+        );
+
         if time_zone_value != Value::Undefined {
-            let temporal = self.temporal_to_zoned_date_time(bag, &Value::Undefined)?;
-            let calendar = calendar::calendar_kind(&temporal.calendar)
-                .expect("temporal_to_zoned_date_time validates the calendar identifier");
-            let zone = time_zone::parse_identifier(&temporal.time_zone)
-                .expect("temporal_to_zoned_date_time validates the time zone identifier");
-            return Ok(DurationAnchor::Zoned {
-                calendar,
-                zone,
-                epoch_ns: temporal.epoch_nanoseconds.clone(),
-                local_date: (temporal.year, temporal.month, temporal.day),
-                local_time: (
-                    temporal.hour,
-                    temporal.minute,
-                    temporal.second,
-                    temporal.millisecond,
-                    temporal.microsecond,
-                    temporal.nanosecond,
+            let zone = self.temporal_time_zone(&time_zone_value)?;
+            let offset_nanoseconds = match offset_string.as_deref() {
+                None => None,
+                Some(text) => Some(
+                    iso::parse_offset_string_nanoseconds(text)
+                        .ok_or_else(|| RuntimeError::RangeError("invalid Temporal offset".into()))?,
                 ),
+            };
+            let local_time: epoch::CivilTime = (
+                requested_hour.unwrap_or(0) as u8,
+                requested_minute.unwrap_or(0) as u8,
+                requested_second.map(|value| value.min(59)).unwrap_or(0) as u8,
+                requested_millisecond.unwrap_or(0) as u16,
+                requested_microsecond.unwrap_or(0) as u16,
+                requested_nanosecond.unwrap_or(0) as u16,
+            );
+            let epoch_ns = temporal_interpret_offset(
+                &zone,
+                local_date,
+                local_time,
+                offset_nanoseconds,
+                false,
+                time_zone::Disambiguation::Compatible,
+                "reject",
+                false,
+            )?;
+            if !epoch::is_in_instant_range(&epoch_ns) {
+                return Err(RuntimeError::RangeError(
+                    "Temporal.ZonedDateTime epoch nanoseconds are outside the supported range"
+                        .into(),
+                ));
+            }
+            return Ok(DurationAnchor::Zoned {
+                calendar: calendar_kind,
+                zone,
+                epoch_ns,
+                local_date,
+                local_time,
             });
         }
-        let temporal =
-            self.temporal_plain_date_from_fields(TemporalKind::PlainDateTime, bag, false)?;
-        // `offset` is meaningless without a `timeZone`, but its *presence* is
-        // still observable: a non-string, non-undefined value is a
-        // `TypeError`, matching `GetTemporalRelativeToOption`'s own read.
-        let offset_value = self.get_property(bag, &"offset".into())?;
-        if !matches!(offset_value, Value::Undefined) {
-            self.coerce_string(&offset_value)?;
-        }
-        let calendar = calendar::calendar_kind(&temporal.calendar)
-            .expect("temporal_plain_date_from_fields validates the calendar identifier");
         Ok(DurationAnchor::Plain {
-            calendar,
-            date: (temporal.year, temporal.month, temporal.day),
+            calendar: calendar_kind,
+            date: local_date,
         })
     }
 
@@ -7562,25 +7829,27 @@ impl Vm {
     fn temporal_plain_year_month_from_fields(
         &mut self,
         bag: &Value,
-        reject: bool,
+        overflow: OverflowInput,
     ) -> Result<TemporalValue, RuntimeError> {
         let calendar_value = self.get_property(bag, &"calendar".into())?;
         let calendar = self.temporal_calendar_identifier(&calendar_value)?;
-        let year = self.get_property(bag, &"year".into())?;
-        let month = self.get_property(bag, &"month".into())?;
-        let month_code = self.get_property(bag, &"monthCode".into())?;
-        let era = self.get_property(bag, &"era".into())?;
-        let era_year = self.get_property(bag, &"eraYear".into())?;
 
-        // Unbounded at the field-reading stage (`ToIntegerWithTruncation`),
-        // matching `temporal_year_month_with`'s own identical fix's doc
-        // comment -- `iso::is_year_month_within_limits` below still
-        // range-checks the resolved date.
-        let requested_year = (!matches!(year, Value::Undefined))
-            .then(|| self.temporal_integer(&year, i32::MIN, i32::MAX, "year"))
-            .transpose()?;
-        let era_s = (!matches!(era, Value::Undefined))
-            .then(|| self.coerce_string(&era))
+        // `PrepareCalendarFields` reads and immediately coerces every
+        // recognized property in strict alphabetical order -- `era`,
+        // `eraYear` (only for a non-`iso8601` calendar, matching
+        // `temporal_plain_date_from_fields`'s identical gate), `month`,
+        // `monthCode`, `year` -- interleaved with each field's own
+        // immediate conversion. `options`/`overflow` are deliberately
+        // resolved only after every field below, per `OverflowInput`'s own
+        // doc comment. Verified directly against `order-of-operations.js`.
+        let read_era_fields = calendar != "iso8601";
+        let era_v = if read_era_fields {
+            self.get_property(bag, &"era".into())?
+        } else {
+            Value::Undefined
+        };
+        let era_s = (!matches!(era_v, Value::Undefined))
+            .then(|| self.coerce_string(&era_v))
             .transpose()?
             .map(|value| {
                 value
@@ -7588,40 +7857,58 @@ impl Vm {
                     .map_err(|_| RuntimeError::RangeError("invalid Temporal era".into()))
             })
             .transpose()?;
-        let era_year_num = if era_s.is_some() {
-            Some(self.temporal_integer(&era_year, i32::MIN, i32::MAX, "era year")?)
+        let era_year_v = if read_era_fields {
+            self.get_property(bag, &"eraYear".into())?
         } else {
-            if !matches!(era_year, Value::Undefined) {
+            Value::Undefined
+        };
+        let era_year_num = if era_s.is_some() {
+            Some(self.temporal_integer(&era_year_v, i32::MIN, i32::MAX, "era year")?)
+        } else {
+            if !matches!(era_year_v, Value::Undefined) {
                 return Err(RuntimeError::RangeError(
                     "Temporal eraYear requires an era".into(),
                 ));
             }
             None
         };
+        let requested_month = self.temporal_read_optional_integer(bag, "month", 1, 99)?;
+        let month_code_s =
+            self.temporal_read_optional_string(bag, "monthCode", "invalid Temporal month code")?;
+        // Unbounded at the field-reading stage (`ToIntegerWithTruncation`),
+        // matching `temporal_year_month_with`'s own identical fix's doc
+        // comment -- `iso::is_year_month_within_limits` below still
+        // range-checks the resolved date.
+        let requested_year = self.temporal_read_optional_integer(bag, "year", i32::MIN, i32::MAX)?;
+
+        // Every field has now been read, in alphabetical order. The
+        // *validation* order below is deliberately **not** alphabetical,
+        // though: `year`'s own required-field check runs before `month`'s,
+        // matching `CalendarResolveFields`'s own fixed validation order --
+        // confirmed directly by `missing-properties.js`'s own "year should
+        // be checked after fetching but before resolving the month"
+        // comment (a bag with getters for `month`/`monthCode` but no
+        // `year` at all must still fire both of those getters, per the
+        // alphabetical read order above, before throwing the `year`
+        // `TypeError` first).
         if era_s.is_none() && requested_year.is_none() {
             return Err(RuntimeError::TypeError(
                 "Temporal.PlainYearMonth fields require year".into(),
             ));
         }
-
-        let requested_month = (!matches!(month, Value::Undefined))
-            .then(|| self.temporal_integer(&month, 1, 99, "month"))
-            .transpose()?;
-        let month_code_s = (!matches!(month_code, Value::Undefined))
-            .then(|| self.coerce_string(&month_code))
-            .transpose()?
-            .map(|value| {
-                value
-                    .to_utf8()
-                    .map_err(|_| RuntimeError::RangeError("invalid Temporal month code".into()))
-            })
-            .transpose()?;
         if month_code_s.is_none() && requested_month.is_none() {
             return Err(RuntimeError::TypeError(
                 "Temporal.PlainYearMonth fields require month or monthCode".into(),
             ));
         }
 
+        let reject = match overflow {
+            OverflowInput::Options(options) => {
+                let resolved_options = self.temporal_options(options)?;
+                self.temporal_overflow_option(&resolved_options)?
+            }
+            OverflowInput::Resolved(reject) => reject,
+        };
         let calendar_kind = calendar::calendar_kind(&calendar)
             .expect("temporal_calendar_identifier validates the calendar identifier");
         let fields = plain_year_month::YearMonthFields {
@@ -7904,9 +8191,10 @@ impl Vm {
                     return Ok(temporal);
                 }
             }
-            let resolved_options = self.temporal_options(options)?;
-            let reject = self.temporal_overflow_option(&resolved_options)?;
-            return self.temporal_plain_year_month_from_fields(value, reject);
+            // `options` is passed through unread here -- see
+            // `temporal_plain_year_month_from_fields`'s own doc comment.
+            return self
+                .temporal_plain_year_month_from_fields(value, OverflowInput::Options(options));
         }
         if !matches!(value, Value::String(_)) {
             return Err(RuntimeError::TypeError(
@@ -8024,56 +8312,48 @@ impl Vm {
             }
         }
         let base = self.temporal_calendar_fields(&existing)?;
-        let year_v = self.get_property(like, &"year".into())?;
-        let month_v = self.get_property(like, &"month".into())?;
-        let month_code_v = self.get_property(like, &"monthCode".into())?;
-        let era_v = self.get_property(like, &"era".into())?;
-        let era_year_v = self.get_property(like, &"eraYear".into())?;
-        if matches!(year_v, Value::Undefined)
-            && matches!(month_v, Value::Undefined)
-            && matches!(month_code_v, Value::Undefined)
-            && matches!(era_v, Value::Undefined)
-            && matches!(era_year_v, Value::Undefined)
-        {
+
+        // `PreparePartialCalendarFields` reads and immediately coerces
+        // every recognized property in strict alphabetical order -- `era`,
+        // `eraYear`, `month`, `monthCode`, `year` -- interleaved with each
+        // field's own immediate conversion, and strictly before
+        // `options`/`overflow` are ever read. `iso8601` has no era concept
+        // at all, so neither `era` nor `eraYear` is even read for it
+        // (confirmed directly by `order-of-operations.js`'s own expected
+        // sequence, which has no `era`/`eraYear` entries for an `iso8601`
+        // receiver) -- `chinese`/`dangi` still need to *see* a supplied
+        // `era`/`eraYear` in order to reject it below.
+        let read_era_fields = existing.calendar != "iso8601";
+        let (era_s, requested_era_year) = if read_era_fields {
+            (
+                self.temporal_read_optional_string(like, "era", "invalid Temporal era")?,
+                self.temporal_read_optional_integer(like, "eraYear", i32::MIN, i32::MAX)?,
+            )
+        } else {
+            (None, None)
+        };
+        let requested_month = self.temporal_read_optional_integer(like, "month", 1, 99)?;
+        let month_code_s =
+            self.temporal_read_optional_string(like, "monthCode", "invalid Temporal month code")?;
+        // `ToIntegerWithTruncation`: unbounded at the field-reading stage
+        // for `year` (`CalendarFields.cpp`'s `CalendarField::Year` case)
+        // -- the real representable-range check happens once, below,
+        // against the *resolved* date via `iso::is_year_month_within_limits`,
+        // not here.
+        let requested_year = self.temporal_read_optional_integer(like, "year", i32::MIN, i32::MAX)?;
+
+        let any_present = era_s.is_some()
+            || requested_era_year.is_some()
+            || requested_month.is_some()
+            || month_code_s.is_some()
+            || requested_year.is_some();
+        if !any_present {
             return Err(RuntimeError::TypeError(
                 "Temporal.with requires at least one recognized property".into(),
             ));
         }
         let resolved_options = self.temporal_options(options)?;
         let reject = self.temporal_overflow_option(&resolved_options)?;
-
-        // `ToIntegerWithTruncation`: unbounded at the field-reading stage
-        // for both `year` and `eraYear` (`CalendarFields.cpp`'s
-        // `CalendarField::Year`/`EraYear` cases) -- the real representable-
-        // range check happens once, below, against the *resolved* date via
-        // `iso::is_year_month_within_limits`, not here.
-        let requested_year = (!matches!(year_v, Value::Undefined))
-            .then(|| self.temporal_integer(&year_v, i32::MIN, i32::MAX, "year"))
-            .transpose()?;
-        let requested_month = (!matches!(month_v, Value::Undefined))
-            .then(|| self.temporal_integer(&month_v, 1, 99, "month"))
-            .transpose()?;
-        let month_code_s = (!matches!(month_code_v, Value::Undefined))
-            .then(|| self.coerce_string(&month_code_v))
-            .transpose()?
-            .map(|value| {
-                value
-                    .to_utf8()
-                    .map_err(|_| RuntimeError::RangeError("invalid Temporal month code".into()))
-            })
-            .transpose()?;
-        let era_s = (!matches!(era_v, Value::Undefined))
-            .then(|| self.coerce_string(&era_v))
-            .transpose()?
-            .map(|value| {
-                value
-                    .to_utf8()
-                    .map_err(|_| RuntimeError::RangeError("invalid Temporal era".into()))
-            })
-            .transpose()?;
-        let requested_era_year = (!matches!(era_year_v, Value::Undefined))
-            .then(|| self.temporal_integer(&era_year_v, i32::MIN, i32::MAX, "eraYear"))
-            .transpose()?;
 
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
@@ -9039,8 +9319,11 @@ impl Vm {
             // `nanosecond`) -- `year`'s own `TypeError` for a non-convertible
             // value (e.g. a `Symbol`) has to come *after* `offset`'s syntax
             // check above, per this function's own doc comment.
-            let mut fields =
-                self.temporal_plain_date_from_fields(TemporalKind::PlainDateTime, value, reject)?;
+            let mut fields = self.temporal_plain_date_from_fields(
+                TemporalKind::PlainDateTime,
+                value,
+                OverflowInput::Resolved(reject),
+            )?;
             let date = (fields.year, fields.month, fields.day);
             let time = (
                 fields.hour,
