@@ -9,13 +9,67 @@ on:
 
 jobs:
   build-test:
-    name: Build, test, lint (${{ matrix.os }})
+    name: Build, test, lint (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
+    # Empty for a native runner; otherwise the job's steps run inside this
+    # image on the (Ubuntu) runner host.
+    container: ${{ matrix.container }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Every OS/architecture GitHub offers at standard (non-"large")
+        # runner billing, with pinned labels rather than `-latest` aliases so
+        # the covered set never shifts silently. Deliberately omitted: the
+        # `-large`/`-xlarge` runners (paid larger runners), macOS 14
+        # (deprecated) and the `*-vs2026` Windows images (same OS, only a
+        # different Visual Studio toolchain).
+        include:
+          # --- Native runners: Linux ---
+          - { label: "Ubuntu 26.04 x86_64", os: ubuntu-26.04 }
+          - { label: "Ubuntu 26.04 arm64", os: ubuntu-26.04-arm }
+          - { label: "Ubuntu 24.04 x86_64", os: ubuntu-24.04 }
+          - { label: "Ubuntu 24.04 arm64", os: ubuntu-24.04-arm }
+          - { label: "Ubuntu 22.04 x86_64", os: ubuntu-22.04 }
+          - { label: "Ubuntu 22.04 arm64", os: ubuntu-22.04-arm }
+          # --- Native runners: Windows ---
+          - { label: "Windows Server 2025 x86_64", os: windows-2025 }
+          - { label: "Windows Server 2022 x86_64", os: windows-2022 }
+          - { label: "Windows 11 arm64", os: windows-11-arm }
+          # --- Native runners: macOS ---
+          - { label: "macOS 26 arm64", os: macos-26 }
+          - { label: "macOS 26 x86_64", os: macos-26-intel }
+          - { label: "macOS 15 arm64", os: macos-15 }
+          - { label: "macOS 15 x86_64", os: macos-15-intel }
+          # --- Red Hat and SUSE ---
+          # GitHub offers no RHEL or SUSE runner, so these run in the
+          # vendors' own userland images on an Ubuntu runner of the matching
+          # architecture. That covers each distro's glibc, compiler and
+          # package set, but NOT its kernel: the kernel is always the
+          # runner's Ubuntu kernel.
+          - { label: "RHEL UBI 9 x86_64", os: ubuntu-24.04, family: rhel, container: "registry.access.redhat.com/ubi9" }
+          - { label: "RHEL UBI 9 arm64", os: ubuntu-24.04-arm, family: rhel, container: "registry.access.redhat.com/ubi9" }
+          - { label: "RHEL UBI 10 x86_64", os: ubuntu-24.04, family: rhel, container: "registry.access.redhat.com/ubi10" }
+          - { label: "RHEL UBI 10 arm64", os: ubuntu-24.04-arm, family: rhel, container: "registry.access.redhat.com/ubi10" }
+          - { label: "SLE BCI 15.7 x86_64", os: ubuntu-24.04, family: suse, container: "registry.suse.com/bci/bci-base:15.7" }
+          - { label: "SLE BCI 15.7 arm64", os: ubuntu-24.04-arm, family: suse, container: "registry.suse.com/bci/bci-base:15.7" }
+          - { label: "openSUSE Leap 15.6 x86_64", os: ubuntu-24.04, family: suse, container: "registry.opensuse.org/opensuse/leap:15.6" }
+          - { label: "openSUSE Leap 15.6 arm64", os: ubuntu-24.04-arm, family: suse, container: "registry.opensuse.org/opensuse/leap:15.6" }
+          - { label: "openSUSE Tumbleweed x86_64", os: ubuntu-24.04, family: suse, container: "registry.opensuse.org/opensuse/tumbleweed:latest" }
+          - { label: "openSUSE Tumbleweed arm64", os: ubuntu-24.04-arm, family: suse, container: "registry.opensuse.org/opensuse/tumbleweed:latest" }
     steps:
+      # The distro images are minimal: install what `actions/checkout`, the
+      # Rust toolchain (linker, `ring`'s C build), `setup-node`, the CLDR
+      # `cmp` check, the WPT `git clone` and `rust-cache` need. Must run
+      # before checkout so `git` exists for it.
+      - name: Install RHEL prerequisites
+        if: matrix.family == 'rhel'
+        run: |
+          dnf install -y git gcc gcc-c++ make tar gzip xz zstd diffutils tzdata findutils
+          command -v curl >/dev/null || dnf install -y curl
+      - name: Install SUSE prerequisites
+        if: matrix.family == 'suse'
+        run: |
+          zypper --non-interactive install --no-recommends git-core gcc gcc-c++ make tar gzip xz zstd diffutils timezone findutils curl
       - uses: actions/checkout@v4
       # Compile-time fixtures in BlueJS integration tests must come from the
       # same immutable Test262 revision on every operating system.
@@ -26,7 +80,7 @@ jobs:
           ref: 72faf8ec1445c55149615e8b35187830783aba1a
           path: development/browser_core/reference/test262
       # The checked-in .b64 provider is a source input, not a build cache.
-      # Rebuild it from its exact CLDR source on all three CI platforms so a
+      # Rebuild it from its exact CLDR source on every CI platform so a
       # provider update cannot be generated on one OS and silently diverge on
       # another.
       - name: Checkout pinned CLDR JSON provider source
@@ -69,7 +123,12 @@ jobs:
             development/browser_core/reference/cldr-json/locale_information_data.verify.b64
           cmp -s backend/ecma402/src/locale_data/locale_information_data.b64 \
             development/browser_core/reference/cldr-json/locale_information_data.verify.b64
+      # Keyed per matrix leg: the distro legs share one runner OS/arch, and
+      # a `target/` (build scripts, C objects) built against one distro's
+      # glibc must never be restored into another's.
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.label }}
       # `backend/core/html/tests/wpt_corpus.rs`'s WPT tree-construction
       # gate (see `testing/TEST_PLAN.md`) needs this checked out or it
       # just skips itself -- a sparse partial clone of the one
