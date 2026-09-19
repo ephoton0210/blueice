@@ -24,6 +24,30 @@ struct Request {
     module_path: Option<String>,
     #[serde(default)]
     module_sources: HashMap<String, String>,
+    /// Raw text for non-`.js` module fixtures (currently JSON only), keyed
+    /// by the same test-root-relative path `module_sources`/`module_path`
+    /// use. Kept separate from `module_sources` because those entries are
+    /// parsed as JavaScript module source unconditionally.
+    #[serde(default)]
+    module_json_sources: HashMap<String, String>,
+    /// Paths in `module_sources` reached only through a relative-string
+    /// heuristic (e.g. a `ShadowRealm.prototype.importValue` specifier
+    /// argument), never through an actual `import`/dynamic-`import()`
+    /// reference. Such a candidate may be a deliberately invalid fixture
+    /// meant to be discovered lazily at runtime rather than linked eagerly;
+    /// a parse/compile failure there is simply excluded from the module
+    /// registry instead of failing the whole request, unlike every other
+    /// (genuinely required) `module_sources` entry.
+    #[serde(default)]
+    speculative_module_sources: std::collections::HashSet<String>,
+    /// Raw JavaScript text for `.js` fixtures reached only through a
+    /// dynamic import, never a static one -- kept separate from
+    /// `module_sources` (which this adapter parses/compiles eagerly, before
+    /// any code runs) specifically so a fixture that is a syntax/semantic
+    /// error only *as a module* fails lazily, as that dynamic import's own
+    /// promise rejection, via `Vm::set_dynamic_module_sources`.
+    #[serde(default)]
+    module_dynamic_sources: HashMap<String, String>,
     #[serde(default)]
     module_source_requests: Vec<String>,
     #[serde(default)]
@@ -138,8 +162,10 @@ fn evaluate(request: Request) -> Value {
             if module_codes.contains_key(path) {
                 continue;
             }
+            let speculative = request.speculative_module_sources.contains(path);
             let program = match parse_module(module_source) {
                 Ok(program) => program,
+                Err(_) if speculative => continue,
                 Err(error) if error.known_syntax => {
                     return json!({
                         "phase":"resolution",
@@ -154,6 +180,7 @@ fn evaluate(request: Request) -> Value {
                 request.bytecode_limit.unwrap_or(u32::MAX),
             ) {
                 Ok(code) => code,
+                Err(_) if speculative => continue,
                 Err(CompileError::DuplicateBinding(message)) => {
                     return json!({
                         "phase":"resolution",
@@ -183,13 +210,28 @@ fn evaluate(request: Request) -> Value {
             Err(error) => return compile_error(error),
         }
     };
+    // A script-mode entry that dynamically imports *itself* (e.g.
+    // `language/expressions/dynamic-import/eval-self-once-script.js`) names
+    // a path that is always classified "static" (the entry) by the
+    // harness's own `module_sources()`, yet is deliberately excluded from
+    // `module_codes` just below -- it is compiled once, as the script this
+    // request actually executes, never twice as a module too. Its raw text
+    // must still reach `Vm::set_dynamic_module_sources` (below), so that
+    // self-referential dynamic import can compile it on demand rather than
+    // finding it in neither registry.
+    let mut dynamic_sources = request.module_dynamic_sources.clone();
     if request.mode != "module" {
         for (path, module_source) in &request.module_sources {
             if request.module_path.as_deref() == Some(path.as_str()) {
+                dynamic_sources
+                    .entry(path.clone())
+                    .or_insert_with(|| module_source.clone());
                 continue;
             }
+            let speculative = request.speculative_module_sources.contains(path);
             let program = match parse_module(module_source) {
                 Ok(program) => program,
+                Err(_) if speculative => continue,
                 Err(error) => return parse_error(error),
             };
             let code = match compile_module_with_limit(
@@ -197,6 +239,7 @@ fn evaluate(request: Request) -> Value {
                 request.bytecode_limit.unwrap_or(u32::MAX),
             ) {
                 Ok(code) => code,
+                Err(_) if speculative => continue,
                 Err(error) => return compile_error(error),
             };
             module_codes.insert(path.clone(), code);
@@ -241,6 +284,8 @@ fn evaluate(request: Request) -> Value {
         Err(error) => return json!({"kind":"harness_error", "message":error.to_string()}),
     };
     vm.set_module_source_loader_context(request.module_source_requests);
+    vm.set_json_module_sources(request.module_json_sources.clone());
+    vm.set_dynamic_module_sources(dynamic_sources);
     if request.mode != "raw" {
         if let Err(error) = vm.install_test262_harness() {
             return json!({"kind":"harness_error", "message":error.to_string()});
@@ -256,7 +301,13 @@ fn evaluate(request: Request) -> Value {
             return json!({"kind":"harness_error", "message":error.to_string()});
         }
     }
-    if request.mode != "module" && !module_codes.is_empty() {
+    // A referrer context is needed whenever the harness detected a dynamic
+    // import at all (`request.module_path` is set), even when it resolves
+    // only `.json`/other non-`.js` fixtures and `module_codes` ends up
+    // empty -- an empty registry still fixes `dynamic_import`'s referrer to
+    // this test's own path, rather than the resolution-breaking `"<script>"`
+    // default `resolve_module_request` falls back to otherwise.
+    if request.mode != "module" && (request.module_path.is_some() || !module_codes.is_empty()) {
         vm.set_module_loader_context(
             request
                 .module_path

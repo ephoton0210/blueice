@@ -2716,6 +2716,38 @@ mod tests {
         // addressed to a tab whose gated navigation hasn't resolved yet
         // must apply immediately against that tab's *current*
         // (pre-navigation) `Page` state, not queue up behind it.
+        //
+        // ROOT CAUSE OF A ONCE-OBSERVED FLAKE (fixed here): this test
+        // used to have the fake gatekeeper below stall for a fixed 5s
+        // and then assert the `Resize` reply arrived in under 500ms --
+        // i.e. it proved "immediate" by racing a *nearby fixed deadline*
+        // (500ms) against the *other*, "queued" outcome's own fixed
+        // deadline (5000ms). `Resize`'s dispatch (see the `ClientMessage
+        // ::Resize` arm in `run_session` above) is not itself racy: it
+        // never consults `pending_nav_seq`/the completion channel at
+        // all, so its reply is always synchronously produced on the very
+        // next loop iteration after the client's write lands in the
+        // (already-buffered, in-kernel, `UnixStream::pair`) socket. But
+        // "always produced immediately" is not the same as "always
+        // *observed* within 500 wall-clock ms" -- under a fully loaded
+        // test binary (many sibling `session::tests::*` cases, several
+        // of which spawn their own OS threads and sleep), ordinary OS
+        // scheduler latency in getting this test's own server thread its
+        // next timeslice can occasionally eat into that margin, which is
+        // exactly the kind of "sensitive to parallel test execution"
+        // failure that was observed once in a full-workspace run. No
+        // amount of widening that margin fixes this *for real* -- it
+        // only shrinks the failure probability, which is precisely what
+        // this test must not settle for (see `TEST_PLAN.md`'s Definition
+        // of Done). The actual fix removes the race instead of narrowing
+        // it: the fake gatekeeper below now blocks forever (never
+        // replies), so the "queued" alternative can *never* resolve
+        // during this test's lifetime, at any wall-clock distance -- the
+        // `Resize` reply's mere arrival (bounded only by a generous,
+        // not-tuned-against-anything timeout that exists purely so a
+        // genuine regression fails promptly instead of hanging the
+        // suite) is now itself the whole proof, with no nearby deadline
+        // on either side of the comparison left to lose a race against.
         let dir = temp_frame_dir("resize-during-pending-nav");
         let gatekeeper_path = unique_gatekeeper_socket_path("resize-during-pending-nav");
         let _ = std::fs::remove_file(&gatekeeper_path);
@@ -2726,15 +2758,20 @@ mod tests {
                 thread::spawn(move || {
                     if let Ok(_req) = blueice_ipc::gatekeeper::read_gatekeeper_request(&mut stream)
                     {
-                        // Stalls every stage, so the navigation this
-                        // test kicks off never resolves within the
-                        // test's own lifetime -- the point is proving
-                        // `Resize` doesn't wait on it at all.
-                        thread::sleep(Duration::from_secs(5));
-                        let _ = blueice_ipc::gatekeeper::write_gatekeeper_reply(
-                            &mut stream,
-                            &blueice_ipc::gatekeeper::GatekeeperReply::Cleared,
-                        );
+                        // Never replies, so the navigation this test
+                        // kicks off can never resolve during the test's
+                        // lifetime -- not merely "probably still pending
+                        // after N seconds" (see the long comment above
+                        // this test for why that distinction is the
+                        // actual fix, not a tightened/loosened timeout).
+                        // `thread::park` can wake spuriously, hence the
+                        // loop; this thread simply leaks, parked, for
+                        // the rest of the test binary's life once this
+                        // test ends, same as any other test double here
+                        // that outlives its own test.
+                        loop {
+                            thread::park();
+                        }
                     }
                 });
             }
@@ -2757,6 +2794,13 @@ mod tests {
         });
         handshake(&mut client);
 
+        // A generous, not-a-race-margin timeout: it exists only so a
+        // genuine regression (an actual wait behind the now-permanently-
+        // pending navigation) fails this test promptly instead of
+        // hanging the whole suite, not to bound how fast the correct
+        // path must be.
+        client.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+
         blueice_ipc::write_client_message(
             &mut client,
             &ClientMessage::Navigate {
@@ -2765,7 +2809,6 @@ mod tests {
         )
         .unwrap();
 
-        let start = Instant::now();
         blueice_ipc::write_client_message(
             &mut client,
             &ClientMessage::Resize {
@@ -2774,7 +2817,10 @@ mod tests {
             },
         )
         .unwrap();
-        let reply = blueice_ipc::read_server_message(&mut client).unwrap();
+        let reply = blueice_ipc::read_server_message(&mut client).expect(
+            "Resize must not be queued behind a pending navigation that, by construction \
+             above, can now never complete -- a read timeout here means it was",
+        );
         assert!(
             matches!(
                 reply,
@@ -2785,11 +2831,6 @@ mod tests {
                 }
             ),
             "expected an immediate FrameReady for the resize, got {reply:?}"
-        );
-        assert!(
-            start.elapsed() < Duration::from_millis(500),
-            "Resize must apply immediately, not wait behind the pending navigation, took {:?}",
-            start.elapsed()
         );
 
         // The old page's content is still what's shown -- the pending

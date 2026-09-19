@@ -49,6 +49,9 @@ pub struct ImportEntry {
     /// `None` represents `import "specifier";`, which participates in
     /// dependency evaluation but creates no local binding.
     pub local_name: Option<String>,
+    /// Whether this request's `with` clause specified `type: "json"`,
+    /// routing it to ParseJSONModule instead of ordinary module linking.
+    pub json: bool,
 }
 
 /// One declarative export.  Local entries point at a binding in this module;
@@ -63,13 +66,16 @@ pub enum ExportEntry {
         export_name: String,
         module_request: String,
         import_name: String,
+        json: bool,
     },
     Star {
         module_request: String,
+        json: bool,
     },
     Namespace {
         export_name: String,
         module_request: String,
+        json: bool,
     },
 }
 
@@ -78,6 +84,16 @@ pub enum DeclKind {
     Var,
     Let,
     Const,
+    /// `using x = value;` (Explicit Resource Management, synchronous
+    /// disposal). Scoping/TDZ/immutability behave like `const`; the
+    /// distinguishing behavior is that the compiler arranges for the bound
+    /// value's `[Symbol.dispose]` to run when the enclosing block exits.
+    Using,
+    /// `await using x = value;` -- same, but disposal happens through
+    /// `[Symbol.asyncDispose]` and is awaited. Parsing/compiling for this
+    /// form is not yet implemented; the variant exists so `DeclKind`
+    /// already distinguishes the two hints where later code needs to.
+    AwaitUsing,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -460,8 +476,12 @@ pub enum Expr {
     /// Contextual `await`, valid in async functions and at module top level.
     Await(Box<Expr>),
     /// The `import()` expression is distinct from the static module-item
-    /// grammar and always evaluates to a Promise.
-    DynamicImport(Box<Expr>),
+    /// grammar and always evaluates to a Promise. The optional second
+    /// argument carries import attributes (`import(specifier, { with: {...} })`).
+    DynamicImport {
+        specifier: Box<Expr>,
+        options: Option<Box<Expr>>,
+    },
     /// Module-only meta property. Retained independently of host metadata
     /// support so its invalid assignment-target shape is rejected at parse
     /// time.
@@ -866,9 +886,14 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
             .as_deref()
             .is_some_and(|expr| expr_contains_super(expr, search)),
         Expr::Await(expr)
-        | Expr::DynamicImport(expr)
         | Expr::Unary { arg: expr, .. }
         | Expr::Update { arg: expr, .. } => expr_contains_super(expr, search),
+        Expr::DynamicImport { specifier, options } => {
+            expr_contains_super(specifier, search)
+                || options
+                    .as_deref()
+                    .is_some_and(|expr| expr_contains_super(expr, search))
+        }
         Expr::Arrow { params, body, .. } => {
             params.iter().any(|param| {
                 pattern_contains_super(&param.pattern, search)

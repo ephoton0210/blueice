@@ -597,6 +597,7 @@ pub(crate) enum NativeFunction {
     NumberIsFinite,
     NumberIsInteger,
     NumberIsSafeInteger,
+    NumberIsNaN,
     PrimitiveConstructor(bool),
     PrimitiveMethod {
         boolean: bool,
@@ -635,6 +636,40 @@ pub(crate) enum NativeFunction {
     RegExpGetter(&'static str),
     RegExpIteratorNext,
     StringMethod(StringMethod),
+    /// The `DisposableStack`/`AsyncDisposableStack` constructors (Explicit
+    /// Resource Management). `is_async` selects which brand's internal
+    /// slot/prototype the constructor and its methods observe.
+    DisposableStack {
+        is_async: bool,
+    },
+    DisposableStackDispose {
+        is_async: bool,
+    },
+    DisposableStackUse {
+        is_async: bool,
+    },
+    DisposableStackAdopt {
+        is_async: bool,
+    },
+    DisposableStackDefer {
+        is_async: bool,
+    },
+    DisposableStackMove {
+        is_async: bool,
+    },
+    DisposableStackDisposedGetter {
+        is_async: bool,
+    },
+    /// The `ShadowRealm` constructor. Its own isolated realm/child `Vm` is
+    /// tracked on the host `Vm`, not this tag.
+    ShadowRealm,
+    ShadowRealmEvaluate,
+    ShadowRealmImportValue,
+    /// A `WrappedFunctionCreate` exotic callable facade. Its
+    /// `[[WrappedTargetFunction]]`/`[[Realm]]` bookkeeping lives in the
+    /// owning `Vm`'s `shadow_wrapped_functions` table, keyed by this
+    /// object's own identity, so no data belongs on the tag itself.
+    ShadowRealmWrappedFunction,
 }
 
 /// Failures particular to the URI encode/decode abstract operations.  The VM

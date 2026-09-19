@@ -113,6 +113,10 @@ impl Compiler {
                         | "WeakSet"
                         | "WeakRef"
                         | "FinalizationRegistry"
+                        | "DisposableStack"
+                        | "AsyncDisposableStack"
+                        | "SuppressedError"
+                        | "ShadowRealm"
                         | "globalThis"
                         | "ArrayBuffer"
                         | "SharedArrayBuffer"
@@ -221,7 +225,7 @@ impl Compiler {
                     return Ok(());
                 }
                 if *op == UnaryOp::Typeof
-                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Date" | "Function" | "Proxy" | "Map" | "Set" | "WeakMap" | "WeakSet" | "WeakRef" | "FinalizationRegistry" | "globalThis" | "ArrayBuffer" | "SharedArrayBuffer" | "DataView" | "Int8Array" | "Uint8Array" | "Uint8ClampedArray" | "Int16Array" | "Uint16Array" | "Int32Array" | "Uint32Array" | "Float16Array" | "Float32Array" | "Float64Array" | "BigInt64Array" | "BigUint64Array" | "Atomics" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "encodeURI" | "encodeURIComponent" | "decodeURI" | "decodeURIComponent" | "JSON" | "import"))
+                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Date" | "Function" | "Proxy" | "Map" | "Set" | "WeakMap" | "WeakSet" | "WeakRef" | "FinalizationRegistry" | "DisposableStack" | "AsyncDisposableStack" | "SuppressedError" | "ShadowRealm" | "globalThis" | "ArrayBuffer" | "SharedArrayBuffer" | "DataView" | "Int8Array" | "Uint8Array" | "Uint8ClampedArray" | "Int16Array" | "Uint16Array" | "Int32Array" | "Uint32Array" | "Float16Array" | "Float32Array" | "Float64Array" | "BigInt64Array" | "BigUint64Array" | "Atomics" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "encodeURI" | "encodeURIComponent" | "decodeURI" | "decodeURIComponent" | "JSON" | "import"))
                 {
                     let Expr::Identifier(name) = &**arg else {
                         unreachable!()
@@ -684,8 +688,16 @@ impl Compiler {
                 self.expression(expression)?;
                 self.emit(Opcode::Await, 0)?;
             }
-            Expr::DynamicImport(specifier) => {
+            Expr::DynamicImport { specifier, options } => {
                 self.expression(specifier)?;
+                match options {
+                    Some(options) => self.expression(options)?,
+                    // The opcode always pops a specifier and an options
+                    // value; an omitted second argument evaluates to
+                    // `undefined`, exactly as EvaluateImportCall's own
+                    // "options is undefined" branch expects.
+                    None => self.constant(Value::Undefined)?,
+                }
                 self.emit(Opcode::DynamicImport, 0)?;
             }
             Expr::Arrow {
@@ -1012,21 +1024,45 @@ impl Compiler {
                 false,
             )?;
         }
-        match left {
-            ForHead::Decl(kind, pattern) => self.bind_pattern(pattern, *kind)?,
-            ForHead::AnnexBVarInit(pattern, _) => self.bind_pattern(pattern, DeclKind::Var)?,
-            ForHead::Assignment(pattern) => self.assign_pattern(pattern)?,
-            ForHead::Expr(target) => {
-                if self.bytecode.strict {
-                    return Err(CompileError::InvalidSyntax(
-                        "a CallExpression cannot be an assignment target in strict code",
-                    ));
+        let using_hint = match left {
+            ForHead::Decl(DeclKind::Using, _) => Some(false),
+            ForHead::Decl(DeclKind::AwaitUsing, _) => Some(true),
+            _ => None,
+        };
+        if let Some(is_async) = using_hint {
+            let ForHead::Decl(kind, pattern) = left else {
+                unreachable!("using_hint is only set for ForHead::Decl")
+            };
+            // `for (using x of iterable)`'s ForBinding disposes `x`'s bound
+            // value at the end of *this* iteration (confirmed against
+            // `initializer-Symbol.dispose-called-at-end-of-each-iteration-of-forofstatement.js`),
+            // unlike a C-style for-head `using` (see `Stmt::For`'s own
+            // comment), so the disposal wrapper is per-iteration here: it
+            // wraps just this iteration's binding and body, inside the
+            // per-iteration scope already entered above.
+            self.wrap_with_disposal(is_async, |this| {
+                this.emit(Opcode::Dup, 0)?;
+                this.bind_pattern(pattern, *kind)?;
+                this.emit(Opcode::AddDisposableResource, u32::from(is_async))?;
+                this.statement(body, false)
+            })?;
+        } else {
+            match left {
+                ForHead::Decl(kind, pattern) => self.bind_pattern(pattern, *kind)?,
+                ForHead::AnnexBVarInit(pattern, _) => self.bind_pattern(pattern, DeclKind::Var)?,
+                ForHead::Assignment(pattern) => self.assign_pattern(pattern)?,
+                ForHead::Expr(target) => {
+                    if self.bytecode.strict {
+                        return Err(CompileError::InvalidSyntax(
+                            "a CallExpression cannot be an assignment target in strict code",
+                        ));
+                    }
+                    self.expression(target)?;
+                    self.emit(Opcode::InvalidAssignmentTarget, 0)?;
                 }
-                self.expression(target)?;
-                self.emit(Opcode::InvalidAssignmentTarget, 0)?;
             }
+            self.statement(body, false)?;
         }
-        self.statement(body, false)?;
         if lexical {
             self.leave_scope()?;
         }

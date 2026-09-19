@@ -1592,6 +1592,48 @@ impl Vm {
             NativeFunction::FinalizationRegistryUnregister => {
                 self.finalization_registry_unregister(&receiver, first.clone())
             }
+            NativeFunction::DisposableStack { is_async } => {
+                self.disposable_stack_constructor(is_async, construct)
+            }
+            NativeFunction::DisposableStackDispose { is_async } => {
+                if is_async {
+                    self.disposable_stack_dispose_async(&receiver)
+                } else {
+                    self.disposable_stack_dispose(&receiver)
+                }
+            }
+            NativeFunction::DisposableStackUse { is_async } => {
+                self.disposable_stack_use(&receiver, first.clone(), is_async)
+            }
+            NativeFunction::DisposableStackAdopt { is_async } => self.disposable_stack_adopt(
+                &receiver,
+                first.clone(),
+                native::argument(&args, 1).clone(),
+                is_async,
+            ),
+            NativeFunction::DisposableStackDefer { is_async } => {
+                self.disposable_stack_defer(&receiver, first.clone(), is_async)
+            }
+            NativeFunction::DisposableStackMove { is_async } => {
+                self.disposable_stack_move(&receiver, is_async)
+            }
+            NativeFunction::DisposableStackDisposedGetter { is_async } => {
+                self.disposable_stack_disposed(&receiver, is_async)
+            }
+            NativeFunction::ShadowRealm => self.shadow_realm_constructor(construct),
+            NativeFunction::ShadowRealmEvaluate => {
+                self.shadow_realm_evaluate(receiver, first.clone())
+            }
+            NativeFunction::ShadowRealmImportValue => {
+                let second = native::argument(&args, 1);
+                self.shadow_realm_import_value(receiver, first.clone(), second.clone())
+            }
+            // Never reached: `dispatch_call` routes any callee registered
+            // in `shadow_wrapped_functions` to `shadow_call_wrapped` before
+            // a callee is ever reduced to this bare `NativeFunction` tag.
+            NativeFunction::ShadowRealmWrappedFunction => Err(RuntimeError::TypeError(
+                "ShadowRealm wrapped function called without its membrane record".into(),
+            )),
             NativeFunction::WeakCollectionMethod { map, method } => {
                 self.weak_collection_method(map, method, &receiver, &args)
             }
@@ -1670,7 +1712,10 @@ impl Vm {
                 if source {
                     self.dynamic_import_source(first.clone())
                 } else {
-                    self.dynamic_import(first.clone())
+                    // `import.defer(specifier)` reaches this same host
+                    // function as ordinary `import()`; it takes no import
+                    // attributes second argument of its own.
+                    self.dynamic_import(first.clone(), Value::Undefined)
                 }
             }
             NativeFunction::JsonParse => self.json_parse(first, args.get(1)),
@@ -1824,6 +1869,12 @@ impl Vm {
             }
             NativeFunction::NumberIsFinite => Ok(Value::Bool(
                 matches!(first, Value::Number(number) if number.is_finite()),
+            )),
+            // Number.isNaN ( number ): a plain Number-type-and-NaN check
+            // with no ToNumber coercion at all -- unlike the global
+            // `isNaN`, `Number.isNaN('NaN')` is `false`.
+            NativeFunction::NumberIsNaN => Ok(Value::Bool(
+                matches!(first, Value::Number(number) if number.is_nan()),
             )),
             NativeFunction::NumberIsInteger => Ok(Value::Bool(
                 matches!(first, Value::Number(number) if number.is_finite() && number.fract() == 0.0),

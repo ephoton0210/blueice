@@ -56,6 +56,18 @@ impl Parser {
                 }
                 Ok(Stmt::ClassDecl(class))
             }
+            Token::Identifier(name) if name == "using" && self.using_declaration_follows() => {
+                self.parse_var_decl_stmt(DeclKind::Using)
+            }
+            Token::Identifier(name)
+                if name == "await" && self.await_using_declaration_follows() =>
+            {
+                self.advance(); // "await"
+                self.advance(); // "using"
+                let declarators = self.parse_var_declarators()?;
+                self.consume_semicolon()?;
+                Ok(Stmt::VarDecl(DeclKind::AwaitUsing, declarators))
+            }
             Token::Identifier(name) if name == "with" => self.parse_with_stmt(),
             Token::Keyword(Keyword::If) => self.parse_if_stmt(),
             Token::Keyword(Keyword::For) => self.parse_for_stmt(),
@@ -271,6 +283,72 @@ impl Parser {
 
         if self.eat_punct(Punct::Semicolon) {
             return self.parse_for_rest(None);
+        }
+
+        if self.using_declaration_follows_in_for_head()
+            || self.await_using_declaration_follows_in_for_head()
+        {
+            let kind = if self.check_identifier("using") {
+                self.advance();
+                DeclKind::Using
+            } else {
+                self.advance(); // "await"
+                self.advance(); // "using"
+                DeclKind::AwaitUsing
+            };
+            let pattern = self.parse_binding_pattern()?;
+            if !matches!(pattern, Pattern::Identifier(_)) {
+                return Err(self.syntax_error(
+                    "a using declaration cannot use a destructuring pattern",
+                ));
+            }
+            if self.check_keyword(Keyword::In) {
+                // "It is a Syntax Error if IsUsingDeclaration of ForBinding is
+                // true and IsDestructuring of ForBinding is false" is not the
+                // relevant clause here -- `using` simply has no ForIn
+                // production at all, unlike ForOf's dedicated
+                // `using ForBinding`.
+                return Err(known_syntax(
+                    self.syntax_error("using declarations are not allowed in for-in"),
+                ));
+            }
+            if self.is_contextual_of() {
+                self.advance();
+                let right = self.parse_assignment()?;
+                self.expect_punct(Punct::RParen)?;
+                let body = Box::new(self.parse_statement()?);
+                return Ok(Stmt::ForOf {
+                    left: ForHead::Decl(kind, pattern),
+                    right,
+                    body,
+                    is_await,
+                });
+            }
+            let initializer = self.parse_optional_for_init_value()?;
+            if initializer.is_none() {
+                return Err(self.syntax_error("a using declaration requires an initializer"));
+            }
+            let mut declarators = vec![VarDeclarator {
+                pattern,
+                init: initializer,
+            }];
+            while self.eat_punct(Punct::Comma) {
+                let pattern = self.parse_binding_pattern()?;
+                if !matches!(pattern, Pattern::Identifier(_)) {
+                    return Err(self.syntax_error(
+                        "a using declaration cannot use a destructuring pattern",
+                    ));
+                }
+                let init = self.parse_optional_for_init_value()?;
+                if init.is_none() {
+                    return Err(
+                        self.syntax_error("a using declaration requires an initializer")
+                    );
+                }
+                declarators.push(VarDeclarator { pattern, init });
+            }
+            self.expect_punct(Punct::Semicolon)?;
+            return self.parse_for_rest(Some(ForInit::VarDecl(kind, declarators)));
         }
 
         let decl_kind = match self.peek() {

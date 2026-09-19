@@ -168,8 +168,28 @@ fn compile_with_limit_and_mode(
     if module {
         compiler.function_declarations(&program.body)?;
         compiler.bytecode.module_evaluate_entry = Some(compiler.offset()?);
-        compiler.statements_after_function_declarations(&program.body)?;
+        // Unlike a Script, a Module's top level *is* one of the
+        // UsingDeclaration-permitted contexts: a `using`/`await using`
+        // there disposes when the module's own evaluation completes.
+        if has_using_declaration(&program.body) {
+            let is_async = has_await_using_declaration(&program.body);
+            compiler.wrap_with_disposal(is_async, |this| {
+                this.statements_after_function_declarations(&program.body)
+            })?;
+        } else {
+            compiler.statements_after_function_declarations(&program.body)?;
+        }
     } else {
+        // "It is a Syntax Error if the goal symbol is Script and
+        // UsingDeclaration is not contained, either directly or
+        // indirectly, within a Block, ...": a `using`/`await using`
+        // directly at Script top level (not module) has no enclosing
+        // block to dispose it at the end of.
+        if has_using_declaration(&program.body) {
+            return Err(CompileError::InvalidSyntax(
+                "a using declaration is not allowed directly at the top level of a Script",
+            ));
+        }
         compiler.statements(&program.body)?;
     }
     compiler.emit(Opcode::Halt, 0)?;
@@ -190,6 +210,7 @@ fn compile_with_limit_and_mode(
                         ImportName::Source => CompiledModuleImportName::Source,
                     },
                     local_slot,
+                    json: import.json,
                 }
             })
             .collect();
@@ -219,19 +240,23 @@ fn compile_with_limit_and_mode(
                     Some(ImportEntry {
                         module_request,
                         import_name: ImportName::Named(import_name),
+                        json,
                         ..
                     }) => Ok(CompiledModuleExport::Indirect {
                         export_name: export_name.clone(),
                         module_request: module_request.clone(),
                         import_name: import_name.clone(),
+                        json: *json,
                     }),
                     Some(ImportEntry {
                         module_request,
                         import_name: ImportName::Namespace,
+                        json,
                         ..
                     }) => Ok(CompiledModuleExport::Namespace {
                         export_name: export_name.clone(),
                         module_request: module_request.clone(),
+                        json: *json,
                     }),
                     Some(ImportEntry {
                         module_request,
@@ -254,20 +279,25 @@ fn compile_with_limit_and_mode(
                     export_name,
                     module_request,
                     import_name,
+                    json,
                 } => Ok(CompiledModuleExport::Indirect {
                     export_name: export_name.clone(),
                     module_request: module_request.clone(),
                     import_name: import_name.clone(),
+                    json: *json,
                 }),
-                ExportEntry::Star { module_request } => Ok(CompiledModuleExport::Star {
+                ExportEntry::Star { module_request, json } => Ok(CompiledModuleExport::Star {
                     module_request: module_request.clone(),
+                    json: *json,
                 }),
                 ExportEntry::Namespace {
                     export_name,
                     module_request,
+                    json,
                 } => Ok(CompiledModuleExport::Namespace {
                     export_name: export_name.clone(),
                     module_request: module_request.clone(),
+                    json: *json,
                 }),
             })
             .collect::<Result<Vec<_>, CompileError>>()?;
@@ -395,6 +425,11 @@ pub(crate) fn compile_eval(
                     .copied()
             })
             .collect();
+    }
+    if has_using_declaration(&program.body) {
+        return Err(CompileError::InvalidSyntax(
+            "a using declaration is not allowed directly at the top level of eval'd code",
+        ));
     }
     compiler.statements(&program.body)?;
     compiler.emit(Opcode::Halt, 0)?;
@@ -527,8 +562,14 @@ impl Compiler {
                 .map_err(|_| CompileError::ProgramTooLarge)?;
             self.bytecode.bindings.push(Binding {
                 name: name.clone(),
-                mutable: kind != DeclKind::Const,
-                strict_immutable: kind == DeclKind::Const,
+                mutable: !matches!(
+                    kind,
+                    DeclKind::Const | DeclKind::Using | DeclKind::AwaitUsing
+                ),
+                strict_immutable: matches!(
+                    kind,
+                    DeclKind::Const | DeclKind::Using | DeclKind::AwaitUsing
+                ),
                 lexical: kind != DeclKind::Var,
                 catch_parameter: false,
             });
@@ -860,10 +901,15 @@ fn strict_assignment_in_expression(expression: &Expr) -> bool {
             .as_deref()
             .is_some_and(strict_assignment_in_expression),
         Expr::Await(expression)
-        | Expr::DynamicImport(expression)
         | Expr::Unary {
             arg: expression, ..
         } => strict_assignment_in_expression(expression),
+        Expr::DynamicImport { specifier, options } => {
+            strict_assignment_in_expression(specifier)
+                || options
+                    .as_deref()
+                    .is_some_and(strict_assignment_in_expression)
+        }
         Expr::Update { arg, .. } => strict_assignment_target(arg),
         Expr::Arrow { params, body, .. } => {
             params.iter().any(|param| {
@@ -1221,6 +1267,33 @@ fn lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, Compile
     Ok(names)
 }
 
+/// Whether `statements` directly (not through a nested block/function)
+/// declares at least one `using`/`await using` binding, the trigger for
+/// wrapping this statement list's evaluation in disposal-at-exit handling.
+/// `statements_with_disposal` uses this to keep the zero-`using` case
+/// (the overwhelming majority of blocks/function bodies) exactly as cheap
+/// as before this feature existed.
+pub(super) fn has_using_declaration(statements: &[Stmt]) -> bool {
+    statements.iter().any(|statement| {
+        matches!(
+            statement,
+            Stmt::VarDecl(DeclKind::Using | DeclKind::AwaitUsing, _)
+        )
+    })
+}
+
+/// Whether `statements` directly declares at least one `await using`
+/// binding, the trigger for `statements_with_disposal` to compile the
+/// `Await`-capable disposal loop (`compile_async_dispose_finally`) instead
+/// of the plain-synchronous, single-native-opcode `DisposeResources` path.
+/// A block with only plain `using` declarations never needs this, even
+/// nested inside an async function.
+pub(super) fn has_await_using_declaration(statements: &[Stmt]) -> bool {
+    statements
+        .iter()
+        .any(|statement| matches!(statement, Stmt::VarDecl(DeclKind::AwaitUsing, _)))
+}
+
 fn block_lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, CompileError> {
     let mut names = lexical_names(statements)?;
     for statement in statements {
@@ -1298,6 +1371,27 @@ fn validate_switch_case_declarations(
     if lexical.iter().any(|(name, _, _)| vars.contains(name)) {
         return Err(CompileError::InvalidSyntax(
             "a switch lexical declaration conflicts with a var declaration",
+        ));
+    }
+    // "It is a Syntax Error if UsingDeclaration is contained directly
+    // within the StatementList of either a CaseClause or DefaultClause":
+    // unlike an ordinary `let`/`const`, a `using`/`await using` directly in
+    // a case's statement list has no block of its own to dispose it at the
+    // end of (the switch's own case-block environment spans every case, not
+    // one case's statements), so it is rejected outright rather than wired
+    // up to dispose at the switch's exit.
+    if cases
+        .iter()
+        .flat_map(|case| &case.consequent)
+        .any(|statement| {
+            matches!(
+                statement,
+                Stmt::VarDecl(DeclKind::Using | DeclKind::AwaitUsing, _)
+            )
+        })
+    {
+        return Err(CompileError::InvalidSyntax(
+            "a using declaration cannot appear directly in a switch case",
         ));
     }
     Ok(())

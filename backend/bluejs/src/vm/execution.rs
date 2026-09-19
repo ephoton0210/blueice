@@ -223,6 +223,9 @@ impl Vm {
                 | "WeakSet"
                 | "WeakRef"
                 | "FinalizationRegistry"
+                | "DisposableStack"
+                | "AsyncDisposableStack"
+                | "ShadowRealm"
                 | "Iterator"
                 | "Function"
                 | "Proxy"
@@ -237,6 +240,7 @@ impl Vm {
                 | "EvalError"
                 | "URIError"
                 | "AggregateError"
+                | "SuppressedError"
                 | "eval"
                 | "isNaN"
                 | "isFinite"
@@ -367,6 +371,29 @@ impl Vm {
                 _root: root,
             },
         );
+        Ok(())
+    }
+
+    /// Drops every purely-lexical (non-property) entry from
+    /// `global_bindings`, releasing each one's GC root first. `var`/function
+    /// global declarations (`property: true`, backed by a real `globalThis`
+    /// data property) are left exactly as they are -- only the bookkeeping
+    /// this VM uses to detect an invalid global lexical redeclaration is
+    /// reset, for a caller (`ShadowRealm.prototype.evaluate`, so far the
+    /// only one) whose own semantics need a fresh global lexical scope on
+    /// each call rather than this VM's ordinary one-persistent-scope model.
+    pub(super) fn reset_lexical_global_bindings(&mut self) -> Result<(), RuntimeError> {
+        let stale: Vec<String> = self
+            .global_bindings
+            .iter()
+            .filter(|(_, binding)| !binding.property)
+            .map(|(name, _)| name.clone())
+            .collect();
+        for name in stale {
+            if let Some(binding) = self.global_bindings.remove(&name) {
+                self.heap.unroot(binding._root)?;
+            }
+        }
         Ok(())
     }
 
@@ -989,6 +1016,26 @@ impl Vm {
                         roots.push(self.heap.root(*id)?);
                     }
                 }
+            }
+            for resource in self
+                .disposable_stacks
+                .values()
+                .chain(self.async_disposable_stacks.values())
+                .flat_map(|state| state.resources.iter())
+                .chain(self.disposables.iter())
+            {
+                if let Value::Object(id) = &resource.receiver {
+                    roots.push(self.heap.root(*id)?);
+                }
+                if let Some(Value::Object(id)) = &resource.argument {
+                    roots.push(self.heap.root(*id)?);
+                }
+                if let Some(Value::Object(id)) = &resource.method {
+                    roots.push(self.heap.root(*id)?);
+                }
+            }
+            if let Some(Value::Object(id)) = &self.async_dispose_helper {
+                roots.push(self.heap.root(*id)?);
             }
             for job in &self.promise_jobs {
                 match job {

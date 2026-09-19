@@ -14,24 +14,82 @@ impl Vm {
         entry: &str,
         modules: &HashMap<String, Bytecode>,
         drain_jobs: bool,
+        is_dynamic_import: bool,
+        entry_json: bool,
     ) -> Result<Value, RuntimeError> {
         let (mut linked, mut roots, fresh_graph) = match self.module_graph.take() {
             Some(graph) => (graph.linked, graph.roots, false),
             None => (HashMap::new(), Vec::new(), true),
         };
+        // `ensure_json_module`/`ensure_dynamic_module_compiled` (below) can
+        // charge VM steps or allocate; give them a real budget before either
+        // can run. The closure below resets this again for the graph's own
+        // execution regardless.
+        self.remaining_instructions = self.config.instruction_budget;
+        // Own the supplied module set so a request needing on-demand
+        // synthesis or compilation -- `entry` itself (a direct dynamic
+        // `import()`, JSON-attributed or an ordinary module reachable only
+        // dynamically) or one discovered while scanning a fresh static
+        // graph's own `with`-attributed requests -- can be resolved into it
+        // before anything below reads `modules`. Rooted through the same
+        // `roots` this function already threads through its whole closure,
+        // so a freshly parsed/compiled value survives the major collection
+        // a few lines below before its cell exists.
+        let mut owned_modules;
+        let modules: &HashMap<String, Bytecode> = if is_dynamic_import || fresh_graph {
+            owned_modules = modules.clone();
+            if is_dynamic_import {
+                // `entry` is already the resolved target: `dynamic_import_job`
+                // resolves the specifier against its referrer before this call.
+                if entry_json {
+                    self.ensure_json_module(entry, &mut owned_modules, &mut roots)?;
+                } else {
+                    self.ensure_dynamic_module_compiled(entry, &mut owned_modules)?;
+                }
+            }
+            if fresh_graph {
+                self.register_static_json_modules(&mut owned_modules, &mut roots)?;
+            }
+            &owned_modules
+        } else {
+            modules
+        };
+        // Every module in `modules` not already in `linked` is new to this
+        // graph -- either every one of them, on a fresh graph, or just the
+        // one(s) `ensure_json_module`/`ensure_dynamic_module_compiled` (or a
+        // fresh static scan) added just above to an *existing* graph. The
+        // per-`new_names` linking pass below (inside the closure) treats
+        // both cases identically, so a JSON module or an ordinary module
+        // compiled on demand for a dynamic import gets exactly the same
+        // real linking (cell creation, export validation, import aliasing,
+        // declaration instantiation) a fresh graph's own modules get.
+        let mut order: Vec<_> = modules.keys().cloned().collect();
+        order.sort_unstable();
+        let new_names: Vec<String> = order
+            .iter()
+            .filter(|name| !linked.contains_key(name.as_str()))
+            .cloned()
+            .collect();
+        // Roots pushed from here on, until this call's own success/failure
+        // is known, belong only to `new_names`'s delta -- on a linking
+        // failure for that delta (not a fresh graph, which instead discards
+        // every root wholesale below), only these need unrooting, and only
+        // `new_names` need removing from `linked`, so a distinct later
+        // operation on the rest of an existing graph is unaffected and a
+        // retried dynamic import of the same specifier is treated as new
+        // again rather than silently resuming a half-linked record.
+        let roots_checkpoint = roots.len();
         let mut result = (|| {
             self.module_registry = modules.clone();
             // Resolution errors can be converted to a dynamic-import Promise
             // rejection before graph setup reaches the usual execution reset.
             // Give that host-visible error construction a fresh budget too.
             self.remaining_instructions = self.config.instruction_budget;
-            // The host supplies the closed source set for this realm. Link
-            // every supplied record once so a later dynamic import shares a
+            // The host supplies the closed source set for this realm; `order`/
+            // `new_names` (computed above, before this closure) link every
+            // newly-supplied record once so a later dynamic import shares a
             // static import's cells instead of constructing a second module
             // instance for the same canonical path.
-            let mut order: Vec<_> = modules.keys().cloned().collect();
-            order.sort_unstable();
-
             if let Some(root) = self.result_root.take() {
                 self.heap.unroot(root)?;
             }
@@ -61,30 +119,26 @@ impl Vm {
             self.this = Value::Undefined;
             self.top_level_module = true;
 
-            if fresh_graph {
-                linked = order
-                    .iter()
-                    .cloned()
-                    .map(|name| {
-                        (
-                            name,
-                            LinkedModule {
-                                cells: HashMap::new(),
-                                namespace: None,
-                                evaluated: false,
-                                evaluating: false,
-                                suspended: false,
-                                completion: None,
-                                error: None,
-                            },
-                        )
-                    })
-                    .collect();
+            if !new_names.is_empty() {
+                linked.extend(new_names.iter().cloned().map(|name| {
+                    (
+                        name,
+                        LinkedModule {
+                            cells: HashMap::new(),
+                            namespace: None,
+                            evaluated: false,
+                            evaluating: false,
+                            suspended: false,
+                            completion: None,
+                            error: None,
+                        },
+                    )
+                }));
 
                 // ModuleDeclarationInstantiation creates all own bindings before
                 // wiring imports.  A `var` binding is initialized immediately;
                 // lexical bindings deliberately have no `value` property yet.
-                for name in &order {
+                for name in &new_names {
                     let code = modules
                         .get(name)
                         .expect("reachable module was checked during collection");
@@ -116,13 +170,38 @@ impl Vm {
                     }
                 }
 
+                // A synthesized JSON module (see `ensure_json_module`) has no
+                // bytecode body to run: its "default" slot already got an
+                // ordinary `Undefined`-valued cell from the generic loop just
+                // above (matching any other non-lexical binding), so
+                // overwrite that cell with the already-parsed value here and
+                // mark it evaluated -- `evaluate_module_record` never touches
+                // its (empty) instruction stream for a record already
+                // marked evaluated.
+                for name in &new_names {
+                    let code = modules
+                        .get(name)
+                        .expect("reachable module was checked during collection");
+                    if let Some(value) = code.json_module_value.clone() {
+                        let record = linked
+                            .get_mut(name)
+                            .expect("linked record was allocated for every module");
+                        let cell = *record
+                            .cells
+                            .get(&0)
+                            .expect("json module's default slot has a cell");
+                        self.with_roots(|heap| heap.set(cell, "value", value))?;
+                        record.evaluated = true;
+                    }
+                }
+
                 // Validate every named indirect export before evaluating any
                 // module body.  A missing or ambiguous `export { x } from ...`
                 // is a ModuleDeclarationInstantiation error, including when the
                 // body would otherwise call $DONOTEVALUATE().  Star exports do
                 // not themselves fail here; their ambiguity matters only when a
                 // particular name is resolved by an import or indirect export.
-                for name in &order {
+                for name in &new_names {
                     let code = modules
                         .get(name)
                         .expect("reachable module was checked during collection");
@@ -131,6 +210,7 @@ impl Vm {
                             export_name,
                             module_request,
                             import_name,
+                            ..
                         } = export
                         else {
                             continue;
@@ -172,7 +252,7 @@ impl Vm {
                 // Import bindings are immutable aliases.  The importer stores the
                 // exporter's *cell*, so later stores in the exporting module are
                 // visible without any copy or notification mechanism.
-                for name in &order {
+                for name in &new_names {
                     let code = modules
                         .get(name)
                         .expect("reachable module was checked during collection");
@@ -257,7 +337,7 @@ impl Vm {
                 // Run declaration instantiation for every reachable module before
                 // evaluating any body.  This makes function exports callable
                 // across a cycle, while lexical exports remain in their TDZ.
-                for name in &order {
+                for name in &new_names {
                     let code = modules
                         .get(name)
                         .expect("reachable module was checked during collection");
@@ -286,9 +366,26 @@ impl Vm {
             self.result_root = Some(self.heap.root(*id)?);
         }
 
-        if fresh_graph && result.is_err() {
-            for root in roots {
-                self.heap.unroot(root)?;
+        if result.is_err() {
+            if fresh_graph {
+                // The whole graph never became usable; discard everything.
+                for root in roots {
+                    self.heap.unroot(root)?;
+                }
+            } else {
+                // Only `new_names`'s delta was attempted against an existing,
+                // still-otherwise-valid graph: roll back just that delta (see
+                // `roots_checkpoint`'s own comment above) and keep the rest,
+                // so an unrelated later operation on the existing graph is
+                // unaffected and a retried dynamic import of the same
+                // specifier is treated as new again.
+                for name in &new_names {
+                    linked.remove(name);
+                }
+                for root in roots.split_off(roots_checkpoint) {
+                    self.heap.unroot(root)?;
+                }
+                self.module_graph = Some(ModuleGraphState { linked, roots });
             }
         } else {
             self.module_graph = Some(ModuleGraphState { linked, roots });
@@ -355,6 +452,164 @@ impl Vm {
         })?;
         self.enqueue_finalization_cleanup_jobs();
         result
+    }
+
+    /// ParseJSONModule + CreateDefaultExportSyntheticModule (Import
+    /// Attributes proposal §1.4/§1.5, merged into the published edition):
+    /// `json = ? Call(%JSON.parse%, undefined, «source»)`, then a Synthetic
+    /// Module Record whose sole export is an already-initialized, immutable
+    /// `default` binding to `json`. Idempotent per resolved `target`: a
+    /// later request for the same path reuses the same synthesized
+    /// `Bytecode` (and, once linked, the same cell/value), which is what
+    /// gives repeated imports of one JSON file the required object
+    /// identity (`language/import/import-attributes/json-idempotency.js`).
+    ///
+    /// `target` must already be the *resolved* module name. `roots` roots
+    /// the freshly parsed value immediately: it is not yet reachable from
+    /// any GC root until a later step attaches it to a module's cell, and
+    /// this function may run before that step's own major collection.
+    fn ensure_json_module(
+        &mut self,
+        target: &str,
+        modules: &mut HashMap<String, Bytecode>,
+        roots: &mut Vec<RootId>,
+    ) -> Result<(), RuntimeError> {
+        if modules.contains_key(target) {
+            return Ok(());
+        }
+        let Some(source) = self.json_module_sources.get(target).cloned() else {
+            return Err(RuntimeError::TypeError(format!(
+                "host did not provide a JSON module source for {target}"
+            )));
+        };
+        // ParseJSONModule's own abrupt completion (malformed JSON text) is a
+        // module *resolution* failure here, not an ordinary runtime
+        // SyntaxError: it must classify (and, through a dynamic import,
+        // reject) the same way any other linking failure does.
+        let value = self
+            .json_parse(&Value::String(source.into()), None)
+            .map_err(|error| {
+                RuntimeError::ModuleResolution(format!("invalid JSON module {target}: {error}"))
+            })?;
+        if let Value::Object(id) = value {
+            roots.push(self.heap.root(id)?);
+        }
+        let mut code = Bytecode::empty();
+        code.module = true;
+        code.strict = true;
+        code.bindings.push(Binding {
+            name: "default".to_string(),
+            mutable: false,
+            strict_immutable: true,
+            lexical: false,
+            catch_parameter: false,
+        });
+        code.scopes.push(vec![0]);
+        // No function-declaration prefix exists to hoist, so the whole
+        // (empty) instruction stream is the "evaluate" phase; nothing ever
+        // actually runs it, since the module is linked pre-`evaluated`
+        // below (see `execute_module_graph_inner`'s per-`order` pass and its
+        // single-entry counterpart above).
+        code.module_evaluate_entry = Some(0);
+        code.module_exports.push(ModuleExport::Local {
+            export_name: "default".to_string(),
+            local_slot: 0,
+        });
+        code.json_module_value = Some(value);
+        modules.insert(target.to_string(), code);
+        Ok(())
+    }
+
+    /// Scans a fresh static module graph's own requests for a `with`
+    /// attribute of `type: "json"` (both `import`/`export ... from` and the
+    /// import side of a re-export) and registers each resolved target via
+    /// [`Self::ensure_json_module`]. A JSON module never itself requests
+    /// further modules, so one pass over the initially supplied set is
+    /// exhaustive; no further transitive discovery is needed.
+    fn register_static_json_modules(
+        &mut self,
+        modules: &mut HashMap<String, Bytecode>,
+        roots: &mut Vec<RootId>,
+    ) -> Result<(), RuntimeError> {
+        let mut targets = Vec::new();
+        for (name, code) in modules.iter() {
+            for import in &code.module_imports {
+                if import.json {
+                    targets.push(Self::resolve_module_request(name, &import.module_request)?);
+                }
+            }
+            for export in &code.module_exports {
+                let (module_request, json) = match export {
+                    ModuleExport::Indirect {
+                        module_request,
+                        json,
+                        ..
+                    }
+                    | ModuleExport::Star { module_request, json }
+                    | ModuleExport::Namespace {
+                        module_request,
+                        json,
+                        ..
+                    } => (module_request, *json),
+                    ModuleExport::Local { .. } | ModuleExport::Source { .. } => continue,
+                };
+                if json {
+                    targets.push(Self::resolve_module_request(name, module_request)?);
+                }
+            }
+        }
+        for target in targets {
+            self.ensure_json_module(&target, modules, roots)?;
+        }
+        Ok(())
+    }
+
+    /// Compiles a module reachable only through a dynamic import, on
+    /// demand, from host-supplied raw JavaScript text -- the counterpart to
+    /// `ensure_json_module` for ordinary (non-JSON) modules the host could
+    /// not (or, per the Test262 harness's own reason for this function,
+    /// deliberately did not) supply as pre-compiled `Bytecode` up front.
+    ///
+    /// This exists for exactly one reason: a module that is syntactically
+    /// or semantically invalid *only as a module* (e.g. a lexical/`var`
+    /// name conflict that is perfectly valid script code) must still fail
+    /// lazily, as this dynamic import's own promise rejection, not as an
+    /// eager failure before the importing code ever runs -- which is
+    /// exactly what happens if a host eagerly parses/compiles every
+    /// transitively-reachable sibling before execution starts, whether or
+    /// not the entry's own static graph actually needs it. A host that
+    /// already has every module pre-compiled (the common case: an ordinary
+    /// static or dynamic import of a module also reachable statically)
+    /// never reaches this at all, since `modules.contains_key` is checked
+    /// first.
+    ///
+    /// A parse or compile failure becomes a real `RuntimeError::SyntaxError`
+    /// (matching `indirect_eval`'s own parse/compile-error mapping), which
+    /// -- reached only through a dynamic import's own job -- rejects that
+    /// import's promise with a real `SyntaxError` object via `error_value`,
+    /// never surfacing as a harness-level or whole-graph failure. `target`
+    /// must already be the *resolved* module name. A target this host has
+    /// no raw source for at all is left alone (not an error here): the
+    /// existing "module was not linked" `ModuleResolution` fallback
+    /// (`evaluate_module_record`) still applies exactly as before this
+    /// function existed.
+    fn ensure_dynamic_module_compiled(
+        &mut self,
+        target: &str,
+        modules: &mut HashMap<String, Bytecode>,
+    ) -> Result<(), RuntimeError> {
+        if modules.contains_key(target) {
+            return Ok(());
+        }
+        let Some(source) = self.dynamic_module_sources.get(target).cloned() else {
+            return Ok(());
+        };
+        let program =
+            crate::parse_module(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let code = crate::compile_module_with_limit(&program, u32::MAX)
+            .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+        modules.insert(target.to_string(), code);
+        Ok(())
     }
 
     pub(super) fn resolve_module_request(
@@ -440,16 +695,24 @@ impl Vm {
     /// resolution, linking and evaluation to the realm job queue.  The host
     /// registry is deliberately the same finite registry used for static
     /// module graphs, so no JavaScript source can escape the supplied tree.
-    pub(super) fn dynamic_import(&mut self, specifier: Value) -> Result<Value, RuntimeError> {
+    ///
+    /// `options` is the ImportCall's optional second argument
+    /// (`import(specifier, options)`); per EvaluateImportCall it is always
+    /// evaluated and validated synchronously, with every abrupt completion
+    /// (including a non-string `with` attribute value or a thrown getter)
+    /// rejecting the returned promise rather than propagating as a
+    /// synchronous throw -- only evaluating the two argument expressions
+    /// themselves (already done by the compiler before this opcode fires)
+    /// happens outside the promise's `IfAbruptRejectPromise` boundary.
+    pub(super) fn dynamic_import(
+        &mut self,
+        specifier: Value,
+        options: Value,
+    ) -> Result<Value, RuntimeError> {
         let promise = self.new_promise()?;
-        let specifier = match self.coerce_string(&specifier) {
-            Ok(specifier) => specifier.to_utf8().map_err(|_| {
-                RuntimeError::TypeError("module specifier is not a Unicode string".into())
-            }),
-            Err(error) => Err(error),
-        };
-        match specifier {
-            Ok(specifier) => {
+        let outcome = self.evaluate_import_call_arguments(specifier, options);
+        match outcome {
+            Ok((specifier, json)) => {
                 let referrer = self
                     .active_module_name
                     .clone()
@@ -458,6 +721,7 @@ impl Vm {
                     target: promise,
                     referrer,
                     specifier,
+                    json,
                 });
             }
             Err(error) => {
@@ -466,6 +730,69 @@ impl Vm {
             }
         }
         Ok(Value::Object(promise))
+    }
+
+    /// The specifier-ToString and options-validation steps of
+    /// EvaluateImportCall, i.e. everything between "NewPromiseCapability"
+    /// and "HostImportModuleDynamically". Attribute keys/values are
+    /// validated, and `type: "json"` is detected (routing the eventual
+    /// import through `ensure_json_module`/`ParseJSONModule`); every other
+    /// attribute key/value is accepted here exactly like this host's static
+    /// `import ... with {...}` attributes, without otherwise varying module
+    /// resolution. Returns the specifier and whether `type: "json"` was
+    /// requested.
+    fn evaluate_import_call_arguments(
+        &mut self,
+        specifier: Value,
+        options: Value,
+    ) -> Result<(String, bool), RuntimeError> {
+        let specifier = self.coerce_string(&specifier)?;
+        let specifier = specifier
+            .to_utf8()
+            .map_err(|_| RuntimeError::TypeError("module specifier is not a Unicode string".into()))?;
+        let mut json = false;
+        if options != Value::Undefined {
+            if !matches!(options, Value::Object(_)) {
+                return Err(RuntimeError::TypeError(
+                    "import() options argument must be an object".into(),
+                ));
+            }
+            let attributes = self.get_property(&options, &"with".into())?;
+            if attributes != Value::Undefined {
+                let Value::Object(attributes_id) = attributes else {
+                    return Err(RuntimeError::TypeError(
+                        "import() attributes value must be an object".into(),
+                    ));
+                };
+                // EnumerableOwnPropertyNames(attributesObj, KEY): own,
+                // String-keyed (never Symbol), and enumerable per a
+                // re-checked [[GetOwnProperty]] -- the same algorithm as
+                // Object.keys, including Proxy ownKeys/getOwnPropertyDescriptor
+                // trap observance.
+                let keys = self.object_own_property_keys(attributes_id)?;
+                for key in keys {
+                    if !matches!(key, PropertyName::String(_)) {
+                        continue;
+                    }
+                    let Some(descriptor) = self.object_get_own_property(attributes_id, &key)?
+                    else {
+                        continue;
+                    };
+                    if descriptor.enumerable != Some(true) {
+                        continue;
+                    }
+                    let Value::String(value) = self.get_property(&attributes, &key)? else {
+                        return Err(RuntimeError::TypeError(
+                            "import attribute values must be strings".into(),
+                        ));
+                    };
+                    if key == "type" {
+                        json = value.to_utf8().is_ok_and(|value| value == "json");
+                    }
+                }
+            }
+        }
+        Ok((specifier, json))
     }
 
     /// Source-phase dynamic import has the same promise and ToString boundary
@@ -509,6 +836,7 @@ impl Vm {
         &mut self,
         referrer: &str,
         specifier: &str,
+        json: bool,
     ) -> Result<DynamicImportResult, RuntimeError> {
         let entry = Self::resolve_module_request(referrer, specifier)?;
         if let Some(record) = self
@@ -536,7 +864,7 @@ impl Vm {
             }
         }
         let modules = self.module_registry.clone();
-        self.execute_module_graph_inner(&entry, &modules, false)?;
+        self.execute_module_graph_inner(&entry, &modules, false, true, json)?;
         if self
             .module_graph
             .as_ref()
@@ -1414,6 +1742,7 @@ impl Vm {
                         export_name: name,
                         module_request,
                         import_name,
+                        ..
                     } if name == export_name => {
                         let target = Self::resolve_module_request(module, module_request)?;
                         return Self::resolve_export(modules, &target, import_name, resolve_set);
@@ -1421,6 +1750,7 @@ impl Vm {
                     ModuleExport::Namespace {
                         export_name: name,
                         module_request,
+                        ..
                     } if name == export_name => {
                         return Ok(ExportResolution::Namespace {
                             module: Self::resolve_module_request(module, module_request)?,
@@ -1442,7 +1772,7 @@ impl Vm {
             }
             let mut candidate = ExportResolution::Missing;
             for export in &code.module_exports {
-                let ModuleExport::Star { module_request } = export else {
+                let ModuleExport::Star { module_request, .. } = export else {
                     continue;
                 };
                 let target = Self::resolve_module_request(module, module_request)?;
@@ -1489,7 +1819,7 @@ impl Vm {
                     | ModuleExport::Source { export_name, .. } => {
                         names.insert(export_name.clone());
                     }
-                    ModuleExport::Star { module_request } => {
+                    ModuleExport::Star { module_request, .. } => {
                         let target = Self::resolve_module_request(module, module_request)?;
                         names.extend(
                             Self::exported_names(modules, &target, star_set)?

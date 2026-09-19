@@ -427,6 +427,71 @@ impl Parser {
             })
     }
 
+    /// `using` is a contextual keyword: `using [no LineTerminator here]
+    /// BindingIdentifier` starts a using declaration only in statement
+    /// position (not yet supported: a `ForBinding`'s own `using` form).
+    /// Anything else (`using;`, `using.foo()`, `using = 1`, `using\nx = 1`)
+    /// leaves `using` as an ordinary identifier reference.
+    pub(super) fn using_declaration_follows(&self) -> bool {
+        self.check_identifier("using")
+            && !self.current_identifier_escaped()
+            && self.tokens.get(self.pos + 1).is_some_and(|token| {
+                !token.newline_before && matches!(token.token, Token::Identifier(_))
+            })
+    }
+
+    /// Within a for-statement head specifically, `using` immediately
+    /// followed by the literal identifier `of` is ambiguous: `for (using of
+    /// expr)` is the existing variable `using` iterated via a plain for-of
+    /// over `expr` (confirmed directly against `using-for-using-of-of.js`),
+    /// but `for (using of = expr;;)` is a using declaration whose bound
+    /// identifier's *name* happens to be `of` (confirmed against
+    /// `using-for-statement.js`, "'for (using of =' are interpreted as for
+    /// loop"). The token after that second identifier disambiguates: `=`
+    /// means it is a BindingIdentifier continuing the declaration, anything
+    /// else means it was the for-of separator and `using` is a bare
+    /// identifier. This ambiguity is specific to the for-of separator, so
+    /// `using_declaration_follows` itself doesn't need it.
+    pub(super) fn using_declaration_follows_in_for_head(&self) -> bool {
+        // Equivalent to `... && !(next-is-"of" && token-after-that-isn't-"=")`,
+        // written in the de Morgan form clippy prefers.
+        let next_is_of = matches!(self.peek_at(1), Token::Identifier(name) if name == "of");
+        let followed_by_assign = matches!(self.peek_at(2), Token::Punct(Punct::Assign));
+        self.using_declaration_follows() && (!next_is_of || followed_by_assign)
+    }
+
+    /// `await using` has no analogous exclusion: unlike plain `using`,
+    /// `await using` can never validly stand alone as a for-of loop
+    /// variable (`await using` alone would have to parse as an
+    /// AwaitExpression wrapping the identifier `using`, which is not a
+    /// valid for-of assignment target), so `for (await using of of expr)`
+    /// is unambiguously the declaration form (`of` as its bound
+    /// identifier's name), confirmed directly against
+    /// `await-using-valid-for-await-using-of-of.js`.
+    pub(super) fn await_using_declaration_follows_in_for_head(&self) -> bool {
+        self.await_using_declaration_follows()
+    }
+
+    /// `await using` requires an async context (async function/method/
+    /// arrow/generator body, or a module with top-level await), exactly
+    /// like an ordinary `await` expression -- checked the same way
+    /// (`async_depth`/`module_await`). Both `await` and `using` are
+    /// contextual identifiers, so this needs the same
+    /// no-LineTerminator/next-token lookahead as `using_declaration_follows`
+    /// applied twice in a row.
+    pub(super) fn await_using_declaration_follows(&self) -> bool {
+        (self.async_depth != 0 || self.module_await)
+            && self.check_identifier("await")
+            && !self.current_identifier_escaped()
+            && self.tokens.get(self.pos + 1).is_some_and(|token| {
+                !token.newline_before
+                    && matches!(&token.token, Token::Identifier(name) if name == "using")
+            })
+            && self.tokens.get(self.pos + 2).is_some_and(|token| {
+                !token.newline_before && matches!(token.token, Token::Identifier(_))
+            })
+    }
+
     /// Object literals use the same contextual `async` modifier as class
     /// methods, but an unmodified `async()` remains an ordinary method name
     /// and `async: value` remains a data property.

@@ -33,6 +33,7 @@ mod modules;
 mod operations;
 mod properties;
 mod regexp;
+mod shadow_realm;
 mod temporal;
 mod test262;
 mod test262_agents;
@@ -429,6 +430,49 @@ struct PromiseRecord {
     reactions: Vec<PromiseReaction>,
 }
 
+/// Whether a disposable resource was added by a `using` declaration/
+/// `DisposableStack` (synchronous) or an `await using` declaration/
+/// `AsyncDisposableStack` (asynchronous). Mirrors the spec's `sync-dispose`/
+/// `async-dispose` hint on a DisposableResource Record.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum DisposeHint {
+    Sync,
+    Async,
+}
+
+/// A single entry of a DisposeCapability Record's `[[DisposableResourceStack]]`.
+///
+/// `receiver` is the value `method` is called on; `argument`, when present,
+/// is passed as the sole call argument instead of being used as the
+/// receiver. This lets `DisposableStack.prototype.adopt`'s synthetic
+/// `() => onDispose(value)` closure (spec `CreateDisposableResource`'s
+/// captured Abstract Closure) collapse into an ordinary call description
+/// rather than needing its own heap-allocated closure object: `defer`/plain
+/// resources call `method` on `receiver` with no arguments, while `adopt`
+/// calls `method` on `undefined` with `argument` as the one parameter.
+pub(super) struct DisposableResource {
+    pub(super) receiver: Value,
+    pub(super) argument: Option<Value>,
+    pub(super) method: Option<Value>,
+    // Not yet read: `dispose_resources_sync` treats every resource
+    // uniformly (see its own doc comment for the one case, a method-less
+    // `async-dispose` resource, where the real algorithm's behavior
+    // depends on this field and this implementation's does not).
+    #[allow(dead_code)]
+    pub(super) hint: DisposeHint,
+}
+
+/// The DisposeCapability Record backing one `DisposableStack`/
+/// `AsyncDisposableStack` instance's `[[DisposeCapability]]` internal slot.
+/// Kept in a side table (like `PromiseRecord`) rather than as ordinary
+/// object properties, so a stack's pending resources are never observable
+/// through `Object.getOwnPropertySymbols`/`Reflect.ownKeys`.
+#[derive(Default)]
+pub(super) struct DisposeCapabilityState {
+    pub(super) resources: Vec<DisposableResource>,
+    pub(super) disposed: bool,
+}
+
 /// Aggregation bookkeeping for `Promise.all`. Each input observes its own
 /// resolution job; the target is fulfilled only after every indexed slot has
 /// settled, so a pending dependency never becomes a host-level unsupported
@@ -473,6 +517,9 @@ enum PromiseJob {
         target: ObjectId,
         referrer: String,
         specifier: String,
+        /// Whether `import(specifier, { with: { type: "json" } })` was
+        /// requested, routing resolution to `ensure_json_module`.
+        json: bool,
     },
     ModuleAwait {
         continuation: u64,
@@ -517,6 +564,18 @@ struct Test262Realm {
     /// returns or retains an argument supplied by the parent.
     imported_sources: HashMap<ObjectId, ObjectId>,
     imported_values: HashMap<ObjectId, Test262ImportedValue>,
+    /// A `ShadowRealm` instance (keyed here by its identity in the realm
+    /// that actually owns the child, i.e. `target` in
+    /// `export_foreign_shadow_realm`) that has already been re-exported
+    /// into this realm, mapped to that re-export's own instance identity
+    /// here. Deliberately separate from `imported_sources`/
+    /// `imported_values`: those back an opaque, brand-less stand-in with
+    /// no meaning of its own, retrievable only through this side table,
+    /// whereas a re-exported `ShadowRealm` is a real instance this realm's
+    /// own `shadow_realms`/`shadow_realm_by_heap` already fully describe --
+    /// this map exists purely so re-exporting the same one twice returns
+    /// the same instance rather than minting a second one.
+    shadow_realm_reexports: HashMap<ObjectId, ObjectId>,
 }
 
 /// The two roots keep an opaque membrane transport value alive in each heap.
@@ -532,6 +591,47 @@ struct Test262ImportedValue {
 /// A parent-heap object that stands for an object retained in a Test262 child
 /// realm. The two roots keep both endpoints alive while the membrane identity
 /// is observable; the child object is never stored in the parent heap.
+/// A `ShadowRealm` instance's own isolated realm: a full child `Vm` sharing
+/// this `Vm`'s `GlobalSymbolRegistry` (agent-local, like
+/// `$262.createRealm()`'s identical choice). Kept alive for the lifetime of
+/// this `Vm`: a `ShadowRealm` value can be retained by script indefinitely,
+/// so there is no earlier point at which dropping it would be safe --
+/// matching [`Test262Realm`]'s identical accepted tradeoff.
+/// Shared, not exclusive, ownership: a `ShadowRealm`'s child realm must
+/// remain reachable from more than one owner when the `ShadowRealm`
+/// *instance itself* crosses a Test262 `$262.createRealm()` boundary into a
+/// third realm (see `test262.rs`'s `test262_transport_value` and its
+/// ShadowRealm-specific branch) -- both the original creating realm and the
+/// realm it was transported into need the exact same live child, not two
+/// independent copies. `RefCell` borrows are held only for the dynamic
+/// extent of one call into this child (see `shadow_realm.rs`), never
+/// nested on the same `Rc` clone, so its runtime borrow check is not
+/// expected to ever actually deny an access; `Rc<RefCell<_>>` is used here
+/// (over an `unsafe` aliasing scheme) precisely so a bug in that assumption
+/// panics loudly instead of aliasing `&mut Vm`.
+#[derive(Clone)]
+struct ShadowRealmRecord {
+    vm: Rc<RefCell<Vm>>,
+}
+
+/// A caller-heap facade standing in for a callable value that crossed a
+/// `ShadowRealm` boundary (`WrappedFunctionCreate`). `home_heap` identifies,
+/// by `ObjectId::heap`, the `Vm` that owns `target`; the live pointer to
+/// that `Vm` is resolved dynamically (see `shadow_realm::resolve_active`)
+/// rather than stored here, since a `Vm` is an ordinary owned value its
+/// caller may move between top-level calls. `_target_root` keeps `target`
+/// alive against *its own* realm's collector: nothing in that realm's own
+/// reachability graph necessarily still references it (it may have been an
+/// unstored expression completion value), so without this root a later,
+/// unrelated allocation in that realm could reclaim it out from under this
+/// facade.
+#[derive(Clone, Copy)]
+struct ShadowWrappedFunction {
+    home_heap: u64,
+    target: ObjectId,
+    _target_root: RootId,
+}
+
 struct Test262ForeignValue {
     realm: ObjectId,
     target: ObjectId,
@@ -617,6 +717,16 @@ pub struct Vm {
     /// Bytecodes supplied by the host for this realm's module loader.
     /// Dynamic imports resolve only inside this explicit registry.
     module_registry: HashMap<String, Bytecode>,
+    /// Host-provided raw JSON text for `type: "json"` module requests, keyed
+    /// by resolved module name. `ensure_json_module` (`vm/modules.rs`) reads
+    /// this lazily, on the first request for a given resolved path.
+    json_module_sources: HashMap<String, String>,
+    /// Host-provided raw JavaScript text for modules the host did not (or,
+    /// per `ensure_dynamic_module_compiled`'s own reason for existing,
+    /// deliberately did not) pre-compile, keyed by resolved module name.
+    /// Read lazily, only when a dynamic import actually resolves to a path
+    /// not already present in `module_registry`.
+    dynamic_module_sources: HashMap<String, String>,
     /// Host-provided source-phase module records. Their opaque identities are
     /// intentionally separate from executable module bytecode.
     module_source_registry: HashSet<String>,
@@ -737,6 +847,40 @@ pub struct Vm {
     weak_set_prototype: Option<ObjectId>,
     weak_ref_prototype: Option<ObjectId>,
     finalization_registry_prototype: Option<ObjectId>,
+    disposable_stack_prototype: Option<ObjectId>,
+    async_disposable_stack_prototype: Option<ObjectId>,
+    /// A lazily-compiled-once internal async function implementing the same
+    /// `Await`-interleaved disposal loop as `Compiler::compile_async_dispose_finally`,
+    /// reused by `AsyncDisposableStack.prototype.disposeAsync` (a native
+    /// method, which cannot itself contain a bytecode `Await`) so it gets
+    /// the exact same real per-resource-await semantics `await using`
+    /// already has, rather than a separate, weaker implementation. See
+    /// `Vm::async_dispose_helper`.
+    async_dispose_helper: Option<Value>,
+    /// `[[DisposeCapability]]` state for each live `DisposableStack`
+    /// instance, keyed by its object identity.
+    disposable_stacks: HashMap<ObjectId, DisposeCapabilityState>,
+    /// Same, for `AsyncDisposableStack`. Kept separate from
+    /// `disposable_stacks` because the two constructors are distinct
+    /// brands: a `DisposableStack` method called on an `AsyncDisposableStack`
+    /// instance (or vice versa) must observe a missing internal slot.
+    async_disposable_stacks: HashMap<ObjectId, DisposeCapabilityState>,
+    /// Pending `using`/`await using` declaration resources for every
+    /// currently-open using-declaring block, across every active call frame.
+    /// `Opcode::MarkDisposables`/`DisposeResources` push/pop `dispose_marks`
+    /// in strict LIFO order matching lexical nesting and ordinary
+    /// (synchronous) call/return, so a flat, VM-wide stack is sufficient
+    /// for that case, including recursion. It is *not* isolated per
+    /// generator/async-function suspension the way `iterators` is: a
+    /// `yield`/`await` that suspends execution while directly inside a
+    /// `using`-declaring block, with unrelated code running more `using`
+    /// declarations before that generator/async function resumes, is not
+    /// supported correctly. Plain synchronous functions/blocks (the
+    /// overwhelming common case, and the only shape `using` -- as opposed
+    /// to the unimplemented `await using` -- realistically appears in) are
+    /// unaffected.
+    disposables: Vec<DisposableResource>,
+    dispose_marks: Vec<usize>,
     /// Targets passed to WeakRef or returned by `deref` must survive the
     /// current ECMAScript job. The list is cleared at the outer execution
     /// boundary and registered by every allocation safepoint.
@@ -755,6 +899,13 @@ pub struct Vm {
     test262_async_waits: std::sync::Arc<test262_agents::Test262AsyncWaits>,
     test262_realms: HashMap<ObjectId, Test262Realm>,
     test262_foreign_values: HashMap<ObjectId, Test262ForeignValue>,
+    shadow_realm_prototype: Option<ObjectId>,
+    shadow_realms: HashMap<ObjectId, ShadowRealmRecord>,
+    /// Reverse index from a `ShadowRealm` child's own heap tag back to the
+    /// key it is stored under in `shadow_realms`, so a wrapped-function call
+    /// can find "a realm I created directly" without a linear scan.
+    shadow_realm_by_heap: HashMap<u64, ObjectId>,
+    shadow_wrapped_functions: HashMap<ObjectId, ShadowWrappedFunction>,
     throw_type_error: Option<ObjectId>,
     joining: Vec<ObjectId>,
 }
@@ -797,6 +948,8 @@ impl Vm {
             remaining_instructions: 0,
             cells: HashMap::new(),
             module_registry: HashMap::new(),
+            json_module_sources: HashMap::new(),
+            dynamic_module_sources: HashMap::new(),
             module_source_registry: HashSet::new(),
             module_source_cache: HashMap::new(),
             module_source_roots: HashMap::new(),
@@ -860,6 +1013,13 @@ impl Vm {
             weak_set_prototype: None,
             weak_ref_prototype: None,
             finalization_registry_prototype: None,
+            disposable_stack_prototype: None,
+            async_disposable_stack_prototype: None,
+            async_dispose_helper: None,
+            disposable_stacks: HashMap::new(),
+            async_disposable_stacks: HashMap::new(),
+            disposables: Vec::new(),
+            dispose_marks: Vec::new(),
             kept_weak_objects: Vec::new(),
             promises: HashMap::new(),
             promise_all: HashMap::new(),
@@ -872,6 +1032,10 @@ impl Vm {
             test262_async_waits: std::sync::Arc::new(test262_agents::Test262AsyncWaits::new()),
             test262_realms: HashMap::new(),
             test262_foreign_values: HashMap::new(),
+            shadow_realm_prototype: None,
+            shadow_realms: HashMap::new(),
+            shadow_realm_by_heap: HashMap::new(),
+            shadow_wrapped_functions: HashMap::new(),
             throw_type_error: None,
             joining: Vec::new(),
         })
@@ -924,6 +1088,28 @@ impl Vm {
         self.module_source_registry = sources.into_iter().collect();
     }
 
+    /// Installs the host's raw JSON text for `type: "json"` module requests,
+    /// keyed by resolved module name (the same resolution `set_module_loader_context`'s
+    /// `modules` map keys use). `ensure_json_module` (`vm/modules.rs`) parses
+    /// and synthesizes a Synthetic Module Record from this text the first
+    /// time each resolved path is actually requested.
+    pub fn set_json_module_sources(&mut self, sources: HashMap<String, String>) {
+        self.json_module_sources = sources;
+    }
+
+    /// Installs the host's raw JavaScript text for modules it did not
+    /// pre-compile into `set_module_loader_context`'s `modules` map, keyed
+    /// by resolved module name. `ensure_dynamic_module_compiled`
+    /// (`vm/modules.rs`) parses and compiles this text on demand, only when
+    /// a dynamic import actually resolves to a path not already present in
+    /// the registry -- so a module invalid *only as a module* (but valid,
+    /// and reachable only, as something a dynamic import happens to target)
+    /// fails lazily as that import's own promise rejection, rather than
+    /// eagerly before any code has even run.
+    pub fn set_dynamic_module_sources(&mut self, sources: HashMap<String, String>) {
+        self.dynamic_module_sources = sources;
+    }
+
     /// Links and synchronously evaluates one static module graph.
     ///
     /// Keys in `modules` are host-resolved module names. Relative requests
@@ -938,7 +1124,7 @@ impl Vm {
         entry: &str,
         modules: &HashMap<String, Bytecode>,
     ) -> Result<Value, RuntimeError> {
-        self.execute_module_graph_inner(entry, modules, true)
+        self.execute_module_graph_inner(entry, modules, true, false, false)
     }
 }
 
@@ -1785,6 +1971,11 @@ impl Vm {
             }
         }
         if let Value::Object(id) = callee {
+            if self.shadow_wrapped_functions.contains_key(&id) {
+                return self.shadow_call_wrapped(id, receiver, args, construct);
+            }
+        }
+        if let Value::Object(id) = callee {
             if let Some((code, captures, lexical_this, home, class_base)) = self.heap.closure(id)? {
                 let receiver = if code.arrow { lexical_this } else { receiver };
                 return self.call_closure(builtins::ClosureCall {
@@ -1825,6 +2016,8 @@ impl Vm {
                     | NativeFunction::WeakSet
                     | NativeFunction::WeakRef
                     | NativeFunction::FinalizationRegistry
+                    | NativeFunction::DisposableStack { .. }
+                    | NativeFunction::ShadowRealm
                     | NativeFunction::Object
                     | NativeFunction::RegExp
                     | NativeFunction::Collator

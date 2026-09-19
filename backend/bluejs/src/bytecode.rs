@@ -158,6 +158,38 @@ opcodes! {
     PopHandler: 1, 0;
     ResumeCompletion: 5, 0;
     SaveCompletion: 1, 0;
+    // Explicit Resource Management: `MarkDisposables` records the current
+    // depth of the VM's disposable-resource stack when a `using`-declaring
+    // block/function body is entered; `AddDisposableResource` (operand 0 =
+    // sync-dispose, 1 = async-dispose) pops an initialized `using` binding's
+    // value and appends its disposal record; `DisposeResources` drains back
+    // down to the last mark, disposing in reverse order and merging a
+    // disposal error with any already-pending completion as a
+    // `SuppressedError`. Always compiled as a matched Mark/Dispose pair
+    // around a synthetic try/finally (see `statements_with_disposal`), so
+    // depths never need cross-checking at runtime.
+    MarkDisposables: 1, 0;
+    AddDisposableResource: 5, 0;
+    // `await using`-capable disposal: drains this block's disposable-resource
+    // stack (the same runtime state `DisposeResources` drains) into a plain
+    // JS value `[hasError, pendingError, entries]` where `entries` is a real
+    // Array of `[receiver, method, hasArgument, argument, isAsync]` records,
+    // one per resource in declaration order. The compiler then compiles an
+    // ordinary (synthesized) `while`/`try`/`catch` loop over that value using
+    // its normal statement/expression compiling -- `Await` included -- so a
+    // dispose call that needs awaiting uses the same suspend/resume path as
+    // any other `await`. See `Compiler::compile_async_dispose_finally`.
+    // Operand: same "am I an abrupt or normal entry" handler index as
+    // `DisposeResources`.
+    DrainAsyncDisposables: 5, 0;
+    // Operand: the static index (into `Bytecode::handlers`) of the
+    // synthetic try/finally this disposal is the finally clause of. Lets
+    // the interpreter tell an abrupt entry (the handler frame is still on
+    // the runtime handler stack, in `Finally` state, with a pending
+    // completion to merge a disposal error into as a `SuppressedError`)
+    // apart from a normal-completion entry (the frame was already popped
+    // by `PopHandler`, so no prior error can exist to merge with).
+    DisposeResources: 5, 0;
     AbruptJump: 5, 0;
     DefineData: 1, 0;
     DefineAccessor: 5, 0;
@@ -237,6 +269,11 @@ pub(crate) struct ModuleImport {
     pub module_request: String,
     pub import_name: ModuleImportName,
     pub local_slot: Option<u32>,
+    /// Whether this request's `with` clause specified `type: "json"`.
+    /// Drives ParseJSONModule routing instead of ordinary Source Text
+    /// Module linking; other attribute keys/values are accepted but not
+    /// yet otherwise acted on (see `parser/module_items.rs`).
+    pub json: bool,
 }
 
 /// One executable [[RequestedModules]] entry, in source-text order.
@@ -257,13 +294,16 @@ pub(crate) enum ModuleExport {
         export_name: String,
         module_request: String,
         import_name: String,
+        json: bool,
     },
     Star {
         module_request: String,
+        json: bool,
     },
     Namespace {
         export_name: String,
         module_request: String,
+        json: bool,
     },
     /// A local re-export of a source-phase import. It resolves to the
     /// source record's Module Source Object rather than a lexical cell.
@@ -381,6 +421,15 @@ pub struct Bytecode {
     pub(crate) module_imports: Vec<ModuleImport>,
     pub(crate) module_exports: Vec<ModuleExport>,
     pub(crate) module_requests: Vec<ModuleRequest>,
+    /// Set only for a host-synthesized JSON module (`ParseJSONModule` /
+    /// `CreateDefaultExportSyntheticModule`): the already-parsed value of
+    /// its sole `default` export. This is a deliberate, narrow exception to
+    /// "runtime object handles are never stored in its constant pool" above
+    /// -- a JSON module's Bytecode is synthesized fresh per-`Vm` by
+    /// `vm/modules.rs::ensure_json_module` from host-supplied raw JSON text,
+    /// never shared across independent VMs, so a live heap value tied to
+    /// this realm is safe to carry here (never in `constants`).
+    pub(crate) json_module_value: Option<Value>,
 }
 
 impl Bytecode {
@@ -422,6 +471,7 @@ impl Bytecode {
             module_imports: Vec::new(),
             module_exports: Vec::new(),
             module_requests: Vec::new(),
+            json_module_value: None,
         }
     }
 

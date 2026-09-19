@@ -2625,3 +2625,1600 @@ BigUint64 + non-shared-buffer combination driven through Test262's full
 buffer-factory/kind combination reproduced by hand in isolation passes;
 the failure only appears when Test262's own harness loop runs all of
 them together, so it was not chased further this session).
+
+## BigInt closure, continued: language/ sweep, Proxy/Reflect audit, and a verified non-regression
+
+Implemented 2026-09-18, same session as the closure above. That first pass
+scoped its verification to `built-ins/BigInt/` and a spot-check of a few
+`language/` directories; this pass follows up on exactly what was left open:
+a systematic sweep of every `features: [BigInt]`-tagged file under
+`test/language/` (not just `test/built-ins/BigInt/`), an audit of BigInt's
+interaction with Proxy/Reflect and JSON (the closest ECMA-262 has to a
+structured-clone-like API), and a *verified* (not assumed) non-regression
+check against the pre-session commit.
+
+| Surface | Result | Evidence |
+| --- | ---: | --- |
+| `features:[BigInt]` under `test/language/` (215 files, 430 modes) | 422 pass / 8 fail | cross-referenced from a directory-scoped run against the exact file list |
+| `built-ins/JSON/{rawJSON,stringify}` BigInt-tagged (7 files, 14 modes) | 14 / 14 pass | `/tmp/json-bigint2` |
+| `postfix`/`prefix`-increment/decrement + equality/does-not-equals (323 modes), pre-session commit `d86243d` | 273 pass / 50 fail | `/tmp/lang-check-pre` |
+| Same directories, this session's tip | 291 pass / 32 fail | `/tmp/lang-check` |
+| Diff of the two | 18 fixed, **0 regressed**, 32 identical on both | path/mode-level `results.jsonl` diff |
+
+The remaining 8 `language/`-BigInt failures are all
+`language/expressions/dynamic-import/import-attributes/2nd-param-*.js`: an
+`import(specifier, options)` second-argument parser gap. 21 of that
+directory's 25 files aren't BigInt-tagged at all -- these four just happen
+to loop a BigInt value in among several non-object values (`null`, `false`,
+`23`, `''`, `Symbol()`, `23n`) they all reject the same way. This is the
+unrelated import-attributes proposal, not a BigInt gap, and stays out of
+scope here.
+
+Three real, narrow gaps closed this pass:
+
+`language/expressions/object/literal-property-name-bigint.js`: a BigInt
+literal was never accepted as a `LiteralPropertyName` -- object literal
+keys, method names, class methods and destructuring patterns all share one
+parser function, `parse_property_key`, which matched `Token::Number` but not
+`Token::BigInt`. Per "LiteralPropertyName: NumericLiteral -- 1. Let nbr be
+the NumericValue of NumericLiteral. 2. Return ! ToString(nbr)", added a
+`Token::BigInt` arm converting straight to `PropertyKey::String` via
+BigInt's own decimal `Display` -- exactly `ToString(BigInt)`, no further
+numeric-formatting pass needed (unlike a large Number literal used as a key,
+which can need scientific-notation handling).
+
+`language/expressions/{greater,less}-than/bigint-and-boolean.js`:
+`primitive::compare` had no `Bool`<->`BigInt` case at all, so `1n > true`
+fell through to `number(&value)`, which throws for a BigInt operand.
+Abstract Relational Comparison's own `ToNumeric` step converts a Boolean
+operand to Number (`0`/`1`) -- it never becomes a BigInt -- so both
+orderings now convert the Boolean side to a Number and recurse into the
+existing BigInt/Number case rather than trying (and failing) to treat it as
+a BigInt.
+
+`built-ins/JSON/stringify/value-bigint-cross-realm.js`, found while auditing
+BigInt against cross-realm/Proxy/Reflect machinery: JSON's Object-branch
+primitive-unwrap step only checked this realm's own `heap.boxed_primitive`,
+so a boxed BigInt built by a *different* Test262 realm
+(`$262.createRealm()`) fell through to ordinary-object serialization
+(`"{}"`) instead of unwrapping its `[[BigIntData]]` and throwing `TypeError`
+per `SerializeJSONProperty`. Added the same `test262_foreign_boxed_primitive`
+fallback that `BigInt.prototype.toString`/`valueOf` already needed for the
+identical reason in the prior closure.
+
+Proxy/Reflect audit: Test262 has **no** `built-ins/Proxy/` or
+`built-ins/Reflect/` tests tagged `BigInt` at all. Neither mechanism
+special-cases a value's *type* -- Proxy traps intercept property-key
+operations and forward arbitrary return values, and Reflect operations are
+thin wrappers over the same internal methods -- so there was no
+existing-corpus gap to find. Added our own end-to-end coverage instead
+(`get`/`set` traps carrying a BigInt property value, `Reflect.apply`/
+`Reflect.construct` with BigInt arguments, a `has` trap keyed by a BigInt's
+`ToPropertyKey` conversion -- confirming `5n in p` and `'5' in p` reach the
+trap identically, since `ToPropertyKey` on a non-Symbol primitive is just
+`ToString` -- and `Reflect.ownKeys`) confirming BigInt values and
+BigInt-derived property keys pass through both mechanisms exactly like any
+other value.
+
+`asIntN`/`asUintN`'s 1,000,000-bit cap (from the prior closure) is
+unchanged; a new regression test pins it as a hard, explicit `RangeError`
+boundary -- `BigInt.asIntN(1_000_000, 1n)` still succeeds exactly at the
+cap, `BigInt.asIntN(1_000_001, 1n)` throws -- rather than a value that
+silently narrows, wraps, or truncates before use.
+
+`backend/bluejs/tests/bigint.rs` grew from 27 to 33 tests, covering all of
+the above: the BigInt-literal property-name fix (object literals, method
+names, class methods, destructuring), Boolean/BigInt relational comparison
+in both directions, the cross-realm `JSON.stringify` fix, the Proxy/Reflect
+boundary checks, and the `asIntN`/`asUintN` cap's enforced (not truncated)
+behavior. `built-ins/BigInt/`'s full 154/154 remains unaffected by this
+round's changes (reverified after each fix).
+
+## Dynamic `import()`'s second argument, and the ImportCall "Forbidden Extensions"
+
+Implemented 2026-09-18. Scope: `dynamic-import`'s second-argument
+(import-attributes) form and its related grammar restrictions -- the
+highest-leverage gap the prior BigInt-closure session's own note already
+flagged (`language/expressions/dynamic-import/import-attributes/2nd-param-*.js`).
+The parser had no support at all for `import(specifier, options)`: the
+`ImportCall` production only ever consumed one `AssignmentExpression`
+before requiring `)`, so any second argument was a plain
+`unclassified_parse_error` (`expected RParen (found Punct(Comma))`), not a
+recognized-and-rejected form.
+
+Official edition-17-track clauses read before implementing: the
+`ImportCall` grammar and its `Evaluation` semantics (`sec-import-call`,
+`sec-import-call-runtime-semantics-evaluation`) in the current
+[tc39/ecma262 multipage text](https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-import-call)
+-- Import Attributes (the `with {...}` clause and the ImportCall second
+argument) is already merged into the mainline spec text (not a
+`# proposal-*` entry in `test262/features.txt`), confirming it belongs to
+the published edition-17 target per `ECMASCRIPT_2026.md`'s authority rule,
+unlike `source-phase-imports`/`import-defer` (see the applicability finding
+below).
+
+**Root cause and fix.** Four coordinated gaps, all in `backend/bluejs/src`:
+
+1. `parser/expressions.rs`'s `import(` arm parsed exactly one
+   `AssignmentExpression` then required `)`. Rewrote it to parse an
+   optional second `AssignmentExpression` (the options argument) with an
+   optional single trailing comma after either one or two arguments (per
+   the grammar's two `,opt` productions), explicitly rejecting a leading
+   `...` spread and a third argument (both "Forbidden Extensions") with a
+   real `syntax_error` (not the generic unsupported-grammar fallback, so
+   these negative tests are classified `SyntaxError`, not
+   `unclassified_parse_error`). Both argument positions temporarily clear
+   `no_in` (mirroring the existing `?:`-consequent precedent) since
+   `ImportCall`'s arguments are always `AssignmentExpression[+In]`, even
+   inside a no-in `for`-head (`for(x=import('a','b' in {});;)`).
+2. `new import(x)` previously parsed as `New { callee: DynamicImport, .. }`
+   because `parse_new_expression`'s callee path calls the same
+   `parse_primary` arm that recognizes `import(`. `ImportCall` is a
+   `CallExpression`, never a `MemberExpression`, so it can never be the
+   target of `new` -- added an explicit check at the top of
+   `parse_new_expression` (covering the recursive `new new import(x)` case
+   too via its own recursive call).
+3. A bare `import` (followed by neither `(` nor `.`) was previously parsed
+   as an ordinary `Expr::Identifier("import")`, since a real global
+   `import` binding already exists in this host (see the applicability
+   note below) rather than as a proper reserved-word rejection --
+   `typeof import` and `import + 1` parsed successfully instead of raising
+   a `SyntaxError`. Added a narrowly-scoped rejection that only fires when
+   `import` is followed by neither `(` nor `.`, deliberately leaving
+   `import.<name>` continuations (including unrecognized ones) alone.
+4. `Expr::DynamicImport` became `{ specifier, options: Option<Box<Expr>> }`
+   (updated at every match site: `ast.rs`'s `expr_contains_super`,
+   `compiler.rs`'s strict-assignment scan, `compiler/private_validation.rs`,
+   and the actual codegen in `compiler/expressions.rs`). The `DynamicImport`
+   opcode stays a fixed-width, no-operand opcode (this bytecode is
+   one-byte-opcode-plus-optional-u32, no variable-arity form) by always
+   popping two stack values: the codegen pushes the specifier, then either
+   the options expression or an implicit `Constant(undefined)` when the
+   second argument is omitted -- exactly EvaluateImportCall's own "options
+   is undefined" branch. `Vm::dynamic_import` (in `vm/modules.rs`) gained a
+   second parameter and a new `evaluate_import_call_arguments` helper
+   implementing steps 7-10 of EvaluateImportCall synchronously (ToString
+   the specifier; if `options` isn't `undefined`, require it to be an
+   object; `Get` its `with` property; if defined, require *it* to be an
+   object; `EnumerableOwnPropertyNames(attributesObj, KEY)` -- reusing the
+   same own-keys/`[[GetOwnProperty]]`-recheck algorithm already shared by
+   `Object.keys`/`values`/`entries`, so a `Proxy`'s `ownKeys`/
+   `getOwnPropertyDescriptor` traps are observed identically -- then `Get`
+   and type-check each attribute value as a String) -- every abrupt
+   completion in this synchronous phase rejects the already-created
+   promise via the existing `error_value`/`settle_promise` path (preserving
+   thrown-value identity for a throwing getter, and building a real
+   `TypeError` object otherwise) rather than propagating as a JS-visible
+   synchronous throw, matching `IfAbruptRejectPromise`. Attribute
+   keys/values are validated but not yet acted on for resolution (no
+   `type: "json"` JSON-module support yet -- see remaining gaps below);
+   this matches the existing static `import ... with {...}` posture, which
+   already only retains the module-request string.
+
+**Evidence** (`backend/bluejs/test262/run.py --filter
+"language/module-code/import-attributes/,language/expressions/dynamic-import/,language/import/"`,
+same 8 workers/instruction-budget/timeout as the pinned inventory,
+`72faf8ec1445c55149615e8b35187830783aba1a`):
+
+| Scope | Before | After |
+| --- | ---: | ---: |
+| Combined filter above (2,048 modes) | 1,068 pass / 980 fail | 1,388 pass / 660 fail |
+| `dynamic-import/import-attributes/` (44 modes) | 0 pass / 44 fail | 40 pass / 4 fail |
+| `dynamic-import/` overall (1,856 modes) | 1,039 pass / 817 fail | 1,319 pass / 537 fail |
+| `import-defer/` (109 modes) | 13 / 96 (unchanged) | 13 / 96 (unchanged) |
+| `import/import-attributes/` (17 modes, JSON modules) | 2 / 15 (unchanged) | 2 / 15 (unchanged) |
+| `module-code/import-attributes/` (13 modes) | 13 / 0 (unchanged) | 13 / 0 (unchanged) |
+| `import-bytes/` (5 modes) | 0 / 5 (unchanged) | 0 / 5 (unchanged) |
+
+A follow-up run against the *entire* `language/module-code/` tree (2,637
+modes, adding every module test outside the filter above) measured
+**1,977 pass / 660 fail** -- identical fail count to the narrower filter,
+confirming the `Expr::DynamicImport` shape change introduced zero
+regressions across the wider module-code suite. `backend/bluejs/tests/
+test262_host.rs` gained five new regression tests (all written and
+confirmed failing before this session's implementation, since none of this
+grammar/algorithm existed yet): accepting an omitted/`undefined`/empty
+`with` options object (including one trailing comma after either
+argument), rejecting a non-object options argument, a non-object `with`
+value, and a non-string attribute value (including propagating a thrown
+getter's exact value), specifier-then-options left-to-right evaluation
+order plus `in` inside a no-in `for`-head, and the four "Forbidden
+Extension" parse rejections (`new import(x)`, `new import(x).prop`,
+`import(...args)`, a third argument, plus bare `typeof import`) alongside a
+regression guard that `import.source(...)`/`import.defer(...)` still parse.
+
+**Remaining gaps, explicitly not chased this session:**
+
+- `2nd-param-with-type-text.js` needs the separate `import-text` proposal
+  (confirmed a `# proposal-import-text` entry in `features.txt`, not yet
+  merged) -- out of scope by the same applicability rule as
+  source-phase-imports/import-defer below.
+- `2nd-param-with-enumeration-enumerable.js` and the 15-test
+  `language/import/import-attributes/json-*` suite need actual JSON-module
+  support (`type: "json"` producing a module whose default export is the
+  parsed JSON value) -- `json-modules` **is** an already-merged
+  `features.txt` entry (not a `# proposal-*` line), so unlike
+  source-phase-imports/import-defer this is in-scope edition-17 work, just
+  not attempted this session: it needs a new module-record kind, not only
+  attribute plumbing, and was judged a separate, larger unit of work from
+  the calling-convention fix above.
+- The remaining ~40 `import-call-unknown.js`/`typeof-import`-adjacent
+  `syntax/invalid` failures under plain `dynamic-import` (e.g.
+  `import.UNKNOWN(...)`) need `import` to stop being an ordinary global
+  identifier binding with `.source`/`.defer` *methods* installed on it (see
+  the applicability note immediately below) and instead be parsed as a
+  dedicated grammar production that rejects any unrecognized
+  `import.<name>`. Left alone deliberately: tightening this would either
+  require also implementing `import.source`/`import.defer` as real
+  dedicated AST/parser productions (source-phase-imports/import-defer
+  scope, addressed below) or regressing the dynamic-import-tagged tests
+  that already pass through the current mechanism
+  (`source_and_defer_dynamic_imports_reject_through_the_promise_path`).
+- The 16 `dynamic-import/catch/*-eval-script-code-target.js` failures
+  ("module lexical declaration conflicts with a var declaration") involve
+  `eval`-ed script code interacting with a module's top-level bindings,
+  unrelated to import attributes; not investigated this session.
+
+**Edition-17 applicability finding for source-phase-imports/import-defer**
+(per the task's required check before investing further there):
+`test262/features.txt` lists both `source-phase-imports` and `import-defer`
+in its leading "Proposed language features" block, each under its own
+`# https://github.com/tc39/proposal-*` comment -- the file's own header
+states this section is for "language proposals that have reached stage 3,"
+i.e. still separate, unmerged TC39 proposals, exactly like
+`decorators`/`ShadowRealm`/`ArrayBuffer.prototype.transferToImmutable`
+elsewhere in that same block. By contrast, `dynamic-import`,
+`import-attributes`, and `json-modules` all appear in the plain
+alphabetical feature list further down with no such proposal-link comment,
+the same textual signal already used in this file's prior sessions to mean
+"merged into a published/tracked edition." This confirms
+source-phase-imports and import-defer are **not** part of published
+ECMA-262 edition 17 and stay deprioritized per `ECMASCRIPT_2026.md`'s
+authority rule -- `import-defer` and `source-phase-imports*`'s large
+failure counts (96, and the still-unmeasured-this-session
+`source-phase-imports`/`source-phase-imports-module-source` totals) are
+proposal-conformance gaps, not edition-17 regressions, and were left
+untouched. Interestingly, this host already has a *partial*,
+pre-existing `import.source(...)`/`import.defer(...)` implementation (a
+real global `import` object with `.source`/`.defer` native methods,
+installed in `vm/builtins/globals.rs`, reached through ordinary member-call
+parsing rather than dedicated grammar) -- this predates this session and
+explains both `import-defer`'s nonzero 13-pass baseline and this session's
+deliberate choice not to tighten bare-`import` rejection any further than
+the narrow "no `(` and no `.`" case.
+
+## Explicit Resource Management: `using`/`await using`, `DisposableStack`/`AsyncDisposableStack`, `SuppressedError` (2026-09-18)
+
+Edition applicability checked first, per this doc's own standing instruction
+not to invest in a feature before confirming it targets the published
+edition rather than the living draft. Explicit Resource Management reached
+Stage 4 and is part of the officially published **ECMA-262 edition 17**
+(ECMAScript 2026, ratified 2026-06-30) — not a draft-only addition. This
+matches the pinned Test262 snapshot placing its tests under
+`test/built-ins/DisposableStack/`, `test/built-ins/AsyncDisposableStack/`,
+`test/built-ins/SuppressedError/` and `test/language/statements/using/`
+(real, non-`staging/` directories) rather than `test/staging/`.
+
+**Before**: the feature was wholesale missing. `Symbol.dispose`/
+`Symbol.asyncDispose` were already reserved as well-known symbols (unused)
+and `Iterator.prototype[Symbol.dispose]` already existed as part of the
+Iterator Helpers surface, but `DisposableStack`, `AsyncDisposableStack`,
+`SuppressedError` and the `using`/`await using` grammar did not exist at
+all: `DisposableStack is not defined`/`AsyncDisposableStack is not
+defined` were the dominant Test262 diagnostics, and the
+`explicit-resource-management` feature tag stood at 148 pass / 799 fail
+(84.4% failing).
+
+**After** (filtered slice: `built-ins/DisposableStack/`,
+`built-ins/AsyncDisposableStack/`, `built-ins/SuppressedError/`,
+`language/statements/using/`, `language/statements/await-using/`; 397 test
+files, 780 scheduled modes):
+
+| | pass | fail | timeout |
+| --- | ---: | ---: | ---: |
+| Before | 106 | 674 | 0 |
+| After | 592 | 187 | 1 |
+
+By directory, remaining failures are concentrated exactly where the
+implementation is incomplete, not spread across what's supposedly done:
+
+| Directory | Fail | Why |
+| --- | ---: | --- |
+| `built-ins/DisposableStack/` | 0/93 | fully passing |
+| `built-ins/SuppressedError/` | 2/22 (both modes of one file) | `proto-from-ctor-realm.js`, a `$262` cross-realm `new.target` case, out of scope here |
+| `built-ins/AsyncDisposableStack/` | 10/104 | the documented `disposeAsync` simplification below |
+| `language/statements/using/` | 45/~184 | for-statement/for-of `using` heads, switch-case placement, module-top-level disposal timing, function-name inference for a `using`-bound anonymous function -- all unimplemented, not incorrect |
+| `language/statements/await-using/` | 135/~184 | `await using` syntax itself is not implemented (see below) |
+
+### What was implemented
+
+**`Symbol.dispose`/`Symbol.asyncDispose`**: already-reserved well-known
+symbols, now actually exposed as `Symbol.dispose`/`Symbol.asyncDispose`
+(they iterate the same `WELL_KNOWN` table `Symbol.iterator` etc. already
+use, so no separate wiring was needed there) and consumed for real by
+everything below.
+
+**`SuppressedError`**: added as a fourth argument shape
+(`error, suppressed, message`) alongside `Error`/`AggregateError`'s
+existing shared constructor path in `backend/bluejs/src/vm/errors.rs`
+(`error_global`/`error_constructor`), rather than a separate constructor
+implementation -- `SuppressedError.prototype`'s `[[Prototype]]` is
+`Error.prototype`, and its own-property shape (`message` only if not
+`undefined`, then `error`, then `suppressed`, each
+`{writable:true,enumerable:false,configurable:true}`) is exactly the
+existing generic error-object machinery with one extra branch.
+
+**`DisposableStack`/`AsyncDisposableStack`**: new
+`backend/bluejs/src/vm/builtins/resource_management.rs`, implementing the
+spec's "Operations on Disposable Objects" abstract operations
+(`GetDisposeMethod`, `CreateDisposableResource`, `AddDisposableResource`,
+`Dispose`, `DisposeResources`) as `Vm` methods shared by both the
+`DisposableStack` builtin and `using` declarations (below) — the same
+abstract operations, not two parallel implementations. Each
+`DisposableStack`/`AsyncDisposableStack` instance's `[[DisposeCapability]]`
+lives in a `HashMap<ObjectId, DisposeCapabilityState>` side table
+(`Vm::disposable_stacks`/`async_disposable_stacks`, one map per brand, so a
+`DisposableStack` method invoked on an `AsyncDisposableStack` instance
+correctly observes a missing internal slot and vice versa) rather than as
+ordinary object properties, matching the existing `PromiseRecord` side-table
+precedent and keeping the pending resource list unobservable through
+`Object.getOwnPropertySymbols`. `adopt`'s spec-mandated synthetic
+`() => onDispose(value)` closure collapses into a plain
+`{receiver, argument}` pair on the `DisposableResource` record instead of
+an actual heap-allocated closure object (`argument: Some(value)` means
+"call `method` on `undefined` with `value` as the one argument" instead of
+"call `method` on `receiver` with no arguments") -- observably identical,
+since the spec's own closure is never exposed to script. `move`'s
+`OrdinaryCreateFromConstructor(%DisposableStack%, ...)` names the intrinsic
+constructor directly rather than `new.target` (there is none -- `move` is
+an ordinary method call), a distinction a first draft got wrong by reusing
+the `constructor_prototype`/`new.target` helper meant for actual `[[Construct]]`
+dispatch, throwing `TypeError: cannot access a property of null or
+undefined` from a stray `self.new_target` read; the regression test
+(`disposable_stack_move_transfers_resources_and_disposes_the_source`)
+caught it before it shipped.
+
+**`using` declarations (synchronous)**: full parser + compiler + VM support.
+`using` is a contextual keyword (`DeclKind::Using` alongside
+`Var`/`Let`/`Const`/`AwaitUsing` in `ast.rs`); `using_declaration_follows`
+in `parser/functions.rs` recognizes it only when immediately (no line
+terminator) followed by an identifier, so `using;`, `using.foo()`,
+`using = 1`, `using[x] = null` and `using` followed by a newline all remain
+ordinary identifier references — verified directly against
+`using-invalid-arraybindingpattern-does-not-break-element-access.js`'s own
+scenario. Bindings are const-like (immutable, TDZ) via the same
+`enter_scope` mutability check `Const` already used. Disposal-at-scope-exit
+reuses `try_statement`'s own handler-stack machinery rather than inventing
+parallel control-flow plumbing: `Compiler::statements_with_disposal`
+(compiler/statements.rs) wraps a `using`-declaring block/function body/
+try-catch-finally body in a synthetic `try { <statements> } finally {
+<DisposeResources> }`, so `return`/`break`/`continue`/`throw` crossing the
+block already run the disposal exactly once via the *existing*,
+already-correct try/finally abrupt-completion path — no new completion
+tracking was written. Three new opcodes carry this: `MarkDisposables`
+(records the current depth of a VM-wide `Vec<DisposableResource>` when the
+block is entered), `AddDisposableResource` (what a `using x = expr;`
+declaration's `InitializeBinding` is immediately followed by), and
+`DisposeResources` (the synthetic finally body, draining back to the mark
+in reverse order). `DisposeResources`'s operand is the enclosing handler's
+static index so the interpreter can tell an abrupt entry (handler frame
+still present, in `Finally` state, with a pending completion to fold into a
+`SuppressedError` on a second error) apart from a normal-completion entry
+(the frame was already popped by `PopHandler`) — this is what makes
+`SuppressedError` merging *not* reuse the generic try/finally
+override-on-second-throw behavior, which would have silently dropped the
+first error instead of wrapping it.
+
+The no-`using` case (the overwhelming majority of code) is unaffected:
+`statements_with_disposal` checks `has_using_declaration` (a shallow,
+non-recursive scan matching the existing `block_lexical_names`/`var_names`
+convention) and falls straight through to the original `statements` call
+with zero additional opcodes when it finds none.
+
+A `using`/`await using` directly at Script or eval top level (no enclosing
+Block/FunctionBody/etc. to dispose it at the end of) is now a
+`CompileError::InvalidSyntax`, matching
+`using-not-allowed-at-top-level-of-script.js`/`-of-eval.js`.
+
+**Known, deliberate simplification -- `AsyncDisposableStack.prototype.disposeAsync`**:
+implemented via the *same* `dispose_resources_sync` used for the
+synchronous path (all dispose calls run back-to-back, synchronously, then
+the aggregate outcome resolves/rejects a real `Promise`), not the spec's
+per-resource `Await(Call(method, V))` chain. This is observably identical
+whenever every dispose method is an ordinary (non-thenable-returning)
+function -- call order, thrown errors, and `SuppressedError` chaining all
+match -- but a dispose method that returns a promise which later *rejects*
+is not awaited before `disposeAsync` resolves, so that specific
+interleaving is not observed. This accounts for essentially all 10 of
+`AsyncDisposableStack`'s remaining failures.
+
+### What remains
+
+- **`await using` declaration syntax** is not implemented at all (parser or
+  compiler). This is the largest remaining gap (135 failing modes). It
+  needs real bytecode-level `Await` suspension interleaved with each
+  resource's disposal (`DisposeResources`'s `needsAwait`/`hasAwaited`
+  dance), which the current single-opcode, all-synchronous
+  `DisposeResources` design cannot express — unlike `disposeAsync` above,
+  an `await using` declaration's disposal happens interleaved with the rest
+  of an ordinary function body, not behind a single Promise-returning
+  native method, so the "run it synchronously, wrap the outcome" shortcut
+  used for `disposeAsync` does not apply here.
+- `using`/`await using` in a `for (...)`/`for-of`/`for-in` head (own
+  grammar production, `ForBinding : using ForBinding`) is not parsed.
+- The Script/eval top-level restriction is enforced; the analogous
+  restriction inside a `switch` `case`/`default` clause list (without an
+  enclosing block) is not.
+- Module top-level `using` (explicitly *allowed*, unlike Script) is not
+  wired to dispose at module-evaluation completion; the one Test262
+  `timeout` in the after-slice above
+  (`initializer-disposed-at-end-of-module.js`) is this gap surfacing as an
+  async test that never calls `$DONE`, not a hang or crash.
+- Anonymous function/class name inference for a `using`-bound initializer
+  (`using arrow = () => {}` should get `.name === 'arrow'`) is not wired,
+  since `using`'s compiler path was not connected to
+  `expression_with_name`'s existing inferred-name plumbing.
+- **A narrow, pre-existing gap this feature inherits rather than causes**:
+  an empty (or otherwise `undefined`-completion) `try{}finally{}` already
+  does not restore the *preceding* statement's completion value in this
+  engine (`eval('4;try{}finally{}')` evaluates to `undefined`, not `4`,
+  independent of this feature). Because `using` disposal is compiled as a
+  synthetic try/finally, `using`'s own completion-value test
+  (`language/statements/using/cptn-value.js`) inherits the same gap
+  (`eval('4;{using x=null;}')` also evaluates to `undefined` instead of
+  `4`). Fixing the general try/finally completion-value/`UpdateEmpty`
+  behavior is out of scope for this slice.
+- A generator/async-function body that `yield`/`await`-suspends *while
+  still inside* a `using`-declaring block, with unrelated code running its
+  own `using` declarations before that generator/async function resumes,
+  is not isolated correctly: `Vm::disposables`/`dispose_marks` are flat,
+  VM-wide stacks (matching lexical nesting and ordinary synchronous
+  call/return, including recursion, exactly) rather than per-suspension
+  state threaded through `InterpreterExit::Yield`/`Await` the way
+  `iterators` already is. This is a deliberate, documented scope cut (see
+  `Vm::disposables`'s own doc comment in `vm.rs`): plain `using` (as opposed
+  to the unimplemented `await using`) realistically only appears in plain
+  synchronous functions/blocks, where no suspension is possible at all.
+
+### Verification
+
+`backend/bluejs/tests/resource_management.rs` (new, 18 tests): well-known
+symbol exposure; `DisposableStack` `use`/`adopt`/`defer`/`move`/`dispose`/
+`disposed` including reverse-order disposal, idempotent dispose,
+already-disposed errors, nullish/non-object `use` handling, and the
+`adopt`/`defer` receiver-and-argument contract (`'use strict'` in that one
+test specifically, so sloppy-mode `this`-substitution to `globalThis`
+doesn't mask a wrong receiver); `SuppressedError`'s own constructor shape;
+disposal-error suppression both via direct `DisposableStack.dispose()` and
+via a `using` declaration racing a thrown error in the block body; `using`
+disposal ordering, early return/break/throw, null/undefined resources,
+const-like immutability, the destructuring-pattern/missing-initializer
+early errors, `using` remaining a plain identifier outside declaration
+position (including the newline-suppresses-the-declaration case), the
+zero-`using` fast path producing the same result as before this feature
+existed, and `AsyncDisposableStack.prototype.disposeAsync` resolving and
+rejecting correctly. All 18 pass; each failed against `unimplemented!`/
+`ReferenceError`/wrong-behavior stubs before the corresponding
+implementation piece landed (TDD, not written after the fact to match
+already-working code).
+
+Every fix above was caught by first writing (or already having, for the
+`move`/`constructor_prototype` bug) a failing check and then correcting the
+implementation, not by tightening a test to match observed behavior; the
+`using-invalid-arraybindingpattern-does-not-break-element-access.js`-derived
+test is a direct example -- the temptation was to write the more obvious
+"a bracketed pattern after `using` is a syntax error" test, until the
+real Test262 case revealed that the correct grammar decision is exactly the
+opposite when the token after `using` isn't a plain identifier.
+
+## JSON modules, a dynamic-import promise-rejection classification bug, and the `eval-script-code-target` finding
+
+Implemented 2026-09-18, continuing the same-day session above per specific
+follow-up direction: (1) implement JSON modules (confirmed in-scope for
+edition 17, previously deferred as "a separate, larger unit of work"), (2)
+finish the general `dynamic-import` deep dive the first pass didn't reach,
+(3) look at the 16 `eval-script-code-target` failures without over-investing.
+
+### 1. JSON modules (`ParseJSONModule` / `CreateDefaultExportSyntheticModule`)
+
+Official clauses read: the Import Attributes proposal's own §1.4
+`ParseJSONModule` / §1.5 `CreateDefaultExportSyntheticModule` (merged into
+the mainline spec text this proposal now lives in, confirmed non-proposal
+per `features.txt`'s `json-modules` entry, same authority check as the
+session above) -- `json = ? Call(%JSON.parse%, undefined, «source»)`, then
+a Synthetic Module Record whose sole export is an already-initialized,
+immutable `default` binding to `json`.
+
+**Root cause.** `parser/module_items.rs::parse_import_attributes` validated
+`with {...}` syntax but discarded every attribute's value (a deliberate,
+documented scope limit from the prior `import(specifier, options)` slice);
+nothing anywhere routed a `type: "json"` request differently from an
+ordinary Source Text Module request, and the `.json` fixture files
+themselves were never even collected by the Python harness (`module_sources()`
+explicitly excluded non-`.js` siblings, by original design, "left to the
+adapter's normal module-resolution result").
+
+**Fix**, across five layers:
+
+1. **Attribute plumbing** (`ast.rs`, `parser/module_items.rs`,
+   `compiler.rs`, `bytecode.rs`): `ImportEntry` and the `ExportEntry`/
+   `ModuleExport` variants that reference another module (`Indirect`,
+   `Star`, `Namespace`) gained a `json: bool`, set from
+   `parse_import_attributes`'s now-`bool`-returning result (true iff a
+   `type: "json"` entry was present) and threaded through compilation
+   unchanged. `Bytecode.module_requests`/`ModuleRequest` deliberately did
+   *not* need this flag: it only matters at the one-time registration step
+   below, never at ordinary dependency-evaluation-order traversal.
+2. **Synthesis** (`vm/modules.rs::ensure_json_module`): given a *resolved*
+   module name, looks up raw JSON text in a new host-supplied
+   `Vm::json_module_sources` registry (installed via the new
+   `Vm::set_json_module_sources`, mirroring `set_module_source_loader_context`'s
+   existing pattern for source-phase records), calls the engine's own
+   `json_parse` (the exact `JSON.parse` implementation, not a
+   reimplementation), and builds a trivial real `Bytecode`: one binding
+   (`default`), one scope, `module_exports: [Local{"default", slot 0}]`,
+   and a new `Bytecode.json_module_value: Option<Value>` field carrying the
+   already-parsed value. This is a deliberate, documented, narrow exception
+   to "`Bytecode`... can execute repeatedly in the same or independent
+   VMs... runtime object handles are never stored in its constant pool" --
+   a JSON module's synthesized `Bytecode` is per-`Vm`, built fresh from raw
+   text each time `ensure_json_module` first sees a given resolved path,
+   and never shared across realms. Idempotent (a second call for the same
+   resolved path is a no-op), which is what gives repeated imports of one
+   JSON file the required object identity.
+3. **Linking integration** (`vm/modules.rs::execute_module_graph_inner`):
+   two call sites of `ensure_json_module`, both running before the
+   function's existing major GC collection (rooting the freshly parsed
+   value through the same `roots: Vec<RootId>` the rest of the function
+   already threads through, so nothing before it has a cell yet to keep it
+   alive) --
+   `register_static_json_modules` scans a *fresh* graph's own
+   `with`-attributed requests once (a JSON module never itself requests
+   further modules, so one pass is exhaustive) and registers each target;
+   a new `entry_json: bool` parameter (from a dynamic import's own
+   attribute check) registers `entry` itself directly, covering a pure
+   `import(spec, {with:{type:"json"}})` with no static import anywhere in
+   the graph, on both a fresh and an *already-linked* existing graph (the
+   latter needs a hand-built single `LinkedModule` entry, since fresh-graph
+   linking's own per-`order` loops never run for it). A JSON module's slot-0
+   cell is created by the *same* generic non-lexical-binding loop every
+   other module's cells go through (getting an ordinary `Undefined` value
+   first), then a short follow-up pass overwrites it with the real parsed
+   value and marks the record `evaluated: true` -- so `evaluate_module_record`'s
+   existing `if record.evaluated { return Ok(Undefined) }` short-circuit
+   means the module's (empty) instruction stream is never actually
+   interpreted; `resolve_export`/`module_namespace`/`exported_names` needed
+   no changes at all, since they only ever consult `module_exports` +
+   `linked[..].cells`, uniformly for any `Bytecode`, synthesized or not.
+4. **Dynamic import attribute plumbing** (`vm/modules.rs`, `vm.rs`):
+   `evaluate_import_call_arguments` (from the prior slice) now also
+   extracts the enumerated `type` attribute's value, returning
+   `(specifier, json)`; `PromiseJob::DynamicImport` gained a `json: bool`
+   field threaded through to `dynamic_import_job`, which passes it to
+   `execute_module_graph_inner` as `entry_json`.
+5. **Harness** (`backend/bluejs/test262/run.py`, `bluejs-test262.rs`):
+   `module_sources()` now returns `(sources, json_sources)` -- `.json`
+   siblings (found via the *same* existing static/dynamic-import-reference
+   regexes) are collected as raw text into the new `json_sources` return
+   value instead of being skipped, and a new `module_json_sources` request
+   field carries them to `Vm::set_json_module_sources`.
+
+**A real, load-bearing harness bug found and fixed along the way**: for a
+plain-script (non-`module`) test whose only dynamic import references were
+`.json` fixtures, `module_codes` (compiled `.js` siblings) ended up empty,
+and the adapter's `vm.set_module_loader_context(...)` call was gated on
+`!module_codes.is_empty()` -- skipping it entirely, so `dynamic_import`'s
+referrer fell back to the resolution-breaking `"<script>"` default instead
+of the test's own path, and every such JSON-only dynamic import failed to
+resolve. Fixed by gating on `request.module_path.is_some()` instead (set
+whenever the harness detected any dynamic import at all, `.json`-only or
+not) -- an empty module registry is a perfectly valid, already-supported
+`set_module_loader_context` call; only the *referrer* was missing.
+
+**Evidence** (`--filter "language/import/import-attributes/,language/expressions/dynamic-import/import-attributes/"`, 61 modes, both known-in-scope JSON areas from the prior slice's "remaining gaps"):
+
+| Stage | Pass / fail |
+| --- | ---: |
+| Before this slice (round 1 baseline) | 42 / 19 |
+| After JSON module synthesis, before the harness referrer fix | 52 / 9 |
+| After the harness referrer fix | **54 / 7** |
+
+The remaining 7 all need the separate, unmerged `import-text` proposal
+(`type: "text"`/self-referencing-module-as-text fixtures) -- confirmed via
+the same `features.txt` "Proposed language features" check as
+source-phase-imports/import-defer, out of scope for the same reason.
+`backend/bluejs/tests/test262_host.rs` gained eight new regression tests
+(default-export value across every JSON type, namespace shape, extensibility,
+named-binding/malformed-JSON resolution errors, cross-site identity
+including through a dynamic import, a pure-dynamic no-static-import case,
+a missing-host-source `TypeError`, and a Proxy-based `with` attributes
+object exercising the same `EnumerableOwnPropertyNames` path
+`Object.keys` uses) plus two new Python tests in
+`backend/bluejs/test262/test_runner.py` for `module_sources()`'s new
+`(sources, json_sources)` return shape.
+
+### 2. General `dynamic-import` deep dive: a real promise-rejection misclassification
+
+Reading the plain (non-`source-phase`/`import-defer`-tagged)
+`dynamic-import` failures remaining after the JSON work, a large cluster (34
+files, `catch/*-instn-iee-err-{ambiguous-import,circular}*.js`) all showed
+an *uncaught* `Test262Error` where the test's own `.catch(error => {
+assert.sameValue(error.name, 'SyntaxError') })` handler should have run
+cleanly -- meaning the promise rejected with something whose `.name` wasn't
+`"SyntaxError"`, failing that assertion and producing an uncaught rejection
+from the outer `.then($DONE, $DONE)`.
+
+**Root cause**: `vm/builtins/promises.rs`'s dynamic-import job drain had a
+special case, `Err(RuntimeError::ModuleResolution(message)) => "TypeError"`,
+present specifically for dynamic imports (every other context --
+`error_value`, used for static `execute_module_graph` failures and every
+other promise rejection -- already mapped `ModuleResolution` to a real
+`SyntaxError`, matching `resolve_export`'s own ambiguous/missing-export
+`ModuleResolution` errors, which per spec's `ResolveExport`/module
+instantiation steps must be `SyntaxError`s, not `TypeError`s). This override
+predates this session; grepping the whole `dynamic-import` test directory
+found zero tests checking `instanceof TypeError`/`.constructor===TypeError`
+for a resolution-style dynamic-import failure, and 80 checking
+`error.name==='SyntaxError'`. The one `TypeError`-observing test that does
+exist for dynamic import (`catch/*-eval-rqstd-abrupt-typeerror.js`, and its
+`eval-rqstd-abrupt-err-type_FIXTURE.js`, `throw new TypeError()`) goes
+through a completely different path -- a real thrown value
+(`RuntimeError::Thrown`), never `ModuleResolution` -- so it was never
+reached by, and is unaffected by, removing the override.
+
+**Fix**: deleted the override; `Err(error) => { let error = self.error_value(error)?; ... }`'s
+existing generic arm now handles `ModuleResolution` for dynamic imports the
+same way it already did everywhere else.
+
+**Evidence** (`--filter "language/module-code/,language/expressions/dynamic-import/,language/import/,built-ins/ImportAttributes"`, 2,637 modes, same scope as the prior session's full-tree regression check):
+
+| Stage | Pass / fail |
+| --- | ---: |
+| Prior session's end state | 1,977 / 660 |
+| After JSON modules (this session) | 1,990 / 647 |
+| After the promise-rejection fix | **2,053 / 584** |
+
+Zero regressions at every stage (`module-code-other`, `static-import-attrs`,
+`import-defer`, `import-bytes` all held constant throughout; verified with
+a full `cargo test -p blueice-bluejs --test test262_host`, 95/95, including
+the two existing tests -- `async_test_style_chain_handles_a_rejected_dynamic_import`,
+`source_and_defer_dynamic_imports_reject_through_the_promise_path` -- whose
+own rejections never went through `ModuleResolution` to begin with and so
+were never exercising the removed branch).
+
+Plain `dynamic-import` failures (excluding `import-attributes`/
+`import-defer`/`source-phase-imports`-tagged) fell from 131 to 68 across
+this session's two fixes. The residue is almost entirely accounted for:
+42 are the already-documented `import.UNKNOWN(...)`/bare-`typeof import`-adjacent
+cases blocked on the pre-existing `import.source`/`import.defer` global-object
+mechanism (see the applicability note above), 16 are the
+`eval-script-code-target` finding below, and the remaining ~10 are
+individually distinct (an instruction-budget case, a `sameValue` mismatch,
+a handful of other single-file diagnostics) with no shared root cause found
+worth chasing further this session.
+
+### 3. `eval-script-code-target`: a real gap, not a quick fix
+
+The 16 `catch/*-eval-script-code-target.js` failures (e.g.
+`top-level-import-catch-eval-script-code-target.js`) all dynamically import
+`script-code_FIXTURE.js`, whose content (`var smoosh; function smoosh(){}`)
+is valid script code but a genuine early `SyntaxError` as module code (a
+lexically-declared function name colliding with a `var`) -- and the test
+expects that failure to surface *lazily*, as a promise rejection caught by
+`.catch(error => assert.sameValue(error.name, 'SyntaxError'))`, since the
+fixture is reachable only through a dynamic import, never statically.
+
+BlueJS's own module-graph engine already gets this right in principle: a
+genuine linking-time failure for a module reached only via dynamic import
+correctly becomes a promise rejection (this is exactly the machinery the
+fix above relies on). The actual failure is architectural, in the
+**Test262 harness adapter**, not the engine: `bluejs-test262.rs` compiles
+every entry of `request.module_sources` -- both modules statically
+reachable from the entry and ones reachable only through a dynamic
+import -- into one `HashMap<String, Bytecode>` *before* any execution
+starts, and a `parse_module`/`compile_module_with_limit` failure on *any*
+of them (lines ~136-174) immediately returns a whole-test-run
+`{"phase":"resolution",...}` result. That is correct for a module the
+static entry graph actually needs, but wrong for one intentionally invalid
+*only as a module* that a real host would parse lazily, at the moment a
+dynamic import actually resolves it.
+
+Fixing this properly needs new machinery analogous to this session's JSON
+work: a raw-source registry for modules reachable only dynamically, with
+`ensure_json_module`'s dynamically-imported sibling parsing raw text
+on demand (via `parse_module`/`compile_module_with_limit`, already
+crate-visible) and turning a compile failure into a `RuntimeError` that
+flows through the same promise-rejection path, rather than being resolved
+eagerly by the harness. That is a distinct unit of work from anything in
+this session's three tasks, not a quick fix, so it was intentionally left
+unimplemented per this session's explicit "don't burn a lot of budget here"
+guidance -- documented here as a real, scoped, and reproducible gap for a
+future session rather than attempted partially.
+
+## ShadowRealm: construction, evaluate/importValue, and cross-realm wrapped functions
+
+Implemented 2026-09-18. **Edition-17 applicability finding**: `ShadowRealm`
+is **not** part of published ECMA-262 edition 17. Its own proposal
+repository (`tc39/proposal-shadowrealm`) reports it at TC39 **Stage 2.7** as
+of this date -- not yet Stage 3, let alone merged into a published edition
+-- and the `262.ecma-international.org/17.0/` table of contents has no
+`ShadowRealm` clause. It is present in this Test262 snapshot only because
+the pinned revision's own selection note says "current Test262 main..,
+proposals and staging are included, not filtered to an ECMA edition"
+(`backend/bluejs/test262/snapshot.json`). Implemented anyway per an explicit
+request; `ECMASCRIPT_2026.md`'s workstream table should credit this as a
+proposal-tracking slice, not edition-17 progress, if it is cited there.
+
+### Result
+
+`built-ins/ShadowRealm/`: **0/124 -> 114/124** passing modes (64 files),
+starting from a 100% pre-implementation failure baseline.
+
+### What's implemented
+
+`backend/bluejs/src/vm/shadow_realm.rs` builds directly on the "a realm is a
+whole child `Vm`" primitive `test262.rs`'s `$262.createRealm()` already
+established, rather than inventing a second one: `new ShadowRealm()` creates
+a boxed child `Vm` sharing this `Vm`'s `GlobalSymbolRegistry` (matching
+`$262.createRealm()`'s identical choice, for the identical spec-mandated
+reason -- `Symbol.for` is agent-wide even though every Realm keeps its own
+globals), tracked in new `Vm` fields (`shadow_realms`, `shadow_realm_by_heap`,
+`shadow_wrapped_functions`) alongside the existing
+`test262_realms`/`test262_foreign_values`.
+
+- `ShadowRealm.prototype.evaluate` (`PerformShadowRealmEval`): parses and
+  compiles `sourceText` as a classic Script; a parse failure throws a real
+  `SyntaxError` directly (`ParseText`'s own failure, before any execution
+  context exists), while any abrupt completion *during* execution -- a
+  thrown value, or a promise job's own rejection drained synchronously
+  afterward, since this engine has no realm-independent job queue -- becomes
+  an opaque, message-less `TypeError` in the caller's realm
+  (`CreateTypeErrorCopy`). These are genuinely different spec paths, not an
+  implementation shortcut: confirmed by fetching the proposal's own
+  `PerformShadowRealmEval`/`CreateTypeErrorCopy` text before assuming either
+  one, after an early attempt wrongly wrapped *every* completion the same
+  way and failed `throws-syntaxerror-on-bad-syntax.js`.
+- `GetWrappedValue`/`WrappedFunctionCreate`: primitives (this engine's
+  `Value::String`/`Number`/`Bool`/`BigInt`/`Symbol`/`Undefined`/`Null` carry
+  no heap affinity) cross a boundary unchanged; a callable Object becomes a
+  fresh `NativeFunction::ShadowRealmWrappedFunction` facade allocated in the
+  destination realm (never cached -- a new facade every crossing, matching
+  `wrapped-functions-new-wrapping-on-each-evaluation.js`); any other Object
+  is a `TypeError`. `CopyNameAndLength` reads `length`/`name` through
+  `Vm::proxy_get_own_property` (not the raw heap record), so a revoked or
+  throwing-trap Proxy target is reported correctly instead of silently
+  defaulting.
+- Calling a wrapped function (`OrdinaryWrappedFunctionCall`) wraps
+  `this`/each argument *into* the target realm and the result *back* into
+  the caller's, so a caller-side function passed as an argument becomes
+  itself a fresh wrapped facade the callee can invoke -- the fully
+  bidirectional case
+  (`wrapped-function-arguments-are-wrapped-into-the-inner-realm.js`,
+  `wrapped-functions-accepts-callable-objects.js`, and
+  `wrapped-function-multiple-different-realms(-nested).js`'s multi-hop
+  chains through 3-5 realms in both directions within one expression).
+- `ShadowRealm.prototype.importValue` reuses the same host-supplied module
+  registry ordinary dynamic `import()` already uses (`Vm::dynamic_import`):
+  the child realm borrows the caller's
+  `module_registry`/`active_module_name` for the duration of one call, and
+  any failure (bad specifier, a throwing or unparseable module, a missing
+  export) rejects the returned promise with an opaque `TypeError`, matching
+  the proposal's own `%ThrowTypeError%` rejection handler. `exportName`
+  needed its own read of the actual algorithm text before implementing:
+  unlike `specifier` (`? ToString(specifier)`), `exportName` is a *plain
+  type check with no coercion attempted* ("If exportName is not a String,
+  throw a TypeError exception") -- `throws-if-exportname-not-string.js`
+  specifically asserts a throwing `toString` on a non-string `exportName` is
+  never even called.
+
+### The reentrancy problem this needed solving, and how
+
+Unlike Test262's own realm membrane (which forwards arbitrary object
+operations and deliberately leaves an argument object passed *into* a child
+realm as a non-forwarding opaque stand-in -- see `test262_transport_value`'s
+own comment: "property forwarding needs a resumable cross-VM operation and
+is not implied by passing an otherwise opaque argument through a foreign
+call"), `ShadowRealm`'s wrapped functions must genuinely call back and
+forth in both directions. `wrapped-function-multiple-different-realms.js`
+and its `-nested` sibling chain calls through 3-5 realms within a single
+expression, including a realm calling back into a *grandparent* it does not
+own directly.
+
+Every `Vm` a `ShadowRealm` creates is owned as a plain `Box<Vm>` inside its
+creator's own `shadow_realms` map -- there is no shared/reference-counted
+ownership between realms. Reaching an ancestor (or an ancestor's sibling)
+`Vm` from deep inside a nested call therefore needs something other than
+ordinary field access. The fix is a thread-local stack,
+`ACTIVE: Vec<(heap_tag, *mut Vm)>`: immediately before a `Vm` calls into
+another realm, `register_active` pushes a raw pointer to itself, tagged by
+its own heap id (`ObjectId::heap`); the RAII `ActiveGuard` pops it the
+instant that nested call returns. A callee that needs to reach back into an
+ancestor resolves it by tag through this stack instead of through any
+`HashMap`. The safety argument (documented in full on `ACTIVE` itself in
+`shadow_realm.rs`): a pointer is only ever present for the exact dynamic
+extent of a `&mut Vm` call already suspended on the Rust stack when it was
+pushed, so a wrapped function retained and called again long after that call
+chain returned simply finds no entry (a catchable error) rather than
+dereferencing freed memory -- and a `std::ptr::eq` check refuses the
+degenerate case of a chain looping all the way back to its own origin realm
+within one call.
+
+A second, related bug this exposed and fixed: a realm's own child can be
+*directly owned* by `self` (present in `self.shadow_realms`) while
+simultaneously being *checked out* (removed from that map for the duration
+of a call already using it, the same pattern `test262_foreign_call` already
+uses to avoid aliasing `self.shadow_realms` while a nested call runs).
+`wrapped-function-multiple-different-realms-nested.js`'s 5-realm-deep chain
+does exactly this -- the chain loops back to a realm's own child while an
+ancestor frame is already using that exact child -- and the first
+implementation's `.expect()` panicked trying to remove it a second time
+(reported by the runner as `"kind": "crash", "message": "adapter exited
+with code 101"`). The fix: `shadow_call_wrapped` and `shadow_realm_evaluate`
+now check `ACTIVE` *before* trying to remove from their own `shadow_realms`
+map, and a freshly-checked-out child is itself registered in `ACTIVE` (by
+its own tag) for the duration it is in use, so a call chain that loops back
+through it is found there instead of attempting a second removal.
+
+A third, independent bug: a wrapped function's target had no GC root of its
+own. An arrow function returned directly as an `evaluate()` completion value
+(never stored in that realm's own globals) has nothing else in its own
+realm's reachability graph keeping it alive, so an unrelated later
+allocation in that realm's heap (e.g. a second `evaluate()` call
+materializing new intrinsics) could reclaim it before a wrapper elsewhere
+ever called it -- reproduced directly by running the multi-realm test with
+an extra intervening `evaluate()` call inserted between creating and calling
+the wrapper, confirmed via the engine's own `bluejs gc reclaim` stderr
+trace. Fixed by rooting the target (`Heap::root`) in its own realm for the
+wrapper's lifetime, mirroring `Test262ForeignValue`'s identical
+`_target_root` pattern one field over.
+
+### Test262 runner infrastructure fix (shared with, but scoped away from, dynamic `import()`)
+
+`ShadowRealm.prototype.importValue('./relative.js', name)` is an ordinary
+method call, not `import`/`import.source`/`import.defer` syntax, so the
+runner's existing dynamic-import-with-a-variable-specifier heuristic
+(`DYNAMIC_IMPORT_EXPRESSION` triggering a relative-string scan of the test
+source for sibling fixtures) never found `import-value_FIXTURE.js` for
+`import-value.js` -- a real gap in the runner, not the engine, that a plain
+"module not found" happened to mask for every *other* `importValue` test
+(each expects a `TypeError` rejection regardless of the specific reason, so
+a missing fixture and a genuinely broken one both "pass" until a test
+actually expects success). Added a second trigger,
+`SHADOW_REALM_IMPORT_VALUE_EXPRESSION` (`\.importValue\s*\(`), alongside the
+existing one.
+
+That alone regressed `throws-typeerror-import-syntax-error.js`: its fixture
+is *deliberately* unparseable (it tests that `importValue` rejects when the
+imported script can't be parsed), but the adapter's `mode == "module"` path
+eagerly precompiles every `module_sources` entry up front and hard-fails the
+*entire request* on any parse error -- correct for a genuinely
+statically-imported module (a real linking failure the corpus already
+depends on testing this way), wrong for a candidate that is only a
+speculative relative-string guess never actually required by anything.
+`module_sources()` now also returns which collected paths were reached
+*only* through such a guess (never through a real `import`/dynamic-
+`import()` reference), and the adapter (`bluejs-test262.rs`) skips --
+instead of hard-failing on -- a parse/compile failure for exactly those
+paths (`speculative_module_sources` in the request). To keep this from
+touching the already-large, separately-exercised dynamic-`import()` corpus,
+that leniency is further scoped to apply only when `.importValue(` is what
+triggered the string scan and no actual dynamic-`import()` expression is
+also present -- verified unchanged (861 fail / 1039 pass, identical file-
+for-file before and after this change) against
+`language/expressions/dynamic-import/` before finishing.
+
+### Remaining gaps (10/124 failing modes, 5 files)
+
+All confirmed, by direct reproduction, to be **pre-existing** limitations
+unrelated to this work -- none are ShadowRealm-specific, and each reproduces
+identically on a plain `Vm`/Test262-realm scenario with no `ShadowRealm`
+involved at all:
+
+- `globalthis-available-properties.js`, `globalthis-config-only-properties.js`
+  (4 modes): `Object.prototype.hasOwnProperty.call(globalThis, 'Array')`
+  (direct reflection, bypassing the compiler's identifier fast path) returns
+  `false` for at least this one lazily-materialized global, even on the
+  *outer*, non-ShadowRealm realm with no prior touch, while `'JSON'` and
+  `'isFinite'` checked the same way both correctly return `true` -- a
+  narrow, name-specific gap in `materialize_global_object_property`'s
+  dispatch, not chased further given this session's scope.
+- `returns-primitive-values.js` (2 modes): needs `Number.isNaN`, not yet an
+  implemented `Number` static (the global `isNaN`/`isFinite`/etc. exist; the
+  `Number.*` statics remain part of the still-open "complete builtin
+  libraries" workstream per `ECMASCRIPT_2026.md`).
+- `wrapped-function-proto-from-caller-realm.js`,
+  `wrapped-function-throws-typeerror-from-caller-realm.js` (4 modes): both
+  use `$262.createRealm()` to construct a `ShadowRealm` in one Test262 realm
+  and then pass *that* `ShadowRealm` instance into a *third*, unrelated
+  Test262 realm (`YetAnotherShadowRealm.prototype.evaluate.call(realm, ...)`).
+  Test262's own membrane represents an object crossing between two realms
+  neither of which is the immediate caller as an opaque, brand-less stand-in
+  (`test262_transport_value`'s own documented limitation, quoted above), so
+  this feature's `[[ShadowRealm]]` brand check correctly reports it as *not*
+  a `ShadowRealm` once it arrives that way -- a pre-existing Test262-membrane
+  gap this feature's brand check did not introduce, and could not paper over
+  without extending that membrane's own object-identity model.
+
+### Verification
+
+`backend/bluejs/tests/shadow_realm.rs` (new, 12 tests): construction/brand
+checks, `evaluate`'s primitive-passthrough and non-primitive/non-callable
+`TypeError` boundary, the `SyntaxError`-vs-opaque-`TypeError` split, a
+wrapped function's `length`/`name`/fresh-identity-per-crossing, the
+bidirectional callable-argument case, the multi-realm GC-rooting regression,
+and `importValue`'s resolve/reject paths through
+`set_module_loader_context`. `cargo build --workspace --all-targets`,
+`cargo test --workspace --no-fail-fast` and `cargo clippy --workspace
+--all-targets -- -D warnings` all pass except the one pre-declared
+known-flaky `observable_conversion_order_and_gc_pressure` in
+`tests/string_protocols.rs` (intermittent `HeapLimitExceeded`, unrelated to
+this work).
+
+## Explicit Resource Management closure: `await using`, for-loop heads, module top level, and real per-resource `Await` in `disposeAsync` (2026-09-18, continued)
+
+Follow-up to the same day's slice above, closing the gaps that slice's own
+report flagged as remaining, in the priority order requested: `await
+using` syntax first (the largest gap by far), then `for`/`for-of` `using`
+heads, the switch-case restriction (already done in the same pass as the
+name-inference fix, see below), module-top-level disposal timing, and
+anonymous-function-name inference (also already closed alongside the
+switch-case fix). Filtered-slice evidence (same filter as before; 397
+test files, 780 modes):
+
+| | pass | fail | timeout |
+| --- | ---: | ---: | ---: |
+| Start of this continuation | 592 | 187 | 1 |
+| After `await using` | 716 | 61 | 3 |
+| After for/for-of `using` heads | 748 | 29 | 3 |
+| After module top-level disposal | 766 | 14 | 0 |
+| After real per-resource `Await` in `disposeAsync` + for-await-of-of fix | 768 | 12 | 0 |
+
+**98.5% of the filtered slice now passes** (768/780); the 3 timeouts (all
+module-related, "disposed at end of Module" tests whose `$DONE()` lived
+inside the never-called dispose method) are gone entirely, not just turned
+into ordinary failures.
+
+### `await using` declarations (the priority-1 item)
+
+The blocking design question from the prior slice was real: `DisposeResources`
+as a single atomic native opcode cannot express the spec's per-resource
+`Await(Call(method, V))`, because only compiled bytecode can suspend and
+resume through the VM's existing `Await`/generator machinery -- a native
+Rust function call cannot yield control back to the event loop mid-call.
+The resolution avoids inventing new suspension plumbing entirely: a
+using-declaring block/function body/for-head that contains at least one
+`await using` (`has_await_using_declaration`) compiles a *different*
+finally body than the plain-synchronous fast path.
+
+`Opcode::DrainAsyncDisposables` (one native step, mirroring
+`DisposeResources`'s own abrupt-vs-normal-entry handler-index trick for
+merging a pending error) converts the block's native disposable-resource
+list into a plain JS value `[hasError, pendingError, entries]`, where
+`entries` is a real Array of `[receiver, method, hasArgument, argument,
+isAsync]` records, one per resource, in declaration order.
+`Compiler::compile_async_dispose_finally` (`backend/bluejs/src/compiler/statements.rs`)
+then synthesizes an ordinary `while`/`try`/`catch` loop over that array --
+built from real `ast.rs` nodes (`Identifier`/`Member`/`Call`/`Await`/`New`/
+`Assign`/`If`/`Try`) and compiled through the *normal* statement/expression
+pipeline, `try_statement`/`loop_statement` included -- so a resource that
+needs awaiting suspends and resumes through the already-correct,
+already-tested `Await` path, not a new one. `SuppressedError` merging is
+just the synthesized catch clause's `new SuppressedError(...)`, an
+ordinary compiled expression, not new merge logic.
+
+This bought real per-resource `Await` semantics essentially for free,
+verified directly (not just inferred): a dispose method's own returned
+promise is genuinely awaited before the next resource is disposed
+(`await_using_awaits_the_dispose_methods_own_returned_promise`), and a
+promise it returns which *later rejects* becomes the disposing async
+function's own rejection
+(`await_using_propagates_a_rejected_dispose_promise_as_a_real_rejection`)
+-- exactly the case the prior slice's `AsyncDisposableStack.prototype.disposeAsync`
+simplification documented as unable to observe.
+
+Parser: `await_using_declaration_follows` (`parser/functions.rs`) mirrors
+`using_declaration_follows`'s no-LineTerminator lookahead across both
+contextual keywords, gated on the same `async_depth`/`module_await` check
+an ordinary `await` expression already uses.
+
+### `for`/`for-of` `using` heads (priority 2)
+
+Two genuinely different disposal timings, both confirmed directly against
+Test262's own file naming before implementing either:
+
+- **C-style `for (using x = v; ...; ...)`** disposes once, when the whole
+  `ForStatement` completes (`initializer-disposed-at-end-of-forstatement.js`,
+  singular) -- handled by wrapping the *entire* `loop_statement` call in
+  the same disposal machinery a block uses, via a new shared
+  `Compiler::wrap_with_disposal` helper factored out of
+  `statements_with_disposal` (which now just calls it).
+- **`for (using x of iterable)`** (`ForBinding : using ForBinding`, a
+  distinct for-of-only production) disposes *each iteration's own binding*
+  at the end of *that* iteration
+  (`initializer-Symbol.dispose-called-at-end-of-each-iteration-of-forofstatement.js`)
+  -- handled inside `for_each` (`compiler/expressions.rs`) by wrapping just
+  the current iteration's bind-and-body in `wrap_with_disposal`, inside the
+  per-iteration lexical scope `for_each` already creates for `let`-style
+  bindings. Both reuse the exact same handler-stack machinery as the block
+  case, so break/continue/return crossing either one already dispose
+  correctly via the generic abrupt-completion path, with no new tracking
+  written for it.
+
+Parser disambiguation turned out to be the fiddly part, resolved by
+checking each case directly against its own named Test262 file rather than
+guessing: `using`/`await using` is rejected outright in a for-in head
+(`using-invalid-for-in.js`; ForBinding has no ForIn production);
+`for (using of expr)` treats `using` as a bare identifier being iterated,
+*not* a declaration, since `using` alone can validly stand as an ordinary
+for-of loop variable (`using-for-using-of-of.js`); but
+`for (using of = expr;;)` (a using declaration whose bound identifier's
+*name* is `of`) and `for (await using of of expr)` are both still
+declarations -- for the first because the disambiguating token after the
+second identifier is `=`, not the for-of separator
+(`using-for-statement.js`, "`for (using of =` are interpreted as for
+loop"); for `await using` specifically, the bare-identifier reading is
+never even grammatically available (`await using` alone would have to
+parse as an `AwaitExpression` wrapping `using`, which is not a valid for-of
+assignment target), so `await_using_declaration_follows_in_for_head` needs
+no `of`-exclusion at all, unlike its plain-`using` counterpart
+(`await-using-valid-for-await-using-of-of.js`).
+
+### Module top-level disposal (priority 4)
+
+Unlike a Script (where `using`/`await using` is rejected outright at the
+top level -- no enclosing block to dispose it at, per the prior slice), a
+Module's top level *is* one of the spec's permitted contexts, and disposes
+when the module's own evaluation completes. Before this fix, module
+top-level `statements_after_function_declarations` never went through
+`statements_with_disposal` at all, so the resource was simply never
+disposed -- concretely, in the `[module, async]`-flagged Test262 tests,
+the dispose method that calls `$DONE()` was never invoked, hanging the
+async test harness forever (the three timeouts in the table above, not
+merely failures). Fixed with the same one-line-shaped change as the
+for-loop case: wrap the module top-level's statement compiling in
+`wrap_with_disposal` when it directly declares a `using`/`await using`.
+
+### Real per-resource `Await` in `AsyncDisposableStack.prototype.disposeAsync`
+
+Not on the original priority list, but directly exposed by writing the
+`await using` tests above: `disposeAsync`'s prior "run every dispose call
+synchronously, then wrap the aggregate outcome in a Promise" simplification
+was not just slower than the spec algorithm, it was observably wrong for a
+*genuinely* async dispose method. `stack.defer(async function () { throw
+new MyError(); })` calls an async function, which never throws
+synchronously -- it always returns a (here, rejected) Promise -- so the
+prior implementation's synchronous call saw no error at all and silently
+lost the rejection (`rejects-with-error-as-is-if-only-one-error-during-disposal.js`).
+Separately, `this-not-object-rejects.js`/
+`this-does-not-have-internal-asyncdisposablestate-rejects.js` expect a
+*rejected Promise*, not a synchronous `TypeError` throw, from a bad
+receiver -- `assert.throwsAsync` calls `disposeAsync.call(badThis)` and
+awaits its *return value* rejecting, which a synchronous throw before ever
+returning a Promise cannot satisfy.
+
+Both are fixed together: `Vm::async_dispose_helper`
+(`vm/builtins/resource_management.rs`) lazily compiles and caches, once,
+an internal async function with the *exact* same algorithm as
+`compile_async_dispose_finally`'s synthesized loop (parsed from a literal
+source string via `crate::parse`/`crate::compiler::compile_eval`/
+`Vm::execute_eval` -- the same reentrant-safe internal-compilation pattern
+`indirect_eval` already uses, not a new one), and `disposeAsync` calls it
+with `(false, undefined, entries)`, returning its result Promise directly.
+A `RequireInternalSlot`-style precondition failure now goes through a new
+`Vm::reject_with` (a catchable `RuntimeError` becomes a rejected Promise
+via the existing `promise_reject`, a host resource error still propagates
+raw) instead of the native call's own `?`-propagated synchronous throw.
+This closed all 10 of the slice's `AsyncDisposableStack/prototype/disposeAsync`
+failures, including the two `explicit-await-for-{null,undefined}.js` tests
+checking the spec's "an `await using`/`disposeAsync`-adopted null/undefined
+resource still costs one real microtask tick" behavior -- observable only
+with genuine `Await` interleaving, which `disposeAsync` now has.
+
+`dispose_resources_sync`'s doc comment is updated to stop claiming
+`disposeAsync` reuses it (it no longer does); the sync-only fast path
+remains exactly as before for `using` declarations and
+`DisposableStack.prototype.dispose`, which by construction never add an
+`async-dispose` resource.
+
+### What remains, and why each is being left alone
+
+The filtered slice's 12 remaining failures split into three groups, none
+of which block anything else in this feature:
+
+- **Two, genuinely out of scope**: `built-ins/SuppressedError/proto-from-ctor-realm.js`
+  needs `$262` cross-realm `new.target` support unrelated to resource
+  management itself.
+- **Six, pre-existing engine gaps this feature's tests merely happen to
+  also exercise, confirmed directly rather than assumed**:
+  - `using`/`await-using-declaring-let-split-across-two-lines.js` (2
+    modes): needs sloppy-mode `let` to fall back to an ordinary identifier
+    reference when not followed by a valid binding start (`let =
+    "value";`). Verified this is not `using`-specific: plain
+    `class C { static { let await = null; } }`-style sloppy `let`-as-identifier
+    already parses wrong today, independent of this feature.
+  - `using`/`await-using-invalid-arraybindingpattern.js` (4 modes, both
+    strict/sloppy): `using [] = null;` already fails to parse (`using[]`
+    is an empty computed-member-access, itself invalid), but through the
+    generic "expected an expression" primary-expression fallback used by
+    dozens of unrelated grammar positions, which is deliberately never
+    marked `known_syntax` ("never let \[the subset parser's\] arbitrary
+    rejection satisfy a negative test", per that flag's own doc comment).
+    The engine's rejection is correct; only the Test262 adapter's
+    conservative classification of *which* rejections count as confirmed
+    `SyntaxError`s doesn't credit it, and broadening that flag's use at a
+    shared, heavily-hit error site was judged too risky to justify a
+    2-test-file gain.
+  - `using/static-init-await-binding-invalid.js` (2 modes): a class static
+    block must reject `await` as any BindingIdentifier's name, `using`
+    included; verified `class C { static { let await = null; } }` already
+    incorrectly parses today too, so this is the general restriction never
+    having been implemented, not a `using`-specific gap.
+- **One, an inherited (not newly caused) bug, reconsidered and still left
+  alone**: `using/cptn-value.js` (2 modes, `eval('4;{using x=null;}')`
+  should be `4`, not `undefined`). Traced to `try_statement`'s unconditional
+  `ClearCompletion` at try-entry: it overwrites `self.completion` with no
+  prior save, so an empty try/finally already loses the *preceding*
+  statement's completion value before this feature existed
+  (`eval('4;try{}finally{}')` is `undefined` today, independent of
+  `using`). A real fix belongs in the general statement-list/`UpdateEmpty`
+  completion-value machinery (likely how `ClearCompletion` interacts with
+  every construct that can complete empty, `if` included, not just
+  `try`/`finally`), which is far more central and heavily depended-upon
+  than this feature's own code; given the working-tree's own completion
+  regressions (`tests/try_completion.rs`) already pass extensively today,
+  a wrong fix risks a much wider regression than the two tests it would
+  close. Left as a documented, pre-existing, unrelated gap rather than
+  risked in this pass.
+
+### Verification
+
+`backend/bluejs/tests/resource_management.rs` grew from 18 to 31 tests,
+covering (new in this pass): `await using` disposal ordering mixed with
+plain `using`, real dispose-promise awaiting and rejection propagation,
+`SuppressedError` wrapping across the async path, null/undefined `await
+using` resources, the async-context requirement, C-style-for-head disposal
+timing (once, at loop exit, not per-iteration), for-of-head per-iteration
+disposal, the for-in rejection and for-of `using`/`of` disambiguation
+(`using-for-using-of-of.js`'s own scenario, reproduced directly), and
+`disposeAsync`'s corrected bad-receiver rejection and real
+error-as-is-when-only-one-disposal-fails behavior. All 31 pass; every one
+of this pass's fixes was caught by a test failing first against the prior
+(missing or simplified) behavior.
+
+`cargo build --workspace --all-targets`, `cargo test --workspace --no-fail-fast`
+(only the pre-declared, unrelated, already-known-flaky
+`observable_conversion_order_and_gc_pressure` fails, `HeapLimitExceeded`,
+same as before this work) and `cargo clippy --workspace --all-targets --
+-D warnings` all pass.
+
+## ShadowRealm follow-up: closing three of the five remaining gaps
+
+Implemented 2026-09-18, same-day follow-up to the slice above, requested to
+push `built-ins/ShadowRealm/` as close to 100% as genuinely achievable.
+**Result: 114/124 -> 122/124** (up from 0/124 at the start of the original
+slice). Two of the three previously-identified causes turned out to be real,
+general, pre-existing engine bugs (not ShadowRealm-specific, and not
+"someone else's shared infrastructure to leave alone") and are now fixed
+with their own regression tests; the third is now understood in full
+mechanical detail and partially fixed, closing 3 of its 4 modes.
+
+### `Object.prototype.hasOwnProperty`/`propertyIsEnumerable` bypassed lazy-global materialization and Proxy traps
+
+Root cause, not just a workaround: `native::ObjectMethod::HasOwnProperty`
+and `PropertyIsEnumerable` (`vm/builtins.rs`) called
+`self.heap.get_own_property_descriptor(object, key)` -- the *raw* heap
+record -- directly, while every other own-property reflection operation
+(`Object.hasOwn`, `Object.getOwnPropertyDescriptor`, `Object.keys`/
+`getOwnPropertyNames` internally) goes through `Vm::object_get_own_property`,
+which first calls `materialize_global_object_property` (creating a
+not-yet-touched lazy intrinsic global as a real property before observing
+it) and correctly dispatches a Proxy's own `[[GetOwnProperty]]` trap. Fixed
+by routing both through `object_get_own_property` like everything else.
+Regression test added first (TDD): `Object.prototype.hasOwnProperty.call(
+globalThis, 'Array')` on a fresh `Vm` returned `false` before the fix
+(`'JSON'`/`'isFinite'` happened to already read `true`, because *something*
+else had touched them first in the exact same script -- this was never a
+uniformly-broken operation, which is what took the longest to pin down).
+This is reproducible with no ShadowRealm involved at all: it explains
+`globalthis-available-properties.js` fully.
+
+`backend/bluejs/tests/descriptors.rs` gained
+`has_own_property_and_property_is_enumerable_materialize_lazy_globals`,
+checking five different lazy globals (including `ShadowRealm` itself)
+through both methods on independent fresh `Vm`s. Verified no regression: the
+full `built-ins/Object/` directory (3,414 files, 6,808 modes),
+`built-ins/Object/prototype/{hasOwnProperty,propertyIsEnumerable}` plus
+`built-ins/Object/hasOwn` (141 files, 282 modes) and `built-ins/Proxy/` (311
+files, 607 modes) are all still 100% passing after the change.
+
+### `Number.isNaN` was never implemented
+
+A plain gap, not a bug: `Number.isFinite`/`isInteger`/`isSafeInteger` all
+existed as `NativeFunction` variants installed on the `Number` constructor;
+`isNaN` did not (only the *global* `isNaN`, which coerces its argument,
+existed). Added `NativeFunction::NumberIsNaN` following the exact existing
+pattern of its siblings: `matches!(first, Value::Number(number) if
+number.is_nan())`, with **no** coercion (`Number.isNaN('NaN')` is `false`,
+unlike the coercing global). Test-first in
+`backend/bluejs/tests/conformance_edges.rs`
+(`number_is_nan_requires_a_number_type_with_no_coercion_unlike_global_is_nan`),
+covering the coercion boundary, `length`/`name`, and its property
+attributes. This explains `returns-primitive-values.js` fully, with no
+ShadowRealm involvement.
+
+### A third, ShadowRealm-specific bug this work also found and fixed: no fresh lexical scope per `evaluate()` call
+
+Not one of the three originally-identified causes -- found while
+re-investigating `globalthis-config-only-properties.js` after the
+`hasOwnProperty` fix only got it to 3/4 of the way there. Its second
+`r.evaluate(...)` call declares a top-level `const` with the same name
+(`esNonConfigValues`) the *first* call also declared, and failed with
+`SyntaxError("global binding esNonConfigValues cannot be redeclared")`
+-- an opaque `TypeError` at the ShadowRealm boundary, since any abrupt
+`evaluate()` completion is deliberately opaque (see the slice above).
+
+This is a real semantic gap, confirmed against the actual proposal text
+fetched for `GetShadowRealmContext ( shadowRealmRecord, strictEval )`:
+"1. Let lexEnv be NewDeclarativeEnvironment(shadowRealmRecord.[[GlobalEnv]])."
+*Every single* `evaluate()` call gets its own fresh declarative
+environment for top-level `let`/`const` -- unlike an ordinary repeated
+top-level Script (e.g. two `<script>` tags, or two `$262.evalScript` calls),
+which runs `GlobalDeclarationInstantiation` directly against the realm's
+one persistent Global Environment Record, so a second `let x` genuinely
+does conflict with an earlier one there, matching real engines. This Vm's
+`execute_script` only implements that latter, ordinary case: `global_bindings`
+is one persistent, never-cleared map. Fixed with a new general primitive,
+`Vm::reset_lexical_global_bindings` (`vm/execution.rs`) -- drops every
+purely-lexical (non-property) `global_bindings` entry and releases its GC
+root, leaving `var`/function declarations (real, persistent `globalThis`
+properties) untouched -- called by `shadow_realm.rs`'s `run_evaluate`
+before every `evaluate()` script runs. Deliberately *not* a change to
+`execute_script`/`prepare_global_declarations` themselves: ordinary repeated
+top-level scripts (`$262.evalScript`, multiple classic scripts on the same
+`Vm`) are confirmed, by reading the actual spec clause, to *correctly* keep
+conflicting on lexical redeclaration, and `language/eval-code` (1,011 files,
+1,152 modes) plus `language/global-code` stayed 100% passing throughout,
+confirming this fix did not touch that ordinary case at all.
+
+Test-first: `evaluate_gives_each_call_a_fresh_lexical_scope_that_does_not_conflict_with_earlier_ones`
+in `tests/shadow_realm.rs`, covering both the fresh-`let`-scope case and
+that `var` declarations still correctly persist across calls.
+
+### The remaining Test262-membrane gap, revisited: partially fixed, and now fully understood
+
+The original slice's brand-check explanation was correct but incomplete: a
+`ShadowRealm` instance crossing between two Test262 realms neither of which
+is the immediate caller previously arrived as `test262_transport_value`'s
+ordinary opaque, brand-less stand-in, so `require_shadow_realm` correctly
+(if unhelpfully) rejected it. Investigated whether the membrane could be
+taught to preserve identity for this one exotic-object kind specifically,
+rather than assuming it could not.
+
+It can, with one architectural change: a `ShadowRealm`'s child realm was
+owned exclusively (`ShadowRealmRecord { vm: Box<Vm> }`), so only the one
+realm that created it could ever reach it. Changed to shared ownership,
+`ShadowRealmRecord { vm: Rc<RefCell<Vm>> }` -- cheap to clone, and a second
+owner can now hold the exact same live child. `test262_export_foreign_value`
+now recognizes (via a new `export_foreign_shadow_realm` step) when the
+value crossing into a realm is itself a `ShadowRealm` instance owned by a
+*different* Test262 realm, and re-exports it as a genuine new `ShadowRealm`
+instance object in the destination realm's own `shadow_realms`/
+`shadow_realm_by_heap` maps, backed by an `Rc` clone of the identical child
+-- rather than falling through to the ordinary opaque stand-in. A new
+per-destination-realm `shadow_realm_reexports` map (deliberately separate
+from `imported_sources`/`imported_values`, which back a brand-less stand-in
+with no meaning of its own) deduplicates re-exporting the same target
+twice. `evaluate`/`importValue`/a wrapped-function call reached through the
+re-exported instance now observes the identical realm -- same `globalThis`,
+same prior `evaluate()` side effects -- as reaching it the original way.
+
+Switching to `Rc<RefCell<Vm>>` also required reworking how
+`shadow_call_wrapped`/`shadow_realm_evaluate` detect "this exact child realm
+is already mid-call further up this same synchronous chain" (previously
+signaled by the child's absence from `shadow_realms`, since it was
+temporarily removed for the borrow's duration; now, since it is never
+removed, signaled by `RefCell::try_borrow_mut` failing instead) -- both now
+try a direct, fresh borrow of a realm `self` owns first, and fall back to
+the existing `ACTIVE` thread-local (ancestor-tracing) lookup only when that
+borrow fails or `self` does not own the realm directly. The `ACTIVE`
+mechanism itself, and its safety argument, are unchanged: it remains the
+only way to reach a caller `Vm` that is not itself a `ShadowRealm` child
+(the embedder's own top-level `Vm`, never wrapped in `Rc<RefCell>`), and
+`Rc<RefCell<Vm>>` was chosen specifically to enable this shared-identity
+case, not as a general aliasing-safety improvement -- the `ACTIVE`-reached
+path still resolves a raw pointer outside `RefCell`'s own tracking, exactly
+as before.
+
+This closes 3 of `wrapped-function-proto-from-caller-realm.js`'s 4
+assertions and **all** of `wrapped-function-throws-typeerror-from-caller-realm.js`
+(now fully passing). The one remaining assertion
+(`checkArgWrapperFn(() => {})`, in `wrapped-function-proto-from-caller-realm.js`)
+is a *different*, deeper limitation: `checkArgWrapperFn` is a `ShadowRealm`
+wrapped function that itself arrived at the caller only as a Test262
+foreign-value facade (double-wrapped: ShadowRealm's own wrapping, then
+Test262's own membrane import of that result). Calling it forwards the
+`() => {}` argument through `test262_foreign_call`, which exports it via
+the *ordinary*, unconditionally brand-less-and-non-callable
+`test262_transport_value` (verified by tracing the exact dispatch: the
+opaque stand-in reaches `shadow_wrap_into`'s own `is_callable` check and
+fails it) -- a **general** Test262-membrane limitation, not specific to
+ShadowRealm and not touched by this session's fix: passing *any* callable
+as an argument through `test262_foreign_call` produces a non-callable
+stand-in on the far side, exactly the "property forwarding needs a
+resumable cross-VM operation" limitation `test262_transport_value`'s own
+comment already documents. Fixing it generally would mean giving Test262's
+membrane itself the same bidirectional-calling capability
+`shadow_realm.rs` has for its own boundary -- a substantially larger,
+independently-risky change to code several hundred other, unrelated Test262
+fixtures already depend on, not a small extension of the ShadowRealm-specific
+fix above. Left as a known, now precisely-diagnosed limitation.
+
+Verified no regression from the `Rc<RefCell<Vm>>` change:
+`backend/bluejs/tests/shadow_realm.rs` grew to 14 tests (added
+`a_shadowrealm_instance_keeps_its_identity_across_a_test262_realm_transport`,
+using `$262.createRealm()` directly, mirroring the Test262 scenario);
+`built-ins/Reflect/` + `built-ins/Proxy/` (465 files, 915 modes) stayed 100%
+passing. `cargo build --workspace --all-targets`, `cargo test --workspace
+--no-fail-fast` (only the same pre-declared `string_protocols.rs` flake) and
+`cargo clippy --workspace --all-targets -- -D warnings` all pass.
+
+## Lazy on-demand module compilation, and a further round of individual dynamic-import fixes
+
+Implemented 2026-09-18, a third continuation of the same-day session above,
+addressing its own explicitly deferred `eval-script-code-target` finding
+plus the residual individually-diagnosed `dynamic-import` failures.
+
+### 1. `ensure_dynamic_module_compiled`: the `eval-script-code-target` fix, implemented for real
+
+Built the "raw-source registry for dynamic-only siblings" the prior section
+named but deferred, directly analogous to `ensure_json_module`:
+
+- **`vm/modules.rs::ensure_dynamic_module_compiled`**: given a resolved
+  module name already absent from the working module map, looks up raw
+  JavaScript text in a new `Vm::dynamic_module_sources` registry (installed
+  via the new `Vm::set_dynamic_module_sources`) and compiles it on demand
+  via the crate's own `parse_module`/`compile_module_with_limit` (the same
+  functions the Test262 adapter already uses for every other module). A
+  parse or compile failure becomes a real `RuntimeError::SyntaxError`
+  (matching `indirect_eval`'s own error mapping), which -- reached only
+  through a dynamic import's own job -- rejects that import's promise with
+  a real `SyntaxError` object rather than surfacing as a harness-level or
+  whole-graph failure. A target with no registered raw source at all is
+  left alone: the pre-existing "module was not linked" `ModuleResolution`
+  fallback still applies exactly as before this function existed.
+- **A necessary generalization in `execute_module_graph_inner`**: linking
+  work (cell creation, indirect-export/source-phase validation, import
+  aliasing, declaration instantiation) was gated on `fresh_graph` --
+  correct only because, before this session, the *entire* reachable set was
+  always supplied up front in one registry, so "first ever graph" and "every
+  module that will ever need linking" were the same set. Once a module can
+  be compiled and added to the graph *after* that first call (a dynamic
+  import discovering a not-yet-compiled sibling, exactly `ensure_json_module`'s
+  own case too, or now `ensure_dynamic_module_compiled`'s), that assumption
+  breaks -- a `fresh_graph`-gated pass would simply never link it. The fix:
+  compute `new_names` (every module in `modules` not already in `linked`)
+  and gate/scope the *same* linking pass on `!new_names.is_empty()` instead
+  of `fresh_graph`, using `new_names` in place of `order` throughout. This
+  runs identically to the old `fresh_graph` behavior when nothing has been
+  linked yet (`new_names == order`, since `linked` starts empty) and is a
+  no-op when nothing new was added (`new_names` empty) -- but now also
+  correctly links a lazily-added module into an *already-linked* existing
+  graph. This let the bespoke single-entry `LinkedModule` construction the
+  prior section added specifically for `ensure_json_module` on a non-fresh
+  graph be deleted entirely: a JSON module and a lazily-compiled ordinary
+  module now share the exact same generic linking path. A rollback
+  refinement went with it: on a linking failure, a fresh graph still
+  discards every root (nothing was usable), but a failure while linking a
+  *delta* into an existing graph now rolls back only that delta (removing
+  just `new_names` from `linked`, unrooting only the roots pushed since a
+  new `roots_checkpoint`), so an unrelated later operation on the rest of
+  the graph is unaffected and a retried dynamic import of the same failed
+  specifier is treated as new again rather than resuming a half-linked
+  record.
+- **Harness wiring** (`run.py`, `bluejs-test262.rs`): `module_sources()` now
+  returns `(sources, dynamic_sources, json_sources)` instead of two values.
+  Every discovered file is tagged by *how* it was reached -- a static edge
+  (`import`/`export ... from`, from any visited node, transitively) or a
+  dynamic one (a literal `import(...)` call, or the broader relative-string
+  fallback) -- with static winning whenever both apply to the same file
+  (a module genuinely required statically must still be compiled eagerly,
+  even if also separately dynamically imported elsewhere). A `.js` file
+  reached only dynamically goes to the new `dynamic_sources` return value
+  (raw text, sent to the adapter as a new `module_dynamic_sources` request
+  field and installed via `Vm::set_dynamic_module_sources`) instead of the
+  eagerly-parsed-and-compiled `sources`. One new host-recognized regex,
+  `DYNAMIC_IMPORT_PLAIN_REQUEST`, deliberately excludes `import.source(...)`/
+  `import.defer(...)`: those forms have no lazy-compile counterpart (source-
+  phase dynamic import resolves by checking whether the target is *already*
+  a compiled Source Text Module), so a reference through either must still
+  be treated as a static edge -- a new `DYNAMIC_IMPORT_SOURCE_OR_DEFER_REQUEST`
+  regex tags those "static" explicitly. A second harness-only fix: a script
+  that dynamically imports *itself* (`eval-self-once-script.js`) names a
+  path always classified "static" (the entry always seeds discovery that
+  way) yet is deliberately excluded from `module_codes` (compiled once, as
+  the script the request actually executes, never twice as a module) --
+  its raw text is now also copied into `dynamic_sources` when that
+  exclusion applies, so self-referential dynamic import finds it instead of
+  neither registry.
+
+**Evidence**: all 16 `catch/*-eval-script-code-target.js` tests now pass
+(0/16 before this fix, confirmed both individually and as part of the full
+run below). Six new regression tests in `test262_host.rs`: compiling an
+uncompiled module on demand, the exact `eval-script-code-target` scenario
+lazily rejecting with a real `SyntaxError`, reusing an on-demand-compiled
+module's identity across repeated imports (`Promise.all` of two imports of
+the same never-before-seen specifier resolve to the *same* namespace), a
+failed on-demand compile/link not corrupting an unrelated already-healthy
+module in the same graph, a script dynamically importing itself, and one
+documenting the accepted trade-off below.
+
+**A real, understood, and accepted one-test trade-off**: `language/module-code/
+source-phase-import/import-source.js` regressed (2 modes). Root cause fully
+diagnosed and preserved as `dynamic_import_of_lazily_compiled_siblings_does_not_batch_unrelated_modules`
+in `test262_host.rs`: this test dynamically imports three fixtures one at a
+time; one of them has genuine `import source x from '<do not resolve>'`
+requests that always fail with a `TypeError`, while the *other* fixtures'
+own imports (ordinary default imports of the same deliberately-unresolvable
+specifier, or -- via a shared `ensure-linking-error_FIXTURE.js` sibling --
+a "does not export" case) fail with a `SyntaxError` instead. Under the old
+eager-everything-up-front harness, a first module graph linked *all* four
+siblings together regardless of which one a given dynamic import actually
+targeted, so the second fixture's real `TypeError` always won the race
+against the others' `SyntaxError`s -- accidentally matching what the test
+expects for all three calls, for a reason unrelated to what it claims to
+verify. Lazily compiling only the module a specific dynamic import actually
+names removes that coincidence: it is a strictly more correct linking
+granularity (it stops spuriously batching together modules that have
+nothing to do with the import being made), so the first fixture's own
+dynamic import no longer incidentally pulls in the second fixture's
+`Bytecode`, and its own `SyntaxError` is what actually surfaces. Judged
+not worth chasing further: a proper fix would require distinguishing "the
+host could not resolve/load this module at all" (arguably a `TypeError`,
+by analogy with `module_source_object`'s own "host did not provide" case)
+from "the module was resolved but a specific named export is missing"
+(a `SyntaxError`, per `ResolveExport`) throughout `resolve_export`'s
+"module ... was not supplied by the host" branch -- a change with a wide,
+not-fully-mapped blast radius across the whole corpus, for the sake of one
+upstream test whose own assertion happens to rely on a coincidence.
+
+### 2. Two more individually diagnosed and fixed `dynamic-import` bugs
+
+**`Promise.prototype.constructor` unset for internally-created promises**
+(`language/expressions/dynamic-import/always-create-new-promise.js`, a
+pre-existing bug unrelated to this session's own work -- confirmed present
+in the very first full-tree measurement, before any of this session's
+changes). `new_promise` (`vm/builtins/promises.rs`, used by dynamic import,
+`await`, `Promise.all`/`race`/`allSettled`/`any`, `Atomics.waitAsync`, and
+every other internally-created promise) built instances from
+`promise_prototype()` alone, which installs `then`/`catch`/`finally`/
+`@@toStringTag` but not the prototype's "constructor" link back to the
+`Promise` function -- that property is only added when the `Promise`
+*global* itself is separately materialized (`globals.rs`), on first access
+to the bare `Promise` identifier. A script whose first reference to
+`Promise` is indirect (`p.constructor` from an internally-created promise,
+before ever naming `Promise` itself) observed a broken link. Fixed by
+having `new_promise` call `self.global("Promise")` first (idempotent/cached,
+so a no-op on every call after the first; safe from circularity too, since
+`Promise`'s own materialization calls `promise_prototype()` directly rather
+than `new_promise`). New regression test:
+`dynamic_import_promise_observes_the_promise_constructor_link_unprompted`.
+This is a centralized fix: every other internal promise-creation call site
+listed above benefits identically, not just dynamic import's own.
+
+**`await-import-evaluation.js`**: investigated, not fixed, and judged
+untractable rather than deprioritized for lack of effort. Its fixture
+busy-waits on real wall-clock time (`while(true){ if (Date.now()-start>100)
+break }`) to prove evaluation genuinely completed before the dynamic
+import's promise resolves. A real 100ms wall-clock busy-wait loop costs far
+more than the harness's 100,000-instruction default budget at this
+interpreter's speed, so this fails as a `resource_error` (correctly
+classified, not a false failure) rather than a wrong result. Not a bug in
+the engine or the harness's module handling -- a structural mismatch
+between an instruction-budget-bounded interpreter and a wall-clock-timing
+test, out of scope for a targeted fix here.
+
+**`for-await-resolution-and-error-agen-yield.js`**: investigated, not
+resolved. Isolated to `AsyncGeneratorYield`'s implicit `Await` of a
+*rejected* dynamic-import promise specifically -- fulfilled cases (two of
+four `yield`/`yield await` pairs across the test's two async generators)
+observe the correct awaited value, but the rejected case's caught error is
+an unrelated empty object instead of the module's own thrown `'foo'`
+string. `promise_resolve`'s "is this already a genuine Promise" fast path
+(`vm/builtins/promises.rs`) was suspected and instrumented directly, since
+this session's own `new_promise` fix (above) changes exactly the
+`.constructor` check that path depends on; instrumentation showed the fast
+path *does* correctly identify true dynamic-import promises now, ruling
+that specific mechanism out, but also surfaced at least one
+`promise_resolve` call on a value that is not a tracked Promise at all
+during the same sequence (likely related to the async generator's own
+completion/return bookkeeping) whose role was not run to ground. Left open
+rather than shipping a guessed fix; a future session should trace
+`await_async_generator_yield` and `finish_async_generator_yield` end to end
+against this exact repro rather than starting over.
+
+**`import-fulfilled-member-of-errored-cycle.js`**: investigated at the
+specification level, not attempted. Requires implementing "cycle root"
+tracking for async module evaluation cycles (`[[CycleRoot]]`,
+`[[EvaluationError]]` recorded on and redirected through a cycle's root
+module per `Evaluate`/`InnerModuleEvaluation`) -- a real, unimplemented
+piece of the module-evaluation algorithm, not a bug in existing code. This
+engine's `LinkedModule`/graph model has no notion of strongly-connected
+cycle roots at all today. Out of scope as a "fix"; it is a feature gap,
+sized more like a phase-level unit of work than an individual bug.
+
+### 3. Re-measured full scope and `import-attributes` re-verification
+
+`--filter "language/module-code/,language/expressions/dynamic-import/,
+language/import/,built-ins/ImportAttributes"` (2,637 modes, same scope
+throughout this whole session):
+
+| Stage | Pass / fail |
+| --- | ---: |
+| Prior section's end state (this session) | 2,053 / 584 |
+| After `ensure_dynamic_module_compiled` + harness fixes | 2,068 / 569 |
+| After the `Promise.prototype.constructor` fix + `eval-self-once-script.js` harness fix | **2,072 / 565** |
+
+Net this round: +19 pass, -19 fail, on top of the +76 the session's first
+two rounds had already found. Diffed path-and-mode-for-path-and-mode
+against the session's very first post-JSON-modules measurement: 21 fixed,
+2 regressed (the one documented, accepted `import-source.js` trade-off
+above) -- zero unexplained regressions.
+
+Plain (non-`import-attributes`/`import-defer`/`source-phase-imports`-tagged)
+`dynamic-import` failures: 68 (end of the prior section) -> 52. The
+residual is fully accounted for: 42 are the already-documented
+`import.UNKNOWN(...)`/bare-`typeof import`-adjacent cases blocked on the
+pre-existing `import.source`/`import.defer` global-object mechanism (an
+intentional non-goal, unchanged since the first round), and the remaining
+10 (5 distinct files) are the individually diagnosed cases in section 2:
+2 fixed, 1 judged untractable (wall-clock budget mismatch), 2 left open
+(one deep async-generator/promise interaction needing further tracing, one
+requiring genuinely new cycle-root-tracking engine machinery).
+
+`import ... with {...}` (static form, `module-code/import-attributes/`)
+re-verified at full corpus scope (not just the narrower filter the first
+round checked): **13/13 (100%)**, unchanged and confirmed holding. The
+broader `import-attributes`-tagged areas: `dynamic-import/import-attributes/`
+42/44 (the 2 remaining need the separate `import-text` proposal), and
+`import/import-attributes/` (JSON modules) 12/17 (the 5 remaining also need
+`import-text`, unrelated to JSON-module support itself, which is complete
+for every case this corpus actually exercises).
+
+All three gates pass: `cargo build --workspace --all-targets`; `cargo test
+--workspace --no-fail-fast` (only the pre-declared, separately-owned
+`observable_conversion_order_and_gc_pressure` fails, confirmed via an
+isolated rerun to be exactly that test and nothing else); `cargo clippy
+--workspace --all-targets -- -D warnings` clean. `backend/bluejs/tests/
+test262_host.rs` sits at 102 tests (all passing), and
+`backend/bluejs/test262/test_runner.py`/`test_analyze.py` at 34 (all
+passing), including new coverage for `module_sources()`'s three-way
+static/dynamic/json split and a module reached by both a static and a
+dynamic edge classifying as static.
+
+### Merge-time reconciliation: `speculative_relative_strings` survives the static/dynamic split
+
+Merging this slice against the concurrently-developed ShadowRealm follow-up
+(above) required reconciling two independent rewrites of `module_sources()`
+in `backend/bluejs/test262/run.py`: this slice's static/dynamic/json
+three-way split, and the ShadowRealm slice's `speculative_relative_strings`
+flag (a relative-string root reached only via `ShadowRealm.prototype.
+importValue`'s heuristic trigger should not hard-fail the whole run on its
+own parse failure). This slice's own rewrite, developed without visibility
+into that flag, classified every `RELATIVE_STRING` root as `"dynamic"`
+unconditionally -- which happens to also satisfy the ShadowRealm case (a
+`"dynamic"` classification's lazy-compile-on-demand path already tolerates
+a parse failure), but would have silently changed the established, relied-
+upon behavior for a plain dynamic `import()` with a variable specifier
+(`speculative_relative_strings` left at its default `False`): such a
+root's own parse failure must still hard-fail eagerly, per that flag's own
+docstring contract, which a large, unrelated part of the corpus already
+depends on. The merged `module_sources()` restores that distinction
+explicitly: a `RELATIVE_STRING` root classifies `"dynamic"` only when
+`speculative_relative_strings` is `True`, and `"static"` otherwise --
+preserving both slices' own contracts rather than silently picking one.
+`request["speculative_module_sources"]` (the ShadowRealm slice's own
+harness-request field for the same purpose) is now unused by this call
+site, since a genuinely speculative root no longer reaches `sources` at
+all under the three-way split; it is left defined in the adapter
+(`bluejs-test262.rs`) rather than removed, since removing an unused-but-
+harmless field is out of scope for a conflict-resolution merge.

@@ -29,6 +29,7 @@ impl Vm {
                 | "EvalError"
                 | "URIError"
                 | "AggregateError"
+                | "SuppressedError"
         ) {
             return self.error_global(name);
         }
@@ -79,6 +80,9 @@ impl Vm {
             "WeakSet" => NativeFunction::WeakSet,
             "WeakRef" => NativeFunction::WeakRef,
             "FinalizationRegistry" => NativeFunction::FinalizationRegistry,
+            "DisposableStack" => NativeFunction::DisposableStack { is_async: false },
+            "AsyncDisposableStack" => NativeFunction::DisposableStack { is_async: true },
+            "ShadowRealm" => NativeFunction::ShadowRealm,
             "Promise" => NativeFunction::Promise,
             "eval" => NativeFunction::Eval,
             "Object" => NativeFunction::Object,
@@ -121,6 +125,8 @@ impl Vm {
                         "Date" => 7.0,
                         "WeakMap" | "WeakSet" => 0.0,
                         "FinalizationRegistry" => 1.0,
+                        "DisposableStack" | "AsyncDisposableStack" => 0.0,
+                        "ShadowRealm" => 0.0,
                         _ => 1.0,
                     }),
                     false,
@@ -750,6 +756,43 @@ impl Vm {
                     false,
                     true,
                 )?;
+            } else if name == "DisposableStack" || name == "AsyncDisposableStack" {
+                let is_async = name == "AsyncDisposableStack";
+                let stack_prototype = self.disposable_stack_prototype(is_async)?;
+                self.define_data(
+                    id,
+                    "prototype",
+                    Value::Object(stack_prototype),
+                    false,
+                    false,
+                    false,
+                )?;
+                self.define_data(
+                    stack_prototype,
+                    "constructor",
+                    Value::Object(id),
+                    true,
+                    false,
+                    true,
+                )?;
+            } else if name == "ShadowRealm" {
+                let shadow_realm_prototype = self.shadow_realm_prototype()?;
+                self.define_data(
+                    id,
+                    "prototype",
+                    Value::Object(shadow_realm_prototype),
+                    false,
+                    false,
+                    false,
+                )?;
+                self.define_data(
+                    shadow_realm_prototype,
+                    "constructor",
+                    Value::Object(id),
+                    true,
+                    false,
+                    true,
+                )?;
             } else if name == "Function" {
                 self.define_data(
                     id,
@@ -915,6 +958,7 @@ impl Vm {
                         1,
                         NativeFunction::NumberIsFinite,
                     )?;
+                    self.install_native(id, prototype, "isNaN", 1, NativeFunction::NumberIsNaN)?;
                     self.install_native(
                         id,
                         prototype,
