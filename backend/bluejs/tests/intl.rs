@@ -753,6 +753,62 @@ fn temporal_plain_time_getters_and_calendar_agnostic_arithmetic() {
 }
 
 #[test]
+fn temporal_date_year_month_month_day_to_locale_string_reject_time_style() {
+    // Real, pinned Test262 fixtures:
+    // intl402/Temporal/{PlainDate,PlainYearMonth,PlainMonthDay}/prototype/
+    // toLocaleString/datestyle-and-timestyle.js ("Using timeStyle, even if
+    // dateStyle is present, should throw") -- `CreateDateTimeFormat`'s
+    // `required` parameter for these three types' own `toLocaleString` is
+    // DATE, which rejects any `timeStyle` option unconditionally, the exact
+    // mirror of `PlainTime.prototype.toLocaleString`'s own `required = TIME`
+    // rejecting `dateStyle` unconditionally (see the PlainTime test above).
+    // intl402/Temporal/PlainDateTime/prototype/toLocaleString/
+    // datestyle-and-timestyle.js ("Using both dateStyle and timeStyle should
+    // not throw") -- PlainDateTime's own `required` is ANY, so this fixture
+    // asserts the opposite: both apply together and neither is rejected.
+    let source = r#"
+        function check(condition, message) {
+            if (!condition) throw new Error(message);
+        }
+        function throwsType(thunk, message) {
+            try { thunk(); } catch (error) {
+                check(error instanceof TypeError, `${message}: ${error}`);
+                return;
+            }
+            throw new Error(`${message}: did not throw`);
+        }
+
+        let date = new Temporal.PlainDate(2026, 1, 20);
+        throwsType(() => date.toLocaleString("en", { dateStyle: "full", timeStyle: "full" }),
+            "PlainDate.prototype.toLocaleString rejects dateStyle+timeStyle together");
+        throwsType(() => date.toLocaleString("en", { timeStyle: "full" }),
+            "PlainDate.prototype.toLocaleString still rejects a bare timeStyle");
+
+        let yearMonth = new Temporal.PlainYearMonth(2026, 1, "gregory", 1);
+        throwsType(() => yearMonth.toLocaleString("en-u-ca-gregory", { dateStyle: "full", timeStyle: "full" }),
+            "PlainYearMonth.prototype.toLocaleString rejects dateStyle+timeStyle together");
+        throwsType(() => yearMonth.toLocaleString("en-u-ca-gregory", { timeStyle: "full" }),
+            "PlainYearMonth.prototype.toLocaleString still rejects a bare timeStyle");
+
+        let monthDay = new Temporal.PlainMonthDay(1, 20, "gregory", 1972);
+        throwsType(() => monthDay.toLocaleString("en-u-ca-gregory", { dateStyle: "full", timeStyle: "full" }),
+            "PlainMonthDay.prototype.toLocaleString rejects dateStyle+timeStyle together");
+        throwsType(() => monthDay.toLocaleString("en-u-ca-gregory", { timeStyle: "full" }),
+            "PlainMonthDay.prototype.toLocaleString still rejects a bare timeStyle");
+
+        // PlainDateTime is unaffected -- its own `required` is ANY, so
+        // dateStyle+timeStyle together is legal and must still format.
+        let dateTime = new Temporal.PlainDateTime(2000, 5, 2, 0, 0, 0, 0, 0, 0);
+        let result = dateTime.toLocaleString("en", { dateStyle: "full", timeStyle: "full" });
+        check(typeof result === "string" && result.includes(":00"),
+            "PlainDateTime.prototype.toLocaleString still accepts dateStyle+timeStyle");
+
+        true
+    "#;
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
 fn temporal_now_reads_one_wall_clock_through_resolved_time_zone_identifiers() {
     let source = r#"
         if (typeof Temporal.Now !== "object") throw new Error("Now is a namespace object");
