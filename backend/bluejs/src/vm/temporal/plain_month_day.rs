@@ -32,6 +32,17 @@ use icu_calendar::{AnyCalendar, AnyCalendarKind, Date, Iso};
 #[derive(Default)]
 pub(crate) struct MonthDayFields<'a> {
     pub extended_year: Option<i32>,
+    /// `era`/`era_year`: read only for a calendar that supports eras
+    /// (`CalendarExtraFields`'s own conditional field expansion --
+    /// requesting `year`, which `ToTemporalMonthDay`'s field list always
+    /// does, also reads `era`/`eraYear` when the calendar has them).
+    /// Mutually exclusive with `extended_year` at the call site, matching
+    /// `temporal_plain_date_from_fields`'s own established precedent:
+    /// `icu_calendar::Date::try_from_fields` resolves the year from these
+    /// two fields directly, without a separate era-to-extended-year
+    /// conversion step of this module's own.
+    pub era: Option<&'a [u8]>,
+    pub era_year: Option<i32>,
     pub month_code: Option<&'a str>,
     pub ordinal_month: Option<u8>,
     pub day: u8,
@@ -46,6 +57,8 @@ pub(crate) fn month_day_from_fields(
 ) -> Result<CivilDate, ()> {
     let mut date_fields = DateFields::default();
     date_fields.extended_year = fields.extended_year;
+    date_fields.era = fields.era;
+    date_fields.era_year = fields.era_year;
     if let Some(month_code) = fields.month_code {
         date_fields.month_code = Some(month_code.as_bytes());
     }
@@ -107,6 +120,45 @@ pub(crate) fn iso_month_day_from_fields(
     };
     let (_, month, day) = regulate_iso_date(regulation_year, month, i64::from(day), reject).ok_or(())?;
     Ok((1972, month, day))
+}
+
+/// `IsValidMonthCode`'s pure grammar half, calendar-agnostic: `M` followed by
+/// exactly two ASCII digits, optionally followed by `L`. This is a syntax
+/// check only -- it says nothing about whether the resulting number is a
+/// real month in any particular calendar (see [`iso_month_code_ordinal`] for
+/// the ISO 8601 calendar's own suitability rule on top of this). Matches
+/// Test262's `TemporalHelpers.ISO.monthCode`-style validation and pinned by
+/// `PlainMonthDay/from/monthcode-invalid.js`'s `"m1"`/`"M1"`/`"m01"`
+/// (wrong case or missing a digit) and `"L99M"` (wrong letter position)
+/// cases, all of which must be rejected as malformed regardless of any
+/// calendar.
+pub(crate) fn is_well_formed_month_code(code: &str) -> bool {
+    let bytes = code.as_bytes();
+    let digits = match bytes.len() {
+        3 => &bytes[1..3],
+        4 if bytes[3] == b'L' => &bytes[1..3],
+        _ => return false,
+    };
+    bytes[0] == b'M' && digits.iter().all(u8::is_ascii_digit)
+}
+
+/// The `iso8601` calendar's own `monthCode` *suitability* rule, on top of
+/// [`is_well_formed_month_code`]'s pure syntax check: no leap-month `L`
+/// suffix at all (the ISO 8601 calendar has no leap months), and the
+/// two-digit number must be a real month, `01`-`12`. Returns the ordinal
+/// month on success. Precondition: `code` is already well-formed (this
+/// function does not re-validate the shape). Pinned by
+/// `PlainMonthDay/from/monthcode-invalid.js`'s `"M00"`/`"M19"`/`"M99"`/
+/// `"M13"` (out-of-range, no suffix) and `"M00L"`/`"M05L"`/`"M13L"`
+/// (well-formed but a leap suffix, which ISO 8601 never has) cases -- every
+/// one of these must be a `RangeError` *regardless of `overflow`*, since
+/// `monthCode` suitability is a distinct check from a numeric field's own
+/// constrain/reject regulation.
+pub(crate) fn iso_month_code_ordinal(code: &str) -> Option<u8> {
+    if code.ends_with('L') {
+        return None;
+    }
+    code[1..].parse::<u8>().ok().filter(|month| (1..=12).contains(month))
 }
 
 /// `TemporalMonthDayToString`'s date portion: the short `MM-DD` form when the
@@ -273,5 +325,33 @@ mod tests {
         assert_eq!(iso_month_day_from_fields(13, 1, 1972, false), Ok((1972, 12, 1)));
         assert_eq!(iso_month_day_from_fields(13, 1, 1972, true), Err(()));
         assert_eq!(iso_month_day_from_fields(0, 1, 1972, false), Ok((1972, 1, 1)));
+    }
+
+    #[test]
+    fn well_formed_month_codes_are_accepted() {
+        for code in ["M01", "M12", "M00", "M99", "M01L", "M13L", "M99L"] {
+            assert!(is_well_formed_month_code(code), "{code}");
+        }
+    }
+
+    #[test]
+    fn malformed_month_codes_are_rejected() {
+        for code in ["m1", "M1", "m01", "L99M", "M1L", "M123", "", "M", "MLL"] {
+            assert!(!is_well_formed_month_code(code), "{code}");
+        }
+    }
+
+    #[test]
+    fn iso_month_code_ordinal_accepts_only_01_through_12_with_no_leap_suffix() {
+        assert_eq!(iso_month_code_ordinal("M01"), Some(1));
+        assert_eq!(iso_month_code_ordinal("M12"), Some(12));
+        assert_eq!(iso_month_code_ordinal("M06"), Some(6));
+    }
+
+    #[test]
+    fn iso_month_code_ordinal_rejects_out_of_range_or_leap_codes() {
+        for code in ["M00", "M13", "M19", "M99", "M00L", "M05L", "M13L"] {
+            assert_eq!(iso_month_code_ordinal(code), None, "{code}");
+        }
     }
 }
