@@ -475,7 +475,13 @@ fn intl_locale_data_matrix_matches_node() {
         // appendItems path has its own pinned-data regression: its selected
         // skeleton inventory is an implementation-defined locale-data choice
         // and therefore is not a byte-for-byte Node oracle contract.
-        "new Intl.DateTimeFormat('en-US',{timeZone:'UTC',weekday:'long',year:'numeric',month:'long',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',fractionalSecondDigits:3,timeZoneName:'short'}).formatToParts(0).map(function(part){return part.type+':'+part.value}).join('|')",
+        // Node's `format()` renders the en-US space before AM/PM as a regular
+        // space, but its `formatToParts()` leaves the CLDR U+202F in that
+        // literal, so the two disagree with each other (ECMA-402 requires
+        // them to join to the same string). BlueJS keeps them consistent with
+        // a regular space, so normalise U+202F here and compare everything
+        // else exactly.
+        "new Intl.DateTimeFormat('en-US',{timeZone:'UTC',weekday:'long',year:'numeric',month:'long',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',fractionalSecondDigits:3,timeZoneName:'short'}).formatToParts(0).map(function(part){return part.type+':'+part.value.replace(/\\u202f/g,' ')}).join('|')",
         "new Intl.DateTimeFormat('ar-u-nu-arab',{timeZone:'UTC',year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'}).formatToParts(0).map(function(part){return part.type+':'+part.value}).join('|')",
         "new Intl.DateTimeFormat('en-US',{timeZone:'UTC',year:'numeric',month:'long',day:'numeric'}).formatRangeToParts(0,86400000).map(function(part){return part.type+':'+part.value+':'+part.source}).join('|')",
         // DurationFormat: localized unit patterns, digital precision,
@@ -507,8 +513,47 @@ fn assert_matches_node(corpus: &[String]) {
         "Comparing {} isolated scripts against Node.js",
         corpus.len()
     );
-    for (source, expected) in corpus.iter().zip(expected) {
-        assert_eq!(evaluate_source(source), expected, "{source}");
+    // Report every disagreement at once: stopping at the first hides the rest
+    // and turns each fix into a full slow rebuild-and-rerun cycle.
+    let mismatches: Vec<String> = corpus
+        .iter()
+        .zip(expected)
+        .filter_map(|(source, expected)| {
+            let actual = evaluate_source(source);
+            (actual != expected).then(|| {
+                format!(
+                    "{source}\n  BlueJS: {}\n  Node:   {}",
+                    decode_result(&actual),
+                    decode_result(&expected)
+                )
+            })
+        })
+        .collect();
+    assert!(
+        mismatches.is_empty(),
+        "{} of {} scripts disagree with Node.js:\n{}",
+        mismatches.len(),
+        corpus.len(),
+        mismatches.join("\n")
+    );
+}
+
+/// Renders a canonical `string:<UTF-16 hex>` result as readable text, showing
+/// non-ASCII code points as `\u{..}` so an invisible U+202F is distinguishable
+/// from a space; any other result is returned unchanged.
+fn decode_result(result: &str) -> String {
+    match result.strip_prefix("string:") {
+        Some(hex) => decode_utf16_hex(hex)
+            .chars()
+            .map(|c| {
+                if c.is_ascii() {
+                    c.to_string()
+                } else {
+                    c.escape_unicode().to_string()
+                }
+            })
+            .collect(),
+        None => result.to_owned(),
     }
 }
 
