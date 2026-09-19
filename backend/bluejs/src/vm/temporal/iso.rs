@@ -62,6 +62,14 @@ pub(crate) struct Parsed {
     pub(crate) utc_designator: bool,
     /// A numeric UTC offset, in nanoseconds east of UTC.
     pub(crate) offset_nanoseconds: Option<i64>,
+    /// Whether `offset_nanoseconds` was spelled with an explicit seconds (or
+    /// fractional) component (`-00:44:30`, `-00:45:00`), as opposed to
+    /// minute-only (`-00:45`) or absent. This is `InterpretISODateTimeOffset`'s
+    /// `MatchBehaviour` switch: a *minute-only* leading offset fuzzy-matches
+    /// a named zone's real historical offset once rounded to the nearest
+    /// minute, while a sub-minute-precision spelling requires an exact
+    /// match, however the given and real values individually round.
+    pub(crate) offset_sub_minute_precision: bool,
     /// The time-zone annotation's identifier, if one was present.
     pub(crate) time_zone: Option<String>,
     /// The first `u-ca=` annotation's value, if one was present.
@@ -79,6 +87,7 @@ impl Default for Parsed {
             time: None,
             utc_designator: false,
             offset_nanoseconds: None,
+            offset_sub_minute_precision: false,
             time_zone: None,
             calendar: None,
         }
@@ -444,8 +453,14 @@ pub(crate) fn parse_annotation_suffix(mut cursor: &str) -> Result<Annotations, (
 }
 
 /// `UTCOffset`, `Cursor`-based: shared by [`scan_utc_offset_suffix`] and
-/// [`is_valid_time_zone_identifier`]'s own offset form.
-fn scan_offset(cursor: &mut Cursor, sub_minute: bool) -> Option<i64> {
+/// [`is_valid_time_zone_identifier`]'s own offset form. The second element of
+/// the result is whether a seconds (or fractional) component was actually
+/// present in the source -- `InterpretISODateTimeOffset`'s `MatchBehaviour`
+/// switch (see [`Parsed::offset_sub_minute_precision`]) needs to know this
+/// independently of the resulting nanosecond value, since e.g. `-00:45` and
+/// `-00:45:00` carry the *same* numeric offset but must be matched
+/// differently.
+fn scan_offset(cursor: &mut Cursor, sub_minute: bool) -> Option<(i64, bool)> {
     let sign = match cursor.eat_any(b"+-")? {
         b'-' => -1,
         _ => 1,
@@ -457,6 +472,7 @@ fn scan_offset(cursor: &mut Cursor, sub_minute: bool) -> Option<i64> {
     let mut minute = 0;
     let mut second = 0;
     let mut nanoseconds = 0;
+    let mut has_seconds = false;
     let extended = cursor.eat(b':');
     if extended || cursor.peek_digit() {
         minute = i64::from(cursor.digits(2)?);
@@ -472,6 +488,7 @@ fn scan_offset(cursor: &mut Cursor, sub_minute: bool) -> Option<i64> {
             if !sub_minute {
                 return None;
             }
+            has_seconds = true;
             second = i64::from(cursor.digits(2)?);
             if second > 59 {
                 return None;
@@ -481,7 +498,10 @@ fn scan_offset(cursor: &mut Cursor, sub_minute: bool) -> Option<i64> {
             }
         }
     }
-    Some(sign * (((hour * 60 + minute) * 60 + second) * 1_000_000_000 + nanoseconds))
+    Some((
+        sign * (((hour * 60 + minute) * 60 + second) * 1_000_000_000 + nanoseconds),
+        has_seconds,
+    ))
 }
 
 /// `DateTimeUTCOffset`: the UTC designator or a numeric offset, both
@@ -491,7 +511,9 @@ fn scan_utc_offset_suffix(cursor: &mut Cursor, parsed: &mut Parsed) -> Option<()
     if cursor.eat_any(b"Zz").is_some() {
         parsed.utc_designator = true;
     } else if matches!(cursor.peek(), Some(b'+' | b'-')) {
-        parsed.offset_nanoseconds = Some(scan_offset(cursor, true)?);
+        let (offset, has_seconds) = scan_offset(cursor, true)?;
+        parsed.offset_nanoseconds = Some(offset);
+        parsed.offset_sub_minute_precision = has_seconds;
     }
     Some(())
 }
@@ -989,7 +1011,7 @@ pub(crate) fn parse_plain_time(source: &str) -> Option<Time> {
 /// identifier is spelled. Returns nanoseconds east of UTC.
 pub(crate) fn parse_offset_identifier_nanoseconds(source: &str) -> Option<i64> {
     let mut cursor = Cursor::new(source);
-    let offset = scan_offset(&mut cursor, false)?;
+    let (offset, _) = scan_offset(&mut cursor, false)?;
     cursor.done().then_some(offset)
 }
 
@@ -1002,7 +1024,7 @@ pub(crate) fn parse_offset_identifier_nanoseconds(source: &str) -> Option<i64> {
 /// so a round trip through `.with({ offset })` must accept it back.
 pub(crate) fn parse_offset_string_nanoseconds(source: &str) -> Option<i64> {
     let mut cursor = Cursor::new(source);
-    let offset = scan_offset(&mut cursor, true)?;
+    let (offset, _) = scan_offset(&mut cursor, true)?;
     cursor.done().then_some(offset)
 }
 

@@ -227,6 +227,55 @@ impl TimeZone {
         }
     }
 
+    /// `TimeZoneEquals`: whether `self` and `other` denote the same time
+    /// zone -- an offset identifier compares by exact minutes, and a named
+    /// identifier compares by IANA *primary-zone* identity, not by spelling.
+    /// `Self::Iana`'s own stored identifier deliberately preserves whichever
+    /// alias was written (`Asia/Calcutta` stays `Asia/Calcutta`, see that
+    /// variant's doc comment) precisely so a `ZonedDateTime`'s `timeZoneId`
+    /// getter can report it back unchanged
+    /// (`canonicalize-utc-timezone.js`'s own "should be preserved" checks) --
+    /// so identity for *this* comparison has to be computed separately
+    /// rather than read off that stored spelling.
+    ///
+    /// Two real zones can be spelled differently yet be the exact same zone
+    /// (an IANA `Link`, e.g. `Asia/Calcutta`/`Asia/Kolkata`): the pinned
+    /// `jiff_tzdb` database already de-duplicates a `Link`'s TZif bytes with
+    /// its target's, so comparing the looked-up byte slices is a correct,
+    /// alias-table-free way to detect this
+    /// (`canonicalize-iana-names.js`/`canonical-iana-names.js`). The one
+    /// group this does *not* catch is `Etc/GMT`/`GMT`/`Etc/GMT0`/`GMT0`,
+    /// which ECMA-402's `AvailableNamedTimeZoneIdentifiers` step 5.c
+    /// explicitly special-cases to primary identifier `"UTC"` even though
+    /// their own TZif bytes are not the bundled database's byte-identical
+    /// copy of `UTC`'s (`canonicalize-utc-timezone.js`) -- confirmed by
+    /// direct measurement, not assumed, since `Etc/UTC`/`Etc/UCT` *do*
+    /// already match by byte identity alone.
+    pub(crate) fn time_zone_equals(&self, other: &TimeZone) -> bool {
+        match (self, other) {
+            (Self::Offset(a), Self::Offset(b)) => a == b,
+            (Self::Iana(a), Self::Iana(b)) => {
+                fn etc_gmt_family(name: &str) -> bool {
+                    matches!(name, "Etc/GMT" | "Etc/GMT0" | "GMT" | "GMT0")
+                }
+                fn primary_utc(name: &str) -> bool {
+                    name == "UTC" || etc_gmt_family(name)
+                }
+                if a == b {
+                    return true;
+                }
+                if primary_utc(a) && primary_utc(b) {
+                    return true;
+                }
+                match (jiff_tzdb::get(a), jiff_tzdb::get(b)) {
+                    (Some((_, data_a)), Some((_, data_b))) => data_a == data_b,
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    }
+
     /// `GetOffsetNanosecondsFor`: the UTC offset this zone was actually
     /// observing at `epoch_nanoseconds`, from real transition data for a
     /// named zone.

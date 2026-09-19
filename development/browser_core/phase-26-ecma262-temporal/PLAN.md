@@ -58,6 +58,20 @@ further (out of scope for the passes that found it) — flagged precisely
 for whoever next revisits `since`/`until`'s leap-month handling, since the
 previous "closed" status would otherwise mislead.
 
+**`ZonedDateTime`'s `equals`/`compare`/`from`/`since`/`until` shared-code
+follow-up — closed 2026-09-18** (see the dedicated bullet at the end of
+Stage 2 below): `Temporal/ZonedDateTime/` 2,646/2,968 (89.2%) →
+2,704/2,968 (91.1%), zero regressions; real bugs closed include a missing
+`ToTemporalZonedDateTime` string-argument type guard, `equals`'s missing
+time-zone canonicalization (`TimeZone::time_zone_equals`, a new function),
+a wholly-absent `MatchMinutes` fuzzy-offset-matching algorithm, a
+wholly-missing `since`/`until` time-zone-equality check, a hardcoded `day`
+field bound that pre-empted `"constrain"` overflow, and a too-strict
+property-bag `offset` type check. The bulk of the remaining
+`since`/`until` residual is the same non-ISO-calendar gap the correction
+above already flags as blocked on the leap-month fix. See that bullet's own
+"deliberately left open" list for the rest.
+
 Chronological closure
 record, each step's Test262 delta measured on the pinned corpus (`python3
 backend/bluejs/test262/run.py --filter "Temporal/" --jobs 8`), diffed per
@@ -3272,6 +3286,203 @@ once). One owner:
   flake, freshly re-confirmed to fail identically against this pass's own
   parent commit (`26202af`) in an isolated worktree, so not introduced by
   this pass.
+
+- **`ZonedDateTime` follow-up: `equals`/`compare`/`from`/`since`/`until`
+  shared-code bugs closed, real cross-cutting regressions found and fixed
+  along the way — 2026-09-18.** Re-triaged the residual breakdown the
+  previous entry left open rather than trusting its old estimates (the real
+  picture had already shifted: `add`/`subtract` was down to 12 combined
+  residual, not ~24, likely from other passes' shared-code fixes compounding
+  in the interim). `Temporal/ZonedDateTime/`: **2,646/2,968 (89.2%) →
+  2,704/2,968 (91.1%), +58 modes, zero regressions** (diffed per path+mode
+  against a freshly rebuilt pristine pre-change worktree). Whole-tree
+  `Temporal/`: **12,384/13,272 (93.3% real baseline, verified before
+  starting) → 12,458/13,272 (93.87%)**, +74, zero regressions anywhere else
+  (`PlainDate`/`PlainDateTime`/`Duration` each picked up a few extra modes
+  as a side effect of item 5 below, a shared-code fix).
+
+  1. **`temporal_to_zoned_date_time`'s non-object argument branch
+     `ToString`-coerced *any* value instead of requiring a literal
+     `String`**, unlike every other type's identical guard
+     (`temporal_to_plain_date`'s own `!matches!(value, Value::String(_))`
+     check). `instance.equals(1)`/`.equals(19761118)`/`.equals(1n)` all
+     produced a `RangeError` from a coerced-then-parsed string instead of
+     the spec's `TypeError` (`argument-wrong-type.js`, both `equals` and
+     `from`). Fixed by adding the same guard.
+  2. **`equals` compared `time_zone`/`offset` by raw stored spelling, never
+     canonicalizing.** `TimeZoneEquals` needs *primary-zone* identity: an
+     IANA alias and its Link target (`Asia/Calcutta`/`Asia/Kolkata`) are the
+     same zone even though `TimeZone::Iana`'s own stored identifier
+     deliberately preserves whichever spelling was written (so
+     `timeZoneId` can report it back unchanged). New
+     `TimeZone::time_zone_equals` (`vm/temporal/time_zone.rs`): exact match
+     first; then the small `Etc/GMT`/`GMT`/`Etc/GMT0`/`GMT0`-to-`"UTC"`
+     special case ECMA-402's `AvailableNamedTimeZoneIdentifiers` step 5.c
+     requires (measured directly: `Etc/UTC`/`Etc/UCT` already match without
+     it, `Etc/GMT`/`GMT`/`Etc/GMT0` do not); then a byte-identity comparison
+     of the two names' looked-up `jiff_tzdb` TZif data, which is *already*
+     de-duplicated across `Link` aliases in the pinned database — measured
+     directly (`Asia/Calcutta`/`Asia/Kolkata` share one byte slice,
+     `Asia/Calcutta`/`Asia/Colombo` do not) rather than assumed, so this
+     needed no separate alias table. Wired into `equals`; also found genuinely
+     missing (not just uncanonicalized) from `since`/`until` — see item 4.
+  3. **`InterpretISODateTimeOffset`'s `MatchMinutes` fuzzy-offset-matching
+     behaviour did not exist at all** — every offset comparison was
+     effectively `MatchExactly`. A `ZonedDateTime` string's own *leading*
+     offset field (before any `[...]` annotation), when it does not itself
+     carry sub-minute (seconds/fractional) precision, must fuzzy-match a
+     named zone's real historical offset once rounded to the nearest minute
+     (half-expand, ties away from zero) — legacy back-compat for
+     `Africa/Monrovia`'s pre-1972 `-00:44:30` matching a written `-00:45`.
+     A seconds-spelled offset (even one that numerically equals the
+     *rounded* real value, e.g. `-00:45:00`) never fuzzy-matches. A
+     property-bag `offset` field and `.with()`'s own `offset` property are
+     always `MatchExactly`, confirmed directly against Gecko's
+     `ZonedDateTime.cpp` (`ToTemporalZonedDateTime`'s object overload and
+     `with` both construct `MatchBehaviour::MatchExactly` unconditionally;
+     only the *string* overload ever picks `MatchMinutes`, gated on whether
+     the leading offset itself was spelled with a seconds/fractional
+     component). Implemented: `iso::Parsed::offset_sub_minute_precision`
+     (new field, set by `scan_offset`/`scan_utc_offset_suffix`),
+     `round_offset_nanoseconds_to_minutes` and a `match_minutes: bool`
+     parameter threaded through `temporal_interpret_offset` (now iterating
+     every real candidate from `possible_epoch_nanoseconds` and comparing
+     its own real offset — exact, or rounded when `match_minutes` — rather
+     than only checking whether one precomputed candidate happens to be
+     among the possible set, which is exact-match-equivalent but had no way
+     to express the fuzzy case). Fixes reach `from`/`compare`/`equals`
+     (`.../{from,compare,prototype/equals}/*sub-minute-offset*.js`), not
+     just `equals` alone.
+  4. **`since`/`until` had no time-zone check between the two operands at
+     all** (not merely uncanonicalized) — `temporal_zoned_date_time_difference`
+     used only the *receiver's* own zone for calendar-date bracketing and
+     silently accepted an argument in a completely different zone. Per
+     Gecko's `DifferenceTemporalZonedDateTime`, `TimeZoneEquals` is required
+     only once `largestUnit` is `"day"` or coarser — a pure time-unit
+     difference (`largestUnit` finer than `"day"`) is a plain epoch-instant
+     subtraction that never consults either operand's zone, so two
+     `ZonedDateTime`s in genuinely different zones may still be diffed that
+     way. Getting this gate wrong in a first draft (checking unconditionally)
+     was caught by the pass's own regression sweep before landing — see the
+     "process note" below.
+  5. **`temporal_plain_date_from_fields`'s own `day` field read had a
+     hardcoded `1..=31` bound that threw *before* the calendar's own
+     overflow-aware `Date::try_from_fields` ever ran** — `{ day: 32 }`
+     always threw `RangeError`, even under the default `"constrain"`
+     overflow, which must instead clamp to the month's real last day
+     (`ZonedDateTime/from/overflow-options.js`/`overflow-undefined.js`).
+     Every `.with()`-style call site in this same file already widened this
+     exact bound to `1..=i32::MAX` for the identical reason
+     (`wrapping-at-end-of-month-*.js`); this shared `from`/constructor-path
+     function had simply never had the same widening applied. Confirmed via
+     a standalone probe that this was reachable through `Temporal.PlainDate`
+     too, not `ZonedDateTime`-specific — fixing it here also moved
+     `PlainDate`/`PlainDateTime`/`Duration`'s own combined numbers, per the
+     whole-tree diff above.
+  6. **A property-bag `offset` field was validated with a strict
+     "already a String" check instead of `ToPrimitive`-then-require-`String`**,
+     in both `temporal_to_zoned_date_time` and `.with()`. Per Gecko's
+     `CalendarFields.cpp` (`ToOffsetString`: `ToPrimitive(value, "string")`
+     then `if (!offset.isString()) throw`), an object's own `toString`/
+     `valueOf` is genuinely called (`equals/order-of-operations.js`'s "get
+     other.offset.toString" / "call other.offset.toString"), but a
+     non-object, non-string primitive (`Number`/`null`/`Boolean`/`BigInt`)
+     is a `TypeError` *without* being stringified first — `ToPrimitive` on
+     an already-primitive value is the identity, so
+     `relativeto-propertybag-invalid-offset-string.js` (reached via
+     `Temporal.Duration`'s own `relativeTo` reuse of this same function)
+     still correctly rejects `1000`/`null`/`true`/`1000n`. Matches
+     `temporal_to_instant_epoch`'s own `coerce_primitive`-then-check-`String`
+     pattern. Fixes `with/offset-property-invalid-string.js`; does not by
+     itself fix `order-of-operations.js`'s full expected order (that needs
+     the still-open, already-documented alphabetical-field-read-order gap).
+  7. **`PrepareCalendarFields` validates `calendar` before checking that
+     `timeZone` is present** — an invalid `calendar` is a `RangeError` even
+     when `timeZone` is missing entirely
+     (`argument-propertybag-calendar-invalid-iso-string.js`,
+     `argument-propertybag-calendar-year-zero.js`, both `equals` and
+     `from`). Fixed by reading+validating `calendar` (discarding the result;
+     `temporal_plain_date_from_fields` below still re-resolves it — a
+     harmless second read, the same already-documented
+     field-read-order/`order-of-operations.js` gap as item 6) before the
+     `timeZone`-presence check, and reading+syntax-validating `offset`
+     *before* calling `temporal_plain_date_from_fields` at all (see the
+     process note immediately below for why that specific sub-ordering
+     matters).
+
+  **Process note — a real regression introduced and caught within this same
+  pass, not shipped**: the first draft of item 7's reordering moved *all*
+  date/time field resolution (`temporal_plain_date_from_fields`, `year`
+  included) ahead of reading `offset` entirely, to fix the calendar-vs-
+  `timeZone` ordering. That broke `from/offset-string-invalid.js`, which
+  pins the opposite sub-ordering: a syntactically invalid `offset`
+  (`"--00:00"`) must be a `RangeError` even when `year` is a `Symbol` that
+  would otherwise throw `TypeError` first (offset *syntax* is read ahead of
+  `year`, since `offset` sorts alphabetically before `year` in
+  `PrepareCalendarFields`'s own field order), but a syntactically *valid*
+  offset that merely doesn't match the zone (`"+04:30"`) only surfaces
+  *after* `year` has already thrown (offset *matching* is a separate, later
+  phase that only runs once every field is resolved). The real full-tree
+  diff caught this as 8 regressions against 4 fixes before it was corrected
+  to read+validate `offset` *syntax* right after `timeZone` but still
+  *before* calling `temporal_plain_date_from_fields`, with the actual
+  offset-vs-zone *matching* left where it already was (after field
+  resolution). The same mistake pattern repeated with item 4's `since`/
+  `until` zone check (checking unconditionally instead of gating on
+  `largestUnit >= Day`), also caught by the full-tree diff before landing.
+  Recorded here per this phase's own repeated lesson: verify every "fixed"
+  claim against a real before/after diff, not just a raw pass-count delta,
+  and diff *every* change against the full `Temporal/` filter, not only the
+  fixtures the change was aimed at.
+
+  **Deliberately left open, largest remaining `ZonedDateTime` clusters**
+  (264 failing modes remain in `Temporal/ZonedDateTime/` after this pass,
+  vs. 322 before): `since`/`until` still the largest cluster at 134 combined
+  (`intl402` 42+42, `built-ins` 30+20) — the great majority triaged as the
+  same non-ISO-calendar (`chinese`/`dangi`/`hebrew`/`coptic`/`ethiopic`/
+  `ethioaa`) `since`/`until` gap this document's own top-of-file correction
+  already flags as blocked on a sibling pass's `calendar_difference_date_leap_month`
+  fix (`leap-months-*.js`, `wrapping-at-end-of-month-*.js`,
+  `intercalary-month-*.js`, `era-boundary-ethiopic.js`,
+  `basic-{ethiopic,ethioaa,coptic}.js` alone account for roughly 64 of the
+  134) — **not re-touched here, per this pass's own explicit scope
+  boundary**; a smaller non-calendar residual remains untriaged
+  (`argument-at-limits.js`, `roundingmode-*.js` edge cases,
+  `round-cross-unit-boundary.js`, `dst-month-day-boundary.js`,
+  `float64-representable-integer.js`, `argument-string-limits.js` — this
+  last one specifically investigated and *not* resolved: the representable-
+  range boundary math for a fixed-offset zone one calendar day before the
+  epoch's own min/max instant did not reconcile by hand-derivation within
+  this pass's budget and needs empirical, not just analytical, follow-up).
+  `toLocaleString` (18, `intl402` only) — confirmed out of scope: this is
+  `blueice-ecma402` formatting, the concurrent `toLocaleString`-gap-closure
+  sibling pass's own territory, not touched here. `from` (32 combined,
+  down from 44 — mostly the same non-ISO-calendar fixtures as `since`/
+  `until` above, e.g. `calendar-invalid-era.js`/`islamic{,-rgsa}.js`/
+  `extreme-dates.js`). `with` (16 combined, down from 18 — remaining
+  fixtures are `order-of-operations.js` itself, a `resource_error` GC/
+  observable-conversion-tracking issue unrelated to this pass's own fixes,
+  plus `options-wrong-type.js`/`disambiguation`/`dst-option-*` combination
+  fixtures not investigated here). `equals` (6, down from 26). `round` (8),
+  `add`/`subtract` (12 combined, `intl402` only), `hoursInDay`/
+  `withPlainTime`/`withCalendar`/`getTimeZoneTransition`/`dayOfYear`/
+  `weekOfYear`/`yearOfWeek`/`toString`/`startOfDay` (2-4 modes each) — not
+  investigated in this pass.
+
+  Every new function/change is covered by real Rust integration tests
+  through the actual public `Temporal.ZonedDateTime` surface (not internal
+  module APIs), each pinned to the specific Test262 fixture it reproduces:
+  `backend/bluejs/tests/temporal_zoned_date_time_sub_minute_offset.rs` (6
+  tests, item 3), `temporal_zoned_date_time_equals_and_from.rs` (7 tests,
+  items 1/2/6/7), `temporal_zoned_date_time_overflow_constrain.rs` (2 tests,
+  item 5), `temporal_zoned_date_time_since_until_timezone.rs` (3 tests, item
+  4, including the sub-day-largest-unit case that pins the process note's
+  own gating fix). `cargo build --workspace --all-targets` / `cargo test
+  --workspace --no-fail-fast` / `cargo clippy --workspace --all-targets --
+  -D warnings` all clean on this pass's own commit — the only test failure
+  anywhere in the whole workspace is the same already-documented
+  pre-existing `string_protocols.rs::observable_conversion_order_and_gc_pressure`
+  flake.
 
 ### Stage 3 — Test262-evidence closure and coverage
 
