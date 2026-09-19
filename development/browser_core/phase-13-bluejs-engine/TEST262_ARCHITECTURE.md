@@ -7,15 +7,27 @@ common diagnostics, representative cases and executable hashes.
 The existing `test262-summary.json` only groups outcomes by top-level directory
 and feature. It does not establish failure root causes or architectural priority.
 
+## Platform provenance and current validation (2026-09-19)
+
+The available local verification host is Ubuntu 24.04.3 LTS under WSL2
+(`x86_64-unknown-linux-gnu`, Rust/Cargo 1.95.0), rather than Ubuntu 24.04.4.
+On 2026-09-19, the complete inventory was rerun with eight workers and
+completed in 685.257 seconds. Its current Ubuntu 24.04.3 result is 96,203
+pass, 6,714 fail and 9 timeout across all 102,926 modes. The grouped evidence
+is documented in [the Ubuntu Test262 report](TEST262_LINUX_REPORT.md).
+
+macOS and Windows remain pending later real runs. Ubuntu evidence is not a
+cross-platform conformance claim and must not be used to infer parity.
+
 ## Evidence and classification contract
 
 The verified snapshot is `72faf8ec1445c55149615e8b35187830783aba1a`:
 53,582 test files, 294 fixture resources, 102,926 execution modes. The current
-Rust 1.95 complete inventory (2026-09-14) records **79,897 pass, 22,962 fail
-and 67 timeout**, with zero unsupported or harness-error modes. It ran with
-eight workers, a 100,000-instruction default budget and a two-second case
-deadline in 1,885.361 seconds. The runner exited 1, as expected while
-conformance failures remain.
+Rust 1.95 complete inventory (2026-09-19) records **96,203 pass, 6,714 fail
+and 9 timeout**, with zero unsupported or harness-error modes. It ran with
+eight workers, a 100,000-instruction default budget and a two-second ordinary
+case deadline (with documented finite-fixture allowances) in 685.257 seconds.
+The runner exited 1, as expected while conformance failures remain.
 
 The new [analyzer](../../../backend/bluejs/test262/analyze.py) reconciles the
 summary, unique path/mode pairs, source hashes, metadata and full source inventory
@@ -26,11 +38,11 @@ Targets are inferred from paths/metadata; diagnostics identify the **first
 observed symptom**, not every root cause. Dependencies overlap; exclusive target
 totals reconcile to the full denominator. Passed negative tests are not errors.
 
-The current inventory's largest observed symptoms are 9,632 TypeErrors, 7,242
-assertion failures, 3,090 RangeErrors, and 906 missing expected errors. The
-`Temporal` feature still has 12,518 failing modes, but its failures are no
-longer all an absent-global symptom: the new typed range bridge deliberately
-covers only the ECMA-402 DateTimeFormat boundary. These symptoms often hide
+The current inventory's largest observed symptoms are 2,653 assertion failures,
+2,196 TypeErrors, 716 missing expected errors and 319 unclassified parses.
+Temporal now has 586 failing modes across its combined 13,268-mode surface;
+its current 95.583% pass rate is recorded in Phase 26 and the Ubuntu report.
+These symptoms often hide
 later failures. In particular, a failed Array test does not establish that its
 Array algorithm is the first missing dependency. The generic unsupported-
 statement diagnostic covers several AST kinds and must not be labelled as a
@@ -42,7 +54,7 @@ matching. Adapter runtime errors currently do not identify whether an include
 or the test body threw; treat those cases as requiring reproduction. All
 staging, Annex B, ECMA-402 and host-dependent cases remain in the inventory.
 Their applicability needs an explicit clause/edition audit, never a silent skip.
-Resource limits and 67 wall/regex deadlines are separate from semantic failures
+Resource limits and nine wall/regex deadlines are separate from semantic failures
 and should be rerun with recorded budgets.
 
 The Test262 adapter maps a parser rejection to a parse-phase `SyntaxError` only
@@ -1927,9 +1939,8 @@ and resizable-buffer interactions. These focused results do not replace the
 complete-inventory result below.
 
 These are focused filters, not a replacement for the checked-in complete
-inventory. The Rust 1.95 complete reconciliation above ran after these changes;
-the full-inventory totals and generated `test262-summary.json` now record its
-79,897 pass, 22,962 fail and 67 timeout outcomes.
+inventory. The 2026-09-19 Rust 1.95 reconciliation supersedes older totals:
+the full inventory records 96,203 pass, 6,714 fail and 9 timeout outcomes.
 
 ## P0.1–P0.4 closure: reflective realm and object contracts
 

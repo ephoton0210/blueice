@@ -15,6 +15,20 @@ The pinned Test262 revision below is the executable compatibility corpus for
 that check; a later public-spec or Test262 revision must trigger a fresh
 inventory rather than inheriting an older completion claim.
 
+## Platform verification status (2026-09-19)
+
+The only currently available test host is **Ubuntu 24.04.3 LTS under WSL2**
+(`x86_64-unknown-linux-gnu`, Rust/Cargo 1.95.0). Although a requested refresh
+named Ubuntu 24.04.4, that is not the actual local release. On 2026-09-19,
+the unfiltered `python3 backend/bluejs/test262/run.py --jobs 8` inventory
+completed all 53,582 files / 102,926 modes in 685.257 seconds. The Test262
+values later in this document are therefore current Ubuntu 24.04.3 evidence,
+not a 24.04.4 result. Focused local checks are also recorded in the
+[Ubuntu Test262 report](../phase-13-bluejs-engine/TEST262_LINUX_REPORT.md).
+
+macOS and Windows validation is **deferred** until those platforms are
+available. Do not infer cross-platform parity from Ubuntu outcomes.
+
 ## Pinned CLDR provider update (2026-09-17)
 
 Locale provider payloads are checked-in source inputs, not build output. The
@@ -23,9 +37,11 @@ table, full decimal/unit data and Gregorian DateTimeFormat `availableFormats`
 table are all generated from
 `unicode-org/cldr-json@26a79cb42bfcc90def764102aa2af126d9ef3108`. Their
 generators, source revisions, row counts and artifact hashes are tracked next
-to the payloads. The macOS/Linux/Windows CI matrix checks out that exact CLDR
-revision and regenerates every provider file before Rust compilation, while
-the same matrix independently checks out the pinned Test262 fixture.
+to the payloads. The configured macOS/Linux/Windows CI matrix checks out that
+exact CLDR revision and regenerates every provider file before Rust
+compilation, while the same matrix independently checks out the pinned Test262
+fixture. This document update validates only the Ubuntu host described above;
+it does not claim fresh macOS or Windows execution.
 
 `Intl.Locale` regional information now comes from that same pin rather than
 hand-written country cases: 52 calendar-preference regions, 276 hour-cycle
@@ -133,20 +149,16 @@ thoroughly the *already-written* implementation is exercised, independent of
 how much of the ECMA-402 specification that implementation actually covers.
 [`development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md`](../phase-13-bluejs-engine/TEST262_LINUX_REPORT.md)
 reports a separate, unrelated number: the unfiltered upstream Test262
-`intl402/` pass rate through BlueJS end-to-end, **43.372% (2,912 / 6,714
-modes)** on that report's pinned revision (a rerun below measures 2,922/6,714,
-43.52% — the small difference is run-to-run timeout-classification variance
-on `Temporal/` modes, not a regression). That figure is dominated by the
-4,058 `intl402/Temporal/` modes (over 60% of the full `intl402/` corpus),
-which fail almost entirely because ECMA-262 Temporal itself does not exist
-yet in BlueJS — a separate phase's blocker, not an ECMA-402 host-crate gap.
+`intl402/` pass rate through BlueJS end-to-end, **94.787% (6,364 / 6,714
+modes)** on the 2026-09-19 Ubuntu complete run. The remaining 350 failures
+are all in `intl402/Temporal/`; Phase 26 owns their follow-up rather than
+making them an ECMA-402 host-crate coverage gap.
 The full per-service breakdown of this denominator is in "Reproducible
 current inventory" below. The filtered, non-Temporal Test262 run this
 document already tracks (2,656 / 2,656 passing) is the correct scoped
 conformance figure for what Phase 25 actually claims to support; the
-unfiltered report's ~43% is the honest, unscoped figure across the complete
-current-public `intl402/` corpus, including the parts this phase has not
-attempted. All three numbers are real and simultaneously true; they answer
+unfiltered report's 94.787% is the honest, unscoped figure across the complete
+current-public `intl402/` corpus. Both numbers are real and answer
 different questions.
 
 ## Reproducible current inventory
@@ -159,15 +171,15 @@ It was the current public Test262 `main` revision fetched on 2026-09-14; it is
 not a remembered Edition 12-era corpus.
 
 The full `intl402/` selection contains 6,714 strict/sloppy modes. It is
-reproducible with `python backend/bluejs/test262/run.py --filter intl402/
---jobs 8`, writing one `{path, status, ...}` JSON line per mode to
+reproducible with `python3 backend/bluejs/test262/run.py --jobs 8`, writing
+one `{path, status, ...}` JSON line per mode to
 `<output>/results.jsonl`. Grouping that file by the path segment directly
 under `intl402/` (`path.split("/")[1]`) gives the complete denominator,
-broken out by service, from the 2026-09-17 run:
+broken out by service, from the 2026-09-19 complete run:
 
 | `intl402/` group | Modes | Pass | Fail | Pass rate |
 | --- | ---: | ---: | ---: | ---: |
-| `Temporal/` | 4,058 | 266 | 3,792 | 6.55% |
+| `Temporal/` | 4,058 | 3,708 | 350 | 91.375% |
 | `NumberFormat/` | 498 | 498 | 0 | 100% |
 | `DateTimeFormat/` | 488 | 488 | 0 | 100% |
 | `Locale/` | 336 | 336 | 0 | 100% |
@@ -187,48 +199,40 @@ broken out by service, from the 2026-09-17 run:
 | `Array/` (`toLocaleString`) | 4 | 4 | 0 | 100% |
 | `FallbackSymbol/` | 4 | 4 | 0 | 100% |
 | `TypedArray/` (`toLocaleString`) | 2 | 2 | 0 | 100% |
-| **Total** | **6,714** | **2,922** | **3,792** | **43.52%** |
+| **Total** | **6,714** | **6,364** | **350** | **94.787%** |
 
 Every group other than `Temporal/` is at **100%**; the 2,656 non-Temporal
-modes summed above match the previously-reported filtered-run total exactly
-(`--exclude Temporal` reproduces the same 2,656/2,656). `Temporal/`'s 266
-passes are almost entirely feature-detection and negative-assertion tests
-that do not require an actual Temporal implementation to satisfy; it requires
-the separate, not-yet-started ECMA-262 Temporal implementation and must
-remain visible in a full-inventory report, not be silently counted as
-passing or excluded from the denominator. The complete per-mode JSON report
-is an ephemeral test artifact, not a source of truth checked into this
-repository — regenerate it with the command above rather than trusting a
-stale copy. A `--exclude Temporal` run is evidence only for the non-Temporal
+modes summed above match the non-Temporal service total exactly.
+`intl402/Temporal/` now passes 3,708 modes; its 350 remaining failures stay
+visible in the full denominator and are owned by Phase 26. The complete
+per-mode JSON report is an ephemeral test artifact, not a source of truth
+checked into this repository — regenerate it with the command above rather
+than trusting a stale copy. A non-Temporal-only run is evidence only for the
 service boundary and never a phase-completion claim by itself.
 
 `intl402/Temporal/` itself further subdivides by Temporal type
-(`path.split("/")[2]`), from the same 2026-09-17 run. **No dedicated Temporal
-phase or plan document exists yet anywhere under `development/browser_core/`**
-— this table is purely descriptive of the Test262 corpus, not a claim that
-any of this work is scheduled or owned:
+(`path.split("/")[2]`), from the same 2026-09-19 run. The
+[Phase 26 Temporal plan](../phase-26-ecma262-temporal/PLAN.md) owns the
+implementation status behind these results:
 
 | `Temporal/` type | Modes | Pass | Fail | Pass rate |
 | --- | ---: | ---: | ---: | ---: |
-| `ZonedDateTime/` | 1,166 | 32 | 1,134 | 2.74% |
-| `PlainDate/` | 986 | 100 | 886 | 10.14% |
-| `PlainDateTime/` | 966 | 66 | 900 | 6.83% |
-| `PlainYearMonth/` | 654 | 18 | 636 | 2.75% |
-| `PlainMonthDay/` | 180 | 48 | 132 | 26.67% |
-| `Duration/` | 42 | 2 | 40 | 4.76% |
-| `Instant/` | 34 | 0 | 34 | 0% |
-| `PlainTime/` | 24 | 0 | 24 | 0% |
-| `Now/` | 6 | 0 | 6 | 0% |
-| **Total** | **4,058** | **266** | **3,792** | **6.55%** |
+| `ZonedDateTime/` | 1,166 | 1,062 | 104 | 91.080% |
+| `PlainDate/` | 986 | 908 | 78 | 92.089% |
+| `PlainDateTime/` | 966 | 890 | 76 | 92.133% |
+| `PlainYearMonth/` | 654 | 600 | 54 | 91.743% |
+| `PlainMonthDay/` | 180 | 150 | 30 | 83.333% |
+| `Duration/` | 42 | 34 | 8 | 80.952% |
+| `Instant/` | 34 | 34 | 0 | 100% |
+| `PlainTime/` | 24 | 24 | 0 | 100% |
+| `Now/` | 6 | 6 | 0 | 100% |
+| **Total** | **4,058** | **3,708** | **350** | **91.375%** |
 
-No Temporal type clears even 27%; `Instant/`, `PlainTime/` and `Now/` are at
-literally 0%. This is consistent with "no Temporal implementation exists" —
-the scattered passes across the other types are individual
-feature-detection/negative tests, not partial type support. Sub-dividing
-further (e.g. by method, `prototype/with` vs `prototype/toString`) would only
-be useful once a Temporal implementation is actually being planned; at 0–27%
-across the board there is no meaningful "smallest first slice" signal to
-extract from finer-grained Test262 buckets alone.
+`Instant/`, `PlainTime/` and `Now/` are now complete in this `intl402/`
+subtree. The remaining failures are concentrated in calendar-aware
+`ZonedDateTime`, `PlainDate`, `PlainDateTime`, `PlainYearMonth`,
+`PlainMonthDay`, and `Duration` operations; their method-level triage belongs
+in Phase 26 rather than the ECMA-402 host-service backlog.
 
 ## Boundary ownership
 

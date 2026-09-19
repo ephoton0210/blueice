@@ -2,6 +2,22 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
+## Verification environment and platform scope (2026-09-19)
+
+The available local environment is **Ubuntu 24.04.3 LTS under WSL2**
+(`x86_64-unknown-linux-gnu`, Rust/Cargo 1.95.0), not Ubuntu 24.04.4. The
+Temporal/Test262 figures recorded throughout this long-lived plan are dated
+per-merge snapshots. On 2026-09-19, this environment completed the unfiltered
+Test262 inventory: 53,582 files / 102,926 modes in 685.257 seconds with eight
+workers. The current full-run Temporal result is **12,682 / 13,268 (95.583%)**
+with no Temporal timeouts; this section is authoritative over older per-merge
+snapshots. It is a real Ubuntu 24.04.3 result, not a 24.04.4 result.
+
+macOS and Windows runs are deferred until those platforms are available. Their
+future values must be obtained from real runs, never copied from Ubuntu. The
+exact Ubuntu scope, including the isolated-target regex-worker caveat, is in
+[the Ubuntu Test262 report](../phase-13-bluejs-engine/TEST262_LINUX_REPORT.md).
+
 **Status**: Design, Stage 0 done. Stage 1 (Tracks B/C/D/E) is done and closed
 to its practical limit. **Stage 2 is functionally complete as of
 2026-09-18** — every one of its five types (`PlainDate`, `PlainDateTime`,
@@ -17,8 +33,8 @@ for the specific `NudgeToZonedTime`/`NudgeToCalendarUnit` edge cases still
 open. Combined `Temporal/` numbers
 below are re-measured after every merge (see the reproduction command) —
 treat any specific figure in this paragraph as the snapshot at its own
-merge, not a running total; the Stage 3 closure table has the authoritative
-latest picture. **`with()`'s era/eraYear mutual-exclusivity validation across
+merge, not a running total; the 2026-09-19 verification section has the
+authoritative latest picture. **`with()`'s era/eraYear mutual-exclusivity validation across
 `PlainDate`/`PlainDateTime`/`PlainYearMonth` — closed 2026-09-18** (see the
 dedicated bullet at the end of Stage 2 below); `PlainMonthDay.prototype.with`
 turns out to take no `era`/`eraYear`/`year` fields at all (confirmed against
@@ -254,35 +270,36 @@ path+mode against the step before it:
   zero regressions confirmed via a full before/after fail-set diff.
 
 This phase exists because completing Phase 25 (ECMA-402) surfaced a real gap
-in `intl402/`'s
-`Temporal/` subtree. **Correction (2026-09-17, same day):** the plan's first
-version only measured `intl402/Temporal/` (4,058 modes, 6.55% pass) — see
+in `intl402/`'s `Temporal/` subtree. **Historical correction (2026-09-17):**
+the plan's first version only measured `intl402/Temporal/` (4,058 modes,
+6.55% pass) — see
 [Phase 25's `CONFORMANCE.md`](../phase-25-ecma402-internationalization/CONFORMANCE.md#reproducible-current-inventory).
 Test262 also has a **separate, larger `built-ins/Temporal/` tree** (4,605
 files, 9,210 modes) not counted there, since it is correctly out of scope for
 an *ECMA-402* denominator — but it is very much in scope for *this* phase,
 since it is ECMA-262 Temporal's actual primary test surface. The true
-combined Temporal denominator this phase is accountable to is
-**13,268 modes, currently 1,592 passing (12.00%)**, not the 4,058/6.55%
-figure the first version of this document cited. Per-type combined totals
-(`built-ins/` + `intl402/`, 2026-09-17):
+combined Temporal denominator this phase is accountable to is **13,268 modes,
+currently 12,682 passing (95.583%)**, not the 4,058/6.55% figure the first
+version of this document cited. Per-type combined totals (`built-ins/` +
+`intl402/`, 2026-09-19):
 
 | Type | Combined modes | Combined pass | Rate |
 | --- | ---: | ---: | ---: |
-| `ZonedDateTime` | 2,968 | 186 | 6.27% |
-| `PlainDateTime` | 2,512 | 302 | 12.02% |
-| `PlainDate` | 2,290 | 332 | 14.50% |
-| `Duration` | 1,122 | 232 | 20.68% |
-| `PlainYearMonth` | 1,672 | 186 | 11.12% |
-| `PlainTime` | 1,010 | 102 | 10.10% |
-| `Instant` | 968 | 86 | 8.88% |
-| `PlainMonthDay` | 578 | 158 | 27.34% |
-| `Now` | 138 | 0 | 0% |
-| **Total** | **13,268** | **1,592** | **12.00%** |
+| `ZonedDateTime` | 2,968 | 2,782 | 93.733% |
+| `PlainDateTime` | 2,512 | 2,366 | 94.188% |
+| `PlainDate` | 2,290 | 2,178 | 95.109% |
+| `Duration` | 1,122 | 1,100 | 98.039% |
+| `PlainYearMonth` | 1,672 | 1,582 | 94.617% |
+| `PlainTime` | 1,010 | 1,010 | 100% |
+| `Instant` | 968 | 968 | 100% |
+| `PlainMonthDay` | 578 | 548 | 94.810% |
+| `Now` | 138 | 138 | 100% |
+| `Temporal/` root files | 10 | 10 | 100% |
+| **Total** | **13,268** | **12,682** | **95.583%** |
 
-(Reproduce with `python backend/bluejs/test262/run.py --filter "built-ins/Temporal/"`
-and the existing `--filter "intl402/Temporal/"` run, grouped by
-`path.split("/")[2]` each.) Temporal is **ECMA-262** (a core language
+(Reproduce with `python3 backend/bluejs/test262/run.py --jobs 8`, then group
+the complete `results.jsonl` by `path.split("/")[2]` for each Temporal
+subtree.) Temporal is **ECMA-262** (a core language
 built-in, like `Date`), not an ECMA-402 service, so it does not belong inside
 `blueice-ecma402`; it is scoped here as its own phase, owned by BlueJS
 (Phase 13), the same way Gecko implements it inside SpiderMonkey rather than
@@ -335,15 +352,17 @@ Do not re-derive or duplicate any of this:
   Zero existing Temporal tests exist at any host-neutral crate boundary —
   today's entire Temporal surface is BlueJS-internal.
 
-**What is missing** (and is the actual scope of this phase): every
+**What was missing at this initial audit** (and formed this phase's original
+scope): every
 arithmetic/comparison/serialization operation — `add`, `subtract`, `until`,
 `since`, `compare`, `round`, `equals`, `toString`, `toJSON`, `negated`, `abs`,
 `total` — on every type; `Temporal.Now`; `Temporal.TimeZone` as a real object.
 (Since this audit: Stage 1 Track C has closed `Temporal.Instant`'s arithmetic
 and all of `Temporal.Now` — see that track's entry below.)
-Today's slice is read-only construction plus one-way `Intl.DateTimeFormat`
-formatting. This matches the 6.55% Test262 pass rate exactly: the passes that
-already occur are essentially all construction/getter/formatting cases.
+The initial slice was read-only construction plus one-way
+`Intl.DateTimeFormat` formatting, matching the then-6.55% Test262 baseline.
+The current complete Ubuntu run is 95.583%; use the verification section and
+current combined table above for the present status.
 
 An unresolved item from the same audit: `Intl.DurationFormat().format()`
 already accepts ISO 8601 duration strings (`intl.rs:631`), but no ISO 8601

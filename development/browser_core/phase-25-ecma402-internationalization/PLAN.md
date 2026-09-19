@@ -38,7 +38,7 @@ BlueJS Realm, JS coercion, objects and UTF-16 adapter ┘
 BlueIce UI Fluent catalogs / translated application text → blueice-i18n
 ```
 
-## Source modularity audit (2026-09-14)
+## Source modularity audit (updated 2026-09-19)
 
 The initial ECMA-402 implementation collected independent locale services in
 one file. That made a change to a service unnecessarily expensive to review:
@@ -50,7 +50,7 @@ completed extractions. `number_format.rs`, `relative_time_format.rs` and the
 `Intl.Locale` information service in `locale_information.rs` are also
 independent service modules. They retain the exact public paths through
 explicit facade re-exports and have direct tests as a no-change gate. The
-facade `lib.rs` is now **822 lines** and contains only the shared locale
+facade `lib.rs` is now **1,099 lines** and contains only the shared locale
 identifier, locale-option, negotiation and data-provider boundary plus its
 unit tests.
 
@@ -61,23 +61,25 @@ BlueJS/Test262 verification after the move. The long-term endpoint is a small
 facade containing shared identifiers, data-registry interfaces and re-exports;
 services must not import BlueJS types.
 
-The same audit enumerated every Rust source file over 2,000 lines at the time
-of review. They are not all part of Phase 25, so this table records ownership
-and safe follow-up rather than performing unrelated high-risk rewrites while
-completing an internationalization standard.
+The 2026-09-19 audit revisited the files that exceeded 2,000 lines and split
+only at stable ownership boundaries. **Every Rust source file under `backend/`
+is now at or below 2,200 lines**; the maximum is 2,140 lines in
+`core/html/src/tree_builder.rs` and `bluejs/src/vm/modules.rs`. The following
+records the former over-limit files and their resulting boundary, rather than
+leaving an obsolete refactor backlog.
 
-| File | Lines at audit | Ownership / finding | Follow-up |
-| --- | ---: | --- | --- |
-| `backend/core/html/src/tree_builder.rs` | 3,516 | HTML tree-construction algorithm, parser insertion modes and recovery state | Extract stable insertion-mode families only with parser fixtures and browser integration coverage; defer. |
-| `backend/bluejs/src/vm/intl.rs` | 3,508 | JavaScript-visible Intl constructors, slots and coercion adapters | Split by service only alongside matching host-service migrations; DurationFormat and `supportedValuesOf` increased the urgency, but no mechanical split without adapter regressions. |
-| `backend/core/engine/src/session.rs` | 2,811 | Browser session dispatcher, navigation and frame lifecycle | Separate command dispatch from navigation state only with engine integration tests; defer. |
-| `backend/bluets/src/checker.rs` | 2,654 | TypeScript checker with shared symbol/type-flow state | Identify stable checker passes and extract with compiler fixture coverage; defer. |
-| `backend/bluejs/src/heap.rs` | 2,675 | GC heap, allocation, tracing and object storage invariants | Do not mechanically split; first isolate tracing/storage behind invariant tests. |
-| `backend/bluejs/src/vm/builtins.rs` | 2,620 | Built-in dispatch plus existing focused submodules | Continue service-family extraction (as already done for promises/typed arrays); defer unrelated work. |
-| `backend/bluejs/src/vm.rs` | 2,095 | VM facade, execution state and existing submodule boundary | Keep facade small as new VM features arrive; no immediate Phase 25-only split. |
-| `backend/bluejs/src/vm/test262.rs` | 2,018 | Test262 host hooks, including non-standard test-only facilities | Partition by host capability only after preserving process-interface coverage; defer. |
+| Former file / audit size | Current layout | Result |
+| --- | --- | --- |
+| `core/html/src/tree_builder.rs` (3,516) | insertion-mode and tree-construction families are separate modules; facade is 2,140 | retained parser-facing boundary |
+| `bluejs/src/vm/intl.rs` (3,508) | service adapters under `vm/intl/`; facade is 764 | service-by-service ownership, public paths retained |
+| `core/engine/src/session.rs` (2,811) | command/navigation helpers and tests separated; facade is 761 | session API remains stable |
+| `bluets/src/checker.rs` (2,654) | checker passes and tests separated; facade is 2,080 | compiler fixture boundary retained |
+| `bluejs/src/heap.rs` (2,675) | heap core, object/exotic storage and tracing modules; facade is 1,572 | GC invariants remain behind the same API |
+| `bluejs/src/vm/builtins.rs` (2,620) | builtin families in `vm/builtins/`; facade is 466 | dispatch remains a dedicated module |
+| `bluejs/src/vm/test262.rs` (2,018) | host capabilities in `vm/test262/`; facade is 80 | process-interface coverage remains at the public boundary |
+| `bluejs/src/vm.rs` (2,095) | execution and state remain in the facade, now 2,098 | already below the 2,200-line maintenance limit; no artificial split |
 
-The line counts above are an audit threshold, not a quality metric by
+The line counts are a maintenance guardrail, not a quality metric by
 themselves. A file is split only where a stable ownership boundary exists and
 where its relevant regression suite demonstrates unchanged observable
 behaviour.
@@ -91,20 +93,19 @@ behaviour.
 
 ## Coverage toolchain
 
-The repository pins Rust `1.95.0-aarch64-apple-darwin` through
-`rust-toolchain.toml`. Its coverage component is named `llvm-tools` (reported
-by Rustup as `llvm-tools-aarch64-apple-darwin`), not the older
-`llvm-tools-preview` spelling that older `cargo-llvm-cov` releases may suggest.
-Install it against the pinned toolchain:
+The repository pins Rust `1.95.0` through `rust-toolchain.toml`. On the
+currently verified Ubuntu host the toolchain triple is
+`x86_64-unknown-linux-gnu`. Its coverage component is named `llvm-tools`, not
+the older `llvm-tools-preview` spelling that older `cargo-llvm-cov` releases
+may suggest. Install it against the pinned toolchain:
 
 ```sh
-rustup component add llvm-tools --toolchain 1.95.0-aarch64-apple-darwin
+rustup component add llvm-tools --toolchain 1.95.0
 ```
 
-It installs `llvm-cov` and `llvm-profdata` below that toolchain's sysroot. In a
-sandbox where `/Users/ephoton/.rustup` is outside the workspace's writable
-roots, this bootstrap needs explicit external-write/network approval; it does
-not require `sudo` in a normal developer shell. The component is installed.
+It installs `llvm-cov` and `llvm-profdata` below that toolchain's sysroot. The
+component needs to be available before running coverage; this documentation
+update does not claim a new coverage measurement.
 The following remains the required no-exclusion BlueJS gate:
 
 ```sh
@@ -146,8 +147,9 @@ a pass claim. This is the real crate coverage gate, not a two-target proxy.
    but remain partial until their data and phase-wide coverage gates are met.
    DurationFormat now has the current-public host-neutral Duration Record boundary:
    ten integral fields, common-sign validation, the `2^32` calendar-unit
-   limits and exact `2^53` normalized-seconds limit. BlueJS has not yet
-   adopted it. The host layer also resolves the table-ordered unit
+   limits and exact `2^53` normalized-seconds limit. BlueJS adopts that
+   boundary through `resolve_duration_format`/`create_duration_format`; the
+   host layer also resolves the table-ordered unit
    style/display records, global `digital` defaults, numeric-style ordering
    conflicts and `fractionalDigits` range. It now also partitions English
    long/short/narrow/digital output and `formatToParts` records with exact
@@ -245,6 +247,21 @@ separately scoped Phase 12 adapter.
 
 ## Latest verification
 
+### Ubuntu-only update (2026-09-19)
+
+The available local host is Ubuntu 24.04.3 LTS under WSL2, not Ubuntu 24.04.4.
+This update verified the refactored workspace with
+`cargo build --workspace --all-targets`, `cargo test -p blueice-ecma402 --test
+number_format` (89 pass), `cargo test -p blueice-ecma402 --lib` (27 pass), and
+`cargo test -p blueice-bluejs --test intl` (33 pass). It also completed the
+unfiltered Test262 inventory with `python3 backend/bluejs/test262/run.py
+--jobs 8`: 6,364 / 6,714 `intl402/` modes pass (94.787%), including
+3,708 / 4,058 `intl402/Temporal/` modes (91.375%). No new coverage value was
+produced. macOS and Windows verification is deferred and must be performed on
+those platforms rather than inferred from this Ubuntu result. The precise
+local scope and the isolated-target regex-worker caveat are in the
+[Ubuntu Test262 report](../phase-13-bluejs-engine/TEST262_LINUX_REPORT.md).
+
 On 2026-09-14, the Test262 pin was advanced from the June snapshot to public
 `main` revision `72faf8ec1445c55149615e8b35187830783aba1a` (2026-09-10). The
 archive and every unpacked file are SHA-256 verified by
@@ -264,14 +281,13 @@ DisplayNames and PluralRules are physical host-service modules re-exported by
 the stable facade; the remaining service extractions are tracked in the
 source-modularity audit above.
 On 2026-09-17, the required standalone `cargo llvm-cov -p blueice-ecma402
---fail-under-lines 100 --summary-only` command measured **9,085 / 10,058
-lines (90.33%)**, 887 / 937 functions (94.66%) and 89.51% regions, then exited
+--fail-under-lines 100 --summary-only` command measured **9,657 / 10,237
+lines (94.33%)**, 897 / 942 functions (95.22%) and 91.90% regions, then exited
 1 as required. The regenerated complete provider adds real decoder, fallback,
-and formatting branches, and the report has 973 uncovered denominator lines
-(including six instrumented Rust-std thread-local lines). This supersedes the
-old 14-line mapping discrepancy: the no-exclusion gate is now a substantive
-public-boundary coverage task, not a toolchain exception, and cannot be called
-100% or hidden through an exclusion.
+and formatting branches. This supersedes the old 14-line mapping discrepancy:
+the no-exclusion gate is now a substantive public-boundary coverage task, not
+a toolchain exception, and cannot be called 100% or hidden through an
+exclusion.
 
 The complete `intl402/DurationFormat` filter now schedules **220 modes, all of
 which pass** in the 2026-09-17 non-Temporal inventory. It uses the actual

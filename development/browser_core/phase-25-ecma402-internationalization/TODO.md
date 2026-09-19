@@ -19,9 +19,20 @@ coverage section for why. Full per-service Test262 breakdown is in
 | --- | --- |
 | `blueice-ecma402` Rust line coverage | 9,657 / 10,237 (94.33%) |
 | Test262 `intl402/` non-Temporal (what Phase 25 claims) | 2,656 / 2,656 (100%) |
-| Test262 `intl402/` full corpus, incl. Temporal (unscoped) | 2,922 / 6,714 (43.52%) |
-| — of which `Temporal/` alone | 266 / 4,058 (6.55%) |
+| Test262 `intl402/` full corpus, incl. Temporal (unscoped) | 6,364 / 6,714 (94.787%) |
+| — of which `Temporal/` alone | 3,708 / 4,058 (91.375%) |
 | — every other `intl402/` group | 2,656 / 2,656 (100%) |
+
+## Platform status (updated 2026-09-19)
+
+The available local host is Ubuntu 24.04.3 LTS under WSL2, not Ubuntu 24.04.4.
+The Test262 values above are from the fresh 2026-09-19 complete Ubuntu
+inventory; the coverage value remains its separately dated measurement.
+Current Ubuntu checks also cover the workspace build plus focused ECMA-402 and
+BlueJS Intl suites; the complete details are in
+[`TEST262_LINUX_REPORT.md`](../phase-13-bluejs-engine/TEST262_LINUX_REPORT.md).
+macOS and Windows are pending later real runs and must not be filled from the
+Ubuntu measurements.
 
 ## Coverage gate (`cargo llvm-cov -p blueice-ecma402 --fail-under-lines 100`)
 
@@ -69,31 +80,17 @@ Current: 9,657 / 10,237 lines (94.33%). Ranked by missed-line count:
       naming which adapters — first task is to identify the concrete
       remaining ones.
 
-## Documentation staleness (found 2026-09-17, not yet fixed)
-
-- [ ] `PLAN.md` lines 267–270 still quote the old **9,085 / 10,058 (90.33%)**
-      coverage measurement; `CONFORMANCE.md` has been updated to the current
-      **9,657 / 10,237 (94.33%)** but `PLAN.md`'s own copy was left stale.
-- [ ] `PLAN.md` §5 says "BlueJS has not yet adopted [the DurationFormat
-      Duration Record boundary]" — verified false against current
-      `backend/bluejs/src/vm/intl.rs` (`resolve_duration_format`/
-      `create_duration_format` already adapt `blueice_ecma402::DurationFormat`
-      end to end). Needs a correction, not a re-verification.
-
 ## Structural / cross-phase blockers (tracked here for visibility, not owned by Phase 25)
 
-- [ ] `intl402/Temporal/` — **4,058 of the full 6,714 `intl402/` modes; only
-      266 pass (6.55%), 3,792 fail.** This single group is the entire reason
-      the *unfiltered* Test262 `intl402/` pass rate in
+- [ ] `intl402/Temporal/` — **4,058 of the full 6,714 `intl402/` modes;
+      3,708 pass (91.375%), 350 fail.** It is the entire remaining source of
+      failures in the *unfiltered* Test262 `intl402/` pass rate in
       [`TEST262_LINUX_REPORT.md`](../phase-13-bluejs-engine/TEST262_LINUX_REPORT.md)
-      reads ~43%: **every other group in `intl402/` is at 100%** — see
+      (94.787%): **every other group in `intl402/` is at 100%** — see
       `CONFORMANCE.md`'s full per-service breakdown table in "Reproducible
-      current inventory". It is entirely blocked on ECMA-262 Temporal, which
-      does not exist in BlueJS yet. Do not treat this as an ECMA-402-crate
-      coverage problem or attempt to close it from this crate; it is a
-      separate phase's not-yet-started dependency, and the 266 passes that do
-      occur are almost entirely feature-detection/negative-assertion tests
-      that don't require a real Temporal implementation.
+      current inventory". Do not treat it as an ECMA-402-crate coverage
+      problem or attempt to close it from this crate: Phase 26 owns the
+      remaining implementation work.
       Sub-divided by Temporal type (`CONFORMANCE.md` has the full table):
       `ZonedDateTime` 32/1,166, `PlainDate` 100/986, `PlainDateTime` 66/966,
       `PlainYearMonth` 18/654, `PlainMonthDay` 48/180, `Duration` 2/42,
@@ -101,15 +98,12 @@ Current: 9,657 / 10,237 lines (94.33%). Ranked by missed-line count:
       breakdown does not surface a natural "smallest first slice" — a real
       Temporal effort would need its own design doc and phase, not a
       Test262-bucket-count-driven pick from here.
-- [ ] **No Temporal phase or plan exists anywhere under
-      `development/browser_core/`.** If Temporal work is ever prioritized,
-      it needs a new phase directory (design-first, per this repo's own
-      workflow) before any implementation TODO can be written for it —
-      not a sub-bullet of Phase 25.
-- [ ] `backend/bluejs/src/vm/intl.rs` (3,508 lines) is flagged in `PLAN.md`'s
-      source-modularity audit as needing a service-by-service split, but only
-      alongside matching host-service migrations — no mechanical split
-      without adapter regressions.
+- [x] The Phase 26 Temporal plan now exists at
+      `development/browser_core/phase-26-ecma262-temporal/PLAN.md`; Temporal
+      work is a cross-phase dependency, not an unowned future placeholder.
+- [x] `backend/bluejs/src/vm/intl.rs` was split at service boundaries; its
+      stable facade is now 764 lines and the source-modularity audit records
+      the resulting modules and validation.
 - [ ] `blueice-bluejs` crate's own coverage gate (`cargo llvm-cov -p
       blueice-bluejs --fail-under-lines 88 --summary-only`) was last measured
       2026-09-14 at 87.84% — under the 88% floor, and now stale (code has
@@ -119,6 +113,9 @@ Current: 9,657 / 10,237 lines (94.33%). Ranked by missed-line count:
 
 ## Recently closed
 
+- [x] `PLAN.md`'s DurationFormat description now records the existing BlueJS
+      `resolve_duration_format`/`create_duration_format` adapter rather than
+      the obsolete "not yet adopted" statement.
 - [x] `Intl.PluralRules.prototype.selectRange` non-identity ranges — replaced
       the hardcoded `"other"` fallback with a real CLDR `pluralRanges`-table
       lookup via a second locale-negotiated `PluralRulesWithRanges` service.
