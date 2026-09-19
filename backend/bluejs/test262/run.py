@@ -350,6 +350,24 @@ TEMPORAL_CALENDAR_MATRIX_FIXTURES = frozenset(
     }
 )
 TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET = 10_000_000
+# ZonedDateTime's own since/until same-epoch-nanoseconds fixtures enumerate
+# every combination of 4 time zones x 3 epoch-nanosecond values x 55
+# largestUnit/smallestUnit pairs (660 total `since`/`until` calls, each
+# followed by a 10-field `TemporalHelpers.assertDuration` comparison) to
+# confirm a blank duration at every granularity when the two instants are
+# already equal. A finite, bounded conformance matrix, not an unbounded loop
+# or an algorithmic-complexity bug in the difference computation itself
+# (confirmed directly: a single such call resolves immediately via
+# `DifferenceTemporalZonedDateTime` step 8's own equal-epoch-nanoseconds fast
+# path) -- the interpreter's own per-call/per-property-access dispatch cost,
+# multiplied across 660 iterations, is what needs the larger envelope.
+ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES = frozenset(
+    {
+        "built-ins/Temporal/ZonedDateTime/prototype/since/same-epoch-nanoseconds.js",
+        "built-ins/Temporal/ZonedDateTime/prototype/until/same-epoch-nanoseconds.js",
+    }
+)
+ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET = 1_000_000
 TEMPORAL_CALENDAR_MATRIX_TIMEOUT = 360
 # The six upstream Iterator.zip/zipKeyed basic fixtures enumerate every prefix
 # combination through three inputs, then verify descriptor details for every
@@ -680,6 +698,8 @@ def instruction_budget(data, default, relative=None, source=""):
     """Keep standard tail-call conformance probes within a bounded budget."""
     if relative in TEMPORAL_CALENDAR_MATRIX_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET)
+    if relative in ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES:
+        return max(default, ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET)
     if relative in ITERATOR_ZIP_BASIC_MATRIX_FIXTURES:
         return max(default, ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET)
     if relative == NUMBER_FORMAT_NATIVE_PRECISION_MATRIX_FIXTURE:

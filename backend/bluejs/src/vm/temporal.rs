@@ -9759,6 +9759,7 @@ impl Vm {
         time1: epoch::CivilTime,
         other_epoch_ns: &BigInt,
         date2: epoch::CivilDate,
+        time2: epoch::CivilTime,
         largest_unit: rounding::TemporalUnit,
         smallest_unit: rounding::TemporalUnit,
         increment: i128,
@@ -9775,7 +9776,26 @@ impl Vm {
             let [h, m, s, ms, us, ns] =
                 rounded.balance_to(Self::temporal_unit_to_time_unit(largest_unit));
             Ok((0, 0, 0, 0, h, m, s, ms, us, ns))
+        } else if existing_epoch_ns == other_epoch_ns {
+            // `DifferenceTemporalZonedDateTime` step 8: once the epoch
+            // instants are already known equal, short-circuit to a blank
+            // duration *before* doing any calendar-day bracketing at all --
+            // not just an optimization, a real spec-ordering requirement
+            // (Gecko's own `ZonedDateTime.cpp` checks this ahead of calling
+            // `DifferenceZonedDateTimeWithRounding`). Confirmed as a real,
+            // previously-missing fast path via `built-ins/Temporal/
+            // ZonedDateTime/prototype/{since,until}/same-epoch-nanoseconds.js`,
+            // which iterates every `smallestUnit`/`largestUnit`/time-zone
+            // combination (660 calls) with the receiver and argument always
+            // at the *same* instant -- expensive enough, run unconditionally
+            // through the full calendar-bracketing path below, to exhaust
+            // the Test262 harness's own per-script instruction budget before
+            // this fast path existed.
+            Ok((0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
         } else {
+            let range_error = || {
+                RuntimeError::RangeError("Temporal.since/until is out of range".into())
+            };
             let date_unit_largest = Self::temporal_unit_to_date_unit(largest_unit);
             let (years, months, weeks, days, remainder_ns) =
                 zoned_date_time::difference_zoned_date_time(
@@ -9786,8 +9806,10 @@ impl Vm {
                     time1,
                     other_epoch_ns,
                     date2,
+                    time2,
                     date_unit_largest,
-                );
+                )
+                .ok_or_else(range_error)?;
             if smallest_unit >= rounding::TemporalUnit::Day {
                 let overall_sign = match other_epoch_ns - existing_epoch_ns {
                     diff if diff > BigInt::from(0) => 1_i64,
@@ -9795,11 +9817,6 @@ impl Vm {
                     _ => 0_i64,
                 };
                 let date_unit_smallest = Self::temporal_unit_to_date_unit(smallest_unit);
-                let range_error = || {
-                    RuntimeError::RangeError(
-                        "Temporal.since/until is out of range".into(),
-                    )
-                };
                 let nudge = zoned_date_time::nudge_to_calendar_unit(
                     zone,
                     calendar_kind,
@@ -9966,6 +9983,14 @@ impl Vm {
             ),
             &other.epoch_nanoseconds,
             (other.year, other.month, other.day),
+            (
+                other.hour,
+                other.minute,
+                other.second,
+                other.millisecond,
+                other.microsecond,
+                other.nanosecond,
+            ),
             largest_unit,
             smallest_unit,
             increment,
