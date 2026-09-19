@@ -21,8 +21,7 @@ jobs:
         # runner billing, with pinned labels rather than `-latest` aliases so
         # the covered set never shifts silently. Deliberately omitted: the
         # `-large`/`-xlarge` runners (paid larger runners), macOS 14
-        # (deprecated) and the `*-vs2026` Windows images (same OS, only a
-        # different Visual Studio toolchain).
+        # (deprecated).
         include:
           # --- Native runners: Linux ---
           - { label: "Ubuntu 26.04 x86_64", os: ubuntu-26.04 }
@@ -35,6 +34,10 @@ jobs:
           - { label: "Windows Server 2025 x86_64", os: windows-2025 }
           - { label: "Windows Server 2022 x86_64", os: windows-2022 }
           - { label: "Windows 11 arm64", os: windows-11-arm }
+          # Same OSes as above, with the Visual Studio 2026 toolchain instead
+          # of the default one, to cover an MSVC/linker version difference.
+          - { label: "Windows Server 2025 VS2026 x86_64", os: windows-2025-vs2026 }
+          - { label: "Windows 11 VS2026 arm64", os: windows-11-vs2026-arm }
           # --- Native runners: macOS ---
           - { label: "macOS 26 arm64", os: macos-26 }
           - { label: "macOS 26 x86_64", os: macos-26-intel }
@@ -235,3 +238,25 @@ jobs:
           npm exec --yes --package typescript@5.9.3 --
           env BLUEICE_TSC=tsc
           cargo test -p blueice-bluets --test typescript_oracle -- --ignored
+
+  # The single check branch protection requires. It depends on every other
+  # job and fails unless all of them succeeded, so the build matrix above can
+  # gain, lose or rename legs without the required-check list ever needing an
+  # edit. `if: always()` keeps it from being skipped when a dependency fails
+  # (a skipped required check would read as passing); a cancelled or skipped
+  # dependency counts as a failure too. A matrix job's result here is the
+  # aggregate of all its legs.
+  ci-gate:
+    name: CI gate
+    if: always()
+    needs: [build-test, coverage, typescript-oracle]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every CI job to have succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = success ] || { echo "::error::A required CI job did not succeed ($result)"; exit 1; }
+          done
