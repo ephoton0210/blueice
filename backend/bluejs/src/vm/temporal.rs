@@ -92,6 +92,14 @@ struct TemporalCalendarFields {
     in_leap_year: bool,
 }
 
+/// `(years, months, weeks, days, hours, minutes, seconds, milliseconds,
+/// microseconds, nanoseconds)` — the balanced date/time duration fields
+/// [`Vm::temporal_zoned_date_time_difference_fields`] resolves a
+/// `since`/`until`/`round`/`total` request down to. Named to keep that
+/// function's `Result<_, RuntimeError>` signature under clippy's
+/// `type_complexity` threshold.
+type DateTimeDurationFields = (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64);
+
 /// How many sub-second digits an ISO serialization prints, as
 /// `ToSecondsStringPrecision` resolves it: `Minute` omits the seconds field
 /// entirely, `Auto` prints the shortest exact fraction (or none), and
@@ -615,6 +623,11 @@ impl Vm {
                             "getISOFields",
                             0,
                             NativeFunction::TemporalZonedDateTimeGetIsoFields,
+                        ),
+                        (
+                            "getTimeZoneTransition",
+                            1,
+                            NativeFunction::TemporalZonedDateTimeGetTimeZoneTransition,
                         ),
                     ] {
                         self.install_native(prototype, function_prototype, name, arity, method)?;
@@ -1961,6 +1974,7 @@ impl Vm {
                             TemporalKind::PlainDate
                                 | TemporalKind::PlainDateTime
                                 | TemporalKind::PlainYearMonth
+                                | TemporalKind::ZonedDateTime
                         ) =>
                     {
                         Ok(Value::Number(fields.year.into()))
@@ -9109,19 +9123,45 @@ impl Vm {
             })
             .transpose()?;
         let era_year_num = (!matches!(era_year_v, Value::Undefined))
-            .then(|| self.temporal_integer(&era_year_v, -9_999, 9_999, "era year"))
+            .then(|| self.temporal_integer(&era_year_v, i32::MIN, i32::MAX, "era year"))
             .transpose()?;
-        if let Some(era) = era_s.as_deref().filter(|_| existing.calendar != "iso8601") {
-            fields.era = Some(era.as_bytes());
-            fields.era_year = Some(era_year_num.or(existing_fields.era_year).ok_or_else(|| {
-                RuntimeError::TypeError("Temporal eraYear requires an era".into())
-            })?);
-        } else if era_year_num.is_some() && existing.calendar != "iso8601" {
-            return Err(RuntimeError::RangeError(
-                "Temporal eraYear requires an era".into(),
-            ));
-        } else {
+        // The same three-way `iso8601`/`!calendar_supports_era`/era-supporting
+        // split `temporal_date_with`/`temporal_year_month_with` already use
+        // (see those functions' own doc comments for the full rationale):
+        // `iso8601` has no eras at all and silently ignores `era`/`eraYear`;
+        // `chinese`/`dangi` have no era concept either, but Temporal's own
+        // rule is to *reject* any use of them there rather than ignore it;
+        // every other calendar requires `era` and `eraYear` together or not
+        // at all.
+        if existing.calendar == "iso8601" {
             fields.extended_year = Some(requested_year.unwrap_or(existing_fields.year));
+        } else if !calendar::calendar_supports_era(&existing.calendar) {
+            if era_s.is_some() || era_year_num.is_some() {
+                return Err(RuntimeError::TypeError(
+                    "era and eraYear are not valid for this calendar".into(),
+                ));
+            }
+            fields.extended_year = Some(requested_year.unwrap_or(existing_fields.year));
+        } else {
+            match (era_s.as_deref(), era_year_num) {
+                (Some(era), Some(era_year)) => {
+                    fields.era = Some(era.as_bytes());
+                    fields.era_year = Some(era_year);
+                }
+                (Some(_), None) => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.with requires eraYear when era is provided".into(),
+                    ));
+                }
+                (None, Some(_)) => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.with requires era when eraYear is provided".into(),
+                    ));
+                }
+                (None, None) => {
+                    fields.extended_year = Some(requested_year.unwrap_or(existing_fields.year));
+                }
+            }
         }
 
         let requested_month = (!matches!(month_v, Value::Undefined))
@@ -9143,8 +9183,15 @@ impl Vm {
         } else {
             fields.month_code = Some(existing_fields.month_code.as_bytes());
         }
+        // `ToPositiveIntegerWithTruncation` (`CalendarFields.cpp`'s
+        // `CalendarField::Day` case) has no upper bound at all -- the same
+        // fix already applied to `temporal_date_with`/`temporal_month_day_with`.
+        // `date.with({ day: daysInMonth + 1 })` must reach the calendar's own
+        // `overflow` regulation (constrain by default, reject on request)
+        // rather than throwing immediately at field-parsing time, per
+        // Test262's `wrapping-at-end-of-month-*.js`.
         let requested_day = (!matches!(day_v, Value::Undefined))
-            .then(|| self.temporal_integer(&day_v, 1, 31, "day"))
+            .then(|| self.temporal_integer(&day_v, 1, i32::MAX, "day"))
             .transpose()?;
         fields.day = Some(requested_day.unwrap_or(i32::from(existing_fields.day)) as u8);
 
@@ -9501,9 +9548,19 @@ impl Vm {
     /// than re-deriving it: `round`/`total` compute a target instant via
     /// `AddZonedDateTime` and then call this with `(anchor, target)` as the
     /// two endpoints, exactly as `ZonedDateTime.prototype.until`/`since`
-    /// call it with two real `ZonedDateTime`s. Pure refactor of
-    /// already-shipped, already-Test262-verified logic — no behavior change
-    /// at this call site.
+    /// call it with two real `ZonedDateTime`s.
+    ///
+    /// The `smallestUnit` day/week/month/year branch is `RoundRelativeDuration`'s
+    /// real, day-length-aware fractional-position algorithm
+    /// (`zoned_date_time::nudge_to_calendar_unit`/`bubble_relative_duration`,
+    /// ported directly from Gecko's `NudgeToCalendarUnit`/
+    /// `BubbleRelativeDuration`) rather than the earlier, simpler
+    /// approximation this function used to have (folding any nonzero sub-day
+    /// remainder into a whole extra day toward the overall duration's sign,
+    /// regardless of `roundingMode` — correct only for `"ceil"`/`"expand"`,
+    /// confirmed wrong for every other mode by the pinned Test262 corpus's
+    /// own `since`/`until` `roundingmode-*.js` fixtures at `smallestUnit:
+    /// "days"`).
     #[allow(clippy::too_many_arguments)]
     fn temporal_zoned_date_time_difference_fields(
         zone: &time_zone::TimeZone,
@@ -9517,7 +9574,7 @@ impl Vm {
         smallest_unit: rounding::TemporalUnit,
         increment: i128,
         mode: blueice_ecma402::NumberRoundingMode,
-    ) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) {
+    ) -> Result<DateTimeDurationFields, RuntimeError> {
         if largest_unit < rounding::TemporalUnit::Day {
             let diff_ns = i128::try_from(other_epoch_ns - existing_epoch_ns)
                 .expect("an Instant-range difference fits in i128");
@@ -9528,58 +9585,68 @@ impl Vm {
             );
             let [h, m, s, ms, us, ns] =
                 rounded.balance_to(Self::temporal_unit_to_time_unit(largest_unit));
-            (0, 0, 0, 0, h, m, s, ms, us, ns)
+            Ok((0, 0, 0, 0, h, m, s, ms, us, ns))
         } else {
             let date_unit_largest = Self::temporal_unit_to_date_unit(largest_unit);
-            let (_, _, _, _, remainder_ns) = zoned_date_time::difference_zoned_date_time(
-                zone,
-                calendar_kind,
-                existing_epoch_ns,
-                date1,
-                time1,
-                other_epoch_ns,
-                date2,
-                date_unit_largest,
-            );
+            let (years, months, weeks, days, remainder_ns) =
+                zoned_date_time::difference_zoned_date_time(
+                    zone,
+                    calendar_kind,
+                    existing_epoch_ns,
+                    date1,
+                    time1,
+                    other_epoch_ns,
+                    date2,
+                    date_unit_largest,
+                );
             if smallest_unit >= rounding::TemporalUnit::Day {
                 let overall_sign = match other_epoch_ns - existing_epoch_ns {
                     diff if diff > BigInt::from(0) => 1_i64,
                     diff if diff < BigInt::from(0) => -1_i64,
                     _ => 0_i64,
                 };
-                let rounding_date2 = if remainder_ns != 0 && overall_sign != 0 {
-                    plain_date::add_iso_date(date2, 0, 0, 0, overall_sign, false).unwrap_or(date2)
-                } else {
-                    date2
-                };
                 let date_unit_smallest = Self::temporal_unit_to_date_unit(smallest_unit);
-                let (years, months, weeks, days) = plain_date::round_calendar_duration(
+                let range_error = || {
+                    RuntimeError::RangeError(
+                        "Temporal.since/until is out of range".into(),
+                    )
+                };
+                let nudge = zoned_date_time::nudge_to_calendar_unit(
+                    zone,
                     calendar_kind,
                     date1,
-                    rounding_date2,
-                    date_unit_largest,
+                    time1,
+                    other_epoch_ns,
+                    (years, months, weeks, days),
                     date_unit_smallest,
                     increment,
+                    overall_sign,
                     mode,
-                );
-                (years, months, weeks, days, 0, 0, 0, 0, 0, 0)
+                )
+                .ok_or_else(range_error)?;
+                let (years, months, weeks, days) =
+                    if nudge.expanded && date_unit_smallest != plain_date::DateUnit::Week {
+                        zoned_date_time::bubble_relative_duration(
+                            zone,
+                            calendar_kind,
+                            date1,
+                            time1,
+                            &nudge,
+                            date_unit_largest,
+                            date_unit_smallest,
+                            overall_sign,
+                        )
+                        .ok_or_else(range_error)?
+                    } else {
+                        (nudge.years, nudge.months, nudge.weeks, nudge.days)
+                    };
+                Ok((years, months, weeks, days, 0, 0, 0, 0, 0, 0))
             } else {
-                let (years, months, weeks, days, remainder_ns) =
-                    zoned_date_time::difference_zoned_date_time(
-                        zone,
-                        calendar_kind,
-                        existing_epoch_ns,
-                        date1,
-                        time1,
-                        other_epoch_ns,
-                        date2,
-                        date_unit_largest,
-                    );
                 let time_unit = Self::temporal_unit_to_time_unit(smallest_unit);
                 let rounded = duration_math::TimeDuration::from_nanoseconds(remainder_ns)
                     .round(time_unit, increment, mode);
                 let [h, m, s, ms, us, ns] = rounded.balance_to(rounding::TimeUnit::Hour);
-                (years, months, weeks, days, h, m, s, ms, us, ns)
+                Ok((years, months, weeks, days, h, m, s, ms, us, ns))
             }
         }
     }
@@ -9663,7 +9730,7 @@ impl Vm {
             smallest_unit,
             increment,
             mode,
-        );
+        )?;
 
         let (
             years,
@@ -10095,6 +10162,71 @@ impl Vm {
         })();
         self.stack.truncate(base);
         result
+    }
+
+    /// `Temporal.ZonedDateTime.prototype.getTimeZoneTransition`
+    /// (`GetDirectionOption` + `GetNamedTimeZoneNextTransition`/
+    /// `GetNamedTimeZonePreviousTransition`, delegating the actual real-data
+    /// lookup to [`time_zone::TimeZone::adjacent_transition`]). `direction`
+    /// is required (a `TypeError` if the argument itself is `undefined`,
+    /// mirroring `Temporal.Instant.prototype.round`'s own `roundTo` shape);
+    /// a bare String is shorthand for `{ direction: <string> }`, the same
+    /// pattern [`Self::temporal_round_to`] already establishes for
+    /// `roundTo`. `null` is the spec's own result for "no such transition",
+    /// distinct from every other Temporal getter/method on this type.
+    pub(super) fn temporal_zoned_date_time_get_time_zone_transition(
+        &mut self,
+        receiver: &Value,
+        direction_param: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let mut existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        if *direction_param == Value::Undefined {
+            return Err(RuntimeError::TypeError(
+                "Temporal.ZonedDateTime.prototype.getTimeZoneTransition requires a direction"
+                    .into(),
+            ));
+        }
+        let options = if matches!(direction_param, Value::String(_)) {
+            let object = self.with_roots(|heap| heap.alloc_object(None))?;
+            let result = Value::Object(object);
+            self.stack.push(result.clone());
+            self.define_data(
+                object,
+                "direction",
+                direction_param.clone(),
+                true,
+                true,
+                true,
+            )?;
+            result
+        } else {
+            self.temporal_options(direction_param)?
+        };
+        let direction_v = self.get_property(&options, &"direction".into())?;
+        if direction_v == Value::Undefined {
+            return Err(RuntimeError::RangeError(
+                "Temporal.ZonedDateTime.prototype.getTimeZoneTransition requires a direction \
+                 option"
+                    .into(),
+            ));
+        }
+        let direction_s = self.coerce_string(&direction_v)?;
+        let direction_s = direction_s
+            .to_utf8()
+            .map_err(|_| RuntimeError::RangeError("invalid direction option".into()))?;
+        let forward = match direction_s.as_str() {
+            "next" => true,
+            "previous" => false,
+            _ => return Err(RuntimeError::RangeError("invalid direction option".into())),
+        };
+        let zone = temporal_zoned_date_time_zone(&existing);
+        let Some(transition_ns) = zone.adjacent_transition(&existing.epoch_nanoseconds, forward)
+        else {
+            return Ok(Value::Null);
+        };
+        existing.epoch_nanoseconds = transition_ns;
+        temporal_set_local_fields(&mut existing, &zone);
+        self.alloc_temporal_value(existing, false)
     }
 }
 

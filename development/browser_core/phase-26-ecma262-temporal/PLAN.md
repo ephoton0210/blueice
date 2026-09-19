@@ -29,9 +29,14 @@ options-argument-type-validation-order gaps each type's own Stage 2 slice
 already documented as separate, unrelated issues.
 `PlainYearMonth`/`PlainMonthDay`'s own leap-month calendars
 (`chinese`/`dangi`/`hebrew`) need a structurally different algorithm Gecko
-uses for them (not yet ported); for `ZonedDateTime` it is `until`/`since`'s
-day-length-aware fractional rounding at week/month/year granularity (see
-that slice's own "deliberately left open" list). Chronological closure
+uses for them (not yet ported). **`ZonedDateTime`'s `until`/`since`'s
+day-length-aware fractional rounding at week/month/year granularity, its
+own separate `with()` era/eraYear copy, and a real `.year` getter bug are
+closed 2026-09-18** (see the dedicated bullet at the end of Stage 2 below,
+which also adds the new `getTimeZoneTransition` method); a residual
+`since`/`until` cluster plus smaller `equals`/`add`/`subtract`/`with`/
+`toLocaleString` gaps remain there, per that same bullet's own
+"deliberately left open" list. Chronological closure
 record, each step's Test262 delta measured on the pinned corpus (`python3
 backend/bluejs/test262/run.py --filter "Temporal/" --jobs 8`), diffed per
 path+mode against the step before it:
@@ -3107,6 +3112,125 @@ once). One owner:
       `string_protocols.rs::observable_conversion_order_and_gc_pressure`
       heap-budget flake, confirmed to reproduce identically byte-for-byte on
       the pre-change code (not a regression introduced by this pass).
+- **`ZonedDateTime`'s two documented Stage 2 follow-ups closed, plus a new
+  method and a real cross-cutting getter bug found and fixed — 2026-09-18.**
+  Closes both items the era/eraYear pass above and the Duration relativeTo
+  pass above left explicitly open for `ZonedDateTime`: its own separate
+  `with()` era-resolution copy (`temporal_zoned_date_time_with`) had the
+  textually-identical bug fixes 1-3 in the era/eraYear entry above already
+  fixed for the four `Plain*` types, and `since`/`until`/`round`/`total`'s
+  day-length-aware fractional rounding at week/month/year granularity now
+  has a real algorithm instead of the earlier whole-day-toward-sign
+  approximation.
+
+  1. **`temporal_zoned_date_time_with`: identical era/eraYear mutual-
+     exclusivity bugs as the `Plain*` fix above**, fixed the same way --
+     branching on `existing.calendar == "iso8601"` (ignore) vs.
+     `!calendar::calendar_supports_era` (`TypeError`) vs. era-supporting
+     (era+eraYear together or not at all) as three arms, plus the same
+     `eraYear` bound widened to the full `i32` range and `day` widened to
+     `1..=i32::MAX` (`wrapping-at-end-of-month-*.js` for `ZonedDateTime`).
+     Pinned by seven new tests in
+     `backend/bluejs/tests/temporal_zoned_date_time_with_era.rs`.
+
+  2. **A real, independent, high-traffic bug found while investigating
+     `since`/`until` fixtures: `Temporal.ZonedDateTime.prototype.year`
+     always threw `TypeError` ("Temporal calendar field is unavailable on
+     this receiver"), on every calendar including plain `iso8601`.**
+     `temporal_getter`'s dispatch match arm for `TemporalGetter::Year`
+     listed `PlainDate`/`PlainDateTime`/`PlainYearMonth` but not
+     `ZonedDateTime` -- the only calendar-field getter with this gap
+     (`Day`/`Era`/`EraYear`/`MonthsInYear`/`DaysInMonth`/`DaysInYear`/
+     `InLeapYear` all already listed it, and `Month`/`MonthCode` use a
+     `!= PlainTime` guard that already includes it). `temporal_calendar_
+     fields` itself was already fully correct for a `ZonedDateTime`
+     receiver (reads its own local calendar-date fields directly,
+     calendar-generic) -- the bug was purely the one missing match arm.
+     Confirmed via the pinned corpus's own `built-ins/Temporal/
+     ZonedDateTime/prototype/year/basic.js` and `intl402/.../year/
+     {arithmetic-year,epoch-year}.js`, all previously failing; pinned by
+     four new tests in `backend/bluejs/tests/
+     temporal_zoned_date_time_year_getter.rs`. Given how many other
+     fixtures' own assertion helpers read `.year` on a `ZonedDateTime`
+     result incidentally, this one-line fix's effect reaches well beyond
+     the `year` getter's own directory -- see the measurement below.
+
+  3. **`since`/`until`/`round`/`total`'s `smallestUnit` day/week/month/year
+     branch now uses `RoundRelativeDuration`'s real, day-length-aware
+     fractional-position algorithm** -- Gecko's `NudgeToCalendarUnit`/
+     `BubbleRelativeDuration` (`Duration.cpp`), ported to
+     `zoned_date_time::nudge_to_calendar_unit`/`bubble_relative_duration`
+     and wired into `Vm::temporal_zoned_date_time_difference_fields` (now
+     fallible, since resolving a bracketing candidate can hit a genuine
+     representable-range `RangeError`) -- replacing the earlier
+     approximation that folded any nonzero sub-day exact-time remainder
+     into a whole extra day toward the overall duration's sign regardless
+     of `roundingMode`, correct only for `"ceil"`/`"expand"` and confirmed
+     wrong for every other mode by the corpus's own `since`/`until`
+     `roundingmode-*.js` fixtures. Measures the fraction in exact
+     nanoseconds through the real zone between the two bracketing
+     calendar-date candidates (not epoch days), since a zoned day can be
+     23, 24 or 25 real hours -- the day-length-aware property a plain,
+     unzoned date pair does not need. Reuses `plain_date::
+     calendar_add_date`/`calendar_difference_date` exactly as already
+     shipped -- no changes to either.
+
+  4. **New method: `Temporal.ZonedDateTime.prototype.getTimeZoneTransition`**
+     (`GetDirectionOption` + `GetNamedTimeZoneNextTransition`/
+     `GetNamedTimeZonePreviousTransition`). `TimeZone::adjacent_transition`
+     delegates to `jiff::tz::TimeZone::following`/`preceding` -- the same
+     pinned real IANA transition data `offset_nanoseconds_for` already
+     resolves offsets from, so a same-abbreviation/same-offset rule change
+     the underlying TZif data never recorded as a transition
+     (`rule-change-without-offset-transition.js`) is correctly not
+     reported either, with no separate filtering needed. `None` (`null`
+     at the JS level) for a fixed-offset zone (never has transitions, per
+     spec) or an instant outside Jiff's own representable range.
+     Unit-tested directly against real historical `America/New_York`/
+     `Europe/London`/`Asia/Kolkata` transition instants pinned from the
+     corpus's own `getTimeZoneTransition/specific-tzdb-values.js`.
+
+  **Measured**, diffed per path+mode against a freshly rebuilt pristine
+  pre-change worktree at this pass's own parent commit (`26202af`): whole-
+  tree `Temporal/` **12,032/13,272 (90.7%) → 12,292/13,272 (92.6%), +260
+  modes, zero regressions anywhere in the tree.** By directory:
+  `intl402/.../ZonedDateTime/prototype/with` +72, `.../add` +30,
+  `.../subtract` +30, `built-ins/.../getTimeZoneTransition` +24 (all of
+  it, a new method), `built-ins/.../until` +18, `intl402/.../
+  getTimeZoneTransition` +14, `intl402/.../since` +12, `intl402/.../until`
+  +12, `built-ins/.../since` +8, plus smaller movement in `with`/`add`/
+  `subtract`/`year` and four incidental `PlainDate`/`PlainDateTime` `from`
+  fixes (the `year`-getter fix's own assertion-helper reach, item 2
+  above).
+
+  **Deliberately left open, largest remaining `ZonedDateTime` clusters**
+  (336 failing modes remain in the corpus's `Temporal/ZonedDateTime/` tree
+  after this pass, vs. 590 before, +254, zero regressions -- re-verified
+  independently against a fresh `Temporal/ZonedDateTime` filter, matching
+  the whole-tree +260 above once the four incidental non-`ZonedDateTime`
+  `PlainDate`/`PlainDateTime` `from` fixes are excluded): `since`/`until`
+  still the single
+  largest cluster at 150 combined (`intl402` 44+44, `built-ins` 36+26) --
+  the day-length-aware algorithm in item 3 above is real and Test262-
+  verified against its own targeted fixtures, but a residual class of
+  `since`/`until` fixtures (calendar-specific non-ISO edge cases and
+  further rounding-mode/increment combinations this pass's own fixture set
+  did not cover) still fails and needs its own follow-up triage rather
+  than being assumed closed by this entry; `toLocaleString` (18, `intl402`
+  only -- a `blueice-ecma402` formatting gap, not this file's own
+  arithmetic); `equals` (26 combined); `add`/`subtract` (24 combined,
+  smaller residual beyond item 3's own `since`/`until` scope); `with` (18
+  combined, beyond the era/eraYear fix in item 1); `round` (6). Not
+  investigated in this pass -- left for the next `ZonedDateTime` slice.
+
+  `cargo build -p blueice-bluejs --all-targets` / `cargo test -p
+  blueice-bluejs --no-fail-fast` / `cargo clippy -p blueice-bluejs
+  --all-targets -- -D warnings` all clean on this pass's own commit -- the
+  only test failure anywhere is the already-documented pre-existing
+  `string_protocols.rs::observable_conversion_order_and_gc_pressure`
+  flake, freshly re-confirmed to fail identically against this pass's own
+  parent commit (`26202af`) in an isolated worktree, so not introduced by
+  this pass.
 
 ### Stage 3 — Test262-evidence closure and coverage
 

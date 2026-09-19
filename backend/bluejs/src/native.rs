@@ -286,6 +286,7 @@ pub(crate) enum NativeFunction {
     TemporalZonedDateTimeToPlainMonthDay,
     TemporalZonedDateTimeStartOfDay,
     TemporalZonedDateTimeGetIsoFields,
+    TemporalZonedDateTimeGetTimeZoneTransition,
     ArrayBuffer,
     ArrayBufferByteLength,
     ArrayBufferMaxByteLength,
