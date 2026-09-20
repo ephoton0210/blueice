@@ -341,6 +341,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "function-throw-statement",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/function-throw-statement/main.ts"),
+        )],
+        expected_stdout: Some("ok\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "object-shorthand-expression",
         modules: &[ (
             "memory:///main.ts",
@@ -602,6 +611,18 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[ExpectedDiagnostic {
             code: DiagnosticCode::TypeMismatch,
             line: 8,
+        }],
+    },
+    OracleCase {
+        name: "function-throw-statement-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/function-throw-statement-error/main.ts"),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::ParseError,
+            line: 6,
         }],
     },
     OracleCase {

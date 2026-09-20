@@ -567,6 +567,9 @@ fn lower_function(
             FunctionBodyItem::Expression { tokens, .. } => body.push(bluejs::Stmt::Expr(
                 ExpressionLowerer::new(&module.id, tokens).parse()?,
             )),
+            FunctionBodyItem::Throw { tokens, .. } => body.push(bluejs::Stmt::Throw(
+                ExpressionLowerer::new(&module.id, tokens).parse()?,
+            )),
             FunctionBodyItem::Return { tokens, .. } => {
                 let value = (!tokens.is_empty())
                     .then(|| ExpressionLowerer::new(&module.id, tokens).parse())
@@ -2972,6 +2975,38 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::Number(5.0)
+        );
+    }
+
+    #[test]
+    fn lowers_throw_statements_in_direct_functions() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "function fail(): never { throw 'broken'; } fail();",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        let bluejs::BlueJsProgramV1::Script(program) = &artifact.program else {
+            panic!("the direct script bridge must produce a script program");
+        };
+        assert!(matches!(
+            program.body.as_slice(),
+            [
+                bluejs::Stmt::FunctionDecl(bluejs::Function { body, .. }),
+                bluejs::Stmt::Expr(bluejs::Expr::Call { .. }),
+            ] if matches!(
+                body.as_slice(),
+                [bluejs::Stmt::Throw(bluejs::Expr::String(message))] if message == "broken"
+            )
+        ));
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode),
+            Err(bluejs::RuntimeError::Thrown(bluejs::Value::String(
+                "broken".into()
+            )))
         );
     }
 

@@ -1037,9 +1037,14 @@ impl<'a> ModuleChecker<'a> {
             );
         }
         for item in &function.body {
-            let FunctionBodyItem::Expression { tokens, span } = item else {
-                continue;
+            let (tokens, span) = match item {
+                FunctionBodyItem::Expression { tokens, span }
+                | FunctionBodyItem::Throw { tokens, span } => (tokens, span),
+                _ => continue,
             };
+            if tokens.is_empty() {
+                continue;
+            }
             self.check_function_call(tokens, &scope, span);
             self.check_direct_property_access(tokens, &scope, span);
             self.check_arithmetic_operators(tokens, &scope, span);

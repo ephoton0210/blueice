@@ -243,6 +243,13 @@ pub enum FunctionBodyItem {
         tokens: Vec<Token>,
         span: SourceSpan,
     },
+    /// A runtime throw statement whose value remains structured for direct
+    /// BlueJS lowering. The standalone emitter preserves the same source
+    /// tokens after TypeScript-only edits are erased.
+    Throw {
+        tokens: Vec<Token>,
+        span: SourceSpan,
+    },
     Return {
         tokens: Vec<Token>,
         span: SourceSpan,
@@ -1088,6 +1095,36 @@ impl Parser {
                 body.push(FunctionBodyItem::Return {
                     tokens: expression,
                     span: SourceSpan::new(&self.id, return_start, self.previous().end),
+                });
+                continue;
+            }
+            if self.consume("throw") {
+                let throw_token = self.previous().clone();
+                let line_terminator_after_throw = self
+                    .source
+                    .get(throw_token.end..self.current().start)
+                    .is_some_and(|gap| gap.contains('\n') || gap.contains('\r'));
+                let expression_start = self.index;
+                let tokens = self.collect_until_function_statement_end();
+                self.collect_expression_type_edits(expression_start, self.index);
+                if line_terminator_after_throw {
+                    self.error_at(
+                        throw_token.span(&self.id),
+                        DiagnosticCode::ParseError,
+                        "a line terminator is not permitted after `throw`",
+                    );
+                }
+                if tokens.is_empty() {
+                    self.error_at(
+                        throw_token.span(&self.id),
+                        DiagnosticCode::ParseError,
+                        "expected an expression after `throw`",
+                    );
+                }
+                self.consume(";");
+                body.push(FunctionBodyItem::Throw {
+                    tokens,
+                    span: SourceSpan::new(&self.id, throw_token.start, self.previous().end),
                 });
                 continue;
             }
