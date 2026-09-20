@@ -107,8 +107,11 @@ fn constructor_and_serialisation() {
         check("String()", "05-02", () => String(md));
         check("valueOf", "TypeError", () => md.valueOf());
         check("less than", "TypeError", () => md < md);
-        check("toLocaleString type", "string", () => typeof md.toLocaleString("en-US"));
-        check("toLocaleString mentions month", "true", () => ["May", "5"].some((part) => md.toLocaleString("en-US", { timeZone: "UTC" }).includes(part)));
+        // a PlainMonthDay is only formatted in its own calendar -- even ISO is a
+        // mismatch for a (Gregorian) English locale (`toLocaleString/calendar-mismatch.js`)
+        check("toLocaleString iso mismatch", "RangeError", () => md.toLocaleString("en-US"));
+        check("toLocaleString type", "string", () => typeof g.toLocaleString("en-US"));
+        check("toLocaleString mentions month", "true", () => ["May", "5"].some((part) => g.toLocaleString("en-US", { timeZone: "UTC" }).includes(part)));
         check("toLocaleString timeStyle", "TypeError", () => md.toLocaleString("en-US", { timeStyle: "short" }));
         check("toLocaleString bad locale", "RangeError", () => md.toLocaleString("not a locale"));
         check("toStringTag", "Temporal.PlainMonthDay", () => MD.prototype[Symbol.toStringTag]);

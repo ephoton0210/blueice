@@ -504,8 +504,13 @@ fn until_and_since_round_symmetrically_and_reflect_direction_sensitive_modes() {
         check("negative years", "P3Y", () => new YM(-5, 1).until(new YM(-2, 1)));
         check("since equal", "PT0S", () => early.since(early));
         check("wide span", "P1000Y", () => new YM(1000, 1).until(new YM(2000, 1)));
-        check("extremes", "P547581Y5M", () => new YM(-271821, 4).until(new YM(275760, 9)));
-        check("extremes months", "P6570977M", () => new YM(-271821, 4).until(new YM(275760, 9), { largestUnit: "month" }));
+        // the difference is taken between the months' first days, and -271821-04-01
+        // is not a representable date (the earliest is -271821-04-19), so the
+        // earliest *usable* year-month is -271821-05
+        // (`since/throws-if-year-outside-valid-iso-range.js`; the rejection itself
+        // is covered by `temporal_plain_year_month_limits_and_difference.rs`)
+        check("extremes", "P547581Y4M", () => new YM(-271821, 5).until(new YM(275760, 9)));
+        check("extremes months", "P6570976M", () => new YM(-271821, 5).until(new YM(275760, 9), { largestUnit: "month" }));
         "#,
     );
 }
@@ -601,8 +606,11 @@ fn equals_compare_and_conversions() {
         check("valueOf", "TypeError", () => a.valueOf());
         check("less than", "TypeError", () => a < a);
         check("plus", "TypeError", () => a + 1);
-        check("toLocaleString type", "string", () => typeof a.toLocaleString("en-US"));
-        check("toLocaleString mentions year", "true", () => a.toLocaleString("en-US", { timeZone: "UTC" }).includes("2020"));
+        // a PlainYearMonth is only formatted in its own calendar -- even ISO is a
+        // mismatch for a (Gregorian) English locale (`toLocaleString/calendar-mismatch.js`)
+        check("toLocaleString iso mismatch", "RangeError", () => a.toLocaleString("en-US"));
+        check("toLocaleString type", "string", () => typeof g.toLocaleString("en-US"));
+        check("toLocaleString mentions year", "true", () => g.toLocaleString("en-US", { timeZone: "UTC" }).includes("2020"));
         check("toLocaleString timeStyle", "TypeError", () => a.toLocaleString("en-US", { timeStyle: "short" }));
         check("toLocaleString bad locale", "RangeError", () => a.toLocaleString("not a locale"));
 

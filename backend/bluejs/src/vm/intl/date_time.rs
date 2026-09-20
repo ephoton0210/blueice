@@ -621,10 +621,41 @@ impl Vm {
                         "Intl.DateTimeFormat does not support Temporal.Duration".into(),
                     ));
                 }
+                Self::temporal_check_format_calendar(data, &temporal)?;
                 let options = self.temporal_format_options(data, temporal.kind)?;
                 self.temporal_date_time_format_input(temporal, options)
             }
         }
+    }
+
+    /// ECMA-402's `HandleDateTimeTemporalDate`/`...YearMonth`/`...MonthDay`
+    /// calendar rule: a plain Temporal value can only be formatted by a
+    /// formatter using its own calendar. `PlainDate` and `PlainDateTime` in
+    /// the ISO calendar are the exception (their fields read the same in any
+    /// calendar), as is a `ZonedDateTime` (which `toLocaleString` formats
+    /// directly); `PlainYearMonth` and `PlainMonthDay` have none, because their
+    /// ISO reference day/year would be misleading in another calendar. An
+    /// `Instant` and a `PlainTime` carry no calendar.
+    pub(in super::super) fn temporal_check_format_calendar(
+        data: &blueice_ecma402::DateTimeFormat,
+        temporal: &TemporalValue,
+    ) -> Result<(), RuntimeError> {
+        let iso_allowed = match temporal.kind {
+            TemporalKind::PlainDate | TemporalKind::PlainDateTime | TemporalKind::ZonedDateTime => {
+                true
+            }
+            TemporalKind::PlainYearMonth | TemporalKind::PlainMonthDay => false,
+            _ => return Ok(()),
+        };
+        if (iso_allowed && temporal.calendar == "iso8601") || temporal.calendar == data.calendar() {
+            return Ok(());
+        }
+        Err(RuntimeError::RangeError(format!(
+            "the {} calendar of a Temporal.{} does not match the formatter's {} calendar",
+            temporal.calendar,
+            temporal.kind.name(),
+            data.calendar()
+        )))
     }
 
     pub(in super::super) fn temporal_date_time_format_input(
@@ -810,7 +841,9 @@ impl Vm {
             ));
         }
         // Both endpoints share a Temporal kind and calendar above, so one
-        // resolved option record must govern direct and range formatting.
+        // resolved option record -- and one calendar comparison -- must govern
+        // direct and range formatting.
+        Self::temporal_check_format_calendar(data, &start)?;
         let options = self.temporal_format_options(data, start.kind)?;
         let start = self.temporal_date_time_format_input(start, options.clone())?;
         let end = self.temporal_date_time_format_input(end, options)?;
