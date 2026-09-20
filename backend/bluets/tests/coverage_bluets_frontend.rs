@@ -9,7 +9,7 @@
 use blueice_bluets::{compile, CompilerOptions, Diagnostic, MapLoader, ModuleSource};
 
 const ENTRY: &str = "memory:///main.ts";
-const HELPER: &str = "export const a: number = 1;\nexport const b: number = 2;\nexport interface Shape { x: number }\nexport type Id = number | string;\n";
+const HELPER: &str = "export const a: number = 1;\nexport const b: number = 2;\nexport interface Shape { x: number }\nexport type Box<T> = { value: T };\nexport type Id = number | string;\n";
 
 fn compile_with_helper(source: &str) -> blueice_bluets::Compilation {
     let loader = MapLoader::from([
@@ -78,6 +78,10 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
         (
             "declare abstract class A {}",
             "`abstract` is not in the initial BlueTS matrix",
+        ),
+        (
+            "function make() { abstract class A {} }",
+            "`abstract` declarations are not in the initial BlueTS matrix",
         ),
         ("enum E { A }", "`enum` is not in the initial BlueTS matrix"),
         (
@@ -392,6 +396,7 @@ fn supported_programs_are_accepted() {
         "import type { Shape } from './a.ts'; const s: Shape = { x: 1 };",
         "import type { Shape as S, Id } from './a.ts'; const s: S = { x: 1 }; const i: Id = 1;",
         "import type * as N from './a.ts'; const s: N.Shape = { x: 1 };",
+        "import type * as N from './a.ts'; const box: N.Box<N.Box<number>> = { value: { value: 1 } };",
         "import './a.ts';",
         "import { a, b as c } from './a.ts'; export const total: number = a;",
         "import * as ns from './a.ts';",

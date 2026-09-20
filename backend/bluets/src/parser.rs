@@ -811,6 +811,19 @@ impl Parser {
     ) {
         let mut depth = 1usize;
         while !self.at_eof() && depth > 0 {
+            if self.peek("abstract")
+                && self
+                    .tokens
+                    .get(self.index + 1)
+                    .is_some_and(|token| token.is("class"))
+            {
+                self.unsupported(
+                    self.current().span(&self.id),
+                    "`abstract` declarations are not in the initial BlueTS matrix",
+                );
+                self.bump();
+                continue;
+            }
             if self.consume("{") {
                 depth += 1;
                 continue;
