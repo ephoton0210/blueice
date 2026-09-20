@@ -35,11 +35,13 @@ An incompatible major ABI, an unknown required field, a source hash mismatch, or
 
 ## AST/IR hand-off
 
-The bridge lowers `new Identifier(args)` directly to BlueJS `New` data. Constructor members, omitted parentheses, and spread arguments remain excluded.
+The bridge lowers `new Identifier(args)` directly to BlueJS `New` data, including normal and spread arguments. Constructor members and omitted parentheses remain excluded.
 
-Direct calls may target identifier, dot-member, or bracket-member expressions. Member calls preserve the BlueJS receiver reference; optional calls remain excluded.
+Direct calls may target identifier, dot-member, or bracket-member expressions and accept normal or spread arguments. Member calls preserve the BlueJS receiver reference; optional calls remain excluded.
 
-The current direct expression subset supersedes earlier phase summaries: literals and identifiers; quoted-string and non-substituted template escapes; `${identifier}` template slots; direct calls; unary, arithmetic, relational (`in` and `instanceof`), comparison, logical, conditional, assignment, and sequence expressions; non-hole arrays with spread elements; objects with identifier/string/numeric keys, identifier shorthand, and spread properties; dot/bracket reads; property assignments, updates, and deletion. General template expressions, optional chaining, and computed object keys/methods/accessors remain excluded.
+The current direct expression subset supersedes earlier phase summaries: literals and identifiers; quoted-string and non-substituted template escapes; `${identifier}` template slots; direct calls and constructors with normal/spread arguments; unary, arithmetic, relational (`in` and `instanceof`), comparison, logical, conditional, assignment, and sequence expressions; non-hole arrays with spread elements; objects with identifier/string/numeric keys, identifier shorthand, and spread properties; dot/bracket reads; property assignments, updates, and deletion. General template expressions, optional chaining, and computed object keys/methods/accessors remain excluded.
+
+For a checked direct call to a known local function, BlueTSC expands a spread argument only if it has a tuple type. This preserves fixed parameter arity and supports tuple spread calls; regular arrays, unknown values, rest-parameter analysis, and general iterable analysis remain outside the bounded rule.
 
 Object literal keys may be identifiers, quoted strings, or numbers. Only identifier keys may use shorthand; computed keys, methods, and accessors remain excluded, while spread properties are supported.
 

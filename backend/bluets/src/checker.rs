@@ -944,7 +944,12 @@ impl<'a> ModuleChecker<'a> {
         self.check_function_call(&variable.initializer, scope, &variable.span);
         self.check_direct_property_access(&variable.initializer, scope, &variable.span);
         self.check_arithmetic_operators(&variable.initializer, scope, &variable.span);
-        let inferred = self.infer_expression(&variable.initializer, scope);
+        let inferred = if matches!(annotation, Type::Tuple(_)) {
+            infer_contextual_tuple_literal(&variable.initializer, scope)
+                .unwrap_or_else(|| self.infer_expression(&variable.initializer, scope))
+        } else {
+            self.infer_expression(&variable.initializer, scope)
+        };
         if !self.is_assignable_bounded(&inferred, annotation, &variable.span) {
             self.type_error(
                 &variable.span,
@@ -1321,10 +1326,9 @@ impl<'a> ModuleChecker<'a> {
         let Some(arguments) = split_call_arguments(tokens) else {
             return Type::Unknown;
         };
-        let actuals = arguments
-            .iter()
-            .map(|argument| self.infer_expression(argument, scope))
-            .collect::<Vec<_>>();
+        let Ok(actuals) = self.expanded_call_argument_types(&arguments, scope) else {
+            return Type::Unknown;
+        };
         let Ok(Some(signature)) =
             self.select_function_signature(signatures, &actuals, explicit_type_arguments)
         else {
@@ -1351,13 +1355,28 @@ impl<'a> ModuleChecker<'a> {
         let Some(arguments) = split_call_arguments(call.arguments) else {
             return;
         };
-        let actuals = arguments
-            .iter()
-            .map(|argument| {
-                self.check_direct_property_access(argument, scope, span);
-                self.infer_expression(argument, scope)
-            })
-            .collect::<Vec<_>>();
+        for argument in &arguments {
+            let argument = if argument.first().is_some_and(|token| token.is("...")) {
+                &argument[1..]
+            } else {
+                argument
+            };
+            self.check_direct_property_access(argument, scope, span);
+        }
+        let actuals = match self.expanded_call_argument_types(&arguments, scope) {
+            Ok(actuals) => actuals,
+            Err(()) => {
+                self.type_error(
+                    span,
+                    format!(
+                        "a spread argument for function {} must have a fixed-length tuple type",
+                        call.callee.text
+                    ),
+                    DiagnosticCode::TypeMismatch,
+                );
+                return;
+            }
+        };
         let explicit = call.generic.then(|| {
             self.module
                 .generic_call_type_arguments
@@ -1398,7 +1417,7 @@ impl<'a> ModuleChecker<'a> {
             .iter()
             .filter(|parameter| !parameter.optional)
             .count();
-        if arguments.len() < required || arguments.len() > signature.parameters.len() {
+        if actuals.len() < required || actuals.len() > signature.parameters.len() {
             self.type_error(
                 span,
                 format!(
@@ -1406,7 +1425,7 @@ impl<'a> ModuleChecker<'a> {
                     call.callee.text,
                     required,
                     signature.parameters.len(),
-                    arguments.len()
+                    actuals.len()
                 ),
                 DiagnosticCode::TypeMismatch,
             );
@@ -1445,6 +1464,25 @@ impl<'a> ModuleChecker<'a> {
                 );
             }
         }
+    }
+
+    fn expanded_call_argument_types(
+        &self,
+        arguments: &[&[Token]],
+        scope: &BTreeMap<String, Type>,
+    ) -> Result<Vec<Type>, ()> {
+        let mut actuals = Vec::new();
+        for argument in arguments {
+            if argument.first().is_some_and(|token| token.is("...")) {
+                let Type::Tuple(values) = self.infer_expression(&argument[1..], scope) else {
+                    return Err(());
+                };
+                actuals.extend(values);
+            } else {
+                actuals.push(self.infer_expression(argument, scope));
+            }
+        }
+        Ok(actuals)
     }
 
     fn select_function_signature<'b>(
@@ -2206,6 +2244,57 @@ fn infer_array(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
     } else {
         Type::Array(Box::new(Type::Union(values)))
     }
+}
+
+/// Infers an array literal against an explicit tuple annotation without
+/// changing ordinary array-literal inference. A tuple spread is expanded only
+/// when its source is itself known to be a tuple, preserving fixed arity.
+fn infer_contextual_tuple_literal(
+    tokens: &[Token],
+    scope: &BTreeMap<String, Type>,
+) -> Option<Type> {
+    if tokens.first().is_none_or(|token| !token.is("["))
+        || tokens.last().is_none_or(|token| !token.is("]"))
+    {
+        return None;
+    }
+    let mut values = Vec::new();
+    let mut start = 1usize;
+    let mut depth = 0usize;
+    for index in 1..tokens.len() {
+        match tokens[index].text.as_str() {
+            "[" | "(" | "{" => depth += 1,
+            "]" | ")" | "}" if depth > 0 => depth -= 1,
+            "," if depth == 0 => {
+                push_contextual_tuple_element(&tokens[start..index], scope, &mut values)?;
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    if start + 1 < tokens.len() {
+        push_contextual_tuple_element(&tokens[start..tokens.len() - 1], scope, &mut values)?;
+    }
+    Some(Type::Tuple(values))
+}
+
+fn push_contextual_tuple_element(
+    tokens: &[Token],
+    scope: &BTreeMap<String, Type>,
+    values: &mut Vec<Type>,
+) -> Option<()> {
+    if tokens.is_empty() {
+        return None;
+    }
+    if tokens.first().is_some_and(|token| token.is("...")) {
+        let Type::Tuple(spread) = infer_simple(&tokens[1..], scope) else {
+            return None;
+        };
+        values.extend(spread);
+    } else {
+        values.push(infer_array_element(tokens, scope));
+    }
+    Some(())
 }
 
 fn infer_array_element(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {

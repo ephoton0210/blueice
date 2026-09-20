@@ -368,6 +368,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "spread-argument-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/spread-argument-expression/main.ts"),
+        )],
+        expected_stdout: Some("42:object\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "property-delete-expression",
         modules: &[ (
             "memory:///main.ts",

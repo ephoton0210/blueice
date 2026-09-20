@@ -172,6 +172,32 @@ fn infers_known_record_spread_properties() {
 }
 
 #[test]
+fn expands_tuple_spread_arguments_for_direct_function_calls() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "function add(left: number, right: number): number { return left + right; }\n\
+             const pair: [number, number] = [40, 2];\n\
+             const value: number = add(...pair);\n\
+             const array: number[] = [40, 2];\n\
+             const invalid: number = add(...array);",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn infers_nullish_coalescing_after_excluding_null_and_undefined() {
     let result = crate::compile(
         "memory:///main.ts",

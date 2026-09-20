@@ -122,7 +122,8 @@ impl std::error::Error for BridgeError {}
 /// identifier/string/numeric keys and spread properties, bounded template
 /// literals, dot or bracket property reads, comma sequences, identifier/property
 /// prefix/postfix updates,
-/// and identifier/property simple or compound-assignment operators. Static-only
+/// calls and constructors with normal/spread arguments, and identifier/property
+/// simple or compound-assignment operators. Static-only
 /// declarations disappear before lowering. A broader accepted BlueTS program
 /// returns
 /// [`BridgeError::UnsupportedRuntimeTarget`] instead of falling back to a
@@ -1225,7 +1226,7 @@ impl<'a> ExpressionLowerer<'a> {
             self.index += 1;
         } else {
             loop {
-                args.push(bluejs::Argument::Normal(self.parse_assignment()?));
+                args.push(self.parse_argument()?);
                 let Some(separator) = self.tokens.get(self.index) else {
                     return Err(unsupported(
                         self.token_span(keyword),
@@ -1251,6 +1252,19 @@ impl<'a> ExpressionLowerer<'a> {
             callee: Box::new(callee),
             args,
         })
+    }
+
+    fn parse_argument(&mut self) -> Result<bluejs::Argument, BridgeError> {
+        if self
+            .tokens
+            .get(self.index)
+            .is_some_and(|token| token.text == "...")
+        {
+            self.index += 1;
+            Ok(bluejs::Argument::Spread(self.parse_assignment()?))
+        } else {
+            Ok(bluejs::Argument::Normal(self.parse_assignment()?))
+        }
     }
 
     fn parse_object_literal(&mut self, opening: &Token) -> Result<bluejs::Expr, BridgeError> {
@@ -1416,7 +1430,7 @@ impl<'a> ExpressionLowerer<'a> {
                 self.index += 1;
             } else {
                 loop {
-                    args.push(bluejs::Argument::Normal(self.parse_assignment()?));
+                    args.push(self.parse_argument()?);
                     let Some(separator) = self.tokens.get(self.index) else {
                         return Err(unsupported(
                             SourceSpan::new(self.module, 0, 0),
@@ -2265,6 +2279,27 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::String("Grace:Countess".into())
+        );
+    }
+
+    #[test]
+    fn lowers_checked_spread_call_and_constructor_arguments() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "function add(left: number, right: number): number { return left + right; } \
+                 const pair: [number, number] = [40, 2]; \
+                 const empty: [] = []; \
+                 const value = new Object(...empty); \
+                 add(...pair) + ':' + typeof value;",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::String("42:object".into())
         );
     }
 
