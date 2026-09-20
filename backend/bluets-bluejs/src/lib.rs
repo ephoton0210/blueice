@@ -114,8 +114,8 @@ impl std::error::Error for BridgeError {}
 /// optional literal/identifier/arithmetic initializer, named local functions
 /// with required identifier parameters plus structured local/return bodies,
 /// and standalone expressions made from those same forms or direct calls.
-/// The expression subset includes `!`, `+`, `-`, `~`, `typeof`, and `void`
-/// unary expressions; arithmetic, relational, equality, logical,
+/// The expression subset includes `!`, `+`, `-`, `~`, `typeof`, `void`, and
+/// `delete` with a property target; arithmetic, relational, equality, logical,
 /// nullish-coalescing, arithmetic exponentiation, bitwise/shift, conditional,
 /// non-spread, non-hole array literals, simple object literals with identifier
 /// keys, non-substituted template literals without escapes, dot or bracket
@@ -980,7 +980,7 @@ impl<'a> ExpressionLowerer<'a> {
         self.tokens.get(self.index).is_some_and(|token| {
             matches!(
                 token.text.as_str(),
-                "!" | "+" | "-" | "~" | "typeof" | "void"
+                "!" | "+" | "-" | "~" | "typeof" | "void" | "delete"
             )
         })
     }
@@ -996,13 +996,26 @@ impl<'a> ExpressionLowerer<'a> {
                 "~" => Some(bluejs::UnaryOp::BitNot),
                 "typeof" => Some(bluejs::UnaryOp::Typeof),
                 "void" => Some(bluejs::UnaryOp::Void),
+                "delete" => Some(bluejs::UnaryOp::Delete),
                 _ => None,
             });
         if let Some(op) = op {
+            let span = self
+                .tokens
+                .get(self.index)
+                .map(|token| self.token_span(token))
+                .expect("a unary operator was just inspected");
             self.index += 1;
+            let arg = self.parse_unary()?;
+            if op == bluejs::UnaryOp::Delete && !matches!(arg, bluejs::Expr::Member { .. }) {
+                return Err(unsupported(
+                    span,
+                    "only property delete targets are in the v1 direct bridge subset",
+                ));
+            }
             return Ok(bluejs::Expr::Unary {
                 op,
-                arg: Box::new(self.parse_unary()?),
+                arg: Box::new(arg),
             });
         }
         self.parse_update()
@@ -1680,12 +1693,12 @@ mod tests {
             ENTRY,
             &MapLoader::from([ModuleSource::new(
                 ENTRY,
-                "const answer: number = 42; console.log(answer);",
+                "const values = [1, ...[2]]; values;",
             )]),
             CompilerOptions::default(),
         );
         let Err(error) = result else {
-            panic!("the direct bridge must reject member access");
+            panic!("the direct bridge must reject array spread");
         };
         let BridgeError::UnsupportedRuntimeTarget { span, .. } = error else {
             panic!("the direct bridge must reject an unsupported runtime shape");
@@ -2145,6 +2158,26 @@ mod tests {
     }
 
     #[test]
+    fn lowers_checked_property_delete_expressions() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const value: { label?: string; title?: string } = { \
+                    label: 'Ada', title: 'Countess' \
+                 }; delete value.label; delete value['title']; \
+                 value.label === undefined && value.title === undefined;",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Bool(true)
+        );
+    }
+
+    #[test]
     fn lowers_checked_bracket_property_reads() {
         let artifact = compile_direct_script(
             ENTRY,
@@ -2336,7 +2369,7 @@ mod tests {
     }
 
     #[test]
-    fn expression_lowerer_rejects_unimplemented_object_properties_and_member_calls() {
+    fn expression_lowerer_rejects_unimplemented_object_properties() {
         for tokens in [
             expression_tokens(&[
                 ("{", TokenKind::Punct),
@@ -2353,13 +2386,6 @@ mod tests {
                 ("1", TokenKind::Number),
                 ("}", TokenKind::Punct),
             ]),
-            expression_tokens(&[
-                ("person", TokenKind::Identifier),
-                (".", TokenKind::Punct),
-                ("label", TokenKind::Identifier),
-                ("(", TokenKind::Punct),
-                (")", TokenKind::Punct),
-            ]),
         ] {
             let error = ExpressionLowerer::new(ENTRY, &tokens).parse().unwrap_err();
             let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
@@ -2369,14 +2395,26 @@ mod tests {
                 message.contains("object spread")
                     || message.contains("object shorthand")
                     || message.contains("computed object")
-                    || message.contains("direct identifier calls")
             );
         }
     }
 
     #[test]
-    fn expression_lowerer_rejects_template_substitutions_and_escapes() {
-        for text in [r"`value=${name}`", r"`line\n`"] {
+    fn expression_lowerer_rejects_non_property_delete_targets() {
+        let tokens = expression_tokens(&[
+            ("delete", TokenKind::Keyword),
+            ("value", TokenKind::Identifier),
+        ]);
+        let error = ExpressionLowerer::new(ENTRY, &tokens).parse().unwrap_err();
+        let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
+            panic!("the direct bridge must reject an identifier delete target");
+        };
+        assert!(message.contains("property delete targets"));
+    }
+
+    #[test]
+    fn expression_lowerer_rejects_unimplemented_template_substitutions_and_escapes() {
+        for text in [r"`value=${person.name}`", r"`line\u0041`"] {
             let token = Token {
                 kind: TokenKind::Template,
                 text: text.to_string(),
@@ -2388,7 +2426,7 @@ mod tests {
                 panic!("the direct bridge must reject an unimplemented template shape");
             };
             assert!(
-                message.contains("template substitutions") || message.contains("template escapes")
+                message.contains("template substitutions") || message.contains("string escape")
             );
         }
     }

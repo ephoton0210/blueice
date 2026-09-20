@@ -39,7 +39,7 @@ The bridge lowers `new Identifier(args)` directly to BlueJS `New` data. Construc
 
 Direct calls may target identifier, dot-member, or bracket-member expressions. Member calls preserve the BlueJS receiver reference; optional calls remain excluded.
 
-The current direct expression subset supersedes earlier phase summaries: literals and identifiers; quoted-string and non-substituted template escapes; `${identifier}` template slots; direct calls; unary, arithmetic, comparison, logical, conditional, assignment, and sequence expressions; arrays; objects with identifier/string/numeric keys and identifier shorthand; dot/bracket reads; property assignments; and identifier-only updates. General template expressions, optional chaining, and object spread/computed keys/methods/accessors remain excluded.
+The current direct expression subset supersedes earlier phase summaries: literals and identifiers; quoted-string and non-substituted template escapes; `${identifier}` template slots; direct calls; unary, arithmetic, comparison, logical, conditional, assignment, and sequence expressions; arrays; objects with identifier/string/numeric keys and identifier shorthand; dot/bracket reads; property assignments and deletion; and identifier-only updates. General template expressions, optional chaining, and object spread/computed keys/methods/accessors remain excluded.
 
 Object literal keys may be identifiers, quoted strings, or numbers. Only identifier keys may use shorthand; computed keys, spread, methods, and accessors remain excluded.
 
@@ -52,6 +52,8 @@ The bridge decodes simple quoted-string escapes (`\\`, quote, `\n`, `\r`, `\t`, 
 Object literals accept identifier-keyed `key: value` properties and local-binding shorthand `{ key }`; spread, computed keys, methods, and accessors remain outside the direct subset.
 
 The direct bridge also lowers simple and compound assignments whose target is a non-optional dot or bracket property read. Prefix and postfix updates remain identifier-only; template, object, and member-call limits continue to apply independently.
+
+The `delete` unary operator is lowered only when its operand is an ordinary dot or bracket property reference (without optional chaining). Identifier and non-reference delete operands remain excluded, preserving a deliberately narrow v1 boundary around BlueJS property-reference semantics.
 
 The program boundary is structured data, not generated JavaScript text. BlueJS owns `BlueJsProgramV1`, whose current variants wrap its public `Program` (classic script) and `Module` ASTs; its `compile` method dispatches to BlueJS's compiler. BlueTS lowers supported TypeScript syntax once through the bridge to that BlueJS-owned AST. BlueJS remains the authority for ECMAScript semantics, bytecode generation, realm ownership, GC accounting, capability summary and execution.
 

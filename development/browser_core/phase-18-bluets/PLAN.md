@@ -12,9 +12,11 @@ Let a BlueIce page opt in to TypeScript source without a build-time `.js` artifa
 
 The direct bridge lowers parenthesized `new Identifier(args)` expressions. Member constructors, omitted parentheses, and spread arguments remain excluded.
 
+The direct bridge lowers `delete` only for ordinary dot or bracket property references (without optional chaining). Identifier and non-reference operands remain outside the v1 subset.
+
 Direct calls may use identifier, dot-member, or bracket-member callees, preserving the BlueJS receiver. Optional calls remain excluded.
 
-The current direct bridge subset supersedes earlier phase summaries: literals/identifiers, bounded quoted-string and template escapes, `${identifier}` template slots, direct calls, supported unary/binary/logical/conditional/assignment/sequence expressions, arrays, identifier/string/numeric object keys with identifier shorthand, dot/bracket reads, property assignments, and identifier-only updates. General template expressions, optional chaining, computed object keys, spread, methods, and accessors remain outside the subset.
+The current direct bridge subset supersedes earlier phase summaries: literals/identifiers, bounded quoted-string and template escapes, `${identifier}` template slots, direct calls, supported unary/binary/logical/conditional/assignment/sequence expressions, arrays, identifier/string/numeric object keys with identifier shorthand, dot/bracket reads, property assignments/deletion, and identifier-only updates. General template expressions, optional chaining, computed object keys, spread, methods, and accessors remain outside the subset.
 
 The direct bridge accepts identifier, quoted-string, and numeric object keys. Shorthand remains identifier-only; computed keys, spread, methods, and accessors remain excluded.
 
