@@ -129,6 +129,18 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "typed arrow parameters are not in the initial BlueTS matrix",
         ),
         (
+            "const identity = <T>(value) => value;",
+            "generic arrow functions are not in the initial BlueTS matrix",
+        ),
+        (
+            "function make() { return <T>(value) => value; }",
+            "generic arrow functions are not in the initial BlueTS matrix",
+        ),
+        (
+            "function make() { let identity; identity = <T>(value) => value; }",
+            "generic arrow functions are not in the initial BlueTS matrix",
+        ),
+        (
             "a as number;",
             "TypeScript assertions outside a supported declaration",
         ),

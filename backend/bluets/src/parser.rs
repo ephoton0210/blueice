@@ -826,6 +826,12 @@ impl Parser {
                 self.index,
                 self.index.saturating_add(2).min(self.tokens.len()),
             );
+            if is_generic_arrow_function(&self.tokens, self.index, self.tokens.len() - 1) {
+                self.unsupported(
+                    self.tokens[self.index].span(&self.id),
+                    "generic arrow functions are not in the initial BlueTS matrix",
+                );
+            }
             if self.consume("{") {
                 depth += 1;
                 continue;
@@ -969,6 +975,8 @@ impl Parser {
                 })
             {
                 Some("`module` is not in the initial BlueTS matrix")
+            } else if is_generic_arrow_function(&self.tokens, index, end) {
+                Some("generic arrow functions are not in the initial BlueTS matrix")
             } else {
                 None
             };
@@ -1377,6 +1385,50 @@ fn is_typed_arrow_parameter(tokens: &[Token], colon: usize, end: usize) -> bool 
         index += 1;
     }
     false
+}
+
+/// Generic arrow functions need type-parameter erasure, but the initial
+/// matrix only supports generic declarations and direct calls. Recognize the
+/// complete `<...>(...) =>` shape so it cannot be preserved as invalid
+/// JavaScript by an otherwise opaque expression span.
+fn is_generic_arrow_function(tokens: &[Token], start: usize, end: usize) -> bool {
+    if !tokens.get(start).is_some_and(|token| token.is("<")) {
+        return false;
+    }
+    let Some(type_parameters_end) = matching_angle_bracket(tokens, start, end) else {
+        return false;
+    };
+    let parameters_start = type_parameters_end + 1;
+    if !tokens
+        .get(parameters_start)
+        .is_some_and(|token| token.is("("))
+    {
+        return false;
+    }
+    let Some(parameters_end) = matching_parenthesis(tokens, parameters_start, end) else {
+        return false;
+    };
+    tokens
+        .get(parameters_end + 1)
+        .is_some_and(|token| token.is("=>"))
+}
+
+fn matching_parenthesis(tokens: &[Token], start: usize, limit: usize) -> Option<usize> {
+    debug_assert!(tokens.get(start).is_some_and(|token| token.is("(")));
+    let mut depth = 0usize;
+    for (index, token) in tokens.iter().enumerate().take(limit).skip(start) {
+        match token.text.as_str() {
+            "(" => depth += 1,
+            ")" => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn find_balanced_delimiter(
