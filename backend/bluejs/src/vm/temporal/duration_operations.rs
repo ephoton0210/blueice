@@ -202,15 +202,15 @@ impl Vm {
                         .into(),
                 ));
             }
-            // A `Zoned` anchor always needs its own real-day-length-aware
-            // path, regardless of whether any field is blank or a calendar
-            // unit is involved: even a *blank* duration still needs to
-            // resolve the next day's start to know how long "one day" is
-            // here, which can itself throw (`next-day-out-of-range.js`), and
-            // even a purely time-granularity, non-calendar round (`smallest`
-            // finer than day) needs the receiver's own real day length to
-            // decide whether a rounded remainder overflows it
-            // (`case-where-relativeto-affects-rounding-mode-half-even.js`).
+            // A `Zoned` anchor is a different computation from a `Plain` one
+            // even for a blank duration or a purely time-granularity round: a
+            // day is not a fixed 24 hours there, so the receiver's own real day
+            // length decides whether a rounded remainder carries into `days`
+            // (`case-where-relativeto-affects-rounding-mode-half-even.js`,
+            // `next-day-out-of-range.js`). The specification has `round` add the
+            // whole duration to the anchor and then take
+            // `DifferenceZonedDateTimeWithRounding` between the two -- exactly
+            // what `ZonedDateTime.prototype.until` does.
             if let Some(DurationAnchor::Zoned {
                 calendar,
                 zone,
@@ -219,25 +219,7 @@ impl Vm {
                 local_time,
             }) = &anchor
             {
-                if smallest < rounding::TemporalUnit::Day {
-                    let fields = Self::temporal_duration_nudge_to_zoned_time(
-                        zone,
-                        *calendar,
-                        *local_date,
-                        *local_time,
-                        epoch_ns,
-                        &record,
-                        smallest,
-                        largest,
-                        increment,
-                        mode,
-                    )?;
-                    return self.temporal_duration_create(fields);
-                }
-                // Range-check the full duration's own target instant first
-                // (matching `AddZonedDateTime`'s own check), regardless of
-                // which algorithm computes the actual field split below.
-                let _dest = Self::temporal_duration_zoned_target(
+                let target = Self::temporal_duration_zoned_target(
                     zone,
                     *calendar,
                     epoch_ns,
@@ -245,54 +227,21 @@ impl Vm {
                     *local_time,
                     &record,
                 )?;
-                // A `UTC`/fixed-offset zone has no real DST, so a day is
-                // always exactly 86,400 seconds — the already-shipped,
-                // already-Test262-verified `Plain`-anchor calendar-exact
-                // algorithm (`temporal_duration_round_relative`) is exact
-                // here and, unlike this pass's own from-scratch `Zoned`
-                // `NudgeToCalendarUnit` port, correctly handles a
-                // `smallestUnit`/`largestUnit` pair that cross a `week`
-                // boundary (`exact-multiple-of-larger-unit-zoned.js`'s own
-                // `smallestUnit: "weeks"`/`largestUnit: "months"` case) —
-                // porting that interaction exactly is left open, see this
-                // phase's own PLAN.md entry.
-                if Self::temporal_duration_zone_is_fixed(zone) {
-                    return self.temporal_duration_round_relative(
-                        *calendar,
-                        *local_date,
-                        &record,
-                        largest,
-                        smallest,
-                        increment,
-                        mode,
-                    );
-                }
-                let [years, months, weeks, days] =
-                    Self::temporal_duration_round_zoned_calendar_unit(
-                        zone,
-                        *calendar,
-                        *local_date,
-                        *local_time,
-                        epoch_ns,
-                        &_dest,
-                        &record,
-                        smallest,
-                        largest,
-                        increment,
-                        mode,
-                    )?;
-                return self.temporal_duration_create([
-                    i128::from(years),
-                    i128::from(months),
-                    i128::from(weeks),
-                    i128::from(days),
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                ]);
+                let origin = zoned_difference::ZonedOrigin {
+                    zone,
+                    calendar: *calendar,
+                    epoch_nanoseconds: epoch_ns,
+                    date: *local_date,
+                    time: *local_time,
+                };
+                let internal = zoned_difference::difference_with_rounding(
+                    &origin, &target, largest, increment, smallest, mode,
+                )
+                .ok_or_else(|| {
+                    RuntimeError::RangeError("Temporal date arithmetic is out of range".into())
+                })?;
+                return self
+                    .temporal_duration_create(internal.into_fields(largest).map(i128::from));
             }
             // A blank duration rounds to a blank duration in every unit: zero
             // is an exact multiple of any increment, and balancing zero
@@ -786,7 +735,8 @@ impl Vm {
             };
             // See `round` above for why a `Zoned` anchor is dispatched before
             // even the blank-duration shortcut: resolving its real day
-            // length/bracket can itself throw.
+            // length/bracket can itself throw. `total` is the same target
+            // instant followed by `DifferenceZonedDateTimeWithTotal`.
             if let Some(DurationAnchor::Zoned {
                 calendar,
                 zone,
@@ -795,7 +745,7 @@ impl Vm {
                 local_time,
             }) = &anchor
             {
-                let dest = Self::temporal_duration_zoned_target(
+                let target = Self::temporal_duration_zoned_target(
                     zone,
                     *calendar,
                     epoch_ns,
@@ -803,16 +753,23 @@ impl Vm {
                     *local_time,
                     &record,
                 )?;
-                return Ok(Value::Number(Self::temporal_duration_total_zoned(
+                let origin = zoned_difference::ZonedOrigin {
                     zone,
-                    *calendar,
-                    *local_date,
-                    *local_time,
-                    epoch_ns,
-                    &dest,
-                    &record,
-                    unit,
-                )?));
+                    calendar: *calendar,
+                    epoch_nanoseconds: epoch_ns,
+                    date: *local_date,
+                    time: *local_time,
+                };
+                let (numerator, denominator) = zoned_difference::difference_with_total(
+                    &origin, &target, unit,
+                )
+                .ok_or_else(|| {
+                    RuntimeError::RangeError("Temporal date arithmetic is out of range".into())
+                })?;
+                return Ok(Value::Number(rounding::exact_ratio_to_f64(
+                    numerator,
+                    denominator,
+                )));
             }
             // A blank duration totals zero in every unit; see `round` above.
             if anchor.is_some() && record.sign() == 0 {
@@ -990,19 +947,28 @@ impl Vm {
             if one == two {
                 return Ok(Value::Number(0.0));
             }
-            // A `Zoned` anchor: `AddZonedDateTime` each operand's *full*
-            // duration relative to the same anchor (regardless of whether
-            // either operand has a calendar unit — a real day's length can
-            // differ even for two purely time-based durations, e.g.
-            // `twenty-five-hour-day.js`), then compare the two resulting
-            // exact instants directly.
-            if let Some(DurationAnchor::Zoned {
-                calendar,
-                zone,
-                epoch_ns,
-                local_date,
-                local_time,
-            }) = &anchor
+            // A `Zoned` anchor, once either operand has a date part (years,
+            // months, weeks or days -- `duration1.date != {}`): a day is not a
+            // fixed 24 hours there (`twenty-five-hour-day.js`), so
+            // `AddZonedDateTime` each operand's *full* duration to the same
+            // anchor and compare the two resulting exact instants. Two purely
+            // time-based durations never need the zone at all, so -- unlike the
+            // date-part case -- they must not even range-check the anchor's
+            // target instant (`relativeto-string-limits.js`: 5 minutes relative
+            // to the last representable instant compares fine).
+            let has_date_part = |record: &blueice_ecma402::DurationRecord| {
+                record.years != 0 || record.months != 0 || record.weeks != 0 || record.days != 0
+            };
+            if let (
+                Some(DurationAnchor::Zoned {
+                    calendar,
+                    zone,
+                    epoch_ns,
+                    local_date,
+                    local_time,
+                }),
+                true,
+            ) = (&anchor, has_date_part(&one) || has_date_part(&two))
             {
                 let one_target = Self::temporal_duration_zoned_target(
                     zone,
@@ -1026,9 +992,6 @@ impl Vm {
                     std::cmp::Ordering::Greater => 1.0,
                 }));
             }
-            if let Some(anchor) = &anchor {
-                Self::temporal_duration_anchor_datetime_in_range(anchor.date())?;
-            }
             let needs_calendar = Self::temporal_duration_largest_unit(&one).is_calendar()
                 || Self::temporal_duration_largest_unit(&two).is_calendar();
             if needs_calendar {
@@ -1039,6 +1002,12 @@ impl Vm {
                             .into(),
                     )
                 })?;
+                // The anchor is only converted to a date-time (and so judged
+                // against its tighter range) once calendar arithmetic needs it:
+                // `DateDurationDays` returns a plain day count without touching
+                // the anchor when there are no years, months or weeks
+                // (`relativeto-string-limits.js`).
+                Self::temporal_duration_anchor_datetime_in_range(anchor.date())?;
                 let calendar = anchor.calendar();
                 let anchor_date = anchor.date();
                 // Both operands land relative to the *same* anchor, so their
