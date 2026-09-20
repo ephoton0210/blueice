@@ -112,6 +112,16 @@ impl Parser {
             }]);
         }
 
+        // `import defer * as ns from "..."`: `defer` is a contextual keyword
+        // recognized only directly before the `*` of a namespace import (an
+        // escaped spelling is an ordinary binding name, and so fails below);
+        // everywhere else it stays a valid default-binding identifier.
+        let deferred = self.check_identifier("defer")
+            && !self.current_identifier_escaped()
+            && self.check_punct_at(1, Punct::Star);
+        if deferred {
+            self.advance();
+        }
         let mut entries = Vec::new();
         let mut has_following_clause = true;
         if !self.check_punct(Punct::LBrace) && !self.check_punct(Punct::Star) {
@@ -126,7 +136,12 @@ impl Parser {
             if !self.eat_contextual_keyword("as")? {
                 return Err(self.syntax_error("namespace import requires 'as'"));
             }
-            entries.push((ImportName::Namespace, self.expect_binding_identifier()?));
+            let import_name = if deferred {
+                ImportName::DeferredNamespace
+            } else {
+                ImportName::Namespace
+            };
+            entries.push((import_name, self.expect_binding_identifier()?));
         } else if has_following_clause {
             self.expect_punct(Punct::LBrace)?;
             while !self.check_punct(Punct::RBrace) {

@@ -30,13 +30,28 @@ pub struct Module {
     /// [[RequestedModules]] in source-text order. Import/export entries are
     /// otherwise stored separately for resolution, which must not change the
     /// dependency evaluation order.
-    pub requests: Vec<String>,
+    pub requests: Vec<RequestedModule>,
+}
+
+/// One ModuleRequest of a Source Text Module Record: the specifier and the
+/// phase it is imported at. A module requested both eagerly and deferred
+/// (`import defer * as ns from "m"` next to `import "m"`) has one entry per
+/// phase, because the phases contribute to evaluation differently.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestedModule {
+    pub specifier: String,
+    /// `Evaluation` or `Defer`; source-phase imports never evaluate, so they
+    /// are not requested modules at all.
+    pub phase: ImportPhase,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportName {
     Named(String),
     Namespace,
+    /// `import defer * as local from "specifier"`: a *deferred* namespace
+    /// object that evaluates its module on first observation.
+    DeferredNamespace,
     /// `import source local from "specifier"`: a host-provided Module Source
     /// Object, never linked or evaluated as an ordinary module.
     Source,

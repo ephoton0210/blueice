@@ -14,6 +14,7 @@ impl Vm {
         object: ObjectId,
         key: &PropertyName,
     ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
+        self.trigger_deferred_namespace(object, Some(key))?;
         // Intrinsic globals are lazily initialized, but reflective descriptor
         // operations must observe the same own properties as ordinary Get.
         self.materialize_global_object_property(object, key)?;
@@ -55,6 +56,7 @@ impl Vm {
         key: PropertyName,
         descriptor: PropertyDescriptor,
     ) -> Result<bool, RuntimeError> {
+        self.trigger_deferred_namespace(object, Some(&key))?;
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_define_own_property(object, key, descriptor);
         }
@@ -106,6 +108,7 @@ impl Vm {
         object: ObjectId,
         key: &PropertyName,
     ) -> Result<bool, RuntimeError> {
+        self.trigger_deferred_namespace(object, Some(key))?;
         // Lazy global intrinsics still have their specified own-property
         // descriptors when observed through [[Delete]]. Without this, deleting
         // an as-yet-unread `globalThis.undefined` incorrectly looked like a
@@ -121,6 +124,7 @@ impl Vm {
         &mut self,
         object: ObjectId,
     ) -> Result<Vec<PropertyName>, RuntimeError> {
+        self.trigger_deferred_namespace(object, None)?;
         // A Test262 child-realm facade has no mirrored ordinary properties.
         // Its [[OwnPropertyKeys]] must be performed in the target Realm so
         // reflection sees the complete intrinsic surface and its key order.

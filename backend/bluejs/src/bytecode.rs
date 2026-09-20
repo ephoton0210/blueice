@@ -261,6 +261,7 @@ pub(crate) struct Binding {
 pub(crate) enum ModuleImportName {
     Named(String),
     Namespace,
+    DeferredNamespace,
     Source,
 }
 
@@ -278,10 +279,13 @@ pub(crate) struct ModuleImport {
 
 /// One executable [[RequestedModules]] entry, in source-text order.
 /// Source-phase records resolve during linking but do not participate in
-/// module evaluation, so they are omitted from this sequence.
+/// module evaluation, so they are omitted from this sequence. A deferred
+/// request (`import defer * as ns from`) contributes only its asynchronous
+/// transitive dependencies to evaluation, never the module itself.
 #[derive(Clone)]
 pub(crate) struct ModuleRequest {
     pub module_request: String,
+    pub deferred: bool,
 }
 
 #[derive(Clone)]
@@ -301,6 +305,14 @@ pub(crate) enum ModuleExport {
         json: bool,
     },
     Namespace {
+        export_name: String,
+        module_request: String,
+        json: bool,
+    },
+    /// A re-export of a deferred namespace import (`import defer * as ns`
+    /// then `export { ns }`): the export resolves to the target's deferred
+    /// namespace object rather than a lexical cell.
+    DeferredNamespace {
         export_name: String,
         module_request: String,
         json: bool,

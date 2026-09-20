@@ -73,6 +73,45 @@ fn import_keyword_and_import_meta_reject_escapes() {
 }
 
 #[test]
+fn import_defer_declarations_accept_only_a_namespace_import() {
+    for source in [
+        "import defer * as ns from './m.js';",
+        "import defer * as ns from './m.js' with { type: 'json' };",
+        "import defer * as ns from './m.js'\nns;",
+        // `defer` stays an ordinary default-binding name everywhere else.
+        "import defer from './m.js';",
+        "import defer, * as ns from './m.js';",
+        "import defer, { a } from './m.js';",
+        "import { defer } from './m.js';",
+        "import { a as defer } from './m.js';",
+        "import * as defer from './m.js';",
+        "import defer * as defer from './m.js';",
+    ] {
+        parse_module(source).unwrap_or_else(|error| panic!("{source}: {error:?}"));
+    }
+    for source in [
+        "import defer d from './m.js';",
+        "import defer { a } from './m.js';",
+        "import defer d, * as ns from './m.js';",
+        "import defer * as ns, { a } from './m.js';",
+        "import defer as ns from './m.js';",
+        "import defer './m.js';",
+        "import defer * ns from './m.js';",
+        "import defer * as ns;",
+        "export defer * as ns from './m.js';",
+        "import d\\u0065fer * as ns from './m.js';",
+        // A deferred namespace import still binds an immutable, unique name.
+        "import defer * as ns from './m.js'; import ns from './n.js';",
+        "import defer * as eval from './m.js';",
+    ] {
+        assert_module_syntax_error(source);
+    }
+    // Import declarations, deferred or not, belong to modules only.
+    assert_script_syntax_error("import defer * as ns from './m.js';");
+    assert_module_syntax_error("if (true) { import defer * as ns from './m.js'; }");
+}
+
+#[test]
 fn phase_import_calls_accept_the_same_argument_shapes_as_import() {
     for source in [
         "import.source('./m.js');",

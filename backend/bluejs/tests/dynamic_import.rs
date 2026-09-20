@@ -6,9 +6,10 @@
 //! the VM's module registry: the referrer an ImportCall resolves against must
 //! survive suspension boundaries (async generators resumed from jobs), and
 //! an import of an already-evaluated member of an errored cycle observes the
-//! cycle's recorded evaluation error.
+//! cycle's recorded evaluation error. An `import()` that starts while the
+//! entry module is still evaluating shares that module graph.
 
-use blueice_bluejs::{compile, compile_module, parse, parse_module, Vm};
+use blueice_bluejs::{compile, compile_module, parse, parse_module, Value, Vm};
 use std::collections::HashMap;
 
 /// Runs `script` as the classic-script entry `dir/main.js` with `modules`
@@ -147,6 +148,113 @@ fn importing_an_unrelated_evaluated_module_still_fulfills_after_a_sibling_failed
             ),
             ("good.js", "export var x = 7;"),
         ],
+        &script,
+    );
+    assert_eq!(done, Some(Ok(())));
+}
+
+#[test]
+fn a_dynamic_import_started_while_the_entry_evaluates_shares_the_entry_graph() {
+    // `other.js` imports `setup.js` too; it must see the very module instance
+    // the still-evaluating entry linked, not a second copy of it.
+    let sources = [
+        (
+            "main.js",
+            "import { shared } from './setup.js';
+             const ns = await import('./other.js');
+             shared.value === 1 && ns.seen === shared",
+        ),
+        ("setup.js", "export const shared = { value: 0 };"),
+        (
+            "other.js",
+            "import { shared } from './setup.js'; shared.value = 1; export const seen = shared;",
+        ),
+    ];
+    let modules: HashMap<_, _> = sources
+        .into_iter()
+        .map(|(name, source)| {
+            (
+                format!("dir/{name}"),
+                compile_module(&parse_module(source).unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        Vm::default().execute_module_graph("dir/main.js", &modules),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn import_source_of_a_source_text_module_rejects_with_a_syntax_error() {
+    // The host supplies no Module Source object for a Source Text Module, so
+    // the promise rejects instead of linking or evaluating the module.
+    let script = format!(
+        "{TRACE}
+        import.source('./a.js').then(
+            () => finish(false),
+            e => finish(e instanceof SyntaxError));"
+    );
+    let done = run_script(
+        &[("a.js", "globalThis.ran = true; export var x = 1;")],
+        &script,
+    );
+    assert_eq!(done, Some(Ok(())));
+}
+
+#[test]
+fn import_source_evaluates_its_arguments_like_import_and_rejects_instead_of_throwing() {
+    let script = format!(
+        "{TRACE}
+        var boom = {{ toString() {{ throw new RangeError('specifier'); }} }};
+        var results = [
+            import.source(boom).then(() => 'resolved', e => e.name),
+            import.source('./a.js', 42).then(() => 'resolved', e => e.name),
+            import.source('./a.js', {{ with: {{ type: 1 }} }}).then(() => 'resolved', e => e.name),
+            import.defer(boom).then(() => 'resolved', e => e.name),
+            import.defer('./a.js', 42).then(() => 'resolved', e => e.name),
+            import('./a.js', {{ with: 7 }}).then(() => 'resolved', e => e.name),
+        ];
+        Promise.all(results).then(
+            names => finish(names.join() === 'RangeError,TypeError,TypeError,RangeError,TypeError,TypeError'),
+            e => (trace.push(String(e)), finish(false)));"
+    );
+    let done = run_script(&[("a.js", "export var x = 1;")], &script);
+    assert_eq!(done, Some(Ok(())));
+}
+
+#[test]
+fn import_defer_from_a_script_resolves_relative_to_the_script_and_defers_evaluation() {
+    let script = format!(
+        "{TRACE}
+        globalThis.log = [];
+        import.defer('./a.js').then(ns => {{
+            trace.push('before ' + log.join());
+            var x = ns.x;
+            trace.push('after ' + log.join() + ' x=' + x);
+            finish(trace.join('|') === 'before |after a x=1');
+        }}, e => (trace.push(String(e)), finish(false)));"
+    );
+    let done = run_script(&[("a.js", "log.push('a'); export var x = 1;")], &script);
+    assert_eq!(done, Some(Ok(())));
+}
+
+#[test]
+fn a_module_that_threw_keeps_its_error_for_every_later_import() {
+    // [[EvaluationError]] is recorded once: the second import must observe the
+    // very same error object, without evaluating the module body again.
+    let script = format!(
+        "{TRACE}
+        globalThis.runs = 0;
+        (async () => {{
+            var first, second;
+            try {{ await import('./throws.js'); }} catch (e) {{ first = e; }}
+            try {{ await import('./throws.js'); }} catch (e) {{ second = e; }}
+            finish(first instanceof Error && first === second && runs === 1);
+        }})().catch(e => (trace.push(String(e)), finish(false)));"
+    );
+    let done = run_script(
+        &[("throws.js", "runs++; throw new Error('boom');")],
         &script,
     );
     assert_eq!(done, Some(Ok(())));

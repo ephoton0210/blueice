@@ -241,6 +241,11 @@ impl Vm {
                         let Value::Object(target) = target else {
                             unreachable!("class fields target the constructor")
                         };
+                        if !self.object_is_extensible(target)? {
+                            return Err(RuntimeError::TypeError(
+                                "cannot add a private element to a non-extensible object".into(),
+                            ));
+                        }
                         self.with_roots(|heap| heap.set_private_slot(target, target, name, value))?;
                         self.stack.truncate(base + 1);
                     }
@@ -260,6 +265,16 @@ impl Vm {
                                 "private fields require an object receiver".into(),
                             )
                         })?;
+                        // PrivateMethodOrAccessorAdd / PrivateFieldAdd: an
+                        // object that is no longer extensible cannot gain a
+                        // private element (`nonextensible-applies-to-private`).
+                        if !self.heap.has_private_brand(receiver, owner)?
+                            && !self.object_is_extensible(receiver)?
+                        {
+                            return Err(RuntimeError::TypeError(
+                                "cannot add a private element to a non-extensible object".into(),
+                            ));
+                        }
                         self.with_roots(|heap| heap.add_private_brand(receiver, owner))?;
                     }
                     Opcode::PrivateGet | Opcode::PrivateGetMethod => {
