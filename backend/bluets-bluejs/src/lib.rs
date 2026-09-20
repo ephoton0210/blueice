@@ -120,7 +120,7 @@ impl std::error::Error for BridgeError {}
 /// `instanceof`), equality, logical,
 /// nullish-coalescing, arithmetic exponentiation, bitwise/shift, conditional,
 /// non-hole array literals with spread elements, object literals with
-/// identifier/string/numeric keys and spread properties, template literals
+/// identifier/string/numeric/computed keys and spread properties, template literals
 /// whose substitutions use the same bounded expression subset, dot or bracket
 /// property reads, comma sequences, identifier/property prefix/postfix updates,
 /// calls and constructors with normal/spread arguments, and identifier/property
@@ -1276,7 +1276,7 @@ impl<'a> ExpressionLowerer<'a> {
         let opening_span = self.token_span(opening);
         let mut properties = Vec::new();
         loop {
-            let Some(token) = self.tokens.get(self.index) else {
+            let Some(token) = self.tokens.get(self.index).cloned() else {
                 return Err(unsupported(opening_span, "unterminated object literal"));
             };
             if token.text == "}" {
@@ -1287,40 +1287,61 @@ impl<'a> ExpressionLowerer<'a> {
                 self.index += 1;
                 properties.push(bluejs::ObjectProp::Spread(self.parse_assignment()?));
             } else {
-                if token.text == "[" {
-                    return Err(unsupported(
-                        self.token_span(token),
-                        "computed object property keys are not in the v1 direct bridge subset",
-                    ));
-                }
-                let (key, shorthand_name) = match token.kind {
-                    TokenKind::Identifier => (
-                        bluejs::PropertyKey::Identifier(token.text.clone()),
-                        Some(token.text.clone()),
-                    ),
-                    TokenKind::String => match lower_string(self.module, token)? {
-                        bluejs::Expr::String(value) => (bluejs::PropertyKey::String(value), None),
-                        _ => unreachable!("string lowering always constructs a string expression"),
-                    },
-                    TokenKind::Number => (
-                        bluejs::PropertyKey::Number(token.text.replace('_', "").parse().map_err(
-                            |_| {
-                                unsupported(
-                                    self.token_span(token),
-                                    "unsupported numeric object key",
-                                )
-                            },
-                        )?),
-                        None,
-                    ),
-                    _ => {
+                let (key, shorthand_name) = if token.text == "[" {
+                    let key_span = self.token_span(&token);
+                    self.index += 1;
+                    let expression = self.parse_assignment()?;
+                    let Some(closing) = self.tokens.get(self.index) else {
                         return Err(unsupported(
-                            self.token_span(token),
-                            "only identifier, string, and numeric object property keys are in the v1 direct bridge subset",
+                            key_span,
+                            "unterminated computed object property key",
+                        ));
+                    };
+                    if closing.text != "]" {
+                        return Err(unsupported(
+                            self.token_span(closing),
+                            "expected `]` after a computed object property key",
                         ));
                     }
+                    self.index += 1;
+                    (bluejs::PropertyKey::Computed(Box::new(expression)), None)
+                } else {
+                    let (key, shorthand_name) = match token.kind {
+                        TokenKind::Identifier => (
+                            bluejs::PropertyKey::Identifier(token.text.clone()),
+                            Some(token.text.clone()),
+                        ),
+                        TokenKind::String => match lower_string(self.module, &token)? {
+                            bluejs::Expr::String(value) => {
+                                (bluejs::PropertyKey::String(value), None)
+                            }
+                            _ => {
+                                unreachable!(
+                                    "string lowering always constructs a string expression"
+                                )
+                            }
+                        },
+                        TokenKind::Number => (
+                            bluejs::PropertyKey::Number(
+                                token.text.replace('_', "").parse().map_err(|_| {
+                                    unsupported(
+                                        self.token_span(&token),
+                                        "unsupported numeric object key",
+                                    )
+                                })?,
+                            ),
+                            None,
+                        ),
+                        _ => {
+                            return Err(unsupported(
+                                self.token_span(&token),
+                                "only identifier, string, numeric, and computed object property keys are in the v1 direct bridge subset",
+                            ));
+                        }
+                    };
+                    self.index += 1;
+                    (key, shorthand_name)
                 };
-                self.index += 1;
                 let Some(colon) = self.tokens.get(self.index) else {
                     return Err(unsupported(opening_span, "unterminated object literal"));
                 };
@@ -1792,17 +1813,17 @@ mod tests {
     }
 
     #[test]
-    fn rejects_runtime_shapes_not_yet_lowered_without_reparsing_emitted_javascript() {
+    fn rejects_object_methods_without_reparsing_emitted_javascript() {
         let result = compile_direct_script(
             ENTRY,
             &MapLoader::from([ModuleSource::new(
                 ENTRY,
-                "const name = 'label'; const value = { [name]: 'Ada' }; value;",
+                "const value = { label() { return 'Ada'; } }; value;",
             )]),
             CompilerOptions::default(),
         );
         let Err(error) = result else {
-            panic!("the direct bridge must reject a computed object property");
+            panic!("the direct bridge must reject an object method");
         };
         let BridgeError::UnsupportedRuntimeTarget { span, .. } = error else {
             panic!("the direct bridge must reject an unsupported runtime shape");
@@ -2228,6 +2249,56 @@ mod tests {
     }
 
     #[test]
+    fn lowers_checked_computed_object_property_keys() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                concat!(
+                    "const key: string = 'display-name';",
+                    "const value = { [key]: 'Ada', ['answer']: 42 };",
+                    "`${value[key]}:${value['answer']}`;"
+                ),
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert!(matches!(
+            artifact.program,
+            bluejs::BlueJsProgramV1::Script(bluejs::Program { ref body })
+                if matches!(
+                    body.as_slice(),
+                    [bluejs::Stmt::VarDecl(_, _), bluejs::Stmt::VarDecl(_, declarations), bluejs::Stmt::Expr(_)]
+                        if matches!(
+                            declarations.as_slice(),
+                            [bluejs::VarDeclarator {
+                                init: Some(bluejs::Expr::Object(properties)),
+                                ..
+                            }] if matches!(
+                                properties.as_slice(),
+                                [
+                                    bluejs::ObjectProp::KeyValue {
+                                        key: bluejs::PropertyKey::Computed(_),
+                                        shorthand: false,
+                                        ..
+                                    },
+                                    bluejs::ObjectProp::KeyValue {
+                                        key: bluejs::PropertyKey::Computed(_),
+                                        shorthand: false,
+                                        ..
+                                    },
+                                ]
+                            )
+                        )
+                )
+        ));
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::String("Ada:42".into())
+        );
+    }
+
+    #[test]
     fn lowers_checked_member_calls_with_the_receiver() {
         let artifact = compile_direct_script(
             ENTRY,
@@ -2649,7 +2720,7 @@ mod tests {
     }
 
     #[test]
-    fn expression_lowerer_rejects_computed_object_properties() {
+    fn expression_lowerer_lowers_computed_object_properties() {
         let tokens = expression_tokens(&[
             ("{", TokenKind::Punct),
             ("[", TokenKind::Punct),
@@ -2659,11 +2730,93 @@ mod tests {
             ("1", TokenKind::Number),
             ("}", TokenKind::Punct),
         ]);
-        let error = ExpressionLowerer::new(ENTRY, &tokens).parse().unwrap_err();
+        assert!(matches!(
+            ExpressionLowerer::new(ENTRY, &tokens).parse(),
+            Ok(bluejs::Expr::Object(properties))
+                if matches!(
+                    properties.as_slice(),
+                    [bluejs::ObjectProp::KeyValue {
+                        key: bluejs::PropertyKey::Computed(expression),
+                        value: bluejs::Expr::Number(1.0),
+                        shorthand: false,
+                    }] if matches!(expression.as_ref(), bluejs::Expr::Identifier(name) if name == "name")
+                )
+        ));
+    }
+
+    #[test]
+    fn expression_lowerer_reports_malformed_computed_object_property_keys() {
+        let unterminated = expression_tokens(&[
+            ("{", TokenKind::Punct),
+            ("[", TokenKind::Punct),
+            ("name", TokenKind::Identifier),
+        ]);
+        let error = ExpressionLowerer::new(ENTRY, &unterminated)
+            .parse()
+            .unwrap_err();
         let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
-            panic!("the direct bridge must reject a computed object property");
+            panic!("the direct bridge must reject an unterminated computed object key");
         };
-        assert!(message.contains("computed object"));
+        assert!(message.contains("unterminated computed object property key"));
+
+        let missing_closing = expression_tokens(&[
+            ("{", TokenKind::Punct),
+            ("[", TokenKind::Punct),
+            ("name", TokenKind::Identifier),
+            (":", TokenKind::Punct),
+            ("1", TokenKind::Number),
+            ("}", TokenKind::Punct),
+        ]);
+        let error = ExpressionLowerer::new(ENTRY, &missing_closing)
+            .parse()
+            .unwrap_err();
+        let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
+            panic!("the direct bridge must reject an unclosed computed object key");
+        };
+        assert!(message.contains("expected `]`"));
+    }
+
+    #[test]
+    fn expression_lowerer_reports_invalid_static_object_property_keys() {
+        let invalid_number = expression_tokens(&[
+            ("{", TokenKind::Punct),
+            ("not-a-number", TokenKind::Number),
+            (":", TokenKind::Punct),
+            ("1", TokenKind::Number),
+            ("}", TokenKind::Punct),
+        ]);
+        let error = ExpressionLowerer::new(ENTRY, &invalid_number)
+            .parse()
+            .unwrap_err();
+        let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
+            panic!("the direct bridge must reject an invalid numeric object key");
+        };
+        assert!(message.contains("unsupported numeric object key"));
+
+        let invalid_key = expression_tokens(&[
+            ("{", TokenKind::Punct),
+            ("?", TokenKind::Punct),
+            (":", TokenKind::Punct),
+            ("1", TokenKind::Number),
+            ("}", TokenKind::Punct),
+        ]);
+        let error = ExpressionLowerer::new(ENTRY, &invalid_key)
+            .parse()
+            .unwrap_err();
+        let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
+            panic!("the direct bridge must reject an invalid object key");
+        };
+        assert!(message.contains("object property keys"));
+
+        let missing_colon =
+            expression_tokens(&[("{", TokenKind::Punct), ("label", TokenKind::Identifier)]);
+        let error = ExpressionLowerer::new(ENTRY, &missing_colon)
+            .parse()
+            .unwrap_err();
+        let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
+            panic!("the direct bridge must reject an object key without a value");
+        };
+        assert!(message.contains("unterminated object literal"));
     }
 
     #[test]

@@ -43,19 +43,19 @@ Named local functions may declare optional identifier parameters and a final ide
 
 Named local functions may also declare default parameters whose initializer is in the direct expression subset. BlueTSC retains the original initializer tokens, checks a typed initializer against its parameter annotation, and BlueTS-to-BlueJS lowers it to BlueJS `Param::default`.
 
-The current direct expression subset supersedes earlier phase summaries: literals and identifiers; quoted-string and template escapes; template slots containing supported direct expressions; direct calls and constructors with normal/spread arguments; unary, arithmetic, relational (`in` and `instanceof`), comparison, logical, conditional, assignment, and sequence expressions; non-hole arrays with spread elements; objects with identifier/string/numeric keys, identifier shorthand, and spread properties; dot/bracket reads; property assignments, updates, and deletion. Nested templates, optional chaining, and computed object keys/methods/accessors remain excluded.
+The current direct expression subset supersedes earlier phase summaries: literals and identifiers; quoted-string and template escapes; template slots containing supported direct expressions; direct calls and constructors with normal/spread arguments; unary, arithmetic, relational (`in` and `instanceof`), comparison, logical, conditional, assignment, and sequence expressions; non-hole arrays with spread elements; objects with identifier/string/numeric/computed keys, identifier shorthand, and spread properties; dot/bracket reads; property assignments, updates, and deletion. Nested templates, optional chaining, and object methods/accessors remain excluded.
 
 For a checked direct call to a known local function, BlueTSC expands a spread argument only if it has a tuple type. This preserves fixed parameter arity and supports tuple spread calls; regular arrays, unknown values, and general iterable analysis remain outside the bounded rule.
 
-Object literal keys may be identifiers, quoted strings, or numbers. Only identifier keys may use shorthand; computed keys, methods, and accessors remain excluded, while spread properties are supported.
+Object literal keys may be identifiers, quoted strings, numbers, or direct expressions in `[...]`. Only identifier keys may use shorthand; methods and accessors remain excluded, while spread properties are supported.
 
-The bridge directly splits a template interpolation only when its content is one identifier reference; nested operators, calls, member reads, and other embedded expression syntax remain unsupported.
+The bridge tokenizes a template interpolation with BlueTS's lexer and lowers every expression in the current direct subset; nested templates and embedded syntax outside that subset remain unsupported.
 
 Non-substituted template literals share the bridge's ordinary escape decoder and are never reparsed as generated JavaScript.
 
 The bridge decodes simple quoted-string escapes (`\\`, quote, `\n`, `\r`, `\t`, `\b`, `\f`, `\v`, and `\0`) before constructing BlueJS string data. Hexadecimal, Unicode, legacy octal, and line-continuation escapes remain explicit direct-bridge exclusions.
 
-Object literals accept identifier/string/numeric `key: value` properties, local-binding shorthand `{ key }`, and spread properties. Computed keys, methods, and accessors remain outside the direct subset. BlueTSC merges fields from an identifier-bound known record spread source; unknown, non-record, and general spread expressions retain the checker's bounded `unknown` result.
+Object literals accept identifier/string/numeric/computed `key: value` properties, local-binding shorthand `{ key }`, and spread properties. A computed key lowers its supported direct expression to BlueJS `PropertyKey::Computed`; methods and accessors remain outside the direct subset. BlueTSC merges fields from an identifier-bound known record spread source; computed keys, unknown/non-record spread sources, and general spread expressions retain the checker's bounded `unknown` result.
 
 Array literals accept normal and spread elements, but holes remain excluded. BlueTSC infers a known `T[]` spread source as element type `T`; a non-array or unknown spread source remains `unknown` in this bounded rule.
 
