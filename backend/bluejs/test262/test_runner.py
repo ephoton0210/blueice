@@ -279,6 +279,9 @@ class RunnerTests(unittest.TestCase):
                     "intl402/Temporal/PlainDate/from/persian-new-year-dates.js",
                     "intl402/Temporal/PlainDateTime/from/roundtrip-from-property-bag.js",
                     "intl402/Temporal/ZonedDateTime/from/roundtrip-from-property-bag.js",
+                    "intl402/Temporal/PlainDate/prototype/dayOfYear/non-iso-calendar-basic.js",
+                    "intl402/Temporal/PlainDateTime/prototype/dayOfYear/non-iso-calendar-basic.js",
+                    "intl402/Temporal/ZonedDateTime/prototype/dayOfYear/non-iso-calendar-basic.js",
                 }
             ),
         )

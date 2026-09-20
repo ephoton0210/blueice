@@ -166,9 +166,8 @@ impl Vm {
         }
         let calendar = calendar::calendar_kind(&value.calendar)
             .expect("Temporal values retain a validated calendar identifier");
-        let iso = Date::try_new_iso(value.year, value.month, value.day)
-            .map_err(|_| RuntimeError::RangeError("invalid Temporal ISO date".into()))?;
-        let date = iso.to_calendar(AnyCalendar::new(calendar));
+        let date =
+            calendar::calendar_date_from_civil(calendar, (value.year, value.month, value.day));
         let year = date.year();
         let month = date.month();
         // The `iso8601` calendar never reaches this point (see the fast
@@ -244,13 +243,14 @@ impl Vm {
         // `expectedOptionsReading` block comes *after*
         // `expectedOpsForPrimitiveOptions`).
         let requested_day = self.temporal_read_optional_integer(bag, "day", 1, i32::MAX)?;
-        // `iso8601` has no era concept at all -- its own field-name list
-        // never includes `era`/`eraYear`, so neither property is even read
-        // (confirmed directly by `order-of-operations.js`'s own expected
-        // sequence, which has no `era`/`eraYear` entries for an `iso8601`
-        // receiver). Every other calendar's field list includes both
-        // regardless of whether it individually supports eras.
-        let read_era_fields = calendar != "iso8601";
+        // A calendar without eras (`iso8601`, `chinese`, `dangi`) never
+        // includes `era`/`eraYear` in its field-name list, so neither
+        // property is even read -- confirmed for `iso8601` by
+        // `order-of-operations.js`'s own expected sequence, and for the
+        // other two by `calendar-not-supporting-eras.js`: a bag carrying a
+        // bogus `era`/`eraYear` next to a `year` simply resolves through the
+        // `year`, and without a `year` is a `TypeError`.
+        let read_era_fields = calendar::calendar_supports_era(&calendar);
         let (era, era_year) = if read_era_fields {
             let era_v = self.get_property(bag, &"era".into())?;
             let era = (!matches!(era_v, Value::Undefined))
@@ -316,18 +316,23 @@ impl Vm {
         // exact `-271821`/`275760` boundary) are what surfaced this —
         // reached via `Temporal.Duration`'s own `relativeTo` reuse of this
         // function, though the same bound applied to every other caller too.
-        let requested_year = self.temporal_read_optional_integer(bag, "year", -275_760, 275_760)?;
+        let requested_year =
+            self.temporal_read_optional_integer(bag, "year", i32::MIN, i32::MAX)?;
 
         let mut fields = DateFields::default();
+        // `era` and `eraYear` only mean something together: giving one
+        // without the other is a `TypeError` (`one-of-era-erayear-undefined.js`),
+        // a missing-field error like a missing `year`, ahead of any range check.
+        if era.is_some() != !matches!(era_year, Value::Undefined) {
+            return Err(RuntimeError::TypeError(
+                "Temporal era and eraYear must be supplied together".into(),
+            ));
+        }
         if let Some(era) = era.as_deref() {
             fields.era = Some(era.as_bytes());
-            fields.era_year = Some(self.temporal_integer(&era_year, -9_999, 9_999, "era year")?);
+            fields.era_year =
+                Some(self.temporal_integer(&era_year, i32::MIN, i32::MAX, "era year")?);
         } else {
-            if !matches!(era_year, Value::Undefined) {
-                return Err(RuntimeError::RangeError(
-                    "Temporal eraYear requires an era".into(),
-                ));
-            }
             fields.extended_year = Some(requested_year.ok_or_else(|| {
                 RuntimeError::TypeError("Temporal date fields require year".into())
             })?);
@@ -405,6 +410,29 @@ impl Vm {
             value.millisecond = requested_millisecond.unwrap_or(0) as u16;
             value.microsecond = requested_microsecond.unwrap_or(0) as u16;
             value.nanosecond = requested_nanosecond.unwrap_or(0) as u16;
+        }
+        // The `year` above is a *calendar* year and is only bounded by
+        // `icu_calendar`'s fundamental range, which is wider than Temporal's
+        // (`gregory` 275761 resolves fine); the exact representable-range rule
+        // is judged on the resolved ISO date(-time).
+        let iso_date = (value.year, value.month, value.day);
+        let within_limits = if is_date_time {
+            let time = (
+                value.hour,
+                value.minute,
+                value.second,
+                value.millisecond,
+                value.microsecond,
+                value.nanosecond,
+            );
+            epoch::is_date_time_within_limits(iso_date, time)
+        } else {
+            epoch::is_date_within_limits(iso_date)
+        };
+        if !within_limits {
+            return Err(RuntimeError::RangeError(
+                "Temporal date is outside the supported range".into(),
+            ));
         }
         Ok(value)
     }

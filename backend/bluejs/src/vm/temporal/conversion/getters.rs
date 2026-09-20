@@ -102,25 +102,36 @@ impl Vm {
             | native::TemporalGetter::WeekOfYear
             | native::TemporalGetter::YearOfWeek
             | native::TemporalGetter::DaysInWeek => {
-                // Calendar-invariant: Temporal's day-of-week/week-of-year
-                // getters operate on the ISO representation for every
-                // calendar, per the current spec revision.
+                // `dayOfWeek`/`daysInWeek` are calendar-invariant: every
+                // supported calendar uses the ISO 7-day week. `dayOfYear` is a
+                // position within the *calendar's own* year, and the week
+                // numbers are ISO 8601's, defined for `iso8601` only -- every
+                // other calendar reports `undefined`, `gregory` included.
                 let date = (value.year, value.month, value.day);
+                let iso = value.calendar == "iso8601";
                 Ok(match getter {
                     native::TemporalGetter::DayOfWeek => {
                         Value::Number(plain_date::iso_day_of_week(date).into())
                     }
-                    native::TemporalGetter::DayOfYear => {
+                    native::TemporalGetter::DayOfYear if iso => {
                         Value::Number(plain_date::iso_day_of_year(date).into())
                     }
-                    native::TemporalGetter::WeekOfYear => {
+                    native::TemporalGetter::DayOfYear => {
+                        let calendar = calendar::calendar_kind(&value.calendar)
+                            .expect("Temporal values retain a validated calendar identifier");
+                        Value::Number(calendar::calendar_day_of_year(calendar, date).into())
+                    }
+                    native::TemporalGetter::WeekOfYear if iso => {
                         Value::Number(plain_date::iso_week_of_year(date).0.into())
                     }
-                    native::TemporalGetter::YearOfWeek => {
+                    native::TemporalGetter::YearOfWeek if iso => {
                         Value::Number(plain_date::iso_week_of_year(date).1.into())
                     }
+                    native::TemporalGetter::WeekOfYear | native::TemporalGetter::YearOfWeek => {
+                        Value::Undefined
+                    }
                     native::TemporalGetter::DaysInWeek => Value::Number(7.0),
-                    _ => unreachable!("all ISO week-date getters are listed above"),
+                    _ => unreachable!("all week-date getters are listed above"),
                 })
             }
             native::TemporalGetter::OffsetNanoseconds | native::TemporalGetter::Offset => {

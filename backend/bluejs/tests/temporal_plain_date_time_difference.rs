@@ -521,7 +521,7 @@ fn a_huge_rounding_increment_is_a_range_error_on_every_calendar() {
         ("gregory", "months"),
         ("hebrew", "years"),
         ("chinese", "months"),
-        ("islamic", "weeks"),
+        ("islamic-civil", "weeks"),
     ];
     for (calendar, unit) in cases {
         for method in ["until", "since"] {
