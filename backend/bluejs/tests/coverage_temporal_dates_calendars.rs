@@ -171,10 +171,12 @@ fn round_trip_and_sign_properties_hold_in_gregorian_variant_calendars() {
 
 #[test]
 fn round_trip_and_sign_properties_hold_in_thirteen_month_calendars() {
-    // Only the sign, `since` negation, day and week differences are checked
-    // here: a year-based difference in a thirteen-month calendar does not
-    // round-trip (the implementation assumes twelve months per year).
-    check_fixed_month_calendars(r#"["coptic", "ethiopic", "ethioaa"]"#, false);
+    // A year here has thirteen months (twelve 30-day months plus a 5/6-day
+    // intercalary one), so the full property set applies, including the
+    // year- and month-based round trip (`a.add(a.until(b, { largestUnit })) ==
+    // b`). See `temporal_thirteen_month_calendar_difference.rs` for the
+    // fixture-derived expectations.
+    check_fixed_month_calendars(r#"["coptic", "ethiopic", "ethioaa"]"#, true);
 }
 
 #[test]

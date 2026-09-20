@@ -746,7 +746,13 @@ impl Vm {
         let (years, months) = if smallest == rounding::TemporalUnit::Year {
             (rounded_count, 0)
         } else if largest == rounding::TemporalUnit::Year {
-            (rounded_count / 12, rounded_count % 12)
+            // A year holds `calendar_months_per_year` months (13 for the
+            // intercalary-month `coptic`/`ethiopic`/`ethioaa`, not 12).
+            let months_per_year = super::calendar::calendar_months_per_year(calendar);
+            (
+                rounded_count / months_per_year,
+                rounded_count % months_per_year,
+            )
         } else {
             (0, rounded_count)
         };
