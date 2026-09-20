@@ -134,6 +134,17 @@ impl Vm {
         }
     }
 
+    pub(in super::super::super) fn temporal_unit_to_date_unit(
+        unit: rounding::TemporalUnit,
+    ) -> plain_date::DateUnit {
+        match unit {
+            rounding::TemporalUnit::Year => plain_date::DateUnit::Year,
+            rounding::TemporalUnit::Month => plain_date::DateUnit::Month,
+            rounding::TemporalUnit::Week => plain_date::DateUnit::Week,
+            _ => plain_date::DateUnit::Day,
+        }
+    }
+
     /// `ToTemporalDate`.
     pub(in super::super::super) fn temporal_to_plain_date(
         &mut self,
@@ -147,9 +158,10 @@ impl Vm {
                         (temporal.year, temporal.month, temporal.day),
                         temporal.calendar.clone(),
                     )),
-                    // A `ZonedDateTime`'s stored ISO fields are already its local
-                    // wall-clock ones (in any zone, named or fixed-offset), and
-                    // `ToTemporalDate` reads exactly those slots.
+                    // A `ZonedDateTime` already stores the *local* wall-clock
+                    // fields of its own zone (`temporal_set_local_fields`),
+                    // so its date is read straight from the slots -- for a
+                    // named zone as much as for `UTC` or a fixed offset.
                     TemporalKind::ZonedDateTime => Some((
                         (temporal.year, temporal.month, temporal.day),
                         temporal.calendar.clone(),
@@ -183,9 +195,13 @@ impl Vm {
             .coerce_string(value)?
             .to_utf8()
             .map_err(|_| RuntimeError::RangeError("invalid Temporal.PlainDate string".into()))?;
+        // The string is parsed strictly before `options` is read: an invalid
+        // string throws its `RangeError` with `options` untouched
+        // (`from/observable-get-overflow-argument-string-invalid.js`).
+        let parsed = self.temporal_value_from_string(TemporalKind::PlainDate, &source)?;
         let resolved_options = self.temporal_options(options)?;
         self.temporal_overflow_option(&resolved_options)?;
-        self.temporal_value_from_string(TemporalKind::PlainDate, &source)
+        Ok(parsed)
     }
 
     /// `ToTemporalDateTime`.
@@ -214,7 +230,7 @@ impl Vm {
                         (0, 0, 0, 0, 0, 0),
                         temporal.calendar.clone(),
                     )),
-                    // As for `PlainDate` above: the local wall-clock slots.
+                    // Local wall-clock fields, as above.
                     TemporalKind::ZonedDateTime => Some((
                         (temporal.year, temporal.month, temporal.day),
                         (
@@ -256,9 +272,11 @@ impl Vm {
         let source = self.coerce_string(value)?.to_utf8().map_err(|_| {
             RuntimeError::RangeError("invalid Temporal.PlainDateTime string".into())
         })?;
+        // Parse first, read `options` second -- see `temporal_to_plain_date`.
+        let parsed = self.temporal_value_from_string(TemporalKind::PlainDateTime, &source)?;
         let resolved_options = self.temporal_options(options)?;
         self.temporal_overflow_option(&resolved_options)?;
-        self.temporal_value_from_string(TemporalKind::PlainDateTime, &source)
+        Ok(parsed)
     }
 
     pub(in super::super::super) fn temporal_to_matching(

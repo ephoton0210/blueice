@@ -521,7 +521,7 @@ fn a_huge_rounding_increment_is_a_range_error_on_every_calendar() {
         ("gregory", "months"),
         ("hebrew", "years"),
         ("chinese", "months"),
-        ("islamic", "weeks"),
+        ("islamic-civil", "weeks"),
     ];
     for (calendar, unit) in cases {
         for method in ["until", "since"] {
@@ -693,11 +693,10 @@ fn out_of_range_date_arithmetic_is_a_range_error_not_an_overflow() {
     }
 }
 
-// The next four tests carry the expectations of the four `plain_date` unit
-// tests that pinned the earlier `round_calendar_duration` (removed once
-// `PlainDate` and `PlainYearMonth` differences moved onto
-// `plain_date_time_difference`): they are the spec-derived values, now
-// verified against the module that replaced it.
+// The next four tests check, through `PlainDate.prototype.until` (which runs on
+// `plain_date_time_difference`), the same spec-derived values the `plain_date`
+// unit tests pin for `round_calendar_duration` -- the rounding
+// `PlainYearMonth` still uses -- so the two implementations stay in agreement.
 
 /// Test262 `PlainDate/prototype/until/roundingmode-ceil.js`: 2019-01-08 until
 /// 2021-09-07 rounded up to each unit in turn (and the reverse direction).

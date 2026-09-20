@@ -6,6 +6,7 @@
 //! leap-month (`chinese`/`dangi`/`hebrew`) branch, extending `AddISODate`'s
 //! shape via `icu_calendar`. No `Value`/heap/Realm coupling.
 
+use super::super::calendar::calendar_date_from_civil;
 use super::super::epoch::CivilDate;
 use super::iso_date::{add_iso_date, balance_iso_date};
 use super::month_structure::{
@@ -37,8 +38,7 @@ pub(crate) fn calendar_add_date(
     if calendar_has_leap_months(calendar) {
         return calendar_add_date_leap_month(calendar, date, years, months, weeks, days, reject);
     }
-    let iso = Date::try_new_iso(date.0, date.1, date.2).ok()?;
-    let cal_date = iso.to_calendar(AnyCalendar::new(calendar));
+    let cal_date = calendar_date_from_civil(calendar, date);
     let start_year = cal_date.year().extended_year();
     let start_month = i64::from(cal_date.month().ordinal);
     let start_day = i64::from(cal_date.day_of_month().0);

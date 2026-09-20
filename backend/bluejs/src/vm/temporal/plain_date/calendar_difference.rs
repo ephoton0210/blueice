@@ -9,7 +9,7 @@
 //! `DifferenceNonISODateWithLeapMonth`), and the [`calendar_difference_date`]
 //! dispatcher between them. No `Value`/heap/Realm coupling.
 
-use super::super::calendar::calendar_months_per_year;
+use super::super::calendar::{calendar_date_from_civil, calendar_months_per_year};
 use super::super::epoch::CivilDate;
 use super::calendar_add::add_year_month_duration_leap_month;
 use super::iso_date::{
@@ -301,9 +301,7 @@ pub(super) fn calendar_difference_date_leap_month(
     }
 
     if largest_unit == DateUnit::Month && years != 0 {
-        let start_cal = Date::try_new_iso(start.0, start.1, start.2)
-            .expect("a representable Temporal ISO date always converts to any calendar")
-            .to_calendar(AnyCalendar::new(calendar));
+        let start_cal = calendar_date_from_civil(calendar, start);
         let months_until_end_of_year = |date: &Date<AnyCalendar>| -> i64 {
             i64::from(date.months_in_year()) - i64::from(date.month().ordinal) + 1
         };

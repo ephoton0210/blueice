@@ -138,7 +138,7 @@ fn canonical_calendar_id(value: &str) -> Option<String> {
 /// give identical results). `Zoned` covers a real `Temporal.ZonedDateTime` —
 /// object, string, or property bag with a `timeZone` — carrying everything
 /// `zoned_date_time::{add_zoned_date_time, difference_zoned_date_time,
-/// day_length_nanoseconds}` need: the zone itself (now, since Phase 26 Stage
+/// checked_day_bounds}` need: the zone itself (now, since Phase 26 Stage
 /// 2, real IANA transition data and not just `UTC`/a fixed offset), the
 /// exact epoch instant, and the resolved local date/time.
 #[derive(Clone)]
@@ -178,23 +178,50 @@ impl DurationAnchor {
     }
 }
 
-/// How `temporal_plain_date_from_fields` should resolve its own `overflow`
-/// (`GetTemporalOverflowOption`). Most callers (`Temporal.PlainDate`/
-/// `PlainDateTime.from`, `ToTemporalDate`/`ToTemporalDateTime`'s
-/// property-bag branch) have not read their own `options` argument at all
-/// yet when they call in — `ToTemporalDate`'s real algorithm resolves
-/// `fields` strictly *before* `resolvedOptions`, so `Options` defers that
-/// read to the correct point (right before the calendar actually resolves
-/// the fields, after every field above has already been read). A few
-/// callers (`ToTemporalZonedDateTime`'s own property-bag branch, which —
-/// unlike `ToTemporalDate` — legitimately reads `overflow`/`disambiguation`/
-/// `offset` together, early, all from the same already-fetched
-/// `resolvedOptions`) have *already* read `overflow` by the time they call
-/// in; `Resolved` lets them pass the already-known answer through without
-/// triggering a second, duplicate `Get` of `options.overflow`.
+/// How `temporal_plain_date_from_fields` (and its year-month / month-day
+/// siblings) obtains `overflow` (`GetTemporalOverflowOption`). Every caller
+/// has not read its own `options` argument at all yet when it calls in:
+/// `ToTemporalDate`'s real algorithm resolves `fields` strictly *before*
+/// `resolvedOptions`, so `Options` defers that read to the correct point
+/// (right before the calendar actually resolves the fields, after every field
+/// has already been read). `ToTemporalZonedDateTime`'s property-bag branch
+/// also reads `disambiguation` and `offset` from the same `resolvedOptions`,
+/// just ahead of `overflow` -- see [`ZonedBagFields`].
 pub(super) enum OverflowInput<'a> {
     Options(&'a Value),
-    Resolved(bool),
+}
+
+/// The `ZonedDateTime`-only values `ToTemporalZonedDateTime`'s property-bag
+/// branch collects while `temporal_calendar_date_from_bag` reads the
+/// calendar-date fields. `PrepareCalendarFields` reads `offset` and `timeZone`
+/// *in alphabetical position among* those fields (`offset` between
+/// `nanosecond` and `second`; `timeZone` between `second` and `year`), each
+/// converted the moment it is read, and only afterwards does
+/// `ToTemporalZonedDateTime` fetch `options` and read `disambiguation`,
+/// `offset` and finally `overflow`, in that order -- all observable through a
+/// property-bag observer (`ZonedDateTime/from/order-of-operations.js`).
+pub(super) struct ZonedBagFields {
+    /// The `offset` field, already syntax-checked; `None` when absent.
+    pub(super) offset_nanoseconds: Option<i64>,
+    /// The `timeZone` field, already resolved; `None` when absent (a
+    /// `TypeError` once every field has been read).
+    pub(super) time_zone: Option<time_zone::TimeZone>,
+    /// `GetTemporalDisambiguationOption`, read from `options` once the
+    /// fields are.
+    pub(super) disambiguation: time_zone::Disambiguation,
+    /// `GetTemporalOffsetOption`, read from `options` once the fields are.
+    pub(super) offset_option: String,
+}
+
+impl ZonedBagFields {
+    pub(super) fn new() -> Self {
+        Self {
+            offset_nanoseconds: None,
+            time_zone: None,
+            disambiguation: time_zone::Disambiguation::Compatible,
+            offset_option: "reject".into(),
+        }
+    }
 }
 
 impl Vm {

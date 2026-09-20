@@ -71,6 +71,8 @@ impl Vm {
         // may throw for (`with/overflow-undefined.js`).
         let (requested_hour, requested_microsecond, requested_millisecond, requested_minute) =
             if is_date_time {
+                // No range while reading: `RegulateTime` judges it once
+                // `overflow` is known (constrain clamps, reject throws).
                 (
                     self.temporal_read_optional_time_field(like, "hour")?,
                     self.temporal_read_optional_time_field(like, "microsecond")?,
@@ -83,8 +85,7 @@ impl Vm {
         // `month` is a positive integer with no upper bound either; the
         // calendar constrains (or rejects) it against its own month count.
         let requested_month = self.temporal_read_optional_integer(like, "month", 1, i32::MAX)?;
-        let month_code_s =
-            self.temporal_read_optional_string(like, "monthCode", "invalid Temporal month code")?;
+        let month_code_s = self.temporal_read_month_code(like)?;
         let (requested_nanosecond, requested_second) = if is_date_time {
             (
                 self.temporal_read_optional_time_field(like, "nanosecond")?,
@@ -214,42 +215,25 @@ impl Vm {
         let mut result =
             Self::temporal_value_from_calendar_date(existing.kind, existing.calendar.clone(), date);
         if is_date_time {
-            // `InterpretTemporalDateTimeFields`: the date first (above), then
-            // `RegulateTime` on the merged time fields under the same `overflow`.
-            let (hour, minute, second, millisecond, microsecond, nanosecond) =
-                Self::temporal_regulate_time(
-                    [
-                        requested_hour.unwrap_or(i64::from(existing.hour)),
-                        requested_minute.unwrap_or(i64::from(existing.minute)),
-                        requested_second.unwrap_or(i64::from(existing.second)),
-                        requested_millisecond.unwrap_or(i64::from(existing.millisecond)),
-                        requested_microsecond.unwrap_or(i64::from(existing.microsecond)),
-                        requested_nanosecond.unwrap_or(i64::from(existing.nanosecond)),
-                    ],
-                    reject,
-                )?;
-            result.hour = hour;
-            result.minute = minute;
-            result.second = second;
-            result.millisecond = millisecond;
-            result.microsecond = microsecond;
-            result.nanosecond = nanosecond;
+            // `RegulateTime`, once the date has resolved.
+            let time = Self::temporal_regulate_time(
+                [
+                    requested_hour.unwrap_or(i64::from(existing.hour)),
+                    requested_minute.unwrap_or(i64::from(existing.minute)),
+                    requested_second.unwrap_or(i64::from(existing.second)),
+                    requested_millisecond.unwrap_or(i64::from(existing.millisecond)),
+                    requested_microsecond.unwrap_or(i64::from(existing.microsecond)),
+                    requested_nanosecond.unwrap_or(i64::from(existing.nanosecond)),
+                ],
+                reject,
+            )?;
+            result.hour = time.0;
+            result.minute = time.1;
+            result.second = time.2;
+            result.millisecond = time.3;
+            result.microsecond = time.4;
+            result.nanosecond = time.5;
         }
         self.alloc_temporal_value(result, false)
-    }
-
-    /// One optional time field of a property bag: `Get`, then immediately
-    /// `ToIntegerWithTruncation` (a non-finite number is a `RangeError`), with no
-    /// range check -- that is `RegulateTime`'s job. Kept as its own step so the
-    /// read/convert interleave stays observable in the spec's alphabetical order.
-    fn temporal_read_optional_time_field(
-        &mut self,
-        like: &Value,
-        name: &'static str,
-    ) -> Result<Option<i64>, RuntimeError> {
-        let value = self.get_property(like, &name.into())?;
-        (!matches!(value, Value::Undefined))
-            .then(|| self.temporal_truncated_integer(&value, name))
-            .transpose()
     }
 }
