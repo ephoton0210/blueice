@@ -116,7 +116,8 @@ impl std::error::Error for BridgeError {}
 /// and standalone expressions made from those same forms or direct calls.
 /// The expression subset includes unary, arithmetic, relational, equality,
 /// logical, nullish-coalescing, arithmetic exponentiation, bitwise/shift,
-/// conditional, and identifier-assignment operators. Static-only
+/// conditional, and identifier-only simple or compound-assignment operators.
+/// Static-only
 /// declarations disappear before lowering. A broader accepted BlueTS program
 /// returns
 /// [`BridgeError::UnsupportedRuntimeTarget`] instead of falling back to a
@@ -632,8 +633,18 @@ impl<'a> ExpressionLowerer<'a> {
                 "+=" => Some(bluejs::AssignOp::AddAssign),
                 "-=" => Some(bluejs::AssignOp::SubAssign),
                 "*=" => Some(bluejs::AssignOp::MulAssign),
+                "**=" => Some(bluejs::AssignOp::ExponentAssign),
                 "/=" => Some(bluejs::AssignOp::DivAssign),
                 "%=" => Some(bluejs::AssignOp::ModAssign),
+                "<<=" => Some(bluejs::AssignOp::ShiftLeftAssign),
+                ">>=" => Some(bluejs::AssignOp::ShiftRightAssign),
+                ">>>=" => Some(bluejs::AssignOp::UnsignedShiftRightAssign),
+                "&=" => Some(bluejs::AssignOp::BitAndAssign),
+                "^=" => Some(bluejs::AssignOp::BitXorAssign),
+                "|=" => Some(bluejs::AssignOp::BitOrAssign),
+                "&&=" => Some(bluejs::AssignOp::LogicalAndAssign),
+                "||=" => Some(bluejs::AssignOp::LogicalOrAssign),
+                "??=" => Some(bluejs::AssignOp::NullishAssign),
                 _ => None,
             });
         let Some(op) = op else {
@@ -1516,6 +1527,26 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::Number(42.0)
+        );
+    }
+
+    #[test]
+    fn lowers_exponentiation_bitwise_shift_and_logical_compound_assignments() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "let value: number = 2; value **= 3; value <<= 1; value |= 1; value ^= 3; \
+                 value &= 14; value >>= 1; value >>>= 0; let missing: number | undefined = undefined; \
+                 missing ??= 42; let zero: number = 0; zero ||= 5; let present: number = 7; \
+                 present &&= 2; value + missing + zero + present;",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Number(50.0)
         );
     }
 

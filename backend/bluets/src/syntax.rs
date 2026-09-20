@@ -347,9 +347,9 @@ fn is_ident_continue(character: char) -> bool {
 
 fn longest_punctuation(source: &str) -> &str {
     const MULTI: &[&str] = &[
-        "===", "!==", ">>>", "...", "=>", "==", "!=", "<=", ">=", "&&", "||", "??", "?.", "++",
-        "--", "**", "<<", ">>", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "??=", "&&=",
-        "||=",
+        "===", "!==", ">>>=", "**=", "...", "<<=", ">>=", ">>>", "=>", "==", "!=", "<=", ">=",
+        "&&=", "||=", "??=", "&&", "||", "??", "?.", "++", "--", "**", "<<", ">>", "+=", "-=",
+        "*=", "/=", "%=", "&=", "|=", "^=",
     ];
     for punctuation in MULTI {
         if source.starts_with(punctuation) {
@@ -376,6 +376,24 @@ mod tests {
     fn reports_an_unterminated_literal() {
         let diagnostics = lex("memory:///a.ts", "const x = 'no").unwrap_err();
         assert_eq!(diagnostics[0].code, DiagnosticCode::ParseError);
+    }
+
+    #[test]
+    fn lexes_compound_assignments_longest_first() {
+        let tokens = lex(
+            "memory:///a.ts",
+            "value **= 2; value <<= 1; value >>= 1; value >>>= 0; value &= 3; value ^= 1; value |= 2; value &&= 4; value ||= 5; value ??= 6;",
+        )
+        .unwrap();
+        let punctuators = tokens
+            .iter()
+            .filter(|token| token.kind == TokenKind::Punct && token.text.ends_with('='))
+            .map(|token| token.text.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            punctuators,
+            ["**=", "<<=", ">>=", ">>>=", "&=", "^=", "|=", "&&=", "||=", "??="]
+        );
     }
 
     #[test]
