@@ -117,7 +117,8 @@ impl std::error::Error for BridgeError {}
 /// The expression subset includes `!`, `+`, `-`, `~`, `typeof`, and `void`
 /// unary expressions; arithmetic, relational, equality, logical,
 /// nullish-coalescing, arithmetic exponentiation, bitwise/shift, conditional,
-/// and identifier-only simple or compound-assignment operators. Static-only
+/// identifier-only prefix/postfix updates, and identifier-only simple or
+/// compound-assignment operators. Static-only
 /// declarations disappear before lowering. A broader accepted BlueTS program
 /// returns
 /// [`BridgeError::UnsupportedRuntimeTarget`] instead of falling back to a
@@ -921,7 +922,7 @@ impl<'a> ExpressionLowerer<'a> {
         let expression = if unary_base {
             self.parse_unary()?
         } else {
-            self.parse_primary()?
+            self.parse_update()?
         };
         if self
             .tokens
@@ -978,7 +979,61 @@ impl<'a> ExpressionLowerer<'a> {
                 arg: Box::new(self.parse_unary()?),
             });
         }
-        self.parse_primary()
+        self.parse_update()
+    }
+
+    fn parse_update(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        if let Some(op) = self.update_operator_at(self.index) {
+            let span = self
+                .tokens
+                .get(self.index)
+                .map(|token| self.token_span(token))
+                .expect("an update operator was just inspected");
+            self.index += 1;
+            let arg = self.parse_unary()?;
+            return self.lower_identifier_update(op, arg, true, span);
+        }
+        let expression = self.parse_primary()?;
+        let Some(op) = self.update_operator_at(self.index) else {
+            return Ok(expression);
+        };
+        let span = self
+            .tokens
+            .get(self.index)
+            .map(|token| self.token_span(token))
+            .expect("an update operator was just inspected");
+        self.index += 1;
+        self.lower_identifier_update(op, expression, false, span)
+    }
+
+    fn update_operator_at(&self, index: usize) -> Option<bluejs::UpdateOp> {
+        self.tokens
+            .get(index)
+            .and_then(|token| match token.text.as_str() {
+                "++" => Some(bluejs::UpdateOp::Inc),
+                "--" => Some(bluejs::UpdateOp::Dec),
+                _ => None,
+            })
+    }
+
+    fn lower_identifier_update(
+        &self,
+        op: bluejs::UpdateOp,
+        arg: bluejs::Expr,
+        prefix: bool,
+        span: SourceSpan,
+    ) -> Result<bluejs::Expr, BridgeError> {
+        if !matches!(arg, bluejs::Expr::Identifier(_)) {
+            return Err(unsupported(
+                span,
+                "only identifier update targets are in the v1 direct bridge subset",
+            ));
+        }
+        Ok(bluejs::Expr::Update {
+            op,
+            arg: Box::new(arg),
+            prefix,
+        })
     }
 
     fn parse_primary(&mut self) -> Result<bluejs::Expr, BridgeError> {
@@ -1550,6 +1605,35 @@ mod tests {
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::Number(42.0)
         );
+    }
+
+    #[test]
+    fn lowers_identifier_prefix_and_postfix_updates() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "let value: number = 1; const postfix = value++; const prefix = ++value; \
+                 const decremented = --value; const tail = value--; \
+                 postfix + ':' + prefix + ':' + decremented + ':' + tail + ':' + value;",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::String("1:3:2:2:1".into())
+        );
+    }
+
+    #[test]
+    fn expression_lowerer_rejects_non_identifier_update_targets() {
+        let tokens = expression_tokens(&[("++", TokenKind::Punct), ("1", TokenKind::Number)]);
+        let error = ExpressionLowerer::new(ENTRY, &tokens).parse().unwrap_err();
+        let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
+            panic!("the direct bridge must reject a non-identifier update target");
+        };
+        assert!(message.contains("identifier update targets"));
     }
 
     #[test]
